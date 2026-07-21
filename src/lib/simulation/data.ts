@@ -250,7 +250,7 @@ export function createCharSnapshot(
     spd: character.spd,
     mp: character.mp,
     name: character.name,
-    cls: character.cls,
+    cls: character.cls ?? '',
     el: character.el,
   };
 }

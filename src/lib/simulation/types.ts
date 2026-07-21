@@ -15,7 +15,7 @@ export type SkillStatus = 'burn' | 'dot' | 'freeze' | 'stun' | '' | null;
 export interface CharacterTemplate {
   id: string;
   name: string;
-  cls: string;
+  cls?: string;
   el: ElementName;
   hp: number;
   atk: number;
@@ -57,8 +57,16 @@ export interface ProgressionState {
 }
 
 export type LibraryRole = 'characters' | 'skills' | 'level' | 'skillc';
-export type FieldMapping = Partial<Record<string, string>>;
-export type FieldMappings = Record<LibraryRole, FieldMapping>;
+export type FieldMapping = Readonly<Partial<Record<string, string>>>;
+export type FieldMappings = Readonly<Record<LibraryRole, FieldMapping>>;
+
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer Item)[]
+    ? readonly DeepReadonly<Item>[]
+    : T extends object
+      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+      : T;
 
 export interface SimulationCatalog {
   characters: readonly CharacterTemplate[];
@@ -90,27 +98,38 @@ export interface StudioColumnDefinition {
 }
 
 export interface ImportedSimulationSnapshot {
-  catalog: SimulationCatalog;
-  levelRules: LevelRule[];
-  skillCostRules: SkillCostRule[];
-  sourceLibraryIds: Record<LibraryRole, string>;
-  fieldMappings: FieldMappings;
-  importedAt: string;
+  readonly sourceProjectId: string;
+  readonly catalog: DeepReadonly<SimulationCatalog>;
+  readonly levelRules: readonly DeepReadonly<LevelRule>[];
+  readonly skillCostRules: readonly DeepReadonly<SkillCostRule>[];
+  readonly sourceLibraryIds: Readonly<Record<LibraryRole, string>>;
+  readonly fieldMappings: DeepReadonly<FieldMappings>;
+  readonly importedAt: string;
 }
 
 export interface SimulationImportError {
-  role: LibraryRole;
-  code:
+  readonly role: LibraryRole;
+  readonly code:
     | 'missing_mapping'
     | 'missing_value'
+    | 'invalid_type'
     | 'invalid_number'
+    | 'invalid_range'
     | 'duplicate_id'
+    | 'duplicate_mapping'
+    | 'reserved_id'
+    | 'empty_source'
+    | 'invalid_sequence'
     | 'invalid_enum'
+    | 'unresolved_field'
     | 'unresolved_reference';
-  field: string;
-  message: string;
-  assetId?: string;
-  assetName?: string;
+  readonly libraryId: string;
+  readonly libraryName: string;
+  readonly assetId: string | null;
+  readonly assetName: string | null;
+  readonly field: string;
+  readonly reason: string;
+  readonly message: string;
 }
 
 export type SimulationImportResult =
