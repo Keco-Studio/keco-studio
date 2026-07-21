@@ -243,13 +243,6 @@ export function BattleArena({
     };
   }, [progressionRewardFxRef, pushFloatText]);
 
-  useEffect(() => {
-    if (!onRegisterLogAppender) return;
-    onRegisterLogAppender((line) => {
-      setLogLines((prev) => [...prev.slice(-100), line]);
-    });
-  }, [onRegisterLogAppender]);
-
   const [combatFxTick, setCombatFxTick] = useState(0);
 
   const [session, setSession] = useState<BattleSession | null>(null);
@@ -257,6 +250,13 @@ export function BattleArena({
   const [speed, setSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(1);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [viewportSize, setViewportSize] = useState({ width: 800, height: 520 });
+
+  useEffect(() => {
+    if (!onRegisterLogAppender) return;
+    onRegisterLogAppender((line) => {
+      setLogLines((prev) => [...prev.slice(-100), line]);
+    });
+  }, [onRegisterLogAppender]);
   const [mounted, setMounted] = useState(false);
   const [mapBgImage, setMapBgImage] = useState<HTMLImageElement | null>(null);
   const [walkAnimTick, setWalkAnimTick] = useState(0);
