@@ -150,6 +150,14 @@ const mockSupabaseClient = {
 };
 const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
+function queueFreshApprovalCheck() {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a', PROJECT_A),
+    error: null,
+  });
+  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+}
+
 jest.mock('react', () => ({
   ...jest.requireActual<typeof import('react')>('react'),
   useEffect: (effect: EffectSlot['effect'], dependencies?: readonly unknown[]) =>
@@ -324,6 +332,7 @@ it.each(['approve', 'deny'] as const)(
       error: null,
     });
     getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+    if (action === 'approve') queueFreshApprovalCheck();
     const decision = deferred<{ data: null; error: Error }>();
     const decisionMock = action === 'approve' ? approveAuthorization : denyAuthorization;
     decisionMock.mockReturnValueOnce(decision.promise);
@@ -332,6 +341,11 @@ it.each(['approve', 'deny'] as const)(
     await flushAsyncWork();
     findButton(runtime.render(OAuthConsentClient), action === 'approve' ? 'Approve' : 'Deny')
       .props.onClick?.();
+    await flushAsyncWork();
+
+    expect(decisionMock).toHaveBeenCalledWith('authorization-a', {
+      skipBrowserRedirect: true,
+    });
 
     currentAuthorizationId = 'authorization-b';
     getAuthorizationDetails.mockResolvedValueOnce({
@@ -347,6 +361,7 @@ it.each(['approve', 'deny'] as const)(
     await flushAsyncWork();
     const nextTree = runtime.render(OAuthConsentClient);
 
+    expect(assignLocation).not.toHaveBeenCalled();
     expect(findButton(nextTree, 'Approve').props.disabled).toBe(false);
     expect(JSON.stringify(nextTree)).not.toContain('Authorization decision could not be completed.');
   }
@@ -360,6 +375,7 @@ it.each(['approve', 'deny'] as const)(
       error: null,
     });
     getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+    if (action === 'approve') queueFreshApprovalCheck();
     const decision = deferred<{ data: { redirect_url: string }; error: null }>();
     const decisionMock = action === 'approve' ? approveAuthorization : denyAuthorization;
     decisionMock.mockReturnValueOnce(decision.promise);
@@ -368,6 +384,12 @@ it.each(['approve', 'deny'] as const)(
     await flushAsyncWork();
     findButton(runtime.render(OAuthConsentClient), action === 'approve' ? 'Approve' : 'Deny')
       .props.onClick?.();
+    await flushAsyncWork();
+
+    expect(decisionMock).toHaveBeenCalledWith('authorization-a', {
+      skipBrowserRedirect: true,
+    });
+    expect(assignLocation).not.toHaveBeenCalled();
 
     currentAuthorizationId = 'authorization-b';
     runtime.render(OAuthConsentClient, false);
@@ -386,6 +408,7 @@ it.each(['approve', 'deny'] as const)(
       error: null,
     });
     getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+    if (action === 'approve') queueFreshApprovalCheck();
     const decision = deferred<{ data: null; error: Error }>();
     const decisionMock = action === 'approve' ? approveAuthorization : denyAuthorization;
     decisionMock.mockReturnValueOnce(decision.promise);
@@ -394,6 +417,13 @@ it.each(['approve', 'deny'] as const)(
     await flushAsyncWork();
     findButton(runtime.render(OAuthConsentClient), action === 'approve' ? 'Approve' : 'Deny')
       .props.onClick?.();
+    await flushAsyncWork();
+
+    expect(decisionMock).toHaveBeenCalledWith('authorization-a', {
+      skipBrowserRedirect: true,
+    });
+    expect(JSON.stringify(runtime.stateValues()))
+      .not.toContain('Authorization decision could not be completed.');
 
     currentAuthorizationId = 'authorization-b';
     runtime.render(OAuthConsentClient, false);
