@@ -14,7 +14,7 @@ import {
   verifyAssetAccess,
   AuthorizationError,
 } from '@/lib/services/authorizationService';
-import { writeSimulationProjectHandoff } from '@/lib/simulationProjectHandoff';
+import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 
 type BreadcrumbItem = {
   label: string;
@@ -78,7 +78,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!currentProjectId || !projectName?.trim()) return;
-    writeSimulationProjectHandoff({
+    writeSimulationProjectPreference({
       projectId: currentProjectId,
       projectName: projectName.trim(),
     });

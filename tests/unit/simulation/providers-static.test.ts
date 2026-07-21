@@ -14,7 +14,7 @@ describe('simulation provider contracts', () => {
     expect(source).toContain('loadSimulationProjectSources');
     expect(source).toContain('loadSimulationLibraryFields');
     expect(source).toContain('requestGenerationRef');
-    expect(source).toContain('readSimulationProjectHandoff');
+    expect(source).toContain('readSimulationProjectPreference');
     expect(source).toContain('requestedProjectId');
   });
 

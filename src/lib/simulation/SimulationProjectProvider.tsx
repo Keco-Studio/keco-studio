@@ -7,7 +7,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
 import type { Project } from '@/lib/services/projectService';
-import { readSimulationProjectHandoff } from '@/lib/simulationProjectHandoff';
+import { readSimulationProjectPreference } from './projectPreference';
 import type { StudioLibrarySource } from './importAdapter';
 import { loadSimulationLibraryFields, loadSimulationProjectSources } from './studioData';
 import type { LibraryRole } from './types';
@@ -35,7 +35,7 @@ export function SimulationProjectProvider({ children }: { children: React.ReactN
   const { userProfile } = useAuth();
   const { projects, isLoading: projectsLoading, error: projectsError, refetch: refetchProjects } = useSidebarProjects(userProfile?.id);
   const [requestedProjectId, setRequestedProjectId] = useState<string | null>(null);
-  const [initialProjectId] = useState(() => readSimulationProjectHandoff()?.projectId ?? null);
+  const [initialProjectId] = useState(() => readSimulationProjectPreference()?.projectId ?? null);
   const requestGenerationRef = useRef(0);
   const selectedProjectId = useMemo(() => {
     if (requestedProjectId && projects.some(({ id }) => id === requestedProjectId)) return requestedProjectId;
