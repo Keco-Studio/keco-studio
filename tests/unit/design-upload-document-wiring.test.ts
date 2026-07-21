@@ -19,6 +19,7 @@ describe('design upload durable document wiring', () => {
 
   it('passes the durable document id into the agent handoff', () => {
     expect(page).toContain('documentId: imported.document.id');
+    expect(page).toContain("intent: 'tables'");
     expect(page).not.toContain('documentExport');
   });
 

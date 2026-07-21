@@ -200,6 +200,7 @@ export const POST = withAuth(async function POST(
       ? buildDesignMessage({
           fileName: documentSnapshot.documentName,
           documentText: documentSnapshot.markdown,
+          intent: 'tables',
           documentId: documentSnapshot.documentId,
           sourceKind: 'project-document',
         })
