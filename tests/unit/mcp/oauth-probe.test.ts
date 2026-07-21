@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -284,18 +284,14 @@ describe('OAuth discovery probe', () => {
 
 describe('OAuth probe CLI', () => {
   it('prints only a stable failure message and leaves no evidence file', () => {
-    const tsx = join(
-      process.cwd(),
-      'node_modules',
-      '.bin',
-      process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
-    );
     const secret = 'access_token=must-not-appear';
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'keco-oauth-probe-'));
     const output = join(fixtureRoot, 'evidence.json');
 
     try {
-      const result = spawnSync(tsx, [
+      writeFileSync(output, '{"passed":true,"stale":true}\n', 'utf8');
+      const result = spawnSync(process.execPath, [
+        '--import', 'tsx',
         'scripts/probe-mcp-oauth.ts',
         '--mcp-url', `not-a-url?${secret}`,
         '--output', output,
@@ -309,6 +305,7 @@ describe('OAuth probe CLI', () => {
       expect(result.stderr.trim()).toBe('OAuth probe failed.');
       expect(result.stderr).not.toContain(secret);
       expect(existsSync(output)).toBe(false);
+      expect(readdirSync(fixtureRoot)).toEqual([]);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

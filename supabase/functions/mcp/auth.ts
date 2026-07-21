@@ -6,6 +6,10 @@ export type ProjectAuthContext = {
   projectId: string;
   role: ProjectRole;
 };
+export type ProjectAuthorization =
+  | { status: "authorized"; context: ProjectAuthContext }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" };
 
 export interface AuthGateway {
   getUser(token: string): Promise<{ id: string } | null>;
@@ -20,16 +24,21 @@ export async function authorizeProjectWithGateway(
   request: Request,
   projectId: string,
   gateway: AuthGateway,
-): Promise<ProjectAuthContext | null> {
+): Promise<ProjectAuthorization> {
   const match = /^Bearer\s+(.+)$/i.exec(
     request.headers.get("authorization") ?? "",
   );
-  if (!match) return null;
+  if (!match) return { status: "unauthenticated" };
   const token = match[1];
   const user = await gateway.getUser(token);
-  if (!user) return null;
+  if (!user) return { status: "unauthenticated" };
   const role = await gateway.getRole(user.id, projectId, token);
-  return role ? { userId: user.id, projectId, role } : null;
+  return role
+    ? {
+      status: "authorized",
+      context: { userId: user.id, projectId, role },
+    }
+    : { status: "forbidden" };
 }
 
 function supabaseGateway(): AuthGateway {
@@ -73,6 +82,6 @@ function supabaseGateway(): AuthGateway {
 export function authorizeProject(
   request: Request,
   projectId: string,
-): Promise<ProjectAuthContext | null> {
+): Promise<ProjectAuthorization> {
   return authorizeProjectWithGateway(request, projectId, supabaseGateway());
 }

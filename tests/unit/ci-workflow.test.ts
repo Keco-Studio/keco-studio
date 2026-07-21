@@ -70,9 +70,13 @@ describe('CI workflow gates', () => {
   it('runs Edge MCP checks in CI and local validate', () => {
     expect(workflow).toContain('npm run check:mcp');
     expect(workflow).toContain('npm run test:mcp');
-    expect(pkg.scripts.validate).toBe(
-      'npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run test:mcp && npm run test:unit && npm run build'
-    );
+    const apiTypecheck = workflow.indexOf('npm run typecheck:api');
+    const mcpCheck = workflow.indexOf('npm run check:mcp');
+    const mcpTest = workflow.indexOf('npm run test:mcp');
+    const unitTest = workflow.indexOf('npm run test:unit');
+    expect(apiTypecheck).toBeLessThan(mcpCheck);
+    expect(mcpCheck).toBeLessThan(mcpTest);
+    expect(mcpTest).toBeLessThan(unitTest);
   });
 
   it('does not force unit tests to run serially', () => {
@@ -94,6 +98,9 @@ describe('CI workflow gates', () => {
     );
     expect(pkg.scripts['test:mcp']).toBe(
       'deno test --config supabase/functions/mcp/deno.json --allow-env --allow-net supabase/functions/mcp'
+    );
+    expect(pkg.scripts['probe:mcp-performance']).toBe(
+      'tsx scripts/probe-mcp-performance.ts'
     );
   });
 

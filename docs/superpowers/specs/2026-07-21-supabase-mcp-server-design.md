@@ -1,7 +1,7 @@
 # Supabase-Hosted Keco MCP Server Design
 
-**Date:** 2026-07-21  
-**Status:** Proposed, pending written-spec review  
+**Date:** 2026-07-21
+**Status:** Proposed, pending written-spec review
 **Scope:** A remote, project-bound MCP server hosted in Supabase Edge Functions and compatible with Codex and Claude
 
 ## 1. Summary
@@ -692,4 +692,3 @@ The first release is successful when:
   budgets in representative fixtures.
 - No normal tool execution uses `service_role`, and logs contain no token or full
   sensitive-content leakage.
-

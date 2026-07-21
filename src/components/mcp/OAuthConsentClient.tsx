@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -50,6 +50,7 @@ export function OAuthConsentClient() {
   const router = useRouter();
   const search = useSearchParams();
   const authorizationId = search.get('authorization_id') ?? '';
+  const authorizationIdRef = useRef(authorizationId);
   const [state, setState] = useState<ConsentState>(emptyConsentState(authorizationId));
   const currentState = state.authorizationId === authorizationId
     ? state
@@ -59,6 +60,10 @@ export function OAuthConsentClient() {
     currentState.verifiedBinding,
     authorizationId
   );
+
+  useEffect(() => {
+    authorizationIdRef.current = authorizationId;
+  }, [authorizationId]);
 
   useEffect(() => {
     let active = true;
@@ -151,10 +156,12 @@ export function OAuthConsentClient() {
   async function decide(action: 'approve' | 'deny') {
     const binding = verifiedBindingFor(currentState.verifiedBinding, authorizationId);
     if (!authorizationId || (action === 'approve' && !binding)) return;
+    const decisionAuthorizationId = authorizationId;
     setState({ ...currentState, busy: true });
     const result = action === 'approve'
-      ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true })
-      : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true });
+      ? await supabase.auth.oauth.approveAuthorization(decisionAuthorizationId, { skipBrowserRedirect: true })
+      : await supabase.auth.oauth.denyAuthorization(decisionAuthorizationId, { skipBrowserRedirect: true });
+    if (authorizationIdRef.current !== decisionAuthorizationId) return;
     if (result.error || !result.data?.redirect_url) {
       setState({
         ...currentState,

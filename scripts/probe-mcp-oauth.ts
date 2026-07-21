@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { replaceEvidenceAtomically } from './lib/atomic-evidence';
 
 const SECRET_FIELD_SUFFIXES = new Set(['code', 'secret', 'token', 'verifier']);
 const COMPACT_TOKEN_CANDIDATE = /[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*){2,4}/g;
@@ -276,8 +276,10 @@ export async function runProbe(mcpUrl: string, redirectUri: string): Promise<unk
 
 async function main(): Promise<void> {
   const args = parseProbeArguments(process.argv.slice(2));
-  const evidence = await runProbe(args.mcpUrl, args.redirectUri);
-  await writeFile(args.output, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+  await replaceEvidenceAtomically(
+    args.output,
+    () => runProbe(args.mcpUrl, args.redirectUri)
+  );
 }
 
 if (process.argv[1]?.endsWith('probe-mcp-oauth.ts')) {

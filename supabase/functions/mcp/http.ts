@@ -1,9 +1,10 @@
-import { authorizeProject, type ProjectAuthContext } from "./auth.ts";
+import { authorizeProject, type ProjectAuthorization } from "./auth.ts";
 import { handleProtocolRequest } from "./server.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_REQUEST_BYTES = 256 * 1024;
+const MAX_RESPONSE_BYTES = 1024 * 1024;
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
@@ -14,18 +15,17 @@ const CORS = {
 };
 
 export function extractBoundProjectId(url: URL): string | null {
-  const parts = url.pathname.split("/").filter(Boolean);
-  const index = parts.lastIndexOf("mcp");
-  if (index < 0 || index !== parts.length - 2) return null;
-  return UUID.test(parts[index + 1]) ? parts[index + 1] : null;
+  const match = /^\/functions\/v1\/mcp\/([^/]+)$/.exec(url.pathname);
+  return match && UUID.test(match[1]) ? match[1] : null;
 }
 
 export type McpHttpDependencies = {
   authorize?: (
     request: Request,
     projectId: string,
-  ) => Promise<ProjectAuthContext | null>;
+  ) => Promise<ProjectAuthorization>;
   kecoPublicUrl?: string;
+  handleProtocol?: (request: Request) => Promise<Response>;
 };
 
 function withCors(response: Response): Response {
@@ -78,6 +78,66 @@ function tooLargeByContentLength(request: Request): boolean {
   return Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES;
 }
 
+function normalizePublicOrigin(value: string | undefined): string | null {
+  if (!value || value.trim() !== value) return null;
+  try {
+    const parsed = new URL(value);
+    if (
+      (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+      parsed.username ||
+      parsed.password ||
+      (parsed.pathname !== "" && parsed.pathname !== "/") ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+async function boundedProtocolResponse(response: Response): Promise<Response | null> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared >= MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    return null;
+  }
+  if (!response.body) return response;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (total + value.byteLength >= MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      total += value.byteLength;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export async function handleMcpHttpRequest(
   request: Request,
   deps: McpHttpDependencies = {},
@@ -114,13 +174,21 @@ export async function handleMcpHttpRequest(
     );
   }
   const authorize = deps.authorize ?? authorizeProject;
-  const context = await authorize(boundedRequest, projectId);
-  if (!context) {
-    const kecoPublicUrl =
-      (deps.kecoPublicUrl ?? Deno.env.get("KECO_PUBLIC_URL") ?? "").replace(
-        /\/$/,
-        "",
-      );
+  const authorization = await authorize(boundedRequest, projectId);
+  if (authorization.status === "forbidden") {
+    return withCors(Response.json({ error: "Project access forbidden." }, {
+      status: 403,
+    }));
+  }
+  if (authorization.status === "unauthenticated") {
+    const kecoPublicUrl = normalizePublicOrigin(
+      deps.kecoPublicUrl ?? Deno.env.get("KECO_PUBLIC_URL"),
+    );
+    if (!kecoPublicUrl) {
+      return withCors(Response.json({ error: "MCP authentication is unavailable." }, {
+        status: 500,
+      }));
+    }
     const metadata =
       `${kecoPublicUrl}/api/mcp/oauth-protected-resource?project_id=${projectId}`;
     return withCors(Response.json({ error: "Authentication required." }, {
@@ -128,5 +196,14 @@ export async function handleMcpHttpRequest(
       headers: { "www-authenticate": `Bearer resource_metadata="${metadata}"` },
     }));
   }
-  return withCors(await handleProtocolRequest(boundedRequest));
+  const handleProtocol = deps.handleProtocol ?? handleProtocolRequest;
+  const protocolResponse = await boundedProtocolResponse(
+    await handleProtocol(boundedRequest),
+  );
+  if (!protocolResponse) {
+    return withCors(Response.json({ error: "MCP response must remain below 1 MiB." }, {
+      status: 502,
+    }));
+  }
+  return withCors(protocolResponse);
 }

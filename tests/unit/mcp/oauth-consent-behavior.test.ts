@@ -8,20 +8,34 @@ type EffectSlot = {
   effect: () => EffectCleanup | void;
 };
 type StateSlot = { kind: 'state'; value: unknown };
-type HookSlot = EffectSlot | StateSlot;
+type RefSlot = { kind: 'ref'; value: { current: unknown } };
+type HookSlot = EffectSlot | StateSlot | RefSlot;
 
 class HookRuntime {
   private cursor = 0;
   private pendingEffects: EffectSlot[] = [];
   private slots: HookSlot[] = [];
 
-  useState<T>(initialValue: T): [T, (value: T) => void] {
+  useState<T>(initialValue: T): [T, (value: T | ((previous: T) => T)) => void] {
     const index = this.cursor++;
     const previous = this.slots[index];
     if (previous && previous.kind !== 'state') throw new Error(`Hook order changed at ${index}`);
     const slot = previous ?? { kind: 'state' as const, value: initialValue };
     this.slots[index] = slot;
-    return [slot.value as T, (value) => { slot.value = value; }];
+    return [slot.value as T, (value) => {
+      slot.value = typeof value === 'function'
+        ? (value as (previous: T) => T)(slot.value as T)
+        : value;
+    }];
+  }
+
+  useRef<T>(initialValue: T): { current: T } {
+    const index = this.cursor++;
+    const previous = this.slots[index];
+    if (previous && previous.kind !== 'ref') throw new Error(`Hook order changed at ${index}`);
+    const slot = previous ?? { kind: 'ref' as const, value: { current: initialValue } };
+    this.slots[index] = slot;
+    return slot.value as { current: T };
   }
 
   useEffect(effect: EffectSlot['effect'], dependencies?: readonly unknown[]): void {
@@ -97,6 +111,10 @@ const getAuthorizationDetails = jest.fn();
 const approveAuthorization = jest.fn();
 const denyAuthorization = jest.fn();
 const getProject = jest.fn();
+const mockRouter = { replace: jest.fn() };
+const mockSupabaseClient = {
+  auth: { oauth: { getAuthorizationDetails, approveAuthorization, denyAuthorization } },
+};
 const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 jest.mock('react', () => ({
@@ -104,17 +122,16 @@ jest.mock('react', () => ({
   useEffect: (effect: EffectSlot['effect'], dependencies?: readonly unknown[]) =>
     runtime.useEffect(effect, dependencies),
   useState: <T,>(initialValue: T) => runtime.useState(initialValue),
+  useRef: <T,>(initialValue: T) => runtime.useRef(initialValue),
 }));
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: jest.fn() }),
+  useRouter: () => mockRouter,
   useSearchParams: () => ({
     get: (name: string) => name === 'authorization_id' ? currentAuthorizationId : null,
   }),
 }));
 jest.mock('@/lib/SupabaseContext', () => ({
-  useSupabase: () => ({
-    auth: { oauth: { getAuthorizationDetails, approveAuthorization, denyAuthorization } },
-  }),
+  useSupabase: () => mockSupabaseClient,
 }));
 jest.mock('@/lib/services/projectService', () => ({
   getProject: (...args: unknown[]) => getProject(...args),
@@ -139,6 +156,7 @@ beforeEach(() => {
   approveAuthorization.mockReset();
   denyAuthorization.mockReset();
   getProject.mockReset();
+  mockRouter.replace.mockReset();
 });
 
 afterAll(() => {
@@ -192,5 +210,43 @@ it('does not reuse a verified binding after the authorization ID changes', async
   changedApprove.props.onClick?.();
   expect(approveAuthorization).not.toHaveBeenCalled();
 
+  getProject.mockResolvedValueOnce({ id: PROJECT_B, name: 'Project B' });
   nextDetails.resolve(authorizationDetails('authorization-b', PROJECT_B));
+  await flushAsyncWork();
 });
+
+it.each(['approve', 'deny'] as const)(
+  'does not let a failed stale %s decision overwrite a newer authorization request',
+  async (action) => {
+    getAuthorizationDetails.mockResolvedValueOnce({
+      data: authorizationDetails('authorization-a', PROJECT_A),
+      error: null,
+    });
+    getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+    const decision = deferred<{ data: null; error: Error }>();
+    const decisionMock = action === 'approve' ? approveAuthorization : denyAuthorization;
+    decisionMock.mockReturnValueOnce(decision.promise);
+
+    runtime.render(OAuthConsentClient);
+    await flushAsyncWork();
+    findButton(runtime.render(OAuthConsentClient), action === 'approve' ? 'Approve' : 'Deny')
+      .props.onClick?.();
+
+    currentAuthorizationId = 'authorization-b';
+    getAuthorizationDetails.mockResolvedValueOnce({
+      data: authorizationDetails('authorization-b', PROJECT_B),
+      error: null,
+    });
+    getProject.mockResolvedValueOnce({ id: PROJECT_B, name: 'Project B' });
+    runtime.render(OAuthConsentClient);
+    await flushAsyncWork();
+    expect(findButton(runtime.render(OAuthConsentClient), 'Approve').props.disabled).toBe(false);
+
+    decision.resolve({ data: null, error: new Error('expired decision') });
+    await flushAsyncWork();
+    const nextTree = runtime.render(OAuthConsentClient);
+
+    expect(findButton(nextTree, 'Approve').props.disabled).toBe(false);
+    expect(JSON.stringify(nextTree)).not.toContain('Authorization decision could not be completed.');
+  }
+);
