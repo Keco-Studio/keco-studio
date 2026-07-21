@@ -9,7 +9,7 @@ import { listLibraries, type Library } from '@/lib/services/libraryService';
 import type { Project } from '@/lib/services/projectService';
 import { readSimulationProjectHandoff } from '@/lib/simulationProjectHandoff';
 import type { StudioLibrarySource } from './importAdapter';
-import { loadSimulationProjectSources } from './studioData';
+import { loadSimulationLibraryFields, loadSimulationProjectSources } from './studioData';
 import type { LibraryRole } from './types';
 
 type LibrarySelection = Readonly<Record<LibraryRole, string>>;
@@ -24,6 +24,7 @@ type SimulationProjectContextValue = {
   unavailableLibraryIds: readonly string[];
   selectProject: (projectId: string) => void;
   retry: () => Promise<unknown>;
+  loadFields: (libraryId: string) => Promise<ReadonlyArray<{ key: string; name: string }>>;
   loadSources: (libraryIds: LibrarySelection) => Promise<Readonly<Record<LibraryRole, StudioLibrarySource>>>;
 };
 
@@ -67,6 +68,17 @@ export function SimulationProjectProvider({ children }: { children: React.ReactN
     return sources;
   }, [selectedProjectId, supabase]);
 
+  const loadFields = useCallback(async (libraryId: string) => {
+    if (!selectedProjectId) throw new Error('Select a Studio project before loading fields.');
+    const projectAtStart = selectedProjectId;
+    const generation = ++requestGenerationRef.current;
+    const fields = await loadSimulationLibraryFields(supabase, projectAtStart, libraryId);
+    if (generation !== requestGenerationRef.current || projectAtStart !== selectedProjectId) {
+      throw new Error('The selected project changed while fields were loading.');
+    }
+    return fields;
+  }, [selectedProjectId, supabase]);
+
   const retry = useCallback(async () => {
     await refetchProjects();
     if (selectedProjectId) return librariesQuery.refetch();
@@ -83,8 +95,9 @@ export function SimulationProjectProvider({ children }: { children: React.ReactN
     unavailableLibraryIds: [],
     selectProject,
     retry,
+    loadFields,
     loadSources,
-  }), [librariesQuery.data, librariesQuery.error, librariesQuery.isLoading, loadSources, projects, projectsError, projectsLoading, retry, selectProject, selectedProject, selectedProjectId]);
+  }), [librariesQuery.data, librariesQuery.error, librariesQuery.isLoading, loadFields, loadSources, projects, projectsError, projectsLoading, retry, selectProject, selectedProject, selectedProjectId]);
 
   return <SimulationProjectContext.Provider value={value}>{children}</SimulationProjectContext.Provider>;
 }

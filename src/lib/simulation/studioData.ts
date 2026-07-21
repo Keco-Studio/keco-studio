@@ -13,6 +13,19 @@ import type { LibraryRole } from './types';
 
 const ROLES: readonly LibraryRole[] = ['characters', 'skills', 'level', 'skillc'];
 
+export async function loadSimulationLibraryFields(
+  supabase: SupabaseClient,
+  projectId: string,
+  libraryId: string,
+): Promise<ReadonlyArray<{ key: string; name: string }>> {
+  const libraries = await listLibraries(supabase, projectId);
+  if (!libraries.some((library) => library.id === libraryId && library.project_id === projectId)) {
+    throw new Error('Selected library does not belong to the active project.');
+  }
+  const schema = await getLibrarySchema(supabase, libraryId);
+  return Object.freeze(schema.properties.map(({ key, name }) => Object.freeze({ key, name })));
+}
+
 function cloneAndDeepFreeze<T>(value: T): T {
   const clone = structuredClone(value);
   const freeze = (candidate: unknown): void => {

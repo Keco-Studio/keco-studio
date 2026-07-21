@@ -28,6 +28,45 @@
   overflow: auto;
 }
 
+.flowScreen { display: grid; max-width: 1180px; margin: 0 auto; gap: 18px; }
+.flowHeading { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.flowHeading h2 { margin: 2px 0 5px; font-size: 25px; }
+.flowHeading p { margin: 0; color: var(--simulation-text-muted); }
+.kicker { color: var(--simulation-primary); font-family: var(--simulation-font-data); font-size: 10px; text-transform: uppercase; }
+.flowCard { padding: 18px; background: var(--simulation-surface); border: 1px solid var(--simulation-border); border-radius: var(--simulation-radius); }
+.flowCard h3 { margin-top: 0; }
+.importGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.fieldLabel { display: grid; gap: 6px; color: var(--simulation-text-muted); font-size: 12px; font-weight: 600; }
+.fieldLabel input, .fieldLabel select, .mappingRow select, .flowHeading input, .projectSwitcher select { min-height: 38px; padding: 0 10px; color: var(--simulation-text); background: var(--simulation-surface); border: 1px solid var(--simulation-border); border-radius: 4px; }
+.mappingList { display: grid; margin-top: 14px; gap: 7px; }
+.mappingRow { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(140px, 1.5fr); align-items: center; gap: 8px; font-size: 12px; }
+.errorList { padding: 12px 14px; color: var(--simulation-danger); background: #fff4f4; border: 1px solid #efb8b8; border-radius: 4px; }
+.errorList p { margin: 4px 0 0; }
+.emptyState { display: grid; min-height: 240px; padding: 30px; place-content: center; text-align: center; color: var(--simulation-text-muted); }
+.characterPicker, .skillGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.characterChoice, .skillChoice, .rosterNav button { display: grid; min-height: 64px; padding: 10px 12px; gap: 3px; text-align: left; color: var(--simulation-text); background: var(--simulation-surface); border: 1px solid var(--simulation-border); border-radius: 4px; cursor: pointer; }
+.characterChoice[aria-pressed="true"], .skillChoice[aria-pressed="true"], .rosterNav button[aria-current="true"] { color: var(--simulation-primary-strong); background: #eaf2fd; border-color: var(--simulation-primary); }
+.characterChoice span, .skillChoice span, .skillChoice small, .rosterNav span { color: var(--simulation-text-muted); font-size: 11px; }
+.rosterTable { display: grid; gap: 6px; }
+.rosterRow { display: grid; padding: 11px 14px; grid-template-columns: minmax(130px, 1fr) 2fr 110px auto; align-items: center; gap: 10px; background: var(--simulation-surface); border: 1px solid var(--simulation-border); }
+.rosterRow button { color: var(--simulation-danger); background: transparent; border: 0; cursor: pointer; }
+.flowActions, .batchPanel { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.splitLayout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; }
+.rosterNav { display: grid; align-content: start; gap: 7px; }
+.progressRow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; }
+.progressRow span { display: grid; gap: 3px; }
+.battleWorkspace { display: grid; min-height: 440px; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; }
+.battleLog { min-height: 0; padding: 14px; overflow: auto; background: var(--simulation-surface); border: 1px solid var(--simulation-border); border-radius: var(--simulation-radius); }
+.battleLog p { margin: 8px 0; font-size: 12px; line-height: 1.45; }
+.projectSwitcher { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.projectSwitcher label { display: flex; align-items: center; gap: 8px; color: var(--simulation-text-muted); font-size: 12px; }
+
+@media (max-width: 760px) {
+  .importGrid, .splitLayout, .battleWorkspace { grid-template-columns: 1fr; }
+  .rosterRow { grid-template-columns: 1fr 1fr; }
+  .flowHeading, .flowActions, .batchPanel { align-items: stretch; flex-direction: column; }
+}
+
 .sidebar {
   position: relative;
   z-index: 20;
