@@ -29,9 +29,11 @@ describe('simulation provider contracts', () => {
     expect(source).toContain('IMPORT_COMMITTED');
     expect(source).toContain('getBrowserStorage');
     expect(source).toContain('snapshot.sourceProjectId !== selectedProjectId');
+    expect(source).toContain('const targetId = sessionId;');
+    expect(source).not.toContain('sessionId ?? state.activeSessionId');
   });
 
-  it('owns battle timers and clears them on stop and unmount', () => {
+  it('owns battle timers and clears them on stop, unmount and scope changes', () => {
     const source = read('src/lib/simulation/useBattlePlayback.ts');
     expect(source).toContain('setInterval');
     expect(source).toContain('clearInterval');
@@ -39,5 +41,7 @@ describe('simulation provider contracts', () => {
     expect(source).toContain('simulate(');
     expect(source).toContain('buildFighters(');
     expect(source).toContain('displayUnits(');
+    expect(source).toContain('scopeKey');
+    expect(source).toContain('[scopeKey, clearTimer]');
   });
 });

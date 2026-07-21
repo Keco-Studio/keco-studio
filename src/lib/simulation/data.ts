@@ -3,6 +3,7 @@ import type {
   CharacterTemplate,
   ElementName,
   FieldMapping,
+  ImportedSimulationSnapshot,
   LevelRule,
   LibraryRole,
   RosterEntry,
@@ -176,6 +177,26 @@ export const DEMO_SKILL_COST_RULES: readonly SkillCostRule[] = [
   { lv: 3, cost: 2 },
   { lv: 4, cost: 3 },
 ];
+
+export function createDemoImportedSnapshot(
+  sourceProjectId: string,
+  importedAt: Date | string = new Date(),
+): ImportedSimulationSnapshot {
+  return {
+    sourceProjectId,
+    catalog: structuredClone(DEMO_CATALOG),
+    levelRules: structuredClone(DEMO_LEVEL_RULES),
+    skillCostRules: structuredClone(DEMO_SKILL_COST_RULES),
+    sourceLibraryIds: {
+      characters: 'demo:characters',
+      skills: 'demo:skills',
+      level: 'demo:level',
+      skillc: 'demo:skillc',
+    },
+    fieldMappings: { characters: {}, skills: {}, level: {}, skillc: {} },
+    importedAt: importedAt instanceof Date ? importedAt.toISOString() : importedAt,
+  };
+}
 
 function normFieldKey(value: string): string {
   return value.toLowerCase().replace(/[\s_-]/g, '');

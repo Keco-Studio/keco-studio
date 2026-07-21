@@ -19,6 +19,11 @@ describe('simulation workbench flow', () => {
     expect(source).toContain('commitImport');
     expect(source).toContain('result.errors');
     expect(source).toContain('SIM_FIELDS');
+    expect(source).toContain('commitImport(result.snapshot, name)');
+    expect(source).not.toContain('commitImport(result.snapshot, name, activeSession?.id)');
+    expect(source).toContain('createDemoImportedSnapshot');
+    expect(source).toContain('Use demo data');
+    expect(source).toContain('Import Studio data');
   });
 
   it('uses imported catalogs and rule tables for configuration', () => {
@@ -40,5 +45,7 @@ describe('simulation workbench flow', () => {
     expect(workbench).toContain('data-simulation-root');
     expect(workbench).toContain('<SimulationSidebar');
     expect(workbench).toContain('<SimulationHeader');
+    expect(workbench).toContain('requestedScreen?.sessionId === sessions.activeSession.id');
+    expect(workbench).toContain('requestedScreen?.projectId === project.selectedProjectId');
   });
 });

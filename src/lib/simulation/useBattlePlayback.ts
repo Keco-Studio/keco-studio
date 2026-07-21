@@ -7,7 +7,8 @@ import type { BattleEvent, BattleResult, Loadout, RosterEntry, SimulationCatalog
 type DisplayUnit = ReturnType<typeof displayUnits>[number];
 type PlaybackPhase = 'idle' | 'running' | 'done';
 
-export function useBattlePlayback({ catalog, roster, loadout, skillLevels, intervalMs = 420, random, onComplete }: {
+export function useBattlePlayback({ scopeKey, catalog, roster, loadout, skillLevels, intervalMs = 420, random, onComplete }: {
+  scopeKey: string;
   catalog: SimulationCatalog;
   roster: readonly RosterEntry[];
   loadout: Loadout;
@@ -40,6 +41,15 @@ export function useBattlePlayback({ catalog, roster, loadout, skillLevels, inter
   }, [clearTimer]);
 
   useEffect(() => () => clearTimer(), [clearTimer]);
+  useEffect(() => {
+    clearTimer();
+    const resetTimer = window.setTimeout(() => {
+      setPhase('idle');
+      setActiveActor(null);
+      setActiveTarget(null);
+    }, 0);
+    return () => window.clearTimeout(resetTimer);
+  }, [scopeKey, clearTimer]);
 
   const start = useCallback(() => {
     clearTimer();

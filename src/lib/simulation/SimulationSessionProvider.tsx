@@ -103,14 +103,14 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
       setPersistenceWarning('Imported simulation data does not belong to the selected project.');
       return;
     }
-    const targetId = sessionId ?? state.activeSessionId;
+    const targetId = sessionId;
     if (targetId && state.sessions.some(({ id }) => id === targetId)) {
       dispatch({ type: 'IMPORT_COMMITTED', sessionId: targetId, snapshot });
     } else {
       dispatch({ type: 'SESSION_CREATED', session: newSession(snapshot, name) });
     }
     setImporting(false);
-  }, [selectedProjectId, state.activeSessionId, state.sessions]);
+  }, [selectedProjectId, state.sessions]);
 
   const selectSession = useCallback((sessionId: string) => {
     dispatch({ type: 'ACTIVE_SESSION_SELECTED', sessionId });

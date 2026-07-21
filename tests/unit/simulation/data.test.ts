@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   autoMapFields,
   createCharSnapshot,
+  createDemoImportedSnapshot,
   DEMO_CATALOG,
   needExp,
   skillCost,
@@ -22,6 +23,25 @@ describe('simulation data helpers', () => {
   it('uses imported progression rules when provided', () => {
     expect(needExp(3, [{ level: 3, exp: 900, sp: 4 }])).toBe(900);
     expect(skillCost(1, [{ lv: 1, cost: 7 }])).toBe(7);
+  });
+
+  it('creates a project-scoped snapshot from the built-in demo data', () => {
+    const importedAt = '2026-07-21T00:00:00.000Z';
+    const snapshot = createDemoImportedSnapshot('project-1', importedAt);
+
+    expect(snapshot.sourceProjectId).toBe('project-1');
+    expect(snapshot.catalog).toEqual(DEMO_CATALOG);
+    expect(snapshot.sourceLibraryIds).toEqual({
+      characters: 'demo:characters',
+      skills: 'demo:skills',
+      level: 'demo:level',
+      skillc: 'demo:skillc',
+    });
+    expect(snapshot.fieldMappings).toEqual({
+      characters: {}, skills: {}, level: {}, skillc: {},
+    });
+    expect(snapshot.importedAt).toBe(importedAt);
+    expect(snapshot.catalog).not.toBe(DEMO_CATALOG);
   });
 
   it('maps canonical fields without reusing a Studio column', () => {

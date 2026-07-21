@@ -18,21 +18,35 @@ import styles from './SimulationWorkbench.module.css';
 import './simulationTokens.css';
 
 type WorkbenchScreen = 'import' | SimulationScreen;
+type RequestedScreen = {
+  projectId: string | null;
+  sessionId: string;
+  screen: SimulationScreen;
+};
 
 export function SimulationWorkbench() {
   const project = useSimulationProject();
   const sessions = useSimulationSession();
-  const [requestedScreen, setRequestedScreen] = useState<SimulationScreen | null>(null);
+  const [requestedScreen, setRequestedScreen] = useState<RequestedScreen | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const screen: WorkbenchScreen = sessions.importing || !sessions.activeSession
     ? 'import'
-    : (requestedScreen ?? sessions.activeSession.lastScreen);
+    : (requestedScreen?.sessionId === sessions.activeSession.id
+        && requestedScreen?.projectId === project.selectedProjectId
+      ? requestedScreen.screen
+      : sessions.activeSession.lastScreen);
 
   function navigate(next: WorkbenchScreen) {
     if (next !== 'import' && !sessions.activeSession?.importedSnapshot) return;
-    if (next !== 'import') setRequestedScreen(next);
+    if (next !== 'import' && sessions.activeSession) {
+      setRequestedScreen({
+        projectId: project.selectedProjectId,
+        sessionId: sessions.activeSession.id,
+        screen: next,
+      });
+    }
     if (next !== 'import' && sessions.activeSession) sessions.setLastScreen(sessions.activeSession.id, next);
   }
 
@@ -44,7 +58,7 @@ export function SimulationWorkbench() {
   const workflow = STEPS.filter(({ id }) => id !== 'import').map((step) => ({ id: step.id, label: step.label, disabled: !sessions.activeSession?.importedSnapshot }));
 
   return <div className={styles.root} data-simulation-root>
-    <SimulationSidebar items={items} activeId={screen === 'import' ? 'import' : sessions.activeSession?.id ?? 'import'} projectName={project.selectedProject?.name} collapsed={collapsed} mobileOpen={mobileOpen} onToggleCollapsed={() => setCollapsed((value) => !value)} onCloseMobile={() => setMobileOpen(false)} onSelect={(id) => { if (id === 'import') { sessions.startFreshImport(); setRequestedScreen(null); } else { sessions.selectSession(id); setRequestedScreen(sessions.sessions.find((session) => session.id === id)?.lastScreen ?? 'characters'); } }} />
+    <SimulationSidebar items={items} activeId={screen === 'import' ? 'import' : sessions.activeSession?.id ?? 'import'} projectName={project.selectedProject?.name} collapsed={collapsed} mobileOpen={mobileOpen} onToggleCollapsed={() => setCollapsed((value) => !value)} onCloseMobile={() => setMobileOpen(false)} onSelect={(id) => { if (id === 'import') { sessions.startFreshImport(); setRequestedScreen(null); } else { sessions.selectSession(id); setRequestedScreen(null); } }} />
     <div className={styles.main}>
       <SimulationHeader title={screen === 'import' ? 'Import' : screen[0].toUpperCase() + screen.slice(1)} steps={workflow} activeStepId={screen} onStepSelect={(id) => navigate(id as SimulationScreen)} />
       <main className={styles.content}>

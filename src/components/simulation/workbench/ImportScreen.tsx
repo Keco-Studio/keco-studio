@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Library } from '@/lib/services/libraryService';
-import { autoMapFields, SIM_FIELDS } from '@/lib/simulation/data';
+import { autoMapFields, createDemoImportedSnapshot, SIM_FIELDS } from '@/lib/simulation/data';
 import { importSimulationSnapshot } from '@/lib/simulation/importAdapter';
 import { useSimulationProject } from '@/lib/simulation/SimulationProjectProvider';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
@@ -19,8 +19,8 @@ const emptyMappings = (): FieldMappings => ({ characters: {}, skills: {}, level:
 
 export function ImportScreen() {
   const { selectedProjectId, libraries, loadFields, loadSources } = useSimulationProject();
-  const { activeSession, commitImport } = useSimulationSession();
-  const [name, setName] = useState(activeSession?.name ?? 'New simulator');
+  const { commitImport } = useSimulationSession();
+  const [name, setName] = useState('New simulator');
   const [selected, setSelected] = useState(emptySelection);
   const [mappings, setMappings] = useState<FieldMappings>(emptyMappings);
   const [schemas, setSchemas] = useState<Record<string, Array<{ key: string; name: string }>>>({});
@@ -34,7 +34,10 @@ export function ImportScreen() {
     setErrors([]);
   }, [selectedProjectId]);
 
-  const librariesById = useMemo(() => new Map(libraries.map((library) => [library.id, library])), [libraries]);
+  function useDemoData() {
+    if (!selectedProjectId) return;
+    commitImport(createDemoImportedSnapshot(selectedProjectId), name);
+  }
 
   async function selectLibrary(role: LibraryRole, libraryId: string) {
     const next = { ...selected, [role]: libraryId };
@@ -71,7 +74,7 @@ export function ImportScreen() {
         setErrors(result.errors);
         return;
       }
-      commitImport(result.snapshot, name, activeSession?.id);
+      commitImport(result.snapshot, name);
     } catch (error) {
       setErrors([{
         role: 'characters', code: 'unresolved_reference', libraryId: '', libraryName: 'Studio', assetId: null,
@@ -87,6 +90,12 @@ export function ImportScreen() {
     <section className={styles.flowScreen} aria-labelledby="simulation-import-title">
       <div className={styles.flowHeading}><div><span className={styles.kicker}>Studio data</span><h2 id="simulation-import-title">Import libraries</h2><p>Bind four project libraries, map their fields, then create an immutable local snapshot.</p></div></div>
       <label className={styles.fieldLabel}>Simulator name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <article className={styles.flowCard}>
+        <h3>Demo data</h3>
+        <p>Start immediately with the built-in character, skill, progression, and battle data.</p>
+        <SimulationButton variant="primary" disabled={!selectedProjectId} onClick={useDemoData}>Use demo data</SimulationButton>
+      </article>
+      <div className={styles.flowHeading}><div><span className={styles.kicker}>Project libraries</span><h3>Import Studio data</h3></div></div>
       <div className={styles.importGrid}>
         {ROLES.map((role) => {
           const libraryId = selected[role];

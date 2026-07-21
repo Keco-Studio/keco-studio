@@ -32,11 +32,36 @@ export function BattleScreen() {
   }, [session, updateProgression]);
 
   const playback = useBattlePlayback({
+    scopeKey: `${snapshot?.sourceProjectId ?? ''}:${session?.id ?? ''}:${snapshot?.importedAt ?? ''}`,
     catalog: snapshot?.catalog ?? { characters: [], skills: [], basic: { id: 'basic', name: 'Strike', el: 'Physical', mp: 0, power: 70, cd: 0, kind: 'dmg' } },
     roster: session?.roster ?? [], loadout: session?.loadout ?? {}, skillLevels: session?.skillLevels ?? {}, onComplete: complete,
   });
   if (!session || !snapshot) return <div className={styles.emptyState}>Import a simulator before battle.</div>;
-  const fighters = playback.units.map((unit) => ({ uid: unit.uid, name: unit.name, team: unit.team, hp: unit.hp, maxHp: unit.maxHp, detail: unit.cls, active: unit.uid === playback.activeActor, effect: unit.uid === playback.activeTarget ? 'Targeted' : null }));
+  const currentEvent = playback.logs.at(-1);
+  const fighters = playback.units.map((unit) => {
+    const receivesFeedback = unit.uid === currentEvent?.target
+      && (currentEvent.type === 'dmg' || currentEvent.type === 'dot' || currentEvent.type === 'heal');
+    return {
+      uid: unit.uid,
+      name: unit.name,
+      team: unit.team,
+      hp: unit.hp,
+      maxHp: unit.maxHp,
+      mp: unit.mp,
+      maxMp: unit.maxMp,
+      detail: unit.cls,
+      active: unit.uid === playback.activeActor,
+      hit: unit.uid === playback.activeTarget && currentEvent?.type === 'dmg',
+      effect: unit.uid === playback.activeTarget ? 'Targeted' : null,
+      feedback: receivesFeedback
+        ? {
+            key: playback.logs.length,
+            value: `${currentEvent.type === 'heal' ? '+' : '-'}${currentEvent.amount ?? ''}`,
+            tone: currentEvent.type === 'heal' ? 'heal' as const : 'damage' as const,
+          }
+        : null,
+    };
+  });
 
   return <section className={styles.flowScreen} aria-labelledby="battle-title">
     <div className={styles.flowHeading}><div><span className={styles.kicker}>Arena and batch</span><h2 id="battle-title">Battle</h2><p>Run one animated battle or compare up to 500 deterministic simulation runs.</p></div><SimulationButton variant="primary" disabled={!ready || playback.phase === 'running'} onClick={playback.start}>Start battle</SimulationButton></div>

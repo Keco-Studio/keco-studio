@@ -8,9 +8,17 @@ export interface ArenaFighter {
   readonly team: ArenaTeam;
   readonly hp: number;
   readonly maxHp: number;
+  readonly mp: number;
+  readonly maxMp: number;
   readonly effect?: string | null;
   readonly detail?: string;
   readonly active?: boolean;
+  readonly hit?: boolean;
+  readonly feedback?: {
+    readonly key: number;
+    readonly value: string;
+    readonly tone: 'damage' | 'heal';
+  } | null;
 }
 
 export interface ArenaProps {
@@ -57,8 +65,17 @@ export function Arena({
                   return (
                     <article
                       key={fighter.uid}
-                      className={`${styles.fighter} ${fighter.active ? styles.fighterActive : ''} ${hp === 0 ? styles.fighterDefeated : ''}`}
+                      className={`${styles.fighter} ${fighter.active ? styles.fighterActive : ''} ${fighter.hit ? styles.fighterHit : ''} ${hp === 0 ? styles.fighterDefeated : ''}`}
                     >
+                      {fighter.feedback ? (
+                        <span
+                          key={fighter.feedback.key}
+                          className={`${styles.combatFloat} ${fighter.feedback.tone === 'heal' ? styles.combatFloatHeal : styles.combatFloatDamage}`}
+                          aria-live="polite"
+                        >
+                          {fighter.feedback.value}
+                        </span>
+                      ) : null}
                       <div className={styles.fighterIdentity}>
                         <span className={styles.fighterInitial} aria-hidden="true">{fighter.name.slice(0, 1).toUpperCase()}</span>
                         <span>
@@ -68,8 +85,8 @@ export function Arena({
                         {fighter.effect ? <span className={styles.effect}>{fighter.effect}</span> : null}
                       </div>
                       <div className={styles.healthMeta}>
-                        <span>HP</span>
-                        <span>{hp} / {fighter.maxHp}</span>
+                        <span>HP {hp} / {fighter.maxHp}</span>
+                        <span>MP {fighter.mp} / {fighter.maxMp}</span>
                       </div>
                       <div
                         className={styles.healthTrack}

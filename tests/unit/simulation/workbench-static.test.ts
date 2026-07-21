@@ -61,6 +61,10 @@ describe('native simulation workbench presentation', () => {
     expect(arena).toMatch(/Team \{team\}/);
     expect(arena).toContain('fighter.effect');
     expect(arena).toMatch(/style=\{\{ width:/);
+    expect(arena).toContain('MP {fighter.mp} / {fighter.maxMp}');
+    expect(arena).toContain('fighter.hit ? styles.fighterHit');
+    expect(arena).toContain('styles.combatFloat');
+    expect(arena).toContain('fighter.feedback.value');
   });
 
   it('keeps interaction states in CSS, including keyboard and reduced motion', () => {
@@ -73,6 +77,8 @@ describe('native simulation workbench presentation', () => {
     expect(css).toContain(':focus-visible');
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
     expect(css).toMatch(/\.toast\s*\{[^}]*position:\s*absolute/s);
+    expect(css).toMatch(/@keyframes\s+combatFloat/);
+    expect(css).toMatch(/@keyframes\s+fighterHit/);
   });
 
   it('scopes prefixed tokens to the simulation root without global leakage', () => {

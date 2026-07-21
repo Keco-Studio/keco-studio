@@ -630,6 +630,7 @@
 }
 
 .fighter {
+  position: relative;
   display: grid;
   padding: 11px;
   gap: 8px;
@@ -646,6 +647,15 @@
 .fighterActive {
   background: #edf5ff;
   border-color: #94bced;
+  transform: translateX(5px);
+}
+
+.teamB .fighterActive {
+  transform: translateX(-5px);
+}
+
+.fighterHit {
+  animation: fighterHit 260ms ease-out;
 }
 
 .fighterDefeated {
@@ -709,6 +719,26 @@
   font-weight: 700;
 }
 
+.combatFloat {
+  position: absolute;
+  z-index: 3;
+  top: -8px;
+  left: 50%;
+  font-family: var(--simulation-font-data);
+  font-size: 15px;
+  font-weight: 700;
+  pointer-events: none;
+  animation: combatFloat 900ms ease-out forwards;
+}
+
+.combatFloatDamage {
+  color: var(--simulation-danger);
+}
+
+.combatFloatHeal {
+  color: var(--simulation-success);
+}
+
 .healthMeta {
   justify-content: space-between;
   color: var(--simulation-text-muted);
@@ -729,6 +759,17 @@
   background: var(--simulation-success);
   border-radius: inherit;
   transition: width 220ms ease;
+}
+
+@keyframes combatFloat {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, -20px); }
+}
+
+@keyframes fighterHit {
+  0%, 100% { transform: translateX(0); }
+  35% { transform: translateX(-6px); }
+  70% { transform: translateX(4px); }
 }
 
 .arenaEmpty {
@@ -819,7 +860,10 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
   .button,
+  .fighter,
+  .combatFloat,
   .healthFill {
     transition: none;
+    animation: none;
   }
 }
