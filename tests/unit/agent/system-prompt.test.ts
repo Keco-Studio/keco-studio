@@ -13,6 +13,18 @@ describe('buildSystemPrompt design-document table rules', () => {
     expect(prompt).toContain('must not deny DOCX support');
   });
 
+  it('states that eligible embedded images are preserved semantically', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('eligible embedded images');
+  });
+
+  it('states that hidden Word custom properties are unsupported', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('hidden Word custom properties');
+  });
+
   it('routes analysis separately from tables', () => {
     const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
 
