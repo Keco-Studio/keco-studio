@@ -50,23 +50,27 @@ export class SimulationSystemPage {
   }
 
   async configureTeamsAndSkills(): Promise<void> {
-    await this.page.getByRole('button', { name: /Ignara/ }).click();
-    await this.page.getByRole('button', { name: /Bramwell/ }).click();
-    await expect(this.page.getByText('Team A: 1 · Team B: 1')).toBeVisible();
-    await this.page.getByRole('button', { name: 'Continue to skills' }).click();
+    await this.page.getByRole('button', { name: '+ Add characters' }).click();
+    await this.page.getByText('Ignara', { exact: true }).click();
+    await this.page.getByText('Bramwell', { exact: true }).click();
+    await this.page.keyboard.press('Escape');
+    await expect(this.page.getByText('A 1 vs B 1 — ready')).toBeVisible();
+    await this.page.getByRole('button', { name: /Confirm.*go to skill/ }).click();
 
-    await this.page.getByRole('button', { name: /Fireball/ }).click();
-    await this.page.getByRole('navigation', { name: 'Fighters' }).getByRole('button', { name: /Bramwell/ }).click();
-    await this.page.getByRole('button', { name: /Fireball/ }).click();
-    await expect(this.page.getByText('Every fighter has a loadout.')).toBeVisible();
-    await this.page.getByRole('button', { name: 'Continue to progression' }).click();
-    await this.page.getByRole('button', { name: 'Open battle' }).click();
+    await expect(this.page.getByRole('heading', { name: 'Config skills' })).toBeVisible();
+    await this.page.getByText('Fireball', { exact: true }).click();
+    await this.page.getByText('Bramwell', { exact: true }).click();
+    await this.page.getByText('Fireball', { exact: true }).click();
+    await expect(this.page.getByText('All fighters have skills — ready')).toBeVisible();
+    await this.page.getByRole('button', { name: /Continue to Progression/ }).click();
+
+    await this.page.getByRole('button', { name: /Go to Battle/ }).click();
   }
 
   async startBattleAndExpectRestoration(): Promise<void> {
     await expect(this.page.getByRole('heading', { name: 'Battle', exact: true })).toBeVisible();
     await this.page.getByRole('button', { name: 'Start battle' }).click();
-    await expect(this.page.getByText(/Fighting/)).toBeVisible();
+    await expect(this.page.getByRole('button', { name: /Pause|Resume/ })).toBeVisible({ timeout: 30000 });
     await this.page.waitForTimeout(500);
     await this.page.reload();
     await expect(this.root).toBeVisible({ timeout: 30000 });
