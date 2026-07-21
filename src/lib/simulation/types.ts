@@ -56,6 +56,25 @@ export interface ProgressionState {
   sp: Record<string, number>;
 }
 
+export type SimulationScreen = 'characters' | 'skills' | 'progression' | 'battle';
+
+export interface SimulationSession {
+  id: string;
+  name: string;
+  importedSnapshot: ImportedSimulationSnapshot | null;
+  roster: RosterEntry[];
+  loadout: Loadout;
+  skillLevels: SkillLevels;
+  progression: ProgressionState;
+  lastScreen: SimulationScreen;
+}
+
+export interface SimulationStateV1 {
+  version: 1;
+  activeSessionId: string | null;
+  sessions: SimulationSession[];
+}
+
 export type LibraryRole = 'characters' | 'skills' | 'level' | 'skillc';
 export type FieldMapping = Readonly<Partial<Record<string, string>>>;
 export type FieldMappings = Readonly<Record<LibraryRole, FieldMapping>>;
