@@ -233,6 +233,23 @@ describe('strict Studio simulation import adapter', () => {
       expect.objectContaining({ code: 'duplicate_id', field: 'Level' }),
     ]));
   });
+
+  it.each(['unmapped', 'empty'] as const)('normalizes an %s optional class to an empty string', (scenario) => {
+    const sources = createValidSources();
+    const mappings = createValidMappings();
+    if (scenario === 'unmapped') delete mappings.characters.cls;
+    else sources.characters.assets[0].propertyValues[FIELD_KEYS.characters.cls] = '';
+
+    const result = importSimulationSnapshot({
+      sourceProjectId: PROJECT_ID,
+      sources,
+      fieldMappings: mappings,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.catalog.characters[0].cls).toBe('');
+  });
 });
 
 describe('Studio simulation source facade', () => {

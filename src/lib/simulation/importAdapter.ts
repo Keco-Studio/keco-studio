@@ -234,7 +234,7 @@ function parseCharacters(
     const spd = validateRange(parseNumber('characters', 'spd', source, asset, mappings, valid, errors), (n) => n >= 0, 'characters', 'spd', source, asset, 'Speed must be non-negative.', errors);
     const mp = validateRange(parseNumber('characters', 'mp', source, asset, mappings, valid, errors), (n) => n >= 0, 'characters', 'mp', source, asset, 'MP must be non-negative.', errors);
     if (errors.length === start && id !== undefined && name !== undefined && el !== undefined && hp !== undefined && atk !== undefined && def !== undefined && spd !== undefined && mp !== undefined) {
-      parsed.push({ asset, value: { id, name, ...(cls === undefined ? {} : { cls }), el, hp, atk, def, spd, mp } });
+      parsed.push({ asset, value: { id, name, cls: cls ?? '', el, hp, atk, def, spd, mp } });
     }
   }
   return parsed;
