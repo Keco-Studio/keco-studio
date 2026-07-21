@@ -26,40 +26,45 @@ export function SimulationHeader({
 
   return (
     <header className={styles.header}>
-      {isImport ? <div className={styles.headerTitle}><span>{projectName}</span><i>/</i><h1>{title}</h1></div> : <nav className={styles.workflowNav} aria-label="Simulation workflow">
-        <ol className={styles.workflowList}>
-          {steps.map((step, index) => {
-            const active = step.id === activeStepId;
-            return (
-              <li key={step.id} className={styles.workflowItem}>
-                <button
-                  type="button"
-                  className={`${styles.workflowButton} ${active ? styles.workflowButtonActive : ''}`}
-                  aria-current={active ? 'step' : undefined}
-                  disabled={step.disabled}
-                  onClick={() => onStepSelect?.(step.id)}
-                >
-                  <span className={styles.workflowNumber} aria-hidden="true">
-                    {index + 1}
-                  </span>
-                  <span>{step.label}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>}
+      {isImport ? (
+        <div className={styles.headerTitle}>
+          <span>{projectName}</span>
+          <i>/</i>
+          <h1>{title}</h1>
+        </div>
+      ) : (
+        <nav className={styles.workflowNav} aria-label="Simulation workflow">
+          <ol className={styles.workflowList}>
+            {steps.map((step, index) => {
+              const active = step.id === activeStepId;
+              return (
+                <li key={step.id} className={styles.workflowItem}>
+                  <button
+                    type="button"
+                    className={`${styles.workflowButton} ${active ? styles.workflowButtonActive : ''}`}
+                    aria-current={active ? 'step' : undefined}
+                    disabled={step.disabled}
+                    onClick={() => onStepSelect?.(step.id)}
+                  >
+                    <span className={styles.workflowNumber} aria-hidden="true">
+                      {index + 1}
+                    </span>
+                    <span>{step.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+      )}
 
-      <label className={styles.search}>
-        <span className={styles.searchIcon} aria-hidden="true" />
-        <span className={styles.visuallyHidden}>Search simulator</span>
-        <input
-          type="search"
-          placeholder="Search libraries, characters, skills…"
-          readOnly
-        />
-      </label>
-      <span className={styles.headerAvatar} aria-label="Simulator profile">R</span>
+      <div className={styles.headerActions}>
+        <div className={styles.search} aria-hidden="true">
+          <span className={styles.searchIcon} />
+          <span>Search libraries, characters, skills…</span>
+        </div>
+        <span className={styles.headerAvatar} aria-label="Simulator profile">R</span>
+      </div>
     </header>
   );
 }

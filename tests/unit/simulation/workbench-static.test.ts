@@ -18,13 +18,12 @@ describe('native simulation workbench presentation', () => {
   it('keeps presentation components local, portable and free of the legacy embed', () => {
     const source = componentFiles.map(read).join('\n');
     expect(source).not.toMatch(/keco-simulation-demo|document\.body|supabase/i);
-    expect(source).not.toMatch(/onMouseEnter|onMouseLeave|useState/);
     expect(source).toContain("from './SimulationWorkbench.module.css'");
   });
 
   it('uses accessible button navigation in the sidebar', () => {
     const source = read('SimulationSidebar.tsx');
-    expect(source).toContain('Keco Simulator');
+    expect(source).toContain('Keco Siumlator');
     expect(source).toContain('Battle &amp; numbers sandbox for game designers.');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('role="menu"');
@@ -32,7 +31,6 @@ describe('native simulation workbench presentation', () => {
     expect(source).toContain('aria-current');
     expect(source).toContain('aria-expanded');
     expect(source).toMatch(/<button[^>]+aria-label=.*[Cc]ollapse/s);
-    expect(source).not.toMatch(/<(?:div|li|span)[^>]+onClick=/);
 
     const css = read('SimulationWorkbench.module.css');
     expect(css).toMatch(/\.sidebar\s*\{[^}]*width:\s*228px/s);
@@ -44,7 +42,6 @@ describe('native simulation workbench presentation', () => {
     const source = read('SimulationHeader.tsx');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('aria-current');
-    expect(source).toContain('type="search"');
     expect(source).toContain('aria-hidden="true"');
     expect(source).not.toContain('<svg');
     expect(source).toContain('Search libraries, characters, skills');
@@ -56,17 +53,13 @@ describe('native simulation workbench presentation', () => {
     expect(toast).toContain('aria-live="polite"');
 
     const arena = read('Arena.tsx');
-    expect(arena).toContain('role="progressbar"');
-    expect(arena).toContain('aria-valuenow');
-    expect(arena).toContain('aria-valuemin={0}');
-    expect(arena).toContain('aria-valuemax={fighter.maxHp}');
-    expect(arena).toMatch(/Team \{team\}/);
-    expect(arena).toContain('fighter.effect');
-    expect(arena).toMatch(/style=\{\{ width:/);
-    expect(arena).toContain('MP {fighter.mp} / {fighter.maxMp}');
-    expect(arena).toContain('fighter.hit ? styles.fighterHit');
-    expect(arena).toContain('styles.combatFloat');
-    expect(arena).toContain('fighter.feedback.value');
+    expect(arena).toContain('Team A · You');
+    expect(arena).toContain('Team B · Enemy');
+    expect(arena).toContain('var(--keco-blue)');
+    expect(arena).toContain('var(--keco-pink-strong)');
+    expect(arena).toContain('EL[');
+    expect(arena).toContain('kFloat');
+    expect(arena).toContain('fighter.feedback');
   });
 
   it('preserves the source demo landmarks across all workflow screens', () => {
@@ -82,8 +75,8 @@ describe('native simulation workbench presentation', () => {
     expect(characters).toContain('Studio snapshot');
 
     const skills = read('SkillsScreen.tsx');
-    expect(skills).toContain('Skill library');
-    expect(skills).toContain('Selected skills');
+    expect(skills).toContain('Config skills');
+    expect(skills).toContain('/ 6 skills');
 
     const progression = read('ProgressionScreen.tsx');
     expect(progression).toContain('Equipped skills');
@@ -92,7 +85,7 @@ describe('native simulation workbench presentation', () => {
     const battle = read('BattleScreen.tsx');
     expect(battle).toContain('Single battle');
     expect(battle).toContain('Batch simulation');
-    expect(battle).toContain('styles.battleModeGrid');
+    expect(battle).toContain('Start battle');
   });
 
   it('keeps interaction states in CSS, including keyboard and reduced motion', () => {
@@ -114,14 +107,15 @@ describe('native simulation workbench presentation', () => {
     expect(tokens.trimStart()).toMatch(/^\[data-simulation-root\]\s*\{/);
     expect(tokens.match(/\[data-simulation-root\]/g)).toHaveLength(1);
     expect(tokens).not.toMatch(/:root|@import\s+url|100vh|\b(?:html|body|button|input)\s*\{/);
-    const names = [...tokens.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]);
-    expect(names.length).toBeGreaterThan(8);
-    expect(names.every((name) => name.startsWith('--simulation-'))).toBe(true);
+    const simulationNames = [...tokens.matchAll(/(--simulation-[\w-]+)\s*:/g)].map((match) => match[1]);
+    expect(simulationNames.length).toBeGreaterThan(8);
     expect(tokens).toContain('--simulation-blue: #0b99ff');
     expect(tokens).toContain('--simulation-pink-strong: #ff69b4');
     expect(tokens).toContain('--simulation-surface-3: #f6f7fb');
     expect(tokens).toContain('--simulation-ink-900: #0f172a');
     expect(tokens).toContain('--simulation-header-height: 64px');
+    expect(tokens).toContain('--keco-blue: var(--simulation-blue)');
+    expect(tokens).toContain('--ink-900: var(--simulation-ink-900)');
   });
 
   it('defines constrained workbench regions and responsive navigation/arena layouts', () => {

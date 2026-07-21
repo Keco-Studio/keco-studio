@@ -100,8 +100,8 @@ Keco Studio is a **multi-user, real-time collaborative asset management platform
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Persistence Layer                           │
 │  ┌──────────────────┐  ┌──────────────────────────────────┐    │
-│  │ Supabase DB      │  │  Browser Session Storage         │    │
-│  │ + Storage        │  │  (Auth Runtime State)            │    │
+│  │ Supabase DB      │  │  Browser Storage                 │    │
+│  │ + Storage        │  │  (Auth + Simulation Sessions)    │    │
 │  └──────────────────┘  └──────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -131,7 +131,25 @@ Keco Studio is a **multi-user, real-time collaborative asset management platform
 #### 4. Persistence Layer
 - **Supabase PostgreSQL**: Persistent data source for libraries, assets, field values, permissions, and version snapshots
 - **Supabase Storage**: Persistent storage for images and media files
-- **Browser Session Storage**: Session runtime state for the Supabase SSR/browser client; Yjs documents do not use a local persistence layer
+- **Browser Storage**: Supabase runtime auth state plus versioned local simulation sessions isolated by authenticated user and Studio project; Yjs documents do not use a local persistence layer
+
+### Native Simulation Workbench
+
+`/simulation-system` is a native route in the main Next.js application. Studio's
+authenticated product navigation remains visible while the standard resource
+sidebar and top bar are replaced by the simulation workflow shell. No iframe,
+external simulator origin, sibling server, or `NEXT_PUBLIC_SIMULATION_*`
+configuration is involved.
+
+The import boundary reads authorized project libraries, schemas, assets, and
+field values from Supabase, validates all four simulation roles atomically, and
+creates an immutable catalog snapshot. Subsequent roster, loadout, progression,
+and battle changes use versioned browser local storage keyed by user and project;
+simulation mutations are not written to Supabase.
+
+For demonstrations, the same Import screen can create the snapshot from built-in
+characters, skills, level rules, and skill-cost rules. This is an explicit source
+choice rather than an automatic fallback; Studio library import remains available.
 
 ---
 
@@ -1440,6 +1458,10 @@ npm install
 # 4. Start the Next.js dev server
 npm run dev
 ```
+
+This single server provides both Studio and the native simulation workbench at
+`http://localhost:3000/simulation-system`; no second development server or iframe
+configuration is required.
 
 ### Production Environment (Assumed)
 

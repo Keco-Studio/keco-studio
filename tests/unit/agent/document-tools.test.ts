@@ -568,6 +568,68 @@ describe('Agent document tools', () => {
     ).resolves.toEqual({ success: false, error: 'Document not found in this project.' });
   });
 
+  it('rejects replace_all that would wipe a long document down to a tiny fragment', async () => {
+    const longMarkdown = `# 测试0721\n\n${'正文内容'.repeat(200)}多${'更多段落'.repeat(200)}`;
+    read.mockResolvedValue(state(longMarkdown));
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'replace_all', markdown: '大' },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/replace_text|destructive|wipe|allowDestructive/i),
+    });
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('allows an intentional destructive replace_all when allowDestructive is true', async () => {
+    const longMarkdown = `# 测试0721\n\n${'正文内容'.repeat(200)}多${'更多段落'.repeat(200)}`;
+    read.mockResolvedValue(state(longMarkdown));
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'replace_all', markdown: '大', allowDestructive: true },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: true,
+      data: { operationType: 'replace_all', proposedMarkdown: '大' },
+    });
+  });
+
+  it('generates a replace_text proposal that replaces every match when replaceAll is true', async () => {
+    read.mockResolvedValue(state('开头多，中间多，结尾多'));
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: {
+            type: 'replace_text',
+            target: '多',
+            replacement: '大',
+            replaceAll: true,
+          },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        operationType: 'replace_text',
+        proposedMarkdown: '开头大，中间大，结尾大',
+      },
+    });
+  });
+
   it.each([
     [
       'replace_all',

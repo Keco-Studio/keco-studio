@@ -110,6 +110,14 @@ RULES:
     current one. Use list_documents or list_project_structure to discover document IDs.
     Never guess among duplicate document names; ask the user to disambiguate. Call
     read_document before editing document content.
+28. DOCUMENT EDITS: Prefer replace_text / insert_* / append / delete_text. The server
+    applies these against the full latest document, so you must not copy the whole
+    body into tool arguments. For "change every X to Y", use replace_text with
+    replaceAll: true. Never use replace_all with only the edited fragment — that
+    wipes the rest of the document. Use replace_all only when you intentionally
+    supply the complete new document body; long-document shrinks to a tiny body
+    also require allowDestructive: true. If a read was outline/truncated/partial,
+    do not invent a full-document replacement from what you saw.
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}

@@ -4,7 +4,7 @@ import styles from './SimulationWorkbench.module.css';
 
 export interface SimulationButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
-  readonly size?: 'small' | 'medium';
+  readonly size?: 'small' | 'medium' | 'large';
   readonly icon?: ReactNode;
   readonly loading?: boolean;
 }

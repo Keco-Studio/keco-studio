@@ -23,12 +23,14 @@ describe('simulation workbench flow', () => {
     expect(source).not.toContain('commitImport(result.snapshot, name, activeSession?.id)');
     expect(source).toContain('createDemoImportedSnapshot');
     expect(source).toContain('Use demo data');
-    expect(source).toContain('Import Studio data');
+    expect(source).toContain('Import libraries');
+    expect(source).toContain('drag from a source port');
+    expect(source).toContain('Continue to characters');
   });
 
   it('uses imported catalogs and rule tables for configuration', () => {
     expect(read('CharactersScreen.tsx')).toContain('snapshot.catalog.characters');
-    expect(read('SkillsScreen.tsx')).toContain('snapshot?.catalog.skills');
+    expect(read('SkillsScreen.tsx')).toContain('snapshot.catalog.skills');
     expect(read('SkillsScreen.tsx')).toContain('>= 6');
     expect(read('ProgressionScreen.tsx')).toContain('snapshot.skillCostRules');
     expect(read('ProgressionScreen.tsx')).toContain('snapshot.levelRules');

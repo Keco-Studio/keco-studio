@@ -68,7 +68,7 @@ describe('strict Studio simulation import adapter', () => {
   it('reports missing mappings and never substitutes AssetRow.name for canonical name', () => {
     const sources = createValidSources();
     const mappings = createValidMappings();
-    delete mappings.characters.hp;
+    delete mappings.characters.id;
     delete sources.characters.assets[0].propertyValues[FIELD_KEYS.characters.name];
 
     const errors = errorsFor(importSimulationSnapshot({
@@ -76,8 +76,8 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'characters', code: 'missing_mapping', field: 'Base HP', assetId: null }),
-      expect.objectContaining({ role: 'characters', code: 'missing_value', field: 'Name', assetName: 'Asset row label must not leak' }),
+      expect.objectContaining({ role: 'characters', code: 'missing_mapping', field: 'id', assetId: null }),
+      expect.objectContaining({ role: 'characters', code: 'missing_value', field: 'name', assetName: 'Asset row label must not leak' }),
     ]));
   });
 
@@ -91,8 +91,8 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'characters', code: 'duplicate_mapping', field: 'Base ATK' }),
-      expect.objectContaining({ role: 'skills', code: 'unresolved_field', field: 'Name' }),
+      expect.objectContaining({ role: 'characters', code: 'duplicate_mapping', field: 'atk' }),
+      expect.objectContaining({ role: 'skills', code: 'unresolved_field', field: 'name' }),
     ]));
     expect(errors.every((error) => error.libraryId && error.libraryName && error.reason)).toBe(true);
   });
@@ -111,10 +111,10 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'characters', code: 'invalid_type', field: 'Base ATK' }),
+      expect.objectContaining({ role: 'characters', code: 'invalid_type', field: 'atk' }),
     ]));
     expect(errors).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'characters', code: 'missing_value', field: 'Base ATK' }),
+      expect.objectContaining({ role: 'characters', code: 'missing_value', field: 'atk' }),
     ]));
   });
 
@@ -135,13 +135,13 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'invalid_enum', field: 'Element' }),
-      expect.objectContaining({ code: 'invalid_range', field: 'Base HP' }),
-      expect.objectContaining({ code: 'invalid_range', field: 'Base DEF' }),
-      expect.objectContaining({ code: 'invalid_enum', field: 'Type' }),
-      expect.objectContaining({ code: 'invalid_enum', field: 'Status' }),
-      expect.objectContaining({ code: 'invalid_range', field: 'Level' }),
-      expect.objectContaining({ code: 'invalid_range', field: 'SP Cost' }),
+      expect.objectContaining({ code: 'invalid_enum', field: 'el' }),
+      expect.objectContaining({ code: 'invalid_range', field: 'hp' }),
+      expect.objectContaining({ code: 'invalid_range', field: 'def' }),
+      expect.objectContaining({ code: 'invalid_enum', field: 'kind' }),
+      expect.objectContaining({ code: 'invalid_enum', field: 'status' }),
+      expect.objectContaining({ code: 'invalid_range', field: 'level' }),
+      expect.objectContaining({ code: 'invalid_range', field: 'cost' }),
     ]));
   });
 
@@ -158,9 +158,9 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'characters', code: 'duplicate_id', field: 'Character ID' }),
-      expect.objectContaining({ role: 'skills', code: 'duplicate_id', field: 'Skill ID' }),
-      expect.objectContaining({ role: 'skills', code: 'reserved_id', field: 'Skill ID' }),
+      expect.objectContaining({ role: 'characters', code: 'duplicate_id', field: 'id' }),
+      expect.objectContaining({ role: 'skills', code: 'duplicate_id', field: 'id' }),
+      expect.objectContaining({ role: 'skills', code: 'reserved_id', field: 'id' }),
     ]));
   });
 
@@ -185,9 +185,9 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'level', code: 'duplicate_id', field: 'Level' }),
-      expect.objectContaining({ role: 'level', code: 'invalid_sequence', field: 'Level' }),
-      expect.objectContaining({ role: 'skillc', code: 'invalid_sequence', field: 'Skill Level' }),
+      expect.objectContaining({ role: 'level', code: 'duplicate_id', field: 'level' }),
+      expect.objectContaining({ role: 'level', code: 'invalid_sequence', field: 'level' }),
+      expect.objectContaining({ role: 'skillc', code: 'invalid_sequence', field: 'lv' }),
     ]));
   });
 
@@ -219,8 +219,8 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'invalid_range', field: 'Base HP' }),
-      expect.objectContaining({ code: 'duplicate_id', field: 'Character ID' }),
+      expect.objectContaining({ code: 'invalid_range', field: 'hp' }),
+      expect.objectContaining({ code: 'duplicate_id', field: 'id' }),
     ]));
   });
 
@@ -234,8 +234,8 @@ describe('strict Studio simulation import adapter', () => {
     }));
 
     expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'invalid_range', field: 'EXP Required' }),
-      expect.objectContaining({ code: 'duplicate_id', field: 'Level' }),
+      expect.objectContaining({ code: 'invalid_range', field: 'exp' }),
+      expect.objectContaining({ code: 'duplicate_id', field: 'level' }),
     ]));
   });
 
