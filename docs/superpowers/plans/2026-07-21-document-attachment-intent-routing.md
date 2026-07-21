@@ -298,13 +298,13 @@ Expected: both PASS with real Chromium and local Supabase fixtures, covering `an
 Through the running app and a temporary local test account/project, send:
 
 ```text
-你支持导入包含 JSON 格式的 Word 吗？
+Do you support importing Word documents that contain visible JSON?
 ```
 
 Then attach a DOCX containing visible text and ask:
 
 ```text
-文件内容是什么？
+What is in this file?
 ```
 
 Expected: the first answer says DOCX and visible JSON are supported. The second summarizes supplied content without `list_project_structure`, `list_field_types`, `setup_library`, or unsolicited `import_script` advice.
