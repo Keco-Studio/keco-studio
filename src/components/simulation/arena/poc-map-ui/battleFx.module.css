@@ -1,0 +1,267 @@
+/* battle-poc map FX (projectiles, impacts, float text) */
+
+.fxLayer {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 26;
+  overflow: hidden;
+}
+
+@keyframes mapHpFloat {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -52px);
+  }
+}
+
+.floatText {
+  position: absolute;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  animation: mapHpFloat 1s ease-out forwards;
+  z-index: 28;
+}
+
+.floatDamagePlayer {
+  color: #38bdf8;
+}
+
+.floatDamageEnemy {
+  color: #ef4444;
+}
+
+.floatHeal {
+  color: #6ee7b7;
+}
+
+.floatExp {
+  color: #fbbf24;
+  font-size: 13px;
+}
+
+.floatProficiency {
+  color: #a78bfa;
+  font-size: 12px;
+}
+
+@keyframes battleStepFx {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.45);
+    filter: blur(0);
+  }
+  65% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1.2);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.6);
+    filter: blur(2px);
+  }
+}
+
+.stepFx {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  animation: battleStepFx 0.38s ease-out forwards;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.35);
+}
+
+.stepFxPlayer {
+  background: radial-gradient(
+    circle,
+    rgba(56, 189, 248, 0.95) 0%,
+    rgba(59, 130, 246, 0.4) 58%,
+    rgba(59, 130, 246, 0) 100%
+  );
+}
+
+.stepFxEnemy {
+  background: radial-gradient(
+    circle,
+    rgba(251, 113, 133, 0.95) 0%,
+    rgba(239, 68, 68, 0.45) 58%,
+    rgba(239, 68, 68, 0) 100%
+  );
+}
+
+@keyframes projectileFlight {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(var(--proj-rot)) scale(0.95);
+  }
+  100% {
+    opacity: 0.95;
+    transform: translate(calc(-50% + var(--proj-dx)), calc(-50% + var(--proj-dy)))
+      rotate(var(--proj-rot)) scale(1);
+  }
+}
+
+.projectile {
+  position: absolute;
+  transform-origin: 50% 50%;
+  animation-name: projectileFlight;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.projectileArrow {
+  width: 20px;
+  height: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.95) 0%, rgba(148, 163, 184, 0.9) 100%);
+  box-shadow: 0 0 8px rgba(148, 163, 184, 0.65);
+}
+
+.projectileFireball {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(254, 240, 138, 1) 0%,
+    rgba(249, 115, 22, 0.95) 55%,
+    rgba(220, 38, 38, 0.85) 100%
+  );
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.75);
+}
+
+.projectileArcane {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(216, 180, 254, 1) 0%,
+    rgba(168, 85, 247, 0.92) 60%,
+    rgba(91, 33, 182, 0.88) 100%
+  );
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.75);
+}
+
+.projectileGeneric {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(186, 230, 253, 1) 0%,
+    rgba(56, 189, 248, 0.9) 70%,
+    rgba(14, 116, 144, 0.8) 100%
+  );
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.projectileFrost {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(224, 242, 254, 1) 0%,
+    rgba(125, 211, 252, 0.95) 55%,
+    rgba(59, 130, 246, 0.82) 100%
+  );
+  box-shadow: 0 0 10px rgba(125, 211, 252, 0.7);
+}
+
+.projectileSlash {
+  width: 22px;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(254, 243, 199, 0.96) 0%, rgba(248, 113, 113, 0.92) 100%);
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.62);
+}
+
+.projectileSupport {
+  width: 13px;
+  height: 13px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(209, 250, 229, 1) 0%,
+    rgba(52, 211, 153, 0.95) 58%,
+    rgba(5, 150, 105, 0.86) 100%
+  );
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.68);
+}
+
+@keyframes impactHit {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.7);
+  }
+}
+
+@keyframes impactDodge {
+  0% {
+    opacity: 0.65;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + 16px), calc(-50% - 8px)) scale(1.25);
+  }
+}
+
+.impact {
+  position: absolute;
+}
+
+.impactHitPlayer,
+.impactHitEnemy {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  animation: impactHit 0.32s ease-out forwards;
+}
+
+.impactHitPlayer {
+  background: radial-gradient(
+    circle,
+    rgba(191, 219, 254, 0.95) 0%,
+    rgba(59, 130, 246, 0.45) 60%,
+    rgba(59, 130, 246, 0) 100%
+  );
+}
+
+.impactHitEnemy {
+  background: radial-gradient(
+    circle,
+    rgba(253, 164, 175, 0.95) 0%,
+    rgba(239, 68, 68, 0.5) 60%,
+    rgba(239, 68, 68, 0) 100%
+  );
+}
+
+.impactDodgePlayer,
+.impactDodgeEnemy {
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(226, 232, 240, 0.55);
+  border-radius: 9999px;
+  animation: impactDodge 0.42s ease-out forwards;
+}
+
+.impactDodgePlayer {
+  box-shadow: 0 0 12px rgba(148, 163, 184, 0.45);
+}
+
+.impactDodgeEnemy {
+  box-shadow: 0 0 12px rgba(244, 114, 182, 0.45);
+}

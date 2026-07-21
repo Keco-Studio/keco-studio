@@ -1,0 +1,254 @@
+/* battle-poc map battle viewport (OpenClaw grid) */
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+.fontArcade {
+  font-family: 'Press Start 2P', system-ui, sans-serif;
+  letter-spacing: 0.06em;
+}
+
+
+.arenaRoot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.viewport {
+  position: relative;
+  box-sizing: border-box;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.viewportDesign {
+  background: #ffffff;
+}
+
+/* Fill the right-column stage edge-to-edge under design presentation. */
+.arenaRoot:has(.viewportDesign) {
+  height: 100%;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.actor {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  transition-property: left, top;
+  transition-duration: 300ms;
+  transition-timing-function: linear;
+  will-change: left, top;
+}
+
+.hpBlock {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  width: 56px;
+  transform: translateX(-50%);
+}
+
+.hpLabel {
+  margin-bottom: 2px;
+  text-align: center;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.hpLabelPlayer {
+  composes: hpLabel fontArcade;
+  color: #a7f3d0;
+}
+
+.hpLabelEnemy {
+  composes: hpLabel fontArcade;
+  color: #fecaca;
+}
+
+.hpTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.hpTrackPlayer {
+  border: 1px solid #064e3b;
+  background: rgba(7, 35, 24, 0.9);
+}
+
+.hpTrackEnemy {
+  border: 1px solid #7f1d1d;
+  background: rgba(43, 10, 10, 0.9);
+}
+
+.hpFillPlayer {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #a3e635, #34d399);
+  transition: width 200ms ease;
+}
+
+.hpFillEnemy {
+  height: 100%;
+  background: linear-gradient(90deg, #ef4444, #fb7185, #f87171);
+  transition: width 200ms ease;
+}
+
+.spriteImg {
+  display: block;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4));
+}
+
+.spriteImgEnemy {
+  display: block;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.45));
+}
+
+.actorName {
+  margin-top: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: rgba(226, 232, 240, 0.95);
+  background: rgba(0, 0, 0, 0.75);
+  white-space: nowrap;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actorNameDesign {
+  color: rgba(0, 0, 0, 0.88);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e8e8e8;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.toolbarDock {
+  pointer-events: auto;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(71, 85, 105, 0.8);
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.toolbarBtn {
+  min-width: 44px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.toolbarBtn:hover {
+  background: #334155;
+}
+
+.speedActive {
+  border-color: #f59e0b;
+  color: #0f172a;
+  background: #f59e0b;
+}
+
+.statusChip {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-right: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logHud {
+  pointer-events: auto;
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  width: min(300px, 40vw);
+  max-height: 26vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(15, 23, 42, 0.94);
+}
+
+.logHudTitle {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fde68a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.logHudBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  font-family: ui-monospace, monospace;
+  color: #cbd5e1;
+}
+
+.logLine {
+  margin-bottom: 3px;
+}
+
+.loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
