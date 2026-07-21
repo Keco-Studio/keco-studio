@@ -20,7 +20,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const { isAuthenticated, isLoading, userProfile, signOut } = useAuth();
   const prevAuthenticatedRef = useRef<boolean | null>(null);
-  const [showAuthForm, setShowAuthForm] = useState(true);
+  const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation =
     isSimulationEmbedConfigured() && (pathname?.startsWith('/simulation-system') ?? false);
 
@@ -29,7 +29,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
     if (prevAuthenticatedRef.current === null) {
       prevAuthenticatedRef.current = isAuthenticated;
-      setShowAuthForm(!isAuthenticated);
+      if (!isAuthenticated) {
+        // Keep the form mounted for explicit login/register flows. An automatic
+        // sign-in after registration must not unmount it before its success message.
+        setShowAuthForm(true);
+      }
       return;
     }
 
@@ -54,8 +58,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     };
   }, [isAuthenticated, isLoading]);
 
-  // While loading auth state or when unauthenticated, show the auth form
-  if (isLoading || !isAuthenticated || showAuthForm) {
+  // Do not show the login form while an existing browser session is being restored.
+  // Rendering it during this async gap causes a visible login -> dashboard flash on refresh.
+  if (isLoading) {
+    return null;
+  }
+
+  if (!isAuthenticated || showAuthForm) {
     return <AuthForm />;
   }
 

@@ -67,6 +67,73 @@ function markdownDestination(value: string): string {
   return value.replace(/([()])/g, '\\$1');
 }
 
+/**
+ * Treat braces in plain imported documents as literal text instead of MDX
+ * expressions. Code blocks and inline code are left byte-for-byte unchanged.
+ */
+export function escapeLiteralMdxBraces(markdown: string): string {
+  let fenceCharacter: '`' | '~' | null = null;
+  let fenceLength = 0;
+
+  return markdown
+    .split('\n')
+    .map((line) => {
+      const fence = line.match(/^ {0,3}(`{3,}|~{3,})(?:[^`~]*)$/);
+      if (fenceCharacter) {
+        if (
+          fence &&
+          fence[1][0] === fenceCharacter &&
+          fence[1].length >= fenceLength
+        ) {
+          fenceCharacter = null;
+          fenceLength = 0;
+        }
+        return line;
+      }
+
+      if (fence) {
+        fenceCharacter = fence[1][0] as '`' | '~';
+        fenceLength = fence[1].length;
+        return line;
+      }
+
+      let inlineCodeLength = 0;
+      let escaped = '';
+      for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (character === '`') {
+          let runLength = 1;
+          while (line[index + runLength] === '`') runLength += 1;
+          escaped += line.slice(index, index + runLength);
+          if (inlineCodeLength === 0) {
+            inlineCodeLength = runLength;
+          } else if (runLength === inlineCodeLength) {
+            inlineCodeLength = 0;
+          }
+          index += runLength - 1;
+          continue;
+        }
+
+        if (
+          character === '\\' &&
+          (line[index + 1] === '{' || line[index + 1] === '}')
+        ) {
+          escaped += character + line[index + 1];
+          index += 1;
+          continue;
+        }
+
+        if (inlineCodeLength === 0 && (character === '{' || character === '}')) {
+          escaped += `\\${character}`;
+        } else {
+          escaped += character;
+        }
+      }
+      return escaped;
+    })
+    .join('\n');
+}
+
 /** Convert Mammoth's semantic HTML through a DOM parser-backed Markdown codec. */
 export function convertDocumentHtmlToMarkdown(html: string): string {
   const service = new TurndownService({
