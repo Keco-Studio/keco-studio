@@ -26,6 +26,15 @@ type SessionContextValue = {
 
 const SimulationSessionContext = createContext<SessionContextValue | null>(null);
 
+function getBrowserStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function newSession(snapshot: ImportedSimulationSnapshot, name: string): SimulationSession {
   const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -51,7 +60,7 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
   const [hydratedNamespace, setHydratedNamespace] = useState<string | null>(null);
   const [blockedNamespace, setBlockedNamespace] = useState<string | null>(null);
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null);
-  const repository = useMemo(() => createSimulationStorageRepository(typeof window === 'undefined' ? null : window.localStorage), []);
+  const repository = useMemo(() => createSimulationStorageRepository(getBrowserStorage()), []);
   const namespace = userId && selectedProjectId ? userId + ':' + selectedProjectId : null;
 
   useEffect(() => {
@@ -90,6 +99,10 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
   }, [blockedNamespace, hydratedNamespace, namespace, repository, selectedProjectId, state, userId]);
 
   const commitImport = useCallback((snapshot: ImportedSimulationSnapshot, name: string, sessionId?: string) => {
+    if (!selectedProjectId || snapshot.sourceProjectId !== selectedProjectId) {
+      setPersistenceWarning('Imported simulation data does not belong to the selected project.');
+      return;
+    }
     const targetId = sessionId ?? state.activeSessionId;
     if (targetId && state.sessions.some(({ id }) => id === targetId)) {
       dispatch({ type: 'IMPORT_COMMITTED', sessionId: targetId, snapshot });
@@ -97,7 +110,7 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
       dispatch({ type: 'SESSION_CREATED', session: newSession(snapshot, name) });
     }
     setImporting(false);
-  }, [state.activeSessionId, state.sessions]);
+  }, [selectedProjectId, state.activeSessionId, state.sessions]);
 
   const selectSession = useCallback((sessionId: string) => {
     dispatch({ type: 'ACTIVE_SESSION_SELECTED', sessionId });

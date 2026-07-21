@@ -26,6 +26,8 @@ describe('simulation provider contracts', () => {
     expect(source).toContain('repository.save');
     expect(source).toContain('repository.clear');
     expect(source).toContain('IMPORT_COMMITTED');
+    expect(source).toContain('getBrowserStorage');
+    expect(source).toContain('snapshot.sourceProjectId !== selectedProjectId');
   });
 
   it('owns battle timers and clears them on stop and unmount', () => {
