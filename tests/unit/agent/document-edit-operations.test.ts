@@ -39,6 +39,35 @@ describe('document edit operations', () => {
     ).toBe('Before\nNew value\nAfter');
   });
 
+  it('replaces every non-overlapping occurrence when replaceAll is true', () => {
+    expect(
+      applyDocumentEditOperation('xx start, middle xx, end xx too', {
+        type: 'replace_text',
+        target: 'xx',
+        replacement: 'YY',
+        replaceAll: true,
+      })
+    ).toBe('YY start, middle YY, end YY too');
+  });
+
+  it('still requires a unique match when replaceAll is omitted or false', () => {
+    expect(() =>
+      applyDocumentEditOperation('xx and xx', {
+        type: 'replace_text',
+        target: 'xx',
+        replacement: 'YY',
+      })
+    ).toThrow('Edit target must occur exactly once; found 2 matches.');
+    expect(() =>
+      applyDocumentEditOperation('xx and xx', {
+        type: 'replace_text',
+        target: 'xx',
+        replacement: 'YY',
+        replaceAll: false,
+      })
+    ).toThrow('Edit target must occur exactly once; found 2 matches.');
+  });
+
   it('deletes one exact text occurrence', () => {
     expect(
       applyDocumentEditOperation('Keep this -- remove this -- and this', {
@@ -151,6 +180,7 @@ describe('document edit operations', () => {
   it.each([
     [{ type: 'replace_all', markdown: 'abc' } as const, 'Replace entire document (3 characters).'],
     [{ type: 'replace_text', target: 'old', replacement: 'newer' } as const, 'Replace one exact text occurrence (3 characters) with 5 characters.'],
+    [{ type: 'replace_text', target: 'old', replacement: 'newer', replaceAll: true } as const, 'Replace all exact text occurrences (3 characters) with 5 characters.'],
     [{ type: 'insert_before', anchor: 'point', content: 'abc' } as const, 'Insert 3 characters before one exact anchor (5 characters).'],
     [{ type: 'insert_after', anchor: 'point', content: 'abc' } as const, 'Insert 3 characters after one exact anchor (5 characters).'],
     [{ type: 'append', content: 'abc' } as const, 'Append 3 characters.'],

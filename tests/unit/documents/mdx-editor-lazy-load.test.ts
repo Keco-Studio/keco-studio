@@ -27,6 +27,7 @@ describe('MDXEditor route-level lazy loading', () => {
       'src/components/documents/documentCollaborationPlugin.ts',
       'src/lib/documents/documentBlockIdentity.ts',
       'src/lib/documents/headlessDocumentNodes.ts',
+      'src/lib/documents/markdownImageExportPlugin.ts',
     ]);
 
     const editorShell = fs.readFileSync(

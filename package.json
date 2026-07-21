@@ -41,7 +41,9 @@
     "turndown": "^7.2.4",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.29",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@keco/battle-engine": "file:./packages/keco-battle-engine",
+    "@keco/battle-core": "file:./packages/keco-battle-core"
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",

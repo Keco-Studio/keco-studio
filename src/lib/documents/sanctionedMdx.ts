@@ -3,6 +3,7 @@ import { DocumentContentValidationError } from './documentStateTypes';
 import { parseResourceReferenceAttributes } from './resourceReferenceTypes';
 import {
   parseSanctionedMdxAst,
+  serializeSanctionedMdxAst,
   type SanctionedMdxAstNode,
 } from './sanctionedMdxParser';
 
@@ -113,6 +114,56 @@ function invalid(message = 'Unsupported or unsafe MDX syntax'): never {
 
 function childrenOf(node: AstNode): readonly AstNode[] {
   return Array.isArray(node.children) ? node.children : [];
+}
+
+function jsxAttributeMap(node: AstNode): Map<string, string> {
+  const attributes = new Map<string, string>();
+  for (const attribute of node.attributes ?? []) {
+    if (
+      attribute.type !== 'mdxJsxAttribute' ||
+      typeof attribute.name !== 'string' ||
+      typeof attribute.value !== 'string'
+    ) {
+      continue;
+    }
+    attributes.set(attribute.name, attribute.value);
+  }
+  return attributes;
+}
+
+function coerceImgJsxNode(node: AstNode): AstNode {
+  if (
+    (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') &&
+    node.name === 'img'
+  ) {
+    const attributes = jsxAttributeMap(node);
+    const src = attributes.get('src');
+    if (src) {
+      return {
+        type: 'image',
+        url: src,
+        alt: attributes.get('alt') ?? '',
+        title: attributes.get('title') ?? null,
+      };
+    }
+  }
+
+  const children = childrenOf(node);
+  if (children.length === 0) return node;
+  return {
+    ...node,
+    children: children.map(coerceImgJsxNode),
+  };
+}
+
+/**
+ * MDXEditor may persist resized images as `<img ... />` JSX. Convert those to
+ * Markdown image nodes so sanctioned MDX validation and storage stay consistent.
+ */
+export function coerceSanctionedMdxImages(markdown: string): string {
+  if (!/<img\b/i.test(markdown)) return markdown;
+  const root = parseSanctionedMdxAst(markdown);
+  return serializeSanctionedMdxAst(coerceImgJsxNode(root));
 }
 
 function visit(node: AstNode, visitor: (node: AstNode) => void): void {
@@ -359,7 +410,8 @@ export function parseValidatedSanctionedMdx(markdown: string): SanctionedMdxAstN
   ) {
     throw new DocumentContentValidationError('Document content is invalid');
   }
-  const root = parseSanctionedMdx(markdown);
+  const normalized = coerceSanctionedMdxImages(markdown);
+  const root = parseSanctionedMdx(normalized);
   validateSanctionedMdxAstNode(root);
   return root;
 }

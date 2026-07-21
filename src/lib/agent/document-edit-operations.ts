@@ -1,6 +1,6 @@
 export type DocumentEditOperation =
-  | { type: 'replace_all'; markdown: string }
-  | { type: 'replace_text'; target: string; replacement: string }
+  | { type: 'replace_all'; markdown: string; allowDestructive?: boolean }
+  | { type: 'replace_text'; target: string; replacement: string; replaceAll?: boolean }
   | { type: 'insert_before'; anchor: string; content: string }
   | { type: 'insert_after'; anchor: string; content: string }
   | { type: 'append'; content: string }
@@ -33,6 +33,31 @@ function exactMatchIndex(markdown: string, target: string): number {
   return firstIndex;
 }
 
+function replaceAllOccurrences(markdown: string, target: string, replacement: string): string {
+  if (target.length === 0) {
+    throw new Error('Edit target must be non-empty.');
+  }
+
+  let result = '';
+  let searchFrom = 0;
+  let count = 0;
+  while (searchFrom <= markdown.length) {
+    const index = markdown.indexOf(target, searchFrom);
+    if (index === -1) {
+      result += markdown.slice(searchFrom);
+      break;
+    }
+    result += `${markdown.slice(searchFrom, index)}${replacement}`;
+    searchFrom = index + target.length;
+    count += 1;
+  }
+
+  if (count === 0) {
+    throw new Error('Edit target must occur exactly once; found 0 matches.');
+  }
+  return result;
+}
+
 function lineBoundary(left: string, right: string): string {
   if (left.length === 0 || right.length === 0) return '';
   return left.endsWith('\n') || right.startsWith('\n') ? '' : '\n';
@@ -51,6 +76,17 @@ function appendWithBlankLine(markdown: string, content: string): string {
   return `${markdown}${'\n'.repeat(missingNewlines)}${content}`;
 }
 
+/** True when replace_all would shrink a substantial document to a tiny fragment. */
+export function isDestructiveReplaceAll(baseMarkdown: string, proposedMarkdown: string): boolean {
+  const baseLength = baseMarkdown.length;
+  const proposedLength = proposedMarkdown.length;
+  return (
+    baseLength >= 500 &&
+    proposedLength < 100 &&
+    proposedLength < baseLength * 0.1
+  );
+}
+
 export function applyDocumentEditOperation(
   currentMarkdown: string,
   operation: DocumentEditOperation
@@ -63,6 +99,9 @@ export function applyDocumentEditOperation(
     case 'replace_text': {
       const target = normalizeLineEndings(operation.target);
       const replacement = normalizeLineEndings(operation.replacement);
+      if (operation.replaceAll === true) {
+        return replaceAllOccurrences(markdown, target, replacement);
+      }
       const index = exactMatchIndex(markdown, target);
       return `${markdown.slice(0, index)}${replacement}${markdown.slice(index + target.length)}`;
     }
@@ -94,7 +133,9 @@ export function summarizeDocumentEditOperation(operation: DocumentEditOperation)
     case 'replace_all':
       return `Replace entire document (${operation.markdown.length} characters).`;
     case 'replace_text':
-      return `Replace one exact text occurrence (${operation.target.length} characters) with ${operation.replacement.length} characters.`;
+      return operation.replaceAll === true
+        ? `Replace all exact text occurrences (${operation.target.length} characters) with ${operation.replacement.length} characters.`
+        : `Replace one exact text occurrence (${operation.target.length} characters) with ${operation.replacement.length} characters.`;
     case 'insert_before':
       return `Insert ${operation.content.length} characters before one exact anchor (${operation.anchor.length} characters).`;
     case 'insert_after':

@@ -369,7 +369,7 @@ export function ResourceReferencePickerModal({
       <Select
         aria-label="Table"
         className={styles.sourceSelect}
-        popupClassName={styles.sourceSelectPopup}
+        classNames={{ popup: { root: styles.sourceSelectPopup } }}
         placeholder="Choose a table"
         showSearch
         optionFilterProp="label"
@@ -420,7 +420,7 @@ export function ResourceReferencePickerModal({
       <Select
         aria-label="Document"
         className={styles.sourceSelect}
-        popupClassName={styles.sourceSelectPopup}
+        classNames={{ popup: { root: styles.sourceSelectPopup } }}
         placeholder="Choose a document"
         showSearch
         optionFilterProp="label"

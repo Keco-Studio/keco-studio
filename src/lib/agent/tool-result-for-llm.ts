@@ -47,6 +47,25 @@ type ReadDocumentData = {
   token?: unknown;
 };
 
+type ProposeDocumentEditData = {
+  type?: string;
+  documentId?: string;
+  documentName?: string;
+  folderName?: string | null;
+  projectId?: string;
+  operationType?: string;
+  operationSummary?: string;
+  expectedToken?: unknown;
+  baseHash?: string;
+  baseMarkdown?: string;
+  baseUpdateIds?: unknown;
+  proposedHash?: string;
+  proposedMarkdown?: string;
+  baseCharacters?: number;
+  proposedCharacters?: number;
+  _llmNote?: string;
+};
+
 function toolNameForMessage(messages: ChatMessage[], toolMessage: ChatMessage): string | undefined {
   const toolCallId = toolMessage.tool_call_id;
   if (!toolCallId) return undefined;
@@ -130,12 +149,53 @@ function compactReadDocumentPayload(result: ToolResult): ToolResult {
   return best;
 }
 
+function compactProposeDocumentEditPayload(result: ToolResult): ToolResult {
+  if (!result.success || !result.data || typeof result.data !== 'object') return result;
+
+  const data = result.data as ProposeDocumentEditData;
+  if (typeof data.baseMarkdown !== 'string' && typeof data.proposedMarkdown !== 'string') {
+    return result;
+  }
+
+  const baseCharacters =
+    typeof data.baseMarkdown === 'string' ? data.baseMarkdown.length : (data.baseCharacters ?? 0);
+  const proposedCharacters =
+    typeof data.proposedMarkdown === 'string'
+      ? data.proposedMarkdown.length
+      : (data.proposedCharacters ?? 0);
+
+  return {
+    success: result.success,
+    error: result.error,
+    displayHint: result.displayHint,
+    data: {
+      type: data.type,
+      documentId: data.documentId,
+      documentName: data.documentName,
+      folderName: data.folderName,
+      projectId: data.projectId,
+      operationType: data.operationType,
+      operationSummary: data.operationSummary,
+      expectedToken: data.expectedToken,
+      baseHash: data.baseHash,
+      proposedHash: data.proposedHash,
+      baseCharacters,
+      proposedCharacters,
+      _llmNote:
+        'Full baseMarkdown/proposedMarkdown omitted from LLM context. The preview was validated server-side against the latest document. Prefer replace_text (replaceAll: true for every match). Do not use replace_all from partial reads — that wipes unseen content.',
+    },
+  };
+}
+
 function compactToolResult(result: ToolResult, toolName?: string): ToolResult {
   if (toolName === 'query_assets') {
     return compactQueryAssetsPayload(result);
   }
   if (toolName === 'read_document') {
     return compactReadDocumentPayload(result);
+  }
+  if (toolName === 'propose_document_edit') {
+    return compactProposeDocumentEditPayload(result);
   }
   return result;
 }
@@ -183,6 +243,10 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
   if (toolName === 'read_document') {
     // The structured compactor always returns valid JSON within the budget.
     return JSON.stringify(compactReadDocumentPayload(compact));
+  }
+
+  if (toolName === 'propose_document_edit') {
+    return JSON.stringify(compactProposeDocumentEditPayload(compact));
   }
 
   if (toolName === 'query_assets' && compact.data && typeof compact.data === 'object') {
