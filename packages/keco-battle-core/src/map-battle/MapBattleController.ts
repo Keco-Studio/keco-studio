@@ -360,8 +360,9 @@ export class MapBattleController {
         const orch = this.llmOrchestrator
         const leftId = this.session.left.id
         const rightId = this.session.right.id
-        // LLM 可用时：仅使用 prepareCommands 入队的指令 + 多步 sequence（经 enqueue* 里的 resolveDecision 消费）。
-        // 请求进行中则等待；无指令且无 sequence 时不走本地战术树（与 shouldUseLlm===false 分支区分）。
+        // When LLM is enabled: only consume prepareCommands-queued intents + multi-step sequences
+        // (via resolveDecision in enqueue*). Wait while a request is in flight; if there is no
+        // command and no sequence, skip the local tactical tree (unlike shouldUseLlm===false).
         if (this.hasBattleCommandForActorAtTick(this.session, leftId, tick)) {
           this.nextPlayerDue = tick + this.playerInterval
         } else if (!orch.isPrefetchPending(leftId) && this.sequenceStore.hasActiveSequence(leftId)) {

@@ -87,7 +87,7 @@ interface DecisionProvider {
 }
 
 const MIN_TIMEOUT_MS = 400
-/** Proxy + MiniMax + 大地图 payload 常需 10–25s+；须大于浏览器/代理上游等待时间 */
+/** Proxy + MiniMax + large-map payloads often need 10-25s+; keep above browser/proxy upstream waits. */
 const DEFAULT_TIMEOUT_MS = 60000
 const ERROR_BODY_SNIPPET_LIMIT = 140
 

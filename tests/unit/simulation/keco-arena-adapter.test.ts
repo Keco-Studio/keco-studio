@@ -4,7 +4,7 @@ import type { SimulationCatalog } from '@/lib/simulation/types';
 
 const catalog: SimulationCatalog = {
   characters: [
-    { id: 'hero', name: '宋江', el: 'Fire', hp: 1000, atk: 120, def: 40, spd: 100, mp: 100 },
+    { id: 'hero', name: 'Song Jiang', el: 'Fire', hp: 1000, atk: 120, def: 40, spd: 100, mp: 100 },
     { id: 'slime', name: 'Slime', el: 'Earth', hp: 800, atk: 80, def: 20, spd: 80, mp: 80 },
   ],
   skills: [
@@ -42,7 +42,7 @@ describe('kecoArenaAdapter', () => {
     });
 
     expect(config).not.toBeNull();
-    expect(config?.playerName).toBe('宋江');
+    expect(config?.playerName).toBe('Song Jiang');
     expect(config?.enemyName).toBe('Slime');
     expect(config?.playerSkillIds).toEqual(['flame', 'bolt']);
     expect(config?.enemySkillIds).toEqual(['bolt']);

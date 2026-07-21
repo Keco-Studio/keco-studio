@@ -41,28 +41,28 @@ describe('document edit operations', () => {
 
   it('replaces every non-overlapping occurrence when replaceAll is true', () => {
     expect(
-      applyDocumentEditOperation('多字开头，中间多，结尾也多', {
+      applyDocumentEditOperation('xx start, middle xx, end xx too', {
         type: 'replace_text',
-        target: '多',
-        replacement: '大',
+        target: 'xx',
+        replacement: 'YY',
         replaceAll: true,
       })
-    ).toBe('大字开头，中间大，结尾也大');
+    ).toBe('YY start, middle YY, end YY too');
   });
 
   it('still requires a unique match when replaceAll is omitted or false', () => {
     expect(() =>
-      applyDocumentEditOperation('多 and 多', {
+      applyDocumentEditOperation('xx and xx', {
         type: 'replace_text',
-        target: '多',
-        replacement: '大',
+        target: 'xx',
+        replacement: 'YY',
       })
     ).toThrow('Edit target must occur exactly once; found 2 matches.');
     expect(() =>
-      applyDocumentEditOperation('多 and 多', {
+      applyDocumentEditOperation('xx and xx', {
         type: 'replace_text',
-        target: '多',
-        replacement: '大',
+        target: 'xx',
+        replacement: 'YY',
         replaceAll: false,
       })
     ).toThrow('Edit target must occur exactly once; found 2 matches.');

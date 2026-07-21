@@ -2,7 +2,7 @@ import type { Skill } from '@keco/battle-engine';
 import { upsertBattleSkillDefinition } from '../battle-core/content/skills/basic-skill-catalog';
 import type { BattleSkillDefinition } from '../battle-core/domain/types/skill-types';
 
-/** Keco 技能表无单独射程字段：地图战 BT 用统一“可施法距离”，只影响走位后能否选中技能。 */
+/** Keco skill tables omit range: map-battle BT uses one cast range to gate post-move skill picks. */
 const KECO_BT_CAST_RANGE = 12;
 
 /** Map-battle CD: maxCooldown × this (built-in POC skills still use catalog ×10). */
@@ -14,7 +14,7 @@ function skillCategory(skill: Skill, freezeTicks?: number): BattleSkillDefinitio
   return 'burst';
 }
 
-/** BT 选技权重：power + 元素反应略优先（具体反应在 pickReactionSkillInRange）。 */
+/** BT pick weight: power plus a small element-reaction bias (see pickReactionSkillInRange). */
 function skillBtRatio(skill: Skill): number {
   const base = Math.max(0.5, skill.power);
   const elem = skill.attachElement?.element;
