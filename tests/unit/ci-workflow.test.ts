@@ -80,6 +80,15 @@ describe('CI workflow gates', () => {
     expect(pkg.scripts.lint).not.toContain('next lint');
   });
 
+  it('pins the Deno MCP verification commands', () => {
+    expect(pkg.scripts['check:mcp']).toBe(
+      'deno check --config supabase/functions/mcp/deno.json supabase/functions/mcp/index.ts'
+    );
+    expect(pkg.scripts['test:mcp']).toBe(
+      'deno test --config supabase/functions/mcp/deno.json --allow-env --allow-net supabase/functions/mcp'
+    );
+  });
+
   it('pins Supabase CLI versions instead of resolving latest during CI', () => {
     expect(workflow).toContain('version: 2.90.0');
     expect(deployWorkflow).toContain('version: 2.90.0');

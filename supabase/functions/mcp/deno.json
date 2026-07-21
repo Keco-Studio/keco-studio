@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window"]
+  },
+  "imports": {
+    "@mcp/": "npm:@modelcontextprotocol/sdk@1.29.0/",
+    "@std/assert": "jsr:@std/assert@1.0.14",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.87.1"
+  }
+}
