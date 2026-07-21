@@ -1,6 +1,29 @@
 import { buildSystemPrompt } from '../../../src/lib/agent/prompts';
 
 describe('buildSystemPrompt design-document table rules', () => {
+  it('states implemented document capabilities', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('.txt, .md, and .docx');
+    expect(prompt).toContain('parsed by the application before');
+    expect(prompt).toContain('visible JSON');
+    expect(prompt).toContain('headings, lists, tables, links');
+    expect(prompt).toContain('Legacy .doc is not supported');
+    expect(prompt).toContain('custom XML');
+    expect(prompt).toContain('must not deny DOCX support');
+  });
+
+  it('routes analysis separately from tables', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('[Document intent]\nanalyze');
+    expect(prompt).toContain('answer from the supplied document content');
+    expect(prompt).toContain('do not call project-schema or write tools');
+    expect(prompt).toContain('unless the user explicitly asks for a project operation');
+    expect(prompt).toContain('[Document intent]\ntables');
+    expect(prompt).toContain('FIRST call list_project_structure');
+  });
+
   it('includes current document metadata and safe target resolution rules', () => {
     const prompt = buildSystemPrompt({
       projectId: 'project-1',
