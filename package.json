@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@playwright/test": "^1.57.0",
     "@types/fontkit": "^2.0.9",
     "@types/jest": "^30.0.0",
