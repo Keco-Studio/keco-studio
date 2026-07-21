@@ -63,8 +63,20 @@ describe('CI workflow gates', () => {
     expect(pkg.scripts.typecheck).toBe('tsc --noEmit');
     expect(pkg.scripts['typecheck:api']).toBe('tsc --noEmit -p tsconfig.api.json');
     expect(pkg.scripts.validate).toBe(
-      'npm run lint && npm run typecheck && npm run typecheck:api && npm run test:unit && npm run build'
+      'npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run test:mcp && npm run test:unit && npm run build'
     );
+  });
+
+  it('runs Edge MCP checks in CI and local validate', () => {
+    expect(workflow).toContain('npm run check:mcp');
+    expect(workflow).toContain('npm run test:mcp');
+    const apiTypecheck = workflow.indexOf('npm run typecheck:api');
+    const mcpCheck = workflow.indexOf('npm run check:mcp');
+    const mcpTest = workflow.indexOf('npm run test:mcp');
+    const unitTest = workflow.indexOf('npm run test:unit');
+    expect(apiTypecheck).toBeLessThan(mcpCheck);
+    expect(mcpCheck).toBeLessThan(mcpTest);
+    expect(mcpTest).toBeLessThan(unitTest);
   });
 
   it('does not force unit tests to run serially', () => {
@@ -78,6 +90,18 @@ describe('CI workflow gates', () => {
   it('uses the ESLint CLI instead of the removed Next lint command', () => {
     expect(pkg.scripts.lint).toMatch(/^eslint \./);
     expect(pkg.scripts.lint).not.toContain('next lint');
+  });
+
+  it('pins the Deno MCP verification commands', () => {
+    expect(pkg.scripts['check:mcp']).toBe(
+      'deno check --config supabase/functions/mcp/deno.json supabase/functions/mcp/index.ts'
+    );
+    expect(pkg.scripts['test:mcp']).toBe(
+      'deno test --config supabase/functions/mcp/deno.json --allow-env --allow-net supabase/functions/mcp'
+    );
+    expect(pkg.scripts['probe:mcp-performance']).toBe(
+      'tsx scripts/probe-mcp-performance.ts'
+    );
   });
 
   it('pins Supabase CLI versions instead of resolving latest during CI', () => {

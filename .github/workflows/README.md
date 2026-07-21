@@ -39,11 +39,14 @@ Use these commands before pushing workflow-sensitive changes:
 npm run lint
 npm run typecheck
 npm run typecheck:api
+npm run check:mcp
+npm run test:mcp
 npm run test:unit
 npm run build
 ```
 
 `npm run validate` runs the same core local checks in sequence.
+The MCP checks use the Deno npm runner pinned in `package.json`.
 
 ## Notes
 

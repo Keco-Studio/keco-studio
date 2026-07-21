@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@playwright/test": "^1.57.0",
     "@types/fontkit": "^2.0.9",
     "@types/jest": "^30.0.0",
@@ -56,6 +57,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/turndown": "^5.0.6",
     "autoprefixer": "10.4.22",
+    "deno": "2.9.3",
     "dotenv": "^17.2.3",
     "esbuild": "^0.28.1",
     "eslint": "^9.0.0",
@@ -88,13 +90,15 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
-    "validate": "npm run lint && npm run typecheck && npm run typecheck:api && npm run test:unit && npm run build",
+    "check:mcp": "deno check --config supabase/functions/mcp/deno.json supabase/functions/mcp/index.ts",
+    "validate": "npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run test:mcp && npm run test:unit && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:parallel": "playwright test --workers=50%",
     "test:e2e:clean": "tsx scripts/clean-remote-test-data.ts && playwright test",
     "test:e2e:sequential": "playwright test tests/e2e/specs/auth.spec.ts tests/e2e/specs/security.spec.ts tests/e2e/specs/file-upload-security.spec.ts tests/e2e/specs/happy-path.spec.ts tests/e2e/specs/destructive.spec.ts",
     "test:e2e:core": "playwright test tests/e2e/specs/happy-path.spec.ts tests/e2e/specs/destructive.spec.ts",
     "test:unit": "jest",
+    "test:mcp": "deno test --config supabase/functions/mcp/deno.json --allow-env --allow-net supabase/functions/mcp",
     "test:unit:watch": "jest --watch",
     "test:auth": "playwright test tests/e2e/specs/auth.spec.ts",
     "test:security": "playwright test tests/e2e/specs/security.spec.ts",
@@ -108,6 +112,8 @@
     "supabase:realtime-pool": "tsx scripts/configure-local-realtime-pool.ts",
     "supabase:realtime-pool:check": "tsx scripts/configure-local-realtime-pool.ts --check",
     "probe:import-story": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts",
-    "probe:import-story:rainy-five": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts tests/fixtures/import-script/rainy-manor-story.txt --runs=5"
+    "probe:import-story:rainy-five": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts tests/fixtures/import-script/rainy-manor-story.txt --runs=5",
+    "probe:mcp-oauth": "tsx scripts/probe-mcp-oauth.ts",
+    "probe:mcp-performance": "tsx scripts/probe-mcp-performance.ts"
   }
 }

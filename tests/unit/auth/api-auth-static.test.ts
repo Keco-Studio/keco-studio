@@ -2,6 +2,11 @@ import { describe, expect, it } from '@jest/globals';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+const PUBLIC_API_ROUTES = new Set([
+  'src/app/api/invitations/decline/route.ts',
+  'src/app/api/mcp/oauth-protected-resource/route.ts',
+]);
+
 function routeFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
     const path = join(directory, entry);
@@ -35,9 +40,9 @@ describe('API authentication boundaries', () => {
   it('wraps every authenticated API route with the shared auth boundary', () => {
     const apiDirectory = join(process.cwd(), 'src/app/api');
     const routesWithoutSharedBoundary = routeFiles(apiDirectory)
-      .filter((path) => !path.endsWith('/invitations/decline/route.ts'))
-      .filter((path) => !readFileSync(path, 'utf8').includes('withAuth'))
-      .map((path) => path.slice(process.cwd().length + 1));
+      .map((path) => path.slice(process.cwd().length + 1))
+      .filter((path) => !PUBLIC_API_ROUTES.has(path))
+      .filter((path) => !readFileSync(join(process.cwd(), path), 'utf8').includes('withAuth'));
 
     expect(routesWithoutSharedBoundary).toEqual([]);
   });
