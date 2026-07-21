@@ -23,6 +23,58 @@ describe('compactToolContentForLlm', () => {
     expect(compact).toEqual({ success: true, data: { type: 'document_edit' } });
   });
 
+  it('compacts propose_document_edit by dropping full markdown bodies for the LLM', () => {
+    const baseMarkdown = Array.from({ length: 2_000 }, (_, i) => `Line ${i}: body text`).join('\n');
+    const proposedMarkdown = baseMarkdown.replace('Line 10: body text', 'Line 10: edited text');
+    const raw = JSON.stringify({
+      success: true,
+      displayHint: 'text',
+      data: {
+        type: 'document_edit',
+        documentId: '11111111-1111-4111-8111-111111111111',
+        documentName: 'Guide',
+        folderName: null,
+        projectId: '22222222-2222-4222-8222-222222222222',
+        operationType: 'replace_text',
+        operationSummary: 'Replace one exact text occurrence (16 characters) with 18 characters.',
+        expectedToken: { epoch: 2, revision: 4 },
+        baseHash: 'a'.repeat(64),
+        baseMarkdown,
+        baseUpdateIds: [],
+        proposedHash: 'b'.repeat(64),
+        proposedMarkdown,
+      },
+      internalData: { approvalSignature: 'server-secret' },
+    });
+
+    const content = compactToolContentForLlm(raw, 'propose_document_edit');
+    const compact = JSON.parse(content) as {
+      data: {
+        type: string;
+        operationType: string;
+        operationSummary: string;
+        baseCharacters: number;
+        proposedCharacters: number;
+        baseMarkdown?: string;
+        proposedMarkdown?: string;
+        _llmNote?: string;
+      };
+    };
+
+    expect(content.length).toBeLessThanOrEqual(16_000);
+    expect(content).not.toContain('server-secret');
+    expect(compact.data).toMatchObject({
+      type: 'document_edit',
+      operationType: 'replace_text',
+      operationSummary: 'Replace one exact text occurrence (16 characters) with 18 characters.',
+      baseCharacters: baseMarkdown.length,
+      proposedCharacters: proposedMarkdown.length,
+    });
+    expect(compact.data.baseMarkdown).toBeUndefined();
+    expect(compact.data.proposedMarkdown).toBeUndefined();
+    expect(compact.data._llmNote).toMatch(/replace_text|do not use replace_all from partial/i);
+  });
+
   it('keeps a complete in-budget read_document result unchanged', () => {
     const raw = JSON.stringify({
       success: true,

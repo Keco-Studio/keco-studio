@@ -568,6 +568,68 @@ describe('Agent document tools', () => {
     ).resolves.toEqual({ success: false, error: 'Document not found in this project.' });
   });
 
+  it('rejects replace_all that would wipe a long document down to a tiny fragment', async () => {
+    const longMarkdown = `# Test0721\n\n${'body text '.repeat(200)}xx${'more paragraphs '.repeat(200)}`;
+    read.mockResolvedValue(state(longMarkdown));
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'replace_all', markdown: 'YY' },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/replace_text|destructive|wipe|allowDestructive/i),
+    });
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('allows an intentional destructive replace_all when allowDestructive is true', async () => {
+    const longMarkdown = `# Test0721\n\n${'body text '.repeat(200)}xx${'more paragraphs '.repeat(200)}`;
+    read.mockResolvedValue(state(longMarkdown));
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'replace_all', markdown: 'YY', allowDestructive: true },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: true,
+      data: { operationType: 'replace_all', proposedMarkdown: 'YY' },
+    });
+  });
+
+  it('generates a replace_text proposal that replaces every match when replaceAll is true', async () => {
+    read.mockResolvedValue(state('start xx, middle xx, end xx'));
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: {
+            type: 'replace_text',
+            target: 'xx',
+            replacement: 'YY',
+            replaceAll: true,
+          },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        operationType: 'replace_text',
+        proposedMarkdown: 'start YY, middle YY, end YY',
+      },
+    });
+  });
+
   it.each([
     [
       'replace_all',

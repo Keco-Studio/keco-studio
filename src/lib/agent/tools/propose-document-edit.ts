@@ -4,6 +4,7 @@ import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
 import {
   applyDocumentEditOperation,
+  isDestructiveReplaceAll,
   summarizeDocumentEditOperation,
   type DocumentEditOperation,
 } from '../document-edit-operations';
@@ -12,16 +13,20 @@ import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const MAX_DOCUMENT_CHARS = 500_000;
 const APPROVED_PAYLOAD_CHANGED_ERROR = 'The approved document edit payload changed.';
+const DESTRUCTIVE_REPLACE_ALL_ERROR =
+  'Refusing destructive replace_all that would wipe a long document down to a tiny fragment. Use replace_text (set replaceAll: true when every match should change) for targeted edits. If you intentionally want this short full-document replacement, set allowDestructive: true.';
 
 const OperationSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('replace_all'),
     markdown: z.string().max(MAX_DOCUMENT_CHARS),
+    allowDestructive: z.boolean().optional(),
   }).strict(),
   z.object({
     type: z.literal('replace_text'),
     target: z.string().min(1).max(MAX_DOCUMENT_CHARS),
     replacement: z.string().max(MAX_DOCUMENT_CHARS),
+    replaceAll: z.boolean().optional(),
   }).strict(),
   z.object({
     type: z.literal('insert_before'),
@@ -102,9 +107,9 @@ function contentHash(markdown: string): string {
 function canonicalOperation(operation: ParsedParams['operation']): readonly unknown[] {
   switch (operation.type) {
     case 'replace_all':
-      return [operation.type, operation.markdown];
+      return [operation.type, operation.markdown, operation.allowDestructive === true];
     case 'replace_text':
-      return [operation.type, operation.target, operation.replacement];
+      return [operation.type, operation.target, operation.replacement, operation.replaceAll === true];
     case 'insert_before':
     case 'insert_after':
       return [operation.type, operation.anchor, operation.content];
@@ -231,6 +236,13 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         success: false,
         error: `Proposed document exceeds the ${MAX_DOCUMENT_CHARS} character maximum.`,
       };
+    }
+    if (
+      operation.type === 'replace_all' &&
+      operation.allowDestructive !== true &&
+      isDestructiveReplaceAll(state.markdown, proposedMarkdown)
+    ) {
+      return { success: false, error: DESTRUCTIVE_REPLACE_ALL_ERROR };
     }
     validateSanctionedMdx(proposedMarkdown);
 
@@ -359,7 +371,16 @@ const operationVariants = [
     type: 'object',
     properties: {
       type: { type: 'string', enum: ['replace_all'] },
-      markdown: { type: 'string', maxLength: MAX_DOCUMENT_CHARS },
+      markdown: {
+        type: 'string',
+        maxLength: MAX_DOCUMENT_CHARS,
+        description: 'Complete replacement document body. Never pass only the edited fragment.',
+      },
+      allowDestructive: {
+        type: 'boolean',
+        description:
+          'Required when intentionally replacing a long document with a very short body. Do not set this for ordinary edits.',
+      },
     },
     required: ['type', 'markdown'],
     additionalProperties: false,
@@ -370,6 +391,10 @@ const operationVariants = [
       type: { type: 'string', enum: ['replace_text'] },
       target: { type: 'string', minLength: 1, maxLength: MAX_DOCUMENT_CHARS },
       replacement: { type: 'string', maxLength: MAX_DOCUMENT_CHARS },
+      replaceAll: {
+        type: 'boolean',
+        description: 'When true, replace every non-overlapping occurrence of target.',
+      },
     },
     required: ['type', 'target', 'replacement'],
     additionalProperties: false,
@@ -417,7 +442,7 @@ const operationVariants = [
 export const proposeDocumentEdit: AgentTool = {
   name: 'propose_document_edit',
   description:
-    'Preview a validated Markdown/MDX edit against the latest document state. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate. Call read_document before editing document content. Exact targets and anchors must occur exactly once. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
+    'Preview a validated Markdown/MDX edit against the latest document state. Prefer replace_text / insert_* / append / delete_text for ordinary edits — the server applies them to the full latest document, so you do not need the entire body in tool arguments. Use replace_text with replaceAll: true to change every occurrence. Use replace_all only when providing the complete intended document body; never pass just the edited fragment. Destructive shrinks of long documents to a tiny body require allowDestructive: true. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate. Call read_document before editing document content. Exact targets and anchors must occur exactly once unless replaceAll is true. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'mode',

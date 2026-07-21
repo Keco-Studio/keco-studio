@@ -13,6 +13,7 @@ describe('deriveUserDisplay', () => {
       fileName: 'worldview.docx',
       documentText: 'long document body that must stay hidden',
       additionalInstructions: 'Build a characters table.',
+      intent: 'analyze',
     });
     const display = deriveUserDisplay(msg);
     expect(display.attachments).toEqual([{ fileName: 'worldview.docx' }]);
@@ -24,6 +25,7 @@ describe('deriveUserDisplay', () => {
     const msg = buildDesignMessage({
       fileName: 'a.txt',
       documentText: 'body',
+      intent: 'analyze',
     });
     const display = deriveUserDisplay(msg);
     expect(display.attachments).toEqual([{ fileName: 'a.txt' }]);
@@ -43,7 +45,7 @@ describe('deriveUserDisplay', () => {
   });
 
   it('keeps the design-document chip and ignores image thumbnails for design messages', () => {
-    const msg = buildDesignMessage({ fileName: 'world.docx', documentText: 'body' });
+    const msg = buildDesignMessage({ fileName: 'world.docx', documentText: 'body', intent: 'analyze' });
     const display = deriveUserDisplay(msg, ['https://x/a.png']);
     expect(display.attachments).toEqual([{ fileName: 'world.docx' }]);
   });
@@ -51,6 +53,16 @@ describe('deriveUserDisplay', () => {
   it('returns no attachments for a plain message without images', () => {
     const display = deriveUserDisplay('hi', []);
     expect(display.attachments).toBeUndefined();
+  });
+
+  it('renders a legacy envelope as a file chip without document content', () => {
+    const display = deriveUserDisplay(
+      '[Design document]\nThe user uploaded a design document "legacy.docx".\n\n' +
+      '[User instructions]\nSummarize it\n\n[Document content]\nSECRET BODY',
+    );
+    expect(display.attachments).toEqual([{ fileName: 'legacy.docx' }]);
+    expect(display.text).toBe('Summarize it');
+    expect(display.text).not.toContain('SECRET BODY');
   });
 
   it('shows selected table context as a compact attachment', () => {

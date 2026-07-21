@@ -24,6 +24,7 @@ import {
   createSanctionedMdxDescriptors,
   type SanctionedMdxEditorProps,
 } from './sanctionedMdxDescriptors';
+import { markdownImageExportPlugin } from './markdownImageExportPlugin';
 import type { ComponentType } from 'react';
 import { documentBlockIdentityPlugin } from '@/components/documents/documentBlockIdentityPlugin';
 import {
@@ -73,6 +74,7 @@ function documentPlugins(): RealmPlugin[] {
     }),
     linkPlugin(),
     imagePlugin(),
+    markdownImageExportPlugin(),
     tablePlugin(),
     codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
     codeMirrorPlugin({

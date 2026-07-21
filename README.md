@@ -171,6 +171,19 @@ Access the application at:
 http://localhost:3000
 ```
 
+The same Next.js server also hosts the native simulation workbench at
+`http://localhost:3000/simulation-system`. It does not require a second simulator
+server, an iframe, or any `NEXT_PUBLIC_SIMULATION_*` environment variables.
+
+Choose **Use demo data** on the Import screen to launch a complete built-in battle
+setup without preparing Studio libraries. The Studio library import path remains
+available for project data.
+
+The workbench imports authorized libraries from the selected Studio project into
+an immutable snapshot. Simulation sessions, roster changes, progression, and
+battle state are stored in versioned browser local storage isolated by authenticated
+user and Studio project; they are not written back to Supabase.
+
 ---
 
 ### 6. Stop services

@@ -11,13 +11,18 @@
  * full document body, while the model still receives the entire text.
  */
 
-const DOC_HEADER = '[Design document]';
+const DOC_HEADER = '[Document attachment]';
+const LEGACY_DOC_HEADER = '[Design document]';
+const INTENT_HEADER = '[Document intent]';
 const INSTRUCTIONS_HEADER = '[User instructions]';
 const CONTENT_HEADER = '[Document content]';
+
+export type DocumentMessageIntent = 'analyze' | 'tables';
 
 export interface BuildDesignMessageParams {
   fileName: string;
   documentText: string;
+  intent: DocumentMessageIntent;
   documentId?: string;
   additionalInstructions?: string;
   sourceKind?: 'upload' | 'project-document';
@@ -31,24 +36,41 @@ export function buildDesignMessage(params: BuildDesignMessageParams): string {
   const sourceDescription = sourceKind === 'project-document'
     ? `The user selected the project document "${params.fileName}".`
     : `The user uploaded a design document "${params.fileName}".`;
-  parts.push(
-    `${sourceDescription} First call ` +
-      'list_project_structure and list_field_types, then analyze the content, infer ' +
-      'which tables (libraries) are needed, design appropriate fields (columns) using ' +
-      'only supported field types. EXTRACTION mode: when the document contains explicit ' +
-      'tables, preserve the explicit table headers and rows and use nearby prose only ' +
-      'as context for table names or obvious field labels. Do not convert surrounding ' +
-      'story/prose into extra rows unless the user explicitly asks to generate/infer/build ' +
-      'tables from prose. QUALITY GATE: if there is no reliable table evidence and no ' +
-      'clear design entities, do not call setup_library or other write tools; tell the ' +
-      'user the table quality would be poor and ask for clearer source data or an explicit ' +
-      'generation instruction. Present a short summary of the planned tables before creating anything.'
-  );
+  parts.push(sourceDescription);
   if (params.documentId) {
     parts.push(
       sourceKind === 'project-document'
         ? `This request is bound to signed frozen snapshot ${params.documentId}; use the provided content exactly for this export. Later document edits do not change this snapshot.`
         : `The uploaded source is also stored as project document ${params.documentId}. Use read_document when you need the latest logical document state.`
+    );
+  }
+
+  parts.push(INTENT_HEADER);
+  parts.push(params.intent);
+  if (params.intent === 'analyze') {
+    parts.push(
+      'The application has already parsed this attachment and supplied its content below. ' +
+        'Follow the user instructions using the supplied content. Do not claim that the ' +
+        'file cannot be read. Do not call project-structure, field-type, or write tools, and ' +
+        'do not recommend table or script imports unless the user explicitly asks for a ' +
+        'project operation.'
+    );
+    if (!params.additionalInstructions?.trim()) {
+      parts.push('With no additional instructions, provide a concise summary of the document.');
+    }
+  } else {
+    parts.push(
+      'First call ' +
+        'list_project_structure and list_field_types, then analyze the content, infer ' +
+        'which tables (libraries) are needed, design appropriate fields (columns) using ' +
+        'only supported field types. EXTRACTION mode: when the document contains explicit ' +
+        'tables, preserve the explicit table headers and rows and use nearby prose only ' +
+        'as context for table names or obvious field labels. Do not convert surrounding ' +
+        'story/prose into extra rows unless the user explicitly asks to generate/infer/build ' +
+        'tables from prose. QUALITY GATE: if there is no reliable table evidence and no ' +
+        'clear design entities, do not call setup_library or other write tools; tell the ' +
+        'user the table quality would be poor and ask for clearer source data or an explicit ' +
+        'generation instruction. Present a short summary of the planned tables before creating anything.'
     );
   }
 
@@ -77,7 +99,7 @@ export interface ParsedDesignMessage {
  * when `message` is not a design-document message.
  */
 export function parseDesignMessage(message: string): ParsedDesignMessage | null {
-  if (!message.startsWith(DOC_HEADER)) return null;
+  if (!message.startsWith(DOC_HEADER) && !message.startsWith(LEGACY_DOC_HEADER)) return null;
 
   const fileMatch = message.match(/(?:design|project) document "([^"]+)"/);
   const fileName = fileMatch?.[1] ?? 'document';

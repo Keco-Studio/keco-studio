@@ -73,6 +73,7 @@ import {
   createSanctionedMdxDescriptors,
   type SanctionedMdxEditorProps,
 } from '@/lib/documents/sanctionedMdxDescriptors';
+import { markdownImageExportPlugin } from '@/lib/documents/markdownImageExportPlugin';
 import { syncCodeMirrorDocument } from './codeMirrorDocumentSync';
 import {
   SanctionedMdxPropertyEditor,
@@ -368,6 +369,7 @@ export default function MdxDocumentEditor({
       linkPlugin(),
       linkDialogPlugin({ showLinkTitleField: false }),
       imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
+      markdownImageExportPlugin(),
       tablePlugin(),
       codeBlockPlugin({
         defaultCodeBlockLanguage: '',
@@ -410,6 +412,7 @@ export default function MdxDocumentEditor({
     if (showToolbar) {
       stablePlugins.push(
         toolbarPlugin({
+          toolbarClassName: styles.stickyToolbar,
           toolbarContents: () => (
             <>
               <UndoRedo />

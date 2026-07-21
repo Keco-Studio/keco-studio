@@ -209,6 +209,7 @@ export function ChatInput({
         const message = buildDesignMessage({
           fileName: file.name,
           documentText,
+          intent: 'analyze',
           additionalInstructions: trimmed || undefined,
         });
         onSend(message, { imageUrls, selectionContext });

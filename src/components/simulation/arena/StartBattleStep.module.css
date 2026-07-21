@@ -1,0 +1,252 @@
+.root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.logPanel {
+  width: 280px;
+  min-width: 280px;
+  flex-shrink: 0;
+  border-right: 1px solid #f0f0f0;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.logTitle {
+  flex-shrink: 0;
+  padding: 12px 14px 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.logBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 14px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.logLine {
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.logLineGrowth {
+  color: #389e0d;
+}
+
+.progressionDisabled {
+  flex-shrink: 0;
+  border-top: 1px solid #e8e8e8;
+  padding: 10px 14px 12px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(0, 0, 0, 0.45);
+  background: #fafafa;
+}
+
+.rightCol {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.arenaStage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.arenaFrame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.statusBar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.statusMain {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.fighter {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  background: #ffffff;
+  min-width: 0;
+}
+
+.fighterPlayer {
+  border-left: 3px solid #52c41a;
+}
+
+.fighterEnemy {
+  border-left: 3px solid #ff4d4f;
+}
+
+.fighterHead {
+  margin-bottom: 8px;
+}
+
+.fighterName {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.barRow:last-child {
+  margin-bottom: 0;
+}
+
+.barLabel {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  font-weight: 500;
+}
+
+.barTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: #f0f0f0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.barFillHp {
+  height: 100%;
+  background: linear-gradient(90deg, #52c41a, #73d13d);
+  transition: width 120ms linear;
+}
+
+.barFillMp {
+  height: 100%;
+  background: linear-gradient(90deg, #722ed1, #9254de);
+  transition: width 120ms linear;
+}
+
+.barValue {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.statusActions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  min-width: 108px;
+}
+
+.tickLabel {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stopBtn {
+  padding: 7px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stopBtn:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+@media (max-width: 720px) {
+  .logPanel {
+    width: 200px;
+    min-width: 200px;
+  }
+
+  .statusMain {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .root {
+    flex-direction: column;
+  }
+
+  .logPanel {
+    width: 100%;
+    min-width: 0;
+    max-height: 22vh;
+    border-right: none;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .statusBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .statusActions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+}

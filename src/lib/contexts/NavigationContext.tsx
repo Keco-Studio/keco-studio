@@ -14,6 +14,7 @@ import {
   verifyAssetAccess,
   AuthorizationError,
 } from '@/lib/services/authorizationService';
+import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 
 type BreadcrumbItem = {
   label: string;
@@ -74,6 +75,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const currentFolderId = useMemo(() => {
     return currentFolderIdFromUrl || libraryFolderId;
   }, [currentFolderIdFromUrl, libraryFolderId]);
+
+  useEffect(() => {
+    if (!currentProjectId || !projectName?.trim()) return;
+    writeSimulationProjectPreference({
+      projectId: currentProjectId,
+      projectName: projectName.trim(),
+    });
+  }, [currentProjectId, projectName]);
 
   // Detect user switch and redirect if needed
   useEffect(() => {

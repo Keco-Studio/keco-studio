@@ -147,8 +147,23 @@ function DocumentEditorSession({
     setReferenceNavigationReady((current) => current === ready ? current : ready);
   }, []);
   const loadExportSource = useCallback(async (): Promise<DocumentExportSource> => {
-    if (permissions.role !== 'viewer') {
-      await collaboration.session?.flush();
+    // Best-effort: derived exports read durable server state. A local Yjs flush
+    // failure or stall must not block opening the script/table export flow.
+    if (permissions.role !== 'viewer' && collaboration.session) {
+      const session = collaboration.session;
+      await new Promise<void>((resolve) => {
+        const timeoutId = globalThis.setTimeout(resolve, 5_000);
+        void Promise.resolve(session.flush()).then(
+          () => {
+            globalThis.clearTimeout(timeoutId);
+            resolve();
+          },
+          () => {
+            globalThis.clearTimeout(timeoutId);
+            resolve();
+          }
+        );
+      });
     }
     const {
       data: { session },
@@ -195,6 +210,7 @@ function DocumentEditorSession({
             const message = buildDesignMessage({
               fileName: source.documentName,
               documentText: source.markdown,
+              intent: 'tables',
               documentId: source.documentId,
               sourceKind: 'project-document',
             });

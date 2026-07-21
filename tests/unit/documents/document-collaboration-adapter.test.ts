@@ -9,8 +9,13 @@ const editorPath = path.join(
   process.cwd(),
   'src/components/documents/MdxDocumentEditor.tsx'
 );
+const editorCssPath = path.join(
+  process.cwd(),
+  'src/components/documents/MdxDocumentEditor.module.css'
+);
 const plugin = readFileSync(pluginPath, 'utf8');
 const editor = readFileSync(editorPath, 'utf8');
+const editorCss = readFileSync(editorCssPath, 'utf8');
 
 describe('document Lexical Yjs adapter contract', () => {
   it('consumes one shared session instead of duplicate provider/doc state', () => {
@@ -27,6 +32,16 @@ describe('document Lexical Yjs adapter contract', () => {
     expect(editor).toMatch(/if \(showToolbar\) \{[\s\S]*toolbarPlugin\(/);
     // readOnly must not gate plugin registration — MDXEditor only inits plugins once.
     expect(editor).not.toMatch(/readOnly[\s\S]{0,40}toolbarPlugin/);
+  });
+
+  it('keeps the formatting toolbar sticky in the content scroll viewport', () => {
+    expect(editor).toMatch(
+      /toolbarPlugin\(\{[\s\S]*toolbarClassName:\s*styles\.stickyToolbar/
+    );
+    expect(editorCss).toMatch(/\.stickyToolbar\s*\{[^}]*position:\s*sticky/);
+    expect(editorCss).toMatch(/\.stickyToolbar\s*\{[^}]*top:\s*0/);
+    expect(editorCss).toMatch(/\.editor\s*\{[^}]*overflow:\s*visible/);
+    expect(editorCss).not.toMatch(/\.editor\s*\{[^}]*overflow:\s*hidden/);
   });
 
   it('creates the binding only from a committed Lexical composer effect', () => {

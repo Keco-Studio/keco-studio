@@ -200,6 +200,7 @@ describe('DocumentEditor export durability', () => {
     permissionRole = 'editor';
     beginRender(true);
     flush.mockReset();
+    flush.mockResolvedValue(undefined);
     stateSetter.mockReset();
     saveDesignHandoff.mockReset();
     buildDesignMessage.mockClear();
@@ -363,6 +364,7 @@ describe('DocumentEditor export durability', () => {
       documentText: '| Name | Value |',
       documentId: 'document-id',
       sourceKind: 'project-document',
+      intent: 'tables',
     });
   });
 
@@ -390,6 +392,32 @@ describe('DocumentEditor export durability', () => {
       folderId: 'folder-id',
       documentSource: source,
     });
+  });
+
+  it('still opens script export when the collaboration flush fails', async () => {
+    permissionRole = 'admin';
+    flush.mockRejectedValue(new Error('Pending changes could not be saved'));
+    const source = {
+      documentId: 'document-id',
+      documentName: 'Export me',
+      projectId: 'project-id',
+      folderId: 'folder-id',
+      markdown: 'Scene: Start',
+      token: { epoch: 7, revision: 3 },
+      snapshotToken: 'signed-snapshot-token',
+    };
+    (fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
+
+    await exportHandler()({ key: 'script' });
+
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/documents/document-id/export-source',
+      { headers: { Authorization: 'Bearer fresh-access-token' } }
+    );
+    expect(stateSetter).toHaveBeenCalledWith(source);
+    expect(showErrorToast).not.toHaveBeenCalled();
   });
 
   it('uses the latest project binding when the editor project changes', async () => {

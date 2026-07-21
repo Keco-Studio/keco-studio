@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
-import { SimulationSystemEmbed } from '../SimulationSystemEmbed';
+import { SimulationWorkbenchPage } from '../SimulationWorkbenchPage';
 
-export default function SimulationSystemEmbedPage() {
+export default function SimulationSystemPage() {
   return (
     <Suspense fallback={<div style={{ padding: 16 }}>Loading simulator…</div>}>
-      <SimulationSystemEmbed />
+      <SimulationWorkbenchPage />
     </Suspense>
   );
 }

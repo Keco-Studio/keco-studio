@@ -26,6 +26,12 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@keco/battle-core": [
+        "./packages/keco-battle-core/src/index.ts"
+      ],
+      "@keco/battle-engine": [
+        "./packages/keco-battle-engine/src/index.ts"
       ]
     }
   },

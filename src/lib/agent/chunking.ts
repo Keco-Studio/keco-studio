@@ -53,20 +53,33 @@ export interface TurnGroupOptions {
   longMessageChars?: number;
 }
 
-const DESIGN_DOC_PREFIX = '[Design document]';
+const DESIGN_DOC_PREFIXES = ['[Document attachment]', '[Design document]'] as const;
+
+function findDesignDocumentPrefix(text: string): string | undefined {
+  return DESIGN_DOC_PREFIXES.find((prefix) => text.startsWith(prefix));
+}
 
 export function hashContent(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
 export function isDesignDocumentMessage(text: string): boolean {
-  return text.trimStart().startsWith(DESIGN_DOC_PREFIX);
+  return findDesignDocumentPrefix(text.trimStart()) !== undefined;
 }
 
 export function stripDesignDocumentPrefix(text: string): string {
   const trimmed = text.trimStart();
-  if (!trimmed.startsWith(DESIGN_DOC_PREFIX)) return text;
-  return trimmed.slice(DESIGN_DOC_PREFIX.length).replace(/^\s*\n?/, '');
+  const prefix = findDesignDocumentPrefix(trimmed);
+  if (!prefix) return text;
+
+  const contentBoundary = /\r?\n\[Document content\](?:\r?\n|$)/g;
+  contentBoundary.lastIndex = prefix.length;
+  const contentMatch = contentBoundary.exec(trimmed);
+  if (contentMatch) {
+    return trimmed.slice(contentMatch.index + contentMatch[0].length);
+  }
+
+  return trimmed.slice(prefix.length).replace(/^\s*\n?/, '');
 }
 
 function parseTime(iso: string): number {

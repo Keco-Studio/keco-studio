@@ -319,6 +319,28 @@ test.describe.serial('Document-derived library lifecycle', () => {
     let tableRequest: Record<string, unknown> | undefined;
     let scriptRequestBody = '';
 
+    // Stub export-source so table/script flows do not depend on live Yjs flush
+    // succeeding after the agent panel has already been open (CI flake).
+    await page.route(
+      `**/api/documents/${fixture.folderDocument.id}/export-source`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            source: {
+              documentId: fixture.folderDocument.id,
+              documentName: fixture.folderDocument.name,
+              projectId: fixture.projectId,
+              folderId: fixture.sourceFolder.id,
+              markdown: FOLDER_DOCUMENT_MARKDOWN,
+              token: { epoch: 1, revision: 1 },
+              snapshotToken: 'test-folder-snapshot-token',
+            },
+          }),
+        });
+      }
+    );
     await page.route('**/api/agent-chat', async (route) => {
       tableRequest = route.request().postDataJSON() as Record<string, unknown>;
       const id = await createDerivedLibrary(admin, fixture, {
@@ -380,10 +402,18 @@ test.describe.serial('Document-derived library lifecycle', () => {
     // The assistant panel overlays the document toolbar after a table export.
     // Close it before opening the document export menu for the script flow.
     await page.getByTestId('agent-panel').getByRole('button', { name: '✕' }).click();
+    await expect(page.getByTestId('agent-panel')).toBeHidden();
     await expect(page.getByTestId('agent-launcher')).toBeVisible();
+    await expect(page.getByTestId('document-export')).toBeEnabled();
 
     menu = await openExportMenu(page);
+    const exportSourceResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/documents/${fixture.folderDocument.id}/export-source`) &&
+        response.ok()
+    );
     await menu.getByText('Export as script', { exact: true }).click();
+    await exportSourceResponse;
     const modal = page.getByTestId('import-script-modal');
     await expect(modal).toBeVisible();
     await expect(page.getByTestId('import-script-document-source')).toContainText(
