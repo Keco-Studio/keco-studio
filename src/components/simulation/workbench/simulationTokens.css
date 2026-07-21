@@ -1,0 +1,22 @@
+[data-simulation-root] {
+  --simulation-bg: #f4f6f8;
+  --simulation-surface: #ffffff;
+  --simulation-surface-subtle: #eef1f4;
+  --simulation-sidebar: #18212b;
+  --simulation-sidebar-muted: #91a0b0;
+  --simulation-text: #17202a;
+  --simulation-text-muted: #627080;
+  --simulation-border: #d8dee5;
+  --simulation-primary: #246bce;
+  --simulation-primary-strong: #174d9b;
+  --simulation-accent: #d89a22;
+  --simulation-success: #25845b;
+  --simulation-danger: #c64a4a;
+  --simulation-focus: #67a5f8;
+  --simulation-radius: 6px;
+  --simulation-sidebar-width: 252px;
+  --simulation-header-height: 72px;
+  --simulation-shadow: 0 12px 32px rgba(19, 30, 43, 0.14);
+  --simulation-font-body: Inter, Arial, sans-serif;
+  --simulation-font-data: "SFMono-Regular", Consolas, monospace;
+}
