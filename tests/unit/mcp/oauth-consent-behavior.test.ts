@@ -226,6 +226,68 @@ it('keeps approval blocked until access to the bound project is verified', async
   expect(findButton(verifiedTree, 'Approve').props.disabled).toBe(false);
 });
 
+it('re-checks membership immediately before approving', async () => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a', PROJECT_A),
+    error: null,
+  });
+  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  expect(findButton(runtime.render(OAuthConsentClient), 'Approve').props.disabled).toBe(false);
+
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a', PROJECT_A),
+    error: null,
+  });
+  getProject.mockResolvedValueOnce(null);
+  approveAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback' },
+    error: null,
+  });
+
+  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(approveAuthorization).not.toHaveBeenCalled();
+  expect(JSON.stringify(runtime.render(OAuthConsentClient))).toContain(
+    'You do not have access to the bound project.'
+  );
+});
+
+it.each([
+  ['authorization ID', authorizationDetails('authorization-b', PROJECT_A)],
+  ['authorization resource', authorizationDetails('authorization-a', PROJECT_B)],
+] as const)('rejects approval when the %s changes before approval', async (_change, changedDetails) => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a', PROJECT_A),
+    error: null,
+  });
+  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  expect(findButton(runtime.render(OAuthConsentClient), 'Approve').props.disabled).toBe(false);
+
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: changedDetails,
+    error: null,
+  });
+  approveAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback' },
+    error: null,
+  });
+
+  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(approveAuthorization).not.toHaveBeenCalled();
+  expect(JSON.stringify(runtime.render(OAuthConsentClient))).toContain(
+    'Authorization request changed before approval.'
+  );
+});
+
 it('does not reuse a verified binding after the authorization ID changes', async () => {
   getAuthorizationDetails.mockResolvedValueOnce({
     data: authorizationDetails('authorization-a', PROJECT_A),

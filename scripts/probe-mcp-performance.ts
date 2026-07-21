@@ -4,16 +4,20 @@ const COLD_LIMIT_MS = 2000;
 const WARM_LIMIT_MS = 300;
 const DEFAULT_WARM_SAMPLES = 20;
 const PROTOCOL_VERSION = '2025-11-25';
+const COLD_GATE_UNVERIFIED_REASON = 'cold-start-not-verified' as const;
 
 export interface PerformanceSamples {
-  coldInitializeMs: number;
+  firstRequestMs: number;
+  coldVerified: boolean;
   warmInitializeMs: number[];
   warmToolsListMs: number[];
 }
 
 export interface PerformanceEvaluation {
   passed: boolean;
-  coldInitializeMs: number;
+  firstRequestMs: number;
+  coldVerified: boolean;
+  coldGateReason?: typeof COLD_GATE_UNVERIFIED_REASON;
   warmInitializeP95Ms: number;
   warmToolsListP95Ms: number;
 }
@@ -28,10 +32,13 @@ export function evaluatePerformance(samples: PerformanceSamples): PerformanceEva
   const warmInitializeP95Ms = percentile95(samples.warmInitializeMs);
   const warmToolsListP95Ms = percentile95(samples.warmToolsListMs);
   return {
-    passed: samples.coldInitializeMs < COLD_LIMIT_MS
+    passed: samples.coldVerified
+      && samples.firstRequestMs < COLD_LIMIT_MS
       && warmInitializeP95Ms < WARM_LIMIT_MS
       && warmToolsListP95Ms < WARM_LIMIT_MS,
-    coldInitializeMs: samples.coldInitializeMs,
+    firstRequestMs: samples.firstRequestMs,
+    coldVerified: samples.coldVerified,
+    ...(samples.coldVerified ? {} : { coldGateReason: COLD_GATE_UNVERIFIED_REASON }),
     warmInitializeP95Ms,
     warmToolsListP95Ms,
   };
@@ -41,6 +48,7 @@ type ProbeOptions = {
   mcpUrl: string;
   accessToken: string;
   warmSamples?: number;
+  coldVerified?: boolean;
   fetchImpl?: typeof fetch;
   now?: () => number;
 };
@@ -118,7 +126,7 @@ export async function runPerformanceProbe(options: ProbeOptions) {
     now,
   });
 
-  const coldInitializeMs = await invoke('initialize', 'Cold initialize');
+  const firstRequestMs = await invoke('initialize', 'First request');
   const warmInitializeMs: number[] = [];
   const warmToolsListMs: number[] = [];
   for (let index = 0; index < warmSamples; index += 1) {
@@ -129,10 +137,14 @@ export async function runPerformanceProbe(options: ProbeOptions) {
   }
 
   const evaluation = evaluatePerformance({
-    coldInitializeMs,
+    firstRequestMs,
+    coldVerified: options.coldVerified === true,
     warmInitializeMs,
     warmToolsListMs,
   });
+  if (!evaluation.coldVerified) {
+    throw new Error(COLD_GATE_UNVERIFIED_REASON);
+  }
   if (!evaluation.passed) throw new Error('MCP performance budgets failed.');
 
   return {
@@ -141,7 +153,8 @@ export async function runPerformanceProbe(options: ProbeOptions) {
     mcpUrl: options.mcpUrl,
     thresholdsMs: { coldRequest: COLD_LIMIT_MS, warmP95: WARM_LIMIT_MS },
     measurements: {
-      coldInitializeMs: evaluation.coldInitializeMs,
+      firstRequestMs: evaluation.firstRequestMs,
+      coldVerified: evaluation.coldVerified,
       warmInitialize: {
         sampleCount: warmInitializeMs.length,
         p95Ms: evaluation.warmInitializeP95Ms,
@@ -171,13 +184,17 @@ async function main(): Promise<void> {
     return runPerformanceProbe({
       mcpUrl,
       accessToken: token,
+      coldVerified: args.includes('--cold-verified'),
     });
   });
 }
 
 if (process.argv[1]?.endsWith('probe-mcp-performance.ts')) {
-  void main().catch(() => {
-    console.error('MCP performance probe failed.');
+  void main().catch((error: unknown) => {
+    const reason = error instanceof Error && error.message === COLD_GATE_UNVERIFIED_REASON
+      ? COLD_GATE_UNVERIFIED_REASON
+      : 'MCP performance probe failed.';
+    console.error(reason);
     process.exitCode = 1;
   });
 }

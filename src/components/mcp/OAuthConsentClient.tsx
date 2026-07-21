@@ -158,6 +158,64 @@ export function OAuthConsentClient() {
     if (!authorizationId || (action === 'approve' && !binding)) return;
     const decisionAuthorizationId = authorizationId;
     setState({ ...currentState, busy: true });
+
+    if (action === 'approve' && binding) {
+      let latestResult: Awaited<ReturnType<
+        typeof supabase.auth.oauth.getAuthorizationDetails
+      >>;
+      try {
+        latestResult = await supabase.auth.oauth.getAuthorizationDetails(decisionAuthorizationId);
+      } catch {
+        if (authorizationIdRef.current !== decisionAuthorizationId) return;
+        setState({
+          ...currentState,
+          error: 'Authorization request changed before approval.',
+          busy: false,
+        });
+        return;
+      }
+      if (authorizationIdRef.current !== decisionAuthorizationId) return;
+
+      const latestDetails = latestResult.data as BoundDetails | null;
+      const latestProjectId = projectIdFromOAuthResource(latestDetails?.resource);
+      if (
+        latestResult.error
+        || !latestDetails
+        || latestDetails.authorization_id !== decisionAuthorizationId
+        || latestDetails.resource !== binding.details.resource
+        || latestProjectId !== binding.projectId
+        || Boolean(latestDetails.redirect_url)
+      ) {
+        setState({
+          ...currentState,
+          error: 'Authorization request changed before approval.',
+          busy: false,
+        });
+        return;
+      }
+
+      try {
+        const project = await getProject(supabase, latestProjectId);
+        if (authorizationIdRef.current !== decisionAuthorizationId) return;
+        if (!project || project.id !== latestProjectId) {
+          setState({
+            ...currentState,
+            error: 'You do not have access to the bound project.',
+            busy: false,
+          });
+          return;
+        }
+      } catch {
+        if (authorizationIdRef.current !== decisionAuthorizationId) return;
+        setState({
+          ...currentState,
+          error: 'You do not have access to the bound project.',
+          busy: false,
+        });
+        return;
+      }
+    }
+
     const result = action === 'approve'
       ? await supabase.auth.oauth.approveAuthorization(decisionAuthorizationId, { skipBrowserRedirect: true })
       : await supabase.auth.oauth.denyAuthorization(decisionAuthorizationId, { skipBrowserRedirect: true });

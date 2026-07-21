@@ -17,7 +17,7 @@
 - Do not use `service_role` for an MCP request or to validate project access.
 - Access tokens, authorization codes, PKCE verifiers, full JWT payload values, and user document content must never enter logs or probe artifacts.
 - Incoming request bodies are limited to 256 KiB; protocol responses are JSON and must remain below 1 MiB.
-- Warm `initialize` and static capability calls target P95 below 300 ms; cold requests target P95 below 2 seconds.
+- Warm `initialize` and static capability calls target P95 below 300 ms; independently verified cold-start requests target below 2 seconds.
 - Keep all tracked source, tests, documentation, and UI copy in ASCII English to satisfy the repository's CI character gate.
 - Any hosted Supabase config change or Edge deployment requires explicit user approval at execution time.
 
@@ -52,7 +52,7 @@
 
 - `scripts/probe-mcp-oauth.ts`: checks the unauthenticated challenge, resource metadata, authorization metadata, and dynamic registration without printing secrets.
 - `tests/unit/mcp/oauth-probe.test.ts`: parser and redaction tests for the probe.
-- `scripts/probe-mcp-performance.ts`: enforces authenticated cold and warm latency budgets without recording credentials.
+- `scripts/probe-mcp-performance.ts`: records the authenticated first request, requires independent cold-start verification, and enforces cold and warm latency budgets without recording credentials.
 - `tests/unit/mcp/performance-probe.test.ts`: percentile, threshold, redaction, and failure tests for the performance probe.
 - `docs/mcp/phase-1-compatibility.json`: machine-written, non-secret probe evidence.
 - `docs/mcp/phase-1-performance-codex.json`: non-secret Codex-authenticated latency evidence.
@@ -1278,32 +1278,40 @@ restore test membership only if the fixture is still needed
 After each real client completes OAuth, place that client's bearer token only in
 the `MCP_ACCESS_TOKEN` environment variable through a secret-safe interactive or
 credential-store workflow. Do not put the value in a command argument, shell
-history, log, or artifact. Run the probe once for each client:
+history, log, or artifact. Independently establish that the preview Edge isolate
+is cold using provider-side isolate lifecycle evidence or an approved cold-start
+procedure before each run. The first request measurement does not independently prove a cold start,
+so pass `--cold-verified` only after that separate verification. Run the probe
+once for each client:
 
 ```bash
 npm run probe:mcp-performance -- \
   --mcp-url "https://$SUPABASE_PROJECT_REF_PREVIEW.supabase.co/functions/v1/mcp/$MCP_TEST_PROJECT_ID" \
+  --cold-verified \
   --output docs/mcp/phase-1-performance-codex.json
 
 npm run probe:mcp-performance -- \
   --mcp-url "https://$SUPABASE_PROJECT_REF_PREVIEW.supabase.co/functions/v1/mcp/$MCP_TEST_PROJECT_ID" \
+  --cold-verified \
   --output docs/mcp/phase-1-performance-claude.json
 unset MCP_ACCESS_TOKEN
 ```
 
-Each run records cold request latency, warm `initialize` P95, and warm
-`tools/list` P95. It passes only when the cold request is below 2000 ms and both
-warm P95 values are below 300 ms. The command reads the bearer token only from
-`MCP_ACCESS_TOKEN`, never prints or stores it, removes stale output before a
-rerun, and writes successful non-secret evidence atomically. Phase 1 must stop
-with FAIL if either performance evidence file is missing or does not contain
-`"passed": true`.
+Each run records `firstRequestMs`, whether cold proof was explicitly supplied,
+warm `initialize` P95, and warm `tools/list` P95. Without `--cold-verified`, the
+cold gate fails with the stable reason `cold-start-not-verified` even when the
+first request is below 2000 ms. With independent cold proof, it passes only when
+the first request is below 2000 ms and both warm P95 values are below 300 ms.
+The command reads the bearer token only from `MCP_ACCESS_TOKEN`, never prints or
+stores it, removes stale output before a rerun, and writes successful non-secret
+evidence atomically. Phase 1 must stop with FAIL if either performance evidence
+file is missing or does not contain `"passed": true`.
 The performance evidence reports `"passed": true` only after all three latency
 gates pass.
 
 - [ ] **Step 8: Write the client matrix with an unambiguous verdict**
 
-Create `docs/mcp/phase-1-client-matrix.md` only after both client runs are complete. It must contain a four-column table named `Gate`, `Codex`, `Claude`, and `Required result`. Add rows for protected-resource discovery, dynamic client registration, PKCE authorization, project resource preservation, stable client identity, `initialize`, `tools/list`, probe tool call, refresh and retry, membership revocation, cold request latency, warm `initialize` P95, and warm `tools/list` P95. Populate each client cell with the observed enum `PASS` or `FAIL`; the required-result cell is `PASS in both` for every row. End with `**Phase 1 verdict:** PASS` only when every client cell passes and both performance evidence files report `"passed": true`; otherwise end with `**Phase 1 verdict:** FAIL` and the approved design remediation. Do not create or commit an incomplete matrix.
+Create `docs/mcp/phase-1-client-matrix.md` only after both client runs are complete. It must contain a four-column table named `Gate`, `Codex`, `Claude`, and `Required result`. Add rows for protected-resource discovery, dynamic client registration, PKCE authorization, project resource preservation, stable client identity, `initialize`, `tools/list`, probe tool call, refresh and retry, membership revocation, independently verified cold-start latency, warm `initialize` P95, and warm `tools/list` P95. Populate each client cell with the observed enum `PASS` or `FAIL`; the required-result cell is `PASS in both` for every row. End with `**Phase 1 verdict:** PASS` only when every client cell passes and both performance evidence files report `"passed": true`; otherwise end with `**Phase 1 verdict:** FAIL` and the approved design remediation. Do not create or commit an incomplete matrix.
 
 - [ ] **Step 9: Reconcile the design if the gate fails**
 

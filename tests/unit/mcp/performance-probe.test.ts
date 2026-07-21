@@ -56,11 +56,15 @@ describe('MCP performance probe', () => {
       'docs/superpowers/plans/2026-07-21-supabase-mcp-phase-1.md'
     ), 'utf8');
     expect(plan).toContain('npm run probe:mcp-performance');
-    expect(plan).toContain('cold request latency');
+    expect(plan).toContain('--cold-verified');
+    expect(plan).toContain('first request measurement does not independently prove a cold start');
+    expect(plan).toContain('independently verified cold-start latency');
     expect(plan).toContain('warm `initialize` P95');
     expect(plan).toContain('warm `tools/list` P95');
     expect(plan).toContain('performance evidence reports `"passed": true`');
-    expect(plan).toContain('cold request latency, warm `initialize` P95, and warm `tools/list` P95');
+    expect(plan).toContain(
+      'independently verified cold-start latency, warm `initialize` P95, and warm `tools/list` P95'
+    );
   });
 
   it('uses nearest-rank P95 without mutating samples', () => {
@@ -71,15 +75,42 @@ describe('MCP performance probe', () => {
 
   it('enforces strict cold and warm latency thresholds', () => {
     expect(evaluatePerformance({
-      coldInitializeMs: 1999.99,
+      firstRequestMs: 1999.99,
+      coldVerified: true,
       warmInitializeMs: [299.99],
       warmToolsListMs: [299.99],
     }).passed).toBe(true);
     expect(evaluatePerformance({
-      coldInitializeMs: 2000,
+      firstRequestMs: 2000,
+      coldVerified: true,
       warmInitializeMs: [300],
       warmToolsListMs: [1],
     })).toEqual(expect.objectContaining({ passed: false }));
+  });
+
+  it('does not claim the first request is verified cold evidence without explicit proof', async () => {
+    const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { id: number };
+      return rpcResponse(request.id);
+    });
+
+    await expect(runPerformanceProbe({
+      mcpUrl,
+      accessToken: 'header.payload.signature',
+      warmSamples: 1,
+      fetchImpl: fetchMock as typeof fetch,
+      now: () => 0,
+    })).rejects.toThrow('cold-start-not-verified');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(evaluatePerformance({
+      firstRequestMs: 1,
+      coldVerified: false,
+      warmInitializeMs: [1],
+      warmToolsListMs: [1],
+    })).toEqual(expect.objectContaining({
+      passed: false,
+      coldGateReason: 'cold-start-not-verified',
+    }));
   });
 
   it('authenticates from the supplied token but never returns or logs it', async () => {
@@ -96,6 +127,7 @@ describe('MCP performance probe', () => {
       mcpUrl,
       accessToken: token,
       warmSamples: 2,
+      coldVerified: true,
       fetchImpl: fetchMock as typeof fetch,
       now,
     });
@@ -121,11 +153,13 @@ describe('MCP performance probe', () => {
       mcpUrl,
       accessToken: 'header.payload.signature',
       warmSamples: 1,
+      coldVerified: true,
       fetchImpl: fetchMock as typeof fetch,
       now: () => clock,
     });
 
-    expect(evidence.measurements.coldInitializeMs).toBe(25);
+    expect(evidence.measurements.firstRequestMs).toBe(25);
+    expect(evidence.measurements.coldVerified).toBe(true);
     expect(evidence.measurements.warmInitialize.p95Ms).toBe(25);
     expect(evidence.measurements.warmToolsList.p95Ms).toBe(25);
   });
@@ -138,9 +172,10 @@ describe('MCP performance probe', () => {
       mcpUrl,
       accessToken: token,
       warmSamples: 1,
+      coldVerified: true,
       fetchImpl: fetchMock as typeof fetch,
       now: () => 0,
-    })).rejects.toThrow('Cold initialize failed with HTTP 500.');
+    })).rejects.toThrow('First request failed with HTTP 500.');
   });
 
   it('rejects JSON that is not the matching JSON-RPC response', async () => {
@@ -150,8 +185,9 @@ describe('MCP performance probe', () => {
       mcpUrl,
       accessToken: 'header.payload.signature',
       warmSamples: 1,
+      coldVerified: true,
       fetchImpl: fetchMock as typeof fetch,
       now: () => 0,
-    })).rejects.toThrow('Cold initialize returned an invalid MCP response.');
+    })).rejects.toThrow('First request returned an invalid MCP response.');
   });
 });
