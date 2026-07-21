@@ -63,10 +63,17 @@ export function BattleScreen() {
     };
   });
 
-  return <section className={styles.flowScreen} aria-labelledby="battle-title">
-    <div className={styles.flowHeading}><div><span className={styles.kicker}>Arena and batch</span><h2 id="battle-title">Battle</h2><p>Run one animated battle or compare up to 500 deterministic simulation runs.</p></div><SimulationButton variant="primary" disabled={!ready || playback.phase === 'running'} onClick={playback.start}>Start battle</SimulationButton></div>
+  if (playback.phase === 'idle') return <section className={styles.flowScreen} aria-labelledby="battle-title">
+    <div className={styles.flowHeading}><div><h2 id="battle-title">Battle</h2><p>Run one visual battle in the Arena, or batch-simulate to read the win rate. Team A is yours.</p></div></div>
     {!ready ? <div className={styles.errorList} role="alert">Each team needs a fighter and every fighter needs at least one skill.</div> : null}
-    <div className={styles.battleWorkspace}><div className={styles.battleLog}><strong>Battle log</strong>{playback.logs.map((event, index) => <p key={index}><b>{event.tag}</b> {event.text}</p>)}</div><Arena fighters={fighters} round={playback.round} caption={playback.phase === 'running' ? 'Fighting' : playback.result ? 'Team ' + playback.result.winner + ' wins' : 'Ready'} /></div>
-    <div className={styles.batchPanel}><label className={styles.fieldLabel}>Runs<input type="number" min={1} max={500} value={batchCount} onChange={(event) => setBatchCount(Number(event.target.value))} /></label><SimulationButton disabled={!ready} onClick={() => setBatchResult(playback.runBatch(batchCount))}>Run batch</SimulationButton>{batchResult ? <strong>Team A: {batchResult.teamAWins}/{batchResult.runs} ({batchResult.teamAWinRate}%)</strong> : null}</div>
+    <div className={styles.battleModeGrid}>
+      <article className={styles.battleModeCard}><div className={styles.modeTitle}><span aria-hidden="true">⚔</span><h3>Single battle</h3></div><p>Watch a turn-based PVE fight play out in the arena with movement, skills, element reactions and a live log.</p><SimulationButton variant="primary" disabled={!ready} onClick={playback.start}>Start battle</SimulationButton></article>
+      <article className={styles.battleModeCard}><div className={styles.modeTitle}><span aria-hidden="true">∑</span><h3>Batch simulation</h3></div><p>Run N battles in the background and read the win rate. No animation.</p><div className={styles.batchControls}><label className={styles.fieldLabel}>Runs (1-500)<input type="number" min={1} max={500} value={batchCount} onChange={(event) => setBatchCount(Number(event.target.value))} /></label><SimulationButton disabled={!ready} onClick={() => setBatchResult(playback.runBatch(batchCount))}>Run batch</SimulationButton></div>{batchResult ? <div className={styles.batchResult}><span style={{ width: `${batchResult.teamAWinRate}%` }} /><strong>Team A · {batchResult.teamAWinRate}%</strong><small>{batchResult.teamAWins}/{batchResult.runs} wins</small></div> : null}</article>
+    </div>
+  </section>;
+
+  return <section className={styles.flowScreen} aria-labelledby="battle-title">
+    <div className={styles.arenaToolbar}><span><strong id="battle-title">Arena</strong><small>Round {playback.round}</small><b>{playback.phase === 'running' ? '● Fighting' : 'Finished'}</b></span><SimulationButton onClick={playback.stop}>Stop battle</SimulationButton></div>
+    <div className={styles.battleWorkspace}><div className={styles.battleLog}><strong>Battle log</strong>{playback.logs.map((event, index) => <p key={index}><b>{event.tag}</b> {event.text}</p>)}</div><Arena fighters={fighters} round={playback.round} caption={playback.result ? 'Team ' + playback.result.winner + ' wins' : 'Fighting'} /></div>
   </section>;
 }

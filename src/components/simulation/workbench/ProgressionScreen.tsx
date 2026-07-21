@@ -37,16 +37,16 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
   }
 
   return <section className={styles.flowScreen} aria-labelledby="progression-title">
-    <div className={styles.flowHeading}><div><span className={styles.kicker}>Levels and skill points</span><h2 id="progression-title">Progression</h2><p>Spend imported skill-point costs and review each fighter&apos;s local progression.</p></div></div>
-    <div className={styles.splitLayout}><nav className={styles.rosterNav} aria-label="Fighters">{session.roster.map((item) => {
+    <div className={styles.flowHeading}><div><h2 id="progression-title">Progression</h2><p>Spend <b>SP</b> to level skills. Win battles to earn EXP; each level-up grants skill points and stays local.</p></div></div>
+    <div className={styles.splitLayout}><div><span className={styles.sectionLabel}>Roster</span><nav className={styles.rosterNav} aria-label="Fighters">{session.roster.map((item) => {
       const template = snapshot.catalog.characters.find(({ id }) => id === item.tmplId)!;
       return <button type="button" aria-current={item.uid === uid ? 'true' : undefined} key={item.uid} onClick={() => setActiveUid(item.uid)}><strong>{template.name}</strong><span>Lv {session.progression.lv[item.uid] ?? 1} · {session.progression.sp[item.uid] ?? 2} SP</span></button>;
-    })}</nav><div className={styles.flowCard}><h3>{character.name}</h3><p>Level {level} · {exp} EXP · {points} skill points</p><div className={styles.mappingList}>{equipped.map((skillId) => {
+    })}</nav></div><div className={styles.progressionWorkspace}><article className={styles.characterProgress}><div className={styles.progressIdentity}><span>{character.name.slice(0, 1)}</span><div><h3>{character.name}</h3><p>{character.cls} · Team {entry.team}</p></div></div><div className={styles.progressStats}><span><small>Level</small><strong>{level}</strong></span><span><small>Skill points</small><strong>{points}</strong></span></div><div className={styles.expTrack}><span><small>EXP</small><small>{exp}</small></span><i style={{ width: `${Math.min(100, exp)}%` }} /></div><div className={styles.baseStats}>{[['HP', character.hp], ['ATK', character.atk], ['DEF', character.def], ['SPD', character.spd], ['MP', character.mp]].map(([label, value]) => <span key={label}><small>{label}</small><strong>{value}</strong></span>)}</div></article><article className={styles.equippedSkills}><span className={styles.sectionLabel}>Equipped skills</span><div className={styles.mappingList}>{equipped.map((skillId) => {
       const skill = snapshot.catalog.skills.find(({ id }) => id === skillId)!;
       const skillLevel = levels[skillId] ?? 1;
       const cost = snapshot.skillCostRules.find(({ lv }) => lv === skillLevel)?.cost;
       return <div className={styles.progressRow} key={skillId}><span><strong>{skill.name}</strong><small>Level {skillLevel}{cost === undefined ? ' · Max' : ' · ' + cost + ' SP next'}</small></span><SimulationButton size="small" disabled={cost === undefined || points < cost} onClick={() => upgrade(skillId)}>Upgrade</SimulationButton><SimulationButton size="small" variant="quiet" disabled={skillLevel <= 1} onClick={() => reset(skillId)}>Reset</SimulationButton></div>;
-    })}</div></div></div>
+    })}</div></article></div></div>
     <div className={styles.flowActions}><span>Level curve contains {snapshot.levelRules.length} levels.</span><SimulationButton variant="primary" onClick={onContinue}>Open battle</SimulationButton></div>
   </section>;
 }

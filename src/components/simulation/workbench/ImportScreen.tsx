@@ -26,12 +26,14 @@ export function ImportScreen() {
   const [schemas, setSchemas] = useState<Record<string, Array<{ key: string; name: string }>>>({});
   const [errors, setErrors] = useState<readonly SimulationImportError[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeRole, setActiveRole] = useState<LibraryRole>('characters');
 
   useEffect(() => {
     setSelected(emptySelection());
     setMappings(emptyMappings());
     setSchemas({});
     setErrors([]);
+    setActiveRole('characters');
   }, [selectedProjectId]);
 
   function useDemoData() {
@@ -86,39 +88,39 @@ export function ImportScreen() {
     }
   }
 
-  return (
-    <section className={styles.flowScreen} aria-labelledby="simulation-import-title">
-      <div className={styles.flowHeading}><div><span className={styles.kicker}>Studio data</span><h2 id="simulation-import-title">Import libraries</h2><p>Bind four project libraries, map their fields, then create an immutable local snapshot.</p></div></div>
+  const activeLibraryId = selected[activeRole];
+  const activeFields = schemas[activeLibraryId] ?? [];
+  const activeDefinitions = SIM_FIELDS[activeRole];
+  const mappedCount = Object.keys(mappings[activeRole]).length;
+
+  return <section className={styles.flowScreen} aria-labelledby="simulation-import-title">
+    <div className={styles.flowHeading}><div><h2 id="simulation-import-title">Import Studio libraries</h2><p>Select four Studio libraries, then connect their columns to simulation fields. Matching names auto-map and required fields stay visible.</p></div></div>
+    <div className={styles.importTopRow}>
       <label className={styles.fieldLabel}>Simulator name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <article className={styles.flowCard}>
-        <h3>Demo data</h3>
-        <p>Start immediately with the built-in character, skill, progression, and battle data.</p>
-        <SimulationButton variant="primary" disabled={!selectedProjectId} onClick={useDemoData}>Use demo data</SimulationButton>
-      </article>
-      <div className={styles.flowHeading}><div><span className={styles.kicker}>Project libraries</span><h3>Import Studio data</h3></div></div>
-      <div className={styles.importGrid}>
+      <div className={styles.demoCallout}><span><strong>Need a ready-to-play setup?</strong><small>Characters, skills and curves are included.</small></span><SimulationButton variant="primary" disabled={!selectedProjectId} onClick={useDemoData}>Use demo data</SimulationButton></div>
+    </div>
+    <div className={styles.importWorkbench}>
+      <aside className={styles.libraryRail} aria-label="Import libraries">
+        <span className={styles.sectionLabel}>Import libraries</span>
         {ROLES.map((role) => {
           const libraryId = selected[role];
-          const fields = schemas[libraryId] ?? [];
-          return <article className={styles.flowCard} key={role}>
-            <label className={styles.fieldLabel}>{LABELS[role]}
-              <select value={libraryId} onChange={(event) => void selectLibrary(role, event.target.value)}>
-                <option value="">Select library</option>
-                {libraries.map((library: Library) => <option key={library.id} value={library.id}>{library.name}</option>)}
-              </select>
-            </label>
-            {libraryId ? <div className={styles.mappingList}>{SIM_FIELDS[role].map((field) => <label key={field.id} className={styles.mappingRow}>
-              <span>{field.label}{field.required ? ' *' : ''}</span>
-              <select value={mappings[role][field.id] ?? ''} onChange={(event) => mapField(role, field.id, event.target.value)}>
-                <option value="">Not mapped</option>
-                {fields.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
-              </select>
-            </label>)}</div> : null}
-          </article>;
+          const missing = SIM_FIELDS[role].filter((field) => field.required && !mappings[role][field.id]).length;
+          return <div className={`${styles.librarySlot} ${activeRole === role ? styles.librarySlotActive : ''}`} key={role}>
+            <button type="button" onClick={() => setActiveRole(role)}><span>{LABELS[role]}</span><small>{libraryId ? `${Object.keys(mappings[role]).length} mapped` : 'Choose a source'}</small></button>
+            <label className={styles.visuallyHidden} htmlFor={`simulation-library-${role}`}>{LABELS[role]}</label>
+            <select id={`simulation-library-${role}`} value={libraryId} onFocus={() => setActiveRole(role)} onChange={(event) => { setActiveRole(role); void selectLibrary(role, event.target.value); }}><option value="">Select library</option>{libraries.map((library: Library) => <option key={library.id} value={library.id}>{library.name}</option>)}</select>
+            {libraryId && missing ? <em>{missing} required fields missing</em> : null}
+          </div>;
         })}
-      </div>
-      {errors.length ? <div className={styles.errorList} role="alert"><strong>Import blocked</strong>{errors.map((error, index) => <p key={index}>{error.libraryName}{error.assetName ? ' / ' + error.assetName : ''} / {error.field}: {error.reason}</p>)}</div> : null}
-      <SimulationButton variant="primary" loading={loading} disabled={!selectedProjectId || ROLES.some((role) => !selected[role])} onClick={() => void importLibraries()}>Import Studio data</SimulationButton>
-    </section>
-  );
+        <SimulationButton variant="primary" loading={loading} disabled={!selectedProjectId || ROLES.some((role) => !selected[role])} onClick={() => void importLibraries()}>Import Studio data</SimulationButton>
+      </aside>
+      <section className={styles.mappingBridge} aria-label={`${LABELS[activeRole]} field mapping`}>
+        <header className={styles.mappingBridgeHeader}><span>Studio source table<small>{activeLibraryId ? libraries.find(({ id }) => id === activeLibraryId)?.name : 'Select a library'}</small></span><span>Simulation fields<small>{mappedCount}/{activeDefinitions.length} mapped</small></span></header>
+        <div className={styles.sourceFieldList}>{activeFields.length ? activeFields.map((field) => <div className={styles.sourceField} key={field.key}><span>{field.name}</span><i aria-hidden="true">●</i></div>) : <p>Select a library on the left to view its source columns.</p>}</div>
+        <div className={styles.mappingBridgeRail} aria-hidden="true">→</div>
+        <div className={styles.targetFieldList}>{activeDefinitions.map((field) => <label className={styles.targetField} key={field.id}><span><i aria-hidden="true">●</i>{field.label}{field.required ? <b>*</b> : null}</span><select value={mappings[activeRole][field.id] ?? ''} onChange={(event) => mapField(activeRole, field.id, event.target.value)}><option value="">Connect a Studio column</option>{activeFields.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</select></label>)}</div>
+      </section>
+    </div>
+    {errors.length ? <div className={styles.errorList} role="alert"><strong>Import blocked</strong>{errors.map((error, index) => <p key={index}>{error.libraryName}{error.assetName ? ' / ' + error.assetName : ''} / {error.field}: {error.reason}</p>)}</div> : null}
+  </section>;
 }

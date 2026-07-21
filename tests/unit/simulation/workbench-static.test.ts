@@ -69,6 +69,32 @@ describe('native simulation workbench presentation', () => {
     expect(arena).toContain('fighter.feedback.value');
   });
 
+  it('preserves the source demo landmarks across all workflow screens', () => {
+    const importScreen = read('ImportScreen.tsx');
+    expect(importScreen).toContain('Import Studio libraries');
+    expect(importScreen).toContain('Studio source table');
+    expect(importScreen).toContain('Simulation fields');
+    expect(importScreen).toContain('styles.mappingBridge');
+
+    const characters = read('CharactersScreen.tsx');
+    expect(characters).toContain('Team A · Yours');
+    expect(characters).toContain('Team B · Enemy');
+    expect(characters).toContain('Studio snapshot');
+
+    const skills = read('SkillsScreen.tsx');
+    expect(skills).toContain('Skill library');
+    expect(skills).toContain('Selected skills');
+
+    const progression = read('ProgressionScreen.tsx');
+    expect(progression).toContain('Equipped skills');
+    expect(progression).toContain('Skill points');
+
+    const battle = read('BattleScreen.tsx');
+    expect(battle).toContain('Single battle');
+    expect(battle).toContain('Batch simulation');
+    expect(battle).toContain('styles.battleModeGrid');
+  });
+
   it('keeps interaction states in CSS, including keyboard and reduced motion', () => {
     const button = read('SimulationButton.tsx');
     expect(button).not.toMatch(/onMouseEnter|onMouseLeave|useState/);
