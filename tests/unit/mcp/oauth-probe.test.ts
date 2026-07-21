@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   authorizationMetadataUrl,
@@ -281,7 +283,7 @@ describe('OAuth discovery probe', () => {
 });
 
 describe('OAuth probe CLI', () => {
-  it('prints only a stable failure message for native URL failures', () => {
+  it('prints only a stable failure message and leaves no evidence file', () => {
     const tsx = join(
       process.cwd(),
       'node_modules',
@@ -289,18 +291,26 @@ describe('OAuth probe CLI', () => {
       process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
     );
     const secret = 'access_token=must-not-appear';
-    const result = spawnSync(tsx, [
-      'scripts/probe-mcp-oauth.ts',
-      '--mcp-url', `not-a-url?${secret}`,
-      '--output', 'unused-evidence.json',
-      '--redirect-uri', 'http://127.0.0.1/callback',
-    ], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-    });
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'keco-oauth-probe-'));
+    const output = join(fixtureRoot, 'evidence.json');
 
-    expect(result.status).toBe(1);
-    expect(result.stderr.trim()).toBe('OAuth probe failed.');
-    expect(result.stderr).not.toContain(secret);
+    try {
+      const result = spawnSync(tsx, [
+        'scripts/probe-mcp-oauth.ts',
+        '--mcp-url', `not-a-url?${secret}`,
+        '--output', output,
+        '--redirect-uri', 'http://127.0.0.1/callback',
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr.trim()).toBe('OAuth probe failed.');
+      expect(result.stderr).not.toContain(secret);
+      expect(existsSync(output)).toBe(false);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 });
