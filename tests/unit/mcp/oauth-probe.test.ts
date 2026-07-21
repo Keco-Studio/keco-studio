@@ -283,6 +283,30 @@ describe('OAuth discovery probe', () => {
 });
 
 describe('OAuth probe CLI', () => {
+  it('removes stale PASS evidence when required arguments are missing', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'keco-oauth-probe-'));
+    const output = join(fixtureRoot, 'evidence.json');
+
+    try {
+      writeFileSync(output, '{"passed":true,"stale":true}\n', 'utf8');
+      const result = spawnSync(process.execPath, [
+        '--import', 'tsx',
+        'scripts/probe-mcp-oauth.ts',
+        '--output', output,
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr.trim()).toBe('OAuth probe failed.');
+      expect(existsSync(output)).toBe(false);
+      expect(readdirSync(fixtureRoot)).toEqual([]);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it('prints only a stable failure message and leaves no evidence file', () => {
     const secret = 'access_token=must-not-appear';
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'keco-oauth-probe-'));

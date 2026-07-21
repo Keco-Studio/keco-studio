@@ -163,14 +163,16 @@ function requiredArgument(args: readonly string[], name: string): string {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const mcpUrl = requiredArgument(args, '--mcp-url');
   const output = requiredArgument(args, '--output');
-  const token = process.env.MCP_ACCESS_TOKEN;
-  if (!token) throw new Error('MCP_ACCESS_TOKEN is required.');
-  await replaceEvidenceAtomically(output, () => runPerformanceProbe({
-    mcpUrl,
-    accessToken: token,
-  }));
+  await replaceEvidenceAtomically(output, () => {
+    const mcpUrl = requiredArgument(args, '--mcp-url');
+    const token = process.env.MCP_ACCESS_TOKEN;
+    if (!token) throw new Error('MCP_ACCESS_TOKEN is required.');
+    return runPerformanceProbe({
+      mcpUrl,
+      accessToken: token,
+    });
+  });
 }
 
 if (process.argv[1]?.endsWith('probe-mcp-performance.ts')) {

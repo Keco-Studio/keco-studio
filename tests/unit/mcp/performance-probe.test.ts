@@ -1,5 +1,14 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   evaluatePerformance,
@@ -14,6 +23,33 @@ function rpcResponse(id: number): Response {
 }
 
 describe('MCP performance probe', () => {
+  it('removes stale PASS evidence when MCP_ACCESS_TOKEN is missing', () => {
+    const fixtureRoot = mkdtempSync(path.join(tmpdir(), 'keco-performance-probe-'));
+    const output = path.join(fixtureRoot, 'evidence.json');
+    const { MCP_ACCESS_TOKEN: _token, ...envWithoutToken } = process.env;
+
+    try {
+      writeFileSync(output, '{"passed":true,"stale":true}\n', 'utf8');
+      const result = spawnSync(process.execPath, [
+        '--import', 'tsx',
+        'scripts/probe-mcp-performance.ts',
+        '--mcp-url', mcpUrl,
+        '--output', output,
+      ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: envWithoutToken,
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr.trim()).toBe('MCP performance probe failed.');
+      expect(existsSync(output)).toBe(false);
+      expect(readdirSync(fixtureRoot)).toEqual([]);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it('makes latency evidence mandatory in the Phase 1 plan and client matrix', () => {
     const plan = readFileSync(path.join(
       process.cwd(),

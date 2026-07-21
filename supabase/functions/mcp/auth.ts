@@ -9,15 +9,37 @@ export type ProjectAuthContext = {
 export type ProjectAuthorization =
   | { status: "authorized"; context: ProjectAuthContext }
   | { status: "unauthenticated" }
-  | { status: "forbidden" };
+  | { status: "forbidden" }
+  | { status: "operational_error" };
 
 export interface AuthGateway {
   getUser(token: string): Promise<{ id: string } | null>;
-  getRole(
+  getProjectOwner(projectId: string, token: string): Promise<string | null>;
+  getCollaboratorRole(
     userId: string,
     projectId: string,
     token: string,
   ): Promise<ProjectRole | null>;
+}
+
+const INVALID_CREDENTIAL_CODES = new Set([
+  "bad_jwt",
+  "invalid_jwt",
+  "no_authorization",
+  "session_expired",
+  "session_not_found",
+  "user_not_found",
+]);
+
+export function isInvalidCredentialError(error: {
+  status?: number;
+  code?: string;
+  name?: string;
+}): boolean {
+  return error.status === 401 || error.status === 403 ||
+    INVALID_CREDENTIAL_CODES.has(error.code ?? "") ||
+    error.name === "AuthInvalidJwtError" ||
+    error.name === "AuthSessionMissingError";
 }
 
 export async function authorizeProjectWithGateway(
@@ -30,15 +52,22 @@ export async function authorizeProjectWithGateway(
   );
   if (!match) return { status: "unauthenticated" };
   const token = match[1];
-  const user = await gateway.getUser(token);
-  if (!user) return { status: "unauthenticated" };
-  const role = await gateway.getRole(user.id, projectId, token);
-  return role
-    ? {
-      status: "authorized",
-      context: { userId: user.id, projectId, role },
-    }
-    : { status: "forbidden" };
+  try {
+    const user = await gateway.getUser(token);
+    if (!user) return { status: "unauthenticated" };
+    const ownerId = await gateway.getProjectOwner(projectId, token);
+    const role = ownerId === user.id
+      ? "admin"
+      : await gateway.getCollaboratorRole(user.id, projectId, token);
+    return role
+      ? {
+        status: "authorized",
+        context: { userId: user.id, projectId, role },
+      }
+      : { status: "forbidden" };
+  } catch {
+    return { status: "operational_error" };
+  }
 }
 
 function supabaseGateway(): AuthGateway {
@@ -53,24 +82,36 @@ function supabaseGateway(): AuthGateway {
         auth: { persistSession: false },
       });
       const { data, error } = await client.auth.getUser(token);
-      return error || !data.user ? null : { id: data.user.id };
+      if (error) {
+        if (isInvalidCredentialError(error)) return null;
+        throw new Error("Supabase user lookup failed.");
+      }
+      return data.user ? { id: data.user.id } : null;
     },
-    async getRole(userId, projectId, token) {
+    async getProjectOwner(projectId, token) {
       const client = createClient(url, anonKey, {
         global: { headers: { Authorization: `Bearer ${token}` } },
         auth: { persistSession: false },
       });
       const { data: project, error: projectError } = await client
         .from("projects").select("owner_id").eq("id", projectId).maybeSingle();
-      if (projectError) return null;
-      if (project?.owner_id === userId) return "admin";
+      if (projectError) throw new Error("Supabase project lookup failed.");
+      return typeof project?.owner_id === "string" ? project.owner_id : null;
+    },
+    async getCollaboratorRole(userId, projectId, token) {
+      const client = createClient(url, anonKey, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false },
+      });
       const { data: collaborator, error: collaboratorError } = await client
         .from("project_collaborators").select("role").eq(
           "project_id",
           projectId,
         )
         .eq("user_id", userId).not("accepted_at", "is", null).maybeSingle();
-      if (collaboratorError) return null;
+      if (collaboratorError) {
+        throw new Error("Supabase collaborator lookup failed.");
+      }
       return collaborator?.role === "admin" ||
           collaborator?.role === "editor" || collaborator?.role === "viewer"
         ? collaborator.role
@@ -79,9 +120,13 @@ function supabaseGateway(): AuthGateway {
   };
 }
 
-export function authorizeProject(
+export async function authorizeProject(
   request: Request,
   projectId: string,
 ): Promise<ProjectAuthorization> {
-  return authorizeProjectWithGateway(request, projectId, supabaseGateway());
+  try {
+    return await authorizeProjectWithGateway(request, projectId, supabaseGateway());
+  } catch {
+    return { status: "operational_error" };
+  }
 }

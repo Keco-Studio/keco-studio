@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -61,7 +61,7 @@ export function OAuthConsentClient() {
     authorizationId
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     authorizationIdRef.current = authorizationId;
   }, [authorizationId]);
 

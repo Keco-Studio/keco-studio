@@ -275,10 +275,14 @@ export async function runProbe(mcpUrl: string, redirectUri: string): Promise<unk
 }
 
 async function main(): Promise<void> {
-  const args = parseProbeArguments(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+  const output = argument(rawArgs, '--output');
   await replaceEvidenceAtomically(
-    args.output,
-    () => runProbe(args.mcpUrl, args.redirectUri)
+    output,
+    () => {
+      const args = parseProbeArguments(rawArgs);
+      return runProbe(args.mcpUrl, args.redirectUri);
+    }
   );
 }
 

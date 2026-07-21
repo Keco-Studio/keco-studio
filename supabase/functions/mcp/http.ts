@@ -101,7 +101,7 @@ function normalizePublicOrigin(value: string | undefined): string | null {
 async function boundedProtocolResponse(response: Response): Promise<Response | null> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared >= MAX_RESPONSE_BYTES) {
-    await response.body?.cancel();
+    await cancelSafely(() => response.body?.cancel() ?? Promise.resolve());
     return null;
   }
   if (!response.body) return response;
@@ -115,12 +115,15 @@ async function boundedProtocolResponse(response: Response): Promise<Response | n
       if (done) break;
       if (!value) continue;
       if (total + value.byteLength >= MAX_RESPONSE_BYTES) {
-        await reader.cancel();
+        await cancelSafely(() => reader.cancel());
         return null;
       }
       total += value.byteLength;
       chunks.push(value);
     }
+  } catch {
+    await cancelSafely(() => reader.cancel());
+    return null;
   } finally {
     reader.releaseLock();
   }
@@ -136,6 +139,14 @@ async function boundedProtocolResponse(response: Response): Promise<Response | n
     statusText: response.statusText,
     headers: response.headers,
   });
+}
+
+async function cancelSafely(cancel: () => Promise<void>): Promise<void> {
+  try {
+    await cancel();
+  } catch {
+    // The caller replaces the failed upstream response with a bounded response.
+  }
 }
 
 export async function handleMcpHttpRequest(
@@ -174,7 +185,17 @@ export async function handleMcpHttpRequest(
     );
   }
   const authorize = deps.authorize ?? authorizeProject;
-  const authorization = await authorize(boundedRequest, projectId);
+  let authorization: ProjectAuthorization;
+  try {
+    authorization = await authorize(boundedRequest, projectId);
+  } catch {
+    authorization = { status: "operational_error" };
+  }
+  if (authorization.status === "operational_error") {
+    return withCors(Response.json({ error: "MCP authorization is unavailable." }, {
+      status: 503,
+    }));
+  }
   if (authorization.status === "forbidden") {
     return withCors(Response.json({ error: "Project access forbidden." }, {
       status: 403,

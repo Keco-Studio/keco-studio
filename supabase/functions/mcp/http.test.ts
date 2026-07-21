@@ -13,6 +13,16 @@ const unauthenticated = async (): Promise<ProjectAuthorization> => ({
 const forbidden = async (): Promise<ProjectAuthorization> => ({
   status: "forbidden",
 });
+const operationalError = async (): Promise<ProjectAuthorization> => ({
+  status: "operational_error",
+});
+
+function authorizedRequest(): Request {
+  return new Request(`https://x/functions/v1/mcp/${projectId}`, {
+    method: "POST",
+    headers: { authorization: "Bearer valid" },
+  });
+}
 
 Deno.test("extractBoundProjectId accepts only a UUID after the mcp segment", () => {
   assertEquals(
@@ -73,6 +83,16 @@ Deno.test("revoked membership returns 403 without an OAuth challenge", async () 
   );
   assertEquals(response.status, 403);
   assertEquals(response.headers.get("www-authenticate"), null);
+});
+
+Deno.test("authorization backend failures return a safe CORS-wrapped 503", async () => {
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: operationalError,
+  });
+  assertEquals(response.status, 503);
+  assertEquals(await response.json(), { error: "MCP authorization is unavailable." });
+  assertEquals(response.headers.get("www-authenticate"), null);
+  assertEquals(response.headers.get("access-control-allow-origin"), "*");
 });
 
 Deno.test("missing or malformed public origin fails closed without a challenge", async () => {
@@ -189,6 +209,95 @@ Deno.test("rejects a protocol response exactly at the strict 1 MiB boundary", as
   assertEquals(await response.json(), {
     error: "MCP response must remain below 1 MiB.",
   });
+});
+
+Deno.test("rejects an explicit Content-Length at the strict 1 MiB boundary", async () => {
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: allow,
+    handleProtocol: async () => new Response("small body", {
+      headers: { "content-length": String(1024 * 1024) },
+    }),
+  });
+  assertEquals(response.status, 502);
+  assertEquals((await response.arrayBuffer()).byteLength < 1024 * 1024, true);
+});
+
+Deno.test("accepts the largest streamed protocol response below 1 MiB", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(1024 * 1024 - 1));
+      controller.close();
+    },
+  });
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: allow,
+    handleProtocol: async () => new Response(body),
+  });
+  assertEquals(response.status, 200);
+  assertEquals((await response.arrayBuffer()).byteLength, 1024 * 1024 - 1);
+});
+
+Deno.test("rejects a streamed protocol response exactly at 1 MiB", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(1024 * 1024 - 1));
+      controller.enqueue(new Uint8Array(1));
+      controller.close();
+    },
+  });
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: allow,
+    handleProtocol: async () => new Response(body),
+  });
+  assertEquals(response.status, 502);
+  assertEquals((await response.arrayBuffer()).byteLength < 1024 * 1024, true);
+});
+
+Deno.test("contains a rejecting declared-body cancellation", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      return Promise.reject(new Error("cancel failed"));
+    },
+  });
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: allow,
+    handleProtocol: async () => new Response(body, {
+      headers: { "content-length": String(1024 * 1024) },
+    }),
+  });
+  assertEquals(response.status, 502);
+  assertEquals((await response.arrayBuffer()).byteLength < 1024 * 1024, true);
+});
+
+Deno.test("contains a rejecting streamed-body cancellation", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(1024 * 1024));
+    },
+    cancel() {
+      return Promise.reject(new Error("cancel failed"));
+    },
+  });
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: allow,
+    handleProtocol: async () => new Response(body),
+  });
+  assertEquals(response.status, 502);
+  assertEquals((await response.arrayBuffer()).byteLength < 1024 * 1024, true);
+});
+
+Deno.test("contains streamed protocol response read errors", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new Error("read failed"));
+    },
+  });
+  const response = await handleMcpHttpRequest(authorizedRequest(), {
+    authorize: allow,
+    handleProtocol: async () => new Response(body),
+  });
+  assertEquals(response.status, 502);
+  assertEquals((await response.arrayBuffer()).byteLength < 1024 * 1024, true);
 });
 
 Deno.test("authorized initialize traverses body reconstruction, auth, CORS, and MCP transport", async () => {

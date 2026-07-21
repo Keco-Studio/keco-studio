@@ -2,7 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 
 type EffectCleanup = () => void;
 type EffectSlot = {
-  kind: 'effect';
+  kind: 'effect' | 'layout-effect';
   cleanup?: EffectCleanup;
   dependencies?: readonly unknown[];
   effect: () => EffectCleanup | void;
@@ -14,6 +14,7 @@ type HookSlot = EffectSlot | StateSlot | RefSlot;
 class HookRuntime {
   private cursor = 0;
   private pendingEffects: EffectSlot[] = [];
+  private pendingLayoutEffects: EffectSlot[] = [];
   private slots: HookSlot[] = [];
 
   useState<T>(initialValue: T): [T, (value: T | ((previous: T) => T)) => void] {
@@ -38,10 +39,15 @@ class HookRuntime {
     return slot.value as { current: T };
   }
 
-  useEffect(effect: EffectSlot['effect'], dependencies?: readonly unknown[]): void {
+  private scheduleEffect(
+    kind: EffectSlot['kind'],
+    pending: EffectSlot[],
+    effect: EffectSlot['effect'],
+    dependencies?: readonly unknown[]
+  ): void {
     const index = this.cursor++;
     const previous = this.slots[index];
-    if (previous && previous.kind !== 'effect') throw new Error(`Hook order changed at ${index}`);
+    if (previous && previous.kind !== kind) throw new Error(`Hook order changed at ${index}`);
     const previousEffect = previous as EffectSlot | undefined;
     const unchanged = previousEffect?.dependencies !== undefined
       && dependencies !== undefined
@@ -51,25 +57,51 @@ class HookRuntime {
       );
     if (unchanged) return;
     const slot: EffectSlot = {
-      kind: 'effect',
+      kind,
       cleanup: previousEffect?.cleanup,
       dependencies,
       effect,
     };
     this.slots[index] = slot;
-    this.pendingEffects.push(slot);
+    pending.push(slot);
   }
 
-  render<T>(component: () => T): T {
-    this.cursor = 0;
-    this.pendingEffects = [];
-    const result = component();
-    for (const slot of this.pendingEffects) {
+  useEffect(effect: EffectSlot['effect'], dependencies?: readonly unknown[]): void {
+    this.scheduleEffect('effect', this.pendingEffects, effect, dependencies);
+  }
+
+  useLayoutEffect(effect: EffectSlot['effect'], dependencies?: readonly unknown[]): void {
+    this.scheduleEffect('layout-effect', this.pendingLayoutEffects, effect, dependencies);
+  }
+
+  private flush(effects: EffectSlot[]): void {
+    for (const slot of effects) {
       slot.cleanup?.();
       const cleanup = slot.effect();
       slot.cleanup = typeof cleanup === 'function' ? cleanup : undefined;
     }
+  }
+
+  flushEffects(): void {
+    const effects = this.pendingEffects;
+    this.pendingEffects = [];
+    this.flush(effects);
+  }
+
+  render<T>(component: () => T, flushEffects = true): T {
+    this.cursor = 0;
+    const result = component();
+    const layoutEffects = this.pendingLayoutEffects;
+    this.pendingLayoutEffects = [];
+    this.flush(layoutEffects);
+    if (flushEffects) this.flushEffects();
     return result;
+  }
+
+  stateValues(): unknown[] {
+    return this.slots
+      .filter((slot): slot is StateSlot => slot.kind === 'state')
+      .map((slot) => slot.value);
   }
 }
 
@@ -112,6 +144,7 @@ const approveAuthorization = jest.fn();
 const denyAuthorization = jest.fn();
 const getProject = jest.fn();
 const mockRouter = { replace: jest.fn() };
+const assignLocation = jest.fn();
 const mockSupabaseClient = {
   auth: { oauth: { getAuthorizationDetails, approveAuthorization, denyAuthorization } },
 };
@@ -121,6 +154,8 @@ jest.mock('react', () => ({
   ...jest.requireActual<typeof import('react')>('react'),
   useEffect: (effect: EffectSlot['effect'], dependencies?: readonly unknown[]) =>
     runtime.useEffect(effect, dependencies),
+  useLayoutEffect: (effect: EffectSlot['effect'], dependencies?: readonly unknown[]) =>
+    runtime.useLayoutEffect(effect, dependencies),
   useState: <T,>(initialValue: T) => runtime.useState(initialValue),
   useRef: <T,>(initialValue: T) => runtime.useRef(initialValue),
 }));
@@ -157,6 +192,10 @@ beforeEach(() => {
   denyAuthorization.mockReset();
   getProject.mockReset();
   mockRouter.replace.mockReset();
+  assignLocation.mockReset();
+  Object.assign(globalThis, {
+    window: { location: { assign: assignLocation } },
+  });
 });
 
 afterAll(() => {
@@ -248,5 +287,58 @@ it.each(['approve', 'deny'] as const)(
 
     expect(findButton(nextTree, 'Approve').props.disabled).toBe(false);
     expect(JSON.stringify(nextTree)).not.toContain('Authorization decision could not be completed.');
+  }
+);
+
+it.each(['approve', 'deny'] as const)(
+  'blocks a stale successful %s decision before passive effects flush',
+  async (action) => {
+    getAuthorizationDetails.mockResolvedValueOnce({
+      data: authorizationDetails('authorization-a', PROJECT_A),
+      error: null,
+    });
+    getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+    const decision = deferred<{ data: { redirect_url: string }; error: null }>();
+    const decisionMock = action === 'approve' ? approveAuthorization : denyAuthorization;
+    decisionMock.mockReturnValueOnce(decision.promise);
+
+    runtime.render(OAuthConsentClient);
+    await flushAsyncWork();
+    findButton(runtime.render(OAuthConsentClient), action === 'approve' ? 'Approve' : 'Deny')
+      .props.onClick?.();
+
+    currentAuthorizationId = 'authorization-b';
+    runtime.render(OAuthConsentClient, false);
+    decision.resolve({ data: { redirect_url: 'https://client.example/callback' }, error: null });
+    await flushAsyncWork();
+
+    expect(assignLocation).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['approve', 'deny'] as const)(
+  'blocks a stale failed %s decision before passive effects flush',
+  async (action) => {
+    getAuthorizationDetails.mockResolvedValueOnce({
+      data: authorizationDetails('authorization-a', PROJECT_A),
+      error: null,
+    });
+    getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+    const decision = deferred<{ data: null; error: Error }>();
+    const decisionMock = action === 'approve' ? approveAuthorization : denyAuthorization;
+    decisionMock.mockReturnValueOnce(decision.promise);
+
+    runtime.render(OAuthConsentClient);
+    await flushAsyncWork();
+    findButton(runtime.render(OAuthConsentClient), action === 'approve' ? 'Approve' : 'Deny')
+      .props.onClick?.();
+
+    currentAuthorizationId = 'authorization-b';
+    runtime.render(OAuthConsentClient, false);
+    decision.resolve({ data: null, error: new Error('expired decision') });
+    await flushAsyncWork();
+
+    expect(JSON.stringify(runtime.stateValues()))
+      .not.toContain('Authorization decision could not be completed.');
   }
 );
