@@ -2,7 +2,11 @@ import { replaceEvidenceAtomically } from './lib/atomic-evidence';
 
 const COLD_LIMIT_MS = 2000;
 const WARM_LIMIT_MS = 300;
+const READ_LIMIT_MS = 800;
+const STRUCTURE_LIMIT_MS = 1000;
+const SEARCH_LIMIT_MS = 3000;
 const DEFAULT_WARM_SAMPLES = 20;
+const DEFAULT_PHASE_2_SAMPLES = 5;
 const PROTOCOL_VERSION = '2025-11-25';
 const COLD_GATE_UNVERIFIED_REASON = 'cold-start-not-verified' as const;
 
@@ -51,7 +55,36 @@ type ProbeOptions = {
   coldVerified?: boolean;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  phase2Samples?: number;
 };
+
+async function timedTool(input: {
+  mcpUrl: string; accessToken: string; id: number; name: string;
+  arguments: Record<string, unknown>; label: string; fetchImpl: typeof fetch; now: () => number;
+}): Promise<number> {
+  const start = input.now();
+  let response: Response;
+  try {
+    response = await input.fetchImpl(input.mcpUrl, {
+      method: 'POST',
+      headers: { accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${input.accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: input.id, method: 'tools/call',
+        params: { name: input.name, arguments: input.arguments } }),
+    });
+  } catch { throw new Error(`${input.label} request failed.`); }
+  if (!response.ok) throw new Error(`${input.label} failed with HTTP ${response.status}.`);
+  try {
+    const message = await response.json() as Record<string, unknown>;
+    const result = message.result as Record<string, unknown> | undefined;
+    const structured = result?.structuredContent as Record<string, unknown> | undefined;
+    if (message.jsonrpc !== '2.0' || message.id !== input.id || message.error ||
+        result?.isError === true || !structured || structured.ok === false) throw new Error();
+    if (input.name === 'semantic_search' && structured.searchMode !== 'semantic' &&
+        structured.searchMode !== 'text_fuzzy') throw new Error();
+  } catch { throw new Error(`${input.label} returned an invalid MCP response.`); }
+  return input.now() - start;
+}
 
 async function timedRpc(input: {
   mcpUrl: string;
@@ -113,6 +146,10 @@ export async function runPerformanceProbe(options: ProbeOptions) {
   if (!Number.isInteger(warmSamples) || warmSamples < 1 || warmSamples > 100) {
     throw new Error('Warm sample count must be an integer from 1 to 100.');
   }
+  const phase2Samples = options.phase2Samples ?? 0;
+  if (!Number.isInteger(phase2Samples) || phase2Samples < 0 || phase2Samples > 20) {
+    throw new Error('Phase 2 sample count must be an integer from 0 to 20.');
+  }
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? (() => performance.now());
   let id = 1;
@@ -132,6 +169,18 @@ export async function runPerformanceProbe(options: ProbeOptions) {
   for (let index = 0; index < warmSamples; index += 1) {
     warmInitializeMs.push(await invoke('initialize', 'Warm initialize'));
   }
+  const phase2 = { read: [] as number[], structure: [] as number[], search: [] as number[] };
+  for (let index = 0; index < phase2Samples; index += 1) {
+    phase2.read.push(await timedTool({ mcpUrl: options.mcpUrl, accessToken: options.accessToken,
+      id: id++, name: 'list_documents', arguments: { limit: 50 }, label: 'Phase 2 read',
+      fetchImpl, now }));
+    phase2.structure.push(await timedTool({ mcpUrl: options.mcpUrl, accessToken: options.accessToken,
+      id: id++, name: 'list_project_structure', arguments: {}, label: 'Phase 2 structure',
+      fetchImpl, now }));
+    phase2.search.push(await timedTool({ mcpUrl: options.mcpUrl, accessToken: options.accessToken,
+      id: id++, name: 'semantic_search', arguments: { query: `performance sample ${index}`, limit: 10 },
+      label: 'Phase 2 search', fetchImpl, now }));
+  }
   for (let index = 0; index < warmSamples; index += 1) {
     warmToolsListMs.push(await invoke('tools/list', 'Warm tools/list'));
   }
@@ -146,6 +195,19 @@ export async function runPerformanceProbe(options: ProbeOptions) {
     throw new Error(COLD_GATE_UNVERIFIED_REASON);
   }
   if (!evaluation.passed) throw new Error('MCP performance budgets failed.');
+  const phase2Measurements = phase2Samples > 0 ? {
+    ordinaryRead: { sampleCount: phase2.read.length, p95Ms: percentile95(phase2.read),
+      budgetMs: READ_LIMIT_MS },
+    projectStructure: { sampleCount: phase2.structure.length, p95Ms: percentile95(phase2.structure),
+      budgetMs: STRUCTURE_LIMIT_MS },
+    search: { sampleCount: phase2.search.length, p95Ms: percentile95(phase2.search),
+      budgetMs: SEARCH_LIMIT_MS },
+  } : null;
+  if (phase2Measurements && (phase2Measurements.ordinaryRead.p95Ms >= READ_LIMIT_MS ||
+      phase2Measurements.projectStructure.p95Ms >= STRUCTURE_LIMIT_MS ||
+      phase2Measurements.search.p95Ms >= SEARCH_LIMIT_MS)) {
+    throw new Error('MCP Phase 2 performance budgets failed.');
+  }
 
   return {
     checkedAt: new Date().toISOString(),
@@ -163,6 +225,7 @@ export async function runPerformanceProbe(options: ProbeOptions) {
         sampleCount: warmToolsListMs.length,
         p95Ms: evaluation.warmToolsListP95Ms,
       },
+      phase2: phase2Measurements,
     },
   };
 }
@@ -185,6 +248,7 @@ async function main(): Promise<void> {
       mcpUrl,
       accessToken: token,
       coldVerified: args.includes('--cold-verified'),
+      phase2Samples: args.includes('--phase-2') ? DEFAULT_PHASE_2_SAMPLES : 0,
     });
   });
 }

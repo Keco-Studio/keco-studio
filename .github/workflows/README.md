@@ -7,8 +7,8 @@ sync with the actual `.yml` files in this directory.
 
 | Workflow | File | Triggers | Purpose |
 | --- | --- | --- | --- |
-| CI | `ci.yml` | Pull requests to `main`; pushes to `main` | Installs dependencies, starts local Supabase, resets the database, runs lint, API typecheck, unit tests, and build. |
-| Deploy to Vercel | `deploy-vercel.yml` | Pull requests and pushes to `main`, `master`, and `release/**` | Checks migration changes, runs Supabase migrations when needed, and deploys to Vercel. |
+| CI | `ci.yml` | Pull requests to `main`; pushes to `main` | Installs dependencies, resets local Supabase, runs lint/typechecks/tests/build, validates MCP probes and RLS, builds the representative MCP load fixture, and scans production evidence. |
+| Deploy to Vercel | `deploy-vercel.yml` | Pull requests and pushes to `main`, `master`, and `release/**` | Checks migration changes, runs Supabase migrations, deploys the production MCP Edge Function on main/master pushes, and deploys Vercel. |
 | Playwright Tests | `playwright.yml` | Pull requests and pushes to `main`, `master`, and `release/**` | Starts local Supabase and runs Playwright E2E tests in a 4-way shard matrix. |
 
 ## Playwright Sharding
@@ -41,12 +41,16 @@ npm run typecheck
 npm run typecheck:api
 npm run check:mcp
 npm run test:mcp
+npm run test:unit -- --runInBand tests/unit/mcp/capabilities-probe.test.ts tests/unit/mcp/load-probe.test.ts tests/unit/mcp/performance-probe.test.ts tests/unit/mcp/evidence-scan.test.ts
 npm run test:unit
 npm run build
 ```
 
 `npm run validate` runs the same core local checks in sequence.
 The MCP checks use the Deno npm runner pinned in `package.json`.
+The CI load fixture is isolated under project
+`22222222-2222-4222-8222-222222222222` and is recreated transactionally.
+Production evidence is scanned only after an observed evidence file exists.
 
 ## Notes
 

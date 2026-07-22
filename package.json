@@ -114,6 +114,9 @@
     "probe:import-story": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts",
     "probe:import-story:rainy-five": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts tests/fixtures/import-script/rainy-manor-story.txt --runs=5",
     "probe:mcp-oauth": "tsx scripts/probe-mcp-oauth.ts",
-    "probe:mcp-performance": "tsx scripts/probe-mcp-performance.ts"
+    "probe:mcp-performance": "tsx scripts/probe-mcp-performance.ts",
+    "probe:mcp-capabilities": "tsx scripts/probe-mcp-capabilities.ts",
+    "probe:mcp-load": "tsx scripts/load-mcp-phase-2.ts",
+    "scan:mcp-evidence": "tsx scripts/scan-mcp-evidence.ts"
   }
 }

@@ -196,15 +196,56 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ steps.select-project.outputs.access-token }}
         continue-on-error: false
 
+  deploy-mcp-function:
+    runs-on: ubuntu-latest
+    name: Deploy Production MCP Function
+    needs: [check-migrations, migrate-database]
+    if: |
+      (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      needs.check-migrations.result == 'success' &&
+      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.90.0
+
+      - name: Deploy MCP Edge Function
+        env:
+          PROD_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_PROD }}
+          GENERAL_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF_PROD }}
+        run: |
+          if [ -z "$PROJECT_REF" ]; then
+            echo "::error::SUPABASE_PROJECT_REF_PROD is required"
+            exit 1
+          fi
+          if [ -n "$PROD_TOKEN" ]; then
+            export SUPABASE_ACCESS_TOKEN="$PROD_TOKEN"
+          else
+            export SUPABASE_ACCESS_TOKEN="$GENERAL_TOKEN"
+          fi
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::A production Supabase access token is required"
+            exit 1
+          fi
+          supabase functions deploy mcp --no-verify-jwt --project-ref "$PROJECT_REF"
+
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [check-migrations, migrate-database]
+    needs: [check-migrations, migrate-database, deploy-mcp-function]
     if: |
       (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
       always() &&
       needs.check-migrations.result == 'success' &&
-      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
+      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') &&
+      (needs.deploy-mcp-function.result == 'success' || needs.deploy-mcp-function.result == 'skipped')
     name: Deploy to Vercel
 
     steps:
