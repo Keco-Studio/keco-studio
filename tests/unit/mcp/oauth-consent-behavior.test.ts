@@ -258,9 +258,24 @@ it.each([
   const tree = runtime.render(OAuthConsentClient);
 
   expect(findButton(tree, 'Approve').props.disabled).toBe(true);
+  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
   expect(getProject).not.toHaveBeenCalled();
   expect(JSON.stringify(tree)).toContain(
     'Project binding was not preserved by the authorization server.'
+  );
+
+  denyAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback?error=access_denied' },
+    error: null,
+  });
+  findButton(tree, 'Deny').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(denyAuthorization).toHaveBeenCalledWith('authorization-a', {
+    skipBrowserRedirect: true,
+  });
+  expect(assignLocation).toHaveBeenCalledWith(
+    'https://client.example/callback?error=access_denied'
   );
 });
 
@@ -276,7 +291,28 @@ it('treats resource adapter errors as missing bindings', async () => {
   const tree = runtime.render(OAuthConsentClient);
 
   expect(findButton(tree, 'Approve').props.disabled).toBe(true);
+  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
   expect(getProject).not.toHaveBeenCalled();
+});
+
+it('keeps denial available when existing consent bypassed project-bound approval', async () => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: {
+      ...authorizationDetails('authorization-a'),
+      redirect_url: 'https://client.example/callback',
+    },
+    error: null,
+  });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  const tree = runtime.render(OAuthConsentClient);
+
+  expect(findButton(tree, 'Approve').props.disabled).toBe(true);
+  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
+  expect(JSON.stringify(tree)).toContain(
+    'Existing OAuth consent bypassed the project-bound approval step.'
+  );
 });
 
 it('reloads the same resource immediately before approving', async () => {

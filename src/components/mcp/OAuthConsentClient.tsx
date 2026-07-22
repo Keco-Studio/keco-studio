@@ -12,9 +12,10 @@ import styles from './OAuthConsent.module.css';
 type BoundDetails = OAuthAuthorizationDetails & { resource: string };
 type LoadedRequest = {
   authorizationId: string;
-  details: BoundDetails;
+  details: OAuthAuthorizationDetails;
 };
-type VerifiedBinding = LoadedRequest & {
+type VerifiedBinding = Omit<LoadedRequest, 'details'> & {
+  details: BoundDetails;
   projectId: string;
   projectName: string;
 };
@@ -102,6 +103,7 @@ export function OAuthConsentClient() {
         });
         return;
       }
+      const request: LoadedRequest = { authorizationId, details: next };
       let resource: string | null;
       try {
         resource = await getOAuthAuthorizationResource(supabase, authorizationId);
@@ -113,6 +115,7 @@ export function OAuthConsentClient() {
       if (!boundProjectId) {
         setState({
           ...emptyConsentState(authorizationId),
+          request,
           error: 'Project binding was not preserved by the authorization server.',
         });
         return;
@@ -120,11 +123,12 @@ export function OAuthConsentClient() {
       if (next.redirect_url) {
         setState({
           ...emptyConsentState(authorizationId),
+          request,
           error: 'Existing OAuth consent bypassed the project-bound approval step.',
         });
         return;
       }
-      const request: LoadedRequest = { authorizationId, details: { ...next, resource } };
+      const boundRequest = { authorizationId, details: { ...next, resource } };
       setState({ ...emptyConsentState(authorizationId), request });
 
       try {
@@ -141,7 +145,7 @@ export function OAuthConsentClient() {
             ...emptyConsentState(authorizationId),
             request,
             verifiedBinding: {
-              ...request,
+              ...boundRequest,
               projectId: boundProjectId,
               projectName: project.name,
             },
