@@ -87,7 +87,7 @@ async function exchangeAuthorizationCode(
   clientId: string,
   verifier: string,
   redirectUrl: string
-): Promise<string> {
+): Promise<{ accessToken: string; refreshToken: string }> {
   const code = new URL(redirectUrl).searchParams.get('code');
   if (!code) throw new Error('OAuth approval redirect omitted code');
   const response = await fetch(`${supabaseUrl}/auth/v1/oauth/token`, {
@@ -101,11 +101,39 @@ async function exchangeAuthorizationCode(
       code_verifier: verifier,
     }),
   });
-  const body = await response.json() as { access_token?: string; error?: string };
-  if (!response.ok || !body.access_token) {
+  const body = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    error?: string;
+  };
+  if (!response.ok || !body.access_token || !body.refresh_token) {
     throw new Error(`OAuth code exchange failed: ${body.error ?? response.status}`);
   }
-  return body.access_token;
+  return { accessToken: body.access_token, refreshToken: body.refresh_token };
+}
+
+async function refreshOAuthToken(
+  clientId: string,
+  refreshToken: string
+): Promise<{ accessToken: string; refreshToken: string }> {
+  const response = await fetch(`${supabaseUrl}/auth/v1/oauth/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      refresh_token: refreshToken,
+    }),
+  });
+  const body = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    error?: string;
+  };
+  if (!response.ok || !body.access_token || !body.refresh_token) {
+    throw new Error(`OAuth token refresh failed: ${body.error ?? response.status}`);
+  }
+  return { accessToken: body.access_token, refreshToken: body.refresh_token };
 }
 
 function bearerClient(token: string): SupabaseClient {
@@ -171,14 +199,27 @@ async function finalizeGrant(
 describeDb('OAuth authorization resource RPC (live database)', () => {
   let fixture: ProjectFixture;
   let oauthClientId = '';
+  let secondProjectId = '';
 
   beforeAll(async () => {
     fixture = await buildProjectFixture();
+    const secondProject = await fixture.svc.from('projects').insert({
+      owner_id: fixture.owner.id,
+      name: `oauth-second-project-${fixture.suffix}`,
+      description: 'OAuth cross-resource replay fixture',
+    }).select('id').single();
+    if (secondProject.error || !secondProject.data) {
+      throw new Error(`create second OAuth project failed: ${secondProject.error?.message}`);
+    }
+    secondProjectId = secondProject.data.id as string;
   }, 120_000);
 
   afterAll(async () => {
     if (oauthClientId) {
       await serviceClient().auth.admin.oauth.deleteClient(oauthClientId);
+    }
+    if (secondProjectId) {
+      await fixture.svc.from('projects').delete().eq('id', secondProjectId);
     }
     if (fixture) await teardownProjectFixture(fixture);
   }, 60_000);
@@ -195,6 +236,7 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
       client: await sessionClient(fixture.outsider.email),
     };
     const ownerResource = `${supabaseUrl}/functions/v1/mcp/${fixture.projectId}`;
+    const secondResource = `${supabaseUrl}/functions/v1/mcp/${secondProjectId}`;
     const outsiderResource = `${supabaseUrl}/functions/v1/mcp/${randomUUID()}`;
     const ownerAuthorization = await createAuthorization(
       oauthClientId,
@@ -218,6 +260,19 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
 
     await expect(
       prepareGrant(owner.client, ownerAuthorizationId, fixture.projectId, ownerResource)
+    ).resolves.toBe(true);
+    const secondAuthorization = await createAuthorization(
+      oauthClientId,
+      secondResource,
+      owner.client
+    );
+    await expect(
+      prepareGrant(
+        owner.client,
+        secondAuthorization.authorizationId,
+        secondProjectId,
+        secondResource
+      )
     ).resolves.toBe(true);
     await expect(
       hasGrant(owner.client, oauthClientId, fixture.projectId, ownerResource)
@@ -245,26 +300,67 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
     await expect(
       finalizeGrant(owner.client, ownerAuthorizationId, fixture.projectId, ownerResource)
     ).resolves.toBe(true);
+    const secondApproval = await owner.client.auth.oauth.approveAuthorization(
+      secondAuthorization.authorizationId,
+      { skipBrowserRedirect: true }
+    );
+    expect(secondApproval.error).toBeNull();
+    await expect(
+      finalizeGrant(
+        owner.client,
+        secondAuthorization.authorizationId,
+        secondProjectId,
+        secondResource
+      )
+    ).resolves.toBe(true);
 
-    const oauthToken = await exchangeAuthorizationCode(
+    const firstToken = await exchangeAuthorizationCode(
       oauthClientId,
       ownerAuthorization.verifier,
       approval.data?.redirect_url ?? ''
     );
-    const tokenPayload = JSON.parse(
-      Buffer.from(oauthToken.split('.')[1] ?? '', 'base64url').toString('utf8')
-    ) as { client_id?: string; sub?: string; role?: string };
+    const secondToken = await exchangeAuthorizationCode(
+      oauthClientId,
+      secondAuthorization.verifier,
+      secondApproval.data?.redirect_url ?? ''
+    );
+    const tokenPayload = JSON.parse(Buffer.from(
+      firstToken.accessToken.split('.')[1] ?? '',
+      'base64url'
+    ).toString('utf8')) as {
+      client_id?: string;
+      sub?: string;
+      role?: string;
+      session_id?: string;
+    };
+    const secondTokenPayload = JSON.parse(Buffer.from(
+      secondToken.accessToken.split('.')[1] ?? '',
+      'base64url'
+    ).toString('utf8')) as { session_id?: string };
     expect(tokenPayload.client_id).toBe(oauthClientId);
     expect(tokenPayload.sub).toBe(owner.id);
     expect(tokenPayload.role).toBe('authenticated');
+    expect(tokenPayload.session_id).toEqual(expect.any(String));
+    expect(secondTokenPayload.session_id).toEqual(expect.any(String));
+    expect(secondTokenPayload.session_id).not.toBe(tokenPayload.session_id);
     await expect(
       hasGrant(owner.client, oauthClientId, fixture.projectId, ownerResource)
     ).resolves.toBe(false);
-    const oauthClient = bearerClient(oauthToken);
+    const oauthClient = bearerClient(firstToken.accessToken);
+    const secondOAuthClient = bearerClient(secondToken.accessToken);
 
     await expect(
       hasGrant(oauthClient, oauthClientId, fixture.projectId, ownerResource)
     ).resolves.toBe(true);
+    await expect(
+      hasGrant(oauthClient, oauthClientId, secondProjectId, secondResource)
+    ).resolves.toBe(false);
+    await expect(
+      hasGrant(secondOAuthClient, oauthClientId, secondProjectId, secondResource)
+    ).resolves.toBe(true);
+    await expect(
+      hasGrant(secondOAuthClient, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
     await expect(
       hasGrant(oauthClient, oauthClientId, fixture.projectId, `${ownerResource}?replay=1`)
     ).resolves.toBe(false);
@@ -276,6 +372,23 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
     ).resolves.toBe(false);
     await expect(
       hasGrant(outsider.client, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
+
+    const refreshedFirstToken = await refreshOAuthToken(
+      oauthClientId,
+      firstToken.refreshToken
+    );
+    const refreshedPayload = JSON.parse(Buffer.from(
+      refreshedFirstToken.accessToken.split('.')[1] ?? '',
+      'base64url'
+    ).toString('utf8')) as { session_id?: string };
+    expect(refreshedPayload.session_id).toBe(tokenPayload.session_id);
+    const refreshedClient = bearerClient(refreshedFirstToken.accessToken);
+    await expect(
+      hasGrant(refreshedClient, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(true);
+    await expect(
+      hasGrant(refreshedClient, oauthClientId, secondProjectId, secondResource)
     ).resolves.toBe(false);
   }, 60_000);
 });

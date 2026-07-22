@@ -91,6 +91,9 @@ export function createProbeServer(context: McpRequestContext): McpServer {
 export async function handleProtocolRequest(
   request: Request,
   context: McpRequestContext,
+  dependencies: {
+    handleTransport?: (request: Request) => Promise<Response>;
+  } = {},
 ): Promise<Response> {
   const server = createProbeServer(context);
   const transport = new WebStandardStreamableHTTPServerTransport({
@@ -101,7 +104,7 @@ export async function handleProtocolRequest(
   const envelope = await protocolEnvelope(request);
   try {
     return await runMcpProtocolOperation(context, envelope,
-      () => transport.handleRequest(request));
+      () => dependencies.handleTransport?.(request) ?? transport.handleRequest(request));
   } catch (error) {
     const safe = asPublicMcpError(error);
     if (envelope.method === 'tools/call') {

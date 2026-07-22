@@ -97,4 +97,94 @@ describeDb('MCP read/search/telemetry real Postgres behavior', () => {
     });
     expect(denied.error).not.toBeNull();
   });
+
+  it('keeps private row and document search indexes fresh after mutations', async () => {
+    const fieldId = crypto.randomUUID();
+    const rowId = crypto.randomUUID();
+    const documentId = crypto.randomUUID();
+    const oldTerm = `cobalt${crypto.randomUUID().replaceAll('-', '')}`;
+    const newTerm = `vermilion${crypto.randomUUID().replaceAll('-', '')}`;
+    const documentTerm = `documentneedle${fx.suffix}`;
+    const setup = await Promise.all([
+      fx.svc.from('library_field_definitions').insert({
+        id: fieldId,
+        library_id: fx.libraryId,
+        section: 'main',
+        section_id: 'main',
+        label: 'Indexed value',
+        data_type: 'string',
+        order_index: 0,
+      }),
+      fx.svc.from('library_assets').insert({
+        id: rowId,
+        library_id: fx.libraryId,
+        name: 'Indexed row',
+        row_index: 1,
+      }),
+      fx.svc.from('documents').insert({
+        id: documentId,
+        project_id: fx.projectId,
+        name: 'Indexed document',
+        content: documentTerm,
+        created_by: fx.owner.id,
+      }),
+    ]);
+    expect(setup.every(result => result.error === null)).toBe(true);
+    const value = await fx.svc.from('library_asset_values').insert({
+      asset_id: rowId,
+      field_id: fieldId,
+      value_json: oldTerm,
+    });
+    expect(value.error).toBeNull();
+
+    const rowSearch = await fx.viewer.client.rpc('mcp_text_search', {
+      p_project_id: fx.projectId,
+      p_query: oldTerm,
+      p_limit: 10,
+      p_source: 'tables',
+    });
+    expect(rowSearch.error).toBeNull();
+    expect(rowSearch.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source_type: 'library_row', source_id: rowId }),
+    ]));
+    const documentSearch = await fx.viewer.client.rpc('mcp_text_search', {
+      p_project_id: fx.projectId,
+      p_query: documentTerm,
+      p_limit: 10,
+      p_source: 'documents',
+    });
+    expect(documentSearch.error).toBeNull();
+    expect(documentSearch.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source_type: 'project_document', source_id: documentId }),
+    ]));
+
+    const updated = await fx.svc.from('library_asset_values')
+      .update({ value_json: newTerm })
+      .eq('asset_id', rowId)
+      .eq('field_id', fieldId);
+    expect(updated.error).toBeNull();
+    const freshSearch = await fx.viewer.client.rpc('mcp_text_search', {
+      p_project_id: fx.projectId,
+      p_query: newTerm,
+      p_limit: 10,
+      p_source: 'tables',
+    });
+    expect(freshSearch.error).toBeNull();
+    expect(freshSearch.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source_type: 'library_row', source_id: rowId }),
+    ]));
+    const staleSearch = await fx.viewer.client.rpc('mcp_text_search', {
+      p_project_id: fx.projectId,
+      p_query: oldTerm,
+      p_limit: 10,
+      p_source: 'tables',
+    });
+    expect(staleSearch.error).toBeNull();
+    expect(staleSearch.data).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ source_type: 'library_row', source_id: rowId }),
+    ]));
+
+    const direct = await fx.viewer.client.from('mcp_search_documents').select('*');
+    expect(direct.error).not.toBeNull();
+  });
 });

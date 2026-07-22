@@ -73,8 +73,13 @@ select (md5('mcp-load-document-' || document_number))::uuid,
   'aaaaaaaa-bbbb-cccc-dddd-000000000007', 0, 0
 from generate_series(1, 1000) document_number;
 
+-- The plan gates run immediately after this bulk fixture is committed. Refresh
+-- statistics explicitly so index selection does not depend on autovacuum timing.
+analyze public.mcp_search_documents;
+
 do $$
 declare v_tables bigint; v_fields bigint; v_rows bigint; v_documents bigint;
+  v_search_documents bigint;
 begin
   select count(*) into v_tables from public.libraries
     where project_id = '22222222-2222-4222-8222-222222222222';
@@ -86,9 +91,12 @@ begin
     where l.project_id = '22222222-2222-4222-8222-222222222222';
   select count(*) into v_documents from public.documents
     where project_id = '22222222-2222-4222-8222-222222222222';
-  if (v_tables, v_fields, v_rows, v_documents) <> (100, 2000, 100000, 1000) then
-    raise exception 'MCP load fixture counts are invalid: %, %, %, %',
-      v_tables, v_fields, v_rows, v_documents;
+  select count(*) into v_search_documents from public.mcp_search_documents
+    where project_id = '22222222-2222-4222-8222-222222222222';
+  if (v_tables, v_fields, v_rows, v_documents, v_search_documents)
+      <> (100, 2000, 100000, 1000, 101100) then
+    raise exception 'MCP load fixture counts are invalid: %, %, %, %, %',
+      v_tables, v_fields, v_rows, v_documents, v_search_documents;
   end if;
 end;
 $$;

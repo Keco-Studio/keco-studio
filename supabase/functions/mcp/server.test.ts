@@ -421,3 +421,68 @@ Deno.test("tools/call returns a bounded static result", async () => {
     structuredContent: { ok: true, phase: 2 },
   });
 });
+
+Deno.test("protocol wrapper audits exact and oversized 1 MiB responses as one failed completion", async () => {
+  const request = () => new Request("http://localhost/mcp/project", {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 41,
+      method: "tools/call",
+      params: { name: "keco_connection_probe", arguments: {} },
+    }),
+  });
+  const originalLog = console.log;
+  const logLines: string[] = [];
+  console.log = (value) => logLines.push(String(value));
+  try {
+    for (const responseBytes of [1024 * 1024, 1024 * 1024 + 1]) {
+      const calls: Array<{ name: string; parameters: Record<string, unknown> }> = [];
+      const auditedContext = {
+        ...context,
+        requestId: crypto.randomUUID(),
+        supabase: {
+          async rpc(name: string, parameters: Record<string, unknown>) {
+            calls.push({ name, parameters });
+            if (name === "mcp_begin_operation") {
+              return { data: [{
+                operation_id: crypto.randomUUID(),
+                remaining: 239,
+                reset_at: new Date(Date.now() + 60_000).toISOString(),
+              }], error: null };
+            }
+            return { data: null, error: null };
+          },
+        },
+      } as unknown as McpRequestContext;
+
+      const response = await handleProtocolRequest(
+        request(),
+        auditedContext,
+        { handleTransport: async () => new Response(new Uint8Array(responseBytes)) },
+      );
+      const body = await response.json() as Record<string, unknown>;
+      assertEquals(response.status, 200);
+      assertEquals((await new Response(JSON.stringify(body)).arrayBuffer()).byteLength < 1024 * 1024, true);
+      assertMatch(JSON.stringify(body), /PAYLOAD_TOO_LARGE/);
+      assertEquals(calls.map((call) => call.name), [
+        "mcp_begin_operation",
+        "mcp_complete_operation",
+      ]);
+      assertEquals(calls[1].parameters.p_outcome, "failed");
+      assertEquals(calls[1].parameters.p_error_code, "PAYLOAD_TOO_LARGE");
+      assertEquals(calls[1].parameters.p_response_bytes, null);
+    }
+    assertEquals(logLines.length, 2);
+    for (const line of logLines) {
+      assertMatch(line, /"outcome":"failed"/);
+      assertMatch(line, /"errorCode":"PAYLOAD_TOO_LARGE"/);
+    }
+  } finally {
+    console.log = originalLog;
+  }
+});

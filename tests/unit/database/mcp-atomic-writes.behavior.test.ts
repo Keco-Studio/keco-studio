@@ -1,5 +1,9 @@
 import { RLS_DB_TESTS_ENABLED, buildProjectFixture, teardownProjectFixture,
   type ProjectFixture } from './helpers/rlsTestClient';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import * as Y from 'yjs';
+import { encodeBase64 } from '@/lib/documents/documentCollaborationProtocol';
 
 jest.setTimeout(30_000);
 
@@ -14,6 +18,23 @@ type FieldInput = {
   enumOptions?: string[];
   referenceTableIds?: string[];
 };
+
+type NormalizedDocument = { yjsStateBase64: string; markdown: string };
+
+function codecProbe(input: Record<string, unknown>): Record<string, unknown> {
+  const result = spawnSync(process.execPath, [
+    '--import', 'tsx', path.join(process.cwd(), 'tests/helpers/documentCodecProbe.ts'),
+  ], {
+    cwd: process.cwd(), encoding: 'utf8', input: JSON.stringify(input),
+    env: { ...process.env, DOCUMENT_CODEC_COMMONJS: '1' },
+  });
+  expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' });
+  return JSON.parse(result.stdout) as Record<string, unknown>;
+}
+
+function normalizeMarkdown(markdown: string): NormalizedDocument {
+  return codecProbe({ mode: 'normalize', markdown }) as NormalizedDocument;
+}
 
 describeDb('MCP atomic writes real Postgres behavior', () => {
   let fx: ProjectFixture;
@@ -114,7 +135,33 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       },
     });
     expect(created.error).toBeNull();
-    return { tableId, rowId, fields: typeFields, created };
+    return { tableId, rowId, fields: typeFields, created, targetRowId, targetField };
+  }
+
+  async function createRealDocument(markdown: string) {
+    const documentId = crypto.randomUUID();
+    const normalized = normalizeMarkdown(markdown);
+    const created = await fx.editor.client.rpc('mcp_create_document', {
+      p_project_id: fx.projectId,
+      p_document_id: documentId,
+      p_folder_id: null,
+      p_name: `mcp-document-${documentId}`,
+      p_markdown: normalized.markdown,
+      p_yjs_state: normalized.yjsStateBase64,
+      p_allow_duplicate: false,
+    });
+    expect(created.error).toBeNull();
+    expect(created.data).toEqual([
+      expect.objectContaining({
+        document_id: documentId,
+        project_id: fx.projectId,
+        collab_epoch: 0,
+        collab_revision: 1,
+        collab_epoch_reason: 'initialize',
+        update_ids: [],
+      }),
+    ]);
+    return { documentId, normalized };
   }
 
   it.each(['owner', 'admin', 'editor'] as const)('%s creates a complete table', async role => {
@@ -171,9 +218,10 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       [setup.fields.status.id]: 'open',
       [setup.fields.due.id]: '2024-02-29',
     });
-    expect(rowValues[setup.fields.link.id]).toEqual(expect.objectContaining({
-      assetId: expect.any(String), fieldId: expect.any(String),
-    }));
+    expect(rowValues[setup.fields.link.id]).toEqual({
+      assetId: setup.targetRowId,
+      fieldId: setup.targetField.id,
+    });
 
     const booleanUpdate = await fx.editor.client.rpc('mcp_update_table_row', {
       p_project_id: fx.projectId, p_table_id: setup.tableId, p_row_id: setup.rowId,
@@ -195,6 +243,10 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       ['Due', '2024-02-29T00:00:00Z'],
       ['Link', { assetId: crypto.randomUUID(), fieldId: crypto.randomUUID() }],
       ['Link', { assetId: externalAssetId, fieldId: externalFieldId }],
+      ['Link', { assetId: setup.targetRowId, fieldId: setup.targetField.id,
+        displayValue: 'must not persist' }],
+      ['Link', [{ assetId: setup.targetRowId, fieldId: setup.targetField.id,
+        extra: true }]],
       ['Tags', []],
     ];
     for (const [label, value] of invalidValues) {
@@ -204,6 +256,34 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       });
       expect(invalid.error?.code).toBe('22023');
     }
+
+    const canonicalArray = [{
+      fieldId: setup.targetField.id,
+      assetId: setup.targetRowId,
+    }];
+    const canonicalUpdate = await fx.editor.client.rpc('mcp_update_table_row', {
+      p_project_id: fx.projectId,
+      p_table_id: setup.tableId,
+      p_row_id: setup.rowId,
+      p_row_index: null,
+      p_expected_row_id: setup.rowId,
+      p_values: { Link: canonicalArray },
+    });
+    expect(canonicalUpdate.error).toBeNull();
+    expect(canonicalUpdate.data[0].row_values[setup.fields.link.id]).toEqual([{
+      assetId: setup.targetRowId,
+      fieldId: setup.targetField.id,
+    }]);
+    const persisted = await fx.svc.from('library_asset_values')
+      .select('value_json')
+      .eq('asset_id', setup.rowId)
+      .eq('field_id', setup.fields.link.id)
+      .single();
+    expect(persisted.error).toBeNull();
+    expect(persisted.data?.value_json).toEqual([{
+      assetId: setup.targetRowId,
+      fieldId: setup.targetField.id,
+    }]);
   });
 
   it('rejects cross-project reference table definitions atomically', async () => {
@@ -263,5 +343,174 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     });
     expect(nullUpdate.error).toBeNull();
     expect(nullUpdate.data[0].row_id).toBe(nullLow);
+  });
+
+  it('creates real-codec documents and keeps replacement service-role-only', async () => {
+    const created = await createRealDocument('# Service boundary\n\nOriginal body');
+    expect(codecProbe({ mode: 'state', snapshot: created.normalized.yjsStateBase64,
+      updates: [] })).toEqual({ markdown: created.normalized.markdown });
+
+    const direct = await fx.editor.client.rpc('mcp_replace_document_content', {
+      p_project_id: fx.projectId,
+      p_document_id: created.documentId,
+      p_actor_user_id: fx.editor.id,
+      p_backup_version_id: crypto.randomUUID(),
+      p_expected_epoch: 0,
+      p_expected_revision: 1,
+      p_expected_update_ids: [],
+      p_current_yjs_state: created.normalized.yjsStateBase64,
+      p_current_markdown: created.normalized.markdown,
+      p_replacement_yjs_state: created.normalized.yjsStateBase64,
+      p_replacement_markdown: created.normalized.markdown,
+    });
+    expect(direct.error).not.toBeNull();
+
+    const stored = await fx.svc.from('documents')
+      .select('content, yjs_state, collab_epoch, collab_revision')
+      .eq('id', created.documentId).single();
+    expect(stored.error).toBeNull();
+    expect(stored.data).toMatchObject({
+      content: created.normalized.markdown,
+      yjs_state: created.normalized.yjsStateBase64,
+      collab_epoch: 0,
+      collab_revision: 1,
+    });
+  });
+
+  it('replaces once with a backup, increments state, deletes only the consumed tail, and leaves conflicts unchanged', async () => {
+    const created = await createRealDocument('# Replacement seed\n\nOriginal body');
+    const emptyUpdate = encodeBase64(Y.encodeStateAsUpdate(new Y.Doc()));
+    const updateIds = [crypto.randomUUID(), crypto.randomUUID()].sort();
+    const insertedTail = await fx.svc.from('document_yjs_updates').insert([
+      { id: updateIds[0], document_id: created.documentId, epoch: 0,
+        update_data: emptyUpdate, created_by: fx.editor.id,
+        created_at: '2026-07-22T00:00:00.000Z' },
+      { id: updateIds[1], document_id: created.documentId, epoch: 0,
+        update_data: emptyUpdate, created_by: fx.editor.id,
+        created_at: '2026-07-22T00:00:00.000Z' },
+    ]);
+    expect(insertedTail.error).toBeNull();
+
+    const currentMarkdown = codecProbe({ mode: 'state',
+      snapshot: created.normalized.yjsStateBase64,
+      updates: [emptyUpdate, emptyUpdate] }) as { markdown: string };
+    const current = { ...created.normalized, markdown: currentMarkdown.markdown };
+    const replacement = normalizeMarkdown('# Replacement winner\n\nNew body');
+    const backupVersionId = crypto.randomUUID();
+    const replaced = await fx.svc.rpc('mcp_replace_document_content', {
+      p_project_id: fx.projectId,
+      p_document_id: created.documentId,
+      p_actor_user_id: fx.editor.id,
+      p_backup_version_id: backupVersionId,
+      p_expected_epoch: 0,
+      p_expected_revision: 1,
+      p_expected_update_ids: updateIds,
+      p_current_yjs_state: current.yjsStateBase64,
+      p_current_markdown: current.markdown,
+      p_replacement_yjs_state: replacement.yjsStateBase64,
+      p_replacement_markdown: replacement.markdown,
+    });
+    expect(replaced.error).toBeNull();
+    expect(replaced.data).toEqual([
+      expect.objectContaining({
+        document_id: created.documentId,
+        collab_epoch: 1,
+        collab_revision: 2,
+        collab_epoch_reason: 'agent',
+        backup_version_id: backupVersionId,
+      }),
+    ]);
+
+    const [document, versions, tail] = await Promise.all([
+      fx.svc.from('documents')
+        .select('content, yjs_state, collab_epoch, collab_revision, collab_epoch_reason')
+        .eq('id', created.documentId).single(),
+      fx.svc.from('document_versions')
+        .select('id, version_type, snapshot_yjs_state, snapshot_content, snapshot_epoch, snapshot_revision')
+        .eq('document_id', created.documentId),
+      fx.svc.from('document_yjs_updates').select('id, epoch')
+        .eq('document_id', created.documentId),
+    ]);
+    expect(document.data).toMatchObject({
+      content: replacement.markdown,
+      yjs_state: replacement.yjsStateBase64,
+      collab_epoch: 1,
+      collab_revision: 2,
+      collab_epoch_reason: 'agent',
+    });
+    expect(versions.data).toEqual([{
+      id: backupVersionId,
+      version_type: 'pre_agent',
+      snapshot_yjs_state: current.yjsStateBase64,
+      snapshot_content: current.markdown,
+      snapshot_epoch: 0,
+      snapshot_revision: 1,
+    }]);
+    expect(tail.data).toEqual([]);
+
+    const beforeConflict = {
+      document: document.data,
+      versions: versions.data,
+      tail: tail.data,
+    };
+    const conflict = await fx.svc.rpc('mcp_replace_document_content', {
+      p_project_id: fx.projectId,
+      p_document_id: created.documentId,
+      p_actor_user_id: fx.owner.id,
+      p_backup_version_id: crypto.randomUUID(),
+      p_expected_epoch: 0,
+      p_expected_revision: 1,
+      p_expected_update_ids: updateIds,
+      p_current_yjs_state: current.yjsStateBase64,
+      p_current_markdown: current.markdown,
+      p_replacement_yjs_state: created.normalized.yjsStateBase64,
+      p_replacement_markdown: created.normalized.markdown,
+    });
+    expect(conflict.error?.code).toBe('PT409');
+    const [afterDocument, afterVersions, afterTail] = await Promise.all([
+      fx.svc.from('documents')
+        .select('content, yjs_state, collab_epoch, collab_revision, collab_epoch_reason')
+        .eq('id', created.documentId).single(),
+      fx.svc.from('document_versions')
+        .select('id, version_type, snapshot_yjs_state, snapshot_content, snapshot_epoch, snapshot_revision')
+        .eq('document_id', created.documentId),
+      fx.svc.from('document_yjs_updates').select('id, epoch')
+        .eq('document_id', created.documentId),
+    ]);
+    expect({ document: afterDocument.data, versions: afterVersions.data, tail: afterTail.data })
+      .toEqual(beforeConflict);
+  });
+
+  it('allows exactly one of two service-role document replacements to win', async () => {
+    const created = await createRealDocument('# Concurrent seed');
+    const replacements = ['first', 'second'].map(label => normalizeMarkdown(`# ${label} winner`));
+
+    const attempts = await Promise.all(replacements.map((replacement) =>
+      fx.svc.rpc('mcp_replace_document_content', {
+        p_project_id: fx.projectId,
+        p_document_id: created.documentId,
+        p_actor_user_id: fx.editor.id,
+        p_backup_version_id: crypto.randomUUID(),
+        p_expected_epoch: 0,
+        p_expected_revision: 1,
+        p_expected_update_ids: [],
+        p_current_yjs_state: created.normalized.yjsStateBase64,
+        p_current_markdown: created.normalized.markdown,
+        p_replacement_yjs_state: replacement.yjsStateBase64,
+        p_replacement_markdown: replacement.markdown,
+      })
+    ));
+    expect(attempts.filter(result => result.error === null)).toHaveLength(1);
+    expect(attempts.filter(result => result.error?.code === 'PT409')).toHaveLength(1);
+
+    const [document, versions] = await Promise.all([
+      fx.svc.from('documents').select('content, collab_epoch, collab_revision')
+        .eq('id', created.documentId).single(),
+      fx.svc.from('document_versions').select('id', { count: 'exact' })
+        .eq('document_id', created.documentId),
+    ]);
+    expect(replacements.map(value => value.markdown)).toContain(document.data?.content);
+    expect(document.data).toMatchObject({ collab_epoch: 1, collab_revision: 2 });
+    expect(versions.count).toBe(1);
   });
 });

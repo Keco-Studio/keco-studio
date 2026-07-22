@@ -1,6 +1,51 @@
 \set ON_ERROR_STOP on
 
 begin;
+
+do $$
+declare
+  v_count integer;
+  v_plan jsonb;
+begin
+  select count(*) into v_count
+  from public.mcp_search_documents
+  where project_id = '22222222-2222-4222-8222-222222222222';
+  if v_count <> 101100 then
+    raise exception 'MCP search index fixture is incomplete: % rows', v_count;
+  end if;
+
+  perform set_config('enable_seqscan', 'off', true);
+  execute $plan$
+    explain (format json)
+    select source_id
+    from public.mcp_search_documents
+    where project_id = '22222222-2222-4222-8222-222222222222'
+      and source_type in ('library_schema', 'library_row')
+      and search_vector @@ plainto_tsquery('simple', 'load fixture 42')
+    limit 40
+  $plan$ into v_plan;
+  if v_plan::text not like '%mcp_search_documents_search_vector_idx%'
+    or v_plan::text like '%Seq Scan%' then
+    raise exception 'MCP full-text search plan is not index-backed: %', v_plan;
+  end if;
+
+  perform set_config('pg_trgm.similarity_threshold', '0.1', true);
+  execute $plan$
+    explain (format json)
+    select source_id
+    from public.mcp_search_documents
+    where project_id = '22222222-2222-4222-8222-222222222222'
+      and source_type = 'project_document'
+      and search_text operator(extensions.%) 'representative fixture'
+    limit 40
+  $plan$ into v_plan;
+  if v_plan::text not like '%mcp_search_documents_search_text_trgm_idx%'
+    or v_plan::text like '%Seq Scan%' then
+    raise exception 'MCP fuzzy search plan is not index-backed: %', v_plan;
+  end if;
+end;
+$$;
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'aaaaaaaa-bbbb-cccc-dddd-000000000007', true);
 
@@ -11,6 +56,7 @@ declare
   v_structure jsonb;
   v_count integer;
 begin
+
   for sample in 1..3 loop
     v_started := clock_timestamp();
     v_structure := public.mcp_read_project_structure(

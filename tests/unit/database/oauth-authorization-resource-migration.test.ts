@@ -24,6 +24,8 @@ describe('OAuth project grants migration', () => {
 
     expect(sql).toMatch(/create table if not exists public\.oauth_project_grants/i);
     expect(sql).toMatch(/add column if not exists approved_at/i);
+    expect(sql).toMatch(/add column if not exists session_id uuid references auth\.sessions\(id\)/i);
+    expect(sql).toMatch(/add column if not exists exchanged_at/i);
     expect(sql).toMatch(/create index if not exists oauth_project_grants_runtime_idx/i);
     expect(sql).not.toContain('get_oauth_authorization_resource');
   });
@@ -75,7 +77,28 @@ describe('OAuth project grants migration', () => {
     expect(check).toMatch(/grant_row\.resource\s*=\s*p_resource/i);
     expect(check).toMatch(/oa\.status\s*=\s*'approved'/i);
     expect(check).toMatch(/grant_row\.approved_at is not null/i);
+    expect(check).toMatch(/grant_row\.exchanged_at is not null/i);
+    expect(check).toMatch(/grant_row\.session_id::text\s*=\s*auth\.jwt\(\)\s*->>\s*'session_id'/i);
+    expect(check).toMatch(/session_row\.oauth_client_id\s*=\s*grant_row\.client_id/i);
     expect(check).toMatch(/oa\.authorization_id is null/i);
+  });
+
+  it('binds an exchanged authorization only to its same-transaction OAuth session', () => {
+    const sql = fs.readFileSync(migrationPath, 'utf8');
+    const binding = sql.slice(
+      sql.indexOf('CREATE OR REPLACE FUNCTION public.bind_oauth_project_grant_session'),
+      sql.indexOf('CREATE OR REPLACE FUNCTION public.finalize_oauth_project_grant')
+    );
+
+    expect(binding).toMatch(/after delete on auth\.oauth_authorizations/i);
+    expect(binding).toMatch(/old\.status\s*<>\s*'approved'/i);
+    expect(binding).toMatch(/session_row\.user_id\s*=\s*old\.user_id/i);
+    expect(binding).toMatch(/session_row\.oauth_client_id\s*=\s*old\.client_id/i);
+    expect(binding).toMatch(
+      /session_row\.xmin::text::bigint\s*=\s*pg_current_xact_id\(\)::text::bigint/i
+    );
+    expect(binding).toMatch(/cardinality\(v_session_ids\)\s*=\s*1/i);
+    expect(binding).toMatch(/grant_row\.authorization_id\s*=\s*old\.authorization_id/i);
   });
 
   it('finalizes only the same approved authorization tuple', () => {

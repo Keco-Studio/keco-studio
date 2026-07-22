@@ -1,6 +1,6 @@
 import type { McpRequestContext } from "./context.ts";
 import { asPublicMcpError, McpDomainError } from "./errors.ts";
-import { utf8ByteLength } from "./limits.ts";
+import { MAX_RESPONSE_BYTES, utf8ByteLength } from "./limits.ts";
 
 export type McpOperationClass = "static" | "read" | "write" | "search";
 export type McpOperationPhase = "database" | "embedding";
@@ -46,6 +46,82 @@ async function responseByteLength(value: unknown): Promise<number> {
     return (await value.clone().arrayBuffer()).byteLength;
   }
   return utf8ByteLength(JSON.stringify(value ?? null));
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The bounded public error replaces this response.
+  }
+}
+
+async function admitProtocolResponse(
+  response: Response,
+): Promise<{ response: Response; responseBytes: number }> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared >= MAX_RESPONSE_BYTES) {
+    await cancelResponseBody(response);
+    throw new McpDomainError(
+      "PAYLOAD_TOO_LARGE",
+      "The MCP response must remain below 1 MiB.",
+    );
+  }
+  if (!response.body) return { response, responseBytes: 0 };
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let responseBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (responseBytes + value.byteLength >= MAX_RESPONSE_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The bounded public error still wins over cancellation failure.
+        }
+        throw new McpDomainError(
+          "PAYLOAD_TOO_LARGE",
+          "The MCP response must remain below 1 MiB.",
+        );
+      }
+      responseBytes += value.byteLength;
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof McpDomainError) throw error;
+    try {
+      await reader.cancel();
+    } catch {
+      // The safe internal error below replaces the unreadable response.
+    }
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The MCP response could not be serialized.",
+    );
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(responseBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const headers = new Headers(response.headers);
+  headers.set("content-length", String(responseBytes));
+  return {
+    response: new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+    responseBytes,
+  };
 }
 
 async function admit(
@@ -223,7 +299,16 @@ export async function runMcpOperation<T>(
   );
   try {
     const result = await callback();
-    const responseBytes = await responseByteLength(result);
+    const admittedResult = result instanceof Response
+      ? (await admitProtocolResponse(result)).response as T
+      : result;
+    const responseBytes = await responseByteLength(admittedResult);
+    if (responseBytes >= MAX_RESPONSE_BYTES) {
+      throw new McpDomainError(
+        "PAYLOAD_TOO_LARGE",
+        "The MCP response must remain below 1 MiB.",
+      );
+    }
     const totalMs = Math.max(0, Math.round(performance.now() - startedAt));
     const databaseMs = Math.round(timings.databaseMs);
     const embeddingMs = Math.round(timings.embeddingMs);
@@ -247,7 +332,7 @@ export async function runMcpOperation<T>(
       embeddingMs,
       completionRecorded,
     });
-    return result;
+    return admittedResult;
   } catch (error) {
     const safe = asPublicMcpError(error);
     const totalMs = Math.max(0, Math.round(performance.now() - startedAt));
@@ -297,10 +382,9 @@ export async function runMcpProtocolOperation(
   try {
     const response = await callback();
     const serializationStarted = performance.now();
-    const [responseBytes, outcome] = await Promise.all([
-      responseByteLength(response),
-      inspectProtocolOutcome(response),
-    ]);
+    const admittedResponse = await admitProtocolResponse(response);
+    const responseBytes = admittedResponse.responseBytes;
+    const outcome = await inspectProtocolOutcome(admittedResponse.response);
     const serializationMs = Math.max(
       0,
       Math.round(performance.now() - serializationStarted),
@@ -333,7 +417,7 @@ export async function runMcpProtocolOperation(
       ...outcome.metadata,
       completionRecorded,
     });
-    return response;
+    return admittedResponse.response;
   } catch (error) {
     const safe = asPublicMcpError(error);
     const totalMs = Math.max(0, Math.round(performance.now() - startedAt));

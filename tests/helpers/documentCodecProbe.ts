@@ -21,6 +21,8 @@ import {
 
 type ProbeInput =
   | { mode: 'roundtrip'; markdown: string }
+  | { mode: 'normalize'; markdown: string }
+  | { mode: 'route-encode'; markdown: string; secret: string }
   | { mode: 'structure'; markdown: string }
   | { mode: 'decorators'; markdown: string }
   | { mode: 'lexical'; markdown: string }
@@ -389,6 +391,28 @@ async function main() {
     const snapshot = await documentContentCodec.markdownToYjsState(input.markdown);
     const markdown = await documentContentCodec.yjsStateToMarkdown(snapshot, []);
     return { markdown };
+  }
+
+  if (input.mode === 'normalize') {
+    const snapshot = await documentContentCodec.markdownToYjsState(input.markdown);
+    return documentContentCodec.normalizeYjsState(snapshot, []);
+  }
+
+  if (input.mode === 'route-encode') {
+    process.env.MCP_CODEC_SECRET = input.secret;
+    const [{ NextRequest }, { POST }] = await Promise.all([
+      import('next/server'),
+      import('../../src/app/api/mcp/codec/route'),
+    ]);
+    const response = await POST(new NextRequest('https://keco.test/api/mcp/codec', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${input.secret}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ mode: 'encode', markdown: input.markdown }),
+    }));
+    return { status: response.status, body: await response.json() };
   }
 
   if (input.mode === 'structure') {
