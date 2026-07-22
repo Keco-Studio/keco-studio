@@ -249,6 +249,37 @@ Deno.test("authorization canonicalizes the Supabase gateway MCP path before gran
   });
 });
 
+Deno.test("authorization rejects noncanonical MCP request resources before grant lookup", async () => {
+  const otherProjectId = "22222222-2222-4222-8222-222222222222";
+  const rejectedResources = [
+    `https://x/mcp/${otherProjectId}`,
+    `https://x/mcp/${projectId}/extra`,
+    `https://x/functions/v1/mcp/${projectId}?replay=1`,
+    `https://user:password@x/mcp/${projectId}`,
+    `https://x/mcp/${projectId}#fragment`,
+  ];
+
+  for (const resource of rejectedResources) {
+    let grantLookups = 0;
+    const result = await authorizeProjectWithGateway(
+      new Request(resource, { headers: { authorization: "Bearer token" } }),
+      projectId,
+      {
+        getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+        hasOAuthProjectGrant: async () => {
+          grantLookups += 1;
+          return true;
+        },
+        getProjectOwner: async () => "user-1",
+        getCollaboratorRole: async () => null,
+      },
+    );
+
+    assertEquals(result, { status: "forbidden" });
+    assertEquals(grantLookups, 0);
+  }
+});
+
 Deno.test("authorization denies wrong-resource and dual-project grant replay", async () => {
   const grantedResource = `https://x/functions/v1/mcp/${projectId}`;
   const otherProjectId = "22222222-2222-4222-8222-222222222222";
