@@ -41,7 +41,8 @@ import {
 import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
 import { notifyDocumentDerivedLibraryCreated } from "@/lib/documents/documentDerivedLibraryEvents";
-import type { DocumentExportSource } from "@/lib/documents/documentExportSource";
+import { runDocumentDerivedImport } from "@/lib/documents/runDocumentDerivedImport";
+import { showErrorToast, showSuccessToast } from "@/lib/utils/toast";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
@@ -69,7 +70,6 @@ import {
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
-import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
@@ -198,7 +198,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [folderAddMenu, setFolderAddMenu] = useState<{ folderId: string; anchor: HTMLElement } | null>(null);
-  const [scriptExportSource, setScriptExportSource] = useState<DocumentExportSource | null>(null);
   const [showImportDocumentModal, setShowImportDocumentModal] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -681,6 +680,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
+  const onToggleDocumentExpand = useCallback((docKey: string) => {
+    setExpandedKeys((prev) =>
+      prev.includes(docKey) ? prev.filter((key) => key !== docKey) : [...prev, docKey]
+    );
+  }, []);
+
   const handleTreeRightClick = ({ event, node }: { event: any; node: EventDataNode }) => {
     if (!node || !node.key) return;
 
@@ -736,6 +741,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setError,
       setEditingKey,
       onSaveRename: handleSaveRename,
+      expandedKeys,
+      onToggleDocumentExpand,
     },
     sidebarWidth
   );
@@ -940,7 +947,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openMoveDocument,
     openNewDocumentInFolder,
     startInlineRename: (key: string) => setEditingKey(key),
-    openDocumentScriptExport: (source) => setScriptExportSource(source),
+    startDocumentDerivedImport: (source, exportType) => {
+      void (async () => {
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError || !session?.access_token) {
+            throw new Error('Please sign in before exporting');
+          }
+          const result = await runDocumentDerivedImport({
+            source,
+            exportType,
+            accessToken: session.access_token,
+          });
+          notifyDocumentDerivedLibraryCreated({
+            projectId: source.projectId,
+            documentId: source.documentId,
+            libraryId: result.libraryId,
+          });
+          await invalidateLibraryData(queryClient, {
+            projectId: source.projectId,
+            folderId: source.folderId,
+            libraryId: result.libraryId,
+            refetchActiveFoldersLibraries: true,
+          });
+          router.push(`/${source.projectId}/${result.libraryId}`);
+        } catch (err) {
+          showErrorToast(err instanceof Error ? err.message : 'Import failed');
+        }
+      })();
+    },
     userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
@@ -1316,33 +1351,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               refetchActiveFoldersLibraries: true,
             });
             expandFolder(importingScriptFolderId);
-            if (currentIds.projectId) {
-              router.push(`/${currentIds.projectId}/${libraryId}`);
-            }
-          }}
-        />
-      )}
-
-      {scriptExportSource && currentIds.projectId && (
-        <ImportScriptModal
-          open={Boolean(scriptExportSource)}
-          projectId={currentIds.projectId}
-          folderId={scriptExportSource.folderId}
-          documentSource={scriptExportSource}
-          onClose={() => setScriptExportSource(null)}
-          onImported={(libraryId) => {
-            notifyDocumentDerivedLibraryCreated({
-              projectId: currentIds.projectId!,
-              documentId: scriptExportSource.documentId,
-              libraryId,
-            });
-            void invalidateLibraryData(queryClient, {
-              projectId: currentIds.projectId,
-              folderId: scriptExportSource.folderId,
-              libraryId,
-              refetchActiveFoldersLibraries: true,
-            });
-            setScriptExportSource(null);
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${libraryId}`);
             }

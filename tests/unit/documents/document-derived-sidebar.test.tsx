@@ -20,7 +20,13 @@ jest.mock('../../../src/components/layout/ContextMenu.module.css', () =>
   new Proxy({}, { get: (_target, property) => String(property) }),
   { virtual: true }
 );
-for (const asset of ['LibraryBookIcon.svg', 'FolderAddLibIcon.svg', 'FolderCloseIcon.svg']) {
+for (const asset of [
+  'LibraryBookIcon.svg',
+  'FolderAddLibIcon.svg',
+  'FolderCloseIcon.svg',
+  'folderExpandIcon.svg',
+  'folderCollapseIcon.svg',
+]) {
   jest.mock(`../../../src/assets/images/${asset}`, () => asset, { virtual: true });
 }
 
@@ -65,7 +71,7 @@ describe('document-derived sidebar tree', () => {
           { id: newer, project_id: projectId, folder_id: null, name: 'Script', description: null, created_at: '2026-01-02', updated_at: '2026-01-02', updated_by: null, source_document_id: documentId, document_export_type: 'script' },
         ],
         [{ id: documentId, project_id: projectId, folder_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' }],
-        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn(), expandedKeys: [], onToggleDocumentExpand: jest.fn() }
       ).treeData;
       return null;
     }
@@ -80,7 +86,7 @@ describe('document-derived sidebar tree', () => {
       emptyTree = useSidebarTree(
         { projectId, libraryId: null, folderId: null, assetId: null, documentId: null, isLibraryPage: false, isPredefinePage: false },
         [], [], [{ id: documentId, project_id: projectId, folder_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' }],
-        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn(), expandedKeys: [], onToggleDocumentExpand: jest.fn() }
       ).treeData;
       return null;
     }

@@ -142,8 +142,12 @@ export async function createLibrary(
       folder_id: placement?.folderId ?? folderId,
       name,
       description,
-      source_document_id: placement?.sourceDocumentId ?? null,
-      document_export_type: placement?.documentExportType ?? null,
+      ...(placement
+        ? {
+            source_document_id: placement.sourceDocumentId,
+            document_export_type: placement.documentExportType,
+          }
+        : {}),
     })
     .select('id')
     .single();

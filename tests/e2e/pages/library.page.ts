@@ -751,4 +751,23 @@ export class LibraryPage {
     await this.page.waitForLoadState('load', { timeout: 15000 });
     await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
   }
+
+  /**
+   * Open the library Version Control sidebar.
+   * Retries the toggle click because TopBar dispatches a custom event that can
+   * race the library page listener right after navigation.
+   */
+  async openVersionControlSidebar(): Promise<void> {
+    const toggle = this.page.getByTestId('library-version-control-toggle');
+    const sidebar = this.page.getByTestId('library-version-history-sidebar');
+
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+    await expect(async () => {
+      if (!(await sidebar.isVisible().catch(() => false))) {
+        await toggle.click();
+      }
+      await expect(sidebar).toBeVisible({ timeout: 2000 });
+      await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20000 });
+  }
 }

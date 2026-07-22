@@ -33,12 +33,10 @@ import {
   type DocumentDerivedLibraryCreatedDetail,
 } from '@/lib/documents/documentDerivedLibraryEvents';
 import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
-import {
-  fetchDocumentExportSource,
-  handoffDocumentTableExport,
-} from '@/lib/documents/startDocumentExport';
+import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
 import { showErrorToast } from '@/lib/utils/toast';
-
+import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
+import { notifyDocumentDerivedImportProgress } from '@/lib/documents/documentDerivedImportProgress';
 export async function moveSidebarDocument({
   supabase,
   documentId,
@@ -152,7 +150,11 @@ export type UseSidebarContextMenuActionsParams = {
   openMoveDocument: (documentId: string) => void;
   openNewDocumentInFolder: (folderId: string) => void;
   startInlineRename: (key: string) => void;
-  openDocumentScriptExport: (source: DocumentExportSource) => void;
+  /** Silent document Generate conversation/table (no ImportScriptModal). */
+  startDocumentDerivedImport: (
+    source: DocumentExportSource,
+    exportType: DocumentExportType
+  ) => void;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   requestDeleteConfirm: (options: {
     title: string;
@@ -189,7 +191,7 @@ export function useSidebarContextMenuActions({
   openMoveDocument,
   openNewDocumentInFolder,
   startInlineRename,
-  openDocumentScriptExport,
+  startDocumentDerivedImport,
   userRole,
   requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
@@ -344,17 +346,37 @@ export function useSidebarContextMenuActions({
         const documentId = contextMenu.id;
         const projectId = currentIds.projectId;
         closeContextMenu();
+        const startedAt = Date.now();
+        notifyDocumentDerivedImportProgress({
+          projectId,
+          documentId,
+          exportType: 'table',
+          phase: 'preparing',
+          label: 'Preparing table…',
+          startedAt,
+        });
+        router.push(`/${projectId}/doc/${documentId}`);
         void (async () => {
           try {
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
             if (sessionError || !session?.access_token) {
               throw new Error('Please sign in before exporting');
             }
+            // Same import_script / Story IR pipeline as Generate conversation; nests as a table.
             const source = await fetchDocumentExportSource(documentId, session.access_token);
-            handoffDocumentTableExport(projectId, source);
+            startDocumentDerivedImport(source, 'table');
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Failed to generate table';
             setError(msg);
+            notifyDocumentDerivedImportProgress({
+              projectId,
+              documentId,
+              exportType: 'table',
+              phase: 'error',
+              label: msg,
+              error: msg,
+              startedAt,
+            });
             showErrorToast(msg);
           }
         })();
@@ -362,23 +384,44 @@ export function useSidebarContextMenuActions({
       }
 
       if (action === 'generate-conversation' && contextMenu.type === 'document') {
-        if (userRole !== 'admin') {
+        if (userRole !== 'admin' || !currentIds.projectId) {
           closeContextMenu();
           return;
         }
         const documentId = contextMenu.id;
+        const projectId = currentIds.projectId;
         closeContextMenu();
+        const startedAt = Date.now();
+        notifyDocumentDerivedImportProgress({
+          projectId,
+          documentId,
+          exportType: 'script',
+          phase: 'preparing',
+          label: 'Preparing conversation…',
+          startedAt,
+        });
+        router.push(`/${projectId}/doc/${documentId}`);
         void (async () => {
           try {
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
             if (sessionError || !session?.access_token) {
               throw new Error('Please sign in before exporting');
             }
+            // Document-derived Export as script: result nests under this document.
             const source = await fetchDocumentExportSource(documentId, session.access_token);
-            openDocumentScriptExport(source);
+            startDocumentDerivedImport(source, 'script');
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Failed to generate conversation';
             setError(msg);
+            notifyDocumentDerivedImportProgress({
+              projectId,
+              documentId,
+              exportType: 'script',
+              phase: 'error',
+              label: msg,
+              error: msg,
+              startedAt,
+            });
             showErrorToast(msg);
           }
         })();
@@ -570,7 +613,7 @@ export function useSidebarContextMenuActions({
       openMoveDocument,
       openNewDocumentInFolder,
       startInlineRename,
-      openDocumentScriptExport,
+      startDocumentDerivedImport,
       userRole,
       requestDeleteConfirm,
     ]

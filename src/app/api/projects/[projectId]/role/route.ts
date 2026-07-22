@@ -6,7 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/route-auth';
-import { getUserProjectRole } from '@/lib/services/authorizationService';
+import {
+  AuthorizationError,
+  getUserProjectRole,
+} from '@/lib/services/authorizationService';
 
 /**
  * GET /api/projects/[projectId]/role
@@ -26,10 +29,27 @@ const getHandler = async (
     return NextResponse.json(result);
   } catch (error) {
     console.error('[GET /api/projects/[projectId]/role] Error:', error);
-    return NextResponse.json({
-      role: null,
-      isOwner: false,
-    });
+
+    if (error instanceof AuthorizationError) {
+      const message = error.message.toLowerCase();
+      // Project missing can lag briefly after create — clients may retry.
+      if (message.includes('not found')) {
+        return NextResponse.json(
+          { role: null, isOwner: false },
+          { status: 404 }
+        );
+      }
+      // Definitive denial (not a collaborator) — do not retry.
+      return NextResponse.json(
+        { role: null, isOwner: false },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json(
+      { role: null, isOwner: false },
+      { status: 500 }
+    );
   }
 };
 
@@ -37,5 +57,5 @@ export const GET = withAuth(getHandler, {
   unauthorizedResponse: () => NextResponse.json({
     role: null,
     isOwner: false,
-  }),
+  }, { status: 401 }),
 });

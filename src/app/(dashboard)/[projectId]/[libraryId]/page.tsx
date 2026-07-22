@@ -657,11 +657,13 @@ export default function LibraryPage() {
                       id: librarySummary.id,
                       name: librarySummary.name,
                       description: librarySummary.description,
+                      documentExportType: library.document_export_type,
                     }
                   : {
                       id: library.id,
                       name: library.name,
                       description: library.description,
+                      documentExportType: library.document_export_type,
                     }
               }
               sections={tableSections}

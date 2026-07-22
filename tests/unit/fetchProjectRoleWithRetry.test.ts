@@ -16,6 +16,7 @@ describe('fetchProjectRoleWithRetry', () => {
   it('returns role immediately when first response includes role', async () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({ role: 'admin', isOwner: true }),
     } as Response);
 
@@ -28,15 +29,17 @@ describe('fetchProjectRoleWithRetry', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('retries until role becomes available', async () => {
+  it('retries until role becomes available after 404', async () => {
     global.fetch = jest
       .fn<typeof fetch>()
       .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ role: null, isOwner: true }),
+        ok: false,
+        status: 404,
+        json: async () => ({ role: null, isOwner: false }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
+        status: 200,
         json: async () => ({ role: 'admin', isOwner: true }),
       } as Response);
 
@@ -52,9 +55,42 @@ describe('fetchProjectRoleWithRetry', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('returns last null result after exhausting retries', async () => {
+  it('fails fast on 403 without retrying', async () => {
     global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
-      ok: true,
+      ok: false,
+      status: 403,
+      json: async () => ({ role: null, isOwner: false }),
+    } as Response);
+
+    const result = await fetchProjectRoleWithRetry('project-id', 'token', {
+      maxAttempts: 5,
+      delayMs: 100,
+    });
+
+    expect(result).toEqual({ role: null, isOwner: false });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails fast on 401 without retrying', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ role: null, isOwner: false }),
+    } as Response);
+
+    const result = await fetchProjectRoleWithRetry('project-id', 'token', {
+      maxAttempts: 5,
+      delayMs: 100,
+    });
+
+    expect(result).toEqual({ role: null, isOwner: false });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns last null result after exhausting 404 retries', async () => {
+    global.fetch = jest.fn<typeof fetch>().mockResolvedValue({
+      ok: false,
+      status: 404,
       json: async () => ({ role: null, isOwner: false }),
     } as Response);
 

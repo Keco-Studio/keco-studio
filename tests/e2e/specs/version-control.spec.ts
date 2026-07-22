@@ -117,24 +117,7 @@ test.describe('Version Control Tests', () => {
 
     // Click clock button to open version control sidebar
     await test.step('Click clock button to open version control sidebar', async () => {
-      // Find the version control button (clock icon) in the header
-      // The button has alt="Version Control" or title="Version Control"
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      // Wait for version control sidebar to appear
-      // Sidebar should have title "VERSION HISTORY"
-      const versionSidebar = page.getByText('VERSION HISTORY');
-      await expect(versionSidebar).toBeVisible({ timeout: 5000 });
-      
-      // Verify sidebar is visible
-      const sidebarContent = page.locator('[class*="sidebar"]').filter({ hasText: /version/i });
-      await expect(sidebarContent).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
     });
   });
 
@@ -173,14 +156,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForTimeout(2000);
       
       // Open version control sidebar
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -256,14 +232,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForTimeout(2000);
       
       // Open version control sidebar
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
       
       // Create a version
@@ -342,14 +311,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -441,14 +403,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -538,14 +493,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -612,13 +560,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(500);
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(200);
     });
 
@@ -676,13 +618,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -737,13 +673,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -799,13 +729,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(500);
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(200);
     });
 
@@ -869,13 +793,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -934,13 +852,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -1019,13 +931,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
       const addButton = page.locator('button[title="Create new version"]')
@@ -1100,13 +1006,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
       const addButton = page.locator('button[title="Create new version"]')
@@ -1185,13 +1085,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
       const addButton = page.locator('button[title="Create new version"]')
@@ -1242,13 +1136,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
       const expectedVersionName = `${originalLibraryName} duplicated from (${sourceVersionName})`;
@@ -1286,13 +1174,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
       const addButton = page.locator('button[title="Create new version"]')
@@ -1359,13 +1241,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
       const addButton = page.locator('button[title="Create new version"]')
@@ -1436,13 +1312,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 
@@ -1530,14 +1400,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForLoadState('load', { timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
     });
 

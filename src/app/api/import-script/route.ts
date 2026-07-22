@@ -4,6 +4,7 @@ import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 export const maxDuration = 300;
@@ -31,6 +32,11 @@ export const POST = withAuth(async function POST(
   const folderId = String(formData.get('folderId') ?? '').trim();
   const sourceDocumentId = String(formData.get('sourceDocumentId') ?? '').trim();
   const snapshotToken = String(formData.get('snapshotToken') ?? '').trim();
+  const rawDocumentExportType = String(formData.get('documentExportType') ?? '').trim();
+  const documentExportType =
+    rawDocumentExportType === 'table' || rawDocumentExportType === 'script'
+      ? rawDocumentExportType
+      : 'script';
   const libraryName = String(formData.get('libraryName') ?? '').trim();
   const file = formData.get('file');
 
@@ -43,8 +49,15 @@ export const POST = withAuth(async function POST(
   if (sourceDocumentId && !snapshotToken) {
     return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
   }
-  if (!sourceDocumentId && (!folderId || !isUuid(folderId))) {
-    return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
+  let resolvedFolderId: string | null = null;
+  if (!sourceDocumentId) {
+    if (!folderId) {
+      resolvedFolderId = null;
+    } else if (!isUuid(folderId)) {
+      return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
+    } else {
+      resolvedFolderId = folderId;
+    }
   }
   if (!libraryName) {
     return NextResponse.json({ error: 'Library name is required' }, { status: 400 });
@@ -115,7 +128,8 @@ export const POST = withAuth(async function POST(
       };
       void (async () => {
         try {
-          const fileContent = verifiedSource?.markdown ?? await file.text();
+          const rawContent = verifiedSource?.markdown ?? await file.text();
+          const fileContent = toScriptImportPlainText(rawContent);
           const resolved = await resolveStoryForImport(fileContent, {
             sourceId: `modal:${crypto.randomUUID()}`,
             signal: conversionController.signal,
@@ -134,12 +148,12 @@ export const POST = withAuth(async function POST(
           const result = await importStoryDocument(supabase, {
             userId: user.id,
             projectId,
-            folderId: sourceDocumentId ? null : folderId,
+            folderId: sourceDocumentId ? null : resolvedFolderId,
             libraryName,
             document: resolved.document,
             fileName: file.name,
             ...(sourceDocumentId
-              ? { documentSource: { sourceDocumentId, exportType: 'script' as const } }
+              ? { documentSource: { sourceDocumentId, exportType: documentExportType } }
               : {}),
           });
           send({ type: 'result', result });

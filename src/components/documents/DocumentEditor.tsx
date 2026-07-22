@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
+import { DownloadOutlined, HistoryOutlined, LoadingOutlined } from '@ant-design/icons';
 import { Dropdown } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -17,6 +17,12 @@ import {
 } from '@/lib/design-upload-handoff';
 import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
 import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
+import {
+  DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT,
+  clearDocumentDerivedImportProgress,
+  getDocumentDerivedImportProgress,
+  type DocumentDerivedImportProgress,
+} from '@/lib/documents/documentDerivedImportProgress';
 import { ImportScriptModal } from '@/components/libraries/ImportScriptModal';
 import {
   useDocumentPermissions,
@@ -123,6 +129,10 @@ function DocumentEditorSession({
   const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [scriptSource, setScriptSource] = useState<DocumentExportSource | null>(null);
+  const [derivedImportProgress, setDerivedImportProgress] =
+    useState<DocumentDerivedImportProgress | null>(() =>
+      getDocumentDerivedImportProgress(projectId, document.id)
+    );
   const collaboration = useDocumentCollaboration({
     supabase,
     documentId: document.id,
@@ -132,6 +142,37 @@ function DocumentEditorSession({
     role: permissions.role,
     userName: permissions.userName,
   });
+
+  useEffect(() => {
+    setDerivedImportProgress(getDocumentDerivedImportProgress(projectId, document.id));
+  }, [document.id, projectId]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<DocumentDerivedImportProgress>).detail;
+      if (!detail || detail.projectId !== projectId || detail.documentId !== document.id) {
+        return;
+      }
+      setDerivedImportProgress(detail);
+    };
+    window.addEventListener(DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT, handler);
+    return () => window.removeEventListener(DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT, handler);
+  }, [document.id, projectId]);
+
+  useEffect(() => {
+    if (
+      !derivedImportProgress ||
+      (derivedImportProgress.phase !== 'success' && derivedImportProgress.phase !== 'error')
+    ) {
+      return;
+    }
+    const ms = derivedImportProgress.phase === 'success' ? 3500 : 8000;
+    const timeout = window.setTimeout(() => {
+      clearDocumentDerivedImportProgress(projectId, document.id);
+      setDerivedImportProgress(null);
+    }, ms);
+    return () => window.clearTimeout(timeout);
+  }, [derivedImportProgress, projectId, document.id]);
 
   const imageUploadHandler = useCallback(
     async (image: File): Promise<string> => {
@@ -345,6 +386,27 @@ function DocumentEditorSession({
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {derivedImportProgress && (
+        <div
+          className={
+            derivedImportProgress.phase === 'error'
+              ? styles.derivedImportBannerError
+              : derivedImportProgress.phase === 'success'
+                ? styles.derivedImportBannerSuccess
+                : styles.derivedImportBanner
+          }
+          role="status"
+          aria-live="polite"
+          data-testid="document-derived-import-progress"
+        >
+          <span className={styles.derivedImportLabel}>{derivedImportProgress.label}</span>
+          {(derivedImportProgress.phase === 'preparing' ||
+            derivedImportProgress.phase === 'running') && (
+            <LoadingOutlined className={styles.derivedImportSpinner} spin />
+          )}
         </div>
       )}
 
