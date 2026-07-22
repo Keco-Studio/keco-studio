@@ -215,14 +215,17 @@ test.describe.serial('Document references smoke', () => {
     await login.login(owner);
     await login.expectLoginSuccess();
 
-    const normalization = page.waitForResponse(
-      (response) =>
-        response.url().includes('/rpc/initialize_document_collab_state') &&
-        response.ok()
-    );
-    await page.goto(`/${projectId}/doc/${fixture.sourceDocumentId}`, {
-      waitUntil: 'domcontentloaded',
-    });
+    const [, normalization] = await Promise.all([
+      page.goto(`/${projectId}/doc/${fixture.sourceDocumentId}`, {
+        waitUntil: 'domcontentloaded',
+      }),
+      page.waitForResponse(
+        (response) =>
+          response.url().includes('/rpc/initialize_document_collab_state') &&
+          response.ok(),
+        { timeout: 60_000 }
+      ),
+    ]);
     await expect(page.getByText('Live', { exact: true })).toBeVisible({ timeout: 45_000 });
     const sourceBlock = page.locator(
       `[data-document-block-type="paragraph"]:has-text("${SOURCE_PARAGRAPH}")`
@@ -230,7 +233,7 @@ test.describe.serial('Document references smoke', () => {
     await expect(sourceBlock).toBeVisible({ timeout: 30_000 });
     const sourceBlockId = await sourceBlock.getAttribute('data-document-block-id');
     expect(sourceBlockId).toMatch(/^[0-9a-f-]{36}$/i);
-    await normalization;
+    expect(normalization.ok()).toBe(true);
 
     await page.goto(`/${projectId}/doc/${fixture.referencingDocumentId}`, {
       waitUntil: 'domcontentloaded',
