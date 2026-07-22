@@ -54,10 +54,19 @@ export function SimulationWorkbench() {
   if (project.isLoading) return <div className={styles.emptyState}>Loading Studio projects...</div>;
   if (project.error) return <div className={styles.emptyState}><p>{project.error.message}</p><button type="button" onClick={() => void project.retry()}>Retry</button></div>;
   if (!project.projects.length) return <div className={styles.emptyState}><h2>No Studio projects</h2><Link href="/projects">Create or join a project</Link></div>;
+  if (sessions.isHydrating) return <div className={styles.emptyState}>Loading simulation sessions...</div>;
+  if (sessions.persistenceStatus === 'load-error') return <div className={styles.emptyState}><p>{sessions.persistenceWarning}</p><button type="button" onClick={sessions.retryPersistence}>Retry</button></div>;
 
   const items = [{ id: 'import', label: 'Import' }, ...sessions.sessions.map((session) => ({ id: session.id, label: session.name }))];
   const headerLabels: Partial<Record<SimulationScreen, string>> = { characters: 'Configure characters', skills: 'Config skills' };
   const workflow = STEPS.filter(({ id }) => id !== 'import').map((step) => ({ id: step.id, label: headerLabels[step.id] ?? step.label, disabled: !sessions.activeSession?.importedSnapshot }));
+  const persistenceAction = sessions.persistenceStatus === 'conflict'
+    ? { label: 'Load cloud version', run: sessions.loadCloudVersion }
+    : sessions.persistenceStatus === 'unsaved'
+      ? { label: 'Retry save', run: sessions.retryPersistence }
+      : sessions.persistenceStatus === 'invalid'
+        ? { label: 'Reset cloud state', run: sessions.resetStorage }
+        : null;
 
   return <div className={styles.root} data-simulation-root>
     <SimulationSidebar items={items} activeId={screen === 'import' ? 'import' : sessions.activeSession?.id ?? 'import'} projectName={project.selectedProject?.name} projects={project.projects} projectId={project.selectedProjectId} onProjectSelect={project.selectProject} collapsed={collapsed} mobileOpen={mobileOpen} onToggleCollapsed={() => setCollapsed((value) => !value)} onCloseMobile={() => setMobileOpen(false)} onSelect={(id) => { if (id === 'import') { sessions.startFreshImport(); setHoldImportScreen(false); setRequestedScreen(null); } else { sessions.selectSession(id); setHoldImportScreen(false); setRequestedScreen(null); } }} />
@@ -71,6 +80,6 @@ export function SimulationWorkbench() {
         {screen === 'battle' ? <BattleScreen onContinue={() => navigate('progression')} /> : null}
       </main>
     </div>
-    <SimulationToast visible={Boolean(sessions.persistenceWarning)} message={sessions.persistenceWarning ?? ''} tone="warning" onDismiss={sessions.storageBlocked ? sessions.resetStorage : undefined} />
+    <SimulationToast visible={Boolean(sessions.persistenceWarning)} message={sessions.persistenceWarning ?? ''} tone="warning" actionLabel={persistenceAction?.label} onAction={persistenceAction?.run} />
   </div>;
 }

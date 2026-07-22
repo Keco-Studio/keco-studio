@@ -61,23 +61,23 @@ export class SimulationSaveQueue {
     if (this.stopped) return;
     this.inFlight = false;
 
-    if (result.ok) {
-      this.revision = result.revision;
-      this.failed = null;
-      this.options.onSaved(this.revision, this.isDirty());
-      await this.flush();
+    if ('error' in result) {
+      if (result.error.code === 'conflict') {
+        this.blocked = true;
+        this.pending = null;
+        this.failed = null;
+        this.options.onConflict(result.error);
+        return;
+      }
+
+      if (!this.pending) this.failed = snapshot;
+      this.options.onUnsaved(result.error);
       return;
     }
 
-    if (result.error.code === 'conflict') {
-      this.blocked = true;
-      this.pending = null;
-      this.failed = null;
-      this.options.onConflict(result.error);
-      return;
-    }
-
-    if (!this.pending) this.failed = snapshot;
-    this.options.onUnsaved(result.error);
+    this.revision = result.revision;
+    this.failed = null;
+    this.options.onSaved(this.revision, this.isDirty());
+    await this.flush();
   }
 }

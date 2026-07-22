@@ -49,5 +49,9 @@ describe('simulation workbench flow', () => {
     expect(workbench).toContain('<SimulationHeader');
     expect(workbench).toContain('requestedScreen?.sessionId === sessions.activeSession.id');
     expect(workbench).toContain('requestedScreen?.projectId === project.selectedProjectId');
+    expect(workbench).toContain('sessions.isHydrating');
+    expect(workbench).toContain('sessions.retryPersistence');
+    expect(workbench).toContain('sessions.loadCloudVersion');
+    expect(workbench).toContain('actionLabel');
   });
 });
