@@ -41,6 +41,35 @@ const INVALID_CREDENTIAL_CODES = new Set([
   "user_not_found",
 ]);
 
+const MCP_PATH = /^(?:\/functions\/v1)?\/mcp\/([^/]+)$/;
+
+/**
+ * Supabase's Edge gateway invokes this function at `/mcp/{projectId}`, while
+ * OAuth grants are bound to the public `/functions/v1/mcp/{projectId}` URL.
+ */
+export function canonicalProjectResource(
+  requestUrl: string,
+  projectId: string,
+): string | null {
+  try {
+    const url = new URL(requestUrl);
+    const match = MCP_PATH.exec(url.pathname);
+    if (
+      !match ||
+      match[1] !== projectId ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+    return `${url.origin}/functions/v1/mcp/${projectId}`;
+  } catch {
+    return null;
+  }
+}
+
 function verifiedClientId(token: string): string | null {
   const payload = token.split(".")[1];
   if (!payload) return null;
@@ -85,10 +114,12 @@ export async function authorizeProjectWithGateway(
     if (!user) return { status: "unauthenticated" };
     const clientId = user.clientId ?? null;
     if (!clientId) return { status: "forbidden" };
+    const resource = canonicalProjectResource(request.url, projectId);
+    if (!resource) return { status: "forbidden" };
     const hasGrant = await gateway.hasOAuthProjectGrant(
       clientId,
       projectId,
-      request.url,
+      resource,
       token,
     );
     if (!hasGrant) return { status: "forbidden" };
