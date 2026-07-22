@@ -1,0 +1,32 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const sql = fs.readFileSync(path.resolve(__dirname,
+  '../../../supabase/migrations/20260722020000_mcp_atomic_writes.sql'), 'utf8');
+
+describe('MCP atomic write migration', () => {
+  it.each(['mcp_create_table', 'mcp_create_table_row', 'mcp_update_table_row',
+    'mcp_create_document', 'mcp_replace_document_content'])(
+    'defines hardened %s', name => {
+      expect(sql).toMatch(new RegExp('create or replace function public\\.' + name, 'i'));
+      expect(sql).toMatch(/security definer set search_path\s*=\s*''/i);
+    });
+
+  it('serializes allocation and rejects unsupported fields', () => {
+    expect(sql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(p_table_id::text/i);
+    expect(sql).toMatch(/'formula','image','file','multimedia','audio','media'/i);
+    expect(sql).toMatch(/Unknown or ambiguous field label/i);
+  });
+
+  it('keeps document replacement service-role-only with a full token check', () => {
+    expect(sql).toMatch(/auth\.role\(\)[\s\S]+service_role/i);
+    expect(sql).toMatch(/v_tail<>coalesce\(p_expected_update_ids,array\[\]::uuid\[\]\)/i);
+    expect(sql).toMatch(/Document update tail changed[\s\S]+PT409/i);
+    expect(sql).toMatch(/from public,anon,authenticated;[\s\S]+to service_role/i);
+  });
+
+  it('creates document state atomically at epoch zero revision one', () => {
+    expect(sql).toMatch(/p_yjs_state,0,1,'initialize',v_actor/i);
+    expect(sql).toMatch(/perform public\.assert_document_snapshot_payload/i);
+  });
+});
