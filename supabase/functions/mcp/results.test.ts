@@ -8,7 +8,7 @@ import {
 import { toolFailure, toolSuccess } from "./results.ts";
 
 Deno.test("limits count UTF-8 bytes and reject rather than clamp", () => {
-  assertEquals(utf8ByteLength("文"), 3);
+  assertEquals(utf8ByteLength("€"), 3);
   assertEquals(validateLimit(undefined, { defaultValue: 50, maximum: 200 }), 50);
   assertEquals(validateLimit(200, { defaultValue: 50, maximum: 200 }), 200);
   for (const value of [0, 201, 1.5, "10"]) {
