@@ -194,7 +194,12 @@ function validateUrl(destination: string, kind: 'Link' | 'Image'): void {
 
   try {
     const url = new URL(destination);
-    if (url.protocol === 'https:') return;
+    if (
+      url.protocol === 'https:' ||
+      (kind === 'Link' && url.protocol === 'http:')
+    ) {
+      return;
+    }
     if (
       kind === 'Image' &&
       url.protocol === 'http:' &&

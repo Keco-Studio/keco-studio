@@ -18,7 +18,7 @@ export interface SystemPromptContext {
 }
 
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
-  return `You are Keco Assistant, an AI agent for the keco-studio Galgame script management system.
+  return `You are Keco Assistant, an AI agent for game designers using keco-studio.
 
 You help users manage their project data through tool calls. You can:
 - Query assets and script lines
