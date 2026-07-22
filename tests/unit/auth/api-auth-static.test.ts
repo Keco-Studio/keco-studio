@@ -8,6 +8,7 @@ const PUBLIC_API_ROUTES = new Set([
 ]);
 const SERVICE_AUTH_API_ROUTES = new Set([
   'src/app/api/mcp/codec/route.ts',
+  'src/app/api/mcp/reindex/route.ts',
 ]);
 
 function routeFiles(directory: string): string[] {
@@ -52,10 +53,11 @@ describe('API authentication boundaries', () => {
   });
 
   it('keeps the internal MCP codec behind constant-time service authentication', () => {
-    const source = readFileSync(join(process.cwd(), 'src/app/api/mcp/codec/route.ts'), 'utf8');
-
-    expect(source).toContain('process.env.MCP_CODEC_SECRET');
-    expect(source).toContain('timingSafeEqual');
-    expect(source).toMatch(/if \(!authorized\(request\)\)[\s\S]+status: 401/);
+    for (const path of SERVICE_AUTH_API_ROUTES) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8');
+      expect(source).toContain('process.env.MCP_CODEC_SECRET');
+      expect(source).toContain('timingSafeEqual');
+      expect(source).toMatch(/if \(!authorized\(request\)\)[\s\S]+status: 401/);
+    }
   });
 });

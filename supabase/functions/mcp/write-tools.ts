@@ -9,6 +9,7 @@ import { readDocumentTransportState } from './operations.ts';
 import { McpDomainError } from './errors.ts';
 import { assertUtf8Below, MAX_DOCUMENT_MARKDOWN_BYTES } from './limits.ts';
 import { runMcpOperation } from './telemetry.ts';
+import { scheduleMcpReindex } from './reindex.ts';
 
 const uuid = z.string().uuid();
 const writeAnnotations = { readOnlyHint: false, destructiveHint: false,
@@ -39,12 +40,21 @@ const fieldSchema = z.object({
 });
 
 async function executeRpc(context: McpRequestContext, operation: string,
-  parameters: Record<string, unknown>, publicInput: unknown, summary: string) {
+  parameters: Record<string, unknown>, publicInput: unknown, summary: string,
+  onSuccess?: (data: unknown) => void) {
   try {
     const data = await runMcpOperation(context, operation, 'write', publicInput,
       () => rpc<unknown>(context, operation, parameters));
+    onSuccess?.(data);
     return toolSuccess(summary, { ok: true, data });
   } catch (error) { return toolFailure(error); }
+}
+
+function firstRow(value: unknown): Record<string, unknown> | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  return row && typeof row === 'object' && !Array.isArray(row)
+    ? row as Record<string, unknown>
+    : null;
 }
 
 export function registerWriteTools(server: McpServer, context: McpRequestContext): void {
@@ -60,16 +70,18 @@ export function registerWriteTools(server: McpServer, context: McpRequestContext
     description: 'Create one project table, its fields, and initial empty row atomically.',
     inputSchema: createTableSchema, annotations: writeAnnotations,
   }, async (input: z.infer<typeof createTableSchema>) => {
+    const tableId = crypto.randomUUID();
     const fields = input.fields.map(field => ({ id: crypto.randomUUID(), ...field }));
     return await executeRpc(context, 'mcp_create_table', {
       p_project_id: context.projectId,
-      p_table_id: crypto.randomUUID(),
+      p_table_id: tableId,
       p_initial_row_id: crypto.randomUUID(),
       p_folder_id: input.folderId ?? null,
       p_name: input.name,
       p_description: input.description ?? null,
       p_fields: fields,
-    }, input, 'Table created.');
+    }, input, 'Table created.', () => scheduleMcpReindex({ kind: 'table',
+      projectId: context.projectId, actorUserId: context.userId, tableId }));
   });
 
   const createRowSchema = z.object({ tableId: uuid,
@@ -88,7 +100,11 @@ export function registerWriteTools(server: McpServer, context: McpRequestContext
       p_requested_row_id: crypto.randomUUID(),
       p_values: input.values,
       p_reuse_empty: input.reuseEmpty ?? true,
-    }, input, 'Table row created.',
+    }, input, 'Table row created.', data => {
+      const rowId = firstRow(data)?.row_id;
+      if (typeof rowId === 'string') scheduleMcpReindex({ kind: 'row',
+        projectId: context.projectId, actorUserId: context.userId, rowId });
+    },
   ));
 
   const updateRowSchema = z.object({ tableId: uuid,
@@ -111,7 +127,11 @@ export function registerWriteTools(server: McpServer, context: McpRequestContext
       p_row_index: input.rowIndex ?? null,
       p_expected_row_id: input.expectedRowId ?? null,
       p_values: input.values,
-    }, input, 'Table row updated.',
+    }, input, 'Table row updated.', data => {
+      const rowId = firstRow(data)?.row_id;
+      if (typeof rowId === 'string') scheduleMcpReindex({ kind: 'row',
+        projectId: context.projectId, actorUserId: context.userId, rowId });
+    },
   ));
 
   const createDocumentSchema = z.object({
@@ -138,6 +158,9 @@ export function registerWriteTools(server: McpServer, context: McpRequestContext
           p_allow_duplicate: input.allowDuplicate ?? false,
         });
       });
+      const documentId = firstRow(data)?.document_id;
+      if (typeof documentId === 'string') scheduleMcpReindex({ kind: 'document',
+        projectId: context.projectId, actorUserId: context.userId, documentId });
       return toolSuccess('Document created.', { ok: true, data });
     } catch (error) { return toolFailure(error); }
   });
@@ -203,6 +226,8 @@ export function registerWriteTools(server: McpServer, context: McpRequestContext
           }
           return result.data;
         });
+      scheduleMcpReindex({ kind: 'document', projectId: context.projectId,
+        actorUserId: context.userId, documentId: input.documentId });
       return toolSuccess('Document updated.', { ok: true, data });
     } catch (error) { return toolFailure(error); }
   });

@@ -29,7 +29,12 @@ it('runs bounded protocol samples and omits credentials from evidence', async ()
       ? { structuredContent: message.params?.name === 'semantic_search'
         ? { ok: true, searchMode: 'text_fuzzy' }
         : message.params?.name === 'list_documents'
-          ? { ok: true, items: [], hasMore: false, nextCursor: null } : { ok: true } } : {} });
+          ? { ok: true, items: [], hasMore: false, nextCursor: null }
+          : message.params?.name === 'list_project_structure'
+            ? { ok: true, tables: Array.from({ length: 100 }, () => ({
+              fields: Array.from({ length: 20 }, () => ({})),
+            })) }
+            : { ok: true } } : {} });
   });
   const evidence = await runLoadProbe({ mcpUrl: endpoint, accessToken: token, fixture, samples: 1,
     fetchImpl: fetchMock as typeof fetch, now: () => clock });

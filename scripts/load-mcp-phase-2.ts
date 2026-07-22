@@ -3,6 +3,8 @@ import { replaceEvidenceAtomically } from './lib/atomic-evidence';
 import { createMcpRpcClient, structuredToolResult, type McpRpcClient } from './lib/mcp-json-rpc';
 import { percentile95 } from './probe-mcp-performance';
 
+const MCP_RESPONSE_LIMIT_BYTES = 1024 * 1024;
+
 export const LOAD_THRESHOLDS_MS = {
   static: 300, read: 800, structure: 1000, write: 1000, search: 3000, cold: 2000,
 } as const;
@@ -70,14 +72,21 @@ export async function runLoadProbe(options: {
     capabilities: {}, clientInfo: { name: 'keco-mcp-load-probe', version: '1' } }));
   samples.cold.push(first.elapsedMs);
   let cursorBoundary: 'not_applicable' | 'passed' = 'not_applicable';
-  let payloadBoundary: 'passed' = 'passed';
+  let payloadBoundary: 'passed' | null = null;
+  let fixedStructureCall: 'passed' | null = null;
   let observedSearchMode: 'semantic' | 'text_fuzzy' | null = null;
   for (let index = 0; index < sampleCount; index += 1) {
     samples.static.push((await timed(now, () => client.call('tools/list'))).elapsedMs);
     const documentPage = await timed(now, () => tool(client, 'list_documents', { limit: 50 }));
     samples.read.push(documentPage.elapsedMs);
     if (index === 0) {
-      await tool(client, 'list_documents', { limit: 200 });
+      const maximumDocumentPage = await tool(client, 'list_documents', { limit: 200 });
+      const pageBytes = new TextEncoder().encode(JSON.stringify(maximumDocumentPage)).byteLength;
+      if (pageBytes >= MCP_RESPONSE_LIMIT_BYTES || !Array.isArray(maximumDocumentPage.items) ||
+          maximumDocumentPage.items.length > 200) {
+        throw new Error('Document payload boundary failed.');
+      }
+      payloadBoundary = 'passed';
       const cursor = documentPage.value.nextCursor;
       if (documentPage.value.hasMore === true) {
         if (typeof cursor !== 'string' || !cursor) throw new Error('Document page omitted nextCursor.');
@@ -85,7 +94,19 @@ export async function runLoadProbe(options: {
         cursorBoundary = 'passed';
       }
     }
-    samples.structure.push((await timed(now, () => tool(client, 'list_project_structure', {}))).elapsedMs);
+    const structure = await timed(now, () => tool(client, 'list_project_structure', {}));
+    samples.structure.push(structure.elapsedMs);
+    if (index === 0) {
+      const tables = Array.isArray(structure.value.tables)
+        ? structure.value.tables as Array<Record<string, unknown>>
+        : null;
+      if (!Array.isArray(tables) || tables.length < fixture.tables ||
+          tables.reduce((count, table) => count + (Array.isArray(table.fields)
+            ? table.fields.length : 0), 0) < fixture.fields) {
+        throw new Error('Project structure fixture boundary failed.');
+      }
+      fixedStructureCall = 'passed';
+    }
     const search = await timed(now, () => tool(client, 'semantic_search', {
       query: `load fixture ${index}`, limit: 10,
     }));
@@ -103,10 +124,18 @@ export async function runLoadProbe(options: {
   }
   let concurrentWrites: 'not_exercised' | 'passed' = 'not_exercised';
   if (options.exerciseWrites) {
-    await Promise.all(Array.from({ length: 5 }, (_, index) => tool(client, 'create_table_row', {
+    const writes = await Promise.all(Array.from({ length: 5 }, (_, index) => tool(client, 'create_table_row', {
       tableId: fixture.writeTableId, reuseEmpty: false,
       values: { [fixture.writeFieldLabel!]: `MCP concurrent row ${Date.now()}-${index}` },
     })));
+    const rowIds = writes.map(value => {
+      const data = value.data as unknown;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row && typeof row === 'object' ? (row as Record<string, unknown>).row_id : null;
+    });
+    if (rowIds.some(id => typeof id !== 'string') || new Set(rowIds).size !== rowIds.length) {
+      throw new Error('Concurrent MCP writes did not allocate unique rows.');
+    }
     concurrentWrites = 'passed';
   }
   let rateLimit: 'not_exercised' | 'passed' = 'not_exercised';
@@ -123,12 +152,15 @@ export async function runLoadProbe(options: {
     rateLimit = 'passed';
   }
   const evaluation = evaluateLoadBudgets(samples);
+  if (fixedStructureCall !== 'passed' || payloadBoundary !== 'passed') {
+    throw new Error('MCP Phase 2 response boundary gates failed.');
+  }
   if (!evaluation.passed) throw new Error('MCP Phase 2 load budgets failed.');
   return { checkedAt: new Date().toISOString(), passed: true, mcpUrl: options.mcpUrl,
     scope: options.exerciseWrites ? 'full' : 'read_only',
     fixture: { tables: fixture.tables, fields: fixture.fields, rows: fixture.rows,
       documents: fixture.documents }, measurements: evaluation.measurements,
-    gates: { fixedStructureCall: 'passed', cursorBoundary, payloadBoundary,
+    gates: { fixedStructureCall, cursorBoundary, payloadBoundary,
       concurrentWrites, rateLimit, searchMode: observedSearchMode } };
 }
 
