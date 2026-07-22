@@ -46,3 +46,13 @@
   margin: 0.25rem 0;
 }
 
+.deleteItem {
+  color: #AA052C;
+}
+
+.deleteItem:hover,
+.deleteItem:focus {
+  background-color: #0B99FF14;
+  color: #AA052C;
+}
+

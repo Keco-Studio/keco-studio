@@ -168,7 +168,7 @@ export function LibraryToolbar({
           anchorElement={createButtonRef}
           onClose={() => setShowAddMenu(false)}
           onCreateFolder={handleCreateFolder}
-          onCreateLibrary={handleCreateLibrary}
+          onCreateTable={handleCreateLibrary}
         />
       )}
 

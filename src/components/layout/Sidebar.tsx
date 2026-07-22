@@ -1049,7 +1049,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openNewFolder();
   };
 
-  const handleCreateLibrary = () => {
+  const handleCreateTable = () => {
     setShowAddMenu(false);
     if (!currentIds.projectId) {
       setError('Please select a project first');
@@ -1058,6 +1058,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // selectedFolderId is already set when button is clicked
     setSelectedFolderId(null);
     openNewLibrary();
+  };
+
+  const handleImportTable = () => {
+    setShowAddMenu(false);
+    if (!currentIds.projectId) {
+      setError('Please select a project first');
+      return;
+    }
+    setSelectedFolderId(null);
+    // TODO(Task 2): openImportLibrary currently requires a non-null folderId and
+    // ImportLibraryModal only renders when `importingFolderId` is truthy, so a root-level
+    // import can't fully complete yet. Passing '' as a root sentinel until Task 2 updates
+    // useSidebarModals/ImportLibraryModal to support importing directly under the project.
+    openImportLibrary('');
   };
 
   const handleCreateDocument = () => {
@@ -1380,25 +1394,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         anchorElement={addButtonRef}
         onClose={() => setShowAddMenu(false)}
         onCreateFolder={userRole === 'admin' ? handleCreateFolder : undefined}
-        onCreateLibrary={userRole === 'admin' ? handleCreateLibrary : undefined}
+        onCreateTable={userRole === 'admin' ? handleCreateTable : undefined}
         onCreateDocument={
           userRole === 'admin' || userRole === 'editor' ? handleCreateDocument : undefined
         }
         onImportDocument={
           userRole === 'admin' || userRole === 'editor' ? handleImportDocument : undefined
         }
-        onGenerateFromDocument={
-          userRole === 'admin'
-            ? () => {
-                setShowAddMenu(false);
-                if (!currentIds.projectId) {
-                  setError('Please select a project first');
-                  return;
-                }
-                router.push(`/${currentIds.projectId}/design-upload`);
-              }
-            : undefined
-        }
+        onImportTable={userRole === 'admin' ? handleImportTable : undefined}
       />
 
       {contextMenu && (

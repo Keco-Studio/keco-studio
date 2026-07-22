@@ -107,7 +107,8 @@ export class LibraryPage {
     // AddLibraryMenu button (appears after clicking sidebar add button)
     // Note: AddLibraryMenu is rendered via createPortal to document.body
     // Use more flexible selectors that work with the portal
-    this.addLibraryMenuButton = page.getByRole('button', { name: /create new library/i })
+    // Label reads "Create new table" (still creates a library record under the hood).
+    this.addLibraryMenuButton = page.getByRole('button', { name: /create new table/i })
       .filter({ hasNotText: /resources folder/i }) // Exclude sidebar buttons
       .last(); // Use last() to get the portal menu button
 
@@ -231,7 +232,7 @@ export class LibraryPage {
 
   /**
    * Create a library directly under project (not in a folder)
-   * This uses the sidebar add button -> AddLibraryMenu -> Create new library flow
+   * This uses the sidebar add button -> AddLibraryMenu -> Create new table flow
    * @param library - Library data with name and optional description
    */
   async createLibraryUnderProject(library: LibraryData): Promise<void> {
@@ -242,7 +243,7 @@ export class LibraryPage {
     await this.waitForSidebarAdminRole();
     await this.sidebarAddButton.click();
 
-    // Step 2: Wait for AddLibraryMenu to appear and click "Create new library"
+    // Step 2: Wait for AddLibraryMenu to appear and click "Create new table"
     // Increase timeout to allow menu animation to complete
     await expect(this.addLibraryMenuButton).toBeVisible({ timeout: 10000 });
     await this.addLibraryMenuButton.click();
