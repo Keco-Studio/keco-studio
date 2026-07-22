@@ -57,6 +57,5 @@ export function buildProtectedResourceMetadata(input: {
     resource: input.resource,
     authorization_servers: [input.authorizationServer],
     bearer_methods_supported: ['header'],
-    scopes_supported: ['mcp:read', 'mcp:write'],
   } as const;
 }

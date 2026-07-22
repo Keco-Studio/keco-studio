@@ -8,18 +8,19 @@ import { GET } from '@/app/api/mcp/oauth-protected-resource/route';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 
-it('builds project-bound resource metadata for Supabase Auth', () => {
+it('builds project-bound resource metadata without unsupported scopes', () => {
   const resource = buildProjectResourceUrl('https://abc.supabase.co/', projectId);
   expect(resource).toBe(`https://abc.supabase.co/functions/v1/mcp/${projectId}`);
-  expect(buildProtectedResourceMetadata({
+  const metadata = buildProtectedResourceMetadata({
     resource,
     authorizationServer: 'https://abc.supabase.co/auth/v1',
-  })).toEqual({
+  });
+  expect(metadata).toEqual({
     resource,
     authorization_servers: ['https://abc.supabase.co/auth/v1'],
     bearer_methods_supported: ['header'],
-    scopes_supported: ['mcp:read', 'mcp:write'],
   });
+  expect(metadata).not.toHaveProperty('scopes_supported');
 });
 
 it('rejects malformed project IDs', () => {
@@ -59,7 +60,6 @@ describe('protected resource metadata route', () => {
       resource: `https://abc.supabase.co/functions/v1/mcp/${projectId}`,
       authorization_servers: ['https://abc.supabase.co/auth/v1'],
       bearer_methods_supported: ['header'],
-      scopes_supported: ['mcp:read', 'mcp:write'],
     });
   });
 

@@ -133,7 +133,7 @@ const authorizationDetails = (authorizationId: string, projectId: string) => ({
   authorization_id: authorizationId,
   client: { id: 'client-id', name: 'MCP Client', uri: 'https://client.example', logo_uri: '' },
   user: { id: 'user-id', email: 'user@example.com' },
-  scope: 'mcp:read',
+  scope: '',
   resource: `https://abc.supabase.co/functions/v1/mcp/${projectId}`,
 });
 
