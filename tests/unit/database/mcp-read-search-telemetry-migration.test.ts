@@ -11,8 +11,17 @@ describe('MCP read, search, and telemetry migration', () => {
     expect(migration).toMatch(/create table public\.mcp_rate_limit_buckets/i);
     expect(migration).toMatch(/primary key \(actor_id, project_id, operation_class, window_started_at\)/i);
     expect(migration).toMatch(/create table public\.mcp_audit_events/i);
+    expect(migration).toMatch(
+      /create unique index mcp_audit_operation_event_unique[\s\S]+\(operation_id, event_type\)/i
+    );
     expect(migration).toMatch(/create trigger mcp_audit_events_append_only/i);
     expect(migration).toMatch(/revoke all on table public\.mcp_audit_events from public, anon, authenticated/i);
+  });
+
+  it('admits at most one completion per operation atomically', () => {
+    expect(migration).toMatch(
+      /on conflict \(operation_id, event_type\) do nothing[\s\S]+if not found then[\s\S]+already complete/i
+    );
   });
 
   it('enforces exact operation class limits atomically', () => {

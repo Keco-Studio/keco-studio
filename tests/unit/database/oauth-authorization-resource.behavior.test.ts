@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   RLS_DB_TESTS_ENABLED,
   TEST_PASSWORD,
@@ -55,7 +55,7 @@ async function createAuthorization(
   clientId: string,
   resource: string,
   userClient: SupabaseClient
-): Promise<string> {
+): Promise<{ authorizationId: string; verifier: string }> {
   const verifier = randomBytes(32).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const authorizeUrl = new URL(`${supabaseUrl}/auth/v1/oauth/authorize`);
@@ -80,7 +80,39 @@ async function createAuthorization(
   if (error || data?.authorization_id !== authorizationId) {
     throw new Error(`OAuth authorization association failed: ${error?.message ?? 'invalid details'}`);
   }
-  return authorizationId;
+  return { authorizationId, verifier };
+}
+
+async function exchangeAuthorizationCode(
+  clientId: string,
+  verifier: string,
+  redirectUrl: string
+): Promise<string> {
+  const code = new URL(redirectUrl).searchParams.get('code');
+  if (!code) throw new Error('OAuth approval redirect omitted code');
+  const response = await fetch(`${supabaseUrl}/auth/v1/oauth/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code,
+      code_verifier: verifier,
+    }),
+  });
+  const body = await response.json() as { access_token?: string; error?: string };
+  if (!response.ok || !body.access_token) {
+    throw new Error(`OAuth code exchange failed: ${body.error ?? response.status}`);
+  }
+  return body.access_token;
+}
+
+function bearerClient(token: string): SupabaseClient {
+  return createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '', {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
 }
 
 async function readResource(client: SupabaseClient, authorizationId: string): Promise<string | null> {
@@ -89,6 +121,51 @@ async function readResource(client: SupabaseClient, authorizationId: string): Pr
   });
   if (error) throw new Error(error.message);
   return typeof data === 'string' ? data : null;
+}
+
+async function prepareGrant(
+  client: SupabaseClient,
+  authorizationId: string,
+  projectId: string,
+  resource: string
+): Promise<boolean> {
+  const { data, error } = await client.rpc('prepare_oauth_project_grant', {
+    p_authorization_id: authorizationId,
+    p_project_id: projectId,
+    p_resource: resource,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
+async function hasGrant(
+  client: SupabaseClient,
+  clientId: string,
+  projectId: string,
+  resource: string
+): Promise<boolean> {
+  const { data, error } = await client.rpc('has_oauth_project_grant', {
+    p_client_id: clientId,
+    p_project_id: projectId,
+    p_resource: resource,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
+async function finalizeGrant(
+  client: SupabaseClient,
+  authorizationId: string,
+  projectId: string,
+  resource: string
+): Promise<boolean> {
+  const { data, error } = await client.rpc('finalize_oauth_project_grant', {
+    p_authorization_id: authorizationId,
+    p_project_id: projectId,
+    p_resource: resource,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
 }
 
 describeDb('OAuth authorization resource RPC (live database)', () => {
@@ -117,18 +194,20 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
       ...fixture.outsider,
       client: await sessionClient(fixture.outsider.email),
     };
-    const ownerResource = `${supabaseUrl}/functions/v1/mcp/${randomUUID()}`;
+    const ownerResource = `${supabaseUrl}/functions/v1/mcp/${fixture.projectId}`;
     const outsiderResource = `${supabaseUrl}/functions/v1/mcp/${randomUUID()}`;
-    const ownerAuthorizationId = await createAuthorization(
+    const ownerAuthorization = await createAuthorization(
       oauthClientId,
       ownerResource,
       owner.client
     );
-    const outsiderAuthorizationId = await createAuthorization(
+    const outsiderAuthorization = await createAuthorization(
       oauthClientId,
       outsiderResource,
       outsider.client
     );
+    const ownerAuthorizationId = ownerAuthorization.authorizationId;
+    const outsiderAuthorizationId = outsiderAuthorization.authorizationId;
 
     await expect(readResource(owner.client, ownerAuthorizationId)).resolves.toBe(ownerResource);
     await expect(readResource(outsider.client, ownerAuthorizationId)).resolves.toBeNull();
@@ -136,5 +215,67 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
     await expect(readResource(anonClient(), ownerAuthorizationId)).rejects.toMatchObject({
       message: expect.any(String),
     });
+
+    await expect(
+      prepareGrant(owner.client, ownerAuthorizationId, fixture.projectId, ownerResource)
+    ).resolves.toBe(true);
+    await expect(
+      hasGrant(owner.client, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
+    await expect(
+      prepareGrant(outsider.client, ownerAuthorizationId, fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
+
+    const directRead = await owner.client.from('oauth_project_grants').select('*');
+    expect(directRead.error).not.toBeNull();
+    const directWrite = await owner.client.from('oauth_project_grants').insert({
+      authorization_id: 'forged-authorization',
+      user_id: owner.id,
+      client_id: oauthClientId,
+      project_id: fixture.projectId,
+      resource: ownerResource,
+    });
+    expect(directWrite.error).not.toBeNull();
+
+    const approval = await owner.client.auth.oauth.approveAuthorization(ownerAuthorizationId, {
+      skipBrowserRedirect: true,
+    });
+    expect(approval.error).toBeNull();
+    expect(approval.data?.redirect_url).toEqual(expect.any(String));
+    await expect(
+      finalizeGrant(owner.client, ownerAuthorizationId, fixture.projectId, ownerResource)
+    ).resolves.toBe(true);
+
+    const oauthToken = await exchangeAuthorizationCode(
+      oauthClientId,
+      ownerAuthorization.verifier,
+      approval.data?.redirect_url ?? ''
+    );
+    const tokenPayload = JSON.parse(
+      Buffer.from(oauthToken.split('.')[1] ?? '', 'base64url').toString('utf8')
+    ) as { client_id?: string; sub?: string; role?: string };
+    expect(tokenPayload.client_id).toBe(oauthClientId);
+    expect(tokenPayload.sub).toBe(owner.id);
+    expect(tokenPayload.role).toBe('authenticated');
+    await expect(
+      hasGrant(owner.client, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
+    const oauthClient = bearerClient(oauthToken);
+
+    await expect(
+      hasGrant(oauthClient, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(true);
+    await expect(
+      hasGrant(oauthClient, oauthClientId, fixture.projectId, `${ownerResource}?replay=1`)
+    ).resolves.toBe(false);
+    await expect(
+      hasGrant(oauthClient, oauthClientId, randomUUID(), ownerResource)
+    ).resolves.toBe(false);
+    await expect(
+      hasGrant(oauthClient, randomUUID(), fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
+    await expect(
+      hasGrant(outsider.client, oauthClientId, fixture.projectId, ownerResource)
+    ).resolves.toBe(false);
   }, 60_000);
 });

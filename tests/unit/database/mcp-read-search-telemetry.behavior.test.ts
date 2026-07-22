@@ -52,6 +52,36 @@ describeDb('MCP read/search/telemetry real Postgres behavior', () => {
     expect(completion.error).toBeNull();
   });
 
+  it('allows only one completion when duplicate requests race', async () => {
+    const { data: admitted, error: admissionError } = await fx.viewer.client.rpc(
+      'mcp_begin_operation', {
+        p_project_id: fx.projectId,
+        p_operation: 'concurrent_completion_probe',
+        p_operation_class: 'read',
+        p_request_id: crypto.randomUUID(),
+      });
+    expect(admissionError).toBeNull();
+    const operationId = admitted[0].operation_id as string;
+
+    const completions = await Promise.all([
+      fx.viewer.client.rpc('mcp_complete_operation', {
+        p_operation_id: operationId, p_outcome: 'succeeded', p_total_ms: 1,
+      }),
+      fx.viewer.client.rpc('mcp_complete_operation', {
+        p_operation_id: operationId, p_outcome: 'succeeded', p_total_ms: 2,
+      }),
+    ]);
+    expect(completions.filter(result => result.error === null)).toHaveLength(1);
+    expect(completions.filter(result => result.error?.code === '23505')).toHaveLength(1);
+
+    const { count, error: countError } = await fx.svc.from('mcp_audit_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('operation_id', operationId)
+      .eq('event_type', 'completed');
+    expect(countError).toBeNull();
+    expect(count).toBe(1);
+  });
+
   it('text search is project-bound and bounded', async () => {
     const { data, error } = await fx.viewer.client.rpc('mcp_text_search', {
       p_project_id: fx.projectId,

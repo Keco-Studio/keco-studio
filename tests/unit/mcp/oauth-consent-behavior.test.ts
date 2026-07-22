@@ -144,6 +144,8 @@ const approveAuthorization = jest.fn();
 const denyAuthorization = jest.fn();
 const getProject = jest.fn();
 const getOAuthAuthorizationResource = jest.fn();
+const prepareOAuthProjectGrant = jest.fn();
+const finalizeOAuthProjectGrant = jest.fn();
 const mockRouter = { replace: jest.fn() };
 const assignLocation = jest.fn();
 const mockSupabaseClient = {
@@ -184,6 +186,10 @@ jest.mock('@/lib/services/projectService', () => ({
 jest.mock('@/lib/mcp/oauthAuthorizationResource', () => ({
   getOAuthAuthorizationResource: (...args: unknown[]) => getOAuthAuthorizationResource(...args),
 }));
+jest.mock('@/lib/mcp/oauthProjectGrant', () => ({
+  prepareOAuthProjectGrant: (...args: unknown[]) => prepareOAuthProjectGrant(...args),
+  finalizeOAuthProjectGrant: (...args: unknown[]) => finalizeOAuthProjectGrant(...args),
+}));
 jest.mock('@/components/mcp/OAuthConsent.module.css', () => ({
   __esModule: true,
   default: {},
@@ -192,10 +198,7 @@ jest.mock('@/components/mcp/OAuthConsent.module.css', () => ({
 import { OAuthConsentClient } from '@/components/mcp/OAuthConsentClient';
 
 async function flushAsyncWork() {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 beforeEach(() => {
@@ -208,6 +211,10 @@ beforeEach(() => {
   getProject.mockReset();
   getOAuthAuthorizationResource.mockReset();
   getOAuthAuthorizationResource.mockResolvedValue(projectResource(PROJECT_A));
+  prepareOAuthProjectGrant.mockReset();
+  prepareOAuthProjectGrant.mockResolvedValue(true);
+  finalizeOAuthProjectGrant.mockReset();
+  finalizeOAuthProjectGrant.mockResolvedValue(true);
   mockRouter.replace.mockReset();
   assignLocation.mockReset();
   Object.assign(globalThis, {
@@ -341,9 +348,86 @@ it('reloads the same resource immediately before approving', async () => {
     mockSupabaseClient,
     'authorization-a'
   );
+  expect(prepareOAuthProjectGrant).toHaveBeenCalledWith(
+    mockSupabaseClient,
+    'authorization-a',
+    PROJECT_A,
+    projectResource(PROJECT_A)
+  );
+  expect(prepareOAuthProjectGrant.mock.invocationCallOrder[0]).toBeLessThan(
+    approveAuthorization.mock.invocationCallOrder[0]
+  );
+  expect(approveAuthorization.mock.invocationCallOrder[0]).toBeLessThan(
+    finalizeOAuthProjectGrant.mock.invocationCallOrder[0]
+  );
+  expect(finalizeOAuthProjectGrant).toHaveBeenCalledWith(
+    mockSupabaseClient,
+    'authorization-a',
+    PROJECT_A,
+    projectResource(PROJECT_A)
+  );
   expect(approveAuthorization).toHaveBeenCalledWith('authorization-a', {
     skipBrowserRedirect: true,
   });
+});
+
+it.each([
+  ['a rejected finalization', false],
+  ['a failed finalization RPC', new Error('RPC unavailable')],
+] as const)('does not redirect after %s', async (_case, finalizationResult) => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a'),
+    error: null,
+  });
+  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+
+  queueFreshApprovalCheck();
+  approveAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback' },
+    error: null,
+  });
+  if (finalizationResult instanceof Error) {
+    finalizeOAuthProjectGrant.mockRejectedValueOnce(finalizationResult);
+  } else {
+    finalizeOAuthProjectGrant.mockResolvedValueOnce(finalizationResult);
+  }
+  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(assignLocation).not.toHaveBeenCalled();
+  expect(JSON.stringify(runtime.render(OAuthConsentClient))).toContain(
+    'Authorization grant could not be finalized.'
+  );
+});
+
+it.each([
+  ['a rejected preparation', false],
+  ['a failed preparation RPC', new Error('RPC unavailable')],
+] as const)('does not approve after %s', async (_case, preparationResult) => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a'),
+    error: null,
+  });
+  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+
+  queueFreshApprovalCheck();
+  if (preparationResult instanceof Error) {
+    prepareOAuthProjectGrant.mockRejectedValueOnce(preparationResult);
+  } else {
+    prepareOAuthProjectGrant.mockResolvedValueOnce(preparationResult);
+  }
+  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(approveAuthorization).not.toHaveBeenCalled();
+  expect(JSON.stringify(runtime.render(OAuthConsentClient))).toContain(
+    'Authorization grant could not be prepared.'
+  );
 });
 
 it('re-checks membership immediately before approving', async () => {

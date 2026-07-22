@@ -15,7 +15,15 @@ export type ProjectAuthorization =
   | { status: "operational_error" };
 
 export interface AuthGateway {
-  getUser(token: string): Promise<{ id: string; clientId?: string | null } | null>;
+  getUser(
+    token: string,
+  ): Promise<{ id: string; clientId?: string | null } | null>;
+  hasOAuthProjectGrant(
+    clientId: string,
+    projectId: string,
+    resource: string,
+    token: string,
+  ): Promise<boolean>;
   getProjectOwner(projectId: string, token: string): Promise<string | null>;
   getCollaboratorRole(
     userId: string,
@@ -41,7 +49,7 @@ function verifiedClientId(token: string): string | null {
     const decoded = JSON.parse(atob(
       payload.replaceAll("-", "+").replaceAll("_", "/") + padding,
     ));
-    const candidate = decoded?.client_id ?? decoded?.azp;
+    const candidate = decoded?.client_id;
     return typeof candidate === "string" && candidate.length >= 1 &&
         candidate.length <= 256
       ? candidate
@@ -75,6 +83,15 @@ export async function authorizeProjectWithGateway(
   try {
     const user = await gateway.getUser(token);
     if (!user) return { status: "unauthenticated" };
+    const clientId = user.clientId ?? null;
+    if (!clientId) return { status: "forbidden" };
+    const hasGrant = await gateway.hasOAuthProjectGrant(
+      clientId,
+      projectId,
+      request.url,
+      token,
+    );
+    if (!hasGrant) return { status: "forbidden" };
     const ownerId = await gateway.getProjectOwner(projectId, token);
     const role = ownerId === user.id
       ? "admin"
@@ -86,7 +103,7 @@ export async function authorizeProjectWithGateway(
           userId: user.id,
           projectId,
           role,
-          clientId: user.clientId ?? null,
+          clientId,
           bearerToken: token,
         },
       }
@@ -115,6 +132,19 @@ function supabaseGateway(): AuthGateway {
       return data.user
         ? { id: data.user.id, clientId: verifiedClientId(token) }
         : null;
+    },
+    async hasOAuthProjectGrant(clientId, projectId, resource, token) {
+      const client = createClient(url, anonKey, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false },
+      });
+      const { data, error } = await client.rpc("has_oauth_project_grant", {
+        p_client_id: clientId,
+        p_project_id: projectId,
+        p_resource: resource,
+      });
+      if (error) throw new Error("Supabase OAuth grant lookup failed.");
+      return data === true;
     },
     async getProjectOwner(projectId, token) {
       const client = createClient(url, anonKey, {
@@ -153,7 +183,11 @@ export async function authorizeProject(
   projectId: string,
 ): Promise<ProjectAuthorization> {
   try {
-    return await authorizeProjectWithGateway(request, projectId, supabaseGateway());
+    return await authorizeProjectWithGateway(
+      request,
+      projectId,
+      supabaseGateway(),
+    );
   } catch {
     return { status: "operational_error" };
   }

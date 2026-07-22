@@ -41,6 +41,8 @@ create index mcp_rate_limit_cleanup_idx
   on public.mcp_rate_limit_buckets (window_started_at);
 create index mcp_audit_operation_idx
   on public.mcp_audit_events (operation_id, created_at, id);
+create unique index mcp_audit_operation_event_unique
+  on public.mcp_audit_events (operation_id, event_type);
 create index mcp_audit_project_time_idx
   on public.mcp_audit_events (project_id, created_at desc);
 create index mcp_audit_failures_idx
@@ -210,13 +212,6 @@ begin
     ] then
     raise exception 'Invalid MCP completion metadata' using errcode = '22023';
   end if;
-  if exists (
-    select 1 from public.mcp_audit_events
-    where operation_id = p_operation_id and event_type = 'completed'
-  ) then
-    raise exception 'MCP operation is already complete' using errcode = '23505';
-  end if;
-
   insert into public.mcp_audit_events (
     operation_id, request_id, actor_id, project_id, client_id, event_type,
     operation, operation_class, outcome, error_code, response_bytes,
@@ -227,7 +222,12 @@ begin
     v_source.operation_class, p_outcome, p_error_code, p_response_bytes,
     p_total_ms, p_database_ms, p_embedding_ms, p_serialization_ms,
     coalesce(p_metadata, '{}'::jsonb)
-  );
+  )
+  on conflict (operation_id, event_type) do nothing;
+
+  if not found then
+    raise exception 'MCP operation is already complete' using errcode = '23505';
+  end if;
 end;
 $$;
 

@@ -78,7 +78,7 @@ begin
     where a.library_id=p_table_id and not exists (
       select 1 from public.library_asset_values av
       where av.asset_id=a.id and not public.mcp_value_is_empty(av.value_json)
-    ) order by a.row_index nulls last, a.created_at, a.id limit 1 for update;
+    ) order by a.row_index nulls last, a.id limit 1 for update;
   end if;
   v_resolved := public.mcp_resolve_values(p_project_id,p_table_id,p_values,'{}'::jsonb,true);
   select coalesce(nullif(v_resolved->>f.id::text,''),'Untitled') into v_name
@@ -127,7 +127,7 @@ begin
     select * into v_row from public.library_assets where id=p_row_id and library_id=p_table_id for update;
   else
     select * into v_row from public.library_assets where library_id=p_table_id
-      order by row_index nulls last,created_at,id offset p_row_index-1 limit 1 for update;
+      order by row_index nulls last,id offset p_row_index-1 limit 1 for update;
   end if;
   if v_row.id is null then raise exception 'Row not found' using errcode='P0002'; end if;
   if p_expected_row_id is not null and p_expected_row_id<>v_row.id then
@@ -184,6 +184,7 @@ create or replace function public.mcp_value_is_empty(p_value jsonb)
 returns boolean language sql immutable set search_path = '' as $$
   select p_value is null or p_value = 'null'::jsonb
     or (jsonb_typeof(p_value) = 'string' and btrim(p_value #>> '{}') = '')
+    or (jsonb_typeof(p_value) = 'array' and jsonb_array_length(p_value) = 0)
 $$;
 
 create or replace function public.mcp_validate_field_value(
@@ -198,7 +199,7 @@ security definer
 stable
 set search_path = ''
 as $$
-declare v_item jsonb; v_asset uuid; v_field uuid; v_target_table uuid;
+declare v_item jsonb; v_asset uuid; v_field uuid; v_target_table uuid; v_date date;
 begin
   if p_field.data_type is null or p_field.data_type in (
     'formula', 'image', 'file', 'multimedia', 'audio', 'media'
@@ -210,14 +211,39 @@ begin
     or p_field.data_type = 'boolean' and jsonb_typeof(p_value) <> 'boolean'
     or p_field.data_type in ('int', 'float') and jsonb_typeof(p_value) <> 'number'
     or p_field.data_type in ('string_array', 'int_array', 'float_array')
-       and jsonb_typeof(p_value) <> 'array'
-    or p_field.data_type = 'date' and (
-      jsonb_typeof(p_value) <> 'string' or (p_value #>> '{}') !~ '^\d{4}-\d{2}-\d{2}'
-    ) then
+       and jsonb_typeof(p_value) <> 'array' then
     raise exception 'Field value has the wrong type' using errcode = '22023';
   end if;
   if p_field.data_type = 'int' and (p_value #>> '{}')::numeric <> trunc((p_value #>> '{}')::numeric) then
     raise exception 'Integer field requires an integer' using errcode = '22023';
+  end if;
+  if p_field.data_type in ('string_array', 'int_array', 'float_array') then
+    for v_item in select value from jsonb_array_elements(p_value) loop
+      if p_field.data_type = 'string_array' and jsonb_typeof(v_item) <> 'string'
+        or p_field.data_type in ('int_array', 'float_array')
+           and jsonb_typeof(v_item) <> 'number' then
+        raise exception 'Array field contains an element of the wrong type'
+          using errcode = '22023';
+      end if;
+      if p_field.data_type = 'int_array'
+        and (v_item #>> '{}')::numeric <> trunc((v_item #>> '{}')::numeric) then
+        raise exception 'Integer array requires integer elements' using errcode = '22023';
+      end if;
+    end loop;
+  end if;
+  if p_field.data_type = 'date' then
+    if jsonb_typeof(p_value) <> 'string'
+      or (p_value #>> '{}') !~ '^\d{4}-\d{2}-\d{2}$' then
+      raise exception 'Date field requires YYYY-MM-DD' using errcode = '22023';
+    end if;
+    begin
+      v_date := (p_value #>> '{}')::date;
+    exception when others then
+      raise exception 'Date field requires a real calendar date' using errcode = '22023';
+    end;
+    if pg_catalog.to_char(v_date, 'YYYY-MM-DD') <> (p_value #>> '{}') then
+      raise exception 'Date field requires a real calendar date' using errcode = '22023';
+    end if;
   end if;
   if p_field.data_type = 'enum' and (
     jsonb_typeof(p_value) <> 'string'
@@ -290,6 +316,16 @@ begin
     perform public.mcp_validate_field_value(p_project_id, p_table_id, v_field, v_pair.value);
     v_result := jsonb_set(v_result, array[v_field.id::text], v_pair.value, true);
   end loop;
+  if p_require_all then
+    for v_field in
+      select f.* from public.library_field_definitions f
+      where f.library_id = p_table_id and f.data_type = 'boolean'
+    loop
+      if not (v_result ? v_field.id::text) then
+        v_result := jsonb_set(v_result, array[v_field.id::text], 'false'::jsonb, true);
+      end if;
+    end loop;
+  end if;
   if exists (
     select 1 from public.library_field_definitions f
     where f.library_id = p_table_id and coalesce(f.required, false)

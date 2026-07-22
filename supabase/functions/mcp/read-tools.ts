@@ -4,22 +4,17 @@ import type { McpRequestContext } from './context.ts';
 import { toolFailure, toolSuccess } from './results.ts';
 import { listDocuments, listProjectStructure, queryTableRows, readDocument,
   semanticSearch } from './operations.ts';
-import { runMcpOperation, type McpOperationClass } from './telemetry.ts';
 
 const uuid = z.string().uuid();
 const annotations = { readOnlyHint: true, destructiveHint: false,
   idempotentHint: true, openWorldHint: false };
 
 async function run(
-  context: McpRequestContext,
-  name: string,
-  operationClass: McpOperationClass,
-  input: unknown,
   summary: string,
   operation: () => Promise<Record<string, unknown>>,
 ) {
   try {
-    const value = await runMcpOperation(context, name, operationClass, input, operation);
+    const value = await operation();
     return toolSuccess(summary, { ok: true, ...value });
   } catch (error) { return toolFailure(error); }
 }
@@ -28,8 +23,7 @@ export function registerReadTools(server: McpServer, context: McpRequestContext)
   server.registerTool('list_project_structure', {
     description: 'List project metadata, folders, table schemas, and bounded document summaries.',
     inputSchema: z.object({}).strict(), annotations,
-  }, async (input: Record<string, never>) => run(context, 'list_project_structure', 'read', input,
-    'Project structure loaded.', () => listProjectStructure(context)));
+  }, async () => run('Project structure loaded.', () => listProjectStructure(context)));
 
   const queryRowsSchema = z.object({ tableId: uuid,
     limit: z.number().int().min(1).max(200).optional(),
@@ -41,16 +35,16 @@ export function registerReadTools(server: McpServer, context: McpRequestContext)
   server.registerTool('query_table_rows', {
     description: 'Read one bounded table page using semantic field labels.',
     inputSchema: queryRowsSchema, annotations,
-  }, async (input: z.infer<typeof queryRowsSchema>) => run(context, 'query_table_rows', 'read', input,
-    'Table rows loaded.', () => queryTableRows(context, input)));
+  }, async (input: z.infer<typeof queryRowsSchema>) => run('Table rows loaded.',
+    () => queryTableRows(context, input)));
 
   const listDocumentsSchema = z.object({ limit: z.number().int().min(1).max(200).optional(),
     cursor: z.string().min(1).max(4096).optional() }).strict();
   server.registerTool('list_documents', {
     description: 'List a deterministic bounded page of project document metadata.',
     inputSchema: listDocumentsSchema, annotations,
-  }, async (input: z.infer<typeof listDocumentsSchema>) => run(context, 'list_documents', 'read', input,
-    'Documents loaded.', () => listDocuments(context, input)));
+  }, async (input: z.infer<typeof listDocumentsSchema>) => run('Documents loaded.',
+    () => listDocuments(context, input)));
 
   const readDocumentSchema = z.object({ documentId: uuid,
     mode: z.enum(['full', 'outline', 'heading', 'lines']).optional(),
@@ -71,8 +65,8 @@ export function registerReadTools(server: McpServer, context: McpRequestContext)
   server.registerTool('read_document', {
     description: 'Read authoritative document Markdown in full, outline, heading, or line mode.',
     inputSchema: readDocumentSchema, annotations,
-  }, async (input: z.infer<typeof readDocumentSchema>) => run(context, 'read_document', 'read', input,
-    'Document loaded.', () => readDocument(context, input)));
+  }, async (input: z.infer<typeof readDocumentSchema>) => run('Document loaded.',
+    () => readDocument(context, input)));
 
   const searchSchema = z.object({ query: z.string().min(1).max(4000),
     limit: z.number().int().min(1).max(30).optional(),
@@ -80,6 +74,6 @@ export function registerReadTools(server: McpServer, context: McpRequestContext)
   server.registerTool('semantic_search', {
     description: 'Search project tables and documents with explicit semantic or text/fuzzy mode.',
     inputSchema: searchSchema, annotations,
-  }, async (input: z.infer<typeof searchSchema>) => run(context, 'semantic_search', 'search', input,
-    'Search completed.', () => semanticSearch(context, input)));
+  }, async (input: z.infer<typeof searchSchema>) => run('Search completed.',
+    () => semanticSearch(context, input)));
 }

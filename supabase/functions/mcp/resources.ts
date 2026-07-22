@@ -5,7 +5,6 @@ import type { McpRequestContext } from './context.ts';
 import { McpDomainError, asPublicMcpError } from './errors.ts';
 import { getTableSchema, listDocuments, listProjectStructure, queryTableRows,
   readDocument } from './operations.ts';
-import { runMcpOperation } from './telemetry.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MIME = 'application/json';
@@ -44,25 +43,20 @@ function content(uri: string, value: unknown) {
 
 async function dispatch(context: McpRequestContext, uriValue: string) {
   const uri = parseUri(uriValue);
-  let operation = 'resource_read';
   let callback: () => Promise<unknown>;
   if (uri.hostname === 'project' && uri.pathname === '' && !uri.search) {
-    operation = 'resource_project';
     callback = async () => {
       const structure = await listProjectStructure(context);
       return { project: structure.project };
     };
   } else if (uri.hostname === 'project' && uri.pathname === '/structure' && !uri.search) {
-    operation = 'resource_project_structure';
     callback = () => listProjectStructure(context);
   } else if (uri.hostname === 'tables' && uri.pathname === '' && !uri.search) {
-    operation = 'resource_tables';
     callback = async () => {
       const structure = await listProjectStructure(context);
       return { tables: structure.tables ?? [] };
     };
   } else if (uri.hostname === 'documents' && uri.pathname === '') {
-    operation = 'resource_documents';
     callback = () => listDocuments(context, pageOptions(uri));
   } else {
     const table = /^\/([0-9a-f-]+)\/(schema|rows)$/i.exec(uri.pathname);
@@ -70,18 +64,15 @@ async function dispatch(context: McpRequestContext, uriValue: string) {
     if (uri.hostname === 'tables' && table && UUID.test(table[1])) {
       if (table[2] === 'schema') {
         if (uri.search) invalid();
-        operation = 'resource_table_schema';
         callback = () => getTableSchema(context, table[1]);
       } else {
-        operation = 'resource_table_rows';
         callback = () => queryTableRows(context, { tableId: table[1], ...pageOptions(uri) });
       }
     } else if (uri.hostname === 'documents' && document && UUID.test(document[1]) && !uri.search) {
-      operation = 'resource_document';
       callback = () => readDocument(context, { documentId: document[1] });
     } else invalid();
   }
-  const value = await runMcpOperation(context, operation, 'read', { resourceUri: uriValue }, callback);
+  const value = await callback();
   return content(uri.href, value);
 }
 

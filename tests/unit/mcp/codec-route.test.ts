@@ -66,12 +66,20 @@ describe('MCP trusted document codec route', () => {
     });
   });
 
+  it('accepts exactly 100 KiB of UTF-8 Markdown', async () => {
+    const markdown = 'x'.repeat(100 * 1024);
+    const response = await POST(request(JSON.stringify({ mode: 'encode', markdown })));
+    expect(response.status).toBe(200);
+    expect(markdownToYjsState).toHaveBeenCalledWith(markdown);
+  });
+
   it('rejects unknown fields and oversized streamed bodies', async () => {
     expect((await POST(request(JSON.stringify({ mode: 'encode', markdown: 'x', projectId: 'x' })))).status)
       .toBe(400);
-    const oversized = JSON.stringify({ mode: 'encode', markdown: 'x'.repeat(1024 * 1024) });
+    const oversized = JSON.stringify({ mode: 'normalize', snapshot: 'x'.repeat(16 * 1024 * 1024),
+      updates: [] });
     expect((await POST(request(oversized))).status).toBe(413);
-    const chunk = new TextEncoder().encode('x'.repeat(600 * 1024));
+    const chunk = new TextEncoder().encode('x'.repeat(9 * 1024 * 1024));
     expect((await POST(streamedRequest([chunk, chunk]))).status).toBe(413);
     expect(markdownToYjsState).not.toHaveBeenCalled();
   });

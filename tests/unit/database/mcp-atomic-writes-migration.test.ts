@@ -20,6 +20,26 @@ describe('MCP atomic write migration', () => {
     expect(sql).toMatch(/Unknown or ambiguous field label/i);
   });
 
+  it('validates array elements, integral arrays, and exact calendar dates', () => {
+    expect(sql).toMatch(/for v_item in select value from jsonb_array_elements\(p_value\)/i);
+    expect(sql).toMatch(/string_array[\s\S]+jsonb_typeof\(v_item\) <> 'string'/i);
+    expect(sql).toMatch(/int_array[\s\S]+trunc\(\(v_item #>> '\{\}'\)::numeric\)/i);
+    expect(sql).toMatch(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/i);
+    expect(sql).toMatch(/v_date := \(p_value #>> '\{\}'\)::date/i);
+  });
+
+  it('treats required empty arrays as empty and defaults omitted booleans on create', () => {
+    expect(sql).toMatch(/jsonb_array_length\(p_value\) = 0/i);
+    expect(sql).toMatch(/if p_require_all then[\s\S]+data_type = 'boolean'[\s\S]+'false'::jsonb/i);
+    expect(sql).toMatch(/pg_catalog\.octet_length\(p_values::text\) >= 262144/i);
+  });
+
+  it('uses canonical row ordering for reuse and row-index updates', () => {
+    expect(sql).toMatch(/order by a\.row_index nulls last, a\.id limit 1 for update/i);
+    expect(sql).toMatch(/order by row_index nulls last,id offset p_row_index-1 limit 1 for update/i);
+    expect(sql).not.toMatch(/order by (?:a\.)?row_index nulls last,\s*(?:a\.)?created_at/i);
+  });
+
   it('keeps document replacement service-role-only with a full token check', () => {
     expect(sql).toMatch(/auth\.role\(\)[\s\S]+service_role/i);
     expect(sql).toMatch(/v_tail<>coalesce\(p_expected_update_ids,array\[\]::uuid\[\]\)/i);

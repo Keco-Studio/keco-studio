@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 
 export const runtime = 'nodejs';
-const MAX_CODEC_REQUEST_BYTES = 1024 * 1024;
+const MAX_CODEC_REQUEST_BYTES = 16 * 1024 * 1024;
+const MAX_CODEC_RESPONSE_BYTES = 16 * 1024 * 1024;
 const MAX_MARKDOWN_BYTES = 100 * 1024;
-const MAX_UPDATES = 10_000;
+const MAX_UPDATES = 2_000;
 
 function authorized(request: NextRequest): boolean {
   const expected = process.env.MCP_CODEC_SECRET;
@@ -40,6 +41,16 @@ async function readBoundedText(request: NextRequest): Promise<string | null> {
   }
 }
 
+function normalizedResponse(normalized: { yjsStateBase64: string; markdown: string }): NextResponse {
+  const body = JSON.stringify({ yjsStateBase64: normalized.yjsStateBase64,
+    markdown: normalized.markdown });
+  if (Buffer.byteLength(body, 'utf8') >= MAX_CODEC_RESPONSE_BYTES) {
+    return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+  }
+  return new NextResponse(body, { status: 200,
+    headers: { 'content-type': 'application/json' } });
+}
+
 export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const declared = Number(request.headers.get('content-length'));
@@ -59,19 +70,17 @@ export async function POST(request: NextRequest) {
     const keys = Object.keys(input);
     if (input.mode === 'encode' && keys.length === 2 && keys.includes('markdown') &&
         typeof input.markdown === 'string' &&
-        Buffer.byteLength(input.markdown, 'utf8') < MAX_MARKDOWN_BYTES) {
+        Buffer.byteLength(input.markdown, 'utf8') <= MAX_MARKDOWN_BYTES) {
       const encoded = await documentContentCodec.markdownToYjsState(input.markdown);
       const normalized = await documentContentCodec.normalizeYjsState(encoded, []);
-      return NextResponse.json({ yjsStateBase64: normalized.yjsStateBase64,
-        markdown: normalized.markdown });
+      return normalizedResponse(normalized);
     }
     if (input.mode === 'normalize' && keys.length === 3 && keys.includes('snapshot') &&
       keys.includes('updates') && (input.snapshot === null || typeof input.snapshot === 'string') &&
       Array.isArray(input.updates) && input.updates.length <= MAX_UPDATES &&
       input.updates.every(value => typeof value === 'string')) {
       const normalized = await documentContentCodec.normalizeYjsState(input.snapshot, input.updates);
-      return NextResponse.json({ yjsStateBase64: normalized.yjsStateBase64,
-        markdown: normalized.markdown });
+      return normalizedResponse(normalized);
     }
     return NextResponse.json({ error: 'Invalid codec request' }, { status: 400 });
   } catch (error) {
