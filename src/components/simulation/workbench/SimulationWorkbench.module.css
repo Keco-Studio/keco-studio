@@ -324,6 +324,7 @@
 .toast_error .toastIndicator { background: var(--simulation-danger); }
 .toastMessage { flex: 1; font-size: 13px; }
 .toastDismiss { display: grid; width: 26px; height: 26px; place-items: center; color: var(--simulation-ink-500); background: transparent; border: 0; cursor: pointer; }
+.toastAction { min-height: 30px; padding: 0 10px; color: var(--simulation-blue); background: var(--simulation-blue-soft); border: 1px solid var(--simulation-blue); border-radius: 7px; font: inherit; font-weight: 700; cursor: pointer; }
 
 .battleWorkspace { display: grid; min-height: 440px; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
 .battleModeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -417,6 +418,7 @@
 .workflowButton:focus-visible,
 .button:focus-visible,
 .toastDismiss:focus-visible { outline: 3px solid var(--simulation-focus); outline-offset: 2px; }
+.toastAction:focus-visible { outline: 3px solid var(--simulation-focus); outline-offset: 2px; }
 
 @media (max-width: 1180px) {
   .search { display: none; }

@@ -1,19 +1,24 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { createFreshSimulationState, simulationSessionReducer } from './sessionReducer';
+import { SimulationSaveQueue } from './SimulationSaveQueue';
 import { createSimulationStorageRepository } from './storage';
 import type { ImportedSimulationSnapshot, RosterEntry, SimulationScreen, SimulationSession, SimulationStateV1 } from './types';
 import { useSimulationProject } from './SimulationProjectProvider';
+
+export type SimulationPersistenceStatus = 'hydrating' | 'ready' | 'unsaved' | 'conflict' | 'load-error' | 'invalid';
 
 type SessionContextValue = {
   state: SimulationStateV1;
   sessions: SimulationSession[];
   activeSession: SimulationSession | null;
   importing: boolean;
+  isHydrating: boolean;
+  persistenceStatus: SimulationPersistenceStatus;
   persistenceWarning: string | null;
-  storageBlocked: boolean;
   startFreshImport: () => void;
   commitImport: (snapshot: ImportedSimulationSnapshot, name: string, sessionId?: string) => void;
   selectSession: (sessionId: string) => void;
@@ -21,19 +26,12 @@ type SessionContextValue = {
   updateSkills: (sessionId: string, uid: string, loadout: readonly string[], skillLevels: Readonly<Record<string, number>>) => void;
   updateProgression: (sessionId: string, uid: string, exp: number, lv: number, sp: number) => void;
   setLastScreen: (sessionId: string, lastScreen: SimulationScreen) => void;
+  retryPersistence: () => void;
+  loadCloudVersion: () => void;
   resetStorage: () => void;
 };
 
 const SimulationSessionContext = createContext<SessionContextValue | null>(null);
-
-function getBrowserStorage(): Storage | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
 
 function newSession(snapshot: ImportedSimulationSnapshot, name: string): SimulationSession {
   const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -52,51 +50,102 @@ function newSession(snapshot: ImportedSimulationSnapshot, name: string): Simulat
 }
 
 export function SimulationSessionProvider({ children }: { children: React.ReactNode }) {
+  const supabase = useSupabase();
   const { userProfile } = useAuth();
   const userId = userProfile?.id;
   const { selectedProjectId } = useSimulationProject();
   const [state, dispatch] = useReducer(simulationSessionReducer, undefined, createFreshSimulationState);
   const [importing, setImporting] = useState(false);
-  const [hydratedNamespace, setHydratedNamespace] = useState<string | null>(null);
-  const [blockedNamespace, setBlockedNamespace] = useState<string | null>(null);
+  const [persistenceStatus, setPersistenceStatus] = useState<SimulationPersistenceStatus>('hydrating');
   const [persistenceWarning, setPersistenceWarning] = useState<string | null>(null);
-  const repository = useMemo(() => createSimulationStorageRepository(getBrowserStorage()), []);
+  const repository = useMemo(() => createSimulationStorageRepository(supabase), [supabase]);
   const namespace = userId && selectedProjectId ? userId + ':' + selectedProjectId : null;
+  const queueRef = useRef<SimulationSaveQueue | null>(null);
+  const requestGenerationRef = useRef(0);
+  const invalidRevisionRef = useRef<number | null>(null);
+  const lastQueuedStateRef = useRef<SimulationStateV1 | null>(null);
+
+  const installQueue = useCallback((
+    projectId: string,
+    generation: number,
+    revision: number,
+    baseline: SimulationStateV1,
+  ) => {
+    lastQueuedStateRef.current = baseline;
+    const queue = new SimulationSaveQueue({
+      revision,
+      save: (expectedRevision, pendingState) => repository.save(projectId, expectedRevision, pendingState),
+      onSaved: (_nextRevision, dirty) => {
+        if (requestGenerationRef.current !== generation) return;
+        setPersistenceStatus('ready');
+        if (!dirty) setPersistenceWarning(null);
+      },
+      onUnsaved: (error) => {
+        if (requestGenerationRef.current !== generation) return;
+        setPersistenceStatus('unsaved');
+        setPersistenceWarning(error.message);
+      },
+      onConflict: () => {
+        if (requestGenerationRef.current !== generation) return;
+        setPersistenceStatus('conflict');
+        setPersistenceWarning('Cloud simulation state is newer. Load the cloud version to continue saving.');
+      },
+    });
+    queueRef.current = queue;
+  }, [repository]);
+
+  const hydrate = useCallback(async () => {
+    const generation = ++requestGenerationRef.current;
+    const queue = queueRef.current;
+    if (queue) queue.stop();
+    queueRef.current = null;
+    invalidRevisionRef.current = null;
+    lastQueuedStateRef.current = null;
+    setImporting(false);
+    setPersistenceWarning(null);
+    dispatch({ type: 'PROJECT_CHANGED' });
+
+    if (!namespace || !selectedProjectId) {
+      setPersistenceStatus('ready');
+      return;
+    }
+
+    setPersistenceStatus('hydrating');
+    const loaded = await repository.load(selectedProjectId);
+    if (generation !== requestGenerationRef.current) return;
+    if ('error' in loaded) {
+      invalidRevisionRef.current = loaded.error.observedRevision ?? null;
+      setPersistenceStatus(loaded.error.observedRevision === undefined ? 'load-error' : 'invalid');
+      setPersistenceWarning(loaded.error.message);
+      return;
+    }
+
+    const nextState = loaded.state ?? createFreshSimulationState();
+    dispatch({ type: 'PROJECT_CHANGED', state: nextState });
+    installQueue(selectedProjectId, generation, loaded.revision, nextState);
+    setPersistenceStatus('ready');
+  }, [installQueue, namespace, repository, selectedProjectId]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setImporting(false);
-      setPersistenceWarning(null);
-      if (!namespace || !userId || !selectedProjectId) {
-        dispatch({ type: 'PROJECT_CHANGED' });
-        setHydratedNamespace(null);
-        setBlockedNamespace(null);
-        return;
-      }
-      const loaded = repository.load(userId, selectedProjectId);
-      if ('error' in loaded) {
-        dispatch({ type: 'PROJECT_CHANGED' });
-        setHydratedNamespace(null);
-        setBlockedNamespace(namespace);
-        setPersistenceWarning(loaded.error.message);
-        return;
-      }
-      dispatch({ type: 'PROJECT_CHANGED', state: loaded.state ?? createFreshSimulationState() });
-      setBlockedNamespace(null);
-      setHydratedNamespace(namespace);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [namespace, repository, selectedProjectId, userId]);
+    const timer = window.setTimeout(() => void hydrate(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      requestGenerationRef.current += 1;
+      const queue = queueRef.current;
+      if (queue) queue.stop();
+      queueRef.current = null;
+    };
+  }, [hydrate]);
 
   useEffect(() => {
-    if (!namespace || hydratedNamespace !== namespace || blockedNamespace === namespace) return;
-    if (!userId || !selectedProjectId) return;
+    if (persistenceStatus !== 'ready' && persistenceStatus !== 'unsaved') return;
+    if (!queueRef.current || lastQueuedStateRef.current === state) return;
     const timer = window.setTimeout(() => {
-      const saved = repository.save(userId, selectedProjectId, state);
-      setPersistenceWarning('error' in saved ? saved.error.message : null);
+      lastQueuedStateRef.current = state;
+      queueRef.current?.enqueue(state);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [blockedNamespace, hydratedNamespace, namespace, repository, selectedProjectId, state, userId]);
+  }, [persistenceStatus, state]);
 
   const commitImport = useCallback((snapshot: ImportedSimulationSnapshot, name: string, sessionId?: string) => {
     if (!selectedProjectId || snapshot.sourceProjectId !== selectedProjectId) {
@@ -117,18 +166,39 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
     setImporting(false);
   }, []);
 
-  const resetStorage = useCallback(() => {
-    if (!namespace || !userId || !selectedProjectId) return;
-    const cleared = repository.clear(userId, selectedProjectId);
+  const retryPersistence = useCallback(() => {
+    if (persistenceStatus === 'load-error') {
+      void hydrate();
+      return;
+    }
+    if (persistenceStatus === 'unsaved') queueRef.current?.retry();
+  }, [hydrate, persistenceStatus]);
+
+  const loadCloudVersion = useCallback(() => {
+    if (persistenceStatus === 'conflict') void hydrate();
+  }, [hydrate, persistenceStatus]);
+
+  const resetStorage = useCallback(async () => {
+    if (!selectedProjectId || !namespace) return;
+    const generation = requestGenerationRef.current;
+    const revision = invalidRevisionRef.current ?? queueRef.current?.getRevision();
+    if (revision === undefined) return;
+    const queue = queueRef.current;
+    if (queue) queue.stop();
+    const cleared = await repository.clear(selectedProjectId, revision);
+    if (generation !== requestGenerationRef.current) return;
     if ('error' in cleared) {
+      setPersistenceStatus(cleared.error.code === 'conflict' ? 'conflict' : 'unsaved');
       setPersistenceWarning(cleared.error.message);
       return;
     }
-    dispatch({ type: 'PROJECT_CHANGED' });
-    setBlockedNamespace(null);
-    setHydratedNamespace(namespace);
+    const fresh = createFreshSimulationState();
+    invalidRevisionRef.current = null;
+    dispatch({ type: 'PROJECT_CHANGED', state: fresh });
+    installQueue(selectedProjectId, generation, 0, fresh);
+    setPersistenceStatus('ready');
     setPersistenceWarning(null);
-  }, [namespace, repository, selectedProjectId, userId]);
+  }, [installQueue, namespace, repository, selectedProjectId]);
 
   const activeSession = state.sessions.find(({ id }) => id === state.activeSessionId) ?? null;
   const value = useMemo<SessionContextValue>(() => ({
@@ -136,8 +206,9 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
     sessions: state.sessions,
     activeSession,
     importing,
+    isHydrating: persistenceStatus === 'hydrating',
+    persistenceStatus,
     persistenceWarning,
-    storageBlocked: Boolean(namespace && blockedNamespace === namespace),
     startFreshImport: () => setImporting(true),
     commitImport,
     selectSession,
@@ -145,8 +216,10 @@ export function SimulationSessionProvider({ children }: { children: React.ReactN
     updateSkills: (sessionId, uid, loadout, skillLevels) => dispatch({ type: 'SKILL_UPDATED', sessionId, uid, loadout, skillLevels }),
     updateProgression: (sessionId, uid, exp, lv, sp) => dispatch({ type: 'PROGRESSION_UPDATED', sessionId, uid, exp, lv, sp }),
     setLastScreen: (sessionId, lastScreen) => dispatch({ type: 'LAST_SCREEN_CHANGED', sessionId, lastScreen }),
-    resetStorage,
-  }), [activeSession, blockedNamespace, commitImport, importing, namespace, persistenceWarning, resetStorage, selectSession, state]);
+    retryPersistence,
+    loadCloudVersion,
+    resetStorage: () => void resetStorage(),
+  }), [activeSession, commitImport, importing, loadCloudVersion, persistenceStatus, persistenceWarning, resetStorage, retryPersistence, selectSession, state]);
 
   return <SimulationSessionContext.Provider value={value}>{children}</SimulationSessionContext.Provider>;
 }

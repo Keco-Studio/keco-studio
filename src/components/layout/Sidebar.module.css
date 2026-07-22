@@ -740,14 +740,56 @@
 /* Add left padding to leaf nodes (library and create button) to align with folder icon */
 /* This compensates for the missing switcher on leaf nodes */
 .tree :global(.ant-tree-treenode[data-node-key*="library-"]) .ant-tree-node-content-wrapper,
+.tree :global(.ant-tree-treenode[data-node-key^="document-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="asset-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper {
   padding-left: calc(0.75rem + 12px);
 }
 
+/*
+ * Documents keep expand control in the title row. Fully remove the left switcher slot
+ * so book icons align with sibling libraries/documents.
+ */
+.tree :global(.ant-tree-treenode).documentTreeNode > :global(.ant-tree-switcher),
+.tree :global(.ant-tree-treenode[data-node-key^="document-"] > .ant-tree-switcher) {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/*
+ * Derived libraries under a document: remove tree indent so books share the same
+ * left edge as the parent document / other root files.
+ */
+.tree :global(.ant-tree-treenode).documentChildTreeNode > :global(.ant-tree-indent),
+.tree :global(.ant-tree-treenode:has([data-library-under-document]) > .ant-tree-indent) {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.tree :global(.ant-tree-treenode).documentChildTreeNode > :global(.ant-tree-switcher),
+.tree :global(.ant-tree-treenode:has([data-library-under-document]) > .ant-tree-switcher) {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* Library under folder: align book icon with parent folder text start */
 .tree :global(.ant-tree-node-content-wrapper:has([data-library-under-folder])) {
   padding-left: 0.75rem;
+}
+
+/* Derived libraries under a root document: same left padding as sibling documents */
+.tree :global(.ant-tree-node-content-wrapper:has([data-library-under-document]:not([data-library-under-folder]))) {
+  padding-left: calc(0.75rem + 12px);
 }
 
 
@@ -893,6 +935,17 @@
   margin: 0 !important;
 }
 
+/* Documents / derived libs: never reserve left switcher/indent space */
+.tree :global(.ant-tree-treenode).documentTreeNode > :global(.ant-tree-switcher),
+.tree :global(.ant-tree-treenode).documentChildTreeNode > :global(.ant-tree-switcher),
+.tree :global(.ant-tree-treenode).documentChildTreeNode > :global(.ant-tree-indent) {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* Remove all possible shadow square pseudo-elements */
 .tree :global(.ant-tree-switcher)::before,
 .tree :global(.ant-tree-switcher)::after {
@@ -1035,6 +1088,29 @@
   gap: 0.375rem;
   flex-shrink: 0;
   align-items: center;
+}
+
+.documentExpandButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  line-height: 1;
+  color: inherit;
+}
+
+.documentExpandButton:hover {
+  opacity: 0.75;
+}
+
+/* Collapsed: chevron down. Expanded: chevron up. */
+.documentExpandIconExpanded {
+  transform: rotate(180deg);
 }
 
 .assetPresenceAvatars {

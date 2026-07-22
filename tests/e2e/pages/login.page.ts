@@ -147,9 +147,9 @@ export class LoginPage {
       return path !== '/' && path !== '';
     }, { timeout: longTimeout });
     
-    // Strategy 2: Wait for network to be idle first (ensures page is fully loaded)
-    // This ensures all API calls (including auth verification) are complete
-    await this.page.waitForLoadState('networkidle', { timeout: longTimeout });
+    // Strategy 2: Best-effort networkidle. Hard waits flake when websockets/polling
+    // keep the page busy (documented in tests/unit/app-route-boundaries.test.ts).
+    await this.page.waitForLoadState('networkidle', { timeout: longTimeout }).catch(() => {});
     
     // Strategy 3: Wait for browser storage to contain Supabase auth token
     // In CI environments, there may be a delay between login and auth storage update

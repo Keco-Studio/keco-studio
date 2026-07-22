@@ -20,14 +20,15 @@ describe('simulation provider contracts', () => {
 
   it('hydrates before saving and uses the storage repository boundary', () => {
     const source = read('src/lib/simulation/SimulationSessionProvider.tsx');
+    expect(source).toContain('useSupabase');
     expect(source).toContain('createSimulationStorageRepository');
-    expect(source).not.toMatch(/localStorage\.(?:getItem|setItem|removeItem)/);
-    expect(source).toContain('hydratedNamespace');
-    expect(source).toContain('blockedNamespace');
-    expect(source).toContain('repository.save');
+    expect(source).toContain('await repository.load');
+    expect(source).toContain('SimulationSaveQueue');
+    expect(source).toContain('requestGenerationRef');
+    expect(source).toContain('queue.stop()');
     expect(source).toContain('repository.clear');
     expect(source).toContain('IMPORT_COMMITTED');
-    expect(source).toContain('getBrowserStorage');
+    expect(source).not.toMatch(/getBrowserStorage|simulationStorageKey|localStorage/);
     expect(source).toContain('snapshot.sourceProjectId !== selectedProjectId');
     expect(source).toContain('const targetId = sessionId;');
     expect(source).not.toContain('sessionId ?? state.activeSessionId');

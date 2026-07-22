@@ -2,6 +2,14 @@ import { buildSystemPrompt } from '../../../src/lib/agent/prompts';
 import { buildDesignMessage } from '../../../src/lib/design-message';
 
 describe('buildSystemPrompt design-document table rules', () => {
+  it('identifies Keco Assistant as an agent for game designers', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toMatch(
+      /^You are Keco Assistant, an AI agent for game designers using keco-studio\./
+    );
+  });
+
   it('states implemented document capabilities', () => {
     const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
 

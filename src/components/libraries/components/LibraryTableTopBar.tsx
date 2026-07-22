@@ -27,6 +27,8 @@ type LibraryTableTopBarProps = {
   canAddSection: boolean;
   hasScriptColumns: boolean;
   scriptViewMode: 'table' | 'script';
+  /** When false, hide Table/Script conversion toggle (script-only libraries). */
+  showScriptViewToggle?: boolean;
   libraryId: string | undefined;
   rows: AssetRow[];
   properties: PropertyConfig[];
@@ -54,6 +56,7 @@ export function LibraryTableTopBar({
   canAddSection,
   hasScriptColumns,
   scriptViewMode,
+  showScriptViewToggle = true,
   libraryId,
   rows,
   properties,
@@ -94,7 +97,7 @@ export function LibraryTableTopBar({
       ) : (
         <div className={styles.tableTopBarSpacer} />
       )}
-      {hasScriptColumns && (
+      {hasScriptColumns && showScriptViewToggle && (
         <div className={styles.viewToggleGroup}>
           <button
             type="button"

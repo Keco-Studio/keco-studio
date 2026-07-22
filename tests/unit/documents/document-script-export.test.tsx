@@ -211,7 +211,7 @@ describe('ImportScriptModal document source lifecycle', () => {
 
   function expectVisibleSource(source: DocumentExportSource, lineCount: number) {
     expect(byTestId(body, 'import-script-document-source').textContent).toContain(source.documentName);
-    expect(byTestId(body, 'import-script-name').value).toBe(source.documentName);
+    expect(byTestId(body, 'import-script-name').value).toBe(`${source.documentName} Conversation`);
     expect(byTestId(body, 'import-script-preview').textContent).toContain(`${lineCount} lines`);
     expect(byTestId(body, 'import-script-file-mode')).toBeUndefined();
     expect(byTestId(body, 'import-script-text-mode')).toBeUndefined();
@@ -228,7 +228,7 @@ describe('ImportScriptModal document source lifecycle', () => {
     expect(form.get('folderId')).toBeNull();
     expect(form.get('projectId')).toBe(sourceA.projectId);
     expect(form.get('sourceDocumentId')).toBe(sourceA.documentId);
-    expect(form.get('libraryName')).toBe(sourceA.documentName);
+    expect(form.get('libraryName')).toBe(`${sourceA.documentName} Conversation`);
     const file = form.get('file') as File;
     expect(file.name).toBe(`${sourceA.documentName}.txt`);
     expect(await file.text()).toBe(sourceA.markdown);
@@ -246,7 +246,7 @@ describe('ImportScriptModal document source lifecycle', () => {
     const form = await submittedForm();
     expect(form.get('projectId')).toBe(sourceB.projectId);
     expect(form.get('sourceDocumentId')).toBe(sourceB.documentId);
-    expect(form.get('libraryName')).toBe(sourceB.documentName);
+    expect(form.get('libraryName')).toBe(`${sourceB.documentName} Conversation`);
     expect(await (form.get('file') as File).text()).toBe(sourceB.markdown);
   });
 });

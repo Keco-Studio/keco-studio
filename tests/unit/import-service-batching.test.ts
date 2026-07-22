@@ -36,7 +36,9 @@ describe('spreadsheet import batching (issue #224)', () => {
         const builder = {
           select: () => builder,
           eq: () => builder,
-          limit: async () => ({ data: [], error: null }),
+          is: () => builder,
+          // Keep the builder chainable; name uniqueness checks call .eq/.is after .limit(1).
+          limit: () => builder,
           insert: (rows: unknown) => {
             inserted = rows;
             if (table === 'library_field_definitions') fieldInsertCalls.push(rows);
@@ -58,6 +60,9 @@ describe('spreadsheet import batching (issue #224)', () => {
             resolve: (value: { data: unknown[]; error: null }) => void,
             reject?: (reason: unknown) => void
           ) => {
+            if (inserted === undefined) {
+              return Promise.resolve({ data: [], error: null }).then(resolve, reject);
+            }
             const rows = Array.isArray(inserted) ? inserted : [];
             return Promise.resolve({
               data: rows.map((_, index) => ({ id: `field-${index}` })),

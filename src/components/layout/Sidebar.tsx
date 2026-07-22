@@ -32,7 +32,7 @@ import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
-import { Folder, deleteFolder } from "@/lib/services/folderService";
+import { Folder, deleteFolder, duplicateFolder } from "@/lib/services/folderService";
 import {
   updateDocumentName,
   type DocumentRecord,
@@ -40,6 +40,9 @@ import {
 } from "@/lib/services/documentService";
 import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
+import { notifyDocumentDerivedLibraryCreated } from "@/lib/documents/documentDerivedLibraryEvents";
+import { runDocumentDerivedImport } from "@/lib/documents/runDocumentDerivedImport";
+import { showErrorToast, showSuccessToast } from "@/lib/utils/toast";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
@@ -67,7 +70,6 @@ import {
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
-import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
@@ -195,6 +197,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   } = modals;
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [folderAddMenu, setFolderAddMenu] = useState<{ folderId: string; anchor: HTMLElement } | null>(null);
   const [showImportDocumentModal, setShowImportDocumentModal] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -677,6 +680,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
+  const onToggleDocumentExpand = useCallback((docKey: string) => {
+    setExpandedKeys((prev) =>
+      prev.includes(docKey) ? prev.filter((key) => key !== docKey) : [...prev, docKey]
+    );
+  }, []);
+
   const handleTreeRightClick = ({ event, node }: { event: any; node: EventDataNode }) => {
     if (!node || !node.key) return;
 
@@ -727,11 +736,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       router,
       userRole,
       onContextMenu: handleContextMenu,
-      openNewLibrary,
+      onFolderAddClick: (folderId, anchor) => setFolderAddMenu({ folderId, anchor }),
       setSelectedFolderId,
       setError,
       setEditingKey,
       onSaveRename: handleSaveRename,
+      expandedKeys,
+      onToggleDocumentExpand,
     },
     sidebarWidth
   );
@@ -936,6 +947,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openMoveDocument,
     openNewDocumentInFolder,
     startInlineRename: (key: string) => setEditingKey(key),
+    startDocumentDerivedImport: (source, exportType) => {
+      void (async () => {
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError || !session?.access_token) {
+            throw new Error('Please sign in before exporting');
+          }
+          const result = await runDocumentDerivedImport({
+            source,
+            exportType,
+            accessToken: session.access_token,
+          });
+          notifyDocumentDerivedLibraryCreated({
+            projectId: source.projectId,
+            documentId: source.documentId,
+            libraryId: result.libraryId,
+          });
+          await invalidateLibraryData(queryClient, {
+            projectId: source.projectId,
+            folderId: source.folderId,
+            libraryId: result.libraryId,
+            refetchActiveFoldersLibraries: true,
+          });
+          router.push(`/${source.projectId}/${result.libraryId}`);
+        } catch (err) {
+          showErrorToast(err instanceof Error ? err.message : 'Import failed');
+        }
+      })();
+    },
     userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
@@ -1049,7 +1089,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openNewFolder();
   };
 
-  const handleCreateLibrary = () => {
+  const handleCreateTable = () => {
     setShowAddMenu(false);
     if (!currentIds.projectId) {
       setError('Please select a project first');
@@ -1058,6 +1098,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // selectedFolderId is already set when button is clicked
     setSelectedFolderId(null);
     openNewLibrary();
+  };
+
+  const handleImportTable = () => {
+    setShowAddMenu(false);
+    if (!currentIds.projectId) {
+      setError('Please select a project first');
+      return;
+    }
+    setSelectedFolderId(null);
+    openImportLibrary(null);
   };
 
   const handleCreateDocument = () => {
@@ -1162,7 +1212,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               setEditingKey={setEditingKey}
               onSaveRename={handleSaveRename}
               setSelectedFolderId={setSelectedFolderId}
-              openNewLibrary={openNewLibrary}
+              onFolderAddClick={(folderId, anchor) => setFolderAddMenu({ folderId, anchor })}
               setError={setError}
               onSelect={onSelect}
               onExpand={onExpand}
@@ -1266,7 +1316,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         />
       )}
 
-      {importingFolderId && currentIds.projectId && (
+      {showImportLibraryModal && currentIds.projectId && (
         <ImportLibraryModal
           open={showImportLibraryModal}
           projectId={currentIds.projectId}
@@ -1380,22 +1430,129 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         anchorElement={addButtonRef}
         onClose={() => setShowAddMenu(false)}
         onCreateFolder={userRole === 'admin' ? handleCreateFolder : undefined}
-        onCreateLibrary={userRole === 'admin' ? handleCreateLibrary : undefined}
+        onCreateTable={userRole === 'admin' ? handleCreateTable : undefined}
         onCreateDocument={
           userRole === 'admin' || userRole === 'editor' ? handleCreateDocument : undefined
         }
         onImportDocument={
           userRole === 'admin' || userRole === 'editor' ? handleImportDocument : undefined
         }
-        onGenerateFromDocument={
+        onImportTable={userRole === 'admin' ? handleImportTable : undefined}
+      />
+
+      <AddLibraryMenu
+        open={Boolean(folderAddMenu)}
+        anchorElement={folderAddMenu?.anchor ?? null}
+        onClose={() => setFolderAddMenu(null)}
+        onCreateTable={
           userRole === 'admin'
             ? () => {
-                setShowAddMenu(false);
-                if (!currentIds.projectId) {
-                  setError('Please select a project first');
-                  return;
-                }
-                router.push(`/${currentIds.projectId}/design-upload`);
+                if (!folderAddMenu) return;
+                setSelectedFolderId(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+                openNewLibrary();
+              }
+            : undefined
+        }
+        onCreateDocument={
+          userRole === 'admin' || userRole === 'editor'
+            ? () => {
+                if (!folderAddMenu) return;
+                openNewDocumentInFolder(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+              }
+            : undefined
+        }
+        onImportDocument={
+          userRole === 'admin' || userRole === 'editor'
+            ? () => {
+                if (!folderAddMenu) return;
+                setSelectedFolderId(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+                setShowImportDocumentModal(true);
+              }
+            : undefined
+        }
+        onImportTable={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                const id = folderAddMenu.folderId;
+                setFolderAddMenu(null);
+                openImportLibrary(id);
+              }
+            : undefined
+        }
+        onRename={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                setEditingKey(`folder-${folderAddMenu.folderId}`);
+                setFolderAddMenu(null);
+              }
+            : undefined
+        }
+        onDuplicate={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                const id = folderAddMenu.folderId;
+                setFolderAddMenu(null);
+                void duplicateFolder(supabase, id)
+                  .then(async (newFolderId) => {
+                    await invalidateFolderData(queryClient, {
+                      projectId: currentIds.projectId,
+                      folderId: newFolderId,
+                      refetchActiveFoldersLibraries: true,
+                    });
+                    if (currentIds.projectId) {
+                      await queryClient.invalidateQueries({
+                        queryKey: queryKeys.documents(currentIds.projectId),
+                      });
+                      router.push(`/${currentIds.projectId}/folder/${newFolderId}`);
+                    }
+                  })
+                  .catch((err: unknown) => {
+                    setError(err instanceof Error ? err.message : 'Failed to duplicate folder');
+                  });
+              }
+            : undefined
+        }
+        onDelete={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                const id = folderAddMenu.folderId;
+                setFolderAddMenu(null);
+                setDeleteConfirmState({
+                  open: true,
+                  title: 'Confirm deletion',
+                  content: 'Delete this folder? All libraries and subfolders under it will be removed.',
+                  loading: false,
+                  onConfirm: () => {
+                    const librariesInFolder = libraries.filter((lib) => lib.folder_id === id);
+                    const isViewingLibraryInFolder = librariesInFolder.some(
+                      (lib) => lib.id === currentIds.libraryId
+                    );
+                    return deleteFolder(supabase, id)
+                      .then(async () => {
+                        await invalidateFolderData(queryClient, {
+                          projectId: currentIds.projectId,
+                          folderId: id,
+                          refetchActiveFoldersLibraries: true,
+                        });
+                        if (
+                          (currentIds.folderId === id || isViewingLibraryInFolder) &&
+                          currentIds.projectId
+                        ) {
+                          router.push(`/${currentIds.projectId}`);
+                        }
+                      })
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                      });
+                  },
+                });
               }
             : undefined
         }

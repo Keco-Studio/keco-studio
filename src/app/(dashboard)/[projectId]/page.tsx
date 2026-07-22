@@ -480,11 +480,7 @@ export default function ProjectPage() {
                 anchorElement={createButtonRef}
                 onClose={() => setShowCreateMenu(false)}
                 onCreateFolder={handleCreateFolder}
-                onCreateLibrary={handleCreateLibrary}
-                onGenerateFromDocument={() => {
-                  setShowCreateMenu(false);
-                  router.push(`/${projectId}/design-upload`);
-                }}
+                onCreateTable={handleCreateLibrary}
               />
             </>
           )}

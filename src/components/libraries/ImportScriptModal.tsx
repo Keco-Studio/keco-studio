@@ -8,6 +8,8 @@ import { validateName } from '@/lib/utils/nameValidation';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { consumeImportStream } from '@/lib/import-script-stream';
 import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
+import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import styles from './ImportScriptModal.module.css';
 
@@ -18,6 +20,10 @@ type ImportScriptModalProps = {
   onClose: () => void;
   onImported?: (libraryId: string) => void;
   documentSource?: DocumentExportSource;
+  /** When set with documentSource, marks the derived library as script or table. */
+  documentExportType?: DocumentExportType;
+  /** When true with documentSource, start import immediately (Generate conversation/table). */
+  autoStart?: boolean;
   /** Pre-fill the text input (used by the agent "Edit in Import Modal" handoff). */
   initialText?: string;
   initialLibraryName?: string;
@@ -45,6 +51,14 @@ function defaultLibraryNameFromFile(fileName: string): string {
   return base || 'Imported script';
 }
 
+function defaultLibraryNameFromDocument(
+  documentName: string,
+  exportType: DocumentExportType
+): string {
+  const base = documentName.trim() || 'Document';
+  return exportType === 'table' ? `${base} Table` : `${base} Conversation`;
+}
+
 function snapshotDocumentSource(source: DocumentExportSource): DocumentExportSource {
   return {
     ...source,
@@ -59,12 +73,15 @@ export function ImportScriptModal({
   onClose,
   onImported,
   documentSource,
+  documentExportType = 'script',
+  autoStart = false,
   initialText,
   initialLibraryName,
 }: ImportScriptModalProps) {
   const supabase = useSupabase();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
+  const autoStartedRef = useRef(false);
   const [inputMode, setInputMode] = useState<InputMode>('file');
   const [libraryName, setLibraryName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -94,7 +111,8 @@ export function ImportScriptModal({
     if (opening && documentSource) {
       const snapshot = snapshotDocumentSource(documentSource);
       setDocumentSnapshot(snapshot);
-      setLibraryName(snapshot.documentName);
+      setLibraryName(defaultLibraryNameFromDocument(snapshot.documentName, documentExportType));
+      autoStartedRef.current = false;
     }
 
     if (!open) {
@@ -106,12 +124,13 @@ export function ImportScriptModal({
       setPreview(null);
       setImportProgress(null);
       setInputMode('file');
+      autoStartedRef.current = false;
     }
-  }, [documentSource, open]);
+  }, [documentSource, documentExportType, open]);
 
   useEffect(() => {
     const source = documentSnapshot
-      ? documentSnapshot.markdown
+      ? toScriptImportPlainText(documentSnapshot.markdown)
       : inputMode === 'text' ? textInput : parsedFileText;
     setPreview(source?.trim() ? previewScript(source) : null);
   }, [documentSnapshot, textInput, inputMode, parsedFileText]);
@@ -169,11 +188,12 @@ export function ImportScriptModal({
     let fileName = 'input.txt';
 
     if (documentSnapshot) {
-      if (!documentSnapshot.markdown.trim()) {
+      const plainText = toScriptImportPlainText(documentSnapshot.markdown);
+      if (!plainText.trim()) {
         showErrorToast('Document is empty');
         return;
       }
-      fileContent = documentSnapshot.markdown;
+      fileContent = plainText;
       fileName = `${documentSnapshot.documentName}.txt`;
     } else if (inputMode === 'file') {
       if (!selectedFile || !parsedFileText?.trim()) {
@@ -205,6 +225,7 @@ export function ImportScriptModal({
       if (documentSnapshot) {
         formData.append('sourceDocumentId', documentSnapshot.documentId);
         formData.append('snapshotToken', documentSnapshot.snapshotToken ?? '');
+        formData.append('documentExportType', documentExportType);
       }
       formData.append('libraryName', trimmedName);
       formData.append('file', new File([fileContent], fileName, { type: 'text/plain' }));
@@ -232,12 +253,25 @@ export function ImportScriptModal({
     }
   };
 
+  useEffect(() => {
+    if (!autoStart || !open || !documentSnapshot || importing || autoStartedRef.current) {
+      return;
+    }
+    if (!toScriptImportPlainText(documentSnapshot.markdown).trim() || !libraryName.trim()) {
+      return;
+    }
+    autoStartedRef.current = true;
+    void handleImport();
+    // Intentionally run once when document snapshot is ready for auto-start.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, open, documentSnapshot, libraryName, importing]);
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (!importing && e.target === e.currentTarget) onClose();
   };
 
   const canImport = documentSnapshot
-    ? !!documentSnapshot.markdown.trim() && !!libraryName.trim()
+    ? !!toScriptImportPlainText(documentSnapshot.markdown).trim() && !!libraryName.trim()
     : inputMode === 'file'
       ? !!parsedFileText?.trim() && !!libraryName.trim()
       : !!textInput.trim() && !!libraryName.trim();
@@ -249,7 +283,9 @@ export function ImportScriptModal({
     <div className={styles.backdrop} onClick={handleBackdropClick}>
       <div className={styles.modal} data-testid="import-script-modal" onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <div className={styles.title}>Import script</div>
+          <div className={styles.title}>
+            {documentExportType === 'table' ? 'Generate table' : 'Import script'}
+          </div>
           <button className={styles.close} onClick={onClose} aria-label="Close" disabled={importing}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -277,10 +313,28 @@ export function ImportScriptModal({
           </div>
 
           {documentSnapshot ? (
-            <div className={styles.documentSource} data-testid="import-script-document-source">
-              <span className={styles.documentSourceLabel}>Project document</span>
-              <strong>{documentSnapshot.documentName}</strong>
-            </div>
+            <>
+              <div className={styles.documentSource} data-testid="import-script-document-source">
+                <span className={styles.documentSourceLabel}>Project document</span>
+                <strong>{documentSnapshot.documentName}</strong>
+              </div>
+              <div className={styles.tabContainer}>
+                <button
+                  className={`${styles.tab} ${styles.tabActive}`}
+                  type="button"
+                  disabled
+                >
+                  Text input
+                </button>
+              </div>
+              <textarea
+                className={styles.textarea}
+                value={toScriptImportPlainText(documentSnapshot.markdown)}
+                readOnly
+                disabled={importing}
+                data-testid="import-script-document-text"
+              />
+            </>
           ) : null}
 
           {!documentSnapshot && (

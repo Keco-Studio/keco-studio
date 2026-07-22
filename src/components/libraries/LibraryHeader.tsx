@@ -324,6 +324,8 @@ export function LibraryHeader({
           styles={{ root: { position: 'fixed' } }}
         >
           <button 
+            type="button"
+            data-testid="library-version-control-toggle"
             className={`${styles.iconButton} ${isVersionControlOpen ? styles.iconButtonActive : ''}`}
             onClick={onVersionControlToggle}
           >

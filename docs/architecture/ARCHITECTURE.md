@@ -129,9 +129,9 @@ Keco Studio is a **multi-user, real-time collaborative asset management platform
   - Database Functions (stored procedures)
 
 #### 4. Persistence Layer
-- **Supabase PostgreSQL**: Persistent data source for libraries, assets, field values, permissions, and version snapshots
+- **Supabase PostgreSQL**: Persistent data source for libraries, assets, field values, permissions, version snapshots, and private project-scoped simulation sessions
 - **Supabase Storage**: Persistent storage for images and media files
-- **Browser Storage**: Supabase runtime auth state plus versioned local simulation sessions isolated by authenticated user and Studio project; Yjs documents do not use a local persistence layer
+- **Browser Storage**: Supabase runtime auth state and non-authoritative UI preferences; Yjs documents and simulation sessions do not use browser-local durable persistence
 
 ### Native Simulation Workbench
 
@@ -144,8 +144,10 @@ configuration is involved.
 The import boundary reads authorized project libraries, schemas, assets, and
 field values from Supabase, validates all four simulation roles atomically, and
 creates an immutable catalog snapshot. Subsequent roster, loadout, progression,
-and battle changes use versioned browser local storage keyed by user and project;
-simulation mutations are not written to Supabase.
+and battle changes are stored as a versioned `simulation_states` snapshot in
+Supabase. Row-level security keeps each snapshot private to one authenticated
+user and Studio project. Atomic revision checks reject stale saves and resets;
+the workbench requires explicit cloud-version loading after a conflict.
 
 For demonstrations, the same Import screen can create the snapshot from built-in
 characters, skills, level rules, and skill-cost rules. This is an explicit source

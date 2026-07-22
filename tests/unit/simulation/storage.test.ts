@@ -1,15 +1,9 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
-import {
-  createSimulationStorageRepository,
-  simulationStorageKey,
-} from '@/lib/simulation/storage';
-import type {
-  ImportedSimulationSnapshot,
-  SimulationStateV1,
-} from '@/lib/simulation/types';
+import { createSimulationStorageRepository } from '@/lib/simulation/storage';
+import type { ImportedSimulationSnapshot, SimulationStateV1 } from '@/lib/simulation/types';
 
-function snapshot(projectId = 'project: one'): ImportedSimulationSnapshot {
+function snapshot(projectId = 'project-1'): ImportedSimulationSnapshot {
   return {
     sourceProjectId: projectId,
     catalog: {
@@ -27,7 +21,7 @@ function snapshot(projectId = 'project: one'): ImportedSimulationSnapshot {
   };
 }
 
-function state(projectId = 'project: one'): SimulationStateV1 {
+function state(projectId = 'project-1'): SimulationStateV1 {
   return {
     version: 1,
     activeSessionId: 'session-1',
@@ -42,147 +36,102 @@ function state(projectId = 'project: one'): SimulationStateV1 {
   };
 }
 
-function memoryStorage(): Storage {
-  const values = new Map<string, string>();
-  return {
-    get length() { return values.size; },
-    clear: () => values.clear(),
-    getItem: (key) => values.get(key) ?? null,
-    key: (index) => [...values.keys()][index] ?? null,
-    removeItem: (key) => { values.delete(key); },
-    setItem: (key, value) => { values.set(key, value); },
-  };
+type DbResult = { data: unknown; error: { code?: string; message?: string } | null };
+
+function client(loadResult: DbResult, rpcResult: DbResult = { data: null, error: null }) {
+  const maybeSingle = jest.fn(async () => loadResult);
+  const eq = jest.fn(() => ({ maybeSingle }));
+  const select = jest.fn(() => ({ eq }));
+  const from = jest.fn(() => ({ select }));
+  const rpc = jest.fn(async () => rpcResult);
+  return { value: { from, rpc }, from, select, eq, maybeSingle, rpc };
 }
 
-describe('simulation storage repository', () => {
-  it('uses encoded user and project scopes, including colons and spaces', () => {
-    expect(simulationStorageKey('user: one', 'project: one')).toBe(
-      'keco.simulation.sessions:v1:user%3A%20one:project%3A%20one',
-    );
-    expect(simulationStorageKey('user', 'a:b')).not.toBe(simulationStorageKey('user:a', 'b'));
+describe('Supabase simulation storage repository', () => {
+  it('loads an absent row as revision zero without sending a user id', async () => {
+    const mock = client({ data: null, error: null });
+    const repository = createSimulationStorageRepository(mock.value as never);
+
+    await expect(repository.load('project-1')).resolves.toEqual({ ok: true, state: null, revision: 0 });
+    expect(mock.from).toHaveBeenCalledWith('simulation_states');
+    expect(mock.select).toHaveBeenCalledWith('state_version,state,revision');
+    expect(mock.eq).toHaveBeenCalledWith('project_id', 'project-1');
+    expect(JSON.stringify(mock.from.mock.calls)).not.toContain('user_id');
   });
 
-  it('round-trips a valid durable state without transient UI fields', () => {
-    const storage = memoryStorage();
-    const repository = createSimulationStorageRepository(storage);
+  it('validates and deeply freezes a cloud snapshot', async () => {
     const expected = state();
+    const mock = client({ data: { state_version: 1, state: expected, revision: 7 }, error: null });
+    const loaded = await createSimulationStorageRepository(mock.value as never).load('project-1');
 
-    expect(repository.save('user: one', 'project: one', expected)).toEqual({ ok: true });
-    const loaded = repository.load('user: one', 'project: one');
-    expect(loaded).toEqual({ ok: true, state: expected });
+    expect(loaded).toEqual({ ok: true, state: expected, revision: 7 });
     expect(loaded.ok && Object.isFrozen(loaded.state)).toBe(true);
-    expect(loaded.ok && Object.isFrozen(loaded.state?.sessions[0].importedSnapshot?.catalog)).toBe(true);
     expect(loaded.ok && Object.isFrozen(loaded.state?.sessions[0].importedSnapshot?.catalog.characters[0])).toBe(true);
-    expect(() => {
-      if (loaded.ok && loaded.state?.sessions[0].importedSnapshot) {
-        (loaded.state.sessions[0].importedSnapshot.catalog.characters[0] as { name: string }).name = 'Changed';
-      }
-    }).toThrow();
-    const raw = storage.getItem(simulationStorageKey('user: one', 'project: one')) ?? '';
-    const keys = (value: unknown): string[] => value && typeof value === 'object'
-      ? Object.entries(value).flatMap(([key, child]) => [key, ...keys(child)])
-      : [];
-    expect(keys(JSON.parse(raw))).not.toEqual(expect.arrayContaining([
-      'battle', 'animation', 'log', 'toast', 'menu', 'request', 'activeUid', 'progUid', 'importDraft',
-    ]));
-  });
-
-  it('migrates valid v0 data by adding the default last screen', () => {
-    const storage = memoryStorage();
-    const old = structuredClone(state()) as unknown as Record<string, unknown>;
-    old.version = 0;
-    delete (old.sessions as Array<Record<string, unknown>>)[0].lastScreen;
-    storage.setItem(simulationStorageKey('user', 'project: one'), JSON.stringify(old));
-
-    const loaded = createSimulationStorageRepository(storage).load('user', 'project: one');
-    expect(loaded).toEqual({
-      ok: true,
-      state: { ...state(), sessions: [{ ...state().sessions[0], lastScreen: 'characters' }] },
-      migratedFrom: 0,
-    });
-    expect(loaded.ok && Object.isFrozen(loaded.state)).toBe(true);
-    expect(loaded.ok && Object.isFrozen(loaded.state?.sessions[0].importedSnapshot?.fieldMappings.characters)).toBe(true);
-    expect(() => {
-      if (loaded.ok && loaded.state?.sessions[0].importedSnapshot) {
-        (loaded.state.sessions[0].importedSnapshot.fieldMappings.characters as { id?: string }).id = 'Changed';
-      }
-    }).toThrow();
   });
 
   it.each([
-    ['malformed JSON', '{', 'malformed'],
-    ['invalid references', JSON.stringify({ ...state(), activeSessionId: 'missing' }), 'invalid_state'],
-    ['unknown version', JSON.stringify({ ...state(), version: 99 }), 'unknown_version'],
-  ])('returns a typed error for %s and preserves the stored value', (_label, raw, code) => {
-    const storage = memoryStorage();
-    const key = simulationStorageKey('user', 'project: one');
-    storage.setItem(key, raw);
+    ['unsupported database version', { state_version: 0, state: { version: 0 }, revision: 4 }, 'unknown_version'],
+    ['invalid state', { state_version: 1, state: { ...state(), activeSessionId: 'missing' }, revision: 5 }, 'invalid_state'],
+    ['wrong project', { state_version: 1, state: state('another-project'), revision: 6 }, 'invalid_state'],
+    ['invalid revision', { state_version: 1, state: state(), revision: -1 }, 'invalid_state'],
+  ])('rejects %s and preserves the observed revision when available', async (_label, row, code) => {
+    const loaded = await createSimulationStorageRepository(client({ data: row, error: null }).value as never).load('project-1');
+    expect(loaded).toMatchObject({ ok: false, error: { code } });
+    if (row.revision >= 0) expect(loaded).toMatchObject({ error: { observedRevision: row.revision } });
+  });
 
-    expect(createSimulationStorageRepository(storage).load('user', 'project: one')).toMatchObject({
-      ok: false, error: { code },
+  it('classifies read and authorization failures without exposing backend messages', async () => {
+    const denied = await createSimulationStorageRepository(client({ data: null, error: { code: '42501', message: 'secret policy detail' } }).value as never).load('project-1');
+    expect(denied).toEqual({ ok: false, error: { code: 'unauthorized', message: 'Simulation state is not accessible.' } });
+
+    const failed = await createSimulationStorageRepository(client({ data: null, error: { code: '500', message: 'private host' } }).value as never).load('project-1');
+    expect(failed).toEqual({ ok: false, error: { code: 'read_failed', message: 'Simulation state could not be read.' } });
+  });
+
+  it('validates before save and calls the revision-aware RPC', async () => {
+    const mock = client({ data: null, error: null }, { data: [{ status: 'saved', revision: 5 }], error: null });
+    const repository = createSimulationStorageRepository(mock.value as never);
+
+    await expect(repository.save('project-1', 4, state())).resolves.toEqual({ ok: true, revision: 5 });
+    expect(mock.rpc).toHaveBeenCalledWith('save_simulation_state', {
+      p_project_id: 'project-1', p_expected_revision: 4, p_state_version: 1, p_state: state(),
     });
-    expect(storage.getItem(key)).toBe(raw);
+    expect(JSON.stringify(mock.rpc.mock.calls)).not.toContain('user_id');
   });
 
-  it.each([
-    ['getItem', 'read_failed'],
-    ['setItem', 'write_failed'],
-    ['removeItem', 'remove_failed'],
-  ] as const)('classifies %s exceptions without throwing', (method, code) => {
-    const storage = memoryStorage();
-    storage[method] = jest.fn(() => { throw new Error('denied'); }) as never;
-    const repository = createSimulationStorageRepository(storage);
-    const result = method === 'getItem'
-      ? repository.load('user', 'project: one')
-      : method === 'setItem'
-        ? repository.save('user', 'project: one', state())
-        : repository.clear('user', 'project: one');
-    expect(result).toMatchObject({ ok: false, error: { code } });
-  });
-
-  it('classifies unavailable storage for every operation', () => {
-    const repository = createSimulationStorageRepository(null);
-    expect(repository.load('user', 'project')).toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
-    expect(repository.save('user', 'project', state())).toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
-    expect(repository.clear('user', 'project')).toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
-  });
-
-  it('validates before save and does not overwrite existing data', () => {
-    const storage = memoryStorage();
-    const key = simulationStorageKey('user', 'project: one');
-    storage.setItem(key, 'keep-me');
+  it('does not call Supabase for invalid state', async () => {
+    const mock = client({ data: null, error: null });
     const invalid = { ...state(), sessions: [{ ...state().sessions[0], battle: {} }] } as unknown as SimulationStateV1;
-
-    expect(createSimulationStorageRepository(storage).save('user', 'project: one', invalid)).toMatchObject({
-      ok: false, error: { code: 'invalid_state' },
-    });
-    expect(storage.getItem(key)).toBe('keep-me');
+    await expect(createSimulationStorageRepository(mock.value as never).save('project-1', 0, invalid))
+      .resolves.toMatchObject({ ok: false, error: { code: 'invalid_state' } });
+    expect(mock.rpc).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid catalog, roster and map references', () => {
-    const storage = memoryStorage();
-    const repository = createSimulationStorageRepository(storage);
-    const cases: SimulationStateV1[] = [
-      { ...state(), sessions: [{ ...state().sessions[0], roster: [{ uid: 'unit-1', tmplId: 'missing', team: 'A' }] }] },
-      { ...state(), sessions: [{ ...state().sessions[0], loadout: { 'unit-1': ['missing'] } }] },
-      { ...state(), sessions: [{ ...state().sessions[0], skillLevels: { 'unit-1': { quake: 2, missing: 1 } } }] },
-      { ...state(), sessions: [{ ...state().sessions[0], progression: { ...state().sessions[0].progression, exp: { orphan: 0 } } }] },
-    ];
-    for (const invalid of cases) {
-      expect(repository.save('user', 'project: one', invalid)).toMatchObject({ ok: false, error: { code: 'invalid_state' } });
-    }
+  it('classifies save conflicts and backend failures', async () => {
+    const conflict = client({ data: null, error: null }, { data: [{ status: 'conflict', revision: null }], error: null });
+    await expect(createSimulationStorageRepository(conflict.value as never).save('project-1', 2, state()))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    const failed = client({ data: null, error: null }, { data: null, error: { code: '500', message: 'private detail' } });
+    await expect(createSimulationStorageRepository(failed.value as never).save('project-1', 2, state()))
+      .resolves.toEqual({ ok: false, error: { code: 'write_failed', message: 'Simulation state could not be saved.' } });
   });
 
-  it('clears only the requested user/project scope', () => {
-    const storage = memoryStorage();
-    const repository = createSimulationStorageRepository(storage);
-    repository.save('user-a', 'project-a', state('project-a'));
-    repository.save('user-a', 'project-b', state('project-b'));
-    repository.save('user-b', 'project-a', state('project-a'));
+  it('clears through the revision-aware RPC and classifies conflicts', async () => {
+    const saved = client({ data: null, error: null }, { data: [{ status: 'reset', revision: null }], error: null });
+    await expect(createSimulationStorageRepository(saved.value as never).clear('project-1', 4))
+      .resolves.toEqual({ ok: true });
+    expect(saved.rpc).toHaveBeenCalledWith('reset_simulation_state', { p_project_id: 'project-1', p_expected_revision: 4 });
 
-    expect(repository.clear('user-a', 'project-a')).toEqual({ ok: true });
-    expect(repository.load('user-a', 'project-a')).toEqual({ ok: true, state: null });
-    expect(repository.load('user-a', 'project-b')).toMatchObject({ ok: true, state: expect.any(Object) });
-    expect(repository.load('user-b', 'project-a')).toMatchObject({ ok: true, state: expect.any(Object) });
+    const conflict = client({ data: null, error: null }, { data: [{ status: 'conflict', revision: null }], error: null });
+    await expect(createSimulationStorageRepository(conflict.value as never).clear('project-1', 4))
+      .resolves.toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
+  it('classifies a missing Supabase client for every operation', async () => {
+    const repository = createSimulationStorageRepository(null);
+    await expect(repository.load('project-1')).resolves.toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
+    await expect(repository.save('project-1', 0, state())).resolves.toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
+    await expect(repository.clear('project-1', 0)).resolves.toMatchObject({ ok: false, error: { code: 'storage_unavailable' } });
   });
 });

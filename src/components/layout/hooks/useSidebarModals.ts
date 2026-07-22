@@ -68,7 +68,7 @@ export function useSidebarModals() {
     setExportingLibraryId(null);
   }, []);
 
-  const openImportLibrary = useCallback((folderId: string) => {
+  const openImportLibrary = useCallback((folderId: string | null) => {
     setImportingFolderId(folderId);
     setShowImportLibraryModal(true);
   }, []);

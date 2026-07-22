@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
-import { importLibraryFromFile } from '@/lib/services/importService';
+import { importLibraryFromFile, parseImportFolderId } from '@/lib/services/importService';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(['csv', 'xlsx', 'xls']);
@@ -22,15 +22,17 @@ export const POST = withAuth(async function POST(
   }
 
   const projectId = String(formData.get('projectId') ?? '').trim();
-  const folderId = String(formData.get('folderId') ?? '').trim();
+  let folderId: string | null;
+  try {
+    folderId = parseImportFolderId(formData.get('folderId'));
+  } catch {
+    return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
+  }
   const libraryName = String(formData.get('libraryName') ?? '').trim();
   const file = formData.get('file');
 
   if (!projectId || !isUuid(projectId)) {
     return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
-  }
-  if (!folderId || !isUuid(folderId)) {
-    return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
   }
   if (!libraryName) {
     return NextResponse.json({ error: 'Library name is required' }, { status: 400 });

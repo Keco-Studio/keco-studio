@@ -13,14 +13,18 @@ function formDialogError(page: Page, text: string | RegExp) {
   return page.locator('[class*="FormDialog"][class*="error"]').filter({ hasText: text }).first();
 }
 
+function toastError(page: Page, text: string | RegExp) {
+  return page.locator('body > div').filter({ hasText: text }).last();
+}
+
 /**
  * Name Validation E2E Tests
  * 
  * Test Scenarios:
- * 1. Empty name validation: Delete all characters in rename modal and click save, expect error message
- * 2. Special characters validation: Input emoji 😊, HTML tag <script>, special symbols !@#$%, expect error message
- * 3. URL validation: Input names starting with https://, http://, etc., expect same error as special chars
- * 4. Duplicate name validation: Rename to an existing name in the same directory, expect error message
+ * 1. Empty name: clearing inline rename and pressing Enter is a no-op (library/folder)
+ * 2. Special characters validation: emoji / HTML / !@#$% show an error toast on Enter
+ * 3. URL validation: https:// / http:// show the same toast
+ * 4. Duplicate name validation: renaming onto an existing sibling shows an error toast
  * 
  * Architecture:
  * - Pure business flow - no selectors in test file
@@ -125,42 +129,21 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      // Open Library Info modal
-      await test.step('Open Library Info modal', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        
-        await libraryPage.rightClickTreeItem(libraries.breed.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const libraryInfoButton = contextMenu.getByRole('button', { name: /^library info$/i });
-        await expect(libraryInfoButton).toBeVisible({ timeout: 5000 });
-        await libraryInfoButton.click();
-        
-        const libraryNameInput = page.locator('#library-name');
-        await expect(libraryNameInput).toBeVisible({ timeout: 5000 });
+      // Open library inline rename
+      await test.step('Open library inline rename', async () => {
+        await libraryPage.openInlineRename(libraries.breed.name, /^library info$/i);
       });
 
-      // Test empty name validation
-      await test.step('Test empty name validation', async () => {
-        const libraryNameInput = page.locator('#library-name');
-        
-        // Clear all characters
-        await libraryNameInput.clear();
-        await libraryNameInput.fill('');
-        
-        // Click save button
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
-        
-        // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /library name is required/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('Library name is required');
+      // Empty submit is a no-op for inline rename (keeps editor open, name unchanged).
+      await test.step('Test empty name is ignored', async () => {
+        const renameInput = libraryPage.renameInput();
+        await renameInput.fill('');
+        await renameInput.press('Enter');
+        await expect(renameInput).toBeVisible({ timeout: 5000 });
+        await renameInput.press('Escape');
+        await expect(page.getByRole('tree').locator(`[title="${libraries.breed.name}"]`)).toBeVisible({
+          timeout: 10000,
+        });
       });
     });
 
@@ -185,44 +168,21 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      // Open Folder Rename modal
-      await test.step('Open Folder Rename modal', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        
-        await libraryPage.rightClickTreeItem(folders.directFolder.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const renameButton = contextMenu.getByRole('button', { name: /^rename$/i });
-        await expect(renameButton).toBeVisible({ timeout: 5000 });
-        await renameButton.click();
-        
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        await expect(folderNameInput).toBeVisible({ timeout: 5000 });
+      // Open folder inline rename
+      await test.step('Open folder inline rename', async () => {
+        await libraryPage.openInlineRename(folders.directFolder.name, /^rename$/i);
       });
 
-      // Test empty name validation
-      await test.step('Test empty name validation', async () => {
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        
-        // Clear all characters
-        await folderNameInput.clear();
-        await folderNameInput.fill('');
-        
-        // Click save button
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
-        
-        // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /folder name is required/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('Folder name is required');
+      // Empty submit is a no-op for inline rename (keeps editor open, name unchanged).
+      await test.step('Test empty name is ignored', async () => {
+        const renameInput = libraryPage.renameInput();
+        await renameInput.fill('');
+        await renameInput.press('Enter');
+        await expect(renameInput).toBeVisible({ timeout: 5000 });
+        await renameInput.press('Escape');
+        await expect(page.getByRole('tree').locator(`[title="${folders.directFolder.name}"]`)).toBeVisible({
+          timeout: 10000,
+        });
       });
     });
   });
@@ -314,58 +274,21 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      // Open Library Info modal
-      await test.step('Open Library Info modal', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        
-        await libraryPage.rightClickTreeItem(libraries.breed.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const libraryInfoButton = contextMenu.getByRole('button', { name: /^library info$/i });
-        await expect(libraryInfoButton).toBeVisible({ timeout: 5000 });
-        await libraryInfoButton.click();
-        
-        const libraryNameInput = page.locator('#library-name');
-        await expect(libraryNameInput).toBeVisible({ timeout: 5000 });
+      // Open library inline rename
+      await test.step('Open library inline rename', async () => {
+        await libraryPage.openInlineRename(libraries.breed.name, /^library info$/i);
       });
 
       // Test special characters validation
       await test.step('Test special characters validation', async () => {
-        const libraryNameInput = page.locator('#library-name');
-        
-        // Test with emoji
-        await libraryNameInput.clear();
-        await libraryNameInput.fill('Test 😊');
-        
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
-        
-        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
-        
-        // Test with HTML tag
-        await libraryNameInput.clear();
-        await libraryNameInput.fill('Test <script>');
-        
-        await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
-        
-        // Test with special symbols
-        await libraryNameInput.clear();
-        await libraryNameInput.fill('Test !@#$%');
-        
-        await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
+        const renameInput = libraryPage.renameInput();
+        const invalidNames = ['Test 😊', 'Test <script>', 'Test !@#$%'];
+        for (const invalidName of invalidNames) {
+          await renameInput.fill(invalidName);
+          await renameInput.press('Enter');
+          await expect(toastError(page, /no emojis/i)).toBeVisible({ timeout: 5000 });
+          await expect(renameInput).toBeVisible({ timeout: 5000 });
+        }
       });
     });
 
@@ -390,60 +313,21 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      // Open Folder Rename modal
-      await test.step('Open Folder Rename modal', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        
-        await libraryPage.rightClickTreeItem(folders.directFolder.name);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const renameButton = contextMenu.getByRole('button', { name: /^rename$/i });
-        await expect(renameButton).toBeVisible({ timeout: 5000 });
-        await renameButton.click();
-        
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        await expect(folderNameInput).toBeVisible({ timeout: 5000 });
+      // Open folder inline rename
+      await test.step('Open folder inline rename', async () => {
+        await libraryPage.openInlineRename(folders.directFolder.name, /^rename$/i);
       });
 
       // Test special characters validation
       await test.step('Test special characters validation', async () => {
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        
-        // Test with emoji
-        await folderNameInput.clear();
-        await folderNameInput.fill('Test 😊');
-        
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
-        
-        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
-        
-        // Test with HTML tag
-        await folderNameInput.clear();
-        await folderNameInput.fill('Test <script>');
-        
-        await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
-        
-        // Test with special symbols
-        await folderNameInput.clear();
-        await folderNameInput.fill('Test !@#$%');
-        
-        await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
+        const renameInput = libraryPage.renameInput();
+        const invalidNames = ['Test 😊', 'Test <script>', 'Test !@#$%'];
+        for (const invalidName of invalidNames) {
+          await renameInput.fill(invalidName);
+          await renameInput.press('Enter');
+          await expect(toastError(page, /no emojis/i)).toBeVisible({ timeout: 5000 });
+          await expect(renameInput).toBeVisible({ timeout: 5000 });
+        }
       });
     });
   });
@@ -511,37 +395,18 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      await test.step('Open Library Info modal', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        await libraryPage.rightClickTreeItem(libraries.breed.name);
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        const libraryInfoButton = contextMenu.getByRole('button', { name: /^library info$/i });
-        await expect(libraryInfoButton).toBeVisible({ timeout: 5000 });
-        await libraryInfoButton.click();
-        await expect(page.locator('#library-name')).toBeVisible({ timeout: 5000 });
+      await test.step('Open library inline rename', async () => {
+        await libraryPage.openInlineRename(libraries.breed.name, /^library info$/i);
       });
 
       await test.step('Test URL validation', async () => {
-        const libraryNameInput = page.locator('#library-name');
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-
-        await libraryNameInput.clear();
-        await libraryNameInput.fill('https://example.com');
-        await saveButton.click();
-        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText(urlErrorText);
-
-        await libraryNameInput.clear();
-        await libraryNameInput.fill('http://test.com');
-        await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText(urlErrorText);
+        const renameInput = libraryPage.renameInput();
+        for (const invalidName of ['https://example.com', 'http://test.com']) {
+          await renameInput.fill(invalidName);
+          await renameInput.press('Enter');
+          await expect(toastError(page, urlErrorText)).toBeVisible({ timeout: 5000 });
+          await expect(renameInput).toBeVisible({ timeout: 5000 });
+        }
       });
     });
 
@@ -562,40 +427,18 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      await test.step('Open Folder Rename modal', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        await libraryPage.rightClickTreeItem(folders.directFolder.name);
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        const renameButton = contextMenu.getByRole('button', { name: /^rename$/i });
-        await expect(renameButton).toBeVisible({ timeout: 5000 });
-        await renameButton.click();
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        await expect(folderNameInput).toBeVisible({ timeout: 5000 });
+      await test.step('Open folder inline rename', async () => {
+        await libraryPage.openInlineRename(folders.directFolder.name, /^rename$/i);
       });
 
       await test.step('Test URL validation', async () => {
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-
-        await folderNameInput.clear();
-        await folderNameInput.fill('https://example.com');
-        await saveButton.click();
-        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText(urlErrorText);
-
-        await folderNameInput.clear();
-        await folderNameInput.fill('http://test.com');
-        await saveButton.click();
-        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText(urlErrorText);
+        const renameInput = libraryPage.renameInput();
+        for (const invalidName of ['https://example.com', 'http://test.com']) {
+          await renameInput.fill(invalidName);
+          await renameInput.press('Enter');
+          await expect(toastError(page, urlErrorText)).toBeVisible({ timeout: 5000 });
+          await expect(renameInput).toBeVisible({ timeout: 5000 });
+        }
       });
     });
   });
@@ -685,42 +528,19 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      // Open Library Info modal for second library
-      await test.step('Open Library Info modal for second library', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        
+      // Open library inline rename for second library
+      await test.step('Open library inline rename for second library', async () => {
         const secondLibraryName = `${libraries.breed.name} 2`;
-        await libraryPage.rightClickTreeItem(secondLibraryName);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const libraryInfoButton = contextMenu.getByRole('button', { name: /^library info$/i });
-        await expect(libraryInfoButton).toBeVisible({ timeout: 5000 });
-        await libraryInfoButton.click();
-        
-        const libraryNameInput = page.locator('#library-name');
-        await expect(libraryNameInput).toBeVisible({ timeout: 5000 });
+        await libraryPage.openInlineRename(secondLibraryName, /^library info$/i);
       });
 
       // Test duplicate name validation
       await test.step('Test duplicate name validation', async () => {
-        const libraryNameInput = page.locator('#library-name');
-        
-        // Change name to match first library
-        await libraryNameInput.clear();
-        await libraryNameInput.fill(libraries.breed.name);
-        
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
-        
-        // Verify error message appears
-        const errorMessage = formDialogError(page, /already exists/i);
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('already exists');
+        const renameInput = libraryPage.renameInput();
+        await renameInput.fill(libraries.breed.name);
+        await renameInput.press('Enter');
+        await expect(toastError(page, /already exists/i)).toBeVisible({ timeout: 5000 });
+        await expect(renameInput).toBeVisible({ timeout: 5000 });
       });
     });
 
@@ -752,44 +572,19 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
       });
 
-      // Open Folder Rename modal for second folder
-      await test.step('Open Folder Rename modal for second folder', async () => {
-        const sidebar = page.getByRole('tree');
-        await expect(sidebar).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(2000);
-        
+      // Open folder inline rename for second folder
+      await test.step('Open folder inline rename for second folder', async () => {
         const secondFolderName = `${folders.directFolder.name} 2`;
-        await libraryPage.rightClickTreeItem(secondFolderName);
-        
-        const contextMenu = page.locator('[class*="contextMenu"]');
-        await expect(contextMenu).toBeVisible({ timeout: 5000 });
-        
-        const renameButton = contextMenu.getByRole('button', { name: /^rename$/i });
-        await expect(renameButton).toBeVisible({ timeout: 5000 });
-        await renameButton.click();
-        
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        await expect(folderNameInput).toBeVisible({ timeout: 5000 });
+        await libraryPage.openInlineRename(secondFolderName, /^rename$/i);
       });
 
       // Test duplicate name validation
       await test.step('Test duplicate name validation', async () => {
-        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
-          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
-        
-        // Change name to match first folder
-        await folderNameInput.clear();
-        await folderNameInput.fill(folders.directFolder.name);
-        
-        const saveButton = page.getByRole('button', { name: /^save$/i });
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
-        
-        // Verify error message appears
-        const errorMessage = formDialogError(page, /already exists/i);
-        await expect(errorMessage).toBeVisible({ timeout: 5000 });
-        await expect(errorMessage).toContainText('already exists');
+        const renameInput = libraryPage.renameInput();
+        await renameInput.fill(folders.directFolder.name);
+        await renameInput.press('Enter');
+        await expect(toastError(page, /already exists/i)).toBeVisible({ timeout: 5000 });
+        await expect(renameInput).toBeVisible({ timeout: 5000 });
       });
     });
   });
