@@ -44,6 +44,11 @@ const checkMigrationsJob = getWorkflowJob(
 const migrateDatabaseJob = getWorkflowJob(
   deployWorkflow,
   'migrate-database',
+  'deploy-mcp-function'
+);
+const deployMcpFunctionJob = getWorkflowJob(
+  deployWorkflow,
+  'deploy-mcp-function',
   'deploy'
 );
 const deployJob = getWorkflowJob(deployWorkflow, 'deploy');
@@ -109,6 +114,21 @@ describe('CI workflow gates', () => {
     expect(deployWorkflow).toContain('version: 2.90.0');
     expect(workflow).not.toContain('version: latest');
     expect(deployWorkflow).not.toContain('version: latest');
+  });
+
+  it('deploys MCP before Vercel and synchronizes the production codec secret', () => {
+    expect(deployMcpFunctionJob).toContain('github.event_name == \'push\'');
+    expect(deployMcpFunctionJob).toContain(
+      'supabase functions deploy mcp --no-verify-jwt --project-ref "$PROJECT_REF"'
+    );
+    expect(deployJob).toContain(
+      'needs: [check-migrations, migrate-database, deploy-mcp-function]'
+    );
+    expect(deployJob).toContain('Sync production MCP codec secret');
+    expect(deployJob).toContain('secrets.MCP_CODEC_SECRET');
+    expect(deployJob).toContain(
+      'vercel env add MCP_CODEC_SECRET production --force'
+    );
   });
 
   it('isolates Supabase ports for every Playwright shard', () => {

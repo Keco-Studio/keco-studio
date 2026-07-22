@@ -292,6 +292,21 @@ jobs:
             echo "✅ Deploying to Preview environment"
           fi
 
+      - name: Sync production MCP codec secret
+        if: steps.env.outputs.is_prod == 'true'
+        env:
+          MCP_CODEC_SECRET: ${{ secrets.MCP_CODEC_SECRET }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$MCP_CODEC_SECRET" ]; then
+            echo "::error::MCP_CODEC_SECRET is required"
+            exit 1
+          fi
+          printf '%s' "$MCP_CODEC_SECRET" | \
+            vercel env add MCP_CODEC_SECRET production --force \
+              --token=${{ secrets.VERCEL_TOKEN }}
+
       # Pull Vercel environment variables based on deployment environment
       # This will automatically use the correct Supabase config (Production or Preview)
       # from Vercel Dashboard based on the environment determined above
