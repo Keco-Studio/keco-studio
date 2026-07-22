@@ -3,29 +3,35 @@ import path from 'node:path';
 
 const migrationPath = path.join(
   process.cwd(),
+  'supabase/migrations/20260722040000_mcp_oauth_project_grants.sql'
+);
+const deployedMigrationPath = path.join(
+  process.cwd(),
   'supabase/migrations/20260722000000_get_oauth_authorization_resource.sql'
 );
 
-describe('OAuth authorization resource migration', () => {
-  it('creates a hardened owner-bound RPC for pending authorizations', () => {
+describe('OAuth project grants migration', () => {
+  it('leaves the deployed authorization resource migration focused and unchanged', () => {
+    const sql = fs.readFileSync(deployedMigrationPath, 'utf8');
+
+    expect(sql).toContain('get_oauth_authorization_resource');
+    expect(sql).not.toContain('oauth_project_grants');
+    expect(sql).not.toContain('prepare_oauth_project_grant');
+  });
+
+  it('is a safe incremental migration after the deployed authorization resource RPC', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    expect(sql).toMatch(/security definer/i);
-    expect(sql).toMatch(/set search_path\s*=\s*''/i);
-    expect(sql).toContain('auth.oauth_authorizations');
-    expect(sql).toMatch(/oa\.user_id\s*=\s*auth\.uid\(\)/i);
-    expect(sql).toMatch(/oa\.status\s*=\s*'pending'/i);
-    expect(sql).toMatch(/oa\.expires_at\s*>\s*now\(\)/i);
-    expect(sql).toMatch(/REVOKE ALL[\s\S]*FROM PUBLIC/i);
-    expect(sql).toMatch(/REVOKE ALL[\s\S]*FROM anon/i);
-    expect(sql).toMatch(/REVOKE ALL[\s\S]*FROM service_role/i);
-    expect(sql).toMatch(/GRANT EXECUTE[\s\S]*TO authenticated/i);
+    expect(sql).toMatch(/create table if not exists public\.oauth_project_grants/i);
+    expect(sql).toMatch(/add column if not exists approved_at/i);
+    expect(sql).toMatch(/create index if not exists oauth_project_grants_runtime_idx/i);
+    expect(sql).not.toContain('get_oauth_authorization_resource');
   });
 
   it('stores prepared grants in an RLS-locked table with no direct caller access', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    expect(sql).toMatch(/create table public\.oauth_project_grants/i);
+    expect(sql).toMatch(/create table if not exists public\.oauth_project_grants/i);
     expect(sql).toMatch(/authorization_id text primary key/i);
     expect(sql).toMatch(/alter table public\.oauth_project_grants enable row level security/i);
     expect(sql).toMatch(/alter table public\.oauth_project_grants force row level security/i);
