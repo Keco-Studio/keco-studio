@@ -1,11 +1,18 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { extractBoundProjectId, handleMcpHttpRequest } from "./http.ts";
 import type { ProjectAuthorization } from "./auth.ts";
+import type { McpRequestContext } from "./context.ts";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 const allow = async (): Promise<ProjectAuthorization> => ({
   status: "authorized",
-  context: { userId: "user-1", projectId, role: "editor" },
+  context: {
+    userId: "user-1",
+    projectId,
+    role: "editor",
+    clientId: null,
+    bearerToken: "valid",
+  },
 });
 const unauthenticated = async (): Promise<ProjectAuthorization> => ({
   status: "unauthenticated",
@@ -23,6 +30,20 @@ function authorizedRequest(): Request {
     headers: { authorization: "Bearer valid" },
   });
 }
+
+const testContext = {
+  requestId: "request-1",
+  userId: "user-1",
+  projectId,
+  role: "editor",
+  clientId: null,
+  bearerToken: "valid",
+  supabase: {},
+} as unknown as McpRequestContext;
+
+const withContext = {
+  createContext: () => testContext,
+};
 
 Deno.test("extractBoundProjectId accepts only a UUID after the mcp segment", () => {
   assertEquals(
@@ -120,7 +141,7 @@ Deno.test("oversized request is rejected before MCP parsing", async () => {
         body: "x",
       },
     ),
-    { authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+    { ...withContext, authorize: allow, kecoPublicUrl: "https://keco.example.com" },
   );
   assertEquals(response.status, 413);
 });
@@ -145,7 +166,22 @@ Deno.test("chunked request is rejected when the streamed body exceeds the limit"
         body,
       },
     ),
-    { authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+    { ...withContext, authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+  );
+  assertEquals(response.status, 413);
+});
+
+Deno.test("request is rejected at the strict 256 KiB boundary", async () => {
+  const response = await handleMcpHttpRequest(
+    new Request("https://x/functions/v1/mcp/" + projectId, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer valid",
+        "content-length": String(256 * 1024),
+      },
+      body: "x",
+    }),
+    { ...withContext, authorize: allow },
   );
   assertEquals(response.status, 413);
 });
@@ -182,6 +218,7 @@ Deno.test("rejects an oversized streamed protocol response and preserves CORS", 
       headers: { authorization: "Bearer valid" },
     }),
     {
+      ...withContext,
       authorize: allow,
       kecoPublicUrl: "https://keco.example.com",
       handleProtocol: async () => new Response(body, {
@@ -204,6 +241,7 @@ Deno.test("rejects a protocol response exactly at the strict 1 MiB boundary", as
       headers: { authorization: "Bearer valid" },
     }),
     {
+      ...withContext,
       authorize: allow,
       kecoPublicUrl: "https://keco.example.com",
       handleProtocol: async () => new Response(new Uint8Array(1024 * 1024)),
@@ -217,6 +255,7 @@ Deno.test("rejects a protocol response exactly at the strict 1 MiB boundary", as
 
 Deno.test("rejects an explicit Content-Length at the strict 1 MiB boundary", async () => {
   const response = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
     authorize: allow,
     handleProtocol: async () => new Response("small body", {
       headers: { "content-length": String(1024 * 1024) },
@@ -234,6 +273,7 @@ Deno.test("accepts the largest streamed protocol response below 1 MiB", async ()
     },
   });
   const response = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
     authorize: allow,
     handleProtocol: async () => new Response(body),
   });
@@ -250,6 +290,7 @@ Deno.test("rejects a streamed protocol response exactly at 1 MiB", async () => {
     },
   });
   const response = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
     authorize: allow,
     handleProtocol: async () => new Response(body),
   });
@@ -264,6 +305,7 @@ Deno.test("contains a rejecting declared-body cancellation", async () => {
     },
   });
   const response = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
     authorize: allow,
     handleProtocol: async () => new Response(body, {
       headers: { "content-length": String(1024 * 1024) },
@@ -283,6 +325,7 @@ Deno.test("contains a rejecting streamed-body cancellation", async () => {
     },
   });
   const response = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
     authorize: allow,
     handleProtocol: async () => new Response(body),
   });
@@ -297,6 +340,7 @@ Deno.test("contains streamed protocol response read errors", async () => {
     },
   });
   const response = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
     authorize: allow,
     handleProtocol: async () => new Response(body),
   });
@@ -324,7 +368,7 @@ Deno.test("authorized initialize traverses body reconstruction, auth, CORS, and 
         },
       }),
     }),
-    { authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+    { ...withContext, authorize: allow, kecoPublicUrl: "https://keco.example.com" },
   );
   assertEquals(response.status, 200);
   assertEquals(response.headers.get("access-control-allow-origin"), "*");

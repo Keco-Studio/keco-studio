@@ -73,8 +73,28 @@ Deno.test("authorization returns current role for a valid project member", async
   );
   assertEquals(result, {
     status: "authorized",
-    context: { userId: "user-1", projectId, role: "viewer" },
+    context: {
+      userId: "user-1",
+      projectId,
+      role: "viewer",
+      clientId: null,
+      bearerToken: "token",
+    },
   });
+});
+
+Deno.test("authorization retains a verified OAuth client identifier", async () => {
+  const result = await authorizeProjectWithGateway(
+    new Request("https://x", { headers: { authorization: "Bearer token" } }),
+    projectId,
+    {
+      getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      getProjectOwner: async () => "user-1",
+      getCollaboratorRole: async () => null,
+    },
+  );
+  if (result.status !== "authorized") throw new Error("expected authorization");
+  assertEquals(result.context.clientId, "oauth-client");
 });
 
 Deno.test("authorization reports identity backend failures as operational errors", async () => {

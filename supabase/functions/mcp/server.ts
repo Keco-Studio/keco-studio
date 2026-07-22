@@ -1,7 +1,8 @@
 import { McpServer } from '@mcp/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@mcp/server/webStandardStreamableHttp.js';
+import type { McpRequestContext } from './context.ts';
 
-export function createProbeServer(): McpServer {
+export function createProbeServer(_context: McpRequestContext): McpServer {
   const server = new McpServer(
     { name: 'keco-mcp', version: '0.3.1' },
     { capabilities: { tools: { listChanged: true } } },
@@ -23,8 +24,11 @@ export function createProbeServer(): McpServer {
   return server;
 }
 
-export async function handleProtocolRequest(request: Request): Promise<Response> {
-  const server = createProbeServer();
+export async function handleProtocolRequest(
+  request: Request,
+  context: McpRequestContext,
+): Promise<Response> {
+  const server = createProbeServer(context);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

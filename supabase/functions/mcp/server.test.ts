@@ -1,6 +1,17 @@
 import { assertEquals } from '@std/assert';
 import { LATEST_PROTOCOL_VERSION } from '@mcp/types.js';
 import { handleProtocolRequest } from './server.ts';
+import type { McpRequestContext } from './context.ts';
+
+const context = {
+  requestId: 'request-1',
+  userId: 'user-1',
+  projectId: '11111111-1111-4111-8111-111111111111',
+  role: 'editor',
+  clientId: null,
+  bearerToken: 'test-token',
+  supabase: {},
+} as unknown as McpRequestContext;
 
 async function rpc(method: string, params: Record<string, unknown> = {}) {
   const response = await handleProtocolRequest(new Request('http://localhost/mcp/project', {
@@ -10,7 +21,7 @@ async function rpc(method: string, params: Record<string, unknown> = {}) {
       'content-type': 'application/json',
     },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  }));
+  }), context);
   assertEquals(response.status, 200);
   return await response.json() as {
     result?: Record<string, unknown>;

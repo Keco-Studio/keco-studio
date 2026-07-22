@@ -5,6 +5,8 @@ export type ProjectAuthContext = {
   userId: string;
   projectId: string;
   role: ProjectRole;
+  clientId: string | null;
+  bearerToken: string;
 };
 export type ProjectAuthorization =
   | { status: "authorized"; context: ProjectAuthContext }
@@ -13,7 +15,7 @@ export type ProjectAuthorization =
   | { status: "operational_error" };
 
 export interface AuthGateway {
-  getUser(token: string): Promise<{ id: string } | null>;
+  getUser(token: string): Promise<{ id: string; clientId?: string | null } | null>;
   getProjectOwner(projectId: string, token: string): Promise<string | null>;
   getCollaboratorRole(
     userId: string,
@@ -30,6 +32,24 @@ const INVALID_CREDENTIAL_CODES = new Set([
   "session_not_found",
   "user_not_found",
 ]);
+
+function verifiedClientId(token: string): string | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const padding = "=".repeat((4 - payload.length % 4) % 4);
+    const decoded = JSON.parse(atob(
+      payload.replaceAll("-", "+").replaceAll("_", "/") + padding,
+    ));
+    const candidate = decoded?.client_id ?? decoded?.azp;
+    return typeof candidate === "string" && candidate.length >= 1 &&
+        candidate.length <= 256
+      ? candidate
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export function isInvalidCredentialError(error: {
   status?: number;
@@ -62,7 +82,13 @@ export async function authorizeProjectWithGateway(
     return role
       ? {
         status: "authorized",
-        context: { userId: user.id, projectId, role },
+        context: {
+          userId: user.id,
+          projectId,
+          role,
+          clientId: user.clientId ?? null,
+          bearerToken: token,
+        },
       }
       : { status: "forbidden" };
   } catch {
@@ -86,7 +112,9 @@ function supabaseGateway(): AuthGateway {
         if (isInvalidCredentialError(error)) return null;
         throw new Error("Supabase user lookup failed.");
       }
-      return data.user ? { id: data.user.id } : null;
+      return data.user
+        ? { id: data.user.id, clientId: verifiedClientId(token) }
+        : null;
     },
     async getProjectOwner(projectId, token) {
       const client = createClient(url, anonKey, {
