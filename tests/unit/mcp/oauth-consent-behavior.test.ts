@@ -129,12 +129,12 @@ function findButton(node: ReactNode, label: string): Element {
 
 const PROJECT_A = '11111111-1111-4111-8111-111111111111';
 const PROJECT_B = '22222222-2222-4222-8222-222222222222';
-const authorizationDetails = (authorizationId: string, projectId: string) => ({
+const projectResource = (projectId: string) => `https://abc.supabase.co/functions/v1/mcp/${projectId}`;
+const authorizationDetails = (authorizationId: string) => ({
   authorization_id: authorizationId,
   client: { id: 'client-id', name: 'MCP Client', uri: 'https://client.example', logo_uri: '' },
   user: { id: 'user-id', email: 'user@example.com' },
   scope: '',
-  resource: `https://abc.supabase.co/functions/v1/mcp/${projectId}`,
 });
 
 let runtime: HookRuntime;
@@ -143,6 +143,7 @@ const getAuthorizationDetails = jest.fn();
 const approveAuthorization = jest.fn();
 const denyAuthorization = jest.fn();
 const getProject = jest.fn();
+const getOAuthAuthorizationResource = jest.fn();
 const mockRouter = { replace: jest.fn() };
 const assignLocation = jest.fn();
 const mockSupabaseClient = {
@@ -152,9 +153,10 @@ const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 function queueFreshApprovalCheck() {
   getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a', PROJECT_A),
+    data: authorizationDetails('authorization-a'),
     error: null,
   });
+  getOAuthAuthorizationResource.mockResolvedValueOnce(projectResource(PROJECT_A));
   getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
 }
 
@@ -179,6 +181,9 @@ jest.mock('@/lib/SupabaseContext', () => ({
 jest.mock('@/lib/services/projectService', () => ({
   getProject: (...args: unknown[]) => getProject(...args),
 }));
+jest.mock('@/lib/mcp/oauthAuthorizationResource', () => ({
+  getOAuthAuthorizationResource: (...args: unknown[]) => getOAuthAuthorizationResource(...args),
+}));
 jest.mock('@/components/mcp/OAuthConsent.module.css', () => ({
   __esModule: true,
   default: {},
@@ -187,6 +192,8 @@ jest.mock('@/components/mcp/OAuthConsent.module.css', () => ({
 import { OAuthConsentClient } from '@/components/mcp/OAuthConsentClient';
 
 async function flushAsyncWork() {
+  await Promise.resolve();
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
 }
@@ -199,6 +206,8 @@ beforeEach(() => {
   approveAuthorization.mockReset();
   denyAuthorization.mockReset();
   getProject.mockReset();
+  getOAuthAuthorizationResource.mockReset();
+  getOAuthAuthorizationResource.mockResolvedValue(projectResource(PROJECT_A));
   mockRouter.replace.mockReset();
   assignLocation.mockReset();
   Object.assign(globalThis, {
@@ -214,7 +223,7 @@ afterAll(() => {
 it('keeps approval blocked until access to the bound project is verified', async () => {
   const projectLookup = deferred<{ id: string; name: string }>();
   getAuthorizationDetails.mockResolvedValue({
-    data: authorizationDetails('authorization-a', PROJECT_A),
+    data: authorizationDetails('authorization-a'),
     error: null,
   });
   getProject.mockReturnValue(projectLookup.promise);
@@ -234,9 +243,112 @@ it('keeps approval blocked until access to the bound project is verified', async
   expect(findButton(verifiedTree, 'Approve').props.disabled).toBe(false);
 });
 
+it.each([
+  ['a missing', null],
+  ['a malformed', 'https://abc.supabase.co/functions/v1/mcp/not-a-project'],
+] as const)('keeps approval blocked when the resource adapter returns %s binding', async (_case, resource) => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a'),
+    error: null,
+  });
+  getOAuthAuthorizationResource.mockResolvedValueOnce(resource);
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  const tree = runtime.render(OAuthConsentClient);
+
+  expect(findButton(tree, 'Approve').props.disabled).toBe(true);
+  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
+  expect(getProject).not.toHaveBeenCalled();
+  expect(JSON.stringify(tree)).toContain(
+    'Project binding was not preserved by the authorization server.'
+  );
+
+  denyAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback?error=access_denied' },
+    error: null,
+  });
+  findButton(tree, 'Deny').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(denyAuthorization).toHaveBeenCalledWith('authorization-a', {
+    skipBrowserRedirect: true,
+  });
+  expect(assignLocation).toHaveBeenCalledWith(
+    'https://client.example/callback?error=access_denied'
+  );
+});
+
+it('treats resource adapter errors as missing bindings', async () => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: authorizationDetails('authorization-a'),
+    error: null,
+  });
+  getOAuthAuthorizationResource.mockRejectedValueOnce(new Error('rpc failed'));
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  const tree = runtime.render(OAuthConsentClient);
+
+  expect(findButton(tree, 'Approve').props.disabled).toBe(true);
+  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
+  expect(getProject).not.toHaveBeenCalled();
+});
+
+it('keeps denial available when existing consent bypassed project-bound approval', async () => {
+  getAuthorizationDetails.mockResolvedValueOnce({
+    data: {
+      ...authorizationDetails('authorization-a'),
+      redirect_url: 'https://client.example/callback',
+    },
+    error: null,
+  });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  const tree = runtime.render(OAuthConsentClient);
+
+  expect(findButton(tree, 'Approve').props.disabled).toBe(true);
+  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
+  expect(JSON.stringify(tree)).toContain(
+    'Existing OAuth consent bypassed the project-bound approval step.'
+  );
+});
+
+it('reloads the same resource immediately before approving', async () => {
+  getAuthorizationDetails
+    .mockResolvedValueOnce({ data: authorizationDetails('authorization-a'), error: null })
+    .mockResolvedValueOnce({ data: authorizationDetails('authorization-a'), error: null });
+  getOAuthAuthorizationResource
+    .mockResolvedValueOnce(projectResource(PROJECT_A))
+    .mockResolvedValueOnce(projectResource(PROJECT_A));
+  getProject
+    .mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' })
+    .mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
+  approveAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback' },
+    error: null,
+  });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(getOAuthAuthorizationResource).toHaveBeenCalledTimes(2);
+  expect(getOAuthAuthorizationResource).toHaveBeenNthCalledWith(
+    2,
+    mockSupabaseClient,
+    'authorization-a'
+  );
+  expect(approveAuthorization).toHaveBeenCalledWith('authorization-a', {
+    skipBrowserRedirect: true,
+  });
+});
+
 it('re-checks membership immediately before approving', async () => {
   getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a', PROJECT_A),
+    data: authorizationDetails('authorization-a'),
     error: null,
   });
   getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
@@ -246,7 +358,7 @@ it('re-checks membership immediately before approving', async () => {
   expect(findButton(runtime.render(OAuthConsentClient), 'Approve').props.disabled).toBe(false);
 
   getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a', PROJECT_A),
+    data: authorizationDetails('authorization-a'),
     error: null,
   });
   getProject.mockResolvedValueOnce(null);
@@ -265,11 +377,13 @@ it('re-checks membership immediately before approving', async () => {
 });
 
 it.each([
-  ['authorization ID', authorizationDetails('authorization-b', PROJECT_A)],
-  ['authorization resource', authorizationDetails('authorization-a', PROJECT_B)],
-] as const)('rejects approval when the %s changes before approval', async (_change, changedDetails) => {
+  ['authorization ID', authorizationDetails('authorization-b'), projectResource(PROJECT_A)],
+  ['authorization resource', authorizationDetails('authorization-a'), projectResource(PROJECT_B)],
+  ['missing authorization resource', authorizationDetails('authorization-a'), null],
+  ['malformed authorization resource', authorizationDetails('authorization-a'), 'https://evil.example/mcp'],
+] as const)('rejects approval when the %s changes before approval', async (_change, changedDetails, changedResource) => {
   getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a', PROJECT_A),
+    data: authorizationDetails('authorization-a'),
     error: null,
   });
   getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
@@ -282,6 +396,7 @@ it.each([
     data: changedDetails,
     error: null,
   });
+  getOAuthAuthorizationResource.mockResolvedValueOnce(changedResource);
   approveAuthorization.mockResolvedValueOnce({
     data: { redirect_url: 'https://client.example/callback' },
     error: null,
@@ -298,7 +413,7 @@ it.each([
 
 it('does not reuse a verified binding after the authorization ID changes', async () => {
   getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a', PROJECT_A),
+    data: authorizationDetails('authorization-a'),
     error: null,
   });
   getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
@@ -320,7 +435,7 @@ it('does not reuse a verified binding after the authorization ID changes', async
   expect(approveAuthorization).not.toHaveBeenCalled();
 
   getProject.mockResolvedValueOnce({ id: PROJECT_B, name: 'Project B' });
-  nextDetails.resolve(authorizationDetails('authorization-b', PROJECT_B));
+  nextDetails.resolve(authorizationDetails('authorization-b'));
   await flushAsyncWork();
 });
 
@@ -328,7 +443,7 @@ it.each(['approve', 'deny'] as const)(
   'does not let a failed stale %s decision overwrite a newer authorization request',
   async (action) => {
     getAuthorizationDetails.mockResolvedValueOnce({
-      data: authorizationDetails('authorization-a', PROJECT_A),
+      data: authorizationDetails('authorization-a'),
       error: null,
     });
     getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
@@ -349,9 +464,10 @@ it.each(['approve', 'deny'] as const)(
 
     currentAuthorizationId = 'authorization-b';
     getAuthorizationDetails.mockResolvedValueOnce({
-      data: authorizationDetails('authorization-b', PROJECT_B),
+      data: authorizationDetails('authorization-b'),
       error: null,
     });
+    getOAuthAuthorizationResource.mockResolvedValueOnce(projectResource(PROJECT_B));
     getProject.mockResolvedValueOnce({ id: PROJECT_B, name: 'Project B' });
     runtime.render(OAuthConsentClient);
     await flushAsyncWork();
@@ -371,7 +487,7 @@ it.each(['approve', 'deny'] as const)(
   'blocks a stale successful %s decision before passive effects flush',
   async (action) => {
     getAuthorizationDetails.mockResolvedValueOnce({
-      data: authorizationDetails('authorization-a', PROJECT_A),
+      data: authorizationDetails('authorization-a'),
       error: null,
     });
     getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
@@ -404,7 +520,7 @@ it.each(['approve', 'deny'] as const)(
   'blocks a stale failed %s decision before passive effects flush',
   async (action) => {
     getAuthorizationDetails.mockResolvedValueOnce({
-      data: authorizationDetails('authorization-a', PROJECT_A),
+      data: authorizationDetails('authorization-a'),
       error: null,
     });
     getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
