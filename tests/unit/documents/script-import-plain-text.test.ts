@@ -3,13 +3,17 @@ import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 describe('toScriptImportPlainText', () => {
   it('strips BlockAnchor markers and keeps dialogue', () => {
     const input = [
-      '<BlockAnchor id="abea649c-7d05-43e1-87ff-c9c4e13b0dd3" />将军：疯了。',
-      '<BlockAnchor id="82a70c59-7d05-43e1-87ff-c9c4e13b0dd3" />女主：你跟不跟我？',
-      '<BlockAnchor id="5a5d1f14-7d05-43e1-87ff-c9c4e13b0dd3" />将军：末将，愿为先锋。&#x20;',
+      '<BlockAnchor id="abea649c-7d05-43e1-87ff-c9c4e13b0dd3" />General: He has gone mad.',
+      '<BlockAnchor id="82a70c59-7d05-43e1-87ff-c9c4e13b0dd3" />Heroine: Are you coming with me?',
+      '<BlockAnchor id="5a5d1f14-7d05-43e1-87ff-c9c4e13b0dd3" />General: I will take the vanguard.&#x20;',
     ].join('\n');
 
     expect(toScriptImportPlainText(input)).toBe(
-      ['将军：疯了。', '女主：你跟不跟我？', '将军：末将，愿为先锋。'].join('\n')
+      [
+        'General: He has gone mad.',
+        'Heroine: Are you coming with me?',
+        'General: I will take the vanguard.',
+      ].join('\n')
     );
   });
 

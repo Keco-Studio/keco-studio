@@ -56,6 +56,9 @@ jest.mock('react', () => ({
   ...jest.requireActual<typeof import('react')>('react'),
   useCallback: mockUseCallback,
   useState: mockUseState,
+  // This suite invokes session components as plain functions (no React renderer),
+  // so real useEffect would hit a null dispatcher.
+  useEffect: () => undefined,
 }));
 jest.mock('next/dynamic', () => () => () => null);
 jest.mock('@ant-design/icons', () => ({

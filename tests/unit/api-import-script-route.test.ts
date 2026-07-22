@@ -248,8 +248,21 @@ describe('POST /api/import-script streaming protocol', () => {
     expect(mockedImport).not.toHaveBeenCalled();
   });
 
-  it('still requires a UUID folder for ordinary imports', async () => {
+  it('allows a null folder for ordinary project-root imports', async () => {
     const response = await POST(request({ folderId: null }));
+
+    expect(response.status).toBe(200);
+    await records(response);
+    expect(mockedGetDocumentExportSource).not.toHaveBeenCalled();
+    expect(mockedResolve).toHaveBeenCalled();
+    expect(mockedImport).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ folderId: null })
+    );
+  });
+
+  it('still rejects a non-UUID folder for ordinary imports', async () => {
+    const response = await POST(request({ folderId: 'not-a-uuid' }));
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: 'Invalid folderId' });
