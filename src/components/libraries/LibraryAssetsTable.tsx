@@ -66,6 +66,8 @@ export type LibraryAssetsTableProps = {
     id: string;
     name: string;
     description?: string | null;
+    /** script → dialogue view only; table/other → grid only. */
+    documentExportType?: 'table' | 'script' | null;
   } | null;
   sections: SectionConfig[];
   properties: PropertyConfig[];
@@ -475,7 +477,15 @@ export function LibraryAssetsTable({
     scriptColumns,
     hasScriptColumns,
   } = useLibraryTableStructure(sections, properties);
-  const [scriptViewMode, setScriptViewMode] = useState<'table' | 'script'>('table');
+  const isScriptExportLibrary = library?.documentExportType === 'script';
+  const [scriptViewMode, setScriptViewMode] = useState<'table' | 'script'>(
+    isScriptExportLibrary ? 'script' : 'table'
+  );
+
+  // Conversation exports → dialogue view; table exports → grid. No toggle.
+  useEffect(() => {
+    setScriptViewMode(library?.documentExportType === 'script' ? 'script' : 'table');
+  }, [library?.documentExportType, library?.id]);
 
   const {
     filteredRows: displayRows,
@@ -996,6 +1006,7 @@ export function LibraryAssetsTable({
           canAddSection={!!onAddSection}
           hasScriptColumns={hasScriptColumns}
           scriptViewMode={scriptViewMode}
+          showScriptViewToggle={false}
           libraryId={library?.id}
           rows={resolvedRows}
           properties={orderedProperties}

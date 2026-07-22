@@ -9,10 +9,14 @@ type AddLibraryMenuProps = {
   anchorElement: HTMLElement | null;
   onClose: () => void;
   onCreateFolder?: () => void;
-  onCreateLibrary?: () => void;
-  onGenerateFromDocument?: () => void;
+  onCreateTable?: () => void;
   onCreateDocument?: () => void;
   onImportDocument?: () => void;
+  onImportTable?: () => void;
+  // Folder-only optional destructive actions, wired up in a later task.
+  onDelete?: () => void;
+  onRename?: () => void;
+  onDuplicate?: () => void;
 };
 
 export function AddLibraryMenu({
@@ -20,10 +24,13 @@ export function AddLibraryMenu({
   anchorElement,
   onClose,
   onCreateFolder,
-  onCreateLibrary,
-  onGenerateFromDocument,
+  onCreateTable,
   onCreateDocument,
   onImportDocument,
+  onImportTable,
+  onDelete,
+  onRename,
+  onDuplicate,
 }: AddLibraryMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -70,18 +77,20 @@ export function AddLibraryMenu({
     }
   }, [open, anchorElement]);
 
-  if (!open || !mounted) return null;
+  if (!open) return null;
 
-  return createPortal(
+  const hasDestructiveActions = Boolean(onRename || onDuplicate || onDelete);
+
+  const menuContent = (
     <div ref={menuRef} className={styles.menu}>
       {onCreateFolder && (
         <button className={styles.menuItem} onClick={onCreateFolder}>
           Create new folder
         </button>
       )}
-      {onCreateLibrary && (
-        <button className={styles.menuItem} onClick={onCreateLibrary}>
-          Create new library
+      {onCreateTable && (
+        <button className={styles.menuItem} onClick={onCreateTable}>
+          Create new table
         </button>
       )}
       {onCreateDocument && (
@@ -94,12 +103,33 @@ export function AddLibraryMenu({
           Import document
         </button>
       )}
-      {onGenerateFromDocument && (
-        <button className={styles.menuItem} onClick={onGenerateFromDocument}>
-          Generate tables from document
+      {onImportTable && (
+        <button className={styles.menuItem} onClick={onImportTable}>
+          Import table
         </button>
       )}
-    </div>,
-    document.body
+      {hasDestructiveActions && <div className={styles.divider} />}
+      {onRename && (
+        <button className={styles.menuItem} onClick={onRename}>
+          Rename
+        </button>
+      )}
+      {onDuplicate && (
+        <button className={styles.menuItem} onClick={onDuplicate}>
+          Duplicate
+        </button>
+      )}
+      {onDelete && (
+        <button className={`${styles.menuItem} ${styles.deleteItem}`} onClick={onDelete}>
+          Delete
+        </button>
+      )}
+    </div>
   );
+
+  // Portals require `document`, which is unavailable during server rendering.
+  // Fall back to rendering the menu inline until mounted client-side.
+  if (!mounted || typeof document === 'undefined') return menuContent;
+
+  return createPortal(menuContent, document.body);
 }

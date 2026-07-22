@@ -210,6 +210,7 @@ describe('sanctioned MDX validation', () => {
     'Paragraph about import and export workflows.',
     '<u>underlined text</u>',
     '[project](/projects/123)',
+    '[legacy site](http://example.com/path)',
     '[secure](https://example.com/path)',
     '![secure image](https://example.com/image.png)',
     '![local image](http://127.0.0.1:54321/storage/v1/object/public/library-media-files/image.png)',

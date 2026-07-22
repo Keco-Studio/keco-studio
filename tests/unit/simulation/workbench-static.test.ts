@@ -51,6 +51,8 @@ describe('native simulation workbench presentation', () => {
     const toast = read('SimulationToast.tsx');
     expect(toast).toContain('role="status"');
     expect(toast).toContain('aria-live="polite"');
+    expect(toast).toContain('actionLabel');
+    expect(toast).toContain('onAction');
 
     const arena = read('Arena.tsx');
     expect(arena).toContain('Team A · You');

@@ -27,7 +27,7 @@ export type SidebarTreeViewProps = {
   setEditingKey: (key: string | null) => void;
   onSaveRename: (key: string, newName: string) => void | Promise<void>;
   setSelectedFolderId: (id: string | null) => void;
-  openNewLibrary: () => void;
+  onFolderAddClick: (folderId: string, anchor: HTMLElement) => void;
   setError: (msg: string | null) => void;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   currentProjectId: string | null;
@@ -45,7 +45,7 @@ function InlineEditRow({
   onSave,
   onCancel,
   setSelectedFolderId,
-  openNewLibrary,
+  onFolderAddClick,
   setError,
   currentProjectId,
   isLibraryUnderFolder,
@@ -58,7 +58,7 @@ function InlineEditRow({
   onSave: (key: string, newName: string) => void | Promise<void>;
   onCancel: () => void;
   setSelectedFolderId: (id: string | null) => void;
-  openNewLibrary: () => void;
+  onFolderAddClick: (folderId: string, anchor: HTMLElement) => void;
   setError: (msg: string | null) => void;
   currentProjectId: string | null;
   isLibraryUnderFolder?: boolean;
@@ -139,21 +139,20 @@ function InlineEditRow({
           aria-label="Rename"
         />
       </div>
-      {isFolder && userRole === 'admin' && (
+      {isFolder && (userRole === 'admin' || userRole === 'editor') && (
         <div className={styles.itemActions}>
           <button
             type="button"
             className={styles.folderAddLibButton}
-            aria-label="Create new library"
-            title="Create new library"
+            aria-label="Folder actions"
+            title="Folder actions"
             onClick={(e) => {
               e.stopPropagation();
               if (!currentProjectId) {
                 setError('Please select a project first');
                 return;
               }
-              if (folderId) setSelectedFolderId(folderId);
-              openNewLibrary();
+              if (folderId) onFolderAddClick(folderId, e.currentTarget);
             }}
           >
             <Image src={FolderAddLibIcon} alt="" width={24} height={24} className="icon-24" />
@@ -177,7 +176,7 @@ export function SidebarTreeView({
   setEditingKey,
   onSaveRename,
   setSelectedFolderId,
-  openNewLibrary,
+  onFolderAddClick,
   setError,
   userRole,
   currentProjectId,
@@ -233,16 +232,8 @@ export function SidebarTreeView({
     }
 
     if (key.startsWith('library-')) return null;
-    if (key.startsWith('document-')) {
-      return (
-        <Image
-          src={expanded ? folderExpandIcon : folderCollapseIcon}
-          alt={expanded ? 'Collapse' : 'Expand'}
-          width={expanded ? 14 : 8}
-          height={expanded ? 8 : 14}
-        />
-      );
-    }
+    // Document expand/collapse lives in the title row (right of the name).
+    if (key.startsWith('document-')) return null;
     return null;
   };
 
@@ -268,7 +259,7 @@ export function SidebarTreeView({
             onSave={onSaveRename}
             onCancel={() => setEditingKey(null)}
             setSelectedFolderId={setSelectedFolderId}
-            openNewLibrary={openNewLibrary}
+            onFolderAddClick={onFolderAddClick}
             setError={setError}
             currentProjectId={currentProjectId}
             isLibraryUnderFolder={isLibraryUnderFolder}
@@ -277,7 +268,7 @@ export function SidebarTreeView({
       }
       return defaultTitle as React.ReactNode;
     },
-    [editingKey, setEditingKey, onSaveRename, setSelectedFolderId, openNewLibrary, setError, userRole, currentProjectId]
+    [editingKey, setEditingKey, onSaveRename, setSelectedFolderId, onFolderAddClick, setError, userRole, currentProjectId]
   );
 
   return (

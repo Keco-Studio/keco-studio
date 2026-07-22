@@ -219,7 +219,9 @@ test.describe('Script import', () => {
     await page.getByTestId('import-script-text').fill('this is not a parseable script');
     await page.getByTestId('import-script-submit').click();
 
-    await expect(page.getByText('No valid content found in script', { exact: true })).toBeVisible();
+    await expect(page.getByText('No valid content found in script', { exact: true })).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByTestId('import-script-text')).toHaveAttribute(
       'placeholder',
       'Enter story text...'

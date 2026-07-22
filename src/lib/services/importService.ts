@@ -101,12 +101,20 @@ export type ImportLibraryResult = {
   sectionCount: number;
 };
 
+
+export function parseImportFolderId(raw: FormDataEntryValue | null): string | null {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  if (!isUuid(value)) throw new Error('Invalid folderId');
+  return value;
+}
+
 export async function importLibraryFromFile(
   supabase: SupabaseClient,
   params: {
     userId: string;
     projectId: string;
-    folderId: string;
+    folderId: string | null;
     libraryName: string;
     fileBuffer: Buffer;
     fileName: string;
@@ -114,20 +122,22 @@ export async function importLibraryFromFile(
 ): Promise<ImportLibraryResult> {
   const { userId, projectId, folderId, libraryName, fileBuffer, fileName } = params;
 
-  if (!isUuid(folderId)) {
+  if (folderId !== null && !isUuid(folderId)) {
     throw new Error('Invalid folder ID');
   }
 
   await verifyLibraryCreationPermission(supabase, projectId, userId);
 
-  const { data: folder, error: folderError } = await supabase
-    .from('folders')
-    .select('id, project_id')
-    .eq('id', folderId)
-    .single();
+  if (folderId !== null) {
+    const { data: folder, error: folderError } = await supabase
+      .from('folders')
+      .select('id, project_id')
+      .eq('id', folderId)
+      .single();
 
-  if (folderError || !folder || folder.project_id !== projectId) {
-    throw new Error('Folder not found or does not belong to the project');
+    if (folderError || !folder || folder.project_id !== projectId) {
+      throw new Error('Folder not found or does not belong to the project');
+    }
   }
 
   const trimmedName = libraryName.trim();
@@ -135,19 +145,22 @@ export async function importLibraryFromFile(
     throw new Error('Library name is required');
   }
 
-  const { data: existingLibraries, error: nameCheckError } = await supabase
+  let nameCheckQuery = supabase
     .from('libraries')
     .select('id')
     .eq('project_id', projectId)
-    .eq('folder_id', folderId)
     .eq('name', trimmedName)
     .limit(1);
+  nameCheckQuery = folderId === null
+    ? nameCheckQuery.is('folder_id', null)
+    : nameCheckQuery.eq('folder_id', folderId);
+  const { data: existingLibraries, error: nameCheckError } = await nameCheckQuery;
 
   if (nameCheckError) {
     throw new Error(nameCheckError.message || 'Failed to check library name');
   }
   if (existingLibraries && existingLibraries.length > 0) {
-    throw new Error(`Library name "${trimmedName}" already exists in this folder`);
+    throw new Error(`Library name "${trimmedName}" already exists`);
   }
 
   const parsed = await parseImportFile(fileBuffer, fileName);

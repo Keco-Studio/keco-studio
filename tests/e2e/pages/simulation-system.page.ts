@@ -17,7 +17,10 @@ export class SimulationSystemPage {
 
   async useDemoData(): Promise<void> {
     await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
-    await this.page.getByRole('button', { name: 'Use demo data' }).click();
+    const useDemo = this.page.getByRole('button', { name: 'Use demo data' });
+    // Demo import stays disabled until a Studio project is selected/auto-picked.
+    await expect(useDemo).toBeEnabled({ timeout: 30000 });
+    await useDemo.click();
     await expect(this.page.getByRole('button', { name: 'Continue to characters' })).toBeVisible({
       timeout: 30000,
     });
@@ -75,11 +78,13 @@ export class SimulationSystemPage {
     // Design presentation hides Pause/Resume; assert the Studio battle chrome instead.
     await expect(this.page.getByRole('button', { name: 'Stop battle' })).toBeVisible({ timeout: 30000 });
     await expect(this.page.getByText('Battle logs')).toBeVisible();
-    await this.page.waitForTimeout(500);
+    await this.page.waitForTimeout(1000);
     await this.page.reload();
     await expect(this.root).toBeVisible({ timeout: 30000 });
+    await expect(this.page.getByText('E2E combat simulator', { exact: true })).toBeVisible({
+      timeout: 30000,
+    });
     await expect(this.page.getByRole('heading', { name: 'Battle', exact: true })).toBeVisible();
     await expect(this.page.getByRole('button', { name: 'Start battle' })).toBeEnabled();
-    await expect(this.page.getByText('E2E combat simulator', { exact: true })).toBeVisible();
   }
 }

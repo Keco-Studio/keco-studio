@@ -129,8 +129,15 @@ async function expandTreeNode(page: Page, title: string): Promise<void> {
   const node = sidebarTitle(page, title)
     .first()
     .locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
-  const switcher = node.locator('.ant-tree-switcher');
-  await expect(switcher).toBeVisible();
+  // Documents hide Ant's left switcher and expand from a title-row control.
+  const documentExpand = node.getByRole('button', { name: 'Expand' });
+  if (await documentExpand.count()) {
+    await documentExpand.click();
+    await expect(node.getByRole('button', { name: 'Collapse' })).toBeVisible({ timeout: 10000 });
+    return;
+  }
+  const switcher = node.locator('.ant-tree-switcher:not(.ant-tree-switcher-noop)');
+  await expect(switcher).toBeVisible({ timeout: 15000 });
   const className = await switcher.getAttribute('class');
   if (!className?.includes('ant-tree-switcher_open')) await switcher.click();
 }

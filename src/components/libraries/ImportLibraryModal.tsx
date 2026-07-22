@@ -11,7 +11,7 @@ import styles from './ExportLibraryModal.module.css';
 type ImportLibraryModalProps = {
   open: boolean;
   projectId: string;
-  folderId: string;
+  folderId: string | null;
   onClose: () => void;
   onImported?: (libraryId: string) => void;
 };
@@ -124,7 +124,7 @@ export function ImportLibraryModal({
 
       const formData = new FormData();
       formData.append('projectId', projectId);
-      formData.append('folderId', folderId);
+      if (folderId) formData.append('folderId', folderId);
       formData.append('libraryName', trimmedName);
       formData.append('file', selectedFile);
 

@@ -97,8 +97,16 @@ export default function LibraryPage() {
   // Respond to version-control toggle requests from TopBar.
   useEffect(() => {
     const handleToggleFromTopbar = (event: Event) => {
-      const custom = event as CustomEvent<{ projectId?: string; libraryId?: string }>;
+      const custom = event as CustomEvent<{
+        projectId?: string;
+        libraryId?: string;
+        open?: boolean;
+      }>;
       if (custom.detail?.projectId !== projectId || custom.detail?.libraryId !== libraryId) return;
+      if (typeof custom.detail?.open === 'boolean') {
+        setIsVersionControlOpen(custom.detail.open);
+        return;
+      }
       setIsVersionControlOpen((prev) => !prev);
     };
 
@@ -657,11 +665,13 @@ export default function LibraryPage() {
                       id: librarySummary.id,
                       name: librarySummary.name,
                       description: librarySummary.description,
+                      documentExportType: library.document_export_type,
                     }
                   : {
                       id: library.id,
                       name: library.name,
                       description: library.description,
+                      documentExportType: library.document_export_type,
                     }
               }
               sections={tableSections}

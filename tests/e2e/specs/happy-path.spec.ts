@@ -135,7 +135,7 @@ test.describe('Happy Path - Complete User Journey', () => {
       await libraryPage.navigateBackToProject();
       
       // Create library directly under project using sidebar add button
-      // This uses: sidebar add button -> AddLibraryMenu -> Create new library
+      // This uses: sidebar add button -> AddLibraryMenu -> Create new table
       await libraryPage.createLibraryUnderProject(libraries.directLibrary);
       await libraryPage.expectLibraryCreated();
       

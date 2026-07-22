@@ -147,17 +147,16 @@ export class LoginPage {
       return path !== '/' && path !== '';
     }, { timeout: longTimeout });
     
-    // Strategy 2: Wait for network to be idle first (ensures page is fully loaded)
-    // This ensures all API calls (including auth verification) are complete
-    await this.page.waitForLoadState('networkidle', { timeout: longTimeout });
+    // Strategy 2: Best-effort networkidle with a short cap. A long timeout here still
+    // burns the full wait even with .catch(), which blows 60s e2e budgets in CI.
+    await this.page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     
     // Strategy 3: Wait for browser storage to contain Supabase auth token
     // In CI environments, there may be a delay between login and auth storage update
     await waitForSupabaseAuthStorage(this.page, mediumTimeout);
     
-    // Strategy 4: Additional wait to ensure authentication state is fully established
-    // This is important after adding authorization checks - longer wait for CI
-    await this.page.waitForTimeout(isCI ? 5000 : 2000);
+    // Strategy 4: Brief settle for auth client init (keep short — beforeEach often waits again)
+    await this.page.waitForTimeout(isCI ? 2000 : 1000);
     
     // Strategy 5: PRIMARY VERIFICATION - Check that user avatar appears in TopBar
     // This is the definitive indicator of successful login

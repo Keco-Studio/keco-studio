@@ -85,13 +85,13 @@ async function importCompiledScript(
 ): Promise<ImportScriptResult> {
   const { userId, projectId, folderId, libraryName, fileName, documentSource } = params;
 
-  if (!documentSource && (!folderId || !isUuid(folderId))) {
+  if (!documentSource && folderId !== null && !isUuid(folderId)) {
     throw new Error('Invalid folder ID');
   }
 
   await verifyLibraryCreationPermission(supabase, projectId, userId);
 
-  if (!documentSource) {
+  if (!documentSource && folderId !== null) {
     const { data: folder, error: folderError } = await supabase
       .from('folders')
       .select('id, project_id')
@@ -140,8 +140,14 @@ async function importCompiledScript(
       folder_id: resolvedFolderId,
       name: trimmedName,
       description: `Imported from ${fileName}`,
-      source_document_id: placement?.sourceDocumentId ?? null,
-      document_export_type: placement?.documentExportType ?? null,
+      // Only set derived-library columns when exporting from a document.
+      // Environments without the migration reject these keys in the schema cache.
+      ...(placement
+        ? {
+            source_document_id: placement.sourceDocumentId,
+            document_export_type: placement.documentExportType,
+          }
+        : {}),
     })
     .select('id')
     .single();

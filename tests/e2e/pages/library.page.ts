@@ -81,6 +81,24 @@ export class LibraryPage {
     await item.click({ button: 'right', force: true, timeout: 15000 });
   }
 
+  /** Start inline rename from the sidebar context menu (Library info / Rename). */
+  async openInlineRename(
+    title: string,
+    menuAction: RegExp = /^library info$|^rename$/i
+  ): Promise<Locator> {
+    await this.rightClickTreeItem(title);
+    const contextMenu = this.page.locator('[class*="contextMenu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    await contextMenu.getByRole('button', { name: menuAction }).click();
+    const renameInput = this.page.getByRole('tree').getByRole('textbox', { name: 'Rename' });
+    await expect(renameInput).toBeVisible({ timeout: 5000 });
+    return renameInput;
+  }
+
+  renameInput(): Locator {
+    return this.page.getByRole('tree').getByRole('textbox', { name: 'Rename' });
+  }
+
   constructor(page: Page) {
     this.page = page;
 
@@ -91,9 +109,8 @@ export class LibraryPage {
     // Action buttons
     this.createFolderButton = page.getByRole('button', { name: /create folder/i });
 
-    // Sidebar "Create new library" button (on folder row in tree)
-    // Button has aria-label="Create new library", no text content (icon only). Only visible for admin.
-    this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /create new library/i }).first();
+    // Sidebar folder "+" opens Folder actions menu (icon only).
+    this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /folder actions/i }).first();
 
     // Folder pages expose the action either in the toolbar or in the empty state.
     this.folderPageCreateLibraryButton = page
@@ -107,7 +124,8 @@ export class LibraryPage {
     // AddLibraryMenu button (appears after clicking sidebar add button)
     // Note: AddLibraryMenu is rendered via createPortal to document.body
     // Use more flexible selectors that work with the portal
-    this.addLibraryMenuButton = page.getByRole('button', { name: /create new library/i })
+    // Label reads "Create new table" (still creates a library record under the hood).
+    this.addLibraryMenuButton = page.getByRole('button', { name: /create new table/i })
       .filter({ hasNotText: /resources folder/i }) // Exclude sidebar buttons
       .last(); // Use last() to get the portal menu button
 
@@ -231,7 +249,7 @@ export class LibraryPage {
 
   /**
    * Create a library directly under project (not in a folder)
-   * This uses the sidebar add button -> AddLibraryMenu -> Create new library flow
+   * This uses the sidebar add button -> AddLibraryMenu -> Create new table flow
    * @param library - Library data with name and optional description
    */
   async createLibraryUnderProject(library: LibraryData): Promise<void> {
@@ -242,7 +260,7 @@ export class LibraryPage {
     await this.waitForSidebarAdminRole();
     await this.sidebarAddButton.click();
 
-    // Step 2: Wait for AddLibraryMenu to appear and click "Create new library"
+    // Step 2: Wait for AddLibraryMenu to appear and click "Create new table"
     // Increase timeout to allow menu animation to complete
     await expect(this.addLibraryMenuButton).toBeVisible({ timeout: 10000 });
     await this.addLibraryMenuButton.click();
@@ -750,5 +768,37 @@ export class LibraryPage {
     await this.page.waitForLoadState('domcontentloaded', { timeout: 30000 });
     await this.page.waitForLoadState('load', { timeout: 15000 });
     await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+  }
+
+  /**
+   * Open the library Version Control sidebar.
+   * Uses discrete open attempts (not rapid toggle retries) because the TopBar
+   * control toggles open/closed — re-clicking while opening closes it again.
+   */
+  async openVersionControlSidebar(): Promise<void> {
+    const toggle = this.page.getByTestId('library-version-control-toggle');
+    const sidebar = this.page.getByTestId('library-version-history-sidebar');
+
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+
+    if (await sidebar.isVisible().catch(() => false)) {
+      await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      return;
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await sidebar.isVisible().catch(() => false)) break;
+      await toggle.click({ force: true });
+      try {
+        await expect(sidebar).toBeVisible({ timeout: 5000 });
+        break;
+      } catch {
+        // Click may have been a no-op (listener not ready) or a close from a prior open.
+        await this.page.waitForTimeout(400);
+      }
+    }
+
+    await expect(sidebar).toBeVisible({ timeout: 10000 });
+    await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
   }
 }

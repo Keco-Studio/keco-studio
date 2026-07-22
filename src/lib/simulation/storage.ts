@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { SimulationStateV1 } from './types';
 
@@ -100,7 +101,6 @@ const v1SessionSchema = z.object({
   ...sessionFields,
   lastScreen: z.enum(['characters', 'skills', 'progression', 'battle']),
 }).strict();
-const v0SessionSchema = z.object(sessionFields).strict();
 
 function validateSessionReferences(
   session: z.infer<typeof v1SessionSchema>,
@@ -148,9 +148,9 @@ function validateSessionReferences(
   }
 }
 
-function stateSchema<T extends z.ZodTypeAny>(version: 0 | 1, sessionSchema: T) {
+function stateSchema<T extends z.ZodTypeAny>(sessionSchema: T) {
   return z.object({
-    version: z.literal(version),
+    version: z.literal(1),
     activeSessionId: z.string().min(1).nullable(),
     sessions: z.array(sessionSchema),
   }).strict().superRefine((state, context) => {
@@ -166,8 +166,7 @@ function stateSchema<T extends z.ZodTypeAny>(version: 0 | 1, sessionSchema: T) {
   });
 }
 
-const stateV1Schema = stateSchema(1, v1SessionSchema);
-const stateV0Schema = stateSchema(0, v0SessionSchema);
+const stateV1Schema = stateSchema(v1SessionSchema);
 
 export type SimulationStorageErrorCode =
   | 'storage_unavailable'
@@ -176,35 +175,41 @@ export type SimulationStorageErrorCode =
   | 'remove_failed'
   | 'malformed'
   | 'unknown_version'
-  | 'invalid_state';
+  | 'invalid_state'
+  | 'unauthorized'
+  | 'conflict';
 
 export interface SimulationStorageError {
   readonly code: SimulationStorageErrorCode;
   readonly message: string;
+  readonly observedRevision?: number;
 }
 
 export type SimulationLoadResult =
-  | { readonly ok: true; readonly state: SimulationStateV1 | null; readonly migratedFrom?: 0 }
+  | { readonly ok: true; readonly state: SimulationStateV1 | null; readonly revision: number }
   | { readonly ok: false; readonly error: SimulationStorageError };
-export type SimulationWriteResult =
+export type SimulationSaveResult =
+  | { readonly ok: true; readonly revision: number }
+  | { readonly ok: false; readonly error: SimulationStorageError };
+export type SimulationClearResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: SimulationStorageError };
 
 export interface SimulationStorageRepository {
-  load(userId: string, projectId: string): SimulationLoadResult;
-  save(userId: string, projectId: string, state: SimulationStateV1): SimulationWriteResult;
-  clear(userId: string, projectId: string): SimulationWriteResult;
-}
-
-export function simulationStorageKey(userId: string, projectId: string): string {
-  return `keco.simulation.sessions:v1:${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`;
+  load(projectId: string): Promise<SimulationLoadResult>;
+  save(projectId: string, expectedRevision: number, state: SimulationStateV1): Promise<SimulationSaveResult>;
+  clear(projectId: string, expectedRevision: number): Promise<SimulationClearResult>;
 }
 
 function failure(
   code: SimulationStorageErrorCode,
   message: string,
+  observedRevision?: number,
 ): { readonly ok: false; readonly error: SimulationStorageError } {
-  return { ok: false, error: { code, message } };
+  return {
+    ok: false,
+    error: observedRevision === undefined ? { code, message } : { code, message, observedRevision },
+  };
 }
 
 function deepFreeze<T>(value: T): T {
@@ -215,75 +220,125 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-export function createSimulationStorageRepository(storage: Storage | null | undefined): SimulationStorageRepository {
+type SimulationSupabaseClient = Pick<SupabaseClient, 'from' | 'rpc'>;
+type BackendError = { readonly code?: string; readonly message?: string };
+type RpcRow = { readonly status?: unknown; readonly revision?: unknown };
+
+function isUnauthorized(error: BackendError): boolean {
+  return error.code === '42501'
+    || error.code === '401'
+    || error.code === '403'
+    || error.code === 'PGRST301';
+}
+
+function backendFailure(
+  error: BackendError,
+  fallbackCode: 'read_failed' | 'write_failed' | 'remove_failed',
+  fallbackMessage: string,
+) {
+  return isUnauthorized(error)
+    ? failure('unauthorized', 'Simulation state is not accessible.')
+    : failure(fallbackCode, fallbackMessage);
+}
+
+function rpcRow(data: unknown): RpcRow | null {
+  if (!Array.isArray(data) || !data[0] || typeof data[0] !== 'object') return null;
+  return data[0] as RpcRow;
+}
+
+export function createSimulationStorageRepository(
+  supabase: SimulationSupabaseClient | null | undefined,
+): SimulationStorageRepository {
   return {
-    load(userId, projectId) {
-      if (!storage) return failure('storage_unavailable', 'Browser storage is unavailable.');
-      let raw: string | null;
+    async load(projectId) {
+      if (!supabase) return failure('storage_unavailable', 'Cloud storage is unavailable.');
+      let response: { data: unknown; error: BackendError | null };
       try {
-        raw = storage.getItem(simulationStorageKey(userId, projectId));
+        response = await supabase
+          .from('simulation_states')
+          .select('state_version,state,revision')
+          .eq('project_id', projectId)
+          .maybeSingle();
       } catch {
         return failure('read_failed', 'Simulation state could not be read.');
       }
-      if (raw === null) return { ok: true, state: null };
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return failure('malformed', 'Stored simulation state is not valid JSON.');
+      if (response.error) {
+        return backendFailure(response.error, 'read_failed', 'Simulation state could not be read.');
       }
-      if (!parsed || typeof parsed !== 'object' || !('version' in parsed)) {
-        return failure('invalid_state', 'Stored simulation state is invalid.');
+      if (response.data === null) return { ok: true, state: null, revision: 0 };
+      if (typeof response.data !== 'object') {
+        return failure('malformed', 'Cloud simulation state is malformed.');
       }
-      const version = (parsed as { version?: unknown }).version;
-      if (version !== 0 && version !== 1) {
-        return failure('unknown_version', 'Stored simulation state uses an unsupported version.');
+
+      const row = response.data as { state_version?: unknown; state?: unknown; revision?: unknown };
+      const revision = row.revision;
+      if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
+        return failure('invalid_state', 'Cloud simulation state is invalid.');
       }
-      if (version === 1) {
-        const result = stateV1Schema.safeParse(parsed);
-        if (!result.success || result.data.sessions.some((session) => (
-          session.importedSnapshot !== null && session.importedSnapshot.sourceProjectId !== projectId
-        ))) return failure('invalid_state', 'Stored simulation state is invalid.');
-        return { ok: true, state: deepFreeze(result.data as SimulationStateV1) };
+      if (row.state_version !== 1) {
+        return failure('unknown_version', 'Cloud simulation state uses an unsupported version.', revision as number);
       }
-      const result = stateV0Schema.safeParse(parsed);
-      if (!result.success || result.data.sessions.some((session) => (
+      const parsed = stateV1Schema.safeParse(row.state);
+      if (!parsed.success || parsed.data.sessions.some((session) => (
         session.importedSnapshot !== null && session.importedSnapshot.sourceProjectId !== projectId
-      ))) return failure('invalid_state', 'Stored simulation state is invalid.');
-      const migrated = {
-        version: 1,
-        activeSessionId: result.data.activeSessionId,
-        sessions: result.data.sessions.map((session) => ({ ...session, lastScreen: 'characters' as const })),
-      } as SimulationStateV1;
-      return {
-        ok: true,
-        state: deepFreeze(migrated),
-        migratedFrom: 0,
-      };
+      ))) {
+        return failure('invalid_state', 'Cloud simulation state is invalid.', revision as number);
+      }
+      return { ok: true, state: deepFreeze(parsed.data as SimulationStateV1), revision: revision as number };
     },
-    save(userId, projectId, state) {
-      if (!storage) return failure('storage_unavailable', 'Browser storage is unavailable.');
+    async save(projectId, expectedRevision, state) {
+      if (!supabase) return failure('storage_unavailable', 'Cloud storage is unavailable.');
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+        return failure('invalid_state', 'Simulation revision is invalid.');
+      }
       const result = stateV1Schema.safeParse(state);
       if (!result.success || result.data.sessions.some((session) => (
         session.importedSnapshot !== null && session.importedSnapshot.sourceProjectId !== projectId
       ))) {
         return failure('invalid_state', 'Simulation state is invalid.');
       }
+      let response: { data: unknown; error: BackendError | null };
       try {
-        storage.setItem(simulationStorageKey(userId, projectId), JSON.stringify(result.data));
-        return { ok: true };
+        response = await supabase.rpc('save_simulation_state', {
+          p_project_id: projectId,
+          p_expected_revision: expectedRevision,
+          p_state_version: 1,
+          p_state: result.data,
+        });
       } catch {
         return failure('write_failed', 'Simulation state could not be saved.');
       }
+      if (response.error) {
+        return backendFailure(response.error, 'write_failed', 'Simulation state could not be saved.');
+      }
+      const row = rpcRow(response.data);
+      if (row?.status === 'conflict') return failure('conflict', 'Cloud simulation state has changed.');
+      if (row?.status !== 'saved' || !Number.isSafeInteger(row.revision) || (row.revision as number) < 1) {
+        return failure('write_failed', 'Simulation state could not be saved.');
+      }
+      return { ok: true, revision: row.revision as number };
     },
-    clear(userId, projectId) {
-      if (!storage) return failure('storage_unavailable', 'Browser storage is unavailable.');
+    async clear(projectId, expectedRevision) {
+      if (!supabase) return failure('storage_unavailable', 'Cloud storage is unavailable.');
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+        return failure('invalid_state', 'Simulation revision is invalid.');
+      }
+      let response: { data: unknown; error: BackendError | null };
       try {
-        storage.removeItem(simulationStorageKey(userId, projectId));
-        return { ok: true };
+        response = await supabase.rpc('reset_simulation_state', {
+          p_project_id: projectId,
+          p_expected_revision: expectedRevision,
+        });
       } catch {
         return failure('remove_failed', 'Simulation state could not be removed.');
       }
+      if (response.error) {
+        return backendFailure(response.error, 'remove_failed', 'Simulation state could not be removed.');
+      }
+      const row = rpcRow(response.data);
+      if (row?.status === 'conflict') return failure('conflict', 'Cloud simulation state has changed.');
+      if (row?.status !== 'reset') return failure('remove_failed', 'Simulation state could not be removed.');
+      return { ok: true };
     },
   };
 }

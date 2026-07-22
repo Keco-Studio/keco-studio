@@ -182,6 +182,7 @@ test.describe('Session Management', () => {
     await logoutButton.click();
     
     // Step 4: Should be redirected to login page
+    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
     await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
     
     // Step 5: Try to access projects page - should be blocked
@@ -205,11 +206,13 @@ test.describe('Session Management', () => {
     await logoutButton.click();
     
     // Should be logged out
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
     
     // Try to access projects - should show login
-    await page.goto('/projects');
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    await page.goto('/projects', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
     
     // Should be able to login again
     await loginPage.login(users.seedEmpty);
@@ -295,7 +298,7 @@ test.describe('Data Isolation & Access Control', () => {
               /not found|unable to load|login|unauthorized|access denied/i.test(bodyText)
             );
           },
-          { timeout: 30000, intervals: [500, 1000, 2000] }
+          { timeout: 45000, intervals: [500, 1000, 2000] }
         )
         .toBe(true);
     } finally {

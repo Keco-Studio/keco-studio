@@ -190,7 +190,7 @@ jobs:
       - name: Push database migrations
         run: |
           echo "🚀 Pushing database migrations to the ${{ steps.select-project.outputs.environment }} environment..."
-          supabase db push --include-all
+          supabase db push --include-all --yes
           echo "✅ Migrations complete"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ steps.select-project.outputs.access-token }}
