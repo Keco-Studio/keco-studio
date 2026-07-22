@@ -122,7 +122,15 @@ describe('CI workflow gates', () => {
       'supabase functions deploy mcp --no-verify-jwt --project-ref "$PROJECT_REF"'
     );
     expect(deployJob).toContain(
-      'needs: [check-migrations, migrate-database, deploy-mcp-function]'
+      'needs: [check-migrations, migrate-database]'
+    );
+    expect(deployMcpFunctionJob).toContain(
+      'needs: [check-migrations, migrate-database, deploy]'
+    );
+    expect(deployMcpFunctionJob).toContain("needs.deploy.result == 'success'");
+    expect(deployMcpFunctionJob).toContain('Production MCP codec health check failed');
+    expect(deployMcpFunctionJob).toContain(
+      'supabase secrets set MCP_CODEC_SECRET="$MCP_CODEC_SECRET"'
     );
     expect(deployJob).toContain('Sync production MCP codec secret');
     expect(deployJob).toContain('secrets.MCP_CODEC_SECRET');

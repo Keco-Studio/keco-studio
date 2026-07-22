@@ -199,13 +199,14 @@ jobs:
   deploy-mcp-function:
     runs-on: ubuntu-latest
     name: Deploy Production MCP Function
-    needs: [check-migrations, migrate-database]
+    needs: [check-migrations, migrate-database, deploy]
     if: |
       (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
       needs.check-migrations.result == 'success' &&
-      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
+      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') &&
+      needs.deploy.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -220,6 +221,7 @@ jobs:
           PROD_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_PROD }}
           GENERAL_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF_PROD }}
+          MCP_CODEC_SECRET: ${{ secrets.MCP_CODEC_SECRET }}
         run: |
           if [ -z "$PROJECT_REF" ]; then
             echo "::error::SUPABASE_PROJECT_REF_PROD is required"
@@ -234,18 +236,39 @@ jobs:
             echo "::error::A production Supabase access token is required"
             exit 1
           fi
+          if [ -z "$MCP_CODEC_SECRET" ]; then
+            echo "::error::MCP_CODEC_SECRET is required"
+            exit 1
+          fi
+          codec_ready=false
+          for attempt in $(seq 1 18); do
+            if curl --silent --show-error --fail --output /dev/null \
+              --request POST https://keco-studio-main.vercel.app/api/mcp/codec \
+              --header "Authorization: Bearer $MCP_CODEC_SECRET" \
+              --header 'Content-Type: application/json' \
+              --data '{"mode":"encode","markdown":"# MCP codec health"}'; then
+              codec_ready=true
+              break
+            fi
+            sleep 10
+          done
+          if [ "$codec_ready" != true ]; then
+            echo "::error::Production MCP codec health check failed"
+            exit 1
+          fi
+          supabase secrets set MCP_CODEC_SECRET="$MCP_CODEC_SECRET" \
+            --project-ref "$PROJECT_REF"
           supabase functions deploy mcp --no-verify-jwt --project-ref "$PROJECT_REF"
 
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [check-migrations, migrate-database, deploy-mcp-function]
+    needs: [check-migrations, migrate-database]
     if: |
       (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
       always() &&
       needs.check-migrations.result == 'success' &&
-      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') &&
-      (needs.deploy-mcp-function.result == 'success' || needs.deploy-mcp-function.result == 'skipped')
+      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
     name: Deploy to Vercel
 
     steps:
