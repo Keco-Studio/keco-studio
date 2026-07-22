@@ -5,6 +5,8 @@ export type ProjectAuthContext = {
   userId: string;
   projectId: string;
   role: ProjectRole;
+  clientId: string | null;
+  bearerToken: string;
 };
 export type ProjectAuthorization =
   | { status: "authorized"; context: ProjectAuthContext }
@@ -13,7 +15,15 @@ export type ProjectAuthorization =
   | { status: "operational_error" };
 
 export interface AuthGateway {
-  getUser(token: string): Promise<{ id: string } | null>;
+  getUser(
+    token: string,
+  ): Promise<{ id: string; clientId?: string | null } | null>;
+  hasOAuthProjectGrant(
+    clientId: string,
+    projectId: string,
+    resource: string,
+    token: string,
+  ): Promise<boolean>;
   getProjectOwner(projectId: string, token: string): Promise<string | null>;
   getCollaboratorRole(
     userId: string,
@@ -30,6 +40,24 @@ const INVALID_CREDENTIAL_CODES = new Set([
   "session_not_found",
   "user_not_found",
 ]);
+
+function verifiedClientId(token: string): string | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const padding = "=".repeat((4 - payload.length % 4) % 4);
+    const decoded = JSON.parse(atob(
+      payload.replaceAll("-", "+").replaceAll("_", "/") + padding,
+    ));
+    const candidate = decoded?.client_id;
+    return typeof candidate === "string" && candidate.length >= 1 &&
+        candidate.length <= 256
+      ? candidate
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export function isInvalidCredentialError(error: {
   status?: number;
@@ -55,6 +83,15 @@ export async function authorizeProjectWithGateway(
   try {
     const user = await gateway.getUser(token);
     if (!user) return { status: "unauthenticated" };
+    const clientId = user.clientId ?? null;
+    if (!clientId) return { status: "forbidden" };
+    const hasGrant = await gateway.hasOAuthProjectGrant(
+      clientId,
+      projectId,
+      request.url,
+      token,
+    );
+    if (!hasGrant) return { status: "forbidden" };
     const ownerId = await gateway.getProjectOwner(projectId, token);
     const role = ownerId === user.id
       ? "admin"
@@ -62,7 +99,13 @@ export async function authorizeProjectWithGateway(
     return role
       ? {
         status: "authorized",
-        context: { userId: user.id, projectId, role },
+        context: {
+          userId: user.id,
+          projectId,
+          role,
+          clientId,
+          bearerToken: token,
+        },
       }
       : { status: "forbidden" };
   } catch {
@@ -86,7 +129,22 @@ function supabaseGateway(): AuthGateway {
         if (isInvalidCredentialError(error)) return null;
         throw new Error("Supabase user lookup failed.");
       }
-      return data.user ? { id: data.user.id } : null;
+      return data.user
+        ? { id: data.user.id, clientId: verifiedClientId(token) }
+        : null;
+    },
+    async hasOAuthProjectGrant(clientId, projectId, resource, token) {
+      const client = createClient(url, anonKey, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false },
+      });
+      const { data, error } = await client.rpc("has_oauth_project_grant", {
+        p_client_id: clientId,
+        p_project_id: projectId,
+        p_resource: resource,
+      });
+      if (error) throw new Error("Supabase OAuth grant lookup failed.");
+      return data === true;
     },
     async getProjectOwner(projectId, token) {
       const client = createClient(url, anonKey, {
@@ -125,7 +183,11 @@ export async function authorizeProject(
   projectId: string,
 ): Promise<ProjectAuthorization> {
   try {
-    return await authorizeProjectWithGateway(request, projectId, supabaseGateway());
+    return await authorizeProjectWithGateway(
+      request,
+      projectId,
+      supabaseGateway(),
+    );
   } catch {
     return { status: "operational_error" };
   }

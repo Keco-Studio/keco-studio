@@ -112,6 +112,14 @@ jobs:
       - name: Test MCP Edge Function
         run: npm run test:mcp
 
+      - name: Test MCP Phase 2 probes
+        run: |
+          npm run test:unit -- \
+            tests/unit/mcp/capabilities-probe.test.ts \
+            tests/unit/mcp/load-probe.test.ts \
+            tests/unit/mcp/performance-probe.test.ts \
+            tests/unit/mcp/evidence-scan.test.ts
+
       # Extract the LOCAL Supabase keys so the RLS behavior tests connect to the
       # local instance (started above), never to the remote project the build
       # step's secrets may point at. Mirrors playwright.yml's extraction.
@@ -138,6 +146,41 @@ jobs:
           # migrations applied is running at this point (supabase start + db reset).
           RLS_DB_TESTS: '1'
         run: npm run test:unit
+
+      - name: Build representative MCP load fixture
+        run: |
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f scripts/fixtures/mcp-phase-2-load.sql
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -c "begin; set local role authenticated; select set_config('request.jwt.claim.sub','aaaaaaaa-bbbb-cccc-dddd-000000000007',true); do \$\$ begin if jsonb_array_length(public.mcp_read_project_structure('22222222-2222-4222-8222-222222222222')->'tables') <> 100 then raise exception 'MCP structure load fixture validation failed'; end if; end \$\$; rollback;"
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f scripts/fixtures/mcp-phase-2-load-gates.sql
+          pids=()
+          for worker in $(seq 1 5); do
+            psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+              -v ON_ERROR_STOP=1 \
+              -c "begin; set local role authenticated; select set_config('request.jwt.claim.sub','aaaaaaaa-bbbb-cccc-dddd-000000000007',true); select * from public.mcp_create_table_row('22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333331',gen_random_uuid(),jsonb_build_object('Name','CI concurrent row $worker'),false); commit;" \
+              >"/tmp/mcp-concurrent-$worker.log" 2>&1 &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do wait "$pid"; done
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 -c \
+            "do \$\$ declare total integer; indices integer; begin select count(*),count(distinct row_index) into total,indices from public.library_assets where library_id='33333333-3333-4333-8333-333333333331' and name like 'CI concurrent row %'; if total <> 5 or indices <> 5 then raise exception 'MCP concurrent row allocation failed'; end if; end \$\$;"
+
+      - name: Scan committed MCP evidence
+        shell: bash
+        run: |
+          evidence=()
+          for file in docs/mcp/phase-2-client-matrix.md docs/mcp/phase-2-performance.json; do
+            if [ -f "$file" ]; then evidence+=("$file"); fi
+          done
+          if [ "${#evidence[@]}" -gt 0 ]; then
+            npm run scan:mcp-evidence -- "${evidence[@]}"
+          fi
 
       - name: Build project
         env:

@@ -1,6 +1,4 @@
 import { test, expect } from '@playwright/test';
-import path from 'path';
-import dotenv from 'dotenv';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { LoginPage } from '../pages/login.page';
@@ -9,11 +7,6 @@ import { waitForSupabaseAuthStorage } from '../utils/auth-storage';
 import { projects, generateProjectData } from '../fixures/projects';
 import { libraries } from '../fixures/libraries';
 import { users } from '../fixures/users';
-import { execSync } from 'child_process';
-
-// Load env so beforeAll clean:test-data subprocess gets NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 /**
  * Version Control E2E Tests
@@ -42,26 +35,13 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true 
  * - All UI interactions delegated to Page Objects
  * - All test data from fixtures
  * - Follows Page Object Model (POM) pattern
- * - Cleans test data before running tests
+ * - Uses unique test data so fully parallel workers remain isolated
  * - Test accounts are admin by default; non-admin cases are not considered
  */
 
 test.describe('Version Control Tests', () => {
   let projectPage: ProjectPage;
   let libraryPage: LibraryPage;
-
-  // Clean test data before all tests (optional; continues if env missing or script fails)
-  test.beforeAll(async () => {
-    try {
-      execSync('npm run clean:test-data', {
-        cwd: process.cwd(),
-        stdio: 'pipe',
-        env: { ...process.env },
-      });
-    } catch {
-      // Continue with tests even if cleanup fails (e.g. missing env in CI)
-    }
-  });
 
   test.beforeEach(async ({ page }) => {
     // Initialize Page Objects

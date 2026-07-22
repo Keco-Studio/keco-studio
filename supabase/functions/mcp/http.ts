@@ -1,10 +1,10 @@
 import { authorizeProject, type ProjectAuthorization } from "./auth.ts";
 import { handleProtocolRequest } from "./server.ts";
+import { createMcpRequestContext, type McpRequestContext } from "./context.ts";
+import { MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES } from "./limits.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MAX_REQUEST_BYTES = 256 * 1024;
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
@@ -28,7 +28,14 @@ export type McpHttpDependencies = {
     projectId: string,
   ) => Promise<ProjectAuthorization>;
   kecoPublicUrl?: string;
-  handleProtocol?: (request: Request) => Promise<Response>;
+  createContext?: (
+    request: Request,
+    authContext: Extract<ProjectAuthorization, { status: "authorized" }>["context"],
+  ) => McpRequestContext;
+  handleProtocol?: (
+    request: Request,
+    context: McpRequestContext,
+  ) => Promise<Response>;
 };
 
 function withCors(response: Response): Response {
@@ -51,7 +58,7 @@ async function readBoundedBody(request: Request): Promise<Request | null> {
       const { done, value } = await reader.read();
       if (done) break;
       if (!value) continue;
-      if (total + value.byteLength > MAX_REQUEST_BYTES) {
+      if (total + value.byteLength >= MAX_REQUEST_BYTES) {
         await reader.cancel();
         return null;
       }
@@ -78,7 +85,7 @@ function tooLargeByContentLength(request: Request): boolean {
   const contentLength = request.headers.get("content-length");
   if (!contentLength) return false;
   const declaredLength = Number(contentLength);
-  return Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES;
+  return Number.isFinite(declaredLength) && declaredLength >= MAX_REQUEST_BYTES;
 }
 
 function normalizePublicOrigin(value: string | undefined): string | null {
@@ -221,8 +228,19 @@ export async function handleMcpHttpRequest(
     }));
   }
   const handleProtocol = deps.handleProtocol ?? handleProtocolRequest;
+  let context: McpRequestContext;
+  try {
+    context = (deps.createContext ?? createMcpRequestContext)(
+      boundedRequest,
+      authorization.context,
+    );
+  } catch {
+    return withCors(Response.json({ error: "MCP request context is unavailable." }, {
+      status: 503,
+    }));
+  }
   const protocolResponse = await boundedProtocolResponse(
-    await handleProtocol(boundedRequest),
+    await handleProtocol(boundedRequest, context),
   );
   if (!protocolResponse) {
     return withCors(Response.json({ error: "MCP response must remain below 1 MiB." }, {

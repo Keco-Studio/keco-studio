@@ -164,6 +164,28 @@ describe('MCP performance probe', () => {
     expect(evidence.measurements.warmToolsList.p95Ms).toBe(25);
   });
 
+  it('measures optional Phase 2 read, structure, and search budgets', async () => {
+    let clock = 0;
+    const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { id: number; method: string;
+        params?: { name?: string } };
+      clock += 20;
+      return rpcResponse(request.id).json().then(result => Response.json({
+        ...(result as object),
+        result: request.method === 'tools/call' ? { structuredContent: { ok: true,
+          ...(request.params?.name === 'semantic_search' ? { searchMode: 'text_fuzzy' } : {}) } } : {},
+      }));
+    });
+    const evidence = await runPerformanceProbe({ mcpUrl, accessToken: 'header.payload.signature',
+      warmSamples: 1, phase2Samples: 1, coldVerified: true,
+      fetchImpl: fetchMock as typeof fetch, now: () => clock });
+    expect(evidence.measurements.phase2).toEqual({
+      ordinaryRead: { sampleCount: 1, p95Ms: 20, budgetMs: 800 },
+      projectStructure: { sampleCount: 1, p95Ms: 20, budgetMs: 1000 },
+      search: { sampleCount: 1, p95Ms: 20, budgetMs: 3000 },
+    });
+  });
+
   it('fails with a stable error that does not include remote secret content', async () => {
     const token = 'header.payload.signature';
     const fetchMock = jest.fn(async () => new Response('access_token=remote-secret', { status: 500 }));

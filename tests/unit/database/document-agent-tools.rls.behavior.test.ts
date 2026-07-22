@@ -10,6 +10,12 @@ import {
 import type { ToolContext, ToolResult, UserRole } from '@/lib/agent/types';
 
 jest.mock('server-only', () => ({}));
+jest.mock('@/lib/server/documentEmbeddingIndexService', () => ({
+  reindexProjectDocumentAsActor: jest.fn().mockResolvedValue({
+    documentId: 'mock-document-id',
+    chunks: 0,
+  }),
+}));
 jest.mock('@/lib/documents/documentContentCodec', () => {
   const decode = (value: string | null): string =>
     value ? Buffer.from(value, 'base64').toString('utf8') : '';

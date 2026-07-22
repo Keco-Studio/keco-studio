@@ -1,0 +1,8 @@
+{
+  "tables": 100,
+  "fields": 2000,
+  "rows": 100000,
+  "documents": 1000,
+  "writeTableId": "33333333-3333-4333-8333-333333333331",
+  "writeFieldLabel": "Name"
+}
