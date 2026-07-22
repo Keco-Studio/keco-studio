@@ -81,6 +81,24 @@ export class LibraryPage {
     await item.click({ button: 'right', force: true, timeout: 15000 });
   }
 
+  /** Start inline rename from the sidebar context menu (Library info / Rename). */
+  async openInlineRename(
+    title: string,
+    menuAction: RegExp = /^library info$|^rename$/i
+  ): Promise<Locator> {
+    await this.rightClickTreeItem(title);
+    const contextMenu = this.page.locator('[class*="contextMenu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    await contextMenu.getByRole('button', { name: menuAction }).click();
+    const renameInput = this.page.getByRole('tree').getByRole('textbox', { name: 'Rename' });
+    await expect(renameInput).toBeVisible({ timeout: 5000 });
+    return renameInput;
+  }
+
+  renameInput(): Locator {
+    return this.page.getByRole('tree').getByRole('textbox', { name: 'Rename' });
+  }
+
   constructor(page: Page) {
     this.page = page;
 
