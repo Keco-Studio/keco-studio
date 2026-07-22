@@ -772,20 +772,33 @@ export class LibraryPage {
 
   /**
    * Open the library Version Control sidebar.
-   * Retries the toggle click because TopBar dispatches a custom event that can
-   * race the library page listener right after navigation.
+   * Uses discrete open attempts (not rapid toggle retries) because the TopBar
+   * control toggles open/closed — re-clicking while opening closes it again.
    */
   async openVersionControlSidebar(): Promise<void> {
     const toggle = this.page.getByTestId('library-version-control-toggle');
     const sidebar = this.page.getByTestId('library-version-history-sidebar');
 
     await expect(toggle).toBeVisible({ timeout: 15000 });
-    await expect(async () => {
-      if (!(await sidebar.isVisible().catch(() => false))) {
-        await toggle.click();
+
+    if (await sidebar.isVisible().catch(() => false)) {
+      await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      return;
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await sidebar.isVisible().catch(() => false)) break;
+      await toggle.click({ force: true });
+      try {
+        await expect(sidebar).toBeVisible({ timeout: 5000 });
+        break;
+      } catch {
+        // Click may have been a no-op (listener not ready) or a close from a prior open.
+        await this.page.waitForTimeout(400);
       }
-      await expect(sidebar).toBeVisible({ timeout: 2000 });
-      await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 20000 });
+    }
+
+    await expect(sidebar).toBeVisible({ timeout: 10000 });
+    await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
   }
 }

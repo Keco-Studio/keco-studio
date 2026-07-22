@@ -74,11 +74,8 @@ test.describe('Version Control Tests', () => {
     await loginPage.login(users.seedEmpty);
     await loginPage.expectLoginSuccess();
 
-    // Verify authentication state is ready for API calls
-    await waitForSupabaseAuthStorage(page, 30000);
-
-    // Additional wait to ensure Supabase client is fully initialized
-    await page.waitForTimeout(2000);
+    // expectLoginSuccess already waits for auth storage; keep a short settle only.
+    await page.waitForTimeout(500);
   });
 
   test('Function Entry - Click clock button to open version control sidebar', async ({ page }) => {
