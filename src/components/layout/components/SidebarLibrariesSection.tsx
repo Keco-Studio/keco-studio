@@ -37,7 +37,7 @@ export type SidebarLibrariesSectionProps = {
   setEditingKey: (key: string | null) => void;
   onSaveRename: (key: string, newName: string) => void | Promise<void>;
   setSelectedFolderId: (id: string | null) => void;
-  openNewLibrary: () => void;
+  onFolderAddClick: (folderId: string, anchor: HTMLElement) => void;
   setError: (msg: string | null) => void;
   onSelect: (keys: React.Key[], info: any) => void;
   onExpand: (expandedKeys: React.Key[], info: { node: any }) => void;
@@ -69,7 +69,7 @@ export function SidebarLibrariesSection({
   setEditingKey,
   onSaveRename,
   setSelectedFolderId,
-  openNewLibrary,
+  onFolderAddClick,
   setError,
   onSelect,
   onExpand,
@@ -105,7 +105,7 @@ export function SidebarLibrariesSection({
           setEditingKey={setEditingKey}
           onSaveRename={onSaveRename}
           setSelectedFolderId={setSelectedFolderId}
-          openNewLibrary={openNewLibrary}
+          onFolderAddClick={onFolderAddClick}
           setError={setError}
           userRole={userRole}
           currentProjectId={currentIds.projectId}

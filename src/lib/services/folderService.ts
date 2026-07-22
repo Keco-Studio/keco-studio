@@ -7,6 +7,8 @@ import {
   verifyFolderCreationPermission,
   verifyFolderUpdatePermission,
 } from './authorizationService';
+import { duplicateLibrary } from './libraryService';
+import { createDocument, getDocument, listDocuments } from './documentService';
 
 export type Folder = {
   id: string;
@@ -302,4 +304,74 @@ export async function deleteFolder(
     throw error;
   }
 
+}
+
+
+export async function duplicateFolder(
+  supabase: SupabaseClient,
+  folderId: string
+): Promise<string> {
+  const folder = await getFolder(supabase, folderId);
+  if (!folder) throw new Error('Folder not found');
+
+  await verifyFolderCreationPermission(supabase, folder.project_id);
+
+  const existing = await listFolders(supabase, folder.project_id);
+  const names = new Set(existing.map((f) => f.name));
+  let newName = `${folder.name} (Copy)`;
+  let n = 2;
+  while (names.has(newName)) {
+    newName = `${folder.name} (Copy ${n})`;
+    n += 1;
+  }
+
+  const newFolderId = await createFolder(supabase, {
+    projectId: folder.project_id,
+    name: newName,
+    description: folder.description ?? undefined,
+  });
+
+  const { data: libs, error: libsError } = await supabase
+    .from('libraries')
+    .select('id, name, source_document_id')
+    .eq('folder_id', folderId);
+  if (libsError) throw libsError;
+
+  for (const lib of libs ?? []) {
+    if (lib.source_document_id) continue;
+    let libName = `${lib.name} (Copy)`;
+    try {
+      await duplicateLibrary(supabase, lib.id, libName, false, newFolderId);
+    } catch (err) {
+      // retry with numbered suffix on name conflict
+      libName = `${lib.name} (Copy 2)`;
+      await duplicateLibrary(supabase, lib.id, libName, false, newFolderId);
+    }
+  }
+
+  const documents = (await listDocuments(supabase, folder.project_id)).filter(
+    (doc) => doc.folder_id === folderId
+  );
+  for (const summary of documents) {
+    const full = await getDocument(supabase, summary.id);
+    let docName = full.name;
+    // createDocument will throw on empty; name conflicts are soft — append Copy if needed
+    try {
+      await createDocument(supabase, {
+        projectId: folder.project_id,
+        folderId: newFolderId,
+        name: docName,
+        content: full.content ?? '',
+      });
+    } catch {
+      await createDocument(supabase, {
+        projectId: folder.project_id,
+        folderId: newFolderId,
+        name: `${docName} (Copy)`,
+        content: full.content ?? '',
+      });
+    }
+  }
+
+  return newFolderId;
 }

@@ -32,7 +32,7 @@ import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
-import { Folder, deleteFolder } from "@/lib/services/folderService";
+import { Folder, deleteFolder, duplicateFolder } from "@/lib/services/folderService";
 import {
   updateDocumentName,
   type DocumentRecord,
@@ -40,6 +40,8 @@ import {
 } from "@/lib/services/documentService";
 import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
+import { notifyDocumentDerivedLibraryCreated } from "@/lib/documents/documentDerivedLibraryEvents";
+import type { DocumentExportSource } from "@/lib/documents/documentExportSource";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
@@ -195,6 +197,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   } = modals;
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [folderAddMenu, setFolderAddMenu] = useState<{ folderId: string; anchor: HTMLElement } | null>(null);
+  const [scriptExportSource, setScriptExportSource] = useState<DocumentExportSource | null>(null);
   const [showImportDocumentModal, setShowImportDocumentModal] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -727,7 +731,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       router,
       userRole,
       onContextMenu: handleContextMenu,
-      openNewLibrary,
+      onFolderAddClick: (folderId, anchor) => setFolderAddMenu({ folderId, anchor }),
       setSelectedFolderId,
       setError,
       setEditingKey,
@@ -936,6 +940,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openMoveDocument,
     openNewDocumentInFolder,
     startInlineRename: (key: string) => setEditingKey(key),
+    openDocumentScriptExport: (source) => setScriptExportSource(source),
     userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
@@ -1067,11 +1072,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     setSelectedFolderId(null);
-    // TODO(Task 2): openImportLibrary currently requires a non-null folderId and
-    // ImportLibraryModal only renders when `importingFolderId` is truthy, so a root-level
-    // import can't fully complete yet. Passing '' as a root sentinel until Task 2 updates
-    // useSidebarModals/ImportLibraryModal to support importing directly under the project.
-    openImportLibrary('');
+    openImportLibrary(null);
   };
 
   const handleCreateDocument = () => {
@@ -1176,7 +1177,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               setEditingKey={setEditingKey}
               onSaveRename={handleSaveRename}
               setSelectedFolderId={setSelectedFolderId}
-              openNewLibrary={openNewLibrary}
+              onFolderAddClick={(folderId, anchor) => setFolderAddMenu({ folderId, anchor })}
               setError={setError}
               onSelect={onSelect}
               onExpand={onExpand}
@@ -1280,7 +1281,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         />
       )}
 
-      {importingFolderId && currentIds.projectId && (
+      {showImportLibraryModal && currentIds.projectId && (
         <ImportLibraryModal
           open={showImportLibraryModal}
           projectId={currentIds.projectId}
@@ -1315,6 +1316,33 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               refetchActiveFoldersLibraries: true,
             });
             expandFolder(importingScriptFolderId);
+            if (currentIds.projectId) {
+              router.push(`/${currentIds.projectId}/${libraryId}`);
+            }
+          }}
+        />
+      )}
+
+      {scriptExportSource && currentIds.projectId && (
+        <ImportScriptModal
+          open={Boolean(scriptExportSource)}
+          projectId={currentIds.projectId}
+          folderId={scriptExportSource.folderId}
+          documentSource={scriptExportSource}
+          onClose={() => setScriptExportSource(null)}
+          onImported={(libraryId) => {
+            notifyDocumentDerivedLibraryCreated({
+              projectId: currentIds.projectId!,
+              documentId: scriptExportSource.documentId,
+              libraryId,
+            });
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: scriptExportSource.folderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            setScriptExportSource(null);
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${libraryId}`);
             }
@@ -1402,6 +1430,124 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           userRole === 'admin' || userRole === 'editor' ? handleImportDocument : undefined
         }
         onImportTable={userRole === 'admin' ? handleImportTable : undefined}
+      />
+
+      <AddLibraryMenu
+        open={Boolean(folderAddMenu)}
+        anchorElement={folderAddMenu?.anchor ?? null}
+        onClose={() => setFolderAddMenu(null)}
+        onCreateTable={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                setSelectedFolderId(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+                openNewLibrary();
+              }
+            : undefined
+        }
+        onCreateDocument={
+          userRole === 'admin' || userRole === 'editor'
+            ? () => {
+                if (!folderAddMenu) return;
+                openNewDocumentInFolder(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+              }
+            : undefined
+        }
+        onImportDocument={
+          userRole === 'admin' || userRole === 'editor'
+            ? () => {
+                if (!folderAddMenu) return;
+                setSelectedFolderId(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+                setShowImportDocumentModal(true);
+              }
+            : undefined
+        }
+        onImportTable={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                const id = folderAddMenu.folderId;
+                setFolderAddMenu(null);
+                openImportLibrary(id);
+              }
+            : undefined
+        }
+        onRename={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                setEditingKey(`folder-${folderAddMenu.folderId}`);
+                setFolderAddMenu(null);
+              }
+            : undefined
+        }
+        onDuplicate={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                const id = folderAddMenu.folderId;
+                setFolderAddMenu(null);
+                void duplicateFolder(supabase, id)
+                  .then(async (newFolderId) => {
+                    await invalidateFolderData(queryClient, {
+                      projectId: currentIds.projectId,
+                      folderId: newFolderId,
+                      refetchActiveFoldersLibraries: true,
+                    });
+                    if (currentIds.projectId) {
+                      await queryClient.invalidateQueries({
+                        queryKey: queryKeys.documents(currentIds.projectId),
+                      });
+                      router.push(`/${currentIds.projectId}/folder/${newFolderId}`);
+                    }
+                  })
+                  .catch((err: unknown) => {
+                    setError(err instanceof Error ? err.message : 'Failed to duplicate folder');
+                  });
+              }
+            : undefined
+        }
+        onDelete={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                const id = folderAddMenu.folderId;
+                setFolderAddMenu(null);
+                setDeleteConfirmState({
+                  open: true,
+                  title: 'Confirm deletion',
+                  content: 'Delete this folder? All libraries and subfolders under it will be removed.',
+                  loading: false,
+                  onConfirm: () => {
+                    const librariesInFolder = libraries.filter((lib) => lib.folder_id === id);
+                    const isViewingLibraryInFolder = librariesInFolder.some(
+                      (lib) => lib.id === currentIds.libraryId
+                    );
+                    return deleteFolder(supabase, id)
+                      .then(async () => {
+                        await invalidateFolderData(queryClient, {
+                          projectId: currentIds.projectId,
+                          folderId: id,
+                          refetchActiveFoldersLibraries: true,
+                        });
+                        if (
+                          (currentIds.folderId === id || isViewingLibraryInFolder) &&
+                          currentIds.projectId
+                        ) {
+                          router.push(`/${currentIds.projectId}`);
+                        }
+                      })
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                      });
+                  },
+                });
+              }
+            : undefined
+        }
       />
 
       {contextMenu && (

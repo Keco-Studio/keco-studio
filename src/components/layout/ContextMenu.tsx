@@ -15,7 +15,9 @@ export type ContextMenuAction =
   | 'collaborators'
   | 'duplicate'
   | 'move-to'
-  | 'delete';
+  | 'delete'
+  | 'generate-conversation'
+  | 'generate-table';
 
 type ContextMenuProps = {
   x: number;
@@ -294,6 +296,31 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'library') {
+      if (isDerivedLibrary) {
+        return (
+          <>
+            {showEditButton && (
+              <button
+                className={styles.menuItem}
+                onClick={() => handleAction('rename')}
+              >
+                Rename
+              </button>
+            )}
+            {showDeleteButton && (
+              <>
+                <div className={styles.separator} />
+                <button
+                  className={`${styles.menuItem} ${styles.deleteItem}`}
+                  onClick={() => handleAction('delete')}
+                >
+                  Delete
+                </button>
+              </>
+            )}
+          </>
+        );
+      }
       // Library: Export (admin/editor), Version history, separator, Library info (admin only), Duplicate, Move to... (admin only), separator, Delete (admin only)
       return (
         <>
@@ -445,9 +472,25 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'document') {
-      // Document: Rename (editor/admin), Move to... (editor/admin), separator, Delete (editor/admin)
+      // Document: Generate (admin), Rename, Move to..., Delete
       return (
         <>
+          {userRole === 'admin' && (
+            <>
+              <button
+                className={styles.menuItem}
+                onClick={() => handleAction('generate-conversation')}
+              >
+                Generate conversation
+              </button>
+              <button
+                className={styles.menuItem}
+                onClick={() => handleAction('generate-table')}
+              >
+                Generate table
+              </button>
+            </>
+          )}
           {showEditButton && (
             <button
               className={styles.menuItem}

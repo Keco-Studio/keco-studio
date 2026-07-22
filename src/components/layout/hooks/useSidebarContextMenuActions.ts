@@ -13,7 +13,7 @@ import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import type { SidebarContextMenuState } from './useSidebarContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
-import { deleteFolder } from '@/lib/services/folderService';
+import { deleteFolder, duplicateFolder } from '@/lib/services/folderService';
 import {
   deleteDocument,
   moveDocument,
@@ -32,6 +32,12 @@ import {
   DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT,
   type DocumentDerivedLibraryCreatedDetail,
 } from '@/lib/documents/documentDerivedLibraryEvents';
+import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
+import {
+  fetchDocumentExportSource,
+  handoffDocumentTableExport,
+} from '@/lib/documents/startDocumentExport';
+import { showErrorToast } from '@/lib/utils/toast';
 
 export async function moveSidebarDocument({
   supabase,
@@ -124,7 +130,7 @@ export type UseSidebarContextMenuActionsParams = {
   openEditLibrary: (id: string) => void;
   openDuplicateLibrary: (id: string) => void;
   openExportLibrary: (id: string) => void;
-  openImportLibrary: (folderId: string) => void;
+  openImportLibrary: (folderId: string | null) => void;
   openImportScript: (folderId: string) => void;
   openEditFolder: (id: string) => void;
   openEditAsset: (id: string) => void;
@@ -146,6 +152,7 @@ export type UseSidebarContextMenuActionsParams = {
   openMoveDocument: (documentId: string) => void;
   openNewDocumentInFolder: (folderId: string) => void;
   startInlineRename: (key: string) => void;
+  openDocumentScriptExport: (source: DocumentExportSource) => void;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   requestDeleteConfirm: (options: {
     title: string;
@@ -182,6 +189,7 @@ export function useSidebarContextMenuActions({
   openMoveDocument,
   openNewDocumentInFolder,
   startInlineRename,
+  openDocumentScriptExport,
   userRole,
   requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
@@ -211,11 +219,11 @@ export function useSidebarContextMenuActions({
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'library') {
-          openEditLibrary(contextMenu.id);
+          startInlineRename(`library-${contextMenu.id}`);
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'folder') {
-          openEditFolder(contextMenu.id);
+          startInlineRename(`folder-${contextMenu.id}`);
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'asset') {
@@ -236,7 +244,32 @@ export function useSidebarContextMenuActions({
           closeContextMenu();
           return;
         }
-        // Project, Folder, Asset duplication not implemented yet
+        if (contextMenu.type === 'folder') {
+          if (userRole !== 'admin') {
+            closeContextMenu();
+            return;
+          }
+          const sourceFolderId = contextMenu.id;
+          closeContextMenu();
+          void duplicateFolder(supabase, sourceFolderId)
+            .then(async (newFolderId) => {
+              await invalidateFolderData(queryClient, {
+                projectId: currentIds.projectId,
+                folderId: newFolderId,
+                refetchActiveFoldersLibraries: true,
+              });
+              if (currentIds.projectId) {
+                await queryClient.invalidateQueries({
+                  queryKey: queryKeys.documents(currentIds.projectId),
+                });
+                router.push(`/${currentIds.projectId}/folder/${newFolderId}`);
+              }
+            })
+            .catch((err: unknown) => {
+              setError(err instanceof Error ? err.message : 'Failed to duplicate folder');
+            });
+          return;
+        }
         closeContextMenu();
         return;
       }
@@ -299,6 +332,56 @@ export function useSidebarContextMenuActions({
           return;
         }
         closeContextMenu();
+        return;
+      }
+
+
+      if (action === 'generate-table' && contextMenu.type === 'document') {
+        if (userRole !== 'admin' || !currentIds.projectId) {
+          closeContextMenu();
+          return;
+        }
+        const documentId = contextMenu.id;
+        const projectId = currentIds.projectId;
+        closeContextMenu();
+        void (async () => {
+          try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !session?.access_token) {
+              throw new Error('Please sign in before exporting');
+            }
+            const source = await fetchDocumentExportSource(documentId, session.access_token);
+            handoffDocumentTableExport(projectId, source);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to generate table';
+            setError(msg);
+            showErrorToast(msg);
+          }
+        })();
+        return;
+      }
+
+      if (action === 'generate-conversation' && contextMenu.type === 'document') {
+        if (userRole !== 'admin') {
+          closeContextMenu();
+          return;
+        }
+        const documentId = contextMenu.id;
+        closeContextMenu();
+        void (async () => {
+          try {
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !session?.access_token) {
+              throw new Error('Please sign in before exporting');
+            }
+            const source = await fetchDocumentExportSource(documentId, session.access_token);
+            openDocumentScriptExport(source);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to generate conversation';
+            setError(msg);
+            showErrorToast(msg);
+          }
+        })();
         return;
       }
 
@@ -487,6 +570,7 @@ export function useSidebarContextMenuActions({
       openMoveDocument,
       openNewDocumentInFolder,
       startInlineRename,
+      openDocumentScriptExport,
       userRole,
       requestDeleteConfirm,
     ]

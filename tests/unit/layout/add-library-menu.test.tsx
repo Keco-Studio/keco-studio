@@ -28,4 +28,25 @@ describe('AddLibraryMenu', () => {
     expect(html).not.toContain('Create new library');
     expect(html).not.toContain('Generate tables from document');
   });
+
+  it('renders folder destructive actions when provided', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AddLibraryMenu, {
+        open: true,
+        anchorElement: null,
+        onClose: () => {},
+        onCreateTable: () => {},
+        onCreateDocument: () => {},
+        onImportDocument: () => {},
+        onImportTable: () => {},
+        onDelete: () => {},
+        onRename: () => {},
+        onDuplicate: () => {},
+      })
+    );
+    expect(html).toContain('Delete');
+    expect(html).toContain('Rename');
+    expect(html).toContain('Duplicate');
+    expect(html).not.toContain('Create new folder');
+  });
 });

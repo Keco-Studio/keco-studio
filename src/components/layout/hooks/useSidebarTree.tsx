@@ -26,7 +26,7 @@ export type UseSidebarTreeContext = {
   router: { push: (path: string) => void };
   userRole: 'admin' | 'editor' | 'viewer' | null;
   onContextMenu: (e: MouseEvent, type: 'project' | 'library' | 'folder' | 'asset' | 'document', id: string) => void;
-  openNewLibrary: () => void;
+  onFolderAddClick: (folderId: string, anchor: HTMLElement) => void;
   setSelectedFolderId: (id: string | null) => void;
   setError: (msg: string | null) => void;
   setEditingKey: (key: string | null) => void;
@@ -48,7 +48,7 @@ export function useSidebarTree(
     router,
     userRole,
     onContextMenu: handleContextMenu,
-    openNewLibrary,
+    onFolderAddClick,
     setSelectedFolderId,
     setError,
     setEditingKey,
@@ -217,20 +217,19 @@ export function useSidebarTree(
               </span>
             </div>
             <div className={styles.itemActions}>
-              {userRole === 'admin' && (
+              {(userRole === 'admin' || userRole === 'editor') && (
                 <button
                   type="button"
                   className={styles.folderAddLibButton}
-                  aria-label="Create new library"
-                  title="Create new library"
+                  aria-label="Folder actions"
+                  title="Folder actions"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!currentIds.projectId) {
                       setError('Please select a project first');
                       return;
                     }
-                    setSelectedFolderId(folder.id);
-                    openNewLibrary();
+                    onFolderAddClick(folder.id, e.currentTarget);
                   }}
                 >
                   <Image src={FolderAddLibIcon} alt="" width={24} height={24} className="icon-24" />
@@ -270,7 +269,7 @@ export function useSidebarTree(
     handleContextMenu,
     router,
     userRole,
-    openNewLibrary,
+    onFolderAddClick,
     setSelectedFolderId,
     setError,
     setEditingKey,

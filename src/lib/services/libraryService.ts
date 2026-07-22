@@ -620,7 +620,8 @@ export async function duplicateLibrary(
   supabase: SupabaseClient,
   libraryId: string,
   newName: string,
-  copyHeaderOnly: boolean
+  copyHeaderOnly: boolean,
+  targetFolderId?: string | null
 ): Promise<string> {
   // 1. Get original library
   const originalLib = await getLibrary(supabase, libraryId);
@@ -632,12 +633,15 @@ export async function duplicateLibrary(
     throw new Error('Only admin and editor users can duplicate libraries');
   }
 
+  const folderId =
+    targetFolderId !== undefined ? targetFolderId : originalLib.folder_id;
+
   // 2. Create new library
   const { data: newLib, error: newLibError } = await supabase
     .from('libraries')
     .insert({
       project_id: originalLib.project_id,
-      folder_id: originalLib.folder_id,
+      folder_id: folderId,
       name: newName,
       description: originalLib.description,
     })

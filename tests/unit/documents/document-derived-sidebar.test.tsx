@@ -65,7 +65,7 @@ describe('document-derived sidebar tree', () => {
           { id: newer, project_id: projectId, folder_id: null, name: 'Script', description: null, created_at: '2026-01-02', updated_at: '2026-01-02', updated_by: null, source_document_id: documentId, document_export_type: 'script' },
         ],
         [{ id: documentId, project_id: projectId, folder_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' }],
-        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), openNewLibrary: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
       ).treeData;
       return null;
     }
@@ -80,7 +80,7 @@ describe('document-derived sidebar tree', () => {
       emptyTree = useSidebarTree(
         { projectId, libraryId: null, folderId: null, assetId: null, documentId: null, isLibraryPage: false, isPredefinePage: false },
         [], [], [{ id: documentId, project_id: projectId, folder_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' }],
-        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), openNewLibrary: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
       ).treeData;
       return null;
     }
@@ -239,8 +239,11 @@ describe('document-derived sidebar tree', () => {
           onClose: jest.fn(),
         })
       );
-      expect(markup).toContain('Library info');
+      expect(markup).toContain('Rename');
       expect(markup).toContain('Delete');
+      expect(markup).not.toContain('Library info');
+      expect(markup).not.toContain('Export');
+      expect(markup).not.toContain('Duplicate');
       expect(markup).not.toContain('Move to...');
     } finally {
       if (originalDocument === undefined) {
@@ -279,7 +282,7 @@ describe('document-derived sidebar tree', () => {
           { id: 'table2', project_id: 'project', folder_id: null, name: 'Table 2', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'table' },
         ],
         setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(), openMoveLibrary,
-        openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), userRole: 'admin', requestDeleteConfirm,
+        openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), openDocumentScriptExport: jest.fn(), userRole: 'admin', requestDeleteConfirm,
       }).handleContextMenuAction;
       return null;
     }
@@ -300,7 +303,7 @@ describe('document-derived sidebar tree', () => {
           { id: 'script', project_id: 'project', folder_id: null, name: 'Script', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'script' },
           { id: 'table2', project_id: 'project', folder_id: null, name: 'Table 2', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'table' },
         ],
-        setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(), openMoveLibrary: jest.fn(), openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), userRole: 'admin', requestDeleteConfirm,
+        setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(), openMoveLibrary: jest.fn(), openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), openDocumentScriptExport: jest.fn(), userRole: 'admin', requestDeleteConfirm,
       }).handleContextMenuAction;
       return null;
     }

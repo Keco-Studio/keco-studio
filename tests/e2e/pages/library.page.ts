@@ -91,9 +91,8 @@ export class LibraryPage {
     // Action buttons
     this.createFolderButton = page.getByRole('button', { name: /create folder/i });
 
-    // Sidebar "Create new library" button (on folder row in tree)
-    // Button has aria-label="Create new library", no text content (icon only). Only visible for admin.
-    this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /create new library/i }).first();
+    // Sidebar folder "+" opens Folder actions menu (icon only).
+    this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /folder actions/i }).first();
 
     // Folder pages expose the action either in the toolbar or in the empty state.
     this.folderPageCreateLibraryButton = page
