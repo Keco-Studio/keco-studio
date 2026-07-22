@@ -17,6 +17,8 @@ describe('OAuth authorization resource migration', () => {
     expect(sql).toMatch(/oa\.status\s*=\s*'pending'/i);
     expect(sql).toMatch(/oa\.expires_at\s*>\s*now\(\)/i);
     expect(sql).toMatch(/REVOKE ALL[\s\S]*FROM PUBLIC/i);
+    expect(sql).toMatch(/REVOKE ALL[\s\S]*FROM anon/i);
+    expect(sql).toMatch(/REVOKE ALL[\s\S]*FROM service_role/i);
     expect(sql).toMatch(/GRANT EXECUTE[\s\S]*TO authenticated/i);
   });
 });

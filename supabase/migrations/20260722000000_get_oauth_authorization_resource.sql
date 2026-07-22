@@ -19,4 +19,6 @@ AS $$
 $$;
 
 REVOKE ALL ON FUNCTION public.get_oauth_authorization_resource(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_oauth_authorization_resource(TEXT) FROM anon;
+REVOKE ALL ON FUNCTION public.get_oauth_authorization_resource(TEXT) FROM service_role;
 GRANT EXECUTE ON FUNCTION public.get_oauth_authorization_resource(TEXT) TO authenticated;
