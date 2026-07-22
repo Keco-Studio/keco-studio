@@ -1070,6 +1070,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           detail: {
             projectId: currentProjectId,
             libraryId: currentLibraryId,
+            // Explicit desired state avoids ambiguous toggle races with retries.
+            open: !libraryVersionControlOpen,
           },
         })
       );

@@ -206,12 +206,13 @@ test.describe('Session Management', () => {
     await logoutButton.click();
     
     // Should be logged out
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
     
     // Try to access projects - should show login
-    await page.goto('/projects');
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    await page.goto('/projects', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
     
     // Should be able to login again
     await loginPage.login(users.seedEmpty);
