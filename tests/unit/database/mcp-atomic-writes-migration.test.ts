@@ -14,7 +14,9 @@ describe('MCP atomic write migration', () => {
 
   it('serializes allocation and rejects unsupported fields', () => {
     expect(sql).toMatch(/pg_advisory_xact_lock\(hashtextextended\(p_table_id::text/i);
-    expect(sql).toMatch(/'formula','image','file','multimedia','audio','media'/i);
+    expect(sql).toMatch(
+      /v_type not in \([\s\S]*'string'[\s\S]*'reference'[\s\S]*\)/i
+    );
     expect(sql).toMatch(/Unknown or ambiguous field label/i);
   });
 

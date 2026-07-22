@@ -328,6 +328,14 @@ begin
     raise exception 'Field labels must be unique' using errcode = '22023';
   end if;
   perform pg_advisory_xact_lock(hashtextextended(p_project_id::text || ':' || coalesce(p_folder_id::text, ''), 0));
+  if exists (
+    select 1 from public.libraries l
+    where l.project_id = p_project_id
+      and l.folder_id is not distinct from p_folder_id
+      and lower(btrim(l.name)) = lower(v_name)
+  ) then
+    raise exception 'Table name already exists' using errcode = '23505';
+  end if;
   insert into public.libraries(id, project_id, folder_id, name, description, created_at, updated_at, updated_by)
   values(p_table_id, p_project_id, p_folder_id, v_name, nullif(btrim(p_description), ''), v_now, v_now, v_actor);
   for v_item in select value from jsonb_array_elements(p_fields) loop
@@ -336,12 +344,27 @@ begin
     v_type := v_item->>'dataType'; v_label := btrim(v_item->>'label');
     v_section := coalesce(nullif(btrim(v_item->>'section'), ''), 'section1');
     v_section_id := coalesce(nullif(v_item->>'sectionId', ''), md5(p_table_id::text || ':' || v_section));
-    if v_type is null or v_type in ('formula','image','file','multimedia','audio','media')
+    if v_type is null or v_type not in (
+      'string','string_array','int','int_array','float','float_array',
+      'boolean','enum','date','reference'
+    )
       or length(v_label) not between 1 and 200 then
       raise exception 'Unsupported field definition' using errcode = '22023';
     end if;
     if v_type = 'enum' and (jsonb_typeof(v_item->'enumOptions') <> 'array' or jsonb_array_length(v_item->'enumOptions') = 0) then
       raise exception 'Enum options are required' using errcode = '22023'; end if;
+    if v_type = 'reference' and (
+      jsonb_typeof(v_item->'referenceTableIds') <> 'array'
+      or jsonb_array_length(v_item->'referenceTableIds') = 0
+      or exists (
+        select 1 from jsonb_array_elements_text(v_item->'referenceTableIds') target(id)
+        left join public.libraries referenced on referenced.id = target.id::uuid
+          and referenced.project_id = p_project_id
+        where referenced.id is null
+      )
+    ) then
+      raise exception 'Reference table is outside project' using errcode = '23503';
+    end if;
     insert into public.library_field_definitions(
       id, library_id, section, section_id, label, data_type, enum_options,
       reference_libraries, required, description, order_index

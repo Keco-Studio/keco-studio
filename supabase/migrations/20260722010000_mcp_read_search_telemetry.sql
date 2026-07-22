@@ -285,7 +285,8 @@ create or replace function public.mcp_vector_search(
   p_project_id uuid,
   p_query_embedding vector(1536),
   p_limit integer default 10,
-  p_min_score double precision default 0.2
+  p_min_score double precision default 0.2,
+  p_source text default 'all'
 )
 returns table (
   source_type text,
@@ -304,7 +305,8 @@ begin
   if public.mcp_current_project_role(p_project_id) is null then
     raise exception 'Project access revoked' using errcode = '42501';
   end if;
-  if p_limit not between 1 and 30 or p_min_score < 0 or p_min_score > 1 then
+  if p_limit not between 1 and 30 or p_min_score < 0 or p_min_score > 1
+    or p_source not in ('all', 'tables', 'documents') then
     raise exception 'Invalid search options' using errcode = '22023';
   end if;
   return query
@@ -314,6 +316,9 @@ begin
   where c.project_id = p_project_id
     and c.source_type in ('library_cell', 'library_row', 'library_schema',
       'design_document', 'project_document')
+    and (p_source = 'all'
+      or p_source = 'tables' and c.source_type like 'library_%'
+      or p_source = 'documents' and c.source_type in ('design_document', 'project_document'))
     and (1 - (c.embedding <=> p_query_embedding)) >= p_min_score
   order by c.embedding <=> p_query_embedding, c.id
   limit p_limit;
@@ -323,7 +328,8 @@ $$;
 create or replace function public.mcp_text_search(
   p_project_id uuid,
   p_query text,
-  p_limit integer default 10
+  p_limit integer default 10,
+  p_source text default 'all'
 )
 returns table (
   source_type text,
@@ -344,7 +350,8 @@ begin
   if public.mcp_current_project_role(p_project_id) is null then
     raise exception 'Project access revoked' using errcode = '42501';
   end if;
-  if v_query = '' or length(v_query) > 500 or p_limit not between 1 and 30 then
+  if v_query = '' or length(v_query) > 1000 or p_limit not between 1 and 30
+    or p_source not in ('all', 'tables', 'documents') then
     raise exception 'Invalid search options' using errcode = '22023';
   end if;
   return query
@@ -386,7 +393,11 @@ begin
        or position(lower(v_query) in lower(coalesce(c.title, '') || ' ' || coalesce(c.body, ''))) > 0
   )
   select r.source_type, r.source_id, r.title, left(r.body, 500), r.score, r.updated_at
-  from ranked r order by r.score desc, r.updated_at desc, r.source_id
+  from ranked r
+  where p_source = 'all'
+    or p_source = 'tables' and r.source_type like 'library_%'
+    or p_source = 'documents' and r.source_type = 'project_document'
+  order by r.score desc, r.updated_at desc, r.source_id
   limit p_limit;
 end;
 $$;
@@ -427,9 +438,9 @@ revoke all on function public.mcp_begin_operation(uuid, text, text, uuid, text, 
 revoke all on function public.mcp_complete_operation(uuid, text, text, integer, integer, integer, integer, integer, jsonb)
   from public, anon;
 revoke all on function public.mcp_read_project_structure(uuid) from public, anon;
-revoke all on function public.mcp_vector_search(uuid, vector, integer, double precision)
+revoke all on function public.mcp_vector_search(uuid, vector, integer, double precision, text)
   from public, anon;
-revoke all on function public.mcp_text_search(uuid, text, integer) from public, anon;
+revoke all on function public.mcp_text_search(uuid, text, integer, text) from public, anon;
 revoke all on function public.mcp_cleanup_telemetry() from public, anon, authenticated;
 
 grant execute on function public.mcp_begin_operation(uuid, text, text, uuid, text, integer)
@@ -437,7 +448,7 @@ grant execute on function public.mcp_begin_operation(uuid, text, text, uuid, tex
 grant execute on function public.mcp_complete_operation(uuid, text, text, integer, integer, integer, integer, integer, jsonb)
   to authenticated;
 grant execute on function public.mcp_read_project_structure(uuid) to authenticated;
-grant execute on function public.mcp_vector_search(uuid, vector, integer, double precision)
+grant execute on function public.mcp_vector_search(uuid, vector, integer, double precision, text)
   to authenticated;
-grant execute on function public.mcp_text_search(uuid, text, integer) to authenticated;
+grant execute on function public.mcp_text_search(uuid, text, integer, text) to authenticated;
 grant execute on function public.mcp_cleanup_telemetry() to service_role;

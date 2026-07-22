@@ -32,13 +32,21 @@ function authorizedRequest(): Request {
 }
 
 const testContext = {
-  requestId: "request-1",
+  requestId: "00000000-0000-4000-8000-000000000001",
   userId: "user-1",
   projectId,
   role: "editor",
   clientId: null,
   bearerToken: "valid",
-  supabase: {},
+  supabase: {
+    rpc(name: string) {
+      if (name === "mcp_begin_operation") return Promise.resolve({ data: [{
+        operation_id: "00000000-0000-4000-8000-000000000002", remaining: 239,
+        reset_at: new Date(Date.now() + 60_000).toISOString(),
+      }], error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
+  },
 } as unknown as McpRequestContext;
 
 const withContext = {

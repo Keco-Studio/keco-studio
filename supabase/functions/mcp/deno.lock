@@ -3,8 +3,9 @@
   "specifiers": {
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/internal@^1.0.10": "1.0.14",
-    "npm:@modelcontextprotocol/sdk@1.29.0": "1.29.0_zod@4.4.3",
-    "npm:@supabase/supabase-js@2.87.1": "2.87.1"
+    "npm:@modelcontextprotocol/sdk@1.29.0": "1.29.0_zod@4.1.13",
+    "npm:@supabase/supabase-js@2.87.1": "2.87.1",
+    "npm:zod@4.1.13": "4.1.13"
   },
   "jsr": {
     "@std/assert@1.0.14": {
@@ -25,7 +26,7 @@
       ],
       "tarball": "https://registry.npmmirror.com/@hono/node-server/-/node-server-1.19.14.tgz"
     },
-    "@modelcontextprotocol/sdk@1.29.0_zod@4.4.3": {
+    "@modelcontextprotocol/sdk@1.29.0_zod@4.1.13": {
       "integrity": "sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==",
       "dependencies": [
         "@hono/node-server",
@@ -699,23 +700,24 @@
       "integrity": "sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==",
       "tarball": "https://registry.npmmirror.com/ws/-/ws-8.21.1.tgz"
     },
-    "zod-to-json-schema@3.25.2_zod@4.4.3": {
+    "zod-to-json-schema@3.25.2_zod@4.1.13": {
       "integrity": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==",
       "dependencies": [
         "zod"
       ],
       "tarball": "https://registry.npmmirror.com/zod-to-json-schema/-/zod-to-json-schema-3.25.2.tgz"
     },
-    "zod@4.4.3": {
-      "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
-      "tarball": "https://registry.npmmirror.com/zod/-/zod-4.4.3.tgz"
+    "zod@4.1.13": {
+      "integrity": "sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==",
+      "tarball": "https://registry.npmmirror.com/zod/-/zod-4.1.13.tgz"
     }
   },
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1.0.14",
       "npm:@modelcontextprotocol/sdk@1.29.0",
-      "npm:@supabase/supabase-js@2.87.1"
+      "npm:@supabase/supabase-js@2.87.1",
+      "npm:zod@4.1.13"
     ]
   }
 }
