@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject } from '@/lib/services/projectService';
+import { getOAuthAuthorizationResource } from '@/lib/mcp/oauthAuthorizationResource';
 import { projectIdFromOAuthResource } from '@/lib/mcp/oauthProjectBinding';
 import styles from './OAuthConsent.module.css';
 
-type BoundDetails = OAuthAuthorizationDetails & { resource?: string };
+type BoundDetails = OAuthAuthorizationDetails & { resource: string };
 type LoadedRequest = {
   authorizationId: string;
   details: BoundDetails;
@@ -93,7 +94,7 @@ export function OAuthConsentClient() {
         return;
       }
 
-      const next = result.data as BoundDetails;
+      const next = result.data as OAuthAuthorizationDetails;
       if (next.authorization_id !== authorizationId) {
         setState({
           ...emptyConsentState(authorizationId),
@@ -101,7 +102,14 @@ export function OAuthConsentClient() {
         });
         return;
       }
-      const boundProjectId = projectIdFromOAuthResource(next.resource);
+      let resource: string | null;
+      try {
+        resource = await getOAuthAuthorizationResource(supabase, authorizationId);
+      } catch {
+        resource = null;
+      }
+      if (!active) return;
+      const boundProjectId = projectIdFromOAuthResource(resource);
       if (!boundProjectId) {
         setState({
           ...emptyConsentState(authorizationId),
@@ -116,7 +124,7 @@ export function OAuthConsentClient() {
         });
         return;
       }
-      const request = { authorizationId, details: next };
+      const request: LoadedRequest = { authorizationId, details: { ...next, resource } };
       setState({ ...emptyConsentState(authorizationId), request });
 
       try {
@@ -163,8 +171,10 @@ export function OAuthConsentClient() {
       let latestResult: Awaited<ReturnType<
         typeof supabase.auth.oauth.getAuthorizationDetails
       >>;
+      let latestResource: string | null;
       try {
         latestResult = await supabase.auth.oauth.getAuthorizationDetails(decisionAuthorizationId);
+        latestResource = await getOAuthAuthorizationResource(supabase, decisionAuthorizationId);
       } catch {
         if (authorizationIdRef.current !== decisionAuthorizationId) return;
         setState({
@@ -176,13 +186,13 @@ export function OAuthConsentClient() {
       }
       if (authorizationIdRef.current !== decisionAuthorizationId) return;
 
-      const latestDetails = latestResult.data as BoundDetails | null;
-      const latestProjectId = projectIdFromOAuthResource(latestDetails?.resource);
+      const latestDetails = latestResult.data as OAuthAuthorizationDetails | null;
+      const latestProjectId = projectIdFromOAuthResource(latestResource);
       if (
         latestResult.error
         || !latestDetails
         || latestDetails.authorization_id !== decisionAuthorizationId
-        || latestDetails.resource !== binding.details.resource
+        || latestResource !== binding.details.resource
         || latestProjectId !== binding.projectId
         || Boolean(latestDetails.redirect_url)
       ) {
