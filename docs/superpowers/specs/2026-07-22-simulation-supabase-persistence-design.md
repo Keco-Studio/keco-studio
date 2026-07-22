@@ -156,10 +156,12 @@ revision to the reset RPC without treating invalid state as usable domain data.
 Read and authorization errors that did not return a row do not expose a
 revision.
 
-Keep the Zod schemas and explicit state migrations in the storage module. Save
-validates before sending data. Load validates `state_version`, parses the JSONB
-snapshot, runs any supported client migration, validates all domain references,
-and deep-freezes the accepted state before returning it.
+Keep the v1 Zod schemas in the storage module. Save validates before sending
+data. Load validates `state_version`, parses the JSONB snapshot, validates all
+domain references, and deep-freezes the accepted state before returning it. The
+first cloud schema accepts version 1 only: the browser-storage v0 migration is
+removed because legacy local data is explicitly not migrated. Any future cloud
+schema migration must be introduced as an explicit database/application rollout.
 
 `SimulationSessionProvider` obtains the existing browser Supabase client from
 `useSupabase()` and constructs the repository from that client. It removes all
@@ -274,6 +276,7 @@ only.
 
 - Load an absent row as fresh state at revision `0`.
 - Validate and deep-freeze a valid cloud snapshot.
+- Reject legacy browser-storage v0 state rather than migrating it.
 - Reject malformed, unsupported-version, invalid-reference, and wrong-project
   snapshots.
 - Create at expected revision `0`, update at the current revision, and return the
