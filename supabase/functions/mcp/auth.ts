@@ -17,7 +17,13 @@ export type ProjectAuthorization =
 export interface AuthGateway {
   getUser(
     token: string,
-  ): Promise<{ id: string; clientId?: string | null } | null>;
+  ): Promise<
+    {
+      id: string;
+      clientId?: string | null;
+      resourceOrigin?: string | null;
+    } | null
+  >;
   hasOAuthProjectGrant(
     clientId: string,
     projectId: string,
@@ -50,6 +56,7 @@ const MCP_PATH = /^(?:\/functions\/v1)?\/mcp\/([^/]+)$/;
 export function canonicalProjectResource(
   requestUrl: string,
   projectId: string,
+  resourceOrigin?: string | null,
 ): string | null {
   try {
     const url = new URL(requestUrl);
@@ -64,27 +71,50 @@ export function canonicalProjectResource(
     ) {
       return null;
     }
-    return `${url.origin}/functions/v1/mcp/${projectId}`;
+    const origin = new URL(resourceOrigin ?? url.origin);
+    if (
+      (origin.protocol !== "https:" && origin.protocol !== "http:") ||
+      origin.username ||
+      origin.password ||
+      origin.pathname !== "/" ||
+      origin.search ||
+      origin.hash
+    ) {
+      return null;
+    }
+    return `${origin.origin}/functions/v1/mcp/${projectId}`;
   } catch {
     return null;
   }
 }
 
-function verifiedClientId(token: string): string | null {
+function verifiedOAuthClaims(token: string): {
+  clientId: string | null;
+  resourceOrigin: string | null;
+} {
   const payload = token.split(".")[1];
-  if (!payload) return null;
+  if (!payload) return { clientId: null, resourceOrigin: null };
   try {
     const padding = "=".repeat((4 - payload.length % 4) % 4);
     const decoded = JSON.parse(atob(
       payload.replaceAll("-", "+").replaceAll("_", "/") + padding,
     ));
     const candidate = decoded?.client_id;
-    return typeof candidate === "string" && candidate.length >= 1 &&
+    const clientId = typeof candidate === "string" && candidate.length >= 1 &&
         candidate.length <= 256
       ? candidate
       : null;
+    const issuer = new URL(decoded?.iss);
+    const resourceOrigin =
+      (issuer.protocol === "https:" || issuer.protocol === "http:") &&
+        !issuer.username && !issuer.password && !issuer.search &&
+        !issuer.hash &&
+        (issuer.pathname === "/auth/v1" || issuer.pathname === "/auth/v1/")
+        ? issuer.origin
+        : null;
+    return { clientId, resourceOrigin };
   } catch {
-    return null;
+    return { clientId: null, resourceOrigin: null };
   }
 }
 
@@ -114,7 +144,11 @@ export async function authorizeProjectWithGateway(
     if (!user) return { status: "unauthenticated" };
     const clientId = user.clientId ?? null;
     if (!clientId) return { status: "forbidden" };
-    const resource = canonicalProjectResource(request.url, projectId);
+    const resource = canonicalProjectResource(
+      request.url,
+      projectId,
+      user.resourceOrigin,
+    );
     if (!resource) return { status: "forbidden" };
     const hasGrant = await gateway.hasOAuthProjectGrant(
       clientId,
@@ -160,8 +194,13 @@ function supabaseGateway(): AuthGateway {
         if (isInvalidCredentialError(error)) return null;
         throw new Error("Supabase user lookup failed.");
       }
+      const claims = verifiedOAuthClaims(token);
       return data.user
-        ? { id: data.user.id, clientId: verifiedClientId(token) }
+        ? {
+          id: data.user.id,
+          clientId: claims.clientId,
+          resourceOrigin: claims.resourceOrigin,
+        }
         : null;
     },
     async hasOAuthProjectGrant(clientId, projectId, resource, token) {
