@@ -76,12 +76,16 @@ async function exchangeAuthorization(
   if (!authorizationId) throw new Error('OAuth authorization ID is missing');
 
   const details = await userClient.auth.oauth.getAuthorizationDetails(authorizationId);
-  if (details.error || details.data?.authorization_id !== authorizationId) {
-    throw new Error('OAuth authorization association failed');
-  }
-  let redirectUrl = typeof details.data.redirect_url === 'string'
+  const autoApprovedRedirect = typeof details.data?.redirect_url === 'string'
     ? details.data.redirect_url
     : null;
+  if (
+    details.error ||
+    (!autoApprovedRedirect && details.data?.authorization_id !== authorizationId)
+  ) {
+    throw new Error('OAuth authorization association failed');
+  }
+  let redirectUrl = autoApprovedRedirect;
   if (!redirectUrl) {
     const approval = await userClient.auth.oauth.approveAuthorization(authorizationId, {
       skipBrowserRedirect: true,
