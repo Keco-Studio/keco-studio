@@ -13,17 +13,11 @@ it('uses the supported Supabase OAuth consent APIs', () => {
   expect(source).toContain('denyAuthorization');
 });
 
-it('prepares the exact project grant immediately before approval', () => {
-  expect(source).toContain("from '@/lib/mcp/oauthProjectGrant'");
-  expect(source).toContain('prepareOAuthProjectGrant(');
-  expect(source).toContain('finalizeOAuthProjectGrant(');
-  expect(source.indexOf('prepareOAuthProjectGrant(')).toBeLessThan(
-    source.indexOf('approveAuthorization(decisionAuthorizationId')
-  );
-  expect(source.indexOf('approveAuthorization(decisionAuthorizationId')).toBeLessThan(
-    source.indexOf('finalizeOAuthProjectGrant(')
-  );
-  expect(source).toContain('Authorization grant could not be prepared.');
+it('completes an auto-approved authorization without any project grant', () => {
+  expect(source).not.toContain("from '@/lib/mcp/oauthProjectGrant'");
+  expect(source).not.toContain('prepareOAuthProjectGrant(');
+  expect(source).not.toContain('finalizeOAuthProjectGrant(');
+  expect(source).toContain('window.location.assign(next.redirect_url)');
 });
 
 it('loads the project binding independently from public authorization details', () => {
