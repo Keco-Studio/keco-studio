@@ -1,10 +1,32 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { runCapabilitiesProbe } from '../../../scripts/probe-mcp-capabilities';
+import { capabilitiesProbeOptions, runCapabilitiesProbe } from '../../../scripts/probe-mcp-capabilities';
 
 const accountEndpoint = 'https://example.supabase.co/functions/v1/mcp';
 const legacyEndpoint = 'https://example.supabase.co/functions/v1/mcp/11111111-1111-4111-8111-111111111111';
 const readTools = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document', 'semantic_search'];
 const writeTools = ['create_document', 'create_table', 'create_table_row', 'update_document', 'update_table_row'];
+
+it('keeps the documented minimal CLI invocation out of the optional viewer branch', () => {
+  expect(capabilitiesProbeOptions(
+    ['--mcp-url', accountEndpoint, '--output', '/tmp/evidence.json'],
+    { MCP_ACCESS_TOKEN: 'account-token' },
+  )).toEqual(expect.objectContaining({
+    accessToken: 'account-token',
+    viewerAccessToken: undefined,
+    viewerProjectId: undefined,
+  }));
+});
+
+it('uses the account token for viewer denial only when a viewer project is explicit', () => {
+  expect(capabilitiesProbeOptions(
+    ['--mcp-url', accountEndpoint, '--output', '/tmp/evidence.json',
+      '--viewer-project-id', '11111111-1111-4111-8111-111111111111'],
+    { MCP_ACCESS_TOKEN: 'account-token' },
+  )).toEqual(expect.objectContaining({
+    viewerAccessToken: 'account-token',
+    viewerProjectId: '11111111-1111-4111-8111-111111111111',
+  }));
+});
 
 function rpcResult(id: number, result: Record<string, unknown>) {
   return Response.json({ jsonrpc: '2.0', id, result });

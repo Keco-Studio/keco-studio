@@ -20,7 +20,6 @@ function successfulResponses(): Response[] {
     jsonResponse({ resource: mcpUrl, authorization_servers: [issuer] }),
     jsonResponse({ issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, registration_endpoint: `${issuer}/register` }),
     jsonResponse({ client_id: 'probe-client', client_secret: 'never-record-this' }, 201),
-    new Response('', { status: 200 }),
   ];
 }
 
@@ -53,17 +52,15 @@ describe('OAuth probe helpers', () => {
 });
 
 describe('OAuth account discovery probe', () => {
-  it('records root discovery, DCR, and authorization without client credentials or endpoints', async () => {
+  it('records root discovery and DCR without claiming interactive authorization', async () => {
     const responses = successfulResponses();
     const fetchMock = jest.fn(async () => responses.shift()!);
     const evidence = await runProbe(mcpUrl, 'http://127.0.0.1/oauth/callback', { fetchImpl: fetchMock as typeof fetch });
 
-    expect(fetchMock).toHaveBeenCalledTimes(5);
-    const authorizationUrl = String(fetchMock.mock.calls[4][0]);
-    expect(authorizationUrl).toContain(`resource=${encodeURIComponent(mcpUrl)}`);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(evidence).toEqual(expect.objectContaining({ passed: true, mode: 'account',
       discovery: { protectedResource: 'succeeded', authorizationServerCount: 1 },
-      oauth: { dynamicRegistration: 'succeeded', authorization: 'succeeded', codeExchange: 'not_exercised' },
+      oauth: { dynamicRegistration: 'succeeded', authorization: 'not_exercised', codeExchange: 'not_exercised' },
     }));
     expect(JSON.stringify(evidence)).not.toContain('probe-client');
     expect(JSON.stringify(evidence)).not.toContain('never-record-this');
@@ -72,24 +69,34 @@ describe('OAuth account discovery probe', () => {
 
   it('binds the code exchange to this run\'s DCR client and PKCE verifier', async () => {
     const responses = [...successfulResponses(), jsonResponse({ access_token: 'must-not-appear' })];
-    responses[4] = new Response('', { status: 302, headers: {
-      location: 'http://127.0.0.1/oauth/callback?code=authorization-code-secret',
-    } });
+    const authorize = jest.fn(async (authorizationUrl: string, redirectUri: string, state: string) => {
+      const request = new URL(authorizationUrl);
+      expect(request.searchParams.get('resource')).toBe(mcpUrl);
+      expect(request.searchParams.get('redirect_uri')).toBe(redirectUri);
+      expect(request.searchParams.get('state')).toBe(state);
+      expect(request.searchParams.get('code_challenge')).toBeTruthy();
+      return 'authorization-code-secret';
+    });
     const evidence = await runProbe(mcpUrl, 'http://127.0.0.1/oauth/callback', {
       fetchImpl: jest.fn(async () => responses.shift()!) as typeof fetch,
       exerciseCodeExchange: true,
+      authorize,
     });
-    expect(evidence).toEqual(expect.objectContaining({ oauth: expect.objectContaining({ codeExchange: 'succeeded' }) }));
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(evidence).toEqual(expect.objectContaining({ oauth: {
+      dynamicRegistration: 'succeeded', authorization: 'succeeded', codeExchange: 'succeeded',
+    } }));
     expect(JSON.stringify(evidence)).not.toContain('must-not-appear');
     expect(JSON.stringify(evidence)).not.toContain('authorization-code-secret');
   });
 
-  it('fails exchange checks when authorization does not redirect with a code', async () => {
+  it('fails exchange checks when the interactive callback does not yield a code', async () => {
     const responses = successfulResponses();
     await expect(runProbe(mcpUrl, 'http://127.0.0.1/oauth/callback', {
       fetchImpl: jest.fn(async () => responses.shift()!) as typeof fetch,
       exerciseCodeExchange: true,
-    })).rejects.toThrow('Authorization endpoint did not return an authorization code.');
+      authorize: async () => { throw new Error('Authorization callback omitted a code.'); },
+    })).rejects.toThrow('Authorization callback omitted a code.');
   });
 
   it('fails closed when authorization metadata omits dynamic registration', async () => {

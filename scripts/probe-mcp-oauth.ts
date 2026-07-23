@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { replaceEvidenceAtomically } from './lib/atomic-evidence';
 
 type McpMode = 'account' | 'legacy';
@@ -91,9 +93,78 @@ function pkceChallenge(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url');
 }
 
+function openBrowser(url: string): void {
+  const command = process.platform === 'darwin'
+    ? ['open', [url]] as const
+    : process.platform === 'win32'
+    ? ['rundll32', ['url.dll,FileProtocolHandler', url]] as const
+    : ['xdg-open', [url]] as const;
+  const child = spawn(command[0], command[1], { detached: true, stdio: 'ignore' });
+  child.unref();
+}
+
+export async function receiveAuthorizationCode(
+  authorizationUrl: string,
+  redirectUri: string,
+  expectedState: string,
+  options: { open?: (url: string) => void; timeoutMs?: number } = {},
+): Promise<string> {
+  const redirect = new URL(redirectUri);
+  if (redirect.protocol !== 'http:' || redirect.hostname !== '127.0.0.1' ||
+      !redirect.port || redirect.username || redirect.password || redirect.search || redirect.hash) {
+    throw new Error('Interactive OAuth requires an exact http://127.0.0.1:{port}/ callback URI.');
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    let settled = false;
+    const server = createServer((request, response) => {
+      const callback = new URL(request.url ?? '/', redirect.origin);
+      if (callback.pathname !== redirect.pathname) {
+        response.writeHead(404).end();
+        return;
+      }
+      if (callback.searchParams.get('state') !== expectedState) {
+        response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('OAuth state validation failed.');
+        finish(new Error('Authorization callback state did not match.'));
+        return;
+      }
+      const providerError = callback.searchParams.get('error');
+      const code = callback.searchParams.get('code');
+      if (providerError || !code) {
+        response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('OAuth authorization failed.');
+        finish(new Error('Authorization callback omitted a code.'));
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('Authentication complete. You may close this window.');
+      finish(undefined, code);
+    });
+    const timer = setTimeout(
+      () => finish(new Error('Authorization callback timed out.')),
+      options.timeoutMs ?? 5 * 60_000,
+    );
+    function finish(error?: Error, code?: string) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      server.close();
+      if (error) reject(error);
+      else resolve(code!);
+    }
+    server.once('error', () => finish(new Error('Authorization callback listener failed.')));
+    server.listen(Number(redirect.port), redirect.hostname, () => {
+      try { (options.open ?? openBrowser)(authorizationUrl); }
+      catch { finish(new Error('Could not open the authorization URL.')); }
+    });
+  });
+}
+
 export async function runProbe(mcpUrl: string, redirectUri: string, options: {
   exerciseCodeExchange?: boolean;
   fetchImpl?: typeof fetch;
+  authorize?: (authorizationUrl: string, redirectUri: string, state: string) => Promise<string>;
 } = {}): Promise<unknown> {
   const mode = mcpMode(mcpUrl);
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -147,19 +218,16 @@ export async function runProbe(mcpUrl: string, redirectUri: string, options: {
   authorizationRequest.searchParams.set('resource', mcpUrl);
   authorizationRequest.searchParams.set('code_challenge', pkceChallenge(transientVerifier));
   authorizationRequest.searchParams.set('code_challenge_method', 'S256');
-  const authorizationResponse = await request(authorizationRequest.toString(), 'Authorization', {
-    redirect: 'manual',
-  }, fetchImpl);
-  if (authorizationResponse.status >= 400) {
-    throw new Error(`Authorization failed with HTTP ${authorizationResponse.status}.`);
-  }
 
+  let authorization: 'not_exercised' | 'succeeded' = 'not_exercised';
   let codeExchange: 'not_exercised' | 'succeeded' = 'not_exercised';
   if (options.exerciseCodeExchange) {
-    const location = authorizationResponse.headers.get('location');
-    let authorizationCode: string | null = null;
-    try { authorizationCode = location ? new URL(location, redirectUri).searchParams.get('code') : null; } catch { authorizationCode = null; }
-    if (!authorizationCode) throw new Error('Authorization endpoint did not return an authorization code.');
+    const state = randomBytes(32).toString('base64url');
+    authorizationRequest.searchParams.set('state', state);
+    const authorize = options.authorize ?? ((url, callback, expectedState) =>
+      receiveAuthorizationCode(url, callback, expectedState));
+    const authorizationCode = await authorize(authorizationRequest.toString(), redirectUri, state);
+    authorization = 'succeeded';
     const exchangeResponse = await request(tokenEndpoint, 'Authorization-code exchange', {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'authorization_code', client_id: registration.client_id,
@@ -176,7 +244,7 @@ export async function runProbe(mcpUrl: string, redirectUri: string, options: {
   return {
     checkedAt: new Date().toISOString(), passed: true, mode,
     discovery: { protectedResource: 'succeeded', authorizationServerCount: resource.authorization_servers.length },
-    oauth: { dynamicRegistration: 'succeeded', authorization: 'succeeded', codeExchange },
+    oauth: { dynamicRegistration: 'succeeded', authorization, codeExchange },
   };
 }
 

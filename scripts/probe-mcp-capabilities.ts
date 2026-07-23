@@ -222,17 +222,34 @@ function argument(args: string[], name: string): string {
   return value;
 }
 
+export function capabilitiesProbeOptions(
+  args: string[],
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  const viewerProjectId = args.includes('--viewer-project-id')
+    ? argument(args, '--viewer-project-id')
+    : undefined;
+  return {
+    mcpUrl: argument(args, '--mcp-url'),
+    accessToken: environment.MCP_ACCESS_TOKEN ?? '',
+    exerciseWrites: args.includes('--exercise-writes'),
+    viewerAccessToken: viewerProjectId
+      ? environment.MCP_VIEWER_ACCESS_TOKEN ?? environment.MCP_ACCESS_TOKEN
+      : undefined,
+    viewerProjectId,
+    legacyMcpUrl: args.includes('--legacy-mcp-url')
+      ? argument(args, '--legacy-mcp-url')
+      : undefined,
+    legacyAccessToken: environment.MCP_LEGACY_ACCESS_TOKEN,
+  };
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const output = argument(args, '--output');
-  await replaceEvidenceAtomically(output, () => runCapabilitiesProbe({
-    mcpUrl: argument(args, '--mcp-url'), accessToken: process.env.MCP_ACCESS_TOKEN ?? '',
-    exerciseWrites: args.includes('--exercise-writes'),
-    viewerAccessToken: process.env.MCP_VIEWER_ACCESS_TOKEN ?? process.env.MCP_ACCESS_TOKEN,
-    viewerProjectId: args.includes('--viewer-project-id') ? argument(args, '--viewer-project-id') : undefined,
-    legacyMcpUrl: args.includes('--legacy-mcp-url') ? argument(args, '--legacy-mcp-url') : undefined,
-    legacyAccessToken: process.env.MCP_LEGACY_ACCESS_TOKEN,
-  }));
+  await replaceEvidenceAtomically(output, () =>
+    runCapabilitiesProbe(capabilitiesProbeOptions(args))
+  );
 }
 
 if (process.argv[1]?.endsWith('probe-mcp-capabilities.ts')) {

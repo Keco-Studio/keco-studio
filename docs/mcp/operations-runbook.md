@@ -31,8 +31,11 @@ Keep `supabase/setup-cli@v1` and Supabase CLI `2.90.0` in CI and deployment
 workflows. In that CLI version, `[auth.oauth_server]` configures the local
 stack, but remote OAuth Server configuration serialization is unimplemented.
 `supabase link` and `supabase db push` therefore do not prove production OAuth
-Server configuration. Treat production discovery, dynamic registration,
-authorization, and code exchange as direct post-deploy checks.
+Server configuration. Treat production discovery and dynamic registration as
+direct post-deploy checks. For authorization and code exchange, run the OAuth
+probe with `--exercise-code-exchange`, an exact
+`http://127.0.0.1:{port}/` redirect URI, and complete the login and consent
+opened in the system browser.
 
 The production root endpoint is:
 

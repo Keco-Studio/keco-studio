@@ -91,13 +91,13 @@ npm run probe:mcp-capabilities -- --mcp-url "$MCP_URL" --output /tmp/mcp-capabil
 npm run probe:mcp-performance -- --mcp-url "$MCP_URL" --cold-verified --phase-2 --output /tmp/mcp-performance.json
 ```
 
-The OAuth probe verifies protected-resource discovery, dynamic client
-registration, an authorization-endpoint response, and, when explicitly enabled,
-an authorization-code exchange using the client registration and PKCE verifier
-created by that same probe run. Add `--exercise-code-exchange` only when the
-authorization endpoint can redirect the probe's registered client with a fresh
-code; the code and verifier remain in memory and are never written to evidence
-or output.
+The default OAuth probe verifies protected-resource discovery and dynamic client
+registration without claiming that an interactive login succeeded. Add
+`--exercise-code-exchange` for real acceptance: the probe opens the authorization
+URL in the system browser, listens on the exact `http://127.0.0.1:{port}/`
+redirect URI, validates `state`, and exchanges the returned code with the client
+registration and PKCE verifier created by that same run. The code and verifier
+remain in memory and are never written to evidence or output.
 
 For role enforcement and cross-resource replay, use the capability probe with a
 root OAuth token in `MCP_ACCESS_TOKEN`, a mixed-role viewer project supplied by
