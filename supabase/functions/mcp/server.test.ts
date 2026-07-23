@@ -177,6 +177,8 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
   assertEquals(initialize.error, undefined);
   assertEquals(initialize.result?.capabilities, {
     tools: { listChanged: true },
+    resources: { listChanged: false },
+    prompts: { listChanged: true },
   });
 
   const tools = await rpc("tools/list", {}, accountContext);
@@ -192,6 +194,28 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       "read_document",
       "semantic_search",
     ],
+  );
+
+  const resources = await rpc("resources/list", {}, accountContext);
+  assertEquals(resources.error, undefined);
+  assertEquals(
+    (resources.result?.resources as Array<{ uri: string }>).map((resource) =>
+      resource.uri
+    ),
+    ["keco://projects"],
+  );
+
+  const templates = await rpc("resources/templates/list", {}, accountContext);
+  assertEquals(templates.error, undefined);
+  assertEquals((templates.result?.resourceTemplates as unknown[]).length, 5);
+
+  const prompts = await rpc("prompts/list", {}, accountContext);
+  assertEquals(prompts.error, undefined);
+  assertEquals(
+    (prompts.result?.prompts as Array<{ name: string }>).map((prompt) =>
+      prompt.name
+    ),
+    ["analyze_project", "build_tables_from_document", "update_project_data"],
   );
 
   const ping = await rpc("ping", {}, accountContext);

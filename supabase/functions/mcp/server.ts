@@ -162,13 +162,11 @@ async function protocolEnvelope(request: Request): Promise<{
 export async function createProbeServer(
   context: McpRequestContext,
 ): Promise<McpServer> {
-  const capabilities = context.mode === "project"
-    ? {
-      tools: { listChanged: true },
-      resources: { listChanged: false },
-      prompts: { listChanged: true },
-    }
-    : { tools: { listChanged: true } };
+  const capabilities = {
+    tools: { listChanged: true },
+    resources: { listChanged: false },
+    prompts: { listChanged: true },
+  };
   const server = new McpServer(
     { name: "keco-mcp", version: "0.3.1" },
     { capabilities },
@@ -195,6 +193,8 @@ export async function createProbeServer(
 
   if (context.mode === "account") {
     await registerAccountTools(server, context);
+    registerResources(server, context);
+    registerPrompts(server, context);
   } else {
     registerReadTools(server, context);
     registerWriteTools(server, context);
