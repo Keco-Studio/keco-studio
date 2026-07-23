@@ -53,7 +53,7 @@ test.describe('MCP account connections page', () => {
     await expect(logoutButton).toBeVisible();
     await mcpButton.click();
     await expect(page).toHaveURL(/\/mcp$/);
-    await expect(page.getByText('Account')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Account', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'MCP', exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Copy Add Keco MCP command' }).click();
