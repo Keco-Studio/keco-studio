@@ -70,6 +70,11 @@ describe('native simulation workbench presentation', () => {
     expect(importScreen).toContain('Studio source table');
     expect(importScreen).toContain('Simulation fields');
     expect(importScreen).toContain('styles.mappingBridge');
+    expect(importScreen).toContain('duplicateLibraryNames');
+    expect(importScreen).toContain('folderLabelForLibrary');
+    expect(importScreen).toContain('formatLibraryLabel');
+    expect(importScreen).toContain('selectedLabel');
+    expect(importScreen).toContain('/${library.name}');
 
     const characters = read('CharactersScreen.tsx');
     expect(characters).toContain('Team A · Yours');

@@ -24,6 +24,7 @@ function fakeSupabase(options: {
   const isCalls: Array<{ table: string; column: string; value: unknown }> = [];
   let fieldIdCounter = 0;
   let assetIdCounter = 0;
+  let libraryIdCounter = 0;
 
   const supabase = {
     from(table: string) {
@@ -77,7 +78,11 @@ function fakeSupabase(options: {
             });
           }
           if (table === 'libraries') {
-            return Promise.resolve({ data: { id: '33333333-3333-4333-8333-333333333333' }, error: null });
+            libraryIdCounter += 1;
+            return Promise.resolve({
+              data: { id: `33333333-3333-4333-8333-33333333333${libraryIdCounter}` },
+              error: null,
+            });
           }
           if (table === 'library_field_definitions') {
             fieldIdCounter += 1;
@@ -260,7 +265,53 @@ describe('importScriptFromFile', () => {
     expect(deleteCalls).toContainEqual({
       table: 'libraries',
       column: 'id',
-      value: '33333333-3333-4333-8333-333333333333',
+      value: '33333333-3333-4333-8333-333333333331',
     });
+  });
+
+  it('keeps conversation script type when a table is generated later for the same document', async () => {
+    const { supabase, insertCalls } = fakeSupabase();
+    const documentSourceId = '55555555-5555-4555-8555-555555555555';
+    const base = {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: null as string | null,
+      document: storyDocument,
+    };
+
+    const script = await importStoryDocument(supabase, {
+      ...base,
+      libraryName: 'Story Conversation',
+      fileName: 'story.txt',
+      documentSource: { sourceDocumentId: documentSourceId, exportType: 'script' },
+    });
+    const table = await importStoryDocument(supabase, {
+      ...base,
+      libraryName: 'Story Table',
+      fileName: 'story.txt',
+      documentSource: { sourceDocumentId: documentSourceId, exportType: 'table' },
+    });
+
+    expect(script.libraryId).not.toBe(table.libraryId);
+    const libraryInserts = insertCalls.filter((call) => call.table === 'libraries');
+    expect(libraryInserts).toHaveLength(2);
+    expect(libraryInserts[0]?.values).toEqual(
+      expect.objectContaining({
+        name: 'Story Conversation',
+        source_document_id: documentSourceId,
+        document_export_type: 'script',
+      })
+    );
+    expect(libraryInserts[1]?.values).toEqual(
+      expect.objectContaining({
+        name: 'Story Table',
+        source_document_id: documentSourceId,
+        document_export_type: 'table',
+      })
+    );
+    // Second import must create a new library row, not mutate the conversation insert.
+    expect(libraryInserts[0]?.values).not.toEqual(
+      expect.objectContaining({ document_export_type: 'table' })
+    );
   });
 });

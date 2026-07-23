@@ -763,7 +763,7 @@
 
 /*
  * Derived libraries under a document: remove tree indent so books share the same
- * left edge as the parent document / other root files.
+ * left edge as the parent document (document expand is on the title row, unlike folders).
  */
 .tree :global(.ant-tree-treenode).documentChildTreeNode > :global(.ant-tree-indent),
 .tree :global(.ant-tree-treenode:has([data-library-under-document]) > .ant-tree-indent) {
@@ -787,7 +787,7 @@
   padding-left: 0.75rem;
 }
 
-/* Derived libraries under a root document: same left padding as sibling documents */
+/* Derived libraries under a root document: same left padding as the parent document */
 .tree :global(.ant-tree-node-content-wrapper:has([data-library-under-document]:not([data-library-under-folder]))) {
   padding-left: calc(0.75rem + 12px);
 }

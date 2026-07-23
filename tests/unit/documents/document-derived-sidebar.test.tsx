@@ -2,6 +2,8 @@
 import React from 'react';
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 jest.mock('react-dom', () => {
@@ -56,6 +58,17 @@ describe('document-derived sidebar tree', () => {
     jest.clearAllMocks();
   });
 
+  it('aligns derived libraries with the parent document left edge (no extra tree indent)', () => {
+    const css = readFileSync(
+      resolve(__dirname, '../../../src/components/layout/Sidebar.module.css'),
+      'utf8'
+    );
+    expect(css).toMatch(
+      /\.documentChildTreeNode\s*>\s*:global\(\.ant-tree-indent\)[\s\S]*?display:\s*none/
+    );
+    expect(css).toMatch(/share the same\n \* left edge as the parent document/);
+  });
+
   it('groups derived libraries beneath their document and excludes them from roots', () => {
     const projectId = '11111111-1111-4111-8111-111111111111';
     const documentId = '22222222-2222-4222-8222-222222222222';
@@ -79,6 +92,11 @@ describe('document-derived sidebar tree', () => {
     const documentNode = treeData.find((node) => node.key === `document-${documentId}`);
     expect(documentNode.isLeaf).toBe(false);
     expect(documentNode.children.map((child: any) => child.key)).toEqual([`library-${older}`, `library-${newer}`]);
+    expect(
+      documentNode.children.every((child: any) =>
+        renderToStaticMarkup(child.title).includes('data-library-under-document')
+      )
+    ).toBe(true);
     expect(treeData.map((node) => node.key)).not.toContain(`library-${older}`);
 
     let emptyTree: any[] = [];

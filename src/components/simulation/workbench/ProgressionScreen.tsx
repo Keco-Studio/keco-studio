@@ -87,11 +87,15 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
   const points = session.progression.sp[uid] ?? 2;
   const equipped = session.loadout[uid] ?? [];
   const levels = session.skillLevels[uid] ?? {};
-  const expNeed = level >= 10 ? 1 : needExp(level, snapshot.levelRules);
+  const expNeed = needExp(level, snapshot.levelRules, character.id);
+  const applicableLevelRules = snapshot.levelRules.filter((rule) => (
+    !rule.characterId || rule.characterId === character.id
+  ));
+  const maxLevel = Math.max(1, ...applicableLevelRules.map((rule) => rule.level));
 
   function upgrade(skillId: string) {
     const current = levels[skillId] ?? 1;
-    const cost = skillCost(current, snapshot!.skillCostRules);
+    const cost = skillCost(current, snapshot!.skillCostRules, skillId);
     if (cost === null || points < cost) return;
     updateSkills(session!.id, uid!, equipped, { ...levels, [skillId]: current + 1 });
     updateProgression(session!.id, uid!, exp, level, points - cost);
@@ -101,14 +105,16 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
     const current = levels[skillId] ?? 1;
     let refund = 0;
     for (let lv = 1; lv < current; lv += 1) {
-      refund += skillCost(lv, snapshot!.skillCostRules) ?? 0;
+      const cost = skillCost(lv, snapshot!.skillCostRules, skillId);
+      if (cost === null) return;
+      refund += cost;
     }
     updateSkills(session!.id, uid!, equipped, { ...levels, [skillId]: 1 });
     updateProgression(session!.id, uid!, exp, level, points + refund);
   }
 
   function setLevel(delta: number) {
-    const next = Math.max(1, Math.min(10, level + delta));
+    const next = Math.max(1, Math.min(maxLevel, level + delta));
     updateProgression(session!.id, uid!, exp, next, points);
   }
 
@@ -243,7 +249,7 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
                 </div>
                 <Stepper
                   value={level}
-                  canInc={level < 10}
+                  canInc={level < maxLevel && expNeed !== null}
                   canDec={level > 1}
                   onInc={() => setLevel(1)}
                   onDec={() => setLevel(-1)}
@@ -279,12 +285,12 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
               }}
               >
                 <span>EXP</span>
-                <span>{level >= 10 ? 'Max level' : `${exp} / ${expNeed}`}</span>
+                <span>{level >= maxLevel ? 'Max level' : (expNeed === null ? 'Rule missing' : `${exp} / ${expNeed}`)}</span>
               </div>
               <div style={{ height: 8, borderRadius: 5, background: 'var(--line-100)', overflow: 'hidden' }}>
                 <div style={{
                   height: '100%',
-                  width: `${level >= 10 ? 100 : Math.min(100, (exp / expNeed) * 100)}%`,
+                  width: `${level >= maxLevel ? 100 : (expNeed === null ? 0 : Math.min(100, (exp / expNeed) * 100))}%`,
                   background: 'var(--keco-blue)',
                   borderRadius: 5,
                   transition: 'width .3s',
@@ -328,9 +334,16 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
                 const skill = skillDef(skillId, snapshot.catalog);
                 const el = elementOf(skill.el);
                 const skillLevel = levels[skillId] ?? 1;
-                const cost = skillCost(skillLevel, snapshot.skillCostRules);
-                const isMax = cost === null;
-                const can = !isMax && points >= cost;
+                const cost = skillCost(skillLevel, snapshot.skillCostRules, skillId);
+                const applicableCosts = snapshot.skillCostRules.filter((rule) => (
+                  !rule.skillId || rule.skillId === skillId
+                ));
+                const ruleMissing = cost === null && applicableCosts.some((rule) => rule.lv > skillLevel);
+                const isMax = cost === null && !ruleMissing;
+                const can = cost !== null && points >= cost;
+                const canReset = Array.from({ length: Math.max(0, skillLevel - 1) }, (_, index) => (
+                  skillCost(index + 1, snapshot.skillCostRules, skillId)
+                )).every((value) => value !== null);
                 return (
                   <div
                     key={skillId}
@@ -370,7 +383,7 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
                         }}
                         >
                           <span>Skill level</span>
-                          <span>{isMax ? 'Max' : `Lv.${skillLevel} / 5`}</span>
+                          <span>{ruleMissing ? 'Rule missing' : (isMax ? 'Max' : `Lv.${skillLevel}`)}</span>
                         </div>
                         <div style={{ height: 8, borderRadius: 5, background: 'var(--line-100)', overflow: 'hidden' }}>
                           <div style={{
@@ -402,18 +415,18 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
                         fontSize: 12,
                         fontWeight: 600,
                         whiteSpace: 'nowrap',
-                        cursor: isMax ? 'default' : (can ? 'pointer' : 'not-allowed'),
-                        background: isMax ? '#EEF1F5' : (can ? 'var(--keco-blue)' : '#EEF1F5'),
-                        color: isMax ? 'var(--ink-450)' : (can ? '#fff' : 'var(--ink-350)'),
+                        cursor: cost === null ? 'default' : (can ? 'pointer' : 'not-allowed'),
+                        background: cost === null ? '#EEF1F5' : (can ? 'var(--keco-blue)' : '#EEF1F5'),
+                        color: cost === null ? 'var(--ink-450)' : (can ? '#fff' : 'var(--ink-350)'),
                         border: '1px solid transparent',
                       }}
                       onClick={() => {
-                        if (!isMax) upgrade(skillId);
+                        if (cost !== null) upgrade(skillId);
                       }}
                     >
-                      {isMax ? 'Max' : `+1 · ${cost} SP`}
+                      {ruleMissing ? 'Rule missing' : (isMax ? 'Max' : `+1 · ${cost} SP`)}
                     </div>
-                    {skillLevel > 1 ? (
+                    {skillLevel > 1 && canReset ? (
                       <div
                         style={{ fontSize: 12, color: 'var(--ink-400)', cursor: 'pointer', padding: '6px 4px' }}
                         onClick={() => reset(skillId)}

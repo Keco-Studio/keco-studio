@@ -190,20 +190,27 @@ function DocumentEditorSession({
   const loadExportSource = useCallback(async (): Promise<DocumentExportSource> => {
     // Best-effort: derived exports read durable server state. A local Yjs flush
     // failure or stall must not block opening the script/table export flow.
+    // Sync throws (common Yjs "Invalid access") must also be swallowed — an
+    // uncaught throw inside the Promise executor rejects and skips fetch.
     if (permissions.role !== 'viewer' && collaboration.session) {
       const session = collaboration.session;
       await new Promise<void>((resolve) => {
         const timeoutId = globalThis.setTimeout(resolve, 5_000);
-        void Promise.resolve(session.flush()).then(
-          () => {
-            globalThis.clearTimeout(timeoutId);
-            resolve();
-          },
-          () => {
-            globalThis.clearTimeout(timeoutId);
-            resolve();
-          }
-        );
+        try {
+          void Promise.resolve(session.flush()).then(
+            () => {
+              globalThis.clearTimeout(timeoutId);
+              resolve();
+            },
+            () => {
+              globalThis.clearTimeout(timeoutId);
+              resolve();
+            }
+          );
+        } catch {
+          globalThis.clearTimeout(timeoutId);
+          resolve();
+        }
       });
     }
     const {

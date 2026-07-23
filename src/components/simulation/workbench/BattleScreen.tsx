@@ -5,6 +5,7 @@ import type { BattleSession } from '@keco/battle-core';
 import { StudioBattleStep } from '@/components/simulation/arena/StudioBattleStep';
 import type { BattleArenaConfig } from '@/components/simulation/arena/BattleArena/BattleArena';
 import { buildArenaConfigFromSession } from '@/lib/simulation/kecoArenaAdapter';
+import { levelRule } from '@/lib/simulation/data';
 import { useBattlePlayback } from '@/lib/simulation/useBattlePlayback';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
 import { SimulationButton } from './SimulationButton';
@@ -35,9 +36,13 @@ export function BattleScreen({ onContinue }: { onContinue?: () => void }) {
       let exp = (session.progression.exp[entry.uid] ?? 0) + reward;
       let lv = session.progression.lv[entry.uid] ?? 1;
       let sp = session.progression.sp[entry.uid] ?? 2;
+      const applicableRules = session.importedSnapshot.levelRules.filter((rule) => (
+        !rule.characterId || rule.characterId === entry.tmplId
+      ));
+      const maxLevel = Math.max(1, ...applicableRules.map((rule) => rule.level));
       while (true) {
-        const rule = session.importedSnapshot.levelRules.find((item) => item.level === lv);
-        if (!rule || exp < rule.exp || lv >= session.importedSnapshot.levelRules.length) break;
+        const rule = levelRule(lv, session.importedSnapshot.levelRules, entry.tmplId);
+        if (!rule || exp < rule.exp || lv >= maxLevel) break;
         exp -= rule.exp;
         lv += 1;
         sp += rule.sp;

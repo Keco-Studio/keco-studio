@@ -11,6 +11,8 @@ describe('simulation provider contracts', () => {
     const source = read('src/lib/simulation/SimulationProjectProvider.tsx');
     expect(source).toContain('useSidebarProjects');
     expect(source).toContain("['simulation-libraries', selectedProjectId]");
+    expect(source).toContain("['simulation-folders', selectedProjectId]");
+    expect(source).toContain('folderNameById');
     expect(source).toContain('loadSimulationProjectSources');
     expect(source).toContain('loadSimulationLibraryFields');
     expect(source).toContain('requestGenerationRef');

@@ -77,6 +77,7 @@ import {
   invalidateProjectData,
 } from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
+import { primeLibraryNavigationCache } from './libraryNavigationCache';
 
 const ImportDocumentModal = dynamic(
   () =>
@@ -529,9 +530,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   const handleLibraryClick = async (projectId: string, libraryId: string) => {
-    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
+    const targetLibrary = libraries.find((library) => library.id === libraryId);
+    if (targetLibrary) {
+      primeLibraryNavigationCache(queryClient, targetLibrary);
+    }
     await navigateWithFlush(`/${projectId}/${libraryId}`);
+    void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     fetchAssets(libraryId);
   };
 
