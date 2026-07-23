@@ -129,6 +129,7 @@ function findButton(node: ReactNode, label: string): Element {
 
 const PROJECT_A = '11111111-1111-4111-8111-111111111111';
 const PROJECT_B = '22222222-2222-4222-8222-222222222222';
+const accountResource = 'https://abc.supabase.co/functions/v1/mcp';
 const projectResource = (projectId: string) => `https://abc.supabase.co/functions/v1/mcp/${projectId}`;
 const authorizationDetails = (authorizationId: string) => ({
   authorization_id: authorizationId,
@@ -317,8 +318,40 @@ it('completes the redirect when Supabase has already auto-approved consent', asy
   expect(assignLocation).toHaveBeenCalledWith(
     'https://client.example/callback?code=abc'
   );
+  expect(getOAuthAuthorizationResource).not.toHaveBeenCalled();
+  expect(getProject).not.toHaveBeenCalled();
   expect(prepareOAuthProjectGrant).not.toHaveBeenCalled();
   expect(finalizeOAuthProjectGrant).not.toHaveBeenCalled();
+});
+
+it('approves a pending account request without looking up a project', async () => {
+  getAuthorizationDetails.mockResolvedValue({
+    data: authorizationDetails('authorization-a'),
+    error: null,
+  });
+  getOAuthAuthorizationResource.mockResolvedValue(accountResource);
+  approveAuthorization.mockResolvedValueOnce({
+    data: { redirect_url: 'https://client.example/callback' },
+    error: null,
+  });
+
+  runtime.render(OAuthConsentClient);
+  await flushAsyncWork();
+  const tree = runtime.render(OAuthConsentClient);
+
+  expect(JSON.stringify(tree)).toContain('the Keco account');
+  expect(findButton(tree, 'Approve').props.disabled).toBe(false);
+  expect(getProject).not.toHaveBeenCalled();
+
+  findButton(tree, 'Approve').props.onClick?.();
+  await flushAsyncWork();
+
+  expect(getOAuthAuthorizationResource).toHaveBeenCalledTimes(2);
+  expect(getProject).not.toHaveBeenCalled();
+  expect(approveAuthorization).toHaveBeenCalledWith('authorization-a', {
+    skipBrowserRedirect: true,
+  });
+  expect(assignLocation).toHaveBeenCalledWith('https://client.example/callback');
 });
 
 it('reloads the same resource immediately before approving', async () => {

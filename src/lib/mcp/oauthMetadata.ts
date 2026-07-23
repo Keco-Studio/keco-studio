@@ -49,6 +49,10 @@ export function buildProjectResourceUrl(supabaseUrl: string, projectId: string):
   return `${normalizeSupabaseOrigin(supabaseUrl)}/functions/v1/mcp/${projectId}`;
 }
 
+export function buildAccountResourceUrl(supabaseUrl: string): string {
+  return `${normalizeSupabaseOrigin(supabaseUrl)}/functions/v1/mcp`;
+}
+
 export function buildProtectedResourceMetadata(input: {
   resource: string;
   authorizationServer: string;

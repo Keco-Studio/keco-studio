@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  buildAccountResourceUrl,
   buildProjectResourceUrl,
   buildProtectedResourceMetadata,
   InvalidMcpProjectIdError,
@@ -7,12 +8,16 @@ import {
 } from '@/lib/mcp/oauthMetadata';
 
 export function GET(request: Request) {
-  const projectId = new URL(request.url).searchParams.get('project_id') ?? '';
+  const search = new URL(request.url).searchParams;
+  const hasProjectId = search.has('project_id');
+  const projectId = search.get('project_id') ?? '';
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   try {
-    // Validate the request's project ID before configuration so malformed IDs
+    // Validate a supplied project ID before configuration so malformed IDs
     // retain their 400 response even when deployment configuration is broken.
-    const resource = buildProjectResourceUrl(supabaseUrl, projectId);
+    const resource = hasProjectId
+      ? buildProjectResourceUrl(supabaseUrl, projectId)
+      : buildAccountResourceUrl(supabaseUrl);
     const supabaseOrigin = normalizeSupabaseOrigin(supabaseUrl);
     return NextResponse.json(
       buildProtectedResourceMetadata({

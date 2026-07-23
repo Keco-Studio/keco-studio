@@ -1,4 +1,5 @@
 import {
+  buildAccountResourceUrl,
   buildProjectResourceUrl,
   buildProtectedResourceMetadata,
   InvalidMcpMetadataConfigError,
@@ -23,6 +24,20 @@ it('builds project-bound resource metadata without unsupported scopes', () => {
   expect(metadata).not.toHaveProperty('scopes_supported');
 });
 
+it('builds account-scoped resource metadata without unsupported scopes', () => {
+  const resource = buildAccountResourceUrl('https://abc.supabase.co/');
+
+  expect(resource).toBe('https://abc.supabase.co/functions/v1/mcp');
+  expect(buildProtectedResourceMetadata({
+    resource,
+    authorizationServer: 'https://abc.supabase.co/auth/v1',
+  })).toEqual({
+    resource,
+    authorization_servers: ['https://abc.supabase.co/auth/v1'],
+    bearer_methods_supported: ['header'],
+  });
+});
+
 it('rejects malformed project IDs', () => {
   expect(() => buildProjectResourceUrl('https://abc.supabase.co', '../other')).toThrow(
     'Invalid MCP project ID.'
@@ -42,20 +57,35 @@ it.each([
 });
 
 describe('protected resource metadata route', () => {
-  const request = (project = projectId) =>
+  const accountRequest = () =>
+    new Request('https://keco.example/api/mcp/oauth-protected-resource');
+  const projectRequest = (project = projectId) =>
     new Request(`https://keco.example/api/mcp/oauth-protected-resource?project_id=${project}`);
 
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   });
 
-  it('returns project metadata with a public cache header', async () => {
+  it('returns account metadata without a project ID', async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://abc.supabase.co/';
 
-    const response = GET(request());
+    const response = GET(accountRequest());
 
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    await expect(response.json()).resolves.toEqual({
+      resource: 'https://abc.supabase.co/functions/v1/mcp',
+      authorization_servers: ['https://abc.supabase.co/auth/v1'],
+      bearer_methods_supported: ['header'],
+    });
+  });
+
+  it('returns legacy project metadata when a project ID is supplied', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://abc.supabase.co/';
+
+    const response = GET(projectRequest());
+
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       resource: `https://abc.supabase.co/functions/v1/mcp/${projectId}`,
       authorization_servers: ['https://abc.supabase.co/auth/v1'],
@@ -66,7 +96,7 @@ describe('protected resource metadata route', () => {
   it('returns 400 for an invalid project ID', async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://abc.supabase.co';
 
-    const response = GET(request('not-a-project'));
+    const response = GET(projectRequest('not-a-project'));
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
@@ -77,7 +107,7 @@ describe('protected resource metadata route', () => {
   it('fails closed with 500 when the Supabase URL is not configured', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const response = GET(request());
+    const response = GET(accountRequest());
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
