@@ -171,6 +171,15 @@ jobs:
             -v ON_ERROR_STOP=1 -c \
             "do \$\$ declare total integer; indices integer; begin select count(*),count(distinct row_index) into total,indices from public.library_assets where library_id='33333333-3333-4333-8333-333333333331' and name like 'CI concurrent row %'; if total <> 5 or indices <> 5 then raise exception 'MCP concurrent row allocation failed'; end if; end \$\$;"
 
+      - name: Build account MCP project fixture
+        run: |
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f scripts/fixtures/mcp-account-projects.sql
+          psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+            -v ON_ERROR_STOP=1 \
+            -f scripts/fixtures/mcp-account-projects-gates.sql
+
       - name: Scan committed MCP evidence
         shell: bash
         run: |
