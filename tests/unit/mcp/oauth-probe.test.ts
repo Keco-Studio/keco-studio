@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { authorizationMetadataUrl, mcpMode, parseBearerMetadata, parseProbeArguments, runProbe } from '../../../scripts/probe-mcp-oauth';
+import { authorizationMetadataUrl, mcpMode, parseBearerMetadata, parseProbeArguments, receiveAuthorizationCode, runProbe } from '../../../scripts/probe-mcp-oauth';
 
 const mcpUrl = 'https://keco.example.com/functions/v1/mcp';
 const resourceMetadataUrl = 'https://keco.example.com/.well-known/oauth-protected-resource';
@@ -12,6 +13,22 @@ const authMetadataUrl = 'https://abc.supabase.co/.well-known/oauth-authorization
 
 function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
+}
+
+async function freeLoopbackPort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Expected a loopback TCP address.'));
+        return;
+      }
+      server.close(error => error ? reject(error) : resolve(address.port));
+    });
+  });
 }
 
 function successfulResponses(): Response[] {
@@ -52,6 +69,40 @@ describe('OAuth probe helpers', () => {
 });
 
 describe('OAuth account discovery probe', () => {
+  it('accepts only the expected state on the exact loopback callback', async () => {
+    const port = await freeLoopbackPort();
+    const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
+    const received = receiveAuthorizationCode(
+      'https://issuer.example/authorize',
+      redirectUri,
+      'expected-state',
+      {
+        open: () => {
+          void fetch(`${redirectUri}?code=callback-code&state=expected-state`);
+        },
+        timeoutMs: 2_000,
+      },
+    );
+    await expect(received).resolves.toBe('callback-code');
+  });
+
+  it('rejects a loopback callback with a mismatched state', async () => {
+    const port = await freeLoopbackPort();
+    const redirectUri = `http://127.0.0.1:${port}/oauth/callback`;
+    const received = receiveAuthorizationCode(
+      'https://issuer.example/authorize',
+      redirectUri,
+      'expected-state',
+      {
+        open: () => {
+          void fetch(`${redirectUri}?code=callback-code&state=wrong-state`);
+        },
+        timeoutMs: 2_000,
+      },
+    );
+    await expect(received).rejects.toThrow('Authorization callback state did not match.');
+  });
+
   it('records root discovery and DCR without claiming interactive authorization', async () => {
     const responses = successfulResponses();
     const fetchMock = jest.fn(async () => responses.shift()!);
