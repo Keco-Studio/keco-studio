@@ -276,6 +276,35 @@ Deno.test("authorization canonicalizes the Supabase gateway MCP path", async () 
   });
 });
 
+Deno.test("authorization binds the resource to the verified OAuth issuer origin", async () => {
+  let checkedResource: string | null = null;
+  const result = await authorizeProjectWithGateway(
+    new Request(`http://edge-runtime.internal/mcp/${projectId}`, {
+      headers: { authorization: "Bearer token" },
+    }),
+    projectId,
+    {
+      getUser: async () => ({
+        id: "user-1",
+        clientId: "oauth-client",
+        resourceOrigin: "https://project.supabase.co",
+      }),
+      hasOAuthProjectGrant: async (_clientId, _projectId, resource) => {
+        checkedResource = resource;
+        return true;
+      },
+      getProjectOwner: async () => "user-1",
+      getCollaboratorRole: async () => null,
+    },
+  );
+
+  assertEquals(result.status, "authorized");
+  assertEquals(
+    checkedResource,
+    `https://project.supabase.co/functions/v1/mcp/${projectId}`,
+  );
+});
+
 Deno.test("authorization rejects noncanonical MCP request resources before membership", async () => {
   const otherProjectId = "22222222-2222-4222-8222-222222222222";
   const rejectedResources = [
