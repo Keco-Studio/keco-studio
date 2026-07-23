@@ -36,7 +36,7 @@
 - Produces: `public.oauth_mcp_service_grants` keyed by `authorization_id`, with exact `user_id`, `client_id`, `resource`, and `session_id` binding.
 - Produces: `public.has_oauth_mcp_service_grant(p_client_id TEXT, p_resource TEXT) RETURNS BOOLEAN`.
 - Produces: `public.mcp_resolve_project_role(p_project_id UUID) RETURNS TEXT`, returning `admin`, `editor`, `viewer`, or `NULL` under `auth.uid()`.
-- Produces: `public.mcp_list_accessible_projects(p_limit INTEGER, p_before_created_at TIMESTAMPTZ, p_after_project_id UUID)` returning `project_id`, `name`, `description`, `created_at`, and `role` sorted by `created_at DESC, project_id ASC`.
+- Produces: `public.mcp_list_accessible_projects(p_limit INTEGER, p_before_created_at TIMESTAMPTZ, p_after_project_id UUID)` returning `project_id`, `name`, `description`, `created_at`, and `role` sorted by `project_id ASC`. The creation-time parameter remains only for RPC signature compatibility.
 - Produces: account-level telemetry admission compatible with `list_projects` without inventing a project UUID.
 
 - [ ] **Step 1: Implement the additive migration**
@@ -57,13 +57,18 @@ WHERE s.user_id = OLD.user_id
   AND s.xmin::TEXT::BIGINT = pg_current_xact_id()::TEXT::BIGINT;
 ```
 
-The list RPC must clamp the limit to `1..100`, deduplicate owner/collaborator access, ignore unaccepted collaborators, and use this keyset predicate:
+The list RPC must clamp the public limit to `1..100`, deduplicate owner/collaborator access, ignore unaccepted collaborators, independently bound both membership branches, and use this keyset predicate:
 
 ```sql
-p_before_created_at IS NULL
-OR project.created_at < p_before_created_at
-OR (project.created_at = p_before_created_at AND project.id > p_after_project_id)
+project.id > COALESCE(
+  p_after_project_id,
+  '00000000-0000-0000-0000-000000000000'::UUID
+)
 ```
+
+`p_before_created_at` remains accepted for RPC signature compatibility but is
+not part of the account cursor. The signed cursor binds the authenticated user
+to the last returned project ID.
 
 - [ ] **Step 2: Add migration and real-database behavior coverage**
 
@@ -224,7 +229,8 @@ export type CursorBinding =
   | { kind: string; scope: "account"; userId: string; objectId?: string | null };
 ```
 
-The account position is `{ createdAt: string; projectId: string }` and is rejected when replayed by another user.
+The account position is `{ projectId: string }` and is rejected when replayed
+by another user.
 
 - [ ] **Step 2: Implement bounded project discovery**
 

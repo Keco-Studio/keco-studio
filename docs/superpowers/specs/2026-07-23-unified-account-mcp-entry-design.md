@@ -272,10 +272,13 @@ The result is deterministic and bounded:
 
 The query returns projects owned by the user plus accepted collaborator rows.
 Owners resolve to `admin`. Rejected or unaccepted invitations do not count.
-Results must be deduplicated and sorted by `createdAt DESC, projectId ASC`.
+Results must be deduplicated and sorted by `projectId ASC`. Creation time remains
+part of every result so agents can display and disambiguate duplicate names.
 Pagination reuses the existing signed MCP cursor codec and binds the cursor to
-the authenticated user plus that exact sort tuple, preventing cursor replay
-across accounts and preventing duplicate or skipped projects between pages.
+the authenticated user plus the last project ID, preventing cursor replay across
+accounts and preventing duplicate or skipped projects between pages without an
+unbounded creation-time sort. The database RPC retains `p_before_created_at`
+only for signature compatibility; account cursors always send it as `NULL`.
 
 ### 7.2 Duplicate project names
 
