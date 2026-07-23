@@ -52,6 +52,17 @@ describe('service role server boundary', () => {
     expect(clientImports).toEqual([]);
   });
 
+  it('keeps MCP connection internals in explicit server-only modules', () => {
+    for (const file of [
+      'src/lib/server/mcpConnectionId.ts',
+      'src/lib/server/mcpConnectionsService.ts',
+    ]) {
+      const source = readFileSync(path.join(repoRoot, file), 'utf8');
+      expect(source.startsWith("import 'server-only';")).toBe(true);
+      expect(source).not.toContain("'use client'");
+    }
+  });
+
   it('keeps project deletion client code on the API boundary', () => {
     const projectService = readFileSync(
       path.join(repoRoot, 'src/lib/services/projectService.ts'),

@@ -1,0 +1,304 @@
+.page {
+  min-height: 100%;
+  width: 100%;
+  padding: 32px 32px 48px;
+  color: #21272a;
+  overflow-x: hidden;
+}
+
+.content {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.pageHeader {
+  margin-bottom: 32px;
+}
+
+.pageHeader h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.pageHeader p,
+.sectionHeading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.section {
+  padding: 24px 0 32px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.sectionHeading {
+  margin-bottom: 18px;
+}
+
+.sectionHeading h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.segmented {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 240px;
+  min-height: 34px;
+  margin-bottom: 18px;
+  padding: 3px;
+  border: 1px solid #d9d9d9;
+  border-radius: 7px;
+  background: #f5f5f5;
+}
+
+.segmented button {
+  min-width: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.segmented .segmentActive {
+  background: #fff;
+  color: #21272a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.segmented button:focus-visible,
+.copyButton:focus-visible,
+.disconnectButton:focus-visible,
+.errorBanner button:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.commands {
+  display: grid;
+  gap: 16px;
+}
+
+.commandGroup {
+  min-width: 0;
+}
+
+.commandLabel {
+  margin-bottom: 7px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.commandField {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d9d9d9;
+  border-radius: 7px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.commandField code {
+  min-width: 0;
+  padding: 11px 12px;
+  color: #1e293b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.copyButton:hover {
+  background: #f1f5f9;
+  color: #21272a;
+}
+
+.table {
+  width: 100%;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tableHeader,
+.connectionRow,
+.skeletonRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(180px, 1fr) 112px;
+  align-items: center;
+  column-gap: 16px;
+}
+
+.tableHeader {
+  min-height: 38px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.connectionRow,
+.skeletonRow {
+  min-height: 56px;
+  border-top: 1px solid #edf0f2;
+}
+
+.connectionRowPending {
+  opacity: 0.58;
+}
+
+.clientCell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.clientIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.connectedColumn {
+  color: #475569;
+  font-size: 13px;
+}
+
+.actionCell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.disconnectButton,
+.errorBanner button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.disconnectButton:hover:not(:disabled) {
+  border-color: #ff7875;
+  color: #cf1322;
+}
+
+.disconnectButton:disabled {
+  cursor: wait;
+}
+
+.emptyState {
+  padding: 22px 0;
+  border-top: 1px solid #edf0f2;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.errorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 46px;
+  padding: 7px 10px 7px 12px;
+  border: 1px solid #ffccc7;
+  border-radius: 6px;
+  background: #fff2f0;
+  color: #a8071a;
+  font-size: 13px;
+}
+
+.errorBanner button {
+  flex: 0 0 auto;
+}
+
+.skeletonName,
+.skeletonTime,
+.skeletonButton {
+  display: block;
+  height: 13px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #edf0f2 25%, #f8fafc 50%, #edf0f2 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.3s ease-in-out infinite;
+}
+
+.skeletonName { width: 118px; }
+.skeletonTime { width: 148px; }
+.skeletonButton { width: 86px; justify-self: end; }
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes skeleton {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (max-width: 680px) {
+  .page { padding: 24px 16px 40px; }
+  .pageHeader { margin-bottom: 24px; }
+  .segmented { width: 100%; }
+  .tableHeader,
+  .connectionRow,
+  .skeletonRow {
+    grid-template-columns: minmax(0, 1fr) 108px;
+    column-gap: 10px;
+  }
+  .connectedColumn { display: none; }
+  .tableHeader > :last-child { grid-column: 2; }
+  .clientCell { overflow: hidden; }
+  .clientCell > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .disconnectButton { padding: 0 10px; }
+}

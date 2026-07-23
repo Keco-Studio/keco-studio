@@ -411,6 +411,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const breadcrumbs = useMemo<BreadcrumbItem[]>(() => {
     const nextBreadcrumbs: BreadcrumbItem[] = [];
+
+    if (pathname === '/mcp') {
+      return [
+        { label: 'Account', path: '/mcp' },
+        { label: 'MCP', path: '/mcp' },
+      ];
+    }
     
     if (currentProjectId) {
       nextBreadcrumbs.push({
@@ -451,6 +458,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     folderName,
     libraryName,
     projectName,
+    pathname,
   ]);
 
   const value = useMemo<NavigationContextType>(() => ({

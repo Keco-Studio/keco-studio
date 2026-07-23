@@ -22,3 +22,13 @@
   height: 100vh;
 }
 
+.sidebarSlot,
+.mcpSidebarSlot {
+  display: contents;
+}
+
+@media (max-width: 680px) {
+  .mcpSidebarSlot {
+    display: none;
+  }
+}

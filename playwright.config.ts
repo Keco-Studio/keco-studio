@@ -21,6 +21,8 @@ dotenv.config({
 
 process.env.INVITATION_SECRET ??= 'keco-playwright-invitation-secret-2026-07-10';
 process.env.SKIP_INVITATION_EMAIL = 'true';
+process.env.MCP_CONNECTION_ID_SIGNING_SECRET ??=
+  'keco-playwright-mcp-connection-signing-secret-2026-07-24';
 
 export default defineConfig({
   testDir: './tests',

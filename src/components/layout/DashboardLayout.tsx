@@ -21,6 +21,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
+  const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
     if (isLoading) return;
@@ -70,7 +71,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className={styles.dashboard}>
       <LeftNav />
       {!hideSidebarForSimulation ? (
-        <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+        <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
+          <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+        </div>
       ) : null}
       <div className={styles.main}>
         {!hideSidebarForSimulation ? <TopBar /> : null}
