@@ -60,6 +60,7 @@ import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
 import { getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
 import { getColumnWidthClassKey } from './utils/tableStructure';
+import { resolveLibraryViewMode } from './libraryViewMode';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -477,15 +478,9 @@ export function LibraryAssetsTable({
     scriptColumns,
     hasScriptColumns,
   } = useLibraryTableStructure(sections, properties);
-  const isScriptExportLibrary = library?.documentExportType === 'script';
-  const [scriptViewMode, setScriptViewMode] = useState<'table' | 'script'>(
-    isScriptExportLibrary ? 'script' : 'table'
-  );
-
-  // Conversation exports → dialogue view; table exports → grid. No toggle.
-  useEffect(() => {
-    setScriptViewMode(library?.documentExportType === 'script' ? 'script' : 'table');
-  }, [library?.documentExportType, library?.id]);
+  // The current library metadata is authoritative; route reuse must not retain
+  // the previously viewed derived library's mode.
+  const scriptViewMode = resolveLibraryViewMode(library?.documentExportType);
 
   const {
     filteredRows: displayRows,
@@ -1017,7 +1012,7 @@ export function LibraryAssetsTable({
           onChangeSectionName={setEditingSectionName}
           onFinishSectionEdit={handleSectionEditEnd}
           onAddSection={handleAddSectionFromTabs}
-          onChangeScriptViewMode={setScriptViewMode}
+          onChangeScriptViewMode={() => undefined}
           onHighlightCells={handleTableFindHighlightCells}
           onClearHighlight={handleTableFindClearHighlight}
           onFocusSection={hasSections ? handleTableFindFocusSection : undefined}
@@ -1027,14 +1022,20 @@ export function LibraryAssetsTable({
           className={`${styles.tableContainer} ${isResizingColumn || isResizingRow ? styles.tableResizing : ''}`}
           ref={tableContainerRef}
         >
-          {scriptViewMode === 'script' && hasScriptColumns ? (
-            <div className={styles.scriptViewContainer}>
-              <VisualNovelScriptView rows={displayRows} scriptColumns={scriptColumns} />
-            </div>
+          {scriptViewMode === 'script' ? (
+            hasScriptColumns ? (
+              <div className={styles.scriptViewContainer}>
+                <VisualNovelScriptView rows={displayRows} scriptColumns={scriptColumns} />
+              </div>
+            ) : (
+              <div className={styles.scriptViewContainer}>
+                <div className={styles.emptyState}>Loading conversation…</div>
+              </div>
+            )
           ) : (
-          <table
-            className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : columnWidthClass}`}
-          >
+            <table
+              className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : columnWidthClass}`}
+            >
             <colgroup>
               <col style={getColStyle(NUMBER_COLUMN_KEY)} />
               {activeProperties.map((property) => (
@@ -1135,7 +1136,7 @@ export function LibraryAssetsTable({
               handleCancelEditing={handleCancelEditing}
               handleAddRowDirect={handleAddRowDirect}
             />
-          </table>
+            </table>
           )}
         </div>
       </div>

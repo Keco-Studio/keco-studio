@@ -94,12 +94,14 @@ export interface SimulationCatalog {
 }
 
 export interface LevelRule {
+  characterId?: string;
   level: number;
   exp: number;
   sp: number;
 }
 
 export interface SkillCostRule {
+  skillId?: string;
   lv: number;
   cost: number;
 }
@@ -109,11 +111,16 @@ export interface SimulationFieldDefinition {
   label: string;
   required?: boolean;
   allowedValues?: readonly string[];
+  aliases?: readonly string[];
+  valueTypes?: readonly StudioColumnValueType[];
 }
+
+export type StudioColumnValueType = 'string' | 'number' | 'boolean' | 'enum' | 'tag' | 'other';
 
 export interface StudioColumnDefinition {
   id: string;
   label: string;
+  valueType?: StudioColumnValueType;
 }
 
 export interface ImportedSimulationSnapshot {
@@ -151,9 +158,21 @@ export interface SimulationImportError {
   readonly message: string;
 }
 
+export interface SimulationImportWarning {
+  readonly role: LibraryRole;
+  readonly code: 'duplicate_rule' | 'invalid_sequence' | 'missing_rule';
+  readonly libraryId: string;
+  readonly libraryName: string;
+  readonly assetId: string | null;
+  readonly assetName: string | null;
+  readonly field: string;
+  readonly reason: string;
+  readonly message: string;
+}
+
 export type SimulationImportResult =
-  | { ok: true; snapshot: ImportedSimulationSnapshot }
-  | { ok: false; errors: SimulationImportError[] };
+  | { ok: true; snapshot: ImportedSimulationSnapshot; warnings: SimulationImportWarning[] }
+  | { ok: false; errors: SimulationImportError[]; warnings: SimulationImportWarning[] };
 
 export interface FighterSnapshot {
   uid: string;

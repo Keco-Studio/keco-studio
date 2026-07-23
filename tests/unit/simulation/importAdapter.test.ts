@@ -48,7 +48,7 @@ describe('strict Studio simulation import adapter', () => {
       sourceLibraryIds: LIBRARY_IDS,
       importedAt: '2026-07-21T02:03:04.000Z',
       levelRules: [{ level: 1, exp: 0, sp: 1 }, { level: 2, exp: 200, sp: 0 }],
-      skillCostRules: [{ lv: 1, cost: 0 }, { lv: 2, cost: 2 }],
+      skillCostRules: [{ skillId: 'quake', lv: 1, cost: 0 }, { skillId: 'quake', lv: 2, cost: 2 }],
       catalog: {
         characters: [{ id: 'hero', name: 'Hero', hp: 100, atk: 0 }],
         skills: [{ id: 'quake', name: 'Quake', status: '' }],
@@ -175,19 +175,75 @@ describe('strict Studio simulation import adapter', () => {
     ]));
   });
 
-  it('requires level and skill cost rules to be unique and contiguous from one', () => {
+  it('imports repeated and non-contiguous curve levels with warnings and keeps the first composite rule', () => {
     const sources = createValidSources();
-    sources.level.assets[1].propertyValues[FIELD_KEYS.level.level] = 2;
+    sources.level.assets[1].propertyValues[FIELD_KEYS.level.level] = 4;
     sources.skillc.assets[1].propertyValues[FIELD_KEYS.skillc.lv] = 3;
+    sources.skillc.assets.push(structuredClone(sources.skillc.assets[0]));
+    sources.skillc.assets[2].id = 'duplicate-skill-rule';
 
-    const errors = errorsFor(importSimulationSnapshot({
+    const result = importSimulationSnapshot({
       sourceProjectId: PROJECT_ID, sources, fieldMappings: createValidMappings(),
-    }));
+    });
 
-    expect(errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'level', code: 'duplicate_id', field: 'level' }),
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'level', code: 'invalid_sequence', field: 'level' }),
       expect.objectContaining({ role: 'skillc', code: 'invalid_sequence', field: 'lv' }),
+      expect.objectContaining({ role: 'skillc', code: 'duplicate_rule', field: 'lv' }),
+    ]));
+    expect(result.snapshot.skillCostRules).toHaveLength(2);
+  });
+
+  it('imports character and skill dimensions and blocks unresolved references', () => {
+    const sources = createValidSources();
+    const mappings = createValidMappings();
+    const characterId = '10000000-0000-4000-8000-000000000399';
+    const skillId = FIELD_KEYS.skillc.skillId;
+    sources.level.properties.push({
+      id: characterId, key: characterId, sectionId: 'level', name: 'Character ID', valueType: 'string', orderIndex: 99,
+    });
+    mappings.level.characterId = characterId;
+    for (const row of sources.level.assets) row.propertyValues[characterId] = 'hero';
+    for (const row of sources.skillc.assets) row.propertyValues[skillId] = 'quake';
+
+    const imported = importSimulationSnapshot({ sourceProjectId: PROJECT_ID, sources, fieldMappings: mappings });
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    expect(imported.snapshot.levelRules[0]).toMatchObject({ characterId: 'hero' });
+    expect(imported.snapshot.skillCostRules[0]).toMatchObject({ skillId: 'quake' });
+
+    sources.level.assets[0].propertyValues[characterId] = 'missing-character';
+    sources.skillc.assets[0].propertyValues[skillId] = 'missing-skill';
+    const errors = errorsFor(importSimulationSnapshot({ sourceProjectId: PROJECT_ID, sources, fieldMappings: mappings }));
+    expect(errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'level', code: 'unresolved_reference', field: 'character_id' }),
+      expect.objectContaining({ role: 'skillc', code: 'unresolved_reference', field: 'skill_id' }),
+    ]));
+  });
+
+  it('warns when an entity is missing levels present elsewhere in its curve table', () => {
+    const sources = createValidSources();
+    const secondSkill = structuredClone(sources.skills.assets[0]);
+    secondSkill.id = 'second-skill-asset';
+    secondSkill.propertyValues[FIELD_KEYS.skills.id] = 'spark';
+    sources.skills.assets.push(secondSkill);
+    const sparkLevelOne = structuredClone(sources.skillc.assets[1]);
+    sparkLevelOne.id = 'spark-level-one';
+    sparkLevelOne.propertyValues[FIELD_KEYS.skillc.skillId] = 'spark';
+    sources.skillc.assets.push(sparkLevelOne);
+
+    const result = importSimulationSnapshot({
+      sourceProjectId: PROJECT_ID,
+      sources,
+      fieldMappings: createValidMappings(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'skillc', code: 'missing_rule', field: 'skill_id' }),
     ]));
   });
 
@@ -224,7 +280,7 @@ describe('strict Studio simulation import adapter', () => {
     ]));
   });
 
-  it('still reports duplicate rule indexes when another value on that row is invalid', () => {
+  it('still blocks an invalid curve row without treating its repeated level as an ID error', () => {
     const sources = createValidSources();
     sources.level.assets[1].propertyValues[FIELD_KEYS.level.level] = 2;
     sources.level.assets[1].propertyValues[FIELD_KEYS.level.exp] = -1;
@@ -235,6 +291,8 @@ describe('strict Studio simulation import adapter', () => {
 
     expect(errors).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'invalid_range', field: 'exp' }),
+    ]));
+    expect(errors).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'duplicate_id', field: 'level' }),
     ]));
   });

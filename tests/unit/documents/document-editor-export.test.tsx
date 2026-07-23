@@ -423,6 +423,34 @@ describe('DocumentEditor export durability', () => {
     expect(showErrorToast).not.toHaveBeenCalled();
   });
 
+  it('still opens script export when the collaboration flush throws synchronously', async () => {
+    permissionRole = 'admin';
+    flush.mockImplementation(() => {
+      throw new Error('Invalid access: Add Yjs type to a document before reading data.');
+    });
+    const source = {
+      documentId: 'document-id',
+      documentName: 'Export me',
+      projectId: 'project-id',
+      folderId: 'folder-id',
+      markdown: 'Scene: Start',
+      token: { epoch: 7, revision: 3 },
+      snapshotToken: 'signed-snapshot-token',
+    };
+    (fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
+
+    await exportHandler()({ key: 'script' });
+
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/documents/document-id/export-source',
+      { headers: { Authorization: 'Bearer fresh-access-token' } }
+    );
+    expect(stateSetter).toHaveBeenCalledWith(source);
+    expect(showErrorToast).not.toHaveBeenCalled();
+  });
+
   it('uses the latest project binding when the editor project changes', async () => {
     permissionRole = 'admin';
     exportHandler('old-project');

@@ -48,6 +48,22 @@ function client(loadResult: DbResult, rpcResult: DbResult = { data: null, error:
 }
 
 describe('Supabase simulation storage repository', () => {
+  it('accepts sparse entity-specific and legacy shared curve rules', async () => {
+    const expected = state();
+    expected.sessions[0].importedSnapshot!.levelRules = [
+      { characterId: 'hero', level: 2, exp: 200, sp: 1 },
+      { level: 5, exp: 900, sp: 2 },
+    ];
+    expected.sessions[0].importedSnapshot!.skillCostRules = [
+      { skillId: 'quake', lv: 2, cost: 3 },
+      { lv: 4, cost: 8 },
+    ];
+    const mock = client({ data: { state_version: 1, state: expected, revision: 1 }, error: null });
+
+    await expect(createSimulationStorageRepository(mock.value as never).load('project-1'))
+      .resolves.toMatchObject({ ok: true, state: expected });
+  });
+
   it('loads an absent row as revision zero without sending a user id', async () => {
     const mock = client({ data: null, error: null });
     const repository = createSimulationStorageRepository(mock.value as never);

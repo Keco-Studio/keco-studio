@@ -659,6 +659,7 @@ export default function LibraryPage() {
         <div className={styles.tableContainer}>
           <RowStoreProvider libraryId={libraryId}>
             <LibraryAssetsTableAdapter
+              key={library.id}
               library={
                 librarySummary
                   ? {

@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { LoginPage } from '../pages/login.page';
-import { waitForSupabaseAuthStorage } from '../utils/auth-storage';
 
 import { projects, generateProjectData } from '../fixures/projects';
 import { libraries } from '../fixures/libraries';

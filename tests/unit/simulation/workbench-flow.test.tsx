@@ -26,6 +26,8 @@ describe('simulation workbench flow', () => {
     expect(source).toContain('Import libraries');
     expect(source).toContain('drag from a source port');
     expect(source).toContain('Continue to characters');
+    expect(source).toContain('Imported with warnings');
+    expect(source).toContain('result.warnings');
   });
 
   it('uses imported catalogs and rule tables for configuration', () => {
@@ -34,6 +36,8 @@ describe('simulation workbench flow', () => {
     expect(read('SkillsScreen.tsx')).toContain('>= 6');
     expect(read('ProgressionScreen.tsx')).toContain('snapshot.skillCostRules');
     expect(read('ProgressionScreen.tsx')).toContain('snapshot.levelRules');
+    expect(read('ProgressionScreen.tsx')).toContain("'Rule missing'");
+    expect(read('ProgressionScreen.tsx')).toContain('if (cost === null) return;');
   });
 
   it('wires battle playback and project-scoped providers in the workbench', () => {
