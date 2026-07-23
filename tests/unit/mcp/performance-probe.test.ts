@@ -134,6 +134,7 @@ describe('MCP performance probe', () => {
 
     expect(evidence.passed).toBe(true);
     expect(JSON.stringify(evidence)).not.toContain(token);
+    expect(JSON.stringify(evidence)).not.toContain(mcpUrl);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
@@ -184,6 +185,25 @@ describe('MCP performance probe', () => {
       projectStructure: { sampleCount: 1, p95Ms: 20, budgetMs: 1000 },
       search: { sampleCount: 1, p95Ms: 20, budgetMs: 3000 },
     });
+  });
+
+  it('measures account list_projects timing without recording project data', async () => {
+    let clock = 0;
+    const accountUrl = 'https://abc.supabase.co/functions/v1/mcp';
+    const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { id: number; method: string; params?: { name?: string } };
+      clock += 20;
+      return rpcResponse(request.id).json().then(result => Response.json({
+        ...(result as object),
+        result: request.method === 'tools/call' ? { structuredContent: { ok: true } } : {},
+      }));
+    });
+    const evidence = await runPerformanceProbe({ mcpUrl: accountUrl, accessToken: 'header.payload.signature',
+      warmSamples: 1, phase2Samples: 1, coldVerified: true, fetchImpl: fetchMock as typeof fetch, now: () => clock });
+    expect(evidence.measurements.phase2).toEqual({
+      accountProjectList: { sampleCount: 1, p95Ms: 20, budgetMs: 800 },
+    });
+    expect(JSON.stringify(evidence)).not.toContain('header.payload.signature');
   });
 
   it('fails with a stable error that does not include remote secret content', async () => {

@@ -2,15 +2,60 @@
 
 ## Service Boundaries
 
-The public path is Supabase Auth, the project-bound `mcp` Edge Function,
-PostgreSQL/RLS, and the trusted Vercel document codec. Table and row operations
-use the caller JWT. Only `update_document` creates a short-lived service-role
-client, and only for `mcp_replace_document_content`.
+The public paths are the account-scoped `mcp` root route and the legacy
+project-bound `mcp/{projectId}` route, Supabase Auth, PostgreSQL/RLS, and the
+trusted Vercel document codec. Account OAuth grants authenticate the service;
+each project operation then checks current membership and role under the caller
+JWT. Table and row operations use the caller JWT. Only `update_document` creates
+a short-lived service-role client, and only for `mcp_replace_document_content`.
 
 Never copy authorization headers, tokens, raw search queries, full document
 bodies, full row values, SQL error text, or provider response bodies into logs,
 issues, dashboards, or evidence. Logs use request IDs plus opaque actor/project
 hashes.
+
+## Account Entry Deployment
+
+Deploy the additive account entry in this order:
+
+1. Apply the database migration that creates the service-grant contract,
+   project-discovery RPCs, and exchange binding.
+2. Deploy Vercel OAuth metadata and account consent handling.
+3. Confirm the production codec health check using the managed codec secret.
+4. Deploy the `mcp` Edge Function with `--no-verify-jwt`; its service-grant and
+   project-role checks remain the authorization boundary.
+5. Run real OAuth and MCP acceptance against the root endpoint, then verify a
+   legacy project URL with an existing legacy credential.
+
+Keep `supabase/setup-cli@v1` and Supabase CLI `2.90.0` in CI and deployment
+workflows. In that CLI version, `[auth.oauth_server]` configures the local
+stack, but remote OAuth Server configuration serialization is unimplemented.
+`supabase link` and `supabase db push` therefore do not prove production OAuth
+Server configuration. Treat production discovery, dynamic registration,
+authorization, and code exchange as direct post-deploy checks.
+
+The production root endpoint is:
+
+```text
+https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp
+```
+
+Before release, capture sanitized evidence for all of the following:
+
+- anonymous root request returns `401` with account resource metadata;
+- root OAuth discovery, DCR, authorization response, and code exchange succeed;
+- `list_projects` returns a bounded page, including duplicate names without an
+  unsolicited clarification, and records its timing;
+- a viewer-targeted write returns `PROJECT_WRITE_FORBIDDEN` without choosing a
+  different project;
+- account and legacy OAuth credentials each receive `403` when replayed to the
+  other route;
+- a zero-project account receives a successful empty page;
+- a legacy project URL continues to initialize and expose its unchanged surface.
+
+Record only request IDs, durations, counts, roles, generated project labels,
+workflow URLs, and commit identifiers. Do not record credentials, authorization
+codes, refresh tokens, PKCE values, cookies, client secrets, or project IDs.
 
 ## Health Gates
 
@@ -95,17 +140,25 @@ authority.
 
 ## Rollback
 
-For an Edge regression, redeploy the last known-good `mcp` Function bundle. For a
-codec regression, roll Vercel production back to the last known-good deployment;
-document writes should fail closed while reads remain available. Do not bypass the
-codec or accept unverified Yjs state.
+If root account acceptance fails, disable or reject only the exact `/mcp` route.
+Keep `/mcp/{projectId}` traffic, its existing OAuth grants, and its tool contract
+available throughout the rollback. The account service-grant table and exchange
+trigger are additive and may remain deployed; do not use a destructive database
+rollback to remove them. Once the root route is disabled, verify the legacy probe
+and a legacy client before announcing the fallback.
+
+For an unrelated Edge regression, redeploy the last known-good `mcp` Function
+bundle. For a codec regression, roll Vercel production back to the last
+known-good deployment; document writes should fail closed while reads remain
+available. Do not bypass the codec or accept unverified Yjs state.
 
 Database migrations are additive and security-sensitive. Prefer a forward repair
 migration. Before any exceptional rollback, take a managed backup, inspect new
 audit/write rows, and prove that removing functions, columns, indexes, or grants
 will not discard state or reopen access. Never edit an already applied migration.
 
-After rollback or repair, run OAuth discovery, capabilities, bounded reads, search,
-disposable writes, stale conflict, role downgrade/removal, cross-project denial,
-rate/audit, and all latency gates in both Codex and Claude before declaring service
-recovery.
+After rollback or repair, run root OAuth discovery, account project listing,
+capabilities, bounded reads, search, disposable writes, stale conflict, role
+downgrade/removal, viewer denial, cross-resource replay denial, legacy
+compatibility, rate/audit, and all latency gates in both Codex and Claude before
+declaring service recovery.
