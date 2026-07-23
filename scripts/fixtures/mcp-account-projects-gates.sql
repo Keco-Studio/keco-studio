@@ -173,6 +173,13 @@ select set_config(
   )::text,
   false
 );
+select set_config(
+  'mcp.account_gate_writable_index_before',
+  pg_stat_get_numscans(
+    'public.mcp_writable_project_collaborators_user_idx'::regclass
+  )::text,
+  false
+);
 
 set role authenticated;
 select set_config(
@@ -201,6 +208,23 @@ begin
 end;
 $$;
 
+reset role;
+select set_config(
+  'request.jwt.claim.sub',
+  (
+    select user_row.id::text
+    from auth.users as user_row
+    where user_row.email = 'seed-empty-2@mailinator.com'
+  ),
+  false
+);
+set role authenticated;
+select set_config(
+  'mcp.account_gate_collaborator_only_writable',
+  public.mcp_has_writable_project()::text,
+  false
+);
+
 -- PostgreSQL accumulates scan counters in the current backend. Force those
 -- pending counters out after the RPC statement, then fetch a fresh snapshot.
 reset role;
@@ -211,6 +235,9 @@ do $$
 declare
   v_count integer := current_setting('mcp.account_gate_rpc_count')::integer;
   v_has_writable boolean := current_setting('mcp.account_gate_has_writable')::boolean;
+  v_collaborator_only_writable boolean := current_setting(
+    'mcp.account_gate_collaborator_only_writable'
+  )::boolean;
   v_elapsed_ms numeric := current_setting('mcp.account_gate_rpc_elapsed_ms')::numeric;
   v_seq_before bigint := current_setting(
     'mcp.account_gate_collaborator_seq_before'
@@ -224,6 +251,9 @@ declare
   v_index_before bigint := current_setting(
     'mcp.account_gate_collaborator_index_before'
   )::bigint;
+  v_writable_index_before bigint := current_setting(
+    'mcp.account_gate_writable_index_before'
+  )::bigint;
   v_seq_after bigint := pg_stat_get_numscans(
     'public.project_collaborators'::regclass
   );
@@ -234,19 +264,27 @@ declare
   v_index_after bigint := pg_stat_get_numscans(
     'public.mcp_accepted_project_collaborators_user_project_idx'::regclass
   );
+  v_writable_index_after bigint := pg_stat_get_numscans(
+    'public.mcp_writable_project_collaborators_user_idx'::regclass
+  );
 begin
-  if v_count <> 101 or v_has_writable is distinct from true or v_elapsed_ms > 5000 then
+  if v_count <> 101
+     or v_has_writable is distinct from true
+     or v_collaborator_only_writable is distinct from true
+     or v_elapsed_ms > 5000 then
     raise exception 'MCP account real RPC count/timing is invalid: % rows in % ms',
       v_count, v_elapsed_ms;
   end if;
 
   if v_owner_index_after <= v_owner_index_before
      or v_index_after <= v_index_before
+     or v_writable_index_after <= v_writable_index_before
      or v_seq_after <> v_seq_before
      or v_projects_seq_after <> v_projects_seq_before then
-    raise exception 'MCP account real RPC did not use both bounded keyset indexes without table scans: owner % -> %, collaborator % -> %, collaborator seq % -> %, projects seq % -> %',
+    raise exception 'MCP account real RPC did not use bounded listing/writable indexes without table scans: owner % -> %, collaborator % -> %, writable % -> %, collaborator seq % -> %, projects seq % -> %',
       v_owner_index_before, v_owner_index_after,
       v_index_before, v_index_after,
+      v_writable_index_before, v_writable_index_after,
       v_seq_before, v_seq_after,
       v_projects_seq_before, v_projects_seq_after;
   end if;

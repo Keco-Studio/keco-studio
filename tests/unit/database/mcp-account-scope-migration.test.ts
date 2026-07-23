@@ -225,14 +225,22 @@ describe('MCP account scope migration', () => {
     expect(gatesSql).toContain(
       "'public.mcp_accepted_project_collaborators_user_project_idx'::regclass"
     );
+    expect(gatesSql).toContain(
+      "'public.mcp_writable_project_collaborators_user_idx'::regclass"
+    );
+    expect(gatesSql).toContain("'seed-empty-2@mailinator.com'");
+    expect(gatesSql).toMatch(/v_collaborator_only_writable is distinct from true/i);
     expect(gatesSql).toMatch(/reset enable_bitmapscan;\s*select pg_stat_force_next_flush\(\);/i);
     expect(gatesSql).toMatch(/pg_stat_force_next_flush\(\)/i);
     expect(gatesSql).toMatch(/v_owner_index_after <= v_owner_index_before/i);
     expect(gatesSql).toMatch(/v_index_after <= v_index_before/i);
+    expect(gatesSql).toMatch(/v_writable_index_after <= v_writable_index_before/i);
     expect(gatesSql).toMatch(/v_seq_after <> v_seq_before/i);
     expect(gatesSql).toMatch(/v_projects_seq_after <> v_projects_seq_before/i);
-    expect(gatesSql).toMatch(/v_count <> 101 or v_has_writable is distinct from true or v_elapsed_ms > 5000/i);
-    expect(gatesSql).toContain('select public.mcp_has_writable_project()');
+    expect(gatesSql).toMatch(/v_count <> 101/i);
     expect(gatesSql).toMatch(/v_has_writable is distinct from true/i);
+    expect(gatesSql).toMatch(/v_collaborator_only_writable is distinct from true/i);
+    expect(gatesSql).toMatch(/v_elapsed_ms > 5000/i);
+    expect(gatesSql).toContain('select public.mcp_has_writable_project()');
   });
 });

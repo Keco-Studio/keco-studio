@@ -18,6 +18,8 @@ where id in (
   select '44444444-4444-4444-8444-444444444401'::uuid
   union all
   select '44444444-4444-4444-8444-444444444402'::uuid
+  union all
+  select '44444444-4444-4444-8444-444444444403'::uuid
 );
 
 insert into public.projects(id, owner_id, name, description, created_at, updated_at)
@@ -118,6 +120,14 @@ values
     'MCP account project discovery pending fixture',
     '2031-01-01 00:00:00+00',
     '2031-01-01 00:00:00+00'
+  ),
+  (
+    '44444444-4444-4444-8444-444444444403',
+    'aaaaaaaa-bbbb-cccc-dddd-000000000007',
+    'MCP account collaborator-only writable project',
+    'MCP account collaborator-only writable fixture',
+    '2031-01-02 00:00:00+00',
+    '2031-01-02 00:00:00+00'
   );
 
 insert into public.project_collaborators (
@@ -140,6 +150,30 @@ set
   invited_by = excluded.invited_by,
   invited_at = excluded.invited_at,
   accepted_at = null;
+
+insert into public.project_collaborators (
+  user_id,
+  project_id,
+  role,
+  invited_by,
+  invited_at,
+  accepted_at
+)
+select
+  user_row.id,
+  '44444444-4444-4444-8444-444444444403'::uuid,
+  'editor',
+  'aaaaaaaa-bbbb-cccc-dddd-000000000007'::uuid,
+  '2030-12-02 00:00:00+00'::timestamptz,
+  '2030-12-02 00:00:00+00'::timestamptz
+from auth.users as user_row
+where user_row.email = 'seed-empty-2@mailinator.com'
+on conflict (user_id, project_id) do update
+set
+  role = excluded.role,
+  invited_by = excluded.invited_by,
+  invited_at = excluded.invited_at,
+  accepted_at = excluded.accepted_at;
 
 -- Make the measured user selective enough for the normal planner to choose the
 -- existing user-scoped collaborator index without disabling sequential scans.
