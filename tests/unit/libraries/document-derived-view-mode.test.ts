@@ -21,9 +21,14 @@ describe('document-derived library view mode', () => {
       resolve(process.cwd(), 'src/app/(dashboard)/[projectId]/[libraryId]/page.tsx'),
       'utf8'
     );
+    const layout = readFileSync(
+      resolve(process.cwd(), 'src/app/(dashboard)/[projectId]/[libraryId]/layout.tsx'),
+      'utf8'
+    );
 
     expect(table).toContain('resolveLibraryViewMode(library?.documentExportType)');
     expect(table).not.toMatch(/useState<['"]table['"] \| ['"]script['"]>/);
     expect(page).toContain('key={library.id}');
+    expect(layout).toContain('<LibraryDataProvider key={libraryId}');
   });
 });

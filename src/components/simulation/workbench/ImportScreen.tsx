@@ -923,12 +923,16 @@ export function ImportScreen({
                       <Port side="target" connected={!!mappedCol} active={isHoverTarget} />
                     </span>
                     <span style={{
-                      width: 56,
                       flexShrink: 0,
+                      maxWidth: 120,
+                      marginRight: 4,
                       fontSize: 13,
                       fontWeight: 600,
                       color: 'var(--simulation-ink-800)',
                       fontFamily: 'var(--simulation-font-body)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                     >
                       {field.label}

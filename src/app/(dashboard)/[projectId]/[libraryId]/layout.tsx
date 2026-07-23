@@ -27,12 +27,11 @@ export default function LibraryLayout({ children }: LibraryLayoutProps) {
   }
   
   return (
-    <LibraryDataProvider libraryId={libraryId} projectId={projectId}>
+    <LibraryDataProvider key={libraryId} libraryId={libraryId} projectId={projectId}>
       {children}
     </LibraryDataProvider>
   );
 }
-
 
 
 
