@@ -1,4 +1,7 @@
-import { projectIdFromOAuthResource } from '@/lib/mcp/oauthProjectBinding';
+import {
+  classifyOAuthResource,
+  projectIdFromOAuthResource,
+} from '@/lib/mcp/oauthProjectBinding';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,6 +21,15 @@ it('extracts a UUID from a project-bound Supabase MCP resource', () => {
   )).toBe(projectId);
 });
 
+it('classifies the exact account and legacy project MCP resources', () => {
+  expect(classifyOAuthResource('https://abc.supabase.co/functions/v1/mcp')).toEqual({
+    mode: 'account',
+  });
+  expect(classifyOAuthResource(
+    `https://abc.supabase.co/functions/v1/mcp/${projectId}`
+  )).toEqual({ mode: 'project', projectId });
+});
+
 it.each([
   undefined,
   null,
@@ -32,12 +44,24 @@ it.each([
   `https://abc.supabase.co/functions/v1/mcp/${projectId}?project=${projectId}`,
   `https://abc.supabase.co/functions/v1/mcp/${projectId}#fragment`,
   `https://abc.supabase.co/functions/v1/mcp/${projectId}/`,
+  'https://abc.supabase.co/functions/v1/mcp/',
+  'https://abc.supabase.co/functions/v1/mcp/../mcp',
   `https://abc.supabase.co/auth/functions/v1/mcp/${projectId}`,
   ` https://abc.supabase.co/functions/v1/mcp/${projectId}`,
 ])(
   'rejects an unavailable or unbound OAuth resource: %p',
   (resource) => expect(projectIdFromOAuthResource(resource)).toBeNull()
 );
+
+it.each([
+  'https://abc.supabase.co/functions/v1/mcp/',
+  'https://abc.supabase.co/functions/v1/mcp/extra',
+  'https://abc.supabase.co/functions/v1/mcp?resource=other',
+  'https://abc.supabase.co/functions/v1/mcp#fragment',
+  'https://user:pass@abc.supabase.co/functions/v1/mcp',
+])('rejects a non-exact account OAuth resource: %s', (resource) => {
+  expect(classifyOAuthResource(resource)).toBeNull();
+});
 
 it.each([
   'http://127.0.0.1:54321',

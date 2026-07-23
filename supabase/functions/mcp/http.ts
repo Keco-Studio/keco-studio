@@ -1,4 +1,11 @@
-import { authorizeProject, type ProjectAuthorization } from "./auth.ts";
+import {
+  authorizeAccount,
+  authorizeProject,
+  type AccountAuthorization,
+  type AccountAuthContext,
+  type ProjectAuthorization,
+  type ProjectAuthContext,
+} from "./auth.ts";
 import { handleProtocolRequest } from "./server.ts";
 import { createMcpRequestContext, type McpRequestContext } from "./context.ts";
 import { MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES } from "./limits.ts";
@@ -14,23 +21,50 @@ const CORS = {
     "MCP-Protocol-Version, MCP-Session-Id, WWW-Authenticate",
 };
 
-export function extractBoundProjectId(url: URL): string | null {
+export type McpEndpoint =
+  | { mode: "account" }
+  | { mode: "project"; projectId: string };
+
+export function extractMcpEndpoint(url: URL): McpEndpoint | null {
   // Supabase's gateway strips `/functions/v1` before invoking the function,
-  // while local/direct requests retain the public prefix. Accept only those
-  // two exact forms; never treat an arbitrary suffix as a project endpoint.
+  // while local/direct requests retain the public prefix. Only the account
+  // root and a single UUID project segment are valid endpoint shapes.
+  if (
+    url.username ||
+    url.password ||
+    url.href.includes("?") ||
+    url.href.includes("#")
+  ) return null;
+  if (/^(?:\/functions\/v1)?\/mcp$/.test(url.pathname)) {
+    return { mode: "account" };
+  }
   const match = /^(?:\/functions\/v1)?\/mcp\/([^/]+)$/.exec(url.pathname);
-  return match && UUID.test(match[1]) ? match[1] : null;
+  return match && UUID.test(match[1])
+    ? { mode: "project", projectId: match[1] }
+    : null;
+}
+
+/** @deprecated Use extractMcpEndpoint to distinguish account and project routes. */
+export function extractBoundProjectId(url: URL): string | null {
+  const endpoint = extractMcpEndpoint(url);
+  return endpoint?.mode === "project" ? endpoint.projectId : null;
 }
 
 export type McpHttpDependencies = {
+  /** Legacy alias for authorizeProject, retained for existing callers. */
   authorize?: (
     request: Request,
     projectId: string,
   ) => Promise<ProjectAuthorization>;
+  authorizeProject?: (
+    request: Request,
+    projectId: string,
+  ) => Promise<ProjectAuthorization>;
+  authorizeAccount?: (request: Request) => Promise<AccountAuthorization>;
   kecoPublicUrl?: string;
   createContext?: (
     request: Request,
-    authContext: Extract<ProjectAuthorization, { status: "authorized" }>["context"],
+    authContext: ProjectAuthContext | AccountAuthContext,
   ) => McpRequestContext;
   handleProtocol?: (
     request: Request,
@@ -166,8 +200,8 @@ export async function handleMcpHttpRequest(
   if (request.method === "OPTIONS") {
     return withCors(new Response(null, { status: 204 }));
   }
-  const projectId = extractBoundProjectId(new URL(request.url));
-  if (!projectId) {
+  const endpoint = extractMcpEndpoint(new URL(request.url));
+  if (!endpoint) {
     return withCors(
       Response.json({ error: "Invalid MCP project endpoint." }, {
         status: 404,
@@ -194,10 +228,14 @@ export async function handleMcpHttpRequest(
       Response.json({ error: "MCP request exceeds 256 KiB." }, { status: 413 }),
     );
   }
-  const authorize = deps.authorize ?? authorizeProject;
-  let authorization: ProjectAuthorization;
+  let authorization: ProjectAuthorization | AccountAuthorization;
   try {
-    authorization = await authorize(boundedRequest, projectId);
+    authorization = endpoint.mode === "account"
+      ? await (deps.authorizeAccount ?? authorizeAccount)(boundedRequest)
+      : await (deps.authorizeProject ?? deps.authorize ?? authorizeProject)(
+        boundedRequest,
+        endpoint.projectId,
+      );
   } catch {
     authorization = { status: "operational_error" };
   }
@@ -207,7 +245,11 @@ export async function handleMcpHttpRequest(
     }));
   }
   if (authorization.status === "forbidden") {
-    return withCors(Response.json({ error: "Project access forbidden." }, {
+    return withCors(Response.json({
+      error: endpoint.mode === "account"
+        ? "Account access forbidden."
+        : "Project access forbidden.",
+    }, {
       status: 403,
     }));
   }
@@ -220,8 +262,9 @@ export async function handleMcpHttpRequest(
         status: 500,
       }));
     }
-    const metadata =
-      `${kecoPublicUrl}/api/mcp/oauth-protected-resource?project_id=${projectId}`;
+    const metadata = endpoint.mode === "account"
+      ? `${kecoPublicUrl}/api/mcp/oauth-protected-resource`
+      : `${kecoPublicUrl}/api/mcp/oauth-protected-resource?project_id=${endpoint.projectId}`;
     return withCors(Response.json({ error: "Authentication required." }, {
       status: 401,
       headers: { "www-authenticate": `Bearer resource_metadata="${metadata}"` },

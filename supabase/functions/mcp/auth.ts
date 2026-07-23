@@ -8,8 +8,19 @@ export type ProjectAuthContext = {
   clientId: string | null;
   bearerToken: string;
 };
+export type AccountAuthContext = {
+  userId: string;
+  clientId: string;
+  sessionId: string;
+  bearerToken: string;
+};
 export type ProjectAuthorization =
   | { status: "authorized"; context: ProjectAuthContext }
+  | { status: "unauthenticated" }
+  | { status: "forbidden" }
+  | { status: "operational_error" };
+export type AccountAuthorization =
+  | { status: "authorized"; context: AccountAuthContext }
   | { status: "unauthenticated" }
   | { status: "forbidden" }
   | { status: "operational_error" };
@@ -21,12 +32,18 @@ export interface AuthGateway {
     {
       id: string;
       clientId?: string | null;
+      sessionId?: string | null;
       resourceOrigin?: string | null;
     } | null
   >;
   hasOAuthProjectGrant(
     clientId: string,
     projectId: string,
+    resource: string,
+    token: string,
+  ): Promise<boolean>;
+  hasOAuthServiceGrant?(
+    clientId: string,
     resource: string,
     token: string,
   ): Promise<boolean>;
@@ -48,6 +65,13 @@ const INVALID_CREDENTIAL_CODES = new Set([
 ]);
 
 const MCP_PATH = /^(?:\/functions\/v1)?\/mcp\/([^/]+)$/;
+const ACCOUNT_MCP_PATH = /^(?:\/functions\/v1)?\/mcp$/;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function hasSerializedQueryOrFragment(url: URL): boolean {
+  return url.href.includes("?") || url.href.includes("#");
+}
 
 /**
  * Supabase's Edge gateway invokes this function at `/mcp/{projectId}`, while
@@ -66,8 +90,7 @@ export function canonicalProjectResource(
       match[1] !== projectId ||
       url.username ||
       url.password ||
-      url.search ||
-      url.hash
+      hasSerializedQueryOrFragment(url)
     ) {
       return null;
     }
@@ -77,8 +100,7 @@ export function canonicalProjectResource(
       origin.username ||
       origin.password ||
       origin.pathname !== "/" ||
-      origin.search ||
-      origin.hash
+      hasSerializedQueryOrFragment(origin)
     ) {
       return null;
     }
@@ -88,12 +110,49 @@ export function canonicalProjectResource(
   }
 }
 
+/**
+ * Supabase's Edge gateway invokes this function at `/mcp`, while OAuth grants
+ * are bound to the public `/functions/v1/mcp` URL.
+ */
+export function canonicalAccountResource(
+  requestUrl: string,
+  resourceOrigin?: string | null,
+): string | null {
+  try {
+    const url = new URL(requestUrl);
+    if (
+      !ACCOUNT_MCP_PATH.test(url.pathname) ||
+      url.username ||
+      url.password ||
+      hasSerializedQueryOrFragment(url)
+    ) {
+      return null;
+    }
+    const origin = new URL(resourceOrigin ?? url.origin);
+    if (
+      (origin.protocol !== "https:" && origin.protocol !== "http:") ||
+      origin.username ||
+      origin.password ||
+      origin.pathname !== "/" ||
+      hasSerializedQueryOrFragment(origin)
+    ) {
+      return null;
+    }
+    return `${origin.origin}/functions/v1/mcp`;
+  } catch {
+    return null;
+  }
+}
+
 function verifiedOAuthClaims(token: string): {
   clientId: string | null;
+  sessionId: string | null;
   resourceOrigin: string | null;
 } {
   const payload = token.split(".")[1];
-  if (!payload) return { clientId: null, resourceOrigin: null };
+  if (!payload) {
+    return { clientId: null, sessionId: null, resourceOrigin: null };
+  }
   try {
     const padding = "=".repeat((4 - payload.length % 4) % 4);
     const decoded = JSON.parse(atob(
@@ -104,6 +163,11 @@ function verifiedOAuthClaims(token: string): {
         candidate.length <= 256
       ? candidate
       : null;
+    const sessionCandidate = decoded?.session_id;
+    const sessionId = typeof sessionCandidate === "string" &&
+        UUID.test(sessionCandidate)
+      ? sessionCandidate
+      : null;
     const issuer = new URL(decoded?.iss);
     const resourceOrigin =
       (issuer.protocol === "https:" || issuer.protocol === "http:") &&
@@ -112,9 +176,9 @@ function verifiedOAuthClaims(token: string): {
         (issuer.pathname === "/auth/v1" || issuer.pathname === "/auth/v1/")
         ? issuer.origin
         : null;
-    return { clientId, resourceOrigin };
+    return { clientId, sessionId, resourceOrigin };
   } catch {
-    return { clientId: null, resourceOrigin: null };
+    return { clientId: null, sessionId: null, resourceOrigin: null };
   }
 }
 
@@ -178,6 +242,49 @@ export async function authorizeProjectWithGateway(
   }
 }
 
+export async function authorizeAccountWithGateway(
+  request: Request,
+  gateway: AuthGateway,
+): Promise<AccountAuthorization> {
+  const match = /^Bearer\s+(.+)$/i.exec(
+    request.headers.get("authorization") ?? "",
+  );
+  if (!match) return { status: "unauthenticated" };
+  const token = match[1];
+  try {
+    const user = await gateway.getUser(token);
+    if (!user) return { status: "unauthenticated" };
+    // getUser has verified the token before its OAuth claims are decoded.
+    const claims = verifiedOAuthClaims(token);
+    const clientId = claims.clientId;
+    const sessionId = claims.sessionId;
+    if (!clientId || !sessionId) return { status: "forbidden" };
+    const resource = canonicalAccountResource(request.url, claims.resourceOrigin);
+    if (!resource) return { status: "forbidden" };
+    if (!gateway.hasOAuthServiceGrant) {
+      return { status: "operational_error" };
+    }
+    const hasGrant = await gateway.hasOAuthServiceGrant(
+      clientId,
+      resource,
+      token,
+    );
+    return hasGrant
+      ? {
+        status: "authorized",
+        context: {
+          userId: user.id,
+          clientId,
+          sessionId,
+          bearerToken: token,
+        },
+      }
+      : { status: "forbidden" };
+  } catch {
+    return { status: "operational_error" };
+  }
+}
+
 function supabaseGateway(): AuthGateway {
   const url = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -199,6 +306,7 @@ function supabaseGateway(): AuthGateway {
         ? {
           id: data.user.id,
           clientId: claims.clientId,
+          sessionId: claims.sessionId,
           resourceOrigin: claims.resourceOrigin,
         }
         : null;
@@ -214,6 +322,18 @@ function supabaseGateway(): AuthGateway {
         p_resource: resource,
       });
       if (error) throw new Error("Supabase OAuth project grant lookup failed.");
+      return data === true;
+    },
+    async hasOAuthServiceGrant(clientId, resource, token) {
+      const client = createClient(url, anonKey, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false },
+      });
+      const { data, error } = await client.rpc("has_oauth_mcp_service_grant", {
+        p_client_id: clientId,
+        p_resource: resource,
+      });
+      if (error) throw new Error("Supabase OAuth service grant lookup failed.");
       return data === true;
     },
     async getProjectOwner(projectId, token) {
@@ -258,6 +378,16 @@ export async function authorizeProject(
       projectId,
       supabaseGateway(),
     );
+  } catch {
+    return { status: "operational_error" };
+  }
+}
+
+export async function authorizeAccount(
+  request: Request,
+): Promise<AccountAuthorization> {
+  try {
+    return await authorizeAccountWithGateway(request, supabaseGateway());
   } catch {
     return { status: "operational_error" };
   }

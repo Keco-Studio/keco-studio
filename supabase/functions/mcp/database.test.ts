@@ -1,15 +1,15 @@
 import { assertEquals, assertRejects } from '@std/assert';
-import type { McpRequestContext } from './context.ts';
+import type { ProjectMcpRequestContext } from './context.ts';
 import { rpc } from './database.ts';
 import { McpDomainError } from './errors.ts';
 
-function contextWithError(code: string): McpRequestContext {
+function contextWithError(code: string): ProjectMcpRequestContext {
   const value = {
     supabase: {
       rpc: () => Promise.resolve({ data: null, error: { code } }),
     },
   };
-  return value as unknown as McpRequestContext;
+  return value as unknown as ProjectMcpRequestContext;
 }
 
 Deno.test('database maps table-row and document PT409 conflicts distinctly', async () => {

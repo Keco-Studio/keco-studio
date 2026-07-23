@@ -10,6 +10,11 @@ const DEFAULT_PHASE_2_SAMPLES = 5;
 const PROTOCOL_VERSION = '2025-11-25';
 const COLD_GATE_UNVERIFIED_REASON = 'cold-start-not-verified' as const;
 
+function isAccountEndpoint(mcpUrl: string): boolean {
+  const url = new URL(mcpUrl);
+  return /^(?:\/functions\/v1)?\/mcp$/.test(url.pathname);
+}
+
 export interface PerformanceSamples {
   firstRequestMs: number;
   coldVerified: boolean;
@@ -169,8 +174,15 @@ export async function runPerformanceProbe(options: ProbeOptions) {
   for (let index = 0; index < warmSamples; index += 1) {
     warmInitializeMs.push(await invoke('initialize', 'Warm initialize'));
   }
-  const phase2 = { read: [] as number[], structure: [] as number[], search: [] as number[] };
+  const accountEndpoint = isAccountEndpoint(options.mcpUrl);
+  const phase2 = { projectList: [] as number[], read: [] as number[], structure: [] as number[], search: [] as number[] };
   for (let index = 0; index < phase2Samples; index += 1) {
+    if (accountEndpoint) {
+      phase2.projectList.push(await timedTool({ mcpUrl: options.mcpUrl, accessToken: options.accessToken,
+        id: id++, name: 'list_projects', arguments: { limit: 100 }, label: 'Account project list',
+        fetchImpl, now }));
+      continue;
+    }
     phase2.read.push(await timedTool({ mcpUrl: options.mcpUrl, accessToken: options.accessToken,
       id: id++, name: 'list_documents', arguments: { limit: 50 }, label: 'Phase 2 read',
       fetchImpl, now }));
@@ -195,24 +207,30 @@ export async function runPerformanceProbe(options: ProbeOptions) {
     throw new Error(COLD_GATE_UNVERIFIED_REASON);
   }
   if (!evaluation.passed) throw new Error('MCP performance budgets failed.');
-  const phase2Measurements = phase2Samples > 0 ? {
-    ordinaryRead: { sampleCount: phase2.read.length, p95Ms: percentile95(phase2.read),
-      budgetMs: READ_LIMIT_MS },
-    projectStructure: { sampleCount: phase2.structure.length, p95Ms: percentile95(phase2.structure),
-      budgetMs: STRUCTURE_LIMIT_MS },
-    search: { sampleCount: phase2.search.length, p95Ms: percentile95(phase2.search),
-      budgetMs: SEARCH_LIMIT_MS },
-  } : null;
-  if (phase2Measurements && (phase2Measurements.ordinaryRead.p95Ms >= READ_LIMIT_MS ||
-      phase2Measurements.projectStructure.p95Ms >= STRUCTURE_LIMIT_MS ||
-      phase2Measurements.search.p95Ms >= SEARCH_LIMIT_MS)) {
+  const phase2Measurements = phase2Samples > 0
+    ? accountEndpoint
+      ? { accountProjectList: { sampleCount: phase2.projectList.length,
+        p95Ms: percentile95(phase2.projectList), budgetMs: READ_LIMIT_MS } }
+      : {
+        ordinaryRead: { sampleCount: phase2.read.length, p95Ms: percentile95(phase2.read),
+          budgetMs: READ_LIMIT_MS },
+        projectStructure: { sampleCount: phase2.structure.length, p95Ms: percentile95(phase2.structure),
+          budgetMs: STRUCTURE_LIMIT_MS },
+        search: { sampleCount: phase2.search.length, p95Ms: percentile95(phase2.search),
+          budgetMs: SEARCH_LIMIT_MS },
+      }
+    : null;
+  if (phase2Measurements && (accountEndpoint
+      ? phase2Measurements.accountProjectList.p95Ms >= READ_LIMIT_MS
+      : phase2Measurements.ordinaryRead.p95Ms >= READ_LIMIT_MS ||
+        phase2Measurements.projectStructure.p95Ms >= STRUCTURE_LIMIT_MS ||
+        phase2Measurements.search.p95Ms >= SEARCH_LIMIT_MS)) {
     throw new Error('MCP Phase 2 performance budgets failed.');
   }
 
   return {
     checkedAt: new Date().toISOString(),
     passed: true,
-    mcpUrl: options.mcpUrl,
     thresholdsMs: { coldRequest: COLD_LIMIT_MS, warmP95: WARM_LIMIT_MS },
     measurements: {
       firstRequestMs: evaluation.firstRequestMs,

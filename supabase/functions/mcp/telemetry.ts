@@ -1,4 +1,4 @@
-import type { McpRequestContext } from "./context.ts";
+import type { McpRequestContext, ProjectMcpRequestContext } from "./context.ts";
 import { asPublicMcpError, McpDomainError } from "./errors.ts";
 import { MAX_RESPONSE_BYTES, utf8ByteLength } from "./limits.ts";
 
@@ -12,6 +12,16 @@ function resetPhaseTimings(context: McpRequestContext): PhaseTimings {
   const timings = { databaseMs: 0, embeddingMs: 0 };
   phaseTimings.set(context, timings);
   return timings;
+}
+
+export function inheritMcpPhaseTimings(
+  parent: McpRequestContext,
+  child: McpRequestContext,
+): void {
+  phaseTimings.set(
+    child,
+    phaseTimings.get(parent) ?? resetPhaseTimings(parent),
+  );
 }
 
 export async function measureMcpPhase<T>(
@@ -130,18 +140,27 @@ async function admit(
   operationClass: McpOperationClass,
   requestBytes: number,
 ): Promise<Admission> {
-  const { data, error } = await context.supabase.rpc("mcp_begin_operation", {
-    p_project_id: context.projectId,
-    p_operation: operation,
-    p_operation_class: operationClass,
-    p_request_id: context.requestId,
-    p_client_id: context.clientId,
-    p_request_bytes: requestBytes,
-  });
+  const { data, error } = context.mode === "account"
+    ? await context.supabase.rpc("mcp_begin_account_operation", {
+      p_operation: operation,
+      p_operation_class: operationClass,
+      p_request_id: context.requestId,
+      p_client_id: context.clientId,
+      p_request_bytes: requestBytes,
+    })
+    : await context.supabase.rpc("mcp_begin_operation", {
+      p_project_id: context.projectId,
+      p_operation: operation,
+      p_operation_class: operationClass,
+      p_request_id: context.requestId,
+      p_client_id: context.clientId,
+      p_request_bytes: requestBytes,
+    });
   if (error) {
+    const projectRevoked = context.mode === "project" && error.code === "42501";
     throw new McpDomainError(
-      error.code === "42501" ? "PROJECT_ACCESS_REVOKED" : "INTERNAL_ERROR",
-      error.code === "42501"
+      projectRevoked ? "PROJECT_ACCESS_REVOKED" : "INTERNAL_ERROR",
+      projectRevoked
         ? "Project access has been revoked."
         : "The Keco operation could not be admitted.",
     );
@@ -269,6 +288,17 @@ async function emitTelemetry(
   context: McpRequestContext,
   value: Record<string, unknown>,
 ): Promise<void> {
+  if (context.mode === "account") {
+    console.log(
+      JSON.stringify({
+        event: "keco_mcp_operation",
+        requestId: context.requestId,
+        actorHash: await opaqueId(context.userId),
+        ...value,
+      }),
+    );
+    return;
+  }
   console.log(
     JSON.stringify({
       event: "keco_mcp_operation",
@@ -282,7 +312,7 @@ async function emitTelemetry(
 }
 
 export async function runMcpOperation<T>(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   operation: string,
   operationClass: McpOperationClass,
   input: unknown,

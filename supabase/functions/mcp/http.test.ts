@@ -1,6 +1,10 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { extractBoundProjectId, handleMcpHttpRequest } from "./http.ts";
-import type { ProjectAuthorization } from "./auth.ts";
+import {
+  extractBoundProjectId,
+  extractMcpEndpoint,
+  handleMcpHttpRequest,
+} from "./http.ts";
+import type { AccountAuthorization, ProjectAuthorization } from "./auth.ts";
 import type { McpRequestContext } from "./context.ts";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
@@ -23,6 +27,18 @@ const forbidden = async (): Promise<ProjectAuthorization> => ({
 const operationalError = async (): Promise<ProjectAuthorization> => ({
   status: "operational_error",
 });
+const accountAllow = async (): Promise<AccountAuthorization> => ({
+  status: "authorized",
+  context: {
+    userId: "user-1",
+    clientId: "oauth-client",
+    sessionId: "22222222-2222-4222-8222-222222222222",
+    bearerToken: "valid-account",
+  },
+});
+const accountUnauthenticated = async (): Promise<AccountAuthorization> => ({
+  status: "unauthenticated",
+});
 
 function authorizedRequest(): Request {
   return new Request(`https://x/functions/v1/mcp/${projectId}`, {
@@ -32,6 +48,7 @@ function authorizedRequest(): Request {
 }
 
 const testContext = {
+  mode: "project",
   requestId: "00000000-0000-4000-8000-000000000001",
   userId: "user-1",
   projectId,
@@ -80,6 +97,88 @@ Deno.test("extractBoundProjectId accepts only a UUID after the mcp segment", () 
     extractBoundProjectId(new URL(`https://x/prefix/functions/v1/mcp/${projectId}`)),
     null,
   );
+});
+
+Deno.test("extractMcpEndpoint recognizes only exact account and project routes", () => {
+  assertEquals(
+    extractMcpEndpoint(new URL("https://x/functions/v1/mcp")),
+    { mode: "account" },
+  );
+  assertEquals(
+    extractMcpEndpoint(new URL("https://x/mcp")),
+    { mode: "account" },
+  );
+  assertEquals(
+    extractMcpEndpoint(new URL(`https://x/mcp/${projectId}`)),
+    { mode: "project", projectId },
+  );
+  for (const url of [
+    "https://x/mcp/",
+    "https://x/mcp/not-a-uuid",
+    `https://x/mcp/${projectId}/extra`,
+    "https://x/mcp?replay=1",
+    "https://x/mcp?",
+    "https://x/mcp#",
+    "https://x/mcp?#",
+    "https://x/functions/v1/mcp?",
+    "https://x/functions/v1/mcp#",
+    "https://x/functions/v1/mcp?#",
+    `https://x/mcp/${projectId}?`,
+    `https://x/mcp/${projectId}#`,
+    `https://x/mcp/${projectId}?#`,
+    `https://x/functions/v1/mcp/${projectId}?`,
+    `https://x/functions/v1/mcp/${projectId}#`,
+    `https://x/functions/v1/mcp/${projectId}?#`,
+    "https://user:password@x/mcp",
+    "https://x/mcp#fragment",
+  ]) {
+    assertEquals(extractMcpEndpoint(new URL(url)), null);
+  }
+});
+
+Deno.test("account authentication uses the service metadata without a project query", async () => {
+  const response = await handleMcpHttpRequest(
+    new Request("https://x/functions/v1/mcp", { method: "POST" }),
+    {
+      authorizeAccount: accountUnauthenticated,
+      authorizeProject: async () => {
+        throw new Error("project authorization must not run for account route");
+      },
+      kecoPublicUrl: "https://keco.example.com",
+    },
+  );
+  assertEquals(response.status, 401);
+  assertEquals(
+    response.headers.get("www-authenticate"),
+    "Bearer resource_metadata=\"https://keco.example.com/api/mcp/oauth-protected-resource\"",
+  );
+});
+
+Deno.test("account and project routes keep authorization dependencies isolated", async () => {
+  const account = await handleMcpHttpRequest(
+    new Request("https://x/mcp", { method: "POST" }),
+    {
+      ...withContext,
+      authorizeAccount: accountAllow,
+      authorizeProject: async () => {
+        throw new Error("project token replayed to account route");
+      },
+      handleProtocol: async () => new Response("account"),
+    },
+  );
+  const project = await handleMcpHttpRequest(authorizedRequest(), {
+    ...withContext,
+    authorizeAccount: async () => {
+      throw new Error("account token replayed to project route");
+    },
+    authorizeProject: allow,
+    handleProtocol: async () => new Response("project"),
+  });
+
+  assertEquals(account.status, 200);
+  assertEquals(await account.text(), "account");
+  assertEquals(project.status, 200);
+  assertEquals(await project.text(), "project");
 });
 
 Deno.test("missing auth returns an OAuth resource metadata challenge", async () => {

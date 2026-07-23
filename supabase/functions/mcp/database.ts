@@ -1,9 +1,9 @@
-import type { McpRequestContext } from "./context.ts";
+import type { ProjectMcpRequestContext } from "./context.ts";
 import { McpDomainError } from "./errors.ts";
 import { measureMcpPhase } from "./telemetry.ts";
 
 export async function rpc<T>(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   name: string,
   parameters: Record<string, unknown>,
 ): Promise<T> {

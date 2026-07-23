@@ -1,6 +1,9 @@
 import { assertEquals } from "@std/assert";
 import {
+  authorizeAccountWithGateway,
   authorizeProjectWithGateway,
+  canonicalAccountResource,
+  canonicalProjectResource as canonicalProjectMcpResource,
   isInvalidCredentialError,
 } from "./auth.ts";
 
@@ -12,6 +15,22 @@ const absentProjectAccess = {
   getProjectOwner: async () => null,
   getCollaboratorRole: async () => null,
 };
+
+function oauthToken(claims: Record<string, unknown>): string {
+  const base64Url = (value: string) => btoa(value)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+  return `${base64Url(JSON.stringify({ alg: "none" }))}.${base64Url(JSON.stringify(claims))}.signature`;
+}
+
+const accountSessionId = "22222222-2222-4222-8222-222222222222";
+const accountToken = oauthToken({
+  client_id: "oauth-client",
+  session_id: accountSessionId,
+  iss: "https://project.supabase.co/auth/v1",
+});
+const accountResource = "https://project.supabase.co/functions/v1/mcp";
 
 Deno.test("credential rejection classification excludes operational auth failures", () => {
   assertEquals(isInvalidCredentialError({ status: 401 }), true);
@@ -369,4 +388,125 @@ Deno.test("authorization denies noncanonical and real dual-project grant replay"
 
   assertEquals(wrongResource, { status: "forbidden" });
   assertEquals(otherProject, { status: "forbidden" });
+});
+
+Deno.test("canonical account resource accepts only exact public and gateway roots", () => {
+  assertEquals(
+    canonicalAccountResource("https://x/functions/v1/mcp"),
+    "https://x/functions/v1/mcp",
+  );
+  assertEquals(
+    canonicalAccountResource("https://x/mcp", "https://project.supabase.co"),
+    accountResource,
+  );
+  for (const url of [
+    "https://x/functions/v1/mcp/extra",
+    "https://x/functions/v1/mcp?replay=1",
+    "https://user:password@x/mcp",
+    "https://x/mcp#fragment",
+  ]) {
+    assertEquals(canonicalAccountResource(url), null);
+  }
+});
+
+Deno.test("canonical resources reject serialized empty query and fragment delimiters", () => {
+  for (const suffix of ["?", "#", "?#"]) {
+    assertEquals(
+      canonicalAccountResource(`https://x/functions/v1/mcp${suffix}`),
+      null,
+    );
+    assertEquals(canonicalAccountResource(`https://x/mcp${suffix}`), null);
+    assertEquals(
+      canonicalProjectMcpResource(
+        `https://x/functions/v1/mcp/${projectId}${suffix}`,
+        projectId,
+      ),
+      null,
+    );
+    assertEquals(
+      canonicalProjectMcpResource(`https://x/mcp/${projectId}${suffix}`, projectId),
+      null,
+    );
+  }
+});
+
+Deno.test("account authorization requires a verified OAuth client, session, and exact grant", async () => {
+  const checked: Array<[string, string, string]> = [];
+  const result = await authorizeAccountWithGateway(
+    new Request("https://edge.internal/mcp", {
+      headers: { authorization: `Bearer ${accountToken}` },
+    }),
+    {
+      getUser: async (token) => token === accountToken ? { id: "user-1" } : null,
+      hasOAuthServiceGrant: async (clientId, resource, token) => {
+        checked.push([clientId, resource, token]);
+        return true;
+      },
+      ...absentProjectAccess,
+    },
+  );
+
+  assertEquals(result, {
+    status: "authorized",
+    context: {
+      userId: "user-1",
+      clientId: "oauth-client",
+      sessionId: accountSessionId,
+      bearerToken: accountToken,
+    },
+  });
+  assertEquals(checked, [["oauth-client", accountResource, accountToken]]);
+});
+
+Deno.test("account authorization fails closed before the grant lookup for missing claims or malformed resources", async () => {
+  const missingSession = oauthToken({
+    client_id: "oauth-client",
+    iss: "https://project.supabase.co/auth/v1",
+  });
+  for (const [url, token] of [
+    ["https://x/mcp", missingSession],
+    [`${accountResource}?replay=1`, accountToken],
+    ["https://project.supabase.co/functions/v1/mcp/extra", accountToken],
+  ]) {
+    let grantLookups = 0;
+    const result = await authorizeAccountWithGateway(
+      new Request(url, { headers: { authorization: `Bearer ${token}` } }),
+      {
+        getUser: async () => ({ id: "user-1" }),
+        hasOAuthServiceGrant: async () => {
+          grantLookups += 1;
+          return true;
+        },
+        ...absentProjectAccess,
+      },
+    );
+    assertEquals(result, { status: "forbidden" });
+    assertEquals(grantLookups, 0);
+  }
+});
+
+Deno.test("account authorization distinguishes invalid credentials, denied grants, and backend failures", async () => {
+  const request = new Request(accountResource, {
+    headers: { authorization: `Bearer ${accountToken}` },
+  });
+  const invalid = await authorizeAccountWithGateway(request, {
+    getUser: async () => null,
+    ...absentProjectAccess,
+  });
+  const denied = await authorizeAccountWithGateway(request, {
+    getUser: async () => ({ id: "user-1" }),
+    hasOAuthServiceGrant: async () => false,
+    ...absentProjectAccess,
+  });
+  const unavailable = await authorizeAccountWithGateway(request, {
+    getUser: async () => ({ id: "user-1" }),
+    hasOAuthServiceGrant: async () => {
+      throw new Error("grant backend unavailable");
+    },
+    ...absentProjectAccess,
+  });
+
+  assertEquals(invalid, { status: "unauthenticated" });
+  assertEquals(denied, { status: "forbidden" });
+  assertEquals(unavailable, { status: "operational_error" });
 });

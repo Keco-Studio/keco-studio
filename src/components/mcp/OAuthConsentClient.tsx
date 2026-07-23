@@ -6,7 +6,7 @@ import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject } from '@/lib/services/projectService';
 import { getOAuthAuthorizationResource } from '@/lib/mcp/oauthAuthorizationResource';
-import { projectIdFromOAuthResource } from '@/lib/mcp/oauthProjectBinding';
+import { classifyOAuthResource } from '@/lib/mcp/oauthProjectBinding';
 import styles from './OAuthConsent.module.css';
 
 type BoundDetails = OAuthAuthorizationDetails & { resource: string };
@@ -14,11 +14,17 @@ type LoadedRequest = {
   authorizationId: string;
   details: OAuthAuthorizationDetails;
 };
-type VerifiedBinding = Omit<LoadedRequest, 'details'> & {
+type AccountBinding = Omit<LoadedRequest, 'details'> & {
   details: BoundDetails;
+  mode: 'account';
+};
+type ProjectBinding = Omit<LoadedRequest, 'details'> & {
+  details: BoundDetails;
+  mode: 'project';
   projectId: string;
   projectName: string;
 };
+type VerifiedBinding = AccountBinding | ProjectBinding;
 type ConsentState = {
   authorizationId: string;
   request: LoadedRequest | null;
@@ -42,7 +48,11 @@ function verifiedBindingFor(
   authorizationId: string
 ): VerifiedBinding | null {
   if (!binding || binding.authorizationId !== authorizationId) return null;
-  return projectIdFromOAuthResource(binding.details.resource) === binding.projectId
+  const resource = classifyOAuthResource(binding.details.resource);
+  if (binding.mode === 'account') {
+    return resource?.mode === 'account' ? binding : null;
+  }
+  return resource?.mode === 'project' && resource.projectId === binding.projectId
     ? binding
     : null;
 }
@@ -115,8 +125,8 @@ export function OAuthConsentClient() {
         resource = null;
       }
       if (!active) return;
-      const boundProjectId = projectIdFromOAuthResource(resource);
-      if (!boundProjectId) {
+      const binding = classifyOAuthResource(resource);
+      if (!binding) {
         setState({
           ...emptyConsentState(authorizationId),
           request,
@@ -127,10 +137,19 @@ export function OAuthConsentClient() {
       const boundRequest = { authorizationId, details: { ...next, resource } };
       setState({ ...emptyConsentState(authorizationId), request });
 
+      if (binding.mode === 'account') {
+        setState({
+          ...emptyConsentState(authorizationId),
+          request,
+          verifiedBinding: { ...boundRequest, mode: 'account' },
+        });
+        return;
+      }
+
       try {
-        const project = await getProject(supabase, boundProjectId);
+        const project = await getProject(supabase, binding.projectId);
         if (!active) return;
-        if (!project || project.id !== boundProjectId) {
+        if (!project || project.id !== binding.projectId) {
           setState({
             ...emptyConsentState(authorizationId),
             request,
@@ -142,7 +161,8 @@ export function OAuthConsentClient() {
             request,
             verifiedBinding: {
               ...boundRequest,
-              projectId: boundProjectId,
+              mode: 'project',
+              projectId: binding.projectId,
               projectName: project.name,
             },
           });
@@ -187,13 +207,16 @@ export function OAuthConsentClient() {
       if (authorizationIdRef.current !== decisionAuthorizationId) return;
 
       const latestDetails = latestResult.data as OAuthAuthorizationDetails | null;
-      const latestProjectId = projectIdFromOAuthResource(latestResource);
+      const latestBinding = classifyOAuthResource(latestResource);
       if (
         latestResult.error
         || !latestDetails
         || latestDetails.authorization_id !== decisionAuthorizationId
         || latestResource !== binding.details.resource
-        || latestProjectId !== binding.projectId
+        || !latestBinding
+        || latestBinding.mode !== binding.mode
+        || (binding.mode === 'project'
+          && (latestBinding.mode !== 'project' || latestBinding.projectId !== binding.projectId))
         || Boolean(latestDetails.redirect_url)
       ) {
         setState({
@@ -204,10 +227,20 @@ export function OAuthConsentClient() {
         return;
       }
 
-      try {
-        const project = await getProject(supabase, latestProjectId);
-        if (authorizationIdRef.current !== decisionAuthorizationId) return;
-        if (!project || project.id !== latestProjectId) {
+      if (binding.mode === 'project') {
+        try {
+          const project = await getProject(supabase, binding.projectId);
+          if (authorizationIdRef.current !== decisionAuthorizationId) return;
+          if (!project || project.id !== binding.projectId) {
+            setState({
+              ...currentState,
+              error: 'You do not have access to the bound project.',
+              busy: false,
+            });
+            return;
+          }
+        } catch {
+          if (authorizationIdRef.current !== decisionAuthorizationId) return;
           setState({
             ...currentState,
             error: 'You do not have access to the bound project.',
@@ -215,16 +248,7 @@ export function OAuthConsentClient() {
           });
           return;
         }
-      } catch {
-        if (authorizationIdRef.current !== decisionAuthorizationId) return;
-        setState({
-          ...currentState,
-          error: 'You do not have access to the bound project.',
-          busy: false,
-        });
-        return;
       }
-
     }
 
     const result = action === 'approve'
@@ -246,7 +270,7 @@ export function OAuthConsentClient() {
     <main className={styles.page}>
       <section className={styles.panel}>
         <h1>Authorize Keco MCP</h1>
-        {currentRequest && <p><strong>{currentRequest.details.client.name}</strong> requests access to <strong>{currentVerifiedBinding?.projectName || 'the bound project'}</strong>.</p>}
+        {currentRequest && <p><strong>{currentRequest.details.client.name}</strong> requests access to <strong>{currentVerifiedBinding?.mode === 'account' ? 'the Keco account' : currentVerifiedBinding?.projectName || 'the bound project'}</strong>.</p>}
         {currentRequest && <p>Requested scopes: {currentRequest.details.scope || 'default identity scopes'}</p>}
         {currentState.error && <p role="alert" className={styles.error}>{currentState.error}</p>}
         <div className={styles.actions}>

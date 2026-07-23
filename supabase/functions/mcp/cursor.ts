@@ -4,7 +4,7 @@ const CURSOR_VERSION = 1;
 export const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
 
-export type CursorEnvelope = {
+type ProjectCursorEnvelope = {
   v: 1;
   kind: string;
   projectId: string;
@@ -13,11 +13,30 @@ export type CursorEnvelope = {
   expiresAt: number;
 };
 
-export type CursorBinding = {
+type AccountCursorEnvelope = {
+  v: 1;
   kind: string;
-  projectId: string;
-  objectId?: string | null;
+  userId: string;
+  objectId: string | null;
+  position: unknown;
+  expiresAt: number;
 };
+
+export type CursorEnvelope = ProjectCursorEnvelope | AccountCursorEnvelope;
+
+export type CursorBinding =
+  | {
+    kind: string;
+    scope: "project";
+    projectId: string;
+    objectId?: string | null;
+  }
+  | {
+    kind: string;
+    scope: "account";
+    userId: string;
+    objectId?: string | null;
+  };
 
 function invalidCursor(): never {
   throw new McpDomainError(
@@ -72,10 +91,21 @@ function canonicalEnvelope(
   position: unknown,
   expiresAt: number,
 ): CursorEnvelope {
+  // Keep the project envelope unchanged so existing cursor bytes remain stable.
+  if (binding.scope === "project") {
+    return {
+      v: CURSOR_VERSION,
+      kind: binding.kind,
+      projectId: binding.projectId,
+      objectId: binding.objectId ?? null,
+      position,
+      expiresAt,
+    };
+  }
   return {
     v: CURSOR_VERSION,
     kind: binding.kind,
-    projectId: binding.projectId,
+    userId: binding.userId,
     objectId: binding.objectId ?? null,
     position,
     expiresAt,
@@ -119,8 +149,24 @@ export async function decodeCursor<T = unknown>(
     invalidCursor();
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) invalidCursor();
+  const parsedBinding: CursorBinding = "projectId" in parsed &&
+      typeof parsed.projectId === "string"
+    ? {
+      kind: parsed.kind,
+      scope: "project",
+      projectId: parsed.projectId,
+      objectId: parsed.objectId,
+    }
+    : "userId" in parsed && typeof parsed.userId === "string"
+    ? {
+      kind: parsed.kind,
+      scope: "account",
+      userId: parsed.userId,
+      objectId: parsed.objectId,
+    }
+    : invalidCursor();
   const canonical = canonicalEnvelope(
-    { kind: parsed.kind, projectId: parsed.projectId, objectId: parsed.objectId },
+    parsedBinding,
     parsed.position,
     parsed.expiresAt,
   );
@@ -128,7 +174,13 @@ export async function decodeCursor<T = unknown>(
     JSON.stringify(parsed) !== JSON.stringify(canonical) ||
     parsed.v !== CURSOR_VERSION ||
     parsed.kind !== binding.kind ||
-    parsed.projectId !== binding.projectId ||
+    parsedBinding.scope !== binding.scope ||
+    (binding.scope === "project" &&
+      (parsedBinding.scope !== "project" ||
+        parsedBinding.projectId !== binding.projectId)) ||
+    (binding.scope === "account" &&
+      (parsedBinding.scope !== "account" ||
+        parsedBinding.userId !== binding.userId)) ||
     parsed.objectId !== (binding.objectId ?? null) ||
     !Number.isSafeInteger(parsed.expiresAt) ||
     parsed.expiresAt <= now
