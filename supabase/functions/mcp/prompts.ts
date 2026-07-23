@@ -2,10 +2,10 @@ import type { McpServer } from '@mcp/server/mcp.js';
 import { GetPromptRequestSchema, ListPromptsRequestSchema, McpError,
   ErrorCode } from '@mcp/types.js';
 import { z } from 'zod';
-import type { ProjectMcpRequestContext } from './context.ts';
+import type { McpRequestContext } from './context.ts';
 
 const uuid = z.string().uuid();
-const definitions = [
+const legacyDefinitions = [
   {
     name: 'analyze_project',
     description: 'Analyze the bound project using bounded source reads.',
@@ -29,7 +29,32 @@ const definitions = [
   },
 ] as const;
 
-export function registerPrompts(server: McpServer, _context: ProjectMcpRequestContext): void {
+const accountDefinitions = [
+  {
+    name: 'analyze_project',
+    description: 'Analyze an accessible project using bounded source reads.',
+    schema: z.object({ projectId: uuid }).strict(),
+    arguments: [{ name: 'projectId', required: true }],
+    message: 'Use projectId {projectId} as the stable internal project ID returned by keco://projects. Never silently choose among duplicate project names; ask the user to disambiguate. Inspect the project structure, then read only bounded table rows and documents needed for the analysis. Summarize findings with stable source IDs.',
+  },
+  {
+    name: 'build_tables_from_document',
+    description: 'Build non-destructive tables from an accessible project document.',
+    schema: z.object({ projectId: uuid, documentId: uuid }).strict(),
+    arguments: [{ name: 'projectId', required: true }, { name: 'documentId', required: true }],
+    message: 'Use projectId {projectId} as the stable internal project ID returned by keco://projects. Never silently choose among duplicate project names; ask the user to disambiguate. Read document {documentId}, propose a schema, and then use explicit non-destructive table creation calls. Do not delete or overwrite existing tables.',
+  },
+  {
+    name: 'update_project_data',
+    description: 'Update bounded accessible-project table rows explicitly.',
+    schema: z.object({ projectId: uuid, tableId: uuid }).strict(),
+    arguments: [{ name: 'projectId', required: true }, { name: 'tableId', required: true }],
+    message: 'Use projectId {projectId} as the stable internal project ID returned by keco://projects. Never silently choose among duplicate project names; ask the user to disambiguate. Inspect table {tableId}, its schema, and the bounded target rows before making explicit row updates. Do not perform deletes or bulk imports.',
+  },
+] as const;
+
+export function registerPrompts(server: McpServer, context: McpRequestContext): void {
+  const definitions = context.mode === 'account' ? accountDefinitions : legacyDefinitions;
   server.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: definitions.map(({ name, description, arguments: promptArguments }) => ({
       name, description, arguments: promptArguments,
