@@ -1,0 +1,55 @@
+name: MCP Account Connections Production Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-account-connections-production-acceptance
+  cancel-in-progress: false
+
+jobs:
+  production-acceptance:
+    if: github.repository == 'Keco-Studio/keco-studio' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://lulrcirmwwvvnupmwqcq.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+    steps:
+      - name: Checkout production merge
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run authenticated production acceptance
+        run: npx tsx scripts/accept-mcp-account-connections-production.ts
+
+      - name: Scan production acceptance evidence
+        run: npm run scan:mcp-evidence -- artifacts/mcp-account-connections-production.json
+
+      - name: Upload sanitized production evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-account-connections-production-${{ github.run_id }}
+          path: |
+            artifacts/mcp-account-connections-production.json
+            artifacts/mcp-account-desktop.png
+            artifacts/mcp-account-mobile.png
+          if-no-files-found: warn
+          retention-days: 7
