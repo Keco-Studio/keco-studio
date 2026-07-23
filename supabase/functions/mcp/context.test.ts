@@ -40,6 +40,24 @@ Deno.test("request context is immutable and does not serialize credentials or cl
   );
 });
 
+Deno.test("request context uses the runtime UUID generator without detaching it", () => {
+  const context = createMcpRequestContext(
+    new Request("https://example.test"),
+    authContext,
+    {
+      supabaseUrl: "https://example.supabase.co",
+      supabaseAnonKey: "anon-key",
+      createSupabaseClient: (() => ({ marker: true })) as never,
+    },
+  );
+
+  assertEquals(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(context.requestId),
+    true,
+  );
+});
+
 Deno.test("request context fails closed when Supabase environment is missing", () => {
   let thrown = false;
   try {

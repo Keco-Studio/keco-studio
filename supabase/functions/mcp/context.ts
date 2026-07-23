@@ -36,8 +36,11 @@ export function createMcpRequestContext(
     },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const requestId = dependencies.requestId
+    ? dependencies.requestId()
+    : crypto.randomUUID();
   const context = {
-    requestId: (dependencies.requestId ?? crypto.randomUUID)(),
+    requestId,
     userId: authContext.userId,
     projectId: authContext.projectId,
     role: authContext.role,
