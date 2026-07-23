@@ -114,6 +114,7 @@ export async function queryTableRows(
   if (input.cursor) {
     position = await decodeCursor(input.cursor, {
       kind: "table_rows",
+      scope: "project",
       projectId: context.projectId,
       objectId: input.tableId,
     }, cursorSecret());
@@ -202,6 +203,7 @@ export async function queryTableRows(
       ? await encodeCursor(
         {
           kind: "table_rows",
+          scope: "project",
           projectId: context.projectId,
           objectId: input.tableId,
         },
@@ -234,6 +236,7 @@ export async function listDocuments(context: ProjectMcpRequestContext, input: {
   if (input.cursor) {
     position = await decodeCursor(input.cursor, {
       kind: "documents",
+      scope: "project",
       projectId: context.projectId,
       objectId: null,
     }, cursorSecret());
@@ -278,6 +281,7 @@ export async function listDocuments(context: ProjectMcpRequestContext, input: {
       ? await encodeCursor(
         {
           kind: "documents",
+          scope: "project",
           projectId: context.projectId,
           objectId: null,
         },

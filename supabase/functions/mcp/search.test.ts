@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from '@std/assert';
-import type { McpRequestContext } from './context.ts';
+import type { ProjectMcpRequestContext } from './context.ts';
 import { McpDomainError } from './errors.ts';
 import { semanticSearch } from './operations.ts';
 
@@ -10,7 +10,7 @@ const envNames = ['MCP_EMBEDDING_URL', 'MCP_EMBEDDING_KEY', 'MCP_EMBEDDING_MODEL
 function context(rpc: (name: string, parameters: Record<string, unknown>) => unknown) {
   return { projectId, supabase: { async rpc(name: string, parameters: Record<string, unknown>) {
     return await rpc(name, parameters);
-  } } } as unknown as McpRequestContext;
+  } } } as unknown as ProjectMcpRequestContext;
 }
 
 function configureEmbedding(): void {

@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects } from '@std/assert';
-import type { McpRequestContext } from './context.ts';
+import type { ProjectMcpRequestContext } from './context.ts';
 import { McpDomainError } from './errors.ts';
 import { readDocument, readDocumentTransportState } from './operations.ts';
 
@@ -23,7 +23,7 @@ function makeContext(data: unknown) {
         return { data, error: null };
       },
       from() { throw new Error('Document transport reads must use only the atomic RPC.'); },
-    } } as unknown as McpRequestContext;
+    } } as unknown as ProjectMcpRequestContext;
   return { context, calls };
 }
 

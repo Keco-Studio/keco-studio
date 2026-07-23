@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { McpRequestContext } from "./context.ts";
+import type { ProjectMcpRequestContext } from "./context.ts";
 import { measureMcpPhase, runMcpOperation } from "./telemetry.ts";
 
 Deno.test("operation telemetry records actual bytes and logs only opaque identities", async () => {
@@ -29,7 +29,7 @@ Deno.test("operation telemetry records actual bytes and logs only opaque identit
         return { data: null, error: null };
       },
     },
-  } as unknown as McpRequestContext;
+  } as unknown as ProjectMcpRequestContext;
   try {
     const response = await runMcpOperation(context, "test_response", "read", {
       query: "raw secret query",
