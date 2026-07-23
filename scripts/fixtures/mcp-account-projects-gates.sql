@@ -17,20 +17,17 @@ declare
   v_limit_102_ids uuid[];
   v_actual_access text[];
   v_expected_access text[];
-  v_cursor_created_at timestamptz;
   v_cursor_project_id uuid;
   v_excluded integer;
 begin
   select
     array_agg(page.project_id order by page.ordinality),
-    (array_agg(page.created_at order by page.ordinality))[25],
     (array_agg(page.project_id order by page.ordinality))[25]
-  into v_first_ids, v_cursor_created_at, v_cursor_project_id
+  into v_first_ids, v_cursor_project_id
   from public.mcp_list_accessible_projects(25, null, null)
     with ordinality as page(project_id, name, description, created_at, role, ordinality);
 
   if coalesce(cardinality(v_first_ids), 0) <> 25
-     or v_cursor_created_at is null
      or v_cursor_project_id is null then
     raise exception 'MCP account first page is empty, incomplete, or missing its cursor';
   end if;
@@ -39,7 +36,7 @@ begin
   into v_next_ids
   from public.mcp_list_accessible_projects(
     25,
-    v_cursor_created_at,
+    null,
     v_cursor_project_id
   ) with ordinality as page(
     project_id,
@@ -109,14 +106,21 @@ begin
   into v_expected_access
   from (
     select
-      (md5('mcp-account-project-' || project_number))::uuid as project_id,
+      project.id as project_id,
       case
-        when project_number <= 51 then 'admin'
-        when project_number % 3 = 0 then 'admin'
-        when project_number % 3 = 1 then 'editor'
-        else 'viewer'
+        when project.owner_id = 'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid
+          then 'admin'
+        else collaborator.role
       end as role
-    from generate_series(1, 101) as project_number
+    from public.projects as project
+    left join public.project_collaborators as collaborator
+      on collaborator.project_id = project.id
+     and collaborator.user_id = 'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid
+     and collaborator.accepted_at is not null
+    where project.owner_id = 'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid
+       or collaborator.user_id is not null
+    order by project.id
+    limit 101
   ) as expected;
 
   if coalesce(cardinality(v_actual_access), 0) <> 101
@@ -145,6 +149,7 @@ reset enable_seqscan;
 reset enable_indexscan;
 reset enable_indexonlyscan;
 reset enable_bitmapscan;
+select pg_stat_force_next_flush();
 select pg_stat_clear_snapshot();
 select set_config(
   'mcp.account_gate_collaborator_seq_before',
@@ -152,12 +157,20 @@ select set_config(
   false
 );
 select set_config(
+  'mcp.account_gate_projects_seq_before',
+  pg_stat_get_numscans('public.projects'::regclass)::text,
+  false
+);
+select set_config(
+  'mcp.account_gate_owner_index_before',
+  pg_stat_get_numscans('public.mcp_projects_owner_id_idx'::regclass)::text,
+  false
+);
+select set_config(
   'mcp.account_gate_collaborator_index_before',
-  (
-    select coalesce(sum(pg_stat_get_numscans(indexrelid)), 0)::text
-    from pg_index
-    where indrelid = 'public.project_collaborators'::regclass
-  ),
+  pg_stat_get_numscans(
+    'public.mcp_accepted_project_collaborators_user_project_idx'::regclass
+  )::text,
   false
 );
 
@@ -172,15 +185,18 @@ do $$
 declare
   v_started_at timestamptz := pg_catalog.clock_timestamp();
   v_count integer;
+  v_has_writable boolean;
   v_elapsed_ms numeric;
 begin
   select count(*) into v_count
   from public.mcp_list_accessible_projects(101, null, null);
+  select public.mcp_has_writable_project() into v_has_writable;
   v_elapsed_ms := extract(
     epoch from pg_catalog.clock_timestamp() - v_started_at
   ) * 1000;
 
   perform set_config('mcp.account_gate_rpc_count', v_count::text, false);
+  perform set_config('mcp.account_gate_has_writable', v_has_writable::text, false);
   perform set_config('mcp.account_gate_rpc_elapsed_ms', v_elapsed_ms::text, false);
 end;
 $$;
@@ -194,9 +210,16 @@ select pg_stat_clear_snapshot();
 do $$
 declare
   v_count integer := current_setting('mcp.account_gate_rpc_count')::integer;
+  v_has_writable boolean := current_setting('mcp.account_gate_has_writable')::boolean;
   v_elapsed_ms numeric := current_setting('mcp.account_gate_rpc_elapsed_ms')::numeric;
   v_seq_before bigint := current_setting(
     'mcp.account_gate_collaborator_seq_before'
+  )::bigint;
+  v_projects_seq_before bigint := current_setting(
+    'mcp.account_gate_projects_seq_before'
+  )::bigint;
+  v_owner_index_before bigint := current_setting(
+    'mcp.account_gate_owner_index_before'
   )::bigint;
   v_index_before bigint := current_setting(
     'mcp.account_gate_collaborator_index_before'
@@ -204,21 +227,28 @@ declare
   v_seq_after bigint := pg_stat_get_numscans(
     'public.project_collaborators'::regclass
   );
-  v_index_after bigint;
+  v_projects_seq_after bigint := pg_stat_get_numscans('public.projects'::regclass);
+  v_owner_index_after bigint := pg_stat_get_numscans(
+    'public.mcp_projects_owner_id_idx'::regclass
+  );
+  v_index_after bigint := pg_stat_get_numscans(
+    'public.mcp_accepted_project_collaborators_user_project_idx'::regclass
+  );
 begin
-  select coalesce(sum(pg_stat_get_numscans(indexrelid)), 0)
-  into v_index_after
-  from pg_index
-  where indrelid = 'public.project_collaborators'::regclass;
-
-  if v_count <> 101 or v_elapsed_ms > 5000 then
+  if v_count <> 101 or v_has_writable is distinct from true or v_elapsed_ms > 5000 then
     raise exception 'MCP account real RPC count/timing is invalid: % rows in % ms',
       v_count, v_elapsed_ms;
   end if;
 
-  if v_index_after <= v_index_before or v_seq_after <> v_seq_before then
-    raise exception 'MCP account real RPC did not use only the collaborator index path: index % -> %, seq % -> %',
-      v_index_before, v_index_after, v_seq_before, v_seq_after;
+  if v_owner_index_after <= v_owner_index_before
+     or v_index_after <= v_index_before
+     or v_seq_after <> v_seq_before
+     or v_projects_seq_after <> v_projects_seq_before then
+    raise exception 'MCP account real RPC did not use both bounded keyset indexes without table scans: owner % -> %, collaborator % -> %, collaborator seq % -> %, projects seq % -> %',
+      v_owner_index_before, v_owner_index_after,
+      v_index_before, v_index_after,
+      v_seq_before, v_seq_after,
+      v_projects_seq_before, v_projects_seq_after;
   end if;
 end;
 $$;

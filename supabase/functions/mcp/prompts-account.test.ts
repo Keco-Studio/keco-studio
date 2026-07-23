@@ -1,6 +1,7 @@
 import { assertEquals, assertMatch, assertRejects } from "@std/assert";
 import type { McpServer } from "@mcp/server/mcp.js";
 import type { AccountMcpRequestContext, ProjectMcpRequestContext } from "./context.ts";
+import { McpDomainError } from "./errors.ts";
 import { registerPrompts } from "./prompts.ts";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -28,7 +29,11 @@ const accountContext = {
   clientId: "client-1",
   sessionId: "session-1",
   bearerToken: "account-bearer-token",
-  supabase: {},
+  supabase: {
+    rpc() {
+      return Promise.resolve({ data: "editor", error: null });
+    },
+  },
 } as unknown as AccountMcpRequestContext;
 
 const projectContext = {
@@ -73,6 +78,57 @@ Deno.test("account prompts reject omitted projectId", async () => {
     Error,
     "Invalid prompt arguments.",
   );
+});
+
+Deno.test("account prompts reject inaccessible projects and resolve access live", async () => {
+  const roles: Array<"editor" | null> = ["editor", null];
+  const calls: string[] = [];
+  const context = {
+    ...accountContext,
+    supabase: {
+      rpc(name: string) {
+        calls.push(name);
+        return Promise.resolve({ data: roles.shift() ?? null, error: null });
+      },
+    },
+  } as unknown as AccountMcpRequestContext;
+  const handlers = handlersFor(context);
+  const request = {
+    params: {
+      name: "analyze_project",
+      arguments: { projectId: PROJECT_ID },
+    },
+  };
+
+  await (handlers[1] as unknown as Handler)(request);
+  const error = await assertRejects(
+    () => (handlers[1] as unknown as Handler)(request),
+    McpDomainError,
+  );
+  assertEquals(error.code, "PROJECT_NOT_ACCESSIBLE");
+  assertEquals(calls, ["mcp_resolve_project_role", "mcp_resolve_project_role"]);
+});
+
+Deno.test("account write prompts deny viewer targets", async () => {
+  const context = {
+    ...accountContext,
+    supabase: {
+      rpc() {
+        return Promise.resolve({ data: "viewer", error: null });
+      },
+    },
+  } as unknown as AccountMcpRequestContext;
+  const handlers = handlersFor(context);
+  const error = await assertRejects(
+    () => (handlers[1] as unknown as Handler)({
+      params: {
+        name: "build_tables_from_document",
+        arguments: { projectId: PROJECT_ID, documentId: DOCUMENT_ID },
+      },
+    }),
+    McpDomainError,
+  );
+  assertEquals(error.code, "PROJECT_WRITE_FORBIDDEN");
 });
 
 Deno.test("legacy prompt lists and arguments remain unchanged", async () => {

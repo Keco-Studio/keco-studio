@@ -10,7 +10,10 @@ where id in (
   from generate_series(1, 101) as project_number
   union all
   select (md5('mcp-account-project-noise-' || project_number))::uuid
-  from generate_series(1, 1000) as project_number
+  from generate_series(1, 10000) as project_number
+  union all
+  select (md5('mcp-account-project-extra-' || project_number))::uuid
+  from generate_series(1, 300) as project_number
   union all
   select '44444444-4444-4444-8444-444444444401'::uuid
   union all
@@ -51,7 +54,46 @@ select
   'aaaaaaaa-bbbb-cccc-dddd-000000000007'::uuid,
   '2029-12-01 00:00:00+00'::timestamptz,
   '2029-12-01 00:00:00+00'::timestamptz
-from generate_series(52, 101) as project_number
+from generate_series(1, 101) as project_number
+on conflict (user_id, project_id) do update
+set
+  role = excluded.role,
+  invited_by = excluded.invited_by,
+  invited_at = excluded.invited_at,
+  accepted_at = excluded.accepted_at;
+
+-- More than three public pages of old accessible rows prove that each source
+-- branch remains bounded before the merge. The first 101 rows above retain the
+-- precise overlap and keyset boundary assertions below.
+insert into public.projects(id, owner_id, name, description, created_at, updated_at)
+select
+  (md5('mcp-account-project-extra-' || project_number))::uuid,
+  case
+    when project_number <= 150 then 'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid
+    else 'aaaaaaaa-bbbb-cccc-dddd-000000000007'::uuid
+  end,
+  'MCP account extra project ' || lpad(project_number::text, 3, '0'),
+  'MCP account project discovery extra fixture',
+  '2027-01-01 12:00:00+00'::timestamptz - project_number * interval '1 minute',
+  '2027-01-01 12:00:00+00'::timestamptz - project_number * interval '1 minute'
+from generate_series(1, 300) as project_number;
+
+insert into public.project_collaborators (
+  user_id,
+  project_id,
+  role,
+  invited_by,
+  invited_at,
+  accepted_at
+)
+select
+  'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid,
+  (md5('mcp-account-project-extra-' || project_number))::uuid,
+  'viewer',
+  'aaaaaaaa-bbbb-cccc-dddd-000000000007'::uuid,
+  '2026-12-01 00:00:00+00'::timestamptz,
+  '2026-12-01 00:00:00+00'::timestamptz
+from generate_series(151, 300) as project_number
 on conflict (user_id, project_id) do update
 set
   role = excluded.role,
@@ -105,11 +147,11 @@ insert into public.projects(id, owner_id, name, description, created_at, updated
 select
   (md5('mcp-account-project-noise-' || project_number))::uuid,
   'aaaaaaaa-bbbb-cccc-dddd-000000000007'::uuid,
-  'MCP account planner noise ' || lpad(project_number::text, 4, '0'),
+  'MCP account planner noise v2 ' || lpad(project_number::text, 5, '0'),
   'MCP account project discovery planner noise',
   '2028-01-01 00:00:00+00'::timestamptz - project_number * interval '1 minute',
   '2028-01-01 00:00:00+00'::timestamptz - project_number * interval '1 minute'
-from generate_series(1, 1000) as project_number;
+from generate_series(1, 10000) as project_number;
 
 insert into public.project_collaborators (
   user_id,
@@ -126,7 +168,7 @@ select
   null,
   '2027-12-01 00:00:00+00'::timestamptz,
   '2027-12-01 00:00:00+00'::timestamptz
-from generate_series(1, 1000) as project_number
+from generate_series(1, 10000) as project_number
 on conflict (user_id, project_id) do update
 set
   role = excluded.role,
@@ -143,6 +185,7 @@ declare
   v_accepted integer;
   v_pending integer;
   v_noise integer;
+  v_extra integer;
 begin
   select count(*) into v_owned
   from public.projects
@@ -170,9 +213,21 @@ begin
     and collaborator.accepted_at is not null
     and project.description = 'MCP account project discovery planner noise';
 
-  if (v_owned, v_accepted, v_pending, v_noise) <> (51, 50, 1, 1000) then
-    raise exception 'MCP account fixture counts are invalid: %, %, %, %',
-      v_owned, v_accepted, v_pending, v_noise;
+  select count(*) into v_extra
+  from public.projects AS project
+  left join public.project_collaborators AS collaborator
+    on collaborator.project_id = project.id
+   and collaborator.user_id = 'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid
+   and collaborator.accepted_at is not null
+  where project.description = 'MCP account project discovery extra fixture'
+    and (
+      project.owner_id = 'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid
+      or collaborator.user_id is not null
+    );
+
+  if (v_owned, v_accepted, v_pending, v_noise, v_extra) <> (51, 50, 1, 10000, 300) then
+    raise exception 'MCP account fixture counts are invalid: %, %, %, %, %',
+      v_owned, v_accepted, v_pending, v_noise, v_extra;
   end if;
 end;
 $$;

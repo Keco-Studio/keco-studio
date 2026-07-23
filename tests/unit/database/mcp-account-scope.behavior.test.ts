@@ -205,6 +205,7 @@ describeDb('MCP account scope database behavior', () => {
   let zeroProjectUser: RlsUser;
   const accessibleProjectIds: string[] = [];
   const excludedProjectIds: string[] = [];
+  const writableDiscoveryProjectIds: string[] = [];
 
   beforeAll(async () => {
     fixture = await buildProjectFixture();
@@ -297,7 +298,11 @@ describeDb('MCP account scope database behavior', () => {
 
   afterAll(async () => {
     if (fixture) {
-      for (const projectId of [...accessibleProjectIds, ...excludedProjectIds]) {
+      for (const projectId of [
+        ...accessibleProjectIds,
+        ...excludedProjectIds,
+        ...writableDiscoveryProjectIds,
+      ]) {
         await fixture.svc.from('projects').delete().eq('id', projectId);
       }
       await teardownProjectFixture(fixture);
@@ -556,7 +561,7 @@ describeDb('MCP account scope database behavior', () => {
     const cursor = firstPage.data?.[1];
     const nextPage = await fixture.owner.client.rpc('mcp_list_accessible_projects', {
       p_limit: 100,
-      p_before_created_at: cursor?.created_at,
+      p_before_created_at: null,
       p_after_project_id: cursor?.project_id,
     });
     expect(nextPage.error).toBeNull();
@@ -590,5 +595,63 @@ describeDb('MCP account scope database behavior', () => {
     });
     expect(removedRole.error).toBeNull();
     expect(removedRole.data).toBeNull();
+  });
+
+  it('discovers only current owner or accepted admin/editor access', async () => {
+    const owner = await fixture.owner.client.rpc('mcp_has_writable_project');
+    const editor = await fixture.editor.client.rpc('mcp_has_writable_project');
+    const zeroProject = await zeroProjectUser.client.rpc('mcp_has_writable_project');
+    expect(owner.error).toBeNull();
+    expect(editor.error).toBeNull();
+    expect(zeroProject.error).toBeNull();
+    expect(owner.data).toBe(true);
+    expect(editor.data).toBe(true);
+    expect(zeroProject.data).toBe(false);
+
+    const created = await fixture.svc.from('projects').insert({
+      owner_id: fixture.outsider.id,
+      name: `writable-discovery-${fixture.suffix}`,
+      description: 'writable discovery role mutation project',
+    }).select('id').single();
+    if (created.error || !created.data) {
+      throw new Error(`create writable discovery project failed: ${created.error?.message}`);
+    }
+    const projectId = created.data.id as string;
+    writableDiscoveryProjectIds.push(projectId);
+
+    const pending = await fixture.svc.from('project_collaborators').insert({
+      user_id: zeroProjectUser.id,
+      project_id: projectId,
+      role: 'editor',
+      invited_by: fixture.outsider.id,
+      accepted_at: null,
+    });
+    expect(pending.error).toBeNull();
+    const pendingResult = await zeroProjectUser.client.rpc('mcp_has_writable_project');
+    expect(pendingResult.error).toBeNull();
+    expect(pendingResult.data).toBe(false);
+
+    const acceptedViewer = await fixture.svc.from('project_collaborators').update({
+      role: 'viewer',
+      accepted_at: new Date().toISOString(),
+    }).eq('project_id', projectId).eq('user_id', zeroProjectUser.id);
+    expect(acceptedViewer.error).toBeNull();
+    const viewerResult = await zeroProjectUser.client.rpc('mcp_has_writable_project');
+    expect(viewerResult.error).toBeNull();
+    expect(viewerResult.data).toBe(false);
+
+    const editorMutation = await fixture.svc.from('project_collaborators').update({ role: 'editor' })
+      .eq('project_id', projectId).eq('user_id', zeroProjectUser.id);
+    expect(editorMutation.error).toBeNull();
+    const editorResult = await zeroProjectUser.client.rpc('mcp_has_writable_project');
+    expect(editorResult.error).toBeNull();
+    expect(editorResult.data).toBe(true);
+
+    const removal = await fixture.svc.from('project_collaborators').delete()
+      .eq('project_id', projectId).eq('user_id', zeroProjectUser.id);
+    expect(removal.error).toBeNull();
+    const removedResult = await zeroProjectUser.client.rpc('mcp_has_writable_project');
+    expect(removedResult.error).toBeNull();
+    expect(removedResult.data).toBe(false);
   });
 });

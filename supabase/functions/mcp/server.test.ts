@@ -40,6 +40,9 @@ const accountContext = {
   bearerToken: "test-account-token",
   supabase: {
     rpc(name: string) {
+      if (name === "mcp_has_writable_project") {
+        return Promise.resolve({ data: false, error: null });
+      }
       if (name === "mcp_list_accessible_projects") {
         return Promise.resolve({ data: [], error: null });
       }

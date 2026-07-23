@@ -92,7 +92,7 @@ Deno.test("lists a bounded page of accessible projects with role capabilities", 
   assertEquals(typeof page.nextCursor, "string");
 });
 
-Deno.test("project listing replays its cursor as the database sort tuple", async () => {
+Deno.test("project listing replays its project ID cursor without a timestamp selector", async () => {
   Deno.env.set("MCP_CURSOR_SECRET", CURSOR_SECRET);
   const calls: RpcCall[] = [];
   const { context } = makeContext(async (name, parameters) => {
@@ -117,7 +117,7 @@ Deno.test("project listing replays its cursor as the database sort tuple", async
     name: "mcp_list_accessible_projects",
     parameters: {
       p_limit: 2,
-      p_before_created_at: "2026-07-23T03:00:00.000Z",
+      p_before_created_at: null,
       p_after_project_id: PROJECT_A,
     },
   });
@@ -162,25 +162,35 @@ Deno.test("account project authorization hides malformed and inaccessible projec
   }
 });
 
-Deno.test("writable project discovery pages until it finds a current editor or admin", async () => {
-  const firstPage = Array.from(
-    { length: 100 },
-    (_, index) => projectRow(
-      `${String(index + 10).padStart(8, "0")}-1111-4111-8111-111111111111`,
-      "viewer",
-      `2026-07-23T00:00:${String(59 - index % 60).padStart(2, "0")}.000Z`,
-    ),
-  );
+Deno.test("writable project discovery uses one boolean RPC without pagination", async () => {
   const calls: RpcCall[] = [];
   const { context } = makeContext(async (name, parameters) => {
     calls.push({ name, parameters });
-    return calls.length === 1
-      ? { data: firstPage, error: null }
-      : { data: [projectRow(PROJECT_A, "editor", "2026-07-20T00:00:00.000Z")], error: null };
+    return { data: true, error: null };
   });
 
   assertEquals(await accountHasWritableProject(context), true);
-  assertEquals(calls.length, 2);
-  assertEquals(calls[0].parameters.p_limit, 100);
-  assertEquals(calls[1].parameters.p_before_created_at, firstPage.at(-1)?.created_at);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].name, "mcp_has_writable_project");
+  assertEquals(calls[0].parameters, undefined);
+});
+
+Deno.test("writable project discovery returns false only for an explicit boolean false", async () => {
+  const { context } = makeContext(async () => ({ data: false, error: null }));
+  assertEquals(await accountHasWritableProject(context), false);
+});
+
+Deno.test("writable project discovery fails closed for RPC errors and malformed data", async () => {
+  for (const response of [
+    { data: null, error: null },
+    { data: "true", error: null },
+    { data: null, error: { message: "database failed" } },
+  ]) {
+    const { context } = makeContext(async () => response);
+    const error = await assertRejects(
+      () => accountHasWritableProject(context),
+      McpDomainError,
+    );
+    assertEquals(error.code, "INTERNAL_ERROR");
+  }
 });

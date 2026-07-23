@@ -3,6 +3,7 @@ import { GetPromptRequestSchema, ListPromptsRequestSchema, McpError,
   ErrorCode } from '@mcp/types.js';
 import { z } from 'zod';
 import type { McpRequestContext } from './context.ts';
+import { authorizeAccountProject } from './account-projects.ts';
 
 const uuid = z.string().uuid();
 const legacyDefinitions = [
@@ -68,6 +69,13 @@ export function registerPrompts(server: McpServer, context: McpRequestContext): 
     const parsed = definition.schema.safeParse(request.params.arguments ?? {});
     if (!parsed.success) throw new McpError(ErrorCode.InvalidParams, 'Invalid prompt arguments.');
     const values = parsed.data as Record<string, string>;
+    if (context.mode === 'account') {
+      await authorizeAccountProject(
+        context,
+        values.projectId,
+        definition.name === 'analyze_project' ? 'read' : 'write',
+      );
+    }
     const text = definition.message.replace(/\{(\w+)\}/g,
       (_match, key: string) => values[key] ?? '');
     return { description: definition.description,

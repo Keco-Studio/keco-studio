@@ -12,7 +12,7 @@ const UUID =
 const PROJECT_CURSOR_KIND = "account_projects";
 
 type ProjectRole = "admin" | "editor" | "viewer";
-type ProjectCursorPosition = { createdAt: string; projectId: string };
+type ProjectCursorPosition = { projectId: string };
 type AccessibleProjectRow = {
   project_id: string;
   name: string;
@@ -62,7 +62,6 @@ function isProjectCursorPosition(
   value: unknown,
 ): value is ProjectCursorPosition {
   return !!value && typeof value === "object" && !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).createdAt === "string" &&
     typeof (value as Record<string, unknown>).projectId === "string" &&
     UUID.test((value as Record<string, unknown>).projectId as string);
 }
@@ -96,7 +95,7 @@ async function listProjectRows(
         "mcp_list_accessible_projects",
         {
           p_limit: limit,
-          p_before_created_at: position?.createdAt ?? null,
+          p_before_created_at: null,
           p_after_project_id: position?.projectId ?? null,
         },
       ),
@@ -148,7 +147,7 @@ export async function listAccessibleProjects(
           scope: "account",
           userId: context.userId,
         },
-        { createdAt: last.createdAt, projectId: last.projectId },
+        { projectId: last.projectId },
         cursorSecret(),
       )
       : null,
@@ -228,14 +227,13 @@ export async function authorizeAccountProject(
 export async function accountHasWritableProject(
   context: AccountMcpRequestContext,
 ): Promise<boolean> {
-  let position: ProjectCursorPosition | null = null;
-  while (true) {
-    const rows = await listProjectRows(context, 100, position);
-    if (rows.some((row) => row.role === "admin" || row.role === "editor")) {
-      return true;
-    }
-    const last = rows.at(-1);
-    if (rows.length < 100 || !last) return false;
-    position = { createdAt: last.created_at, projectId: last.project_id };
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () => await context.supabase.rpc("mcp_has_writable_project"),
+  );
+  if (error || typeof data !== "boolean") {
+    throw internalError("The writable project access could not be resolved.");
   }
+  return data;
 }

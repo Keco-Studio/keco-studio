@@ -106,6 +106,7 @@ Run audit cleanup through the privileged scheduler daily:
 
 ```sql
 select public.mcp_cleanup_telemetry();
+select public.mcp_cleanup_account_telemetry();
 ```
 
 Authenticated clients cannot select audit rows or invoke cleanup. Retention is

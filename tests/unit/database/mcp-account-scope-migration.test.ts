@@ -6,6 +6,11 @@ const migrationPath = path.join(
   'supabase/migrations/20260723100000_mcp_account_scope.sql'
 );
 const sql = fs.readFileSync(migrationPath, 'utf8');
+const writableProjectMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260724000000_mcp_writable_project_check.sql'
+);
+const writableProjectSql = fs.readFileSync(writableProjectMigrationPath, 'utf8');
 const fixtureSql = fs.readFileSync(path.join(
   process.cwd(),
   'scripts/fixtures/mcp-account-projects.sql'
@@ -13,6 +18,10 @@ const fixtureSql = fs.readFileSync(path.join(
 const gatesSql = fs.readFileSync(path.join(
   process.cwd(),
   'scripts/fixtures/mcp-account-projects-gates.sql'
+), 'utf8');
+const runbook = fs.readFileSync(path.join(
+  process.cwd(),
+  'docs/mcp/operations-runbook.md'
 ), 'utf8');
 
 describe('MCP account scope migration', () => {
@@ -86,6 +95,55 @@ describe('MCP account scope migration', () => {
     expect(resolver).toMatch(/collaborator\.accepted_at is not null/i);
   });
 
+  it('checks writable project access with a hardened bounded owner or write-collaborator RPC', () => {
+    expect(writableProjectSql).toMatch(
+      /create or replace function public\.mcp_has_writable_project\(\)[\s\S]*returns boolean[\s\S]*language sql[\s\S]*stable[\s\S]*security definer[\s\S]*set search_path\s*=\s*''/i
+    );
+    expect(writableProjectSql).toMatch(/auth\.uid\(\) is not null/i);
+    expect(writableProjectSql).toMatch(/from public\.projects as project/i);
+    expect(writableProjectSql).toMatch(/project\.owner_id\s*=\s*auth\.uid\(\)/i);
+    expect(writableProjectSql).toMatch(/from public\.project_collaborators as collaborator/i);
+    expect(writableProjectSql).toMatch(/collaborator\.user_id\s*=\s*auth\.uid\(\)/i);
+    expect(writableProjectSql).toMatch(/collaborator\.accepted_at is not null/i);
+    expect(writableProjectSql).toMatch(/collaborator\.role in \('admin', 'editor'\)/i);
+    for (const role of ['PUBLIC', 'anon', 'service_role']) {
+      expect(writableProjectSql).toMatch(new RegExp(
+        `revoke all on function public\\.mcp_has_writable_project\\(\\) from ${role}`,
+        'i'
+      ));
+    }
+    expect(writableProjectSql).toMatch(
+      /grant execute on function public\.mcp_has_writable_project\(\) to authenticated/i
+    );
+    expect(writableProjectSql).toMatch(
+      /create index mcp_writable_project_collaborators_user_idx\s+on public\.project_collaborators \(user_id\)\s+where accepted_at is not null\s+and role in \('admin', 'editor'\)/i
+    );
+    expect(writableProjectSql).not.toMatch(/create index concurrently/i);
+  });
+
+  it('redefines account project listing as bounded owner and collaborator keyset branches', () => {
+    const list = writableProjectSql.slice(
+      writableProjectSql.indexOf('CREATE OR REPLACE FUNCTION public.mcp_list_accessible_projects')
+    );
+    const collaboratorBranch = list.slice(
+      list.indexOf('collaborator_projects AS ('),
+      list.indexOf('), access_candidates AS (')
+    );
+    expect(list).toMatch(/with page_bounds as/i);
+    expect(list).toMatch(/greatest\(1, least\(coalesce\(p_limit, 50\), 101\)\)/i);
+    expect(writableProjectSql).toMatch(/create index mcp_projects_owner_id_idx\s+on public\.projects \(owner_id, id\)/i);
+    expect(writableProjectSql).toMatch(/create index mcp_accepted_project_collaborators_user_project_idx\s+on public\.project_collaborators \(user_id, project_id\) include \(role\)\s+where accepted_at is not null/i);
+    expect(list).toMatch(/owned_projects as \([\s\S]*project\.owner_id\s*=\s*auth\.uid\(\)[\s\S]*project\.id > coalesce\([\s\S]*p_after_project_id[\s\S]*order by project\.id asc[\s\S]*limit \(select page_limit from page_bounds\)/i);
+    expect(list).toMatch(/collaborator_projects as \([\s\S]*from public\.project_collaborators as collaborator[\s\S]*collaborator\.accepted_at is not null[\s\S]*collaborator\.project_id > coalesce\([\s\S]*p_after_project_id[\s\S]*order by collaborator\.project_id asc[\s\S]*limit \(select page_limit from page_bounds\)/i);
+    expect(collaboratorBranch).not.toMatch(/join public\.projects/i);
+    expect(list).toMatch(/select \* from owned_projects\s+union all\s+select \* from collaborator_projects/i);
+    expect(list).toMatch(/select distinct on \(candidate\.project_id\)[\s\S]*order by candidate\.project_id, candidate\.role_priority/i);
+    expect(list).toMatch(/join public\.projects as project on project\.id = access\.project_id[\s\S]*order by access\.project_id asc[\s\S]*limit \(select page_limit from page_bounds\)/i);
+    expect(list).not.toMatch(/order by .*created_at/i);
+    expect(list).toMatch(/revoke all on function public\.mcp_list_accessible_projects[\s\S]*from public/i);
+    expect(list).toMatch(/grant execute on function public\.mcp_list_accessible_projects[\s\S]*to authenticated/i);
+  });
+
   it('lists deduplicated accessible projects with bounded deterministic keyset pagination', () => {
     const list = sql.slice(
       sql.indexOf('CREATE OR REPLACE FUNCTION public.mcp_list_accessible_projects'),
@@ -139,10 +197,16 @@ describe('MCP account scope migration', () => {
     );
   });
 
+  it('documents daily cleanup for both legacy and account telemetry buckets', () => {
+    expect(runbook).toMatch(/select public\.mcp_cleanup_telemetry\(\);/i);
+    expect(runbook).toMatch(/select public\.mcp_cleanup_account_telemetry\(\);/i);
+  });
+
   it('seeds and verifies the exact 101-row lookahead boundary fail closed', () => {
     expect(fixtureSql).toMatch(/generate_series\(1, 101\) as project_number/i);
-    expect(fixtureSql).toMatch(/generate_series\(52, 101\) as project_number/i);
-    expect(fixtureSql).toMatch(/\(51, 50, 1, 1000\)/i);
+    expect(fixtureSql).toMatch(/generate_series\(1, 101\) as project_number/i);
+    expect(fixtureSql).toMatch(/generate_series\(1, 300\) as project_number/i);
+    expect(fixtureSql).toMatch(/\(51, 50, 1, 10000, 300\)/i);
     expect(gatesSql).toMatch(/coalesce\(cardinality\(v_first_ids\), 0\) <> 25/i);
     expect(gatesSql).toMatch(/is distinct from v_expected_first_50/i);
     expect(gatesSql).toMatch(/coalesce\(cardinality\(v_limit_101_ids\), 0\) <> 101/i);
@@ -157,10 +221,18 @@ describe('MCP account scope migration', () => {
     expect(gatesSql).not.toMatch(/explain/i);
     expect(gatesSql).toContain('from public.mcp_list_accessible_projects(101, null, null)');
     expect(gatesSql).toMatch(/pg_stat_get_numscans\('public\.project_collaborators'::regclass\)/i);
-    expect(gatesSql).toMatch(/sum\(pg_stat_get_numscans\(indexrelid\)\)/i);
+    expect(gatesSql).toContain("'public.mcp_projects_owner_id_idx'::regclass");
+    expect(gatesSql).toContain(
+      "'public.mcp_accepted_project_collaborators_user_project_idx'::regclass"
+    );
+    expect(gatesSql).toMatch(/reset enable_bitmapscan;\s*select pg_stat_force_next_flush\(\);/i);
     expect(gatesSql).toMatch(/pg_stat_force_next_flush\(\)/i);
+    expect(gatesSql).toMatch(/v_owner_index_after <= v_owner_index_before/i);
     expect(gatesSql).toMatch(/v_index_after <= v_index_before/i);
     expect(gatesSql).toMatch(/v_seq_after <> v_seq_before/i);
-    expect(gatesSql).toMatch(/v_count <> 101 or v_elapsed_ms > 5000/i);
+    expect(gatesSql).toMatch(/v_projects_seq_after <> v_projects_seq_before/i);
+    expect(gatesSql).toMatch(/v_count <> 101 or v_has_writable is distinct from true or v_elapsed_ms > 5000/i);
+    expect(gatesSql).toContain('select public.mcp_has_writable_project()');
+    expect(gatesSql).toMatch(/v_has_writable is distinct from true/i);
   });
 });

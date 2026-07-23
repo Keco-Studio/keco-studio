@@ -27,10 +27,13 @@ function accountContext(
     supabase: {
       async rpc(name: string, parameters: Record<string, unknown>) {
         calls.push({ name, parameters });
-        if (name === "mcp_list_accessible_projects") {
-          if (options.failWritableDiscovery && parameters.p_limit === 100) {
+        if (name === "mcp_has_writable_project") {
+          if (options.failWritableDiscovery) {
             throw new Error("Writable project discovery failed.");
           }
+          return { data: writable, error: null };
+        }
+        if (name === "mcp_list_accessible_projects") {
           return {
             data: [{
               project_id: WRITABLE_PROJECT_ID,
@@ -137,7 +140,8 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     assertEquals(tool.inputSchema.required?.includes("projectId"), true);
   }
   assertEquals(calls[0].name, "mcp_begin_account_operation");
-  assertEquals(calls[1].name, "mcp_list_accessible_projects");
+  assertEquals(calls[1].name, "mcp_has_writable_project");
+  assertEquals(calls[1].parameters, undefined);
 });
 
 Deno.test("account project reads resolve fresh access before the operation", async () => {
@@ -191,7 +195,11 @@ Deno.test("list_projects uses account read admission and no project selector", a
   assertEquals("p_project_id" in admission.parameters, false);
   assertEquals(
     calls.filter((call) => call.name === "mcp_list_accessible_projects").length,
-    2,
+    1,
+  );
+  assertEquals(
+    calls.filter((call) => call.name === "mcp_has_writable_project").length,
+    1,
   );
 });
 
