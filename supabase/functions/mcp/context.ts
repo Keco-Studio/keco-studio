@@ -1,15 +1,41 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { ProjectAuthContext } from "./auth.ts";
+import type {
+  AccountAuthContext,
+  ProjectAuthContext,
+  ProjectRole,
+} from "./auth.ts";
 
-export type McpRequestContext = Readonly<{
+export type AccountMcpRequestContext = Readonly<{
+  mode: "account";
+  requestId: string;
+  userId: string;
+  clientId: string;
+  sessionId: string;
+  bearerToken: string;
+  supabase: SupabaseClient;
+}>;
+
+export type ProjectMcpRequestContext = Readonly<{
+  mode: "project";
   requestId: string;
   userId: string;
   projectId: string;
-  role: ProjectAuthContext["role"];
+  role: ProjectRole;
   clientId: string | null;
   bearerToken: string;
   supabase: SupabaseClient;
 }>;
+
+type LegacyProjectCompatibleAccountContext = AccountMcpRequestContext & Readonly<{
+  // Existing project-only tool registrations are made mode-specific in Task 4.
+  // These never-valued compatibility fields are not present on account objects.
+  projectId: never;
+  role: never;
+}>;
+
+export type McpRequestContext =
+  | LegacyProjectCompatibleAccountContext
+  | ProjectMcpRequestContext;
 
 export type McpContextDependencies = {
   supabaseUrl?: string;
@@ -20,7 +46,7 @@ export type McpContextDependencies = {
 
 export function createMcpRequestContext(
   _request: Request,
-  authContext: ProjectAuthContext,
+  authContext: ProjectAuthContext | AccountAuthContext,
   dependencies: McpContextDependencies = {},
 ): McpRequestContext {
   const supabaseUrl = dependencies.supabaseUrl ?? Deno.env.get("SUPABASE_URL");
@@ -39,13 +65,22 @@ export function createMcpRequestContext(
   const requestId = dependencies.requestId
     ? dependencies.requestId()
     : crypto.randomUUID();
-  const context = {
-    requestId,
-    userId: authContext.userId,
-    projectId: authContext.projectId,
-    role: authContext.role,
-    clientId: authContext.clientId,
-  } as McpRequestContext;
+  const context: Record<string, unknown> = "projectId" in authContext
+    ? {
+      mode: "project",
+      requestId,
+      userId: authContext.userId,
+      projectId: authContext.projectId,
+      role: authContext.role,
+      clientId: authContext.clientId,
+    }
+    : {
+      mode: "account",
+      requestId,
+      userId: authContext.userId,
+      clientId: authContext.clientId,
+      sessionId: authContext.sessionId,
+    };
   Object.defineProperties(context, {
     bearerToken: {
       value: authContext.bearerToken,
@@ -60,5 +95,5 @@ export function createMcpRequestContext(
       configurable: false,
     },
   });
-  return Object.freeze(context);
+  return Object.freeze(context) as McpRequestContext;
 }
