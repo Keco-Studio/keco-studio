@@ -6,6 +6,14 @@ const migrationPath = path.join(
   'supabase/migrations/20260723100000_mcp_account_scope.sql'
 );
 const sql = fs.readFileSync(migrationPath, 'utf8');
+const fixtureSql = fs.readFileSync(path.join(
+  process.cwd(),
+  'scripts/fixtures/mcp-account-projects.sql'
+), 'utf8');
+const gatesSql = fs.readFileSync(path.join(
+  process.cwd(),
+  'scripts/fixtures/mcp-account-projects-gates.sql'
+), 'utf8');
 
 describe('MCP account scope migration', () => {
   it('creates an RLS-locked service grant bound to one authorization and session', () => {
@@ -94,7 +102,7 @@ describe('MCP account scope migration', () => {
       /project\.created_at\s*=\s*p_before_created_at and project\.id\s*>\s*p_after_project_id/i
     );
     expect(list).toMatch(/order by project\.created_at desc, project\.id asc/i);
-    expect(list).toMatch(/limit greatest\(1, least\(coalesce\(p_limit, 50\), 100\)\)/i);
+    expect(list).toMatch(/limit greatest\(1, least\(coalesce\(p_limit, 50\), 101\)\)/i);
   });
 
   it('admits account operations without a synthetic project UUID', () => {
@@ -102,7 +110,7 @@ describe('MCP account scope migration', () => {
     expect(sql).toMatch(/alter table public\.mcp_audit_events[\s\S]*project_id drop not null/i);
     const admission = sql.slice(
       sql.indexOf('CREATE OR REPLACE FUNCTION public.mcp_begin_account_operation'),
-      sql.indexOf('CREATE OR REPLACE FUNCTION public.mcp_cleanup_telemetry')
+      sql.indexOf('CREATE OR REPLACE FUNCTION public.mcp_cleanup_account_telemetry')
     );
     expect(admission).toMatch(/when 'static' then 240/i);
     expect(admission).toMatch(/when 'read' then 120/i);
@@ -111,5 +119,48 @@ describe('MCP account scope migration', () => {
     expect(admission).toMatch(/insert into public\.mcp_audit_events/i);
     expect(admission).toMatch(/v_actor,\s*null,\s*p_client_id/i);
     expect(admission).not.toMatch(/00000000-0000-0000-0000-000000000000/i);
+  });
+
+  it('keeps legacy cleanup untouched and isolates account bucket cleanup', () => {
+    expect(sql).not.toMatch(/mcp_cleanup_telemetry/i);
+    const cleanup = sql.slice(
+      sql.indexOf('CREATE OR REPLACE FUNCTION public.mcp_cleanup_account_telemetry')
+    );
+
+    expect(cleanup).toMatch(/returns table \(account_rate_buckets_deleted bigint\)/i);
+    expect(cleanup).toMatch(/delete from public\.mcp_account_rate_limit_buckets/i);
+    expect(cleanup).not.toMatch(/delete from public\.mcp_rate_limit_buckets/i);
+    expect(cleanup).not.toMatch(/delete from public\.mcp_audit_events/i);
+    expect(cleanup).toMatch(
+      /revoke all on function public\.mcp_cleanup_account_telemetry\(\)[\s\S]*from public, anon, authenticated/i
+    );
+    expect(cleanup).toMatch(
+      /grant execute on function public\.mcp_cleanup_account_telemetry\(\) to service_role/i
+    );
+  });
+
+  it('seeds and verifies the exact 101-row lookahead boundary fail closed', () => {
+    expect(fixtureSql).toMatch(/generate_series\(1, 101\) as project_number/i);
+    expect(fixtureSql).toMatch(/generate_series\(52, 101\) as project_number/i);
+    expect(fixtureSql).toMatch(/\(51, 50, 1, 1000\)/i);
+    expect(gatesSql).toMatch(/coalesce\(cardinality\(v_first_ids\), 0\) <> 25/i);
+    expect(gatesSql).toMatch(/is distinct from v_expected_first_50/i);
+    expect(gatesSql).toMatch(/coalesce\(cardinality\(v_limit_101_ids\), 0\) <> 101/i);
+    expect(gatesSql).toMatch(/v_limit_100_ids is distinct from v_limit_101_ids\[1:100\]/i);
+    expect(gatesSql).toMatch(/v_actual_access is distinct from v_expected_access/i);
+    expect(gatesSql).toContain('44444444-4444-4444-8444-444444444401');
+    expect(gatesSql).toContain('44444444-4444-4444-8444-444444444402');
+  });
+
+  it('measures the real RPC with normal planner settings and scan counters', () => {
+    expect(gatesSql).not.toMatch(/enable_seqscan[^;]*off/i);
+    expect(gatesSql).not.toMatch(/explain/i);
+    expect(gatesSql).toContain('from public.mcp_list_accessible_projects(101, null, null)');
+    expect(gatesSql).toMatch(/pg_stat_get_numscans\('public\.project_collaborators'::regclass\)/i);
+    expect(gatesSql).toMatch(/sum\(pg_stat_get_numscans\(indexrelid\)\)/i);
+    expect(gatesSql).toMatch(/pg_stat_force_next_flush\(\)/i);
+    expect(gatesSql).toMatch(/v_index_after <= v_index_before/i);
+    expect(gatesSql).toMatch(/v_seq_after <> v_seq_before/i);
+    expect(gatesSql).toMatch(/v_count <> 101 or v_elapsed_ms > 5000/i);
   });
 });

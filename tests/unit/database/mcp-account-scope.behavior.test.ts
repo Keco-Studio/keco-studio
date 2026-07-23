@@ -203,7 +203,8 @@ async function hasProjectGrant(
 describeDb('MCP account scope database behavior', () => {
   let fixture: ProjectFixture;
   let zeroProjectUser: RlsUser;
-  const extraProjectIds: string[] = [];
+  const accessibleProjectIds: string[] = [];
+  const excludedProjectIds: string[] = [];
 
   beforeAll(async () => {
     fixture = await buildProjectFixture();
@@ -240,7 +241,7 @@ describeDb('MCP account scope database behavior', () => {
         throw new Error(`create account project failed: ${project.error?.message}`);
       }
       const projectId = project.data.id as string;
-      extraProjectIds.push(projectId);
+      accessibleProjectIds.push(projectId);
       const collaborator = await fixture.svc.from('project_collaborators').insert({
         user_id: fixture.owner.id,
         project_id: projectId,
@@ -265,7 +266,7 @@ describeDb('MCP account scope database behavior', () => {
         throw new Error(`create excluded account project failed: ${project.error?.message}`);
       }
       const projectId = project.data.id as string;
-      extraProjectIds.push(projectId);
+      excludedProjectIds.push(projectId);
       if (accepted === false) {
         const pending = await fixture.svc.from('project_collaborators').insert({
           user_id: fixture.owner.id,
@@ -278,11 +279,25 @@ describeDb('MCP account scope database behavior', () => {
         if (pending.error) throw new Error(`create pending collaborator failed: ${pending.error.message}`);
       }
     }
+
+    const lookaheadRows = Array.from({ length: 97 }, (_, index) => ({
+      owner_id: fixture.owner.id,
+      name: `owned-account-lookahead-${String(index + 1).padStart(3, '0')}-${fixture.suffix}`,
+      description: 'owned lookahead project',
+      created_at: new Date(Date.UTC(2029, 0, 1, 0, 0, 0) - index * 60_000).toISOString(),
+    }));
+    const lookaheadProjects = await fixture.svc.from('projects')
+      .insert(lookaheadRows)
+      .select('id');
+    if (lookaheadProjects.error || !lookaheadProjects.data) {
+      throw new Error(`create account lookahead projects failed: ${lookaheadProjects.error?.message}`);
+    }
+    accessibleProjectIds.push(...lookaheadProjects.data.map((project) => project.id as string));
   });
 
   afterAll(async () => {
     if (fixture) {
-      for (const projectId of extraProjectIds) {
+      for (const projectId of [...accessibleProjectIds, ...excludedProjectIds]) {
         await fixture.svc.from('projects').delete().eq('id', projectId);
       }
       await teardownProjectFixture(fixture);
@@ -400,6 +415,82 @@ describeDb('MCP account scope database behavior', () => {
     }
   });
 
+  it('keeps legacy and account telemetry cleanup responsibilities separate', async () => {
+    const oldWindow = '2000-01-01T00:00:00.000Z';
+    expect(queryJson(`
+      WITH project_bucket AS (
+        INSERT INTO public.mcp_rate_limit_buckets (
+          actor_id,
+          project_id,
+          operation_class,
+          window_started_at,
+          request_count
+        ) VALUES (
+          '${fixture.owner.id}'::UUID,
+          '${fixture.projectId}'::UUID,
+          'static',
+          '${oldWindow}'::TIMESTAMPTZ,
+          1
+        )
+        ON CONFLICT (actor_id, project_id, operation_class, window_started_at)
+        DO UPDATE SET request_count = EXCLUDED.request_count
+        RETURNING 1
+      ), account_bucket AS (
+        INSERT INTO public.mcp_account_rate_limit_buckets (
+          actor_id,
+          operation_class,
+          window_started_at,
+          request_count
+        ) VALUES (
+          '${zeroProjectUser.id}'::UUID,
+          'static',
+          '${oldWindow}'::TIMESTAMPTZ,
+          1
+        )
+        ON CONFLICT (actor_id, operation_class, window_started_at)
+        DO UPDATE SET request_count = EXCLUDED.request_count
+        RETURNING 1
+      )
+      SELECT jsonb_build_object(
+        'project', (SELECT count(*) FROM project_bucket),
+        'account', (SELECT count(*) FROM account_bucket)
+      )::TEXT
+    `)).toEqual({ project: 1, account: 1 });
+
+    const legacyCleanup = await serviceClient().rpc('mcp_cleanup_telemetry');
+    expect(legacyCleanup.error).toBeNull();
+    expect(queryJson(`
+      SELECT jsonb_build_object(
+        'project', (
+          SELECT count(*) FROM public.mcp_rate_limit_buckets
+          WHERE actor_id = '${fixture.owner.id}'::UUID
+            AND project_id = '${fixture.projectId}'::UUID
+            AND operation_class = 'static'
+            AND window_started_at = '${oldWindow}'::TIMESTAMPTZ
+        ),
+        'account', (
+          SELECT count(*) FROM public.mcp_account_rate_limit_buckets
+          WHERE actor_id = '${zeroProjectUser.id}'::UUID
+            AND operation_class = 'static'
+            AND window_started_at = '${oldWindow}'::TIMESTAMPTZ
+        )
+      )::TEXT
+    `)).toEqual({ project: 0, account: 1 });
+
+    const denied = await zeroProjectUser.client.rpc('mcp_cleanup_account_telemetry');
+    expect(denied.error).not.toBeNull();
+
+    const accountCleanup = await serviceClient().rpc('mcp_cleanup_account_telemetry');
+    expect(accountCleanup.error).toBeNull();
+    expect(queryJson(`
+      SELECT jsonb_build_object('count', count(*))::TEXT
+      FROM public.mcp_account_rate_limit_buckets
+      WHERE actor_id = '${zeroProjectUser.id}'::UUID
+        AND operation_class = 'static'
+        AND window_started_at = '${oldWindow}'::TIMESTAMPTZ
+    `)).toEqual({ count: 0 });
+  });
+
   it('resolves live roles and lists only accepted access with deterministic pagination', async () => {
     const roleCases: Array<[SupabaseClient, string | null]> = [
       [fixture.owner.client, 'admin'],
@@ -417,13 +508,14 @@ describeDb('MCP account scope database behavior', () => {
     }
 
     const fullPage = await fixture.owner.client.rpc('mcp_list_accessible_projects', {
-      p_limit: 100,
+      p_limit: 101,
       p_before_created_at: null,
       p_after_project_id: null,
     });
     expect(fullPage.error).toBeNull();
     const rows = fullPage.data ?? [];
-    const expectedAccessible = new Set([fixture.projectId, ...extraProjectIds.slice(0, 3)]);
+    expect(rows).toHaveLength(101);
+    const expectedAccessible = new Set([fixture.projectId, ...accessibleProjectIds]);
     expect(new Set(rows.map((row) => row.project_id))).toEqual(expectedAccessible);
     expect(rows.filter((row) => row.name === `duplicate-account-project-${fixture.suffix}`))
       .toHaveLength(2);
@@ -436,6 +528,23 @@ describeDb('MCP account scope database behavior', () => {
       'accepted editor project': 'editor',
       'accepted viewer project': 'viewer',
     });
+
+    const publicBoundary = await fixture.owner.client.rpc('mcp_list_accessible_projects', {
+      p_limit: 100,
+      p_before_created_at: null,
+      p_after_project_id: null,
+    });
+    expect(publicBoundary.error).toBeNull();
+    expect(publicBoundary.data).toHaveLength(100);
+    expect(publicBoundary.data).toEqual(rows.slice(0, 100));
+
+    const internalClamp = await fixture.owner.client.rpc('mcp_list_accessible_projects', {
+      p_limit: 102,
+      p_before_created_at: null,
+      p_after_project_id: null,
+    });
+    expect(internalClamp.error).toBeNull();
+    expect(internalClamp.data).toEqual(rows);
 
     const firstPage = await fixture.owner.client.rpc('mcp_list_accessible_projects', {
       p_limit: 2,
@@ -461,7 +570,7 @@ describeDb('MCP account scope database behavior', () => {
     expect(clamped.error).toBeNull();
     expect(clamped.data).toHaveLength(1);
 
-    const viewerProjectId = extraProjectIds[2];
+    const viewerProjectId = accessibleProjectIds[2];
     const changed = await fixture.svc.from('project_collaborators').update({ role: 'editor' })
       .eq('project_id', viewerProjectId)
       .eq('user_id', fixture.owner.id);

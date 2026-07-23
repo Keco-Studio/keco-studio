@@ -241,7 +241,9 @@ AS $$
       OR (project.created_at = p_before_created_at AND project.id > p_after_project_id)
     )
   ORDER BY project.created_at DESC, project.id ASC
-  LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 100));
+  -- The public list_projects tool remains capped at 100. Its one-row
+  -- lookahead calls this private RPC with 101 to determine hasMore.
+  LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 50), 101));
 $$;
 
 REVOKE ALL ON FUNCTION public.mcp_list_accessible_projects(
@@ -420,38 +422,27 @@ GRANT EXECUTE ON FUNCTION public.mcp_begin_account_operation(
   TEXT, TEXT, UUID, TEXT, INTEGER
 ) TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.mcp_cleanup_telemetry()
-RETURNS TABLE (rate_buckets_deleted BIGINT, audit_events_deleted BIGINT)
+CREATE OR REPLACE FUNCTION public.mcp_cleanup_account_telemetry()
+RETURNS TABLE (account_rate_buckets_deleted BIGINT)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_buckets BIGINT;
   v_account_buckets BIGINT;
-  v_audit BIGINT;
 BEGIN
   IF COALESCE(auth.role(), '') <> 'service_role' THEN
     RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
   END IF;
 
-  DELETE FROM public.mcp_rate_limit_buckets
-  WHERE window_started_at < pg_catalog.clock_timestamp() - interval '2 days';
-  GET DIAGNOSTICS v_buckets = ROW_COUNT;
-
   DELETE FROM public.mcp_account_rate_limit_buckets
   WHERE window_started_at < pg_catalog.clock_timestamp() - interval '2 days';
   GET DIAGNOSTICS v_account_buckets = ROW_COUNT;
 
-  PERFORM set_config('app.mcp_cleanup', 'on', true);
-  DELETE FROM public.mcp_audit_events
-  WHERE created_at < pg_catalog.clock_timestamp() - interval '90 days';
-  GET DIAGNOSTICS v_audit = ROW_COUNT;
-
-  RETURN QUERY SELECT v_buckets + v_account_buckets, v_audit;
+  RETURN QUERY SELECT v_account_buckets;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.mcp_cleanup_telemetry()
+REVOKE ALL ON FUNCTION public.mcp_cleanup_account_telemetry()
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.mcp_cleanup_telemetry() TO service_role;
+GRANT EXECUTE ON FUNCTION public.mcp_cleanup_account_telemetry() TO service_role;
