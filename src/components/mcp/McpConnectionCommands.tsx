@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CheckOutlined, CopyOutlined } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import { MCP_COMMANDS, type McpCommandClient } from './mcpCommands';
+import { showErrorToast } from '@/lib/utils/toast';
 import styles from '@/app/(dashboard)/mcp/page.module.css';
 
 export function McpConnectionCommands() {
@@ -16,10 +17,14 @@ export function McpConnectionCommands() {
   }, []);
 
   const copyCommand = async (command: string) => {
-    await navigator.clipboard.writeText(command);
-    setCopiedCommand(command);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopiedCommand(null), 1600);
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCommand(command);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopiedCommand(null), 1600);
+    } catch {
+      showErrorToast('Unable to copy command. Please try again.');
+    }
   };
 
   return (

@@ -97,4 +97,26 @@ test.describe('MCP account connections page', () => {
       else await expect(connectedHeader).toBeVisible();
     }
   });
+
+  test('reports clipboard failures without showing copied feedback', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: () => Promise.reject(new Error('Clipboard permission denied')),
+        },
+      });
+    });
+    await page.route('**/api/mcp/connections', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ connections: [] }),
+    }));
+    await login(page);
+    await page.goto('/mcp');
+
+    await page.getByRole('button', { name: 'Copy Add Keco MCP command' }).click();
+    await expect(page.getByText('Unable to copy command. Please try again.')).toBeVisible();
+    await expect(page.getByText('Command copied', { exact: true })).toBeHidden();
+  });
 });
