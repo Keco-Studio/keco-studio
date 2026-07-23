@@ -12,6 +12,8 @@ function accountContext(
   options: {
     writable?: boolean;
     resolvedRole?: "admin" | "editor" | "viewer";
+    failWritableDiscovery?: boolean;
+    delayProjectReadMs?: number;
   } = {},
 ): AccountMcpRequestContext {
   const writable = options.writable ?? true;
@@ -26,6 +28,9 @@ function accountContext(
       async rpc(name: string, parameters: Record<string, unknown>) {
         calls.push({ name, parameters });
         if (name === "mcp_list_accessible_projects") {
+          if (options.failWritableDiscovery && parameters.p_limit === 100) {
+            throw new Error("Writable project discovery failed.");
+          }
           return {
             data: [{
               project_id: WRITABLE_PROJECT_ID,
@@ -51,6 +56,11 @@ function accountContext(
           return { data: options.resolvedRole ?? "editor", error: null };
         }
         if (name === "mcp_read_project_structure") {
+          if (options.delayProjectReadMs) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, options.delayProjectReadMs)
+            );
+          }
           return {
             data: {
               project: { id: parameters.p_project_id },
@@ -217,4 +227,56 @@ Deno.test("account discovery omits writes when every accessible project is viewe
   assertEquals(names.includes("create_table"), false);
   assertEquals(names.includes("update_document"), false);
   assertEquals(names.includes("list_projects"), true);
+});
+
+Deno.test("writable discovery failure fails closed while account safe tools remain callable", async () => {
+  const calls: RpcCall[] = [];
+  const context = accountContext(calls, { failWritableDiscovery: true });
+  const discovery = await rpc(context, "tools/list");
+  const names = (discovery.result?.tools as Array<{ name: string }>).map(
+    (tool) => tool.name,
+  );
+  assertEquals(names.includes("keco_connection_probe"), true);
+  assertEquals(names.includes("list_projects"), true);
+  assertEquals(names.includes("list_project_structure"), true);
+  assertEquals(names.includes("create_table"), false);
+
+  const probe = await rpc(context, "tools/call", {
+    name: "keco_connection_probe",
+    arguments: {},
+  });
+  assertEquals(probe.result?.isError, undefined);
+
+  const projects = await rpc(context, "tools/call", {
+    name: "list_projects",
+    arguments: {},
+  });
+  assertEquals(projects.result?.isError, undefined);
+
+  const structure = await rpc(context, "tools/call", {
+    name: "list_project_structure",
+    arguments: { projectId: WRITABLE_PROJECT_ID },
+  });
+  assertEquals(structure.result?.isError, undefined);
+  assertEquals(
+    calls.some((call) => call.name === "mcp_create_table"),
+    false,
+  );
+});
+
+Deno.test("account project database work persists through the account operation timing", async () => {
+  const calls: RpcCall[] = [];
+  const message = await rpc(
+    accountContext(calls, { delayProjectReadMs: 15 }),
+    "tools/call",
+    {
+      name: "list_project_structure",
+      arguments: { projectId: WRITABLE_PROJECT_ID },
+    },
+  );
+  assertEquals(message.result?.isError, undefined);
+  const completion = calls.find((call) =>
+    call.name === "mcp_complete_operation"
+  )!;
+  assertEquals(Number(completion.parameters.p_database_ms) > 0, true);
 });

@@ -14,8 +14,18 @@ function resetPhaseTimings(context: McpRequestContext): PhaseTimings {
   return timings;
 }
 
+export function inheritMcpPhaseTimings(
+  parent: McpRequestContext,
+  child: McpRequestContext,
+): void {
+  phaseTimings.set(
+    child,
+    phaseTimings.get(parent) ?? resetPhaseTimings(parent),
+  );
+}
+
 export async function measureMcpPhase<T>(
-  context: ProjectMcpRequestContext,
+  context: McpRequestContext,
   phase: McpOperationPhase,
   callback: () => Promise<T>,
 ): Promise<T> {

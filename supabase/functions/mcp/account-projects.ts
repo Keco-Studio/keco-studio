@@ -5,6 +5,7 @@ import type {
 import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { McpDomainError } from "./errors.ts";
 import { validateLimit } from "./limits.ts";
+import { inheritMcpPhaseTimings, measureMcpPhase } from "./telemetry.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -57,7 +58,9 @@ function isProjectRole(value: unknown): value is ProjectRole {
   return value === "admin" || value === "editor" || value === "viewer";
 }
 
-function isProjectCursorPosition(value: unknown): value is ProjectCursorPosition {
+function isProjectCursorPosition(
+  value: unknown,
+): value is ProjectCursorPosition {
   return !!value && typeof value === "object" && !Array.isArray(value) &&
     typeof (value as Record<string, unknown>).createdAt === "string" &&
     typeof (value as Record<string, unknown>).projectId === "string" &&
@@ -73,7 +76,9 @@ function isAccessibleProjectRow(value: unknown): value is AccessibleProjectRow {
     typeof row.created_at === "string" && isProjectRole(row.role);
 }
 
-function projectCapabilities(role: ProjectRole): ProjectListItem["capabilities"] {
+function projectCapabilities(
+  role: ProjectRole,
+): ProjectListItem["capabilities"] {
   const writable = role === "admin" || role === "editor";
   return { read: true, create: writable, update: writable };
 }
@@ -83,13 +88,18 @@ async function listProjectRows(
   limit: number,
   position: ProjectCursorPosition | null,
 ): Promise<AccessibleProjectRow[]> {
-  const { data, error } = await context.supabase.rpc(
-    "mcp_list_accessible_projects",
-    {
-      p_limit: limit,
-      p_before_created_at: position?.createdAt ?? null,
-      p_after_project_id: position?.projectId ?? null,
-    },
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () =>
+      await context.supabase.rpc(
+        "mcp_list_accessible_projects",
+        {
+          p_limit: limit,
+          p_before_created_at: position?.createdAt ?? null,
+          p_after_project_id: position?.projectId ?? null,
+        },
+      ),
   );
   if (error || !Array.isArray(data) || !data.every(isAccessibleProjectRow)) {
     throw internalError("The accessible projects could not be listed.");
@@ -172,7 +182,9 @@ function derivedProjectContext(
       configurable: false,
     },
   });
-  return Object.freeze(derived) as ProjectMcpRequestContext;
+  const projectContext = Object.freeze(derived) as ProjectMcpRequestContext;
+  inheritMcpPhaseTimings(context, projectContext);
+  return projectContext;
 }
 
 export async function authorizeAccountProject(
@@ -186,9 +198,14 @@ export async function authorizeAccountProject(
       "The project is not accessible.",
     );
   }
-  const { data, error } = await context.supabase.rpc(
-    "mcp_resolve_project_role",
-    { p_project_id: projectId },
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () =>
+      await context.supabase.rpc(
+        "mcp_resolve_project_role",
+        { p_project_id: projectId },
+      ),
   );
   if (error || (data !== null && !isProjectRole(data))) {
     throw internalError("The project access could not be resolved.");

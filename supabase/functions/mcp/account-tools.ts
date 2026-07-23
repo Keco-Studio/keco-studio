@@ -43,7 +43,13 @@ export async function registerAccountTools(
     server,
     (projectId) => authorizeAccountProject(context, projectId, "read"),
   );
-  if (await accountHasWritableProject(context)) {
+  let hasWritableProject = false;
+  try {
+    hasWritableProject = await accountHasWritableProject(context);
+  } catch {
+    // A discovery failure must not remove the account's safe tool surface.
+  }
+  if (hasWritableProject) {
     registerAccountWriteTools(
       server,
       (projectId) => authorizeAccountProject(context, projectId, "write"),
