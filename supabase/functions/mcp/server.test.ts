@@ -1,9 +1,13 @@
 import { assertEquals, assertMatch } from "@std/assert";
 import { LATEST_PROTOCOL_VERSION } from "@mcp/types.js";
 import { handleProtocolRequest } from "./server.ts";
-import type { McpRequestContext } from "./context.ts";
+import type {
+  McpRequestContext,
+  ProjectMcpRequestContext,
+} from "./context.ts";
 
 const context = {
+  mode: "project",
   requestId: "00000000-0000-4000-8000-000000000001",
   userId: "user-1",
   projectId: "11111111-1111-4111-8111-111111111111",
@@ -26,6 +30,20 @@ const context = {
         return Promise.resolve({ data: null, error: null });
       }
       return Promise.resolve({ data: null, error: null });
+    },
+  },
+} as unknown as ProjectMcpRequestContext;
+
+const accountContext = {
+  mode: "account",
+  requestId: "00000000-0000-4000-8000-000000000010",
+  userId: "user-1",
+  clientId: "client-1",
+  sessionId: "11111111-1111-4111-8111-111111111111",
+  bearerToken: "test-account-token",
+  supabase: {
+    rpc() {
+      throw new Error("account mode must not use project telemetry");
     },
   },
 } as unknown as McpRequestContext;
@@ -131,6 +149,33 @@ Deno.test("ping returns an empty result", async () => {
   const message = await rpc("ping");
   assertEquals(message.error, undefined);
   assertEquals(message.result, {});
+});
+
+Deno.test("account mode exposes only the connection probe without project telemetry", async () => {
+  const initialize = await rpc(
+    "initialize",
+    {
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "account-test", version: "1.0.0" },
+    },
+    accountContext,
+  );
+  assertEquals(initialize.error, undefined);
+  assertEquals(initialize.result?.capabilities, {
+    tools: { listChanged: true },
+  });
+
+  const tools = await rpc("tools/list", {}, accountContext);
+  assertEquals(tools.error, undefined);
+  assertEquals(
+    (tools.result?.tools as Array<{ name: string }>).map((tool) => tool.name),
+    ["keco_connection_probe"],
+  );
+
+  const ping = await rpc("ping", {}, accountContext);
+  assertEquals(ping.error, undefined);
+  assertEquals(ping.result, {});
 });
 
 Deno.test("strict tool schemas reject unknown project selectors before execution", async () => {

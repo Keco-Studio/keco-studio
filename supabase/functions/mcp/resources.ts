@@ -1,7 +1,7 @@
 import type { McpServer } from '@mcp/server/mcp.js';
 import { ErrorCode, ListResourcesRequestSchema, ListResourceTemplatesRequestSchema,
   McpError, ReadResourceRequestSchema } from '@mcp/types.js';
-import type { McpRequestContext } from './context.ts';
+import type { ProjectMcpRequestContext } from './context.ts';
 import { McpDomainError, asPublicMcpError } from './errors.ts';
 import { getTableSchema, listDocuments, listProjectStructure, queryTableRows,
   readDocument } from './operations.ts';
@@ -41,7 +41,7 @@ function content(uri: string, value: unknown) {
   return { contents: [{ uri, mimeType: MIME, text: JSON.stringify(value) }] };
 }
 
-async function dispatch(context: McpRequestContext, uriValue: string) {
+async function dispatch(context: ProjectMcpRequestContext, uriValue: string) {
   const uri = parseUri(uriValue);
   let callback: () => Promise<unknown>;
   if (uri.hostname === 'project' && uri.pathname === '' && !uri.search) {
@@ -76,7 +76,7 @@ async function dispatch(context: McpRequestContext, uriValue: string) {
   return content(uri.href, value);
 }
 
-export function registerResources(server: McpServer, context: McpRequestContext): void {
+export function registerResources(server: McpServer, context: ProjectMcpRequestContext): void {
   server.server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [
     { uri: 'keco://project', name: 'project', mimeType: MIME },
     { uri: 'keco://tables', name: 'tables', mimeType: MIME },

@@ -2,7 +2,7 @@ import type { McpServer } from '@mcp/server/mcp.js';
 import { GetPromptRequestSchema, ListPromptsRequestSchema, McpError,
   ErrorCode } from '@mcp/types.js';
 import { z } from 'zod';
-import type { McpRequestContext } from './context.ts';
+import type { ProjectMcpRequestContext } from './context.ts';
 
 const uuid = z.string().uuid();
 const definitions = [
@@ -29,7 +29,7 @@ const definitions = [
   },
 ] as const;
 
-export function registerPrompts(server: McpServer, _context: McpRequestContext): void {
+export function registerPrompts(server: McpServer, _context: ProjectMcpRequestContext): void {
   server.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: definitions.map(({ name, description, arguments: promptArguments }) => ({
       name, description, arguments: promptArguments,

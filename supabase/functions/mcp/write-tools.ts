@@ -1,6 +1,6 @@
 import type { McpServer } from "@mcp/server/mcp.js";
 import { z } from "zod";
-import type { McpRequestContext } from "./context.ts";
+import type { ProjectMcpRequestContext } from "./context.ts";
 import { rpc } from "./database.ts";
 import { toolFailure, toolSuccess } from "./results.ts";
 import { createClient } from "@supabase/supabase-js";
@@ -70,7 +70,7 @@ const fieldSchema = z.object({
 });
 
 async function executeRpc(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   operation: string,
   parameters: Record<string, unknown>,
   _publicInput: unknown,
@@ -104,7 +104,7 @@ function assertDocumentMarkdownSize(markdown: string): void {
 
 export function registerWriteTools(
   server: McpServer,
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
 ): void {
   if (context.role === "viewer") return;
 

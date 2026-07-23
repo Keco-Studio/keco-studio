@@ -29,7 +29,12 @@ export function extractMcpEndpoint(url: URL): McpEndpoint | null {
   // Supabase's gateway strips `/functions/v1` before invoking the function,
   // while local/direct requests retain the public prefix. Only the account
   // root and a single UUID project segment are valid endpoint shapes.
-  if (url.username || url.password || url.search || url.hash) return null;
+  if (
+    url.username ||
+    url.password ||
+    url.href.includes("?") ||
+    url.href.includes("#")
+  ) return null;
   if (/^(?:\/functions\/v1)?\/mcp$/.test(url.pathname)) {
     return { mode: "account" };
   }

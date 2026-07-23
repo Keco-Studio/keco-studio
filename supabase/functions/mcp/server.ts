@@ -61,9 +61,12 @@ async function protocolEnvelope(request: Request): Promise<{
 }
 
 export function createProbeServer(context: McpRequestContext): McpServer {
+  const capabilities = context.mode === 'project'
+    ? { tools: { listChanged: true }, resources: { listChanged: false }, prompts: { listChanged: true } }
+    : { tools: { listChanged: true } };
   const server = new McpServer(
     { name: 'keco-mcp', version: '0.3.1' },
-    { capabilities: { tools: { listChanged: true }, resources: { listChanged: false }, prompts: { listChanged: true } } },
+    { capabilities },
   );
 
   server.registerTool('keco_connection_probe', {
@@ -79,11 +82,12 @@ export function createProbeServer(context: McpRequestContext): McpServer {
       structuredContent: { ok: true, phase: 2 } };
   });
 
-  registerReadTools(server, context);
-  registerWriteTools(server, context);
-
-  registerResources(server, context);
-  registerPrompts(server, context);
+  if (context.mode === 'project') {
+    registerReadTools(server, context);
+    registerWriteTools(server, context);
+    registerResources(server, context);
+    registerPrompts(server, context);
+  }
 
   return server;
 }
@@ -103,8 +107,11 @@ export async function handleProtocolRequest(
   await server.connect(transport);
   const envelope = await protocolEnvelope(request);
   try {
-    return await runMcpProtocolOperation(context, envelope,
-      () => dependencies.handleTransport?.(request) ?? transport.handleRequest(request));
+    const handleTransport = () =>
+      dependencies.handleTransport?.(request) ?? transport.handleRequest(request);
+    return context.mode === 'project'
+      ? await runMcpProtocolOperation(context, envelope, handleTransport)
+      : await handleTransport();
   } catch (error) {
     const safe = asPublicMcpError(error);
     if (envelope.method === 'tools/call') {

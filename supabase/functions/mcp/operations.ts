@@ -1,4 +1,4 @@
-import type { McpRequestContext } from "./context.ts";
+import type { ProjectMcpRequestContext } from "./context.ts";
 import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { McpDomainError } from "./errors.ts";
 import {
@@ -20,7 +20,7 @@ function databaseFailure(message: string): McpDomainError {
   return new McpDomainError("INTERNAL_ERROR", message);
 }
 
-export async function listProjectStructure(context: McpRequestContext) {
+export async function listProjectStructure(context: ProjectMcpRequestContext) {
   const value = await rpc<Record<string, unknown> | null>(
     context,
     "mcp_read_project_structure",
@@ -62,7 +62,7 @@ export type QueryTableRowsInput = {
 };
 
 export async function queryTableRows(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   input: QueryTableRowsInput,
 ) {
   if (input.cursor && input.rowIndex !== undefined) {
@@ -213,7 +213,7 @@ export async function queryTableRows(
 }
 
 export async function getTableSchema(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   tableId: string,
 ) {
   const structure = await listProjectStructure(context);
@@ -225,7 +225,7 @@ export async function getTableSchema(
   return { table };
 }
 
-export async function listDocuments(context: McpRequestContext, input: {
+export async function listDocuments(context: ProjectMcpRequestContext, input: {
   limit?: number;
   cursor?: string;
 }) {
@@ -311,7 +311,7 @@ const MAX_OUTLINE_ITEMS = 2_000;
 const MAX_OUTLINE_JSON_BYTES = 128 * 1024;
 
 export async function readDocumentTransportState(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   documentId: string,
 ) {
   const result = await rpc<DocumentTransportRpcResult>(
@@ -407,7 +407,7 @@ export type ReadDocumentInput = {
 };
 
 export async function readDocument(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   input: string | ReadDocumentInput,
 ) {
   const options: ReadDocumentInput = typeof input === "string"
@@ -532,7 +532,7 @@ async function cacheKey(
 }
 
 async function embed(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   query: string,
 ): Promise<number[]> {
   return await measureMcpPhase(context, "embedding", async () => {
@@ -612,7 +612,7 @@ function filterSearchItems(
   });
 }
 
-export async function semanticSearch(context: McpRequestContext, input: {
+export async function semanticSearch(context: ProjectMcpRequestContext, input: {
   query: string;
   limit?: number;
   source?: "all" | "tables" | "documents";

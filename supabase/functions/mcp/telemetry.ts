@@ -1,4 +1,4 @@
-import type { McpRequestContext } from "./context.ts";
+import type { ProjectMcpRequestContext } from "./context.ts";
 import { asPublicMcpError, McpDomainError } from "./errors.ts";
 import { MAX_RESPONSE_BYTES, utf8ByteLength } from "./limits.ts";
 
@@ -6,16 +6,16 @@ export type McpOperationClass = "static" | "read" | "write" | "search";
 export type McpOperationPhase = "database" | "embedding";
 
 type PhaseTimings = { databaseMs: number; embeddingMs: number };
-const phaseTimings = new WeakMap<McpRequestContext, PhaseTimings>();
+const phaseTimings = new WeakMap<ProjectMcpRequestContext, PhaseTimings>();
 
-function resetPhaseTimings(context: McpRequestContext): PhaseTimings {
+function resetPhaseTimings(context: ProjectMcpRequestContext): PhaseTimings {
   const timings = { databaseMs: 0, embeddingMs: 0 };
   phaseTimings.set(context, timings);
   return timings;
 }
 
 export async function measureMcpPhase<T>(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   phase: McpOperationPhase,
   callback: () => Promise<T>,
 ): Promise<T> {
@@ -125,7 +125,7 @@ async function admitProtocolResponse(
 }
 
 async function admit(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   operation: string,
   operationClass: McpOperationClass,
   requestBytes: number,
@@ -168,7 +168,7 @@ async function admit(
 }
 
 async function complete(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   operationId: string,
   outcome: "succeeded" | "failed",
   errorCode: string | null,
@@ -266,7 +266,7 @@ async function opaqueId(value: string): Promise<string> {
 }
 
 async function emitTelemetry(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   value: Record<string, unknown>,
 ): Promise<void> {
   console.log(
@@ -282,7 +282,7 @@ async function emitTelemetry(
 }
 
 export async function runMcpOperation<T>(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   operation: string,
   operationClass: McpOperationClass,
   input: unknown,
@@ -363,7 +363,7 @@ export async function runMcpOperation<T>(
 }
 
 export async function runMcpProtocolOperation(
-  context: McpRequestContext,
+  context: ProjectMcpRequestContext,
   descriptor: {
     operation: string;
     operationClass: McpOperationClass;

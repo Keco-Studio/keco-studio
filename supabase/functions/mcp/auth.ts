@@ -69,6 +69,10 @@ const ACCOUNT_MCP_PATH = /^(?:\/functions\/v1)?\/mcp$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function hasSerializedQueryOrFragment(url: URL): boolean {
+  return url.href.includes("?") || url.href.includes("#");
+}
+
 /**
  * Supabase's Edge gateway invokes this function at `/mcp/{projectId}`, while
  * OAuth grants are bound to the public `/functions/v1/mcp/{projectId}` URL.
@@ -86,8 +90,7 @@ export function canonicalProjectResource(
       match[1] !== projectId ||
       url.username ||
       url.password ||
-      url.search ||
-      url.hash
+      hasSerializedQueryOrFragment(url)
     ) {
       return null;
     }
@@ -97,8 +100,7 @@ export function canonicalProjectResource(
       origin.username ||
       origin.password ||
       origin.pathname !== "/" ||
-      origin.search ||
-      origin.hash
+      hasSerializedQueryOrFragment(origin)
     ) {
       return null;
     }
@@ -122,8 +124,7 @@ export function canonicalAccountResource(
       !ACCOUNT_MCP_PATH.test(url.pathname) ||
       url.username ||
       url.password ||
-      url.search ||
-      url.hash
+      hasSerializedQueryOrFragment(url)
     ) {
       return null;
     }
@@ -133,8 +134,7 @@ export function canonicalAccountResource(
       origin.username ||
       origin.password ||
       origin.pathname !== "/" ||
-      origin.search ||
-      origin.hash
+      hasSerializedQueryOrFragment(origin)
     ) {
       return null;
     }

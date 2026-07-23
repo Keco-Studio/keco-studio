@@ -1,6 +1,6 @@
 import type { McpServer } from '@mcp/server/mcp.js';
 import { z } from 'zod';
-import type { McpRequestContext } from './context.ts';
+import type { ProjectMcpRequestContext } from './context.ts';
 import { toolFailure, toolSuccess } from './results.ts';
 import { listDocuments, listProjectStructure, queryTableRows, readDocument,
   semanticSearch } from './operations.ts';
@@ -19,7 +19,7 @@ async function run(
   } catch (error) { return toolFailure(error); }
 }
 
-export function registerReadTools(server: McpServer, context: McpRequestContext): void {
+export function registerReadTools(server: McpServer, context: ProjectMcpRequestContext): void {
   server.registerTool('list_project_structure', {
     description: 'List project metadata, folders, table schemas, and bounded document summaries.',
     inputSchema: z.object({}).strict(), annotations,

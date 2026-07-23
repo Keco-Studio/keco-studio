@@ -26,15 +26,8 @@ export type ProjectMcpRequestContext = Readonly<{
   supabase: SupabaseClient;
 }>;
 
-type LegacyProjectCompatibleAccountContext = AccountMcpRequestContext & Readonly<{
-  // Existing project-only tool registrations are made mode-specific in Task 4.
-  // These never-valued compatibility fields are not present on account objects.
-  projectId: never;
-  role: never;
-}>;
-
 export type McpRequestContext =
-  | LegacyProjectCompatibleAccountContext
+  | AccountMcpRequestContext
   | ProjectMcpRequestContext;
 
 export type McpContextDependencies = {

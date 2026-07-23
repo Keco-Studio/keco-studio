@@ -3,6 +3,7 @@ import {
   authorizeAccountWithGateway,
   authorizeProjectWithGateway,
   canonicalAccountResource,
+  canonicalProjectResource as canonicalProjectMcpResource,
   isInvalidCredentialError,
 } from "./auth.ts";
 
@@ -405,6 +406,27 @@ Deno.test("canonical account resource accepts only exact public and gateway root
     "https://x/mcp#fragment",
   ]) {
     assertEquals(canonicalAccountResource(url), null);
+  }
+});
+
+Deno.test("canonical resources reject serialized empty query and fragment delimiters", () => {
+  for (const suffix of ["?", "#", "?#"]) {
+    assertEquals(
+      canonicalAccountResource(`https://x/functions/v1/mcp${suffix}`),
+      null,
+    );
+    assertEquals(canonicalAccountResource(`https://x/mcp${suffix}`), null);
+    assertEquals(
+      canonicalProjectMcpResource(
+        `https://x/functions/v1/mcp/${projectId}${suffix}`,
+        projectId,
+      ),
+      null,
+    );
+    assertEquals(
+      canonicalProjectMcpResource(`https://x/mcp/${projectId}${suffix}`, projectId),
+      null,
+    );
   }
 });
 

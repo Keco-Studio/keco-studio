@@ -34,6 +34,7 @@ Deno.test("request context is immutable and does not serialize credentials or cl
 
   assertEquals(context.requestId, "request-1");
   assertEquals(context.mode, "project");
+  if (context.mode !== "project") throw new Error("expected project context");
   assertEquals(context.role, "viewer");
   assertEquals(context.clientId, "client-1");
   assertEquals(context.bearerToken, "secret-bearer-token");
