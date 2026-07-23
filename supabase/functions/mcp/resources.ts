@@ -107,9 +107,10 @@ async function dispatchAccount(
       if (uri.search) invalid();
       callback = (projectContext) => getTableSchema(projectContext, table[2]);
     } else {
+      const options = pageOptions(uri);
       callback = (projectContext) => queryTableRows(projectContext, {
         tableId: table[2],
-        ...pageOptions(uri),
+        ...options,
       });
     }
   } else if (document && UUID.test(document[2]) && !uri.search) {

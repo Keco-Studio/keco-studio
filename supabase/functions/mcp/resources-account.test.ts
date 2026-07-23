@@ -136,3 +136,28 @@ Deno.test("account project resources reject malformed IDs before access resoluti
   assertMatch(String(error), /INVALID_RESOURCE_URI/);
   assertEquals(calls, []);
 });
+
+Deno.test("account table rows reject invalid page options before resolving an inaccessible project", async () => {
+  const calls: string[] = [];
+  const handlers = handlersFor(accountContext(async (name) => {
+    calls.push(name);
+    return { data: null, error: null };
+  }));
+  const rowUri = `keco://projects/${PROJECT_ID}/tables/${TABLE_ID}/rows`;
+
+  for (const query of [
+    "?limit=1&limit=2",
+    "?unexpected=value",
+    "?limit=",
+    "?cursor=",
+    "?limit=0",
+    "?cursor=" + "x".repeat(4097),
+  ]) {
+    const error = await assertRejects(
+      () => (handlers[2] as unknown as Handler)({ params: { uri: rowUri + query } }),
+    );
+    assertMatch(String(error), /INVALID_RESOURCE_URI/);
+  }
+
+  assertEquals(calls, []);
+});
