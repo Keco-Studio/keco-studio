@@ -12,6 +12,7 @@ const CODEX_ADD = 'codex mcp add keco-account --url "' + MCP_URL
   + '" --oauth-resource "' + MCP_URL + '"';
 const CODEX_LOGIN = 'codex mcp login keco-account';
 const CLAUDE_ADD = 'claude mcp add --transport http keco-account "' + MCP_URL + '"';
+let acceptanceStage = 'startup';
 
 interface RegisteredClient {
   client_id: string;
@@ -337,6 +338,7 @@ async function main() {
 
   await mkdir('artifacts', { recursive: true });
   try {
+    acceptanceStage = 'create-users';
     for (const email of [ownerEmail, outsiderEmail]) {
       const { data, error } = await admin.auth.admin.createUser({
         email,
@@ -347,20 +349,25 @@ async function main() {
       userIds.push(data.user.id);
     }
 
+    acceptanceStage = 'register-clients';
     const codexClient = await registerClient(supabaseUrl, 'Codex production acceptance ' + runTag);
     const claudeClient = await registerClient(supabaseUrl, 'Claude production acceptance ' + runTag);
     clientIds.push(codexClient.client_id, claudeClient.client_id);
 
+    acceptanceStage = 'sign-in-users';
     const owner = await signIn(supabaseUrl, anonKey, ownerEmail);
     const outsider = await signIn(supabaseUrl, anonKey, outsiderEmail);
+    acceptanceStage = 'initial-lists';
     assert((await listConnections(owner.accessToken)).connections.length === 0, 'Owner was not isolated');
     assert((await listConnections(outsider.accessToken)).connections.length === 0, 'Outsider was not isolated');
 
+    acceptanceStage = 'owner-first-codex';
     const firstCodex = await exchangeAuthorization(supabaseUrl, codexClient.client_id, owner.client);
     const afterFirst = await listConnections(owner.accessToken);
     assert(afterFirst.connections.length === 1, 'First Codex connection was not listed');
     assert(afterFirst.connections[0].clientName === 'Codex', 'Codex connection was misclassified');
 
+    acceptanceStage = 'owner-claude';
     const claude = await exchangeAuthorization(supabaseUrl, claudeClient.client_id, owner.client);
     const afterClaude = await listConnections(owner.accessToken);
     assert(afterClaude.connections.length === 2, 'Claude Code connection was not listed');
@@ -370,6 +377,7 @@ async function main() {
     );
 
     await new Promise((resolve) => setTimeout(resolve, 25));
+    acceptanceStage = 'owner-second-codex';
     const secondCodex = await exchangeAuthorization(supabaseUrl, codexClient.client_id, owner.client);
     const ownerBefore = await listConnections(owner.accessToken);
     assert(ownerBefore.connections.length === 3, 'Duplicate Codex connections were collapsed');
@@ -380,6 +388,7 @@ async function main() {
     const targetConnectionId = ownerBefore.connections[0].id;
     assert(ownerBefore.connections[0].clientName === 'Codex', 'Newest connection order is incorrect');
 
+    acceptanceStage = 'outsider-codex';
     await exchangeAuthorization(supabaseUrl, codexClient.client_id, outsider.client);
     const outsiderBefore = await listConnections(outsider.accessToken);
     assert(outsiderBefore.connections.length === 1, 'Outsider connection was not listed');
@@ -390,6 +399,7 @@ async function main() {
       'Opaque connection IDs were not user-bound'
     );
 
+    acceptanceStage = 'foreign-disconnect';
     const outsiderDelete = await deleteConnection(outsider.accessToken, targetConnectionId);
     assert(outsiderDelete.status === 404, 'Another user could disconnect the owner connection');
     assert(
@@ -401,9 +411,11 @@ async function main() {
       'Foreign disconnect changed owner connections'
     );
 
+    acceptanceStage = 'browser-acceptance';
     browser = await chromium.launch();
     await runBrowserAcceptance(browser, ownerEmail, targetConnectionId);
 
+    acceptanceStage = 'post-disconnect-verification';
     const ownerAfter = await listConnections(owner.accessToken);
     assert(ownerAfter.connections.length === 2, 'Exact disconnect removed the wrong number of rows');
     assert(
@@ -432,6 +444,7 @@ async function main() {
     assert((await callMcp(secondCodex.accessToken)).status === 401, 'Revoked MCP token still worked');
     assert((await listConnections(outsider.accessToken)).connections.length === 1, 'Outsider changed unexpectedly');
 
+    acceptanceStage = 'write-evidence';
     const evidence = {
       productionApp: true,
       productionSupabase: true,
@@ -470,6 +483,6 @@ async function main() {
 }
 
 void main().catch(() => {
-  console.error('MCP account connections production acceptance failed');
+  console.error('MCP account connections production acceptance failed at stage: ' + acceptanceStage);
   process.exitCode = 1;
 });
