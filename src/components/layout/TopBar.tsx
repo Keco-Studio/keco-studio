@@ -884,6 +884,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     router.push('/projects');
   };
 
+  const handleMcpNavigation = () => {
+    setShowUserMenu(false);
+    router.push('/mcp');
+  };
+
   const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
   const isProjectRootPage =
@@ -1705,6 +1710,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </button>
           {showUserMenu && (
             <div className={styles.userMenu}>
+              <button
+                type="button"
+                className={styles.userMenuItem}
+                onClick={handleMcpNavigation}
+              >
+                MCP
+              </button>
               <button
                 type="button"
                 className={styles.userMenuItem}

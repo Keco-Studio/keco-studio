@@ -315,6 +315,21 @@ jobs:
             echo "✅ Deploying to Preview environment"
           fi
 
+      - name: Sync MCP connection signing secret
+        env:
+          MCP_CONNECTION_ID_SIGNING_SECRET: ${{ secrets.MCP_CONNECTION_ID_SIGNING_SECRET }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$MCP_CONNECTION_ID_SIGNING_SECRET" ]; then
+            echo "::error::MCP_CONNECTION_ID_SIGNING_SECRET is required"
+            exit 1
+          fi
+          printf '%s' "$MCP_CONNECTION_ID_SIGNING_SECRET" | \
+            vercel env add MCP_CONNECTION_ID_SIGNING_SECRET \
+              "${{ steps.env.outputs.environment }}" --force \
+              --token=${{ secrets.VERCEL_TOKEN }}
+
       - name: Sync production MCP codec secret
         if: steps.env.outputs.is_prod == 'true'
         env:

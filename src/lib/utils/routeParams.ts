@@ -14,6 +14,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'economy-simulator',
   'simulation-system',
   'design-upload',
+  'mcp',
 ] as const;
 
 export type RouteParamsResult = {
