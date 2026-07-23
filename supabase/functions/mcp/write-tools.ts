@@ -69,6 +69,22 @@ const fieldSchema = z.object({
   }
 });
 
+type ProjectContextResolver = (
+  projectId: string,
+) => Promise<ProjectMcpRequestContext>;
+
+async function withProjectContext<T>(
+  input: Record<string, unknown>,
+  contextFor: ProjectContextResolver,
+  operation: (context: ProjectMcpRequestContext) => Promise<T>,
+): Promise<T | ReturnType<typeof toolFailure>> {
+  try {
+    return await operation(await contextFor(input.projectId as string));
+  } catch (error) {
+    return toolFailure(error);
+  }
+}
+
 async function executeRpc(
   context: ProjectMcpRequestContext,
   operation: string,
@@ -102,54 +118,65 @@ function assertDocumentMarkdownSize(markdown: string): void {
   }
 }
 
-export function registerWriteTools(
+function registerWriteToolSet(
   server: McpServer,
-  context: ProjectMcpRequestContext,
+  legacyContext: ProjectMcpRequestContext | null,
+  resolveProject: ProjectContextResolver | null,
 ): void {
-  if (context.role === "viewer") return;
+  if (legacyContext?.role === "viewer") return;
+  const projectShape = resolveProject ? { projectId: uuid } : {};
+  const contextFor: ProjectContextResolver = resolveProject ??
+    (() => Promise.resolve(legacyContext as ProjectMcpRequestContext));
 
   const createTableSchema = z.object({
+    ...projectShape,
     name: z.string().trim().min(1).max(200),
     description: z.string().max(2000).nullable().optional(),
     folderId: uuid.nullable().optional(),
     fields: z.array(fieldSchema).min(1).max(100),
   }).strict();
-  server.registerTool("create_table", {
-    description:
-      "Create one project table, its fields, and initial empty row atomically.",
-    inputSchema: createTableSchema,
-    annotations: writeAnnotations,
-  }, async (input: z.infer<typeof createTableSchema>) => {
-    const tableId = crypto.randomUUID();
-    const fields = input.fields.map((field) => ({
-      id: crypto.randomUUID(),
-      ...field,
-    }));
-    return await executeRpc(
-      context,
-      "mcp_create_table",
-      {
-        p_project_id: context.projectId,
-        p_table_id: tableId,
-        p_initial_row_id: crypto.randomUUID(),
-        p_folder_id: input.folderId ?? null,
-        p_name: input.name,
-        p_description: input.description ?? null,
-        p_fields: fields,
-      },
-      input,
-      "Table created.",
-      () =>
-        scheduleMcpReindex({
-          kind: "table",
-          projectId: context.projectId,
-          actorUserId: context.userId,
-          tableId,
-        }),
-    );
-  });
+  server.registerTool(
+    "create_table",
+    {
+      description:
+        "Create one project table, its fields, and initial empty row atomically.",
+      inputSchema: createTableSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof createTableSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        const tableId = crypto.randomUUID();
+        const fields = input.fields.map((field) => ({
+          id: crypto.randomUUID(),
+          ...field,
+        }));
+        return await executeRpc(
+          context,
+          "mcp_create_table",
+          {
+            p_project_id: context.projectId,
+            p_table_id: tableId,
+            p_initial_row_id: crypto.randomUUID(),
+            p_folder_id: input.folderId ?? null,
+            p_name: input.name,
+            p_description: input.description ?? null,
+            p_fields: fields,
+          },
+          input,
+          "Table created.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId,
+            }),
+        );
+      }),
+  );
 
   const createRowSchema = z.object({
+    ...projectShape,
     tableId: uuid,
     values: z.record(z.string().trim().min(1).max(200), z.unknown()).refine(
       (value) =>
@@ -158,37 +185,43 @@ export function registerWriteTools(
     ),
     reuseEmpty: z.boolean().optional(),
   }).strict();
-  server.registerTool("create_table_row", {
-    description: "Create or reuse one project table row atomically.",
-    inputSchema: createRowSchema,
-    annotations: writeAnnotations,
-  }, async (input: z.infer<typeof createRowSchema>) =>
-    executeRpc(
-      context,
-      "mcp_create_table_row",
-      {
-        p_project_id: context.projectId,
-        p_table_id: input.tableId,
-        p_requested_row_id: crypto.randomUUID(),
-        p_values: input.values,
-        p_reuse_empty: input.reuseEmpty ?? true,
-      },
-      input,
-      "Table row created.",
-      (data) => {
-        const rowId = firstRow(data)?.row_id;
-        if (typeof rowId === "string") {
-          scheduleMcpReindex({
-            kind: "row",
-            projectId: context.projectId,
-            actorUserId: context.userId,
-            rowId,
-          });
-        }
-      },
-    ));
+  server.registerTool(
+    "create_table_row",
+    {
+      description: "Create or reuse one project table row atomically.",
+      inputSchema: createRowSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof createRowSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_create_table_row",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_requested_row_id: crypto.randomUUID(),
+            p_values: input.values,
+            p_reuse_empty: input.reuseEmpty ?? true,
+          },
+          input,
+          "Table row created.",
+          (data) => {
+            const rowId = firstRow(data)?.row_id;
+            if (typeof rowId === "string") {
+              scheduleMcpReindex({
+                kind: "row",
+                projectId: context.projectId,
+                actorUserId: context.userId,
+                rowId,
+              });
+            }
+          },
+        )),
+  );
 
   const updateRowSchema = z.object({
+    ...projectShape,
     tableId: uuid,
     rowId: uuid.optional(),
     rowIndex: z.number().int().min(1).optional(),
@@ -202,77 +235,89 @@ export function registerWriteTools(
     (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
     "Exactly one of rowId or rowIndex is required.",
   );
-  server.registerTool("update_table_row", {
-    description:
-      "Update one row selected by stable ID or exact 1-based row index atomically.",
-    inputSchema: updateRowSchema,
-    annotations: writeAnnotations,
-  }, async (input: z.infer<typeof updateRowSchema>) =>
-    executeRpc(
-      context,
-      "mcp_update_table_row",
-      {
-        p_project_id: context.projectId,
-        p_table_id: input.tableId,
-        p_row_id: input.rowId ?? null,
-        p_row_index: input.rowIndex ?? null,
-        p_expected_row_id: input.expectedRowId ?? null,
-        p_values: input.values,
-      },
-      input,
-      "Table row updated.",
-      (data) => {
-        const rowId = firstRow(data)?.row_id;
-        if (typeof rowId === "string") {
-          scheduleMcpReindex({
-            kind: "row",
-            projectId: context.projectId,
-            actorUserId: context.userId,
-            rowId,
-          });
-        }
-      },
-    ));
+  server.registerTool(
+    "update_table_row",
+    {
+      description:
+        "Update one row selected by stable ID or exact 1-based row index atomically.",
+      inputSchema: updateRowSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof updateRowSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_update_table_row",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_row_id: input.rowId ?? null,
+            p_row_index: input.rowIndex ?? null,
+            p_expected_row_id: input.expectedRowId ?? null,
+            p_values: input.values,
+          },
+          input,
+          "Table row updated.",
+          (data) => {
+            const rowId = firstRow(data)?.row_id;
+            if (typeof rowId === "string") {
+              scheduleMcpReindex({
+                kind: "row",
+                projectId: context.projectId,
+                actorUserId: context.userId,
+                rowId,
+              });
+            }
+          },
+        )),
+  );
 
   const createDocumentSchema = z.object({
+    ...projectShape,
     name: z.string().trim().min(1).max(200),
     folderId: uuid.nullable().optional(),
     markdown: z.string(),
     allowDuplicate: z.boolean().optional(),
   }).strict();
-  server.registerTool("create_document", {
-    description: "Create one collaborative project document atomically.",
-    inputSchema: createDocumentSchema,
-    annotations: writeAnnotations,
-  }, async (input: z.infer<typeof createDocumentSchema>) => {
-    try {
-      assertDocumentMarkdownSize(input.markdown);
-      const normalized = await encodeDocumentMarkdown(input.markdown);
-      const data = await rpc<unknown>(context, "mcp_create_document", {
-        p_project_id: context.projectId,
-        p_document_id: crypto.randomUUID(),
-        p_folder_id: input.folderId ?? null,
-        p_name: input.name,
-        p_markdown: normalized.markdown,
-        p_yjs_state: normalized.yjsStateBase64,
-        p_allow_duplicate: input.allowDuplicate ?? false,
-      });
-      const documentId = firstRow(data)?.document_id;
-      if (typeof documentId === "string") {
-        scheduleMcpReindex({
-          kind: "document",
-          projectId: context.projectId,
-          actorUserId: context.userId,
-          documentId,
-        });
-      }
-      return toolSuccess("Document created.", { ok: true, data });
-    } catch (error) {
-      return toolFailure(error);
-    }
-  });
+  server.registerTool(
+    "create_document",
+    {
+      description: "Create one collaborative project document atomically.",
+      inputSchema: createDocumentSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof createDocumentSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        try {
+          assertDocumentMarkdownSize(input.markdown);
+          const normalized = await encodeDocumentMarkdown(input.markdown);
+          const data = await rpc<unknown>(context, "mcp_create_document", {
+            p_project_id: context.projectId,
+            p_document_id: crypto.randomUUID(),
+            p_folder_id: input.folderId ?? null,
+            p_name: input.name,
+            p_markdown: normalized.markdown,
+            p_yjs_state: normalized.yjsStateBase64,
+            p_allow_duplicate: input.allowDuplicate ?? false,
+          });
+          const documentId = firstRow(data)?.document_id;
+          if (typeof documentId === "string") {
+            scheduleMcpReindex({
+              kind: "document",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              documentId,
+            });
+          }
+          return toolSuccess("Document created.", { ok: true, data });
+        } catch (error) {
+          return toolFailure(error);
+        }
+      }),
+  );
 
   const updateDocumentSchema = z.object({
+    ...projectShape,
     documentId: uuid,
     markdown: z.string(),
     stateToken: z.object({
@@ -281,97 +326,116 @@ export function registerWriteTools(
       updateIds: z.array(uuid).max(10000),
     }).strict(),
   }).strict();
-  server.registerTool("update_document", {
-    description:
-      "Replace document Markdown with complete state-token conflict protection.",
-    inputSchema: updateDocumentSchema,
-    annotations: writeAnnotations,
-  }, async (input: z.infer<typeof updateDocumentSchema>) => {
-    try {
-      assertDocumentMarkdownSize(input.markdown);
-      const data = await (async () => {
-        const current = await readDocumentTransportState(
-          context,
-          input.documentId,
-        );
-        const token = input.stateToken;
-        const currentIds = current.tail.map((row) => row.id);
-        if (
-          current.head.collab_epoch !== token.epoch ||
-          current.head.collab_revision !== token.revision ||
-          currentIds.length !== token.updateIds.length ||
-          currentIds.some((id, index) => id !== token.updateIds[index])
-        ) {
-          throw new McpDomainError(
-            "DOCUMENT_CONFLICT",
-            "Document changed; read it again before updating.",
-          );
-        }
-        if (current.head.yjs_state === null) {
-          throw new McpDomainError(
-            "DOCUMENT_CONFLICT",
-            "Document collaboration state must be initialized before updating.",
-          );
-        }
-        const [merged, replacement] = await Promise.all([
-          normalizeDocumentState(
-            current.head.yjs_state,
-            current.tail.map((row) => row.update_data),
-          ),
-          encodeDocumentMarkdown(input.markdown),
-        ]);
-        const url = Deno.env.get("SUPABASE_URL");
-        const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-        if (!url || !key) {
-          throw new Error("Document replacement is unavailable.");
-        }
-        const privileged = createClient(url, key, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        });
-        const result = await measureMcpPhase(
-          context,
-          "database",
-          async () =>
-            await privileged.rpc("mcp_replace_document_content", {
-              p_project_id: context.projectId,
-              p_document_id: input.documentId,
-              p_actor_user_id: context.userId,
-              p_backup_version_id: crypto.randomUUID(),
-              p_expected_epoch: token.epoch,
-              p_expected_revision: token.revision,
-              p_expected_update_ids: token.updateIds,
-              p_current_yjs_state: merged.yjsStateBase64,
-              p_current_markdown: merged.markdown,
-              p_replacement_yjs_state: replacement.yjsStateBase64,
-              p_replacement_markdown: replacement.markdown,
-            }),
-        );
-        if (result.error) {
-          if (result.error.code === "PT409") {
-            throw new McpDomainError(
-              "DOCUMENT_CONFLICT",
-              "Document changed; read it again before updating.",
+  server.registerTool(
+    "update_document",
+    {
+      description:
+        "Replace document Markdown with complete state-token conflict protection.",
+      inputSchema: updateDocumentSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof updateDocumentSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        try {
+          assertDocumentMarkdownSize(input.markdown);
+          const data = await (async () => {
+            const current = await readDocumentTransportState(
+              context,
+              input.documentId,
             );
-          }
-          if (result.error.code === "42501") {
-            throw new McpDomainError(
-              "WRITE_FORBIDDEN",
-              "The project is no longer writable.",
+            const token = input.stateToken;
+            const currentIds = current.tail.map((row) => row.id);
+            if (
+              current.head.collab_epoch !== token.epoch ||
+              current.head.collab_revision !== token.revision ||
+              currentIds.length !== token.updateIds.length ||
+              currentIds.some((id, index) => id !== token.updateIds[index])
+            ) {
+              throw new McpDomainError(
+                "DOCUMENT_CONFLICT",
+                "Document changed; read it again before updating.",
+              );
+            }
+            if (current.head.yjs_state === null) {
+              throw new McpDomainError(
+                "DOCUMENT_CONFLICT",
+                "Document collaboration state must be initialized before updating.",
+              );
+            }
+            const [merged, replacement] = await Promise.all([
+              normalizeDocumentState(
+                current.head.yjs_state,
+                current.tail.map((row) => row.update_data),
+              ),
+              encodeDocumentMarkdown(input.markdown),
+            ]);
+            const url = Deno.env.get("SUPABASE_URL");
+            const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+            if (!url || !key) {
+              throw new Error("Document replacement is unavailable.");
+            }
+            const privileged = createClient(url, key, {
+              auth: { persistSession: false, autoRefreshToken: false },
+            });
+            const result = await measureMcpPhase(
+              context,
+              "database",
+              async () =>
+                await privileged.rpc("mcp_replace_document_content", {
+                  p_project_id: context.projectId,
+                  p_document_id: input.documentId,
+                  p_actor_user_id: context.userId,
+                  p_backup_version_id: crypto.randomUUID(),
+                  p_expected_epoch: token.epoch,
+                  p_expected_revision: token.revision,
+                  p_expected_update_ids: token.updateIds,
+                  p_current_yjs_state: merged.yjsStateBase64,
+                  p_current_markdown: merged.markdown,
+                  p_replacement_yjs_state: replacement.yjsStateBase64,
+                  p_replacement_markdown: replacement.markdown,
+                }),
             );
-          }
-          throw new Error("Document replacement failed.");
+            if (result.error) {
+              if (result.error.code === "PT409") {
+                throw new McpDomainError(
+                  "DOCUMENT_CONFLICT",
+                  "Document changed; read it again before updating.",
+                );
+              }
+              if (result.error.code === "42501") {
+                throw new McpDomainError(
+                  "WRITE_FORBIDDEN",
+                  "The project is no longer writable.",
+                );
+              }
+              throw new Error("Document replacement failed.");
+            }
+            return result.data;
+          })();
+          scheduleMcpReindex({
+            kind: "document",
+            projectId: context.projectId,
+            actorUserId: context.userId,
+            documentId: input.documentId,
+          });
+          return toolSuccess("Document updated.", { ok: true, data });
+        } catch (error) {
+          return toolFailure(error);
         }
-        return result.data;
-      })();
-      scheduleMcpReindex({
-        kind: "document",
-        projectId: context.projectId,
-        actorUserId: context.userId,
-        documentId: input.documentId,
-      });
-      return toolSuccess("Document updated.", { ok: true, data });
-    } catch (error) {
-      return toolFailure(error);
-    }
-  });
+      }),
+  );
+}
+
+export function registerWriteTools(
+  server: McpServer,
+  context: ProjectMcpRequestContext,
+): void {
+  registerWriteToolSet(server, context, null);
+}
+
+export function registerAccountWriteTools(
+  server: McpServer,
+  resolveProject: ProjectContextResolver,
+): void {
+  registerWriteToolSet(server, null, resolveProject);
 }

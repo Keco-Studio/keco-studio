@@ -1,4 +1,4 @@
-import type { ProjectMcpRequestContext } from "./context.ts";
+import type { McpRequestContext, ProjectMcpRequestContext } from "./context.ts";
 import { asPublicMcpError, McpDomainError } from "./errors.ts";
 import { MAX_RESPONSE_BYTES, utf8ByteLength } from "./limits.ts";
 
@@ -6,9 +6,9 @@ export type McpOperationClass = "static" | "read" | "write" | "search";
 export type McpOperationPhase = "database" | "embedding";
 
 type PhaseTimings = { databaseMs: number; embeddingMs: number };
-const phaseTimings = new WeakMap<ProjectMcpRequestContext, PhaseTimings>();
+const phaseTimings = new WeakMap<McpRequestContext, PhaseTimings>();
 
-function resetPhaseTimings(context: ProjectMcpRequestContext): PhaseTimings {
+function resetPhaseTimings(context: McpRequestContext): PhaseTimings {
   const timings = { databaseMs: 0, embeddingMs: 0 };
   phaseTimings.set(context, timings);
   return timings;
@@ -125,23 +125,32 @@ async function admitProtocolResponse(
 }
 
 async function admit(
-  context: ProjectMcpRequestContext,
+  context: McpRequestContext,
   operation: string,
   operationClass: McpOperationClass,
   requestBytes: number,
 ): Promise<Admission> {
-  const { data, error } = await context.supabase.rpc("mcp_begin_operation", {
-    p_project_id: context.projectId,
-    p_operation: operation,
-    p_operation_class: operationClass,
-    p_request_id: context.requestId,
-    p_client_id: context.clientId,
-    p_request_bytes: requestBytes,
-  });
+  const { data, error } = context.mode === "account"
+    ? await context.supabase.rpc("mcp_begin_account_operation", {
+      p_operation: operation,
+      p_operation_class: operationClass,
+      p_request_id: context.requestId,
+      p_client_id: context.clientId,
+      p_request_bytes: requestBytes,
+    })
+    : await context.supabase.rpc("mcp_begin_operation", {
+      p_project_id: context.projectId,
+      p_operation: operation,
+      p_operation_class: operationClass,
+      p_request_id: context.requestId,
+      p_client_id: context.clientId,
+      p_request_bytes: requestBytes,
+    });
   if (error) {
+    const projectRevoked = context.mode === "project" && error.code === "42501";
     throw new McpDomainError(
-      error.code === "42501" ? "PROJECT_ACCESS_REVOKED" : "INTERNAL_ERROR",
-      error.code === "42501"
+      projectRevoked ? "PROJECT_ACCESS_REVOKED" : "INTERNAL_ERROR",
+      projectRevoked
         ? "Project access has been revoked."
         : "The Keco operation could not be admitted.",
     );
@@ -168,7 +177,7 @@ async function admit(
 }
 
 async function complete(
-  context: ProjectMcpRequestContext,
+  context: McpRequestContext,
   operationId: string,
   outcome: "succeeded" | "failed",
   errorCode: string | null,
@@ -266,9 +275,20 @@ async function opaqueId(value: string): Promise<string> {
 }
 
 async function emitTelemetry(
-  context: ProjectMcpRequestContext,
+  context: McpRequestContext,
   value: Record<string, unknown>,
 ): Promise<void> {
+  if (context.mode === "account") {
+    console.log(
+      JSON.stringify({
+        event: "keco_mcp_operation",
+        requestId: context.requestId,
+        actorHash: await opaqueId(context.userId),
+        ...value,
+      }),
+    );
+    return;
+  }
   console.log(
     JSON.stringify({
       event: "keco_mcp_operation",
@@ -363,7 +383,7 @@ export async function runMcpOperation<T>(
 }
 
 export async function runMcpProtocolOperation(
-  context: ProjectMcpRequestContext,
+  context: McpRequestContext,
   descriptor: {
     operation: string;
     operationClass: McpOperationClass;

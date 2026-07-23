@@ -1,10 +1,7 @@
 import { assertEquals, assertMatch } from "@std/assert";
 import { LATEST_PROTOCOL_VERSION } from "@mcp/types.js";
 import { handleProtocolRequest } from "./server.ts";
-import type {
-  McpRequestContext,
-  ProjectMcpRequestContext,
-} from "./context.ts";
+import type { McpRequestContext, ProjectMcpRequestContext } from "./context.ts";
 
 const context = {
   mode: "project",
@@ -42,8 +39,24 @@ const accountContext = {
   sessionId: "11111111-1111-4111-8111-111111111111",
   bearerToken: "test-account-token",
   supabase: {
-    rpc() {
-      throw new Error("account mode must not use project telemetry");
+    rpc(name: string) {
+      if (name === "mcp_list_accessible_projects") {
+        return Promise.resolve({ data: [], error: null });
+      }
+      if (name === "mcp_begin_account_operation") {
+        return Promise.resolve({
+          data: [{
+            operation_id: "00000000-0000-4000-8000-000000000011",
+            remaining: 239,
+            reset_at: new Date(Date.now() + 60_000).toISOString(),
+          }],
+          error: null,
+        });
+      }
+      if (name === "mcp_complete_operation") {
+        return Promise.resolve({ data: null, error: null });
+      }
+      throw new Error("Unexpected account RPC: " + name);
     },
   },
 } as unknown as McpRequestContext;
@@ -151,7 +164,7 @@ Deno.test("ping returns an empty result", async () => {
   assertEquals(message.result, {});
 });
 
-Deno.test("account mode exposes only the connection probe without project telemetry", async () => {
+Deno.test("account mode exposes discovery and read tools with account telemetry", async () => {
   const initialize = await rpc(
     "initialize",
     {
@@ -170,7 +183,15 @@ Deno.test("account mode exposes only the connection probe without project teleme
   assertEquals(tools.error, undefined);
   assertEquals(
     (tools.result?.tools as Array<{ name: string }>).map((tool) => tool.name),
-    ["keco_connection_probe"],
+    [
+      "keco_connection_probe",
+      "list_projects",
+      "list_project_structure",
+      "query_table_rows",
+      "list_documents",
+      "read_document",
+      "semantic_search",
+    ],
   );
 
   const ping = await rpc("ping", {}, accountContext);
@@ -468,25 +489,28 @@ Deno.test("tools/call returns a bounded static result", async () => {
 });
 
 Deno.test("protocol wrapper audits exact and oversized 1 MiB responses as one failed completion", async () => {
-  const request = () => new Request("http://localhost/mcp/project", {
-    method: "POST",
-    headers: {
-      accept: "application/json, text/event-stream",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 41,
-      method: "tools/call",
-      params: { name: "keco_connection_probe", arguments: {} },
-    }),
-  });
+  const request = () =>
+    new Request("http://localhost/mcp/project", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 41,
+        method: "tools/call",
+        params: { name: "keco_connection_probe", arguments: {} },
+      }),
+    });
   const originalLog = console.log;
   const logLines: string[] = [];
   console.log = (value) => logLines.push(String(value));
   try {
     for (const responseBytes of [1024 * 1024, 1024 * 1024 + 1]) {
-      const calls: Array<{ name: string; parameters: Record<string, unknown> }> = [];
+      const calls: Array<
+        { name: string; parameters: Record<string, unknown> }
+      > = [];
       const auditedContext = {
         ...context,
         requestId: crypto.randomUUID(),
@@ -494,11 +518,14 @@ Deno.test("protocol wrapper audits exact and oversized 1 MiB responses as one fa
           async rpc(name: string, parameters: Record<string, unknown>) {
             calls.push({ name, parameters });
             if (name === "mcp_begin_operation") {
-              return { data: [{
-                operation_id: crypto.randomUUID(),
-                remaining: 239,
-                reset_at: new Date(Date.now() + 60_000).toISOString(),
-              }], error: null };
+              return {
+                data: [{
+                  operation_id: crypto.randomUUID(),
+                  remaining: 239,
+                  reset_at: new Date(Date.now() + 60_000).toISOString(),
+                }],
+                error: null,
+              };
             }
             return { data: null, error: null };
           },
@@ -508,11 +535,18 @@ Deno.test("protocol wrapper audits exact and oversized 1 MiB responses as one fa
       const response = await handleProtocolRequest(
         request(),
         auditedContext,
-        { handleTransport: async () => new Response(new Uint8Array(responseBytes)) },
+        {
+          handleTransport: async () =>
+            new Response(new Uint8Array(responseBytes)),
+        },
       );
       const body = await response.json() as Record<string, unknown>;
       assertEquals(response.status, 200);
-      assertEquals((await new Response(JSON.stringify(body)).arrayBuffer()).byteLength < 1024 * 1024, true);
+      assertEquals(
+        (await new Response(JSON.stringify(body)).arrayBuffer()).byteLength <
+          1024 * 1024,
+        true,
+      );
       assertMatch(JSON.stringify(body), /PAYLOAD_TOO_LARGE/);
       assertEquals(calls.map((call) => call.name), [
         "mcp_begin_operation",
