@@ -10,6 +10,7 @@ import {
   skillPower,
   sortRosterByTeam,
 } from '@/lib/simulation/data';
+import { SIM_FIELDS } from '@/lib/simulation/data';
 
 describe('simulation data helpers', () => {
   it('keeps the demo progression formulas', () => {
@@ -49,6 +50,44 @@ describe('simulation data helpers', () => {
 
     expect(mapping.id).toBe('char_id');
     expect(new Set(Object.values(mapping)).size).toBe(Object.values(mapping).length);
+  });
+
+  it('maps aliases immediately while respecting Studio value types', () => {
+    const mapping = autoMapFields('skillc', {}, [
+      { id: 'skill', label: 'Skill ID', valueType: 'string' },
+      { id: 'skill_level', label: 'Skill Level', valueType: 'number' },
+      { id: 'upgrade_cost', label: 'Upgrade Cost', valueType: 'number' },
+      { id: 'wrong_cost', label: 'Cost', valueType: 'boolean' },
+    ]);
+
+    expect(mapping).toEqual({ skillId: 'skill', lv: 'skill_level', cost: 'upgrade_cost' });
+  });
+
+  it('declares the complete required import contract', () => {
+    const required = (role: keyof typeof SIM_FIELDS) => SIM_FIELDS[role]
+      .filter((field) => field.required)
+      .map((field) => field.id);
+
+    expect(required('characters')).toEqual(['id', 'name', 'el', 'hp', 'atk', 'def', 'spd', 'mp']);
+    expect(required('skills')).toEqual(['id', 'name', 'el', 'mp', 'power', 'cd', 'kind']);
+    expect(required('level')).toEqual(['level', 'exp', 'sp']);
+    expect(required('skillc')).toEqual(['skillId', 'lv', 'cost']);
+  });
+
+  it('uses entity-specific progression rules before shared fallbacks', () => {
+    expect(needExp(3, [
+      { level: 3, exp: 300, sp: 1 },
+      { characterId: 'hero', level: 3, exp: 900, sp: 4 },
+    ], 'hero')).toBe(900);
+    expect(needExp(3, [
+      { level: 3, exp: 300, sp: 1 },
+      { characterId: 'hero', level: 3, exp: 900, sp: 4 },
+    ], 'other')).toBe(300);
+    expect(skillCost(2, [
+      { lv: 2, cost: 2 },
+      { skillId: 'quake', lv: 2, cost: 7 },
+    ], 'quake')).toBe(7);
+    expect(skillCost(2, [{ skillId: 'quake', lv: 2, cost: 7 }], 'other')).toBeNull();
   });
 
   it('creates catalog snapshots and orders Team A before Team B', () => {

@@ -21,7 +21,13 @@ import {
 import { importSimulationSnapshot } from '@/lib/simulation/importAdapter';
 import { useSimulationProject } from '@/lib/simulation/SimulationProjectProvider';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
-import type { FieldMappings, LibraryRole, SimulationImportError } from '@/lib/simulation/types';
+import type {
+  FieldMappings,
+  LibraryRole,
+  SimulationImportError,
+  SimulationImportWarning,
+  StudioColumnDefinition,
+} from '@/lib/simulation/types';
 import { SimulationButton } from './SimulationButton';
 import styles from './SimulationWorkbench.module.css';
 
@@ -32,12 +38,44 @@ const LABELS: Record<LibraryRole, string> = {
   level: 'Level curve',
   skillc: 'Skill curve',
 };
+const ROOT_FOLDER_LABEL = 'No folder';
 const emptySelection = (): Record<LibraryRole, string> => ({
   characters: '', skills: '', level: '', skillc: '',
 });
 const emptyMappings = (): FieldMappings => ({
   characters: {}, skills: {}, level: {}, skillc: {},
 });
+
+/** Library names that appear more than once in the project (exact match). */
+function duplicateLibraryNames(libraries: readonly Library[]): ReadonlySet<string> {
+  const counts = new Map<string, number>();
+  for (const library of libraries) {
+    counts.set(library.name, (counts.get(library.name) ?? 0) + 1);
+  }
+  const duplicates = new Set<string>();
+  for (const [name, count] of counts) {
+    if (count > 1) duplicates.add(name);
+  }
+  return duplicates;
+}
+
+function folderLabelForLibrary(
+  library: Library,
+  folderNameById: ReadonlyMap<string, string>,
+): string {
+  if (!library.folder_id) return ROOT_FOLDER_LABEL;
+  return folderNameById.get(library.folder_id) ?? ROOT_FOLDER_LABEL;
+}
+
+/** When names collide, show `folder/name`; otherwise just the library name. */
+function formatLibraryLabel(
+  library: Library,
+  duplicateNames: ReadonlySet<string>,
+  folderNameById: ReadonlyMap<string, string>,
+): string {
+  if (!duplicateNames.has(library.name)) return library.name;
+  return `${folderLabelForLibrary(library, folderNameById)}/${library.name}`;
+}
 
 const ROW_H = 44;
 const BOX_PAD = '0 12px';
@@ -113,8 +151,10 @@ function LibSlot({
   role,
   label,
   libraryId,
-  libraryName,
+  selectedLabel,
   libraries,
+  duplicateNames,
+  folderNameById,
   active,
   open,
   errorText,
@@ -125,8 +165,10 @@ function LibSlot({
   role: LibraryRole;
   label: string;
   libraryId: string;
-  libraryName: string;
+  selectedLabel: string;
   libraries: readonly Library[];
+  duplicateNames: ReadonlySet<string>;
+  folderNameById: ReadonlyMap<string, string>;
   active: boolean;
   open: boolean;
   errorText: string;
@@ -137,7 +179,10 @@ function LibSlot({
   const [search, setSearch] = useState('');
   const slotRef = useRef<HTMLDivElement | null>(null);
   const query = (open ? search : '').toLowerCase();
-  const opts = libraries.filter((library) => library.name.toLowerCase().includes(query));
+  const opts = libraries.filter((library) => {
+    const display = formatLibraryLabel(library, duplicateNames, folderNameById);
+    return display.toLowerCase().includes(query) || library.name.toLowerCase().includes(query);
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -178,7 +223,7 @@ function LibSlot({
           whiteSpace: 'nowrap',
         }}
         >
-          {libraryName || 'Select library...'}
+          {selectedLabel || 'Select library...'}
         </span>
         {errorText ? (
           <span style={{ fontSize: 11, lineHeight: 1.3, color: 'var(--simulation-danger)' }}>
@@ -217,30 +262,49 @@ function LibSlot({
             }}
           />
           <div style={{ maxHeight: 160, overflowY: 'auto' }}>
-            {opts.map((library) => (
-              <div
-                key={library.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '9px 10px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  color: 'var(--simulation-ink-800)',
-                  background: libraryId === library.id ? 'var(--simulation-blue-tint)' : 'transparent',
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect(library.id);
-                  setSearch('');
-                }}
-              >
-                <span>{library.name}</span>
-                <span style={{ color: 'var(--simulation-blue)', fontSize: 12, opacity: libraryId === library.id ? 1 : 0 }}>✓</span>
-              </div>
-            ))}
+            {opts.map((library) => {
+              const displayName = formatLibraryLabel(library, duplicateNames, folderNameById);
+              return (
+                <div
+                  key={library.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '9px 10px',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    color: 'var(--simulation-ink-800)',
+                    background: libraryId === library.id ? 'var(--simulation-blue-tint)' : 'transparent',
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(library.id);
+                    setSearch('');
+                  }}
+                >
+                  <span style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                  >
+                    {displayName}
+                  </span>
+                  <span style={{
+                    color: 'var(--simulation-blue)',
+                    fontSize: 12,
+                    flexShrink: 0,
+                    opacity: libraryId === library.id ? 1 : 0,
+                  }}
+                  >
+                    ✓
+                  </span>
+                </div>
+              );
+            })}
             {opts.length === 0 ? (
               <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--simulation-ink-400)' }}>
                 No libraries match.
@@ -261,13 +325,15 @@ export function ImportScreen({
   onContinue?: () => void;
   onImported?: () => void;
 }) {
-  const { selectedProjectId, libraries, loadFields, loadSources } = useSimulationProject();
+  const { selectedProjectId, libraries, folderNameById, loadFields, loadSources } = useSimulationProject();
   const { commitImport } = useSimulationSession();
+  const duplicateNames = useMemo(() => duplicateLibraryNames(libraries), [libraries]);
   const [name, setName] = useState('sumulator111');
   const [selected, setSelected] = useState(emptySelection);
   const [mappings, setMappings] = useState<FieldMappings>(emptyMappings);
-  const [schemas, setSchemas] = useState<Record<string, Array<{ key: string; name: string }>>>({});
+  const [schemas, setSchemas] = useState<Record<string, Array<StudioColumnDefinition & { key: string; name: string }>>>({});
   const [errors, setErrors] = useState<readonly SimulationImportError[]>([]);
+  const [warnings, setWarnings] = useState<readonly SimulationImportWarning[]>([]);
   const [loading, setLoading] = useState(false);
   const [imported, setImported] = useState(false);
   const [activeRole, setActiveRole] = useState<LibraryRole>('characters');
@@ -279,6 +345,8 @@ export function ImportScreen({
   const sourcePortRefs = useRef<Record<string, HTMLSpanElement | null>>({});
   const targetPortRefs = useRef<Record<string, HTMLSpanElement | null>>({});
   const targetRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const selectedRef = useRef(selected);
+  const fieldRequestRef = useRef<Record<LibraryRole, number>>({ characters: 0, skills: 0, level: 0, skillc: 0 });
 
   const [layout, setLayout] = useState<{
     sources: Record<string, { x: number; y: number }>;
@@ -290,10 +358,13 @@ export function ImportScreen({
   const [hoverWireFieldId, setHoverWireFieldId] = useState<string | null>(null);
 
   useEffect(() => {
-    setSelected(emptySelection());
+    const nextSelection = emptySelection();
+    selectedRef.current = nextSelection;
+    setSelected(nextSelection);
     setMappings(emptyMappings());
     setSchemas({});
     setErrors([]);
+    setWarnings([]);
     setImported(false);
     setActiveRole('characters');
     setDdOpen(null);
@@ -326,18 +397,25 @@ export function ImportScreen({
   }
 
   async function selectLibrary(role: LibraryRole, libraryId: string) {
-    setSelected((current) => ({ ...current, [role]: libraryId }));
+    const nextSelected = { ...selectedRef.current, [role]: libraryId };
+    selectedRef.current = nextSelected;
+    setSelected(nextSelected);
+    setMappings((current) => ({ ...current, [role]: {} }));
     setActiveRole(role);
     setDdOpen(null);
     setImported(false);
+    setErrors([]);
+    setWarnings([]);
     if (!libraryId || !selectedProjectId) return;
+    const request = ++fieldRequestRef.current[role];
     try {
       const fields = [...await loadFields(libraryId)];
+      if (request !== fieldRequestRef.current[role] || selectedRef.current[role] !== libraryId) return;
       setSchemas((current) => ({ ...current, [libraryId]: fields }));
-      const studioColumns = fields.map(({ key, name: fieldName }) => ({ id: key, label: fieldName }));
+      const studioColumns = fields.map(({ key, name: fieldName, valueType }) => ({ id: key, label: fieldName, valueType }));
       setMappings((current) => ({
         ...current,
-        [role]: autoMapFields(role, current[role], studioColumns),
+        [role]: autoMapFields(role, {}, studioColumns),
       }));
     } catch {
       // Full validation and source loading happens atomically on Import.
@@ -361,6 +439,7 @@ export function ImportScreen({
     if (!selectedProjectId || ROLES.some((role) => !selected[role])) return;
     setLoading(true);
     setErrors([]);
+    setWarnings([]);
     try {
       const sources = await loadSources(selected);
       const result = importSimulationSnapshot({
@@ -368,6 +447,7 @@ export function ImportScreen({
         sources,
         fieldMappings: mappings,
       });
+      setWarnings(result.warnings);
       if ('errors' in result) {
         setErrors(result.errors);
         return;
@@ -553,10 +633,7 @@ export function ImportScreen({
       }}
       >
         Select four Studio libraries, then drag from a source port to a simulation field to map them. Matching names auto-map (case-insensitive).{' '}
-        <span style={{ color: 'var(--simulation-danger)', fontWeight: 600 }}>id</span>
-        {' '}and{' '}
-        <span style={{ color: 'var(--simulation-danger)', fontWeight: 600 }}>name</span>
-        {' '}are required import fields for Characters and Skills.
+        Required fields are marked with an asterisk.
       </p>
 
       <div style={{
@@ -634,14 +711,19 @@ export function ImportScreen({
           {LIB_DEFS.map((def) => {
             const libraryId = selected[def.key];
             const library = libraries.find(({ id }) => id === libraryId);
+            const selectedLabel = library
+              ? formatLibraryLabel(library, duplicateNames, folderNameById)
+              : '';
             return (
               <LibSlot
                 key={def.key}
                 role={def.key}
                 label={LABELS[def.key]}
                 libraryId={libraryId}
-                libraryName={library?.name ?? ''}
+                selectedLabel={selectedLabel}
                 libraries={libraries}
+                duplicateNames={duplicateNames}
+                folderNameById={folderNameById}
                 active={activeRole === def.key}
                 open={ddOpen === def.key}
                 errorText={
@@ -681,7 +763,7 @@ export function ImportScreen({
                 fontWeight: 600,
               }}
               >
-                <span>Imported</span>
+                <span>{warnings.length ? 'Imported with warnings' : 'Imported'}</span>
                 <span style={{ fontSize: 15 }}>✓</span>
               </div>
               <div style={{ fontSize: 13, color: 'var(--simulation-ink-500)', lineHeight: 1.45 }}>
@@ -983,6 +1065,22 @@ export function ImportScreen({
               :
               {' '}
               {error.reason}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {warnings.length ? (
+        <div className={styles.warningList} role="status" style={{ marginTop: 16 }}>
+          <strong>Imported with warnings</strong>
+          {warnings.map((warning, index) => (
+            <p key={index}>
+              {warning.libraryName}
+              {warning.assetName ? ` / ${warning.assetName}` : ''}
+              {' / '}
+              {warning.field}
+              :
+              {' '}
+              {warning.reason}
             </p>
           ))}
         </div>

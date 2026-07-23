@@ -11,6 +11,7 @@ import type {
   LibraryRole,
   SimulationImportError,
   SimulationImportResult,
+  SimulationImportWarning,
   SkillCostRule,
   SkillDefinition,
   SkillKind,
@@ -40,6 +41,7 @@ const SKILL_STATUSES: readonly Exclude<SkillStatus, null>[] = ['burn', 'dot', 'f
 const DECIMAL = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 
 type ErrorCode = SimulationImportError['code'];
+type WarningCode = SimulationImportWarning['code'];
 type ParsedRow<T> = { readonly asset: AssetRow; readonly value: T };
 
 function deepFreeze<T>(value: T): DeepReadonly<T> {
@@ -64,6 +66,28 @@ function pushError(
   asset: AssetRow | null = null,
 ): void {
   errors.push({
+    role,
+    code,
+    libraryId: source.libraryId,
+    libraryName: source.libraryName,
+    assetId: asset?.id ?? null,
+    assetName: asset?.name ?? null,
+    field: fieldLabel(role, canonical),
+    reason,
+    message: reason,
+  });
+}
+
+function pushWarning(
+  warnings: SimulationImportWarning[],
+  source: StudioLibrarySource,
+  role: LibraryRole,
+  code: WarningCode,
+  canonical: string,
+  reason: string,
+  asset: AssetRow | null = null,
+): void {
+  warnings.push({
     role,
     code,
     libraryId: source.libraryId,
@@ -265,25 +289,40 @@ function parseSkills(
   return parsed;
 }
 
-function parseRules<T extends LevelRule | SkillCostRule>(
-  role: 'level' | 'skillc',
+function parseLevelRules(
   source: StudioLibrarySource,
-  mappings: FieldMappings[typeof role],
+  mappings: FieldMappings['level'],
   valid: ReadonlySet<string>,
   errors: SimulationImportError[],
-): ParsedRow<T>[] {
-  const indexField = role === 'level' ? 'level' : 'lv';
-  const valueFields = role === 'level' ? ['exp', 'sp'] as const : ['cost'] as const;
-  const parsed: ParsedRow<T>[] = [];
+): ParsedRow<LevelRule>[] {
+  const parsed: ParsedRow<LevelRule>[] = [];
   for (const asset of source.assets) {
     const start = errors.length;
-    const index = validateRange(parseNumber(role, indexField, source, asset, mappings, valid, errors), (n) => Number.isInteger(n) && n > 0, role, indexField, source, asset, `${fieldLabel(role, indexField)} must be a positive integer.`, errors);
-    const values = Object.fromEntries(valueFields.map((canonical) => [
-      canonical,
-      validateRange(parseNumber(role, canonical, source, asset, mappings, valid, errors), (n) => n >= 0, role, canonical, source, asset, `${fieldLabel(role, canonical)} must be non-negative.`, errors),
-    ]));
-    if (errors.length === start && index !== undefined && valueFields.every((field) => values[field] !== undefined)) {
-      parsed.push({ asset, value: { [indexField]: index, ...values } as T });
+    const characterId = parseString('level', 'characterId', source, asset, mappings, valid, errors);
+    const level = validateRange(parseNumber('level', 'level', source, asset, mappings, valid, errors), (n) => Number.isInteger(n) && n > 0, 'level', 'level', source, asset, 'level must be a positive integer.', errors);
+    const exp = validateRange(parseNumber('level', 'exp', source, asset, mappings, valid, errors), (n) => n >= 0, 'level', 'exp', source, asset, 'exp must be non-negative.', errors);
+    const sp = validateRange(parseNumber('level', 'sp', source, asset, mappings, valid, errors), (n) => n >= 0, 'level', 'sp', source, asset, 'sp must be non-negative.', errors);
+    if (errors.length === start && level !== undefined && exp !== undefined && sp !== undefined) {
+      parsed.push({ asset, value: { ...(characterId ? { characterId } : {}), level, exp, sp } });
+    }
+  }
+  return parsed;
+}
+
+function parseSkillCostRules(
+  source: StudioLibrarySource,
+  mappings: FieldMappings['skillc'],
+  valid: ReadonlySet<string>,
+  errors: SimulationImportError[],
+): ParsedRow<SkillCostRule>[] {
+  const parsed: ParsedRow<SkillCostRule>[] = [];
+  for (const asset of source.assets) {
+    const start = errors.length;
+    const skillId = parseString('skillc', 'skillId', source, asset, mappings, valid, errors);
+    const lv = validateRange(parseNumber('skillc', 'lv', source, asset, mappings, valid, errors), (n) => Number.isInteger(n) && n > 0, 'skillc', 'lv', source, asset, 'lv must be a positive integer.', errors);
+    const cost = validateRange(parseNumber('skillc', 'cost', source, asset, mappings, valid, errors), (n) => n >= 0, 'skillc', 'cost', source, asset, 'cost must be non-negative.', errors);
+    if (errors.length === start && skillId !== undefined && lv !== undefined && cost !== undefined) {
+      parsed.push({ asset, value: { skillId, lv, cost } });
     }
   }
   return parsed;
@@ -319,33 +358,88 @@ function validateUniqueIds(
   }
 }
 
-function validateSequence(
+function warnAndDedupeRules<T extends LevelRule | SkillCostRule>(
   role: 'level' | 'skillc',
   source: StudioLibrarySource,
-  mappings: FieldMappings[typeof role],
-  validMappings: ReadonlySet<string>,
-  errors: SimulationImportError[],
-): void {
+  rows: readonly ParsedRow<T>[],
+  warnings: SimulationImportWarning[],
+): ParsedRow<T>[] {
   const field = role === 'level' ? 'level' : 'lv';
-  if (!validMappings.has(field)) return;
-  const key = mappings[field] as string;
-  const candidates = source.assets.flatMap((asset) => {
-    const value = strictNumber(asset.propertyValues[key]);
-    return value !== undefined && Number.isInteger(value) && value > 0 ? [{ asset, value }] : [];
-  });
-  const values = candidates.map((candidate) => candidate.value).sort((a, b) => a - b);
-  const seen = new Set<number>();
-  for (const candidate of candidates) {
-    if (seen.has(candidate.value)) pushError(errors, source, role, 'duplicate_id', field, `Duplicate ${fieldLabel(role, field)}: ${candidate.value}.`, candidate.asset);
-    seen.add(candidate.value);
+  const keyOf = (value: T) => role === 'level'
+    ? `${(value as LevelRule).characterId ?? ''}\u0000${(value as LevelRule).level}`
+    : `${(value as SkillCostRule).skillId ?? ''}\u0000${(value as SkillCostRule).lv}`;
+  const dimensionOf = (value: T) => role === 'level'
+    ? (value as LevelRule).characterId ?? ''
+    : (value as SkillCostRule).skillId ?? '';
+  const indexOf = (value: T) => role === 'level'
+    ? (value as LevelRule).level
+    : (value as SkillCostRule).lv;
+  const seen = new Set<string>();
+  const kept: ParsedRow<T>[] = [];
+  for (const row of rows) {
+    const key = keyOf(row.value);
+    if (seen.has(key)) {
+      pushWarning(warnings, source, role, 'duplicate_rule', field, `Duplicate ${fieldLabel(role, field)} rule; the first row is used.`, row.asset);
+      continue;
+    }
+    seen.add(key);
+    kept.push(row);
   }
-  if (candidates.length === source.assets.length && values.some((value, index) => value !== index + 1)) {
-    pushError(errors, source, role, 'invalid_sequence', field, `${fieldLabel(role, field)} values must be contiguous and start at 1.`);
+
+  const groups = new Map<string, number[]>();
+  for (const row of kept) {
+    const dimension = dimensionOf(row.value);
+    groups.set(dimension, [...(groups.get(dimension) ?? []), indexOf(row.value)]);
+  }
+  for (const [dimension, indexes] of groups) {
+    const ordered = [...indexes].sort((left, right) => left - right);
+    if (ordered.some((value, index) => value !== index + 1)) {
+      const scope = dimension ? ` for ${dimension}` : '';
+      pushWarning(warnings, source, role, 'invalid_sequence', field, `${fieldLabel(role, field)} values${scope} do not start at 1 or contain gaps.`);
+    }
+  }
+  return kept;
+}
+
+function warnMissingLevelCoverage(
+  source: StudioLibrarySource,
+  characterIds: ReadonlySet<string>,
+  rows: readonly ParsedRow<LevelRule>[],
+  warnings: SimulationImportWarning[],
+): void {
+  const expected = new Set(rows.map(({ value }) => value.level));
+  for (const characterId of characterIds) {
+    const available = new Set(rows
+      .filter(({ value }) => !value.characterId || value.characterId === characterId)
+      .map(({ value }) => value.level));
+    const missing = [...expected].filter((level) => !available.has(level)).sort((a, b) => a - b);
+    if (missing.length) {
+      pushWarning(warnings, source, 'level', 'missing_rule', 'characterId', `Character ${characterId} has no rule for level ${missing.join(', ')}.`);
+    }
+  }
+}
+
+function warnMissingSkillCoverage(
+  source: StudioLibrarySource,
+  skillIds: ReadonlySet<string>,
+  rows: readonly ParsedRow<SkillCostRule>[],
+  warnings: SimulationImportWarning[],
+): void {
+  const expected = new Set(rows.map(({ value }) => value.lv));
+  for (const skillId of skillIds) {
+    const available = new Set(rows
+      .filter(({ value }) => !value.skillId || value.skillId === skillId)
+      .map(({ value }) => value.lv));
+    const missing = [...expected].filter((level) => !available.has(level)).sort((a, b) => a - b);
+    if (missing.length) {
+      pushWarning(warnings, source, 'skillc', 'missing_rule', 'skillId', `Skill ${skillId} has no cost rule for level ${missing.join(', ')}.`);
+    }
   }
 }
 
 export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): SimulationImportResult {
   const errors: SimulationImportError[] = [];
+  const warnings: SimulationImportWarning[] = [];
   const validMappings = Object.fromEntries(ROLES.map((role) => [
     role,
     validateMappings(role, input.sources[role], input.fieldMappings[role], errors),
@@ -359,18 +453,32 @@ export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): 
 
   const characters = parseCharacters(input.sources.characters, input.fieldMappings.characters, validMappings.characters, errors);
   const skills = parseSkills(input.sources.skills, input.fieldMappings.skills, validMappings.skills, errors);
-  const levelRules = parseRules<LevelRule>('level', input.sources.level, input.fieldMappings.level, validMappings.level, errors);
-  const skillCostRules = parseRules<SkillCostRule>('skillc', input.sources.skillc, input.fieldMappings.skillc, validMappings.skillc, errors);
+  const parsedLevelRules = parseLevelRules(input.sources.level, input.fieldMappings.level, validMappings.level, errors);
+  const parsedSkillCostRules = parseSkillCostRules(input.sources.skillc, input.fieldMappings.skillc, validMappings.skillc, errors);
 
   validateUniqueIds('characters', input.sources.characters, input.fieldMappings.characters, validMappings.characters, errors);
   validateUniqueIds('skills', input.sources.skills, input.fieldMappings.skills, validMappings.skills, errors);
   for (const candidate of stringCandidates(input.sources.skills, input.fieldMappings.skills, validMappings.skills, 'id')) {
     if (candidate.value === BASIC.id) pushError(errors, input.sources.skills, 'skills', 'reserved_id', 'id', 'Skill ID basic is reserved.', candidate.asset);
   }
-  validateSequence('level', input.sources.level, input.fieldMappings.level, validMappings.level, errors);
-  validateSequence('skillc', input.sources.skillc, input.fieldMappings.skillc, validMappings.skillc, errors);
+  const characterIds = new Set(characters.map(({ value }) => value.id));
+  const skillIds = new Set(skills.map(({ value }) => value.id));
+  for (const row of parsedLevelRules) {
+    if (row.value.characterId && !characterIds.has(row.value.characterId)) {
+      pushError(errors, input.sources.level, 'level', 'unresolved_reference', 'characterId', `Character ${row.value.characterId} does not exist.`, row.asset);
+    }
+  }
+  for (const row of parsedSkillCostRules) {
+    if (row.value.skillId && !skillIds.has(row.value.skillId)) {
+      pushError(errors, input.sources.skillc, 'skillc', 'unresolved_reference', 'skillId', `Skill ${row.value.skillId} does not exist.`, row.asset);
+    }
+  }
+  const levelRules = warnAndDedupeRules('level', input.sources.level, parsedLevelRules, warnings);
+  const skillCostRules = warnAndDedupeRules('skillc', input.sources.skillc, parsedSkillCostRules, warnings);
+  warnMissingLevelCoverage(input.sources.level, characterIds, levelRules, warnings);
+  warnMissingSkillCoverage(input.sources.skillc, skillIds, skillCostRules, warnings);
 
-  if (errors.length > 0) return { ok: false, errors };
+  if (errors.length > 0) return { ok: false, errors, warnings };
 
   const date = input.importedAt instanceof Date
     ? new Date(input.importedAt.getTime())
@@ -390,5 +498,5 @@ export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): 
     levelRules: levelRules.map((row) => ({ ...row.value })).sort((a, b) => a.level - b.level),
     skillCostRules: skillCostRules.map((row) => ({ ...row.value })).sort((a, b) => a.lv - b.lv),
   };
-  return { ok: true, snapshot: deepFreeze(snapshot) };
+  return { ok: true, snapshot: deepFreeze(snapshot), warnings };
 }

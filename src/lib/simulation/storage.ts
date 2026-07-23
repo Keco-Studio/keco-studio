@@ -43,8 +43,8 @@ function mappingSchema<const Keys extends readonly [string, ...string[]]>(keys: 
 const fieldMappingsSchema = z.object({
   characters: mappingSchema(['id', 'name', 'cls', 'el', 'hp', 'atk', 'def', 'spd', 'mp']),
   skills: mappingSchema(['id', 'name', 'el', 'mp', 'power', 'cd', 'kind', 'status', 'fx']),
-  level: mappingSchema(['level', 'exp', 'sp']),
-  skillc: mappingSchema(['lv', 'cost']),
+  level: mappingSchema(['characterId', 'level', 'exp', 'sp']),
+  skillc: mappingSchema(['skillId', 'lv', 'cost']),
 }).strict();
 
 const importedSnapshotSchema = z.object({
@@ -52,8 +52,8 @@ const importedSnapshotSchema = z.object({
   catalog: z.object({
     characters: z.array(characterTemplateSchema).min(1), skills: z.array(skillSchema).min(1), basic: skillSchema,
   }).strict(),
-  levelRules: z.array(z.object({ level: positiveInteger, exp: nonnegative, sp: nonnegative }).strict()).min(1),
-  skillCostRules: z.array(z.object({ lv: positiveInteger, cost: nonnegative }).strict()).min(1),
+  levelRules: z.array(z.object({ characterId: z.string().min(1).optional(), level: positiveInteger, exp: nonnegative, sp: nonnegative }).strict()).min(1),
+  skillCostRules: z.array(z.object({ skillId: z.string().min(1).optional(), lv: positiveInteger, cost: nonnegative }).strict()).min(1),
   sourceLibraryIds: fourRolesSchema(z.string().min(1)),
   fieldMappings: fieldMappingsSchema,
   importedAt: z.string().datetime(),
@@ -69,11 +69,13 @@ const importedSnapshotSchema = z.object({
   if (snapshot.catalog.basic.id !== 'basic') {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'The basic skill id is reserved.', path: ['catalog', 'basic', 'id'] });
   }
-  if (!snapshot.levelRules.every(({ level }, index) => level === index + 1)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Level rules must be contiguous from one.', path: ['levelRules'] });
+  const characterIdSet = new Set(characterIds);
+  const skillIdSet = new Set(skillIds);
+  if (snapshot.levelRules.some(({ characterId }) => characterId && !characterIdSet.has(characterId))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Level rules must reference catalog characters.', path: ['levelRules'] });
   }
-  if (!snapshot.skillCostRules.every(({ lv }, index) => lv === index + 1)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Skill cost rules must be contiguous from one.', path: ['skillCostRules'] });
+  if (snapshot.skillCostRules.some(({ skillId }) => skillId && !skillIdSet.has(skillId))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Skill cost rules must reference catalog skills.', path: ['skillCostRules'] });
   }
 });
 

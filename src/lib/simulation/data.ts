@@ -113,43 +113,46 @@ export const STUDIO_COLUMNS: Record<LibraryRole, readonly StudioColumnDefinition
     { id: 'sp_reward', label: 'SP Grant' },
   ],
   skillc: [
-    { id: 'skill_level', label: 'Skill Level' },
-    { id: 'upgrade_sp', label: 'SP Cost' },
+    { id: 'skill_id', label: 'Skill ID', valueType: 'string' },
+    { id: 'skill_level', label: 'Skill Level', valueType: 'number' },
+    { id: 'upgrade_sp', label: 'SP Cost', valueType: 'number' },
   ],
 };
 
-/** Field labels match keco-simulation-demo (lowercase ids). Only id/name are required for Import UX. */
+/** Canonical import fields with aliases and compatible Studio column types. */
 export const SIM_FIELDS: Record<LibraryRole, readonly SimulationFieldDefinition[]> = {
   characters: [
-    { id: 'id', label: 'id', required: true },
-    { id: 'name', label: 'name', required: true },
-    { id: 'cls', label: 'cls' },
-    { id: 'el', label: 'el' },
-    { id: 'hp', label: 'hp' },
-    { id: 'atk', label: 'atk' },
-    { id: 'def', label: 'def' },
-    { id: 'spd', label: 'spd' },
-    { id: 'mp', label: 'mp' },
+    { id: 'id', label: 'id', required: true, aliases: ['character id', 'char id', '角色id', '角色编号'], valueTypes: ['string'] },
+    { id: 'name', label: 'name', required: true, aliases: ['display name', 'character name', '角色名', '名称'], valueTypes: ['string'] },
+    { id: 'cls', label: 'cls', aliases: ['class', 'class name', '职业'], valueTypes: ['string', 'enum'] },
+    { id: 'el', label: 'el', required: true, aliases: ['element', '属性', '元素'], valueTypes: ['string', 'enum'] },
+    { id: 'hp', label: 'hp', required: true, aliases: ['base hp', 'health', '生命'], valueTypes: ['number'] },
+    { id: 'atk', label: 'atk', required: true, aliases: ['base atk', 'attack', '攻击'], valueTypes: ['number'] },
+    { id: 'def', label: 'def', required: true, aliases: ['base def', 'defense', '防御'], valueTypes: ['number'] },
+    { id: 'spd', label: 'spd', required: true, aliases: ['base spd', 'speed', '速度'], valueTypes: ['number'] },
+    { id: 'mp', label: 'mp', required: true, aliases: ['base mp', 'mana', '魔法值'], valueTypes: ['number'] },
   ],
   skills: [
-    { id: 'id', label: 'id', required: true },
-    { id: 'name', label: 'name', required: true },
-    { id: 'el', label: 'el' },
-    { id: 'mp', label: 'mp' },
-    { id: 'power', label: 'power' },
-    { id: 'cd', label: 'cd' },
-    { id: 'kind', label: 'kind', allowedValues: ['dmg', 'heal', 'buff'] },
-    { id: 'status', label: 'status', allowedValues: ['burn', 'dot', 'freeze', 'stun', ''] },
-    { id: 'fx', label: 'fx' },
+    { id: 'id', label: 'id', required: true, aliases: ['skill id', '技能id', '技能编号'], valueTypes: ['string'] },
+    { id: 'name', label: 'name', required: true, aliases: ['skill name', 'display name', '技能名'], valueTypes: ['string'] },
+    { id: 'el', label: 'el', required: true, aliases: ['element', '属性', '元素'], valueTypes: ['string', 'enum'] },
+    { id: 'mp', label: 'mp', required: true, aliases: ['mp cost', 'mana cost', '蓝耗'], valueTypes: ['number'] },
+    { id: 'power', label: 'power', required: true, aliases: ['power value', 'damage', '威力'], valueTypes: ['number'] },
+    { id: 'cd', label: 'cd', required: true, aliases: ['cooldown', '冷却'], valueTypes: ['number'] },
+    { id: 'kind', label: 'kind', required: true, aliases: ['type', 'skill type', '类型'], allowedValues: ['dmg', 'heal', 'buff'], valueTypes: ['string', 'enum'] },
+    { id: 'status', label: 'status', aliases: ['status effect', '状态'], allowedValues: ['burn', 'dot', 'freeze', 'stun', ''], valueTypes: ['string', 'enum'] },
+    { id: 'fx', label: 'fx', aliases: ['effect', 'effect description', '效果'], valueTypes: ['string'] },
   ],
   level: [
-    { id: 'level', label: 'level' },
-    { id: 'exp', label: 'exp' },
-    { id: 'sp', label: 'sp' },
+    { id: 'characterId', label: 'character_id', aliases: ['character id', 'char id', '角色id'], valueTypes: ['string'] },
+    { id: 'level', label: 'level', required: true, aliases: ['level number', 'lv', '等级'], valueTypes: ['number'] },
+    { id: 'exp', label: 'exp', required: true, aliases: ['exp required', 'experience', '经验'], valueTypes: ['number'] },
+    { id: 'sp', label: 'sp', required: true, aliases: ['sp grant', 'skill points', '技能点'], valueTypes: ['number'] },
   ],
   skillc: [
-    { id: 'lv', label: 'lv' },
-    { id: 'cost', label: 'cost' },
+    { id: 'skillId', label: 'skill_id', required: true, aliases: ['skill id', '技能id'], valueTypes: ['string'] },
+    { id: 'lv', label: 'lv', required: true, aliases: ['skill level', 'level', '技能等级'], valueTypes: ['number'] },
+    { id: 'cost', label: 'cost', required: true, aliases: ['upgrade cost', 'sp cost', 'upgrade sp', '消耗'], valueTypes: ['number'] },
   ],
 };
 
@@ -211,7 +214,8 @@ function studioColMatchesField(
   column: StudioColumnDefinition,
   field: SimulationFieldDefinition,
 ): boolean {
-  const targets = [normFieldKey(field.id), normFieldKey(field.label)].filter(Boolean);
+  if (column.valueType && field.valueTypes && !field.valueTypes.includes(column.valueType)) return false;
+  const targets = [field.id, field.label, ...(field.aliases ?? [])].map(normFieldKey).filter(Boolean);
   const sources = [normFieldKey(column.id), normFieldKey(column.label)];
   const tokens = [...fieldTokens(column.id), ...fieldTokens(column.label)];
 
@@ -296,20 +300,35 @@ export function skillDef(
   return catalog.skills.find((skill) => skill.id === id) ?? catalog.basic;
 }
 
+export function levelRule(
+  level: number,
+  rules: readonly LevelRule[] = DEMO_LEVEL_RULES,
+  characterId?: string,
+): LevelRule | null {
+  return (characterId
+    ? rules.find((candidate) => candidate.characterId === characterId && candidate.level === level)
+    : undefined)
+    ?? rules.find((candidate) => !candidate.characterId && candidate.level === level)
+    ?? null;
+}
+
 export function needExp(
   level: number,
   rules: readonly LevelRule[] = DEMO_LEVEL_RULES,
-): number {
-  const rule = rules.find((candidate) => candidate.level === level);
-  if (!rule) throw new RangeError(`No level rule exists for level ${level}.`);
-  return rule.exp;
+  characterId?: string,
+): number | null {
+  return levelRule(level, rules, characterId)?.exp ?? null;
 }
 
 export function skillCost(
   currentLevel: number,
   rules: readonly SkillCostRule[] = DEMO_SKILL_COST_RULES,
+  skillId?: string,
 ): number | null {
-  return rules.find((candidate) => candidate.lv === currentLevel)?.cost ?? null;
+  return ((skillId
+    ? rules.find((candidate) => candidate.skillId === skillId && candidate.lv === currentLevel)
+    : undefined)
+    ?? rules.find((candidate) => !candidate.skillId && candidate.lv === currentLevel))?.cost ?? null;
 }
 
 export function skillPower(base: number, level: number): number {

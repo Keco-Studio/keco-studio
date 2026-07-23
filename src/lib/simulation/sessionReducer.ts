@@ -130,7 +130,11 @@ export function simulationSessionReducer(
           ...Object.keys(session.progression.lv),
           ...Object.keys(session.progression.sp),
         ];
-        const maxLevel = Math.max(0, ...(session.importedSnapshot?.levelRules.map(({ level }) => level) ?? []));
+        const entry = session.roster.find(({ uid }) => uid === action.uid);
+        const applicableRules = session.importedSnapshot?.levelRules.filter((rule) => (
+          !rule.characterId || rule.characterId === entry?.tmplId
+        )) ?? [];
+        const maxLevel = Math.max(0, ...applicableRules.map(({ level }) => level));
         if (
           !rosterUids.has(action.uid)
           || progressionUids.some((uid) => !rosterUids.has(uid))

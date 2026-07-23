@@ -21,7 +21,7 @@ const canonicalFields = {
   characters: ['id', 'name', 'cls', 'el', 'hp', 'atk', 'def', 'spd', 'mp'],
   skills: ['id', 'name', 'el', 'mp', 'power', 'cd', 'kind', 'status', 'fx'],
   level: ['level', 'exp', 'sp'],
-  skillc: ['lv', 'cost'],
+  skillc: ['skillId', 'lv', 'cost'],
 } as const;
 
 const labels: Record<string, string> = {
@@ -43,6 +43,7 @@ const labels: Record<string, string> = {
   exp: 'EXP',
   sp: 'SP',
   lv: 'Skill level',
+  skillId: 'Skill ID',
   cost: 'Cost',
 };
 
@@ -128,8 +129,8 @@ export function createValidSources(): Record<LibraryRole, StudioLibraryFixture> 
     asset('level', 2, 'Level row 1', { level: '1', exp: '0', sp: 1 }),
   ];
   sources.skillc.assets = [
-    asset('skillc', 1, 'Skill cost 2', { lv: 2, cost: 2 }),
-    asset('skillc', 2, 'Skill cost 1', { lv: '1', cost: '0' }),
+    asset('skillc', 1, 'Skill cost 2', { skillId: 'quake', lv: 2, cost: 2 }),
+    asset('skillc', 2, 'Skill cost 1', { skillId: 'quake', lv: '1', cost: '0' }),
   ];
 
   return structuredClone(sources);
