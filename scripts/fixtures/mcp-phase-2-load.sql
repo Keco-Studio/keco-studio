@@ -44,6 +44,14 @@ select (md5('mcp-load-field-' || table_number || '-' || field_number))::uuid,
 from generate_series(1, 100) table_number
 cross join generate_series(1, 20) field_number;
 
+-- The production triggers intentionally refresh one search document per row.
+-- Disable them for this bulk-only fixture and rebuild the same documents with
+-- one set-based insert so CI runtime does not depend on 200,000 trigger calls.
+alter table public.library_assets
+  disable trigger mcp_sync_library_row_search_trigger;
+alter table public.library_asset_values
+  disable trigger mcp_sync_library_value_search_trigger;
+
 insert into public.library_assets(
   id, library_id, name, row_index, created_at, updated_at
 )
@@ -62,6 +70,34 @@ select (md5('mcp-load-row-' || table_number || '-' || row_number))::uuid,
   to_jsonb('Load row ' || row_number)
 from generate_series(1, 100) table_number
 cross join generate_series(1, 1000) row_number;
+
+insert into public.mcp_search_documents(
+  project_id, source_type, source_id, title, body, updated_at
+)
+select library.project_id,
+  'library_row',
+  asset.id,
+  coalesce(nullif(asset.name, ''), 'Untitled row'),
+  concat_ws(
+    ' ',
+    asset.name,
+    string_agg(
+      concat_ws(' ', field.label, value.value_json::text),
+      ' ' order by field.order_index, field.id
+    )
+  ),
+  asset.updated_at
+from public.library_assets asset
+join public.libraries library on library.id = asset.library_id
+left join public.library_asset_values value on value.asset_id = asset.id
+left join public.library_field_definitions field on field.id = value.field_id
+where library.project_id = '22222222-2222-4222-8222-222222222222'
+group by asset.id, library.project_id;
+
+alter table public.library_assets
+  enable trigger mcp_sync_library_row_search_trigger;
+alter table public.library_asset_values
+  enable trigger mcp_sync_library_value_search_trigger;
 
 insert into public.documents(
   id, project_id, name, content, created_by, collab_epoch, collab_revision
