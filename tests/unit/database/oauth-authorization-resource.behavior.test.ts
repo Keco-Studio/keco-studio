@@ -55,7 +55,7 @@ async function createAuthorization(
   clientId: string,
   resource: string,
   userClient: SupabaseClient
-): Promise<{ authorizationId: string; verifier: string }> {
+): Promise<{ authorizationId: string; verifier: string; redirectUrl: string | null }> {
   const verifier = randomBytes(32).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const authorizeUrl = new URL(`${supabaseUrl}/auth/v1/oauth/authorize`);
@@ -80,7 +80,11 @@ async function createAuthorization(
   if (error || data?.authorization_id !== authorizationId) {
     throw new Error(`OAuth authorization association failed: ${error?.message ?? 'invalid details'}`);
   }
-  return { authorizationId, verifier };
+  return {
+    authorizationId,
+    verifier,
+    redirectUrl: typeof data.redirect_url === 'string' ? data.redirect_url : null,
+  };
 }
 
 async function exchangeAuthorizationCode(
@@ -390,5 +394,46 @@ describeDb('OAuth authorization resource RPC (live database)', () => {
     await expect(
       hasGrant(refreshedClient, oauthClientId, secondProjectId, secondResource)
     ).resolves.toBe(false);
+  }, 60_000);
+
+  it('creates an exact session grant at exchange without prepare or finalize RPCs', async () => {
+    const registeredClient = await registerPublicClient();
+    const ownerClient = await sessionClient(fixture.owner.email);
+    const resource = `${supabaseUrl}/functions/v1/mcp/${fixture.projectId}`;
+    const secondResource = `${supabaseUrl}/functions/v1/mcp/${secondProjectId}`;
+
+    try {
+      const authorization = await createAuthorization(
+        registeredClient.client_id,
+        resource,
+        ownerClient
+      );
+      let redirectUrl = authorization.redirectUrl;
+      if (!redirectUrl) {
+        const approval = await ownerClient.auth.oauth.approveAuthorization(
+          authorization.authorizationId,
+          { skipBrowserRedirect: true }
+        );
+        expect(approval.error).toBeNull();
+        redirectUrl = approval.data?.redirect_url ?? null;
+      }
+      expect(redirectUrl).toEqual(expect.any(String));
+
+      const token = await exchangeAuthorizationCode(
+        registeredClient.client_id,
+        authorization.verifier,
+        redirectUrl ?? ''
+      );
+      const oauthClient = bearerClient(token.accessToken);
+
+      await expect(
+        hasGrant(oauthClient, registeredClient.client_id, fixture.projectId, resource)
+      ).resolves.toBe(true);
+      await expect(
+        hasGrant(oauthClient, registeredClient.client_id, secondProjectId, secondResource)
+      ).resolves.toBe(false);
+    } finally {
+      await serviceClient().auth.admin.oauth.deleteClient(registeredClient.client_id);
+    }
   }, 60_000);
 });

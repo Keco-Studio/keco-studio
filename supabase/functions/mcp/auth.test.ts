@@ -6,7 +6,9 @@ import {
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 const canonicalProjectResource = `https://x/functions/v1/mcp/${projectId}`;
+const allowGrant = { hasOAuthProjectGrant: async () => true };
 const absentProjectAccess = {
+  ...allowGrant,
   getProjectOwner: async () => null,
   getCollaboratorRole: async () => null,
 };
@@ -64,7 +66,7 @@ Deno.test("authorization rejects revoked project membership as forbidden", async
   assertEquals(result, { status: "forbidden" });
 });
 
-Deno.test("authorization authorizes a current member without any grant check", async () => {
+Deno.test("authorization authorizes a current member with an exact project grant", async () => {
   const result = await authorizeProjectWithGateway(
     new Request(canonicalProjectResource, {
       headers: { authorization: "Bearer token" },
@@ -72,6 +74,7 @@ Deno.test("authorization authorizes a current member without any grant check", a
     projectId,
     {
       getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      ...allowGrant,
       getProjectOwner: async () => null,
       getCollaboratorRole: async () => "editor",
     },
@@ -96,6 +99,7 @@ Deno.test("authorization denies a non-member after client and resource checks", 
     projectId,
     {
       getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      ...allowGrant,
       getProjectOwner: async () => null,
       getCollaboratorRole: async () => null,
     },
@@ -112,6 +116,7 @@ Deno.test("authorization returns current role for a valid project member", async
     {
       getUser: async (token) =>
         token === "token" ? { id: "user-1", clientId: "oauth-client" } : null,
+      ...allowGrant,
       getProjectOwner: async () => null,
       getCollaboratorRole: async () => "viewer",
     },
@@ -136,6 +141,7 @@ Deno.test("authorization retains a verified OAuth client identifier", async () =
     projectId,
     {
       getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      ...allowGrant,
       getProjectOwner: async () => "user-1",
       getCollaboratorRole: async () => null,
     },
@@ -166,6 +172,7 @@ Deno.test("authorization reports project query failures as operational errors", 
     projectId,
     {
       getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      ...allowGrant,
       getProjectOwner: async () => {
         throw new Error("project query failed");
       },
@@ -183,6 +190,7 @@ Deno.test("authorization reports collaborator query failures as operational erro
     projectId,
     {
       getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      ...allowGrant,
       getProjectOwner: async () => null,
       getCollaboratorRole: async () => {
         throw new Error("collaborator query failed");
@@ -201,6 +209,32 @@ Deno.test("authorization rejects a bearer without a verified OAuth client before
     projectId,
     {
       getUser: async () => ({ id: "user-1" }),
+      ...allowGrant,
+      getProjectOwner: async () => {
+        calls.push("membership");
+        return "user-1";
+      },
+      getCollaboratorRole: async () => {
+        calls.push("membership");
+        return null;
+      },
+    },
+  );
+
+  assertEquals(result, { status: "forbidden" });
+  assertEquals(calls, []);
+});
+
+Deno.test("authorization rejects a missing exact grant before membership checks", async () => {
+  const calls: string[] = [];
+  const result = await authorizeProjectWithGateway(
+    new Request(canonicalProjectResource, {
+      headers: { authorization: "Bearer token" },
+    }),
+    projectId,
+    {
+      getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      hasOAuthProjectGrant: async () => false,
       getProjectOwner: async () => {
         calls.push("membership");
         return "user-1";
@@ -224,6 +258,7 @@ Deno.test("authorization canonicalizes the Supabase gateway MCP path", async () 
     projectId,
     {
       getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      ...allowGrant,
       getProjectOwner: async () => "user-1",
       getCollaboratorRole: async () => null,
     },
@@ -258,6 +293,7 @@ Deno.test("authorization rejects noncanonical MCP request resources before membe
       projectId,
       {
         getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+        ...allowGrant,
         getProjectOwner: async () => {
           membershipLookups += 1;
           return "user-1";
@@ -274,12 +310,17 @@ Deno.test("authorization rejects noncanonical MCP request resources before membe
   }
 });
 
-Deno.test("authorization denies wrong-resource and dual-project replay", async () => {
+Deno.test("authorization denies noncanonical and real dual-project grant replay", async () => {
   const grantedResource = `https://x/functions/v1/mcp/${projectId}`;
   const otherProjectId = "22222222-2222-4222-8222-222222222222";
   const otherResource = `https://x/functions/v1/mcp/${otherProjectId}`;
   const gateway = {
     getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+    hasOAuthProjectGrant: async (
+      _clientId: string,
+      checkedProjectId: string,
+      checkedResource: string,
+    ) => checkedProjectId === projectId && checkedResource === grantedResource,
     getProjectOwner: async () => "user-1",
     getCollaboratorRole: async () => null,
   };
@@ -293,7 +334,7 @@ Deno.test("authorization denies wrong-resource and dual-project replay", async (
   );
   const otherProject = await authorizeProjectWithGateway(
     new Request(otherResource, { headers: { authorization: "Bearer token" } }),
-    projectId,
+    otherProjectId,
     gateway,
   );
 
