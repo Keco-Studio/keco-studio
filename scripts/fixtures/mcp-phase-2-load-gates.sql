@@ -29,14 +29,24 @@ begin
     raise exception 'MCP full-text search plan is not index-backed: %', v_plan;
   end if;
 
+  -- Mirror the runtime mcp_text_search fuzzy branch exactly: the similarity
+  -- projection and ORDER BY are part of the query the gate protects. Without the
+  -- ORDER BY, the bare LIMIT lets the planner assume it can early-stop on the
+  -- (project_id, source_type, ...) btree and pushes the trigram operator down to
+  -- a Filter, so its cost estimate sits at parity with the GIN trigram bitmap and
+  -- flips non-deterministically between ANALYZE samples. The runtime query ranks
+  -- by similarity, which forces a full sort of the matches and keeps the trigram
+  -- index the decisive plan.
   perform set_config('pg_trgm.similarity_threshold', '0.1', true);
   execute $plan$
     explain (format json)
-    select source_id
+    select source_id,
+      extensions.similarity(search_text, 'representative fixture') as rank_score
     from public.mcp_search_documents
     where project_id = '22222222-2222-4222-8222-222222222222'
       and source_type = 'project_document'
       and search_text operator(extensions.%) 'representative fixture'
+    order by rank_score desc, updated_at desc, source_id
     limit 40
   $plan$ into v_plan;
   if v_plan::text not like '%mcp_search_documents_search_text_trgm_idx%'

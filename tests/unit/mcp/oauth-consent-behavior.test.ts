@@ -302,24 +302,23 @@ it('treats resource adapter errors as missing bindings', async () => {
   expect(getProject).not.toHaveBeenCalled();
 });
 
-it('keeps denial available when existing consent bypassed project-bound approval', async () => {
+it('completes the redirect when Supabase has already auto-approved consent', async () => {
   getAuthorizationDetails.mockResolvedValueOnce({
     data: {
       ...authorizationDetails('authorization-a'),
-      redirect_url: 'https://client.example/callback',
+      redirect_url: 'https://client.example/callback?code=abc',
     },
     error: null,
   });
 
   runtime.render(OAuthConsentClient);
   await flushAsyncWork();
-  const tree = runtime.render(OAuthConsentClient);
 
-  expect(findButton(tree, 'Approve').props.disabled).toBe(true);
-  expect(findButton(tree, 'Deny').props.disabled).toBe(false);
-  expect(JSON.stringify(tree)).toContain(
-    'Existing OAuth consent bypassed the project-bound approval step.'
+  expect(assignLocation).toHaveBeenCalledWith(
+    'https://client.example/callback?code=abc'
   );
+  expect(prepareOAuthProjectGrant).not.toHaveBeenCalled();
+  expect(finalizeOAuthProjectGrant).not.toHaveBeenCalled();
 });
 
 it('reloads the same resource immediately before approving', async () => {
@@ -348,86 +347,12 @@ it('reloads the same resource immediately before approving', async () => {
     mockSupabaseClient,
     'authorization-a'
   );
-  expect(prepareOAuthProjectGrant).toHaveBeenCalledWith(
-    mockSupabaseClient,
-    'authorization-a',
-    PROJECT_A,
-    projectResource(PROJECT_A)
-  );
-  expect(prepareOAuthProjectGrant.mock.invocationCallOrder[0]).toBeLessThan(
-    approveAuthorization.mock.invocationCallOrder[0]
-  );
-  expect(approveAuthorization.mock.invocationCallOrder[0]).toBeLessThan(
-    finalizeOAuthProjectGrant.mock.invocationCallOrder[0]
-  );
-  expect(finalizeOAuthProjectGrant).toHaveBeenCalledWith(
-    mockSupabaseClient,
-    'authorization-a',
-    PROJECT_A,
-    projectResource(PROJECT_A)
-  );
+  expect(prepareOAuthProjectGrant).not.toHaveBeenCalled();
+  expect(finalizeOAuthProjectGrant).not.toHaveBeenCalled();
   expect(approveAuthorization).toHaveBeenCalledWith('authorization-a', {
     skipBrowserRedirect: true,
   });
-});
-
-it.each([
-  ['a rejected finalization', false],
-  ['a failed finalization RPC', new Error('RPC unavailable')],
-] as const)('does not redirect after %s', async (_case, finalizationResult) => {
-  getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a'),
-    error: null,
-  });
-  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
-  runtime.render(OAuthConsentClient);
-  await flushAsyncWork();
-
-  queueFreshApprovalCheck();
-  approveAuthorization.mockResolvedValueOnce({
-    data: { redirect_url: 'https://client.example/callback' },
-    error: null,
-  });
-  if (finalizationResult instanceof Error) {
-    finalizeOAuthProjectGrant.mockRejectedValueOnce(finalizationResult);
-  } else {
-    finalizeOAuthProjectGrant.mockResolvedValueOnce(finalizationResult);
-  }
-  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
-  await flushAsyncWork();
-
-  expect(assignLocation).not.toHaveBeenCalled();
-  expect(JSON.stringify(runtime.render(OAuthConsentClient))).toContain(
-    'Authorization grant could not be finalized.'
-  );
-});
-
-it.each([
-  ['a rejected preparation', false],
-  ['a failed preparation RPC', new Error('RPC unavailable')],
-] as const)('does not approve after %s', async (_case, preparationResult) => {
-  getAuthorizationDetails.mockResolvedValueOnce({
-    data: authorizationDetails('authorization-a'),
-    error: null,
-  });
-  getProject.mockResolvedValueOnce({ id: PROJECT_A, name: 'Project A' });
-
-  runtime.render(OAuthConsentClient);
-  await flushAsyncWork();
-
-  queueFreshApprovalCheck();
-  if (preparationResult instanceof Error) {
-    prepareOAuthProjectGrant.mockRejectedValueOnce(preparationResult);
-  } else {
-    prepareOAuthProjectGrant.mockResolvedValueOnce(preparationResult);
-  }
-  findButton(runtime.render(OAuthConsentClient), 'Approve').props.onClick?.();
-  await flushAsyncWork();
-
-  expect(approveAuthorization).not.toHaveBeenCalled();
-  expect(JSON.stringify(runtime.render(OAuthConsentClient))).toContain(
-    'Authorization grant could not be prepared.'
-  );
+  expect(assignLocation).toHaveBeenCalledWith('https://client.example/callback');
 });
 
 it('re-checks membership immediately before approving', async () => {

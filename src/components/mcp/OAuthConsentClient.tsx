@@ -6,10 +6,6 @@ import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject } from '@/lib/services/projectService';
 import { getOAuthAuthorizationResource } from '@/lib/mcp/oauthAuthorizationResource';
-import {
-  finalizeOAuthProjectGrant,
-  prepareOAuthProjectGrant,
-} from '@/lib/mcp/oauthProjectGrant';
 import { projectIdFromOAuthResource } from '@/lib/mcp/oauthProjectBinding';
 import styles from './OAuthConsent.module.css';
 
@@ -108,6 +104,10 @@ export function OAuthConsentClient() {
         return;
       }
       const request: LoadedRequest = { authorizationId, details: next };
+      if (next.redirect_url) {
+        window.location.assign(next.redirect_url);
+        return;
+      }
       let resource: string | null;
       try {
         resource = await getOAuthAuthorizationResource(supabase, authorizationId);
@@ -121,14 +121,6 @@ export function OAuthConsentClient() {
           ...emptyConsentState(authorizationId),
           request,
           error: 'Project binding was not preserved by the authorization server.',
-        });
-        return;
-      }
-      if (next.redirect_url) {
-        setState({
-          ...emptyConsentState(authorizationId),
-          request,
-          error: 'Existing OAuth consent bypassed the project-bound approval step.',
         });
         return;
       }
@@ -233,31 +225,6 @@ export function OAuthConsentClient() {
         return;
       }
 
-      try {
-        const prepared = await prepareOAuthProjectGrant(
-          supabase,
-          decisionAuthorizationId,
-          latestProjectId,
-          latestResource
-        );
-        if (authorizationIdRef.current !== decisionAuthorizationId) return;
-        if (!prepared) {
-          setState({
-            ...currentState,
-            error: 'Authorization grant could not be prepared.',
-            busy: false,
-          });
-          return;
-        }
-      } catch {
-        if (authorizationIdRef.current !== decisionAuthorizationId) return;
-        setState({
-          ...currentState,
-          error: 'Authorization grant could not be prepared.',
-          busy: false,
-        });
-        return;
-      }
     }
 
     const result = action === 'approve'
@@ -271,26 +238,6 @@ export function OAuthConsentClient() {
         busy: false,
       });
       return;
-    }
-    if (action === 'approve' && binding) {
-      try {
-        const finalized = await finalizeOAuthProjectGrant(
-          supabase,
-          decisionAuthorizationId,
-          binding.projectId,
-          binding.details.resource
-        );
-        if (authorizationIdRef.current !== decisionAuthorizationId) return;
-        if (!finalized) throw new Error('OAuth grant finalization was rejected.');
-      } catch {
-        if (authorizationIdRef.current !== decisionAuthorizationId) return;
-        setState({
-          ...currentState,
-          error: 'Authorization grant could not be finalized.',
-          busy: false,
-        });
-        return;
-      }
     }
     window.location.assign(result.data.redirect_url);
   }
