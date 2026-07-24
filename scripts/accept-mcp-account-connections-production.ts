@@ -246,9 +246,15 @@ async function runBrowserAcceptance(
     acceptanceStage = 'browser-login';
     await loginBrowser(page, ownerEmail);
     acceptanceStage = 'browser-open-page';
+    const connectionsResponse = page.waitForResponse((response) =>
+      response.request().method() === 'GET'
+      && response.url() === PRODUCTION_APP_URL + '/api/mcp/connections'
+    );
     await page.goto(PRODUCTION_APP_URL + '/mcp');
     await page.getByRole('heading', { name: 'MCP', exact: true }).waitFor();
     acceptanceStage = 'browser-connection-rows';
+    assert((await connectionsResponse).ok(), 'Production UI connection request failed');
+    await page.getByTestId('mcp-connection-row').nth(2).waitFor({ timeout: 30_000 });
     assert(await page.getByTestId('mcp-connection-row').count() === 3, 'Production UI lost connections');
     assert(
       await page.getByRole('button', { name: 'Disconnect Codex' }).count() === 2,
