@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
+jest.mock('undici', () => ({
+  Agent: class TestAgent {},
+  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+}));
+
 describe('streamLlm request options', () => {
   const originalFetch = global.fetch;
   const originalApiKey = process.env.LLM_API_KEY;
@@ -164,6 +169,57 @@ describe('streamLlm request options', () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({
       tools: [tool],
       tool_choice: { type: 'function', function: { name: 'submit_story_ir' } },
+    });
+  });
+
+  it('supports retried non-streaming named tool calls for short structured requests', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    process.env.LLM_MODEL = 'test-model';
+
+    global.fetch = jest.fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{
+          finish_reason: 'tool_calls',
+          message: {
+            content: null,
+            tool_calls: [{
+              type: 'function',
+              function: { name: 'submit_mapping', arguments: '{"mappings":[]}' },
+            }],
+          },
+        }],
+      }), { status: 200 })) as typeof fetch;
+
+    const client = await import('../../../src/lib/agent/llm-client');
+    const completeNonStreaming = (client as unknown as {
+      completeLlmNonStreaming?: typeof client.completeLlm;
+    }).completeLlmNonStreaming;
+    expect(typeof completeNonStreaming).toBe('function');
+    if (!completeNonStreaming) return;
+
+    const tool = {
+      type: 'function',
+      function: {
+        name: 'submit_mapping',
+        description: 'Submit mapping',
+        parameters: { type: 'object' },
+      },
+    } as const;
+    await expect(completeNonStreaming(
+      [{ role: 'user', content: 'map' }],
+      { tools: [tool], toolName: 'submit_mapping', maxTokens: 600 } as never,
+    )).resolves.toBe('{"mappings":[]}');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    const [, init] = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[1];
+    expect(init).toHaveProperty('dispatcher');
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      stream: false,
+      max_tokens: 600,
+      tool_choice: { type: 'function', function: { name: 'submit_mapping' } },
     });
   });
 

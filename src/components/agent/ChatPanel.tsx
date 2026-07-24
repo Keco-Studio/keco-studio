@@ -152,7 +152,7 @@ export function ChatPanel() {
   // Consume a pending design-upload hand-off: open the panel, start a fresh
   // conversation, and auto-send the assembled message to the agent.
   const consumeDesignHandoff = useCallback(() => {
-    if (!currentProjectId) return;
+    if (!currentProjectId || !userProfile?.id) return;
     const handoff = takeDesignHandoff(currentProjectId);
     if (!handoff) return;
     setOpen(true);
@@ -162,7 +162,7 @@ export function ChatPanel() {
       imageUrls: handoff.imageUrls,
       documentExport: handoff.documentExport,
     });
-  }, [currentProjectId, startNewConversation, send]);
+  }, [currentProjectId, userProfile?.id, startNewConversation, send]);
 
   useEffect(() => {
     // Run once on mount/route in case the event fired before this listener
@@ -253,6 +253,7 @@ export function ChatPanel() {
           </button>
           <button
             className={styles.iconButton}
+            disabled={!userProfile?.id}
             onClick={() => {
               setPendingSelectionContext(undefined);
               startNewConversation();
@@ -263,6 +264,7 @@ export function ChatPanel() {
           <button
             className={styles.iconButton}
             data-testid="agent-history"
+            disabled={!userProfile?.id}
             onClick={() => setShowHistory((v) => !v)}
           >
             History

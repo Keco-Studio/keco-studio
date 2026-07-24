@@ -11,10 +11,21 @@
 
 import type { ChatMessage, OpenAITool, StreamChunk } from './types';
 import { ThinkTagParser } from './think-tag-parser';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 const LLM_BASE = (process.env.LLM_API_URL || 'https://api.minimax.io').replace(/\/+$/, '');
 const LLM_API_KEY = process.env.LLM_API_KEY || '';
 const LLM_MODEL = process.env.LLM_MODEL || 'MiniMax-M3';
+let nonStreamingDispatcher: Agent | null = null;
+
+function getNonStreamingDispatcher(): Agent {
+  nonStreamingDispatcher ??= new Agent({
+    connectTimeout: 30_000,
+    headersTimeout: 90_000,
+    bodyTimeout: 90_000,
+  });
+  return nonStreamingDispatcher;
+}
 
 export class LlmError extends Error {
   constructor(message: string) {
@@ -45,19 +56,16 @@ export function isRetriableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
-async function requestStream(
+function buildRequestBody(
   messages: ChatMessage[],
-  options: StreamLlmOptions
-): Promise<Response> {
-  if (!LLM_API_KEY) {
-    throw new LlmError('LLM_API_KEY is not configured.');
-  }
-
+  options: StreamLlmOptions,
+  stream: boolean,
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: LLM_MODEL,
     messages,
     temperature: options.temperature ?? 0.3,
-    stream: true,
+    stream,
   };
   if (options.maxCompletionTokens != null) {
     body.max_completion_tokens = options.maxCompletionTokens;
@@ -72,8 +80,25 @@ async function requestStream(
     body.tool_choice = options.toolName
       ? { type: 'function', function: { name: options.toolName } }
       : 'auto';
-    // v1: one tool call per turn keeps the ReAct loop simple.
     body.parallel_tool_calls = false;
+  }
+  return body;
+}
+
+function reportResponseMetadata(response: Response, options: StreamLlmOptions): void {
+  const requestId = response.headers.get('x-request-id')
+    ?? response.headers.get('request-id')
+    ?? response.headers.get('x-minimax-request-id')
+    ?? undefined;
+  options.onResponseMetadata?.({ status: response.status, ...(requestId ? { requestId } : {}) });
+}
+
+async function requestStream(
+  messages: ChatMessage[],
+  options: StreamLlmOptions
+): Promise<Response> {
+  if (!LLM_API_KEY) {
+    throw new LlmError('LLM_API_KEY is not configured.');
   }
 
   const response = await fetch(`${LLM_BASE}/v1/chat/completions`, {
@@ -82,14 +107,10 @@ async function requestStream(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${LLM_API_KEY}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildRequestBody(messages, options, true)),
     signal: options.signal,
   });
-  const requestId = response.headers.get('x-request-id')
-    ?? response.headers.get('request-id')
-    ?? response.headers.get('x-minimax-request-id')
-    ?? undefined;
-  options.onResponseMetadata?.({ status: response.status, ...(requestId ? { requestId } : {}) });
+  reportResponseMetadata(response, options);
   return response;
 }
 
@@ -239,6 +260,75 @@ export async function completeLlm(
   return text;
 }
 
+export async function completeLlmNonStreaming(
+  messages: ChatMessage[],
+  options: StreamLlmOptions = {},
+): Promise<string> {
+  if (!LLM_API_KEY) throw new LlmError('LLM_API_KEY is not configured.');
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let response: Awaited<ReturnType<typeof undiciFetch>>;
+    try {
+      response = await undiciFetch(`${LLM_BASE}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${LLM_API_KEY}`,
+        },
+        body: JSON.stringify(buildRequestBody(messages, options, false)),
+        signal: options.signal,
+        dispatcher: getNonStreamingDispatcher(),
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      lastError = error;
+      if (attempt === 2) throw error;
+      await sleep(200 * (2 ** attempt));
+      continue;
+    }
+
+    reportResponseMetadata(response as unknown as Response, options);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      const error = new LlmError(`LLM request failed (${response.status}): ${text.slice(0, 500)}`);
+      if (!isRetriableStatus(response.status) || attempt === 2) throw error;
+      lastError = error;
+      await sleep(200 * (2 ** attempt));
+      continue;
+    }
+
+    let parsed: LlmCompletion;
+    try {
+      parsed = await response.json() as LlmCompletion;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 2) throw new LlmError('LLM response was not valid JSON.');
+      await sleep(200 * (2 ** attempt));
+      continue;
+    }
+
+    const choice = parsed.choices?.[0];
+    if (!choice?.message) throw new LlmError('LLM response did not contain a completion.');
+    if (choice.finish_reason === 'abort') {
+      throw new LlmError('LLM aborted before completing the response.');
+    }
+    const content = typeof choice.message.content === 'string' ? choice.message.content.trim() : '';
+    if (options.toolName) {
+      const toolCall = choice.message.tool_calls?.find(
+        (call) => call.function?.name === options.toolName,
+      );
+      const args = toolCall?.function?.arguments;
+      if (typeof args === 'string' && args.trim()) return args;
+      if (isPlainJsonObject(content)) return content;
+      throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    }
+    return content;
+  }
+
+  throw lastError instanceof Error ? lastError : new LlmError('LLM request failed.');
+}
+
 function isPlainJsonObject(value: string): boolean {
   if (!value.startsWith('{') || !value.endsWith('}')) return false;
   try {
@@ -263,4 +353,16 @@ interface LlmChunk {
     finish_reason?: string | null;
   }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}
+
+interface LlmCompletion {
+  choices?: Array<{
+    finish_reason?: string | null;
+    message?: {
+      content?: string | null;
+      tool_calls?: Array<{
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
+  }>;
 }

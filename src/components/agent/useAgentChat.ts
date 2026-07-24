@@ -20,22 +20,20 @@ import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
 import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
 import type { ConversationScope } from '@/lib/agent/types';
+import {
+  bindAgentChatRuntimeToConversation,
+  createAgentChatRuntime,
+  getAgentChatRuntime,
+  getConversationAgentRuntime,
+  getProjectAgentRuntime,
+  selectProjectAgentRuntime,
+  subscribeAgentChatRuntime,
+  updateAgentChatRuntime,
+  type AgentChatRuntime,
+} from './agentChatRuntimeStore';
 
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
-
-/**
- * True when an error is the result of an intentional AbortController.abort()
- * (e.g. the user switched conversations mid-stream). These must not surface as
- * error bubbles. Browsers throw a DOMException named 'AbortError'; some emit a
- * plain Error with the message "signal is aborted without reason".
- */
-const isAbortError = (e: unknown): boolean => {
-  if (e instanceof DOMException && e.name === 'AbortError') return true;
-  const err = e as { name?: string; message?: string } | null;
-  if (err?.name === 'AbortError') return true;
-  return typeof err?.message === 'string' && err.message.toLowerCase().includes('aborted');
-};
 
 interface ParsedSSE {
   type: string;
@@ -107,44 +105,55 @@ export function useAgentChat(ctx: SendContext) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const [items, setItems] = useState<ChatItem[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamActivity, setStreamActivity] = useState<StreamActivity>('connecting');
-  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
-  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
-  const [autoExecute, setAutoExecuteState] = useState(false);
-  // Scope the loaded conversation is frozen to (undefined = new/legacy).
-  const [activeScope, setActiveScope] = useState<ConversationScope | undefined>(undefined);
-  const conversationIdRef = useRef<string | undefined>(undefined);
-  const abortRef = useRef<AbortController | null>(null);
-  const streamingAssistantIdRef = useRef<string | null>(null);
-  const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
-  const projectIdRef = useRef(ctx.projectId);
+  const initialRuntimeRef = useRef<AgentChatRuntime | null>(null);
+  if (!initialRuntimeRef.current) {
+    initialRuntimeRef.current = createAgentChatRuntime({
+      userId: ctx.userId,
+      projectId: ctx.projectId,
+    });
+  }
+  const [runtime, setRuntime] = useState<AgentChatRuntime>(initialRuntimeRef.current);
+  const activeRuntimeKeyRef = useRef(runtime.key);
+  const projectIdRef = useRef<string | undefined>(undefined);
+  const restoreEpochRef = useRef(0);
 
-  const persistLastConversation = useCallback(
-    (id: string | undefined) => {
-      if (!ctx.userId || !ctx.projectId || !id) return;
-      setLastConversation(ctx.userId, ctx.projectId, id);
-    },
-    [ctx.userId, ctx.projectId]
-  );
-
-  const setConv = useCallback(
-    (id: string | undefined, options?: { persist?: boolean }) => {
-      conversationIdRef.current = id;
-      setConversationId(id);
-      if (id && options?.persist !== false) persistLastConversation(id);
-    },
-    [persistLastConversation]
-  );
-
-  const appendItem = useCallback((item: ChatItem) => {
-    setItems((prev) => [...prev, item]);
+  const syncRuntime = useCallback((next: AgentChatRuntime) => {
+    setRuntime(next);
   }, []);
 
-  const updateItem = useCallback((id: string, patch: Partial<ChatItem>) => {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  const activateRuntime = useCallback(
+    (next: AgentChatRuntime) => {
+      activeRuntimeKeyRef.current = next.key;
+      if (ctx.projectId) selectProjectAgentRuntime(ctx.userId, ctx.projectId, next.key);
+      syncRuntime(next);
+    },
+    [ctx.userId, ctx.projectId, syncRuntime]
+  );
+
+  useEffect(
+    () =>
+      subscribeAgentChatRuntime((key) => {
+        if (key !== activeRuntimeKeyRef.current) return;
+        const next = getAgentChatRuntime(key);
+        if (next) syncRuntime(next);
+      }),
+    [syncRuntime]
+  );
+
+  const appendItem = useCallback((runtimeKey: string, item: ChatItem) => {
+    updateAgentChatRuntime(runtimeKey, (current) => ({ items: [...current.items, item] }));
   }, []);
+
+  const updateItem = useCallback(
+    (runtimeKey: string, id: string, patch: Partial<ChatItem>) => {
+      updateAgentChatRuntime(runtimeKey, (current) => ({
+        items: current.items.map((item) =>
+          item.id === id ? { ...item, ...patch } : item
+        ),
+      }));
+    },
+    []
+  );
 
   const invalidateCaches = useCallback(
     async (invalidations: AgentInvalidation[]) => {
@@ -159,28 +168,31 @@ export function useAgentChat(ctx: SendContext) {
   }, [supabase]);
 
   const fetchConversationMeta = useCallback(
-    async (id: string): Promise<{ autoExecute: boolean; scope?: ConversationScope }> => {
+    async (
+      id: string,
+      fallbackAutoExecute: boolean
+    ): Promise<{ autoExecute: boolean; scope?: ConversationScope }> => {
       try {
         const token = await getToken();
         const res = await fetch(`/api/agent-chat/conversations/${id}/meta`, {
           credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
-        if (!res.ok) return { autoExecute };
+        if (!res.ok) return { autoExecute: fallbackAutoExecute };
         const { meta } = (await res.json()) as {
           meta?: { autoExecute?: boolean; scope?: ConversationScope };
         };
         return { autoExecute: meta?.autoExecute === true, scope: meta?.scope };
       } catch {
-        return { autoExecute };
+        return { autoExecute: fallbackAutoExecute };
       }
     },
-    [getToken, autoExecute]
+    [getToken]
   );
 
   const applyAutoExecute = useCallback(
-    (value: boolean) => {
-      setAutoExecuteState(value);
+    (runtimeKey: string, value: boolean) => {
+      updateAgentChatRuntime(runtimeKey, { autoExecute: value });
       if (ctx.userId) {
         setAutoExecutePreference(ctx.userId, value);
       }
@@ -191,17 +203,41 @@ export function useAgentChat(ctx: SendContext) {
   /**
    * Consume an SSE stream from a Response, mutating chat state as events arrive.
    */
-  const beginStreamActivity = useCallback((activity: StreamActivity = 'connecting') => {
-    setStreamActivity(activity);
-    setStreamStartedAt(Date.now());
+  const beginStreamActivity = useCallback((runtimeKey: string, activity: StreamActivity = 'connecting') => {
+    updateAgentChatRuntime(runtimeKey, {
+      streamActivity: activity,
+      streamStartedAt: Date.now(),
+    });
   }, []);
 
   const consumeStream = useCallback(
-    async (response: Response) => {
-      beginStreamActivity('connecting');
+    async (
+      response: Response,
+      initialRuntimeKey: string,
+      origin: { userId?: string; projectId: string },
+      onBound: (key: string) => void
+    ) => {
+      let runtimeKey = initialRuntimeKey;
+      beginStreamActivity(runtimeKey, 'connecting');
 
       const convHeader = response.headers.get('X-Conversation-Id');
-      if (convHeader) setConv(convHeader);
+      if (convHeader) {
+        const bound = bindAgentChatRuntimeToConversation(runtimeKey, convHeader);
+        runtimeKey = bound.key;
+        onBound(runtimeKey);
+        if (activeRuntimeKeyRef.current === initialRuntimeKey) {
+          activeRuntimeKeyRef.current = runtimeKey;
+          syncRuntime(bound);
+        }
+        const selectedForOrigin = getProjectAgentRuntime(origin.userId, origin.projectId);
+        if (
+          origin.userId &&
+          origin.projectId &&
+          selectedForOrigin?.key === runtimeKey
+        ) {
+          setLastConversation(origin.userId, origin.projectId, convHeader);
+        }
+      }
 
       const reader = response.body?.getReader();
       if (!reader) return;
@@ -215,9 +251,8 @@ export function useAgentChat(ctx: SendContext) {
       const ensureAssistantBubble = () => {
         if (!assistantId) {
           assistantId = nextId();
-          streamingAssistantIdRef.current = assistantId;
-          setStreamingAssistantId(assistantId);
-          appendItem({ id: assistantId, role: 'assistant' });
+          updateAgentChatRuntime(runtimeKey, { streamingAssistantId: assistantId });
+          appendItem(runtimeKey, { id: assistantId, role: 'assistant' });
         }
         return assistantId;
       };
@@ -225,46 +260,47 @@ export function useAgentChat(ctx: SendContext) {
       const handleEvent = (event: ParsedSSE) => {
         switch (event.type) {
           case 'reasoning_delta': {
-            setStreamActivity('thinking');
+            updateAgentChatRuntime(runtimeKey, { streamActivity: 'thinking' });
             const delta = String(event.content ?? '');
             const id = ensureAssistantBubble();
             const now = Date.now();
-            setItems((prev) =>
-              prev.map((it) => {
+            updateAgentChatRuntime(runtimeKey, (current) => ({
+              items: current.items.map((it) => {
                 if (it.id !== id) return it;
                 return {
                   ...it,
                   reasoning: (it.reasoning ?? '') + delta,
                   reasoningStartedAt: it.reasoningStartedAt ?? now,
                 };
-              })
-            );
+              }),
+            }));
             break;
           }
           case 'text_delta': {
-            setStreamActivity('writing');
+            updateAgentChatRuntime(runtimeKey, { streamActivity: 'writing' });
             const delta = String(event.content ?? '');
             const id = ensureAssistantBubble();
             const now = Date.now();
-            setItems((prev) =>
-              prev.map((it) => {
+            updateAgentChatRuntime(runtimeKey, (current) => ({
+              items: current.items.map((it) => {
                 if (it.id !== id) return it;
                 const patch: Partial<ChatItem> = { text: (it.text ?? '') + delta };
                 if (it.reasoning && !it.reasoningEndedAt) {
                   patch.reasoningEndedAt = now;
                 }
                 return { ...it, ...patch };
-              })
-            );
+              }),
+            }));
             break;
           }
           case 'tool_call_start': {
-            setStreamActivity('tool');
+            updateAgentChatRuntime(runtimeKey, {
+              streamActivity: 'tool',
+              streamingAssistantId: null,
+            });
             assistantId = null;
-            streamingAssistantIdRef.current = null;
-            setStreamingAssistantId(null);
             toolCallId = nextId();
-            appendItem({
+            appendItem(runtimeKey, {
               id: toolCallId,
               role: 'tool',
               toolCall: { tool: String(event.tool ?? ''), args: String(event.args ?? ''), status: 'running' },
@@ -272,31 +308,31 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'tool_call_end': {
-            setStreamActivity('processing');
+            updateAgentChatRuntime(runtimeKey, { streamActivity: 'processing' });
             break;
           }
           case 'tool_progress': {
-            setStreamActivity('tool');
+            updateAgentChatRuntime(runtimeKey, { streamActivity: 'tool' });
             const progress = event.progress as { message?: unknown } | undefined;
             const progressMessage = String(progress?.message ?? '').trim();
             if (toolCallId && progressMessage) {
-              setItems((prev) =>
-                prev.map((item) =>
+              updateAgentChatRuntime(runtimeKey, (current) => ({
+                items: current.items.map((item) =>
                   item.id === toolCallId && item.toolCall
                     ? {
                         ...item,
                         toolCall: { ...item.toolCall, progressMessage },
                       }
                     : item
-                )
-              );
+                ),
+              }));
             }
             break;
           }
           case 'tool_result': {
             if (toolCallId) {
               const succeeded = event.success !== false;
-              updateItem(toolCallId, {
+              updateItem(runtimeKey, toolCallId, {
                 toolCall: {
                   tool: String(event.tool ?? ''),
                   status: succeeded ? 'success' : 'failure',
@@ -310,9 +346,8 @@ export function useAgentChat(ctx: SendContext) {
           }
           case 'confirmation_request': {
             assistantId = null;
-            streamingAssistantIdRef.current = null;
-            setStreamingAssistantId(null);
-            appendItem({
+            updateAgentChatRuntime(runtimeKey, { streamingAssistantId: null });
+            appendItem(runtimeKey, {
               id: nextId(),
               role: 'confirmation',
               confirmation: {
@@ -331,9 +366,12 @@ export function useAgentChat(ctx: SendContext) {
           }
           case 'error': {
             assistantId = null;
-            streamingAssistantIdRef.current = null;
-            setStreamingAssistantId(null);
-            appendItem({ id: nextId(), role: 'error', error: String(event.message ?? 'Unknown error') });
+            updateAgentChatRuntime(runtimeKey, { streamingAssistantId: null });
+            appendItem(runtimeKey, {
+              id: nextId(),
+              role: 'error',
+              error: String(event.message ?? 'Unknown error'),
+            });
             break;
           }
           case 'done':
@@ -345,20 +383,19 @@ export function useAgentChat(ctx: SendContext) {
       };
 
       const finalizeStreamingAssistant = () => {
-        const id = streamingAssistantIdRef.current;
+        const id = getAgentChatRuntime(runtimeKey)?.streamingAssistantId;
         if (!id) return;
         const now = Date.now();
-        setItems((prev) =>
-          prev.map((it) => {
+        updateAgentChatRuntime(runtimeKey, (current) => ({
+          items: current.items.map((it) => {
             if (it.id !== id || !it.reasoning) return it;
             const patch: Partial<ChatItem> = {};
             if (!it.reasoningStartedAt) patch.reasoningStartedAt = now;
             if (!it.reasoningEndedAt) patch.reasoningEndedAt = now;
             return Object.keys(patch).length ? { ...it, ...patch } : it;
-          })
-        );
-        streamingAssistantIdRef.current = null;
-        setStreamingAssistantId(null);
+          }),
+          streamingAssistantId: null,
+        }));
       };
 
       while (true) {
@@ -380,31 +417,43 @@ export function useAgentChat(ctx: SendContext) {
       }
       finalizeStreamingAssistant();
       if (!receivedDone) {
-        appendItem({
+        appendItem(runtimeKey, {
           id: nextId(),
           role: 'error',
           error: 'Connection closed before the agent finished. Send a follow-up to continue.',
         });
       }
     },
-    [appendItem, updateItem, invalidateCaches, setConv, beginStreamActivity]
+    [appendItem, updateItem, invalidateCaches, beginStreamActivity, syncRuntime]
   );
 
   const send = useCallback(
     async (message: string, opts?: SendOptions) => {
-      if (isStreaming || !message.trim()) return;
+      if (!ctx.userId) return;
+      const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
+      if (
+        !selectedRuntime ||
+        selectedRuntime.isLoading ||
+        selectedRuntime.isStreaming ||
+        !message.trim()
+      ) return;
+      let requestRuntimeKey = selectedRuntime.key;
       const display = deriveUserDisplay(message, opts?.imageUrls, opts?.selectionContext);
-      appendItem({ id: nextId(), role: 'user', text: display.text, attachments: display.attachments });
-      setIsStreaming(true);
-      beginStreamActivity('connecting');
-      abortRef.current = new AbortController();
+      appendItem(requestRuntimeKey, {
+        id: nextId(),
+        role: 'user',
+        text: display.text,
+        attachments: display.attachments,
+      });
+      updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
+      beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
         const token = await getToken();
         // A new conversation snapshots its scope from the current navigation, so
         // it sends the full live context. An existing conversation is frozen to
         // its bound scope (server-side), so we send only the message — the live
         // navigation must not re-target it.
-        const isNew = !conversationIdRef.current;
+        const isNew = !selectedRuntime.conversationId;
         const requestBody = isNew
           ? {
               projectId: ctx.projectId,
@@ -413,7 +462,7 @@ export function useAgentChat(ctx: SendContext) {
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,
               documentExport: opts?.documentExport,
-              autoExecute,
+              autoExecute: selectedRuntime.autoExecute,
               currentFolderId: ctx.currentFolderId,
               currentFolderName: ctx.currentFolderName,
               currentLibraryId: ctx.currentLibraryId,
@@ -421,7 +470,7 @@ export function useAgentChat(ctx: SendContext) {
               currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
             }
           : {
-              conversationId: conversationIdRef.current,
+              conversationId: selectedRuntime.conversationId,
               currentDocumentId: ctx.currentDocumentId,
               message,
               imageUrls: opts?.imageUrls,
@@ -435,34 +484,51 @@ export function useAgentChat(ctx: SendContext) {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(requestBody),
-          signal: abortRef.current.signal,
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
-          appendItem({ id: nextId(), role: 'error', error: err.error || `Request failed (${response.status})` });
+          appendItem(requestRuntimeKey, {
+            id: nextId(),
+            role: 'error',
+            error: err.error || `Request failed (${response.status})`,
+          });
           return;
         }
-        await consumeStream(response);
+        await consumeStream(
+          response,
+          requestRuntimeKey,
+          { userId: ctx.userId, projectId: ctx.projectId },
+          (boundKey) => {
+            requestRuntimeKey = boundKey;
+          }
+        );
       } catch (e) {
-        // Intentional abort (conversation switch / new chat) is not a failure.
-        if (!isAbortError(e)) {
-          appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
-        }
+        appendItem(requestRuntimeKey, {
+          id: nextId(),
+          role: 'error',
+          error: (e as Error).message || 'Network error',
+        });
       } finally {
-        setIsStreaming(false);
-        setStreamStartedAt(null);
+        updateAgentChatRuntime(requestRuntimeKey, {
+          isStreaming: false,
+          streamStartedAt: null,
+          streamingAssistantId: null,
+        });
       }
     },
-    [isStreaming, appendItem, getToken, ctx, consumeStream, beginStreamActivity, autoExecute]
+    [appendItem, getToken, ctx, consumeStream, beginStreamActivity]
   );
 
   const setAutoExecute = useCallback(
     async (value: boolean) => {
-      if (isStreaming) return;
-      const prev = autoExecute;
-      applyAutoExecute(value);
-      if (!conversationIdRef.current) {
-        appendItem({
+      if (!ctx.userId) return;
+      const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
+      if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
+      const runtimeKey = selectedRuntime.key;
+      const prev = selectedRuntime.autoExecute;
+      applyAutoExecute(runtimeKey, value);
+      if (!selectedRuntime.conversationId) {
+        appendItem(runtimeKey, {
           id: nextId(),
           role: 'assistant',
           text: value
@@ -473,7 +539,7 @@ export function useAgentChat(ctx: SendContext) {
       }
       try {
         const token = await getToken();
-        const res = await fetch(`/api/agent-chat/conversations/${conversationIdRef.current}/meta`, {
+        const res = await fetch(`/api/agent-chat/conversations/${selectedRuntime.conversationId}/meta`, {
           method: 'PATCH',
           credentials: 'include',
           headers: {
@@ -483,12 +549,16 @@ export function useAgentChat(ctx: SendContext) {
           body: JSON.stringify({ autoExecute: value }),
         });
         if (!res.ok) {
-          applyAutoExecute(prev);
+          applyAutoExecute(runtimeKey, prev);
           const err = await res.json().catch(() => ({ error: 'Failed to update mode' }));
-          appendItem({ id: nextId(), role: 'error', error: err.error || 'Failed to update mode' });
+          appendItem(runtimeKey, {
+            id: nextId(),
+            role: 'error',
+            error: err.error || 'Failed to update mode',
+          });
           return;
         }
-        appendItem({
+        appendItem(runtimeKey, {
           id: nextId(),
           role: 'assistant',
           text: value
@@ -496,26 +566,32 @@ export function useAgentChat(ctx: SendContext) {
             : 'Mode: Confirm — write operations will require approval.',
         });
       } catch (e) {
-        applyAutoExecute(prev);
-        appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Failed to update mode' });
+        applyAutoExecute(runtimeKey, prev);
+        appendItem(runtimeKey, {
+          id: nextId(),
+          role: 'error',
+          error: (e as Error).message || 'Failed to update mode',
+        });
       }
     },
-    [isStreaming, autoExecute, applyAutoExecute, getToken, appendItem]
+    [ctx.userId, applyAutoExecute, getToken, appendItem]
   );
 
   const confirm = useCallback(
     async (actionId: string, decision: 'approve' | 'reject') => {
-      if (isStreaming) return;
-      setItems((prev) =>
-        prev.map((it) =>
+      if (!ctx.userId) return;
+      const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
+      if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
+      let requestRuntimeKey = selectedRuntime.key;
+      updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+        items: current.items.map((it) =>
           it.confirmation?.actionId === actionId
             ? { ...it, confirmation: { ...it.confirmation, resolved: decision === 'approve' ? 'approved' : 'rejected' } }
             : it
-        )
-      );
-      setIsStreaming(true);
-      beginStreamActivity('connecting');
-      abortRef.current = new AbortController();
+        ),
+      }));
+      updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
+      beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
         const token = await getToken();
         const response = await fetch('/api/agent-chat/confirm', {
@@ -535,43 +611,55 @@ export function useAgentChat(ctx: SendContext) {
             currentLibraryName: ctx.currentLibraryName,
             currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
           }),
-          signal: abortRef.current.signal,
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
-          appendItem({ id: nextId(), role: 'error', error: err.error || `Request failed (${response.status})` });
+          appendItem(requestRuntimeKey, {
+            id: nextId(),
+            role: 'error',
+            error: err.error || `Request failed (${response.status})`,
+          });
           return;
         }
-        await consumeStream(response);
+        await consumeStream(
+          response,
+          requestRuntimeKey,
+          { userId: ctx.userId, projectId: ctx.projectId },
+          (boundKey) => {
+            requestRuntimeKey = boundKey;
+          }
+        );
       } catch (e) {
-        // Intentional abort (conversation switch / new chat) is not a failure.
-        if (!isAbortError(e)) {
-          appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
-        }
+        appendItem(requestRuntimeKey, {
+          id: nextId(),
+          role: 'error',
+          error: (e as Error).message || 'Network error',
+        });
       } finally {
-        setIsStreaming(false);
-        setStreamStartedAt(null);
+        updateAgentChatRuntime(requestRuntimeKey, {
+          isStreaming: false,
+          streamStartedAt: null,
+          streamingAssistantId: null,
+        });
       }
     },
-    [isStreaming, getToken, ctx, consumeStream, appendItem, beginStreamActivity]
+    [getToken, ctx, consumeStream, appendItem, beginStreamActivity]
   );
 
   const resetToEmpty = useCallback(() => {
-    abortRef.current?.abort();
-    conversationIdRef.current = undefined;
-    setConversationId(undefined);
-    setItems([]);
-    setActiveScope(undefined);
-    setIsStreaming(false);
-    setStreamStartedAt(null);
-    streamingAssistantIdRef.current = null;
-    setStreamingAssistantId(null);
-  }, []);
+    const next = createAgentChatRuntime({
+      userId: ctx.userId,
+      projectId: ctx.projectId,
+      autoExecute: ctx.userId ? getAutoExecutePreference(ctx.userId) : false,
+    });
+    activateRuntime(next);
+    return next;
+  }, [activateRuntime, ctx.projectId, ctx.userId]);
 
   const startNewConversation = useCallback(() => {
+    restoreEpochRef.current += 1;
+    if (!ctx.userId) return;
     resetToEmpty();
-    // Anonymous users must default to manual confirm too — never hardcode auto.
-    setAutoExecuteState(ctx.userId ? getAutoExecutePreference(ctx.userId) : false);
     if (ctx.userId && ctx.projectId) {
       clearLastConversation(ctx.userId, ctx.projectId);
     }
@@ -579,9 +667,27 @@ export function useAgentChat(ctx: SendContext) {
 
   const loadConversation = useCallback(
     async (id: string, options?: { persist?: boolean }) => {
-      abortRef.current?.abort();
-      setConv(id, { persist: options?.persist });
-      setItems([]);
+      restoreEpochRef.current += 1;
+      if (!ctx.userId) return false;
+      const existing = getConversationAgentRuntime(ctx.userId, id);
+      const target = existing ?? createAgentChatRuntime({
+        userId: ctx.userId,
+        projectId: ctx.projectId,
+        conversationId: id,
+      });
+      if (existing?.isLoading) {
+        activateRuntime(existing);
+        return true;
+      }
+      if (existing?.isStreaming) {
+        activateRuntime(existing);
+        if (options?.persist !== false && ctx.userId && ctx.projectId) {
+          setLastConversation(ctx.userId, ctx.projectId, id);
+        }
+        return true;
+      }
+      updateAgentChatRuntime(target.key, { isLoading: true });
+      activateRuntime(getAgentChatRuntime(target.key) ?? target);
       try {
         const token = await getToken();
         const res = await fetch(`/api/agent-chat/conversations/${id}/messages?limit=200`, {
@@ -592,31 +698,50 @@ export function useAgentChat(ctx: SendContext) {
           if (ctx.userId && ctx.projectId) {
             clearLastConversation(ctx.userId, ctx.projectId);
           }
-          resetToEmpty();
+          if (activeRuntimeKeyRef.current === target.key) resetToEmpty();
           return false;
         }
         if (!res.ok) return false;
         const { messages } = (await res.json()) as {
           messages: Array<{ id: string; role: string; content: Record<string, unknown> }>;
         };
-        setItems(mapHistoryMessagesToChatItems(messages));
-        const resolvedMeta = await fetchConversationMeta(id);
-        setAutoExecuteState(resolvedMeta.autoExecute);
-        setActiveScope(resolvedMeta.scope);
+        const resolvedMeta = await fetchConversationMeta(id, target.autoExecute);
+        updateAgentChatRuntime(target.key, (current) => ({
+          ...(!current.isStreaming ? { items: mapHistoryMessagesToChatItems(messages) } : {}),
+          autoExecute: resolvedMeta.autoExecute,
+          activeScope: resolvedMeta.scope,
+        }));
         if (options?.persist !== false && ctx.userId && ctx.projectId) {
           setLastConversation(ctx.userId, ctx.projectId, id);
         }
         return true;
       } catch {
         return false;
+      } finally {
+        updateAgentChatRuntime(target.key, { isLoading: false });
       }
     },
-    [getToken, setConv, ctx.userId, ctx.projectId, resetToEmpty, fetchConversationMeta]
+    [getToken, ctx.userId, ctx.projectId, resetToEmpty, fetchConversationMeta, activateRuntime]
   );
 
   const restoreProjectConversation = useCallback(async () => {
-    if (!ctx.userId || !ctx.projectId) {
+    const restoreEpoch = ++restoreEpochRef.current;
+    if (!ctx.projectId) {
       resetToEmpty();
+      return;
+    }
+    if (!ctx.userId) {
+      const anonymousRuntime = getProjectAgentRuntime(undefined, ctx.projectId);
+      if (anonymousRuntime) {
+        activateRuntime(anonymousRuntime);
+      } else {
+        resetToEmpty();
+      }
+      return;
+    }
+    const selectedRuntime = getProjectAgentRuntime(ctx.userId, ctx.projectId);
+    if (selectedRuntime) {
+      activateRuntime(selectedRuntime);
       return;
     }
     // A pending design-upload hand-off will drive a fresh conversation; skip the
@@ -626,15 +751,17 @@ export function useAgentChat(ctx: SendContext) {
       return;
     }
     const { getLastConversationMap } = await import('./agentChatStorage');
+    if (restoreEpoch !== restoreEpochRef.current) return;
     const map = getLastConversationMap(ctx.userId);
     const savedId = map[ctx.projectId];
     if (savedId) {
       const ok = await loadConversation(savedId, { persist: false });
       if (!ok) return;
     } else {
+      if (restoreEpoch !== restoreEpochRef.current) return;
       resetToEmpty();
     }
-  }, [ctx.userId, ctx.projectId, loadConversation, resetToEmpty]);
+  }, [ctx.userId, ctx.projectId, loadConversation, resetToEmpty, activateRuntime]);
 
   useEffect(() => {
     if (projectIdRef.current === ctx.projectId) return;
@@ -651,25 +778,32 @@ export function useAgentChat(ctx: SendContext) {
 
   useEffect(() => {
     if (!ctx.userId) return;
-    setAutoExecuteState(getAutoExecutePreference(ctx.userId));
+    const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
+    if (selectedRuntime && !selectedRuntime.conversationId && !selectedRuntime.isStreaming) {
+      updateAgentChatRuntime(selectedRuntime.key, {
+        autoExecute: getAutoExecutePreference(ctx.userId),
+      });
+    }
   }, [ctx.userId]);
 
   const appendNote = useCallback(
     (text: string) => {
-      appendItem({ id: nextId(), role: 'assistant', text });
+      appendItem(activeRuntimeKeyRef.current, { id: nextId(), role: 'assistant', text });
     },
     [appendItem]
   );
 
+  const runtimeMatchesUser = runtime.userId === ctx.userId;
+
   return {
-    items,
-    isStreaming,
-    streamActivity,
-    streamStartedAt,
-    streamingAssistantId,
-    conversationId,
-    autoExecute,
-    activeScope,
+    items: runtimeMatchesUser ? runtime.items : [],
+    isStreaming: ctx.userId && runtimeMatchesUser ? runtime.isLoading || runtime.isStreaming : true,
+    streamActivity: runtime.streamActivity,
+    streamStartedAt: runtimeMatchesUser ? runtime.streamStartedAt : null,
+    streamingAssistantId: runtimeMatchesUser ? runtime.streamingAssistantId : null,
+    conversationId: runtimeMatchesUser ? runtime.conversationId : undefined,
+    autoExecute: runtimeMatchesUser ? runtime.autoExecute : false,
+    activeScope: runtimeMatchesUser ? runtime.activeScope : undefined,
     send,
     confirm,
     setAutoExecute,

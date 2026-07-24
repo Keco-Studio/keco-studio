@@ -58,15 +58,19 @@ describe('document-derived sidebar tree', () => {
     jest.clearAllMocks();
   });
 
-  it('aligns derived libraries with the parent document left edge (no extra tree indent)', () => {
+  it('indents derived libraries one level under the parent document (keeps tree indent)', () => {
     const css = readFileSync(
       resolve(__dirname, '../../../src/components/layout/Sidebar.module.css'),
       'utf8'
     );
+    expect(css).toMatch(/keep ant-tree indent so children sit one\n \* level deeper than the parent/);
+    // Switcher is hidden for derived libs; indent must NOT be forcibly removed.
     expect(css).toMatch(
+      /\.documentChildTreeNode\s*>\s*:global\(\.ant-tree-switcher\)[\s\S]*?display:\s*none/
+    );
+    expect(css).not.toMatch(
       /\.documentChildTreeNode\s*>\s*:global\(\.ant-tree-indent\)[\s\S]*?display:\s*none/
     );
-    expect(css).toMatch(/share the same\n \* left edge as the parent document/);
   });
 
   it('groups derived libraries beneath their document and excludes them from roots', () => {
