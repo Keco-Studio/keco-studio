@@ -9,6 +9,14 @@ import {
 import { handleProtocolRequest } from "./server.ts";
 import { createMcpRequestContext, type McpRequestContext } from "./context.ts";
 import { MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES } from "./limits.ts";
+import {
+  buildProtectedResourceMetadata,
+  buildProtectedResourceMetadataUrl,
+  InvalidMcpMetadataConfigError,
+  InvalidMcpMetadataRequestError,
+  isProtectedResourceMetadataPath,
+  parseProtectedResourceMetadataProjectId,
+} from "./oauth-metadata.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -61,7 +69,7 @@ export type McpHttpDependencies = {
     projectId: string,
   ) => Promise<ProjectAuthorization>;
   authorizeAccount?: (request: Request) => Promise<AccountAuthorization>;
-  kecoPublicUrl?: string;
+  supabaseUrl?: string;
   createContext?: (
     request: Request,
     authContext: ProjectAuthContext | AccountAuthContext,
@@ -122,26 +130,6 @@ function tooLargeByContentLength(request: Request): boolean {
   return Number.isFinite(declaredLength) && declaredLength >= MAX_REQUEST_BYTES;
 }
 
-function normalizePublicOrigin(value: string | undefined): string | null {
-  if (!value || value.trim() !== value) return null;
-  try {
-    const parsed = new URL(value);
-    if (
-      (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
-      parsed.username ||
-      parsed.password ||
-      (parsed.pathname !== "" && parsed.pathname !== "/") ||
-      parsed.search ||
-      parsed.hash
-    ) {
-      return null;
-    }
-    return parsed.origin;
-  } catch {
-    return null;
-  }
-}
-
 async function boundedProtocolResponse(response: Response): Promise<Response | null> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared >= MAX_RESPONSE_BYTES) {
@@ -200,7 +188,34 @@ export async function handleMcpHttpRequest(
   if (request.method === "OPTIONS") {
     return withCors(new Response(null, { status: 204 }));
   }
-  const endpoint = extractMcpEndpoint(new URL(request.url));
+  const url = new URL(request.url);
+  if (request.method === "GET" && isProtectedResourceMetadataPath(url)) {
+    try {
+      const projectId = parseProtectedResourceMetadataProjectId(url);
+      const metadata = buildProtectedResourceMetadata(
+        deps.supabaseUrl ?? Deno.env.get("SUPABASE_URL"),
+        projectId,
+      );
+      return withCors(Response.json(metadata, {
+        headers: { "cache-control": "public, max-age=300" },
+      }));
+    } catch (error) {
+      if (error instanceof InvalidMcpMetadataRequestError) {
+        return withCors(Response.json({ error: "Invalid MCP metadata request." }, {
+          status: 400,
+        }));
+      }
+      if (error instanceof InvalidMcpMetadataConfigError) {
+        return withCors(Response.json({ error: "MCP metadata is not configured." }, {
+          status: 500,
+        }));
+      }
+      return withCors(Response.json({ error: "MCP metadata is unavailable." }, {
+        status: 500,
+      }));
+    }
+  }
+  const endpoint = extractMcpEndpoint(url);
   if (!endpoint) {
     return withCors(
       Response.json({ error: "Invalid MCP project endpoint." }, {
@@ -254,17 +269,17 @@ export async function handleMcpHttpRequest(
     }));
   }
   if (authorization.status === "unauthenticated") {
-    const kecoPublicUrl = normalizePublicOrigin(
-      deps.kecoPublicUrl ?? Deno.env.get("KECO_PUBLIC_URL"),
-    );
-    if (!kecoPublicUrl) {
+    let metadata: string;
+    try {
+      metadata = buildProtectedResourceMetadataUrl(
+        deps.supabaseUrl ?? Deno.env.get("SUPABASE_URL"),
+        endpoint.mode === "project" ? endpoint.projectId : null,
+      );
+    } catch {
       return withCors(Response.json({ error: "MCP authentication is unavailable." }, {
         status: 500,
       }));
     }
-    const metadata = endpoint.mode === "account"
-      ? `${kecoPublicUrl}/api/mcp/oauth-protected-resource`
-      : `${kecoPublicUrl}/api/mcp/oauth-protected-resource?project_id=${endpoint.projectId}`;
     return withCors(Response.json({ error: "Authentication required." }, {
       status: 401,
       headers: { "www-authenticate": `Bearer resource_metadata="${metadata}"` },
