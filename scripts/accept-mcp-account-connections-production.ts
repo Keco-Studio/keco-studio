@@ -231,7 +231,11 @@ async function assertMcpOperational(accessToken: string, message: string) {
   const payload = await response.json() as {
     jsonrpc?: string;
     id?: number;
-    result?: Record<string, unknown>;
+    result?: {
+      protocolVersion?: string;
+      capabilities?: Record<string, unknown>;
+      serverInfo?: { name?: string };
+    };
     error?: unknown;
   };
   assert(
@@ -239,7 +243,16 @@ async function assertMcpOperational(accessToken: string, message: string) {
       && payload.id === 1
       && typeof payload.result === 'object'
       && payload.result !== null
+      && !Array.isArray(payload.result)
       && !payload.error,
+    message
+  );
+  assert(
+    payload.result.protocolVersion === '2025-03-26'
+      && typeof payload.result.capabilities === 'object'
+      && payload.result.capabilities !== null
+      && !Array.isArray(payload.result.capabilities)
+      && payload.result.serverInfo?.name === 'keco-mcp',
     message
   );
 }
@@ -485,21 +498,31 @@ async function main() {
       !(await refreshToken(supabaseUrl, codexClient.client_id, secondCodex.refreshToken)).ok,
       'Disconnected refresh token remained valid'
     );
+    const originalSiblingUser = await anonClient(supabaseUrl, anonKey).auth.getUser(firstCodex.accessToken);
+    assert(
+      !originalSiblingUser.error && originalSiblingUser.data.user?.id === userIds[0],
+      'Sibling access token was revoked'
+    );
     const refreshedCodex = await refreshValidTokens(
       supabaseUrl,
       codexClient.client_id,
       firstCodex.refreshToken
     );
     const siblingUser = await anonClient(supabaseUrl, anonKey).auth.getUser(refreshedCodex.accessToken);
-    assert(!siblingUser.error && siblingUser.data.user?.id === userIds[0], 'Sibling access token was revoked');
+    assert(!siblingUser.error && siblingUser.data.user?.id === userIds[0], 'Sibling refreshed token is invalid');
     await assertMcpOperational(refreshedCodex.accessToken, 'Sibling MCP connection stopped working');
+    const originalClaudeUser = await anonClient(supabaseUrl, anonKey).auth.getUser(claude.accessToken);
+    assert(
+      !originalClaudeUser.error && originalClaudeUser.data.user?.id === userIds[0],
+      'Claude access token was revoked'
+    );
     const refreshedClaude = await refreshValidTokens(
       supabaseUrl,
       claudeClient.client_id,
       claude.refreshToken
     );
     const claudeUser = await anonClient(supabaseUrl, anonKey).auth.getUser(refreshedClaude.accessToken);
-    assert(!claudeUser.error && claudeUser.data.user?.id === userIds[0], 'Claude access token was revoked');
+    assert(!claudeUser.error && claudeUser.data.user?.id === userIds[0], 'Claude refreshed token is invalid');
     await assertMcpOperational(refreshedClaude.accessToken, 'Claude MCP connection stopped working');
     assert((await callMcp(secondCodex.accessToken)).status === 401, 'Revoked MCP token still worked');
     assert((await listConnections(outsider.accessToken)).connections.length === 1, 'Outsider changed unexpectedly');
