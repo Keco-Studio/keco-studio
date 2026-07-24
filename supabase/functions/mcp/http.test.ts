@@ -136,6 +136,84 @@ Deno.test("extractMcpEndpoint recognizes only exact account and project routes",
   }
 });
 
+Deno.test("serves account OAuth metadata before authorization", async () => {
+  let authorizationCalls = 0;
+  let protocolCalls = 0;
+  const response = await handleMcpHttpRequest(
+    new Request("https://x/functions/v1/mcp/oauth-protected-resource"),
+    {
+      supabaseUrl: "https://abc.supabase.co",
+      authorizeAccount: async () => {
+        authorizationCalls += 1;
+        return accountUnauthenticated();
+      },
+      handleProtocol: async () => {
+        protocolCalls += 1;
+        return Response.json({});
+      },
+    },
+  );
+  assertEquals(response.status, 200);
+  assertEquals(response.headers.get("cache-control"), "public, max-age=300");
+  assertEquals(response.headers.get("access-control-allow-origin"), "*");
+  assertEquals(await response.json(), {
+    resource: "https://abc.supabase.co/functions/v1/mcp",
+    authorization_servers: ["https://abc.supabase.co/auth/v1"],
+    bearer_methods_supported: ["header"],
+  });
+  assertEquals(authorizationCalls, 0);
+  assertEquals(protocolCalls, 0);
+});
+
+Deno.test("serves legacy project OAuth metadata from the direct Edge path", async () => {
+  const response = await handleMcpHttpRequest(
+    new Request(`https://x/mcp/oauth-protected-resource?project_id=${projectId}`),
+    { supabaseUrl: "https://abc.supabase.co" },
+  );
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    resource: `https://abc.supabase.co/functions/v1/mcp/${projectId}`,
+    authorization_servers: ["https://abc.supabase.co/auth/v1"],
+    bearer_methods_supported: ["header"],
+  });
+});
+
+Deno.test("rejects malformed OAuth metadata requests without authorization", async () => {
+  for (const url of [
+    "https://x/mcp/oauth-protected-resource?unknown=1",
+    "https://x/mcp/oauth-protected-resource?project_id=not-a-project",
+    `https://x/mcp/oauth-protected-resource?project_id=${projectId}&project_id=${projectId}`,
+  ]) {
+    const response = await handleMcpHttpRequest(new Request(url), {
+      supabaseUrl: "https://abc.supabase.co",
+    });
+    assertEquals(response.status, 400);
+    assertEquals(await response.json(), { error: "Invalid MCP metadata request." });
+  }
+});
+
+Deno.test("fails closed when metadata configuration is invalid", async () => {
+  const response = await handleMcpHttpRequest(
+    new Request("https://x/mcp/oauth-protected-resource"),
+    { supabaseUrl: "https://abc.supabase.co/path" },
+  );
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { error: "MCP metadata is not configured." });
+});
+
+Deno.test("rejects metadata-like paths and methods as MCP endpoints", async () => {
+  for (const request of [
+    new Request("https://x/mcp/oauth-protected-resource/extra"),
+    new Request("https://x/mcp/oauth-protected-resource", { method: "POST" }),
+  ]) {
+    const response = await handleMcpHttpRequest(request, {
+      supabaseUrl: "https://abc.supabase.co",
+    });
+    assertEquals(response.status, 404);
+    assertEquals(await response.json(), { error: "Invalid MCP project endpoint." });
+  }
+});
+
 Deno.test("account authentication uses the service metadata without a project query", async () => {
   const response = await handleMcpHttpRequest(
     new Request("https://x/functions/v1/mcp", { method: "POST" }),
@@ -144,13 +222,13 @@ Deno.test("account authentication uses the service metadata without a project qu
       authorizeProject: async () => {
         throw new Error("project authorization must not run for account route");
       },
-      kecoPublicUrl: "https://keco.example.com",
+      supabaseUrl: "https://abc.supabase.co",
     },
   );
   assertEquals(response.status, 401);
   assertEquals(
     response.headers.get("www-authenticate"),
-    "Bearer resource_metadata=\"https://keco.example.com/api/mcp/oauth-protected-resource\"",
+    "Bearer resource_metadata=\"https://abc.supabase.co/functions/v1/mcp/oauth-protected-resource\"",
   );
 });
 
@@ -184,12 +262,12 @@ Deno.test("account and project routes keep authorization dependencies isolated",
 Deno.test("missing auth returns an OAuth resource metadata challenge", async () => {
   const response = await handleMcpHttpRequest(
     new Request(`https://x/functions/v1/mcp/${projectId}`, { method: "POST" }),
-    { authorize: unauthenticated, kecoPublicUrl: "https://keco.example.com" },
+    { authorize: unauthenticated, supabaseUrl: "https://abc.supabase.co" },
   );
   assertEquals(response.status, 401);
   assertStringIncludes(
     response.headers.get("www-authenticate") ?? "",
-    `resource_metadata="https://keco.example.com/api/mcp/oauth-protected-resource?project_id=${projectId}"`,
+    `resource_metadata="https://abc.supabase.co/functions/v1/mcp/oauth-protected-resource?project_id=${projectId}"`,
   );
 });
 
@@ -199,7 +277,7 @@ Deno.test("invalid bearer token returns an OAuth challenge", async () => {
       method: "POST",
       headers: { authorization: "Bearer invalid" },
     }),
-    { authorize: unauthenticated, kecoPublicUrl: "https://keco.example.com" },
+    { authorize: unauthenticated, supabaseUrl: "https://abc.supabase.co" },
   );
   assertEquals(response.status, 401);
   assertStringIncludes(response.headers.get("www-authenticate") ?? "", "resource_metadata=");
@@ -211,7 +289,7 @@ Deno.test("revoked membership returns 403 without an OAuth challenge", async () 
       method: "POST",
       headers: { authorization: "Bearer valid" },
     }),
-    { authorize: forbidden, kecoPublicUrl: "https://keco.example.com" },
+    { authorize: forbidden },
   );
   assertEquals(response.status, 403);
   assertEquals(response.headers.get("www-authenticate"), null);
@@ -227,11 +305,11 @@ Deno.test("authorization backend failures return a safe CORS-wrapped 503", async
   assertEquals(response.headers.get("access-control-allow-origin"), "*");
 });
 
-Deno.test("missing or malformed public origin fails closed without a challenge", async () => {
-  for (const kecoPublicUrl of ["", "/relative", "https://keco.example.com/path"]) {
+Deno.test("missing or malformed Supabase URL fails closed without a challenge", async () => {
+  for (const supabaseUrl of ["", "/relative", "https://abc.supabase.co/path"]) {
     const response = await handleMcpHttpRequest(
       new Request(`https://x/functions/v1/mcp/${projectId}`, { method: "POST" }),
-      { authorize: unauthenticated, kecoPublicUrl },
+      { authorize: unauthenticated, supabaseUrl },
     );
     assertEquals(response.status, 500);
     assertEquals(response.headers.get("www-authenticate"), null);
@@ -248,7 +326,7 @@ Deno.test("oversized request is rejected before MCP parsing", async () => {
         body: "x",
       },
     ),
-    { ...withContext, authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+    { ...withContext, authorize: allow },
   );
   assertEquals(response.status, 413);
 });
@@ -273,7 +351,7 @@ Deno.test("chunked request is rejected when the streamed body exceeds the limit"
         body,
       },
     ),
-    { ...withContext, authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+    { ...withContext, authorize: allow },
   );
   assertEquals(response.status, 413);
 });
@@ -298,7 +376,7 @@ Deno.test("OPTIONS returns bounded CORS headers without authentication", async (
     new Request(`https://x/functions/v1/mcp/${projectId}`, {
       method: "OPTIONS",
     }),
-    { authorize: unauthenticated, kecoPublicUrl: "https://keco.example.com" },
+    { authorize: unauthenticated },
   );
   assertEquals(response.status, 204);
   assertEquals(
@@ -327,7 +405,6 @@ Deno.test("rejects an oversized streamed protocol response and preserves CORS", 
     {
       ...withContext,
       authorize: allow,
-      kecoPublicUrl: "https://keco.example.com",
       handleProtocol: async () => new Response(body, {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -350,7 +427,6 @@ Deno.test("rejects a protocol response exactly at the strict 1 MiB boundary", as
     {
       ...withContext,
       authorize: allow,
-      kecoPublicUrl: "https://keco.example.com",
       handleProtocol: async () => new Response(new Uint8Array(1024 * 1024)),
     },
   );
@@ -475,7 +551,7 @@ Deno.test("authorized initialize traverses body reconstruction, auth, CORS, and 
         },
       }),
     }),
-    { ...withContext, authorize: allow, kecoPublicUrl: "https://keco.example.com" },
+    { ...withContext, authorize: allow },
   );
   assertEquals(response.status, 200);
   assertEquals(response.headers.get("access-control-allow-origin"), "*");

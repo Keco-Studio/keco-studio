@@ -31,6 +31,12 @@ Complete authorization in the browser with the Keco account whose projects you
 need to use. A zero-project account may authorize successfully and receive an
 empty project list.
 
+The MCP challenge advertises protected-resource metadata on the same Supabase
+origin at `/functions/v1/mcp/oauth-protected-resource`. OAuth discovery therefore
+does not require the MCP client process to reach the Keco Vercel application.
+The browser authorization and consent flow may still use the deployed Keco web
+origin.
+
 For Codex, add a remote MCP server whose URL is the root endpoint. Do not add an
 authorization header manually; allow Codex to run OAuth and retain its own
 refresh token. For Claude, add the same URL as a custom remote connector and use
@@ -66,10 +72,13 @@ even if the client's access token has not expired.
 
 The Supabase Edge Function requires `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `KECO_PUBLIC_URL`, `MCP_CURSOR_SECRET`, and
-`MCP_CODEC_SECRET`. `KECO_PUBLIC_URL` is the deployed Keco web origin, currently
-`https://keco-studio-main.vercel.app`. The same `MCP_CODEC_SECRET` value must be
-present in the Supabase Function and Vercel production environments. The service
-role key belongs only in the Edge Function environment.
+`MCP_CODEC_SECRET`. `KECO_PUBLIC_URL` is the deployed Keco web origin used by the
+consent UI, document codec, reindex integration, and other web-backed
+operations; protected-resource metadata is served by the Supabase MCP Function
+itself. It is currently `https://keco-studio-main.vercel.app`. The same
+`MCP_CODEC_SECRET` value must be present in the Supabase Function and Vercel
+production environments. The service role key belongs only in the Edge Function
+environment.
 
 Semantic search additionally uses `MCP_EMBEDDING_URL`, `MCP_EMBEDDING_KEY`, and
 `MCP_EMBEDDING_MODEL`. When any provider value is absent or the provider fails,
