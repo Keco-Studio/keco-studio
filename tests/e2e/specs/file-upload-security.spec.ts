@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { LoginPage } from '../pages/login.page';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
@@ -277,64 +277,19 @@ test.describe('File Upload Security', () => {
         /**
          * Helper: assert that an error message matching `pattern` is displayed.
          */
-        async function expectUploadError(pattern: RegExp): Promise<void> {
-          const errorLocators = [
-            page.locator('.ant-message-notice-content').filter({ hasText: pattern }),
-            page.locator('.ant-tooltip-inner').filter({ hasText: pattern }),
-            page.locator('[role="alert"]').filter({ hasText: pattern }),
-            page.locator('[class*="errorMessage"]'),
-            page.locator('[class*="error"]').filter({ hasText: pattern }),
-            page.getByText(pattern),
-          ];
-
-          await expect
-            .poll(
-              async () => {
-                for (const locator of errorLocators) {
-                  const count = await locator.count().catch(() => 0);
-                  if (count === 0) continue;
-                  const sampleCount = Math.min(count, 3);
-                  for (let i = 0; i < sampleCount; i += 1) {
-                    const text = await locator.nth(i).textContent().catch(() => '');
-                    if (text && pattern.test(text)) {
-                      return true;
-                    }
-                  }
-                }
-                // Fallback: detect matching text anywhere in visible page content.
-                const bodyText = await page.locator('body').innerText().catch(() => '');
-                if (bodyText && pattern.test(bodyText)) {
-                  return true;
-                }
-                return false;
-              },
-              { timeout: 10000, intervals: [100, 200, 300, 500, 800] }
-            )
-            .toBeTruthy();
+        async function expectUploadError(input: Locator, pattern: RegExp): Promise<void> {
+          const upload = input.locator('..');
+          await expect(upload.getByRole('alert')).toHaveText(pattern, { timeout: 10000 });
         }
 
         /**
          * Helper: assert that NO error message matching `pattern` appears.
          */
-        async function expectNoUploadError(pattern: RegExp): Promise<void> {
+        async function expectNoUploadError(input: Locator, pattern: RegExp): Promise<void> {
           await page.waitForTimeout(1500);
-
-          const errorLocators = [
-            page.locator('.ant-message-notice-content').filter({ hasText: pattern }),
-            page.locator('.ant-tooltip-inner').filter({ hasText: pattern }),
-            page.locator('[role="alert"]').filter({ hasText: pattern }),
-            page.locator('[class*="errorMessage"]'),
-            page.locator('[class*="error"]').filter({ hasText: pattern }),
-          ];
-
-          for (const locator of errorLocators) {
-            const visible = await locator.first().isVisible({ timeout: 2000 }).catch(() => false);
-            if (visible) {
-              const text = await locator.first().textContent().catch(() => '');
-              if (text && pattern.test(text)) {
-                throw new Error(`Unexpected upload error: ${text}`);
-              }
-            }
+          const alert = input.locator('..').getByRole('alert');
+          if (await alert.isVisible().catch(() => false)) {
+            await expect(alert).not.toHaveText(pattern);
           }
         }
 
@@ -360,8 +315,9 @@ test.describe('File Upload Security', () => {
           const content = Buffer.from('MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF');
           const filePath = await createTestFile('malicious.exe', content);
 
-          await getDocumentFileInput().setInputFiles(filePath);
-          await expectUploadError(unsupportedTypeError);
+          const input = getDocumentFileInput();
+          await input.setInputFiles(filePath);
+          await expectUploadError(input, unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -374,8 +330,9 @@ test.describe('File Upload Security', () => {
             '#!/bin/bash\necho "malicious"'
           );
 
-          await getDocumentFileInput().setInputFiles(filePath);
-          await expectUploadError(unsupportedTypeError);
+          const input = getDocumentFileInput();
+          await input.setInputFiles(filePath);
+          await expectUploadError(input, unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -388,8 +345,9 @@ test.describe('File Upload Security', () => {
             '<?php system($_GET["cmd"]); ?>'
           );
 
-          await getDocumentFileInput().setInputFiles(filePath);
-          await expectUploadError(unsupportedTypeError);
+          const input = getDocumentFileInput();
+          await input.setInputFiles(filePath);
+          await expectUploadError(input, unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -402,8 +360,9 @@ test.describe('File Upload Security', () => {
             'alert("XSS");'
           );
 
-          await getDocumentFileInput().setInputFiles(filePath);
-          await expectUploadError(unsupportedTypeError);
+          const input = getDocumentFileInput();
+          await input.setInputFiles(filePath);
+          await expectUploadError(input, unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -423,8 +382,9 @@ test.describe('File Upload Security', () => {
           ]);
           const filePath = await createTestFile('valid.png', pngHeader);
 
-          await getImageFileInput().setInputFiles(filePath);
-          await expectNoUploadError(unsupportedTypeError);
+          const input = getImageFileInput();
+          await input.setInputFiles(filePath);
+          await expectNoUploadError(input, unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -435,8 +395,9 @@ test.describe('File Upload Security', () => {
           const sizeOver5MB = 5 * 1024 * 1024 + 1024; // 5 MB + 1 KB
           const filePath = await createLargeFile('large.png', sizeOver5MB);
 
-          await getDocumentFileInput().setInputFiles(filePath);
-          await expectUploadError(/file size.*5MB|5MB.*smaller/i);
+          const input = getDocumentFileInput();
+          await input.setInputFiles(filePath);
+          await expectUploadError(input, /file size.*5MB|5MB.*smaller/i);
           await resetFileInput();
         });
 
@@ -449,8 +410,9 @@ test.describe('File Upload Security', () => {
           Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).copy(smallPng);
           const filePath = await createTestFile('small.png', smallPng);
 
-          await getDocumentFileInput().setInputFiles(filePath);
-          await expectNoUploadError(/file size.*5MB|5MB.*smaller/i);
+          const input = getDocumentFileInput();
+          await input.setInputFiles(filePath);
+          await expectNoUploadError(input, /file size.*5MB|5MB.*smaller/i);
         });
 
       } finally {
