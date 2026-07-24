@@ -190,6 +190,20 @@ async function refreshToken(
   });
 }
 
+async function refreshValidTokens(
+  url: string,
+  clientId: string,
+  token: string
+): Promise<OAuthTokens> {
+  const response = await refreshToken(url, clientId, token);
+  const body = await response.json() as {
+    access_token?: string;
+    refresh_token?: string;
+  };
+  assert(response.ok && body.access_token && body.refresh_token, 'Sibling token refresh failed');
+  return { accessToken: body.access_token, refreshToken: body.refresh_token };
+}
+
 async function callMcp(accessToken: string): Promise<Response> {
   return fetch(MCP_URL, {
     method: 'POST',
@@ -209,6 +223,25 @@ async function callMcp(accessToken: string): Promise<Response> {
       },
     }),
   });
+}
+
+async function assertMcpOperational(accessToken: string, message: string) {
+  const response = await callMcp(accessToken);
+  assert(response.ok, message);
+  const payload = await response.json() as {
+    jsonrpc?: string;
+    id?: number;
+    result?: Record<string, unknown>;
+    error?: unknown;
+  };
+  assert(
+    payload.jsonrpc === '2.0'
+      && payload.id === 1
+      && typeof payload.result === 'object'
+      && payload.result !== null
+      && !payload.error,
+    message
+  );
 }
 
 async function loginBrowser(page: Page, email: string) {
@@ -323,7 +356,9 @@ async function runBrowserAcceptance(
       'Disconnect cache policy is unsafe'
     );
     await page.getByText('Codex disconnected', { exact: true }).waitFor();
-    await page.getByTestId('mcp-connection-row').nth(1).waitFor();
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[data-testid="mcp-connection-row"]').length === 2
+    );
     assert(await page.getByTestId('mcp-connection-row').count() === 2, 'UI did not remove one row');
 
     const deletedPath = new URL(deleteResponse.url()).pathname;
@@ -450,20 +485,22 @@ async function main() {
       !(await refreshToken(supabaseUrl, codexClient.client_id, secondCodex.refreshToken)).ok,
       'Disconnected refresh token remained valid'
     );
-    const siblingUser = await anonClient(supabaseUrl, anonKey).auth.getUser(firstCodex.accessToken);
+    const refreshedCodex = await refreshValidTokens(
+      supabaseUrl,
+      codexClient.client_id,
+      firstCodex.refreshToken
+    );
+    const siblingUser = await anonClient(supabaseUrl, anonKey).auth.getUser(refreshedCodex.accessToken);
     assert(!siblingUser.error && siblingUser.data.user?.id === userIds[0], 'Sibling access token was revoked');
-    assert(
-      (await refreshToken(supabaseUrl, codexClient.client_id, firstCodex.refreshToken)).ok,
-      'Sibling refresh token was revoked'
+    await assertMcpOperational(refreshedCodex.accessToken, 'Sibling MCP connection stopped working');
+    const refreshedClaude = await refreshValidTokens(
+      supabaseUrl,
+      claudeClient.client_id,
+      claude.refreshToken
     );
-    assert((await callMcp(firstCodex.accessToken)).ok, 'Sibling MCP connection stopped working');
-    const claudeUser = await anonClient(supabaseUrl, anonKey).auth.getUser(claude.accessToken);
+    const claudeUser = await anonClient(supabaseUrl, anonKey).auth.getUser(refreshedClaude.accessToken);
     assert(!claudeUser.error && claudeUser.data.user?.id === userIds[0], 'Claude access token was revoked');
-    assert(
-      (await refreshToken(supabaseUrl, claudeClient.client_id, claude.refreshToken)).ok,
-      'Claude refresh token was revoked'
-    );
-    assert((await callMcp(claude.accessToken)).ok, 'Claude MCP connection stopped working');
+    await assertMcpOperational(refreshedClaude.accessToken, 'Claude MCP connection stopped working');
     assert((await callMcp(secondCodex.accessToken)).status === 401, 'Revoked MCP token still worked');
     assert((await listConnections(outsider.accessToken)).connections.length === 1, 'Outsider changed unexpectedly');
 
