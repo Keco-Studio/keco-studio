@@ -293,6 +293,7 @@ async function runBrowserAcceptance(
     );
 
     acceptanceStage = 'browser-responsive-layout';
+    await page.getByRole('tab', { name: 'Codex' }).click();
     await page.screenshot({ path: 'artifacts/mcp-account-desktop.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(page);
@@ -456,6 +457,13 @@ async function main() {
       'Sibling refresh token was revoked'
     );
     assert((await callMcp(firstCodex.accessToken)).ok, 'Sibling MCP connection stopped working');
+    const claudeUser = await anonClient(supabaseUrl, anonKey).auth.getUser(claude.accessToken);
+    assert(!claudeUser.error && claudeUser.data.user?.id === userIds[0], 'Claude access token was revoked');
+    assert(
+      (await refreshToken(supabaseUrl, claudeClient.client_id, claude.refreshToken)).ok,
+      'Claude refresh token was revoked'
+    );
+    assert((await callMcp(claude.accessToken)).ok, 'Claude MCP connection stopped working');
     assert((await callMcp(secondCodex.accessToken)).status === 401, 'Revoked MCP token still worked');
     assert((await listConnections(outsider.accessToken)).connections.length === 1, 'Outsider changed unexpectedly');
 
@@ -475,6 +483,8 @@ async function main() {
       disconnectedRefreshTokenInvalidated: true,
       siblingAccessAndRefreshValid: true,
       siblingMcpOperational: true,
+      claudeAccessAndRefreshValid: true,
+      claudeMcpOperational: true,
       revokedMcpDenied: true,
       cacheControlNoStore: true,
       responseShapeSanitized: true,
