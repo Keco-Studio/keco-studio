@@ -235,15 +235,20 @@ async function runBrowserAcceptance(
   ownerEmail: string,
   targetConnectionId: string
 ) {
+  acceptanceStage = 'browser-create-context';
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  acceptanceStage = 'browser-clipboard-permission';
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
     origin: PRODUCTION_APP_URL,
   });
   const page = await context.newPage();
   try {
+    acceptanceStage = 'browser-login';
     await loginBrowser(page, ownerEmail);
+    acceptanceStage = 'browser-open-page';
     await page.goto(PRODUCTION_APP_URL + '/mcp');
     await page.getByRole('heading', { name: 'MCP', exact: true }).waitFor();
+    acceptanceStage = 'browser-connection-rows';
     assert(await page.getByTestId('mcp-connection-row').count() === 3, 'Production UI lost connections');
     assert(
       await page.getByRole('button', { name: 'Disconnect Codex' }).count() === 2,
@@ -254,6 +259,7 @@ async function runBrowserAcceptance(
       'Claude Code connection classification is missing'
     );
 
+    acceptanceStage = 'browser-command-wrap';
     const firstCode = page.locator('code').first();
     const metrics = await firstCode.evaluate((node) => {
       const lineHeight = Number.parseFloat(getComputedStyle(node).lineHeight);
@@ -262,6 +268,7 @@ async function runBrowserAcceptance(
     assert(metrics.height > metrics.lineHeight * 1.5, 'Long Codex command did not wrap visually');
     await assertNoHorizontalOverflow(page);
 
+    acceptanceStage = 'browser-copy-commands';
     await page.getByRole('button', { name: 'Copy Add Keco MCP command' }).click();
     assert(
       await page.evaluate(() => navigator.clipboard.readText()) === CODEX_ADD,
@@ -279,6 +286,7 @@ async function runBrowserAcceptance(
       'Claude Code clipboard content changed'
     );
 
+    acceptanceStage = 'browser-responsive-layout';
     await page.screenshot({ path: 'artifacts/mcp-account-desktop.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(page);
@@ -288,6 +296,7 @@ async function runBrowserAcceptance(
     );
     await page.screenshot({ path: 'artifacts/mcp-account-mobile.png', fullPage: true });
 
+    acceptanceStage = 'browser-ui-disconnect';
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByRole('tab', { name: 'Codex' }).click();
     const deleteResponsePromise = page.waitForResponse((response) =>
