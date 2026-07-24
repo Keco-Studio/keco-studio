@@ -364,7 +364,11 @@ export function MediaFileUpload({
         </div>
       )}
 
-      {/* Errors are shown through the shared toast; no inline error text here. */}
+      {error && (
+        <div className={styles.errorMessage} role="alert">
+          {error}
+        </div>
+      )}
 
       {/* Image Preview Modal */}
       {showImagePreview && value && isImageFile(value.fileType) && (

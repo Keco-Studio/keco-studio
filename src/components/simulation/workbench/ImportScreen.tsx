@@ -11,9 +11,9 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { Library } from '@/lib/services/libraryService';
+import { useSupabase } from '@/lib/SupabaseContext';
+import { requestAiFieldMappings } from '@/lib/simulation/aiFieldMappingClient';
 import {
-  autoMapFields,
-  createDemoImportedSnapshot,
   LIB_DEFS,
   missingRequiredMappings,
   SIM_FIELDS,
@@ -44,6 +44,9 @@ const emptySelection = (): Record<LibraryRole, string> => ({
 });
 const emptyMappings = (): FieldMappings => ({
   characters: {}, skills: {}, level: {}, skillc: {},
+});
+const emptyMappingStatus = (): Record<LibraryRole, 'idle' | 'loading' | 'error'> => ({
+  characters: 'idle', skills: 'idle', level: 'idle', skillc: 'idle',
 });
 
 /** Library names that appear more than once in the project (exact match). */
@@ -325,6 +328,7 @@ export function ImportScreen({
   onContinue?: () => void;
   onImported?: () => void;
 }) {
+  const supabase = useSupabase();
   const { selectedProjectId, libraries, folderNameById, loadFields, loadSources } = useSimulationProject();
   const { commitImport } = useSimulationSession();
   const duplicateNames = useMemo(() => duplicateLibraryNames(libraries), [libraries]);
@@ -332,6 +336,7 @@ export function ImportScreen({
   const [selected, setSelected] = useState(emptySelection);
   const [mappings, setMappings] = useState<FieldMappings>(emptyMappings);
   const [schemas, setSchemas] = useState<Record<string, Array<StudioColumnDefinition & { key: string; name: string }>>>({});
+  const [mappingStatus, setMappingStatus] = useState(emptyMappingStatus);
   const [errors, setErrors] = useState<readonly SimulationImportError[]>([]);
   const [warnings, setWarnings] = useState<readonly SimulationImportWarning[]>([]);
   const [loading, setLoading] = useState(false);
@@ -358,11 +363,13 @@ export function ImportScreen({
   const [hoverWireFieldId, setHoverWireFieldId] = useState<string | null>(null);
 
   useEffect(() => {
+    for (const role of ROLES) fieldRequestRef.current[role] += 1;
     const nextSelection = emptySelection();
     selectedRef.current = nextSelection;
     setSelected(nextSelection);
     setMappings(emptyMappings());
     setSchemas({});
+    setMappingStatus(emptyMappingStatus());
     setErrors([]);
     setWarnings([]);
     setImported(false);
@@ -389,18 +396,15 @@ export function ImportScreen({
   const hasAnyMissingRequired = ROLES.some((role) => missingByLib[role].length > 0);
   const canImportNow = allLibsSelected && !hasAnyMissingRequired && !loading;
 
-  function useDemoData() {
-    if (!selectedProjectId) return;
-    commitImport(createDemoImportedSnapshot(selectedProjectId), name);
-    setImported(true);
-    onImported?.();
-  }
-
   async function selectLibrary(role: LibraryRole, libraryId: string) {
     const nextSelected = { ...selectedRef.current, [role]: libraryId };
     selectedRef.current = nextSelected;
     setSelected(nextSelected);
     setMappings((current) => ({ ...current, [role]: {} }));
+    setMappingStatus((current) => ({
+      ...current,
+      [role]: libraryId ? 'loading' : 'idle',
+    }));
     setActiveRole(role);
     setDdOpen(null);
     setImported(false);
@@ -413,16 +417,24 @@ export function ImportScreen({
       if (request !== fieldRequestRef.current[role] || selectedRef.current[role] !== libraryId) return;
       setSchemas((current) => ({ ...current, [libraryId]: fields }));
       const studioColumns = fields.map(({ key, name: fieldName, valueType }) => ({ id: key, label: fieldName, valueType }));
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Authentication required.');
+      const aiMappings = await requestAiFieldMappings(role, studioColumns, session.access_token);
+      if (request !== fieldRequestRef.current[role] || selectedRef.current[role] !== libraryId) return;
       setMappings((current) => ({
         ...current,
-        [role]: autoMapFields(role, {}, studioColumns),
+        [role]: aiMappings,
       }));
+      setMappingStatus((current) => ({ ...current, [role]: 'idle' }));
     } catch {
-      // Full validation and source loading happens atomically on Import.
+      if (request !== fieldRequestRef.current[role] || selectedRef.current[role] !== libraryId) return;
+      setMappingStatus((current) => ({ ...current, [role]: 'error' }));
     }
   }
 
   function mapField(role: LibraryRole, canonical: string, fieldId: string | null) {
+    fieldRequestRef.current[role] += 1;
+    setMappingStatus((current) => ({ ...current, [role]: 'idle' }));
     setMappings((current) => {
       const roleMapping = { ...current[role] };
       for (const [key, value] of Object.entries(roleMapping)) {
@@ -632,14 +644,13 @@ export function ImportScreen({
         lineHeight: 1.55,
       }}
       >
-        Select four Studio libraries, then drag from a source port to a simulation field to map them. Matching names auto-map (case-insensitive).{' '}
+        Select four Studio libraries, then review the field connections created by the LLM. You can drag from a source port to adjust them.{' '}
         Required fields are marked with an asterisk.
       </p>
 
       <div style={{
         display: 'flex',
         alignItems: 'flex-end',
-        justifyContent: 'space-between',
         gap: 16,
         marginBottom: 22,
         flexWrap: 'wrap',
@@ -672,27 +683,6 @@ export function ImportScreen({
             }}
           />
         </label>
-        <div style={{
-          display: 'flex',
-          minHeight: 64,
-          padding: '10px 12px 10px 16px',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 14,
-          color: 'var(--simulation-blue)',
-          background: 'var(--simulation-blue-soft)',
-          borderRadius: 12,
-          flex: '1 1 280px',
-        }}
-        >
-          <span style={{ display: 'grid', gap: 3 }}>
-            <strong>Need a ready-to-play setup?</strong>
-            <small style={{ color: 'var(--simulation-ink-500)' }}>Characters, skills and curves are included.</small>
-          </span>
-          <SimulationButton variant="primary" disabled={!selectedProjectId} onClick={useDemoData}>
-            Use demo data
-          </SimulationButton>
-        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, alignItems: 'start' }}>
@@ -727,7 +717,9 @@ export function ImportScreen({
                 active={activeRole === def.key}
                 open={ddOpen === def.key}
                 errorText={
-                  libraryId && missingByLib[def.key].length
+                  mappingStatus[def.key] === 'error'
+                    ? 'AI mapping failed - connect fields manually.'
+                    : libraryId && missingByLib[def.key].length
                     ? `Missing required: ${missingByLib[def.key].join(', ')}`
                     : ''
                 }
@@ -815,6 +807,16 @@ export function ImportScreen({
                 {activeLibraryName}
               </span>
             ) : null}
+            {mappingStatus[activeRole] === 'loading' ? (
+              <span className={styles.aiMappingStatus} role="status">
+                <span className={styles.aiMappingSpinner} aria-hidden="true" />
+                <span>LLM auto-mapping...</span>
+              </span>
+            ) : mappingStatus[activeRole] === 'error' ? (
+              <span className={styles.aiMappingFailure} role="alert">
+                AI mapping failed - map manually
+              </span>
+            ) : null}
           </div>
           <div style={{ gridColumn: 2, borderBottom: '1px solid var(--simulation-line-200)', background: 'var(--simulation-surface-1)' }} />
           <div style={{
@@ -853,6 +855,7 @@ export function ImportScreen({
             {activeLibSelected
               ? activeFields.map((col) => {
                 const usedBy = Object.entries(activeMappings).find(([, value]) => value === col.key)?.[0];
+                const aiMapping = mappingStatus[activeRole] === 'loading';
                 const isDragging = drag?.colId === col.key;
                 const active = !!(isDragging || usedBy);
                 return (
@@ -869,7 +872,11 @@ export function ImportScreen({
                     }}
                     >
                       {col.name}
-                      {usedBy ? <span style={{ marginLeft: 6, fontWeight: 600 }}>→ {usedBy}</span> : null}
+                      {aiMapping ? (
+                        <span style={{ marginLeft: 8, color: 'var(--simulation-ink-400)', fontSize: 12, fontWeight: 500 }}>
+                          AI mapping...
+                        </span>
+                      ) : usedBy ? <span style={{ marginLeft: 6, fontWeight: 600 }}>→ {usedBy}</span> : null}
                     </span>
                     <span ref={(el) => { sourcePortRefs.current[col.key] = el; }} style={{ display: 'inline-flex' }}>
                       <Port
@@ -912,7 +919,8 @@ export function ImportScreen({
                   : null;
                 const isHoverTarget = hoverFieldId === field.id;
                 const active = !!(mappedCol || isHoverTarget);
-                const missingRequired = Boolean(field.required && !mappedCol);
+                const aiMapping = mappingStatus[activeRole] === 'loading';
+                const missingRequired = Boolean(field.required && !mappedCol && !aiMapping);
                 return (
                   <div
                     key={field.id}
@@ -951,7 +959,9 @@ export function ImportScreen({
                       whiteSpace: 'nowrap',
                     }}
                     >
-                      {mappedLabel || (missingRequired ? 'Required — connect a Studio column' : 'Connect a Studio column')}
+                      {mappedLabel || (missingRequired
+                        ? 'Required — connect a Studio column'
+                        : 'Connect a Studio column')}
                     </span>
                     <span
                       style={{

@@ -15,19 +15,47 @@ describe('simulation workbench flow', () => {
   it('imports real Studio sources atomically through the adapter', () => {
     const source = read('ImportScreen.tsx');
     expect(source).toContain('loadSources');
+    expect(source).toContain('requestAiFieldMappings');
+    expect(source).toContain('supabase.auth.getSession()');
+    expect(source).toContain('LLM auto-mapping...');
+    expect(source).toContain('styles.aiMappingSpinner');
+    expect(read('SimulationWorkbench.module.css')).toContain('@keyframes aiMappingSpin');
     expect(source).toContain('importSimulationSnapshot');
     expect(source).toContain('commitImport');
     expect(source).toContain('result.errors');
     expect(source).toContain('SIM_FIELDS');
     expect(source).toContain('commitImport(result.snapshot, name)');
     expect(source).not.toContain('commitImport(result.snapshot, name, activeSession?.id)');
-    expect(source).toContain('createDemoImportedSnapshot');
-    expect(source).toContain('Use demo data');
+    expect(source).not.toContain('createDemoImportedSnapshot');
+    expect(source).not.toContain('Use demo data');
+    expect(source).not.toContain('Need a ready-to-play setup?');
     expect(source).toContain('Import libraries');
     expect(source).toContain('drag from a source port');
     expect(source).toContain('Continue to characters');
     expect(source).toContain('Imported with warnings');
     expect(source).toContain('result.warnings');
+    expect(source).not.toContain('autoMapFields(');
+  });
+
+  it('shows the LLM mapping status in the Studio source header', () => {
+    const source = read('ImportScreen.tsx');
+    const sourceHeaderStart = source.indexOf('Studio source table');
+    const sourceHeaderEnd = source.indexOf('gridColumn: 2', sourceHeaderStart);
+    const targetHeaderStart = source.indexOf('Simulation fields', sourceHeaderEnd);
+    const targetHeaderEnd = source.indexOf('ref={sourceListRef}', targetHeaderStart);
+
+    expect(source.slice(sourceHeaderStart, sourceHeaderEnd)).toContain('styles.aiMappingSpinner');
+    expect(source.slice(sourceHeaderStart, sourceHeaderEnd)).toContain('LLM auto-mapping...');
+    expect(source.slice(sourceHeaderStart, sourceHeaderEnd)).toContain('AI mapping failed - map manually');
+    expect(source.slice(targetHeaderStart, targetHeaderEnd)).not.toContain('styles.aiMappingSpinner');
+    expect(source.slice(targetHeaderStart, targetHeaderEnd)).not.toContain('AI mapping failed - map manually');
+
+    const sourceRowsStart = source.indexOf('ref={sourceListRef}', targetHeaderEnd);
+    const sourceRowsEnd = source.indexOf('title="Connect ports across this bridge"', sourceRowsStart);
+    const targetRowsStart = source.indexOf('ref={targetListRef}', sourceRowsEnd);
+    const targetRowsEnd = source.indexOf('{activeLibSelected && layout.size.w > 0', targetRowsStart);
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('AI mapping...');
+    expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('AI mapping...');
   });
 
   it('uses imported catalogs and rule tables for configuration', () => {
