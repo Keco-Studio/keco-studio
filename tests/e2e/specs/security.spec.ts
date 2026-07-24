@@ -68,7 +68,7 @@ test.describe('Unauthenticated Access Protection', () => {
   test('should redirect to login when accessing a specific project without authentication', async ({ page }) => {
     // Try to access a specific project page
     const fakeProjectId = 'fake-project-id-12345';
-    await page.goto(`/${fakeProjectId}`);
+    await page.goto(`/${fakeProjectId}`, { waitUntil: 'domcontentloaded' });
     
     // Should show login form instead of project details
     await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });

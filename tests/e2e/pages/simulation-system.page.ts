@@ -10,23 +10,28 @@ export class SimulationSystemPage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/simulation-system');
+    await this.page.goto('/simulation-system', { waitUntil: 'domcontentloaded' });
     await expect(this.root).toBeVisible({ timeout: 30000 });
     await expect(this.page.getByRole('heading', { name: 'Import Studio libraries' })).toBeVisible();
   }
 
-  async useDemoData(): Promise<void> {
-    await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
-    const useDemo = this.page.getByRole('button', { name: 'Use demo data' });
-    // Demo import stays disabled until a Studio project is selected/auto-picked.
-    await expect(useDemo).toBeEnabled({ timeout: 30000 });
-    await useDemo.click();
-    await expect(this.page.getByRole('button', { name: 'Continue to characters' })).toBeVisible({
-      timeout: 30000,
-    });
-    await this.page.getByRole('button', { name: 'Continue to characters' }).click();
-    await expect(this.page.getByRole('heading', { name: 'Configure characters' })).toBeVisible({
-      timeout: 30000,
+  async mockAiFieldMapping(): Promise<void> {
+    await this.page.route('**/api/simulation/field-mapping', async (route) => {
+      const body = route.request().postDataJSON() as {
+        columns?: Array<{ id?: string; label?: string }>;
+      };
+      const mappings = Object.fromEntries(
+        (body.columns ?? []).flatMap((column) =>
+          typeof column.id === 'string' && typeof column.label === 'string'
+            ? [[column.label, column.id]]
+            : []
+        )
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ mappings }),
+      });
     });
   }
 
@@ -36,12 +41,14 @@ export class SimulationSystemPage {
     level: string;
     skillCost: string;
   }): Promise<void> {
-    await this.page.getByLabel('Characters', { exact: true }).selectOption({ label: names.characters });
-    await this.page.getByLabel('Skills', { exact: true }).selectOption({ label: names.skills });
-    await this.page.getByLabel('Level curve', { exact: true }).selectOption({ label: names.level });
-    await this.page.getByLabel('Skill cost curve', { exact: true }).selectOption({ label: names.skillCost });
+    await this.selectLibrary('Characters', names.characters);
+    await this.selectLibrary('Skills', names.skills);
+    await this.selectLibrary('Level curve', names.level);
+    await this.selectLibrary('Skill curve', names.skillCost);
     await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
-    await expect(this.page.getByRole('button', { name: 'Import libraries' })).toBeEnabled();
+    await expect(this.page.getByRole('button', { name: 'Import libraries' })).toBeEnabled({
+      timeout: 30000,
+    });
     await this.page.getByRole('button', { name: 'Import libraries' }).click();
     await expect(this.page.getByRole('button', { name: 'Continue to characters' })).toBeVisible({
       timeout: 30000,
@@ -50,6 +57,13 @@ export class SimulationSystemPage {
     await expect(this.page.getByRole('heading', { name: 'Configure characters' })).toBeVisible({
       timeout: 30000,
     });
+  }
+
+  private async selectLibrary(slotLabel: string, libraryName: string): Promise<void> {
+    await this.page.getByText(slotLabel, { exact: true }).first().click();
+    const option = this.page.getByText(libraryName, { exact: true });
+    await expect(option).toBeVisible({ timeout: 30000 });
+    await option.click();
   }
 
   async configureTeamsAndSkills(): Promise<void> {
