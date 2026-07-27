@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { autoMapFields } from '@/lib/simulation/data';
+import type { LibraryRole, StudioColumnDefinition } from '@/lib/simulation/types';
 
 export class SimulationSystemPage {
   readonly page: Page;
@@ -18,15 +20,15 @@ export class SimulationSystemPage {
   async mockAiFieldMapping(): Promise<void> {
     await this.page.route('**/api/simulation/field-mapping', async (route) => {
       const body = route.request().postDataJSON() as {
-        columns?: Array<{ id?: string; label?: string }>;
+        role?: LibraryRole;
+        columns?: StudioColumnDefinition[];
       };
-      const mappings = Object.fromEntries(
-        (body.columns ?? []).flatMap((column) =>
-          typeof column.id === 'string' && typeof column.label === 'string'
-            ? [[column.label, column.id]]
-            : []
-        )
+      const role = body.role;
+      const columns = (body.columns ?? []).filter(
+        (column): column is StudioColumnDefinition =>
+          typeof column?.id === 'string' && typeof column?.label === 'string',
       );
+      const mappings = role ? autoMapFields(role, {}, columns) : {};
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
