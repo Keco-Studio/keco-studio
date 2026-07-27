@@ -77,10 +77,10 @@ export function SkillsScreen({ onContinue }: { onContinue: () => void }) {
   }
 
   return (
-    <div style={{ maxWidth: 1080 }}>
+    <div style={{ maxWidth: 1080, width: '100%', margin: '0 auto' }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 27, fontWeight: 600, color: 'var(--ink-900)', margin: '0 0 6px', letterSpacing: '-.01em' }}>
-          Config skills
+          Configure skills
         </h1>
         <p style={{ color: 'var(--ink-500)', fontSize: 15, margin: 0, maxWidth: 640, lineHeight: 1.55 }}>
           Give each fighter up to 6 skills. Every fighter needs at least one before you can fight.

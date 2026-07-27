@@ -413,16 +413,19 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await expect(page.getByTestId('agent-launcher')).toBeVisible();
     await expect(page.getByTestId('document-export')).toBeEnabled();
 
-    menu = await openExportMenu(page);
+    // Register the response waiter before opening the menu so a fast click cannot
+    // resolve export-source before Playwright starts listening.
     const exportSourceResponse = page.waitForResponse(
       (response) =>
         response.url().includes(`/api/documents/${fixture.folderDocument.id}/export-source`) &&
-        response.ok()
+        response.ok(),
+      { timeout: 45_000 },
     );
+    menu = await openExportMenu(page);
     await menu.getByText('Export as script', { exact: true }).click();
     await exportSourceResponse;
     const modal = page.getByTestId('import-script-modal');
-    await expect(modal).toBeVisible();
+    await expect(modal).toBeVisible({ timeout: 45_000 });
     await expect(page.getByTestId('import-script-document-source')).toContainText(
       fixture.folderDocument.name
     );

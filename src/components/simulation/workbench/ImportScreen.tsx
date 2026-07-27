@@ -35,7 +35,7 @@ const ROLES: readonly LibraryRole[] = ['characters', 'skills', 'level', 'skillc'
 const LABELS: Record<LibraryRole, string> = {
   characters: 'Characters',
   skills: 'Skills',
-  level: 'Level curve',
+  level: 'Character curve',
   skillc: 'Skill curve',
 };
 const ROOT_FOLDER_LABEL = 'No folder';
@@ -625,7 +625,7 @@ export function ImportScreen({
     : undefined;
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div style={{ maxWidth: 1100, width: '100%', margin: '0 auto' }}>
       <h1 style={{
         fontSize: 27,
         fontWeight: 600,
@@ -656,7 +656,7 @@ export function ImportScreen({
         flexWrap: 'wrap',
       }}
       >
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 320, flex: '1 1 240px' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 320, flex: '0 0 auto' }}>
           <span style={{
             fontSize: 11,
             fontWeight: 600,
@@ -683,6 +683,34 @@ export function ImportScreen({
             }}
           />
         </label>
+        {errors.length ? (
+          <div style={{
+            flex: '1 1 0',
+            minWidth: 0,
+            paddingBottom: 2,
+          }}
+          >
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              color: 'var(--simulation-danger)',
+              fontSize: 13,
+              fontWeight: 600,
+              lineHeight: 1.4,
+            }}
+            >
+              <span style={{ fontSize: 15, lineHeight: 1 }}>⚠</span>
+              <span>
+                {errors.some((e) => e.code === 'unresolved_reference' && e.field === 'Libraries')
+                  ? 'Import failed — see details below.'
+                  : errors.some((e) => e.field && e.reason?.toLowerCase().includes('missing'))
+                  ? `Missing required fields — see details below.`
+                  : `Field mapping issue${errors.length > 1 ? `s (${errors.length})` : ''} — see details below.`}
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, alignItems: 'start' }}>

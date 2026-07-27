@@ -91,6 +91,41 @@ test.describe('Agent chat', () => {
     );
   });
 
+  test('renders markdown and one expandable reasoning summary', async ({ page }) => {
+    await page.route('**/api/agent-chat', async (route) => {
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        { type: 'reasoning_delta', content: '   ' },
+        { type: 'reasoning_delta', content: 'First check the project.' },
+        { type: 'tool_call_start', tool: 'list_project_structure', args: '{}' },
+        { type: 'tool_call_end' },
+        {
+          type: 'tool_result',
+          tool: 'list_project_structure',
+          success: true,
+          data: { ok: true },
+        },
+        { type: 'reasoning_delta', content: 'Summarizing results.' },
+        {
+          type: 'text_delta',
+          content: '**Done**\n\n| Feature | Status |\n| --- | --- |\n| Docs | OK |',
+        },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.send('Show Markdown status');
+
+    const assistant = page.getByTestId('agent-message-assistant');
+    await expect(assistant).toHaveCount(1);
+    await expect(assistant.locator('strong')).toHaveText('Done');
+    await expect(assistant.locator('table')).toContainText('Docs');
+    const reasoning = assistant.getByRole('button');
+    await expect(reasoning).toContainText('Summarizing results');
+    await reasoning.click();
+    await expect(assistant).toContainText('First check the project.');
+    await expect(assistant).toContainText('Summarizing results.');
+  });
+
   test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {
     const docx = await Packer.toBuffer(new Document({
       sections: [{ children: [new Paragraph('Visible DOCX content')] }],

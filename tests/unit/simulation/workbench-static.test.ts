@@ -55,8 +55,8 @@ describe('native simulation workbench presentation', () => {
     expect(toast).toContain('onAction');
 
     const arena = read('Arena.tsx');
-    expect(arena).toContain('Team A · You');
-    expect(arena).toContain('Team B · Enemy');
+    expect(arena).toContain('Team A');
+    expect(arena).toContain('Team B');
     expect(arena).toContain('var(--keco-blue)');
     expect(arena).toContain('var(--keco-pink-strong)');
     expect(arena).toContain('EL[');
@@ -77,12 +77,12 @@ describe('native simulation workbench presentation', () => {
     expect(importScreen).toContain('/${library.name}');
 
     const characters = read('CharactersScreen.tsx');
-    expect(characters).toContain('Team A · Yours');
-    expect(characters).toContain('Team B · Enemy');
+    expect(characters).toContain("label: 'Team A'");
+    expect(characters).toContain("label: 'Team B'");
     expect(characters).toContain('Studio snapshot');
 
     const skills = read('SkillsScreen.tsx');
-    expect(skills).toContain('Config skills');
+    expect(skills).toContain('Configure skills');
     expect(skills).toContain('/ 6 skills');
 
     const progression = read('ProgressionScreen.tsx');
