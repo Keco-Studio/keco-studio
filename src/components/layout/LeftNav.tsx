@@ -142,6 +142,7 @@ export function LeftNav() {
           onClick={() => {
             if (!onSimulation) return;
             const preferred = readSimulationProjectPreference()?.projectId;
+            // Only deep-link when leaving Simulation; /projects still opens the first project.
             router.push(preferred ? `/${preferred}` : '/projects');
           }}
         >

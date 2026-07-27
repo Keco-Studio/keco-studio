@@ -43,7 +43,6 @@ import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
 import { notifyDocumentDerivedLibraryCreated } from "@/lib/documents/documentDerivedLibraryEvents";
 import { runDocumentDerivedImport } from "@/lib/documents/runDocumentDerivedImport";
 import { showErrorToast, showSuccessToast } from "@/lib/utils/toast";
-import { readSimulationProjectPreference } from "@/lib/simulation/projectPreference";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
@@ -416,20 +415,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     router,
   });
 
-  // Auto-navigate to a preferred or first project when landing on /projects
+  // Auto-navigate to first project on login if user has projects
   useEffect(() => {
     // Only auto-navigate if:
     // 1. User is on /projects page (pathname === '/projects')
     // 2. Projects list is loaded and not empty
     // 3. User is not a guest (userProfile exists)
     if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userId) {
-      const preferredId = readSimulationProjectPreference()?.projectId;
-      const preferred = preferredId
-        ? projects.find((project) => project.id === preferredId)
-        : undefined;
-      const target = preferred ?? projects[0];
-      if (target?.id) {
-        router.push(`/${target.id}`);
+      const firstProject = projects[0];
+      if (firstProject?.id) {
+        router.push(`/${firstProject.id}`);
       }
     }
   }, [pathname, projects, loadingProjects, userId, router]);
