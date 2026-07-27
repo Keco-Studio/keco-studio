@@ -45,6 +45,8 @@ describe('MCP final review hardening migration', () => {
     expect(loadGate).toMatch(/explain \(format json\)/i);
     expect(loadGate).toMatch(/mcp_search_documents_search_vector_idx/i);
     expect(loadGate).toMatch(/mcp_search_documents_search_text_trgm_idx/i);
+    expect(loadGate).toMatch(/mcp_search_documents_project_source_idx/i);
+    expect(loadGate).toMatch(/mcp_search_documents_pkey/i);
     expect(loadGate).toMatch(/v_count <> 101100/i);
     expect(loadGate).toMatch(/v_plan::text like '%Seq Scan%'/i);
   });
