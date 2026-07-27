@@ -10,7 +10,7 @@ describe('assistant reasoning message', () => {
         item={{
           id: 'assistant-1',
           role: 'assistant',
-          reasoning: '先检查项目。\n\n正在汇总结果。',
+          reasoning: 'First check the project.\n\nSummarizing results.',
           reasoningStartedAt: Date.now() - 2_000,
         }}
         streaming
@@ -18,8 +18,8 @@ describe('assistant reasoning message', () => {
       />
     );
 
-    expect(html).toContain('正在汇总结果');
-    expect(html).toContain('（思考中）');
+    expect(html).toContain('Summarizing results');
+    expect(html).toContain('(Thinking)');
     expect(html).toContain('aria-expanded="false"');
     expect(html.match(/agent-message-assistant/g)).toHaveLength(1);
   });

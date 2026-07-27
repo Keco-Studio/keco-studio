@@ -128,7 +128,7 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
               {reasoningOpen ? <DownOutlined /> : <RightOutlined />}
             </span>
             <span className={styles.reasoningLabel}>{summary || 'Deep thinking'}</span>
-            {isThinking && <span className={styles.reasoningStatus}>（思考中）</span>}
+            {isThinking && <span className={styles.reasoningStatus}>(Thinking)</span>}
             {duration && <span className={styles.reasoningDuration}>{duration}</span>}
             {isThinking && <span className={styles.reasoningDot} />}
           </button>

@@ -18,7 +18,7 @@ export const LIBRARY_IDS: Record<LibraryRole, string> = {
 };
 
 const canonicalFields = {
-  characters: ['id', 'name', 'cls', 'el', 'hp', 'atk', 'def', 'spd', 'mp'],
+  characters: ['id', 'name', 'el', 'hp', 'atk', 'def', 'spd', 'mp'],
   skills: ['id', 'name', 'el', 'mp', 'power', 'cd', 'kind', 'status', 'fx'],
   level: ['level', 'exp', 'sp'],
   skillc: ['skillId', 'lv', 'cost'],
@@ -27,7 +27,6 @@ const canonicalFields = {
 const labels: Record<string, string> = {
   id: 'Identifier',
   name: 'Display name',
-  cls: 'Class',
   el: 'Element',
   hp: 'Base HP',
   atk: 'Attack',
@@ -117,7 +116,7 @@ export function createValidSources(): Record<LibraryRole, StudioLibraryFixture> 
   ) as Record<LibraryRole, StudioLibraryFixture>;
 
   sources.characters.assets = [asset('characters', 1, 'Asset row label must not leak', {
-    id: 'hero', name: 'Hero', cls: 'Guardian', el: 'Earth', hp: 100, atk: '0', def: 10,
+    id: 'hero', name: 'Hero', el: 'Earth', hp: 100, atk: '0', def: 10,
     spd: 5, mp: 0,
   })];
   sources.skills.assets = [asset('skills', 1, 'Skill asset label', {

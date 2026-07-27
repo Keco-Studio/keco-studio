@@ -95,7 +95,7 @@ test.describe('Agent chat', () => {
     await page.route('**/api/agent-chat', async (route) => {
       await fulfillAgentStream(route, crypto.randomUUID(), [
         { type: 'reasoning_delta', content: '   ' },
-        { type: 'reasoning_delta', content: '先检查项目。' },
+        { type: 'reasoning_delta', content: 'First check the project.' },
         { type: 'tool_call_start', tool: 'list_project_structure', args: '{}' },
         { type: 'tool_call_end' },
         {
@@ -104,10 +104,10 @@ test.describe('Agent chat', () => {
           success: true,
           data: { ok: true },
         },
-        { type: 'reasoning_delta', content: '正在汇总结果。' },
+        { type: 'reasoning_delta', content: 'Summarizing results.' },
         {
           type: 'text_delta',
-          content: '**完成**\n\n| 功能 | 状态 |\n| --- | --- |\n| 文档 | OK |',
+          content: '**Done**\n\n| Feature | Status |\n| --- | --- |\n| Docs | OK |',
         },
       ]);
     });
@@ -117,13 +117,13 @@ test.describe('Agent chat', () => {
 
     const assistant = page.getByTestId('agent-message-assistant');
     await expect(assistant).toHaveCount(1);
-    await expect(assistant.locator('strong')).toHaveText('完成');
-    await expect(assistant.locator('table')).toContainText('文档');
+    await expect(assistant.locator('strong')).toHaveText('Done');
+    await expect(assistant.locator('table')).toContainText('Docs');
     const reasoning = assistant.getByRole('button');
-    await expect(reasoning).toContainText('正在汇总结果');
+    await expect(reasoning).toContainText('Summarizing results');
     await reasoning.click();
-    await expect(assistant).toContainText('先检查项目。');
-    await expect(assistant).toContainText('正在汇总结果。');
+    await expect(assistant).toContainText('First check the project.');
+    await expect(assistant).toContainText('Summarizing results.');
   });
 
   test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {

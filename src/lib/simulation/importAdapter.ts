@@ -250,7 +250,6 @@ function parseCharacters(
     const start = errors.length;
     const id = parseString('characters', 'id', source, asset, mappings, valid, errors);
     const name = parseString('characters', 'name', source, asset, mappings, valid, errors);
-    const cls = parseString('characters', 'cls', source, asset, mappings, valid, errors);
     const el = validateEnum(parseString('characters', 'el', source, asset, mappings, valid, errors), ELEMENTS, 'characters', 'el', source, asset, errors);
     const hp = validateRange(parseNumber('characters', 'hp', source, asset, mappings, valid, errors), (n) => n > 0, 'characters', 'hp', source, asset, 'HP must be greater than zero.', errors);
     const atk = validateRange(parseNumber('characters', 'atk', source, asset, mappings, valid, errors), (n) => n >= 0, 'characters', 'atk', source, asset, 'Attack must be non-negative.', errors);
@@ -258,7 +257,7 @@ function parseCharacters(
     const spd = validateRange(parseNumber('characters', 'spd', source, asset, mappings, valid, errors), (n) => n >= 0, 'characters', 'spd', source, asset, 'Speed must be non-negative.', errors);
     const mp = validateRange(parseNumber('characters', 'mp', source, asset, mappings, valid, errors), (n) => n >= 0, 'characters', 'mp', source, asset, 'MP must be non-negative.', errors);
     if (errors.length === start && id !== undefined && name !== undefined && el !== undefined && hp !== undefined && atk !== undefined && def !== undefined && spd !== undefined && mp !== undefined) {
-      parsed.push({ asset, value: { id, name, cls: cls ?? '', el, hp, atk, def, spd, mp } });
+      parsed.push({ asset, value: { id, name, cls: '', el, hp, atk, def, spd, mp } });
     }
   }
   return parsed;

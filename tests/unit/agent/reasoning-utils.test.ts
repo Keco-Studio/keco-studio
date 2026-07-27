@@ -23,13 +23,13 @@ describe('reasoning-utils', () => {
   });
 
   it('uses the latest meaningful reasoning sentence as the summary', () => {
-    expect(summarizeReasoning('先检查数据。\n\n**正在比较字段差异**')).toBe('正在比较字段差异');
+    expect(summarizeReasoning('First check the data.\n\n**Comparing field differences**')).toBe('Comparing field differences');
   });
 
   it('removes markdown markers and truncates long summaries', () => {
-    expect(summarizeReasoning('- **检查权限配置**')).toBe('检查权限配置');
-    expect(summarizeReasoning('这是一个非常长的思考内容，需要限制折叠标题的显示长度。', 12))
-      .toBe('这是一个非常长的思考内容…');
+    expect(summarizeReasoning('- **Check permission settings**')).toBe('Check permission settings');
+    expect(summarizeReasoning('This is a very long reasoning passage that needs a shorter collapsed title.', 12))
+      .toBe('This is a ve…');
   });
 
   it('returns an empty summary for whitespace and punctuation only', () => {

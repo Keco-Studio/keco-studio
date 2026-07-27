@@ -23,21 +23,21 @@ describe('assistantStreamItems', () => {
     let state = applyAssistantDelta([], null, {
       newId: 'assistant-1',
       kind: 'reasoning',
-      delta: '检查',
+      delta: 'Check',
       now: 1_000,
       segmentStart: true,
     });
     state = applyAssistantDelta(state.items, state.assistantId, {
       newId: 'unused',
       kind: 'reasoning',
-      delta: ' 数据',
+      delta: ' data',
       now: 1_100,
       segmentStart: false,
     });
     state = applyAssistantDelta(state.items, state.assistantId, {
       newId: 'unused',
       kind: 'reasoning',
-      delta: '继续检查',
+      delta: 'Continue checking',
       now: 1_200,
       segmentStart: true,
     });
@@ -45,7 +45,7 @@ describe('assistantStreamItems', () => {
     expect(state.assistantId).toBe('assistant-1');
     expect(state.items).toHaveLength(1);
     expect(state.items[0]).toMatchObject({
-      reasoning: '检查 数据\n\n继续检查',
+      reasoning: 'Check data\n\nContinue checking',
       reasoningStartedAt: 1_000,
     });
   });
@@ -55,7 +55,7 @@ describe('assistantStreamItems', () => {
       {
         id: 'assistant-1',
         role: 'assistant',
-        reasoning: '检查数据',
+        reasoning: 'Check data',
         reasoningStartedAt: 1_000,
       },
       {
@@ -68,7 +68,7 @@ describe('assistantStreamItems', () => {
     const state = applyAssistantDelta(items, 'assistant-1', {
       newId: 'unused',
       kind: 'text',
-      delta: '**完成**',
+      delta: '**Done**',
       now: 2_000,
       segmentStart: true,
       moveToEnd: true,
@@ -76,7 +76,7 @@ describe('assistantStreamItems', () => {
 
     expect(state.items.map((item) => item.id)).toEqual(['tool-1', 'assistant-1']);
     expect(state.items[1]).toMatchObject({
-      text: '**完成**',
+      text: '**Done**',
       reasoningEndedAt: 2_000,
     });
   });
@@ -94,7 +94,7 @@ describe('assistantStreamItems', () => {
       [{
         id: 'assistant-1',
         role: 'assistant',
-        reasoning: '检查完成',
+        reasoning: 'Check complete',
         reasoningStartedAt: 1_000,
       }],
       'assistant-1',
@@ -102,7 +102,7 @@ describe('assistantStreamItems', () => {
     )).toEqual([{
       id: 'assistant-1',
       role: 'assistant',
-      reasoning: '检查完成',
+      reasoning: 'Check complete',
       reasoningStartedAt: 1_000,
       reasoningEndedAt: 2_000,
     }]);

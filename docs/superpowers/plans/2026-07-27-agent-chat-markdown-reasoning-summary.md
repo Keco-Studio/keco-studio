@@ -186,12 +186,12 @@ Expected: the focused test passes and TypeScript exits with code 0.
 Add to `reasoning-utils.test.ts`:
 
 ```ts
-expect(summarizeReasoning('先检查数据。\n\n**正在比较字段差异**'))
-  .toBe('正在比较字段差异');
-expect(summarizeReasoning('- **检查权限配置**')).toBe('检查权限配置');
+expect(summarizeReasoning('First check the data.\n\n**Comparing field differences**'))
+  .toBe('Comparing field differences');
+expect(summarizeReasoning('- **Check permission settings**')).toBe('Check permission settings');
 expect(summarizeReasoning('  \n --- ')).toBe('');
-expect(summarizeReasoning('这是一个非常长的思考内容，需要限制折叠标题的显示长度。', 12))
-  .toBe('这是一个非常长的思考内容…');
+expect(summarizeReasoning('This is a very long reasoning passage that needs a shorter collapsed title.', 12))
+  .toBe('This is a ve…');
 expect(reasoningDurationLabel(1_000, undefined, 4_500)).toBe('4s');
 ```
 
@@ -238,7 +238,7 @@ const duration = reasoningDurationLabel(
 );
 
 <span className={styles.reasoningLabel}>{summary || 'Deep thinking'}</span>
-{isThinking && <span className={styles.reasoningStatus}>（思考中）</span>}
+{isThinking && <span className={styles.reasoningStatus}>(Thinking)</span>}
 {duration && <span className={styles.reasoningDuration}>{duration}</span>}
 {isThinking && <span className={styles.reasoningDot} />}
 ```
@@ -264,15 +264,15 @@ it('shows a live summary and thinking state for expandable reasoning', () => {
       item={{
         id: 'a1',
         role: 'assistant',
-        reasoning: '先检查项目。\n\n正在汇总结果。',
+        reasoning: 'First check the project.\n\nSummarizing results.',
         reasoningStartedAt: Date.now() - 2000,
       }}
       streaming
       onDecision={jest.fn()}
     />
   );
-  expect(html).toContain('正在汇总结果');
-  expect(html).toContain('（思考中）');
+  expect(html).toContain('Summarizing results');
+  expect(html).toContain('(Thinking)');
   expect(html).toContain('aria-expanded="false"');
 });
 ```
@@ -306,15 +306,15 @@ expect(applyAssistantDelta([], null, {
 })).toEqual({ items: [], assistantId: null, consumedSegmentStart: false });
 
 const items: ChatItem[] = [
-  { id: 'a1', role: 'assistant', reasoning: '检查数据', reasoningStartedAt: 1000 },
+  { id: 'a1', role: 'assistant', reasoning: 'Check data', reasoningStartedAt: 1000 },
   { id: 't1', role: 'tool', toolCall: { tool: 'query_assets', status: 'success' } },
 ];
 const final = applyAssistantDelta(items, 'a1', {
-  newId: 'unused', kind: 'text', delta: '**完成**', now: 2000,
+  newId: 'unused', kind: 'text', delta: '**Done**', now: 2000,
   segmentStart: true, moveToEnd: true,
 });
 expect(final.items.map((item) => item.id)).toEqual(['t1', 'a1']);
-expect(final.items[1]).toMatchObject({ text: '**完成**', reasoningEndedAt: 2000 });
+expect(final.items[1]).toMatchObject({ text: '**Done**', reasoningEndedAt: 2000 });
 ```
 
 Also assert that later whitespace chunks are preserved, separate model iterations insert `\n\n`, and finalizing whitespace-only content removes the item.
@@ -534,12 +534,12 @@ test('renders markdown and one expandable reasoning summary', async ({ page }) =
   await page.route('**/api/agent-chat', async (route) => {
     await fulfillAgentStream(route, crypto.randomUUID(), [
       { type: 'reasoning_delta', content: '   ' },
-      { type: 'reasoning_delta', content: '先检查项目。' },
+      { type: 'reasoning_delta', content: 'First check the project.' },
       { type: 'tool_call_start', tool: 'list_project_structure', args: '{}' },
       { type: 'tool_call_end' },
       { type: 'tool_result', tool: 'list_project_structure', success: true, data: { ok: true } },
-      { type: 'reasoning_delta', content: '正在汇总结果。' },
-      { type: 'text_delta', content: '**完成**\n\n| 功能 | 状态 |\n| --- | --- |\n| 文档 | OK |' },
+      { type: 'reasoning_delta', content: 'Summarizing results.' },
+      { type: 'text_delta', content: '**Done**\n\n| Feature | Status |\n| --- | --- |\n| Docs | OK |' },
     ]);
   });
 
@@ -548,13 +548,13 @@ test('renders markdown and one expandable reasoning summary', async ({ page }) =
 
   const assistant = page.getByTestId('agent-message-assistant');
   await expect(assistant).toHaveCount(1);
-  await expect(assistant.locator('strong')).toHaveText('完成');
-  await expect(assistant.locator('table')).toContainText('文档');
+  await expect(assistant.locator('strong')).toHaveText('Done');
+  await expect(assistant.locator('table')).toContainText('Docs');
   const reasoning = assistant.getByRole('button');
-  await expect(reasoning).toContainText('正在汇总结果');
+  await expect(reasoning).toContainText('Summarizing results');
   await reasoning.click();
-  await expect(assistant).toContainText('先检查项目。');
-  await expect(assistant).toContainText('正在汇总结果。');
+  await expect(assistant).toContainText('First check the project.');
+  await expect(assistant).toContainText('Summarizing results.');
 });
 ```
 
