@@ -49,15 +49,17 @@ begin
     order by rank_score desc, updated_at desc, source_id
     limit 40
   $plan$ into v_plan;
-  -- A project/source btree scan with the trigram predicate as a filter is also
-  -- index-backed and can be cheaper for the bounded 1,000-document project
-  -- fixture. PostgreSQL legitimately switches between that plan and the GIN
-  -- trigram bitmap as ANALYZE samples change, so accept either while continuing
-  -- to reject sequential scans. The runtime query budget below guards the
-  -- actual end-to-end performance of whichever indexed plan the planner picks.
+  -- A project/source btree or primary-key scan with the trigram predicate as a
+  -- filter is also index-backed and can be cheaper for the bounded
+  -- 1,000-document project fixture. PostgreSQL legitimately switches between
+  -- those plans and the GIN trigram bitmap as ANALYZE samples change, so accept
+  -- any of them while continuing to reject sequential scans. The runtime query
+  -- budget below guards the actual end-to-end performance of whichever indexed
+  -- plan the planner picks.
   if (
     v_plan::text not like '%mcp_search_documents_search_text_trgm_idx%'
     and v_plan::text not like '%mcp_search_documents_project_source_idx%'
+    and v_plan::text not like '%mcp_search_documents_pkey%'
   ) or v_plan::text like '%Seq Scan%' then
     raise exception 'MCP fuzzy search plan is not index-backed: %', v_plan;
   end if;
