@@ -15,7 +15,7 @@ const config = {
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   transform: {
-    '^.+[\\\\/]sanctionedMdxParser\\.ts$': '<rootDir>/tests/helpers/esbuild-jest-transformer.cjs',
+    '^.+[\\\\/](?:sanctionedMdxParser\\.ts|AssistantMarkdown\\.tsx)$': '<rootDir>/tests/helpers/esbuild-jest-transformer.cjs',
     '^.+\\.tsx?$': ['ts-jest', {
       useESM: true,
     }],

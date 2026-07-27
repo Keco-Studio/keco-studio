@@ -1,0 +1,110 @@
+import {
+  applyAssistantDelta,
+  finalizeAssistantItem,
+} from '@/components/agent/assistantStreamItems';
+import type { ChatItem } from '@/components/agent/types';
+
+describe('assistantStreamItems', () => {
+  it('does not create an item for a leading whitespace-only delta', () => {
+    expect(applyAssistantDelta([], null, {
+      newId: 'assistant-1',
+      kind: 'reasoning',
+      delta: ' \n ',
+      now: 1_000,
+      segmentStart: true,
+    })).toEqual({
+      items: [],
+      assistantId: null,
+      consumedSegmentStart: false,
+    });
+  });
+
+  it('reuses one id, preserves later spaces, and separates model iterations', () => {
+    let state = applyAssistantDelta([], null, {
+      newId: 'assistant-1',
+      kind: 'reasoning',
+      delta: '检查',
+      now: 1_000,
+      segmentStart: true,
+    });
+    state = applyAssistantDelta(state.items, state.assistantId, {
+      newId: 'unused',
+      kind: 'reasoning',
+      delta: ' 数据',
+      now: 1_100,
+      segmentStart: false,
+    });
+    state = applyAssistantDelta(state.items, state.assistantId, {
+      newId: 'unused',
+      kind: 'reasoning',
+      delta: '继续检查',
+      now: 1_200,
+      segmentStart: true,
+    });
+
+    expect(state.assistantId).toBe('assistant-1');
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0]).toMatchObject({
+      reasoning: '检查 数据\n\n继续检查',
+      reasoningStartedAt: 1_000,
+    });
+  });
+
+  it('moves the assistant after tool cards when final text starts', () => {
+    const items: ChatItem[] = [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        reasoning: '检查数据',
+        reasoningStartedAt: 1_000,
+      },
+      {
+        id: 'tool-1',
+        role: 'tool',
+        toolCall: { tool: 'query_assets', status: 'success' },
+      },
+    ];
+
+    const state = applyAssistantDelta(items, 'assistant-1', {
+      newId: 'unused',
+      kind: 'text',
+      delta: '**完成**',
+      now: 2_000,
+      segmentStart: true,
+      moveToEnd: true,
+    });
+
+    expect(state.items.map((item) => item.id)).toEqual(['tool-1', 'assistant-1']);
+    expect(state.items[1]).toMatchObject({
+      text: '**完成**',
+      reasoningEndedAt: 2_000,
+    });
+  });
+
+  it('removes a finalized assistant item with no meaningful content', () => {
+    expect(finalizeAssistantItem(
+      [{ id: 'assistant-1', role: 'assistant', reasoning: ' \n ' }],
+      'assistant-1',
+      2_000
+    )).toEqual([]);
+  });
+
+  it('ends meaningful reasoning when a stream finishes without visible text', () => {
+    expect(finalizeAssistantItem(
+      [{
+        id: 'assistant-1',
+        role: 'assistant',
+        reasoning: '检查完成',
+        reasoningStartedAt: 1_000,
+      }],
+      'assistant-1',
+      2_000
+    )).toEqual([{
+      id: 'assistant-1',
+      role: 'assistant',
+      reasoning: '检查完成',
+      reasoningStartedAt: 1_000,
+      reasoningEndedAt: 2_000,
+    }]);
+  });
+});

@@ -91,6 +91,41 @@ test.describe('Agent chat', () => {
     );
   });
 
+  test('renders markdown and one expandable reasoning summary', async ({ page }) => {
+    await page.route('**/api/agent-chat', async (route) => {
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        { type: 'reasoning_delta', content: '   ' },
+        { type: 'reasoning_delta', content: '先检查项目。' },
+        { type: 'tool_call_start', tool: 'list_project_structure', args: '{}' },
+        { type: 'tool_call_end' },
+        {
+          type: 'tool_result',
+          tool: 'list_project_structure',
+          success: true,
+          data: { ok: true },
+        },
+        { type: 'reasoning_delta', content: '正在汇总结果。' },
+        {
+          type: 'text_delta',
+          content: '**完成**\n\n| 功能 | 状态 |\n| --- | --- |\n| 文档 | OK |',
+        },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.send('Show Markdown status');
+
+    const assistant = page.getByTestId('agent-message-assistant');
+    await expect(assistant).toHaveCount(1);
+    await expect(assistant.locator('strong')).toHaveText('完成');
+    await expect(assistant.locator('table')).toContainText('文档');
+    const reasoning = assistant.getByRole('button');
+    await expect(reasoning).toContainText('正在汇总结果');
+    await reasoning.click();
+    await expect(assistant).toContainText('先检查项目。');
+    await expect(assistant).toContainText('正在汇总结果。');
+  });
+
   test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {
     const docx = await Packer.toBuffer(new Document({
       sections: [{ children: [new Paragraph('Visible DOCX content')] }],

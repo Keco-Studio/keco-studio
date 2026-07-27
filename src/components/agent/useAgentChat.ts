@@ -16,6 +16,7 @@ import {
 } from './agentChatStorage';
 import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
+import { applyAssistantDelta, finalizeAssistantItem } from './assistantStreamItems';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
 import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
@@ -247,58 +248,66 @@ export function useAgentChat(ctx: SendContext) {
       let assistantId: string | null = null;
       let toolCallId: string | null = null;
       let receivedDone = false;
-
-      const ensureAssistantBubble = () => {
-        if (!assistantId) {
-          assistantId = nextId();
-          updateAgentChatRuntime(runtimeKey, { streamingAssistantId: assistantId });
-          appendItem(runtimeKey, { id: assistantId, role: 'assistant' });
-        }
-        return assistantId;
-      };
+      let reasoningSegmentStart = true;
+      let textSegmentStart = true;
+      let toolActivitySinceText = false;
 
       const handleEvent = (event: ParsedSSE) => {
         switch (event.type) {
           case 'reasoning_delta': {
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'thinking' });
             const delta = String(event.content ?? '');
-            const id = ensureAssistantBubble();
             const now = Date.now();
-            updateAgentChatRuntime(runtimeKey, (current) => ({
-              items: current.items.map((it) => {
-                if (it.id !== id) return it;
-                return {
-                  ...it,
-                  reasoning: (it.reasoning ?? '') + delta,
-                  reasoningStartedAt: it.reasoningStartedAt ?? now,
-                };
-              }),
-            }));
+            const candidateId = assistantId ?? nextId();
+            updateAgentChatRuntime(runtimeKey, (current) => {
+              const result = applyAssistantDelta(current.items, assistantId, {
+                newId: candidateId,
+                kind: 'reasoning',
+                delta,
+                now,
+                segmentStart: reasoningSegmentStart,
+              });
+              assistantId = result.assistantId;
+              if (result.consumedSegmentStart) reasoningSegmentStart = false;
+              return {
+                items: result.items,
+                streamingAssistantId: result.assistantId,
+              };
+            });
             break;
           }
           case 'text_delta': {
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'writing' });
             const delta = String(event.content ?? '');
-            const id = ensureAssistantBubble();
             const now = Date.now();
-            updateAgentChatRuntime(runtimeKey, (current) => ({
-              items: current.items.map((it) => {
-                if (it.id !== id) return it;
-                const patch: Partial<ChatItem> = { text: (it.text ?? '') + delta };
-                if (it.reasoning && !it.reasoningEndedAt) {
-                  patch.reasoningEndedAt = now;
-                }
-                return { ...it, ...patch };
-              }),
-            }));
+            const candidateId = assistantId ?? nextId();
+            const moveToEnd = toolActivitySinceText && delta.trim().length > 0;
+            updateAgentChatRuntime(runtimeKey, (current) => {
+              const result = applyAssistantDelta(current.items, assistantId, {
+                newId: candidateId,
+                kind: 'text',
+                delta,
+                now,
+                segmentStart: textSegmentStart,
+                moveToEnd,
+              });
+              assistantId = result.assistantId;
+              if (result.consumedSegmentStart) {
+                textSegmentStart = false;
+                toolActivitySinceText = false;
+              }
+              return {
+                items: result.items,
+                streamingAssistantId: result.assistantId,
+              };
+            });
             break;
           }
           case 'tool_call_start': {
-            updateAgentChatRuntime(runtimeKey, {
-              streamActivity: 'tool',
-              streamingAssistantId: null,
-            });
-            assistantId = null;
+            reasoningSegmentStart = true;
+            textSegmentStart = true;
+            toolActivitySinceText = true;
+            updateAgentChatRuntime(runtimeKey, { streamActivity: 'tool' });
             toolCallId = nextId();
             appendItem(runtimeKey, {
               id: toolCallId,
@@ -345,8 +354,6 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'confirmation_request': {
-            assistantId = null;
-            updateAgentChatRuntime(runtimeKey, { streamingAssistantId: null });
             appendItem(runtimeKey, {
               id: nextId(),
               role: 'confirmation',
@@ -365,8 +372,6 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'error': {
-            assistantId = null;
-            updateAgentChatRuntime(runtimeKey, { streamingAssistantId: null });
             appendItem(runtimeKey, {
               id: nextId(),
               role: 'error',
@@ -383,17 +388,9 @@ export function useAgentChat(ctx: SendContext) {
       };
 
       const finalizeStreamingAssistant = () => {
-        const id = getAgentChatRuntime(runtimeKey)?.streamingAssistantId;
-        if (!id) return;
         const now = Date.now();
         updateAgentChatRuntime(runtimeKey, (current) => ({
-          items: current.items.map((it) => {
-            if (it.id !== id || !it.reasoning) return it;
-            const patch: Partial<ChatItem> = {};
-            if (!it.reasoningStartedAt) patch.reasoningStartedAt = now;
-            if (!it.reasoningEndedAt) patch.reasoningEndedAt = now;
-            return Object.keys(patch).length ? { ...it, ...patch } : it;
-          }),
+          items: finalizeAssistantItem(current.items, assistantId, now),
           streamingAssistantId: null,
         }));
       };

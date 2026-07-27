@@ -9,7 +9,8 @@ import { ToolCallCard } from './ToolCallCard';
 import { ConfirmationCard } from './ConfirmationCard';
 import { ScriptPreviewCard } from './ScriptPreviewCard';
 import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
-import { reasoningLabel } from './reasoning-utils';
+import { AssistantMarkdown } from './AssistantMarkdown';
+import { reasoningDurationLabel, summarizeReasoning } from './reasoning-utils';
 
 interface Props {
   item: ChatItem;
@@ -106,7 +107,12 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
     return () => window.clearInterval(timer);
   }, [isThinking]);
 
-  const label = reasoningLabel(item.reasoningStartedAt, item.reasoningEndedAt, isThinking, now);
+  const summary = summarizeReasoning(item.reasoning ?? '');
+  const duration = reasoningDurationLabel(
+    item.reasoningStartedAt,
+    item.reasoningEndedAt,
+    now
+  );
 
   return (
     <div className={`${styles.bubble} ${styles.assistant}`} data-testid="agent-message-assistant">
@@ -121,13 +127,19 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
             <span className={styles.reasoningChevron}>
               {reasoningOpen ? <DownOutlined /> : <RightOutlined />}
             </span>
-            <span className={styles.reasoningLabel}>{label}</span>
+            <span className={styles.reasoningLabel}>{summary || 'Deep thinking'}</span>
+            {isThinking && <span className={styles.reasoningStatus}>（思考中）</span>}
+            {duration && <span className={styles.reasoningDuration}>{duration}</span>}
             {isThinking && <span className={styles.reasoningDot} />}
           </button>
           {reasoningOpen && <div className={styles.reasoningContent}>{item.reasoning}</div>}
         </div>
       )}
-      {item.text || (reasoningStreaming ? '…' : '')}
+      {item.text ? (
+        <AssistantMarkdown markdown={item.text} />
+      ) : reasoningStreaming ? (
+        '…'
+      ) : null}
     </div>
   );
 }
