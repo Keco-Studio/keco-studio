@@ -11,7 +11,8 @@ be expanded.
 
 - Render assistant reply Markdown: paragraphs, emphasis, strong text, lists,
   links, code, block quotes, separators, and GFM tables.
-- Ignore whitespace-only reasoning and text stream deltas.
+- Ignore leading whitespace-only reasoning and text stream deltas before an
+  assistant bubble exists.
 - Reuse one assistant bubble across all model iterations in a user turn.
 - Keep tool and confirmation cards as independent items.
 - Merge persisted assistant messages from the same user turn into one reply
@@ -38,7 +39,9 @@ with `noopener noreferrer`.
 The stream consumer keeps one stable assistant item id for the entire request.
 Tool call boundaries no longer discard that id.
 
-- A whitespace-only reasoning delta does not create an assistant item.
+- A leading whitespace-only reasoning or text delta does not create an
+  assistant item. Once the item exists, whitespace chunks are preserved so
+  streamed words and Markdown formatting do not run together.
 - The first meaningful reasoning or text delta creates the assistant item.
 - Reasoning from later model iterations appends to the same item, separated by
   a paragraph boundary when necessary.
