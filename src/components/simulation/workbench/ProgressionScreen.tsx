@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { EL, needExp, skillCost, skillDef, skillPower } from '@/lib/simulation/data';
+import { EL, levelRule, needExp, skillCost, skillDef, skillPower } from '@/lib/simulation/data';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
 import type { ElementName } from '@/lib/simulation/types';
 import { SimulationButton } from './SimulationButton';
@@ -115,7 +115,18 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
 
   function setLevel(delta: number) {
     const next = Math.max(1, Math.min(maxLevel, level + delta));
-    updateProgression(session!.id, uid!, exp, next, points);
+    if (next === level) return;
+    let spDelta = 0;
+    if (next > level) {
+      for (let from = level; from < next; from += 1) {
+        spDelta += levelRule(from, snapshot!.levelRules, character.id)?.sp ?? 0;
+      }
+    } else {
+      for (let from = next; from < level; from += 1) {
+        spDelta -= levelRule(from, snapshot!.levelRules, character.id)?.sp ?? 0;
+      }
+    }
+    updateProgression(session!.id, uid!, exp, next, Math.max(0, points + spDelta));
   }
 
   function setSp(delta: number) {
@@ -124,13 +135,13 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
   }
 
   return (
-    <div style={{ maxWidth: 1080 }}>
+    <div style={{ maxWidth: 1080, width: '100%', margin: '0 auto' }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 27, fontWeight: 600, color: 'var(--ink-900)', margin: '0 0 6px', letterSpacing: '-.01em' }}>
           Progression
         </h1>
         <p style={{ color: 'var(--ink-500)', fontSize: 15, margin: 0, maxWidth: 660, lineHeight: 1.55 }}>
-          Spend <b>SP</b> to level skills. Win battles to earn EXP; each level-up grants <b>1 SP</b>. Saved per user — never written back to Studio.
+          Spend <b>SP</b> to level skills. Win battles to earn EXP. Saved per user — never written back to Studio.
         </p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: 20, alignItems: 'start' }}>
@@ -340,6 +351,9 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
                 ));
                 const ruleMissing = cost === null && applicableCosts.some((rule) => rule.lv > skillLevel);
                 const isMax = cost === null && !ruleMissing;
+                const maxSkillLevel = applicableCosts.length
+                  ? Math.max(...applicableCosts.map((rule) => rule.lv)) + 1
+                  : Math.max(skillLevel, 1);
                 const can = cost !== null && points >= cost;
                 const canReset = Array.from({ length: Math.max(0, skillLevel - 1) }, (_, index) => (
                   skillCost(index + 1, snapshot.skillCostRules, skillId)
@@ -388,7 +402,7 @@ export function ProgressionScreen({ onContinue }: { onContinue: () => void }) {
                         <div style={{ height: 8, borderRadius: 5, background: 'var(--line-100)', overflow: 'hidden' }}>
                           <div style={{
                             height: '100%',
-                            width: `${(skillLevel / 5) * 100}%`,
+                            width: `${(skillLevel / maxSkillLevel) * 100}%`,
                             background: factionColor(entry.team),
                             borderRadius: 5,
                             transition: 'width .3s',

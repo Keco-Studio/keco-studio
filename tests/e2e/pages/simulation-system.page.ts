@@ -75,7 +75,7 @@ export class SimulationSystemPage {
     await expect(this.page.getByText(/A 1 vs B 1/)).toBeVisible();
     await this.page.getByRole('button', { name: /Confirm.*go to skill/i }).click();
 
-    await expect(this.page.getByRole('heading', { name: 'Config skills' })).toBeVisible();
+    await expect(this.page.getByRole('heading', { name: 'Configure skills' })).toBeVisible();
     await this.page.getByText('Fireball', { exact: true }).click();
     await this.page.getByText('Bramwell', { exact: true }).click();
     await this.page.getByText('Fireball', { exact: true }).click();

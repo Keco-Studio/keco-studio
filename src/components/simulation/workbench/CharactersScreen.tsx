@@ -205,14 +205,14 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
   }
 
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <div style={{ maxWidth: 1000, width: '100%', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
         <div>
           <h1 style={{ fontSize: 27, fontWeight: 600, color: 'var(--ink-900)', margin: '0 0 6px', letterSpacing: '-.01em' }}>
             Configure characters
           </h1>
           <p style={{ color: 'var(--ink-500)', fontSize: 15, margin: 0, maxWidth: 620, lineHeight: 1.55 }}>
-            Pick the fighters that take the field and split them into Team A (yours) and Team B (enemy).
+            Pick the fighters that take the field and split them into Team A and Team B.
           </p>
         </div>
         <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -339,8 +339,8 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
             {[
-              { key: 'A', label: 'Team A · Yours', count: counts.A, color: 'var(--keco-blue)' },
-              { key: 'B', label: 'Team B · Enemy', count: counts.B, color: 'var(--keco-pink-strong)' },
+              { key: 'A', label: 'Team A', count: counts.A, color: 'var(--keco-blue)' },
+              { key: 'B', label: 'Team B', count: counts.B, color: 'var(--keco-pink-strong)' },
             ].map((card) => (
               <div
                 key={card.key}

@@ -625,7 +625,7 @@ export function ImportScreen({
     : undefined;
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div style={{ maxWidth: 1100, width: '100%', margin: '0 auto' }}>
       <h1 style={{
         fontSize: 27,
         fontWeight: 600,

@@ -6,6 +6,7 @@ import {
   readLeftNavCollapsed,
   writeLeftNavCollapsed,
 } from './leftNavStorage';
+import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import styles from './LeftNav.module.css';
 
 function isSimulationPath(pathname: string | null): boolean {
@@ -139,7 +140,9 @@ export function LeftNav() {
           aria-label="Studio"
           aria-current={!onSimulation ? 'page' : undefined}
           onClick={() => {
-            if (onSimulation) router.push('/projects');
+            if (!onSimulation) return;
+            const preferred = readSimulationProjectPreference()?.projectId;
+            router.push(preferred ? `/${preferred}` : '/projects');
           }}
         >
           <IconGrid active={!onSimulation} />

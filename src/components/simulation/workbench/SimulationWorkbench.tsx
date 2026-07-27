@@ -58,7 +58,7 @@ export function SimulationWorkbench() {
   if (sessions.persistenceStatus === 'load-error') return <div className={styles.emptyState}><p>{sessions.persistenceWarning}</p><button type="button" onClick={sessions.retryPersistence}>Retry</button></div>;
 
   const items = [{ id: 'import', label: 'Import' }, ...sessions.sessions.map((session) => ({ id: session.id, label: session.name }))];
-  const headerLabels: Partial<Record<SimulationScreen, string>> = { characters: 'Configure characters', skills: 'Config skills' };
+  const headerLabels: Partial<Record<SimulationScreen, string>> = { characters: 'Configure characters', skills: 'Configure skills' };
   const workflow = STEPS.filter(({ id }) => id !== 'import').map((step) => ({ id: step.id, label: headerLabels[step.id] ?? step.label, disabled: !sessions.activeSession?.importedSnapshot }));
   const persistenceAction = sessions.persistenceStatus === 'conflict'
     ? { label: 'Load cloud version', run: sessions.loadCloudVersion }
