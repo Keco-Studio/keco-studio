@@ -93,7 +93,7 @@ async function createSimulationFixtures(
   const names = {
     characters: `E2E Characters ${suffix}`,
     skills: `E2E Skills ${suffix}`,
-    level: `E2E Level curve ${suffix}`,
+    level: `E2E Character curve ${suffix}`,
     skillCost: `E2E Skill curve ${suffix}`,
   };
 
@@ -101,29 +101,28 @@ async function createSimulationFixtures(
     createSimulationLibrary(admin, projectId, names.characters, [
       { label: 'id', dataType: 'string' },
       { label: 'name', dataType: 'string' },
-      { label: 'cls', dataType: 'string' },
-      { label: 'el', dataType: 'string' },
-      { label: 'hp', dataType: 'float' },
-      { label: 'atk', dataType: 'float' },
-      { label: 'def', dataType: 'float' },
-      { label: 'spd', dataType: 'float' },
-      { label: 'mp', dataType: 'float' },
+      { label: 'element', dataType: 'string' },
+      { label: 'base hp', dataType: 'float' },
+      { label: 'base atk', dataType: 'float' },
+      { label: 'base def', dataType: 'float' },
+      { label: 'base spd', dataType: 'float' },
+      { label: 'base mp', dataType: 'float' },
     ], [
-      { name: 'Ignara', values: { id: 'ignara', name: 'Ignara', cls: 'Fire Mage', el: 'Fire', hp: 520, atk: 88, def: 30, spd: 42, mp: 120 } },
-      { name: 'Bramwell', values: { id: 'bramwell', name: 'Bramwell', cls: 'Earth Knight', el: 'Earth', hp: 940, atk: 62, def: 78, spd: 24, mp: 60 } },
+      { name: 'Ignara', values: { id: 'ignara', name: 'Ignara', element: 'Fire', 'base hp': 520, 'base atk': 88, 'base def': 30, 'base spd': 42, 'base mp': 120 } },
+      { name: 'Bramwell', values: { id: 'bramwell', name: 'Bramwell', element: 'Earth', 'base hp': 940, 'base atk': 62, 'base def': 78, 'base spd': 24, 'base mp': 60 } },
     ]),
     createSimulationLibrary(admin, projectId, names.skills, [
       { label: 'id', dataType: 'string' },
       { label: 'name', dataType: 'string' },
-      { label: 'el', dataType: 'string' },
-      { label: 'mp', dataType: 'float' },
+      { label: 'element', dataType: 'string' },
+      { label: 'mp cost', dataType: 'float' },
       { label: 'power', dataType: 'float' },
-      { label: 'cd', dataType: 'float' },
-      { label: 'kind', dataType: 'string' },
+      { label: 'cooldown', dataType: 'float' },
+      { label: 'type', dataType: 'string' },
       { label: 'status', dataType: 'string' },
-      { label: 'fx', dataType: 'string' },
+      { label: 'effect', dataType: 'string' },
     ], [
-      { name: 'Fireball', values: { id: 'fireball', name: 'Fireball', el: 'Fire', mp: 20, power: 140, cd: 2, kind: 'dmg', status: 'burn', fx: 'Burn damage' } },
+      { name: 'Fireball', values: { id: 'fireball', name: 'Fireball', element: 'Fire', 'mp cost': 20, power: 140, cooldown: 2, type: 'dmg', status: 'burn', effect: 'Burn damage' } },
     ]),
     createSimulationLibrary(admin, projectId, names.level, [
       { label: 'level', dataType: 'float' },
@@ -134,12 +133,12 @@ async function createSimulationFixtures(
       { name: 'Level 2', values: { level: 2, exp: 260, sp: 1 } },
     ]),
     createSimulationLibrary(admin, projectId, names.skillCost, [
-      { label: 'skillId', dataType: 'string' },
-      { label: 'lv', dataType: 'float' },
-      { label: 'cost', dataType: 'float' },
+      { label: 'skill id', dataType: 'string' },
+      { label: 'skill level', dataType: 'float' },
+      { label: 'upgrade sp', dataType: 'float' },
     ], [
-      { name: 'Fireball level 1', values: { skillId: 'fireball', lv: 1, cost: 1 } },
-      { name: 'Fireball level 2', values: { skillId: 'fireball', lv: 2, cost: 2 } },
+      { name: 'Fireball level 1', values: { 'skill id': 'fireball', 'skill level': 1, 'upgrade sp': 1 } },
+      { name: 'Fireball level 2', values: { 'skill id': 'fireball', 'skill level': 2, 'upgrade sp': 2 } },
     ]),
   ]);
 

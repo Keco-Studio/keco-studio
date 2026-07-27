@@ -43,7 +43,7 @@ export class SimulationSystemPage {
   }): Promise<void> {
     await this.selectLibrary('Characters', names.characters);
     await this.selectLibrary('Skills', names.skills);
-    await this.selectLibrary('Level curve', names.level);
+    await this.selectLibrary('Character curve', names.level);
     await this.selectLibrary('Skill curve', names.skillCost);
     await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
     await expect(this.page.getByRole('button', { name: 'Import libraries' })).toBeEnabled({
