@@ -19,8 +19,8 @@ describe('assistant reasoning message', () => {
     );
 
     expect(html).toContain('Summarizing results');
-    expect(html).toContain('(Thinking)');
-    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('Connecting/thinking/working...');
+    expect(html).toContain('aria-live="polite"');
     expect(html.match(/agent-message-assistant/g)).toHaveLength(1);
   });
 
