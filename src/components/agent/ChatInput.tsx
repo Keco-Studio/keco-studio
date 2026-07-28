@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { LoadingOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons';
+import {
+  CloseOutlined,
+  ExperimentOutlined,
+  LoadingOutlined,
+  PlusOutlined,
+  ArrowUpOutlined,
+} from '@ant-design/icons';
 import { clearDraft, getDraft, setDraft } from './agentChatStorage';
 import { parseDocument, validateDesignFile, SUPPORTED_DESIGN_EXTENSIONS } from '@/lib/document-parser';
 import { buildDesignMessage } from '@/lib/design-message';
@@ -18,9 +24,11 @@ import styles from './ChatPanel.module.css';
 interface Props {
   userId?: string;
   isStreaming: boolean;
+  autoExecute: boolean;
   focusRequest?: number;
   selectionContext?: AgentSelectionContext;
   onClearSelectionContext?: () => void;
+  onToggleMode: () => void;
   onSend: (message: string, opts?: SendOptions) => void;
 }
 
@@ -36,9 +44,11 @@ const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
 export function ChatInput({
   userId,
   isStreaming,
+  autoExecute,
   focusRequest = 0,
   selectionContext,
   onClearSelectionContext,
+  onToggleMode,
   onSend,
 }: Props) {
   const supabase = useSupabase();
@@ -315,6 +325,24 @@ export function ChatInput({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      <div className={styles.composerTopRow}>
+        <button
+          type="button"
+          className={styles.autoToggle}
+          data-testid="agent-mode-toggle"
+          disabled={isStreaming || parsing}
+          aria-label={`Execution mode: ${autoExecute ? 'Auto' : 'Confirm'}`}
+          aria-pressed={autoExecute}
+          title={autoExecute ? 'Write tools run immediately' : 'Write operations require confirmation'}
+          onClick={onToggleMode}
+        >
+          <span className={styles.autoToggleLabel}>Auto</span>
+          <span className={`${styles.autoToggleTrack} ${autoExecute ? styles.autoToggleTrackOn : ''}`}>
+            <span className={styles.autoToggleThumb} />
+          </span>
+        </button>
+      </div>
+
       {selectionContext && (
         <div className={styles.attachmentRow}>
           <span className={styles.selectionAttachment} title={selectionContext.selectionLabel}>
@@ -361,7 +389,7 @@ export function ChatInput({
       {(file || fileError) && (
         <div className={styles.attachmentRow}>
           <span className={`${styles.fileChip} ${fileError ? styles.fileChipError : ''}`}>
-            <PaperClipOutlined className={styles.fileChipIcon} />
+            <PlusOutlined className={styles.fileChipIcon} />
             <span className={styles.fileChipName}>{file ? file.name : fileError}</span>
             {file && (
               <button
@@ -389,16 +417,6 @@ export function ChatInput({
       )}
 
       <div className={styles.inputBar}>
-        <button
-          type="button"
-          className={styles.attachBtn}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isStreaming || parsing}
-          aria-label="Attach a document or images"
-          title="Attach a .txt/.md/.docx document or images"
-        >
-          <PaperClipOutlined />
-        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -423,7 +441,7 @@ export function ChatInput({
                 ? 'Add a prompt for this document (optional)…'
                 : images.length > 0
                   ? 'Add a prompt for these images (optional)…'
-                  : 'Ask Keco Assistant…  (Enter to send, Shift+Enter for newline)'
+                  : 'Ask AI to help...'
           }
           value={value}
           onChange={(e) => {
@@ -434,15 +452,40 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
         />
-        <button
-          className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}
-          data-testid="agent-send"
-          disabled={sendDisabled}
-          onClick={() => void submit()}
-          aria-busy={isStreaming || parsing}
-        >
-          {isStreaming || parsing ? <LoadingOutlined spin /> : 'Send'}
-        </button>
+        <div className={styles.inputActionRow}>
+          <div className={styles.inputTools}>
+            <button
+              type="button"
+              className={styles.attachBtn}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming || parsing}
+              aria-label="Attach a document or images"
+              title="Attach a .txt/.md/.docx document or images"
+            >
+              <PlusOutlined />
+            </button>
+            <button
+              type="button"
+              className={styles.attachBtn}
+              disabled
+              aria-label="Agent tools"
+              title="Agent tools"
+            >
+              <ExperimentOutlined />
+            </button>
+          </div>
+          <button
+            className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}
+            data-testid="agent-send"
+            disabled={sendDisabled}
+            onClick={() => void submit()}
+            aria-busy={isStreaming || parsing}
+            aria-label="Send message"
+            title="Send message"
+          >
+            {isStreaming || parsing ? <LoadingOutlined spin /> : <ArrowUpOutlined />}
+          </button>
+        </div>
       </div>
     </div>
   );

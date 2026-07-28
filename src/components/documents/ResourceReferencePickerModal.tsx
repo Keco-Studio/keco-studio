@@ -18,9 +18,14 @@ import {
   type ResourceReferenceTarget,
 } from '@/lib/documents/resourceReferenceTypes';
 import type { DocumentReferenceBlock } from '@/lib/documents/documentBlockIdentity';
+import { createDocumentRangeTarget } from '@/lib/documents/documentRangeReference';
 import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import styles from './ResourceReferencePickerModal.module.css';
 import { ResourceReferenceResultList } from './ResourceReferenceResultList';
+import {
+  DocumentReferencePreview,
+  type DocumentPreviewSelection,
+} from './DocumentReferencePreview';
 
 type ReferenceKind = 'table' | 'document';
 
@@ -50,7 +55,7 @@ export function ResourceReferencePickerModal({
   onConfirm,
 }: ResourceReferencePickerModalProps) {
   const supabase = useSupabase();
-  const initialKind: ReferenceKind = initialTarget?.kind === 'document-block'
+  const initialKind: ReferenceKind = initialTarget && initialTarget.kind !== 'table-row'
     ? 'document'
     : 'table';
   const [activeKind, setActiveKind] = useState<ReferenceKind>(initialKind);
@@ -63,8 +68,9 @@ export function ResourceReferencePickerModal({
   const [documentSources, setDocumentSources] = useState<DocumentReferenceSource[]>([]);
   const [documentBlocks, setDocumentBlocks] = useState<DocumentReferenceBlock[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [documentSearch, setDocumentSearch] = useState('');
+  const [selectedDocumentRange, setSelectedDocumentRange] = useState<
+    Extract<ResourceReferenceTarget, { kind: 'document-range' }> | null
+  >(null);
   const [loadingTableSources, setLoadingTableSources] = useState(false);
   const [loadingDocumentSources, setLoadingDocumentSources] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
@@ -110,7 +116,7 @@ export function ResourceReferencePickerModal({
       setDocumentBlocks([]);
       return;
     }
-    const kind: ReferenceKind = initialTarget?.kind === 'document-block'
+    const kind: ReferenceKind = initialTarget && initialTarget.kind !== 'table-row'
       ? 'document'
       : 'table';
     setActiveKind(kind);
@@ -118,11 +124,10 @@ export function ResourceReferencePickerModal({
     setSelectedAssetId(initialTarget?.kind === 'table-row' ? initialTarget.assetId : null);
     setSelectedFieldId(initialTarget?.kind === 'table-row' ? initialTarget.displayFieldId : null);
     setSelectedDocumentId(
-      initialTarget?.kind === 'document-block' ? initialTarget.documentId : null
+      initialTarget && initialTarget.kind !== 'table-row' ? initialTarget.documentId : null
     );
-    setSelectedBlockId(initialTarget?.kind === 'document-block' ? initialTarget.blockId : null);
+    setSelectedDocumentRange(initialTarget?.kind === 'document-range' ? initialTarget : null);
     setTableSearch('');
-    setDocumentSearch('');
     setTableRows(EMPTY_TABLE_ROWS);
     setDocumentBlocks([]);
   }, [initialTarget, invalidateValidation, open]);
@@ -220,8 +225,6 @@ export function ResourceReferencePickerModal({
   const selectedLibrary = tableSources.find((source) => source.id === selectedLibraryId);
   const selectedRow = tableRows.rows.find((row) => row.id === selectedAssetId);
   const selectedField = tableRows.fields.find((field) => field.id === selectedFieldId);
-  const selectedDocument = documentSources.find((source) => source.id === selectedDocumentId);
-  const selectedBlock = documentBlocks.find((block) => block.blockId === selectedBlockId);
 
   const target = useMemo<ResourceReferenceTarget | null>(() => {
     if (activeKind === 'table') {
@@ -234,18 +237,10 @@ export function ResourceReferencePickerModal({
         fallbackLabel: cellDisplayString(selectedRow.values[selectedField.id]) || '(empty)',
       };
     }
-    if (!selectedDocumentId || !selectedBlock) return null;
-    return {
-      kind: 'document-block',
-      documentId: selectedDocumentId,
-      blockId: selectedBlock.blockId,
-      blockType: selectedBlock.blockType,
-      fallbackLabel: selectedBlock.text,
-    };
+    return selectedDocumentRange;
   }, [
     activeKind,
-    selectedDocumentId,
-    selectedBlock,
+    selectedDocumentRange,
     selectedField,
     selectedLibraryId,
     selectedRow,
@@ -276,14 +271,6 @@ export function ResourceReferencePickerModal({
     );
   }, [tableRows.rows, tableSearch]);
 
-  const filteredBlocks = useMemo(() => {
-    const query = searchable(documentSearch);
-    if (!query) return documentBlocks;
-    return documentBlocks.filter((block) =>
-      `${block.text} ${block.nearestHeading ?? ''}`.toLocaleLowerCase().includes(query)
-    );
-  }, [documentBlocks, documentSearch]);
-
   const changeLibrary = useCallback((libraryId: string) => {
     invalidateValidation();
     setSelectedLibraryId(libraryId);
@@ -297,7 +284,7 @@ export function ResourceReferencePickerModal({
   const changeDocument = useCallback((nextDocumentId: string) => {
     invalidateValidation();
     setSelectedDocumentId(nextDocumentId);
-    setSelectedBlockId(null);
+    setSelectedDocumentRange(null);
     setDocumentBlocks([]);
     setBlocksError(null);
     setValidationError(null);
@@ -315,11 +302,20 @@ export function ResourceReferencePickerModal({
     setValidationError(null);
   }, [invalidateValidation]);
 
-  const selectBlock = useCallback((blockId: string) => {
+  const selectDocumentText = useCallback((selection: DocumentPreviewSelection | null) => {
     invalidateValidation();
-    setSelectedBlockId(blockId);
     setValidationError(null);
-  }, [invalidateValidation]);
+    if (!selectedDocumentId || !selection) {
+      setSelectedDocumentRange(null);
+      return;
+    }
+    setSelectedDocumentRange(createDocumentRangeTarget({
+      documentId: selectedDocumentId,
+      blocks: documentBlocks,
+      anchor: selection.anchor,
+      focus: selection.focus,
+    }));
+  }, [documentBlocks, invalidateValidation, selectedDocumentId]);
 
   const confirm = useCallback(async () => {
     if (!open || !target || !targetSignature || activeValidation.current !== null) return;
@@ -428,29 +424,11 @@ export function ResourceReferencePickerModal({
         options={documentSources.map((source) => ({ label: source.name, value: source.id }))}
         onChange={changeDocument}
       />
-      <Input
-        aria-label="Search document blocks"
-        placeholder="Search headings and paragraphs"
-        allowClear
-        value={documentSearch}
-        onChange={(event) => setDocumentSearch(event.target.value)}
-      />
       <Spin aria-label="Loading document blocks" spinning={loadingBlocks}>
-        <ResourceReferenceResultList
-          ariaLabel="Document blocks"
-          idPrefix="document-reference-block"
-          items={filteredBlocks}
-          selectedId={selectedBlockId}
+        <DocumentReferencePreview
+          blocks={documentBlocks}
           emptyText={selectedDocumentId ? 'No matching content' : 'Choose a document'}
-          getId={(block) => block.blockId}
-          getTitle={(block) => block.text}
-          getDescription={(block) => `${selectedDocument?.name ?? 'Document'} / ${
-            block.nearestHeading ?? block.text
-          } / ${block.blockType}`}
-          getAriaLabel={(block) => `${
-            block.blockType === 'heading' ? 'Heading' : 'Paragraph'
-          }: ${block.text}`}
-          onSelect={(block) => selectBlock(block.blockId)}
+          onSelection={selectDocumentText}
         />
       </Spin>
     </div>

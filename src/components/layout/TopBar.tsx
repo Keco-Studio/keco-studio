@@ -7,7 +7,8 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { Avatar, Modal } from 'antd';
+import { Avatar, Dropdown, Modal } from 'antd';
+import { DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
 import homeMorehorizontalIcon from '@/assets/images/homeMorehorizontalIcon.svg';
@@ -17,7 +18,6 @@ import homeDefaultUserIcon from '@/assets/images/homeDefaultUserIcon.svg';
 import topbarPredefinePublishIcon from '@/assets/images/topbarPredefinePublishIcon.svg';
 import assetViewIcon from '@/assets/images/assetViewIcon.svg';
 import assetEditIcon from '@/assets/images/assetEditIcon.svg';
-import assetShareIcon from '@/assets/images/assetShareIcon.svg';
 import topBarBreadCrumbIcon from '@/assets/images/topBarBreadCrumbIcon.svg';
 import menuIcon from '@/assets/images/menuIcon36.svg';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
@@ -43,6 +43,7 @@ type TopBarProps = {
 
 type AssetMode = 'view' | 'edit';
 const CELL_SEARCH_PAGE_SIZE = 10;
+type DocumentExportItem = { key: string; label: string };
 
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
@@ -51,6 +52,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const {
     breadcrumbs,
     currentAssetId,
+    currentDocumentId,
     currentProjectId,
     currentLibraryId,
     currentFolderId,
@@ -78,6 +80,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('all');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
+  const [documentLiveLabel, setDocumentLiveLabel] = useState('Live');
+  const [documentExportItems, setDocumentExportItems] = useState<DocumentExportItem[]>([
+    { key: 'docx', label: 'Download DOCX' },
+    { key: 'pdf', label: 'Download PDF' },
+    { key: 'mdx', label: 'Download MDX' },
+  ]);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -891,6 +899,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
+  const isDocumentDetail = !!currentDocumentId;
   const isProjectRootPage =
     !!currentProjectId && !currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
   const isFolderPage =
@@ -956,6 +965,38 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       }
     };
   }, [currentProjectId, currentLibraryId]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ label?: string }>).detail;
+      if (!detail?.label) return;
+      setDocumentLiveLabel(detail.label);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('document-topbar-status', handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('document-topbar-status', handler as EventListener);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ items?: DocumentExportItem[] }>).detail;
+      if (!detail?.items || detail.items.length === 0) return;
+      setDocumentExportItems(detail.items);
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('document-export-options', handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('document-export-options', handler as EventListener);
+      }
+    };
+  }, []);
 
   // Receive presence updates from LibraryPage (LibraryDataContext) so TopBar
   // can render LibraryHeader with real-time collaborators in the top row.
@@ -1025,6 +1066,22 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     // Trigger asset save from the asset page
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('asset-create-save'));
+    }
+  };
+
+  const handleDocumentExport = (key: string) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('document-export-trigger', {
+          detail: { key },
+        })
+      );
+    }
+  };
+
+  const handleDocumentHistoryToggle = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('document-history-toggle'));
     }
   };
 
@@ -1199,6 +1256,51 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   const renderRightContent = () => {
+    if (isDocumentDetail) {
+      return (
+        <>
+          <button
+            type="button"
+            className={styles.documentShareButton}
+            aria-label="Share"
+            title="Share"
+            onClick={handleShareClick}
+          >
+            Share
+          </button>
+          <Dropdown
+            menu={{
+              items: documentExportItems,
+              onClick: ({ key }) => handleDocumentExport(key),
+            }}
+            placement="bottomRight"
+            trigger={['click']}
+          >
+            <button
+              type="button"
+              className={styles.documentActionButton}
+              aria-label="Export document"
+              data-testid="document-export"
+              title="Export document"
+            >
+              <DownloadOutlined aria-hidden="true" />
+            </button>
+          </Dropdown>
+          <button
+            type="button"
+            className={styles.documentActionButton}
+            aria-label="Version history"
+            data-testid="version-history-toggle"
+            title="Version history"
+            onClick={handleDocumentHistoryToggle}
+          >
+            <HistoryOutlined aria-hidden="true" />
+          </button>
+          <span className={styles.documentLiveText}>{documentLiveLabel}</span>
+        </>
+      );
+    }
+
     if (isPredefine) {
       return (
         <>

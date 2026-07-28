@@ -1,4 +1,10 @@
 import { isUuid } from '@/lib/utils/uuid';
+import {
+  DOCUMENT_RANGE_CONTEXT_LENGTH,
+  type DocumentRangeReferenceTarget,
+} from './documentRangeReference';
+
+export type { DocumentRangeReferenceTarget } from './documentRangeReference';
 
 export type TableRowReferenceTarget = {
   kind: 'table-row';
@@ -18,7 +24,8 @@ export type DocumentBlockReferenceTarget = {
 
 export type ResourceReferenceTarget =
   | TableRowReferenceTarget
-  | DocumentBlockReferenceTarget;
+  | DocumentBlockReferenceTarget
+  | DocumentRangeReferenceTarget;
 
 const TABLE_ROW_PROPERTIES = [
   'kind',
@@ -33,6 +40,20 @@ const DOCUMENT_BLOCK_PROPERTIES = [
   'documentId',
   'blockId',
   'blockType',
+  'fallbackLabel',
+] as const;
+
+const DOCUMENT_RANGE_PROPERTIES = [
+  'kind',
+  'documentId',
+  'startBlockId',
+  'startOffset',
+  'startBefore',
+  'startAfter',
+  'endBlockId',
+  'endOffset',
+  'endBefore',
+  'endAfter',
   'fallbackLabel',
 ] as const;
 
@@ -51,10 +72,34 @@ function hasLabel(fallbackLabel: string): boolean {
   return typeof fallbackLabel === 'string' && fallbackLabel.trim().length > 0;
 }
 
+function parseOffset(value: string): number | null {
+  if (!/^(0|[1-9]\d*)$/.test(value)) return null;
+  const offset = Number(value);
+  return Number.isSafeInteger(offset) ? offset : null;
+}
+
+function hasValidContext(value: string): boolean {
+  return typeof value === 'string' && value.length <= DOCUMENT_RANGE_CONTEXT_LENGTH;
+}
+
 export function resourceReferenceKey(target: ResourceReferenceTarget): string {
-  return target.kind === 'table-row'
-    ? `table-row:${target.libraryId}:${target.assetId}:${target.displayFieldId}`
-    : `document-block:${target.documentId}:${target.blockId}`;
+  if (target.kind === 'table-row') {
+    return `table-row:${target.libraryId}:${target.assetId}:${target.displayFieldId}`;
+  }
+  if (target.kind === 'document-block') {
+    return `document-block:${target.documentId}:${target.blockId}`;
+  }
+  return `document-range:${JSON.stringify([
+    target.documentId,
+    target.startBlockId,
+    target.startOffset,
+    target.startBefore,
+    target.startAfter,
+    target.endBlockId,
+    target.endOffset,
+    target.endBefore,
+    target.endAfter,
+  ])}`;
 }
 
 export function parseResourceReferenceAttributes(
@@ -99,25 +144,76 @@ export function parseResourceReferenceAttributes(
     };
   }
 
+  if (attributes.kind === 'document-range') {
+    const startOffset = parseOffset(attributes.startOffset);
+    const endOffset = parseOffset(attributes.endOffset);
+    if (
+      !hasExactProperties(attributes, DOCUMENT_RANGE_PROPERTIES) ||
+      !isUuid(attributes.documentId) ||
+      !isUuid(attributes.startBlockId) ||
+      !isUuid(attributes.endBlockId) ||
+      startOffset === null ||
+      endOffset === null ||
+      !hasValidContext(attributes.startBefore) ||
+      !hasValidContext(attributes.startAfter) ||
+      !hasValidContext(attributes.endBefore) ||
+      !hasValidContext(attributes.endAfter) ||
+      (!attributes.startBefore && !attributes.startAfter) ||
+      (!attributes.endBefore && !attributes.endAfter) ||
+      !hasLabel(attributes.fallbackLabel)
+    ) {
+      return null;
+    }
+    return {
+      kind: 'document-range',
+      documentId: attributes.documentId,
+      startBlockId: attributes.startBlockId,
+      startOffset,
+      startBefore: attributes.startBefore,
+      startAfter: attributes.startAfter,
+      endBlockId: attributes.endBlockId,
+      endOffset,
+      endBefore: attributes.endBefore,
+      endAfter: attributes.endAfter,
+      fallbackLabel: attributes.fallbackLabel,
+    };
+  }
+
   return null;
 }
 
 export function resourceReferenceAttributes(
   target: ResourceReferenceTarget
 ): Record<string, string> {
-  return target.kind === 'table-row'
-    ? {
-        kind: target.kind,
-        libraryId: target.libraryId,
-        assetId: target.assetId,
-        displayFieldId: target.displayFieldId,
-        fallbackLabel: target.fallbackLabel,
-      }
-    : {
-        kind: target.kind,
-        documentId: target.documentId,
-        blockId: target.blockId,
-        blockType: target.blockType,
-        fallbackLabel: target.fallbackLabel,
-      };
+  if (target.kind === 'table-row') {
+    return {
+      kind: target.kind,
+      libraryId: target.libraryId,
+      assetId: target.assetId,
+      displayFieldId: target.displayFieldId,
+      fallbackLabel: target.fallbackLabel,
+    };
+  }
+  if (target.kind === 'document-block') {
+    return {
+      kind: target.kind,
+      documentId: target.documentId,
+      blockId: target.blockId,
+      blockType: target.blockType,
+      fallbackLabel: target.fallbackLabel,
+    };
+  }
+  return {
+    kind: target.kind,
+    documentId: target.documentId,
+    startBlockId: target.startBlockId,
+    startOffset: String(target.startOffset),
+    startBefore: target.startBefore,
+    startAfter: target.startAfter,
+    endBlockId: target.endBlockId,
+    endOffset: String(target.endOffset),
+    endBefore: target.endBefore,
+    endAfter: target.endAfter,
+    fallbackLabel: target.fallbackLabel,
+  };
 }

@@ -25,6 +25,7 @@ import {
   loadConversationHistory,
   saveMessage,
   getConversation,
+  touchConversation,
   type SaveMessageIndexingContext,
 } from './conversation-store';
 import {
@@ -72,6 +73,13 @@ const MAX_ITERATIONS = 50;
 
 /** Cap how much of the raw argument string we echo back to the model on a parse failure. */
 const MAX_RAW_ARGS_IN_ERROR = 200;
+
+function summarizeConversationTitle(raw: string): string {
+  const source = raw.trim();
+  if (!source) return 'New chat';
+  const oneLine = source.replace(/\s+/g, ' ');
+  return oneLine.length > 18 ? `${oneLine.slice(0, 18)}...` : oneLine;
+}
 
 function publicToolResult(result: ToolResult): ToolResult {
   const { internalData: _internalData, ...publicResult } = result;
@@ -749,6 +757,12 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       indexingContext(toolContext)
     );
     if (!savedUserMessage) throw new Error('Failed to bind the current user message');
+    const conversationForTitle = await getConversation(toolContext.supabase, conversationId);
+    if (conversationForTitle && !conversationForTitle.title) {
+      await touchConversation(toolContext.supabase, conversationId, {
+        title: summarizeConversationTitle(input.userMessage),
+      });
+    }
     const turnContext: ToolContext = {
       ...toolContext,
       accessCache: createAccessVerificationCache(),

@@ -1,22 +1,45 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
-import { DownOutlined, RightOutlined, PaperClipOutlined } from '@ant-design/icons';
+import { DownOutlined, RightOutlined, PaperClipOutlined, ToolOutlined } from '@ant-design/icons';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
-import { ToolCallCard } from './ToolCallCard';
 import { ConfirmationCard } from './ConfirmationCard';
 import { ScriptPreviewCard } from './ScriptPreviewCard';
 import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
 import { AssistantMarkdown } from './AssistantMarkdown';
 import { collapseMarkdownThematicBreaks } from './collapseMarkdownThematicBreaks';
-import { reasoningDurationLabel, summarizeReasoning } from './reasoning-utils';
+import { summarizeReasoning } from './reasoning-utils';
 
 interface Props {
   item: ChatItem;
   streaming: boolean;
   onDecision: (actionId: string, decision: 'approve' | 'reject') => void;
+}
+
+function inferCompletedStatus(content: string): string {
+  const text = content.trim();
+  if (!text) return '处理内容...';
+  // Greeting / onboarding responses should not be classified as "edit".
+  if (/(你好|您好|hi|hello)/i.test(text) && /(我是|很高兴|可以帮你|今天想做什么)/.test(text)) {
+    return '问候内容...';
+  }
+  // Prefer intent signals from the opening sentence to avoid matching broad
+  // capability lists ("我可以帮你修改/创建/查询...") as a concrete action.
+  const lead = text.split(/[。！？\n]/)[0] ?? text;
+  if (/(修改|改成|更新|替换|调整|修正)/.test(lead)) return '修改内容...';
+  if (/(填写|填充|录入|补全|完善)/.test(lead)) return '填写内容...';
+  if (/(查询|查找|检索|统计|分析|确认)/.test(lead)) return '查询内容...';
+  if (/(删除|移除|清理)/.test(lead)) return '删除内容...';
+  if (/(创建|新增|生成|添加)/.test(lead)) return '创建内容...';
+  // Fallback to full text when lead sentence is too short/neutral.
+  if (/(修改|改成|更新|替换|调整|修正)/.test(text)) return '修改内容...';
+  if (/(填写|填充|录入|补全|完善)/.test(text)) return '填写内容...';
+  if (/(查询|查找|检索|统计|分析|确认)/.test(text)) return '查询内容...';
+  if (/(删除|移除|清理)/.test(text)) return '删除内容...';
+  if (/(创建|新增|生成|添加)/.test(text)) return '创建内容...';
+  return '处理内容...';
 }
 
 export function ChatMessage({ item, streaming, onDecision }: Props) {
@@ -65,7 +88,7 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
     case 'error':
       return <div className={styles.errorBubble}>{item.error}</div>;
     case 'tool':
-      return item.toolCall ? <ToolCallCard toolCall={item.toolCall} /> : null;
+      return null;
     case 'confirmation': {
       if (!item.confirmation) return null;
       if (item.confirmation.confirmationMode === 'post_preview') {
@@ -96,31 +119,48 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
 
 function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boolean }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
 
   const hasReasoning = !!item.reasoning?.trim();
-  const isThinking = hasReasoning && streaming && !item.reasoningEndedAt;
-  const reasoningStreaming = hasReasoning && !item.text && streaming;
   const normalizedText = collapseMarkdownThematicBreaks(item.text ?? '');
-
-  useEffect(() => {
-    if (!isThinking) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 500);
-    return () => window.clearInterval(timer);
-  }, [isThinking]);
-
-  const summary = summarizeReasoning(item.reasoning ?? '');
-  const duration = reasoningDurationLabel(
-    item.reasoningStartedAt,
-    item.reasoningEndedAt,
-    now
-  );
+  const hasVisibleText = !!normalizedText.trim();
+  const showReasoning = hasReasoning && !hasVisibleText;
+  const reasoningStreaming = showReasoning && streaming;
+  const summary = summarizeReasoning(item.reasoning ?? '').trim();
 
   if (!hasReasoning && !normalizedText.trim()) return null;
 
+  const streamingStatus = 'Connecting/thinking/working...';
+  const completedStatus = inferCompletedStatus(normalizedText || item.reasoning || '');
+  const thinkingText =
+    summary || 'Analyzing user intent and executing the solution to address the issue at hand.';
+
+  if (streaming && !hasVisibleText) {
+    return (
+      <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
+        <div className={styles.assistantStatusRow} role="status" aria-live="polite">
+          <ToolOutlined className={styles.assistantStatusIcon} />
+          <span className={styles.assistantStatusText}>{streamingStatus}</span>
+          <DownOutlined className={styles.assistantStatusChevron} />
+        </div>
+        <div className={`${styles.bubble} ${styles.assistant} ${styles.assistantThinkingCard}`}>
+          <div className={styles.assistantThinkingRow}>
+            <ToolOutlined className={styles.assistantThinkingIcon} />
+            <span className={styles.assistantThinkingText}>{thinkingText}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`${styles.bubble} ${styles.assistant}`} data-testid="agent-message-assistant">
-      {hasReasoning && (
+    <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
+      <div className={styles.assistantStatusRow} role="status" aria-live="polite">
+        <ToolOutlined className={styles.assistantStatusIcon} />
+        <span className={styles.assistantStatusText}>{streaming ? streamingStatus : completedStatus}</span>
+        <DownOutlined className={styles.assistantStatusChevron} />
+      </div>
+      <div className={`${styles.bubble} ${styles.assistant}`}>
+      {showReasoning && (
         <div className={styles.reasoningBlock}>
           <button
             type="button"
@@ -132,18 +172,16 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
               {reasoningOpen ? <DownOutlined /> : <RightOutlined />}
             </span>
             <span className={styles.reasoningLabel}>{summary || 'Deep thinking'}</span>
-            {isThinking && <span className={styles.reasoningStatus}>(Thinking)</span>}
-            {duration && <span className={styles.reasoningDuration}>{duration}</span>}
-            {isThinking && <span className={styles.reasoningDot} />}
           </button>
           {reasoningOpen && <div className={styles.reasoningContent}>{item.reasoning}</div>}
         </div>
       )}
-      {normalizedText ? (
+      {hasVisibleText ? (
         <AssistantMarkdown markdown={normalizedText} />
       ) : reasoningStreaming ? (
         '…'
       ) : null}
+      </div>
     </div>
   );
 }

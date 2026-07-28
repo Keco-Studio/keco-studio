@@ -38,6 +38,7 @@ const ui: {
   rows: Map<string, ReactElement<AnyProps>[]>;
   alerts: AnyProps[];
   spins: AnyProps[];
+  preview?: AnyProps;
 } = {
   selects: new Map(),
   inputs: new Map(),
@@ -81,6 +82,12 @@ jest.mock('@/components/documents/ResourceReferenceResultList', () => ({
         React.createElement('span', { description: props.getDescription(item) })
       );
     }));
+    return null;
+  },
+}));
+jest.mock('@/components/documents/DocumentReferencePreview', () => ({
+  DocumentReferencePreview: (props: AnyProps) => {
+    ui.preview = props;
     return null;
   },
 }));
@@ -263,6 +270,7 @@ describe('ResourceReferencePickerModal', () => {
     ui.rows.clear();
     ui.alerts.length = 0;
     ui.spins.length = 0;
+    ui.preview = undefined;
     onCancel.mockReset();
     onConfirm.mockReset();
     listTableReferenceSources.mockReset().mockResolvedValue([
@@ -386,7 +394,7 @@ describe('ResourceReferencePickerModal', () => {
     expect(onConfirm).toHaveBeenCalledWith(expected);
   });
 
-  it('excludes the open document, resets blocks, searches context, and emits a typed block target', async () => {
+  it('excludes the open document, resets selection, and emits a cross-block range target', async () => {
     listDocumentReferenceBlocks.mockResolvedValue([
       {
         blockId: HEADING_BLOCK,
@@ -411,34 +419,38 @@ describe('ResourceReferencePickerModal', () => {
       OPEN_DOCUMENT_ID
     );
     await act(async () => ui.selects.get('Document')?.onChange(DOCUMENT_A));
-    await waitFor(() => ui.rows.get('Document blocks')?.length === 2);
-    expect(ui.rows.get('Document blocks')?.map((row) => row.props['aria-label'])).toEqual([
-      'Heading: Conflict',
-      'Paragraph: The city closes its gates',
+    await waitFor(() => ui.preview?.blocks.length === 2);
+    expect(ui.preview?.blocks.map((block: AnyProps) => block.text)).toEqual([
+      'Conflict',
+      'The city closes its gates',
     ]);
-
-    await act(async () => ui.inputs.get('Search document blocks')?.onChange({
-      target: { value: 'conflict' },
+    await act(async () => ui.preview?.onSelection({
+      anchor: { blockId: HEADING_BLOCK, offset: 3 },
+      focus: { blockId: PARAGRAPH_BLOCK, offset: 8 },
     }));
-    expect(ui.rows.get('Document blocks')).toHaveLength(2);
-    await act(async () => ui.rows.get('Document blocks')?.[1].props.onClick());
-    expect(ui.rows.get('Document blocks')?.[1].props.children.props.description).toBe(
-      'Outline / Conflict / paragraph'
-    );
     expect(ui.modal?.okButtonProps.disabled).toBe(false);
 
     await act(async () => ui.selects.get('Document')?.onChange(DOCUMENT_B));
     expect(ui.modal?.okButtonProps.disabled).toBe(true);
     await waitFor(() => listDocumentReferenceBlocks.mock.calls.length === 2);
-    await act(async () => ui.rows.get('Document blocks')?.[1].props.onClick());
+    await act(async () => ui.preview?.onSelection({
+      anchor: { blockId: HEADING_BLOCK, offset: 3 },
+      focus: { blockId: PARAGRAPH_BLOCK, offset: 8 },
+    }));
     await act(async () => ui.modal?.onOk());
 
     expect(onConfirm).toHaveBeenCalledWith({
-      kind: 'document-block',
+      kind: 'document-range',
       documentId: DOCUMENT_B,
-      blockId: PARAGRAPH_BLOCK,
-      blockType: 'paragraph',
-      fallbackLabel: 'The city closes its gates',
+      startBlockId: HEADING_BLOCK,
+      startOffset: 3,
+      startBefore: 'Con',
+      startAfter: 'flict',
+      endBlockId: PARAGRAPH_BLOCK,
+      endOffset: 8,
+      endBefore: 'The city',
+      endAfter: ' closes its gates',
+      fallbackLabel: 'flict The city',
     });
   });
 

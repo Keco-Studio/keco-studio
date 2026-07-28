@@ -9,24 +9,27 @@
   --accentBorder: var(--ant-color-primary-border, #91caff);
   font-family: inherit;
   background: var(--ant-color-bg-container, #ffffff);
-  border: 1px solid var(--ant-color-border, #d9d9d9);
-  border-radius: 8px;
   /* visible so MDX toolbar sticky can use DashboardLayout .content as scrollport */
   overflow: visible;
 }
 
 .stickyToolbar {
   position: sticky;
-  top: 0;
-  z-index: 6;
+  top: var(--document-sticky-chrome-height, 4rem);
+  z-index: 2;
   background-color: var(--ant-color-bg-container, #ffffff);
-  border-radius: 8px 8px 0 0;
   border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
 
+/* Tooltips portal into the editor root; keep them above the sticky title
+   (z-index: 1) and sticky toolbar (z-index: 2). */
+.editor :global([class*='tooltipContent']) {
+  z-index: 8 !important;
+}
+
 .contentEditable {
-  min-height: 60vh;
-  padding: 16px 24px;
+  min-height: 64vh;
+  padding: 18px 24px 24px;
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
   font-size: 14px;
   line-height: 1.6;

@@ -285,67 +285,57 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     !isDocumentDelete &&
     typeof documentPreview?.documentId === 'string' &&
     typeof documentPreview.name === 'string';
-  let visibleArgs = args;
-  if (isDocumentEdit && args && typeof args === 'object') {
-    const rawArgs = args as Record<string, unknown>;
-    const rawOperation = rawArgs.operation;
-    const visibleOperation =
-      rawOperation && typeof rawOperation === 'object'
-        ? Object.fromEntries(
-            Object.entries(rawOperation as Record<string, unknown>).map(([key, value]) => [
-              key,
-              key === 'type' ? value : '[shown in document diff]',
-            ])
-          )
-        : rawOperation;
-    visibleArgs = {
-      ...rawArgs,
-      ...(Object.hasOwn(rawArgs, 'markdown')
-        ? { markdown: '[shown in document diff]' }
-        : {}),
-      ...(rawOperation !== undefined ? { operation: visibleOperation } : {}),
-    };
-  }
   const diff = isDocumentEdit
     ? buildDocumentEditDiff(documentPreview.baseMarkdown!, documentPreview.proposedMarkdown!)
     : [];
 
+  const summarizeChange = (): string => {
+    const asRecord = args && typeof args === 'object' ? (args as Record<string, unknown>) : null;
+    if (!asRecord) return `请确认执行：${label}`;
+
+    const propertyValues =
+      asRecord.propertyValues && typeof asRecord.propertyValues === 'object'
+        ? (asRecord.propertyValues as Record<string, unknown>)
+        : null;
+    const previewRecord =
+      documentPreview && typeof documentPreview === 'object'
+        ? (documentPreview as Record<string, unknown>)
+        : null;
+    const existingValues =
+      previewRecord?.existingValues && typeof previewRecord.existingValues === 'object'
+        ? (previewRecord.existingValues as Record<string, unknown>)
+        : null;
+
+    if (propertyValues && Object.keys(propertyValues).length > 0) {
+      const [field, nextValue] = Object.entries(propertyValues)[0]!;
+      const previousValue = existingValues?.[field];
+      if (previousValue !== undefined && previousValue !== null && String(previousValue).trim()) {
+        return `${String(previousValue)} -> ${String(nextValue)}`;
+      }
+      return `${field} -> ${String(nextValue)}`;
+    }
+
+    const fromValue = asRecord.from ?? asRecord.find ?? asRecord.oldValue;
+    const toValue = asRecord.to ?? asRecord.replace ?? asRecord.newValue;
+    if (fromValue !== undefined && toValue !== undefined) {
+      return `${String(fromValue)} -> ${String(toValue)}`;
+    }
+
+    if (typeof asRecord.name === 'string') return asRecord.name;
+    return `请确认执行：${label}`;
+  };
+
+  const changeSummary = summarizeChange();
+
   return (
-    <div className={styles.confirmCard} data-testid="agent-confirmation">
-      <div className={styles.confirmTitle}>Confirm: {label}</div>
-      <pre className={styles.pre}>{JSON.stringify(visibleArgs, null, 2)}</pre>
-      {isDocumentEdit &&
-        typeof documentPreview.documentName === 'string' &&
-        typeof documentPreview.operationSummary === 'string' && (
-          <div className={styles.documentEditMeta}>
-            <div className={styles.documentEditTarget}>
-              {documentPreview.documentName}
-              {documentPreview.folderName ? ` / ${documentPreview.folderName}` : ''}
-            </div>
-            <div>{documentPreview.operationSummary}</div>
-          </div>
-        )}
-      {isDocumentDelete && (
-        <div className={styles.documentEditMeta}>
-          <div className={styles.documentEditTarget}>
-            {documentPreview.name}
-            {documentPreview.folderName ? ` / ${documentPreview.folderName}` : ''}
-          </div>
-          <div>
-            This document will be permanently deleted. This action is irreversible and cannot be
-            undone.
-          </div>
-        </div>
-      )}
-      {isBoundDocument && (
-        <div className={styles.documentEditMeta}>
-          <div className={styles.documentEditTarget}>
-            {documentPreview.name}
-            {documentPreview.folderName ? ` / ${documentPreview.folderName}` : ''}
-          </div>
-          <div>Bound document</div>
-        </div>
-      )}
+    <div
+      className={styles.confirmCard}
+      data-testid="agent-confirmation"
+      role="group"
+      aria-label="Confirmation required"
+    >
+      <div className={styles.confirmSimpleTitle}>是否确认修改：</div>
+      <div className={styles.confirmSimpleChange}>{changeSummary}</div>
       {isDocumentEdit && (
         <div className={styles.documentDiff} aria-label="Document changes">
           {diff.map((row, index) => (
@@ -356,42 +346,35 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
               <span className={styles.documentDiffMarker} aria-hidden="true">
                 {row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}
               </span>
-              <span>
-                {(row.kind === 'added' || row.kind === 'removed') && (
-                  <span className={styles.srOnly}>
-                    {row.kind === 'added' ? 'Added: ' : 'Removed: '}
-                  </span>
-                )}
-                {row.text}
-              </span>
+              <span>{row.text}</span>
             </div>
           ))}
         </div>
       )}
-      {isDocumentEdit && (
-        <details className={styles.documentProposal}>
-          <summary>Proposed Markdown</summary>
-          <pre className={styles.pre}>{documentPreview.proposedMarkdown}</pre>
-        </details>
+      {isDocumentDelete && (
+        <div className={styles.documentEditMeta}>该文档将被永久删除，此操作不可撤销。</div>
       )}
+      {isBoundDocument && <div className={styles.documentEditMeta}>将对绑定文档执行本次修改。</div>}
 
       {resolved ? (
         <div className={styles.resolvedNote}>
           {resolved === 'approved' ? 'Approved.' : 'Cancelled.'}
         </div>
       ) : (
-        <div className={styles.confirmActions}>
+        <div className={styles.confirmInlineActions}>
           <button
-            className={`${styles.btn} ${styles.btnPrimary}`}
+            className={`${styles.btn} ${styles.btnPillPrimary}`}
             data-testid="agent-confirm"
             disabled={disabled}
+            aria-label="Approve action"
             onClick={() => onDecision(actionId, 'approve')}
           >
-            Confirm
+            ✓ Confirm
           </button>
           <button
-            className={`${styles.btn} ${styles.btnGhost}`}
+            className={`${styles.btn} ${styles.btnPillGhost}`}
             disabled={disabled}
+            aria-label="Reject action"
             onClick={() => onDecision(actionId, 'reject')}
           >
             Cancel

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageOutlined } from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, MessageOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
@@ -11,8 +11,7 @@ import { useAgentChat } from './useAgentChat';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
-import { AgentActivityBar } from './AgentActivityBar';
-import { clearLastConversationById } from './agentChatStorage';
+import { AgentPanelHeader } from './AgentPanelHeader';
 import styles from './ChatPanel.module.css';
 
 export function ChatPanel() {
@@ -31,7 +30,11 @@ export function ChatPanel() {
   const [currentSectionName, setCurrentSectionName] = useState<string | undefined>(undefined);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<AgentSelectionContext | undefined>(undefined);
   const [inputFocusRequest, setInputFocusRequest] = useState(0);
+  const [showScrollJump, setShowScrollJump] = useState(false);
+  const [scrollJumpMode, setScrollJumpMode] = useState<'top' | 'bottom'>('top');
   const messagesRef = useRef<HTMLDivElement>(null);
+  const lastScrollSampleRef = useRef<{ top: number; time: number } | null>(null);
+  const scrollJumpHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Active section tab lives in LibraryAssetsTable state, not the URL.
   useEffect(() => {
@@ -128,26 +131,76 @@ export function ChatPanel() {
     if (activeScope) {
       switch (activeScope.level) {
         case 'table':
-          return activeScope.libraryName ? `📄 ${activeScope.libraryName}` : '📄 Table';
+          return activeScope.libraryName || 'Table';
         case 'folder':
-          return activeScope.folderName ? `📁 ${activeScope.folderName}` : '📁 Folder';
+          return activeScope.folderName || 'Folder';
         case 'global':
-          return '🌐 Global';
+          return 'Global';
         default:
-          return currentProjectName ? `📦 ${currentProjectName}` : '📦 Project';
+          return currentProjectName || 'Project';
       }
     }
     // New conversation preview (not yet frozen).
-    if (currentLibraryName) return `📄 ${currentLibraryName}`;
-    if (currentFolderName) return `📁 ${currentFolderName}`;
-    if (currentProjectName) return `📦 ${currentProjectName}`;
+    if (currentLibraryName) return currentLibraryName;
+    if (currentFolderName) return currentFolderName;
+    if (currentProjectName) return currentProjectName;
     return null;
   }, [activeScope, currentProjectName, currentLibraryName, currentFolderName]);
+
+  const headerTitle = useMemo(() => {
+    if (items.length === 0) return 'New chat';
+    const firstUserText = items.find((it) => it.role === 'user' && (it.text?.trim() || '').length > 0)?.text?.trim();
+    const fallbackText = items.find((it) => (it.text?.trim() || '').length > 0)?.text?.trim();
+    const source = firstUserText || fallbackText || 'New chat';
+    const oneLine = source.replace(/\s+/g, ' ');
+    return oneLine.length > 18 ? `${oneLine.slice(0, 18)}...` : oneLine;
+  }, [items]);
 
   useEffect(() => {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [items]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollJumpHideTimerRef.current) {
+        clearTimeout(scrollJumpHideTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesRef.current;
+    if (!el) return;
+    const now = Date.now();
+    const currentTop = el.scrollTop;
+    const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+    const previous = lastScrollSampleRef.current;
+    lastScrollSampleRef.current = { top: currentTop, time: now };
+    if (!previous) return;
+
+    const deltaTop = currentTop - previous.top;
+    const deltaTime = Math.max(1, now - previous.time);
+    const velocity = Math.abs((deltaTop / deltaTime) * 1000);
+    const FAST_SCROLL_THRESHOLD = 2400;
+    if (velocity < FAST_SCROLL_THRESHOLD || maxScroll <= 0) return;
+
+    setScrollJumpMode(currentTop > maxScroll * 0.5 ? 'top' : 'bottom');
+    setShowScrollJump(true);
+    if (scrollJumpHideTimerRef.current) clearTimeout(scrollJumpHideTimerRef.current);
+    scrollJumpHideTimerRef.current = setTimeout(() => setShowScrollJump(false), 1300);
+  }, []);
+
+  const handleScrollJump = useCallback(() => {
+    const el = messagesRef.current;
+    if (!el) return;
+    if (scrollJumpMode === 'top') {
+      el.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+    setShowScrollJump(false);
+  }, [scrollJumpMode]);
 
   // Consume a pending design-upload hand-off: open the panel, start a fresh
   // conversation, and auto-send the assembled message to the agent.
@@ -220,115 +273,83 @@ export function ChatPanel() {
 
   return (
     <div className={styles.panel} data-testid="agent-panel">
-      <div className={styles.header}>
-        <div className={styles.headerTitleGroup}>
-          <span className={styles.headerTitle}>Keco Assistant</span>
-          {lockLabel && (
-            <span
-              className={styles.scopeLock}
-              title={
-                activeScope
-                  ? 'This conversation is locked to this scope; switching projects will not change it'
-                  : 'New conversations will be bound to the current scope'
-              }
-            >
-              {activeScope ? '🔒 ' : ''}
-              {lockLabel}
-            </span>
-          )}
-        </div>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={`${styles.modeToggle} ${autoExecute ? styles.modeAuto : styles.modeConfirm}`}
-            disabled={isStreaming}
-            title={
-              autoExecute
-                ? 'Write tools run immediately. Refresh (F5) to discard in-progress work or fix a stale UI—not to undo saved changes.'
-                : 'Write operations require step-by-step confirmation.'
-            }
-            onClick={() => void setAutoExecute(!autoExecute)}
-          >
-            {autoExecute ? 'Auto' : 'Confirm'}
-          </button>
-          <button
-            className={styles.iconButton}
-            disabled={!userProfile?.id}
-            onClick={() => {
-              setPendingSelectionContext(undefined);
-              startNewConversation();
-            }}
-          >
-            New
-          </button>
-          <button
-            className={styles.iconButton}
-            data-testid="agent-history"
-            disabled={!userProfile?.id}
-            onClick={() => setShowHistory((v) => !v)}
-          >
-            History
-          </button>
-          <button
-            className={styles.iconButton}
-            onClick={() => {
-              setPendingSelectionContext(undefined);
-              setOpen(false);
-            }}
-          >
-            ✕
-          </button>
-        </div>
-        {showHistory && (
-          <ConversationList
-            activeId={conversationId}
-            onSelect={(id) => {
-              setShowHistory(false);
-              setPendingSelectionContext(undefined);
-              void loadConversation(id);
-            }}
-            onDelete={(id) => {
-              if (userProfile?.id) {
-                clearLastConversationById(userProfile.id, id);
-              }
-              if (conversationId === id) {
-                setPendingSelectionContext(undefined);
-                startNewConversation();
-              }
-            }}
-          />
-        )}
-      </div>
+      <AgentPanelHeader
+        canManageConversations={Boolean(userProfile?.id)}
+        title={headerTitle}
+        subtitle={currentProjectName || lockLabel}
+        historyOpen={showHistory}
+        onNew={() => {
+          setShowHistory(false);
+          setPendingSelectionContext(undefined);
+          startNewConversation();
+        }}
+        onHistory={() => setShowHistory((value) => !value)}
+        onClose={() => {
+          setPendingSelectionContext(undefined);
+          setShowHistory(false);
+          setOpen(false);
+        }}
+      />
 
-      <div className={styles.messages} ref={messagesRef}>
-        {items.length === 0 ? (
-          <div className={styles.empty}>
-            Ask about your project data, create or update assets, or import a script.
-          </div>
-        ) : (
-          items.map((item) => (
-            <ChatMessage
-              key={item.id}
-              item={item}
-              streaming={isStreaming && item.id === streamingAssistantId}
-              onDecision={confirm}
-            />
-          ))
-        )}
-      </div>
-
-      {isStreaming && streamStartedAt != null && (
-        <AgentActivityBar activity={streamActivity} startedAt={streamStartedAt} />
+      {showHistory && (
+        <ConversationList
+          projectId={currentProjectId}
+          activeId={conversationId}
+          onSelect={(id) => {
+            setShowHistory(false);
+            setPendingSelectionContext(undefined);
+            void loadConversation(id);
+          }}
+        />
       )}
 
-      <ChatInput
-        userId={userProfile?.id}
-        isStreaming={isStreaming}
-        focusRequest={inputFocusRequest}
-        selectionContext={pendingSelectionContext}
-        onClearSelectionContext={() => setPendingSelectionContext(undefined)}
-        onSend={send}
-      />
+      {!showHistory && (
+        <>
+          <div className={styles.messages} ref={messagesRef} onScroll={handleMessagesScroll}>
+            {items.length === 0 ? (
+              <div className={styles.empty}>
+                <span className={styles.emptyMark} aria-hidden="true">
+                  <MessageOutlined />
+                </span>
+                <span className={styles.emptyTitle}>
+                  Ask about your project data, create or update assets, or import a script.
+                </span>
+              </div>
+            ) : (
+              items.map((item) => (
+                <ChatMessage
+                  key={item.id}
+                  item={item}
+                  streaming={isStreaming && item.id === streamingAssistantId}
+                  onDecision={confirm}
+                />
+              ))
+            )}
+          </div>
+          {showScrollJump && (
+            <button
+              type="button"
+              className={styles.scrollJumpBtn}
+              onClick={handleScrollJump}
+              aria-label={scrollJumpMode === 'top' ? 'Scroll to top' : 'Scroll to bottom'}
+              title={scrollJumpMode === 'top' ? 'Scroll to top' : 'Scroll to bottom'}
+            >
+              {scrollJumpMode === 'top' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+            </button>
+          )}
+
+          <ChatInput
+            userId={userProfile?.id}
+            isStreaming={isStreaming}
+            autoExecute={autoExecute}
+            focusRequest={inputFocusRequest}
+            selectionContext={pendingSelectionContext}
+            onClearSelectionContext={() => setPendingSelectionContext(undefined)}
+            onToggleMode={() => void setAutoExecute(!autoExecute)}
+            onSend={send}
+          />
+        </>
+      )}
     </div>
   );
 }

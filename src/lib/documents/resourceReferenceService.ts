@@ -3,6 +3,7 @@ import { fetchAllPaged } from '@/lib/services/pagination';
 import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import { DocumentAccessError } from './documentStateTypes';
 import type { DocumentReferenceBlock } from './documentBlockIdentity';
+import { resolveDocumentRange } from './documentRangeReference';
 import {
   resourceReferenceKey,
   type ResourceReferenceTarget,
@@ -168,13 +169,27 @@ function sameSemanticTarget(
       left.displayFieldId === right.displayFieldId
     );
   }
-  return (
-    left.kind === 'document-block' &&
-    right.kind === 'document-block' &&
-    left.documentId === right.documentId &&
-    left.blockId === right.blockId &&
-    left.blockType === right.blockType
-  );
+  if (left.kind === 'document-block' && right.kind === 'document-block') {
+    return (
+      left.documentId === right.documentId &&
+      left.blockId === right.blockId &&
+      left.blockType === right.blockType
+    );
+  }
+  if (left.kind === 'document-range' && right.kind === 'document-range') {
+    return (
+      left.documentId === right.documentId &&
+      left.startBlockId === right.startBlockId &&
+      left.startOffset === right.startOffset &&
+      left.startBefore === right.startBefore &&
+      left.startAfter === right.startAfter &&
+      left.endBlockId === right.endBlockId &&
+      left.endOffset === right.endOffset &&
+      left.endBefore === right.endBefore &&
+      left.endAfter === right.endAfter
+    );
+  }
+  return false;
 }
 
 async function resolveTableReferences(
@@ -257,7 +272,7 @@ async function resolveTableReferences(
 async function resolveDocumentReferences(
   client: SupabaseClient,
   projectId: string,
-  targets: readonly Extract<ResourceReferenceTarget, { kind: 'document-block' }>[],
+  targets: readonly Exclude<ResourceReferenceTarget, { kind: 'table-row' }>[],
   resolved: Map<string, ResolvedResourceReference>
 ): Promise<void> {
   if (targets.length === 0) return;
@@ -299,9 +314,23 @@ async function resolveDocumentReferences(
         editor.listReferenceBlocks().map((block) => [block.blockId, block])
       );
       for (const target of targetsByDocument.get(documentId) ?? []) {
+        const key = resourceReferenceKey(target);
+        if (target.kind === 'document-range') {
+          const range = resolveDocumentRange(target, [...blocks.values()]);
+          if (!range) continue;
+          resolved.set(key, {
+            key,
+            status: 'available',
+            label: range.label,
+            contextLabel: range.nearestHeading
+              ? `${document.name} / ${range.nearestHeading}`
+              : document.name,
+            href: `/${projectId}/doc/${document.id}#block-${range.startBlockId}`,
+          });
+          continue;
+        }
         const block = blocks.get(target.blockId);
         if (!block || block.blockType !== target.blockType) continue;
-        const key = resourceReferenceKey(target);
         resolved.set(key, {
           key,
           status: 'available',
@@ -356,8 +385,8 @@ export async function resolveResourceReferences(
       client,
       projectId,
       deduplicated.filter(
-        (target): target is Extract<ResourceReferenceTarget, { kind: 'document-block' }> =>
-          target.kind === 'document-block'
+        (target): target is Exclude<ResourceReferenceTarget, { kind: 'table-row' }> =>
+          target.kind !== 'table-row'
       ),
       resolved
     ),
