@@ -4,14 +4,10 @@ import { AgentPanelHeader } from '@/components/agent/AgentPanelHeader';
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({
   header: 'header',
   headerIdentity: 'headerIdentity',
-  agentMark: 'agentMark',
   headerTitleGroup: 'headerTitleGroup',
   headerTitle: 'headerTitle',
   scopeLock: 'scopeLock',
   headerActions: 'headerActions',
-  modeToggle: 'modeToggle',
-  modeConfirm: 'modeConfirm',
-  modeAuto: 'modeAuto',
   headerIconButton: 'headerIconButton',
   headerIconButtonActive: 'headerIconButtonActive',
 }));
@@ -20,43 +16,53 @@ describe('AgentPanelHeader', () => {
   it('renders the Figma-aligned Agent controls with accessible names', () => {
     const html = renderToStaticMarkup(
       <AgentPanelHeader
-        autoExecute={false}
         canManageConversations
         historyOpen
-        isStreaming={false}
-        scopeLabel="skills"
-        scopeLocked
-        onToggleMode={() => undefined}
+        subtitle="Locked to skills"
         onNew={() => undefined}
         onHistory={() => undefined}
         onClose={() => undefined}
       />
     );
 
-    expect(html).toContain('Keco Agent');
+    expect(html).toContain('Recent chats');
     expect(html).toContain('Locked to skills');
-    expect(html).toContain('Confirm');
     expect(html).toContain('aria-label="Start new chat"');
-    expect(html).toContain('aria-label="Open chat history"');
+    expect(html).toContain('aria-label="Back to chat"');
     expect(html).toContain('aria-pressed="true"');
+    expect(html).not.toContain('aria-label="Close Keco Agent"');
+  });
+
+  it('shows the chat title and close control outside history', () => {
+    const html = renderToStaticMarkup(
+      <AgentPanelHeader
+        canManageConversations
+        historyOpen={false}
+        title="Story planning"
+        onNew={() => undefined}
+        onHistory={() => undefined}
+        onClose={() => undefined}
+      />
+    );
+
+    expect(html).toContain('Story planning');
+    expect(html).toContain('aria-label="Open chat history"');
     expect(html).toContain('aria-label="Close Keco Agent"');
   });
 
-  it('disables conversation actions and mode switching while unavailable', () => {
+  it('disables conversation actions while unavailable', () => {
     const html = renderToStaticMarkup(
       <AgentPanelHeader
-        autoExecute
         canManageConversations={false}
         historyOpen={false}
-        isStreaming
-        onToggleMode={() => undefined}
         onNew={() => undefined}
         onHistory={() => undefined}
         onClose={() => undefined}
       />
     );
 
-    expect(html).toContain('Auto');
-    expect(html.match(/disabled=""/g)).toHaveLength(3);
+    expect(html).toContain('New chat');
+    expect(html).toContain('aria-label="Close Keco Agent"');
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
   });
 });
