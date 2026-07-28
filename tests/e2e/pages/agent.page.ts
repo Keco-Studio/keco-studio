@@ -29,11 +29,13 @@ export class AgentPage {
   }
 
   async enableAutoMode(): Promise<void> {
-    const modeToggle = this.panel.getByRole('button', { name: /^(Auto|Confirm)$/ });
-    if ((await modeToggle.textContent())?.trim() !== 'Auto') {
+    const modeToggle = this.panel.getByTestId('agent-mode-toggle');
+    await expect(modeToggle).toBeVisible();
+    if ((await modeToggle.getAttribute('aria-pressed')) !== 'true') {
       await modeToggle.click();
     }
-    await expect(modeToggle).toHaveText('Auto');
+    await expect(modeToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(modeToggle).toHaveAttribute('aria-label', 'Execution mode: Auto');
   }
 
   toolResult(tool: string, status: 'success' | 'failure'): Locator {

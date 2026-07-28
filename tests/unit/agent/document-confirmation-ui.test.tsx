@@ -33,6 +33,10 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).toContain('Confirm: Rename document');
     expect(markup).toContain('Bound document');
     expect(markup).toContain('Guide / Lore');
+    expect(markup).toContain('role="group"');
+    expect(markup).toContain('aria-label="Confirmation required"');
+    expect(markup).toContain('aria-label="Approve action"');
+    expect(markup).toContain('aria-label="Reject action"');
   });
 
   it('renders permanent document deletion through the generic confirmation card', () => {

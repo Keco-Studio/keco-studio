@@ -28,6 +28,7 @@ jest.mock('@/lib/agent/conversation-store', () => ({
   getConversation,
   loadConversationHistory,
   saveMessage,
+  touchConversation: jest.fn().mockResolvedValue(undefined),
   sanitizeMessagesForLlm: (messages: unknown[]) => messages,
 }));
 jest.mock('@/lib/agent/tools', () => ({

@@ -91,7 +91,7 @@ test.describe('Agent chat', () => {
     );
   });
 
-  test('renders markdown and one expandable reasoning summary', async ({ page }) => {
+  test('renders markdown after reasoning without an expandable summary', async ({ page }) => {
     await page.route('**/api/agent-chat', async (route) => {
       await fulfillAgentStream(route, crypto.randomUUID(), [
         { type: 'reasoning_delta', content: '   ' },
@@ -119,11 +119,11 @@ test.describe('Agent chat', () => {
     await expect(assistant).toHaveCount(1);
     await expect(assistant.locator('strong')).toHaveText('Done');
     await expect(assistant.locator('table')).toContainText('Docs');
-    const reasoning = assistant.getByRole('button');
-    await expect(reasoning).toContainText('Summarizing results');
-    await reasoning.click();
-    await expect(assistant).toContainText('First check the project.');
-    await expect(assistant).toContainText('Summarizing results.');
+    // Completed answers replace the expandable reasoning control with a status row.
+    await expect(assistant.getByRole('status')).toBeVisible();
+    await expect(assistant.getByRole('button')).toHaveCount(0);
+    await expect(assistant).not.toContainText('First check the project.');
+    await expect(assistant).not.toContainText('Summarizing results');
   });
 
   test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {
@@ -232,6 +232,7 @@ test.describe('Agent chat', () => {
             markdown: '# Explicit B',
           },
         },
+        { type: 'text_delta', content: 'Read complete.' },
       ]);
     });
 
@@ -244,10 +245,10 @@ test.describe('Agent chat', () => {
     await agent.open();
     await agent.send(prompt);
 
-    const result = agent.toolResult('read_document', 'success');
-    await result.click();
-    await expect(result).toContainText(secondDocumentId);
-    await expect(result).toContainText('Agent Current Document Two');
+    await expect(
+      page.getByTestId('agent-message-assistant').filter({ hasText: 'Read complete.' })
+    ).toBeVisible();
+    await expect(page.getByText('read_document · success', { exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(`/${projectId}/doc/${firstDocumentId}`);
   });
 
@@ -272,17 +273,19 @@ test.describe('Agent chat', () => {
             ],
           },
         },
+        { type: 'text_delta', content: 'Please choose the intended document.' },
       ]);
     });
 
     const agent = await openProject(page);
     await agent.send('Read Duplicate Guide');
 
-    const result = agent.toolResult('read_document', 'failure');
-    await result.click();
-    await expect(result).toContainText('Multiple documents named');
-    await expect(result).toContainText('Lore');
-    await expect(result).toContainText('Archive');
+    await expect(
+      page
+        .getByTestId('agent-message-assistant')
+        .filter({ hasText: 'Please choose the intended document.' })
+    ).toBeVisible();
+    await expect(page.getByText('read_document · failure', { exact: true })).toHaveCount(0);
   });
 
   test('renders an Auto-mode document edit result', async ({ page }) => {
@@ -321,7 +324,7 @@ test.describe('Agent chat', () => {
     await agent.enableAutoMode();
     await agent.send('Append the approved note');
 
-    await expect(agent.toolResult('propose_document_edit', 'success')).toBeVisible();
+    await expect(page.getByText('propose_document_edit · success', { exact: true })).toHaveCount(0);
     await expect(
       page
         .getByTestId('agent-message-assistant')
@@ -421,7 +424,7 @@ test.describe('Agent chat', () => {
         body: JSON.stringify({ meta: { autoExecute: false, scope: { level: 'project' } } }),
       });
     });
-    await page.route('**/api/agent-chat/conversations?scope=all', async (route) => {
+    await page.route(`**/api/agent-chat/conversations?projectId=${projectId}`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -31,4 +31,22 @@ describe('AssistantMarkdown', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('Safe');
   });
+
+  it('does not render thematic breaks', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown markdown={'Hello\n\n---\n\n---\n\n---\n\nWorld'} />
+    );
+
+    expect(html).not.toContain('<hr');
+    expect(html).toContain('Hello');
+    expect(html).toContain('World');
+  });
+
+  it('renders nothing for break-only replies', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown markdown={'---\n\n---\n***'} />
+    );
+
+    expect(html).not.toContain('<hr');
+  });
 });

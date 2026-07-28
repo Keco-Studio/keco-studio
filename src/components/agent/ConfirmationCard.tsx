@@ -311,7 +311,12 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     : [];
 
   return (
-    <div className={styles.confirmCard} data-testid="agent-confirmation">
+    <div
+      className={styles.confirmCard}
+      data-testid="agent-confirmation"
+      role="group"
+      aria-label="Confirmation required"
+    >
       <div className={styles.confirmTitle}>Confirm: {label}</div>
       <pre className={styles.pre}>{JSON.stringify(visibleArgs, null, 2)}</pre>
       {isDocumentEdit &&
@@ -380,18 +385,20 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
           {resolved === 'approved' ? 'Approved.' : 'Cancelled.'}
         </div>
       ) : (
-        <div className={styles.confirmActions}>
+        <div className={styles.confirmInlineActions}>
           <button
-            className={`${styles.btn} ${styles.btnPrimary}`}
+            className={`${styles.btn} ${styles.btnPillPrimary}`}
             data-testid="agent-confirm"
             disabled={disabled}
+            aria-label="Approve action"
             onClick={() => onDecision(actionId, 'approve')}
           >
-            Confirm
+            ✓ Confirm
           </button>
           <button
-            className={`${styles.btn} ${styles.btnGhost}`}
+            className={`${styles.btn} ${styles.btnPillGhost}`}
             disabled={disabled}
+            aria-label="Reject action"
             onClick={() => onDecision(actionId, 'reject')}
           >
             Cancel

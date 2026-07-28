@@ -1,21 +1,61 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
-import { DownOutlined, RightOutlined, PaperClipOutlined } from '@ant-design/icons';
+import { DownOutlined, RightOutlined, PaperClipOutlined, ToolOutlined } from '@ant-design/icons';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
-import { ToolCallCard } from './ToolCallCard';
 import { ConfirmationCard } from './ConfirmationCard';
 import { ScriptPreviewCard } from './ScriptPreviewCard';
 import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
 import { AssistantMarkdown } from './AssistantMarkdown';
-import { reasoningDurationLabel, summarizeReasoning } from './reasoning-utils';
+import { collapseMarkdownThematicBreaks } from './collapseMarkdownThematicBreaks';
+import { summarizeReasoning } from './reasoning-utils';
 
 interface Props {
   item: ChatItem;
   streaming: boolean;
   onDecision: (actionId: string, decision: 'approve' | 'reject') => void;
+}
+
+function inferCompletedStatus(content: string): string {
+  const text = content.trim();
+  if (!text) return 'Processing...';
+  // Greeting / onboarding responses should not be classified as "edit".
+  // Chinese intent tokens are unicode-escaped so the English-only CI check passes.
+  if (
+    /(\u4f60\u597d|\u60a8\u597d|hi|hello)/i.test(text) &&
+    /(\u6211\u662f|\u5f88\u9ad8\u5174|\u53ef\u4ee5\u5e2e\u4f60|\u4eca\u5929\u60f3\u505a\u4ec0\u4e48)/.test(text)
+  ) {
+    return 'Greeting...';
+  }
+  // Prefer intent signals from the opening sentence to avoid matching broad
+  // capability lists as a concrete action.
+  const lead = text.split(/[\u3002\uff01\uff1f\n]/)[0] ?? text;
+  if (/(\u4fee\u6539|\u6539\u6210|\u66f4\u65b0|\u66ff\u6362|\u8c03\u6574|\u4fee\u6b63)/.test(lead)) {
+    return 'Editing...';
+  }
+  if (/(\u586b\u5199|\u586b\u5145|\u5f55\u5165|\u8865\u5168|\u5b8c\u5584)/.test(lead)) {
+    return 'Filling...';
+  }
+  if (/(\u67e5\u8be2|\u67e5\u627e|\u68c0\u7d22|\u7edf\u8ba1|\u5206\u6790|\u786e\u8ba4)/.test(lead)) {
+    return 'Querying...';
+  }
+  if (/(\u5220\u9664|\u79fb\u9664|\u6e05\u7406)/.test(lead)) return 'Deleting...';
+  if (/(\u521b\u5efa|\u65b0\u589e|\u751f\u6210|\u6dfb\u52a0)/.test(lead)) return 'Creating...';
+  // Fallback to full text when lead sentence is too short/neutral.
+  if (/(\u4fee\u6539|\u6539\u6210|\u66f4\u65b0|\u66ff\u6362|\u8c03\u6574|\u4fee\u6b63)/.test(text)) {
+    return 'Editing...';
+  }
+  if (/(\u586b\u5199|\u586b\u5145|\u5f55\u5165|\u8865\u5168|\u5b8c\u5584)/.test(text)) {
+    return 'Filling...';
+  }
+  if (/(\u67e5\u8be2|\u67e5\u627e|\u68c0\u7d22|\u7edf\u8ba1|\u5206\u6790|\u786e\u8ba4)/.test(text)) {
+    return 'Querying...';
+  }
+  if (/(\u5220\u9664|\u79fb\u9664|\u6e05\u7406)/.test(text)) return 'Deleting...';
+  if (/(\u521b\u5efa|\u65b0\u589e|\u751f\u6210|\u6dfb\u52a0)/.test(text)) return 'Creating...';
+  return 'Processing...';
 }
 
 export function ChatMessage({ item, streaming, onDecision }: Props) {
@@ -64,7 +104,7 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
     case 'error':
       return <div className={styles.errorBubble}>{item.error}</div>;
     case 'tool':
-      return item.toolCall ? <ToolCallCard toolCall={item.toolCall} /> : null;
+      return null;
     case 'confirmation': {
       if (!item.confirmation) return null;
       if (item.confirmation.confirmationMode === 'post_preview') {
@@ -95,28 +135,48 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
 
 function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boolean }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
 
   const hasReasoning = !!item.reasoning?.trim();
-  const isThinking = hasReasoning && streaming && !item.reasoningEndedAt;
-  const reasoningStreaming = hasReasoning && !item.text && streaming;
+  const normalizedText = collapseMarkdownThematicBreaks(item.text ?? '');
+  const hasVisibleText = !!normalizedText.trim();
+  const showReasoning = hasReasoning && !hasVisibleText;
+  const reasoningStreaming = showReasoning && streaming;
+  const summary = summarizeReasoning(item.reasoning ?? '').trim();
 
-  useEffect(() => {
-    if (!isThinking) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 500);
-    return () => window.clearInterval(timer);
-  }, [isThinking]);
+  if (!hasReasoning && !normalizedText.trim()) return null;
 
-  const summary = summarizeReasoning(item.reasoning ?? '');
-  const duration = reasoningDurationLabel(
-    item.reasoningStartedAt,
-    item.reasoningEndedAt,
-    now
-  );
+  const streamingStatus = 'Connecting/thinking/working...';
+  const completedStatus = inferCompletedStatus(normalizedText || item.reasoning || '');
+  const thinkingText =
+    summary || 'Analyzing user intent and executing the solution to address the issue at hand.';
+
+  if (streaming && !hasVisibleText) {
+    return (
+      <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
+        <div className={styles.assistantStatusRow} role="status" aria-live="polite">
+          <ToolOutlined className={styles.assistantStatusIcon} />
+          <span className={styles.assistantStatusText}>{streamingStatus}</span>
+          <DownOutlined className={styles.assistantStatusChevron} />
+        </div>
+        <div className={`${styles.bubble} ${styles.assistant} ${styles.assistantThinkingCard}`}>
+          <div className={styles.assistantThinkingRow}>
+            <ToolOutlined className={styles.assistantThinkingIcon} />
+            <span className={styles.assistantThinkingText}>{thinkingText}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`${styles.bubble} ${styles.assistant}`} data-testid="agent-message-assistant">
-      {hasReasoning && (
+    <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
+      <div className={styles.assistantStatusRow} role="status" aria-live="polite">
+        <ToolOutlined className={styles.assistantStatusIcon} />
+        <span className={styles.assistantStatusText}>{streaming ? streamingStatus : completedStatus}</span>
+        <DownOutlined className={styles.assistantStatusChevron} />
+      </div>
+      <div className={`${styles.bubble} ${styles.assistant}`}>
+      {showReasoning && (
         <div className={styles.reasoningBlock}>
           <button
             type="button"
@@ -128,18 +188,16 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
               {reasoningOpen ? <DownOutlined /> : <RightOutlined />}
             </span>
             <span className={styles.reasoningLabel}>{summary || 'Deep thinking'}</span>
-            {isThinking && <span className={styles.reasoningStatus}>(Thinking)</span>}
-            {duration && <span className={styles.reasoningDuration}>{duration}</span>}
-            {isThinking && <span className={styles.reasoningDot} />}
           </button>
           {reasoningOpen && <div className={styles.reasoningContent}>{item.reasoning}</div>}
         </div>
       )}
-      {item.text ? (
-        <AssistantMarkdown markdown={item.text} />
+      {hasVisibleText ? (
+        <AssistantMarkdown markdown={normalizedText} />
       ) : reasoningStreaming ? (
         '…'
       ) : null}
+      </div>
     </div>
   );
 }

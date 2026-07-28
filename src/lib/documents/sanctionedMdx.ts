@@ -49,7 +49,7 @@ export const SANCTIONED_MDX_REGISTRY = {
       {
         name: 'kind',
         required: true,
-        allowedValues: ['table-row', 'document-block'],
+        allowedValues: ['table-row', 'document-block', 'document-range'],
       },
       { name: 'libraryId', required: false },
       { name: 'assetId', required: false },
@@ -61,6 +61,14 @@ export const SANCTIONED_MDX_REGISTRY = {
         required: false,
         allowedValues: ['heading', 'paragraph'],
       },
+      { name: 'startBlockId', required: false },
+      { name: 'startOffset', required: false },
+      { name: 'startBefore', required: false },
+      { name: 'startAfter', required: false },
+      { name: 'endBlockId', required: false },
+      { name: 'endOffset', required: false },
+      { name: 'endBefore', required: false },
+      { name: 'endAfter', required: false },
       { name: 'fallbackLabel', required: true },
     ],
   },
@@ -107,6 +115,12 @@ const EXPRESSION_NODE_TYPES = new Set([
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F]/;
 const DOCUMENT_CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 const URL_BASE = 'https://keco.invalid';
+const EMPTY_RANGE_CONTEXT_PROPERTIES = new Set([
+  'startBefore',
+  'startAfter',
+  'endBefore',
+  'endAfter',
+]);
 
 function invalid(message = 'Unsupported or unsafe MDX syntax'): never {
   throw new DocumentContentValidationError(message);
@@ -235,8 +249,11 @@ function validateAttributes(
     ) {
       invalid(`${name} properties must be plain text`);
     }
+    const allowsEmptyRangeContext =
+      name === 'ResourceReference' &&
+      EMPTY_RANGE_CONTEXT_PROPERTIES.has(attribute.name);
     if (
-      attribute.value.trim().length === 0 ||
+      (!allowsEmptyRangeContext && attribute.value.trim().length === 0) ||
       CONTROL_CHARACTER_PATTERN.test(attribute.value)
     ) {
       invalid(`MDX property ${attribute.name} must be plain text`);
@@ -286,8 +303,13 @@ export function validateSanctionedMdxPropertyEdit(
   for (const property of rule.props) {
     const value = values[property.name] ?? '';
     if (!property.required && value.length === 0) continue;
+    const allowsEmptyRangeContext =
+      componentName === 'ResourceReference' &&
+      EMPTY_RANGE_CONTEXT_PROPERTIES.has(property.name);
     if (
-      ((property.required || value.length > 0) && value.trim().length === 0) ||
+      (!allowsEmptyRangeContext &&
+        (property.required || value.length > 0) &&
+        value.trim().length === 0) ||
       CONTROL_CHARACTER_PATTERN.test(value)
     ) {
       return null;

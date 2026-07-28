@@ -23,6 +23,19 @@ const REFERENCE_TARGETS: ResourceReferenceTarget[] = [
     blockType: 'paragraph',
     fallbackLabel: 'The city closes its gates',
   },
+  {
+    kind: 'document-range',
+    documentId: '44444444-4444-4444-8444-444444444444',
+    startBlockId: '55555555-5555-4555-8555-555555555555',
+    startOffset: 4,
+    startBefore: 'The ',
+    startAfter: 'city closes',
+    endBlockId: '77777777-7777-4777-8777-777777777777',
+    endOffset: 9,
+    endBefore: 'at dawn. ',
+    endAfter: 'Guards wait.',
+    fallbackLabel: 'city closes its gates at dawn.',
+  },
 ];
 
 describe('resource reference targets', () => {
@@ -40,6 +53,18 @@ describe('resource reference targets', () => {
 
     expect(parseResourceReferenceAttributes(attributes)).toEqual(target);
     expect(resourceReferenceKey(target)).toBe(expectedKey);
+  });
+
+  it('round-trips a document range with a key that changes with its boundaries', () => {
+    const target = REFERENCE_TARGETS[2];
+    const moved = target.kind === 'document-range'
+      ? { ...target, startOffset: target.startOffset + 1 }
+      : target;
+
+    expect(parseResourceReferenceAttributes(resourceReferenceAttributes(target)))
+      .toEqual(target);
+    expect(resourceReferenceKey(target)).toMatch(/^document-range:/);
+    expect(resourceReferenceKey(moved)).not.toBe(resourceReferenceKey(target));
   });
 });
 
@@ -88,13 +113,31 @@ describe('sanctioned MDX validation', () => {
       kind: 'text',
       hasChildren: false,
       props: [
-        { name: 'kind', type: 'string', required: true },
+        {
+          name: 'kind',
+          type: 'string',
+          required: true,
+          allowedValues: ['table-row', 'document-block', 'document-range'],
+        },
         { name: 'libraryId', type: 'string', required: false },
         { name: 'assetId', type: 'string', required: false },
         { name: 'displayFieldId', type: 'string', required: false },
         { name: 'documentId', type: 'string', required: false },
         { name: 'blockId', type: 'string', required: false },
-        { name: 'blockType', type: 'string', required: false },
+        {
+          name: 'blockType',
+          type: 'string',
+          required: false,
+          allowedValues: ['heading', 'paragraph'],
+        },
+        { name: 'startBlockId', type: 'string', required: false },
+        { name: 'startOffset', type: 'string', required: false },
+        { name: 'startBefore', type: 'string', required: false },
+        { name: 'startAfter', type: 'string', required: false },
+        { name: 'endBlockId', type: 'string', required: false },
+        { name: 'endOffset', type: 'string', required: false },
+        { name: 'endBefore', type: 'string', required: false },
+        { name: 'endAfter', type: 'string', required: false },
         { name: 'fallbackLabel', type: 'string', required: true },
       ],
     });
@@ -130,7 +173,7 @@ describe('sanctioned MDX validation', () => {
 
   it('accepts document block anchors and resource references', () => {
     expect(() => validateSanctionedMdx(
-      '# <BlockAnchor id="66666666-6666-4666-8666-666666666666" />Heading\n\nSee <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.\n\nSee <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.'
+      '# <BlockAnchor id="66666666-6666-4666-8666-666666666666" />Heading\n\nSee <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.\n\nSee <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.\n\nSee <ResourceReference kind="document-range" documentId="44444444-4444-4444-8444-444444444444" startBlockId="55555555-5555-4555-8555-555555555555" startOffset="0" startBefore="" startAfter="The city closes" endBlockId="77777777-7777-4777-8777-777777777777" endOffset="9" endBefore="at dawn. " endAfter="Guards wait." fallbackLabel="The city closes its gates at dawn." />.'
     )).not.toThrow();
   });
 
@@ -155,6 +198,9 @@ describe('sanctioned MDX validation', () => {
     'See <ResourceReference kind="table-row" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.',
     'See <ResourceReference kind="document-block" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.',
     'See <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="   " />.',
+    'See <ResourceReference kind="document-range" documentId="44444444-4444-4444-8444-444444444444" startBlockId="55555555-5555-4555-8555-555555555555" startOffset="-1" startBefore="The " startAfter="city" endBlockId="77777777-7777-4777-8777-777777777777" endOffset="9" endBefore="dawn" endAfter="Guards" fallbackLabel="city closes" />.',
+    `See <ResourceReference kind="document-range" documentId="44444444-4444-4444-8444-444444444444" startBlockId="55555555-5555-4555-8555-555555555555" startOffset="4" startBefore="${'x'.repeat(33)}" startAfter="city" endBlockId="77777777-7777-4777-8777-777777777777" endOffset="9" endBefore="dawn" endAfter="Guards" fallbackLabel="city closes" />.`,
+    'See <ResourceReference kind="document-range" documentId="44444444-4444-4444-8444-444444444444" startBlockId="55555555-5555-4555-8555-555555555555" startOffset="4" startBefore="The " startAfter="city" endBlockId="77777777-7777-4777-8777-777777777777" endOffset="9" endBefore="dawn" fallbackLabel="city closes" />.',
   ])('rejects invalid document resource metadata: %s', (content) => {
     expect(() => validateSanctionedMdx(content)).toThrow(
       DocumentContentValidationError

@@ -26,7 +26,11 @@ import {
   listTableReferenceSources,
   resolveResourceReferences,
 } from '@/lib/documents/resourceReferenceService';
-import type { ResourceReferenceTarget } from '@/lib/documents/resourceReferenceTypes';
+import {
+  resourceReferenceKey,
+  type ResourceReferenceTarget,
+} from '@/lib/documents/resourceReferenceTypes';
+import { createDocumentRangeTarget } from '@/lib/documents/documentRangeReference';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -37,6 +41,7 @@ const FIELD_ID = '66666666-6666-4666-8666-666666666666';
 const OTHER_FIELD_ID = '77777777-7777-4777-8777-777777777777';
 const DOCUMENT_ID = '88888888-8888-4888-8888-888888888888';
 const BLOCK_ID = '99999999-9999-4999-8999-999999999999';
+const END_BLOCK_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 type QueryResult = {
   data: unknown[] | null;
@@ -409,6 +414,64 @@ describe('resolveResourceReferences', () => {
       contextLabel: 'World outline / Conflict',
       href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}#block-${BLOCK_ID}`,
     });
+  });
+
+  it('resolves a document range from current cross-block text and links its start block', async () => {
+    const originalBlocks = [
+      {
+        blockId: BLOCK_ID,
+        blockType: 'paragraph' as const,
+        text: 'Before selected old words',
+        nearestHeading: 'Conflict',
+      },
+      {
+        blockId: END_BLOCK_ID,
+        blockType: 'paragraph' as const,
+        text: 'more selected text after',
+        nearestHeading: 'Conflict',
+      },
+    ];
+    const target = createDocumentRangeTarget({
+      documentId: DOCUMENT_ID,
+      blocks: originalBlocks,
+      anchor: { blockId: BLOCK_ID, offset: 7 },
+      focus: { blockId: END_BLOCK_ID, offset: 18 },
+    })!;
+    const missing = { ...target, startBlockId: OTHER_FIELD_ID };
+    const currentBlocks = [
+      { ...originalBlocks[0], text: 'Before selected new expanded words' },
+      { ...originalBlocks[1], text: 'more revised text after' },
+    ];
+    const { client } = makeClient({
+      documents: [{ id: DOCUMENT_ID, project_id: PROJECT_ID, name: 'World outline' }],
+    });
+    readDocumentState.mockResolvedValue({
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      markdown: '# Current authoritative markdown',
+    });
+    createHeadlessDocumentEditor.mockResolvedValue({
+      setMarkdown: jest.fn(async () => undefined),
+      listReferenceBlocks: jest.fn(() => currentBlocks),
+    });
+
+    const resolved = await resolveResourceReferences(
+      client,
+      PROJECT_ID,
+      [target, target, missing]
+    );
+
+    expect(readDocumentState).toHaveBeenCalledTimes(1);
+    expect(resolved.get(resourceReferenceKey(target))).toEqual({
+      key: resourceReferenceKey(target),
+      status: 'available',
+      label: 'selected new expanded words more revised text',
+      contextLabel: 'World outline / Conflict',
+      href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}#block-${BLOCK_ID}`,
+    });
+    expect(resolved.get(resourceReferenceKey(missing))).toEqual(
+      unavailable(resourceReferenceKey(missing))
+    );
   });
 
   it.each([

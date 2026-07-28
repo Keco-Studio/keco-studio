@@ -39,7 +39,9 @@ describe('document Lexical Yjs adapter contract', () => {
       /toolbarPlugin\(\{[\s\S]*toolbarClassName:\s*styles\.stickyToolbar/
     );
     expect(editorCss).toMatch(/\.stickyToolbar\s*\{[^}]*position:\s*sticky/);
-    expect(editorCss).toMatch(/\.stickyToolbar\s*\{[^}]*top:\s*0/);
+    expect(editorCss).toMatch(
+      /\.stickyToolbar\s*\{[^}]*top:\s*var\(--document-sticky-chrome-height/
+    );
     expect(editorCss).toMatch(/\.editor\s*\{[^}]*overflow:\s*visible/);
     expect(editorCss).not.toMatch(/\.editor\s*\{[^}]*overflow:\s*hidden/);
   });
