@@ -414,7 +414,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
 
     // The assistant panel overlays the document toolbar after a table export.
     // Close it before opening the document export menu for the script flow.
-    await page.getByTestId('agent-panel').getByRole('button', { name: '✕' }).click();
+    await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
     await expect(page.getByTestId('agent-panel')).toBeHidden();
     await expect(page.getByTestId('agent-launcher')).toBeVisible();
     await expect(page.getByTestId('document-export')).toBeEnabled();

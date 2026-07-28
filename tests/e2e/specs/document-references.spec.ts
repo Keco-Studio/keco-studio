@@ -118,16 +118,28 @@ async function insertDocumentReference(page: Page): Promise<void> {
     const blocks = [...element.querySelectorAll<HTMLElement>('[data-reference-block-id]')];
     const startBlock = blocks.find((block) => block.textContent === values.startText);
     const endBlock = blocks.find((block) => block.textContent === values.endText);
-    const startNode = startBlock?.firstChild;
-    const endNode = endBlock?.firstChild;
-    if (!startBlock || !endBlock || !startNode || !endNode) {
+    if (!startBlock || !endBlock) {
       throw new Error('Document preview blocks were not found');
     }
-    const startOffset = values.startText.indexOf(values.startSelection);
-    const endOffset = values.endText.indexOf(values.endSelection) + values.endSelection.length;
+    const findTextNode = (root: HTMLElement, haystack: string, needle: string) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const current = walker.currentNode as Text;
+        if (current.data === haystack || current.data.includes(needle)) {
+          const offset = current.data.indexOf(needle);
+          if (offset >= 0) return { node: current, offset };
+        }
+      }
+      return null;
+    };
+    const start = findTextNode(startBlock, values.startText, values.startSelection);
+    const end = findTextNode(endBlock, values.endText, values.endSelection);
+    if (!start || !end) {
+      throw new Error('Document preview selection text was not found');
+    }
     const range = document.createRange();
-    range.setStart(startNode, startOffset);
-    range.setEnd(endNode, endOffset);
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset + values.endSelection.length);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
@@ -332,13 +344,23 @@ test.describe.serial('Document references smoke', () => {
       `[data-document-block-id="${sourceSecondBlockId}"]`
     );
     await updatedSourceBlock.evaluate((element) => {
-      const text = element.textContent ?? '';
-      const node = element.firstChild;
-      const start = text.indexOf('paragraph');
-      if (!node || start < 0) throw new Error('Source edit text was not found');
+      const needle = 'paragraph';
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let textNode: Text | null = null;
+      let start = -1;
+      while (walker.nextNode()) {
+        const current = walker.currentNode as Text;
+        const index = current.data.indexOf(needle);
+        if (index >= 0) {
+          textNode = current;
+          start = index;
+          break;
+        }
+      }
+      if (!textNode || start < 0) throw new Error('Source edit text was not found');
       const range = document.createRange();
-      range.setStart(node, start);
-      range.setEnd(node, start + 'paragraph'.length);
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + needle.length);
       const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);

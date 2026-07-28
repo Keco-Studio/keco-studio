@@ -362,6 +362,27 @@ function DocumentEditorSession({
         <header className={styles.stickyChrome}>
           <div className={styles.header}>
             <h1 className={styles.title}>{document.name}</h1>
+            <div className={styles.status} aria-live="polite">
+              {collaboration.collaborators.length > 0 && (
+                <div className={styles.collaborators} aria-label="Collaborators currently editing">
+                  {collaboration.collaborators.slice(0, 5).map((user) => (
+                    <span
+                      key={user.id}
+                      className={styles.collaboratorAvatar}
+                      style={{ backgroundColor: user.color }}
+                      title={`${user.name} is editing`}
+                    >
+                      {user.name.charAt(0).toUpperCase()}
+                    </span>
+                  ))}
+                  {collaboration.collaborators.length > 5 && (
+                    <span className={styles.collaboratorMore}>
+                      +{collaboration.collaborators.length - 5}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <div className={styles.topbarExportBridge} aria-hidden="true">
               <Dropdown
                 menu={{ items: exportItems, onClick: handleExport }}
