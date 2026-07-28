@@ -130,10 +130,12 @@ describe('document export route and UI wiring', () => {
     expect(editor).toContain('Export as tables');
     expect(editor).toContain("key: 'script'");
     expect(editor).toContain('Export as script');
-    expect(editor).toContain('document-export-options');
     expect(editor).toContain('document-export-trigger');
+    expect(editor).toContain('document-topbar-sync-request');
     expect(topBar).toContain('DownloadOutlined');
     expect(topBar).toContain('data-testid="document-export"');
+    expect(topBar).toContain('Export as tables');
+    expect(topBar).toContain('Export as script');
     expect(nextConfig).toContain("'@mdxeditor/editor'");
   });
 

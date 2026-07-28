@@ -324,33 +324,21 @@ function DocumentEditorSession({
   }`;
 
   useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent('document-topbar-status', {
-        detail: {
-          label: collaboration.label,
-        },
-      })
-    );
+    const publishStatus = () => {
+      window.dispatchEvent(
+        new CustomEvent('document-topbar-status', {
+          detail: {
+            label: collaboration.label,
+          },
+        })
+      );
+    };
+    publishStatus();
+    window.addEventListener('document-topbar-sync-request', publishStatus);
+    return () => {
+      window.removeEventListener('document-topbar-sync-request', publishStatus);
+    };
   }, [collaboration.label]);
-
-  useEffect(() => {
-    const items = [
-      { key: 'docx', label: 'Download DOCX' },
-      { key: 'pdf', label: 'Download PDF' },
-      { key: 'mdx', label: 'Download MDX' },
-      ...(permissions.role === 'admin'
-        ? [
-            { key: 'tables', label: 'Export as tables' },
-            { key: 'script', label: 'Export as script' },
-          ]
-        : []),
-    ];
-    window.dispatchEvent(
-      new CustomEvent('document-export-options', {
-        detail: { items },
-      })
-    );
-  }, [permissions.role]);
 
   useEffect(() => {
     const handleTopbarExport = (event: Event) => {

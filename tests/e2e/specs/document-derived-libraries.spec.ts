@@ -87,10 +87,16 @@ async function openDocumentInNewContext(
   return { context, page };
 }
 
-async function openExportMenu(page: Page) {
+async function openExportMenu(page: Page, expectedLabels?: string[]) {
   await page.getByTestId('document-export').click();
   const menu = page.locator('.ant-dropdown:visible .ant-dropdown-menu');
   await expect(menu).toBeVisible();
+  if (expectedLabels) {
+    await expect.poll(async () =>
+      (await menu.locator('.ant-dropdown-menu-item').allTextContents())
+        .map((label) => label.trim())
+    ).toEqual(expectedLabels);
+  }
   return menu;
 }
 
@@ -306,7 +312,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
         fixture.folderDocument.id
       );
       try {
-        const menu = await openExportMenu(page);
+        const menu = await openExportMenu(page, role.expected);
         const labels = (await menu.locator('.ant-dropdown-menu-item').allTextContents())
           .map((label) => label.trim());
         expect(labels).toEqual(role.expected);

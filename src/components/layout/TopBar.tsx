@@ -81,11 +81,20 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
   const [documentLiveLabel, setDocumentLiveLabel] = useState('Live');
-  const [documentExportItems, setDocumentExportItems] = useState<DocumentExportItem[]>([
-    { key: 'docx', label: 'Download DOCX' },
-    { key: 'pdf', label: 'Download PDF' },
-    { key: 'mdx', label: 'Download MDX' },
-  ]);
+  const documentExportItems = useMemo<DocumentExportItem[]>(
+    () => [
+      { key: 'docx', label: 'Download DOCX' },
+      { key: 'pdf', label: 'Download PDF' },
+      { key: 'mdx', label: 'Download MDX' },
+      ...(userRole === 'admin'
+        ? [
+            { key: 'tables', label: 'Export as tables' },
+            { key: 'script', label: 'Export as script' },
+          ]
+        : []),
+    ],
+    [userRole]
+  );
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -983,20 +992,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   }, []);
 
   useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ items?: DocumentExportItem[] }>).detail;
-      if (!detail?.items || detail.items.length === 0) return;
-      setDocumentExportItems(detail.items);
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('document-export-options', handler as EventListener);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('document-export-options', handler as EventListener);
-      }
-    };
-  }, []);
+    if (!currentDocumentId || typeof window === 'undefined') return;
+    // Ask the document editor to republish in case its mount effect already ran.
+    window.dispatchEvent(new CustomEvent('document-topbar-sync-request'));
+  }, [currentDocumentId]);
 
   // Receive presence updates from LibraryPage (LibraryDataContext) so TopBar
   // can render LibraryHeader with real-time collaborators in the top row.
