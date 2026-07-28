@@ -55,8 +55,16 @@ jobs:
 
       - name: Start local Supabase services
         run: |
+          set -euo pipefail
+          # Clear any leftover stack/port bindings from a prior partial start.
+          supabase stop --no-backup || true
           # Start Supabase services (runs in the background)
-          supabase start --ignore-health-check
+          if ! supabase start --ignore-health-check; then
+            echo "supabase start failed; recovering once..."
+            supabase stop --no-backup || true
+            sleep 2
+            supabase start --ignore-health-check
+          fi
           # Wait for services to be ready (up to 90 seconds)
           echo "Waiting for Supabase services to start..."
           for i in {1..90}; do
