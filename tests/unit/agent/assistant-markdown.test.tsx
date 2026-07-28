@@ -32,12 +32,12 @@ describe('AssistantMarkdown', () => {
     expect(html).toContain('Safe');
   });
 
-  it('renders at most one hr for consecutive thematic breaks', () => {
+  it('does not render thematic breaks', () => {
     const html = renderToStaticMarkup(
       <AssistantMarkdown markdown={'Hello\n\n---\n\n---\n\n---\n\nWorld'} />
     );
 
-    expect(html.match(/<hr\b/g)?.length ?? 0).toBe(1);
+    expect(html).not.toContain('<hr');
     expect(html).toContain('Hello');
     expect(html).toContain('World');
   });
