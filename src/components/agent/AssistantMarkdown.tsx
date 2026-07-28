@@ -3,8 +3,11 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import styles from './ChatPanel.module.css';
+import { collapseMarkdownThematicBreaks } from './collapseMarkdownThematicBreaks';
 
 export function AssistantMarkdown({ markdown }: { markdown: string }) {
+  const normalized = collapseMarkdownThematicBreaks(markdown);
+
   return (
     <div className={styles.markdown}>
       <ReactMarkdown
@@ -20,7 +23,7 @@ export function AssistantMarkdown({ markdown }: { markdown: string }) {
           ),
         }}
       >
-        {markdown}
+        {normalized}
       </ReactMarkdown>
     </div>
   );
