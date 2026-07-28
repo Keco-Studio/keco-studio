@@ -135,15 +135,47 @@ async function expandTreeNode(page: Page, title: string): Promise<void> {
   const node = sidebarTitle(page, title)
     .first()
     .locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
-  // Documents hide Ant's left switcher and expand from a title-row control.
   const documentExpand = node.getByRole('button', { name: 'Expand' });
-  if (await documentExpand.count()) {
+  const documentCollapse = node.getByRole('button', { name: 'Collapse' });
+  const switcher = node.locator('.ant-tree-switcher:not(.ant-tree-switcher-noop)');
+
+  // Derived libraries load after the document row; wait for a real expand control
+  // instead of the CSS-hidden Ant switcher documents keep in the DOM.
+  let mode: 'open' | 'document' | 'switcher' = 'open';
+  await expect
+    .poll(
+      async () => {
+        if ((await documentCollapse.count()) > 0) {
+          mode = 'open';
+          return true;
+        }
+        if ((await documentExpand.count()) > 0) {
+          mode = 'document';
+          return true;
+        }
+        try {
+          if (await switcher.isVisible()) {
+            mode = 'switcher';
+            return true;
+          }
+        } catch {
+          // ignore detached/hidden probe failures while the tree re-renders
+        }
+        return false;
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(true);
+
+  if (mode === 'open') return;
+
+  if (mode === 'document') {
     await documentExpand.click();
-    await expect(node.getByRole('button', { name: 'Collapse' })).toBeVisible({ timeout: 10000 });
+    await expect(documentCollapse).toBeVisible({ timeout: 10_000 });
     return;
   }
-  const switcher = node.locator('.ant-tree-switcher:not(.ant-tree-switcher-noop)');
-  await expect(switcher).toBeVisible({ timeout: 15000 });
+
+  await expect(switcher).toBeVisible({ timeout: 15_000 });
   const className = await switcher.getAttribute('class');
   if (!className?.includes('ant-tree-switcher_open')) await switcher.click();
 }
