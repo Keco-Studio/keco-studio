@@ -91,7 +91,7 @@ test.describe('Agent chat', () => {
     );
   });
 
-  test('renders markdown and one expandable reasoning summary', async ({ page }) => {
+  test('renders markdown after reasoning without an expandable summary', async ({ page }) => {
     await page.route('**/api/agent-chat', async (route) => {
       await fulfillAgentStream(route, crypto.randomUUID(), [
         { type: 'reasoning_delta', content: '   ' },
@@ -119,11 +119,11 @@ test.describe('Agent chat', () => {
     await expect(assistant).toHaveCount(1);
     await expect(assistant.locator('strong')).toHaveText('Done');
     await expect(assistant.locator('table')).toContainText('Docs');
-    const reasoning = assistant.getByRole('button');
-    await expect(reasoning).toContainText('Summarizing results');
-    await reasoning.click();
-    await expect(assistant).toContainText('First check the project.');
-    await expect(assistant).toContainText('Summarizing results.');
+    // Completed answers replace the expandable reasoning control with a status row.
+    await expect(assistant.getByRole('status')).toBeVisible();
+    await expect(assistant.getByRole('button')).toHaveCount(0);
+    await expect(assistant).not.toContainText('First check the project.');
+    await expect(assistant).not.toContainText('Summarizing results');
   });
 
   test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {
