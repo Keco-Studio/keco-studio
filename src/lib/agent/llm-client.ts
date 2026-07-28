@@ -124,14 +124,14 @@ export async function* streamLlm(
   let response: Response | null = null;
   let lastError: unknown = null;
 
-  // Retry once on transient errors before any chunk is consumed.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Retry twice on transient errors before any chunk is consumed.
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       response = await requestStream(messages, options);
       if (response.ok && response.body) break;
 
       const retriable = isRetriableStatus(response.status);
-      if (!retriable || attempt === 1) {
+      if (!retriable || attempt === 2) {
         const text = await response.text().catch(() => '');
         throw new LlmError(`LLM request failed (${response.status}): ${text.slice(0, 500)}`);
       }
@@ -145,7 +145,7 @@ export async function* streamLlm(
         throw err;
       }
       lastError = err;
-      if (attempt === 1) throw err;
+      if (attempt === 2) throw err;
     }
     await sleep(500 * (attempt + 1));
   }

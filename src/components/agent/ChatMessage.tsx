@@ -10,6 +10,7 @@ import { ConfirmationCard } from './ConfirmationCard';
 import { ScriptPreviewCard } from './ScriptPreviewCard';
 import { SetupLibraryPreviewCard } from './SetupLibraryPreviewCard';
 import { AssistantMarkdown } from './AssistantMarkdown';
+import { collapseMarkdownThematicBreaks } from './collapseMarkdownThematicBreaks';
 import { reasoningDurationLabel, summarizeReasoning } from './reasoning-utils';
 
 interface Props {
@@ -100,6 +101,7 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
   const hasReasoning = !!item.reasoning?.trim();
   const isThinking = hasReasoning && streaming && !item.reasoningEndedAt;
   const reasoningStreaming = hasReasoning && !item.text && streaming;
+  const normalizedText = collapseMarkdownThematicBreaks(item.text ?? '');
 
   useEffect(() => {
     if (!isThinking) return;
@@ -113,6 +115,8 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
     item.reasoningEndedAt,
     now
   );
+
+  if (!hasReasoning && !normalizedText.trim()) return null;
 
   return (
     <div className={`${styles.bubble} ${styles.assistant}`} data-testid="agent-message-assistant">
@@ -135,8 +139,8 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
           {reasoningOpen && <div className={styles.reasoningContent}>{item.reasoning}</div>}
         </div>
       )}
-      {item.text ? (
-        <AssistantMarkdown markdown={item.text} />
+      {normalizedText ? (
+        <AssistantMarkdown markdown={normalizedText} />
       ) : reasoningStreaming ? (
         '…'
       ) : null}

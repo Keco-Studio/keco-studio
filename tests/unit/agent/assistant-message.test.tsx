@@ -23,4 +23,16 @@ describe('assistant reasoning message', () => {
     expect(html).toContain('aria-expanded="false"');
     expect(html.match(/agent-message-assistant/g)).toHaveLength(1);
   });
+
+  it('does not render an assistant bubble for break-only text', () => {
+    const html = renderToStaticMarkup(
+      <ChatMessage
+        item={{ id: 'assistant-breaks', role: 'assistant', text: '---\n\n***' }}
+        streaming={false}
+        onDecision={jest.fn()}
+      />
+    );
+
+    expect(html).not.toContain('agent-message-assistant');
+  });
 });
