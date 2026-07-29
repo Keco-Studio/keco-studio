@@ -120,4 +120,27 @@ describe('buildSystemPrompt design-document table rules', () => {
       /must not call setup_library[\s\S]*generate_from_document|generate_from_document[\s\S]*must not call setup_library/i
     );
   });
+
+  it('requires a fresh structure list before claiming resources are missing', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'admin' });
+
+    expect(prompt).toContain('STRUCTURE FRESHNESS');
+    expect(prompt).toContain('can be stale');
+    expect(prompt).toMatch(/Never claim a project\s+resource is missing/i);
+    expect(prompt).toContain('list_documents or list_project_structure again');
+    expect(prompt).toContain('do not reuse a deleted documentId');
+  });
+
+  it('requires insert_resource_reference for toolbar-style document references', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'admin' });
+
+    expect(prompt).toContain('DOCUMENT RESOURCE REFERENCES');
+    expect(prompt).toContain('insert_resource_reference');
+    expect(prompt).toMatch(/never claim they are unsupported/i);
+    expect(prompt).toMatch(/never substitute plain text/i);
+    expect(prompt).toMatch(/Never write \[label\]\(\/projectId\/\.\.\.\)|never write Markdown links/i);
+    expect(prompt).toContain('Do not use');
+    expect(prompt).toContain('propose_document_edit');
+    expect(prompt).toContain('ask first');
+  });
 });

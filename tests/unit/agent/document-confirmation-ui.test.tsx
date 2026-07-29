@@ -262,4 +262,46 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).not.toContain('bound document');
     expect(markup).not.toContain('db2fdb19-5871-44a8-9fed-0154d6271004');
   });
+
+  it('renders insert_resource_reference without dumping raw JSON args', () => {
+    const item: ChatItem = {
+      id: 'confirmation-insert-ref',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-insert-ref',
+        tool: 'insert_resource_reference',
+        args: {
+          documentId: '44444444-4444-4444-8444-444444444444',
+          snippet:
+            '<ResourceReference kind="table-row" libraryId="55555555-5555-4555-8555-555555555555" assetId="7901d562-f309-4b15-8cdf-456f39b2a152" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="2026001571" />',
+          placement: { type: 'append' },
+          summary: 'Insert table-row reference "2026001571" into document "Rainy Night Manor"',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          type: 'insert_resource_reference',
+          documentId: '44444444-4444-4444-8444-444444444444',
+          name: 'Rainy Night Manor',
+          folderName: null,
+          summary: 'Insert table-row reference "2026001571" into document "Rainy Night Manor"',
+          kind: 'table-row',
+          fallbackLabel: '2026001571',
+          snippet:
+            '<ResourceReference kind="table-row" libraryId="55555555-5555-4555-8555-555555555555" assetId="7901d562-f309-4b15-8cdf-456f39b2a152" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="2026001571" />',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Insert reference');
+    expect(markup).toContain('Rainy Night Manor');
+    expect(markup).toContain('2026001571');
+    expect(markup).toContain('table row');
+    expect(markup).not.toContain('bound document');
+    expect(markup).not.toContain('7901d562-f309-4b15-8cdf-456f39b2a152');
+    expect(markup).not.toContain('ResourceReference');
+  });
 });

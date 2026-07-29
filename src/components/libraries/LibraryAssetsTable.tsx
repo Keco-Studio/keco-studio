@@ -789,6 +789,14 @@ export function LibraryAssetsTable({
   });
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleSelectedCellArrowNavigation(event);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSelectedCellArrowNavigation]);
+
+  useEffect(() => {
     const handleOpenAgentWithSelection = (event: KeyboardEvent) => {
       const isSelectionShortcut =
         (event.key === 'l' || event.key === 'L') && (event.ctrlKey || event.metaKey);

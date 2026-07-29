@@ -19,6 +19,7 @@ const TOOL_LABELS: Record<string, string> = {
   rename_document: 'Rename document',
   move_document: 'Move document',
   generate_from_document: 'Generate from document',
+  insert_resource_reference: 'Insert reference',
 };
 
 export type DiffRow = {
@@ -333,6 +334,9 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
         exportType?: 'table' | 'script';
         libraryName?: string;
         summary?: string;
+        kind?: string;
+        fallbackLabel?: string;
+        snippet?: string;
       }
     | undefined;
   const isDocumentEdit =
@@ -346,10 +350,15 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     documentPreview?.type === 'generate_from_document' &&
     typeof documentPreview.name === 'string' &&
     (documentPreview.exportType === 'table' || documentPreview.exportType === 'script');
+  const isInsertResourceReference =
+    documentPreview?.type === 'insert_resource_reference' &&
+    typeof documentPreview.name === 'string' &&
+    typeof documentPreview.summary === 'string';
   const isBoundDocument =
     !isDocumentEdit &&
     !isDocumentDelete &&
     !isGenerateFromDocument &&
+    !isInsertResourceReference &&
     typeof documentPreview?.documentId === 'string' &&
     typeof documentPreview.name === 'string';
   let visibleArgs = args;
@@ -378,7 +387,76 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     : [];
 
   const changeParts = summarizeChangeParts(args, documentPreview, label);
-  const useSimpleCard = !isDocumentEdit && !isDocumentDelete && !isBoundDocument && !isGenerateFromDocument;
+  const useSimpleCard =
+    !isDocumentEdit &&
+    !isDocumentDelete &&
+    !isBoundDocument &&
+    !isGenerateFromDocument &&
+    !isInsertResourceReference;
+
+  if (isInsertResourceReference) {
+    const location = documentPreview.folderName
+      ? `${documentPreview.name} / ${documentPreview.folderName}`
+      : documentPreview.name;
+    const kindLabel =
+      documentPreview.kind === 'document-block'
+        ? 'document block'
+        : documentPreview.kind === 'table-row'
+          ? 'table row'
+          : 'resource';
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmTitle}>
+          {resolved === 'approved'
+            ? 'Inserting reference…'
+            : resolved === 'rejected'
+              ? 'Reference insert cancelled.'
+              : 'Confirm: Insert reference'}
+        </div>
+        <div className={styles.documentEditMeta}>
+          <div className={styles.documentEditTarget}>{location}</div>
+          <div>{documentPreview.summary}</div>
+          {typeof documentPreview.fallbackLabel === 'string' &&
+          documentPreview.fallbackLabel.trim() ? (
+            <div>
+              {kindLabel}: {documentPreview.fallbackLabel}
+            </div>
+          ) : null}
+        </div>
+        {resolved === 'approved' ? (
+          <div className={styles.resolvedNote}>Approved.</div>
+        ) : resolved === 'rejected' ? (
+          <div className={styles.resolvedNote}>Cancelled.</div>
+        ) : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPill}`}
+              data-testid="agent-reject"
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              ✕ Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (isGenerateFromDocument) {
     const kind = documentPreview.exportType === 'table' ? 'table' : 'conversation';
