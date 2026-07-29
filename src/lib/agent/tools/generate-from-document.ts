@@ -9,7 +9,6 @@
 
 import { z } from 'zod';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
-import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { defaultDerivedLibraryName } from '@/lib/documents/documentDerivedImportProgress';
 import { codePointBoundedString } from './document-parameter-schema';
 import type {
@@ -115,8 +114,10 @@ async function prepareConfirmation(
   }
 
   // Fail early with the same admin / empty checks as RMB Generate.
+  // Dynamic import keeps tools/index free of `server-only` for Jest and client bundling.
   let source;
   try {
+    const { getDocumentExportSource } = await import('@/lib/server/documentExportSourceService');
     source = await getDocumentExportSource(ctx.supabase, ctx.userId, resolved.document.id);
   } catch (error) {
     return {
