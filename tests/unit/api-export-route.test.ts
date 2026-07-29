@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import ExcelJS from 'exceljs';
 import { GET } from '@/app/api/export/route';
 
 jest.mock('@supabase/supabase-js', () => ({
@@ -170,6 +171,48 @@ describe('GET /api/export', () => {
       ],
     });
     expect(typeof payload.exportedAt).toBe('string');
+  });
+
+  it('exports XLSX with the section name, typed header, special characters, and blanks', async () => {
+    createClientMock.mockReturnValue(createExportClient({ id: userId }, {
+      fields: defaultDataset.fields,
+      assets: [
+        defaultDataset.assets[0],
+        {
+          ...defaultDataset.assets[0],
+          id: '00000000-0000-4000-8000-000000000025',
+          name: 'Empty row',
+          row_index: 2,
+        },
+      ],
+      values: [
+        {
+          asset_id: assetId,
+          field_id: fieldId,
+          value_json: '雪城, "North"',
+        },
+      ],
+    }));
+
+    const response = await GET(
+      new NextRequest(`https://example.test/api/export?libraryId=${libraryId}&format=xlsx`, {
+        headers: { Authorization: 'Bearer token' },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await response.arrayBuffer());
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Main']);
+
+    const sheet = workbook.getWorksheet('Main');
+    expect(sheet?.getRow(1).values).toEqual([, 'Title (string)']);
+    expect(sheet?.getCell('A2').value).toBe('雪城, "North"');
+    expect(sheet?.getCell('A3').value).toBeNull();
   });
 
   it('exports every cell value beyond the PostgREST page limit', async () => {
