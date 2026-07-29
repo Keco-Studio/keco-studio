@@ -224,4 +224,42 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).toContain('Added: ');
     expect(markup).toContain('aria-hidden="true"');
   });
+
+  it('renders generate_from_document without dumping raw JSON args', () => {
+    const item: ChatItem = {
+      id: 'confirmation-generate',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-generate',
+        tool: 'generate_from_document',
+        args: {
+          documentId: 'db2fdb19-5871-44a8-9fed-0154d6271004',
+          exportType: 'script',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          type: 'generate_from_document',
+          documentId: 'db2fdb19-5871-44a8-9fed-0154d6271004',
+          name: '古宅雨夜',
+          folderName: null,
+          exportType: 'script',
+          libraryName: '古宅雨夜 Conversation',
+          summary: 'Generate conversation from document "古宅雨夜"',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Generate conversation');
+    expect(markup).toContain('古宅雨夜');
+    expect(markup).toContain('Generate conversation from document');
+    expect(markup).toContain('古宅雨夜 Conversation');
+    expect(markup).not.toContain('documentId');
+    expect(markup).not.toContain('exportType');
+    expect(markup).not.toContain('bound document');
+    expect(markup).not.toContain('db2fdb19-5871-44a8-9fed-0154d6271004');
+  });
 });

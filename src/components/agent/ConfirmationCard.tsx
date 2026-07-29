@@ -330,6 +330,9 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
         proposedMarkdown?: string;
         existingValues?: Record<string, unknown>;
         changes?: Array<{ field: string; value: unknown }>;
+        exportType?: 'table' | 'script';
+        libraryName?: string;
+        summary?: string;
       }
     | undefined;
   const isDocumentEdit =
@@ -339,9 +342,14 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const isDocumentDelete =
     documentPreview?.type === 'document_delete' &&
     typeof documentPreview.name === 'string';
+  const isGenerateFromDocument =
+    documentPreview?.type === 'generate_from_document' &&
+    typeof documentPreview.name === 'string' &&
+    (documentPreview.exportType === 'table' || documentPreview.exportType === 'script');
   const isBoundDocument =
     !isDocumentEdit &&
     !isDocumentDelete &&
+    !isGenerateFromDocument &&
     typeof documentPreview?.documentId === 'string' &&
     typeof documentPreview.name === 'string';
   let visibleArgs = args;
@@ -370,7 +378,66 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     : [];
 
   const changeParts = summarizeChangeParts(args, documentPreview, label);
-  const useSimpleCard = !isDocumentEdit && !isDocumentDelete && !isBoundDocument;
+  const useSimpleCard = !isDocumentEdit && !isDocumentDelete && !isBoundDocument && !isGenerateFromDocument;
+
+  if (isGenerateFromDocument) {
+    const kind = documentPreview.exportType === 'table' ? 'table' : 'conversation';
+    const location = documentPreview.folderName
+      ? `${documentPreview.name} / ${documentPreview.folderName}`
+      : documentPreview.name;
+    const detail =
+      typeof documentPreview.summary === 'string' && documentPreview.summary.trim()
+        ? documentPreview.summary
+        : `Generate ${kind} from document "${documentPreview.name}"`;
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmTitle}>
+          {resolved === 'approved'
+            ? `Generating ${kind}…`
+            : resolved === 'rejected'
+              ? 'Generation cancelled.'
+              : `Confirm: Generate ${kind}`}
+        </div>
+        <div className={styles.documentEditMeta}>
+          <div className={styles.documentEditTarget}>{location}</div>
+          <div>{detail}</div>
+          {typeof documentPreview.libraryName === 'string' && documentPreview.libraryName.trim() ? (
+            <div>Result: {documentPreview.libraryName}</div>
+          ) : null}
+        </div>
+        {resolved === 'approved' ? (
+          <div className={styles.resolvedNote}>Approved.</div>
+        ) : resolved === 'rejected' ? (
+          <div className={styles.resolvedNote}>Cancelled.</div>
+        ) : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPillGhost}`}
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (useSimpleCard) {
     return (
