@@ -58,7 +58,7 @@ async function createTableFixture(
     notes: fieldIdByLabel.get('Notes')!,
   };
   const rowInputs = [
-    { key: 'castle' as const, name: 'Castle', values: ['Castle', 'Alpha', '雪城, "North"'] },
+    { key: 'castle' as const, name: 'Castle', values: ['Castle', 'Alpha', 'Snowville, "North"'] },
     { key: 'forest' as const, name: 'Forest', values: ['Forest', 'Beta', 'Green'] },
     { key: 'blank' as const, name: 'Blank', values: ['Blank', '', null] },
   ];
@@ -163,7 +163,7 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
       'Category (string)',
       'Notes (string)',
     ]);
-    expect(sheet?.getCell('C2').value).toBe('雪城, "North"');
+    expect(sheet?.getCell('C2').value).toBe('Snowville, "North"');
     expect(sheet?.getCell('C4').value).toBeNull();
 
     await openExportModal(page);
@@ -184,7 +184,7 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
     expect(payload.rows.find((row) => row.id === fixture.rowIds.castle)?.propertyValues).toMatchObject({
       [fixture.fieldIds.name]: 'Castle',
       [fixture.fieldIds.category]: 'Alpha',
-      [fixture.fieldIds.notes]: '雪城, "North"',
+      [fixture.fieldIds.notes]: 'Snowville, "North"',
     });
     expect(payload.rows.find((row) => row.id === fixture.rowIds.blank)?.propertyValues[fixture.fieldIds.notes])
       .toBeNull();

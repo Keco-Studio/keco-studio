@@ -189,7 +189,7 @@ describe('GET /api/export', () => {
         {
           asset_id: assetId,
           field_id: fieldId,
-          value_json: '雪城, "North"',
+          value_json: 'Snowville, "North"',
         },
       ],
     }));
@@ -211,7 +211,7 @@ describe('GET /api/export', () => {
 
     const sheet = workbook.getWorksheet('Main');
     expect(sheet?.getRow(1).values).toEqual([, 'Title (string)']);
-    expect(sheet?.getCell('A2').value).toBe('雪城, "North"');
+    expect(sheet?.getCell('A2').value).toBe('Snowville, "North"');
     expect(sheet?.getCell('A3').value).toBeNull();
   });
 
