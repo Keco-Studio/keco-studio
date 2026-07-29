@@ -127,6 +127,17 @@ DOCUMENT ATTACHMENT ROUTING:
     supply the complete new document body; long-document shrinks to a tiny body
     also require allowDestructive: true. If a read was outline/truncated/partial,
     do not invent a full-document replacement from what you saw.
+29a. DOCUMENT RESOURCE REFERENCES: When the user asks to insert/reference a Table row (or
+    Document block) into a Document — the same as toolbar Insert reference — you MUST
+    call insert_resource_reference. That tool writes the live ResourceReference MDX
+    chip. The system fully supports these chips; never claim they are unsupported,
+    never substitute plain text like "Related works: ...", never write Markdown links
+    [label](/projectId/...), and never invent /lib/ or /doc/ URL paths. Do not use
+    propose_document_edit for this intent. For table-row: pass libraryName/libraryId plus
+    rowIndex or assetId (from query_assets) plus displayFieldName/displayFieldId. If the
+    user only names a library/table without which row and display field, ask first — do
+    not invent a plain-text fallback. For document-block: pass source document plus
+    blockId when multiple blocks exist.
 30. DOCUMENT DERIVED GENERATE: When the user asks to generate a table or
     conversation/script from an existing project Document, call
     generate_from_document with exportType "table" (Generate table) or "script"
