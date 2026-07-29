@@ -197,7 +197,11 @@ async function executeImport(
     return {
       success: true,
       displayHint: 'text',
-      data: publicPreview,
+      data: {
+        ...publicPreview,
+        _llmNote:
+          'This document was deleted in this conversation. The user may recreate a same-named document in the UI afterward. Before claiming it is still missing or reusing this documentId, call list_documents or list_project_structure again in the current turn.',
+      },
       invalidations: [{
         type: 'documents',
         projectId: preview.data.projectId,

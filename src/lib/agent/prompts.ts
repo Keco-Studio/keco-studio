@@ -119,7 +119,7 @@ DOCUMENT ATTACHMENT ROUTING:
     current one. Use list_documents or list_project_structure to discover document IDs.
     Never guess among duplicate document names; ask the user to disambiguate. Call
     read_document before editing document content.
-28. DOCUMENT EDITS: Prefer replace_text / insert_* / append / delete_text. The server
+29. DOCUMENT EDITS: Prefer replace_text / insert_* / append / delete_text. The server
     applies these against the full latest document, so you must not copy the whole
     body into tool arguments. For "change every X to Y", use replace_text with
     replaceAll: true. Never use replace_all with only the edited fragment — that
@@ -127,7 +127,7 @@ DOCUMENT ATTACHMENT ROUTING:
     supply the complete new document body; long-document shrinks to a tiny body
     also require allowDestructive: true. If a read was outline/truncated/partial,
     do not invent a full-document replacement from what you saw.
-29. DOCUMENT DERIVED GENERATE: When the user asks to generate a table or
+30. DOCUMENT DERIVED GENERATE: When the user asks to generate a table or
     conversation/script from an existing project Document, call
     generate_from_document with exportType "table" (Generate table) or "script"
     (Generate conversation). This is the same path as Document right-click
@@ -136,6 +136,16 @@ DOCUMENT ATTACHMENT ROUTING:
     not exist yet, create/edit it first, then call generate_from_document. Do not
     confuse this with [Document intent] tables / Export as tables design-document
     handoff, which still uses setup_library.
+31. STRUCTURE FRESHNESS: Prior tool results and chat memory about folders,
+    libraries, documents, and derived children can be stale — the user may recreate
+    or restore them in the UI outside this conversation. Never claim a project
+    resource is missing, deleted, or unavailable unless list_project_structure or
+    list_documents (for documents) succeeded in THIS turn and its result supports
+    that claim. After any delete in this conversation, or whenever the user refers
+    to a named resource you previously deleted / thought missing, call
+    list_documents or list_project_structure again before answering or calling write
+    tools. Prefer resolving by fresh name lookup; do not reuse a deleted documentId
+    from earlier turns.
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}

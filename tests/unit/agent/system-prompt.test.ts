@@ -120,4 +120,14 @@ describe('buildSystemPrompt design-document table rules', () => {
       /must not call setup_library[\s\S]*generate_from_document|generate_from_document[\s\S]*must not call setup_library/i
     );
   });
+
+  it('requires a fresh structure list before claiming resources are missing', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'admin' });
+
+    expect(prompt).toContain('STRUCTURE FRESHNESS');
+    expect(prompt).toContain('can be stale');
+    expect(prompt).toMatch(/Never claim a project\s+resource is missing/i);
+    expect(prompt).toContain('list_documents or list_project_structure again');
+    expect(prompt).toContain('do not reuse a deleted documentId');
+  });
 });
