@@ -91,7 +91,7 @@ test.describe('Agent chat', () => {
     );
   });
 
-  test('renders markdown after reasoning without an expandable summary', async ({ page }) => {
+  test('renders markdown after reasoning with collapsed thinking toggle', async ({ page }) => {
     await page.route('**/api/agent-chat', async (route) => {
       await fulfillAgentStream(route, crypto.randomUUID(), [
         { type: 'reasoning_delta', content: '   ' },
@@ -119,9 +119,11 @@ test.describe('Agent chat', () => {
     await expect(assistant).toHaveCount(1);
     await expect(assistant.locator('strong')).toHaveText('Done');
     await expect(assistant.locator('table')).toContainText('Docs');
-    // Completed answers replace the expandable reasoning control with a status row.
-    await expect(assistant.getByRole('status')).toBeVisible();
-    await expect(assistant.getByRole('button')).toHaveCount(0);
+    // Completed answers keep a collapsed thinking toggle; reasoning stays hidden until expanded.
+    const thinkingToggle = assistant.getByTestId('agent-thinking-toggle');
+    await expect(thinkingToggle).toBeVisible();
+    await expect(thinkingToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(assistant.getByTestId('agent-thinking-panel')).toHaveCount(0);
     await expect(assistant).not.toContainText('First check the project.');
     await expect(assistant).not.toContainText('Summarizing results');
   });
@@ -388,10 +390,11 @@ test.describe('Agent chat', () => {
     const agent = await openProject(page);
     await agent.send('Create an asset');
     const confirmation = page.getByTestId('agent-confirmation');
-    await expect(confirmation).toContainText('Confirm: Create asset');
+    await expect(confirmation).toContainText('Confirm this change:');
+    await expect(confirmation).toContainText('E2E asset');
     await confirmation.getByTestId('agent-confirm').click();
 
-    await expect(confirmation).toContainText('Approved.');
+    await expect(confirmation).toContainText('Modification successful!');
     await expect(page.getByTestId('agent-message-assistant')).toContainText(
       'The asset was created.'
     );

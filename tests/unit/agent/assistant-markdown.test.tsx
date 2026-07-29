@@ -5,6 +5,7 @@ jest.mock('@/components/agent/ChatPanel.module.css', () => ({
   markdown: 'markdown',
   markdownTableWrap: 'markdownTableWrap',
   markdownTable: 'markdownTable',
+  entityChip: 'entityChip',
 }));
 
 describe('AssistantMarkdown', () => {
@@ -15,11 +16,30 @@ describe('AssistantMarkdown', () => {
       />
     );
 
-    expect(html).toContain('<strong>Done</strong>');
+    expect(html).toContain('<strong class="entityChip">Done</strong>');
     expect(html).toContain('class="markdownTableWrap"');
     expect(html).toContain('<table class="markdownTable">');
     expect(html).toContain('<th>Feature</th>');
     expect(html).toContain('<td>Docs</td>');
+  });
+
+  it('renders inline code as entity chips', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown markdown={'Changed `General` to `Grand General`'} />
+    );
+
+    expect(html).toContain('class="entityChip"');
+    expect(html).toContain('General');
+    expect(html).toContain('Grand General');
+  });
+
+  it('renders strong text as entity chips', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown markdown={'Changed **General** to **Grand General**'} />
+    );
+
+    expect(html).toContain('<strong class="entityChip">General</strong>');
+    expect(html).toContain('<strong class="entityChip">Grand General</strong>');
   });
 
   it('does not execute raw HTML', () => {

@@ -226,6 +226,7 @@ export const setReference: AgentTool = {
     'Write cross-library references from every non-empty cell of a source library into a target row\'s reference field. Produces one reference chip per non-empty source cell. Use this instead of manually querying the source and writing UUIDs. Params: sourceLibrary (required), targetLibrary (optional, defaults to active library), targetRow (1-based, required), targetField (reference field name, required).',
   category: 'write',
   confirmationMode: 'post_preview',
+  confirmationPolicy: 'mode',
   requiredPermission: 'editor',
   parameters: {
     type: 'object',

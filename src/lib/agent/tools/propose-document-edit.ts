@@ -351,7 +351,23 @@ async function executeImport(
     return {
       success: true,
       displayHint: 'text',
-      data: { documentId: replaced.documentId, token: replaced.token },
+      data: {
+        documentId: replaced.documentId,
+        token: replaced.token,
+        documentName: preview.data.documentName,
+        folderName: preview.data.folderName,
+        operationType: preview.data.operationType,
+        operationSummary: preview.data.operationSummary,
+        ...(parsedParams.data.operation.type === 'replace_text'
+          ? {
+              from: parsedParams.data.operation.target,
+              to: parsedParams.data.operation.replacement,
+            }
+          : {}),
+        ...(parsedParams.data.operation.type === 'delete_text'
+          ? { from: parsedParams.data.operation.target, to: '' }
+          : {}),
+      },
       invalidations: [{
         type: 'documents',
         projectId: ctx.projectId,

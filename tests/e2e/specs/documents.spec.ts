@@ -192,9 +192,11 @@ test.describe('Document authoring', () => {
       await expect(sidebar.locator(`[title="${folderName}"]`)).toBeVisible({ timeout: 20000 });
     });
 
-    await test.step('Create a document from the folder context menu', async () => {
-      await sidebar.locator(`[title="${folderName}"]`).click({ button: 'right' });
-      await page.getByRole('button', { name: /^new document$/i }).click();
+    await test.step('Create a document from the folder plus menu', async () => {
+      const folderRow = sidebar.locator(`[title="${folderName}"]`).locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
+      await folderRow.hover();
+      await folderRow.getByRole('button', { name: 'Folder actions' }).click();
+      await page.getByRole('button', { name: /create new document/i }).click();
       const input = page.getByPlaceholder('Enter document name');
       await input.fill(documentName);
       await input.locator('xpath=ancestor::div[contains(@class,"modal")][1]')

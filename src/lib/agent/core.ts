@@ -878,6 +878,32 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
         });
         yield { type: 'tool_call_end' };
       }
+    } else if (
+      input.decision === 'approve' &&
+      pending.toolName === 'generate_from_document' &&
+      input.clientCompletedResult !== undefined
+    ) {
+      // Client already ran `/api/import-script` (same as Document RMB Generate).
+      throwIfAborted(input.signal);
+      yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
+      const toolStartMs = Date.now();
+      const { toolResultFromClientCompletion } = await import(
+        './tools/generate-from-document'
+      );
+      result = toolResultFromClientCompletion(
+        pending.args,
+        input.clientCompletedResult,
+        turnContext.projectId
+      );
+      trace?.recordToolCall({
+        tool: tool.name,
+        args: resumeArgs,
+        success: result.success,
+        error: result.error,
+        latencyMs: Date.now() - toolStartMs,
+        phase: 'clientCompleted',
+      });
+      yield { type: 'tool_call_end' };
     } else {
       // pre_execute or meta
       throwIfAborted(input.signal);

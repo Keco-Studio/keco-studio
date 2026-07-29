@@ -33,8 +33,14 @@ test.describe('Script import', () => {
     await page.goto(`/${projectId}`);
     const folderRow = page.locator('aside').locator(`[title="${folder.name}"]`).first();
     await expect(folderRow).toBeVisible({ timeout: 30000 });
-    await folderRow.click({ button: 'right' });
-    await page.getByRole('button', { name: 'Import script', exact: true }).click();
+    // Folder UI no longer exposes Import script; open via the agent handoff bridge.
+    await page.evaluate((folderId) => {
+      window.dispatchEvent(
+        new CustomEvent('agent:open-import-modal', {
+          detail: { folderId, libraryName: '', fullText: '' },
+        })
+      );
+    }, folder.id);
     await expect(page.getByTestId('import-script-modal')).toBeVisible();
   }
 

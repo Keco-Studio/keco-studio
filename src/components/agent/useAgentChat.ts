@@ -8,6 +8,10 @@ import { getActiveSectionName } from '@/lib/agent/page-context';
 import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
+import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
+import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImport';
+import { defaultDerivedLibraryName } from '@/lib/documents/documentDerivedImportProgress';
+import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
 import {
   clearLastConversation,
   setLastConversation,
@@ -35,6 +39,12 @@ import {
 
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
+
+type PendingAutoGenerateConfirm = {
+  actionId: string;
+  documentId: string;
+  exportType: DocumentExportType;
+};
 
 interface ParsedSSE {
   type: string;
@@ -117,6 +127,16 @@ export function useAgentChat(ctx: SendContext) {
   const activeRuntimeKeyRef = useRef(runtime.key);
   const projectIdRef = useRef<string | undefined>(undefined);
   const restoreEpochRef = useRef(0);
+  /** Auto mode: queue generate_from_document approval without showing a confirm card. */
+  const pendingAutoGenerateConfirmRef = useRef<PendingAutoGenerateConfirm | null>(null);
+  const confirmRef = useRef<
+    | ((
+        actionId: string,
+        decision: 'approve' | 'reject',
+        options?: { generateFromDocument?: PendingAutoGenerateConfirm }
+      ) => Promise<void>)
+    | null
+  >(null);
 
   const syncRuntime = useCallback((next: AgentChatRuntime) => {
     setRuntime(next);
@@ -216,7 +236,8 @@ export function useAgentChat(ctx: SendContext) {
       response: Response,
       initialRuntimeKey: string,
       origin: { userId?: string; projectId: string },
-      onBound: (key: string) => void
+      onBound: (key: string) => void,
+      options?: { initialAssistantId?: string | null }
     ) => {
       let runtimeKey = initialRuntimeKey;
       beginStreamActivity(runtimeKey, 'connecting');
@@ -245,7 +266,7 @@ export function useAgentChat(ctx: SendContext) {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      let assistantId: string | null = null;
+      let assistantId: string | null = options?.initialAssistantId ?? null;
       let toolCallId: string | null = null;
       let receivedDone = false;
       let reasoningSegmentStart = true;
@@ -354,12 +375,42 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'confirmation_request': {
+            const actionId = String(event.actionId ?? '');
+            const tool = String(event.tool ?? '');
+            const runtimeSnapshot = getAgentChatRuntime(runtimeKey);
+            const args = (event.args ?? {}) as {
+              documentId?: unknown;
+              exportType?: unknown;
+            };
+            const documentId =
+              typeof args.documentId === 'string' ? args.documentId.trim() : '';
+            const exportType =
+              args.exportType === 'table' || args.exportType === 'script'
+                ? args.exportType
+                : null;
+
+            // Keep server suspension for client derived-import handoff, but Auto
+            // mode must not show/require a confirm card.
+            if (
+              tool === 'generate_from_document' &&
+              runtimeSnapshot?.autoExecute === true &&
+              documentId &&
+              exportType
+            ) {
+              pendingAutoGenerateConfirmRef.current = {
+                actionId,
+                documentId,
+                exportType,
+              };
+              break;
+            }
+
             appendItem(runtimeKey, {
               id: nextId(),
               role: 'confirmation',
               confirmation: {
-                actionId: String(event.actionId ?? ''),
-                tool: String(event.tool ?? ''),
+                actionId,
+                tool,
                 args: event.args,
                 confirmationMode: (event.confirmationMode as ConfirmationModeValue) ?? 'pre_execute',
                 preview: event.preview,
@@ -442,7 +493,16 @@ export function useAgentChat(ctx: SendContext) {
         text: display.text,
         attachments: display.attachments,
       });
-      updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
+      const assistantPlaceholderId = nextId();
+      appendItem(requestRuntimeKey, {
+        id: assistantPlaceholderId,
+        role: 'assistant',
+        text: '',
+      });
+      updateAgentChatRuntime(requestRuntimeKey, {
+        isStreaming: true,
+        streamingAssistantId: assistantPlaceholderId,
+      });
       beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
         const token = await getToken();
@@ -484,6 +544,10 @@ export function useAgentChat(ctx: SendContext) {
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
+          updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+            items: current.items.filter((item) => item.id !== assistantPlaceholderId),
+            streamingAssistantId: null,
+          }));
           appendItem(requestRuntimeKey, {
             id: nextId(),
             role: 'error',
@@ -497,9 +561,14 @@ export function useAgentChat(ctx: SendContext) {
           { userId: ctx.userId, projectId: ctx.projectId },
           (boundKey) => {
             requestRuntimeKey = boundKey;
-          }
+          },
+          { initialAssistantId: assistantPlaceholderId }
         );
       } catch (e) {
+        updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+          items: current.items.filter((item) => item.id !== assistantPlaceholderId),
+          streamingAssistantId: null,
+        }));
         appendItem(requestRuntimeKey, {
           id: nextId(),
           role: 'error',
@@ -510,6 +579,14 @@ export function useAgentChat(ctx: SendContext) {
           isStreaming: false,
           streamStartedAt: null,
           streamingAssistantId: null,
+        });
+      }
+
+      const autoGenerate = pendingAutoGenerateConfirmRef.current;
+      pendingAutoGenerateConfirmRef.current = null;
+      if (autoGenerate) {
+        void confirmRef.current?.(autoGenerate.actionId, 'approve', {
+          generateFromDocument: autoGenerate,
         });
       }
     },
@@ -575,11 +652,38 @@ export function useAgentChat(ctx: SendContext) {
   );
 
   const confirm = useCallback(
-    async (actionId: string, decision: 'approve' | 'reject') => {
+    async (
+      actionId: string,
+      decision: 'approve' | 'reject',
+      options?: {
+        generateFromDocument?: PendingAutoGenerateConfirm;
+      }
+    ) => {
       if (!ctx.userId) return;
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
       if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
       let requestRuntimeKey = selectedRuntime.key;
+      const pendingConfirmation = selectedRuntime.items.find(
+        (it) => it.confirmation?.actionId === actionId
+      )?.confirmation;
+      const generateArgs = options?.generateFromDocument ?? (
+        pendingConfirmation?.tool === 'generate_from_document'
+          ? (() => {
+              const args = (pendingConfirmation.args ?? {}) as {
+                documentId?: string;
+                exportType?: DocumentExportType;
+              };
+              const documentId = typeof args.documentId === 'string' ? args.documentId : '';
+              const exportType =
+                args.exportType === 'table' || args.exportType === 'script'
+                  ? args.exportType
+                  : null;
+              if (!documentId || !exportType) return null;
+              return { actionId, documentId, exportType };
+            })()
+          : null
+      );
+
       updateAgentChatRuntime(requestRuntimeKey, (current) => ({
         items: current.items.map((it) =>
           it.confirmation?.actionId === actionId
@@ -590,6 +694,45 @@ export function useAgentChat(ctx: SendContext) {
       updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
       beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
+        let clientCompletedResult: unknown;
+        if (decision === 'approve' && generateArgs) {
+          // Same path as Document right-click Generate: /api/import-script (300s),
+          // so Story IR is not trapped inside the agent-chat turn deadline.
+          beginStreamActivity(requestRuntimeKey, 'processing');
+          const token = await getToken();
+          if (!token) throw new Error('Please sign in before generating');
+          const source = await fetchDocumentExportSource(generateArgs.documentId, token);
+          const importResult = await runDocumentDerivedImport({
+            source,
+            exportType: generateArgs.exportType,
+            accessToken: token,
+          });
+          notifyDocumentDerivedLibraryCreated({
+            projectId: source.projectId,
+            documentId: source.documentId,
+            libraryId: importResult.libraryId,
+          });
+          await invalidateLibraryData(queryClient, {
+            projectId: source.projectId,
+            folderId: source.folderId,
+            libraryId: importResult.libraryId,
+            refetchActiveFoldersLibraries: true,
+          });
+          clientCompletedResult = {
+            libraryId: importResult.libraryId,
+            libraryName: defaultDerivedLibraryName(
+              source.documentName,
+              generateArgs.exportType
+            ),
+            exportType: generateArgs.exportType,
+            sourceDocumentId: source.documentId,
+            documentName: source.documentName,
+            projectId: source.projectId,
+            rowCount: importResult.rowCount,
+            fieldCount: importResult.fieldCount,
+          };
+        }
+
         const token = await getToken();
         const response = await fetch('/api/agent-chat/confirm', {
           method: 'POST',
@@ -607,6 +750,7 @@ export function useAgentChat(ctx: SendContext) {
             currentLibraryId: ctx.currentLibraryId,
             currentLibraryName: ctx.currentLibraryName,
             currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
+            ...(clientCompletedResult !== undefined ? { clientCompletedResult } : {}),
           }),
         });
         if (!response.ok) {
@@ -627,6 +771,13 @@ export function useAgentChat(ctx: SendContext) {
           }
         );
       } catch (e) {
+        updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+          items: current.items.map((it) =>
+            it.confirmation?.actionId === actionId
+              ? { ...it, confirmation: { ...it.confirmation, resolved: undefined } }
+              : it
+          ),
+        }));
         appendItem(requestRuntimeKey, {
           id: nextId(),
           role: 'error',
@@ -640,8 +791,10 @@ export function useAgentChat(ctx: SendContext) {
         });
       }
     },
-    [getToken, ctx, consumeStream, appendItem, beginStreamActivity]
+    [getToken, ctx, consumeStream, appendItem, beginStreamActivity, queryClient]
   );
+
+  confirmRef.current = confirm;
 
   const resetToEmpty = useCallback(() => {
     const next = createAgentChatRuntime({

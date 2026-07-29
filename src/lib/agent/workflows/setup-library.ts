@@ -305,6 +305,7 @@ export const setupLibrary: AgentTool = {
     'Create a new library (table) together with all of its fields/columns in one step. Fields can be grouped into sections (tabs). Use this when the user wants a new table with columns; use create_library only for an empty table. Params: libraryName (required), folderName (optional), description (optional), fields (required array; each field needs label and dataType, optionally section, description, required, enumOptions, referenceLibraries, formulaExpression).',
   category: 'write',
   confirmationMode: 'post_preview',
+  confirmationPolicy: 'mode',
   requiredPermission: 'editor',
   parameters: {
     type: 'object',

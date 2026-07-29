@@ -267,4 +267,9 @@ export interface ResumeInput {
   signal?: AbortSignal;
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
+  /**
+   * Optional client-completed write result (e.g. generate_from_document after
+   * `/api/import-script` derived import). When present, resume skips tool.execute.
+   */
+  clientCompletedResult?: unknown;
 }

@@ -221,7 +221,8 @@ export function useSidebarContextMenuActions({
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'library') {
-          startInlineRename(`library-${contextMenu.id}`);
+          // Library info opens the name/notes modal; inline rename is the Rename item.
+          openEditLibrary(contextMenu.id);
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'folder') {

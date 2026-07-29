@@ -6,21 +6,24 @@ const read = (relative: string) =>
   fs.readFileSync(path.join(repoRoot, relative), 'utf8');
 
 describe('folder-scoped document creation', () => {
-  it('exposes a typed New document context-menu action for folders', () => {
+  it('exposes folder document creation on the row plus menu, not right-click', () => {
     const contextMenu = read('src/components/layout/ContextMenu.tsx');
     expect(contextMenu).toContain("| 'new-document'");
-    expect(contextMenu).toMatch(/type === 'folder'[\s\S]*New document/);
-    expect(contextMenu).toContain("handleAction('new-document')");
+    expect(contextMenu).toMatch(
+      /type === 'folder'[\s\S]*Folder actions are on the row "\+" menu[\s\S]*return null/
+    );
+
+    const addMenu = read('src/components/libraries/AddLibraryMenu.tsx');
+    expect(addMenu).toContain('onCreateDocument');
+    expect(addMenu).toContain('Create new document');
   });
 
-  it('routes the folder id through the sidebar action boundary', () => {
-    const actions = read(
-      'src/components/layout/hooks/useSidebarContextMenuActions.ts'
+  it('routes the folder id through the sidebar plus-menu action boundary', () => {
+    const sidebar = read('src/components/layout/Sidebar.tsx');
+    expect(sidebar).toMatch(
+      /folderAddMenu[\s\S]*onCreateDocument[\s\S]*openNewDocumentInFolder\(folderAddMenu\.folderId\)/
     );
-    expect(actions).toContain('openNewDocumentInFolder: (folderId: string) => void');
-    expect(actions).toMatch(
-      /action === 'new-document'[\s\S]*contextMenu\.type === 'folder'[\s\S]*openNewDocumentInFolder\(contextMenu\.id\)/
-    );
+    expect(sidebar).toMatch(/type === 'folder'\) return/);
   });
 
   it('sets the selected folder before opening the existing modal', () => {
