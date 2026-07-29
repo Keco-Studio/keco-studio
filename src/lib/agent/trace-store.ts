@@ -21,7 +21,7 @@ export interface ToolCallTrace {
   success: boolean;
   error?: string;
   latencyMs?: number;
-  phase?: 'execute' | 'executeImport';
+  phase?: 'execute' | 'executeImport' | 'clientCompleted';
 }
 
 export interface ConfirmationTrace {

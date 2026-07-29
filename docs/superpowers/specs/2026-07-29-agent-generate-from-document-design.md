@@ -91,12 +91,18 @@ Add a DOCUMENT DERIVED GENERATE rule to the agent system prompt:
   - **Document-derived generate** (this tool) vs
   - **Design-document / attachment tables intent** (`[Document intent] tables` / Export as tables handoff) which remains the existing setup_library path for this release.
 
-### 3. Confirmation + Auto mode
+### 3. Confirmation + client offload
 
-Treat `generate_from_document` as a mutating write tool:
+`generate_from_document` uses `confirmationPolicy: 'always'` (even in Auto mode).
+
+On approve, the **client** runs `fetchDocumentExportSource` + `runDocumentDerivedImport` (same `/api/import-script` Story IR path as Document right-click Generate, `maxDuration` 300s). The agent-chat turn only resumes after import finishes, via `clientCompletedResult`, so conversion is not trapped inside the ~110s agent turn deadline that previously surfaced as “Agent stopped because this turn reached the time limit.”
+
+Server `execute` does **not** run Story IR; approvals without a validated client result fail closed.
+
+Treat confirmation UX as a mutating write:
 
 - Show a confirmation card summarizing Document name + target (`table` or `conversation`).
-- Auto mode follows the same auto-approve policy as comparable import/setup writes already in the product (do not invent a special bypass).
+- Auto mode still requires approval for this tool.
 
 ### 4. Client refresh
 

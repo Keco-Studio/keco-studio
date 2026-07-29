@@ -26,6 +26,7 @@ export const POST = withAuth(async function POST(
     currentLibraryId?: string;
     currentLibraryName?: string;
     currentSectionName?: string;
+    clientCompletedResult?: unknown;
   };
   try {
     body = await request.json();
@@ -101,6 +102,9 @@ export const POST = withAuth(async function POST(
       signal: abortController.signal,
       toolContext,
       conversationMeta: boundMeta,
+      ...(body.clientCompletedResult !== undefined
+        ? { clientCompletedResult: body.clientCompletedResult }
+        : {}),
     });
 
     const response = sseResponse(generator, { abortController });

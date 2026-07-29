@@ -8,6 +8,10 @@ import { getActiveSectionName } from '@/lib/agent/page-context';
 import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
+import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
+import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImport';
+import { defaultDerivedLibraryName } from '@/lib/documents/documentDerivedImportProgress';
+import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
 import {
   clearLastConversation,
   setLastConversation,
@@ -599,6 +603,10 @@ export function useAgentChat(ctx: SendContext) {
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
       if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
       let requestRuntimeKey = selectedRuntime.key;
+      const pendingConfirmation = selectedRuntime.items.find(
+        (it) => it.confirmation?.actionId === actionId
+      )?.confirmation;
+
       updateAgentChatRuntime(requestRuntimeKey, (current) => ({
         items: current.items.map((it) =>
           it.confirmation?.actionId === actionId
@@ -609,6 +617,57 @@ export function useAgentChat(ctx: SendContext) {
       updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
       beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
+        let clientCompletedResult: unknown;
+        if (
+          decision === 'approve' &&
+          pendingConfirmation?.tool === 'generate_from_document'
+        ) {
+          // Same path as Document right-click Generate: /api/import-script (300s),
+          // so Story IR is not trapped inside the agent-chat turn deadline.
+          const args = (pendingConfirmation.args ?? {}) as {
+            documentId?: string;
+            exportType?: DocumentExportType;
+          };
+          const documentId = typeof args.documentId === 'string' ? args.documentId : '';
+          const exportType =
+            args.exportType === 'table' || args.exportType === 'script'
+              ? args.exportType
+              : null;
+          if (!documentId || !exportType) {
+            throw new Error('Generate from document confirmation is missing document details.');
+          }
+          beginStreamActivity(requestRuntimeKey, 'processing');
+          const token = await getToken();
+          if (!token) throw new Error('Please sign in before generating');
+          const source = await fetchDocumentExportSource(documentId, token);
+          const importResult = await runDocumentDerivedImport({
+            source,
+            exportType,
+            accessToken: token,
+          });
+          notifyDocumentDerivedLibraryCreated({
+            projectId: source.projectId,
+            documentId: source.documentId,
+            libraryId: importResult.libraryId,
+          });
+          await invalidateLibraryData(queryClient, {
+            projectId: source.projectId,
+            folderId: source.folderId,
+            libraryId: importResult.libraryId,
+            refetchActiveFoldersLibraries: true,
+          });
+          clientCompletedResult = {
+            libraryId: importResult.libraryId,
+            libraryName: defaultDerivedLibraryName(source.documentName, exportType),
+            exportType,
+            sourceDocumentId: source.documentId,
+            documentName: source.documentName,
+            projectId: source.projectId,
+            rowCount: importResult.rowCount,
+            fieldCount: importResult.fieldCount,
+          };
+        }
+
         const token = await getToken();
         const response = await fetch('/api/agent-chat/confirm', {
           method: 'POST',
@@ -626,6 +685,7 @@ export function useAgentChat(ctx: SendContext) {
             currentLibraryId: ctx.currentLibraryId,
             currentLibraryName: ctx.currentLibraryName,
             currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
+            ...(clientCompletedResult !== undefined ? { clientCompletedResult } : {}),
           }),
         });
         if (!response.ok) {
@@ -646,6 +706,13 @@ export function useAgentChat(ctx: SendContext) {
           }
         );
       } catch (e) {
+        updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+          items: current.items.map((it) =>
+            it.confirmation?.actionId === actionId
+              ? { ...it, confirmation: { ...it.confirmation, resolved: undefined } }
+              : it
+          ),
+        }));
         appendItem(requestRuntimeKey, {
           id: nextId(),
           role: 'error',
@@ -659,7 +726,7 @@ export function useAgentChat(ctx: SendContext) {
         });
       }
     },
-    [getToken, ctx, consumeStream, appendItem, beginStreamActivity]
+    [getToken, ctx, consumeStream, appendItem, beginStreamActivity, queryClient]
   );
 
   const resetToEmpty = useCallback(() => {
