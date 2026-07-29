@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { DownOutlined, RightOutlined, PaperClipOutlined, ToolOutlined } from '@ant-design/icons';
+import { DownOutlined, UpOutlined, PaperClipOutlined, ToolOutlined } from '@ant-design/icons';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
 import { ConfirmationCard } from './ConfirmationCard';
@@ -120,7 +120,9 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
         }
         if (
           item.confirmation.tool === 'propose_document_edit' ||
-          preview?.type === 'document_delete'
+          preview?.type === 'document_delete' ||
+          preview?.type === 'update_row' ||
+          preview?.type === 'set_reference'
         ) {
           return <ConfirmationCard confirmation={item.confirmation} disabled={streaming} onDecision={onDecision} />;
         }
@@ -134,70 +136,71 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
 }
 
 function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boolean }) {
-  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
 
   const hasReasoning = !!item.reasoning?.trim();
   const normalizedText = collapseMarkdownThematicBreaks(item.text ?? '');
   const hasVisibleText = !!normalizedText.trim();
-  const showReasoning = hasReasoning && !hasVisibleText;
-  const reasoningStreaming = showReasoning && streaming;
   const summary = summarizeReasoning(item.reasoning ?? '').trim();
+  const thinkingText =
+    summary ||
+    item.reasoning?.trim() ||
+    'Analyzing user intent and executing the solution to address the issue at hand.';
 
-  if (!hasReasoning && !normalizedText.trim()) return null;
+  if (!hasReasoning && !normalizedText.trim() && !streaming) return null;
 
   const streamingStatus = 'Connecting/thinking/working...';
   const completedStatus = inferCompletedStatus(normalizedText || item.reasoning || '');
-  const thinkingText =
-    summary || 'Analyzing user intent and executing the solution to address the issue at hand.';
-
-  if (streaming && !hasVisibleText) {
-    return (
-      <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
-        <div className={styles.assistantStatusRow} role="status" aria-live="polite">
-          <ToolOutlined className={styles.assistantStatusIcon} />
-          <span className={styles.assistantStatusText}>{streamingStatus}</span>
-          <DownOutlined className={styles.assistantStatusChevron} />
-        </div>
-        <div className={`${styles.bubble} ${styles.assistant} ${styles.assistantThinkingCard}`}>
-          <div className={styles.assistantThinkingRow}>
-            <ToolOutlined className={styles.assistantThinkingIcon} />
-            <span className={styles.assistantThinkingText}>{thinkingText}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const statusLabel = streaming && !hasVisibleText ? streamingStatus : streaming ? streamingStatus : completedStatus;
+  const canToggleThinking = hasReasoning || Boolean(summary) || streaming;
+  const showThinkingCard = (streaming && !hasVisibleText) || (thinkingOpen && canToggleThinking);
 
   return (
     <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
-      <div className={styles.assistantStatusRow} role="status" aria-live="polite">
-        <ToolOutlined className={styles.assistantStatusIcon} />
-        <span className={styles.assistantStatusText}>{streaming ? streamingStatus : completedStatus}</span>
-        <DownOutlined className={styles.assistantStatusChevron} />
-      </div>
-      <div className={`${styles.bubble} ${styles.assistant}`}>
-      {showReasoning && (
-        <div className={styles.reasoningBlock}>
-          <button
-            type="button"
-            className={styles.reasoningToggle}
-            onClick={() => setReasoningOpen((v) => !v)}
-            aria-expanded={reasoningOpen}
-          >
-            <span className={styles.reasoningChevron}>
-              {reasoningOpen ? <DownOutlined /> : <RightOutlined />}
-            </span>
-            <span className={styles.reasoningLabel}>{summary || 'Deep thinking'}</span>
-          </button>
-          {reasoningOpen && <div className={styles.reasoningContent}>{item.reasoning}</div>}
+      {canToggleThinking ? (
+        <button
+          type="button"
+          className={styles.assistantStatusRow}
+          data-testid="agent-thinking-toggle"
+          aria-expanded={showThinkingCard}
+          aria-controls={`agent-thinking-${item.id}`}
+          onClick={() => setThinkingOpen((value) => !value)}
+        >
+          <ToolOutlined className={styles.assistantStatusIcon} />
+          <span className={styles.assistantStatusText}>{statusLabel}</span>
+          {showThinkingCard ? (
+            <UpOutlined className={styles.assistantStatusChevron} />
+          ) : (
+            <DownOutlined className={styles.assistantStatusChevron} />
+          )}
+        </button>
+      ) : (
+        <div className={styles.assistantStatusRow} role="status" aria-live="polite">
+          <ToolOutlined className={styles.assistantStatusIcon} />
+          <span className={styles.assistantStatusText}>{statusLabel}</span>
         </div>
       )}
-      {hasVisibleText ? (
-        <AssistantMarkdown markdown={normalizedText} />
-      ) : reasoningStreaming ? (
-        '…'
-      ) : null}
-      </div>
+
+      {showThinkingCard && (
+        <div
+          id={`agent-thinking-${item.id}`}
+          className={`${styles.bubble} ${styles.assistant} ${styles.assistantThinkingCard}`}
+          data-testid="agent-thinking-panel"
+        >
+          <div className={styles.assistantThinkingRow}>
+            <ToolOutlined className={styles.assistantThinkingIcon} />
+            <span className={styles.assistantThinkingText}>
+              {hasReasoning ? item.reasoning : thinkingText}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {hasVisibleText && (
+        <div className={`${styles.bubble} ${styles.assistant}`}>
+          <AssistantMarkdown markdown={normalizedText} />
+        </div>
+      )}
     </div>
   );
 }

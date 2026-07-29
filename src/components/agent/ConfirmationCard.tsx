@@ -257,6 +257,62 @@ export function buildDocumentEditDiff(baseMarkdown: string, proposedMarkdown: st
   return collapseDiffRows(rows);
 }
 
+type ChangeParts =
+  | { kind: 'pair'; from: string; to: string }
+  | { kind: 'text'; text: string };
+
+function summarizeChangeParts(
+  args: unknown,
+  preview:
+    | {
+        existingValues?: Record<string, unknown>;
+        changes?: Array<{ field: string; value: unknown }>;
+        type?: string;
+      }
+    | undefined,
+  label: string
+): ChangeParts {
+  const asRecord = args && typeof args === 'object' ? (args as Record<string, unknown>) : null;
+
+  if (preview?.type === 'update_row' && Array.isArray(preview.changes) && preview.changes.length > 0) {
+    const change = preview.changes[0]!;
+    const previous = preview.existingValues?.[change.field];
+    if (previous !== undefined && previous !== null && String(previous).trim()) {
+      return { kind: 'pair', from: String(previous), to: String(change.value) };
+    }
+    return { kind: 'pair', from: change.field, to: String(change.value) };
+  }
+
+  if (!asRecord) return { kind: 'text', text: `Please confirm: ${label}` };
+
+  const propertyValues =
+    asRecord.propertyValues && typeof asRecord.propertyValues === 'object'
+      ? (asRecord.propertyValues as Record<string, unknown>)
+      : null;
+  const existingValues =
+    preview?.existingValues && typeof preview.existingValues === 'object'
+      ? preview.existingValues
+      : null;
+
+  if (propertyValues && Object.keys(propertyValues).length > 0) {
+    const [field, nextValue] = Object.entries(propertyValues)[0]!;
+    const previousValue = existingValues?.[field];
+    if (previousValue !== undefined && previousValue !== null && String(previousValue).trim()) {
+      return { kind: 'pair', from: String(previousValue), to: String(nextValue) };
+    }
+    return { kind: 'pair', from: field, to: String(nextValue) };
+  }
+
+  const fromValue = asRecord.from ?? asRecord.find ?? asRecord.oldValue ?? asRecord.target;
+  const toValue = asRecord.to ?? asRecord.replace ?? asRecord.newValue ?? asRecord.replacement;
+  if (fromValue !== undefined && toValue !== undefined) {
+    return { kind: 'pair', from: String(fromValue), to: String(toValue) };
+  }
+
+  if (typeof asRecord.name === 'string') return { kind: 'text', text: asRecord.name };
+  return { kind: 'text', text: `Please confirm: ${label}` };
+}
+
 export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) {
   const { actionId, tool, args, resolved } = confirmation;
   const label = TOOL_LABELS[tool] ?? tool;
@@ -271,6 +327,8 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
         operationSummary?: string;
         baseMarkdown?: string;
         proposedMarkdown?: string;
+        existingValues?: Record<string, unknown>;
+        changes?: Array<{ field: string; value: unknown }>;
       }
     | undefined;
   const isDocumentEdit =
@@ -309,6 +367,61 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const diff = isDocumentEdit
     ? buildDocumentEditDiff(documentPreview.baseMarkdown!, documentPreview.proposedMarkdown!)
     : [];
+
+  const changeParts = summarizeChangeParts(args, documentPreview, label);
+  const useSimpleCard = !isDocumentEdit && !isDocumentDelete && !isBoundDocument;
+
+  if (useSimpleCard) {
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmSimpleTitle}>
+          {resolved === 'approved'
+            ? 'Modification successful!'
+            : resolved === 'rejected'
+              ? 'Modification cancelled.'
+              : 'Confirm this change:'}
+        </div>
+        <div className={styles.confirmSimpleChange}>
+          {changeParts.kind === 'pair' ? (
+            <span className={styles.confirmSimpleChangeRow}>
+              <span className={styles.entityChip}>{changeParts.from}</span>
+              {' has been changed to '}
+              <span className={styles.entityChip}>{changeParts.to}</span>
+            </span>
+          ) : (
+            changeParts.text
+          )}
+        </div>
+
+        {resolved ? null : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPillGhost}`}
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

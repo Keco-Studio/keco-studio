@@ -20,7 +20,9 @@ describe('assistant reasoning message', () => {
 
     expect(html).toContain('Summarizing results');
     expect(html).toContain('Connecting/thinking/working...');
-    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('agent-thinking-toggle');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('agent-thinking-panel');
     expect(html.match(/agent-message-assistant/g)).toHaveLength(1);
   });
 
@@ -84,7 +86,7 @@ describe('assistant reasoning message', () => {
     expect(html).toBe('');
   });
 
-  it('shows only the completed answer after reasoning', () => {
+  it('keeps thinking collapsed after the answer completes', () => {
     const html = renderToStaticMarkup(
       <ChatMessage
         item={{
@@ -100,10 +102,12 @@ describe('assistant reasoning message', () => {
       />
     );
 
-    expect(html).not.toContain('agent-reasoning-answer-divider');
-    expect(html).not.toContain('aria-expanded');
+    expect(html).toContain('agent-thinking-toggle');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('agent-thinking-panel');
     expect(html).not.toContain('Create the assets');
-    expect(html).toContain('<strong>Done.</strong>');
+    expect(html).toContain('<strong');
+    expect(html).toContain('Done.');
   });
 
   it('shows only the answer while it is streaming', () => {
@@ -122,8 +126,9 @@ describe('assistant reasoning message', () => {
       />
     );
 
-    expect(html).not.toContain('agent-reasoning-answer-divider');
-    expect(html).not.toContain('aria-expanded');
+    expect(html).toContain('agent-thinking-toggle');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('agent-thinking-panel');
     expect(html).not.toContain('Check the project');
     expect(html).toContain('Writing the answer...');
   });

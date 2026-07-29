@@ -194,6 +194,13 @@ async function executeImport(
         rowIndex: preview.rowIndex,
         libraryId: preview.libraryId,
         libraryName: preview.libraryName,
+        changes: preview.changes,
+        existingValues: preview.existingValues,
+        changeSummary: preview.changes.map((change) => ({
+          field: change.field,
+          from: preview.existingValues[change.field] ?? null,
+          to: change.value,
+        })),
       },
       invalidations: [{ type: 'library', id: preview.libraryId }],
     };
@@ -208,6 +215,7 @@ export const updateRow: AgentTool = {
     'Update a row identified by its 1-based UI row number (rowIndex). Use this when the user refers to a row by position ("row 1", "row 3") — it targets the exact table row even when its cells are blank. Params: libraryName (optional, defaults to active library), rowIndex (required), propertyValues (semantic field names).',
   category: 'write',
   confirmationMode: 'post_preview',
+  confirmationPolicy: 'mode',
   requiredPermission: 'editor',
   parameters: {
     type: 'object',

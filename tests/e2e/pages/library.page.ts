@@ -81,15 +81,16 @@ export class LibraryPage {
     await item.click({ button: 'right', force: true, timeout: 15000 });
   }
 
-  /** Start inline rename from the sidebar context menu (Library info / Rename). */
-  async openInlineRename(
-    title: string,
-    menuAction: RegExp = /^library info$|^rename$/i
-  ): Promise<Locator> {
-    await this.rightClickTreeItem(title);
-    const contextMenu = this.page.locator('[class*="contextMenu"]');
-    await expect(contextMenu).toBeVisible({ timeout: 5000 });
-    await contextMenu.getByRole('button', { name: menuAction }).click();
+  /** Start inline rename by double-clicking the tree row title. */
+  async openInlineRename(title: string): Promise<Locator> {
+    await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    const sidebar = this.page.getByRole('tree');
+    await expect(sidebar).toBeVisible({ timeout: 15000 });
+    const item = sidebar.locator(`[title="${title}"]`).first();
+    await expect(item).toBeVisible({ timeout: 15000 });
+    await item.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(300);
+    await item.dblclick({ force: true, timeout: 15000 });
     const renameInput = this.page.getByRole('tree').getByRole('textbox', { name: 'Rename' });
     await expect(renameInput).toBeVisible({ timeout: 5000 });
     return renameInput;
@@ -713,20 +714,21 @@ export class LibraryPage {
 
       await expect(folderItem).toBeVisible({ timeout: 15000 });
 
-      // Right-click on the target folder to open context menu
-      await folderItem.click({ button: 'right' });
+      const treeNode = folderItem.locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
+      await treeNode.hover();
+      await treeNode.getByRole('button', { name: 'Folder actions' }).click();
 
-      const contextMenu = this.page.locator('[class*="contextMenu"]');
-      await expect(contextMenu).toBeVisible({ timeout: 5000 });
+      const folderMenu = this.page.locator('[class*="AddLibraryMenu_menu"], [class*="menu"]').filter({ has: this.page.getByRole('button', { name: /^delete$/i }) }).last();
+      await expect(folderMenu.getByRole('button', { name: /^delete$/i })).toBeVisible({ timeout: 5000 });
 
       // Backward compatibility for any native confirm flow
       this.page.once('dialog', async dialog => {
         await dialog.accept();
       });
 
-      const deleteButton = contextMenu
+      const deleteButton = folderMenu
         .getByRole('button', { name: /^delete$/i })
-        .or(contextMenu.locator('button[class*="deleteItem"]'));
+        .or(folderMenu.locator('button[class*="deleteItem"]'));
       await expect(deleteButton).toBeVisible({ timeout: 5000 });
       await deleteButton.click();
 

@@ -216,7 +216,8 @@ export function useAgentChat(ctx: SendContext) {
       response: Response,
       initialRuntimeKey: string,
       origin: { userId?: string; projectId: string },
-      onBound: (key: string) => void
+      onBound: (key: string) => void,
+      options?: { initialAssistantId?: string | null }
     ) => {
       let runtimeKey = initialRuntimeKey;
       beginStreamActivity(runtimeKey, 'connecting');
@@ -245,7 +246,7 @@ export function useAgentChat(ctx: SendContext) {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      let assistantId: string | null = null;
+      let assistantId: string | null = options?.initialAssistantId ?? null;
       let toolCallId: string | null = null;
       let receivedDone = false;
       let reasoningSegmentStart = true;
@@ -442,7 +443,16 @@ export function useAgentChat(ctx: SendContext) {
         text: display.text,
         attachments: display.attachments,
       });
-      updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
+      const assistantPlaceholderId = nextId();
+      appendItem(requestRuntimeKey, {
+        id: assistantPlaceholderId,
+        role: 'assistant',
+        text: '',
+      });
+      updateAgentChatRuntime(requestRuntimeKey, {
+        isStreaming: true,
+        streamingAssistantId: assistantPlaceholderId,
+      });
       beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
         const token = await getToken();
@@ -484,6 +494,10 @@ export function useAgentChat(ctx: SendContext) {
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
+          updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+            items: current.items.filter((item) => item.id !== assistantPlaceholderId),
+            streamingAssistantId: null,
+          }));
           appendItem(requestRuntimeKey, {
             id: nextId(),
             role: 'error',
@@ -497,9 +511,14 @@ export function useAgentChat(ctx: SendContext) {
           { userId: ctx.userId, projectId: ctx.projectId },
           (boundKey) => {
             requestRuntimeKey = boundKey;
-          }
+          },
+          { initialAssistantId: assistantPlaceholderId }
         );
       } catch (e) {
+        updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+          items: current.items.filter((item) => item.id !== assistantPlaceholderId),
+          streamingAssistantId: null,
+        }));
         appendItem(requestRuntimeKey, {
           id: nextId(),
           role: 'error',
