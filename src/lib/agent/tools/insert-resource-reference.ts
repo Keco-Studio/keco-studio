@@ -394,7 +394,7 @@ async function buildSealedReference(
   if (resolved.error) {
     return {
       success: false,
-      error: resolved.error.error,
+      error: resolved.error.error ?? 'Unable to resolve resource reference.',
       ...(resolved.error.data ? { data: resolved.error.data } : {}),
     };
   }
@@ -462,7 +462,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   if (!sealed.success) {
     // Allow first-pass execute with raw params (Auto path after prepareConfirmation seals args).
     const prepared = await prepareConfirmation(params, ctx);
-    if (!prepared.success) {
+    if (prepared.success === false) {
       return {
         success: false,
         error: prepared.error,
