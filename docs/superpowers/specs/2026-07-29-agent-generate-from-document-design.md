@@ -35,7 +35,7 @@ Agent must **not** approximate this path with `setup_library` / `create_library`
 | Entry | Current path | Nesting |
 | --- | --- | --- |
 | Sidebar RMB Generate table / conversation | `fetchDocumentExportSource` + `startDocumentDerivedImport` / `runDocumentDerivedImport` | Derived under Document |
-| Agent chat “帮我从这个 Document 生成 table/conversation” | Often `setup_library` / `import_script` / free-form writes | Independent library, wrong product path |
+| Agent chat “help me generate table/conversation from this Document” | Often `setup_library` / `import_script` / free-form writes | Independent library, wrong product path |
 | TopBar Export as tables | Design handoff → Agent `documentExport` + `setup_library` | Derived via `documentExport` binding (different pipeline; out of scope) |
 
 Item 8 product rule: chat generate for an existing Document must match the **RMB** path.

@@ -240,11 +240,11 @@ describe('Agent document edit confirmation UI', () => {
         preview: {
           type: 'generate_from_document',
           documentId: 'db2fdb19-5871-44a8-9fed-0154d6271004',
-          name: '古宅雨夜',
+          name: 'Rainy Night Manor',
           folderName: null,
           exportType: 'script',
-          libraryName: '古宅雨夜 Conversation',
-          summary: 'Generate conversation from document "古宅雨夜"',
+          libraryName: 'Rainy Night Manor Conversation',
+          summary: 'Generate conversation from document "Rainy Night Manor"',
         },
       },
     };
@@ -254,9 +254,9 @@ describe('Agent document edit confirmation UI', () => {
     );
 
     expect(markup).toContain('Confirm: Generate conversation');
-    expect(markup).toContain('古宅雨夜');
+    expect(markup).toContain('Rainy Night Manor');
     expect(markup).toContain('Generate conversation from document');
-    expect(markup).toContain('古宅雨夜 Conversation');
+    expect(markup).toContain('Rainy Night Manor Conversation');
     expect(markup).not.toContain('documentId');
     expect(markup).not.toContain('exportType');
     expect(markup).not.toContain('bound document');

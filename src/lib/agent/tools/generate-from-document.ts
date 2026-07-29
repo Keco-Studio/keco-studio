@@ -80,6 +80,7 @@ async function resolveTarget(params: z.infer<typeof ParamsSchema>, ctx: ToolCont
   );
   if (resolution.ok === false) {
     return {
+      ok: false as const,
       error: {
         success: false as const,
         error: resolution.error,
@@ -88,9 +89,12 @@ async function resolveTarget(params: z.infer<typeof ParamsSchema>, ctx: ToolCont
     };
   }
   if (resolution.document.project_id !== ctx.projectId) {
-    return { error: { success: false as const, error: 'Document not found in this project.' } };
+    return {
+      ok: false as const,
+      error: { success: false as const, error: 'Document not found in this project.' },
+    };
   }
-  return { document: resolution.document, exportType: params.exportType };
+  return { ok: true as const, document: resolution.document, exportType: params.exportType };
 }
 
 async function prepareConfirmation(
@@ -102,7 +106,7 @@ async function prepareConfirmation(
     return { success: false, error: `Invalid parameters: ${parsed.error.message}` };
   }
   const resolved = await resolveTarget(parsed.data, ctx);
-  if ('error' in resolved) {
+  if (!resolved.ok) {
     return {
       success: false,
       error: resolved.error.error,
