@@ -390,10 +390,11 @@ test.describe('Agent chat', () => {
     const agent = await openProject(page);
     await agent.send('Create an asset');
     const confirmation = page.getByTestId('agent-confirmation');
-    await expect(confirmation).toContainText('Confirm: Create asset');
+    await expect(confirmation).toContainText('Confirm this change:');
+    await expect(confirmation).toContainText('E2E asset');
     await confirmation.getByTestId('agent-confirm').click();
 
-    await expect(confirmation).toContainText('Approved.');
+    await expect(confirmation).toContainText('Modification successful!');
     await expect(page.getByTestId('agent-message-assistant')).toContainText(
       'The asset was created.'
     );
