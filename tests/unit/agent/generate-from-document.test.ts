@@ -44,7 +44,7 @@ describe('generate_from_document', () => {
     expect(allTools.some((tool) => tool.name === 'generate_from_document')).toBe(true);
   });
 
-  it('always requires confirmation so Auto mode cannot embed Story IR in the turn', () => {
+  it('always suspends for client handoff (Auto UI auto-approves without a confirm card)', () => {
     expect(generateFromDocument.confirmationPolicy).toBe('always');
     expect(generateFromDocument.requiredPermission).toBe('admin');
   });

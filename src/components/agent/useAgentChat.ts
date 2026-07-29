@@ -40,6 +40,12 @@ import {
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
 
+type PendingAutoGenerateConfirm = {
+  actionId: string;
+  documentId: string;
+  exportType: DocumentExportType;
+};
+
 interface ParsedSSE {
   type: string;
   [key: string]: unknown;
@@ -121,6 +127,16 @@ export function useAgentChat(ctx: SendContext) {
   const activeRuntimeKeyRef = useRef(runtime.key);
   const projectIdRef = useRef<string | undefined>(undefined);
   const restoreEpochRef = useRef(0);
+  /** Auto mode: queue generate_from_document approval without showing a confirm card. */
+  const pendingAutoGenerateConfirmRef = useRef<PendingAutoGenerateConfirm | null>(null);
+  const confirmRef = useRef<
+    | ((
+        actionId: string,
+        decision: 'approve' | 'reject',
+        options?: { generateFromDocument?: PendingAutoGenerateConfirm }
+      ) => Promise<void>)
+    | null
+  >(null);
 
   const syncRuntime = useCallback((next: AgentChatRuntime) => {
     setRuntime(next);
@@ -359,12 +375,42 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'confirmation_request': {
+            const actionId = String(event.actionId ?? '');
+            const tool = String(event.tool ?? '');
+            const runtimeSnapshot = getAgentChatRuntime(runtimeKey);
+            const args = (event.args ?? {}) as {
+              documentId?: unknown;
+              exportType?: unknown;
+            };
+            const documentId =
+              typeof args.documentId === 'string' ? args.documentId.trim() : '';
+            const exportType =
+              args.exportType === 'table' || args.exportType === 'script'
+                ? args.exportType
+                : null;
+
+            // Keep server suspension for client derived-import handoff, but Auto
+            // mode must not show/require a confirm card.
+            if (
+              tool === 'generate_from_document' &&
+              runtimeSnapshot?.autoExecute === true &&
+              documentId &&
+              exportType
+            ) {
+              pendingAutoGenerateConfirmRef.current = {
+                actionId,
+                documentId,
+                exportType,
+              };
+              break;
+            }
+
             appendItem(runtimeKey, {
               id: nextId(),
               role: 'confirmation',
               confirmation: {
-                actionId: String(event.actionId ?? ''),
-                tool: String(event.tool ?? ''),
+                actionId,
+                tool,
                 args: event.args,
                 confirmationMode: (event.confirmationMode as ConfirmationModeValue) ?? 'pre_execute',
                 preview: event.preview,
@@ -535,6 +581,14 @@ export function useAgentChat(ctx: SendContext) {
           streamingAssistantId: null,
         });
       }
+
+      const autoGenerate = pendingAutoGenerateConfirmRef.current;
+      pendingAutoGenerateConfirmRef.current = null;
+      if (autoGenerate) {
+        void confirmRef.current?.(autoGenerate.actionId, 'approve', {
+          generateFromDocument: autoGenerate,
+        });
+      }
     },
     [appendItem, getToken, ctx, consumeStream, beginStreamActivity]
   );
@@ -598,7 +652,13 @@ export function useAgentChat(ctx: SendContext) {
   );
 
   const confirm = useCallback(
-    async (actionId: string, decision: 'approve' | 'reject') => {
+    async (
+      actionId: string,
+      decision: 'approve' | 'reject',
+      options?: {
+        generateFromDocument?: PendingAutoGenerateConfirm;
+      }
+    ) => {
       if (!ctx.userId) return;
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
       if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
@@ -606,6 +666,23 @@ export function useAgentChat(ctx: SendContext) {
       const pendingConfirmation = selectedRuntime.items.find(
         (it) => it.confirmation?.actionId === actionId
       )?.confirmation;
+      const generateArgs = options?.generateFromDocument ?? (
+        pendingConfirmation?.tool === 'generate_from_document'
+          ? (() => {
+              const args = (pendingConfirmation.args ?? {}) as {
+                documentId?: string;
+                exportType?: DocumentExportType;
+              };
+              const documentId = typeof args.documentId === 'string' ? args.documentId : '';
+              const exportType =
+                args.exportType === 'table' || args.exportType === 'script'
+                  ? args.exportType
+                  : null;
+              if (!documentId || !exportType) return null;
+              return { actionId, documentId, exportType };
+            })()
+          : null
+      );
 
       updateAgentChatRuntime(requestRuntimeKey, (current) => ({
         items: current.items.map((it) =>
@@ -618,31 +695,16 @@ export function useAgentChat(ctx: SendContext) {
       beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
         let clientCompletedResult: unknown;
-        if (
-          decision === 'approve' &&
-          pendingConfirmation?.tool === 'generate_from_document'
-        ) {
+        if (decision === 'approve' && generateArgs) {
           // Same path as Document right-click Generate: /api/import-script (300s),
           // so Story IR is not trapped inside the agent-chat turn deadline.
-          const args = (pendingConfirmation.args ?? {}) as {
-            documentId?: string;
-            exportType?: DocumentExportType;
-          };
-          const documentId = typeof args.documentId === 'string' ? args.documentId : '';
-          const exportType =
-            args.exportType === 'table' || args.exportType === 'script'
-              ? args.exportType
-              : null;
-          if (!documentId || !exportType) {
-            throw new Error('Generate from document confirmation is missing document details.');
-          }
           beginStreamActivity(requestRuntimeKey, 'processing');
           const token = await getToken();
           if (!token) throw new Error('Please sign in before generating');
-          const source = await fetchDocumentExportSource(documentId, token);
+          const source = await fetchDocumentExportSource(generateArgs.documentId, token);
           const importResult = await runDocumentDerivedImport({
             source,
-            exportType,
+            exportType: generateArgs.exportType,
             accessToken: token,
           });
           notifyDocumentDerivedLibraryCreated({
@@ -658,8 +720,11 @@ export function useAgentChat(ctx: SendContext) {
           });
           clientCompletedResult = {
             libraryId: importResult.libraryId,
-            libraryName: defaultDerivedLibraryName(source.documentName, exportType),
-            exportType,
+            libraryName: defaultDerivedLibraryName(
+              source.documentName,
+              generateArgs.exportType
+            ),
+            exportType: generateArgs.exportType,
             sourceDocumentId: source.documentId,
             documentName: source.documentName,
             projectId: source.projectId,
@@ -728,6 +793,8 @@ export function useAgentChat(ctx: SendContext) {
     },
     [getToken, ctx, consumeStream, appendItem, beginStreamActivity, queryClient]
   );
+
+  confirmRef.current = confirm;
 
   const resetToEmpty = useCallback(() => {
     const next = createAgentChatRuntime({

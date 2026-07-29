@@ -213,7 +213,7 @@ async function execute(params: unknown, _ctx: ToolContext): Promise<ToolResult> 
 export const generateFromDocument: AgentTool = {
   name: 'generate_from_document',
   description:
-    'Generate a derived table or conversation library from an existing project Document using the same Story IR pipeline as Document right-click Generate table / Generate conversation. Use exportType "table" for Generate table and "script" for Generate conversation. Do not use setup_library, create_library, or folder import_script for this intent. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Admin only. Always requires confirmation; the UI runs the import outside the agent turn time limit.',
+    'Generate a derived table or conversation library from an existing project Document using the same Story IR pipeline as Document right-click Generate table / Generate conversation. Use exportType "table" for Generate table and "script" for Generate conversation. Do not use setup_library, create_library, or folder import_script for this intent. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Admin only. In Confirm mode the user approves once; in Auto mode the UI runs the import without a confirmation card.',
   category: 'write',
   confirmationMode: 'pre_execute',
   confirmationPolicy: 'always',

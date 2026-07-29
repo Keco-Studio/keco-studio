@@ -93,16 +93,12 @@ Add a DOCUMENT DERIVED GENERATE rule to the agent system prompt:
 
 ### 3. Confirmation + client offload
 
-`generate_from_document` uses `confirmationPolicy: 'always'` (even in Auto mode).
+`generate_from_document` uses `confirmationPolicy: 'always'` so the server always suspends for the client derived-import handoff (avoiding the agent turn deadline).
 
-On approve, the **client** runs `fetchDocumentExportSource` + `runDocumentDerivedImport` (same `/api/import-script` Story IR path as Document right-click Generate, `maxDuration` 300s). The agent-chat turn only resumes after import finishes, via `clientCompletedResult`, so conversion is not trapped inside the ~110s agent turn deadline that previously surfaced as “Agent stopped because this turn reached the time limit.”
+- **Confirm mode:** show the confirmation card; on approve, client runs `/api/import-script`.
+- **Auto mode:** do not show/require the confirmation card; the client silently runs the same derived-import path after the turn suspends, then resumes with `clientCompletedResult`.
 
 Server `execute` does **not** run Story IR; approvals without a validated client result fail closed.
-
-Treat confirmation UX as a mutating write:
-
-- Show a confirmation card summarizing Document name + target (`table` or `conversation`).
-- Auto mode still requires approval for this tool.
 
 ### 4. Client refresh
 
