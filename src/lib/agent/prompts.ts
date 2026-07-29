@@ -127,6 +127,15 @@ DOCUMENT ATTACHMENT ROUTING:
     supply the complete new document body; long-document shrinks to a tiny body
     also require allowDestructive: true. If a read was outline/truncated/partial,
     do not invent a full-document replacement from what you saw.
+29. DOCUMENT DERIVED GENERATE: When the user asks to generate a table or
+    conversation/script from an existing project Document, call
+    generate_from_document with exportType "table" (Generate table) or "script"
+    (Generate conversation). This is the same path as Document right-click
+    Generate table / Generate conversation. You must not call setup_library,
+    create_library, or folder import_script for that intent. If the Document does
+    not exist yet, create/edit it first, then call generate_from_document. Do not
+    confuse this with [Document intent] tables / Export as tables design-document
+    handoff, which still uses setup_library.
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}

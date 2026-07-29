@@ -18,6 +18,7 @@ const TOOL_LABELS: Record<string, string> = {
   delete_document: 'Delete document permanently',
   rename_document: 'Rename document',
   move_document: 'Move document',
+  generate_from_document: 'Generate from document',
 };
 
 export type DiffRow = {
