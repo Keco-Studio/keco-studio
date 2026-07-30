@@ -11,21 +11,11 @@
 
 import type { ChatMessage, OpenAITool, StreamChunk } from './types';
 import { ThinkTagParser } from './think-tag-parser';
-import { Agent, fetch as undiciFetch } from 'undici';
+import { outboundFetch } from './outbound-http';
 
 const LLM_BASE = (process.env.LLM_API_URL || 'https://api.minimax.io').replace(/\/+$/, '');
 const LLM_API_KEY = process.env.LLM_API_KEY || '';
 const LLM_MODEL = process.env.LLM_MODEL || 'MiniMax-M3';
-let nonStreamingDispatcher: Agent | null = null;
-
-function getNonStreamingDispatcher(): Agent {
-  nonStreamingDispatcher ??= new Agent({
-    connectTimeout: 30_000,
-    headersTimeout: 90_000,
-    bodyTimeout: 90_000,
-  });
-  return nonStreamingDispatcher;
-}
 
 export class LlmError extends Error {
   constructor(message: string) {
@@ -101,7 +91,7 @@ async function requestStream(
     throw new LlmError('LLM_API_KEY is not configured.');
   }
 
-  const response = await fetch(`${LLM_BASE}/v1/chat/completions`, {
+  const response = await outboundFetch(`${LLM_BASE}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -110,8 +100,8 @@ async function requestStream(
     body: JSON.stringify(buildRequestBody(messages, options, true)),
     signal: options.signal,
   });
-  reportResponseMetadata(response, options);
-  return response;
+  reportResponseMetadata(response as unknown as Response, options);
+  return response as unknown as Response;
 }
 
 /**
@@ -268,9 +258,9 @@ export async function completeLlmNonStreaming(
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    let response: Awaited<ReturnType<typeof undiciFetch>>;
+    let response: Awaited<ReturnType<typeof outboundFetch>>;
     try {
-      response = await undiciFetch(`${LLM_BASE}/v1/chat/completions`, {
+      response = await outboundFetch(`${LLM_BASE}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -278,7 +268,6 @@ export async function completeLlmNonStreaming(
         },
         body: JSON.stringify(buildRequestBody(messages, options, false)),
         signal: options.signal,
-        dispatcher: getNonStreamingDispatcher(),
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;

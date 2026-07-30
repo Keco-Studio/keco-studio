@@ -1,6 +1,10 @@
 'use client';
 
-import { CloseOutlined, LeftOutlined, MenuOutlined, PlusOutlined } from '@ant-design/icons';
+import Image from 'next/image';
+import { LeftOutlined } from '@ant-design/icons';
+import addIcon from '@/assets/images/add.svg';
+import closeIcon from '@/assets/images/close.svg';
+import listIcon from '@/assets/images/list.svg';
 import styles from './ChatPanel.module.css';
 
 interface AgentPanelHeaderProps {
@@ -37,7 +41,11 @@ export function AgentPanelHeader({
           title={historyOpen ? 'Back' : 'Chat history'}
           onClick={onHistory}
         >
-          {historyOpen ? <LeftOutlined /> : <MenuOutlined />}
+          {historyOpen ? (
+            <LeftOutlined />
+          ) : (
+            <Image src={listIcon} alt="" width={16} height={16} aria-hidden="true" />
+          )}
         </button>
         <div className={styles.headerTitleGroup}>
           <span className={styles.headerTitle}>{displayedTitle}</span>
@@ -54,7 +62,7 @@ export function AgentPanelHeader({
           title="Start new chat"
           onClick={onNew}
         >
-          <PlusOutlined />
+          <Image src={addIcon} alt="" width={16} height={16} aria-hidden="true" />
         </button>
         {!historyOpen && (
           <button
@@ -64,7 +72,7 @@ export function AgentPanelHeader({
             title="Close"
             onClick={onClose}
           >
-            <CloseOutlined />
+            <Image src={closeIcon} alt="" width={16} height={16} aria-hidden="true" />
           </button>
         )}
       </div>

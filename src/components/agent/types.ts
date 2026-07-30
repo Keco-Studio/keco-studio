@@ -43,6 +43,8 @@ export interface SendOptions {
   imageUrls?: string[];
   selectionContext?: AgentSelectionContext;
   documentExport?: DocumentTableExportContext;
+  /** Composer text to restore if the user stops this turn mid-stream. */
+  composerDraft?: string;
 }
 
 export interface ChatItem {

@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
   CloseOutlined,
-  ExperimentOutlined,
   LoadingOutlined,
   PlusOutlined,
   ArrowUpOutlined,
 } from '@ant-design/icons';
+import addIcon from '@/assets/images/add.svg';
+import pluginIcon from '@/assets/images/plugin.svg';
 import { clearDraft, getDraft, setDraft } from './agentChatStorage';
 import { parseDocument, validateDesignFile, SUPPORTED_DESIGN_EXTENSIONS } from '@/lib/document-parser';
 import { buildDesignMessage } from '@/lib/design-message';
@@ -30,6 +31,7 @@ interface Props {
   onClearSelectionContext?: () => void;
   onToggleMode: () => void;
   onSend: (message: string, opts?: SendOptions) => void;
+  onStop: () => string | null;
 }
 
 const DEBOUNCE_MS = 300;
@@ -50,6 +52,7 @@ export function ChatInput({
   onClearSelectionContext,
   onToggleMode,
   onSend,
+  onStop,
 }: Props) {
   const supabase = useSupabase();
   const [value, setValue] = useState('');
@@ -183,7 +186,11 @@ export function ChatInput({
           setFileError('The image(s) could not be uploaded. Please try again.');
           return;
         }
-        onSend(trimmed || DEFAULT_IMAGE_PROMPT, { imageUrls, selectionContext });
+        onSend(trimmed || DEFAULT_IMAGE_PROMPT, {
+          imageUrls,
+          selectionContext,
+          composerDraft: trimmed,
+        });
         setValue('');
         clearImages();
         onClearSelectionContext?.();
@@ -222,7 +229,11 @@ export function ChatInput({
           intent: 'analyze',
           additionalInstructions: trimmed || undefined,
         });
-        onSend(message, { imageUrls, selectionContext });
+        onSend(message, {
+          imageUrls,
+          selectionContext,
+          composerDraft: trimmed,
+        });
         setValue('');
         clearFile();
         onClearSelectionContext?.();
@@ -237,7 +248,10 @@ export function ChatInput({
       return;
     }
 
-    onSend(trimmed, selectionContext ? { selectionContext } : undefined);
+    onSend(trimmed, {
+      ...(selectionContext ? { selectionContext } : {}),
+      composerDraft: trimmed,
+    });
     setValue('');
     onClearSelectionContext?.();
     if (userId) clearDraft(userId);
@@ -257,6 +271,20 @@ export function ChatInput({
     selectionContext,
     onClearSelectionContext,
   ]);
+
+  const handleStop = useCallback(() => {
+    if (!isStreaming) return;
+    const draft = onStop();
+    if (typeof draft === 'string') {
+      updateValue(draft);
+      const el = textareaRef.current;
+      if (el) {
+        el.style.height = 'auto';
+        el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+      }
+      focusChatInputWithRetry(() => textareaRef.current);
+    }
+  }, [isStreaming, onStop, updateValue]);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
@@ -315,7 +343,7 @@ export function ChatInput({
   };
 
   const sendDisabled =
-    isStreaming || parsing || (!value.trim() && !file && images.length === 0);
+    parsing || (!isStreaming && !value.trim() && !file && images.length === 0);
 
   return (
     <div
@@ -462,7 +490,7 @@ export function ChatInput({
               aria-label="Attach a document or images"
               title="Attach a .txt/.md/.docx document or images"
             >
-              <PlusOutlined />
+              <Image src={addIcon} alt="" width={22} height={22} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -471,19 +499,31 @@ export function ChatInput({
               aria-label="Agent tools"
               title="Agent tools"
             >
-              <ExperimentOutlined />
+              <Image src={pluginIcon} alt="" width={15} height={15} aria-hidden="true" />
             </button>
           </div>
           <button
             className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}
             data-testid="agent-send"
             disabled={sendDisabled}
-            onClick={() => void submit()}
-            aria-busy={isStreaming || parsing}
-            aria-label="Send message"
-            title="Send message"
+            onClick={() => {
+              if (isStreaming) {
+                handleStop();
+                return;
+              }
+              void submit();
+            }}
+            aria-busy={parsing}
+            aria-label={isStreaming ? 'Stop generating' : 'Send message'}
+            title={isStreaming ? 'Stop generating' : 'Send message'}
           >
-            {isStreaming || parsing ? <LoadingOutlined spin /> : <ArrowUpOutlined />}
+            {isStreaming ? (
+              <span className={styles.sendStopIcon} aria-hidden="true" />
+            ) : parsing ? (
+              <LoadingOutlined spin />
+            ) : (
+              <ArrowUpOutlined />
+            )}
           </button>
         </div>
       </div>

@@ -23,7 +23,9 @@ jest.mock('../../../src/components/layout/ContextMenu.module.css', () =>
   { virtual: true }
 );
 for (const asset of [
-  'LibraryBookIcon.svg',
+  'paper.svg',
+  'table.svg',
+  'folder.svg',
   'FolderAddLibIcon.svg',
   'FolderCloseIcon.svg',
   'folderExpandIcon.svg',

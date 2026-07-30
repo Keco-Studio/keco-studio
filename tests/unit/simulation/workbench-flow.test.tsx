@@ -30,7 +30,17 @@ describe('simulation workbench flow', () => {
     expect(source).not.toContain('Use demo data');
     expect(source).not.toContain('Need a ready-to-play setup?');
     expect(source).toContain('Import libraries');
-    expect(source).toContain('drag from a source port');
+    expect(source).toContain('drag unmapped columns');
+    expect(source).toContain('buildMappingLayout');
+    expect(source).toContain('applyMappingDrag');
+    expect(source).toContain('mapping-unmapped');
+    expect(source).toContain('finalizeFieldMapping');
+    expect(source).toContain('orderSlotsForDisplay');
+    expect(source).toContain('mapping-drag-preview');
+    expect(source).toContain('showUnmappedPool');
+    expect(source).not.toContain('drag from a source port');
+    expect(source).not.toContain('bezierPath');
+    expect(source).not.toContain('startWire');
     expect(source).toContain('Continue to characters');
     expect(source).toContain('Imported with warnings');
     expect(source).toContain('result.warnings');
@@ -51,10 +61,12 @@ describe('simulation workbench flow', () => {
     expect(source.slice(targetHeaderStart, targetHeaderEnd)).not.toContain('AI mapping failed - map manually');
 
     const sourceRowsStart = source.indexOf('ref={sourceListRef}', targetHeaderEnd);
-    const sourceRowsEnd = source.indexOf('title="Connect ports across this bridge"', sourceRowsStart);
+    const sourceRowsEnd = source.indexOf('title="Rows align left to right"', sourceRowsStart);
     const targetRowsStart = source.indexOf('ref={targetListRef}', sourceRowsEnd);
-    const targetRowsEnd = source.indexOf('{activeLibSelected && layout.size.w > 0', targetRowsStart);
+    const targetRowsEnd = source.indexOf('{errors.length ? (', targetRowsStart);
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('AI mapping...');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('showUnmappedPool');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('Unmapped');
     expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('AI mapping...');
   });
 

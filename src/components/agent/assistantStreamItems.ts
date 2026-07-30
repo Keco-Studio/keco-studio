@@ -63,3 +63,31 @@ export function finalizeAssistantItem(
     return [{ ...item, reasoningEndedAt: now }];
   });
 }
+
+/**
+ * Move pending assistant text into reasoning when a tool round starts.
+ * Plan text often arrives as text_delta between tool rounds; append it so it
+ * stays in the thinking card instead of mixing into the final reply bubble.
+ */
+export function promoteAssistantTextToReasoning(
+  items: ChatItem[],
+  assistantId: string | null,
+  now: number = Date.now()
+): ChatItem[] {
+  if (!assistantId) return items;
+
+  return items.map((item) => {
+    if (item.id !== assistantId) return item;
+    const plan = item.text?.trim();
+    if (!plan) return item;
+    const existing = item.reasoning?.trim() ?? '';
+    return {
+      ...item,
+      reasoning: existing ? `${existing}\n\n${plan}` : plan,
+      reasoningStartedAt: item.reasoningStartedAt ?? now,
+      // Tools are still running — thinking is not finished yet.
+      reasoningEndedAt: undefined,
+      text: '',
+    };
+  });
+}

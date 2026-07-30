@@ -13,8 +13,21 @@ const panelSource = readFileSync(
 
 describe('agent conversation switch lifecycle wiring', () => {
   it('does not abort an active Agent turn when changing the visible conversation', () => {
-    expect(hookSource).not.toContain('abortRef');
-    expect(hookSource).not.toContain('new AbortController()');
+    const loadConversationBlock =
+      hookSource.match(/const loadConversation[\s\S]*?\n\s*\},\n\s*\[getToken[\s\S]*?\]\n\s*\);/)?.[0] ?? '';
+    const restoreProjectConversationBlock =
+      hookSource.match(
+        /const restoreProjectConversation[\s\S]*?\n\s*\},\s*\[ctx\.userId,\s*ctx\.projectId,\s*loadConversation,\s*resetToEmpty,\s*activateRuntime\]\s*\);/
+      )?.[0] ?? '';
+    const startNewConversationBlock =
+      hookSource.match(/const startNewConversation[\s\S]*?\n\s*\},\s*\[resetToEmpty,\s*ctx\.userId,\s*ctx\.projectId\]\s*\);/)?.[0] ?? '';
+
+    expect(loadConversationBlock).not.toContain('stopStreaming(');
+    expect(loadConversationBlock).not.toContain('streamAbortRef');
+    expect(restoreProjectConversationBlock).not.toContain('stopStreaming(');
+    expect(restoreProjectConversationBlock).not.toContain('streamAbortRef');
+    expect(startNewConversationBlock).not.toContain('stopStreaming(');
+    expect(startNewConversationBlock).not.toContain('streamAbortRef');
     expect(hookSource).toContain('getProjectAgentRuntime(ctx.userId, ctx.projectId)');
   });
 

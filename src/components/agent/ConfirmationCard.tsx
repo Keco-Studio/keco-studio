@@ -2,6 +2,7 @@
 
 import styles from './ChatPanel.module.css';
 import type { ConfirmationView } from './types';
+import { AssistantMarkdown } from './AssistantMarkdown';
 
 interface Props {
   confirmation: ConfirmationView;
@@ -259,6 +260,27 @@ export function buildDocumentEditDiff(baseMarkdown: string, proposedMarkdown: st
   return collapseDiffRows(rows);
 }
 
+/** Plain chat text for document edit previews — no scrollable diff chrome. */
+export function formatDocumentEditPlainText(rows: DiffRow[], proposedMarkdown: string): string {
+  const added = rows
+    .filter((row) => row.kind === 'added')
+    .map((row) => row.text)
+    .join('\n')
+    .trim();
+  const removed = rows
+    .filter((row) => row.kind === 'removed')
+    .map((row) => row.text)
+    .join('\n')
+    .trim();
+
+  if (added && removed) {
+    return `${added}\n\nRemoved:\n${removed}`;
+  }
+  if (added) return added;
+  if (removed) return `Removed:\n${removed}`;
+  return proposedMarkdown.trim();
+}
+
 type ChangeParts =
   | { kind: 'pair'; from: string; to: string }
   | { kind: 'text'; text: string };
@@ -361,30 +383,12 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     !isInsertResourceReference &&
     typeof documentPreview?.documentId === 'string' &&
     typeof documentPreview.name === 'string';
-  let visibleArgs = args;
-  if (isDocumentEdit && args && typeof args === 'object') {
-    const rawArgs = args as Record<string, unknown>;
-    const rawOperation = rawArgs.operation;
-    const visibleOperation =
-      rawOperation && typeof rawOperation === 'object'
-        ? Object.fromEntries(
-            Object.entries(rawOperation as Record<string, unknown>).map(([key, value]) => [
-              key,
-              key === 'type' ? value : '[shown in document diff]',
-            ])
-          )
-        : rawOperation;
-    visibleArgs = {
-      ...rawArgs,
-      ...(Object.hasOwn(rawArgs, 'markdown')
-        ? { markdown: '[shown in document diff]' }
-        : {}),
-      ...(rawOperation !== undefined ? { operation: visibleOperation } : {}),
-    };
-  }
   const diff = isDocumentEdit
     ? buildDocumentEditDiff(documentPreview.baseMarkdown!, documentPreview.proposedMarkdown!)
     : [];
+  const documentEditPlainText = isDocumentEdit
+    ? formatDocumentEditPlainText(diff, documentPreview.proposedMarkdown!)
+    : '';
 
   const changeParts = summarizeChangeParts(args, documentPreview, label);
   const useSimpleCard =
@@ -444,13 +448,13 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
               ✓ Confirm
             </button>
             <button
-              className={`${styles.btn} ${styles.btnPill}`}
+              className={`${styles.btn} ${styles.btnPillGhost}`}
               data-testid="agent-reject"
               disabled={disabled}
               aria-label="Reject action"
               onClick={() => onDecision(actionId, 'reject')}
             >
-              ✕ Cancel
+              Cancel
             </button>
           </div>
         )}
@@ -505,6 +509,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
             </button>
             <button
               className={`${styles.btn} ${styles.btnPillGhost}`}
+              data-testid="agent-reject"
               disabled={disabled}
               aria-label="Reject action"
               onClick={() => onDecision(actionId, 'reject')}
@@ -557,6 +562,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
             </button>
             <button
               className={`${styles.btn} ${styles.btnPillGhost}`}
+              data-testid="agent-reject"
               disabled={disabled}
               aria-label="Reject action"
               onClick={() => onDecision(actionId, 'reject')}
@@ -577,7 +583,6 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
       aria-label="Confirmation required"
     >
       <div className={styles.confirmTitle}>Confirm: {label}</div>
-      <pre className={styles.pre}>{JSON.stringify(visibleArgs, null, 2)}</pre>
       {isDocumentEdit &&
         typeof documentPreview.documentName === 'string' &&
         typeof documentPreview.operationSummary === 'string' && (
@@ -610,34 +615,11 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
           <div>Bound document</div>
         </div>
       )}
-      {isDocumentEdit && (
-        <div className={styles.documentDiff} aria-label="Document changes">
-          {diff.map((row, index) => (
-            <div
-              className={`${styles.documentDiffLine} ${styles[`documentDiff${row.kind[0]!.toUpperCase()}${row.kind.slice(1)}`]}`}
-              key={`${row.kind}-${index}`}
-            >
-              <span className={styles.documentDiffMarker} aria-hidden="true">
-                {row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}
-              </span>
-              <span>
-                {(row.kind === 'added' || row.kind === 'removed') && (
-                  <span className={styles.srOnly}>
-                    {row.kind === 'added' ? 'Added: ' : 'Removed: '}
-                  </span>
-                )}
-                {row.text}
-              </span>
-            </div>
-          ))}
+      {isDocumentEdit && documentEditPlainText ? (
+        <div className={styles.documentEditBody} aria-label="Document changes">
+          <AssistantMarkdown markdown={documentEditPlainText} />
         </div>
-      )}
-      {isDocumentEdit && (
-        <details className={styles.documentProposal}>
-          <summary>Proposed Markdown</summary>
-          <pre className={styles.pre}>{documentPreview.proposedMarkdown}</pre>
-        </details>
-      )}
+      ) : null}
 
       {resolved ? (
         <div className={styles.resolvedNote}>
@@ -656,6 +638,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
           </button>
           <button
             className={`${styles.btn} ${styles.btnPillGhost}`}
+            data-testid="agent-reject"
             disabled={disabled}
             aria-label="Reject action"
             onClick={() => onDecision(actionId, 'reject')}

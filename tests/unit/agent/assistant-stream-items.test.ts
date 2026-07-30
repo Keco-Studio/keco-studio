@@ -1,6 +1,7 @@
 import {
   applyAssistantDelta,
   finalizeAssistantItem,
+  promoteAssistantTextToReasoning,
 } from '@/components/agent/assistantStreamItems';
 import type { ChatItem } from '@/components/agent/types';
 
@@ -105,6 +106,47 @@ describe('assistantStreamItems', () => {
       reasoning: 'Check complete',
       reasoningStartedAt: 1_000,
       reasoningEndedAt: 2_000,
+    }]);
+  });
+
+  it('promotes the first plan text into reasoning', () => {
+    expect(promoteAssistantTextToReasoning(
+      [{
+        id: 'assistant-1',
+        role: 'assistant',
+        text: 'I will read the document first.',
+      }],
+      'assistant-1',
+      1_500
+    )).toEqual([{
+      id: 'assistant-1',
+      role: 'assistant',
+      reasoning: 'I will read the document first.',
+      reasoningStartedAt: 1_500,
+      reasoningEndedAt: undefined,
+      text: '',
+    }]);
+  });
+
+  it('appends later plan text into existing reasoning on subsequent tool rounds', () => {
+    expect(promoteAssistantTextToReasoning(
+      [{
+        id: 'assistant-1',
+        role: 'assistant',
+        reasoning: 'I will read the document first.',
+        reasoningStartedAt: 1_000,
+        reasoningEndedAt: 1_200,
+        text: 'I will expand this into a more cinematic opening.',
+      }],
+      'assistant-1',
+      2_000
+    )).toEqual([{
+      id: 'assistant-1',
+      role: 'assistant',
+      reasoning: 'I will read the document first.\n\nI will expand this into a more cinematic opening.',
+      reasoningStartedAt: 1_000,
+      reasoningEndedAt: undefined,
+      text: '',
     }]);
   });
 });

@@ -8,7 +8,9 @@ import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import FolderOpenIcon from '@/assets/images/FolderOpenIcon.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
-import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
+import folderIcon from '@/assets/images/folder.svg';
+import paperIcon from '@/assets/images/paper.svg';
+import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
 import styles from '../Sidebar.module.css';
 
@@ -117,12 +119,18 @@ function InlineEditRow({
       <div className={styles.itemMain}>
         {isFolder && hasNoLibraries && (
           <div className={styles.folderIconPlaceholder} aria-hidden>
-            <Image src={FolderCloseIcon} alt="" width={24} height={24} className="icon-24" />
+            <Image src={folderIcon} alt="" width={24} height={24} className="icon-24" />
           </div>
         )}
         {!isFolder && (
           <div className={styles.libraryIconContainer}>
-            <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
+            <Image
+              src={nodeType === 'document' ? paperIcon : tableIcon}
+              alt={nodeType === 'document' ? 'Document' : 'Library'}
+              width={24}
+              height={24}
+              className="icon-24"
+            />
           </div>
         )}
         <input
