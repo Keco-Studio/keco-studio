@@ -61,7 +61,7 @@ export class SimulationSystemPage {
     });
   }
 
-  private async selectLibrary(slotLabel: string, libraryName: string): Promise<void> {
+  async selectLibrary(slotLabel: string, libraryName: string): Promise<void> {
     await this.page.getByText(slotLabel, { exact: true }).first().click();
     const option = this.page.getByText(libraryName, { exact: true });
     await expect(option).toBeVisible({ timeout: 30000 });
