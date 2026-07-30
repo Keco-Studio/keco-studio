@@ -6,6 +6,13 @@ const WRITABLE_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const VIEWER_PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 
 type RpcCall = { name: string; parameters: Record<string, unknown> };
+type StorageCall = { name: string; arguments: unknown[] };
+
+function pngBytes(size = 68): Uint8Array {
+  const bytes = new Uint8Array(size);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return bytes;
+}
 
 function accountContext(
   calls: RpcCall[],
@@ -14,9 +21,58 @@ function accountContext(
     resolvedRole?: "admin" | "editor" | "viewer";
     failWritableDiscovery?: boolean;
     delayProjectReadMs?: number;
+    resolvedRoles?: Array<"admin" | "editor" | "viewer">;
   } = {},
+  storageCalls: StorageCall[] = [],
 ): AccountMcpRequestContext {
   const writable = options.writable ?? true;
+  let resolveCount = 0;
+  const bucket = {
+    async createSignedUploadUrl(...args: unknown[]) {
+      storageCalls.push({ name: "createSignedUploadUrl", arguments: args });
+      return {
+        data: {
+          signedUrl: "https://storage.example/upload?token=signed",
+          path: args[0],
+          token: "signed",
+        },
+        error: null,
+      };
+    },
+    async info(...args: unknown[]) {
+      storageCalls.push({ name: "info", arguments: args });
+      return {
+        data: {
+          size: 68,
+          contentType: "image/png",
+          createdAt: "2026-07-30T08:00:00.000Z",
+        },
+        error: null,
+      };
+    },
+    async download(...args: unknown[]) {
+      storageCalls.push({ name: "download", arguments: args });
+      const bytes = pngBytes();
+      return {
+        data: new Blob([
+          bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer,
+        ]),
+        error: null,
+      };
+    },
+    getPublicUrl(path: string) {
+      storageCalls.push({ name: "getPublicUrl", arguments: [path] });
+      return {
+        data: {
+          publicUrl:
+            `https://storage.example/object/public/library-media-files/${path}`,
+        },
+      };
+    },
+  };
   return {
     mode: "account",
     requestId: "00000000-0000-4000-8000-000000000001",
@@ -56,7 +112,9 @@ function accountContext(
           };
         }
         if (name === "mcp_resolve_project_role") {
-          return { data: options.resolvedRole ?? "editor", error: null };
+          const role = options.resolvedRoles?.[resolveCount++] ??
+            options.resolvedRole ?? "editor";
+          return { data: role, error: null };
         }
         if (name === "mcp_read_project_structure") {
           if (options.delayProjectReadMs) {
@@ -81,6 +139,12 @@ function accountContext(
           return { data: [{ table_id: "new-table" }], error: null };
         }
         throw new Error("Unexpected RPC: " + name);
+      },
+      storage: {
+        from(name: string) {
+          storageCalls.push({ name: "from", arguments: [name] });
+          return bucket;
+        },
       },
     },
   } as unknown as AccountMcpRequestContext;
@@ -129,6 +193,8 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "update_table_row",
     "create_document",
     "update_document",
+    "create_image_upload",
+    "complete_image_upload",
   ]);
   const listProjects = tools.find((tool) => tool.name === "list_projects")!;
   assertEquals(Object.keys(listProjects.inputSchema.properties ?? {}), [
@@ -221,6 +287,45 @@ Deno.test("viewer target writes fail even when write tools are advertised", asyn
   assertEquals(message.result?.isError, true);
   assertMatch(JSON.stringify(message.result), /PROJECT_WRITE_FORBIDDEN/);
   assertEquals(calls.some((call) => call.name === "mcp_create_table"), false);
+});
+
+Deno.test("account image upload phases resolve live write access independently", async () => {
+  const calls: RpcCall[] = [];
+  const storageCalls: StorageCall[] = [];
+  const context = accountContext(
+    calls,
+    { resolvedRoles: ["editor", "viewer"] },
+    storageCalls,
+  );
+  const prepared = await rpc(context, "tools/call", {
+    name: "create_image_upload",
+    arguments: {
+      projectId: WRITABLE_PROJECT_ID,
+      fileName: "hero.png",
+      fileType: "image/png",
+      fileSize: 68,
+    },
+  });
+  assertEquals(prepared.result?.isError, undefined);
+  const path = (prepared.result?.structuredContent as {
+    image: { path: string };
+  }).image.path;
+
+  const completed = await rpc(context, "tools/call", {
+    name: "complete_image_upload",
+    arguments: { projectId: WRITABLE_PROJECT_ID, path },
+  });
+  assertEquals(completed.result?.isError, true);
+  assertMatch(JSON.stringify(completed.result), /PROJECT_WRITE_FORBIDDEN/);
+  assertEquals(
+    calls.filter((call) => call.name === "mcp_resolve_project_role").length,
+    2,
+  );
+  assertEquals(storageCalls.map((call) => call.name), [
+    "from",
+    "createSignedUploadUrl",
+    "getPublicUrl",
+  ]);
 });
 
 Deno.test("account discovery omits writes when every accessible project is viewer", async () => {

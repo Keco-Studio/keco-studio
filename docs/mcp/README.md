@@ -68,6 +68,27 @@ legacy endpoint retains its original bound-project tool, resource, and prompt
 schemas. A role downgrade or membership removal applies on the next request
 even if the client's access token has not expired.
 
+## Image Uploads
+
+The MCP image write flow stores raster images in the existing public
+`library-media-files` bucket without putting binary data inside the bounded MCP
+JSON request:
+
+1. Call `create_image_upload` with `projectId` on the account endpoint (omit it
+   on a legacy project endpoint), plus `fileName`, `fileType`, and `fileSize`.
+2. Send the raw image bytes with HTTP `PUT` to the returned `upload.url`, using
+   the returned headers. The signed target expires after two hours.
+3. Call `complete_image_upload` with the returned image `path`. Use the verified
+   `image` object from this response as the value passed to
+   `update_table_row` for an image field.
+
+Uploads are isolated under the current user and project, limited to 5 MiB, and
+accept PNG, JPEG, GIF, WebP, and static SVG. SVG completion rejects scripts,
+event handlers, embedded HTML, styles, and external references before returning
+metadata. Completion verifies the stored size, media type, file signature,
+extension, and project path; invalid objects are removed before an error is
+returned. Both tools recheck write access on every account-scoped call.
+
 ## Server Configuration
 
 The Supabase Edge Function requires `SUPABASE_URL`, `SUPABASE_ANON_KEY`,

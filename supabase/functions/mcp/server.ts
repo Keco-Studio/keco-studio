@@ -26,6 +26,8 @@ const WRITE_TOOLS = new Set([
   "update_table_row",
   "create_document",
   "update_document",
+  "create_image_upload",
+  "complete_image_upload",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",

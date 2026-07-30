@@ -124,6 +124,8 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "update_table_row",
     "create_document",
     "update_document",
+    "create_image_upload",
+    "complete_image_upload",
   ]);
 });
 
