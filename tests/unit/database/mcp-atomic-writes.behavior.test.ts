@@ -224,7 +224,7 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       id: fieldId,
       library_id: tableId,
       section: 'main',
-      section_id: 'main',
+      section_id: `${tableId}:main`,
       label: 'Image',
       data_type: 'image',
       order_index: 0,
