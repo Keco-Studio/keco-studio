@@ -2,7 +2,7 @@ import { replaceEvidenceAtomically } from './lib/atomic-evidence';
 import { createMcpRpcClient, MCP_PROTOCOL_VERSION, structuredToolResult, type McpRpcClient } from './lib/mcp-json-rpc';
 
 const READ_TOOLS = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document', 'semantic_search'];
-const WRITE_TOOLS = ['complete_image_upload', 'create_document', 'create_image_upload',
+const WRITE_TOOLS = ['add_table_field', 'complete_image_upload', 'create_document', 'create_image_upload',
   'create_table', 'create_table_row', 'update_document', 'update_table_row'];
 const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS].sort();
 const ACCOUNT_BASE_TOOLS = ['keco_connection_probe', 'list_projects', ...READ_TOOLS].sort();
