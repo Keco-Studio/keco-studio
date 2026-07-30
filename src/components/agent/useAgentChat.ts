@@ -355,7 +355,7 @@ export function useAgentChat(ctx: SendContext) {
             toolActivitySinceText = true;
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'tool' });
             // Flush any pending plan text into reasoning on every tool round
-            // (not only the first), so later "我会…" plans don't stick in the reply.
+            // (not only the first), so later "I will..." plans do not stick in the reply.
             if (assistantId) {
               const now = Date.now();
               updateAgentChatRuntime(runtimeKey, (current) => ({

@@ -114,14 +114,14 @@ describe('assistantStreamItems', () => {
       [{
         id: 'assistant-1',
         role: 'assistant',
-        text: '我先读取文档。',
+        text: 'I will read the document first.',
       }],
       'assistant-1',
       1_500
     )).toEqual([{
       id: 'assistant-1',
       role: 'assistant',
-      reasoning: '我先读取文档。',
+      reasoning: 'I will read the document first.',
       reasoningStartedAt: 1_500,
       reasoningEndedAt: undefined,
       text: '',
@@ -133,17 +133,17 @@ describe('assistantStreamItems', () => {
       [{
         id: 'assistant-1',
         role: 'assistant',
-        reasoning: '我先读取文档。',
+        reasoning: 'I will read the document first.',
         reasoningStartedAt: 1_000,
         reasoningEndedAt: 1_200,
-        text: '我会将这段扩写为更具画面感的开场。',
+        text: 'I will expand this into a more cinematic opening.',
       }],
       'assistant-1',
       2_000
     )).toEqual([{
       id: 'assistant-1',
       role: 'assistant',
-      reasoning: '我先读取文档。\n\n我会将这段扩写为更具画面感的开场。',
+      reasoning: 'I will read the document first.\n\nI will expand this into a more cinematic opening.',
       reasoningStartedAt: 1_000,
       reasoningEndedAt: undefined,
       text: '',

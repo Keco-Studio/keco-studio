@@ -2,9 +2,20 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 
-jest.mock('next/image', () => ({ src, alt, ...props }: { src: string; alt: string; [key: string]: unknown }) =>
-  React.createElement('img', { ...props, src, alt })
-);
+jest.mock('next/image', () => {
+  function MockNextImage({
+    src,
+    alt,
+    ...props
+  }: {
+    src: string;
+    alt: string;
+    [key: string]: unknown;
+  }) {
+    return React.createElement('img', { ...props, src, alt });
+  }
+  return MockNextImage;
+});
 jest.mock('@/assets/images/action.svg', () => 'action.svg', { virtual: true });
 jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true });
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
@@ -167,7 +178,7 @@ describe('assistant reasoning message', () => {
         item={{
           id: 'assistant-streaming-plan',
           role: 'assistant',
-          text: '我先读取文档开头，再补充人物设定。',
+          text: 'I will read the start of the document first, then add character details.',
         }}
         streaming
         onDecision={jest.fn()}
@@ -175,9 +186,9 @@ describe('assistant reasoning message', () => {
     );
 
     expect(html).toContain('agent-thinking-panel');
-    expect(html).toContain('我先读取文档开头，再补充人物设定。');
+    expect(html).toContain('I will read the start of the document first, then add character details.');
     expect(html).toContain('aria-expanded="true"');
     // Plan text should appear once in the thinking card, not also as a reply bubble.
-    expect(html.match(/我先读取文档开头，再补充人物设定。/g)).toHaveLength(1);
+    expect(html.match(/I will read the start of the document first, then add character details\./g)).toHaveLength(1);
   });
 });

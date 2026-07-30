@@ -4,9 +4,20 @@ import { ChatMessage } from '@/components/agent/ChatMessage';
 import { buildDocumentEditDiff } from '@/components/agent/ConfirmationCard';
 import type { ChatItem } from '@/components/agent/types';
 
-jest.mock('next/image', () => ({ src, alt, ...props }: { src: string; alt: string; [key: string]: unknown }) =>
-  React.createElement('img', { ...props, src, alt })
-);
+jest.mock('next/image', () => {
+  function MockNextImage({
+    src,
+    alt,
+    ...props
+  }: {
+    src: string;
+    alt: string;
+    [key: string]: unknown;
+  }) {
+    return React.createElement('img', { ...props, src, alt });
+  }
+  return MockNextImage;
+});
 jest.mock('@/assets/images/action.svg', () => 'action.svg', { virtual: true });
 jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true });
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
