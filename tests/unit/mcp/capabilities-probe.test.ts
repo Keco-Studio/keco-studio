@@ -4,7 +4,7 @@ import { capabilitiesProbeOptions, runCapabilitiesProbe } from '../../../scripts
 const accountEndpoint = 'https://example.supabase.co/functions/v1/mcp';
 const legacyEndpoint = 'https://example.supabase.co/functions/v1/mcp/11111111-1111-4111-8111-111111111111';
 const readTools = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document', 'semantic_search'];
-const writeTools = ['complete_image_upload', 'create_document', 'create_image_upload',
+const writeTools = ['add_table_field', 'complete_image_upload', 'create_document', 'create_image_upload',
   'create_table', 'create_table_row', 'update_document', 'update_table_row'];
 
 it('keeps the documented minimal CLI invocation out of the optional viewer branch', () => {
@@ -84,6 +84,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: accountToken,
     viewerAccessToken: accountToken, viewerProjectId: '11111111-1111-4111-8111-111111111111',
     legacyMcpUrl: legacyEndpoint, legacyAccessToken: legacyToken, fetchImpl: fetchMock as typeof fetch });
+  expect(evidence.capabilities.tools).toBe(15);
   expect(evidence.roleEnforcement.viewerWriteDenial).toBe('succeeded');
   expect(evidence.crossResourceReplay).toBe('succeeded');
   expect(JSON.stringify(evidence)).not.toContain(accountToken);
@@ -108,5 +109,81 @@ it('preserves the exact legacy capability surface', async () => {
     return rpcResult(message.id, { structuredContent });
   });
   const evidence = await runCapabilitiesProbe({ mcpUrl: legacyEndpoint, accessToken: 'token', fetchImpl: fetchMock as typeof fetch });
-  expect(evidence).toEqual(expect.objectContaining({ mode: 'legacy', capabilities: expect.objectContaining({ tools: 13, resources: 3, resourceTemplates: 4, prompts: 3 }) }));
+  expect(evidence).toEqual(expect.objectContaining({ mode: 'legacy', capabilities: expect.objectContaining({ tools: 14, resources: 3, resourceTemplates: 4, prompts: 3 }) }));
+});
+
+it('exercises add_table_field in the legacy write acceptance flow', async () => {
+  const toolCalls: string[] = [];
+  const tools = ['keco_connection_probe', ...readTools, ...writeTools];
+  const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const message = JSON.parse(String(init?.body)) as {
+      id: number;
+      method: string;
+      params?: { name?: string };
+    };
+    if (message.method === 'initialize') {
+      return rpcResult(message.id, { capabilities: { tools: {}, resources: {}, prompts: {} } });
+    }
+    if (message.method === 'tools/list') {
+      return rpcResult(message.id, { tools: tools.map(name => ({ name })) });
+    }
+    if (message.method === 'resources/list') {
+      return rpcResult(message.id, { resources: ['keco://project', 'keco://tables', 'keco://documents'].map(uri => ({ uri })) });
+    }
+    if (message.method === 'resources/templates/list') {
+      return rpcResult(message.id, { resourceTemplates: [
+        'keco://project/structure', 'keco://tables/{tableId}/schema',
+        'keco://tables/{tableId}/rows{?limit,cursor}', 'keco://documents/{documentId}',
+      ].map(uriTemplate => ({ uriTemplate })) });
+    }
+    if (message.method === 'prompts/list') {
+      return rpcResult(message.id, { prompts: ['analyze_project', 'build_tables_from_document', 'update_project_data'].map(name => ({ name })) });
+    }
+    const name = message.params?.name ?? '';
+    if (name === 'list_project_structure') {
+      return rpcResult(message.id, { structuredContent: { ok: true, project: {}, tables: [] } });
+    }
+    if (name === 'list_documents') {
+      return rpcResult(message.id, { structuredContent: { ok: true, items: [] } });
+    }
+    if (name === 'semantic_search') {
+      return rpcResult(message.id, { structuredContent: { ok: true, searchMode: 'text_fuzzy' } });
+    }
+    toolCalls.push(name);
+    if (name === 'create_table') {
+      return rpcResult(message.id, { structuredContent: { ok: true, data: [{ table_id: 'table-id' }] } });
+    }
+    if (name === 'add_table_field') {
+      return rpcResult(message.id, { structuredContent: { ok: true, data: [{ field_id: 'field-id', data_type: 'image' }] } });
+    }
+    if (name === 'create_table_row') {
+      return rpcResult(message.id, { structuredContent: { ok: true, data: [{ row_id: 'row-id' }] } });
+    }
+    if (name === 'create_document') {
+      return rpcResult(message.id, { structuredContent: { ok: true, data: [{
+        document_id: 'document-id', collab_epoch: 0, collab_revision: 1, update_ids: [],
+      }] } });
+    }
+    if (name === 'update_document' && toolCalls.filter(call => call === name).length === 2) {
+      return rpcResult(message.id, { isError: true, structuredContent: { ok: false, error: { code: 'DOCUMENT_CONFLICT' } } });
+    }
+    return rpcResult(message.id, { structuredContent: { ok: true, data: [{}] } });
+  });
+
+  const evidence = await runCapabilitiesProbe({
+    mcpUrl: legacyEndpoint,
+    accessToken: 'token',
+    exerciseWrites: true,
+    fetchImpl: fetchMock as typeof fetch,
+  });
+  expect(toolCalls).toEqual([
+    'create_table',
+    'add_table_field',
+    'create_table_row',
+    'update_table_row',
+    'create_document',
+    'update_document',
+    'update_document',
+  ]);
+  expect(evidence.writes).toEqual(expect.objectContaining({ fieldAdd: true }));
 });

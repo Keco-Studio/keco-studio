@@ -22,6 +22,7 @@ const READ_TOOLS = new Set([
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",
+  "add_table_field",
   "create_table_row",
   "update_table_row",
   "create_document",

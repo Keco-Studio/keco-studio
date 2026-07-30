@@ -109,9 +109,11 @@ Deno.test("initialize declares tools resources and prompts", async () => {
 Deno.test("tools/list exposes the editor probe, reads, and writes", async () => {
   const message = await rpc("tools/list");
   assertEquals(message.error, undefined);
-  const names = (message.result?.tools as Array<{ name: string }>).map((tool) =>
-    tool.name
-  );
+  const tools = message.result?.tools as Array<{
+    name: string;
+    inputSchema: { properties?: Record<string, unknown> };
+  }>;
+  const names = tools.map((tool) => tool.name);
   assertEquals(names, [
     "keco_connection_probe",
     "list_project_structure",
@@ -120,6 +122,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "read_document",
     "semantic_search",
     "create_table",
+    "add_table_field",
     "create_table_row",
     "update_table_row",
     "create_document",
@@ -127,6 +130,8 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "create_image_upload",
     "complete_image_upload",
   ]);
+  const addField = tools.find((tool) => tool.name === "add_table_field")!;
+  assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
 });
 
 Deno.test("viewer tools/list excludes every write tool", async () => {
@@ -374,7 +379,7 @@ Deno.test("resources/read executes a bounded project structure read", async () =
   ]);
 });
 
-Deno.test("create_table makes one primary atomic RPC between telemetry calls", async () => {
+Deno.test("create_table accepts image fields and makes one primary atomic RPC", async () => {
   const calls: Array<{ name: string; parameters?: Record<string, unknown> }> =
     [];
   const writeContext = {
@@ -406,7 +411,7 @@ Deno.test("create_table makes one primary atomic RPC between telemetry calls", a
     name: "create_table",
     arguments: {
       name: "Characters",
-      fields: [{ label: "Name", dataType: "string", required: true }],
+      fields: [{ label: "Icon", dataType: "image" }],
     },
   }, writeContext);
   assertEquals(message.error, undefined);
@@ -420,6 +425,72 @@ Deno.test("create_table makes one primary atomic RPC between telemetry calls", a
   assertEquals(primary.p_project_id, context.projectId);
   assertEquals(Array.isArray(primary.p_fields), true);
   assertMatch(JSON.stringify(primary.p_fields), /"id":/);
+  assertMatch(JSON.stringify(primary.p_fields), /"dataType":"image"/);
+});
+
+Deno.test("add_table_field calls one atomic RPC and rejects required fields", async () => {
+  const calls: Array<{ name: string; parameters?: Record<string, unknown> }> =
+    [];
+  const writeContext = {
+    ...context,
+    supabase: {
+      async rpc(name: string, parameters: Record<string, unknown>) {
+        calls.push({ name, parameters });
+        if (name === "mcp_begin_operation") {
+          return {
+            data: [{
+              operation_id: "00000000-0000-4000-8000-000000000005",
+              remaining: 29,
+              reset_at: new Date(Date.now() + 60_000).toISOString(),
+            }],
+            error: null,
+          };
+        }
+        if (name === "mcp_add_table_field") {
+          return { data: [{ field_id: parameters.p_field_id }], error: null };
+        }
+        return { data: null, error: null };
+      },
+    },
+  } as unknown as McpRequestContext;
+  const valid = await rpc("tools/call", {
+    name: "add_table_field",
+    arguments: {
+      tableId: "22222222-2222-4222-8222-222222222222",
+      field: { label: "Icon", dataType: "image" },
+    },
+  }, writeContext);
+  assertEquals(valid.result?.isError, undefined);
+  assertEquals(calls.map((call) => call.name), [
+    "mcp_begin_operation",
+    "mcp_add_table_field",
+    "mcp_complete_operation",
+  ]);
+  assertEquals(calls[1].parameters?.p_project_id, context.projectId);
+  assertEquals(
+    calls[1].parameters?.p_table_id,
+    "22222222-2222-4222-8222-222222222222",
+  );
+  assertMatch(String(calls[1].parameters?.p_field_id), /^[0-9a-f-]{36}$/);
+  assertEquals(calls[1].parameters?.p_field, {
+    label: "Icon",
+    dataType: "image",
+  });
+
+  calls.length = 0;
+  const required = await rpc("tools/call", {
+    name: "add_table_field",
+    arguments: {
+      tableId: "22222222-2222-4222-8222-222222222222",
+      field: { label: "Required", dataType: "string", required: true },
+    },
+  }, writeContext);
+  assertEquals(required.result?.isError, true);
+  assertMatch(JSON.stringify(required.result), /required/i);
+  assertEquals(
+    calls.some((call) => call.name === "mcp_add_table_field"),
+    false,
+  );
 });
 
 Deno.test("stale document state token is rejected before codec or privileged replacement", async () => {

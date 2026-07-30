@@ -68,17 +68,33 @@ legacy endpoint retains its original bound-project tool, resource, and prompt
 schemas. A role downgrade or membership removal applies on the next request
 even if the client's access token has not expired.
 
+## Table Schema Writes
+
+`create_table` accepts `image` fields alongside the supported string, number,
+boolean, enum, date, array, and reference field types. To extend an existing
+table, call `add_table_field` with its `tableId` and one strict field
+definition. Include `projectId` on the account endpoint and omit it on a legacy
+project endpoint.
+
+Fields added to existing tables must be optional because existing rows do not
+have a value for the new field. The tool rejects `required: true`, duplicate
+labels after trimming and case folding, invalid enum/reference definitions,
+and references to tables outside the selected project. It appends the field to
+the requested section, or to `section1` when no section is supplied.
+
 ## Image Uploads
 
 The MCP image write flow stores raster images in the existing public
 `library-media-files` bucket without putting binary data inside the bounded MCP
 JSON request:
 
-1. Call `create_image_upload` with `projectId` on the account endpoint (omit it
+1. Ensure the target table has an image field, either in `create_table.fields`
+   or with `add_table_field`.
+2. Call `create_image_upload` with `projectId` on the account endpoint (omit it
    on a legacy project endpoint), plus `fileName`, `fileType`, and `fileSize`.
-2. Send the raw image bytes with HTTP `PUT` to the returned `upload.url`, using
+3. Send the raw image bytes with HTTP `PUT` to the returned `upload.url`, using
    the returned headers. The signed target expires after two hours.
-3. Call `complete_image_upload` with the returned image `path`. Use the verified
+4. Call `complete_image_upload` with the returned image `path`. Use the verified
    `image` object from this response as the value passed to
    `update_table_row` for an image field.
 
