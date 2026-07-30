@@ -138,6 +138,9 @@ function accountContext(
         if (name === "mcp_create_table") {
           return { data: [{ table_id: "new-table" }], error: null };
         }
+        if (name === "mcp_add_table_field") {
+          return { data: [{ field_id: parameters.p_field_id }], error: null };
+        }
         throw new Error("Unexpected RPC: " + name);
       },
       storage: {
@@ -189,6 +192,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "read_document",
     "semantic_search",
     "create_table",
+    "add_table_field",
     "create_table_row",
     "update_table_row",
     "create_document",
@@ -205,9 +209,47 @@ Deno.test("account schemas require projectId except list_projects", async () => 
   for (const tool of tools.slice(2)) {
     assertEquals(tool.inputSchema.required?.includes("projectId"), true);
   }
+  const addField = tools.find((tool) => tool.name === "add_table_field")!;
+  assertEquals(addField.inputSchema.required, [
+    "projectId",
+    "tableId",
+    "field",
+  ]);
   assertEquals(calls[0].name, "mcp_begin_account_operation");
   assertEquals(calls[1].name, "mcp_has_writable_project");
   assertEquals(calls[1].parameters, undefined);
+});
+
+Deno.test("account add_table_field resolves live access and calls the atomic RPC", async () => {
+  const calls: RpcCall[] = [];
+  const message = await rpc(accountContext(calls), "tools/call", {
+    name: "add_table_field",
+    arguments: {
+      projectId: WRITABLE_PROJECT_ID,
+      tableId: "33333333-3333-4333-8333-333333333333",
+      field: { label: "Icon", dataType: "image" },
+    },
+  });
+  assertEquals(message.error, undefined);
+  assertEquals(message.result?.isError, undefined);
+  const call = calls.find((candidate) =>
+    candidate.name === "mcp_add_table_field"
+  )!;
+  assertEquals(call.parameters.p_project_id, WRITABLE_PROJECT_ID);
+  assertEquals(
+    call.parameters.p_table_id,
+    "33333333-3333-4333-8333-333333333333",
+  );
+  assertMatch(String(call.parameters.p_field_id), /^[0-9a-f-]{36}$/);
+  assertEquals(call.parameters.p_field, {
+    label: "Icon",
+    dataType: "image",
+  });
+  assertEquals(
+    calls.filter((candidate) => candidate.name === "mcp_resolve_project_role")
+      .length,
+    1,
+  );
 });
 
 Deno.test("account project reads resolve fresh access before the operation", async () => {

@@ -50,6 +50,7 @@ const fieldSchema = z.object({
     "enum",
     "date",
     "reference",
+    "image",
   ]),
   section: z.string().trim().min(1).max(100).optional(),
   sectionId: z.string().trim().min(1).max(200).optional(),
@@ -284,6 +285,46 @@ function registerWriteToolSet(
               projectId: context.projectId,
               actorUserId: context.userId,
               tableId,
+            }),
+        );
+      }),
+  );
+
+  const addTableFieldSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    field: fieldSchema.refine(
+      (field) => field.required !== true,
+      "Fields added to existing tables cannot be required.",
+    ),
+  }).strict();
+  server.registerTool(
+    "add_table_field",
+    {
+      description: "Append one optional field to an existing project table.",
+      inputSchema: addTableFieldSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof addTableFieldSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        const fieldId = crypto.randomUUID();
+        return await executeRpc(
+          context,
+          "mcp_add_table_field",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_field_id: fieldId,
+            p_field: input.field,
+          },
+          input,
+          "Table field added.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
             }),
         );
       }),
