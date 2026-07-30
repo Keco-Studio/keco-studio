@@ -120,6 +120,7 @@ declare
   v_description text;
   v_required boolean;
   v_order_index integer;
+  v_section_count integer;
   v_enum_options text[];
   v_reference_table_ids uuid[];
 begin
@@ -132,40 +133,59 @@ begin
     raise exception 'Table not found' using errcode = 'P0002';
   end if;
 
-  if p_field_id is null or jsonb_typeof(p_field) <> 'object'
-    or exists (
-      select 1 from jsonb_object_keys(p_field) as key(name)
-      where key.name <> all (array[
-        'label', 'dataType', 'section', 'sectionId', 'description', 'required',
-        'enumOptions', 'referenceTableIds'
-      ])
-    ) then
+  if p_field_id is null
+    or jsonb_typeof(p_field) is distinct from 'object' then
+    raise exception 'Unsupported field definition' using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from jsonb_object_keys(p_field) as key(name)
+    where key.name <> all (array[
+      'label', 'dataType', 'section', 'sectionId', 'description', 'required',
+      'enumOptions', 'referenceTableIds'
+    ])
+  ) then
     raise exception 'Unsupported field definition' using errcode = '22023';
   end if;
 
   v_type := p_field ->> 'dataType';
   v_label := btrim(p_field ->> 'label');
   v_section := coalesce(nullif(btrim(p_field ->> 'section'), ''), 'section1');
-  v_section_id := coalesce(
-    nullif(btrim(p_field ->> 'sectionId'), ''),
-    md5(p_table_id::text || ':' || v_section)
-  );
+  v_section_id := nullif(btrim(p_field ->> 'sectionId'), '');
   v_description := nullif(p_field ->> 'description', '');
 
   if v_type is null or v_type not in (
     'string','string_array','int','int_array','float','float_array',
     'boolean','enum','date','reference','image'
   )
-    or jsonb_typeof(p_field -> 'label') <> 'string'
+    or jsonb_typeof(p_field -> 'label') is distinct from 'string'
     or length(v_label) not between 1 and 200
     or length(v_section) not between 1 and 100
-    or length(v_section_id) not between 1 and 200
     or length(v_description) > 1000
-    or p_field ? 'section' and jsonb_typeof(p_field -> 'section') <> 'string'
-    or p_field ? 'sectionId' and jsonb_typeof(p_field -> 'sectionId') <> 'string'
-    or p_field ? 'description' and jsonb_typeof(p_field -> 'description') not in ('string', 'null')
-    or p_field ? 'required' and jsonb_typeof(p_field -> 'required') <> 'boolean' then
+    or (p_field ? 'section' and jsonb_typeof(p_field -> 'section') <> 'string')
+    or (p_field ? 'sectionId' and (
+      jsonb_typeof(p_field -> 'sectionId') <> 'string'
+      or length(btrim(p_field ->> 'sectionId')) not between 1 and 200
+    ))
+    or (p_field ? 'description'
+      and jsonb_typeof(p_field -> 'description') not in ('string', 'null'))
+    or (p_field ? 'required'
+      and jsonb_typeof(p_field -> 'required') <> 'boolean') then
     raise exception 'Unsupported field definition' using errcode = '22023';
+  end if;
+
+  if v_section_id is null then
+    select min(f.section_id), count(distinct f.section_id)
+    into v_section_id, v_section_count
+    from public.library_field_definitions as f
+    where f.library_id = p_table_id and f.section = v_section;
+    if v_section_count > 1 then
+      raise exception 'Section name is ambiguous; sectionId is required'
+        using errcode = '22023';
+    end if;
+    v_section_id := coalesce(
+      v_section_id,
+      md5(p_table_id::text || ':' || v_section)
+    );
   end if;
 
   v_required := coalesce((p_field ->> 'required')::boolean, false);
@@ -182,36 +202,52 @@ begin
   end if;
 
   if v_type = 'enum' then
-    if jsonb_typeof(p_field -> 'enumOptions') <> 'array'
-      or jsonb_array_length(p_field -> 'enumOptions') not between 1 and 100
+    if jsonb_typeof(p_field -> 'enumOptions') is distinct from 'array' then
+      raise exception 'Enum options are required' using errcode = '22023';
+    end if;
+    if jsonb_array_length(p_field -> 'enumOptions') not between 1 and 100
       or exists (
         select 1 from jsonb_array_elements(p_field -> 'enumOptions') as option(value)
-        where jsonb_typeof(option.value) <> 'string'
+        where jsonb_typeof(option.value) is distinct from 'string'
           or length(btrim(option.value #>> '{}')) not between 1 and 200
       ) then
       raise exception 'Enum options are required' using errcode = '22023';
     end if;
-    select array_agg(value #>> '{}') into v_enum_options
+    select array_agg(btrim(value #>> '{}')) into v_enum_options
     from jsonb_array_elements(p_field -> 'enumOptions') as option(value);
   elsif p_field ? 'enumOptions' then
     raise exception 'Enum options require an enum field' using errcode = '22023';
   end if;
 
   if v_type = 'reference' then
-    if jsonb_typeof(p_field -> 'referenceTableIds') <> 'array'
-      or jsonb_array_length(p_field -> 'referenceTableIds') not between 1 and 20
-      or exists (
-        select 1
-        from jsonb_array_elements_text(p_field -> 'referenceTableIds') as target(id)
-        left join public.libraries as referenced
-          on referenced.id = target.id::uuid
-          and referenced.project_id = p_project_id
-        where referenced.id is null
-      ) then
+    if jsonb_typeof(p_field -> 'referenceTableIds') is distinct from 'array'
+      or jsonb_array_length(p_field -> 'referenceTableIds') not between 1 and 20 then
+      raise exception 'Reference table IDs are required' using errcode = '22023';
+    end if;
+    if exists (
+      select 1
+      from jsonb_array_elements(p_field -> 'referenceTableIds') as target(value)
+      where jsonb_typeof(target.value) is distinct from 'string'
+    ) then
+      raise exception 'Reference table IDs must be UUID strings'
+        using errcode = '22023';
+    end if;
+    begin
+      select array_agg((value #>> '{}')::uuid) into v_reference_table_ids
+      from jsonb_array_elements(p_field -> 'referenceTableIds') as target(value);
+    exception when invalid_text_representation then
+      raise exception 'Reference table IDs must be UUID strings'
+        using errcode = '22023';
+    end;
+    if exists (
+      select 1
+      from unnest(v_reference_table_ids) as target(id)
+      left join public.libraries as referenced
+        on referenced.id = target.id and referenced.project_id = p_project_id
+      where referenced.id is null
+    ) then
       raise exception 'Reference table is outside project' using errcode = '23503';
     end if;
-    select array_agg(id::uuid) into v_reference_table_ids
-    from jsonb_array_elements_text(p_field -> 'referenceTableIds') as target(id);
   elsif p_field ? 'referenceTableIds' then
     raise exception 'Reference targets require a reference field' using errcode = '22023';
   end if;

@@ -72,6 +72,12 @@ async function exerciseLegacyWrites(client: McpRpcClient) {
     fields: [{ label: 'Name', dataType: 'string', required: true }],
   }))[0];
   if (typeof table?.table_id !== 'string') throw new Error('create_table omitted table_id.');
+  const field = dataRows(await callTool(client, 'add_table_field', {
+    tableId: table.table_id, field: { label: 'Image', dataType: 'image' },
+  }))[0];
+  if (typeof field?.field_id !== 'string' || field.data_type !== 'image') {
+    throw new Error('add_table_field omitted image field metadata.');
+  }
   const row = dataRows(await callTool(client, 'create_table_row', {
     tableId: table.table_id, values: { Name: 'Created by capability probe' },
   }))[0];
@@ -88,7 +94,7 @@ async function exerciseLegacyWrites(client: McpRpcClient) {
   structuredToolResult(await client.call('tools/call', { name: 'update_document', arguments: {
     documentId: document.document_id, markdown: '# Capability probe\n\nStale conflict.', stateToken,
   } }), 'DOCUMENT_CONFLICT');
-  return { tableCreate: true, rowCreate: true, rowUpdate: true, documentCreate: true,
+  return { tableCreate: true, fieldAdd: true, rowCreate: true, rowUpdate: true, documentCreate: true,
     documentUpdate: true, staleConflict: true };
 }
 

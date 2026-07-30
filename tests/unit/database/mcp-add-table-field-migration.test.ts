@@ -25,6 +25,10 @@ describe('MCP add-table-field migration', () => {
     expect(sql).toMatch(/lower\(btrim\(f\.label\)\)\s*=\s*lower\(v_label\)/i);
     expect(sql).toMatch(/Fields added to existing tables cannot be required/i);
     expect(sql).toMatch(/coalesce\(max\(f\.order_index\),\s*-1\)\s*\+\s*1/i);
+    expect(sql).toMatch(
+      /count\(distinct f\.section_id\)[\s\S]*f\.library_id = p_table_id[\s\S]*f\.section = v_section/i
+    );
+    expect(sql).toMatch(/Section name is ambiguous/i);
   });
 
   it('validates field types and retains explicit execution grants', () => {
@@ -33,9 +37,8 @@ describe('MCP add-table-field migration', () => {
     );
     expect(sql).toMatch(/Enum options are required/i);
     expect(sql).toMatch(/Reference table is outside project/i);
-    expect(sql).toMatch(
-      /jsonb_typeof\(p_field -> 'label'\) <> 'string'/i
-    );
+    expect(sql).toMatch(/jsonb_typeof\(p_field -> 'label'\) is distinct from 'string'/i);
+    expect(sql).toMatch(/invalid_text_representation[\s\S]*using errcode = '22023'/i);
     expect(sql).toMatch(
       /revoke all on function public\.mcp_add_table_field\(uuid,uuid,uuid,jsonb\)\s+from public,anon/i
     );

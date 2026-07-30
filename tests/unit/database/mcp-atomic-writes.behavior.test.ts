@@ -17,6 +17,7 @@ type FieldInput = {
   required?: boolean;
   enumOptions?: string[];
   referenceTableIds?: string[];
+  sectionId?: string;
 };
 
 type NormalizedDocument = { yjsStateBase64: string; markdown: string };
@@ -268,6 +269,7 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
   it('appends image fields with section-local ordering', async () => {
     const tableId = crypto.randomUUID();
     const initialField = fields()[0];
+    initialField.sectionId = `${tableId}:main`;
     const table = await createTable(
       tableId,
       [initialField],
@@ -289,6 +291,7 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       label: 'Icon',
       data_type: 'image',
       section: 'main',
+      section_id: `${tableId}:main`,
       order_index: 1,
       required: false,
     })]);
@@ -324,23 +327,31 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     const table = await createTable(tableId, fields(), crypto.randomUUID());
     expect(table.error).toBeNull();
 
-    const invalidFields = [
-      { label: ' name ', dataType: 'string' },
-      { label: 'Required', dataType: 'string', required: true },
-      {
+    const invalidFields: Array<[Record<string, unknown>, string]> = [
+      [{ label: ' name ', dataType: 'string' }, '23505'],
+      [{ label: 'Required', dataType: 'string', required: true }, '22023'],
+      [{ dataType: 'string' }, '22023'],
+      [{ label: 'Enum', dataType: 'enum' }, '22023'],
+      [{ label: 'Reference', dataType: 'reference' }, '22023'],
+      [{
+        label: 'Malformed reference',
+        dataType: 'reference',
+        referenceTableIds: ['not-a-uuid'],
+      }, '22023'],
+      [{
         label: 'External',
         dataType: 'reference',
         referenceTableIds: [externalLibraryId],
-      },
+      }, '23503'],
     ];
-    for (const field of invalidFields) {
+    for (const [field, errorCode] of invalidFields) {
       const result = await fx.editor.client.rpc('mcp_add_table_field', {
         p_project_id: fx.projectId,
         p_table_id: tableId,
         p_field_id: crypto.randomUUID(),
         p_field: field,
       });
-      expect(['22023', '23503']).toContain(result.error?.code);
+      expect(result.error?.code).toBe(errorCode);
     }
 
     const persisted = await fx.svc.from('library_field_definitions')
