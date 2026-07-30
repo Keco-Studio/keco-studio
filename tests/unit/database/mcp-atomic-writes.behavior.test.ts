@@ -204,6 +204,81 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     expect(updated.data[0].name).toBe('second');
   });
 
+  it('persists project-scoped image upload metadata in an image field', async () => {
+    const tableId = crypto.randomUUID();
+    const fieldId = crypto.randomUUID();
+    const rowId = crypto.randomUUID();
+    const fileName = 'mcp-image.png';
+    const path = `${fx.editor.id}/${fx.projectId}/${crypto.randomUUID()}-${fileName}`;
+    const bytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
+
+    const library = await fx.svc.from('libraries').insert({
+      id: tableId,
+      project_id: fx.projectId,
+      name: `image-table-${fx.suffix}`,
+    });
+    const field = await fx.svc.from('library_field_definitions').insert({
+      id: fieldId,
+      library_id: tableId,
+      section: 'main',
+      section_id: `${tableId}:main`,
+      label: 'Image',
+      data_type: 'image',
+      order_index: 0,
+    });
+    const row = await fx.svc.from('library_assets').insert({
+      id: rowId,
+      library_id: tableId,
+      name: '',
+      row_index: 1,
+    });
+    expect([library.error, field.error, row.error]).toEqual([null, null, null]);
+
+    const bucket = fx.editor.client.storage.from('library-media-files');
+    const uploaded = await bucket.upload(path, bytes, {
+      contentType: 'image/png',
+      upsert: false,
+    });
+    expect(uploaded.error).toBeNull();
+    try {
+      const info = await bucket.info(path);
+      expect(info.error).toBeNull();
+      expect(info.data?.createdAt).toEqual(expect.any(String));
+      const image = {
+        url: bucket.getPublicUrl(path).data.publicUrl,
+        path,
+        fileName,
+        fileSize: bytes.byteLength,
+        fileType: 'image/png',
+        uploadedAt: info.data!.createdAt,
+      };
+
+      const updated = await fx.editor.client.rpc('mcp_update_table_row', {
+        p_project_id: fx.projectId,
+        p_table_id: tableId,
+        p_row_id: rowId,
+        p_row_index: null,
+        p_expected_row_id: rowId,
+        p_values: { Image: image },
+      });
+      expect(updated.error).toBeNull();
+      expect(updated.data[0].row_values[fieldId]).toEqual(image);
+
+      const persisted = await fx.svc.from('library_asset_values')
+        .select('value_json')
+        .eq('asset_id', rowId)
+        .eq('field_id', fieldId)
+        .single();
+      expect(persisted.error).toBeNull();
+      expect(persisted.data?.value_json).toEqual(image);
+    } finally {
+      await bucket.remove([path]);
+    }
+  });
+
   it('persists every writable type and rejects invalid scalar, array, date, and reference values', async () => {
     const setup = await createAllTypeTable();
     const rowValues = setup.created.data[0].row_values as Record<string, unknown>;
