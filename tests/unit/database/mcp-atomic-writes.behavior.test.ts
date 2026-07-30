@@ -215,27 +215,13 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       'base64'
     );
 
-    const library = await fx.svc.from('libraries').insert({
-      id: tableId,
-      project_id: fx.projectId,
-      name: `image-table-${fx.suffix}`,
-    });
-    const field = await fx.svc.from('library_field_definitions').insert({
+    const table = await createTable(tableId, [{
       id: fieldId,
-      library_id: tableId,
-      section: 'main',
-      section_id: `${tableId}:main`,
       label: 'Image',
-      data_type: 'image',
-      order_index: 0,
-    });
-    const row = await fx.svc.from('library_assets').insert({
-      id: rowId,
-      library_id: tableId,
-      name: '',
-      row_index: 1,
-    });
-    expect([library.error, field.error, row.error]).toEqual([null, null, null]);
+      dataType: 'image',
+      section: 'main',
+    }], rowId);
+    expect(table.error).toBeNull();
 
     const bucket = fx.editor.client.storage.from('library-media-files');
     const uploaded = await bucket.upload(path, bytes, {
@@ -277,6 +263,124 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     } finally {
       await bucket.remove([path]);
     }
+  });
+
+  it('appends image fields with section-local ordering', async () => {
+    const tableId = crypto.randomUUID();
+    const initialField = fields()[0];
+    const table = await createTable(
+      tableId,
+      [initialField],
+      crypto.randomUUID()
+    );
+    expect(table.error).toBeNull();
+
+    const iconId = crypto.randomUUID();
+    const icon = await fx.editor.client.rpc('mcp_add_table_field', {
+      p_project_id: fx.projectId,
+      p_table_id: tableId,
+      p_field_id: iconId,
+      p_field: { label: 'Icon', dataType: 'image', section: 'main' },
+    });
+    expect(icon.error).toBeNull();
+    expect(icon.data).toEqual([expect.objectContaining({
+      field_id: iconId,
+      table_id: tableId,
+      label: 'Icon',
+      data_type: 'image',
+      section: 'main',
+      order_index: 1,
+      required: false,
+    })]);
+
+    const notesId = crypto.randomUUID();
+    const notes = await fx.editor.client.rpc('mcp_add_table_field', {
+      p_project_id: fx.projectId,
+      p_table_id: tableId,
+      p_field_id: notesId,
+      p_field: { label: 'Notes', dataType: 'string', section: 'details' },
+    });
+    expect(notes.error).toBeNull();
+    expect(notes.data[0]).toMatchObject({
+      field_id: notesId,
+      section: 'details',
+      order_index: 0,
+    });
+
+    const persisted = await fx.svc.from('library_field_definitions')
+      .select('id,label,data_type,section,order_index')
+      .eq('library_id', tableId)
+      .order('section')
+      .order('order_index');
+    expect(persisted.error).toBeNull();
+    expect(persisted.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: iconId, data_type: 'image', order_index: 1 }),
+      expect.objectContaining({ id: notesId, section: 'details', order_index: 0 }),
+    ]));
+  });
+
+  it('rejects invalid added fields without partial inserts', async () => {
+    const tableId = crypto.randomUUID();
+    const table = await createTable(tableId, fields(), crypto.randomUUID());
+    expect(table.error).toBeNull();
+
+    const invalidFields = [
+      { label: ' name ', dataType: 'string' },
+      { label: 'Required', dataType: 'string', required: true },
+      {
+        label: 'External',
+        dataType: 'reference',
+        referenceTableIds: [externalLibraryId],
+      },
+    ];
+    for (const field of invalidFields) {
+      const result = await fx.editor.client.rpc('mcp_add_table_field', {
+        p_project_id: fx.projectId,
+        p_table_id: tableId,
+        p_field_id: crypto.randomUUID(),
+        p_field: field,
+      });
+      expect(['22023', '23503']).toContain(result.error?.code);
+    }
+
+    const persisted = await fx.svc.from('library_field_definitions')
+      .select('label')
+      .eq('library_id', tableId);
+    expect(persisted.error).toBeNull();
+    expect(persisted.data).toEqual([{ label: 'Name' }]);
+  });
+
+  it.each(['viewer', 'outsider'] as const)(
+    'rejects %s field additions atomically',
+    async role => {
+      const fieldId = crypto.randomUUID();
+      const result = await fx[role].client.rpc('mcp_add_table_field', {
+        p_project_id: fx.projectId,
+        p_table_id: fx.libraryId,
+        p_field_id: fieldId,
+        p_field: { label: `Denied ${role}`, dataType: 'image' },
+      });
+      expect(result.error?.code).toBe('42501');
+      const persisted = await fx.svc.from('library_field_definitions')
+        .select('id')
+        .eq('id', fieldId);
+      expect(persisted.data).toEqual([]);
+    }
+  );
+
+  it('rejects a table outside the selected project', async () => {
+    const fieldId = crypto.randomUUID();
+    const result = await fx.editor.client.rpc('mcp_add_table_field', {
+      p_project_id: fx.projectId,
+      p_table_id: externalLibraryId,
+      p_field_id: fieldId,
+      p_field: { label: 'Cross project', dataType: 'image' },
+    });
+    expect(result.error?.code).toBe('P0002');
+    const persisted = await fx.svc.from('library_field_definitions')
+      .select('id')
+      .eq('id', fieldId);
+    expect(persisted.data).toEqual([]);
   });
 
   it('persists every writable type and rejects invalid scalar, array, date, and reference values', async () => {
