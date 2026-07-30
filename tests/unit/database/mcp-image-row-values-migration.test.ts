@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const migrationPath = path.resolve(
   __dirname,
-  '../../../supabase/migrations/20260730110000_allow_mcp_image_row_values.sql'
+  '../../../supabase/migrations/20260730120000_allow_local_mcp_image_urls.sql'
 );
 
 describe('MCP image row value migration', () => {
@@ -17,6 +17,7 @@ describe('MCP image row value migration', () => {
     expect(sql).toMatch(/bucket_id = 'library-media-files'/i);
     expect(sql).toMatch(/metadata ->> 'size'/i);
     expect(sql).toMatch(/metadata ->> 'mimetype'/i);
+    expect(sql).toMatch(/http:\/\/\(127\\\.0\\\.0\\\.1\|localhost\)/i);
     expect(sql).toMatch(/'formula'[\s\S]*'file'[\s\S]*'multimedia'[\s\S]*'audio'[\s\S]*'media'/i);
   });
 });
