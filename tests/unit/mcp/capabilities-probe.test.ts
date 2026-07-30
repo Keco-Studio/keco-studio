@@ -4,7 +4,8 @@ import { capabilitiesProbeOptions, runCapabilitiesProbe } from '../../../scripts
 const accountEndpoint = 'https://example.supabase.co/functions/v1/mcp';
 const legacyEndpoint = 'https://example.supabase.co/functions/v1/mcp/11111111-1111-4111-8111-111111111111';
 const readTools = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document', 'semantic_search'];
-const writeTools = ['create_document', 'create_table', 'create_table_row', 'update_document', 'update_table_row'];
+const writeTools = ['complete_image_upload', 'create_document', 'create_image_upload',
+  'create_table', 'create_table_row', 'update_document', 'update_table_row'];
 
 it('keeps the documented minimal CLI invocation out of the optional viewer branch', () => {
   expect(capabilitiesProbeOptions(
@@ -107,5 +108,5 @@ it('preserves the exact legacy capability surface', async () => {
     return rpcResult(message.id, { structuredContent });
   });
   const evidence = await runCapabilitiesProbe({ mcpUrl: legacyEndpoint, accessToken: 'token', fetchImpl: fetchMock as typeof fetch });
-  expect(evidence).toEqual(expect.objectContaining({ mode: 'legacy', capabilities: expect.objectContaining({ tools: 11, resources: 3, resourceTemplates: 4, prompts: 3 }) }));
+  expect(evidence).toEqual(expect.objectContaining({ mode: 'legacy', capabilities: expect.objectContaining({ tools: 13, resources: 3, resourceTemplates: 4, prompts: 3 }) }));
 });
