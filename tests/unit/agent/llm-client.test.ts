@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 jest.mock('undici', () => ({
   Agent: class TestAgent {},
+  EnvHttpProxyAgent: class TestEnvHttpProxyAgent {},
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
 }));
 

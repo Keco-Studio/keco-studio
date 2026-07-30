@@ -1,6 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import React from 'react';
 import { AgentPanelHeader } from '@/components/agent/AgentPanelHeader';
 
+jest.mock('next/image', () => ({ src, alt, ...props }: { src: string; alt: string; [key: string]: unknown }) =>
+  React.createElement('img', { ...props, src, alt })
+);
+jest.mock('@/assets/images/list.svg', () => 'list.svg', { virtual: true });
+jest.mock('@/assets/images/add.svg', () => 'add.svg', { virtual: true });
+jest.mock('@/assets/images/close.svg', () => 'close.svg', { virtual: true });
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({
   header: 'header',
   headerIdentity: 'headerIdentity',

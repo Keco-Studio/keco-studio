@@ -20,7 +20,11 @@ import {
 } from './agentChatStorage';
 import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
-import { applyAssistantDelta, finalizeAssistantItem } from './assistantStreamItems';
+import {
+  applyAssistantDelta,
+  finalizeAssistantItem,
+  promoteAssistantTextToReasoning,
+} from './assistantStreamItems';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
 import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
@@ -39,6 +43,17 @@ import {
 
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
+
+function isAbortLikeError(error: unknown): boolean {
+  if (!error) return false;
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (error instanceof Error && error.name === 'AbortError') return true;
+  // Aborted body reads can reject with a bare Event in some browsers.
+  if (typeof Event !== 'undefined' && error instanceof Event) {
+    return error.type === 'abort' || error.type === 'error';
+  }
+  return false;
+}
 
 type PendingAutoGenerateConfirm = {
   actionId: string;
@@ -129,6 +144,14 @@ export function useAgentChat(ctx: SendContext) {
   const restoreEpochRef = useRef(0);
   /** Auto mode: queue generate_from_document approval without showing a confirm card. */
   const pendingAutoGenerateConfirmRef = useRef<PendingAutoGenerateConfirm | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const userStoppedRef = useRef(false);
+  const pendingStopRef = useRef<{
+    composerDraft: string;
+    userItemId: string;
+    assistantItemId: string;
+  } | null>(null);
   const confirmRef = useRef<
     | ((
         actionId: string,
@@ -263,6 +286,7 @@ export function useAgentChat(ctx: SendContext) {
 
       const reader = response.body?.getReader();
       if (!reader) return;
+      streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       let buffer = '';
 
@@ -274,6 +298,7 @@ export function useAgentChat(ctx: SendContext) {
       let toolActivitySinceText = false;
 
       const handleEvent = (event: ParsedSSE) => {
+        if (userStoppedRef.current) return;
         switch (event.type) {
           case 'reasoning_delta': {
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'thinking' });
@@ -329,6 +354,14 @@ export function useAgentChat(ctx: SendContext) {
             textSegmentStart = true;
             toolActivitySinceText = true;
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'tool' });
+            // Flush any pending plan text into reasoning on every tool round
+            // (not only the first), so later "我会…" plans don't stick in the reply.
+            if (assistantId) {
+              const now = Date.now();
+              updateAgentChatRuntime(runtimeKey, (current) => ({
+                items: promoteAssistantTextToReasoning(current.items, assistantId, now),
+              }));
+            }
             toolCallId = nextId();
             appendItem(runtimeKey, {
               id: toolCallId,
@@ -446,22 +479,38 @@ export function useAgentChat(ctx: SendContext) {
         }));
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf('\n\n')) !== -1) {
-          const frame = buffer.slice(0, idx).trim();
-          buffer = buffer.slice(idx + 2);
-          if (!frame.startsWith('data:')) continue;
-          const payload = frame.slice('data:'.length).trim();
-          try {
-            handleEvent(JSON.parse(payload) as ParsedSSE);
-          } catch {
-            // ignore malformed frame
+      try {
+        while (true) {
+          if (userStoppedRef.current) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 2);
+            if (!frame.startsWith('data:')) continue;
+            const payload = frame.slice('data:'.length).trim();
+            try {
+              handleEvent(JSON.parse(payload) as ParsedSSE);
+            } catch {
+              // ignore malformed frame
+            }
           }
         }
+      } catch (error) {
+        if (userStoppedRef.current || isAbortLikeError(error)) {
+          return;
+        }
+        throw error;
+      } finally {
+        if (streamReaderRef.current === reader) {
+          streamReaderRef.current = null;
+        }
+      }
+      if (userStoppedRef.current) {
+        // stopStreaming already finalized UI for intentional interrupts.
+        return;
       }
       finalizeStreamingAssistant();
       if (!receivedDone) {
@@ -487,8 +536,9 @@ export function useAgentChat(ctx: SendContext) {
       ) return;
       let requestRuntimeKey = selectedRuntime.key;
       const display = deriveUserDisplay(message, opts?.imageUrls, opts?.selectionContext);
+      const userItemId = nextId();
       appendItem(requestRuntimeKey, {
-        id: nextId(),
+        id: userItemId,
         role: 'user',
         text: display.text,
         attachments: display.attachments,
@@ -499,6 +549,14 @@ export function useAgentChat(ctx: SendContext) {
         role: 'assistant',
         text: '',
       });
+      userStoppedRef.current = false;
+      pendingStopRef.current = {
+        composerDraft: opts?.composerDraft ?? display.text ?? message,
+        userItemId,
+        assistantItemId: assistantPlaceholderId,
+      };
+      const abortController = new AbortController();
+      streamAbortRef.current = abortController;
       updateAgentChatRuntime(requestRuntimeKey, {
         isStreaming: true,
         streamingAssistantId: assistantPlaceholderId,
@@ -541,6 +599,7 @@ export function useAgentChat(ctx: SendContext) {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(requestBody),
+          signal: abortController.signal,
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -565,6 +624,9 @@ export function useAgentChat(ctx: SendContext) {
           { initialAssistantId: assistantPlaceholderId }
         );
       } catch (e) {
+        if (userStoppedRef.current || isAbortLikeError(e)) {
+          return;
+        }
         updateAgentChatRuntime(requestRuntimeKey, (current) => ({
           items: current.items.filter((item) => item.id !== assistantPlaceholderId),
           streamingAssistantId: null,
@@ -575,16 +637,20 @@ export function useAgentChat(ctx: SendContext) {
           error: (e as Error).message || 'Network error',
         });
       } finally {
-        updateAgentChatRuntime(requestRuntimeKey, {
-          isStreaming: false,
-          streamStartedAt: null,
-          streamingAssistantId: null,
-        });
+        streamAbortRef.current = null;
+        pendingStopRef.current = null;
+        if (!userStoppedRef.current) {
+          updateAgentChatRuntime(requestRuntimeKey, {
+            isStreaming: false,
+            streamStartedAt: null,
+            streamingAssistantId: null,
+          });
+        }
       }
 
       const autoGenerate = pendingAutoGenerateConfirmRef.current;
       pendingAutoGenerateConfirmRef.current = null;
-      if (autoGenerate) {
+      if (autoGenerate && !userStoppedRef.current) {
         void confirmRef.current?.(autoGenerate.actionId, 'approve', {
           generateFromDocument: autoGenerate,
         });
@@ -693,6 +759,10 @@ export function useAgentChat(ctx: SendContext) {
       }));
       updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
       beginStreamActivity(requestRuntimeKey, 'connecting');
+      userStoppedRef.current = false;
+      pendingStopRef.current = null;
+      const abortController = new AbortController();
+      streamAbortRef.current = abortController;
       try {
         let clientCompletedResult: unknown;
         if (decision === 'approve' && generateArgs) {
@@ -752,6 +822,7 @@ export function useAgentChat(ctx: SendContext) {
             currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
             ...(clientCompletedResult !== undefined ? { clientCompletedResult } : {}),
           }),
+          signal: abortController.signal,
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -771,6 +842,9 @@ export function useAgentChat(ctx: SendContext) {
           }
         );
       } catch (e) {
+        if (userStoppedRef.current || isAbortLikeError(e)) {
+          return;
+        }
         updateAgentChatRuntime(requestRuntimeKey, (current) => ({
           items: current.items.map((it) =>
             it.confirmation?.actionId === actionId
@@ -784,17 +858,69 @@ export function useAgentChat(ctx: SendContext) {
           error: (e as Error).message || 'Network error',
         });
       } finally {
-        updateAgentChatRuntime(requestRuntimeKey, {
-          isStreaming: false,
-          streamStartedAt: null,
-          streamingAssistantId: null,
-        });
+        streamAbortRef.current = null;
+        if (!userStoppedRef.current) {
+          updateAgentChatRuntime(requestRuntimeKey, {
+            isStreaming: false,
+            streamStartedAt: null,
+            streamingAssistantId: null,
+          });
+        }
       }
     },
     [getToken, ctx, consumeStream, appendItem, beginStreamActivity, queryClient]
   );
 
   confirmRef.current = confirm;
+
+  const stopStreaming = useCallback((): string | null => {
+    const pending = pendingStopRef.current;
+    const draft = pending?.composerDraft ?? null;
+    userStoppedRef.current = true;
+    const reader = streamReaderRef.current;
+    streamReaderRef.current = null;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    if (reader) {
+      void reader.cancel('stopped-by-user').catch(() => undefined);
+    }
+    pendingStopRef.current = null;
+
+    const runtimeKey = activeRuntimeKeyRef.current;
+    const now = Date.now();
+    updateAgentChatRuntime(runtimeKey, (current) => {
+      if (!pending) {
+        return {
+          isStreaming: false,
+          streamStartedAt: null,
+          streamingAssistantId: null,
+        };
+      }
+
+      const userIdx = current.items.findIndex((item) => item.id === pending.userItemId);
+      const before = userIdx >= 0 ? current.items.slice(0, userIdx) : current.items;
+      const after = userIdx >= 0 ? current.items.slice(userIdx + 1) : [];
+      const kept = after.filter((item) => {
+        if (item.id === pending.assistantItemId || item.role === 'assistant') {
+          return Boolean(item.text?.trim() || item.reasoning?.trim());
+        }
+        if (item.role === 'tool' && item.toolCall?.status === 'running') {
+          return false;
+        }
+        return true;
+      });
+      const finalized = finalizeAssistantItem(kept, pending.assistantItemId, now);
+
+      return {
+        items: [...before, ...finalized],
+        isStreaming: false,
+        streamStartedAt: null,
+        streamingAssistantId: null,
+      };
+    });
+
+    return draft;
+  }, []);
 
   const resetToEmpty = useCallback(() => {
     const next = createAgentChatRuntime({
@@ -956,6 +1082,7 @@ export function useAgentChat(ctx: SendContext) {
     activeScope: runtimeMatchesUser ? runtime.activeScope : undefined,
     send,
     confirm,
+    stopStreaming,
     setAutoExecute,
     startNewConversation,
     loadConversation,

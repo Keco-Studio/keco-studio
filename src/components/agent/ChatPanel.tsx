@@ -1,12 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownOutlined, ArrowUpOutlined, MessageOutlined } from '@ant-design/icons';
+import Image from 'next/image';
+import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
 import { takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+import botIcon from '@/assets/images/bot.svg';
+import chatIcon from '@/assets/images/chat.svg';
 import { useAgentChat } from './useAgentChat';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
@@ -95,6 +98,7 @@ export function ChatPanel() {
     activeScope,
     send,
     confirm,
+    stopStreaming,
     setAutoExecute,
     startNewConversation,
     loadConversation,
@@ -266,7 +270,14 @@ export function ChatPanel() {
           setOpen(true);
         }}
       >
-        <MessageOutlined className={styles.launcherIcon} />
+        <Image
+          src={botIcon}
+          alt=""
+          width={56}
+          height={56}
+          className={styles.launcherIcon}
+          aria-hidden="true"
+        />
       </button>
     );
   }
@@ -309,7 +320,7 @@ export function ChatPanel() {
             {items.length === 0 ? (
               <div className={styles.empty}>
                 <span className={styles.emptyMark} aria-hidden="true">
-                  <MessageOutlined />
+                  <Image src={chatIcon} alt="" width={44} height={44} />
                 </span>
                 <span className={styles.emptyTitle}>
                   Ask about your project data, create or update assets, or import a script.
@@ -347,6 +358,7 @@ export function ChatPanel() {
             onClearSelectionContext={() => setPendingSelectionContext(undefined)}
             onToggleMode={() => void setAutoExecute(!autoExecute)}
             onSend={send}
+            onStop={stopStreaming}
           />
         </>
       )}

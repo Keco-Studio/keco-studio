@@ -1,6 +1,7 @@
 import {
   applyAssistantDelta,
   finalizeAssistantItem,
+  promoteAssistantTextToReasoning,
 } from '@/components/agent/assistantStreamItems';
 import type { ChatItem } from '@/components/agent/types';
 
@@ -105,6 +106,47 @@ describe('assistantStreamItems', () => {
       reasoning: 'Check complete',
       reasoningStartedAt: 1_000,
       reasoningEndedAt: 2_000,
+    }]);
+  });
+
+  it('promotes the first plan text into reasoning', () => {
+    expect(promoteAssistantTextToReasoning(
+      [{
+        id: 'assistant-1',
+        role: 'assistant',
+        text: '我先读取文档。',
+      }],
+      'assistant-1',
+      1_500
+    )).toEqual([{
+      id: 'assistant-1',
+      role: 'assistant',
+      reasoning: '我先读取文档。',
+      reasoningStartedAt: 1_500,
+      reasoningEndedAt: undefined,
+      text: '',
+    }]);
+  });
+
+  it('appends later plan text into existing reasoning on subsequent tool rounds', () => {
+    expect(promoteAssistantTextToReasoning(
+      [{
+        id: 'assistant-1',
+        role: 'assistant',
+        reasoning: '我先读取文档。',
+        reasoningStartedAt: 1_000,
+        reasoningEndedAt: 1_200,
+        text: '我会将这段扩写为更具画面感的开场。',
+      }],
+      'assistant-1',
+      2_000
+    )).toEqual([{
+      id: 'assistant-1',
+      role: 'assistant',
+      reasoning: '我先读取文档。\n\n我会将这段扩写为更具画面感的开场。',
+      reasoningStartedAt: 1_000,
+      reasoningEndedAt: undefined,
+      text: '',
     }]);
   });
 });

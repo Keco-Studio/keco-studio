@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
+import importIcon from '@/assets/images/simulator/import.svg';
+import lightningIcon from '@/assets/images/simulator/ilightning.svg';
 import styles from './SimulationWorkbench.module.css';
 
 export interface SimulationSidebarItem {
@@ -23,21 +26,11 @@ export interface SimulationSidebarProps {
 }
 
 function ImportIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 3v12" />
-      <path d="m7 10 5 5 5-5" />
-      <path d="M5 21h14" />
-    </svg>
-  );
+  return <Image src={importIcon} alt="" width={18} height={18} aria-hidden="true" />;
 }
 
-function BoltIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M13 2 4 14h7l-1 8 10-14h-7l0-6z" />
-    </svg>
-  );
+function BoltIcon({ size = 18 }: { size?: number }) {
+  return <Image src={lightningIcon} alt="" width={size} height={size} aria-hidden="true" />;
 }
 
 function ChevronDownIcon() {
@@ -63,7 +56,6 @@ export function SimulationSidebar({
 }: SimulationSidebarProps) {
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
-  const importActive = activeId === 'import';
 
   useEffect(() => {
     if (!projectMenuOpen) return;
@@ -189,23 +181,12 @@ export function SimulationSidebar({
                 key={item.id}
                 className={`${styles.sidebarItem} ${active ? styles.sidebarItemActive : ''}`}
                 aria-current={active ? 'page' : undefined}
-                style={isImport ? {
-                  borderBottom: 0,
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  fontSize: 14,
-                  background: importActive ? 'var(--keco-blue-soft)' : 'transparent',
-                } : undefined}
                 onClick={() => {
                   onSelect(item.id);
                   onCloseMobile?.();
                 }}
               >
-                <span
-                  className={styles.sidebarIndex}
-                  aria-hidden="true"
-                  style={{ color: active ? 'var(--keco-blue)' : 'var(--ink-350)', display: 'inline-flex' }}
-                >
+                <span className={styles.sidebarIndex} aria-hidden="true">
                   {isImport ? <ImportIcon /> : <BoltIcon />}
                 </span>
                 <span className={styles.sidebarItemCopy}>

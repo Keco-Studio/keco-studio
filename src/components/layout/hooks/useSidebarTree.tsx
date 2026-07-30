@@ -7,9 +7,10 @@ import type { Folder } from '@/lib/services/folderService';
 import type { Library } from '@/lib/services/libraryService';
 import type { DocumentSummary } from '@/lib/services/documentService';
 import { truncateText } from '@/lib/utils/truncateText';
-import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
+import paperIcon from '@/assets/images/paper.svg';
+import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
-import folderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
+import folderIcon from '@/assets/images/folder.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import styles from '../Sidebar.module.css';
 
@@ -121,7 +122,7 @@ export function useSidebarTree(
           >
             <div className={styles.itemMain}>
               <div className={styles.libraryIconContainer}>
-                <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
+                <Image src={tableIcon} alt="Library" width={24} height={24} className="icon-24" />
               </div>
               <span
                 className={styles.itemText}
@@ -169,7 +170,7 @@ export function useSidebarTree(
           >
             <div className={styles.itemMain}>
               <div className={styles.libraryIconContainer}>
-                <Image src={libraryBookIcon} alt="Document" width={24} height={24} className="icon-24" />
+                <Image src={paperIcon} alt="Document" width={24} height={24} className="icon-24" />
               </div>
               <span
                 className={styles.itemText}
@@ -241,7 +242,7 @@ export function useSidebarTree(
             <div className={styles.itemMain}>
               {hasNoLibraries && (
                 <div className={styles.folderIconPlaceholder} aria-hidden>
-                  <Image src={folderCloseIcon} alt="" width={24} height={24} className="icon-24" />
+                  <Image src={folderIcon} alt="" width={24} height={24} className="icon-24" />
                 </div>
               )}
               <span

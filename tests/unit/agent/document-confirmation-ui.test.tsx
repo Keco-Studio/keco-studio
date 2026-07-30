@@ -1,8 +1,14 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { buildDocumentEditDiff } from '@/components/agent/ConfirmationCard';
 import type { ChatItem } from '@/components/agent/types';
 
+jest.mock('next/image', () => ({ src, alt, ...props }: { src: string; alt: string; [key: string]: unknown }) =>
+  React.createElement('img', { ...props, src, alt })
+);
+jest.mock('@/assets/images/action.svg', () => 'action.svg', { virtual: true });
+jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true });
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
@@ -109,16 +115,20 @@ describe('Agent document edit confirmation UI', () => {
     );
 
     expect(markup).toContain('Confirm: Apply document edit');
-    expect(markup).toContain(proposedMarkdown);
-    expect(markup.match(/Only this preview contains this text\./g)).toHaveLength(2);
+    expect(markup).toContain('Exact proposal');
+    expect(markup).toContain('<h1>');
+    expect(markup).toContain('Only this preview contains this text.');
+    expect(markup.match(/Only this preview contains this text\./g)).toHaveLength(1);
     expect(markup).toContain('Document changes');
-    expect(markup).toContain('Proposed Markdown');
+    expect(markup).not.toContain('Proposed Markdown');
     expect(markup).toContain('Guide');
     expect(markup).toContain('Lore');
     expect(markup).toContain('Replace one exact text occurrence');
-    expect(markup).toContain('&quot;type&quot;: &quot;replace_text&quot;');
-    expect(markup).toContain('[shown in document diff]');
-    expect(markup.match(/Keep this context\./g)).toHaveLength(1);
+    expect(markup).not.toContain('shown in document diff');
+    expect(markup).not.toContain('&quot;type&quot;');
+    expect(markup).not.toContain('&quot;operation&quot;');
+    expect(markup).not.toContain('documentDiff');
+    expect(markup).not.toContain('unchanged lines');
     expect(markup).not.toContain('Import preview:');
     expect(markup).not.toContain('Import Directly');
   });
@@ -193,7 +203,7 @@ describe('Agent document edit confirmation UI', () => {
     expect(rows).toContainEqual({ kind: 'added', text: 'd' });
   });
 
-  it('announces added and removed rows to assistive technology', () => {
+  it('shows document edit changes as plain chat text without a scrollable diff', () => {
     const item: ChatItem = {
       id: 'confirmation-accessible',
       role: 'confirmation',
@@ -220,9 +230,11 @@ describe('Agent document edit confirmation UI', () => {
     const markup = renderToStaticMarkup(
       <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
     );
-    expect(markup).toContain('Removed: ');
-    expect(markup).toContain('Added: ');
-    expect(markup).toContain('aria-hidden="true"');
+    expect(markup).toContain('aria-label="Document changes"');
+    expect(markup).toContain('New line');
+    expect(markup).toContain('Removed:\nOld line');
+    expect(markup).not.toContain('documentDiff');
+    expect(markup).not.toContain('unchanged lines');
   });
 
   it('renders generate_from_document without dumping raw JSON args', () => {
@@ -300,8 +312,82 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).toContain('Rainy Night Manor');
     expect(markup).toContain('2026001571');
     expect(markup).toContain('table row');
+    expect(markup).toContain('✓ Confirm');
+    expect(markup).toContain('>Cancel<');
+    expect(markup).toContain('data-testid="agent-confirm"');
+    expect(markup).toContain('data-testid="agent-reject"');
     expect(markup).not.toContain('bound document');
     expect(markup).not.toContain('7901d562-f309-4b15-8cdf-456f39b2a152');
     expect(markup).not.toContain('ResourceReference');
+  });
+
+  it('uses shared Confirm/Cancel CTAs on setup_library preview cards', () => {
+    const item: ChatItem = {
+      id: 'confirmation-setup-library',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-setup-library',
+        tool: 'setup_library',
+        args: { libraryName: 'Heroes' },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'setup_library',
+          libraryName: 'Heroes',
+          folderName: 'Combat',
+          description: 'Hero roster',
+          sections: {
+            Identity: [{ label: 'Name', dataType: 'string', required: true }],
+          },
+          totalFields: 1,
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Create library: Heroes');
+    expect(markup).toContain('✓ Confirm');
+    expect(markup).toContain('>Cancel<');
+    expect(markup).toContain('data-testid="agent-confirm"');
+    expect(markup).toContain('data-testid="agent-reject"');
+    expect(markup).toContain('aria-label="Approve action"');
+    expect(markup).toContain('aria-label="Reject action"');
+    expect(markup).not.toContain('>Create library<');
+  });
+
+  it('uses shared Confirm/Cancel CTAs on script import preview cards', () => {
+    const item: ChatItem = {
+      id: 'confirmation-script-import',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-script-import',
+        tool: 'import_script',
+        args: { libraryName: 'Quest Script' },
+        confirmationMode: 'post_preview',
+        preview: {
+          libraryName: 'Quest Script',
+          folderId: 'folder-1',
+          fullText: 'line one',
+          lines: [{ content: 'line one' }],
+          stats: { lineCount: 1, dialogueCount: 0, optionCount: 0 },
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Import preview: Quest Script');
+    expect(markup).toContain('Edit in Import Modal');
+    expect(markup).toContain('✓ Confirm');
+    expect(markup).toContain('>Cancel<');
+    expect(markup).toContain('data-testid="agent-confirm"');
+    expect(markup).toContain('data-testid="agent-reject"');
+    expect(markup).toContain('aria-label="Approve action"');
+    expect(markup).toContain('aria-label="Reject action"');
+    expect(markup).not.toContain('Import Directly');
   });
 });

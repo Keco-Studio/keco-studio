@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { DownOutlined, UpOutlined, PaperClipOutlined, ToolOutlined } from '@ant-design/icons';
+import { DownOutlined, UpOutlined, PaperClipOutlined } from '@ant-design/icons';
+import actionIcon from '@/assets/images/action.svg';
+import analyzeIcon from '@/assets/images/analyze.svg';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
 import { ConfirmationCard } from './ConfirmationCard';
@@ -141,19 +143,28 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
   const hasReasoning = !!item.reasoning?.trim();
   const normalizedText = collapseMarkdownThematicBreaks(item.text ?? '');
   const hasVisibleText = !!normalizedText.trim();
+  // While streaming, model "plan" text often arrives as text_delta before tools.
+  // Keep it in the thinking card until reasoning exists or the stream finishes.
+  const liveThinkingAsText = streaming && !hasReasoning && hasVisibleText;
   const summary = summarizeReasoning(item.reasoning ?? '').trim();
-  const thinkingText =
-    summary ||
-    item.reasoning?.trim() ||
-    'Analyzing user intent and executing the solution to address the issue at hand.';
+  const thinkingBody = (
+    hasReasoning
+      ? (item.reasoning ?? '').trim()
+      : liveThinkingAsText
+        ? normalizedText.trim()
+        : summary || 'Analyzing user intent and executing the solution to address the issue at hand.'
+  );
+  const showAssistantBubble = hasVisibleText && !liveThinkingAsText;
 
   if (!hasReasoning && !normalizedText.trim() && !streaming) return null;
 
   const streamingStatus = 'Connecting/thinking/working...';
   const completedStatus = inferCompletedStatus(normalizedText || item.reasoning || '');
-  const statusLabel = streaming && !hasVisibleText ? streamingStatus : streaming ? streamingStatus : completedStatus;
-  const canToggleThinking = hasReasoning || Boolean(summary) || streaming;
-  const showThinkingCard = (streaming && !hasVisibleText) || (thinkingOpen && canToggleThinking);
+  const statusLabel = streaming ? streamingStatus : completedStatus;
+  const canToggleThinking = hasReasoning || Boolean(summary) || streaming || liveThinkingAsText;
+  const showThinkingCard =
+    (streaming && (!showAssistantBubble || thinkingOpen)) ||
+    (thinkingOpen && canToggleThinking);
 
   return (
     <div className={styles.assistantStreamWrap} data-testid="agent-message-assistant">
@@ -166,7 +177,14 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
           aria-controls={`agent-thinking-${item.id}`}
           onClick={() => setThinkingOpen((value) => !value)}
         >
-          <ToolOutlined className={styles.assistantStatusIcon} />
+          <Image
+            src={actionIcon}
+            alt=""
+            width={13}
+            height={13}
+            className={styles.assistantStatusIcon}
+            aria-hidden="true"
+          />
           <span className={styles.assistantStatusText}>{statusLabel}</span>
           {showThinkingCard ? (
             <UpOutlined className={styles.assistantStatusChevron} />
@@ -174,12 +192,7 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
             <DownOutlined className={styles.assistantStatusChevron} />
           )}
         </button>
-      ) : (
-        <div className={styles.assistantStatusRow} role="status" aria-live="polite">
-          <ToolOutlined className={styles.assistantStatusIcon} />
-          <span className={styles.assistantStatusText}>{statusLabel}</span>
-        </div>
-      )}
+      ) : null}
 
       {showThinkingCard && (
         <div
@@ -188,15 +201,20 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
           data-testid="agent-thinking-panel"
         >
           <div className={styles.assistantThinkingRow}>
-            <ToolOutlined className={styles.assistantThinkingIcon} />
-            <span className={styles.assistantThinkingText}>
-              {hasReasoning ? item.reasoning : thinkingText}
-            </span>
+            <Image
+              src={analyzeIcon}
+              alt=""
+              width={14}
+              height={14}
+              className={styles.assistantThinkingIcon}
+              aria-hidden="true"
+            />
+            <span className={styles.assistantThinkingText}>{thinkingBody}</span>
           </div>
         </div>
       )}
 
-      {hasVisibleText && (
+      {showAssistantBubble && (
         <div className={`${styles.bubble} ${styles.assistant}`}>
           <AssistantMarkdown markdown={normalizedText} />
         </div>

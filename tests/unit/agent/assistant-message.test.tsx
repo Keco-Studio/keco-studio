@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 
+jest.mock('next/image', () => ({ src, alt, ...props }: { src: string; alt: string; [key: string]: unknown }) =>
+  React.createElement('img', { ...props, src, alt })
+);
+jest.mock('@/assets/images/action.svg', () => 'action.svg', { virtual: true });
+jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true });
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('assistant reasoning message', () => {
@@ -110,6 +116,28 @@ describe('assistant reasoning message', () => {
     expect(html).toContain('Done.');
   });
 
+  it('hides the thinking status row for history replies without reasoning', () => {
+    const html = renderToStaticMarkup(
+      <ChatMessage
+        item={{
+          id: 'assistant-history',
+          role: 'assistant',
+          text: 'The hero dataset is large and the query results were truncated.',
+        }}
+        streaming={false}
+        onDecision={jest.fn()}
+      />
+    );
+
+    expect(html).toContain('agent-message-assistant');
+    expect(html).not.toContain('agent-thinking-toggle');
+    expect(html).not.toContain('Querying...');
+    expect(html).not.toContain('Processing...');
+    expect(html).not.toContain('agent-thinking-panel');
+    expect(html).not.toContain('role="status"');
+    expect(html).toContain('The hero dataset is large');
+  });
+
   it('shows only the answer while it is streaming', () => {
     const html = renderToStaticMarkup(
       <ChatMessage
@@ -131,5 +159,25 @@ describe('assistant reasoning message', () => {
     expect(html).not.toContain('agent-thinking-panel');
     expect(html).not.toContain('Check the project');
     expect(html).toContain('Writing the answer...');
+  });
+
+  it('keeps streaming plan text inside the thinking card until reasoning exists', () => {
+    const html = renderToStaticMarkup(
+      <ChatMessage
+        item={{
+          id: 'assistant-streaming-plan',
+          role: 'assistant',
+          text: '我先读取文档开头，再补充人物设定。',
+        }}
+        streaming
+        onDecision={jest.fn()}
+      />
+    );
+
+    expect(html).toContain('agent-thinking-panel');
+    expect(html).toContain('我先读取文档开头，再补充人物设定。');
+    expect(html).toContain('aria-expanded="true"');
+    // Plan text should appear once in the thinking card, not also as a reply bubble.
+    expect(html.match(/我先读取文档开头，再补充人物设定。/g)).toHaveLength(1);
   });
 });

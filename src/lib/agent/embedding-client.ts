@@ -20,6 +20,7 @@ import {
   isRateLimitError,
   markEmbeddingRateLimited,
 } from './embedding-throttle';
+import { outboundFetch } from './outbound-http';
 
 export class EmbeddingError extends Error {
   constructor(message: string) {
@@ -56,7 +57,7 @@ async function requestOpenAIEmbeddings(texts: string[]): Promise<number[][]> {
   }
 
   const dimensions = Number.parseInt(process.env.EMBEDDING_DIMENSIONS || '1536', 10);
-  const response = await fetch(buildEmbeddingsUrl('openai'), {
+  const response = await outboundFetch(buildEmbeddingsUrl('openai'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -94,7 +95,7 @@ async function requestMiniMaxEmbeddings(
     throw new EmbeddingError('EMBEDDING_API_KEY (or LLM_API_KEY) is not configured.');
   }
 
-  const response = await fetch(buildEmbeddingsUrl('minimax'), {
+  const response = await outboundFetch(buildEmbeddingsUrl('minimax'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

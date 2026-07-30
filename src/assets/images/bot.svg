@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="1" y="1" width="62" height="62" rx="31" fill="white" style="fill:white;fill-opacity:1;"/>
+<rect x="1" y="1" width="62" height="62" rx="31" stroke="#E7E7E7" style="stroke:#E7E7E7;stroke:color(display-p3 0.9052 0.9052 0.9052);stroke-opacity:1;" stroke-width="2"/>
+<rect x="18" y="36.25" width="28" height="12" fill="#A6DAFF" stroke="#112348" style="fill:#A6DAFF;fill:color(display-p3 0.6503 0.8538 1.0000);fill-opacity:1;stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<rect x="28" y="33.25" width="8" height="3" stroke="#112348" style="stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<rect x="24" y="39.25" width="16" height="9" fill="#F9E047" stroke="#112348" style="fill:#F9E047;fill:color(display-p3 0.9765 0.8784 0.2784);fill-opacity:1;stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<rect x="17" y="22.25" width="4" height="8" fill="#FFDAA6" stroke="#112348" style="fill:#FFDAA6;fill:color(display-p3 1.0000 0.8543 0.6503);fill-opacity:1;stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<rect x="43" y="22.25" width="4" height="8" fill="#FFDAA6" stroke="#112348" style="fill:#FFDAA6;fill:color(display-p3 1.0000 0.8543 0.6503);fill-opacity:1;stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<path d="M19 21.75V15.25H17.5" stroke="#112348" style="stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<path d="M45 21.75V15.25H43.5" stroke="#112348" style="stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<rect x="21" y="18.25" width="22" height="15" fill="#A6DAFF" stroke="#112348" style="fill:#A6DAFF;fill:color(display-p3 0.6503 0.8538 1.0000);fill-opacity:1;stroke:#112348;stroke:color(display-p3 0.0667 0.1391 0.2840);stroke-opacity:1;"/>
+<ellipse cx="26" cy="26.75" rx="1.5" ry="2" fill="#112348" style="fill:#112348;fill:color(display-p3 0.0667 0.1391 0.2840);fill-opacity:1;"/>
+<ellipse cx="38" cy="26.75" rx="1.5" ry="2" fill="#112348" style="fill:#112348;fill:color(display-p3 0.0667 0.1391 0.2840);fill-opacity:1;"/>
+<path d="M27 46H32" stroke="black" style="stroke:black;stroke-opacity:1;"/>
+<path d="M27 44H37" stroke="black" style="stroke:black;stroke-opacity:1;"/>
+<path d="M27 42H37" stroke="black" style="stroke:black;stroke-opacity:1;"/>
+</svg>
