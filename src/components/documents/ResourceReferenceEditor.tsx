@@ -6,7 +6,6 @@ import {
   TableOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Tooltip } from 'antd';
 import Link from 'next/link';
 import type { JsxEditorProps } from '@mdxeditor/editor';
 import referenceIcon from '@/assets/images/reference.svg';
@@ -66,26 +65,25 @@ export function ResourceReferenceEditor({
   let reference: React.ReactNode;
   if (!target) {
     reference = (
-      <Tooltip title="The reference attributes are invalid or no longer supported">
-        <span className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}>
-          <WarningOutlined />
-          <span>Reference unavailable</span>
-        </span>
-      </Tooltip>
+      <span
+        className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}
+        aria-label="The reference attributes are invalid or no longer supported"
+      >
+        <WarningOutlined />
+        <span>Reference unavailable</span>
+      </span>
     );
   } else if (resolved?.status === 'available' && resolved.href) {
     const accessibleLabel = accessibleReferenceLabel(resolved.label, resolved.contextLabel);
     reference = (
-      <Tooltip title={accessibleLabel}>
-        <Link
-          className={styles.resourceReference}
-          href={resolved.href}
-          aria-label={accessibleLabel}
-        >
-          {target.kind === 'table-row' ? <TableOutlined /> : <DocumentReferenceIcon />}
-          <span>{resolved.label}</span>
-        </Link>
-      </Tooltip>
+      <Link
+        className={styles.resourceReference}
+        href={resolved.href}
+        aria-label={accessibleLabel}
+      >
+        {target.kind === 'table-row' ? <TableOutlined /> : <DocumentReferenceIcon />}
+        <span>{resolved.label}</span>
+      </Link>
     );
   } else if (!resolved && (isLoading || hasError)) {
     reference = (
@@ -100,12 +98,13 @@ export function ResourceReferenceEditor({
     );
   } else {
     reference = (
-      <Tooltip title="The source was deleted or is no longer accessible">
-        <span className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}>
-          <WarningOutlined />
-          <span>Reference unavailable</span>
-        </span>
-      </Tooltip>
+      <span
+        className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}
+        aria-label="The source was deleted or is no longer accessible"
+      >
+        <WarningOutlined />
+        <span>Reference unavailable</span>
+      </span>
     );
   }
 

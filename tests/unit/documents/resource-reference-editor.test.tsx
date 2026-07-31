@@ -142,7 +142,7 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain(`>${target.fallbackLabel}<`);
     expect(markup).not.toContain(`>${accessibleLabel}<`);
     expect(markup).toContain(`aria-label="${accessibleLabel}"`);
-    expect(markup).toContain(`data-tooltip="${accessibleLabel}"`);
+    expect(markup).not.toContain('data-tooltip=');
     expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
   });
 
@@ -162,6 +162,7 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain('data-icon="warning"');
     expect(markup).toContain('>Reference unavailable<');
     expect(markup).not.toContain('href=');
+    expect(markup).not.toContain('data-tooltip=');
   });
 
   it('fails safely for invalid attributes', () => {
@@ -175,6 +176,7 @@ describe('ResourceReferenceEditor', () => {
 
     expect(markup).toContain('>Reference unavailable<');
     expect(markup).not.toContain('href=');
+    expect(markup).not.toContain('data-tooltip=');
   });
 
   it('keeps the neutral fallback label on an initial resolver error', () => {
