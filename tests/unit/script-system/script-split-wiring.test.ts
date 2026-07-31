@@ -30,6 +30,9 @@ describe('Keco Script split view wiring', () => {
     expect(source).toContain(`/script-system/\${projectId}`);
     expect(source).toContain('getLibraryAssetsWithProperties');
     expect(source).toContain('getLibrarySchema');
+    expect(source).toMatch(/schemaError|assetsError/);
+    expect(source).toContain('showErrorToast');
+    expect(source).toMatch(/assetsSchemaSettled|schemaFetched|assetsFetched/);
     expect(source).toMatch(/detectScriptColumns|scriptColumns/);
     expect(source).toContain('ScriptSplitView');
     expect(source).not.toContain('LibraryAssetsTable');

@@ -55,19 +55,30 @@ export default function ScriptLibraryPage() {
     enabled: Boolean(libraryId && projectId),
   });
 
-  const { data: librarySchema, isLoading: schemaLoading } = useQuery({
+  const {
+    data: librarySchema,
+    isLoading: schemaLoading,
+    isFetched: schemaFetched,
+    isError: schemaError,
+  } = useQuery({
     queryKey: queryKeys.librarySchema(libraryId),
     queryFn: () => getLibrarySchema(supabase, libraryId),
     enabled: Boolean(libraryId),
   });
 
-  const { data: assetRows = [], isLoading: assetsLoading } = useQuery({
+  const {
+    data: assetRows = [],
+    isLoading: assetsLoading,
+    isFetched: assetsFetched,
+    isError: assetsError,
+  } = useQuery({
     queryKey: queryKeys.libraryAssets(libraryId),
     queryFn: () => getLibraryAssetsWithProperties(supabase, libraryId),
     enabled: Boolean(libraryId),
   });
 
   const membershipSettled = isFetched && !isLoading && !isFetching;
+  const assetsSchemaSettled = schemaFetched && assetsFetched;
   const sourceDocumentId = library?.source_document_id ?? null;
   const isScriptLibrary = library?.document_export_type === 'script';
   const inWorkspace =
@@ -76,8 +87,11 @@ export default function ScriptLibraryPage() {
   const allowed =
     membershipSettled &&
     libraryFetched &&
+    assetsSchemaSettled &&
     !isError &&
     !libraryError &&
+    !schemaError &&
+    !assetsError &&
     Boolean(library) &&
     isScriptLibrary &&
     inWorkspace;
@@ -100,12 +114,24 @@ export default function ScriptLibraryPage() {
       handledRef.current = true;
       showErrorToast('This script is not available in the Script workspace');
       router.replace(`/script-system/${projectId}`);
+      return;
+    }
+
+    if (!assetsSchemaSettled) return;
+
+    if (schemaError || assetsError) {
+      handledRef.current = true;
+      showErrorToast('Failed to open script library');
+      router.replace(`/script-system/${projectId}`);
     }
   }, [
     membershipSettled,
     libraryFetched,
+    assetsSchemaSettled,
     isError,
     libraryError,
+    schemaError,
+    assetsError,
     library,
     isMember,
     projectId,
@@ -125,7 +151,13 @@ export default function ScriptLibraryPage() {
     [assetRows, properties]
   );
 
-  if (!allowed || schemaLoading || assetsLoading || libraryLoading) {
+  if (
+    !allowed ||
+    schemaLoading ||
+    assetsLoading ||
+    libraryLoading ||
+    !assetsSchemaSettled
+  ) {
     return null;
   }
 
