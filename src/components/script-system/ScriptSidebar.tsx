@@ -270,6 +270,14 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     target: menuTarget,
     onStartRename,
     onRefreshWorkspace: refreshAll,
+    onExpandDocument: (documentId) => {
+      setExpandedDocs((prev) => {
+        if (prev.has(documentId)) return prev;
+        const next = new Set(prev);
+        next.add(documentId);
+        return next;
+      });
+    },
   });
 
   const goToImport = () => {

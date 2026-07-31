@@ -7,6 +7,9 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { updateDocumentName } from '@/lib/services/documentService';
 import { deleteLibrary, updateLibrary } from '@/lib/services/libraryService';
 import { invalidateLibraryData } from '@/lib/queryInvalidation';
+import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
+import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImport';
+import { notifyDocumentDerivedImportProgress } from '@/lib/documents/documentDerivedImportProgress';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import type { ScriptContextMenuAction } from './ScriptContextMenu';
 
@@ -22,12 +25,13 @@ type UseScriptSidebarActionsParams = {
   target: ScriptSidebarTarget;
   onStartRename: (target: { type: 'document' | 'script'; id: string }) => void;
   onRefreshWorkspace: () => Promise<unknown> | unknown;
+  onExpandDocument?: (documentId: string) => void;
 };
 
 /**
  * Context-menu actions for Script sidebar tree.
  * Document Delete removes workspace reference only (not the Studio document).
- * Generate conversation is stubbed for full pipeline in Task 7.
+ * Generate conversation reuses Studio document-derived import (exportType: 'script').
  */
 export function useScriptSidebarActions({
   projectId,
@@ -35,6 +39,7 @@ export function useScriptSidebarActions({
   target,
   onStartRename,
   onRefreshWorkspace,
+  onExpandDocument,
 }: UseScriptSidebarActionsParams) {
   const router = useRouter();
   const supabase = useSupabase();
@@ -46,8 +51,66 @@ export function useScriptSidebarActions({
 
       if (action === 'generate-conversation' && target.type === 'document') {
         if (userRole !== 'admin') return;
-        // Task 7: wire fetchDocumentExportSource + runDocumentDerivedImport(exportType: 'script')
-        router.push(`/script-system/${projectId}/doc/${target.id}`);
+        const documentId = target.id;
+        const startedAt = Date.now();
+        notifyDocumentDerivedImportProgress({
+          projectId,
+          documentId,
+          exportType: 'script',
+          phase: 'preparing',
+          label: 'Preparing conversation…',
+          startedAt,
+        });
+        router.push(`/script-system/${projectId}/doc/${documentId}`);
+        void (async () => {
+          try {
+            const {
+              data: { session },
+              error: sessionError,
+            } = await supabase.auth.getSession();
+            if (sessionError || !session?.access_token) {
+              throw new Error('Please sign in before exporting');
+            }
+            const source = await fetchDocumentExportSource(
+              documentId,
+              session.access_token
+            );
+            const result = await runDocumentDerivedImport({
+              source,
+              exportType: 'script',
+              accessToken: session.access_token,
+            });
+            await invalidateLibraryData(queryClient, {
+              projectId,
+              folderId: source.folderId,
+              libraryId: result.libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            await queryClient.invalidateQueries({
+              queryKey: ['script-workspace', projectId],
+            });
+            await onRefreshWorkspace();
+            onExpandDocument?.(documentId);
+            router.push(
+              `/script-system/${projectId}/script/${result.libraryId}`
+            );
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : 'Failed to generate conversation';
+            notifyDocumentDerivedImportProgress({
+              projectId,
+              documentId,
+              exportType: 'script',
+              phase: 'error',
+              label: msg,
+              error: msg,
+              startedAt,
+            });
+            showErrorToast(msg);
+          }
+        })();
         return;
       }
 
@@ -151,6 +214,7 @@ export function useScriptSidebarActions({
       queryClient,
       onStartRename,
       onRefreshWorkspace,
+      onExpandDocument,
     ]
   );
 
