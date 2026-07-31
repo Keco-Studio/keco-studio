@@ -140,3 +140,116 @@
 .importButtonActive .importIcon {
   color: var(--script-blue);
 }
+
+.tree {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.treeChildren {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  border-radius: 8px;
+  color: var(--script-ink-700);
+}
+
+.treeRowChild {
+  padding-left: 8px;
+}
+
+.treeRowActive {
+  color: var(--script-ink-900);
+  background: var(--script-blue-soft);
+}
+
+.treeRowActive .treeIcon {
+  color: var(--script-blue);
+}
+
+.expandButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--script-ink-400);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.expandSpacer {
+  display: inline-block;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.expandChevron {
+  display: inline-flex;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.expandChevronOpen {
+  transform: rotate(0deg);
+}
+
+.treeItemMain {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 8px 4px 0;
+}
+
+.treeItemButton {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.treeIcon {
+  display: inline-flex;
+  color: var(--script-ink-350);
+}
+
+.treeLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.renameInput {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--script-blue);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--script-ink-800);
+  background: #fff;
+  outline: none;
+}
