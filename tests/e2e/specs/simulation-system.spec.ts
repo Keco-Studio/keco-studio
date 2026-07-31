@@ -249,6 +249,16 @@ test.describe('Native simulation system', () => {
     ).toBeVisible({ timeout: 30_000 });
     const nameSlot = page.locator('[data-mapping-drop="slot:name"]');
     const unmapped = page.getByTestId('mapping-unmapped');
+    // On AI failure ImportScreen still runs finalizeFieldMapping (alias + positional),
+    // so known columns like `name` land in slots; leftovers stay in Unmapped.
+    await expect(nameSlot.getByRole('button', { name: 'Drag name' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(unmapped.getByRole('button', { name: 'Drag class name' })).toBeVisible();
+
+    // Manual remap must still work after the AI error path.
+    await dragMappingCard(page, 'name', '[data-mapping-drop="unmapped"]');
+    await expect(nameSlot.getByText('Drop a source column', { exact: true })).toBeVisible();
     await expect(unmapped.getByRole('button', { name: 'Drag name' })).toBeVisible();
 
     await dragMappingCard(page, 'name', '[data-mapping-drop="slot:name"]');
