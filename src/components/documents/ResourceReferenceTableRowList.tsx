@@ -110,6 +110,9 @@ export function ResourceReferenceTableRowList({
                     type="checkbox"
                     className={styles.headerCheckbox}
                     checked={allSelected}
+                    ref={(element) => {
+                      if (element) element.indeterminate = false;
+                    }}
                     aria-label="Select all rows"
                     onChange={(event) => onToggleAll(event.target.checked)}
                     onClick={(event) => event.stopPropagation()}

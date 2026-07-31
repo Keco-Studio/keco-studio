@@ -417,6 +417,8 @@ export function ResourceReferencePickerModal({
       open={open}
       title="Insert reference"
       className={styles.modal}
+      rootClassName={styles.modalRoot}
+      centered
       width={560}
       okText={replaceMode ? 'Replace' : 'Insert'}
       cancelText="Cancel"
@@ -427,6 +429,10 @@ export function ResourceReferencePickerModal({
       onCancel={cancel}
       onOk={confirm}
       destroyOnHidden
+      styles={{
+        body: { overflow: 'hidden', maxWidth: '100%' },
+        content: { overflow: 'hidden', maxWidth: '100%' },
+      }}
     >
       {visibleError && (
         <Alert className={styles.alert} type="error" showIcon message={visibleError} />
