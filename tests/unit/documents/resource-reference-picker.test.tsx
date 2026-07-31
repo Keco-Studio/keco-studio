@@ -398,7 +398,7 @@ describe('ResourceReferencePickerModal', () => {
       fallbackLabel: '(empty)',
     };
     expect(resolveResourceReferences).toHaveBeenCalledWith(supabase, PROJECT_ID, [expected]);
-    expect(onConfirm).toHaveBeenCalledWith(expected);
+    expect(onConfirm).toHaveBeenCalledWith([expected]);
   });
 
   it('excludes the open document, resets selection, and emits a cross-block range target', async () => {
@@ -446,7 +446,7 @@ describe('ResourceReferencePickerModal', () => {
     }));
     await act(async () => ui.modal?.onOk());
 
-    expect(onConfirm).toHaveBeenCalledWith({
+    expect(onConfirm).toHaveBeenCalledWith([{
       kind: 'document-range',
       documentId: DOCUMENT_B,
       startBlockId: HEADING_BLOCK,
@@ -458,7 +458,7 @@ describe('ResourceReferencePickerModal', () => {
       endBefore: 'The city',
       endAfter: ' closes its gates',
       fallbackLabel: 'flict The city',
-    });
+    }]);
   });
 
   it('keeps the modal open with an exact validation error and exposes labelled keyboard controls', async () => {
@@ -529,7 +529,7 @@ describe('ResourceReferencePickerModal', () => {
 
     await act(async () => ui.modal?.onOk());
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm.mock.calls[0][0]).toMatchObject({ assetId: ASSET_B });
+    expect(onConfirm.mock.calls[0][0]).toMatchObject([{ assetId: ASSET_B }]);
   });
 
   it('clears an invalidated row load when closed and reopened', async () => {
@@ -657,7 +657,7 @@ describe('document editor reference controls', () => {
       displayFieldId: FIELD_STATUS,
       fallbackLabel: 'Active',
     };
-    onOpen.mock.calls[0][0](target);
+    onOpen.mock.calls[0][0]([target]);
     expect(insertJsx).toHaveBeenCalledWith({
       kind: 'text',
       name: 'ResourceReference',
@@ -682,10 +682,10 @@ describe('document editor reference controls', () => {
       displayFieldId: FIELD_STATUS,
       fallbackLabel: 'Active',
     };
-    await act(async () => controller.confirm(tableTarget));
+    await act(async () => controller.confirm([tableTarget]));
     expect(controller.open).toBe(false);
     expect(restoreFocus).toHaveBeenCalledTimes(1);
-    expect(insert).toHaveBeenCalledWith(tableTarget);
+    expect(insert).toHaveBeenCalledWith([tableTarget]);
     // MDXEditor only inserts when a RangeSelection exists after focus — apply after restore.
     expect(restoreFocus.mock.invocationCallOrder[0]).toBeLessThan(
       insert.mock.invocationCallOrder[0]

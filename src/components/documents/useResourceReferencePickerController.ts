@@ -8,14 +8,14 @@ import {
 } from './resourceReferencePickerConfirm';
 
 type PendingReference = {
-  apply: (target: ResourceReferenceTarget) => void;
+  apply: (targets: ResourceReferenceTarget[]) => void;
 };
 
 export type ResourceReferencePickerController = {
   open: boolean;
-  openInsertion: (apply: (target: ResourceReferenceTarget) => void) => void;
+  openInsertion: (apply: (targets: ResourceReferenceTarget[]) => void) => void;
   cancel: () => void;
-  confirm: (target: ResourceReferenceTarget) => void;
+  confirm: (targets: ResourceReferenceTarget[]) => void;
 };
 
 export function useResourceReferencePickerController(
@@ -26,17 +26,17 @@ export function useResourceReferencePickerController(
   pendingRef.current = pending;
 
   const openInsertion = useCallback(
-    (apply: (target: ResourceReferenceTarget) => void) => setPending({ apply }),
+    (apply: (targets: ResourceReferenceTarget[]) => void) => setPending({ apply }),
     []
   );
   const cancel = useCallback(() => {
     setPending(null);
     restoreFocus();
   }, [restoreFocus]);
-  const confirm = useCallback((target: ResourceReferenceTarget) => {
+  const confirm = useCallback((targets: ResourceReferenceTarget[]) => {
     const current = pendingRef.current;
     setPending(null);
-    confirmResourceReferenceSelection(current, target, restoreFocus);
+    confirmResourceReferenceSelection(current, targets, restoreFocus);
   }, [restoreFocus]);
 
   return {

@@ -35,7 +35,7 @@ export type ResourceReferencePickerModalProps = {
   documentId: string;
   initialTarget?: ResourceReferenceTarget;
   onCancel: () => void;
-  onConfirm: (target: ResourceReferenceTarget) => void;
+  onConfirm: (targets: ResourceReferenceTarget[]) => void;
 };
 
 const EMPTY_TABLE_ROWS: TableReferenceRows = { fields: [], rows: [] };
@@ -337,7 +337,7 @@ export function ResourceReferencePickerModal({
         setValidationError(UNAVAILABLE_ERROR);
         return;
       }
-      onConfirm(target);
+      onConfirm([target]);
     } catch {
       if (
         request === validationRequest.current &&

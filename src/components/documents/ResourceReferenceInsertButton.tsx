@@ -7,6 +7,7 @@ import {
   useCellValue,
   usePublisher,
 } from '@mdxeditor/editor';
+import { $getSelection, $isRangeSelection } from 'lexical';
 import { resourceReferenceAttributes, type ResourceReferenceTarget } from '@/lib/documents/resourceReferenceTypes';
 import {
   captureRangeSelection,
@@ -15,7 +16,7 @@ import {
 
 export type ResourceReferenceInsertButtonProps = {
   readOnly: boolean;
-  onOpen: (apply: (target: ResourceReferenceTarget) => void) => void;
+  onOpen: (apply: (targets: ResourceReferenceTarget[]) => void) => void;
 };
 
 /** Matches MDX editor toolbar icons (24×24, currentColor). */
@@ -54,12 +55,20 @@ export function ResourceReferenceInsertButton({
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => {
         const selection = captureRangeSelection(activeEditor);
-        onOpen((target) => {
+        onOpen((targets) => {
           restoreRangeSelection(activeEditor, selection);
-          insertJsx({
-            kind: 'text',
-            name: 'ResourceReference',
-            props: resourceReferenceAttributes(target),
+          targets.forEach((target, index) => {
+            if (index > 0) {
+              activeEditor?.update(() => {
+                const current = $getSelection();
+                if ($isRangeSelection(current)) current.insertText(' ');
+              });
+            }
+            insertJsx({
+              kind: 'text',
+              name: 'ResourceReference',
+              props: resourceReferenceAttributes(target),
+            });
           });
         });
       }}
