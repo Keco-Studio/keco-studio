@@ -210,8 +210,9 @@ test.describe('Native simulation system', () => {
     await simulation.goto();
     await simulation.selectLibrary('Characters', libraryNames.characters);
 
+    // Character SIM field ids use `el` (not `element`); aria-labels use Studio column names.
     const nameSlot = page.locator('[data-mapping-drop="slot:name"]');
-    const elementSlot = page.locator('[data-mapping-drop="slot:element"]');
+    const elementSlot = page.locator('[data-mapping-drop="slot:el"]');
     const unmapped = page.getByTestId('mapping-unmapped');
     await expect(nameSlot.getByRole('button', { name: 'Drag name' })).toBeVisible({ timeout: 30_000 });
     await expect(elementSlot.getByRole('button', { name: 'Drag element' })).toBeVisible();
@@ -221,7 +222,7 @@ test.describe('Native simulation system', () => {
     await expect(nameSlot.getByRole('button', { name: 'Drag element' })).toBeVisible();
     await expect(elementSlot.getByRole('button', { name: 'Drag name' })).toBeVisible();
 
-    await dragMappingCard(page, 'class name', '[data-mapping-drop="slot:element"]');
+    await dragMappingCard(page, 'class name', '[data-mapping-drop="slot:el"]');
     await expect(elementSlot.getByRole('button', { name: 'Drag class name' })).toBeVisible();
     await expect(unmapped.getByRole('button', { name: 'Drag name' })).toBeVisible();
 

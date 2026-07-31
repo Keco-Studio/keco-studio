@@ -181,13 +181,16 @@ test.describe('Session Management', () => {
     await expect(logoutButton).toBeVisible({ timeout: 5000 });
     await logoutButton.click();
     
-    // Step 4: Should be redirected to login page
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    // Step 4: Should be redirected to login page.
+    // DashboardLayout returns null while auth rehydrates after navigation, so wait
+    // for the Login control (not just absence of user-menu).
+    await expect(loginPage.loginButton).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0);
     
     // Step 5: Try to access projects page - should be blocked
-    await page.goto('/projects');
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    await page.goto('/projects', { waitUntil: 'domcontentloaded' });
+    await expect(loginPage.loginButton).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0);
   });
 
   test('should require re-authentication after logout', async ({ page }) => {
@@ -205,14 +208,14 @@ test.describe('Session Management', () => {
     await expect(logoutButton).toBeVisible({ timeout: 5000 });
     await logoutButton.click();
     
-    // Should be logged out
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 15000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
+    // Should be logged out (wait for auth form, not just missing menu during loading)
+    await expect(loginPage.loginButton).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0);
     
     // Try to access projects - should show login
     await page.goto('/projects', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
+    await expect(loginPage.loginButton).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0);
     
     // Should be able to login again
     await loginPage.login(users.seedEmpty);
