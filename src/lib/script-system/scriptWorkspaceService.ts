@@ -45,7 +45,7 @@ export async function upsertScriptWorkspaceDocument(
     .from('script_workspace_documents')
     .upsert(
       { project_id: projectId, document_id: documentId, imported_by: userId },
-      { onConflict: 'project_id,document_id' }
+      { onConflict: 'project_id,document_id', ignoreDuplicates: true }
     );
 
   if (upsertError) throw upsertError;

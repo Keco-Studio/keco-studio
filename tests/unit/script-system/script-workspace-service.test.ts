@@ -130,7 +130,7 @@ describe('scriptWorkspaceService', () => {
           document_id: DOCUMENT_ID,
           imported_by: USER_ID,
         },
-        opts: { onConflict: 'project_id,document_id' },
+        opts: { onConflict: 'project_id,document_id', ignoreDuplicates: true },
       },
     });
   });
