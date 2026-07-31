@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/globals -- harness captures hook return for imperative test calls */
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
