@@ -74,21 +74,28 @@ jest.mock('@/components/documents/ResourceReferenceTableRowList', () => ({
   ResourceReferenceTableRowList: (props: AnyProps) => {
     const React = jest.requireActual<typeof import('react')>('react');
     ui.lists.set(props.ariaLabel, props);
-    ui.rows.set(props.ariaLabel, props.items.map((item: { id: string; label: string }) => {
-      const selected = props.selectedIds.has(item.id);
+    ui.rows.set(props.ariaLabel, props.rows.map((row: { id: string; values: Record<string, unknown> }) => {
+      const selected = props.selectedIds.has(row.id);
+      const label = props.fields
+        .map((field: { id: string }) => {
+          const value = row.values[field.id];
+          return value == null || value === '' ? '' : String(value);
+        })
+        .filter(Boolean)
+        .join(' · ') || '(empty)';
       return React.createElement(
         'div',
         {
-          id: `${props.idPrefix}-${item.id}`,
+          id: `${props.idPrefix}-${row.id}`,
           role: 'option',
           tabIndex: -1,
-          'aria-label': `Row: ${item.label}`,
+          'aria-label': `Row: ${label}`,
           'aria-selected': selected,
           'aria-checked': selected,
-          'data-label': item.label,
-          onClick: () => props.onToggle(item.id),
+          'data-label': label,
+          onClick: () => props.onToggle(row.id),
         },
-        item.label
+        label
       );
     }));
     return null;
@@ -365,12 +372,17 @@ describe('ResourceReferencePickerModal', () => {
       { label: 'Characters', value: LIBRARY_B },
     ]);
     expect(ui.selects.get('Display field')).toBeUndefined();
+    expect(ui.inputs.get('Search table rows')).toBeUndefined();
 
     await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
     await waitFor(() => listTableReferenceRows.mock.calls.length === 1);
     await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_B));
     await waitFor(() => ui.rows.get('Table rows')?.length === 2);
     expect(ui.modal?.okButtonProps.disabled).toBe(true);
+    expect(ui.lists.get('Table rows')?.fields.map((field: AnyProps) => field.label)).toEqual([
+      'Status',
+      'Notes',
+    ]);
 
     await act(async () => resolveArchive({
       fields: [{ id: FIELD_STATUS, label: 'Stale', orderIndex: 0 }],
@@ -382,13 +394,8 @@ describe('ResourceReferencePickerModal', () => {
       'Row: Pending',
     ]);
 
-    await act(async () => ui.inputs.get('Search table rows')?.onChange({ target: { value: 'active' } }));
-    expect(ui.rows.get('Table rows')).toHaveLength(1);
     await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());
     expect(ui.rows.get('Table rows')?.[0].props['data-label']).toBe('Active');
-
-    await act(async () => ui.inputs.get('Search table rows')?.onChange({ target: { value: '' } }));
-    await waitFor(() => ui.rows.get('Table rows')?.length === 2);
     await act(async () => ui.rows.get('Table rows')?.[1].props.onClick());
     expect(ui.modal?.okButtonProps.disabled).toBe(false);
     await act(async () => ui.modal?.onOk());
@@ -488,7 +495,7 @@ describe('ResourceReferencePickerModal', () => {
     await renderPicker();
 
     expect(ui.tabs?.items.map((item: AnyProps) => item.label)).toEqual(['Table', 'Document']);
-    expect(ui.inputs.get('Search table rows')).toBeDefined();
+    expect(ui.inputs.get('Search table rows')).toBeUndefined();
     await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
     await waitFor(() => ui.rows.get('Table rows')?.length === 1);
     await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());

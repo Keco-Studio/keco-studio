@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Input, Modal, Select, Spin, Tabs } from 'antd';
+import { Alert, Modal, Select, Spin, Tabs } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
   listDocumentReferenceBlocks,
@@ -20,7 +20,6 @@ import {
 import type { DocumentReferenceBlock } from '@/lib/documents/documentBlockIdentity';
 import { createDocumentRangeTarget } from '@/lib/documents/documentRangeReference';
 import { joinTableRowDisplayValues } from '@/lib/documents/tableRowDisplayLabel';
-import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import styles from './ResourceReferencePickerModal.module.css';
 import { ResourceReferenceTableRowList } from './ResourceReferenceTableRowList';
 import {
@@ -43,10 +42,6 @@ const EMPTY_TABLE_ROWS: TableReferenceRows = { fields: [], rows: [] };
 const LOAD_ERROR = 'References could not be loaded. Try again.';
 const UNAVAILABLE_ERROR = 'The selected reference is no longer available.';
 
-function searchable(value: string): string {
-  return value.trim().toLocaleLowerCase();
-}
-
 export function ResourceReferencePickerModal({
   open,
   projectId,
@@ -65,7 +60,6 @@ export function ResourceReferencePickerModal({
   const [tableRows, setTableRows] = useState<TableReferenceRows>(EMPTY_TABLE_ROWS);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [selectedAssetIds, setSelectedAssetIds] = useState<ReadonlySet<string>>(new Set());
-  const [tableSearch, setTableSearch] = useState('');
   const [documentSources, setDocumentSources] = useState<DocumentReferenceSource[]>([]);
   const [documentBlocks, setDocumentBlocks] = useState<DocumentReferenceBlock[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
@@ -129,7 +123,6 @@ export function ResourceReferencePickerModal({
       initialTarget && initialTarget.kind !== 'table-row' ? initialTarget.documentId : null
     );
     setSelectedDocumentRange(initialTarget?.kind === 'document-range' ? initialTarget : null);
-    setTableSearch('');
     setTableRows(EMPTY_TABLE_ROWS);
     setDocumentBlocks([]);
   }, [initialTarget, invalidateValidation, open]);
@@ -266,29 +259,6 @@ export function ResourceReferencePickerModal({
     ? rowsError ?? tableSourcesError
     : blocksError ?? documentSourcesError);
 
-  const filteredRows = useMemo(() => {
-    const query = searchable(tableSearch);
-    if (!query) return tableRows.rows;
-    return tableRows.rows.filter((row) =>
-      [
-        row.name,
-        joinTableRowDisplayValues(tableRows.fields, row.values),
-        ...Object.values(row.values).map(cellDisplayString),
-      ]
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(query)
-    );
-  }, [tableRows.fields, tableRows.rows, tableSearch]);
-
-  const tableListItems = useMemo(
-    () => filteredRows.map((row) => ({
-      id: row.id,
-      label: joinTableRowDisplayValues(tableRows.fields, row.values),
-    })),
-    [filteredRows, tableRows.fields]
-  );
-
   const changeLibrary = useCallback((libraryId: string) => {
     invalidateValidation();
     setSelectedLibraryId(libraryId);
@@ -318,6 +288,15 @@ export function ResourceReferencePickerModal({
       return next;
     });
   }, [invalidateValidation, replaceMode]);
+
+  const toggleAllAssets = useCallback((selectAll: boolean) => {
+    if (replaceMode) return;
+    invalidateValidation();
+    setValidationError(null);
+    setSelectedAssetIds(
+      selectAll ? new Set(tableRows.rows.map((row) => row.id)) : new Set()
+    );
+  }, [invalidateValidation, replaceMode, tableRows.rows]);
 
   const selectDocumentText = useCallback((selection: DocumentPreviewSelection | null) => {
     invalidateValidation();
@@ -394,24 +373,17 @@ export function ResourceReferencePickerModal({
         options={tableSources.map((source) => ({ label: source.name, value: source.id }))}
         onChange={changeLibrary}
       />
-      <div className={styles.rowToolbar}>
-        <Input
-          aria-label="Search table rows"
-          placeholder="Search rows"
-          allowClear
-          value={tableSearch}
-          onChange={(event) => setTableSearch(event.target.value)}
-        />
-      </div>
       <Spin aria-label="Loading table rows" spinning={loadingRows}>
         <ResourceReferenceTableRowList
           ariaLabel="Table rows"
           idPrefix="table-reference-row"
-          items={tableListItems}
+          fields={tableRows.fields}
+          rows={tableRows.rows}
           selectedIds={selectedAssetIds}
           singleSelect={replaceMode}
           emptyText={selectedLibraryId ? 'No matching rows' : 'Choose a table'}
           onToggle={toggleAsset}
+          onToggleAll={toggleAllAssets}
         />
       </Spin>
     </div>
