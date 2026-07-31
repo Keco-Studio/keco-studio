@@ -9,10 +9,10 @@ const fields = [
 describe('joinTableRowDisplayValues', () => {
   it('joins non-empty cell values in field order with a middle dot', () => {
     expect(joinTableRowDisplayValues(fields, {
-      f1: '小麦',
+      f1: 'Wheat',
       f2: 10001,
       f3: '',
-    })).toBe('小麦 · 10001');
+    })).toBe('Wheat · 10001');
   });
 
   it('returns (empty) when every cell is blank', () => {

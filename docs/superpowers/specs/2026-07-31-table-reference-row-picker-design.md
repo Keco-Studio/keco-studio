@@ -49,9 +49,9 @@ Insert reference
 [ Choose a table ▾ ]          // e.g. pokemon
 [ Search rows … ]             // optional filter over joined cell text + row name
 
-☑ 小麦 · 10001 · 20001 · 1 · 2
-☐ 谷子 · 10002 · 20002 · 1 · 9
-☑ 水稻 · 10003 · 20003 · 2 · 6
+☑ Wheat · 10001 · 20001 · 1 · 2
+☐ Millet · 10002 · 20002 · 1 · 9
+☑ Rice · 10003 · 20003 · 2 · 6
 …
 
 [ Cancel ]  [ Insert ]
