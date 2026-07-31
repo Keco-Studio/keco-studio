@@ -189,7 +189,9 @@ export function useCellSelection({
         target.closest('.ant-switch') ||
         target.closest('input') ||
         target.closest('select') ||
-        target.closest('.cellExpandIcon')
+        target.closest('.cellExpandIcon') ||
+        target.closest('[contenteditable="true"]') ||
+        (target as HTMLElement).isContentEditable
       ) {
         return;
       }
