@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Input, Modal, Select, Spin, Tabs } from 'antd';
+import { Alert, Modal, Select, Spin, Tabs } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
   listDocumentReferenceBlocks,
@@ -19,9 +19,9 @@ import {
 } from '@/lib/documents/resourceReferenceTypes';
 import type { DocumentReferenceBlock } from '@/lib/documents/documentBlockIdentity';
 import { createDocumentRangeTarget } from '@/lib/documents/documentRangeReference';
-import { cellDisplayString } from '@/lib/utils/assetEmptiness';
+import { joinTableRowDisplayValues } from '@/lib/documents/tableRowDisplayLabel';
 import styles from './ResourceReferencePickerModal.module.css';
-import { ResourceReferenceResultList } from './ResourceReferenceResultList';
+import { ResourceReferenceTableRowList } from './ResourceReferenceTableRowList';
 import {
   DocumentReferencePreview,
   type DocumentPreviewSelection,
@@ -35,16 +35,12 @@ export type ResourceReferencePickerModalProps = {
   documentId: string;
   initialTarget?: ResourceReferenceTarget;
   onCancel: () => void;
-  onConfirm: (target: ResourceReferenceTarget) => void;
+  onConfirm: (targets: ResourceReferenceTarget[]) => void;
 };
 
 const EMPTY_TABLE_ROWS: TableReferenceRows = { fields: [], rows: [] };
 const LOAD_ERROR = 'References could not be loaded. Try again.';
 const UNAVAILABLE_ERROR = 'The selected reference is no longer available.';
-
-function searchable(value: string): string {
-  return value.trim().toLocaleLowerCase();
-}
 
 export function ResourceReferencePickerModal({
   open,
@@ -55,6 +51,7 @@ export function ResourceReferencePickerModal({
   onConfirm,
 }: ResourceReferencePickerModalProps) {
   const supabase = useSupabase();
+  const replaceMode = Boolean(initialTarget);
   const initialKind: ReferenceKind = initialTarget && initialTarget.kind !== 'table-row'
     ? 'document'
     : 'table';
@@ -62,9 +59,7 @@ export function ResourceReferencePickerModal({
   const [tableSources, setTableSources] = useState<TableReferenceSource[]>([]);
   const [tableRows, setTableRows] = useState<TableReferenceRows>(EMPTY_TABLE_ROWS);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
-  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [tableSearch, setTableSearch] = useState('');
+  const [selectedAssetIds, setSelectedAssetIds] = useState<ReadonlySet<string>>(new Set());
   const [documentSources, setDocumentSources] = useState<DocumentReferenceSource[]>([]);
   const [documentBlocks, setDocumentBlocks] = useState<DocumentReferenceBlock[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
@@ -121,13 +116,13 @@ export function ResourceReferencePickerModal({
       : 'table';
     setActiveKind(kind);
     setSelectedLibraryId(initialTarget?.kind === 'table-row' ? initialTarget.libraryId : null);
-    setSelectedAssetId(initialTarget?.kind === 'table-row' ? initialTarget.assetId : null);
-    setSelectedFieldId(initialTarget?.kind === 'table-row' ? initialTarget.displayFieldId : null);
+    setSelectedAssetIds(
+      initialTarget?.kind === 'table-row' ? new Set([initialTarget.assetId]) : new Set()
+    );
     setSelectedDocumentId(
       initialTarget && initialTarget.kind !== 'table-row' ? initialTarget.documentId : null
     );
     setSelectedDocumentRange(initialTarget?.kind === 'document-range' ? initialTarget : null);
-    setTableSearch('');
     setTableRows(EMPTY_TABLE_ROWS);
     setDocumentBlocks([]);
   }, [initialTarget, invalidateValidation, open]);
@@ -222,30 +217,34 @@ export function ResourceReferencePickerModal({
       });
   }, [open, projectId, selectedDocumentId, supabase]);
 
-  const selectedLibrary = tableSources.find((source) => source.id === selectedLibraryId);
-  const selectedRow = tableRows.rows.find((row) => row.id === selectedAssetId);
-  const selectedField = tableRows.fields.find((field) => field.id === selectedFieldId);
+  const displayFieldId = tableRows.fields[0]?.id ?? null;
 
-  const target = useMemo<ResourceReferenceTarget | null>(() => {
-    if (activeKind === 'table') {
-      if (!selectedLibraryId || !selectedRow || !selectedField) return null;
-      return {
-        kind: 'table-row',
+  const tableTargets = useMemo<ResourceReferenceTarget[]>(() => {
+    if (activeKind !== 'table' || !selectedLibraryId || !displayFieldId) return [];
+    return tableRows.rows
+      .filter((row) => selectedAssetIds.has(row.id))
+      .map((row) => ({
+        kind: 'table-row' as const,
         libraryId: selectedLibraryId,
-        assetId: selectedRow.id,
-        displayFieldId: selectedField.id,
-        fallbackLabel: cellDisplayString(selectedRow.values[selectedField.id]) || '(empty)',
-      };
-    }
-    return selectedDocumentRange;
+        assetId: row.id,
+        displayFieldId,
+        fallbackLabel: joinTableRowDisplayValues(tableRows.fields, row.values),
+      }));
   }, [
     activeKind,
-    selectedDocumentRange,
-    selectedField,
+    displayFieldId,
+    selectedAssetIds,
     selectedLibraryId,
-    selectedRow,
+    tableRows.fields,
+    tableRows.rows,
   ]);
-  const targetSignature = target ? JSON.stringify(target) : null;
+
+  const targets = useMemo<ResourceReferenceTarget[]>(() => {
+    if (activeKind === 'table') return tableTargets;
+    return selectedDocumentRange ? [selectedDocumentRange] : [];
+  }, [activeKind, selectedDocumentRange, tableTargets]);
+
+  const targetSignature = targets.length > 0 ? JSON.stringify(targets) : null;
   const targetSignatureRef = useRef<string | null>(targetSignature);
 
   useEffect(() => {
@@ -260,22 +259,10 @@ export function ResourceReferencePickerModal({
     ? rowsError ?? tableSourcesError
     : blocksError ?? documentSourcesError);
 
-  const filteredRows = useMemo(() => {
-    const query = searchable(tableSearch);
-    if (!query) return tableRows.rows;
-    return tableRows.rows.filter((row) =>
-      [row.name, ...Object.values(row.values).map(cellDisplayString)]
-        .join(' ')
-        .toLocaleLowerCase()
-        .includes(query)
-    );
-  }, [tableRows.rows, tableSearch]);
-
   const changeLibrary = useCallback((libraryId: string) => {
     invalidateValidation();
     setSelectedLibraryId(libraryId);
-    setSelectedAssetId(null);
-    setSelectedFieldId(null);
+    setSelectedAssetIds(new Set());
     setTableRows(EMPTY_TABLE_ROWS);
     setRowsError(null);
     setValidationError(null);
@@ -290,17 +277,26 @@ export function ResourceReferencePickerModal({
     setValidationError(null);
   }, [invalidateValidation]);
 
-  const selectAsset = useCallback((assetId: string) => {
+  const toggleAsset = useCallback((assetId: string) => {
     invalidateValidation();
-    setSelectedAssetId(assetId);
     setValidationError(null);
-  }, [invalidateValidation]);
+    setSelectedAssetIds((previous) => {
+      if (replaceMode) return new Set([assetId]);
+      const next = new Set(previous);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  }, [invalidateValidation, replaceMode]);
 
-  const selectField = useCallback((fieldId: string) => {
+  const toggleAllAssets = useCallback((selectAll: boolean) => {
+    if (replaceMode) return;
     invalidateValidation();
-    setSelectedFieldId(fieldId);
     setValidationError(null);
-  }, [invalidateValidation]);
+    setSelectedAssetIds(
+      selectAll ? new Set(tableRows.rows.map((row) => row.id)) : new Set()
+    );
+  }, [invalidateValidation, replaceMode, tableRows.rows]);
 
   const selectDocumentText = useCallback((selection: DocumentPreviewSelection | null) => {
     invalidateValidation();
@@ -318,14 +314,16 @@ export function ResourceReferencePickerModal({
   }, [documentBlocks, invalidateValidation, selectedDocumentId]);
 
   const confirm = useCallback(async () => {
-    if (!open || !target || !targetSignature || activeValidation.current !== null) return;
+    if (!open || targets.length === 0 || !targetSignature || activeValidation.current !== null) {
+      return;
+    }
     const request = ++validationRequest.current;
     const generation = openGeneration.current;
     activeValidation.current = request;
     setValidating(true);
     setValidationError(null);
     try {
-      const resolved = await resolveResourceReferences(supabase, projectId, [target]);
+      const resolved = await resolveResourceReferences(supabase, projectId, targets);
       if (
         request !== validationRequest.current ||
         generation !== openGeneration.current ||
@@ -333,11 +331,13 @@ export function ResourceReferencePickerModal({
       ) {
         return;
       }
-      if (resolved.get(resourceReferenceKey(target))?.status !== 'available') {
+      if (targets.some((target) =>
+        resolved.get(resourceReferenceKey(target))?.status !== 'available'
+      )) {
         setValidationError(UNAVAILABLE_ERROR);
         return;
       }
-      onConfirm(target);
+      onConfirm(targets);
     } catch {
       if (
         request === validationRequest.current &&
@@ -352,7 +352,7 @@ export function ResourceReferencePickerModal({
         setValidating(false);
       }
     }
-  }, [onConfirm, open, projectId, supabase, target, targetSignature]);
+  }, [onConfirm, open, projectId, supabase, targetSignature, targets]);
 
   const cancel = useCallback(() => {
     openGeneration.current += 1;
@@ -373,39 +373,17 @@ export function ResourceReferencePickerModal({
         options={tableSources.map((source) => ({ label: source.name, value: source.id }))}
         onChange={changeLibrary}
       />
-      <div className={styles.rowToolbar}>
-        <Input
-          aria-label="Search table rows"
-          placeholder="Search rows"
-          allowClear
-          value={tableSearch}
-          onChange={(event) => setTableSearch(event.target.value)}
-        />
-        <Select
-          aria-label="Display field"
-          placeholder="Display field"
-          showSearch
-          optionFilterProp="label"
-          value={selectedFieldId ?? undefined}
-          disabled={!selectedAssetId}
-          options={tableRows.fields.map((field) => ({ label: field.label, value: field.id }))}
-          onChange={selectField}
-        />
-      </div>
       <Spin aria-label="Loading table rows" spinning={loadingRows}>
-        <ResourceReferenceResultList
+        <ResourceReferenceTableRowList
           ariaLabel="Table rows"
           idPrefix="table-reference-row"
-          items={filteredRows}
-          selectedId={selectedAssetId}
+          fields={tableRows.fields}
+          rows={tableRows.rows}
+          selectedIds={selectedAssetIds}
+          singleSelect={replaceMode}
           emptyText={selectedLibraryId ? 'No matching rows' : 'Choose a table'}
-          getId={(row) => row.id}
-          getTitle={(row) => row.name}
-          getDescription={(row) => `${selectedLibrary?.name ?? 'Table'} / ${row.name}${
-            selectedField ? ` / ${selectedField.label}` : ''
-          }`}
-          getAriaLabel={(row) => `Row: ${row.name}`}
-          onSelect={(row) => selectAsset(row.id)}
+          onToggle={toggleAsset}
+          onToggleAll={toggleAllAssets}
         />
       </Spin>
     </div>
@@ -439,14 +417,22 @@ export function ResourceReferencePickerModal({
       open={open}
       title="Insert reference"
       className={styles.modal}
+      rootClassName={styles.modalRoot}
+      centered
       width={560}
-      okText={initialTarget ? 'Replace' : 'Insert'}
+      okText={replaceMode ? 'Replace' : 'Insert'}
       cancelText="Cancel"
       confirmLoading={validating}
-      okButtonProps={{ disabled: !target || loadingSources || loadingTargets || validating }}
+      okButtonProps={{
+        disabled: targets.length === 0 || loadingSources || loadingTargets || validating,
+      }}
       onCancel={cancel}
       onOk={confirm}
       destroyOnHidden
+      styles={{
+        body: { overflow: 'hidden', maxWidth: '100%' },
+        content: { overflow: 'hidden', maxWidth: '100%' },
+      }}
     >
       {visibleError && (
         <Alert className={styles.alert} type="error" showIcon message={visibleError} />

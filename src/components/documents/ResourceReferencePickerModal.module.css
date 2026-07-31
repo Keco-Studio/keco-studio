@@ -1,6 +1,20 @@
+.modalRoot :global(.ant-modal) {
+  width: 560px !important;
+  max-width: calc(100vw - 32px);
+  padding-bottom: 0;
+}
+
 .modal :global(.ant-modal-content) {
   padding: 18px 20px 16px;
   border-radius: 8px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.modal :global(.ant-modal-body) {
+  overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .modal :global(.ant-modal-header) {
@@ -15,10 +29,23 @@
   padding: 7px 0;
 }
 
+.modal :global(.ant-tabs),
+.modal :global(.ant-tabs-content-holder),
+.modal :global(.ant-tabs-content),
+.modal :global(.ant-tabs-tabpane),
+.modal :global(.ant-spin-nested-loading),
+.modal :global(.ant-spin-container) {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .panel {
   display: grid;
   gap: 10px;
-  min-height: 330px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  min-height: 260px;
 }
 
 .sourceSelect {
@@ -45,8 +72,78 @@
 
 .rowToolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.55fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+}
+
+.tableScroll {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  height: 200px;
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.tableScroll:focus-visible {
+  outline: 2px solid var(--ant-color-primary-border, #91caff);
+  outline-offset: 1px;
+}
+
+.referenceTable {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.referenceTable th,
+.referenceTable td {
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  vertical-align: middle;
+}
+
+.referenceTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ant-color-fill-alter, #fafafa);
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+  font-weight: 500;
+  border-bottom-color: var(--ant-color-border, #f0f0f0);
+}
+
+.referenceTable tbody tr {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.referenceTable tbody tr:hover {
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+}
+
+.activeTableRow {
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+}
+
+.selectedTableRow,
+.selectedTableRow:hover {
+  background: var(--ant-color-primary-bg, #e6f4ff) !important;
+}
+
+.checkboxCell {
+  width: 36px;
+  min-width: 36px;
+  padding-right: 4px !important;
 }
 
 .resultList {
@@ -57,7 +154,7 @@
 }
 
 .documentPreview {
-  height: 270px;
+  height: 220px;
   overflow-y: auto;
   padding: 14px 16px;
   border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
@@ -100,10 +197,29 @@
 .resultRow,
 .activeRow,
 .selectedRow {
-  min-height: 52px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 40px;
   padding: 7px 10px !important;
   cursor: pointer;
   transition: background-color 120ms ease;
+}
+
+.rowCheckbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  vertical-align: middle;
+  pointer-events: none;
+}
+
+.headerCheckbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  vertical-align: middle;
+  cursor: pointer;
 }
 
 .resultRow:hover {
@@ -157,7 +273,7 @@
 }
 
 @media (max-width: 560px) {
-  .modal {
+  .modalRoot :global(.ant-modal) {
     max-width: calc(100vw - 24px);
   }
 
@@ -169,7 +285,8 @@
 @media (prefers-reduced-motion: reduce) {
   .resultRow,
   .activeRow,
-  .selectedRow {
+  .selectedRow,
+  .referenceTable tbody tr {
     transition: none;
   }
 }

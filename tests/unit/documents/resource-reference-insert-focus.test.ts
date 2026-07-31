@@ -26,6 +26,12 @@ const TABLE_TARGET: ResourceReferenceTarget = {
   fallbackLabel: 'Ada',
 };
 
+const SECOND_TARGET: ResourceReferenceTarget = {
+  ...TABLE_TARGET,
+  assetId: '33333333-3333-4333-8333-333333333333',
+  fallbackLabel: 'Byron',
+};
+
 describe('resource reference insert at cursor', () => {
   it('restores editor focus before applying insertion', () => {
     const order: string[] = [];
@@ -37,12 +43,31 @@ describe('resource reference insert at cursor', () => {
 
     confirmResourceReferenceSelection(
       { apply },
-      TABLE_TARGET,
+      [TABLE_TARGET],
       restoreFocus
     );
 
     expect(order).toEqual(['focus', 'apply']);
-    expect(apply).toHaveBeenCalledWith(TABLE_TARGET);
+    expect(apply).toHaveBeenCalledWith([TABLE_TARGET]);
+  });
+
+  it('applies multiple targets after a single focus restore', () => {
+    const order: string[] = [];
+    const apply = jest.fn(() => order.push('apply'));
+    const restoreFocus: RestoreEditorFocus = (after) => {
+      order.push('focus');
+      after?.();
+    };
+
+    confirmResourceReferenceSelection(
+      { apply },
+      [TABLE_TARGET, SECOND_TARGET],
+      restoreFocus
+    );
+
+    expect(order).toEqual(['focus', 'apply']);
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply.mock.calls[0][0]).toHaveLength(2);
   });
 
   it('wires restoreEditorFocus to insert only after Lexical focus callback', () => {
@@ -99,15 +124,15 @@ describe('resource reference insert at cursor', () => {
     });
   });
 
-  it('wires the insert button to restore the captured selection before insertJsx', () => {
+  it('wires the insert button to restore selection once then insert each target', () => {
     const button = readFileSync(
       join(process.cwd(), 'src/components/documents/ResourceReferenceInsertButton.tsx'),
       'utf8'
     );
     expect(button).toContain('captureRangeSelection(activeEditor)');
     expect(button).toContain('restoreRangeSelection(activeEditor, selection)');
-    expect(button).toMatch(
-      /restoreRangeSelection\(activeEditor, selection\);\s*insertJsx\(/
-    );
+    expect(button).toContain('targets.forEach');
+    expect(button).toContain("current.insertText(' ')");
+    expect(button).toContain('insertJsx({');
   });
 });

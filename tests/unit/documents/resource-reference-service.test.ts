@@ -205,7 +205,7 @@ describe('resolveResourceReferences', () => {
         key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
         status: 'available',
         label: 'Active',
-        contextLabel: 'Characters / Ada / Status',
+        contextLabel: 'Characters / Ada',
         href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
       },
     ]);
@@ -221,7 +221,7 @@ describe('resolveResourceReferences', () => {
     }
   });
 
-  it('queries only exact requested table value pairs', async () => {
+  it('loads all asset values for referenced rows', async () => {
     const otherAssetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const targets = [
       tableTarget(),
@@ -250,14 +250,13 @@ describe('resolveResourceReferences', () => {
     );
     expect(valueQueries).toHaveLength(1);
     expect(valueQueries[0]?.filters).toContainEqual([
-      'or',
-      '',
-      `and(asset_id.eq.${ASSET_ID},field_id.eq.${FIELD_ID}),` +
-        `and(asset_id.eq.${otherAssetId},field_id.eq.${OTHER_FIELD_ID})`,
+      'in',
+      'asset_id',
+      [ASSET_ID, otherAssetId],
     ]);
   });
 
-  it('batches more than 100 exact value pairs without one query per field', async () => {
+  it('batches more than 100 assets without one query per asset', async () => {
     const fixtures = Array.from({ length: 101 }, (_, index) => {
       const libraryId = indexedUuid('10000000', index);
       const assetId = indexedUuid('20000000', index);
@@ -299,8 +298,8 @@ describe('resolveResourceReferences', () => {
     );
     expect(valueQueries).toHaveLength(2);
     expect(valueQueries.map((query) => {
-      const filter = query.filters.find(([operation]) => operation === 'or')?.[2];
-      return Array.from(String(filter).matchAll(/and\(/g)).length;
+      const filter = query.filters.find(([operation]) => operation === 'in')?.[2];
+      return Array.isArray(filter) ? filter.length : 0;
     })).toEqual([100, 1]);
     for (const table of [
       'libraries',
@@ -315,6 +314,30 @@ describe('resolveResourceReferences', () => {
         [table, 'range', { from: 0, to: 999 }],
       ]);
     }
+  });
+
+  it('labels table references with all field values in order, not only displayFieldId', async () => {
+    const target = tableTarget();
+    const { client } = makeClient({
+      libraries: [{ id: LIBRARY_ID, project_id: PROJECT_ID, name: 'Characters' }],
+      library_assets: [{ id: ASSET_ID, library_id: LIBRARY_ID, name: 'Ada' }],
+      library_field_definitions: [
+        { id: OTHER_FIELD_ID, library_id: LIBRARY_ID, label: 'Name', order_index: 1 },
+        { id: FIELD_ID, library_id: LIBRARY_ID, label: 'Status', order_index: 2 },
+      ],
+      library_asset_values: [
+        { asset_id: ASSET_ID, field_id: OTHER_FIELD_ID, value_json: 'Ada Lovelace' },
+        { asset_id: ASSET_ID, field_id: FIELD_ID, value_json: 'Active' },
+      ],
+    });
+
+    const resolved = await resolveResourceReferences(client, PROJECT_ID, [target]);
+
+    expect(resolved.get(resourceReferenceKey(target))).toMatchObject({
+      status: 'available',
+      label: 'Ada Lovelace · Active',
+      contextLabel: 'Characters / Ada',
+    });
   });
 
   it('uses the existing empty-field label when the field has no value row', async () => {
@@ -336,7 +359,7 @@ describe('resolveResourceReferences', () => {
             key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
             status: 'available',
             label: '(empty)',
-            contextLabel: 'Characters / Ada / Status',
+            contextLabel: 'Characters / Ada',
             href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
           },
         ],

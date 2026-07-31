@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { LoginPage } from '../pages/login.page';
 import { ProjectPage } from '../pages/project.page';
 import { users } from '../fixures/users';
@@ -158,6 +158,13 @@ test.describe('Resource Creation Authorization', () => {
 test.describe('Session Management', () => {
   test.skip(!isRealSupabase, 'Requires real Supabase credentials for login/logout');
 
+  async function expectAuthFormVisible(page: Page): Promise<void> {
+    // Prefer the login heading: Login button can be briefly absent while AuthForm Suspense
+    // falls back, and DashboardLayout returns null during auth rehydrate.
+    await expect(page.getByRole('heading', { name: /login to/i })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('user-menu')).toHaveCount(0);
+  }
+
   test('should invalidate session after logout', async ({ page }) => {
     const loginPage = new LoginPage(page);
     
@@ -181,13 +188,13 @@ test.describe('Session Management', () => {
     await expect(logoutButton).toBeVisible({ timeout: 5000 });
     await logoutButton.click();
     
-    // Step 4: Should be redirected to login page
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    // Step 4: Auth form should appear (do not assert raw cookie count — Supabase may
+    // leave empty auth-token cookie shells after signOut).
+    await expectAuthFormVisible(page);
     
     // Step 5: Try to access projects page - should be blocked
-    await page.goto('/projects');
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 10000 });
+    await page.goto('/projects', { waitUntil: 'domcontentloaded' });
+    await expectAuthFormVisible(page);
   });
 
   test('should require re-authentication after logout', async ({ page }) => {
@@ -205,14 +212,11 @@ test.describe('Session Management', () => {
     await expect(logoutButton).toBeVisible({ timeout: 5000 });
     await logoutButton.click();
     
-    // Should be logged out
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 15000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
+    await expectAuthFormVisible(page);
     
     // Try to access projects - should show login
     await page.goto('/projects', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('user-menu')).toHaveCount(0, { timeout: 10000 });
-    await expect(page.getByRole('heading', { name: /login/i })).toBeVisible({ timeout: 15000 });
+    await expectAuthFormVisible(page);
     
     // Should be able to login again
     await loginPage.login(users.seedEmpty);

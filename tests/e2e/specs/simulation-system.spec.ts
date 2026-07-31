@@ -1,4 +1,4 @@
-import { test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LoginPage } from '../pages/login.page';
 import { SimulationSystemPage } from '../pages/simulation-system.page';
@@ -22,6 +22,26 @@ type FixtureField = {
   label: string;
   dataType: 'string' | 'float';
 };
+
+async function dragMappingCard(page: Page, sourceName: string, targetSelector: string): Promise<void> {
+  const source = page.getByRole('button', { name: `Drag ${sourceName}`, exact: true });
+  const target = page.locator(targetSelector);
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+  await source.waitFor({ state: 'visible' });
+  await target.waitFor({ state: 'visible' });
+
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error(`Could not drag ${sourceName}: missing bounds`);
+
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 8,
+  });
+  await page.mouse.up();
+}
 
 async function createSimulationLibrary(
   admin: SupabaseClient,
@@ -102,14 +122,15 @@ async function createSimulationFixtures(
       { label: 'id', dataType: 'string' },
       { label: 'name', dataType: 'string' },
       { label: 'element', dataType: 'string' },
+      { label: 'class name', dataType: 'string' },
       { label: 'base hp', dataType: 'float' },
       { label: 'base atk', dataType: 'float' },
       { label: 'base def', dataType: 'float' },
       { label: 'base spd', dataType: 'float' },
       { label: 'base mp', dataType: 'float' },
     ], [
-      { name: 'Ignara', values: { id: 'ignara', name: 'Ignara', element: 'Fire', 'base hp': 520, 'base atk': 88, 'base def': 30, 'base spd': 42, 'base mp': 120 } },
-      { name: 'Bramwell', values: { id: 'bramwell', name: 'Bramwell', element: 'Earth', 'base hp': 940, 'base atk': 62, 'base def': 78, 'base spd': 24, 'base mp': 60 } },
+      { name: 'Ignara', values: { id: 'ignara', name: 'Ignara', element: 'Fire', 'class name': 'Mage', 'base hp': 520, 'base atk': 88, 'base def': 30, 'base spd': 42, 'base mp': 120 } },
+      { name: 'Bramwell', values: { id: 'bramwell', name: 'Bramwell', element: 'Earth', 'class name': 'Guardian', 'base hp': 940, 'base atk': 62, 'base def': 78, 'base spd': 24, 'base mp': 60 } },
     ]),
     createSimulationLibrary(admin, projectId, names.skills, [
       { label: 'id', dataType: 'string' },
@@ -180,5 +201,68 @@ test.describe('Native simulation system', () => {
     await simulation.importLibraries(libraryNames);
     await simulation.configureTeamsAndSkills();
     await simulation.startBattleAndExpectRestoration();
+  });
+
+  test('reorders mapped fields and moves columns through the Unmapped pool', async ({ page }) => {
+    await login(page);
+    const simulation = new SimulationSystemPage(page);
+    await simulation.mockAiFieldMapping();
+    await simulation.goto();
+    await simulation.selectLibrary('Characters', libraryNames.characters);
+
+    // Character SIM field ids use `el` (not `element`); aria-labels use Studio column names.
+    const nameSlot = page.locator('[data-mapping-drop="slot:name"]');
+    const elementSlot = page.locator('[data-mapping-drop="slot:el"]');
+    const unmapped = page.getByTestId('mapping-unmapped');
+    await expect(nameSlot.getByRole('button', { name: 'Drag name' })).toBeVisible({ timeout: 30_000 });
+    await expect(elementSlot.getByRole('button', { name: 'Drag element' })).toBeVisible();
+    await expect(unmapped.getByRole('button', { name: 'Drag class name' })).toBeVisible();
+
+    await dragMappingCard(page, 'element', '[data-mapping-drop="slot:name"]');
+    await expect(nameSlot.getByRole('button', { name: 'Drag element' })).toBeVisible();
+    await expect(elementSlot.getByRole('button', { name: 'Drag name' })).toBeVisible();
+
+    await dragMappingCard(page, 'class name', '[data-mapping-drop="slot:el"]');
+    await expect(elementSlot.getByRole('button', { name: 'Drag class name' })).toBeVisible();
+    await expect(unmapped.getByRole('button', { name: 'Drag name' })).toBeVisible();
+
+    await dragMappingCard(page, 'class name', '[data-mapping-drop="unmapped"]');
+    await expect(elementSlot.getByText('Drop a source column', { exact: true })).toBeVisible();
+    await expect(unmapped.getByRole('button', { name: 'Drag class name' })).toBeVisible();
+  });
+
+  test('keeps manual field mapping available when AI mapping fails', async ({ page }) => {
+    await login(page);
+    const simulation = new SimulationSystemPage(page);
+    await page.route('**/api/simulation/field-mapping', async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Synthetic mapping failure' }),
+      });
+    });
+    await simulation.goto();
+    await simulation.selectLibrary('Characters', libraryNames.characters);
+
+    await expect(
+      page.getByText('AI mapping failed - map manually', { exact: true })
+    ).toBeVisible({ timeout: 30_000 });
+    const nameSlot = page.locator('[data-mapping-drop="slot:name"]');
+    const unmapped = page.getByTestId('mapping-unmapped');
+    // On AI failure ImportScreen still runs finalizeFieldMapping (alias + positional),
+    // so known columns like `name` land in slots; leftovers stay in Unmapped.
+    await expect(nameSlot.getByRole('button', { name: 'Drag name' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(unmapped.getByRole('button', { name: 'Drag class name' })).toBeVisible();
+
+    // Manual remap must still work after the AI error path.
+    await dragMappingCard(page, 'name', '[data-mapping-drop="unmapped"]');
+    await expect(nameSlot.getByText('Drop a source column', { exact: true })).toBeVisible();
+    await expect(unmapped.getByRole('button', { name: 'Drag name' })).toBeVisible();
+
+    await dragMappingCard(page, 'name', '[data-mapping-drop="slot:name"]');
+    await expect(nameSlot.getByRole('button', { name: 'Drag name' })).toBeVisible();
+    await expect(unmapped.getByRole('button', { name: 'Drag name' })).toHaveCount(0);
   });
 });

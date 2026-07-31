@@ -24,6 +24,8 @@ const TABLE_NAME = 'Reference smoke table';
 const ROW_NAME = 'Reference smoke row';
 const FIELD_NAME = 'Current label';
 const TABLE_LABEL = 'Compact table label';
+/** Whole-row chips expose `library / row: joined cell values` (no field name). */
+const TABLE_REFERENCE_NAME = `${TABLE_NAME} / ${ROW_NAME}: ${TABLE_LABEL}`;
 const SOURCE_DOCUMENT_NAME = 'Reference smoke source';
 const SOURCE_HEADING = 'Reference smoke heading';
 const SOURCE_PARAGRAPH = 'Reference smoke paragraph starts here';
@@ -92,11 +94,7 @@ async function insertTableReference(page: Page): Promise<void> {
   await tableSelect.click();
   await tableSelect.fill(TABLE_NAME);
   await tableSelect.press('Enter');
-  await dialog.getByRole('option', { name: `Row: ${ROW_NAME}` }).click();
-  const fieldSelect = dialog.getByRole('combobox', { name: 'Display field', exact: true });
-  await fieldSelect.click();
-  await fieldSelect.fill(FIELD_NAME);
-  await fieldSelect.press('Enter');
+  await dialog.getByRole('option', { name: `Row: ${TABLE_LABEL}` }).click();
   await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
   await expect(dialog).toBeHidden();
 }
@@ -290,7 +288,7 @@ test.describe.serial('Document references smoke', () => {
     await editor.click();
 
     await insertTableReference(page);
-    await expect(page.getByRole('link', { name: `${TABLE_NAME} / ${ROW_NAME} / ${FIELD_NAME}: ${TABLE_LABEL}` }))
+    await expect(page.getByRole('link', { name: TABLE_REFERENCE_NAME }))
       .toHaveText(TABLE_LABEL);
 
     await editor.click();
@@ -298,7 +296,7 @@ test.describe.serial('Document references smoke', () => {
     await insertDocumentReference(page);
 
     const tableReference = page.getByRole('link', {
-      name: `${TABLE_NAME} / ${ROW_NAME} / ${FIELD_NAME}: ${TABLE_LABEL}`,
+      name: TABLE_REFERENCE_NAME,
     });
     const documentReference = page.locator(
       `a[href$="#block-${sourceBlockId}"]`

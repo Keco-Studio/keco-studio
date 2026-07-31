@@ -92,6 +92,11 @@
   transition: border-color 120ms ease, background-color 120ms ease;
 }
 
+.resourceReferenceIcon {
+  flex-shrink: 0;
+  display: block;
+}
+
 .resourceReference > span:last-child {
   white-space: normal;
   overflow-wrap: anywhere;

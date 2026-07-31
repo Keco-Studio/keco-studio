@@ -1,7 +1,13 @@
 .sidebar {
+  box-sizing: border-box;
   min-width: 280px;
   width: min(320px, 100%);
-  padding: 16px;
+  /* Stick under the TopBar (4rem) for the full content viewport height. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: calc(100vh - 4rem);
+  padding: 12px 16px 16px;
   border-left: 1px solid var(--ant-color-border, #d9d9d9);
   background: var(--ant-color-bg-container, #fff);
   overflow: auto;
@@ -12,7 +18,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .header h2 {
