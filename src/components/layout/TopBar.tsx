@@ -22,6 +22,8 @@ import topBarBreadCrumbIcon from '@/assets/images/topBarBreadCrumbIcon.svg';
 import menuIcon from '@/assets/images/menuIcon36.svg';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { LibraryHeader } from '@/components/libraries/LibraryHeader';
+import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import searchIcon from "@/assets/images/searchIcon.svg";
 import { useSidebarProjects } from './hooks/useSidebarProjects';
@@ -81,6 +83,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
   const [documentLiveLabel, setDocumentLiveLabel] = useState('Live');
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const documentExportItems = useMemo<DocumentExportItem[]>(
     () => [
       { key: 'docx', label: 'Download DOCX' },
@@ -909,6 +912,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
   const isDocumentDetail = !!currentDocumentId;
+  const shareProjectName =
+    projects.find((p) => p.id === currentProjectId)?.name?.trim() || 'Project';
   const isProjectRootPage =
     !!currentProjectId && !currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
   const isFolderPage =
@@ -1046,12 +1051,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         })
       );
     }
-  };
-
-  const handleShareClick = () => {
-    // Placeholder share behavior
-    // eslint-disable-next-line no-console
-    console.log('Share asset');
   };
 
   const handleSidebarToggle = () => {
@@ -1263,7 +1262,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             className={styles.documentShareButton}
             aria-label="Share"
             title="Share"
-            onClick={handleShareClick}
+            onClick={() => setShowInviteModal(true)}
           >
             Share
           </button>
@@ -1888,6 +1887,20 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         ) : null}
       </Modal>
+
+      {isDocumentDetail && currentProjectId && (
+        <InviteCollaboratorModal
+          projectId={currentProjectId}
+          projectName={shareProjectName}
+          userRole={(userRole || 'viewer') as CollaboratorRole}
+          open={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          onSuccess={(_email, message) => {
+            showSuccessToast(message);
+          }}
+          title={`Share ${shareProjectName}..`}
+        />
+      )}
     </header>
   );
 }
