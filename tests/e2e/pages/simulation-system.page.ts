@@ -14,7 +14,15 @@ export class SimulationSystemPage {
   async goto(): Promise<void> {
     await this.page.goto('/simulation-system', { waitUntil: 'domcontentloaded' });
     await expect(this.root).toBeVisible({ timeout: 30000 });
-    await expect(this.page.getByRole('heading', { name: 'Import Studio libraries' })).toBeVisible();
+    // Serial specs share one user; a prior test may have persisted an active
+    // session, so the workbench restores to characters/battle instead of import.
+    await this.page
+      .getByRole('navigation', { name: 'Simulation screens' })
+      .getByRole('menuitem', { name: 'Import' })
+      .click();
+    await expect(this.page.getByRole('heading', { name: 'Import Studio libraries' })).toBeVisible({
+      timeout: 15000,
+    });
   }
 
   async mockAiFieldMapping(): Promise<void> {
