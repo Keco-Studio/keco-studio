@@ -47,6 +47,7 @@ import { showErrorToast, showSuccessToast } from "@/lib/utils/toast";
 import { resolveSidebarDrop } from "./sidebarTreeDnD";
 import type { SidebarTreeDropInfo } from "./components/SidebarTreeView";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
+import { EditDocumentModal } from "@/components/documents/EditDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
@@ -198,6 +199,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     showDocumentModal,
     openNewDocument,
     closeDocumentModal,
+    showEditDocumentModal,
+    editingDocumentId,
+    openEditDocument,
+    closeEditDocumentModal,
   } = modals;
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -1122,6 +1127,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     router,
     openEditProject,
     openEditLibrary,
+    openEditDocument,
     openDuplicateLibrary,
     openExportLibrary,
     openImportLibrary,
@@ -1566,6 +1572,24 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         folderId={selectedFolderId}
         onCreated={handleDocumentCreated}
       />
+
+      {editingDocumentId && (
+        <EditDocumentModal
+          open={showEditDocumentModal}
+          documentId={editingDocumentId}
+          onClose={closeEditDocumentModal}
+          onUpdated={() => {
+            if (currentIds.projectId) {
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.documents(currentIds.projectId),
+              });
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.document(editingDocumentId),
+              });
+            }
+          }}
+        />
+      )}
 
       <ImportDocumentModal
         open={showImportDocumentModal}

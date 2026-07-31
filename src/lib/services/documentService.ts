@@ -29,6 +29,7 @@ export type DocumentRecord = {
   folder_id: string | null;
   parent_document_id: string | null;
   name: string;
+  description: string;
   content: string;
   created_by: string | null;
   created_at: string;
@@ -38,13 +39,20 @@ export type DocumentRecord = {
 /** Lightweight row for the sidebar tree: excludes the (potentially large) content. */
 export type DocumentSummary = Pick<
   DocumentRecord,
-  'id' | 'project_id' | 'folder_id' | 'parent_document_id' | 'name' | 'created_at' | 'updated_at'
+  | 'id'
+  | 'project_id'
+  | 'folder_id'
+  | 'parent_document_id'
+  | 'name'
+  | 'description'
+  | 'created_at'
+  | 'updated_at'
 >;
 
 const DOCUMENT_RECORD_COLUMNS =
-  'id, project_id, folder_id, parent_document_id, name, content, created_by, created_at, updated_at';
+  'id, project_id, folder_id, parent_document_id, name, description, content, created_by, created_at, updated_at';
 const DOCUMENT_SUMMARY_COLUMNS =
-  'id, project_id, folder_id, parent_document_id, name, created_at, updated_at';
+  'id, project_id, folder_id, parent_document_id, name, description, created_at, updated_at';
 const DOCUMENT_LIST_PAGE_SIZE = 1000;
 
 /**
@@ -178,6 +186,7 @@ export async function getDocument(
 type CreateDocumentInput = {
   projectId: string;
   name: string;
+  description?: string;
   folderId?: string | null;
   content?: string;
 };
@@ -205,12 +214,15 @@ export async function createDocument(
     folderId = await assertFolderInProject(supabase, input.folderId, input.projectId);
   }
 
+  const description = (input.description ?? '').trim();
+
   const { data, error } = await supabase
     .from('documents')
     .insert({
       project_id: input.projectId,
       folder_id: folderId,
       name,
+      description,
       content: input.content ?? '',
       created_by: createdBy,
     })
@@ -230,20 +242,40 @@ export async function updateDocumentName(
   documentId: string,
   name: string
 ): Promise<void> {
+  await updateDocumentMetadata(supabase, documentId, { name });
+}
+
+/** Update document name and/or notes (description). */
+export async function updateDocumentMetadata(
+  supabase: SupabaseClient,
+  documentId: string,
+  updates: { name?: string; description?: string }
+): Promise<void> {
   if (!isUuid(documentId)) {
     throw new Error('Invalid document ID format');
-  }
-  const trimmed = name.trim();
-  if (!trimmed) {
-    throw new Error('Document name cannot be empty');
   }
 
   const projectId = await getDocumentProjectId(supabase, documentId);
   await verifyDocumentWritePermission(supabase, projectId);
 
+  const payload: { name?: string; description?: string } = {};
+  if (updates.name !== undefined) {
+    const trimmed = updates.name.trim();
+    if (!trimmed) {
+      throw new Error('Document name cannot be empty');
+    }
+    payload.name = trimmed;
+  }
+  if (updates.description !== undefined) {
+    payload.description = updates.description.trim();
+  }
+  if (Object.keys(payload).length === 0) {
+    return;
+  }
+
   const { error } = await supabase
     .from('documents')
-    .update({ name: trimmed })
+    .update(payload)
     .eq('id', documentId);
 
   if (error) {

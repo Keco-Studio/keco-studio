@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
 import { createCharSnapshot, EL, sortRosterByTeam } from '@/lib/simulation/data';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
 import type { ElementName, Team } from '@/lib/simulation/types';
-import trashIcon from '@/assets/images/simulator/trash-2.svg';
 import { SimulationButton } from './SimulationButton';
 import styles from './SimulationWorkbench.module.css';
 
@@ -207,14 +205,14 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
   }
 
   return (
-    <div style={{ maxWidth: 1000, width: '100%', margin: '0 auto' }}>
+    <div style={{ maxWidth: 1000 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
         <div>
           <h1 style={{ fontSize: 27, fontWeight: 600, color: 'var(--ink-900)', margin: '0 0 6px', letterSpacing: '-.01em' }}>
             Configure characters
           </h1>
           <p style={{ color: 'var(--ink-500)', fontSize: 15, margin: 0, maxWidth: 620, lineHeight: 1.55 }}>
-            Pick the fighters that take the field and split them into Team A and Team B.
+            Pick the fighters that take the field and split them into Team A (yours) and Team B (enemy).
           </p>
         </div>
         <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -341,8 +339,8 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
             {[
-              { key: 'A', label: 'Team A', count: counts.A, color: 'var(--keco-blue)' },
-              { key: 'B', label: 'Team B', count: counts.B, color: 'var(--keco-pink-strong)' },
+              { key: 'A', label: 'Team A · Yours', count: counts.A, color: 'var(--keco-blue)' },
+              { key: 'B', label: 'Team B · Enemy', count: counts.B, color: 'var(--keco-pink-strong)' },
             ].map((card) => (
               <div
                 key={card.key}
@@ -501,17 +499,16 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
                         borderRadius: 7,
                         border: 'none',
                         background: 'transparent',
+                        color: 'var(--keco-danger)',
                         cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 0,
+                        fontSize: 15,
+                        lineHeight: 1,
                         opacity: isHovered ? 1 : 0,
                         pointerEvents: isHovered ? 'auto' : 'none',
                         transition: 'opacity .15s ease',
                       }}
                     >
-                      <Image src={trashIcon} alt="" width={16} height={16} aria-hidden="true" />
+                      🗑
                     </button>
                   </div>
                 </div>

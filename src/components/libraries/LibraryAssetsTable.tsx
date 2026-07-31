@@ -621,9 +621,11 @@ export function LibraryAssetsTable({
     fillDragStartCell,
     hoveredCellForExpand,
     setHoveredCellForExpand,
+    expandedTextCell,
     isFillingCellsRef,
     handleRowSelectionToggle,
     handleCellClick,
+    handleTextCellExpandClick,
     handleCellFillDragStart,
     handleCellDragStart,
     handleSelectedCellArrowNavigation,
@@ -1093,6 +1095,7 @@ export function LibraryAssetsTable({
               cutCells={cutCells}
               copyCells={copyCells}
               hoveredCellForExpand={hoveredCellForExpand}
+              expandedTextCell={expandedTextCell}
               cutSelectionBounds={cutSelectionBounds}
               copySelectionBounds={copySelectionBounds}
               fillDragStartCell={fillDragStartCell}
@@ -1129,6 +1132,7 @@ export function LibraryAssetsTable({
               onCellFocus={handleCellFocus}
               onCellBlur={handleCellBlur}
               onCellClick={handleCellClick}
+              onTextCellExpandClick={handleTextCellExpandClick}
               onCellContextMenu={handleCellContextMenu}
               onCellFillDragStart={handleCellFillDragStart}
               onCellDragStart={handleCellDragStart}
@@ -1148,6 +1152,21 @@ export function LibraryAssetsTable({
           )}
         </div>
       </div>
+
+      <LibraryAssetDetailDrawerWiring
+        rowId={detailDrawerRowId}
+        rows={displayRows}
+        orderedProperties={activeProperties}
+        userRole={userRole}
+        onUpdateRow={handleUpdateRowFromDrawer}
+        onMediaFileChange={handleEditMediaFileChange}
+        onOpenReferenceModal={handleOpenReferenceModal}
+        assetNamesCache={assetNamesCache}
+        avatarRefs={avatarRefs}
+        onAvatarMouseEnter={handleAvatarMouseEnter}
+        onAvatarMouseLeave={handleAvatarMouseLeave}
+        onClose={() => setDetailDrawerRowId(null)}
+      />
 
       {/* Reference Selection Modal */}
       {referenceModalProperty && (
@@ -1203,21 +1222,6 @@ export function LibraryAssetsTable({
         onMouseLeave={handleAssetCardMouseLeave}
         onLibraryClick={params?.projectId ? (libraryId) => router.push(`/${params.projectId}/${libraryId}`) : undefined}
         containerRef={setAssetCardRef}
-      />
-
-      <LibraryAssetDetailDrawerWiring
-        rowId={detailDrawerRowId}
-        rows={displayRows}
-        orderedProperties={activeProperties}
-        userRole={userRole}
-        onUpdateRow={handleUpdateRowFromDrawer}
-        onMediaFileChange={handleEditMediaFileChange}
-        onOpenReferenceModal={handleOpenReferenceModal}
-        assetNamesCache={assetNamesCache}
-        avatarRefs={avatarRefs}
-        onAvatarMouseEnter={handleAvatarMouseEnter}
-        onAvatarMouseLeave={handleAvatarMouseLeave}
-        onClose={() => setDetailDrawerRowId(null)}
       />
 
       <RowContextMenu

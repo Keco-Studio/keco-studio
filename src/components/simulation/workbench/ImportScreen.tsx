@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -91,6 +92,32 @@ function formatLibraryLabel(
 const ROW_H = 44;
 const BOX_PAD = '0 12px';
 const BOX_RADIUS = 10;
+/** Same easing as CharactersScreen team-reorder FLIP. */
+const MAPPING_FLIP_MS = 450;
+const MAPPING_FLIP_EASE = 'cubic-bezier(0.4, 0, 0.2, 1)';
+
+function playFlipTransition(
+  elements: Record<string, HTMLElement | null>,
+  prevTops: Record<string, number>,
+): void {
+  for (const [id, el] of Object.entries(elements)) {
+    if (!el) continue;
+    const top = el.getBoundingClientRect().top;
+    const prev = prevTops[id];
+    if (prev !== undefined && Math.abs(prev - top) > 1) {
+      const dy = prev - top;
+      el.style.transform = `translateY(${dy}px)`;
+      el.style.transition = 'none';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.transition = `transform ${MAPPING_FLIP_MS}ms ${MAPPING_FLIP_EASE}`;
+          el.style.transform = '';
+        });
+      });
+    }
+    prevTops[id] = top;
+  }
+}
 
 function mapBoxStyle(active: boolean, tone: 'default' | 'error' = 'default'): CSSProperties {
   const isError = tone === 'error';
@@ -362,8 +389,13 @@ export function ImportScreen({
   const [dropTarget, setDropTarget] = useState<MappingDragTarget | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dragPreviewWidth, setDragPreviewWidth] = useState(240);
+  const [flashColumnId, setFlashColumnId] = useState<string | null>(null);
   const dropTargetRef = useRef<MappingDragTarget | null>(null);
   const dragSourceRef = useRef<MappingDragSource | null>(null);
+  const slotRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const unmappedRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const slotPrevTops = useRef<Record<string, number>>({});
+  const unmappedPrevTops = useRef<Record<string, number>>({});
 
   useEffect(() => {
     for (const role of ROLES) fieldRequestRef.current[role] += 1;
@@ -407,6 +439,18 @@ export function ImportScreen({
     },
     [activeDefinitions, activeMappings, activeFields],
   );
+
+  useLayoutEffect(() => {
+    playFlipTransition(slotRowRefs.current, slotPrevTops.current);
+    playFlipTransition(unmappedRowRefs.current, unmappedPrevTops.current);
+  }, [mappingLayout]);
+
+  useEffect(() => {
+    slotPrevTops.current = {};
+    unmappedPrevTops.current = {};
+    setFlashColumnId(null);
+  }, [activeRole, activeLibraryId]);
+
   const columnById = useMemo(() => {
     const map = new Map<string, StudioColumnDefinition & { key: string; name: string }>();
     for (const col of activeFields) map.set(col.key, col);
@@ -556,7 +600,17 @@ export function ImportScreen({
       const source = dragSourceRef.current;
       const target = dropTargetRef.current;
       if (source && target) {
+        const movingColumnId =
+          source.kind === 'unmapped'
+            ? source.columnId
+            : activeMappingsRef.current[source.fieldId] ?? null;
         replaceRoleMapping(activeRole, applyMappingDrag(activeMappingsRef.current, source, target));
+        if (movingColumnId) {
+          setFlashColumnId(movingColumnId);
+          window.setTimeout(() => {
+            setFlashColumnId((current) => (current === movingColumnId ? null : current));
+          }, 550);
+        }
       }
       dragSourceRef.current = null;
       dropTargetRef.current = null;
@@ -870,9 +924,13 @@ export function ImportScreen({
                   const isError = status === 'empty-required' || status === 'incompatible';
                   const isDragging = dragSource?.kind === 'slot' && dragSource.fieldId === slot.fieldId;
                   const isDrop = dropTarget?.kind === 'slot' && dropTarget.fieldId === slot.fieldId;
+                  const isFlash = Boolean(slot.columnId && flashColumnId === slot.columnId);
                   return (
                     <div
                       key={slot.fieldId}
+                      ref={(node) => {
+                        slotRowRefs.current[slot.fieldId] = node;
+                      }}
                       data-mapping-drop={`slot:${slot.fieldId}`}
                       data-testid="mapping-slot"
                       style={{
@@ -882,6 +940,8 @@ export function ImportScreen({
                         ),
                         userSelect: 'none',
                         opacity: isDragging ? 0.35 : 1,
+                        willChange: 'transform',
+                        animation: isFlash ? 'kMappingCardFlash 0.55s ease' : 'none',
                       }}
                     >
                       {aiMapping ? (
@@ -972,9 +1032,13 @@ export function ImportScreen({
                     {mappingLayout.unmapped.map((columnId) => {
                       const col = columnById.get(columnId);
                       const isDragging = dragSource?.kind === 'unmapped' && dragSource.columnId === columnId;
+                      const isFlash = flashColumnId === columnId;
                       return (
                         <button
                           key={columnId}
+                          ref={(node) => {
+                            unmappedRowRefs.current[columnId] = node;
+                          }}
                           type="button"
                           data-testid="mapping-unmapped-card"
                           aria-label={`Drag ${col?.name ?? columnId}`}
@@ -986,6 +1050,8 @@ export function ImportScreen({
                             opacity: isDragging ? 0.35 : 1,
                             font: 'inherit',
                             textAlign: 'left',
+                            willChange: 'transform',
+                            animation: isFlash ? 'kMappingCardFlash 0.55s ease' : 'none',
                           }}
                         >
                           <DragHandle />

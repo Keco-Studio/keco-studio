@@ -28,9 +28,13 @@ function createSupabaseFake() {
       rpcCalls.push({ name, args });
       if (
         name !== 'touch_library_asset_edit_updated_at' &&
-        name !== 'upsert_library_asset_values_and_touch'
+        name !== 'upsert_library_asset_values_and_touch' &&
+        name !== 'normalize_row_indices'
       ) {
         return { data: null, error: new Error(`Unexpected rpc ${name}`) };
+      }
+      if (name === 'normalize_row_indices') {
+        return { data: null, error: null };
       }
       touchCounter += 1;
       return { data: `2026-07-08T00:00:0${touchCounter}.000Z`, error: null };
@@ -167,6 +171,60 @@ describe('useLibraryAssetMutations', () => {
       }],
       rowIndexUpdates: [{ assetId: 'asset-existing', rowIndex: 3 }],
     });
+  });
+
+  it('normalizes null row indices before append so the new row stays at the bottom', async () => {
+    const { rpcCalls, supabase } = createSupabaseFake();
+    const assetStore = new ObservableAssetStore();
+    const existingRows: AssetRow[] = [
+      {
+        id: 'old-1',
+        libraryId: 'library-1',
+        name: 'Level 1',
+        propertyValues: {},
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'old-2',
+        libraryId: 'library-1',
+        name: 'Level 2',
+        propertyValues: {},
+        created_at: '2026-01-02T00:00:00.000Z',
+      },
+    ];
+    for (const row of existingRows) assetStore.set(row);
+
+    const mutations = createLibraryAssetMutations({
+      supabase,
+      queryClient: new QueryClient(),
+      libraryId: 'library-1',
+      projectId: 'project-1',
+      assetStore,
+      assetsRef: {
+        current: new Map(existingRows.map((row) => [row.id, row])),
+      },
+      pendingBatchInsertIdsRef: { current: new Set<string>() },
+      getFormulaFieldMeta: async () => [],
+      realtimeConfig: {},
+      realtime: {
+        broadcastCellUpdate: async () => {},
+        broadcastAssetCreate: async () => {},
+        broadcastAssetDelete: async () => {},
+        broadcastCellsBatchUpdate: async () => {},
+        broadcastRowOrderChange: async () => {},
+      },
+    });
+
+    await mutations.createAsset('Untitled', {}, { rowIndex: 3 });
+
+    expect(rpcCalls.some((call) => call.name === 'normalize_row_indices')).toBe(true);
+    expect(rpcCalls.find((call) => call.name === 'normalize_row_indices')?.args).toEqual({
+      p_library_id: 'library-1',
+      p_asset_ids: ['old-1', 'old-2'],
+    });
+    expect(assetStore.get('old-1')?.rowIndex).toBe(1);
+    expect(assetStore.get('old-2')?.rowIndex).toBe(2);
+    expect(assetStore.get('created-asset')?.rowIndex).toBe(3);
   });
 
   it('persists a cell value and authoritative timestamp in one RPC round trip', async () => {

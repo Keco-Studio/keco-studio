@@ -1,12 +1,12 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef } from 'react';
 import Image from 'next/image';
-import { Tooltip } from 'antd';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { CellKey } from '@/components/libraries/hooks/useCellSelection';
 import { CellEditor } from './CellEditor';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
+import type { ExpandedTextCell } from '@/components/libraries/utils/textCellExpand';
 
 export interface TextCellProps {
   row: AssetRow;
@@ -29,6 +29,7 @@ export interface TextCellProps {
   cutCells: Set<CellKey>;
   copyCells: Set<CellKey>;
   hoveredCellForExpand: { rowId: string; propertyKey: string } | null;
+  expandedTextCell: ExpandedTextCell;
   // Selection bounds for borders
   cutSelectionBounds: {
     minRowIndex: number;
@@ -55,6 +56,7 @@ export interface TextCellProps {
   onViewAssetDetail: (row: AssetRow, e: React.MouseEvent) => void;
   onCellDoubleClick: (row: AssetRow, property: PropertyConfig, e: React.MouseEvent) => void;
   onCellClick: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
+  onTextCellExpandClick: (rowId: string, propertyKey: string, isOverflowing: boolean) => void;
   onCellContextMenu: (e: React.MouseEvent, rowId: string, propertyKey: string) => void;
   onCellFillDragStart: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
   onCellDragStart: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
@@ -80,7 +82,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
   propertyIndex,
   actualRowIndex,
   display,
-  isNameField,
+  isNameField: _isNameField,
   isFirstColumn = propertyIndex === 0,
   fillPreviewValue,
   editingCell,
@@ -93,6 +95,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
   cutCells,
   copyCells,
   hoveredCellForExpand,
+  expandedTextCell,
   cutSelectionBounds,
   editingUsers,
   borderColor,
@@ -100,6 +103,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
   onViewAssetDetail,
   onCellDoubleClick,
   onCellClick,
+  onTextCellExpandClick,
   onCellContextMenu,
   onCellFillDragStart,
   onCellDragStart,
@@ -122,6 +126,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
   const isBeingEdited = editingUsers.length > 0;
   const showFillPreview = fillPreviewValue !== undefined && !isCellEditing;
   const cellDisplay = showFillPreview ? String(fillPreviewValue) : (display || '');
+  const isRowTextExpanded = expandedTextCell?.rowId === row.id;
 
   // Check if cell is on border of cut selection (only show outer border)
   let cutBorderClass = '';
@@ -144,35 +149,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
   const shouldShowExpandIcon = showExpandIcon;
 
-  // Track whether text is overflowing (for conditional tooltip)
   const textRef = useRef<HTMLSpanElement>(null);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-
-  // Check if text is overflowing
-  useEffect(() => {
-    const checkOverflow = () => {
-      if (textRef.current) {
-        const isOverflow = textRef.current.scrollWidth > textRef.current.clientWidth;
-        setIsOverflowing(isOverflow);
-      }
-    };
-
-    // Check initially
-    checkOverflow();
-
-    // Use ResizeObserver to detect when cell size changes
-    const resizeObserver = new ResizeObserver(() => {
-      checkOverflow();
-    });
-
-    if (textRef.current) {
-      resizeObserver.observe(textRef.current);
-    }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [display, fillPreviewValue]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (showExpandIcon) {
@@ -200,7 +177,55 @@ const TextCellComponent: React.FC<TextCellProps> = ({
     }
   };
 
+  const measureOverflow = (): boolean => {
+    const el = textRef.current;
+    if (!el) return false;
+    // When already expanded, text wraps so scrollWidth may match clientWidth.
+    // Treat the triggering cell as still "overflowing" for toggle semantics via expand state.
+    if (
+      expandedTextCell?.rowId === row.id &&
+      expandedTextCell?.propertyKey === property.key
+    ) {
+      return true;
+    }
+    return el.scrollWidth > el.clientWidth + 1;
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isCellEditing) {
+      return;
+    }
+    onCellClick(row.id, property.key, e);
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('button') ||
+      target.closest('.ant-checkbox') ||
+      target.closest('.ant-select') ||
+      target.closest('.ant-switch') ||
+      target.closest('input') ||
+      target.closest('select') ||
+      target.closest(`.${styles.cellExpandIcon}`)
+    ) {
+      return;
+    }
+    onTextCellExpandClick(row.id, property.key, measureOverflow());
+  };
+
   const isError = !!typeValidationError && isCellEditing;
+
+  const textSpan = (
+    <span
+      ref={textRef}
+      className={`${styles.cellText} ${showFillPreview ? styles.cellFillPreview : ''} ${isRowTextExpanded ? styles.cellTextExpanded : ''}`}
+      onDoubleClick={(e) => {
+        if (isFirstColumn) {
+          onCellDoubleClick(row, property, e);
+        }
+      }}
+    >
+      {cellDisplay}
+    </span>
+  );
 
   return (
     <td
@@ -209,9 +234,12 @@ const TextCellComponent: React.FC<TextCellProps> = ({
       className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isError ? styles.cellError : ''} ${cutBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onDoubleClick={(e) => onCellDoubleClick(row, property, e)}
-      onClick={(e) => onCellClick(row.id, property.key, e)}
+      onClick={handleClick}
       onContextMenu={(e) => onCellContextMenu(e, row.id, property.key)}
-      onMouseDown={(e) => onCellFillDragStart(row.id, property.key, e)}
+      onMouseDown={(e) => {
+        if (isCellEditing) return;
+        onCellFillDragStart(row.id, property.key, e);
+      }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -232,20 +260,8 @@ const TextCellComponent: React.FC<TextCellProps> = ({
       ) : (
         <>
           {isFirstColumn ? (
-            // First column: show text + view detail button
             <div className={styles.cellContent}>
-              <Tooltip title={isOverflowing ? cellDisplay : null} placement="topLeft" mouseEnterDelay={0.5}>
-                <span 
-                  ref={textRef}
-                  className={`${styles.cellText} ${showFillPreview ? styles.cellFillPreview : ''}`}
-                  onDoubleClick={(e) => {
-                    // Ensure double click on first column text triggers editing
-                    onCellDoubleClick(row, property, e);
-                  }}
-                >
-                  {cellDisplay}
-                </span>
-              </Tooltip>
+              {textSpan}
               <button
                 className={styles.viewDetailButton}
                 onClick={(e) => {
@@ -253,7 +269,6 @@ const TextCellComponent: React.FC<TextCellProps> = ({
                   onViewAssetDetail(row, e);
                 }}
                 onDoubleClick={(e) => {
-                  // Prevent double click from bubbling to cell
                   e.stopPropagation();
                 }}
                 title={"View asset details"}
@@ -265,12 +280,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
               </button>
             </div>
           ) : (
-            // Other fields: show text only with tooltip (only if overflowing)
-            <Tooltip title={isOverflowing ? cellDisplay : null} placement="topLeft" mouseEnterDelay={0.5}>
-              <span ref={textRef} className={`${styles.cellText} ${showFillPreview ? styles.cellFillPreview : ''}`}>
-                {cellDisplay}
-              </span>
-            </Tooltip>
+            textSpan
           )}
         </>
       )}

@@ -137,6 +137,10 @@ export function getFilledColumnLabels(
 /**
  * Compare two assets in the same order as LibraryDataContext.allAssets / table row numbers.
  * row_index asc → created_at asc → id asc when row_index ties.
+ *
+ * Numbered rows sort before missing rowIndex (nulls last). Appending a new numbered
+ * row among null-indexed peers therefore jumps to the top unless callers normalize
+ * missing indices first — see rowsNeedRowIndexNormalize / getNextAppendRowIndex.
  */
 export function compareAssetsForUiRow(a: AssetRow, b: AssetRow): number {
   if (typeof a.rowIndex === 'number' && typeof b.rowIndex === 'number') {
@@ -152,6 +156,30 @@ export function compareAssetsForUiRow(a: AssetRow, b: AssetRow): number {
   if (!b.created_at) return -1;
   const timeDiff = getAssetCreatedAtTime(a) - getAssetCreatedAtTime(b);
   return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+}
+
+/** True when any row is missing a numeric rowIndex (needs normalize before append). */
+export function rowsNeedRowIndexNormalize(
+  rows: Array<{ rowIndex?: number | null }>
+): boolean {
+  return rows.some((row) => typeof row.rowIndex !== 'number');
+}
+
+/**
+ * Next 1-based rowIndex for appending at the bottom of the current display order.
+ * When any row lacks rowIndex, treat the list as about-to-be-normalized to 1..N
+ * and return N + 1 (do not treat missing as 0 — that yields 1 and sorts to the top).
+ */
+export function getNextAppendRowIndex(
+  rows: Array<{ rowIndex?: number | null }>
+): number {
+  if (rows.length === 0) return 1;
+  if (rowsNeedRowIndexNormalize(rows)) return rows.length + 1;
+  let max = 0;
+  for (const row of rows) {
+    if (typeof row.rowIndex === 'number' && row.rowIndex > max) max = row.rowIndex;
+  }
+  return max + 1;
 }
 
 const createdAtTimeByAsset = new WeakMap<AssetRow, { source: string | undefined; time: number }>();

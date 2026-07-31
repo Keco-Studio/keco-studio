@@ -126,6 +126,7 @@ export type UseSidebarContextMenuActionsParams = {
   router: AppRouterInstance;
   openEditProject: (id: string) => void;
   openEditLibrary: (id: string) => void;
+  openEditDocument?: (id: string) => void;
   openDuplicateLibrary: (id: string) => void;
   openExportLibrary: (id: string) => void;
   openImportLibrary: (folderId: string | null) => void;
@@ -173,6 +174,7 @@ export function useSidebarContextMenuActions({
   router,
   openEditProject,
   openEditLibrary,
+  openEditDocument,
   openDuplicateLibrary,
   openExportLibrary,
   openImportLibrary,
@@ -234,7 +236,11 @@ export function useSidebarContextMenuActions({
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'document') {
-          startInlineRename(`document-${contextMenu.id}`);
+          if (openEditDocument) {
+            openEditDocument(contextMenu.id);
+          } else {
+            startInlineRename(`document-${contextMenu.id}`);
+          }
           closeContextMenu();
           return;
         }
@@ -592,6 +598,7 @@ export function useSidebarContextMenuActions({
       router,
       openEditProject,
       openEditLibrary,
+      openEditDocument,
       openDuplicateLibrary,
       openExportLibrary,
       openImportLibrary,

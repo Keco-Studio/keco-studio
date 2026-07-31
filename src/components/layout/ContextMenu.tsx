@@ -418,7 +418,7 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'document') {
-      // Document: Generate (admin), Rename, Move to..., Delete
+      // Document: Generate (admin), Version history, Library info, Move to..., Delete
       return (
         <>
           {userRole === 'admin' && (
@@ -437,13 +437,22 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               </button>
             </>
           )}
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('version-history')}
+          >
+            Version history
+          </button>
           {showEditButton && (
-            <button
-              className={styles.menuItem}
-              onClick={() => handleAction('rename')}
-            >
-              Rename
-            </button>
+            <>
+              <div className={styles.separator} />
+              <button
+                className={styles.menuItem}
+                onClick={() => handleAction('rename')}
+              >
+                Library info
+              </button>
+            </>
           )}
           {showEditButton && (
             <button
