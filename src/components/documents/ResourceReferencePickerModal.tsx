@@ -289,15 +289,6 @@ export function ResourceReferencePickerModal({
     });
   }, [invalidateValidation, replaceMode]);
 
-  const toggleAllAssets = useCallback((selectAll: boolean) => {
-    if (replaceMode) return;
-    invalidateValidation();
-    setValidationError(null);
-    setSelectedAssetIds(
-      selectAll ? new Set(tableRows.rows.map((row) => row.id)) : new Set()
-    );
-  }, [invalidateValidation, replaceMode, tableRows.rows]);
-
   const selectDocumentText = useCallback((selection: DocumentPreviewSelection | null) => {
     invalidateValidation();
     setValidationError(null);
@@ -383,7 +374,6 @@ export function ResourceReferencePickerModal({
           singleSelect={replaceMode}
           emptyText={selectedLibraryId ? 'No matching rows' : 'Choose a table'}
           onToggle={toggleAsset}
-          onToggleAll={toggleAllAssets}
         />
       </Spin>
     </div>
@@ -417,7 +407,7 @@ export function ResourceReferencePickerModal({
       open={open}
       title="Insert reference"
       className={styles.modal}
-      width={800}
+      width={560}
       okText={replaceMode ? 'Replace' : 'Insert'}
       cancelText="Cancel"
       confirmLoading={validating}
