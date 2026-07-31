@@ -23,6 +23,7 @@ export type ResourceReferenceTableRowListProps = {
   singleSelect: boolean;
   emptyText: string;
   onToggle: (id: string) => void;
+  onToggleAll?: (selectAll: boolean) => void;
 };
 
 export function ResourceReferenceTableRowList({
@@ -34,6 +35,7 @@ export function ResourceReferenceTableRowList({
   singleSelect,
   emptyText,
   onToggle,
+  onToggleAll,
 }: ResourceReferenceTableRowListProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const optionElements = useRef(new Map<string, HTMLTableRowElement>());
@@ -47,6 +49,7 @@ export function ResourceReferenceTableRowList({
       : rows.length > 0 ? 0 : -1;
   const resolvedActiveId = activeIndex >= 0 ? itemIds[activeIndex] : null;
   const activeDomId = resolvedActiveId ? `${idPrefix}-${resolvedActiveId}` : undefined;
+  const allSelected = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
 
   useEffect(() => {
     setActiveId(resolvedActiveId);
@@ -101,7 +104,18 @@ export function ResourceReferenceTableRowList({
         <table className={styles.referenceTable}>
           <thead>
             <tr>
-              <th className={styles.checkboxCell} scope="col" aria-label="Select" />
+              <th className={styles.checkboxCell} scope="col">
+                {!singleSelect && onToggleAll ? (
+                  <input
+                    type="checkbox"
+                    className={styles.headerCheckbox}
+                    checked={allSelected}
+                    aria-label="Select all rows"
+                    onChange={(event) => onToggleAll(event.target.checked)}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                ) : null}
+              </th>
               {fields.map((field) => (
                 <th key={field.id} scope="col">{field.label}</th>
               ))}
