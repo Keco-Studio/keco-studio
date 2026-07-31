@@ -15,6 +15,25 @@
   width: 100%;
 }
 
+.documentSectionWithHistory {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  align-items: start;
+  column-gap: 0;
+  padding-right: 0;
+}
+
+.documentMain {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.documentSectionWithHistory .documentMain {
+  padding-right: 24px;
+}
+
 .stickyChrome {
   position: sticky;
   top: 0;
@@ -72,13 +91,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   justify-content: stretch;
-  gap: 20px;
+  gap: 0;
   min-width: 0;
   margin-top: 4px;
-}
-
-.workspaceWithHistory {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
 }
 
 .editorPane {

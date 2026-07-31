@@ -1,6 +1,5 @@
 'use client';
 
-import { PaperClipOutlined } from '@ant-design/icons';
 import {
   ButtonWithTooltip,
   activeEditor$,
@@ -18,6 +17,26 @@ export type ResourceReferenceInsertButtonProps = {
   readOnly: boolean;
   onOpen: (apply: (target: ResourceReferenceTarget) => void) => void;
 };
+
+/** Matches MDX editor toolbar icons (24×24, currentColor). */
+function ReferenceToolbarIcon() {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M7.15418 7.15519L3.48952 10.821C3.33435 10.9759 3.21124 11.1598 3.12724 11.3623C3.04324 11.5648 3 11.7819 3 12.0011C3 12.2204 3.04324 12.4374 3.12724 12.6399C3.21124 12.8424 3.33435 13.0264 3.48952 13.1813L7.15531 16.8459L10.8211 20.5106C11.4725 21.1631 12.5288 21.1631 13.1813 20.5106L16.846 16.8454L20.5106 13.1801C21.1631 12.5287 21.1631 11.4724 20.5106 10.8199L16.846 7.15462L13.1813 3.48937C12.5288 2.83688 11.4713 2.83688 10.8188 3.48937L7.15418 7.15519ZM16.846 7.15462L7.15531 16.8459M7.15418 7.15519L16.846 16.8454"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
 
 export function ResourceReferenceInsertButton({
   readOnly,
@@ -45,7 +64,7 @@ export function ResourceReferenceInsertButton({
         });
       }}
     >
-      <PaperClipOutlined aria-hidden />
+      <ReferenceToolbarIcon />
     </ButtonWithTooltip>
   );
 }

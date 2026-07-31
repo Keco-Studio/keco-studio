@@ -20,6 +20,15 @@ describe('document version history UI wiring', () => {
     expect(topBar).toContain('document-history-toggle');
     expect(editor).toContain('document-history-toggle');
     expect(editor).toContain('DocumentVersionSidebar');
+    // Sidebar must sit beside the document main column (title + editor), not
+    // inside workspace below stickyChrome — otherwise a blank band appears
+    // under the TopBar next to the document title.
+    expect(editor).toContain('documentSectionWithHistory');
+    expect(editor).toContain('documentMain');
+    expect(editor).toMatch(
+      /documentMain[\s\S]*workspace[\s\S]*<\/div>\s*<DocumentVersionSidebar/
+    );
+    expect(editor).not.toContain('workspaceWithHistory');
     expect(sidebar).toContain('aria-label="Version history"');
     expect(sidebar).toContain('queryKeys.documentVersions(documentId)');
     expect(sidebar).toContain('listDocumentVersions');

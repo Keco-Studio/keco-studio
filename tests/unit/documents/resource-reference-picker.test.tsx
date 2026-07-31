@@ -49,6 +49,13 @@ const ui: {
 };
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => supabase }));
+jest.mock('next/image', () => {
+  function MockImage(props: AnyProps) {
+    return null;
+  }
+  return MockImage;
+});
+jest.mock('@/assets/images/reference.svg', () => 'reference.svg', { virtual: true });
 jest.mock('@mdxeditor/editor', () => ({
   ButtonWithTooltip: (props: AnyProps) => {
     toolbarButtonProps = props;
@@ -636,7 +643,7 @@ describe('document editor reference controls', () => {
     ));
     expect(toolbarButtonProps?.title).toBe('Insert reference');
     expect(toolbarButtonProps?.['aria-label']).toBe('Insert reference');
-    expect(toolbarButtonProps?.children?.type?.name).toBe('PaperClipOutlined');
+    expect(toolbarButtonProps?.children?.type?.name).toBe('ReferenceToolbarIcon');
     const preventDefault = jest.fn();
     toolbarButtonProps?.onMouseDown({ preventDefault });
     toolbarButtonProps?.onClick();

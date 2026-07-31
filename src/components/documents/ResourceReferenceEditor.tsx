@@ -1,14 +1,15 @@
 'use client';
 
 import { useMemo } from 'react';
+import Image from 'next/image';
 import {
-  FileTextOutlined,
   TableOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import Link from 'next/link';
 import type { JsxEditorProps } from '@mdxeditor/editor';
+import referenceIcon from '@/assets/images/reference.svg';
 import { parseResourceReferenceAttributes } from '@/lib/documents/resourceReferenceTypes';
 import { useResourceReference } from './ResourceReferenceProvider';
 import styles from './MdxDocumentEditor.module.css';
@@ -16,6 +17,19 @@ import styles from './MdxDocumentEditor.module.css';
 export type ResourceReferenceEditorProps = JsxEditorProps & {
   readOnly: boolean;
 };
+
+function DocumentReferenceIcon() {
+  return (
+    <Image
+      src={referenceIcon}
+      alt=""
+      width={14}
+      height={14}
+      className={styles.resourceReferenceIcon}
+      aria-hidden="true"
+    />
+  );
+}
 
 function fixedAttributes(mdastNode: JsxEditorProps['mdastNode']): Record<string, string> {
   const attributes: Record<string, string> = {};
@@ -68,7 +82,7 @@ export function ResourceReferenceEditor({
           href={resolved.href}
           aria-label={accessibleLabel}
         >
-          {target.kind === 'table-row' ? <TableOutlined /> : <FileTextOutlined />}
+          {target.kind === 'table-row' ? <TableOutlined /> : <DocumentReferenceIcon />}
           <span>{resolved.label}</span>
         </Link>
       </Tooltip>
@@ -80,7 +94,7 @@ export function ResourceReferenceEditor({
         data-reference-loading="true"
         aria-label={`Loading reference: ${target.fallbackLabel}`}
       >
-        {target.kind === 'table-row' ? <TableOutlined /> : <FileTextOutlined />}
+        {target.kind === 'table-row' ? <TableOutlined /> : <DocumentReferenceIcon />}
         <span>{target.fallbackLabel}</span>
       </span>
     );
