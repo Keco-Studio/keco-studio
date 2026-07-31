@@ -49,3 +49,10 @@
   padding: 34px 44px 56px;
   overflow: auto;
 }
+
+.contentFlush {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

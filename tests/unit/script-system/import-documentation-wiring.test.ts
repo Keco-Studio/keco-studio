@@ -48,7 +48,7 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(source).toContain('children');
   });
 
-  it('script-system routes wire landing, project import, and doc stub', () => {
+  it('script-system routes wire landing, project import, and doc page', () => {
     const rootLayout = read(
       'src/app/(dashboard)/script-system/layout.tsx'
     );
