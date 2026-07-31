@@ -58,7 +58,23 @@ function toolNameFromCall(tc: ToolCallRef): string {
 
 export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): ChatItem[] {
   const loaded: ChatItem[] = [];
+  let turnItems: ChatItem[] = [];
+  let assistantSegments: Array<{ id: string; text: string }> = [];
   let i = 0;
+
+  const flushTurn = () => {
+    loaded.push(...turnItems);
+    const text = assistantSegments
+      .map((segment) => segment.text.trim())
+      .filter(Boolean)
+      .join('\n\n');
+    const lastAssistant = assistantSegments.at(-1);
+    if (text && lastAssistant) {
+      loaded.push({ id: lastAssistant.id, role: 'assistant', text });
+    }
+    turnItems = [];
+    assistantSegments = [];
+  };
 
   while (i < messages.length) {
     const m = messages[i];
@@ -66,6 +82,7 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
     const text = textFromBody(body);
 
     if (m.role === 'user' && text) {
+      flushTurn();
       const display = deriveUserDisplay(text, imageUrlsFromBody(body));
       loaded.push({ id: m.id, role: 'user', text: display.text, attachments: display.attachments });
       i++;
@@ -75,11 +92,11 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
     if (m.role === 'assistant') {
       const toolCalls = Array.isArray(body.tool_calls) ? (body.tool_calls as ToolCallRef[]) : [];
 
-      if (toolCalls.length > 0) {
-        if (text) {
-          loaded.push({ id: m.id, role: 'assistant', text });
-        }
+      if (text) {
+        assistantSegments.push({ id: m.id, text });
+      }
 
+      if (toolCalls.length > 0) {
         const toolById = new Map<string, HistoryMessageRow>();
         let j = i + 1;
         while (j < messages.length && messages[j].role === 'tool') {
@@ -96,7 +113,7 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
           const toolText = textFromBody(toolBody);
           const name =
             (typeof toolBody.name === 'string' && toolBody.name) || toolNameFromCall(tc);
-          loaded.push({
+          turnItems.push({
             id: toolRow.id,
             role: 'tool',
             toolCall: { tool: name, status: 'success', data: parseToolData(toolText) },
@@ -107,16 +124,13 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
         continue;
       }
 
-      if (text) {
-        loaded.push({ id: m.id, role: 'assistant', text });
-      }
       i++;
       continue;
     }
 
     if (m.role === 'tool') {
       const toolName = typeof body.name === 'string' ? body.name : 'tool';
-      loaded.push({
+      turnItems.push({
         id: m.id,
         role: 'tool',
         toolCall: { tool: toolName, status: 'success', data: parseToolData(text) },
@@ -128,5 +142,6 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
     i++;
   }
 
+  flushTurn();
   return loaded;
 }

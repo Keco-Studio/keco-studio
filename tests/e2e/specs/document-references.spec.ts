@@ -24,9 +24,15 @@ const TABLE_NAME = 'Reference smoke table';
 const ROW_NAME = 'Reference smoke row';
 const FIELD_NAME = 'Current label';
 const TABLE_LABEL = 'Compact table label';
+/** Whole-row chips expose `library / row: joined cell values` (no field name). */
+const TABLE_REFERENCE_NAME = `${TABLE_NAME} / ${ROW_NAME}: ${TABLE_LABEL}`;
 const SOURCE_DOCUMENT_NAME = 'Reference smoke source';
 const SOURCE_HEADING = 'Reference smoke heading';
-const SOURCE_PARAGRAPH = 'Reference smoke paragraph';
+const SOURCE_PARAGRAPH = 'Reference smoke paragraph starts here';
+const SOURCE_SECOND_PARAGRAPH = 'Reference smoke paragraph continues here';
+const SOURCE_SECOND_PARAGRAPH_UPDATED = 'Reference smoke passage continues here';
+const RANGE_LABEL = 'smoke paragraph starts here Reference smoke paragraph continues';
+const UPDATED_RANGE_LABEL = 'smoke paragraph starts here Reference smoke passage continues';
 const REFERENCING_DOCUMENT_NAME = 'Reference smoke links';
 
 async function readDurableDocumentMarkdown(
@@ -88,11 +94,7 @@ async function insertTableReference(page: Page): Promise<void> {
   await tableSelect.click();
   await tableSelect.fill(TABLE_NAME);
   await tableSelect.press('Enter');
-  await dialog.getByRole('option', { name: `Row: ${ROW_NAME}` }).click();
-  const fieldSelect = dialog.getByRole('combobox', { name: 'Display field', exact: true });
-  await fieldSelect.click();
-  await fieldSelect.fill(FIELD_NAME);
-  await fieldSelect.press('Enter');
+  await dialog.getByRole('option', { name: `Row: ${TABLE_LABEL}` }).click();
   await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
   await expect(dialog).toBeHidden();
 }
@@ -107,9 +109,45 @@ async function insertDocumentReference(page: Page): Promise<void> {
   await documentSelect.click();
   await documentSelect.fill(SOURCE_DOCUMENT_NAME);
   await documentSelect.press('Enter');
-  await dialog
-    .getByRole('option', { name: `Paragraph: ${SOURCE_PARAGRAPH}` })
-    .click();
+  const preview = dialog.getByLabel('Document text preview');
+  await expect(preview).toContainText(SOURCE_PARAGRAPH);
+  await expect(preview).toContainText(SOURCE_SECOND_PARAGRAPH);
+  await preview.evaluate((element, values) => {
+    const blocks = [...element.querySelectorAll<HTMLElement>('[data-reference-block-id]')];
+    const startBlock = blocks.find((block) => block.textContent === values.startText);
+    const endBlock = blocks.find((block) => block.textContent === values.endText);
+    if (!startBlock || !endBlock) {
+      throw new Error('Document preview blocks were not found');
+    }
+    const findTextNode = (root: HTMLElement, haystack: string, needle: string) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const current = walker.currentNode as Text;
+        if (current.data === haystack || current.data.includes(needle)) {
+          const offset = current.data.indexOf(needle);
+          if (offset >= 0) return { node: current, offset };
+        }
+      }
+      return null;
+    };
+    const start = findTextNode(startBlock, values.startText, values.startSelection);
+    const end = findTextNode(endBlock, values.endText, values.endSelection);
+    if (!start || !end) {
+      throw new Error('Document preview selection text was not found');
+    }
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset + values.endSelection.length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }, {
+    startText: SOURCE_PARAGRAPH,
+    startSelection: 'smoke paragraph starts here',
+    endText: SOURCE_SECOND_PARAGRAPH,
+    endSelection: 'Reference smoke paragraph continues',
+  });
   await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
   await expect(dialog).toBeHidden();
 }
@@ -175,7 +213,7 @@ test.describe.serial('Document references smoke', () => {
         {
           project_id: projectId,
           name: SOURCE_DOCUMENT_NAME,
-          content: `# ${SOURCE_HEADING}\n\n${SOURCE_PARAGRAPH}\n`,
+          content: `# ${SOURCE_HEADING}\n\n${SOURCE_PARAGRAPH}\n\n${SOURCE_SECOND_PARAGRAPH}\n`,
           created_by: owner.id,
         },
         {
@@ -206,7 +244,7 @@ test.describe.serial('Document references smoke', () => {
     if (owner) await deleteTemporaryUser(admin, owner);
   });
 
-  test('inserts, persists, and follows table and document block references', async ({ page }) => {
+  test('inserts, syncs, persists, and follows table and document range references', async ({ page }) => {
     const pageErrors: Error[] = [];
     page.on('pageerror', (error) => pageErrors.push(error));
 
@@ -233,6 +271,12 @@ test.describe.serial('Document references smoke', () => {
     await expect(sourceBlock).toBeVisible({ timeout: 30_000 });
     const sourceBlockId = await sourceBlock.getAttribute('data-document-block-id');
     expect(sourceBlockId).toMatch(/^[0-9a-f-]{36}$/i);
+    const sourceSecondBlock = page.locator(
+      `[data-document-block-type="paragraph"]:has-text("${SOURCE_SECOND_PARAGRAPH}")`
+    );
+    await expect(sourceSecondBlock).toBeVisible({ timeout: 30_000 });
+    const sourceSecondBlockId = await sourceSecondBlock.getAttribute('data-document-block-id');
+    expect(sourceSecondBlockId).toMatch(/^[0-9a-f-]{36}$/i);
     expect(normalization.ok()).toBe(true);
 
     await page.goto(`/${projectId}/doc/${fixture.referencingDocumentId}`, {
@@ -244,7 +288,7 @@ test.describe.serial('Document references smoke', () => {
     await editor.click();
 
     await insertTableReference(page);
-    await expect(page.getByRole('link', { name: `${TABLE_NAME} / ${ROW_NAME} / ${FIELD_NAME}: ${TABLE_LABEL}` }))
+    await expect(page.getByRole('link', { name: TABLE_REFERENCE_NAME }))
       .toHaveText(TABLE_LABEL);
 
     await editor.click();
@@ -252,12 +296,15 @@ test.describe.serial('Document references smoke', () => {
     await insertDocumentReference(page);
 
     const tableReference = page.getByRole('link', {
-      name: `${TABLE_NAME} / ${ROW_NAME} / ${FIELD_NAME}: ${TABLE_LABEL}`,
+      name: TABLE_REFERENCE_NAME,
     });
-    const documentReference = page.getByRole('link', {
-      name: `${SOURCE_DOCUMENT_NAME} / ${SOURCE_HEADING}: ${SOURCE_PARAGRAPH}`,
-    });
-    await expect(documentReference).toHaveText(SOURCE_PARAGRAPH);
+    const documentReference = page.locator(
+      `a[href$="#block-${sourceBlockId}"]`
+    );
+    await expect(documentReference).toHaveText(RANGE_LABEL);
+    await expect(documentReference).toHaveAccessibleName(
+      `${SOURCE_DOCUMENT_NAME} / ${SOURCE_HEADING}: ${RANGE_LABEL}`
+    );
 
     await expect.poll(async () => {
       const markdown = await readDurableDocumentMarkdown(
@@ -266,7 +313,10 @@ test.describe.serial('Document references smoke', () => {
       );
       return {
         tableReference: markdown.includes(fixture.assetId),
-        documentReference: markdown.includes(sourceBlockId!),
+        documentReference:
+          markdown.includes('kind="document-range"') &&
+          markdown.includes(sourceBlockId!) &&
+          markdown.includes(sourceSecondBlockId!),
       };
     }, {
       timeout: 30_000,
@@ -275,7 +325,7 @@ test.describe.serial('Document references smoke', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(tableReference).toHaveText(TABLE_LABEL, { timeout: 30_000 });
-    await expect(documentReference).toHaveText(SOURCE_PARAGRAPH, { timeout: 30_000 });
+    await expect(documentReference).toHaveText(RANGE_LABEL, { timeout: 30_000 });
 
     await tableReference.click();
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
@@ -284,10 +334,52 @@ test.describe.serial('Document references smoke', () => {
     const targetRow = page.locator(`tr[data-row-id="${fixture.assetId}"]`);
     await expect(targetRow).toHaveClass(/referencedRowHighlight/, { timeout: 30_000 });
 
+    await page.goto(`/${projectId}/doc/${fixture.sourceDocumentId}`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await expect(page.getByText('Live', { exact: true })).toBeVisible({ timeout: 45_000 });
+    const updatedSourceBlock = page.locator(
+      `[data-document-block-id="${sourceSecondBlockId}"]`
+    );
+    await updatedSourceBlock.evaluate((element) => {
+      const needle = 'paragraph';
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let textNode: Text | null = null;
+      let start = -1;
+      while (walker.nextNode()) {
+        const current = walker.currentNode as Text;
+        const index = current.data.indexOf(needle);
+        if (index >= 0) {
+          textNode = current;
+          start = index;
+          break;
+        }
+      }
+      if (!textNode || start < 0) throw new Error('Source edit text was not found');
+      const range = document.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + needle.length);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    await page.keyboard.type('passage');
+    await expect(updatedSourceBlock).toHaveText(SOURCE_SECOND_PARAGRAPH_UPDATED);
+    await expect.poll(async () => (
+      await readDurableDocumentMarkdown(admin, fixture.sourceDocumentId)
+    ).includes(SOURCE_SECOND_PARAGRAPH_UPDATED), {
+      timeout: 30_000,
+      intervals: [200, 500, 1_000],
+    }).toBe(true);
+
     await page.goto(`/${projectId}/doc/${fixture.referencingDocumentId}`, {
       waitUntil: 'domcontentloaded',
     });
-    await expect(documentReference).toBeVisible({ timeout: 30_000 });
+    await expect(documentReference).toHaveText(UPDATED_RANGE_LABEL, { timeout: 30_000 });
+    await expect(documentReference).toHaveAccessibleName(
+      `${SOURCE_DOCUMENT_NAME} / ${SOURCE_HEADING}: ${UPDATED_RANGE_LABEL}`
+    );
     await documentReference.click();
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
       .toBe(`/${projectId}/doc/${fixture.sourceDocumentId}`);

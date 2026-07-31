@@ -34,8 +34,10 @@ test.describe('Spreadsheet library import', () => {
     await page.goto(`/${projectId}`);
     const folderRow = page.locator('aside').locator(`[title="${folder.name}"]`).first();
     await expect(folderRow).toBeVisible({ timeout: 30000 });
-    await folderRow.click({ button: 'right' });
-    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    const treeNode = folderRow.locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
+    await treeNode.hover();
+    await treeNode.getByRole('button', { name: 'Folder actions' }).click();
+    await page.getByRole('button', { name: 'Import table', exact: true }).click();
     await expect(page.getByTestId('import-library-modal')).toBeVisible();
   }
 

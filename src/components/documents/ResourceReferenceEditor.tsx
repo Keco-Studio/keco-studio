@@ -1,14 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
+import Image from 'next/image';
 import {
-  FileTextOutlined,
   TableOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Tooltip } from 'antd';
 import Link from 'next/link';
 import type { JsxEditorProps } from '@mdxeditor/editor';
+import referenceIcon from '@/assets/images/reference.svg';
 import { parseResourceReferenceAttributes } from '@/lib/documents/resourceReferenceTypes';
 import { useResourceReference } from './ResourceReferenceProvider';
 import styles from './MdxDocumentEditor.module.css';
@@ -16,6 +16,19 @@ import styles from './MdxDocumentEditor.module.css';
 export type ResourceReferenceEditorProps = JsxEditorProps & {
   readOnly: boolean;
 };
+
+function DocumentReferenceIcon() {
+  return (
+    <Image
+      src={referenceIcon}
+      alt=""
+      width={14}
+      height={14}
+      className={styles.resourceReferenceIcon}
+      aria-hidden="true"
+    />
+  );
+}
 
 function fixedAttributes(mdastNode: JsxEditorProps['mdastNode']): Record<string, string> {
   const attributes: Record<string, string> = {};
@@ -52,26 +65,25 @@ export function ResourceReferenceEditor({
   let reference: React.ReactNode;
   if (!target) {
     reference = (
-      <Tooltip title="The reference attributes are invalid or no longer supported">
-        <span className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}>
-          <WarningOutlined />
-          <span>Reference unavailable</span>
-        </span>
-      </Tooltip>
+      <span
+        className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}
+        aria-label="The reference attributes are invalid or no longer supported"
+      >
+        <WarningOutlined />
+        <span>Reference unavailable</span>
+      </span>
     );
   } else if (resolved?.status === 'available' && resolved.href) {
     const accessibleLabel = accessibleReferenceLabel(resolved.label, resolved.contextLabel);
     reference = (
-      <Tooltip title={accessibleLabel}>
-        <Link
-          className={styles.resourceReference}
-          href={resolved.href}
-          aria-label={accessibleLabel}
-        >
-          {target.kind === 'table-row' ? <TableOutlined /> : <FileTextOutlined />}
-          <span>{resolved.label}</span>
-        </Link>
-      </Tooltip>
+      <Link
+        className={styles.resourceReference}
+        href={resolved.href}
+        aria-label={accessibleLabel}
+      >
+        {target.kind === 'table-row' ? <TableOutlined /> : <DocumentReferenceIcon />}
+        <span>{resolved.label}</span>
+      </Link>
     );
   } else if (!resolved && (isLoading || hasError)) {
     reference = (
@@ -80,18 +92,19 @@ export function ResourceReferenceEditor({
         data-reference-loading="true"
         aria-label={`Loading reference: ${target.fallbackLabel}`}
       >
-        {target.kind === 'table-row' ? <TableOutlined /> : <FileTextOutlined />}
+        {target.kind === 'table-row' ? <TableOutlined /> : <DocumentReferenceIcon />}
         <span>{target.fallbackLabel}</span>
       </span>
     );
   } else {
     reference = (
-      <Tooltip title="The source was deleted or is no longer accessible">
-        <span className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}>
-          <WarningOutlined />
-          <span>Reference unavailable</span>
-        </span>
-      </Tooltip>
+      <span
+        className={`${styles.resourceReference} ${styles.resourceReferenceUnavailable}`}
+        aria-label="The source was deleted or is no longer accessible"
+      >
+        <WarningOutlined />
+        <span>Reference unavailable</span>
+      </span>
     );
   }
 

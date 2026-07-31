@@ -50,6 +50,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [projectName, setProjectName] = useState<string | null>(null);
   const [libraryName, setLibraryName] = useState<string | null>(null);
   const [assetName, setAssetName] = useState<string | null>(null);
+  const [documentName, setDocumentName] = useState<string | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [libraryFolderId, setLibraryFolderId] = useState<string | null>(null);
   const [showCreateProjectBreadcrumb, setShowCreateProjectBreadcrumb] = useState(false);
@@ -115,6 +116,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       setProjectName(null);
       setLibraryName(null);
       setAssetName(null);
+      setDocumentName(null);
       setFolderName(null);
       setLibraryFolderId(null);
       isInitialFetchRef.current = true; // Reset for new user
@@ -138,6 +140,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           setProjectName(null);
           setLibraryName(null);
           setAssetName(null);
+          setDocumentName(null);
           setFolderName(null);
           setLibraryFolderId(null);
         }
@@ -191,6 +194,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               setProjectName(null);
               setLibraryName(null);
               setAssetName(null);
+              setDocumentName(null);
               setFolderName(null);
               setLibraryFolderId(null);
               // Only redirect if this is not the initial fetch
@@ -254,6 +258,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               setLibraryName(null);
               setLibraryFolderId(null);
               setAssetName(null);
+              setDocumentName(null);
               // Only redirect if this is not the initial fetch
               if (!isInitialFetch) {
                 if (currentProjectId) {
@@ -391,6 +396,33 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         } else {
           setAssetName(null);
         }
+
+        // Resolve current document name
+        if (currentDocumentId) {
+          try {
+            const data = await queryClient.fetchQuery({
+              queryKey: queryKeys.document(currentDocumentId),
+              queryFn: async () => {
+                const { data, error } = await supabase
+                  .from('documents')
+                  .select('name')
+                  .eq('id', currentDocumentId)
+                  .single();
+                if (error || !data) return null;
+                return data;
+              },
+            });
+            if (mounted) {
+              setDocumentName(data?.name ?? null);
+            }
+          } catch {
+            if (mounted) {
+              setDocumentName(null);
+            }
+          }
+        } else {
+          setDocumentName(null);
+        }
       } catch (error) {
         console.error('Error fetching navigation names:', error);
         if (mounted) {
@@ -398,6 +430,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           setProjectName(null);
           setLibraryName(null);
           setAssetName(null);
+          setDocumentName(null);
           setFolderName(null);
           setLibraryFolderId(null);
         }
@@ -407,7 +440,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [currentProjectId, currentLibraryId, currentAssetId, currentFolderId, supabase, isAuthenticated, userId, router, queryClient]);
+  }, [currentProjectId, currentLibraryId, currentAssetId, currentDocumentId, currentFolderId, supabase, isAuthenticated, userId, router, queryClient]);
 
   const breadcrumbs = useMemo<BreadcrumbItem[]>(() => {
     const nextBreadcrumbs: BreadcrumbItem[] = [];
@@ -448,10 +481,19 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    if (currentDocumentId) {
+      nextBreadcrumbs.push({
+        label: documentName || 'Document',
+        path: `/${currentProjectId}/doc/${currentDocumentId}`,
+      });
+    }
+
     return nextBreadcrumbs;
   }, [
     assetName,
+    documentName,
     currentAssetId,
+    currentDocumentId,
     currentFolderId,
     currentLibraryId,
     currentProjectId,

@@ -1,12 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchAllPaged } from '@/lib/services/pagination';
-import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import { DocumentAccessError } from './documentStateTypes';
 import type { DocumentReferenceBlock } from './documentBlockIdentity';
+import { resolveDocumentRange } from './documentRangeReference';
 import {
   resourceReferenceKey,
   type ResourceReferenceTarget,
 } from './resourceReferenceTypes';
+import { joinTableRowDisplayValues } from './tableRowDisplayLabel';
 
 export type ResolvedResourceReference = {
   key: string;
@@ -121,39 +122,20 @@ async function fetchPagedBatches<T>(
   return pages.flat();
 }
 
-async function fetchRequestedValues(
+async function fetchAssetValues(
   client: SupabaseClient,
-  targets: readonly Extract<ResourceReferenceTarget, { kind: 'table-row' }>[]
+  assetIds: readonly string[]
 ): Promise<ValueRow[]> {
-  const pairs = new Map<string, { assetId: string; fieldId: string }>();
-  for (const target of targets) {
-    pairs.set(`${target.assetId}:${target.displayFieldId}`, {
-      assetId: target.assetId,
-      fieldId: target.displayFieldId,
-    });
-  }
-
-  const rows: ValueRow[] = [];
-  for (const batch of batches([...pairs.values()])) {
-    const exactPairFilter = batch
-      .map(
-        ({ assetId, fieldId }) =>
-          `and(asset_id.eq.${assetId},field_id.eq.${fieldId})`
-      )
-      .join(',');
-    rows.push(
-      ...(await fetchAllPaged<ValueRow>((from, to) =>
-        client
-          .from('library_asset_values')
-          .select('asset_id, field_id, value_json')
-          .or(exactPairFilter)
-          .order('asset_id', { ascending: true })
-          .order('field_id', { ascending: true })
-          .range(from, to) as unknown as PromiseLike<PagedResult<ValueRow>>
-      ))
-    );
-  }
-  return rows;
+  if (assetIds.length === 0) return [];
+  return fetchPagedBatches<ValueRow>(assetIds, (batch, from, to) =>
+    client
+      .from('library_asset_values')
+      .select('asset_id, field_id, value_json')
+      .in('asset_id', batch)
+      .order('asset_id', { ascending: true })
+      .order('field_id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedResult<ValueRow>>
+  );
 }
 
 function sameSemanticTarget(
@@ -168,13 +150,27 @@ function sameSemanticTarget(
       left.displayFieldId === right.displayFieldId
     );
   }
-  return (
-    left.kind === 'document-block' &&
-    right.kind === 'document-block' &&
-    left.documentId === right.documentId &&
-    left.blockId === right.blockId &&
-    left.blockType === right.blockType
-  );
+  if (left.kind === 'document-block' && right.kind === 'document-block') {
+    return (
+      left.documentId === right.documentId &&
+      left.blockId === right.blockId &&
+      left.blockType === right.blockType
+    );
+  }
+  if (left.kind === 'document-range' && right.kind === 'document-range') {
+    return (
+      left.documentId === right.documentId &&
+      left.startBlockId === right.startBlockId &&
+      left.startOffset === right.startOffset &&
+      left.startBefore === right.startBefore &&
+      left.startAfter === right.startAfter &&
+      left.endBlockId === right.endBlockId &&
+      left.endOffset === right.endOffset &&
+      left.endBefore === right.endBefore &&
+      left.endAfter === right.endAfter
+    );
+  }
+  return false;
 }
 
 async function resolveTableReferences(
@@ -187,7 +183,6 @@ async function resolveTableReferences(
 
   const libraryIds = [...new Set(targets.map((target) => target.libraryId))];
   const assetIds = [...new Set(targets.map((target) => target.assetId))];
-  const fieldIds = [...new Set(targets.map((target) => target.displayFieldId))];
   const [libraryRows, assetRows, fieldRows, valueRows] = await Promise.all([
     fetchPagedBatches<LibraryRow>(libraryIds, (batch, from, to) =>
       client
@@ -205,19 +200,32 @@ async function resolveTableReferences(
         .order('id', { ascending: true })
         .range(from, to) as unknown as PromiseLike<PagedResult<AssetRow>>
     ),
-    fetchPagedBatches<FieldRow>(fieldIds, (batch, from, to) =>
+    fetchPagedBatches<FieldRow>(libraryIds, (batch, from, to) =>
       client
         .from('library_field_definitions')
         .select('id, library_id, label, order_index')
-        .in('id', batch)
+        .in('library_id', batch)
+        .order('order_index', { ascending: true })
         .order('id', { ascending: true })
         .range(from, to) as unknown as PromiseLike<PagedResult<FieldRow>>
     ),
-    fetchRequestedValues(client, targets),
+    fetchAssetValues(client, assetIds),
   ]);
   const libraries = indexById(libraryRows);
   const assets = indexById(assetRows);
   const fields = indexById(fieldRows);
+  const orderedFieldsByLibrary = new Map<string, FieldRow[]>();
+  for (const field of fieldRows) {
+    const list = orderedFieldsByLibrary.get(field.library_id) ?? [];
+    list.push(field);
+    orderedFieldsByLibrary.set(field.library_id, list);
+  }
+  for (const [libraryId, list] of orderedFieldsByLibrary) {
+    list.sort((left, right) =>
+      left.order_index - right.order_index || left.id.localeCompare(right.id)
+    );
+    orderedFieldsByLibrary.set(libraryId, list);
+  }
   const values = new Map(
     valueRows.map((row) => [
       `${row.asset_id}:${row.field_id}`,
@@ -228,27 +236,29 @@ async function resolveTableReferences(
   for (const target of targets) {
     const library = libraries.get(target.libraryId);
     const asset = assets.get(target.assetId);
-    const field = fields.get(target.displayFieldId);
+    const displayField = fields.get(target.displayFieldId);
     if (
       !library ||
       !asset ||
-      !field ||
+      !displayField ||
       library.project_id !== projectId ||
       asset.library_id !== library.id ||
-      field.library_id !== library.id
+      displayField.library_id !== library.id
     ) {
       continue;
     }
 
-    const display = cellDisplayString(
-      values.get(`${asset.id}:${field.id}`)
-    );
+    const libraryFields = orderedFieldsByLibrary.get(library.id) ?? [];
+    const rowValues: Record<string, unknown> = {};
+    for (const field of libraryFields) {
+      rowValues[field.id] = values.get(`${asset.id}:${field.id}`);
+    }
     const key = resourceReferenceKey(target);
     resolved.set(key, {
       key,
       status: 'available',
-      label: display || '(empty)',
-      contextLabel: `${library.name} / ${asset.name} / ${field.label}`,
+      label: joinTableRowDisplayValues(libraryFields, rowValues),
+      contextLabel: `${library.name} / ${asset.name}`,
       href: `/${projectId}/${library.id}?asset=${asset.id}`,
     });
   }
@@ -257,7 +267,7 @@ async function resolveTableReferences(
 async function resolveDocumentReferences(
   client: SupabaseClient,
   projectId: string,
-  targets: readonly Extract<ResourceReferenceTarget, { kind: 'document-block' }>[],
+  targets: readonly Exclude<ResourceReferenceTarget, { kind: 'table-row' }>[],
   resolved: Map<string, ResolvedResourceReference>
 ): Promise<void> {
   if (targets.length === 0) return;
@@ -299,9 +309,23 @@ async function resolveDocumentReferences(
         editor.listReferenceBlocks().map((block) => [block.blockId, block])
       );
       for (const target of targetsByDocument.get(documentId) ?? []) {
+        const key = resourceReferenceKey(target);
+        if (target.kind === 'document-range') {
+          const range = resolveDocumentRange(target, [...blocks.values()]);
+          if (!range) continue;
+          resolved.set(key, {
+            key,
+            status: 'available',
+            label: range.label,
+            contextLabel: range.nearestHeading
+              ? `${document.name} / ${range.nearestHeading}`
+              : document.name,
+            href: `/${projectId}/doc/${document.id}#block-${range.startBlockId}`,
+          });
+          continue;
+        }
         const block = blocks.get(target.blockId);
         if (!block || block.blockType !== target.blockType) continue;
-        const key = resourceReferenceKey(target);
         resolved.set(key, {
           key,
           status: 'available',
@@ -356,8 +380,8 @@ export async function resolveResourceReferences(
       client,
       projectId,
       deduplicated.filter(
-        (target): target is Extract<ResourceReferenceTarget, { kind: 'document-block' }> =>
-          target.kind === 'document-block'
+        (target): target is Exclude<ResourceReferenceTarget, { kind: 'table-row' }> =>
+          target.kind !== 'table-row'
       ),
       resolved
     ),

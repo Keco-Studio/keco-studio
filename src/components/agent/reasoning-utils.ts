@@ -32,3 +32,29 @@ export function reasoningLabel(
   const duration = formatReasoningSeconds(ms);
   return isThinking ? `Thinking (${duration})` : `Thought for ${duration}`;
 }
+
+export function summarizeReasoning(reasoning: string, maxLength = 64): string {
+  const cleaned = reasoning
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*(?:[-+*]|\d+[.)]|>)+\s*/gm, '')
+    .replace(/[*_~#|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned.replace(/[\s.。!！?？:：;；-]/g, '')) return '';
+
+  const sentences = cleaned.match(/[^。！？.!?]+[。！？.!?]?/g) ?? [cleaned];
+  const summary = sentences.at(-1)?.trim().replace(/[。！？.!?]+$/, '') ?? '';
+  return summary.length <= maxLength ? summary : `${summary.slice(0, maxLength)}…`;
+}
+
+export function reasoningDurationLabel(
+  startedAt?: number,
+  endedAt?: number,
+  now = Date.now()
+): string {
+  const ms = reasoningDurationMs(startedAt, endedAt, now);
+  return ms === undefined ? '' : formatReasoningSeconds(ms);
+}

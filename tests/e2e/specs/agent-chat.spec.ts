@@ -91,6 +91,90 @@ test.describe('Agent chat', () => {
     );
   });
 
+  test('stops a pending response, restores the composer draft, and ignores late events', async ({ page }) => {
+    const prompt = 'Keep this draft after stopping';
+    let releaseResponse!: () => void;
+    let markIntercepted!: () => void;
+    let markRouteSettled!: () => void;
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const intercepted = new Promise<void>((resolve) => {
+      markIntercepted = resolve;
+    });
+    const routeSettled = new Promise<void>((resolve) => {
+      markRouteSettled = resolve;
+    });
+
+    await page.route('**/api/agent-chat', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({ projectId, message: prompt });
+      markIntercepted();
+      await responseGate;
+      try {
+        await fulfillAgentStream(route, crypto.randomUUID(), [
+          { type: 'text_delta', content: 'This delayed response must be ignored.' },
+        ]);
+      } catch {
+        // Chromium may cancel the intercepted route immediately after AbortController.abort().
+      } finally {
+        markRouteSettled();
+      }
+    });
+
+    const agent = await openProject(page);
+    await agent.send(prompt);
+    await intercepted;
+
+    await expect(agent.sendButton).toHaveAttribute('aria-label', 'Stop generating');
+    await agent.sendButton.click();
+    await expect(agent.sendButton).toHaveAttribute('aria-label', 'Send message');
+    await expect(agent.input).toHaveValue(prompt);
+    await expect(page.getByTestId('agent-message-user').filter({ hasText: prompt })).toHaveCount(0);
+
+    releaseResponse();
+    await routeSettled;
+    await expect(
+      page.getByTestId('agent-message-assistant').filter({ hasText: 'delayed response' })
+    ).toHaveCount(0);
+  });
+
+  test('renders markdown after reasoning with collapsed thinking toggle', async ({ page }) => {
+    await page.route('**/api/agent-chat', async (route) => {
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        { type: 'reasoning_delta', content: '   ' },
+        { type: 'reasoning_delta', content: 'First check the project.' },
+        { type: 'tool_call_start', tool: 'list_project_structure', args: '{}' },
+        { type: 'tool_call_end' },
+        {
+          type: 'tool_result',
+          tool: 'list_project_structure',
+          success: true,
+          data: { ok: true },
+        },
+        { type: 'reasoning_delta', content: 'Summarizing results.' },
+        {
+          type: 'text_delta',
+          content: '**Done**\n\n| Feature | Status |\n| --- | --- |\n| Docs | OK |',
+        },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.send('Show Markdown status');
+
+    const assistant = page.getByTestId('agent-message-assistant');
+    await expect(assistant).toHaveCount(1);
+    await expect(assistant.locator('strong')).toHaveText('Done');
+    await expect(assistant.locator('table')).toContainText('Docs');
+    // Completed answers keep a collapsed thinking toggle; reasoning stays hidden until expanded.
+    const thinkingToggle = assistant.getByTestId('agent-thinking-toggle');
+    await expect(thinkingToggle).toBeVisible();
+    await expect(thinkingToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(assistant.getByTestId('agent-thinking-panel')).toHaveCount(0);
+    await expect(assistant).not.toContainText('First check the project.');
+    await expect(assistant).not.toContainText('Summarizing results');
+  });
+
   test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {
     const docx = await Packer.toBuffer(new Document({
       sections: [{ children: [new Paragraph('Visible DOCX content')] }],
@@ -197,6 +281,7 @@ test.describe('Agent chat', () => {
             markdown: '# Explicit B',
           },
         },
+        { type: 'text_delta', content: 'Read complete.' },
       ]);
     });
 
@@ -209,10 +294,10 @@ test.describe('Agent chat', () => {
     await agent.open();
     await agent.send(prompt);
 
-    const result = agent.toolResult('read_document', 'success');
-    await result.click();
-    await expect(result).toContainText(secondDocumentId);
-    await expect(result).toContainText('Agent Current Document Two');
+    await expect(
+      page.getByTestId('agent-message-assistant').filter({ hasText: 'Read complete.' })
+    ).toBeVisible();
+    await expect(page.getByText('read_document · success', { exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(`/${projectId}/doc/${firstDocumentId}`);
   });
 
@@ -237,17 +322,19 @@ test.describe('Agent chat', () => {
             ],
           },
         },
+        { type: 'text_delta', content: 'Please choose the intended document.' },
       ]);
     });
 
     const agent = await openProject(page);
     await agent.send('Read Duplicate Guide');
 
-    const result = agent.toolResult('read_document', 'failure');
-    await result.click();
-    await expect(result).toContainText('Multiple documents named');
-    await expect(result).toContainText('Lore');
-    await expect(result).toContainText('Archive');
+    await expect(
+      page
+        .getByTestId('agent-message-assistant')
+        .filter({ hasText: 'Please choose the intended document.' })
+    ).toBeVisible();
+    await expect(page.getByText('read_document · failure', { exact: true })).toHaveCount(0);
   });
 
   test('renders an Auto-mode document edit result', async ({ page }) => {
@@ -286,7 +373,7 @@ test.describe('Agent chat', () => {
     await agent.enableAutoMode();
     await agent.send('Append the approved note');
 
-    await expect(agent.toolResult('propose_document_edit', 'success')).toBeVisible();
+    await expect(page.getByText('propose_document_edit · success', { exact: true })).toHaveCount(0);
     await expect(
       page
         .getByTestId('agent-message-assistant')
@@ -350,12 +437,93 @@ test.describe('Agent chat', () => {
     const agent = await openProject(page);
     await agent.send('Create an asset');
     const confirmation = page.getByTestId('agent-confirmation');
-    await expect(confirmation).toContainText('Confirm: Create asset');
+    await expect(confirmation).toContainText('Confirm this change:');
+    await expect(confirmation).toContainText('E2E asset');
+    await confirmation.getByTestId('agent-confirm').click();
+
+    await expect(confirmation).toContainText('Modification successful!');
+    await expect(page.getByTestId('agent-message-assistant')).toContainText(
+      'The asset was created.'
+    );
+  });
+
+  test('rejects a confirmation without applying the write', async ({ page }) => {
+    const actionId = crypto.randomUUID();
+    let confirmRequests = 0;
+    await page.route('**/api/agent-chat', async (route) => {
+      await fulfillAgentStream(route, crypto.randomUUID(), [{
+        type: 'confirmation_request',
+        actionId,
+        tool: 'create_asset',
+        args: { name: 'Rejected E2E asset' },
+        confirmationMode: 'pre_execute',
+      }]);
+    });
+    await page.route('**/api/agent-chat/confirm', async (route) => {
+      confirmRequests += 1;
+      expect(route.request().postDataJSON()).toMatchObject({ actionId, decision: 'reject' });
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        { type: 'text_delta', content: 'The asset creation was cancelled.' },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.send('Create an asset that I will cancel');
+    const confirmation = page.getByTestId('agent-confirmation');
+    await expect(confirmation).toContainText('Rejected E2E asset');
+    await confirmation.getByTestId('agent-reject').click();
+
+    await expect(confirmation).toContainText('Modification cancelled.');
+    await expect(page.getByTestId('agent-message-assistant')).toContainText(
+      'The asset creation was cancelled.'
+    );
+    expect(confirmRequests).toBe(1);
+  });
+
+  test('approves an insert-resource-reference confirmation from the agent', async ({ page }) => {
+    const actionId = crypto.randomUUID();
+    await page.route('**/api/agent-chat', async (route) => {
+      await fulfillAgentStream(route, crypto.randomUUID(), [{
+        type: 'confirmation_request',
+        actionId,
+        tool: 'insert_resource_reference',
+        args: {
+          documentId: firstDocumentId,
+          kind: 'table-row',
+          fallbackLabel: '2026001571',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          type: 'insert_resource_reference',
+          documentId: firstDocumentId,
+          name: 'Agent Current Document One',
+          folderName: null,
+          summary: 'Insert table-row reference into the current document',
+          kind: 'table-row',
+          fallbackLabel: '2026001571',
+        },
+      }]);
+    });
+    await page.route('**/api/agent-chat/confirm', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({ actionId, decision: 'approve' });
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        { type: 'text_delta', content: 'The table reference was inserted.' },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.send('Insert the selected table row into the current document');
+    const confirmation = page.getByTestId('agent-confirmation');
+    await expect(confirmation).toContainText('Confirm: Insert reference');
+    await expect(confirmation).toContainText('Agent Current Document One');
+    await expect(confirmation).toContainText('table row: 2026001571');
+    await expect(confirmation.getByTestId('agent-confirm')).toHaveText(/Confirm/);
+    await expect(confirmation.getByTestId('agent-reject')).toHaveText('Cancel');
     await confirmation.getByTestId('agent-confirm').click();
 
     await expect(confirmation).toContainText('Approved.');
     await expect(page.getByTestId('agent-message-assistant')).toContainText(
-      'The asset was created.'
+      'The table reference was inserted.'
     );
   });
 
@@ -386,7 +554,7 @@ test.describe('Agent chat', () => {
         body: JSON.stringify({ meta: { autoExecute: false, scope: { level: 'project' } } }),
       });
     });
-    await page.route('**/api/agent-chat/conversations?scope=all', async (route) => {
+    await page.route(`**/api/agent-chat/conversations?projectId=${projectId}`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -11,11 +11,10 @@ a runnable snapshot; duplicate or non-contiguous curve levels become warnings.
 
 ## Field Contracts
 
-- Characters require `id`, `name`, `el`, `hp`, `atk`, `def`, `spd`, and `mp`;
-  `cls` is optional.
+- Characters require `id`, `name`, `el`, `hp`, `atk`, `def`, `spd`, and `mp`.
 - Skills require `id`, `name`, `el`, `mp`, `power`, `cd`, and `kind`; `status`
   and `fx` are optional.
-- Level curves require `level`, `exp`, and `sp`; `character_id` is optional.
+- Character curves require `level`, `exp`, and `sp`; `character_id` is optional.
 - Skill curves require `skill_id`, `lv`, and `cost` for new imports.
 
 Each field has explicit English/Chinese aliases and compatible Studio value

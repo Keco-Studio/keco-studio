@@ -78,6 +78,10 @@
   flex-direction: column;
   gap: 1rem;
   min-height: 100%;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .loading,

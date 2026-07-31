@@ -79,15 +79,19 @@ export function ScriptPreviewCard({ confirmation, disabled, onDecision }: Props)
             Edit in Import Modal
           </button>
           <button
-            className={`${styles.btn} ${styles.btnPrimary}`}
+            className={`${styles.btn} ${styles.btnPillPrimary}`}
+            data-testid="agent-confirm"
             disabled={disabled}
+            aria-label="Approve action"
             onClick={() => onDecision(confirmation.actionId, 'approve')}
           >
-            Import Directly
+            ✓ Confirm
           </button>
           <button
-            className={`${styles.btn} ${styles.btnGhost}`}
+            className={`${styles.btn} ${styles.btnPillGhost}`}
+            data-testid="agent-reject"
             disabled={disabled}
+            aria-label="Reject action"
             onClick={() => onDecision(confirmation.actionId, 'reject')}
           >
             Cancel

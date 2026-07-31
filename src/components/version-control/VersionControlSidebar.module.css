@@ -1,22 +1,17 @@
-/* Version Control Sidebar Styles */
-/* Based on Figma design */
+/* Version Control Sidebar — embedded right column (matches document history) */
 
 .sidebar {
-  /* Fixed position, floating overlay covering the entire right column including top bar area */
-  position: fixed;
+  position: sticky;
   top: 0;
-  /* Cover from the very top of the page */
-  right: 0;
-  width: 24rem;
-  height: 100vh;
-  z-index: 100;
-  /* Above all content including TopBar */
+  align-self: flex-start;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: min(24rem, 100%);
+  height: calc(100vh - 4rem);
   background: white;
   border-left: 1px solid rgba(11, 153, 255, 0.35);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
-  flex-shrink: 0;
   font-family: 'Roboto', sans-serif;
 }
 
@@ -27,6 +22,7 @@
   padding: 1rem 1.25rem;
   background: rgba(11, 153, 255, 0.08);
   border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
 .title {
@@ -73,6 +69,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
+  min-height: 0;
 }
 
 .loading,
@@ -84,7 +81,6 @@
   font-size: 0.875rem;
 }
 
-/* Scrollbar styling */
 .content::-webkit-scrollbar {
   width: 0.375rem;
 }
@@ -101,4 +97,11 @@
 
 .content::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .addButton,
+  .closeButton {
+    transition: none;
+  }
 }

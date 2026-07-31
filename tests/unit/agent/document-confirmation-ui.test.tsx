@@ -1,8 +1,25 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
 import { buildDocumentEditDiff } from '@/components/agent/ConfirmationCard';
 import type { ChatItem } from '@/components/agent/types';
 
+jest.mock('next/image', () => {
+  function MockNextImage({
+    src,
+    alt,
+    ...props
+  }: {
+    src: string;
+    alt: string;
+    [key: string]: unknown;
+  }) {
+    return React.createElement('img', { ...props, src, alt });
+  }
+  return MockNextImage;
+});
+jest.mock('@/assets/images/action.svg', () => 'action.svg', { virtual: true });
+jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true });
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
@@ -33,6 +50,10 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).toContain('Confirm: Rename document');
     expect(markup).toContain('Bound document');
     expect(markup).toContain('Guide / Lore');
+    expect(markup).toContain('role="group"');
+    expect(markup).toContain('aria-label="Confirmation required"');
+    expect(markup).toContain('aria-label="Approve action"');
+    expect(markup).toContain('aria-label="Reject action"');
   });
 
   it('renders permanent document deletion through the generic confirmation card', () => {
@@ -105,16 +126,20 @@ describe('Agent document edit confirmation UI', () => {
     );
 
     expect(markup).toContain('Confirm: Apply document edit');
-    expect(markup).toContain(proposedMarkdown);
-    expect(markup.match(/Only this preview contains this text\./g)).toHaveLength(2);
+    expect(markup).toContain('Exact proposal');
+    expect(markup).toContain('<h1>');
+    expect(markup).toContain('Only this preview contains this text.');
+    expect(markup.match(/Only this preview contains this text\./g)).toHaveLength(1);
     expect(markup).toContain('Document changes');
-    expect(markup).toContain('Proposed Markdown');
+    expect(markup).not.toContain('Proposed Markdown');
     expect(markup).toContain('Guide');
     expect(markup).toContain('Lore');
     expect(markup).toContain('Replace one exact text occurrence');
-    expect(markup).toContain('&quot;type&quot;: &quot;replace_text&quot;');
-    expect(markup).toContain('[shown in document diff]');
-    expect(markup.match(/Keep this context\./g)).toHaveLength(1);
+    expect(markup).not.toContain('shown in document diff');
+    expect(markup).not.toContain('&quot;type&quot;');
+    expect(markup).not.toContain('&quot;operation&quot;');
+    expect(markup).not.toContain('documentDiff');
+    expect(markup).not.toContain('unchanged lines');
     expect(markup).not.toContain('Import preview:');
     expect(markup).not.toContain('Import Directly');
   });
@@ -189,7 +214,7 @@ describe('Agent document edit confirmation UI', () => {
     expect(rows).toContainEqual({ kind: 'added', text: 'd' });
   });
 
-  it('announces added and removed rows to assistive technology', () => {
+  it('shows document edit changes as plain chat text without a scrollable diff', () => {
     const item: ChatItem = {
       id: 'confirmation-accessible',
       role: 'confirmation',
@@ -216,8 +241,164 @@ describe('Agent document edit confirmation UI', () => {
     const markup = renderToStaticMarkup(
       <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
     );
-    expect(markup).toContain('Removed: ');
-    expect(markup).toContain('Added: ');
-    expect(markup).toContain('aria-hidden="true"');
+    expect(markup).toContain('aria-label="Document changes"');
+    expect(markup).toContain('New line');
+    expect(markup).toContain('Removed:\nOld line');
+    expect(markup).not.toContain('documentDiff');
+    expect(markup).not.toContain('unchanged lines');
+  });
+
+  it('renders generate_from_document without dumping raw JSON args', () => {
+    const item: ChatItem = {
+      id: 'confirmation-generate',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-generate',
+        tool: 'generate_from_document',
+        args: {
+          documentId: 'db2fdb19-5871-44a8-9fed-0154d6271004',
+          exportType: 'script',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          type: 'generate_from_document',
+          documentId: 'db2fdb19-5871-44a8-9fed-0154d6271004',
+          name: 'Rainy Night Manor',
+          folderName: null,
+          exportType: 'script',
+          libraryName: 'Rainy Night Manor Conversation',
+          summary: 'Generate conversation from document "Rainy Night Manor"',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Generate conversation');
+    expect(markup).toContain('Rainy Night Manor');
+    expect(markup).toContain('Generate conversation from document');
+    expect(markup).toContain('Rainy Night Manor Conversation');
+    expect(markup).not.toContain('documentId');
+    expect(markup).not.toContain('exportType');
+    expect(markup).not.toContain('bound document');
+    expect(markup).not.toContain('db2fdb19-5871-44a8-9fed-0154d6271004');
+  });
+
+  it('renders insert_resource_reference without dumping raw JSON args', () => {
+    const item: ChatItem = {
+      id: 'confirmation-insert-ref',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-insert-ref',
+        tool: 'insert_resource_reference',
+        args: {
+          documentId: '44444444-4444-4444-8444-444444444444',
+          snippet:
+            '<ResourceReference kind="table-row" libraryId="55555555-5555-4555-8555-555555555555" assetId="7901d562-f309-4b15-8cdf-456f39b2a152" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="2026001571" />',
+          placement: { type: 'append' },
+          summary: 'Insert table-row reference "2026001571" into document "Rainy Night Manor"',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          type: 'insert_resource_reference',
+          documentId: '44444444-4444-4444-8444-444444444444',
+          name: 'Rainy Night Manor',
+          folderName: null,
+          summary: 'Insert table-row reference "2026001571" into document "Rainy Night Manor"',
+          kind: 'table-row',
+          fallbackLabel: '2026001571',
+          snippet:
+            '<ResourceReference kind="table-row" libraryId="55555555-5555-4555-8555-555555555555" assetId="7901d562-f309-4b15-8cdf-456f39b2a152" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="2026001571" />',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Insert reference');
+    expect(markup).toContain('Rainy Night Manor');
+    expect(markup).toContain('2026001571');
+    expect(markup).toContain('table row');
+    expect(markup).toContain('✓ Confirm');
+    expect(markup).toContain('>Cancel<');
+    expect(markup).toContain('data-testid="agent-confirm"');
+    expect(markup).toContain('data-testid="agent-reject"');
+    expect(markup).not.toContain('bound document');
+    expect(markup).not.toContain('7901d562-f309-4b15-8cdf-456f39b2a152');
+    expect(markup).not.toContain('ResourceReference');
+  });
+
+  it('uses shared Confirm/Cancel CTAs on setup_library preview cards', () => {
+    const item: ChatItem = {
+      id: 'confirmation-setup-library',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-setup-library',
+        tool: 'setup_library',
+        args: { libraryName: 'Heroes' },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'setup_library',
+          libraryName: 'Heroes',
+          folderName: 'Combat',
+          description: 'Hero roster',
+          sections: {
+            Identity: [{ label: 'Name', dataType: 'string', required: true }],
+          },
+          totalFields: 1,
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Create library: Heroes');
+    expect(markup).toContain('✓ Confirm');
+    expect(markup).toContain('>Cancel<');
+    expect(markup).toContain('data-testid="agent-confirm"');
+    expect(markup).toContain('data-testid="agent-reject"');
+    expect(markup).toContain('aria-label="Approve action"');
+    expect(markup).toContain('aria-label="Reject action"');
+    expect(markup).not.toContain('>Create library<');
+  });
+
+  it('uses shared Confirm/Cancel CTAs on script import preview cards', () => {
+    const item: ChatItem = {
+      id: 'confirmation-script-import',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-script-import',
+        tool: 'import_script',
+        args: { libraryName: 'Quest Script' },
+        confirmationMode: 'post_preview',
+        preview: {
+          libraryName: 'Quest Script',
+          folderId: 'folder-1',
+          fullText: 'line one',
+          lines: [{ content: 'line one' }],
+          stats: { lineCount: 1, dialogueCount: 0, optionCount: 0 },
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Import preview: Quest Script');
+    expect(markup).toContain('Edit in Import Modal');
+    expect(markup).toContain('✓ Confirm');
+    expect(markup).toContain('>Cancel<');
+    expect(markup).toContain('data-testid="agent-confirm"');
+    expect(markup).toContain('data-testid="agent-reject"');
+    expect(markup).toContain('aria-label="Approve action"');
+    expect(markup).toContain('aria-label="Reject action"');
+    expect(markup).not.toContain('Import Directly');
   });
 });

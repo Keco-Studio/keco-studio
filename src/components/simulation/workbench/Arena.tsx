@@ -184,7 +184,7 @@ function Column({
         padding: side === 'A' ? '0 0 2px 4px' : '0 4px 2px 0',
       }}
       >
-        {side === 'A' ? 'Team A · You' : 'Team B · Enemy'}
+        {side === 'A' ? 'Team A' : 'Team B'}
       </div>
       {list.map((fighter) => (
         <Token key={fighter.uid} fighter={fighter} side={side} />

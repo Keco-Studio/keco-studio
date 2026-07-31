@@ -119,16 +119,16 @@ export function BattleScreen({ onContinue }: { onContinue?: () => void }) {
     ? (rate >= 45 && rate <= 55
       ? 'Balanced — within the 45–55% target band.'
       : (rate > 55
-        ? 'Team A is favoured. Consider buffing the enemy.'
-        : 'Team A is underpowered. Consider buffing your side.'))
+        ? 'Team A is favoured. Consider buffing Team B.'
+        : 'Team A is underpowered. Consider buffing Team A.'))
     : null;
 
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <div style={{ maxWidth: 1000, width: '100%', margin: '0 auto' }}>
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ fontSize: 27, fontWeight: 600, color: 'var(--ink-900)', margin: '0 0 6px', letterSpacing: '-.01em' }}>Battle</h1>
         <p style={{ color: 'var(--ink-500)', fontSize: 15, margin: 0, maxWidth: 640, lineHeight: 1.55 }}>
-          Run one visual battle in the Arena, or batch-simulate to read the win rate. Team A is yours.
+          Run one visual battle in the Arena, or batch-simulate to read the win rate.
         </p>
       </div>
       {!ready ? (
@@ -227,8 +227,8 @@ export function BattleScreen({ onContinue }: { onContinue?: () => void }) {
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                <span style={{ color: 'var(--keco-blue)', fontWeight: 600 }}>You · {rate}%</span>
-                <span style={{ color: 'var(--keco-pink-strong)', fontWeight: 600 }}>Enemy · {brate}%</span>
+                <span style={{ color: 'var(--keco-blue)', fontWeight: 600 }}>Team A · {rate}%</span>
+                <span style={{ color: 'var(--keco-pink-strong)', fontWeight: 600 }}>Team B · {brate}%</span>
               </div>
               {balanceCopy ? (
                 <div style={{

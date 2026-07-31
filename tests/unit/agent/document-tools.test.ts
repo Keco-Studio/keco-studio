@@ -780,7 +780,14 @@ describe('Agent document tools', () => {
     expect(result).toEqual({
       success: true,
       displayHint: 'text',
-      data: { documentId: DOCUMENT_ID, token: { epoch: 2, revision: 5 } },
+      data: {
+        documentId: DOCUMENT_ID,
+        token: { epoch: 2, revision: 5 },
+        documentName: 'Guide',
+        folderName: null,
+        operationType: 'replace_all',
+        operationSummary: 'Replace entire document (10 characters).',
+      },
       invalidations: [{ type: 'documents', projectId: PROJECT_ID, documentId: DOCUMENT_ID }],
     });
     expect(resolveDocumentForTool).toHaveBeenCalledTimes(1);

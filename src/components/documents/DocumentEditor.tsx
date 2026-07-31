@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { DownloadOutlined, HistoryOutlined, LoadingOutlined } from '@ant-design/icons';
+import { LoadingOutlined } from '@ant-design/icons';
 import { Dropdown } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -235,17 +235,6 @@ function DocumentEditorSession({
     }
     return payload.source;
   }, [collaboration.session, document.id, permissions.role, projectId, supabase]);
-  const exportItems = [
-    { key: 'docx', label: 'Download DOCX' },
-    { key: 'pdf', label: 'Download PDF' },
-    { key: 'mdx', label: 'Download MDX' },
-    ...(permissions.role === 'admin'
-      ? [
-          { key: 'tables', label: 'Export as tables' },
-          { key: 'script', label: 'Export as script' },
-        ]
-      : []),
-  ];
   const handleExport = useCallback(
     async ({ key }: { key: string }) => {
       if (exportingFormat) return;
@@ -319,140 +308,172 @@ function DocumentEditorSession({
       supabase,
     ]
   );
+  const exportItems = [
+    { key: 'docx', label: 'Download DOCX' },
+    { key: 'pdf', label: 'Download PDF' },
+    { key: 'mdx', label: 'Download MDX' },
+    ...(permissions.role === 'admin'
+      ? [
+          { key: 'tables', label: 'Export as tables' },
+          { key: 'script', label: 'Export as script' },
+        ]
+      : []),
+  ];
   const editorKey = `${document.id}:${collaboration.token.epoch}:${
     collaboration.isLegacyView ? 'legacy' : 'collaborative'
   }`;
 
+  useEffect(() => {
+    const publishStatus = () => {
+      window.dispatchEvent(
+        new CustomEvent('document-topbar-status', {
+          detail: {
+            label: collaboration.label,
+          },
+        })
+      );
+    };
+    publishStatus();
+    window.addEventListener('document-topbar-sync-request', publishStatus);
+    return () => {
+      window.removeEventListener('document-topbar-sync-request', publishStatus);
+    };
+  }, [collaboration.label]);
+
+  useEffect(() => {
+    const handleTopbarExport = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string }>).detail;
+      void handleExport({ key: detail?.key ?? 'mdx' });
+    };
+    const handleTopbarHistoryToggle = () => {
+      setHistoryOpen((open) => !open);
+    };
+    window.addEventListener('document-export-trigger', handleTopbarExport);
+    window.addEventListener('document-history-toggle', handleTopbarHistoryToggle);
+    return () => {
+      window.removeEventListener('document-export-trigger', handleTopbarExport);
+      window.removeEventListener('document-history-toggle', handleTopbarHistoryToggle);
+    };
+  }, [handleExport]);
+
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>{document.name}</h1>
-        <div className={styles.headerActions}>
-          <Dropdown
-            menu={{ items: exportItems, onClick: handleExport }}
-            placement="bottomRight"
-            trigger={['click']}
-          >
-            <button
-              type="button"
-              className={styles.historyButton}
-              aria-label={exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}` : 'Export document'}
-              data-testid="document-export"
-              title={exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : 'Export document'}
-              disabled={Boolean(exportingFormat)}
-            >
-              <DownloadOutlined aria-hidden="true" />
-            </button>
-          </Dropdown>
-          <button
-            type="button"
-            className={styles.historyButton}
-            aria-label="Version history"
-            data-testid="version-history-toggle"
-            title="Version history"
-            onClick={() => setHistoryOpen((open) => !open)}
-          >
-            <HistoryOutlined aria-hidden="true" />
-          </button>
-          <div className={styles.status} aria-live="polite">
-            {collaboration.collaborators.length > 0 && (
-              <div className={styles.collaborators} aria-label="Collaborators currently editing">
-                {collaboration.collaborators.slice(0, 5).map((user) => (
-                  <span
-                    key={user.id}
-                    className={styles.collaboratorAvatar}
-                    style={{ backgroundColor: user.color }}
-                    title={`${user.name} is editing`}
-                  >
-                    {user.name.charAt(0).toUpperCase()}
-                  </span>
-                ))}
-                {collaboration.collaborators.length > 5 && (
-                  <span className={styles.collaboratorMore}>
-                    +{collaboration.collaborators.length - 5}
-                  </span>
+      <section
+        className={`${styles.documentSection} ${historyOpen ? styles.documentSectionWithHistory : ''}`}
+      >
+        <div className={styles.documentMain}>
+          <header className={styles.stickyChrome}>
+            <div className={styles.header}>
+              <h1 className={styles.title}>{document.name}</h1>
+              <div className={styles.status} aria-live="polite">
+                {collaboration.collaborators.length > 0 && (
+                  <div className={styles.collaborators} aria-label="Collaborators currently editing">
+                    {collaboration.collaborators.slice(0, 5).map((user) => (
+                      <span
+                        key={user.id}
+                        className={styles.collaboratorAvatar}
+                        style={{ backgroundColor: user.color }}
+                        title={`${user.name} is editing`}
+                      >
+                        {user.name.charAt(0).toUpperCase()}
+                      </span>
+                    ))}
+                    {collaboration.collaborators.length > 5 && (
+                      <span className={styles.collaboratorMore}>
+                        +{collaboration.collaborators.length - 5}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-            <span className={styles[`${collaboration.tone}Tag`]}>
-              {collaboration.label}
-            </span>
+              <div className={styles.topbarExportBridge} aria-hidden="true">
+                <Dropdown
+                  menu={{ items: exportItems, onClick: handleExport }}
+                  placement="bottomRight"
+                  trigger={['click']}
+                >
+                  <button type="button" data-testid="document-export-bridge">
+                    Export bridge
+                  </button>
+                </Dropdown>
+              </div>
+            </div>
+          </header>
+
+          {collaboration.canRetry && (
+            <div className={styles.connectionBanner} role="alert">
+              <span title={collaboration.error ?? undefined}>
+                {collaboration.label}
+              </span>
+              <button
+                type="button"
+                className={styles.retryButton}
+                onClick={() => void collaboration.retry()}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {derivedImportProgress && (
+            <div
+              className={
+                derivedImportProgress.phase === 'error'
+                  ? styles.derivedImportBannerError
+                  : derivedImportProgress.phase === 'success'
+                    ? styles.derivedImportBannerSuccess
+                    : styles.derivedImportBanner
+              }
+              role="status"
+              aria-live="polite"
+              data-testid="document-derived-import-progress"
+            >
+              <span className={styles.derivedImportLabel}>{derivedImportProgress.label}</span>
+              {(derivedImportProgress.phase === 'preparing' ||
+                derivedImportProgress.phase === 'running') && (
+                <LoadingOutlined className={styles.derivedImportSpinner} spin />
+              )}
+            </div>
+          )}
+
+          <div className={styles.workspace}>
+            <div className={styles.editorPane}>
+              {collaboration.isLegacyView ? (
+                <MdxDocumentEditor
+                  key={editorKey}
+                  projectId={projectId}
+                  documentId={document.id}
+                  markdown={document.content ?? ''}
+                  readOnly
+                  showToolbar={false}
+                  onChange={ignoreMarkdownChange}
+                  imageUploadHandler={imageUploadHandler}
+                  editorRef={handleEditorRef}
+                  referenceNavigationReady={referenceNavigationReady}
+                />
+              ) : collaboration.canBind && collaboration.session ? (
+                <MdxDocumentEditor
+                  key={`${document.id}:${collaboration.token.epoch}:collaborative`}
+                  projectId={projectId}
+                  documentId={document.id}
+                  markdown=""
+                  readOnly={collaboration.readOnly}
+                  showToolbar={permissions.role !== 'viewer'}
+                  onChange={ignoreMarkdownChange}
+                  imageUploadHandler={imageUploadHandler}
+                  editorRef={handleEditorRef}
+                  referenceNavigationReady={referenceNavigationReady}
+                  collaboration={{
+                    session: collaboration.session,
+                    username: permissions.userName,
+                    cursorColor: collaboration.cursorColor,
+                  }}
+                />
+              ) : (
+                <div className={styles.editorPlaceholder}>{collaboration.label}</div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
-
-      {collaboration.canRetry && (
-        <div className={styles.connectionBanner} role="alert">
-          <span title={collaboration.error ?? undefined}>
-            {collaboration.label}
-          </span>
-          <button
-            type="button"
-            className={styles.retryButton}
-            onClick={() => void collaboration.retry()}
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {derivedImportProgress && (
-        <div
-          className={
-            derivedImportProgress.phase === 'error'
-              ? styles.derivedImportBannerError
-              : derivedImportProgress.phase === 'success'
-                ? styles.derivedImportBannerSuccess
-                : styles.derivedImportBanner
-          }
-          role="status"
-          aria-live="polite"
-          data-testid="document-derived-import-progress"
-        >
-          <span className={styles.derivedImportLabel}>{derivedImportProgress.label}</span>
-          {(derivedImportProgress.phase === 'preparing' ||
-            derivedImportProgress.phase === 'running') && (
-            <LoadingOutlined className={styles.derivedImportSpinner} spin />
-          )}
-        </div>
-      )}
-
-      <div className={`${styles.workspace} ${historyOpen ? styles.workspaceWithHistory : ''}`}>
-        <div className={styles.editorPane}>
-          {collaboration.isLegacyView ? (
-            <MdxDocumentEditor
-              key={editorKey}
-              projectId={projectId}
-              documentId={document.id}
-              markdown={document.content ?? ''}
-              readOnly
-              showToolbar={false}
-              onChange={ignoreMarkdownChange}
-              imageUploadHandler={imageUploadHandler}
-              editorRef={handleEditorRef}
-              referenceNavigationReady={referenceNavigationReady}
-            />
-          ) : collaboration.canBind && collaboration.session ? (
-            <MdxDocumentEditor
-              key={`${document.id}:${collaboration.token.epoch}:collaborative`}
-              projectId={projectId}
-              documentId={document.id}
-              markdown=""
-              readOnly={collaboration.readOnly}
-              showToolbar={permissions.role !== 'viewer'}
-              onChange={ignoreMarkdownChange}
-              imageUploadHandler={imageUploadHandler}
-              editorRef={handleEditorRef}
-              referenceNavigationReady={referenceNavigationReady}
-              collaboration={{
-                session: collaboration.session,
-                username: permissions.userName,
-                cursorColor: collaboration.cursorColor,
-              }}
-            />
-          ) : (
-            <div className={styles.editorPlaceholder}>{collaboration.label}</div>
-          )}
         </div>
         <DocumentVersionSidebar
           open={historyOpen}
@@ -462,7 +483,7 @@ function DocumentEditorSession({
           session={collaboration.session}
           onClose={() => setHistoryOpen(false)}
         />
-      </div>
+      </section>
       <ImportScriptModal
         open={Boolean(scriptSource)}
         projectId={projectId}

@@ -8,6 +8,10 @@ import { getActiveSectionName } from '@/lib/agent/page-context';
 import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
+import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
+import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImport';
+import { defaultDerivedLibraryName } from '@/lib/documents/documentDerivedImportProgress';
+import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
 import {
   clearLastConversation,
   setLastConversation,
@@ -16,6 +20,11 @@ import {
 } from './agentChatStorage';
 import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
+import {
+  applyAssistantDelta,
+  finalizeAssistantItem,
+  promoteAssistantTextToReasoning,
+} from './assistantStreamItems';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
 import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
@@ -34,6 +43,23 @@ import {
 
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
+
+function isAbortLikeError(error: unknown): boolean {
+  if (!error) return false;
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (error instanceof Error && error.name === 'AbortError') return true;
+  // Aborted body reads can reject with a bare Event in some browsers.
+  if (typeof Event !== 'undefined' && error instanceof Event) {
+    return error.type === 'abort' || error.type === 'error';
+  }
+  return false;
+}
+
+type PendingAutoGenerateConfirm = {
+  actionId: string;
+  documentId: string;
+  exportType: DocumentExportType;
+};
 
 interface ParsedSSE {
   type: string;
@@ -116,6 +142,24 @@ export function useAgentChat(ctx: SendContext) {
   const activeRuntimeKeyRef = useRef(runtime.key);
   const projectIdRef = useRef<string | undefined>(undefined);
   const restoreEpochRef = useRef(0);
+  /** Auto mode: queue generate_from_document approval without showing a confirm card. */
+  const pendingAutoGenerateConfirmRef = useRef<PendingAutoGenerateConfirm | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const userStoppedRef = useRef(false);
+  const pendingStopRef = useRef<{
+    composerDraft: string;
+    userItemId: string;
+    assistantItemId: string;
+  } | null>(null);
+  const confirmRef = useRef<
+    | ((
+        actionId: string,
+        decision: 'approve' | 'reject',
+        options?: { generateFromDocument?: PendingAutoGenerateConfirm }
+      ) => Promise<void>)
+    | null
+  >(null);
 
   const syncRuntime = useCallback((next: AgentChatRuntime) => {
     setRuntime(next);
@@ -215,7 +259,8 @@ export function useAgentChat(ctx: SendContext) {
       response: Response,
       initialRuntimeKey: string,
       origin: { userId?: string; projectId: string },
-      onBound: (key: string) => void
+      onBound: (key: string) => void,
+      options?: { initialAssistantId?: string | null }
     ) => {
       let runtimeKey = initialRuntimeKey;
       beginStreamActivity(runtimeKey, 'connecting');
@@ -241,64 +286,82 @@ export function useAgentChat(ctx: SendContext) {
 
       const reader = response.body?.getReader();
       if (!reader) return;
+      streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       let buffer = '';
 
-      let assistantId: string | null = null;
+      let assistantId: string | null = options?.initialAssistantId ?? null;
       let toolCallId: string | null = null;
       let receivedDone = false;
-
-      const ensureAssistantBubble = () => {
-        if (!assistantId) {
-          assistantId = nextId();
-          updateAgentChatRuntime(runtimeKey, { streamingAssistantId: assistantId });
-          appendItem(runtimeKey, { id: assistantId, role: 'assistant' });
-        }
-        return assistantId;
-      };
+      let reasoningSegmentStart = true;
+      let textSegmentStart = true;
+      let toolActivitySinceText = false;
 
       const handleEvent = (event: ParsedSSE) => {
+        if (userStoppedRef.current) return;
         switch (event.type) {
           case 'reasoning_delta': {
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'thinking' });
             const delta = String(event.content ?? '');
-            const id = ensureAssistantBubble();
             const now = Date.now();
-            updateAgentChatRuntime(runtimeKey, (current) => ({
-              items: current.items.map((it) => {
-                if (it.id !== id) return it;
-                return {
-                  ...it,
-                  reasoning: (it.reasoning ?? '') + delta,
-                  reasoningStartedAt: it.reasoningStartedAt ?? now,
-                };
-              }),
-            }));
+            const candidateId = assistantId ?? nextId();
+            updateAgentChatRuntime(runtimeKey, (current) => {
+              const result = applyAssistantDelta(current.items, assistantId, {
+                newId: candidateId,
+                kind: 'reasoning',
+                delta,
+                now,
+                segmentStart: reasoningSegmentStart,
+              });
+              assistantId = result.assistantId;
+              if (result.consumedSegmentStart) reasoningSegmentStart = false;
+              return {
+                items: result.items,
+                streamingAssistantId: result.assistantId,
+              };
+            });
             break;
           }
           case 'text_delta': {
             updateAgentChatRuntime(runtimeKey, { streamActivity: 'writing' });
             const delta = String(event.content ?? '');
-            const id = ensureAssistantBubble();
             const now = Date.now();
-            updateAgentChatRuntime(runtimeKey, (current) => ({
-              items: current.items.map((it) => {
-                if (it.id !== id) return it;
-                const patch: Partial<ChatItem> = { text: (it.text ?? '') + delta };
-                if (it.reasoning && !it.reasoningEndedAt) {
-                  patch.reasoningEndedAt = now;
-                }
-                return { ...it, ...patch };
-              }),
-            }));
+            const candidateId = assistantId ?? nextId();
+            const moveToEnd = toolActivitySinceText && delta.trim().length > 0;
+            updateAgentChatRuntime(runtimeKey, (current) => {
+              const result = applyAssistantDelta(current.items, assistantId, {
+                newId: candidateId,
+                kind: 'text',
+                delta,
+                now,
+                segmentStart: textSegmentStart,
+                moveToEnd,
+              });
+              assistantId = result.assistantId;
+              if (result.consumedSegmentStart) {
+                textSegmentStart = false;
+                toolActivitySinceText = false;
+              }
+              return {
+                items: result.items,
+                streamingAssistantId: result.assistantId,
+              };
+            });
             break;
           }
           case 'tool_call_start': {
-            updateAgentChatRuntime(runtimeKey, {
-              streamActivity: 'tool',
-              streamingAssistantId: null,
-            });
-            assistantId = null;
+            reasoningSegmentStart = true;
+            textSegmentStart = true;
+            toolActivitySinceText = true;
+            updateAgentChatRuntime(runtimeKey, { streamActivity: 'tool' });
+            // Flush any pending plan text into reasoning on every tool round
+            // (not only the first), so later "I will..." plans do not stick in the reply.
+            if (assistantId) {
+              const now = Date.now();
+              updateAgentChatRuntime(runtimeKey, (current) => ({
+                items: promoteAssistantTextToReasoning(current.items, assistantId, now),
+              }));
+            }
             toolCallId = nextId();
             appendItem(runtimeKey, {
               id: toolCallId,
@@ -345,14 +408,42 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'confirmation_request': {
-            assistantId = null;
-            updateAgentChatRuntime(runtimeKey, { streamingAssistantId: null });
+            const actionId = String(event.actionId ?? '');
+            const tool = String(event.tool ?? '');
+            const runtimeSnapshot = getAgentChatRuntime(runtimeKey);
+            const args = (event.args ?? {}) as {
+              documentId?: unknown;
+              exportType?: unknown;
+            };
+            const documentId =
+              typeof args.documentId === 'string' ? args.documentId.trim() : '';
+            const exportType =
+              args.exportType === 'table' || args.exportType === 'script'
+                ? args.exportType
+                : null;
+
+            // Keep server suspension for client derived-import handoff, but Auto
+            // mode must not show/require a confirm card.
+            if (
+              tool === 'generate_from_document' &&
+              runtimeSnapshot?.autoExecute === true &&
+              documentId &&
+              exportType
+            ) {
+              pendingAutoGenerateConfirmRef.current = {
+                actionId,
+                documentId,
+                exportType,
+              };
+              break;
+            }
+
             appendItem(runtimeKey, {
               id: nextId(),
               role: 'confirmation',
               confirmation: {
-                actionId: String(event.actionId ?? ''),
-                tool: String(event.tool ?? ''),
+                actionId,
+                tool,
                 args: event.args,
                 confirmationMode: (event.confirmationMode as ConfirmationModeValue) ?? 'pre_execute',
                 preview: event.preview,
@@ -365,8 +456,6 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'error': {
-            assistantId = null;
-            updateAgentChatRuntime(runtimeKey, { streamingAssistantId: null });
             appendItem(runtimeKey, {
               id: nextId(),
               role: 'error',
@@ -383,37 +472,45 @@ export function useAgentChat(ctx: SendContext) {
       };
 
       const finalizeStreamingAssistant = () => {
-        const id = getAgentChatRuntime(runtimeKey)?.streamingAssistantId;
-        if (!id) return;
         const now = Date.now();
         updateAgentChatRuntime(runtimeKey, (current) => ({
-          items: current.items.map((it) => {
-            if (it.id !== id || !it.reasoning) return it;
-            const patch: Partial<ChatItem> = {};
-            if (!it.reasoningStartedAt) patch.reasoningStartedAt = now;
-            if (!it.reasoningEndedAt) patch.reasoningEndedAt = now;
-            return Object.keys(patch).length ? { ...it, ...patch } : it;
-          }),
+          items: finalizeAssistantItem(current.items, assistantId, now),
           streamingAssistantId: null,
         }));
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf('\n\n')) !== -1) {
-          const frame = buffer.slice(0, idx).trim();
-          buffer = buffer.slice(idx + 2);
-          if (!frame.startsWith('data:')) continue;
-          const payload = frame.slice('data:'.length).trim();
-          try {
-            handleEvent(JSON.parse(payload) as ParsedSSE);
-          } catch {
-            // ignore malformed frame
+      try {
+        while (true) {
+          if (userStoppedRef.current) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 2);
+            if (!frame.startsWith('data:')) continue;
+            const payload = frame.slice('data:'.length).trim();
+            try {
+              handleEvent(JSON.parse(payload) as ParsedSSE);
+            } catch {
+              // ignore malformed frame
+            }
           }
         }
+      } catch (error) {
+        if (userStoppedRef.current || isAbortLikeError(error)) {
+          return;
+        }
+        throw error;
+      } finally {
+        if (streamReaderRef.current === reader) {
+          streamReaderRef.current = null;
+        }
+      }
+      if (userStoppedRef.current) {
+        // stopStreaming already finalized UI for intentional interrupts.
+        return;
       }
       finalizeStreamingAssistant();
       if (!receivedDone) {
@@ -439,13 +536,31 @@ export function useAgentChat(ctx: SendContext) {
       ) return;
       let requestRuntimeKey = selectedRuntime.key;
       const display = deriveUserDisplay(message, opts?.imageUrls, opts?.selectionContext);
+      const userItemId = nextId();
       appendItem(requestRuntimeKey, {
-        id: nextId(),
+        id: userItemId,
         role: 'user',
         text: display.text,
         attachments: display.attachments,
       });
-      updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
+      const assistantPlaceholderId = nextId();
+      appendItem(requestRuntimeKey, {
+        id: assistantPlaceholderId,
+        role: 'assistant',
+        text: '',
+      });
+      userStoppedRef.current = false;
+      pendingStopRef.current = {
+        composerDraft: opts?.composerDraft ?? display.text ?? message,
+        userItemId,
+        assistantItemId: assistantPlaceholderId,
+      };
+      const abortController = new AbortController();
+      streamAbortRef.current = abortController;
+      updateAgentChatRuntime(requestRuntimeKey, {
+        isStreaming: true,
+        streamingAssistantId: assistantPlaceholderId,
+      });
       beginStreamActivity(requestRuntimeKey, 'connecting');
       try {
         const token = await getToken();
@@ -484,9 +599,14 @@ export function useAgentChat(ctx: SendContext) {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(requestBody),
+          signal: abortController.signal,
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
+          updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+            items: current.items.filter((item) => item.id !== assistantPlaceholderId),
+            streamingAssistantId: null,
+          }));
           appendItem(requestRuntimeKey, {
             id: nextId(),
             role: 'error',
@@ -500,19 +620,39 @@ export function useAgentChat(ctx: SendContext) {
           { userId: ctx.userId, projectId: ctx.projectId },
           (boundKey) => {
             requestRuntimeKey = boundKey;
-          }
+          },
+          { initialAssistantId: assistantPlaceholderId }
         );
       } catch (e) {
+        if (userStoppedRef.current || isAbortLikeError(e)) {
+          return;
+        }
+        updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+          items: current.items.filter((item) => item.id !== assistantPlaceholderId),
+          streamingAssistantId: null,
+        }));
         appendItem(requestRuntimeKey, {
           id: nextId(),
           role: 'error',
           error: (e as Error).message || 'Network error',
         });
       } finally {
-        updateAgentChatRuntime(requestRuntimeKey, {
-          isStreaming: false,
-          streamStartedAt: null,
-          streamingAssistantId: null,
+        streamAbortRef.current = null;
+        pendingStopRef.current = null;
+        if (!userStoppedRef.current) {
+          updateAgentChatRuntime(requestRuntimeKey, {
+            isStreaming: false,
+            streamStartedAt: null,
+            streamingAssistantId: null,
+          });
+        }
+      }
+
+      const autoGenerate = pendingAutoGenerateConfirmRef.current;
+      pendingAutoGenerateConfirmRef.current = null;
+      if (autoGenerate && !userStoppedRef.current) {
+        void confirmRef.current?.(autoGenerate.actionId, 'approve', {
+          generateFromDocument: autoGenerate,
         });
       }
     },
@@ -578,11 +718,38 @@ export function useAgentChat(ctx: SendContext) {
   );
 
   const confirm = useCallback(
-    async (actionId: string, decision: 'approve' | 'reject') => {
+    async (
+      actionId: string,
+      decision: 'approve' | 'reject',
+      options?: {
+        generateFromDocument?: PendingAutoGenerateConfirm;
+      }
+    ) => {
       if (!ctx.userId) return;
       const selectedRuntime = getAgentChatRuntime(activeRuntimeKeyRef.current);
       if (!selectedRuntime || selectedRuntime.isLoading || selectedRuntime.isStreaming) return;
       let requestRuntimeKey = selectedRuntime.key;
+      const pendingConfirmation = selectedRuntime.items.find(
+        (it) => it.confirmation?.actionId === actionId
+      )?.confirmation;
+      const generateArgs = options?.generateFromDocument ?? (
+        pendingConfirmation?.tool === 'generate_from_document'
+          ? (() => {
+              const args = (pendingConfirmation.args ?? {}) as {
+                documentId?: string;
+                exportType?: DocumentExportType;
+              };
+              const documentId = typeof args.documentId === 'string' ? args.documentId : '';
+              const exportType =
+                args.exportType === 'table' || args.exportType === 'script'
+                  ? args.exportType
+                  : null;
+              if (!documentId || !exportType) return null;
+              return { actionId, documentId, exportType };
+            })()
+          : null
+      );
+
       updateAgentChatRuntime(requestRuntimeKey, (current) => ({
         items: current.items.map((it) =>
           it.confirmation?.actionId === actionId
@@ -592,7 +759,50 @@ export function useAgentChat(ctx: SendContext) {
       }));
       updateAgentChatRuntime(requestRuntimeKey, { isStreaming: true });
       beginStreamActivity(requestRuntimeKey, 'connecting');
+      userStoppedRef.current = false;
+      pendingStopRef.current = null;
+      const abortController = new AbortController();
+      streamAbortRef.current = abortController;
       try {
+        let clientCompletedResult: unknown;
+        if (decision === 'approve' && generateArgs) {
+          // Same path as Document right-click Generate: /api/import-script (300s),
+          // so Story IR is not trapped inside the agent-chat turn deadline.
+          beginStreamActivity(requestRuntimeKey, 'processing');
+          const token = await getToken();
+          if (!token) throw new Error('Please sign in before generating');
+          const source = await fetchDocumentExportSource(generateArgs.documentId, token);
+          const importResult = await runDocumentDerivedImport({
+            source,
+            exportType: generateArgs.exportType,
+            accessToken: token,
+          });
+          notifyDocumentDerivedLibraryCreated({
+            projectId: source.projectId,
+            documentId: source.documentId,
+            libraryId: importResult.libraryId,
+          });
+          await invalidateLibraryData(queryClient, {
+            projectId: source.projectId,
+            folderId: source.folderId,
+            libraryId: importResult.libraryId,
+            refetchActiveFoldersLibraries: true,
+          });
+          clientCompletedResult = {
+            libraryId: importResult.libraryId,
+            libraryName: defaultDerivedLibraryName(
+              source.documentName,
+              generateArgs.exportType
+            ),
+            exportType: generateArgs.exportType,
+            sourceDocumentId: source.documentId,
+            documentName: source.documentName,
+            projectId: source.projectId,
+            rowCount: importResult.rowCount,
+            fieldCount: importResult.fieldCount,
+          };
+        }
+
         const token = await getToken();
         const response = await fetch('/api/agent-chat/confirm', {
           method: 'POST',
@@ -610,7 +820,9 @@ export function useAgentChat(ctx: SendContext) {
             currentLibraryId: ctx.currentLibraryId,
             currentLibraryName: ctx.currentLibraryName,
             currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
+            ...(clientCompletedResult !== undefined ? { clientCompletedResult } : {}),
           }),
+          signal: abortController.signal,
         });
         if (!response.ok) {
           const err = await response.json().catch(() => ({ error: 'Request failed' }));
@@ -630,21 +842,85 @@ export function useAgentChat(ctx: SendContext) {
           }
         );
       } catch (e) {
+        if (userStoppedRef.current || isAbortLikeError(e)) {
+          return;
+        }
+        updateAgentChatRuntime(requestRuntimeKey, (current) => ({
+          items: current.items.map((it) =>
+            it.confirmation?.actionId === actionId
+              ? { ...it, confirmation: { ...it.confirmation, resolved: undefined } }
+              : it
+          ),
+        }));
         appendItem(requestRuntimeKey, {
           id: nextId(),
           role: 'error',
           error: (e as Error).message || 'Network error',
         });
       } finally {
-        updateAgentChatRuntime(requestRuntimeKey, {
+        streamAbortRef.current = null;
+        if (!userStoppedRef.current) {
+          updateAgentChatRuntime(requestRuntimeKey, {
+            isStreaming: false,
+            streamStartedAt: null,
+            streamingAssistantId: null,
+          });
+        }
+      }
+    },
+    [getToken, ctx, consumeStream, appendItem, beginStreamActivity, queryClient]
+  );
+
+  confirmRef.current = confirm;
+
+  const stopStreaming = useCallback((): string | null => {
+    const pending = pendingStopRef.current;
+    const draft = pending?.composerDraft ?? null;
+    userStoppedRef.current = true;
+    const reader = streamReaderRef.current;
+    streamReaderRef.current = null;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    if (reader) {
+      void reader.cancel('stopped-by-user').catch(() => undefined);
+    }
+    pendingStopRef.current = null;
+
+    const runtimeKey = activeRuntimeKeyRef.current;
+    const now = Date.now();
+    updateAgentChatRuntime(runtimeKey, (current) => {
+      if (!pending) {
+        return {
           isStreaming: false,
           streamStartedAt: null,
           streamingAssistantId: null,
-        });
+        };
       }
-    },
-    [getToken, ctx, consumeStream, appendItem, beginStreamActivity]
-  );
+
+      const userIdx = current.items.findIndex((item) => item.id === pending.userItemId);
+      const before = userIdx >= 0 ? current.items.slice(0, userIdx) : current.items;
+      const after = userIdx >= 0 ? current.items.slice(userIdx + 1) : [];
+      const kept = after.filter((item) => {
+        if (item.id === pending.assistantItemId || item.role === 'assistant') {
+          return Boolean(item.text?.trim() || item.reasoning?.trim());
+        }
+        if (item.role === 'tool' && item.toolCall?.status === 'running') {
+          return false;
+        }
+        return true;
+      });
+      const finalized = finalizeAssistantItem(kept, pending.assistantItemId, now);
+
+      return {
+        items: [...before, ...finalized],
+        isStreaming: false,
+        streamStartedAt: null,
+        streamingAssistantId: null,
+      };
+    });
+
+    return draft;
+  }, []);
 
   const resetToEmpty = useCallback(() => {
     const next = createAgentChatRuntime({
@@ -806,6 +1082,7 @@ export function useAgentChat(ctx: SendContext) {
     activeScope: runtimeMatchesUser ? runtime.activeScope : undefined,
     send,
     confirm,
+    stopStreaming,
     setAutoExecute,
     startNewConversation,
     loadConversation,

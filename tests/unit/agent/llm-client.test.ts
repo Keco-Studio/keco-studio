@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 jest.mock('undici', () => ({
   Agent: class TestAgent {},
+  EnvHttpProxyAgent: class TestEnvHttpProxyAgent {},
   fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
 }));
 
@@ -221,6 +222,29 @@ describe('streamLlm request options', () => {
       max_tokens: 600,
       tool_choice: { type: 'function', function: { name: 'submit_mapping' } },
     });
+  });
+
+  it('retries two transient streaming connection failures', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+
+    global.fetch = jest.fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(new Response(
+        'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        { status: 200 }
+      )) as typeof fetch;
+
+    const { streamLlm } = await import('../../../src/lib/agent/llm-client');
+    const chunks = [];
+    for await (const chunk of streamLlm([{ role: 'user', content: 'hello' }])) {
+      chunks.push(chunk);
+    }
+
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(chunks).toContainEqual({ type: 'text_delta', content: 'ok' });
   });
 
   it('rejects provider-aborted tool output instead of returning partial JSON', async () => {

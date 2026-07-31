@@ -81,7 +81,8 @@ export async function requestDocumentReindex(
     }
   }
 
-  console.error('embedding.index.project_document_failed', {
+  // Background indexing must not trip the Next.js error overlay; editing still works.
+  console.warn('embedding.index.project_document_failed', {
     projectId: input.projectId,
     documentId: input.documentId,
     attempts: AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS,

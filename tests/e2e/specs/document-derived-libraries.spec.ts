@@ -87,10 +87,16 @@ async function openDocumentInNewContext(
   return { context, page };
 }
 
-async function openExportMenu(page: Page) {
+async function openExportMenu(page: Page, expectedLabels?: string[]) {
   await page.getByTestId('document-export').click();
   const menu = page.locator('.ant-dropdown:visible .ant-dropdown-menu');
   await expect(menu).toBeVisible();
+  if (expectedLabels) {
+    await expect.poll(async () =>
+      (await menu.locator('.ant-dropdown-menu-item').allTextContents())
+        .map((label) => label.trim())
+    ).toEqual(expectedLabels);
+  }
   return menu;
 }
 
@@ -129,15 +135,47 @@ async function expandTreeNode(page: Page, title: string): Promise<void> {
   const node = sidebarTitle(page, title)
     .first()
     .locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
-  // Documents hide Ant's left switcher and expand from a title-row control.
   const documentExpand = node.getByRole('button', { name: 'Expand' });
-  if (await documentExpand.count()) {
+  const documentCollapse = node.getByRole('button', { name: 'Collapse' });
+  const switcher = node.locator('.ant-tree-switcher:not(.ant-tree-switcher-noop)');
+
+  // Derived libraries load after the document row; wait for a real expand control
+  // instead of the CSS-hidden Ant switcher documents keep in the DOM.
+  let mode: 'open' | 'document' | 'switcher' = 'open';
+  await expect
+    .poll(
+      async () => {
+        if ((await documentCollapse.count()) > 0) {
+          mode = 'open';
+          return true;
+        }
+        if ((await documentExpand.count()) > 0) {
+          mode = 'document';
+          return true;
+        }
+        try {
+          if (await switcher.isVisible()) {
+            mode = 'switcher';
+            return true;
+          }
+        } catch {
+          // ignore detached/hidden probe failures while the tree re-renders
+        }
+        return false;
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(true);
+
+  if (mode === 'open') return;
+
+  if (mode === 'document') {
     await documentExpand.click();
-    await expect(node.getByRole('button', { name: 'Collapse' })).toBeVisible({ timeout: 10000 });
+    await expect(documentCollapse).toBeVisible({ timeout: 10_000 });
     return;
   }
-  const switcher = node.locator('.ant-tree-switcher:not(.ant-tree-switcher-noop)');
-  await expect(switcher).toBeVisible({ timeout: 15000 });
+
+  await expect(switcher).toBeVisible({ timeout: 15_000 });
   const className = await switcher.getAttribute('class');
   if (!className?.includes('ant-tree-switcher_open')) await switcher.click();
 }
@@ -306,7 +344,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
         fixture.folderDocument.id
       );
       try {
-        const menu = await openExportMenu(page);
+        const menu = await openExportMenu(page, role.expected);
         const labels = (await menu.locator('.ant-dropdown-menu-item').allTextContents())
           .map((label) => label.trim());
         expect(labels).toEqual(role.expected);
@@ -408,21 +446,24 @@ test.describe.serial('Document-derived library lifecycle', () => {
 
     // The assistant panel overlays the document toolbar after a table export.
     // Close it before opening the document export menu for the script flow.
-    await page.getByTestId('agent-panel').getByRole('button', { name: '✕' }).click();
+    await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
     await expect(page.getByTestId('agent-panel')).toBeHidden();
     await expect(page.getByTestId('agent-launcher')).toBeVisible();
     await expect(page.getByTestId('document-export')).toBeEnabled();
 
-    menu = await openExportMenu(page);
+    // Register the response waiter before opening the menu so a fast click cannot
+    // resolve export-source before Playwright starts listening.
     const exportSourceResponse = page.waitForResponse(
       (response) =>
         response.url().includes(`/api/documents/${fixture.folderDocument.id}/export-source`) &&
-        response.ok()
+        response.ok(),
+      { timeout: 45_000 },
     );
+    menu = await openExportMenu(page);
     await menu.getByText('Export as script', { exact: true }).click();
     await exportSourceResponse;
     const modal = page.getByTestId('import-script-modal');
-    await expect(modal).toBeVisible();
+    await expect(modal).toBeVisible({ timeout: 45_000 });
     await expect(page.getByTestId('import-script-document-source')).toContainText(
       fixture.folderDocument.name
     );

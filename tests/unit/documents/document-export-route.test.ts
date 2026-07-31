@@ -36,6 +36,10 @@ const editor = fs.readFileSync(
   path.resolve(__dirname, '../../../src/components/documents/DocumentEditor.tsx'),
   'utf8'
 );
+const topBar = fs.readFileSync(
+  path.resolve(__dirname, '../../../src/components/layout/TopBar.tsx'),
+  'utf8'
+);
 const nextConfig = fs.readFileSync(
   path.resolve(__dirname, '../../../next.config.mjs'),
   'utf8'
@@ -118,7 +122,6 @@ describe('document export route and UI wiring', () => {
   });
 
   it('offers DOCX, PDF, and MDX from one compact download menu', () => {
-    expect(editor).toContain('DownloadOutlined');
     expect(editor).toContain("key: 'docx'");
     expect(editor).toContain("key: 'pdf'");
     expect(editor).toContain("key: 'mdx'");
@@ -127,7 +130,12 @@ describe('document export route and UI wiring', () => {
     expect(editor).toContain('Export as tables');
     expect(editor).toContain("key: 'script'");
     expect(editor).toContain('Export as script');
-    expect(editor).toContain('data-testid="document-export"');
+    expect(editor).toContain('document-export-trigger');
+    expect(editor).toContain('document-topbar-sync-request');
+    expect(topBar).toContain('DownloadOutlined');
+    expect(topBar).toContain('data-testid="document-export"');
+    expect(topBar).toContain('Export as tables');
+    expect(topBar).toContain('Export as script');
     expect(nextConfig).toContain("'@mdxeditor/editor'");
   });
 

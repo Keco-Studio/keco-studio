@@ -25,6 +25,7 @@ import {
   loadConversationHistory,
   saveMessage,
   getConversation,
+  touchConversation,
   type SaveMessageIndexingContext,
 } from './conversation-store';
 import {
@@ -72,6 +73,13 @@ const MAX_ITERATIONS = 50;
 
 /** Cap how much of the raw argument string we echo back to the model on a parse failure. */
 const MAX_RAW_ARGS_IN_ERROR = 200;
+
+function summarizeConversationTitle(raw: string): string {
+  const source = raw.trim();
+  if (!source) return 'New chat';
+  const oneLine = source.replace(/\s+/g, ' ');
+  return oneLine.length > 18 ? `${oneLine.slice(0, 18)}...` : oneLine;
+}
 
 function publicToolResult(result: ToolResult): ToolResult {
   const { internalData: _internalData, ...publicResult } = result;
@@ -749,6 +757,12 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       indexingContext(toolContext)
     );
     if (!savedUserMessage) throw new Error('Failed to bind the current user message');
+    const conversationForTitle = await getConversation(toolContext.supabase, conversationId);
+    if (conversationForTitle && !conversationForTitle.title) {
+      await touchConversation(toolContext.supabase, conversationId, {
+        title: summarizeConversationTitle(input.userMessage),
+      });
+    }
     const turnContext: ToolContext = {
       ...toolContext,
       accessCache: createAccessVerificationCache(),
@@ -864,6 +878,32 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
         });
         yield { type: 'tool_call_end' };
       }
+    } else if (
+      input.decision === 'approve' &&
+      pending.toolName === 'generate_from_document' &&
+      input.clientCompletedResult !== undefined
+    ) {
+      // Client already ran `/api/import-script` (same as Document RMB Generate).
+      throwIfAborted(input.signal);
+      yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
+      const toolStartMs = Date.now();
+      const { toolResultFromClientCompletion } = await import(
+        './tools/generate-from-document'
+      );
+      result = toolResultFromClientCompletion(
+        pending.args,
+        input.clientCompletedResult,
+        turnContext.projectId
+      );
+      trace?.recordToolCall({
+        tool: tool.name,
+        args: resumeArgs,
+        success: result.success,
+        error: result.error,
+        latencyMs: Date.now() - toolStartMs,
+        phase: 'clientCompleted',
+      });
+      yield { type: 'tool_call_end' };
     } else {
       // pre_execute or meta
       throwIfAborted(input.signal);

@@ -668,12 +668,13 @@ describe('navigation wiring and visual contract', () => {
     expect(libraryTableBody).toContain('referencedRowHighlight');
   });
 
-  it('uses a distinct paperclip trigger for insert reference', () => {
+  it('uses a 24px reference icon trigger for insert reference', () => {
     const insertButton = readFileSync(
       join(root, 'src/components/documents/ResourceReferenceInsertButton.tsx'),
       'utf8'
     );
-    expect(insertButton).toContain('PaperClipOutlined');
+    expect(insertButton).toContain('width="24"');
+    expect(insertButton).toContain('height="24"');
     expect(insertButton).toContain('aria-label="Insert reference"');
     expect(insertButton).not.toContain("iconComponentFor('link')");
   });

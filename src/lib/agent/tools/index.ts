@@ -30,6 +30,8 @@ import { proposeDocumentEdit } from './propose-document-edit';
 import { renameDocument } from './rename-document';
 import { moveDocumentTool } from './move-document';
 import { deleteDocumentTool } from './delete-document';
+import { generateFromDocument } from './generate-from-document';
+import { insertResourceReference } from './insert-resource-reference';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
@@ -40,9 +42,11 @@ const tools: AgentTool[] = [
   createDocumentTool,
   readDocument,
   proposeDocumentEdit,
+  insertResourceReference,
   renameDocument,
   moveDocumentTool,
   deleteDocumentTool,
+  generateFromDocument,
   queryScriptLines,
   addField,
   createAsset,

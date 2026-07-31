@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { readScriptProjectPreference } from '@/lib/script-system/projectPreference';
@@ -8,6 +9,13 @@ import {
   readLeftNavCollapsed,
   writeLeftNavCollapsed,
 } from './leftNavStorage';
+import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
+import alignCenterIcon from '@/assets/images/simulator/align-center.svg';
+import alignCenterActiveIcon from '@/assets/images/simulator/align-center-active.svg';
+import archiveIcon from '@/assets/images/simulator/archive.svg';
+import archiveActiveIcon from '@/assets/images/simulator/archive-active.svg';
+import lightningIcon from '@/assets/images/simulator/ilightning.svg';
+import lightningActiveIcon from '@/assets/images/simulator/lightning-active.svg';
 import styles from './LeftNav.module.css';
 
 function isSimulationPath(pathname: string | null): boolean {
@@ -28,15 +36,13 @@ function IconGrid({ active }: { active: boolean }) {
 
 function IconBolt({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-      <path
-        d="M10 1L4 10h5l-1 7 6-9h-5l1-7z"
-        fill={active ? 'currentColor' : 'none'}
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <Image
+      src={active ? lightningActiveIcon : lightningIcon}
+      alt=""
+      width={20}
+      height={20}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -54,32 +60,27 @@ function IconSpeechBubble({ active }: { active: boolean }) {
   );
 }
 
-function IconList() {
+function IconAlign({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-      <path
-        d="M3 4.5h12M3 9h9M3 13.5h11"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
+    <Image
+      src={active ? alignCenterActiveIcon : alignCenterIcon}
+      alt=""
+      width={20}
+      height={20}
+      aria-hidden="true"
+    />
   );
 }
 
-function IconBox() {
+function IconArchive({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-      <path
-        d="M3 7h12v8.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7zM3 7l1.5-3.5h9L15 7M7 10.5h4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+    <Image
+      src={active ? archiveActiveIcon : archiveIcon}
+      alt=""
+      width={20}
+      height={20}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -157,12 +158,17 @@ export function LeftNav() {
           aria-label="Studio"
           aria-current={onStudio ? 'page' : undefined}
           onClick={() => {
+            if (onStudio) return;
             if (onScript) {
               const pref = readScriptProjectPreference()?.projectId;
               router.push(pref ? `/${pref}` : '/projects');
               return;
             }
-            if (onSimulation) router.push('/projects');
+            if (onSimulation) {
+              const preferred = readSimulationProjectPreference()?.projectId;
+              // Only deep-link when leaving Simulation; /projects still opens the first project.
+              router.push(preferred ? `/${preferred}` : '/projects');
+            }
           }}
         >
           <IconGrid active={onStudio} />
@@ -196,7 +202,7 @@ export function LeftNav() {
           aria-disabled="true"
           tabIndex={-1}
         >
-          <IconList />
+          <IconAlign active={false} />
         </button>
         <button
           type="button"
@@ -205,7 +211,7 @@ export function LeftNav() {
           aria-disabled="true"
           tabIndex={-1}
         >
-          <IconBox />
+          <IconArchive active={false} />
         </button>
       </div>
       <div className={styles.footer}>

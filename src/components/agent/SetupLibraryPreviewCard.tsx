@@ -90,15 +90,19 @@ export function SetupLibraryPreviewCard({ confirmation, disabled, onDecision }: 
       ) : (
         <div className={styles.confirmActions}>
           <button
-            className={`${styles.btn} ${styles.btnPrimary}`}
+            className={`${styles.btn} ${styles.btnPillPrimary}`}
+            data-testid="agent-confirm"
             disabled={disabled}
+            aria-label="Approve action"
             onClick={() => onDecision(confirmation.actionId, 'approve')}
           >
-            Create library
+            ✓ Confirm
           </button>
           <button
-            className={`${styles.btn} ${styles.btnGhost}`}
+            className={`${styles.btn} ${styles.btnPillGhost}`}
+            data-testid="agent-reject"
             disabled={disabled}
+            aria-label="Reject action"
             onClick={() => onDecision(confirmation.actionId, 'reject')}
           >
             Cancel

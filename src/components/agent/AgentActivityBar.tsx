@@ -19,7 +19,12 @@ export function AgentActivityBar({ activity, startedAt }: Props) {
   }, []);
 
   return (
-    <div className={styles.activityBar} role="status" aria-live="polite">
+    <div
+      className={styles.activityBar}
+      role="status"
+      aria-live="polite"
+      aria-label="Keco Agent activity"
+    >
       <LoadingOutlined className={styles.activitySpinner} spin />
       <span className={styles.activityText}>{streamActivityLabel(activity)}</span>
       <span className={styles.activityElapsed}>{formatElapsedSeconds(startedAt, now)}</span>

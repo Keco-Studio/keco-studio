@@ -4,8 +4,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: white;
-  height: 56px;
+  background: transparent;
+  height: auto;
 }
 
 .leftSection {

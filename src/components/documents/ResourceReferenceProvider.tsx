@@ -103,7 +103,7 @@ export function ResourceReferenceProvider({
     () => [
       ...new Set(
         targets.flatMap((target) =>
-          target.kind === 'document-block' ? [target.documentId] : []
+          target.kind !== 'table-row' ? [target.documentId] : []
         )
       ),
     ].sort(),

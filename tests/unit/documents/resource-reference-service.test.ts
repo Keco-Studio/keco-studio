@@ -26,7 +26,11 @@ import {
   listTableReferenceSources,
   resolveResourceReferences,
 } from '@/lib/documents/resourceReferenceService';
-import type { ResourceReferenceTarget } from '@/lib/documents/resourceReferenceTypes';
+import {
+  resourceReferenceKey,
+  type ResourceReferenceTarget,
+} from '@/lib/documents/resourceReferenceTypes';
+import { createDocumentRangeTarget } from '@/lib/documents/documentRangeReference';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -37,6 +41,7 @@ const FIELD_ID = '66666666-6666-4666-8666-666666666666';
 const OTHER_FIELD_ID = '77777777-7777-4777-8777-777777777777';
 const DOCUMENT_ID = '88888888-8888-4888-8888-888888888888';
 const BLOCK_ID = '99999999-9999-4999-8999-999999999999';
+const END_BLOCK_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 type QueryResult = {
   data: unknown[] | null;
@@ -200,7 +205,7 @@ describe('resolveResourceReferences', () => {
         key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
         status: 'available',
         label: 'Active',
-        contextLabel: 'Characters / Ada / Status',
+        contextLabel: 'Characters / Ada',
         href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
       },
     ]);
@@ -216,7 +221,7 @@ describe('resolveResourceReferences', () => {
     }
   });
 
-  it('queries only exact requested table value pairs', async () => {
+  it('loads all asset values for referenced rows', async () => {
     const otherAssetId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const targets = [
       tableTarget(),
@@ -245,14 +250,13 @@ describe('resolveResourceReferences', () => {
     );
     expect(valueQueries).toHaveLength(1);
     expect(valueQueries[0]?.filters).toContainEqual([
-      'or',
-      '',
-      `and(asset_id.eq.${ASSET_ID},field_id.eq.${FIELD_ID}),` +
-        `and(asset_id.eq.${otherAssetId},field_id.eq.${OTHER_FIELD_ID})`,
+      'in',
+      'asset_id',
+      [ASSET_ID, otherAssetId],
     ]);
   });
 
-  it('batches more than 100 exact value pairs without one query per field', async () => {
+  it('batches more than 100 assets without one query per asset', async () => {
     const fixtures = Array.from({ length: 101 }, (_, index) => {
       const libraryId = indexedUuid('10000000', index);
       const assetId = indexedUuid('20000000', index);
@@ -294,8 +298,8 @@ describe('resolveResourceReferences', () => {
     );
     expect(valueQueries).toHaveLength(2);
     expect(valueQueries.map((query) => {
-      const filter = query.filters.find(([operation]) => operation === 'or')?.[2];
-      return Array.from(String(filter).matchAll(/and\(/g)).length;
+      const filter = query.filters.find(([operation]) => operation === 'in')?.[2];
+      return Array.isArray(filter) ? filter.length : 0;
     })).toEqual([100, 1]);
     for (const table of [
       'libraries',
@@ -310,6 +314,30 @@ describe('resolveResourceReferences', () => {
         [table, 'range', { from: 0, to: 999 }],
       ]);
     }
+  });
+
+  it('labels table references with all field values in order, not only displayFieldId', async () => {
+    const target = tableTarget();
+    const { client } = makeClient({
+      libraries: [{ id: LIBRARY_ID, project_id: PROJECT_ID, name: 'Characters' }],
+      library_assets: [{ id: ASSET_ID, library_id: LIBRARY_ID, name: 'Ada' }],
+      library_field_definitions: [
+        { id: OTHER_FIELD_ID, library_id: LIBRARY_ID, label: 'Name', order_index: 1 },
+        { id: FIELD_ID, library_id: LIBRARY_ID, label: 'Status', order_index: 2 },
+      ],
+      library_asset_values: [
+        { asset_id: ASSET_ID, field_id: OTHER_FIELD_ID, value_json: 'Ada Lovelace' },
+        { asset_id: ASSET_ID, field_id: FIELD_ID, value_json: 'Active' },
+      ],
+    });
+
+    const resolved = await resolveResourceReferences(client, PROJECT_ID, [target]);
+
+    expect(resolved.get(resourceReferenceKey(target))).toMatchObject({
+      status: 'available',
+      label: 'Ada Lovelace · Active',
+      contextLabel: 'Characters / Ada',
+    });
   });
 
   it('uses the existing empty-field label when the field has no value row', async () => {
@@ -331,7 +359,7 @@ describe('resolveResourceReferences', () => {
             key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
             status: 'available',
             label: '(empty)',
-            contextLabel: 'Characters / Ada / Status',
+            contextLabel: 'Characters / Ada',
             href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
           },
         ],
@@ -409,6 +437,64 @@ describe('resolveResourceReferences', () => {
       contextLabel: 'World outline / Conflict',
       href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}#block-${BLOCK_ID}`,
     });
+  });
+
+  it('resolves a document range from current cross-block text and links its start block', async () => {
+    const originalBlocks = [
+      {
+        blockId: BLOCK_ID,
+        blockType: 'paragraph' as const,
+        text: 'Before selected old words',
+        nearestHeading: 'Conflict',
+      },
+      {
+        blockId: END_BLOCK_ID,
+        blockType: 'paragraph' as const,
+        text: 'more selected text after',
+        nearestHeading: 'Conflict',
+      },
+    ];
+    const target = createDocumentRangeTarget({
+      documentId: DOCUMENT_ID,
+      blocks: originalBlocks,
+      anchor: { blockId: BLOCK_ID, offset: 7 },
+      focus: { blockId: END_BLOCK_ID, offset: 18 },
+    })!;
+    const missing = { ...target, startBlockId: OTHER_FIELD_ID };
+    const currentBlocks = [
+      { ...originalBlocks[0], text: 'Before selected new expanded words' },
+      { ...originalBlocks[1], text: 'more revised text after' },
+    ];
+    const { client } = makeClient({
+      documents: [{ id: DOCUMENT_ID, project_id: PROJECT_ID, name: 'World outline' }],
+    });
+    readDocumentState.mockResolvedValue({
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      markdown: '# Current authoritative markdown',
+    });
+    createHeadlessDocumentEditor.mockResolvedValue({
+      setMarkdown: jest.fn(async () => undefined),
+      listReferenceBlocks: jest.fn(() => currentBlocks),
+    });
+
+    const resolved = await resolveResourceReferences(
+      client,
+      PROJECT_ID,
+      [target, target, missing]
+    );
+
+    expect(readDocumentState).toHaveBeenCalledTimes(1);
+    expect(resolved.get(resourceReferenceKey(target))).toEqual({
+      key: resourceReferenceKey(target),
+      status: 'available',
+      label: 'selected new expanded words more revised text',
+      contextLabel: 'World outline / Conflict',
+      href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}#block-${BLOCK_ID}`,
+    });
+    expect(resolved.get(resourceReferenceKey(missing))).toEqual(
+      unavailable(resourceReferenceKey(missing))
+    );
   });
 
   it.each([

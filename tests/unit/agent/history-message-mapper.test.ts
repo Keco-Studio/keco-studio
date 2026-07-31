@@ -85,7 +85,7 @@ describe('mapHistoryMessagesToChatItems', () => {
     expect(items[0].role).toBe('user');
   });
 
-  it('includes assistant text after tool sequence when present', () => {
+  it('merges assistant text around a tool sequence', () => {
     const rows: HistoryRow[] = [
       {
         id: 'm7',
@@ -103,11 +103,74 @@ describe('mapHistoryMessagesToChatItems', () => {
       { id: 'm9', role: 'assistant', content: { content: 'Done.' } },
     ];
     const items = mapHistoryMessagesToChatItems(rows);
-    expect(items).toHaveLength(3);
-    expect(items[0].role).toBe('assistant');
-    expect(items[0].text).toBe('Thinking…');
-    expect(items[1].role).toBe('tool');
-    expect(items[2].role).toBe('assistant');
-    expect(items[2].text).toBe('Done.');
+    expect(items).toHaveLength(2);
+    expect(items[0].role).toBe('tool');
+    expect(items[1]).toMatchObject({
+      id: 'm9',
+      role: 'assistant',
+      text: 'Thinking…\n\nDone.',
+    });
+  });
+
+  it('emits tool cards followed by one merged assistant reply per user turn', () => {
+    const rows: HistoryRow[] = [
+      { id: 'user-1', role: 'user', content: { content: 'Check status' } },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: {
+          content: 'Checking.',
+          tool_calls: [
+            { id: 'call-1', function: { name: 'query_assets', arguments: '{}' } },
+          ],
+        },
+      },
+      {
+        id: 'tool-1',
+        role: 'tool',
+        content: {
+          content: '{"ok":true}',
+          tool_call_id: 'call-1',
+          name: 'query_assets',
+        },
+      },
+      {
+        id: 'assistant-2',
+        role: 'assistant',
+        content: {
+          content: '',
+          tool_calls: [
+            { id: 'call-2', function: { name: 'read_document', arguments: '{}' } },
+          ],
+        },
+      },
+      {
+        id: 'tool-2',
+        role: 'tool',
+        content: {
+          content: '{"name":"Guide"}',
+          tool_call_id: 'call-2',
+          name: 'read_document',
+        },
+      },
+      {
+        id: 'final-assistant',
+        role: 'assistant',
+        content: { content: '**Done.**' },
+      },
+    ];
+
+    const items = mapHistoryMessagesToChatItems(rows);
+
+    expect(items.map((item) => item.role)).toEqual([
+      'user',
+      'tool',
+      'tool',
+      'assistant',
+    ]);
+    expect(items.at(-1)).toMatchObject({
+      id: 'final-assistant',
+      text: 'Checking.\n\n**Done.**',
+    });
   });
 });

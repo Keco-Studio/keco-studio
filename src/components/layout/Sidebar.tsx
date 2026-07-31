@@ -712,6 +712,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
 
     if (!type || !id) return;
+    // Folder actions live on the row "+" menu; skip the right-click menu.
+    if (type === 'folder') return;
 
     event.preventDefault();
     event.stopPropagation();

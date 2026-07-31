@@ -1,4 +1,11 @@
 import { describe, expect, it, jest, beforeEach, afterEach } from '@jest/globals';
+
+jest.mock('undici', () => ({
+  Agent: class TestAgent {},
+  EnvHttpProxyAgent: class TestEnvHttpProxyAgent {},
+  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+}));
+
 import { embedTexts, EmbeddingError } from '../../../src/lib/agent/embedding-client';
 
 describe('embedTexts', () => {

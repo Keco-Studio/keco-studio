@@ -58,11 +58,15 @@
 }
 
 .sidebarHidden {
-  transform: translateX(-100%);
-  width: 0;
+  transform: none;
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  flex: 0 0 0;
   padding: 0;
   border-right: none;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .header {

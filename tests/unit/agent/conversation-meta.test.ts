@@ -182,6 +182,16 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(post, { autoExecute: false })).toBe(true);
   });
 
+  it('lets update_row-style mode policy auto-apply in Auto mode', () => {
+    const updateRow = mockTool({
+      name: 'update_row',
+      confirmationMode: 'post_preview',
+      confirmationPolicy: 'mode',
+    });
+    expect(needsConfirmation(updateRow, { autoExecute: true })).toBe(false);
+    expect(needsConfirmation(updateRow, { autoExecute: false })).toBe(true);
+  });
+
   it('requires always-confirm post-preview writes even when autoExecute is true', () => {
     const post = mockTool({
       confirmationMode: 'post_preview',

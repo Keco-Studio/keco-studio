@@ -79,11 +79,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       ) : null}
       <div className={styles.main}>
         {!hideStudioChrome ? <TopBar /> : null}
-        <div className={styles.content}>
-          {children}
+        <div className={styles.workspace}>
+          <div className={styles.content}>
+            {children}
+          </div>
+          {!hideStudioChrome ? <ChatPanel /> : null}
         </div>
       </div>
-      {!hideStudioChrome ? <ChatPanel /> : null}
       <AgentImportBridge />
     </div>
   );

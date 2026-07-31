@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { autoMapFields } from '@/lib/simulation/data';
+import type { LibraryRole, StudioColumnDefinition } from '@/lib/simulation/types';
 
 export class SimulationSystemPage {
   readonly page: Page;
@@ -12,21 +14,29 @@ export class SimulationSystemPage {
   async goto(): Promise<void> {
     await this.page.goto('/simulation-system', { waitUntil: 'domcontentloaded' });
     await expect(this.root).toBeVisible({ timeout: 30000 });
-    await expect(this.page.getByRole('heading', { name: 'Import Studio libraries' })).toBeVisible();
+    // Serial specs share one user; a prior test may have persisted an active
+    // session, so the workbench restores to characters/battle instead of import.
+    await this.page
+      .getByRole('navigation', { name: 'Simulation screens' })
+      .getByRole('menuitem', { name: 'Import' })
+      .click();
+    await expect(this.page.getByRole('heading', { name: 'Import Studio libraries' })).toBeVisible({
+      timeout: 15000,
+    });
   }
 
   async mockAiFieldMapping(): Promise<void> {
     await this.page.route('**/api/simulation/field-mapping', async (route) => {
       const body = route.request().postDataJSON() as {
-        columns?: Array<{ id?: string; label?: string }>;
+        role?: LibraryRole;
+        columns?: StudioColumnDefinition[];
       };
-      const mappings = Object.fromEntries(
-        (body.columns ?? []).flatMap((column) =>
-          typeof column.id === 'string' && typeof column.label === 'string'
-            ? [[column.label, column.id]]
-            : []
-        )
+      const role = body.role;
+      const columns = (body.columns ?? []).filter(
+        (column): column is StudioColumnDefinition =>
+          typeof column?.id === 'string' && typeof column?.label === 'string',
       );
+      const mappings = role ? autoMapFields(role, {}, columns) : {};
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -43,7 +53,7 @@ export class SimulationSystemPage {
   }): Promise<void> {
     await this.selectLibrary('Characters', names.characters);
     await this.selectLibrary('Skills', names.skills);
-    await this.selectLibrary('Level curve', names.level);
+    await this.selectLibrary('Character curve', names.level);
     await this.selectLibrary('Skill curve', names.skillCost);
     await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
     await expect(this.page.getByRole('button', { name: 'Import libraries' })).toBeEnabled({
@@ -59,7 +69,7 @@ export class SimulationSystemPage {
     });
   }
 
-  private async selectLibrary(slotLabel: string, libraryName: string): Promise<void> {
+  async selectLibrary(slotLabel: string, libraryName: string): Promise<void> {
     await this.page.getByText(slotLabel, { exact: true }).first().click();
     const option = this.page.getByText(libraryName, { exact: true });
     await expect(option).toBeVisible({ timeout: 30000 });
@@ -75,7 +85,7 @@ export class SimulationSystemPage {
     await expect(this.page.getByText(/A 1 vs B 1/)).toBeVisible();
     await this.page.getByRole('button', { name: /Confirm.*go to skill/i }).click();
 
-    await expect(this.page.getByRole('heading', { name: 'Config skills' })).toBeVisible();
+    await expect(this.page.getByRole('heading', { name: 'Configure skills' })).toBeVisible();
     await this.page.getByText('Fireball', { exact: true }).click();
     await this.page.getByText('Bramwell', { exact: true }).click();
     await this.page.getByText('Fireball', { exact: true }).click();

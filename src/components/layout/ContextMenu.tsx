@@ -382,62 +382,8 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'folder') {
-      // Folder: Import (admin), Rename (admin), Duplicate, separator, Delete (admin)
-      return (
-        <>
-          {canCreateDocument() && (
-            <button
-              className={styles.menuItem}
-              onClick={() => handleAction('new-document')}
-            >
-              New document
-            </button>
-          )}
-          {canImport() && (
-            <>
-              <button
-                className={styles.menuItem}
-                onClick={() => handleAction('import')}
-              >
-                Import
-              </button>
-              <button
-                className={styles.menuItem}
-                onClick={() => handleAction('import-script')}
-              >
-                Import script
-              </button>
-            </>
-          )}
-          {showEditButton && (
-            <button
-              className={styles.menuItem}
-              onClick={() => handleAction('rename')}
-            >
-              Rename
-            </button>
-          )}
-          {showDuplicateButton && (
-            <button
-              className={styles.menuItem}
-              onClick={() => handleAction('duplicate')}
-            >
-              Duplicate
-            </button>
-          )}
-          {showDeleteButton && (
-            <>
-              <div className={styles.separator} />
-              <button
-                className={`${styles.menuItem} ${styles.deleteItem}`}
-                onClick={() => handleAction('delete')}
-              >
-                Delete
-              </button>
-            </>
-          )}
-        </>
-      );
+      // Folder actions are on the row "+" menu (AddLibraryMenu). No right-click items.
+      return null;
     } else if (type === 'asset') {
       // Asset: Rename (editor/admin), Duplicate, separator, Delete (editor/admin)
       return (

@@ -8,10 +8,12 @@ module.exports = {
       bundle: true,
       format: 'cjs',
       platform: 'node',
+      external: ['*.module.css'],
+      jsx: 'automatic',
       sourcemap: 'inline',
       stdin: {
         contents: sourceText,
-        loader: 'ts',
+        loader: sourcePath.endsWith('.tsx') ? 'tsx' : 'ts',
         resolveDir: path.dirname(sourcePath),
         sourcefile: sourcePath,
       },
@@ -26,6 +28,7 @@ module.exports = {
       .update(sourceText)
       .update(sourcePath)
       .update(transformOptions.configString)
+      .update('tsx-automatic-css-external-v1')
       .update(esbuild.version)
       .digest('hex');
   },

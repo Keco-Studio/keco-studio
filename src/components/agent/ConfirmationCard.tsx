@@ -2,6 +2,7 @@
 
 import styles from './ChatPanel.module.css';
 import type { ConfirmationView } from './types';
+import { AssistantMarkdown } from './AssistantMarkdown';
 
 interface Props {
   confirmation: ConfirmationView;
@@ -18,6 +19,8 @@ const TOOL_LABELS: Record<string, string> = {
   delete_document: 'Delete document permanently',
   rename_document: 'Rename document',
   move_document: 'Move document',
+  generate_from_document: 'Generate from document',
+  insert_resource_reference: 'Insert reference',
 };
 
 export type DiffRow = {
@@ -257,6 +260,83 @@ export function buildDocumentEditDiff(baseMarkdown: string, proposedMarkdown: st
   return collapseDiffRows(rows);
 }
 
+/** Plain chat text for document edit previews — no scrollable diff chrome. */
+export function formatDocumentEditPlainText(rows: DiffRow[], proposedMarkdown: string): string {
+  const added = rows
+    .filter((row) => row.kind === 'added')
+    .map((row) => row.text)
+    .join('\n')
+    .trim();
+  const removed = rows
+    .filter((row) => row.kind === 'removed')
+    .map((row) => row.text)
+    .join('\n')
+    .trim();
+
+  if (added && removed) {
+    return `${added}\n\nRemoved:\n${removed}`;
+  }
+  if (added) return added;
+  if (removed) return `Removed:\n${removed}`;
+  return proposedMarkdown.trim();
+}
+
+type ChangeParts =
+  | { kind: 'pair'; from: string; to: string }
+  | { kind: 'text'; text: string };
+
+function summarizeChangeParts(
+  args: unknown,
+  preview:
+    | {
+        existingValues?: Record<string, unknown>;
+        changes?: Array<{ field: string; value: unknown }>;
+        type?: string;
+      }
+    | undefined,
+  label: string
+): ChangeParts {
+  const asRecord = args && typeof args === 'object' ? (args as Record<string, unknown>) : null;
+
+  if (preview?.type === 'update_row' && Array.isArray(preview.changes) && preview.changes.length > 0) {
+    const change = preview.changes[0]!;
+    const previous = preview.existingValues?.[change.field];
+    if (previous !== undefined && previous !== null && String(previous).trim()) {
+      return { kind: 'pair', from: String(previous), to: String(change.value) };
+    }
+    return { kind: 'pair', from: change.field, to: String(change.value) };
+  }
+
+  if (!asRecord) return { kind: 'text', text: `Please confirm: ${label}` };
+
+  const propertyValues =
+    asRecord.propertyValues && typeof asRecord.propertyValues === 'object'
+      ? (asRecord.propertyValues as Record<string, unknown>)
+      : null;
+  const existingValues =
+    preview?.existingValues && typeof preview.existingValues === 'object'
+      ? preview.existingValues
+      : null;
+
+  if (propertyValues && Object.keys(propertyValues).length > 0) {
+    const [field, nextValue] = Object.entries(propertyValues)[0]!;
+    const previousValue = existingValues?.[field];
+    if (previousValue !== undefined && previousValue !== null && String(previousValue).trim()) {
+      return { kind: 'pair', from: String(previousValue), to: String(nextValue) };
+    }
+    return { kind: 'pair', from: field, to: String(nextValue) };
+  }
+
+  const fromValue = asRecord.from ?? asRecord.find ?? asRecord.oldValue ?? asRecord.target;
+  const toValue = asRecord.to ?? asRecord.replace ?? asRecord.newValue ?? asRecord.replacement;
+  if (fromValue !== undefined && toValue !== undefined) {
+    return { kind: 'pair', from: String(fromValue), to: String(toValue) };
+  }
+
+  if (typeof asRecord.name === 'string') return { kind: 'text', text: asRecord.name };
+  return { kind: 'text', text: `Please confirm: ${label}` };
+}
+
 export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) {
   const { actionId, tool, args, resolved } = confirmation;
   const label = TOOL_LABELS[tool] ?? tool;
@@ -271,6 +351,14 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
         operationSummary?: string;
         baseMarkdown?: string;
         proposedMarkdown?: string;
+        existingValues?: Record<string, unknown>;
+        changes?: Array<{ field: string; value: unknown }>;
+        exportType?: 'table' | 'script';
+        libraryName?: string;
+        summary?: string;
+        kind?: string;
+        fallbackLabel?: string;
+        snippet?: string;
       }
     | undefined;
   const isDocumentEdit =
@@ -280,40 +368,221 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const isDocumentDelete =
     documentPreview?.type === 'document_delete' &&
     typeof documentPreview.name === 'string';
+  const isGenerateFromDocument =
+    documentPreview?.type === 'generate_from_document' &&
+    typeof documentPreview.name === 'string' &&
+    (documentPreview.exportType === 'table' || documentPreview.exportType === 'script');
+  const isInsertResourceReference =
+    documentPreview?.type === 'insert_resource_reference' &&
+    typeof documentPreview.name === 'string' &&
+    typeof documentPreview.summary === 'string';
   const isBoundDocument =
     !isDocumentEdit &&
     !isDocumentDelete &&
+    !isGenerateFromDocument &&
+    !isInsertResourceReference &&
     typeof documentPreview?.documentId === 'string' &&
     typeof documentPreview.name === 'string';
-  let visibleArgs = args;
-  if (isDocumentEdit && args && typeof args === 'object') {
-    const rawArgs = args as Record<string, unknown>;
-    const rawOperation = rawArgs.operation;
-    const visibleOperation =
-      rawOperation && typeof rawOperation === 'object'
-        ? Object.fromEntries(
-            Object.entries(rawOperation as Record<string, unknown>).map(([key, value]) => [
-              key,
-              key === 'type' ? value : '[shown in document diff]',
-            ])
-          )
-        : rawOperation;
-    visibleArgs = {
-      ...rawArgs,
-      ...(Object.hasOwn(rawArgs, 'markdown')
-        ? { markdown: '[shown in document diff]' }
-        : {}),
-      ...(rawOperation !== undefined ? { operation: visibleOperation } : {}),
-    };
-  }
   const diff = isDocumentEdit
     ? buildDocumentEditDiff(documentPreview.baseMarkdown!, documentPreview.proposedMarkdown!)
     : [];
+  const documentEditPlainText = isDocumentEdit
+    ? formatDocumentEditPlainText(diff, documentPreview.proposedMarkdown!)
+    : '';
+
+  const changeParts = summarizeChangeParts(args, documentPreview, label);
+  const useSimpleCard =
+    !isDocumentEdit &&
+    !isDocumentDelete &&
+    !isBoundDocument &&
+    !isGenerateFromDocument &&
+    !isInsertResourceReference;
+
+  if (isInsertResourceReference) {
+    const location = documentPreview.folderName
+      ? `${documentPreview.name} / ${documentPreview.folderName}`
+      : documentPreview.name;
+    const kindLabel =
+      documentPreview.kind === 'document-block'
+        ? 'document block'
+        : documentPreview.kind === 'table-row'
+          ? 'table row'
+          : 'resource';
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmTitle}>
+          {resolved === 'approved'
+            ? 'Inserting reference…'
+            : resolved === 'rejected'
+              ? 'Reference insert cancelled.'
+              : 'Confirm: Insert reference'}
+        </div>
+        <div className={styles.documentEditMeta}>
+          <div className={styles.documentEditTarget}>{location}</div>
+          <div>{documentPreview.summary}</div>
+          {typeof documentPreview.fallbackLabel === 'string' &&
+          documentPreview.fallbackLabel.trim() ? (
+            <div>
+              {kindLabel}: {documentPreview.fallbackLabel}
+            </div>
+          ) : null}
+        </div>
+        {resolved === 'approved' ? (
+          <div className={styles.resolvedNote}>Approved.</div>
+        ) : resolved === 'rejected' ? (
+          <div className={styles.resolvedNote}>Cancelled.</div>
+        ) : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPillGhost}`}
+              data-testid="agent-reject"
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (isGenerateFromDocument) {
+    const kind = documentPreview.exportType === 'table' ? 'table' : 'conversation';
+    const location = documentPreview.folderName
+      ? `${documentPreview.name} / ${documentPreview.folderName}`
+      : documentPreview.name;
+    const detail =
+      typeof documentPreview.summary === 'string' && documentPreview.summary.trim()
+        ? documentPreview.summary
+        : `Generate ${kind} from document "${documentPreview.name}"`;
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmTitle}>
+          {resolved === 'approved'
+            ? `Generating ${kind}…`
+            : resolved === 'rejected'
+              ? 'Generation cancelled.'
+              : `Confirm: Generate ${kind}`}
+        </div>
+        <div className={styles.documentEditMeta}>
+          <div className={styles.documentEditTarget}>{location}</div>
+          <div>{detail}</div>
+          {typeof documentPreview.libraryName === 'string' && documentPreview.libraryName.trim() ? (
+            <div>Result: {documentPreview.libraryName}</div>
+          ) : null}
+        </div>
+        {resolved === 'approved' ? (
+          <div className={styles.resolvedNote}>Approved.</div>
+        ) : resolved === 'rejected' ? (
+          <div className={styles.resolvedNote}>Cancelled.</div>
+        ) : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPillGhost}`}
+              data-testid="agent-reject"
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (useSimpleCard) {
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmSimpleTitle}>
+          {resolved === 'approved'
+            ? 'Modification successful!'
+            : resolved === 'rejected'
+              ? 'Modification cancelled.'
+              : 'Confirm this change:'}
+        </div>
+        <div className={styles.confirmSimpleChange}>
+          {changeParts.kind === 'pair' ? (
+            <span className={styles.confirmSimpleChangeRow}>
+              <span className={styles.entityChip}>{changeParts.from}</span>
+              {' has been changed to '}
+              <span className={styles.entityChip}>{changeParts.to}</span>
+            </span>
+          ) : (
+            changeParts.text
+          )}
+        </div>
+
+        {resolved ? null : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPillGhost}`}
+              data-testid="agent-reject"
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className={styles.confirmCard} data-testid="agent-confirmation">
+    <div
+      className={styles.confirmCard}
+      data-testid="agent-confirmation"
+      role="group"
+      aria-label="Confirmation required"
+    >
       <div className={styles.confirmTitle}>Confirm: {label}</div>
-      <pre className={styles.pre}>{JSON.stringify(visibleArgs, null, 2)}</pre>
       {isDocumentEdit &&
         typeof documentPreview.documentName === 'string' &&
         typeof documentPreview.operationSummary === 'string' && (
@@ -346,52 +615,32 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
           <div>Bound document</div>
         </div>
       )}
-      {isDocumentEdit && (
-        <div className={styles.documentDiff} aria-label="Document changes">
-          {diff.map((row, index) => (
-            <div
-              className={`${styles.documentDiffLine} ${styles[`documentDiff${row.kind[0]!.toUpperCase()}${row.kind.slice(1)}`]}`}
-              key={`${row.kind}-${index}`}
-            >
-              <span className={styles.documentDiffMarker} aria-hidden="true">
-                {row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' '}
-              </span>
-              <span>
-                {(row.kind === 'added' || row.kind === 'removed') && (
-                  <span className={styles.srOnly}>
-                    {row.kind === 'added' ? 'Added: ' : 'Removed: '}
-                  </span>
-                )}
-                {row.text}
-              </span>
-            </div>
-          ))}
+      {isDocumentEdit && documentEditPlainText ? (
+        <div className={styles.documentEditBody} aria-label="Document changes">
+          <AssistantMarkdown markdown={documentEditPlainText} />
         </div>
-      )}
-      {isDocumentEdit && (
-        <details className={styles.documentProposal}>
-          <summary>Proposed Markdown</summary>
-          <pre className={styles.pre}>{documentPreview.proposedMarkdown}</pre>
-        </details>
-      )}
+      ) : null}
 
       {resolved ? (
         <div className={styles.resolvedNote}>
           {resolved === 'approved' ? 'Approved.' : 'Cancelled.'}
         </div>
       ) : (
-        <div className={styles.confirmActions}>
+        <div className={styles.confirmInlineActions}>
           <button
-            className={`${styles.btn} ${styles.btnPrimary}`}
+            className={`${styles.btn} ${styles.btnPillPrimary}`}
             data-testid="agent-confirm"
             disabled={disabled}
+            aria-label="Approve action"
             onClick={() => onDecision(actionId, 'approve')}
           >
-            Confirm
+            ✓ Confirm
           </button>
           <button
-            className={`${styles.btn} ${styles.btnGhost}`}
+            className={`${styles.btn} ${styles.btnPillGhost}`}
+            data-testid="agent-reject"
             disabled={disabled}
+            aria-label="Reject action"
             onClick={() => onDecision(actionId, 'reject')}
           >
             Cancel

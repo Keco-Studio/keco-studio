@@ -7,12 +7,29 @@ const componentPath = (name: string) =>
 describe('document version history UI wiring', () => {
   it('adds a role-aware history surface without library version mutations', () => {
     const editor = readFileSync(componentPath('DocumentEditor.tsx'), 'utf8');
+    const topBar = readFileSync(
+      path.join(process.cwd(), 'src/components/layout/TopBar.tsx'),
+      'utf8'
+    );
     const sidebar = readFileSync(
       componentPath('DocumentVersionSidebar.tsx'),
       'utf8'
     );
-    expect(editor).toContain('aria-label="Version history"');
+    // History toggle lives in TopBar and opens the sidebar via a window event.
+    expect(topBar).toContain('aria-label="Version history"');
+    expect(topBar).toContain('document-history-toggle');
+    expect(editor).toContain('document-history-toggle');
     expect(editor).toContain('DocumentVersionSidebar');
+    // Sidebar must sit beside the document main column (title + editor), not
+    // inside workspace below stickyChrome — otherwise a blank band appears
+    // under the TopBar next to the document title.
+    expect(editor).toContain('documentSectionWithHistory');
+    expect(editor).toContain('documentMain');
+    expect(editor).toMatch(
+      /documentMain[\s\S]*workspace[\s\S]*<\/div>\s*<DocumentVersionSidebar/
+    );
+    expect(editor).not.toContain('workspaceWithHistory');
+    expect(sidebar).toContain('aria-label="Version history"');
     expect(sidebar).toContain('queryKeys.documentVersions(documentId)');
     expect(sidebar).toContain('listDocumentVersions');
     expect(sidebar).toContain('canMutate');

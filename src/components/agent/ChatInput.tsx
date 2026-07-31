@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { LoadingOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons';
+import {
+  CloseOutlined,
+  LoadingOutlined,
+  PlusOutlined,
+  ArrowUpOutlined,
+} from '@ant-design/icons';
+import addIcon from '@/assets/images/add.svg';
+import pluginIcon from '@/assets/images/plugin.svg';
 import { clearDraft, getDraft, setDraft } from './agentChatStorage';
 import { parseDocument, validateDesignFile, SUPPORTED_DESIGN_EXTENSIONS } from '@/lib/document-parser';
 import { buildDesignMessage } from '@/lib/design-message';
@@ -18,10 +25,13 @@ import styles from './ChatPanel.module.css';
 interface Props {
   userId?: string;
   isStreaming: boolean;
+  autoExecute: boolean;
   focusRequest?: number;
   selectionContext?: AgentSelectionContext;
   onClearSelectionContext?: () => void;
+  onToggleMode: () => void;
   onSend: (message: string, opts?: SendOptions) => void;
+  onStop: () => string | null;
 }
 
 const DEBOUNCE_MS = 300;
@@ -36,10 +46,13 @@ const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
 export function ChatInput({
   userId,
   isStreaming,
+  autoExecute,
   focusRequest = 0,
   selectionContext,
   onClearSelectionContext,
+  onToggleMode,
   onSend,
+  onStop,
 }: Props) {
   const supabase = useSupabase();
   const [value, setValue] = useState('');
@@ -173,7 +186,11 @@ export function ChatInput({
           setFileError('The image(s) could not be uploaded. Please try again.');
           return;
         }
-        onSend(trimmed || DEFAULT_IMAGE_PROMPT, { imageUrls, selectionContext });
+        onSend(trimmed || DEFAULT_IMAGE_PROMPT, {
+          imageUrls,
+          selectionContext,
+          composerDraft: trimmed,
+        });
         setValue('');
         clearImages();
         onClearSelectionContext?.();
@@ -212,7 +229,11 @@ export function ChatInput({
           intent: 'analyze',
           additionalInstructions: trimmed || undefined,
         });
-        onSend(message, { imageUrls, selectionContext });
+        onSend(message, {
+          imageUrls,
+          selectionContext,
+          composerDraft: trimmed,
+        });
         setValue('');
         clearFile();
         onClearSelectionContext?.();
@@ -227,7 +248,10 @@ export function ChatInput({
       return;
     }
 
-    onSend(trimmed, selectionContext ? { selectionContext } : undefined);
+    onSend(trimmed, {
+      ...(selectionContext ? { selectionContext } : {}),
+      composerDraft: trimmed,
+    });
     setValue('');
     onClearSelectionContext?.();
     if (userId) clearDraft(userId);
@@ -247,6 +271,20 @@ export function ChatInput({
     selectionContext,
     onClearSelectionContext,
   ]);
+
+  const handleStop = useCallback(() => {
+    if (!isStreaming) return;
+    const draft = onStop();
+    if (typeof draft === 'string') {
+      updateValue(draft);
+      const el = textareaRef.current;
+      if (el) {
+        el.style.height = 'auto';
+        el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+      }
+      focusChatInputWithRetry(() => textareaRef.current);
+    }
+  }, [isStreaming, onStop, updateValue]);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
@@ -305,7 +343,7 @@ export function ChatInput({
   };
 
   const sendDisabled =
-    isStreaming || parsing || (!value.trim() && !file && images.length === 0);
+    parsing || (!isStreaming && !value.trim() && !file && images.length === 0);
 
   return (
     <div
@@ -315,6 +353,24 @@ export function ChatInput({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      <div className={styles.composerTopRow}>
+        <button
+          type="button"
+          className={styles.autoToggle}
+          data-testid="agent-mode-toggle"
+          disabled={isStreaming || parsing}
+          aria-label={`Execution mode: ${autoExecute ? 'Auto' : 'Confirm'}`}
+          aria-pressed={autoExecute}
+          title={autoExecute ? 'Write tools run immediately' : 'Write operations require confirmation'}
+          onClick={onToggleMode}
+        >
+          <span className={styles.autoToggleLabel}>Auto</span>
+          <span className={`${styles.autoToggleTrack} ${autoExecute ? styles.autoToggleTrackOn : ''}`}>
+            <span className={styles.autoToggleThumb} />
+          </span>
+        </button>
+      </div>
+
       {selectionContext && (
         <div className={styles.attachmentRow}>
           <span className={styles.selectionAttachment} title={selectionContext.selectionLabel}>
@@ -361,7 +417,7 @@ export function ChatInput({
       {(file || fileError) && (
         <div className={styles.attachmentRow}>
           <span className={`${styles.fileChip} ${fileError ? styles.fileChipError : ''}`}>
-            <PaperClipOutlined className={styles.fileChipIcon} />
+            <PlusOutlined className={styles.fileChipIcon} />
             <span className={styles.fileChipName}>{file ? file.name : fileError}</span>
             {file && (
               <button
@@ -389,16 +445,6 @@ export function ChatInput({
       )}
 
       <div className={styles.inputBar}>
-        <button
-          type="button"
-          className={styles.attachBtn}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isStreaming || parsing}
-          aria-label="Attach a document or images"
-          title="Attach a .txt/.md/.docx document or images"
-        >
-          <PaperClipOutlined />
-        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -423,7 +469,7 @@ export function ChatInput({
                 ? 'Add a prompt for this document (optional)…'
                 : images.length > 0
                   ? 'Add a prompt for these images (optional)…'
-                  : 'Ask Keco Assistant…  (Enter to send, Shift+Enter for newline)'
+                  : 'Ask AI to help...'
           }
           value={value}
           onChange={(e) => {
@@ -434,15 +480,52 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
         />
-        <button
-          className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}
-          data-testid="agent-send"
-          disabled={sendDisabled}
-          onClick={() => void submit()}
-          aria-busy={isStreaming || parsing}
-        >
-          {isStreaming || parsing ? <LoadingOutlined spin /> : 'Send'}
-        </button>
+        <div className={styles.inputActionRow}>
+          <div className={styles.inputTools}>
+            <button
+              type="button"
+              className={styles.attachBtn}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming || parsing}
+              aria-label="Attach a document or images"
+              title="Attach a .txt/.md/.docx document or images"
+            >
+              <Image src={addIcon} alt="" width={22} height={22} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={styles.attachBtn}
+              disabled
+              aria-label="Agent tools"
+              title="Agent tools"
+            >
+              <Image src={pluginIcon} alt="" width={15} height={15} aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}
+            data-testid="agent-send"
+            disabled={sendDisabled}
+            onClick={() => {
+              if (isStreaming) {
+                handleStop();
+                return;
+              }
+              void submit();
+            }}
+            aria-busy={parsing}
+            aria-label={isStreaming ? 'Stop generating' : 'Send message'}
+            title={isStreaming ? 'Stop generating' : 'Send message'}
+          >
+            {isStreaming ? (
+              <span className={styles.sendStopIcon} aria-hidden="true" />
+            ) : parsing ? (
+              <LoadingOutlined spin />
+            ) : (
+              <ArrowUpOutlined />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

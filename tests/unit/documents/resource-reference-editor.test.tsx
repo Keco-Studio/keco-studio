@@ -43,8 +43,16 @@ jest.mock('next/link', () => ({
   },
 }));
 
+jest.mock('next/image', () => ({
+  __esModule: true,
+  default: ({ src, ...props }: { src: string; [key: string]: unknown }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} data-icon="reference" alt="" {...props} />
+  ),
+}));
+jest.mock('@/assets/images/reference.svg', () => 'reference.svg', { virtual: true });
+
 jest.mock('@ant-design/icons', () => ({
-  FileTextOutlined: () => <svg data-icon="file-text" />,
   TableOutlined: () => <svg data-icon="table" />,
   WarningOutlined: () => <svg data-icon="warning" />,
 }));
@@ -110,7 +118,7 @@ describe('ResourceReferenceEditor', () => {
     {
       kind: 'document-block' as const,
       target: DOCUMENT_TARGET,
-      icon: 'file-text',
+      icon: 'reference',
       contextLabel: 'World bible / Opening',
     },
   ])('shows only the field value for an available $kind reference', ({ target, icon, contextLabel }) => {
@@ -134,7 +142,7 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain(`>${target.fallbackLabel}<`);
     expect(markup).not.toContain(`>${accessibleLabel}<`);
     expect(markup).toContain(`aria-label="${accessibleLabel}"`);
-    expect(markup).toContain(`data-tooltip="${accessibleLabel}"`);
+    expect(markup).not.toContain('data-tooltip=');
     expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
   });
 
@@ -154,6 +162,7 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain('data-icon="warning"');
     expect(markup).toContain('>Reference unavailable<');
     expect(markup).not.toContain('href=');
+    expect(markup).not.toContain('data-tooltip=');
   });
 
   it('fails safely for invalid attributes', () => {
@@ -167,6 +176,7 @@ describe('ResourceReferenceEditor', () => {
 
     expect(markup).toContain('>Reference unavailable<');
     expect(markup).not.toContain('href=');
+    expect(markup).not.toContain('data-tooltip=');
   });
 
   it('keeps the neutral fallback label on an initial resolver error', () => {
