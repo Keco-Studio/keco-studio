@@ -321,7 +321,9 @@ export function LibraryHeader({
         <Tooltip
           title="Version Control"
           getPopupContainer={() => document.body}
-          styles={{ root: { position: 'fixed' } }}
+          // Tooltip is visual-only; without this it can sit over the version
+          // sidebar "+" button and block clicks (Playwright + real pointer).
+          styles={{ root: { position: 'fixed', pointerEvents: 'none' } }}
         >
           <button 
             type="button"

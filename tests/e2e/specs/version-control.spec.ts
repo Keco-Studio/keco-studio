@@ -139,12 +139,7 @@ test.describe('Version Control Tests', () => {
     // Create new version
     await test.step('Create new version', async () => {
       // Click the "+" button in the sidebar header
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       
       // Wait for create version modal to appear
       const modalTitle = page.getByText('Create new version');
@@ -212,11 +207,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForTimeout(1000);
       
       // Create a version
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       
       const versionNameInput = page.locator('#version-name');
       await expect(versionNameInput).toBeVisible({ timeout: 5000 });
@@ -293,27 +284,19 @@ test.describe('Version Control Tests', () => {
 
     // Create multiple versions
     await test.step('Create multiple versions', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      
-      // Create first version
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName1);
       await page.getByRole('button', { name: /^create$/i }).click();
       await page.waitForTimeout(2000);
       
       // Create second version
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName2);
       await page.getByRole('button', { name: /^create$/i }).click();
       await page.waitForTimeout(2000);
       
       // Create third version
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName3);
       await page.getByRole('button', { name: /^create$/i }).click();
       await page.waitForTimeout(2000);
@@ -405,11 +388,7 @@ test.describe('Version Control Tests', () => {
 
     // Create a version and verify history version display
     await test.step('Create version and verify history version display', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -475,11 +454,7 @@ test.describe('Version Control Tests', () => {
 
     // Create first version
     await test.step('Create first version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
@@ -490,11 +465,7 @@ test.describe('Version Control Tests', () => {
 
     // Try to create duplicate version name
     await test.step('Try to create duplicate version name', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
@@ -541,11 +512,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create one history version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
       const createBtn = page.locator('[class*="backdrop"]').filter({ hasText: 'Create new version' }).getByRole('button', { name: /^create$/i });
@@ -599,11 +566,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create one history version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
       await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
@@ -654,11 +617,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create one history version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
       await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
@@ -710,11 +669,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create one history version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
       const createBtn = page.locator('[class*="backdrop"]').filter({ hasText: 'Create new version' }).getByRole('button', { name: /^create$/i });
@@ -774,11 +729,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create one history version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
       await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
@@ -833,11 +784,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create one history version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
       await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
@@ -910,11 +857,7 @@ test.describe('Version Control Tests', () => {
       await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -985,11 +928,7 @@ test.describe('Version Control Tests', () => {
       await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(originalName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -1064,11 +1003,7 @@ test.describe('Version Control Tests', () => {
       await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(sourceVersionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -1153,11 +1088,7 @@ test.describe('Version Control Tests', () => {
       await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -1220,11 +1151,7 @@ test.describe('Version Control Tests', () => {
       await libraryPage.openVersionControlSidebar();
       await page.waitForTimeout(1000);
 
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(versionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -1293,13 +1220,7 @@ test.describe('Version Control Tests', () => {
     });
 
     await test.step('Create initial version and another version', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-
-      // Initial version
-      await expect(addButton).toBeVisible({ timeout: 5000 });
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(initialVersionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -1307,7 +1228,7 @@ test.describe('Version Control Tests', () => {
       await page.waitForTimeout(1000);
 
       // Another version to operate on
-      await addButton.click();
+      await libraryPage.clickCreateNewVersionButton();
       await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
       await page.locator('#version-name').fill(anotherVersionName);
       await page.getByRole('button', { name: /^create$/i }).click();
@@ -1382,16 +1303,11 @@ test.describe('Version Control Tests', () => {
 
     // Create multiple versions rapidly
     await test.step('Create multiple versions rapidly', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      
       for (let i = 0; i < versionCount; i++) {
         const versionName = `Version ${i + 1} ${Date.now()}-${i}`;
         versionNames.push(versionName);
         
-        await expect(addButton).toBeVisible({ timeout: 5000 });
-        await addButton.click();
+        await libraryPage.clickCreateNewVersionButton();
         
         await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
         await page.locator('#version-name').fill(versionName);

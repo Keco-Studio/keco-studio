@@ -785,6 +785,7 @@ export class LibraryPage {
 
     if (await sidebar.isVisible().catch(() => false)) {
       await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await this.dismissVisibleAntTooltips();
       return;
     }
 
@@ -802,5 +803,31 @@ export class LibraryPage {
 
     await expect(sidebar).toBeVisible({ timeout: 10000 });
     await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+    await this.dismissVisibleAntTooltips();
+  }
+
+  /** Hide lingering Ant tooltips that can intercept sidebar clicks. */
+  async dismissVisibleAntTooltips(): Promise<void> {
+    await this.page.mouse.move(0, 0);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.page
+      .locator('.ant-tooltip:visible')
+      .first()
+      .waitFor({ state: 'hidden', timeout: 2000 })
+      .catch(() => {});
+  }
+
+  /**
+   * Click "+" to open Create new version. Dismisses TopBar tooltips that may
+   * overlay the sidebar header after opening Version Control.
+   */
+  async clickCreateNewVersionButton(): Promise<void> {
+    const addButton = this.page
+      .locator('button[title="Create new version"]')
+      .or(this.page.locator('button').filter({ has: this.page.locator('img[alt="Add"]') }))
+      .first();
+    await expect(addButton).toBeVisible({ timeout: 5000 });
+    await this.dismissVisibleAntTooltips();
+    await addButton.click({ force: true });
   }
 }
