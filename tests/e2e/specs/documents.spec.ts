@@ -211,7 +211,8 @@ test.describe('Document authoring', () => {
       await page.getByRole('button', { name: /^library info$/i }).click();
       const dialog = page.getByTestId('edit-document-modal');
       await expect(dialog).toBeVisible({ timeout: 5000 });
-      const nameInput = dialog.locator('#edit-document-name');
+      const nameInput = dialog.locator('#document-edit-name');
+      await expect(nameInput).toBeVisible({ timeout: 20000 });
       await nameInput.fill(renamedDocument);
       await dialog.getByRole('button', { name: /^save$/i }).click();
       await expect(dialog).toBeHidden({ timeout: 20000 });
