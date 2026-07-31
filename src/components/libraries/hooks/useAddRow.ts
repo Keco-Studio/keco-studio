@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { AssetRow, CreateLibraryAssetOptions, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
+import { getNextAppendRowIndex } from '@/lib/utils/assetEmptiness';
 
 // Compatible interface for rowStore (supports both row store and mock objects)
 interface RowStoreLike {
@@ -53,16 +54,8 @@ export function useAddRow(params: UseAddRowParams) {
 
     const assetName = newRowData[properties[0]?.id] ?? newRowData[properties[0]?.key] ?? 'Untitled';
 
-    // Allocate the rowIndex for the new row using the maximum rowIndex value from the current rows, 
-    // ensuring it is appended at the end (set to max + 1).
-    const maxRowIndex =
-      rows.length > 0
-        ? rows.reduce((max, r) => {
-            const idx = typeof r.rowIndex === 'number' ? r.rowIndex : 0;
-            return idx > max ? idx : max;
-          }, 0)
-        : 0;
-    const nextRowIndex = maxRowIndex + 1;
+    // Append at end: max+1 when indices exist; length+1 when any are missing (normalize first).
+    const nextRowIndex = getNextAppendRowIndex(rows);
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const optimisticAsset: AssetRow = {
       id: tempId,
@@ -137,14 +130,7 @@ export function useAddRow(params: UseAddRowParams) {
     if (userRole === 'viewer') return;
     if (!onSaveAsset || !library) return;
 
-    const maxRowIndex =
-      rows.length > 0
-        ? rows.reduce((max, r) => {
-            const idx = typeof r.rowIndex === 'number' ? r.rowIndex : 0;
-            return idx > max ? idx : max;
-          }, 0)
-        : 0;
-    const nextRowIndex = maxRowIndex + 1;
+    const nextRowIndex = getNextAppendRowIndex(rows);
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const optimisticAsset: AssetRow = {

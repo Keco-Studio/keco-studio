@@ -70,6 +70,7 @@ type LibraryAssetsTableBodyProps = {
   cutCells: Set<CellKey>;
   copyCells: Set<CellKey>;
   hoveredCellForExpand: { rowId: string; propertyKey: string } | null;
+  expandedTextCell: { rowId: string; propertyKey: string } | null;
   cutSelectionBounds: SelectionBounds;
   copySelectionBounds: SelectionBounds;
   fillDragStartCell: { rowId: string; propertyKey: string; secondRowId?: string } | null;
@@ -124,6 +125,7 @@ type LibraryAssetsTableBodyProps = {
   onCellFocus: (assetId: string, propertyKey: string) => void;
   onCellBlur: () => void;
   onCellClick: (rowId: string, propertyKey: string, event: React.MouseEvent) => void;
+  onTextCellExpandClick: (rowId: string, propertyKey: string, isOverflowing: boolean) => void;
   onCellContextMenu: (event: React.MouseEvent, rowId: string, propertyKey: string) => void;
   onCellFillDragStart: (rowId: string, propertyKey: string, event: React.MouseEvent) => void;
   onCellDragStart: (rowId: string, propertyKey: string, event: React.MouseEvent) => void;
@@ -175,6 +177,7 @@ export function LibraryAssetsTableBody({
   cutCells,
   copyCells,
   hoveredCellForExpand,
+  expandedTextCell,
   cutSelectionBounds,
   copySelectionBounds,
   fillDragStartCell,
@@ -211,6 +214,7 @@ export function LibraryAssetsTableBody({
   onCellFocus,
   onCellBlur,
   onCellClick,
+  onTextCellExpandClick,
   onCellContextMenu,
   onCellFillDragStart,
   onCellDragStart,
@@ -368,7 +372,7 @@ export function LibraryAssetsTableBody({
             data-index={virtualRow.index}
             key={row.id}
             data-row-id={row.id}
-            className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${isReferencedRow ? styles.referencedRowHighlight : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''}`}
+            className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${isReferencedRow ? styles.referencedRowHighlight : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''} ${expandedTextCell?.rowId === row.id || editingCell?.rowId === row.id ? styles.rowTextExpanded : ''}`}
             style={getRowHeightStyle(row.id)}
             onContextMenu={(event) => {
               onRowContextMenu(event, row);
@@ -549,7 +553,7 @@ export function LibraryAssetsTableBody({
                             onViewAssetDetail(row, event);
                           }}
                           onDoubleClick={(event) => event.stopPropagation()}
-                          title="View asset details"
+                          aria-label="View asset details"
                         >
                           <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
                         </button>
@@ -859,6 +863,7 @@ export function LibraryAssetsTableBody({
                   cutCells={cutCells}
                   copyCells={copyCells}
                   hoveredCellForExpand={hoveredCellForExpand}
+                  expandedTextCell={expandedTextCell}
                   cutSelectionBounds={cutSelectionBounds}
                   editingUsers={editingUsers}
                   borderColor={borderColor}
@@ -866,6 +871,7 @@ export function LibraryAssetsTableBody({
                   onViewAssetDetail={onViewAssetDetail}
                   onCellDoubleClick={onCellDoubleClick}
                   onCellClick={onCellClick}
+                  onTextCellExpandClick={onTextCellExpandClick}
                   onCellContextMenu={onCellContextMenu}
                   onCellFillDragStart={onCellFillDragStart}
                   onCellDragStart={onCellDragStart}

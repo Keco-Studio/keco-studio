@@ -1,0 +1,255 @@
+'use client';
+
+import { useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSupabase } from '@/lib/SupabaseContext';
+import { updateDocumentName } from '@/lib/services/documentService';
+import { deleteLibrary, updateLibrary } from '@/lib/services/libraryService';
+import { invalidateLibraryData } from '@/lib/queryInvalidation';
+import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
+import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImport';
+import { notifyDocumentDerivedImportProgress } from '@/lib/documents/documentDerivedImportProgress';
+import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
+import type { ScriptContextMenuAction } from './ScriptContextMenu';
+
+export type ScriptSidebarTarget = {
+  type: 'document' | 'script';
+  id: string;
+  name: string;
+} | null;
+
+type UseScriptSidebarActionsParams = {
+  projectId: string;
+  userRole: 'admin' | 'editor' | 'viewer' | null;
+  target: ScriptSidebarTarget;
+  onStartRename: (target: { type: 'document' | 'script'; id: string }) => void;
+  onRefreshWorkspace: () => Promise<unknown> | unknown;
+  onExpandDocument?: (documentId: string) => void;
+};
+
+/**
+ * Context-menu actions for Script sidebar tree.
+ * Document Delete removes workspace reference only (not the Studio document).
+ * Generate conversation reuses Studio document-derived import (exportType: 'script').
+ */
+export function useScriptSidebarActions({
+  projectId,
+  userRole,
+  target,
+  onStartRename,
+  onRefreshWorkspace,
+  onExpandDocument,
+}: UseScriptSidebarActionsParams) {
+  const router = useRouter();
+  const supabase = useSupabase();
+  const queryClient = useQueryClient();
+
+  const handleAction = useCallback(
+    (action: ScriptContextMenuAction) => {
+      if (!target) return;
+
+      if (action === 'generate-conversation' && target.type === 'document') {
+        if (userRole !== 'admin') return;
+        const documentId = target.id;
+        const startedAt = Date.now();
+        notifyDocumentDerivedImportProgress({
+          projectId,
+          documentId,
+          exportType: 'script',
+          phase: 'preparing',
+          label: 'Preparing conversation…',
+          startedAt,
+        });
+        router.push(`/script-system/${projectId}/doc/${documentId}`);
+        void (async () => {
+          try {
+            const {
+              data: { session },
+              error: sessionError,
+            } = await supabase.auth.getSession();
+            if (sessionError || !session?.access_token) {
+              throw new Error('Please sign in before exporting');
+            }
+            const source = await fetchDocumentExportSource(
+              documentId,
+              session.access_token
+            );
+            const result = await runDocumentDerivedImport({
+              source,
+              exportType: 'script',
+              accessToken: session.access_token,
+            });
+            await invalidateLibraryData(queryClient, {
+              projectId,
+              folderId: source.folderId,
+              libraryId: result.libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            await queryClient.invalidateQueries({
+              queryKey: ['script-workspace', projectId],
+            });
+            await onRefreshWorkspace();
+            onExpandDocument?.(documentId);
+            router.push(
+              `/script-system/${projectId}/script/${result.libraryId}`
+            );
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : 'Failed to generate conversation';
+            notifyDocumentDerivedImportProgress({
+              projectId,
+              documentId,
+              exportType: 'script',
+              phase: 'error',
+              label: msg,
+              error: msg,
+              startedAt,
+            });
+            showErrorToast(msg);
+          }
+        })();
+        return;
+      }
+
+      if (action === 'rename') {
+        if (target.type === 'document') {
+          if (userRole !== 'admin' && userRole !== 'editor') return;
+          onStartRename({ type: 'document', id: target.id });
+          return;
+        }
+        if (target.type === 'script') {
+          if (userRole !== 'admin') return;
+          onStartRename({ type: 'script', id: target.id });
+        }
+        return;
+      }
+
+      if (action === 'delete') {
+        if (target.type === 'document') {
+          if (userRole !== 'admin' && userRole !== 'editor') return;
+          const documentId = target.id;
+          const confirmed = window.confirm(
+            'Remove this document from the Script workspace? The Studio document will not be deleted.'
+          );
+          if (!confirmed) return;
+          void (async () => {
+            try {
+              const response = await fetch(
+                `/api/script-workspace/${projectId}/${documentId}`,
+                { method: 'DELETE' }
+              );
+              if (!response.ok) {
+                const body = (await response.json().catch(() => null)) as {
+                  error?: string;
+                } | null;
+                throw new Error(
+                  body?.error || 'Failed to remove document from workspace'
+                );
+              }
+              await queryClient.invalidateQueries({
+                queryKey: ['script-workspace', projectId],
+              });
+              await onRefreshWorkspace();
+              showSuccessToast('Removed from Script workspace');
+              if (
+                typeof window !== 'undefined' &&
+                window.location.pathname.includes(
+                  `/script-system/${projectId}/doc/${documentId}`
+                )
+              ) {
+                router.push(`/script-system/${projectId}`);
+              }
+            } catch (err) {
+              showErrorToast(
+                err instanceof Error
+                  ? err.message
+                  : 'Failed to remove document from workspace'
+              );
+            }
+          })();
+          return;
+        }
+
+        if (target.type === 'script') {
+          if (userRole !== 'admin') return;
+          const libraryId = target.id;
+          const confirmed = window.confirm('Delete this script library?');
+          if (!confirmed) return;
+          void (async () => {
+            try {
+              await deleteLibrary(supabase, libraryId);
+              await invalidateLibraryData(queryClient, {
+                projectId,
+                libraryId,
+                refetchActiveFoldersLibraries: true,
+              });
+              await onRefreshWorkspace();
+              showSuccessToast('Script deleted');
+              if (
+                typeof window !== 'undefined' &&
+                window.location.pathname.includes(
+                  `/script-system/${projectId}/script/${libraryId}`
+                )
+              ) {
+                router.push(`/script-system/${projectId}`);
+              }
+            } catch (err) {
+              showErrorToast(
+                err instanceof Error ? err.message : 'Failed to delete script'
+              );
+            }
+          })();
+        }
+      }
+    },
+    [
+      target,
+      userRole,
+      projectId,
+      router,
+      supabase,
+      queryClient,
+      onStartRename,
+      onRefreshWorkspace,
+      onExpandDocument,
+    ]
+  );
+
+  const commitRename = useCallback(
+    async (
+      renameTarget: { type: 'document' | 'script'; id: string },
+      nextName: string
+    ) => {
+      const trimmed = nextName.trim();
+      if (!trimmed) return;
+      try {
+        if (renameTarget.type === 'document') {
+          await updateDocumentName(supabase, renameTarget.id, trimmed);
+          await queryClient.invalidateQueries({
+            queryKey: ['script-workspace', projectId],
+          });
+          await onRefreshWorkspace();
+        } else {
+          await updateLibrary(supabase, renameTarget.id, { name: trimmed });
+          await invalidateLibraryData(queryClient, {
+            projectId,
+            libraryId: renameTarget.id,
+            refetchActiveFoldersLibraries: true,
+          });
+          await onRefreshWorkspace();
+        }
+      } catch (err) {
+        showErrorToast(
+          err instanceof Error ? err.message : 'Failed to rename'
+        );
+        throw err;
+      }
+    },
+    [supabase, queryClient, projectId, onRefreshWorkspace]
+  );
+
+  return { handleAction, commitRename };
+}

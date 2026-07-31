@@ -6,6 +6,11 @@ import {
   getSelectionBounds as calculateSelectionBounds,
   type TableIndexes,
 } from '../utils/tableIndexes';
+import {
+  nextExpandedTextCell,
+  selectionIncludesExpandedRow,
+  type ExpandedTextCell,
+} from '../utils/textCellExpand';
 
 export type CellKey = `${string}-${string}`;
 
@@ -84,9 +89,20 @@ export function useCellSelection({
     propertyKey: string;
   } | null>(null);
 
+  // Ephemeral row expand for truncated text cells (click-to-wrap, not tooltip)
+  const [expandedTextCell, setExpandedTextCell] = useState<ExpandedTextCell>(null);
+
   // Selection bounds for multiple cell selection border rendering
   const [selectionBounds, setSelectionBounds] = useState<SelectionBounds | null>(null);
   const prevSelectionBoundsRef = useRef<SelectionBounds | null>(null);
+
+  // Collapse truncated-text expand when selection leaves that row
+  useEffect(() => {
+    if (!expandedTextCell) return;
+    if (!selectionIncludesExpandedRow(selectedCells, expandedTextCell.rowId)) {
+      setExpandedTextCell(null);
+    }
+  }, [selectedCells, expandedTextCell]);
 
   // Handle row selection toggle
   const handleRowSelectionToggle = useCallback((rowId: string, e?: React.MouseEvent | MouseEvent) => {
@@ -115,7 +131,9 @@ export function useCellSelection({
         target.closest('.ant-switch') ||
         target.closest('input') ||
         target.closest('select') ||
-        target.closest('.cellExpandIcon')
+        target.closest('.cellExpandIcon') ||
+        target.closest('[contenteditable="true"]') ||
+        (target as HTMLElement).isContentEditable
       ) {
         return;
       }
@@ -146,6 +164,15 @@ export function useCellSelection({
     [selectedCells, selectedRowIds, currentFocusedCell, handleCellBlur]
   );
 
+  const handleTextCellExpandClick = useCallback(
+    (rowId: string, propertyKey: string, isOverflowing: boolean) => {
+      setExpandedTextCell((current) =>
+        nextExpandedTextCell(current, { rowId, propertyKey, isOverflowing }),
+      );
+    },
+    [],
+  );
+
   // Handle cell drag selection start (from cell - multi-selection rectangle)
   const handleCellFillDragStart = useCallback(
     (rowId: string, propertyKey: string, e: React.MouseEvent) => {
@@ -162,7 +189,9 @@ export function useCellSelection({
         target.closest('.ant-switch') ||
         target.closest('input') ||
         target.closest('select') ||
-        target.closest('.cellExpandIcon')
+        target.closest('.cellExpandIcon') ||
+        target.closest('[contenteditable="true"]') ||
+        (target as HTMLElement).isContentEditable
       ) {
         return;
       }
@@ -665,12 +694,14 @@ export function useCellSelection({
     fillDragStartCell,
     hoveredCellForExpand,
     setHoveredCellForExpand,
+    expandedTextCell,
     selectionBounds,
     isFillingCellsRef,
 
     // Handlers
     handleRowSelectionToggle,
     handleCellClick,
+    handleTextCellExpandClick,
     handleCellFillDragStart,
     handleCellDragStart,
     handleSelectedCellArrowNavigation,

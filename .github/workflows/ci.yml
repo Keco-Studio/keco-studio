@@ -82,18 +82,46 @@ jobs:
 
       - name: Reset database
         run: |
-          # Retry mechanism: database reset may fail due to container restart issues
-          for attempt in 1 2 3; do
-            echo "Attempting database reset (attempt $attempt)..."
+          set -euo pipefail
+          # CI occasionally hits transient 502 on supabase_edge_runtime during the
+          # container restart phase of `supabase db reset`. Retry with stop/start
+          # recovery (mirrors playwright.yml) before failing the workflow.
+          max_attempts=3
+          attempt=1
+          reset_ok=0
+
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "Attempting database reset (attempt ${attempt}/${max_attempts})..."
             if supabase db reset; then
               echo "Database reset succeeded"
-              exit 0
+              reset_ok=1
+              break
             fi
-            echo "Database reset failed, waiting before retry..."
-            sleep 5
+
+            echo "Database reset failed on attempt ${attempt}"
+            supabase status || true
+
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "Recovering Supabase stack (stop/start) before retry..."
+              supabase stop --no-backup || true
+              sleep 2
+              supabase start --ignore-health-check
+              for i in {1..90}; do
+                if curl -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
+                  echo "Supabase services are ready after recovery"
+                  break
+                fi
+                sleep 1
+              done
+            fi
+
+            attempt=$((attempt + 1))
           done
-          echo "Database reset failed after all retries"
-          exit 1
+
+          if [ "$reset_ok" -ne 1 ]; then
+            echo "Database reset failed after ${max_attempts} attempts"
+            exit 1
+          fi
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

@@ -139,6 +139,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
 
   const [localTextValues, setLocalTextValues] = useState<Record<string, string>>({});
   useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
     const next: Record<string, string> = {};
     orderedProperties.forEach((p) => {
       const v = row.propertyValues[p.key];
@@ -237,22 +248,12 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
   return (
     <>
       <div
-        className={styles.detailDrawerOverlay}
-        onClick={onClose}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        role="button"
-        tabIndex={0}
-        aria-label="Close drawer"
-      />
-      <div className={styles.detailDrawer} role="dialog" aria-label="Asset detail">
+        className={styles.detailDrawer}
+        role="dialog"
+        aria-label="Asset detail"
+      >
         <div className={styles.detailDrawerHeader}>
-          <Tooltip
-            title={titleDisplay}
-            zIndex={2100}
-            getPopupContainer={(triggerNode) => triggerNode.parentElement ?? document.body}
-          >
-            <h2 className={styles.detailDrawerTitle}>{titleDisplay}</h2>
-          </Tooltip>
+          <h2 className={styles.detailDrawerTitle}>{titleDisplay}</h2>
           <button
             type="button"
             className={styles.detailDrawerClose}
@@ -488,19 +489,11 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                     </span>
                   </div>
                   <div className={`${styles.detailDrawerInputWrap} ${styles.detailDrawerFormulaWrap}`}>
-                    <Tooltip
-                      title={formulaDisplay}
-                      zIndex={2100}
-                      getPopupContainer={(triggerNode) =>
-                        triggerNode.parentElement ?? document.body
-                      }
-                    >
-                      <Input
-                        value={formulaDisplay}
-                        disabled
-                        className={`${styles.detailDrawerInput} ${styles.detailDrawerFormulaInput}`}
-                      />
-                    </Tooltip>
+                    <Input
+                      value={formulaDisplay}
+                      disabled
+                      className={`${styles.detailDrawerInput} ${styles.detailDrawerFormulaInput}`}
+                    />
                     {customFormulaExpression ? (
                       <Tooltip
                         title={customFormulaExpression.replace(/^=/, '')}
@@ -546,25 +539,19 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                   </span>
                 </div>
                 <div className={styles.detailDrawerInputWrap}>
-                  <Tooltip
-                    title={inputValue}
-                    zIndex={2100}
-                    getPopupContainer={(triggerNode) => triggerNode.parentElement ?? document.body}
-                  >
-                    <Input
-                      value={inputValue}
-                      onChange={(e) => {
-                        let v = e.target.value;
-                        if (property.dataType === 'int') v = v.replace(/[^\d-]/g, '');
-                        else if (property.dataType === 'float') v = v.replace(/[^\d.-]/g, '');
-                        setLocalTextValues((prev) => ({ ...prev, [property.key]: v }));
-                      }}
-                      onBlur={(e) => handleInputBlur(property, e)}
-                      onPressEnter={(e) => (e.target as HTMLInputElement).blur()}
-                      disabled={readOnly}
-                      className={styles.detailDrawerInput}
-                    />
-                  </Tooltip>
+                  <Input
+                    value={inputValue}
+                    onChange={(e) => {
+                      let v = e.target.value;
+                      if (property.dataType === 'int') v = v.replace(/[^\d-]/g, '');
+                      else if (property.dataType === 'float') v = v.replace(/[^\d.-]/g, '');
+                      setLocalTextValues((prev) => ({ ...prev, [property.key]: v }));
+                    }}
+                    onBlur={(e) => handleInputBlur(property, e)}
+                    onPressEnter={(e) => (e.target as HTMLInputElement).blur()}
+                    disabled={readOnly}
+                    className={styles.detailDrawerInput}
+                  />
                 </div>
               </div>
             );

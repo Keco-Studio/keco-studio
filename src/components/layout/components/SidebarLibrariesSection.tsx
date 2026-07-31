@@ -1,18 +1,14 @@
 'use client';
 
 import Image from 'next/image';
-import { Tooltip } from 'antd';
+import { useCallback, useState } from 'react';
 import type { DataNode } from 'antd/es/tree';
 import type { Library } from '@/lib/services/libraryService';
 import type { SidebarAssetRow } from '../hooks/useSidebarAssets';
-import { truncateText } from '@/lib/utils/truncateText';
-import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
 import addProjectIcon from '@/assets/images/addProjectIcon.svg';
-import sidebarFolderIcon3 from '@/assets/images/SidebarFloderIcon3.svg';
-import sidebarFolderIcon4 from '@/assets/images/SidebarFloderIcon4.svg';
-import sidebarFolderIcon5 from '@/assets/images/SidebarFolderInco5.svg';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import { SidebarTreeView } from './SidebarTreeView';
+import type { SidebarTreeDropInfo } from './SidebarTreeView';
 import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
@@ -48,6 +44,9 @@ export type SidebarLibrariesSectionProps = {
   addButtonRef: (el: HTMLButtonElement | null) => void;
   onAddButtonClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onTreeRightClick: (info: { event: any; node: any }) => void;
+  onTreeDrop?: (info: SidebarTreeDropInfo) => void | Promise<void>;
+  /** Drop onto Libraries title → move to project root. */
+  onDropToRoot?: (dragKey: string) => void;
 };
 
 /**
@@ -55,8 +54,6 @@ export type SidebarLibrariesSectionProps = {
  */
 export function SidebarLibrariesSection({
   currentIds,
-  libraries,
-  assets,
   userRole,
   loadingFolders,
   loadingLibraries,
@@ -73,17 +70,62 @@ export function SidebarLibrariesSection({
   setError,
   onSelect,
   onExpand,
-  onBackToLibrary,
-  onAddNewAsset,
-  onAssetClick,
-  onContextMenu,
   addButtonRef,
   onAddButtonClick,
   onTreeRightClick,
+  onTreeDrop,
+  onDropToRoot,
 }: SidebarLibrariesSectionProps) {
+  const canEdit = userRole === 'admin' || userRole === 'editor';
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const [rootDropActive, setRootDropActive] = useState(false);
+
+  const handleDragStart = useCallback((dragKey: string) => {
+    setDraggingKey(dragKey);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingKey(null);
+    setRootDropActive(false);
+  }, []);
+
+  const handleRootDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!canEdit || !onDropToRoot || !draggingKey) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setRootDropActive(true);
+    },
+    [canEdit, onDropToRoot, draggingKey]
+  );
+
+  const handleRootDragLeave = useCallback((e: React.DragEvent) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setRootDropActive(false);
+  }, []);
+
+  const handleRootDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setRootDropActive(false);
+      if (!canEdit || !onDropToRoot || !draggingKey) return;
+      onDropToRoot(draggingKey);
+      setDraggingKey(null);
+    },
+    [canEdit, onDropToRoot, draggingKey]
+  );
+
   return (
     <>
-      <div className={styles.sectionTitle}>
+      <div
+        className={`${styles.sectionTitle} ${rootDropActive ? styles.librariesRootDropActive : ''}`}
+        onDragOver={handleRootDragOver}
+        onDragLeave={handleRootDragLeave}
+        onDrop={handleRootDrop}
+        title={draggingKey ? 'Drop here to move to project root' : undefined}
+      >
         <span>Libraries</span>
         {(userRole === 'admin' || userRole === 'editor') && (
           <button
@@ -112,6 +154,9 @@ export function SidebarLibrariesSection({
           onSelect={onSelect}
           onExpand={onExpand}
           onRightClick={onTreeRightClick}
+          onTreeDrop={onTreeDrop}
+          onDragStart={onDropToRoot ? handleDragStart : undefined}
+          onDragEnd={onDropToRoot ? handleDragEnd : undefined}
         />
         {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
           <div className={styles.sidebarEmptyState}>

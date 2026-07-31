@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
+import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { readScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import {
   readLeftNavCollapsed,
   writeLeftNavCollapsed,
@@ -41,6 +43,20 @@ function IconBolt({ active }: { active: boolean }) {
       height={20}
       aria-hidden="true"
     />
+  );
+}
+
+function IconSpeechBubble({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <path
+        d="M3 4.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 15 4.5v5a1.5 1.5 0 0 1-1.5 1.5H7.5L4.5 14.5V11H4.5A1.5 1.5 0 0 1 3 9.5v-5z"
+        fill={active ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -104,6 +120,8 @@ export function LeftNav() {
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
   const onSimulation = isSimulationPath(pathname);
+  const onScript = isScriptSystemPath(pathname);
+  const onStudio = !onSimulation && !onScript;
 
   useEffect(() => {
     setCollapsed(readLeftNavCollapsed());
@@ -136,17 +154,24 @@ export function LeftNav() {
       <div className={styles.items}>
         <button
           type="button"
-          className={`${styles.item} ${!onSimulation ? styles.itemActive : ''}`}
+          className={`${styles.item} ${onStudio ? styles.itemActive : ''}`}
           aria-label="Studio"
-          aria-current={!onSimulation ? 'page' : undefined}
+          aria-current={onStudio ? 'page' : undefined}
           onClick={() => {
-            if (!onSimulation) return;
-            const preferred = readSimulationProjectPreference()?.projectId;
-            // Only deep-link when leaving Simulation; /projects still opens the first project.
-            router.push(preferred ? `/${preferred}` : '/projects');
+            if (onStudio) return;
+            if (onScript) {
+              const pref = readScriptProjectPreference()?.projectId;
+              router.push(pref ? `/${pref}` : '/projects');
+              return;
+            }
+            if (onSimulation) {
+              const preferred = readSimulationProjectPreference()?.projectId;
+              // Only deep-link when leaving Simulation; /projects still opens the first project.
+              router.push(preferred ? `/${preferred}` : '/projects');
+            }
           }}
         >
-          <IconGrid active={!onSimulation} />
+          <IconGrid active={onStudio} />
         </button>
         <button
           type="button"
@@ -158,6 +183,17 @@ export function LeftNav() {
           }}
         >
           <IconBolt active={onSimulation} />
+        </button>
+        <button
+          type="button"
+          className={`${styles.item} ${onScript ? styles.itemActive : ''}`}
+          aria-label="Script"
+          aria-current={onScript ? 'page' : undefined}
+          onClick={() => {
+            if (!onScript) router.push('/script-system');
+          }}
+        >
+          <IconSpeechBubble active={onScript} />
         </button>
         <button
           type="button"

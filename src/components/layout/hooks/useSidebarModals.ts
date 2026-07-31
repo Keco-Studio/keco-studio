@@ -109,6 +109,17 @@ export function useSidebarModals() {
   const openNewDocument = useCallback(() => setShowDocumentModal(true), []);
   const closeDocumentModal = useCallback(() => setShowDocumentModal(false), []);
 
+  const [showEditDocumentModal, setShowEditDocumentModal] = useState(false);
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
+  const openEditDocument = useCallback((id: string) => {
+    setEditingDocumentId(id);
+    setShowEditDocumentModal(true);
+  }, []);
+  const closeEditDocumentModal = useCallback(() => {
+    setShowEditDocumentModal(false);
+    setEditingDocumentId(null);
+  }, []);
+
   return {
     showProjectModal,
     showEditProjectModal,
@@ -154,5 +165,9 @@ export function useSidebarModals() {
     showDocumentModal,
     openNewDocument,
     closeDocumentModal,
+    showEditDocumentModal,
+    editingDocumentId,
+    openEditDocument,
+    closeEditDocumentModal,
   };
 }

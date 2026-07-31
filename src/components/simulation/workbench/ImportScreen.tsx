@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -91,6 +92,45 @@ function formatLibraryLabel(
 const ROW_H = 44;
 const BOX_PAD = '0 12px';
 const BOX_RADIUS = 10;
+/** Match Characters team-reorder FLIP visibility (spring + lift). */
+const MAPPING_FLIP_MS = 550;
+const MAPPING_FLIP_EASE = 'cubic-bezier(0.34, 1.15, 0.64, 1)';
+
+function playFlipTransition(
+  elements: Record<string, HTMLElement | null>,
+  prevTops: Record<string, number>,
+): string[] {
+  const animated: string[] = [];
+  for (const [id, el] of Object.entries(elements)) {
+    if (!el) continue;
+    const top = el.getBoundingClientRect().top;
+    const prev = prevTops[id];
+    if (prev !== undefined && Math.abs(prev - top) > 1) {
+      const dy = prev - top;
+      animated.push(id);
+      el.style.transform = `translateY(${dy}px) scale(1.02)`;
+      el.style.transition = 'none';
+      el.style.zIndex = '20';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.transition =
+            `transform ${MAPPING_FLIP_MS}ms ${MAPPING_FLIP_EASE}, box-shadow ${MAPPING_FLIP_MS}ms ease`;
+          el.style.transform = '';
+          window.setTimeout(() => {
+            if (el.style.zIndex === '20') el.style.zIndex = '';
+            el.style.transition = '';
+          }, MAPPING_FLIP_MS + 20);
+        });
+      });
+    }
+    prevTops[id] = top;
+  }
+  // Drop stale keys that left the list so remounts don't skip FLIP.
+  for (const id of Object.keys(prevTops)) {
+    if (!elements[id]) delete prevTops[id];
+  }
+  return animated;
+}
 
 function mapBoxStyle(active: boolean, tone: 'default' | 'error' = 'default'): CSSProperties {
   const isError = tone === 'error';
@@ -362,8 +402,15 @@ export function ImportScreen({
   const [dropTarget, setDropTarget] = useState<MappingDragTarget | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dragPreviewWidth, setDragPreviewWidth] = useState(240);
+  const [flashColumnId, setFlashColumnId] = useState<string | null>(null);
+  const [movingColumnIds, setMovingColumnIds] = useState<Set<string>>(() => new Set());
   const dropTargetRef = useRef<MappingDragTarget | null>(null);
   const dragSourceRef = useRef<MappingDragSource | null>(null);
+  const slotRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const unmappedRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  /** Previous tops keyed by columnId (so slot↔slot content swaps FLIP). */
+  const columnPrevTops = useRef<Record<string, number>>({});
+  const unmappedPrevTops = useRef<Record<string, number>>({});
 
   useEffect(() => {
     for (const role of ROLES) fieldRequestRef.current[role] += 1;
@@ -407,6 +454,30 @@ export function ImportScreen({
     },
     [activeDefinitions, activeMappings, activeFields],
   );
+
+  useLayoutEffect(() => {
+    const columnEls: Record<string, HTMLElement | null> = {};
+    for (const slot of mappingLayout.slots) {
+      if (!slot.columnId) continue;
+      columnEls[slot.columnId] = slotRowRefs.current[slot.fieldId] ?? null;
+    }
+    const animated = [
+      ...playFlipTransition(columnEls, columnPrevTops.current),
+      ...playFlipTransition(unmappedRowRefs.current, unmappedPrevTops.current),
+    ];
+    if (animated.length === 0) return undefined;
+    setMovingColumnIds(new Set(animated));
+    const timer = window.setTimeout(() => setMovingColumnIds(new Set()), MAPPING_FLIP_MS + 20);
+    return () => window.clearTimeout(timer);
+  }, [mappingLayout]);
+
+  useEffect(() => {
+    columnPrevTops.current = {};
+    unmappedPrevTops.current = {};
+    setFlashColumnId(null);
+    setMovingColumnIds(new Set());
+  }, [activeRole, activeLibraryId]);
+
   const columnById = useMemo(() => {
     const map = new Map<string, StudioColumnDefinition & { key: string; name: string }>();
     for (const col of activeFields) map.set(col.key, col);
@@ -556,7 +627,17 @@ export function ImportScreen({
       const source = dragSourceRef.current;
       const target = dropTargetRef.current;
       if (source && target) {
+        const movingColumnId =
+          source.kind === 'unmapped'
+            ? source.columnId
+            : activeMappingsRef.current[source.fieldId] ?? null;
         replaceRoleMapping(activeRole, applyMappingDrag(activeMappingsRef.current, source, target));
+        if (movingColumnId) {
+          setFlashColumnId(movingColumnId);
+          window.setTimeout(() => {
+            setFlashColumnId((current) => (current === movingColumnId ? null : current));
+          }, 550);
+        }
       }
       dragSourceRef.current = null;
       dropTargetRef.current = null;
@@ -870,11 +951,17 @@ export function ImportScreen({
                   const isError = status === 'empty-required' || status === 'incompatible';
                   const isDragging = dragSource?.kind === 'slot' && dragSource.fieldId === slot.fieldId;
                   const isDrop = dropTarget?.kind === 'slot' && dropTarget.fieldId === slot.fieldId;
+                  const isFlash = Boolean(slot.columnId && flashColumnId === slot.columnId);
+                  const isMoving = Boolean(slot.columnId && movingColumnIds.has(slot.columnId));
                   return (
                     <div
                       key={slot.fieldId}
+                      ref={(node) => {
+                        slotRowRefs.current[slot.fieldId] = node;
+                      }}
                       data-mapping-drop={`slot:${slot.fieldId}`}
                       data-testid="mapping-slot"
+                      className={isMoving ? styles.mappingCardMoving : undefined}
                       style={{
                         ...mapBoxStyle(
                           isDragging || isDrop || Boolean(slot.columnId && !aiMapping),
@@ -882,6 +969,10 @@ export function ImportScreen({
                         ),
                         userSelect: 'none',
                         opacity: isDragging ? 0.35 : 1,
+                        willChange: 'transform, box-shadow',
+                        animation: isFlash ? 'kMappingCardFlash 0.55s ease' : 'none',
+                        zIndex: isMoving ? 20 : undefined,
+                        position: 'relative',
                       }}
                     >
                       {aiMapping ? (
@@ -972,13 +1063,19 @@ export function ImportScreen({
                     {mappingLayout.unmapped.map((columnId) => {
                       const col = columnById.get(columnId);
                       const isDragging = dragSource?.kind === 'unmapped' && dragSource.columnId === columnId;
+                      const isFlash = flashColumnId === columnId;
+                      const isMoving = movingColumnIds.has(columnId);
                       return (
                         <button
                           key={columnId}
+                          ref={(node) => {
+                            unmappedRowRefs.current[columnId] = node;
+                          }}
                           type="button"
                           data-testid="mapping-unmapped-card"
                           aria-label={`Drag ${col?.name ?? columnId}`}
                           onPointerDown={(event) => startCardDrag({ kind: 'unmapped', columnId }, event)}
+                          className={isMoving ? styles.mappingCardMoving : undefined}
                           style={{
                             ...mapBoxStyle(isDragging, 'default'),
                             width: '100%',
@@ -986,6 +1083,10 @@ export function ImportScreen({
                             opacity: isDragging ? 0.35 : 1,
                             font: 'inherit',
                             textAlign: 'left',
+                            willChange: 'transform, box-shadow',
+                            animation: isFlash ? 'kMappingCardFlash 0.55s ease' : 'none',
+                            zIndex: isMoving ? 20 : undefined,
+                            position: 'relative',
                           }}
                         >
                           <DragHandle />

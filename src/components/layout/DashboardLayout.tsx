@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import AuthForm from '@/components/authform/AuthForm';
 import { ChatPanel } from '@/components/agent/ChatPanel';
 import { AgentImportBridge } from '@/components/agent/AgentImportBridge';
+import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -21,6 +22,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
+  const hideStudioChrome = hideSidebarForSimulation || isScriptSystemPath(pathname);
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
@@ -70,18 +72,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className={styles.dashboard}>
       <LeftNav />
-      {!hideSidebarForSimulation ? (
+      {!hideStudioChrome ? (
         <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
           <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
         </div>
       ) : null}
       <div className={styles.main}>
-        {!hideSidebarForSimulation ? <TopBar /> : null}
-        <div className={styles.content}>
-          {children}
+        {!hideStudioChrome ? <TopBar /> : null}
+        <div className={styles.workspace}>
+          <div className={styles.content}>
+            {children}
+          </div>
+          {!hideStudioChrome ? <ChatPanel /> : null}
         </div>
       </div>
-      <ChatPanel />
       <AgentImportBridge />
     </div>
   );

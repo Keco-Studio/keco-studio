@@ -3,6 +3,8 @@
  * Used by NavigationContext; Sidebar/TopBar consume context only, no URL parsing.
  */
 
+import { isUuid } from '@/lib/utils/uuid';
+
 export const SPECIAL_ROUTE_SEGMENTS = [
   'folder',
   'doc',
@@ -13,6 +15,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'battle-simulator',
   'economy-simulator',
   'simulation-system',
+  'script-system',
   'design-upload',
   'mcp',
 ] as const;
@@ -94,6 +97,32 @@ export function parseRouteParams(
       assetId: null,
       documentId: null,
       isPredefinePage: true,
+      isLibraryPage: false,
+    };
+  }
+
+  // script-system routes carry project context but are not Studio project routes.
+  if (parts[0] === 'script-system') {
+    let projectId: string | null = null;
+    let libraryId: string | null = null;
+    let documentId: string | null = null;
+
+    if (isUuid(parts[1])) {
+      projectId = parts[1];
+      if (parts[2] === 'doc' && parts[3]) {
+        documentId = parts[3];
+      } else if (parts[2] === 'script' && parts[3]) {
+        libraryId = parts[3];
+      }
+    }
+
+    return {
+      projectId,
+      libraryId,
+      folderId: null,
+      assetId: null,
+      documentId,
+      isPredefinePage: false,
       isLibraryPage: false,
     };
   }

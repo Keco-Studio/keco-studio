@@ -98,12 +98,30 @@ export function useSidebarTree(
     });
 
     const documentsByFolder = new Map<string, DocumentSummary[]>();
+    const documentsByParent = new Map<string, DocumentSummary[]>();
     projectDocuments.forEach((doc) => {
+      if (doc.parent_document_id) {
+        const parentId = String(doc.parent_document_id);
+        if (!documentsByParent.has(parentId)) {
+          documentsByParent.set(parentId, []);
+        }
+        documentsByParent.get(parentId)!.push(doc);
+        return;
+      }
       const folderId = doc.folder_id ? String(doc.folder_id) : '';
       if (!documentsByFolder.has(folderId)) {
         documentsByFolder.set(folderId, []);
       }
       documentsByFolder.get(folderId)!.push(doc);
+    });
+
+    const foldersByParent = new Map<string, Folder[]>();
+    projectFolders.forEach((folder) => {
+      const parentKey = folder.parent_folder_id ? String(folder.parent_folder_id) : '';
+      if (!foldersByParent.has(parentKey)) {
+        foldersByParent.set(parentKey, []);
+      }
+      foldersByParent.get(parentKey)!.push(folder);
     });
 
     const buildLibraryNode = (
@@ -146,19 +164,31 @@ export function useSidebarTree(
         _titleStr: lib.name,
         _nodeType: 'library',
         _isLibraryUnderFolder: underFolder,
-      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document'; _isLibraryUnderFolder: boolean };
+        _isDerived: Boolean(lib.source_document_id),
+      } as DataNode & {
+        _titleStr: string;
+        _nodeType: 'library' | 'folder' | 'document';
+        _isLibraryUnderFolder: boolean;
+        _isDerived: boolean;
+      };
     };
 
-    // Build a document node with any derived libraries nested beneath it.
+    // Build a document node with nested child documents + derived libraries beneath it.
     const buildDocumentNode = (doc: DocumentSummary, isUnderFolder: boolean): DataNode => {
       const docKey = `document-${doc.id}`;
       const canRename = userRole === 'admin' || userRole === 'editor';
+      const childDocuments = [...(documentsByParent.get(doc.id) ?? [])].sort(
+        (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+      );
       const derivedLibraries = [...(librariesByDocument.get(doc.id) ?? [])].sort(
         (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
       );
-      const children = derivedLibraries.map((library) =>
-        buildLibraryNode(library, { underFolder: isUnderFolder, underDocument: true })
-      );
+      const children: DataNode[] = [
+        ...childDocuments.map((child) => buildDocumentNode(child, isUnderFolder)),
+        ...derivedLibraries.map((library) =>
+          buildLibraryNode(library, { underFolder: isUnderFolder, underDocument: true })
+        ),
+      ];
       const hasChildren = children.length > 0;
       const isExpanded = expandedKeys.includes(docKey);
       return {
@@ -221,17 +251,22 @@ export function useSidebarTree(
 
     const buildFolderNode = (folder: Folder): DataNode => {
       const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
+      const childFolders = foldersByParent.get(String(folder.id)) || [];
 
-      const children: DataNode[] = folderLibraries.map((lib) =>
-        buildLibraryNode(lib, { underFolder: true })
-      );
+      const children: DataNode[] = [
+        ...childFolders.map((child) => buildFolderNode(child)),
+        ...folderLibraries.map((lib) => buildLibraryNode(lib, { underFolder: true })),
+      ];
 
       const folderDocuments = documentsByFolder.get(String(folder.id)) || [];
       folderDocuments.forEach((doc) => {
         children.push(buildDocumentNode(doc, true));
       });
 
-      const hasNoLibraries = folderLibraries.length === 0 && folderDocuments.length === 0;
+      const hasNoLibraries =
+        folderLibraries.length === 0 &&
+        folderDocuments.length === 0 &&
+        childFolders.length === 0;
       const folderKey = `folder-${folder.id}`;
       return {
         title: (
@@ -281,7 +316,8 @@ export function useSidebarTree(
           </div>
         ),
         key: folderKey,
-        isLeaf: children.length === 0,
+        // Keep folders expandable/droppable even when empty (P1 DnD into folder).
+        isLeaf: false,
         children: children.length > 0 ? children : undefined,
         _titleStr: folder.name,
         _nodeType: 'folder',
@@ -290,7 +326,8 @@ export function useSidebarTree(
     };
 
     const result: DataNode[] = [];
-    projectFolders.forEach((folder) => {
+    const rootFolders = foldersByParent.get('') || [];
+    rootFolders.forEach((folder) => {
       result.push(buildFolderNode(folder));
     });
 
@@ -303,6 +340,7 @@ export function useSidebarTree(
     });
 
     return result;
+
   }, [
     currentIds.projectId,
     folders,

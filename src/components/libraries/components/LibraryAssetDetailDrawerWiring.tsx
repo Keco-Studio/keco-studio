@@ -1,7 +1,13 @@
+'use client';
+
 import type React from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { AssetDetailDrawer, type AssetDetailDrawerProps } from './AssetDetailDrawer';
+
+const DETAIL_SLOT_ID = 'library-asset-detail-slot';
 
 type LibraryAssetDetailDrawerWiringProps = {
   rowId: string | null;
@@ -36,12 +42,20 @@ export function LibraryAssetDetailDrawerWiring({
   onAvatarMouseEnter,
   onAvatarMouseLeave,
 }: LibraryAssetDetailDrawerWiringProps) {
+  const [slotEl, setSlotEl] = useState<HTMLElement | null>(() =>
+    typeof document !== 'undefined' ? document.getElementById(DETAIL_SLOT_ID) : null,
+  );
+
+  useEffect(() => {
+    setSlotEl(document.getElementById(DETAIL_SLOT_ID));
+  }, [rowId]);
+
   if (!rowId) return null;
 
   const drawerRow = rows.find((row) => row.id === rowId);
   if (!drawerRow) return null;
 
-  return (
+  const drawer = (
     <AssetDetailDrawer
       open={true}
       onClose={onClose}
@@ -57,4 +71,11 @@ export function LibraryAssetDetailDrawerWiring({
       onAvatarMouseLeave={onAvatarMouseLeave}
     />
   );
+
+  // Portal beside the table at mainContent level (same hierarchy as version history).
+  if (slotEl) {
+    return createPortal(drawer, slotEl);
+  }
+
+  return drawer;
 }

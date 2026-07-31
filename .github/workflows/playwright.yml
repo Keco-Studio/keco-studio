@@ -92,7 +92,8 @@ jobs:
     # Start local Supabase instance
     - name: Start Supabase
       run: |
-        supabase start
+        # Edge runtime health can 502 transiently; wait on REST instead.
+        supabase start --ignore-health-check
         echo "✅ Supabase started successfully"
         # Wait a moment for all services to be fully ready
         sleep 3
@@ -135,10 +136,18 @@ jobs:
 
           if [ "$attempt" -lt "$max_attempts" ]; then
             echo "🛠️ Attempting Supabase recovery (stop/start) before retry..."
-            supabase stop || true
+            supabase stop --no-backup || true
             sleep 2
-            supabase start
+            # Edge runtime health checks can 502 transiently; REST readiness is enough.
+            supabase start --ignore-health-check
             sleep 3
+            for i in {1..30}; do
+              if curl -f -s "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/" > /dev/null 2>&1; then
+                echo "✅ Supabase API ready after recovery"
+                break
+              fi
+              sleep 1
+            done
           fi
 
           attempt=$((attempt + 1))

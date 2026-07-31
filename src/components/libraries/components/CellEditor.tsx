@@ -3,6 +3,7 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
+import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type CellEditorProps = {
   property: PropertyConfig;
@@ -41,28 +42,13 @@ export function CellEditor({
     <div style={{ position: 'relative', width: '100%' }}>
       <span
         ref={editingCellRef}
+        className={`${styles.cellText} ${styles.cellTextExpanded}`}
         contentEditable
         suppressContentEditableWarning
         onMouseDown={(e) => {
-          // Check if text is currently fully selected
-          const selection = window.getSelection();
-          if (selection && selection.toString().length > 0) {
-            const element = e.currentTarget;
-            const fullText = element.textContent || '';
-            
-            // If all text is selected, clear selection and allow browser to position cursor
-            if (selection.toString() === fullText) {
-              e.preventDefault();
-              // Clear selection first
-              selection.removeAllRanges();
-              
-              // Calculate cursor position based on click location
-              const range = document.caretRangeFromPoint(e.clientX, e.clientY);
-              if (range) {
-                selection.addRange(range);
-              }
-            }
-          }
+          // Keep mousedown inside the editor so cell drag-select (td onMouseDown)
+          // does not preventDefault and steal caret placement.
+          e.stopPropagation();
         }}
         onFocus={() => {
           if (editingCell) {

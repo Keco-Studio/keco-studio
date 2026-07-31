@@ -20,6 +20,7 @@ type NewDocumentModalProps = {
 export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated }: NewDocumentModalProps) {
   const supabase = useSupabase();
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -49,11 +50,12 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
       const doc = await createDocument(supabase, {
         projectId,
         name: trimmed,
+        description,
         folderId: folderId || null,
       });
-      // Await so the caller can finish navigation/invalidation before we close.
       await onCreated(doc.id);
       setName('');
+      setDescription('');
       onClose();
     } catch (e: any) {
       setError(e?.message || 'Failed to create document');
@@ -64,9 +66,9 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
 
   return createPortal(
     <div className={dialog.backdrop}>
-      <div className={`${dialog.modal} ${dialog.modalCompact}`}>
+      <div className={`${dialog.modal} ${dialog.modalTall}`}>
         <div className={dialog.header}>
-          <div className={dialog.title}>New Document</div>
+          <div className={dialog.title}>Create Document</div>
           <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
@@ -75,8 +77,11 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
         <div className={dialog.divider}></div>
 
         <div className={dialog.field}>
-          <label className={dialog.nameLabel}>Document name *</label>
+          <label htmlFor="document-name" className={dialog.nameLabel}>
+            Document Name
+          </label>
           <input
+            id="document-name"
             className={dialog.nameInput}
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -89,14 +94,31 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
           />
         </div>
 
-        {error && <div className={`${dialog.error} ${dialog.errorInline}`}>{error}</div>}
+        <div className={dialog.notesContainer}>
+          <label htmlFor="document-description" className={dialog.notesLabel}>
+            <span className={dialog.notesLabelText}>Add notes for this Document</span>
+            <span className={dialog.notesLabelLimit}> (250 characters limit)</span>
+          </label>
+          <div className={dialog.textareaWrapper}>
+            <textarea
+              id="document-description"
+              name="document-description"
+              className={dialog.textarea}
+              value={description}
+              onChange={(e) => {
+                if (e.target.value.length <= 250) {
+                  setDescription(e.target.value);
+                }
+              }}
+              maxLength={250}
+            />
+          </div>
+        </div>
 
         <div className={dialog.footer}>
-          <button className={`${dialog.button} ${dialog.buttonAuto} ${dialog.secondary}`} onClick={onClose}>
-            Cancel
-          </button>
+          {error && <div className={dialog.error}>{error}</div>}
           <button
-            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.primary}`}
+            className={`${dialog.button} ${dialog.buttonFixed} ${dialog.primary}`}
             onClick={handleSubmit}
             disabled={submitting}
           >

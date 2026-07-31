@@ -15,6 +15,7 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
 import { AgentPanelHeader } from './AgentPanelHeader';
+import { useDraggableLauncherPosition } from './useDraggableLauncherPosition';
 import styles from './ChatPanel.module.css';
 
 export function ChatPanel() {
@@ -38,6 +39,11 @@ export function ChatPanel() {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastScrollSampleRef = useRef<{ top: number; time: number } | null>(null);
   const scrollJumpHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    style: launcherStyle,
+    onPointerDown: onLauncherPointerDown,
+    isDragging: isLauncherDragging,
+  } = useDraggableLauncherPosition();
 
   // Active section tab lives in LibraryAssetsTable state, not the URL.
   useEffect(() => {
@@ -262,9 +268,11 @@ export function ChatPanel() {
   if (!open) {
     return (
       <button
-        className={styles.launcher}
+        className={`${styles.launcher} ${isLauncherDragging ? styles.launcherDragging : ''}`}
         data-testid="agent-launcher"
         title="Keco Assistant"
+        style={launcherStyle}
+        onPointerDown={onLauncherPointerDown}
         onClick={() => {
           setPendingSelectionContext(undefined);
           setOpen(true);

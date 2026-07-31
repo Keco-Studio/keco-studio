@@ -47,9 +47,11 @@ const MdxDocumentEditor = dynamic<MdxDocumentEditorProps>(
 export type DocumentEditorProps = {
   projectId: string;
   documentId: string;
+  /** Script workspace: no side padding so the editor sits flush to the shell sidebar. */
+  flushLayout?: boolean;
 };
 
-export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
+export function DocumentEditor({ projectId, documentId, flushLayout = false }: DocumentEditorProps) {
   const supabase = useSupabase();
   const { data: document, isLoading, error } = useQuery({
     queryKey: queryKeys.document(documentId),
@@ -89,6 +91,7 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
       document={document}
       projectId={projectId}
       permissions={permissions as ReadyDocumentPermissions}
+      flushLayout={flushLayout}
     />
   );
 }
@@ -119,10 +122,12 @@ function DocumentEditorSession({
   document,
   projectId,
   permissions,
+  flushLayout = false,
 }: {
   document: DocumentRecord;
   projectId: string;
   permissions: ReadyDocumentPermissions;
+  flushLayout?: boolean;
 }) {
   const supabase = useSupabase();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -359,7 +364,13 @@ function DocumentEditorSession({
   return (
     <div className={styles.container}>
       <section
-        className={`${styles.documentSection} ${historyOpen ? styles.documentSectionWithHistory : ''}`}
+        className={[
+          styles.documentSection,
+          flushLayout ? styles.documentSectionFlush : '',
+          historyOpen ? styles.documentSectionWithHistory : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
         <div className={styles.documentMain}>
           <header className={styles.stickyChrome}>

@@ -77,8 +77,8 @@ describe('native simulation workbench presentation', () => {
     expect(importScreen).toContain('/${library.name}');
 
     const characters = read('CharactersScreen.tsx');
-    expect(characters).toContain("label: 'Team A'");
-    expect(characters).toContain("label: 'Team B'");
+    expect(characters).toContain("label: 'Team A · Yours'");
+    expect(characters).toContain("label: 'Team B · Enemy'");
     expect(characters).toContain('Studio snapshot');
 
     const skills = read('SkillsScreen.tsx');

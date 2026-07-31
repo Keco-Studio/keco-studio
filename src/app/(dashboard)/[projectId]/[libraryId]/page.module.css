@@ -10,9 +10,10 @@
 }
 
 .container {
-  padding: 0 1.5rem 1.5rem 1.5rem;
+  padding: 0 0 1.5rem 0;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .mainContent {
@@ -21,11 +22,25 @@
   gap: 0;
   align-items: stretch;
   position: relative;
+  min-width: 0;
+  width: 100%;
 }
 
 .tableContainer {
   flex: 1;
   min-width: 0;
+  padding: 0 1.5rem;
+}
+
+.assetDetailSlot:empty {
+  display: none;
+}
+
+.assetDetailSlot:not(:empty) {
+  flex-shrink: 0;
+  width: 400px;
+  max-width: 400px;
+  /* Spacer only — panel is position:fixed on the viewport right */
 }
 
 .header {

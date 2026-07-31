@@ -519,15 +519,45 @@ export function useCellEditing({
     // Update presence tracking when starting to edit
     handleCellFocus(row.id, property.key);
     
-    // Initialize the contentEditable element after state update
+    // Initialize the contentEditable element after state update.
+    // Place caret at the double-click point — do not select all text.
+    const clickX = e.clientX;
+    const clickY = e.clientY;
     setTimeout(() => {
-      if (editingCellRef.current) {
-        editingCellRef.current.textContent = stringValue;
-        editingCellRef.current.focus();
+      const el = editingCellRef.current;
+      if (!el) return;
+      el.textContent = stringValue;
+      el.focus();
+
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+
+      let placed = false;
+      if (typeof document.caretRangeFromPoint === 'function') {
+        const caretRange = document.caretRangeFromPoint(clickX, clickY);
+        if (caretRange && el.contains(caretRange.startContainer)) {
+          caretRange.collapse(true);
+          selection?.addRange(caretRange);
+          placed = true;
+        }
+      } else {
+        const docWithCaretPos = document as Document & {
+          caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+        };
+        const pos = docWithCaretPos.caretPositionFromPoint?.(clickX, clickY);
+        if (pos && el.contains(pos.offsetNode)) {
+          const range = document.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+          selection?.addRange(range);
+          placed = true;
+        }
+      }
+
+      if (!placed) {
         const range = document.createRange();
-        range.selectNodeContents(editingCellRef.current);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
+        range.selectNodeContents(el);
+        range.collapse(true);
         selection?.addRange(range);
       }
     }, 0);

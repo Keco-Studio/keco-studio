@@ -3,13 +3,18 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AssetRow, CreateLibraryAssetOptions } from '@/lib/types/libraryAssets';
 import type { RowOrderChangePayload } from '@/lib/types/collaboration';
-import { applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
+import { applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId, normalizeRowIndices } from '@/lib/services/libraryAssetsService';
 import { touchLibraryUpdatedAt, upsertLibraryAssetValuesAndTouch } from '@/lib/library/updatedAt';
 import { syncReferencesAfterSourceChange } from '@/lib/library/referenceSync';
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 import { cloneStoreValue, type ObservableAssetStore } from '@/lib/library/assetStore';
+import {
+  getNextAppendRowIndex,
+  rowsNeedRowIndexNormalize,
+  sortAssetsForUiRow,
+} from '@/lib/utils/assetEmptiness';
 
 type FormulaFieldMetaRow = {
   id: string;
@@ -287,17 +292,30 @@ export function createLibraryAssetMutations({
     propertyValues: Record<string, unknown>,
     options?: CreateLibraryAssetOptions
   ): Promise<string> => {
-    let nextRowIndex: number;
-    if (typeof options?.rowIndex === 'number') {
-      nextRowIndex = options.rowIndex;
-    } else {
-      const current = Array.from(assetsRef.current.values());
-      const maxIdx = current.reduce(
-        (max, asset) => (typeof asset.rowIndex === 'number' && asset.rowIndex > max ? asset.rowIndex : max),
-        0
-      );
-      nextRowIndex = maxIdx + 1;
+    const ordered = sortAssetsForUiRow(Array.from(assetsRef.current.values()));
+    const appendIndex = getNextAppendRowIndex(ordered);
+    const needsNormalize = rowsNeedRowIndexNormalize(ordered);
+    // Insert above/below already normalize+shift before create. Only repair nulls on append.
+    const isAppend =
+      typeof options?.rowIndex !== 'number' ||
+      (options.rowIndex === appendIndex && !options.rowIndexUpdates);
+
+    if (needsNormalize && isAppend && ordered.length > 0) {
+      await normalizeRowIndices(supabase, libraryId, ordered);
+      assetStore.transact(() => {
+        ordered.forEach((asset, index) => {
+          const existing = assetStore.get(asset.id);
+          if (!existing) return;
+          const rowIndex = index + 1;
+          if (existing.rowIndex !== rowIndex) {
+            assetStore.set({ ...existing, rowIndex });
+          }
+        });
+      });
     }
+
+    const nextRowIndex =
+      typeof options?.rowIndex === 'number' ? options.rowIndex : appendIndex;
 
     const formulaMeta = await getFormulaFieldMeta();
     const booleanFieldIds = await getBooleanFieldIdsByLibraryId(supabase, libraryId);

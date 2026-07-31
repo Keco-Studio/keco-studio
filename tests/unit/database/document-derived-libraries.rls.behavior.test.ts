@@ -37,7 +37,7 @@ describeDb('document-derived library database invariants', () => {
     }
   });
 
-  it('rejects unbinding, rebinding, and export type changes', async () => {
+  it('allows unbinding, rebinding, and export type changes when folder stays valid', async () => {
     const fx = await buildProjectFixture();
     try {
       const { data: source } = await fx.svc.from('documents').insert({
@@ -60,15 +60,34 @@ describeDb('document-derived library database invariants', () => {
         document_export_type: 'table',
       }).select('id').single();
 
+      // P2 DnD attach/detach: clearing ownership is allowed.
       expect((await fx.svc.from('libraries').update({
         source_document_id: null,
         document_export_type: null,
-      }).eq('id', child!.id)).error).not.toBeNull();
+      }).eq('id', child!.id)).error).toBeNull();
+
+      // Re-attach to another root document (same folder).
       expect((await fx.svc.from('libraries').update({
         source_document_id: replacement!.id,
-      }).eq('id', child!.id)).error).not.toBeNull();
+        document_export_type: 'table',
+      }).eq('id', child!.id)).error).toBeNull();
+
+      // Export type may change while still bound.
       expect((await fx.svc.from('libraries').update({
         document_export_type: 'script',
+      }).eq('id', child!.id)).error).toBeNull();
+
+      // Rebind to a document in a different folder without updating folder_id is rejected.
+      const folder = await fx.svc.from('folders').insert({
+        project_id: fx.projectId,
+        name: `other-${fx.suffix}`,
+      }).select('id').single();
+      expect((await fx.svc.from('documents').update({
+        folder_id: folder.data!.id,
+      }).eq('id', source!.id)).error).toBeNull();
+      expect((await fx.svc.from('libraries').update({
+        source_document_id: source!.id,
+        document_export_type: 'table',
       }).eq('id', child!.id)).error).not.toBeNull();
     } finally {
       await teardownProjectFixture(fx);
