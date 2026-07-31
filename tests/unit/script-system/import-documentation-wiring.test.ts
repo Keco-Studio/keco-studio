@@ -35,6 +35,17 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(source).toContain('SelectDocumentModal');
   });
 
+  it('ImportDocumentationView invalidates membership query after successful POST', () => {
+    const source = read(
+      'src/components/script-system/ImportDocumentationView.tsx'
+    );
+    expect(source).toContain('useQueryClient');
+    expect(source).toContain('invalidateQueries');
+    expect(source).toMatch(
+      /queryKey:\s*\[\s*['"]script-workspace['"]\s*,\s*projectId\s*\]/
+    );
+  });
+
   it('SelectDocumentModal lists project documents via listDocuments', () => {
     const source = read(
       'src/components/script-system/SelectDocumentModal.tsx'

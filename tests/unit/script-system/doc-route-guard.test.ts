@@ -14,6 +14,8 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     expect(source).toContain('/api/script-workspace/');
     expect(source).toMatch(/isMember\s*[:=(]/);
     expect(source).toMatch(/documentId/);
+    expect(source).toContain('staleTime: 0');
+    expect(source).toContain("refetchOnMount: 'always'");
   });
 
   it('doc page embeds DocumentEditor with projectId and documentId', () => {

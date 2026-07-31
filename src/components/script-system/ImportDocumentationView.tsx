@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument } from '@/lib/services/documentService';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
@@ -29,6 +29,7 @@ export function ImportDocumentationView({
 }: ImportDocumentationViewProps) {
   const router = useRouter();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<SelectedDocument | null>(null);
   const [importing, setImporting] = useState(false);
@@ -62,6 +63,9 @@ export function ImportDocumentationView({
         } | null;
         throw new Error(body?.error || 'Failed to import documentation');
       }
+      await queryClient.invalidateQueries({
+        queryKey: ['script-workspace', projectId],
+      });
       writeScriptProjectPreference({ projectId, projectName });
       router.push(`/script-system/${projectId}/doc/${selected.id}`);
     } catch (err) {

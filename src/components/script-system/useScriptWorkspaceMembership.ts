@@ -27,6 +27,8 @@ export function useScriptWorkspaceMembership(projectId: string | null | undefine
       return data.documents ?? [];
     },
     enabled: Boolean(projectId),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const documents = query.data ?? [];
