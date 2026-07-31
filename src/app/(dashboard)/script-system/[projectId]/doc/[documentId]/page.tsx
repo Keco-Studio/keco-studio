@@ -15,9 +15,11 @@ export default function ScriptDocumentPage() {
     useScriptWorkspaceMembership(projectId);
   const handledRef = useRef(false);
 
-  const membershipSettled = isFetched && !isLoading && !isFetching;
-  const allowed =
-    membershipSettled && !isError && isMember(documentId);
+  // First-load ready: keep rendering during background refetch once we have data.
+  const membershipReady = isFetched && !isLoading;
+  // Settled: only treat non-membership as final after refetch completes.
+  const membershipSettled = membershipReady && !isFetching;
+  const canRender = membershipReady && !isError && isMember(documentId);
 
   useEffect(() => {
     if (!membershipSettled || handledRef.current) return;
@@ -43,7 +45,7 @@ export default function ScriptDocumentPage() {
     router,
   ]);
 
-  if (!allowed) {
+  if (!canRender) {
     return null;
   }
 

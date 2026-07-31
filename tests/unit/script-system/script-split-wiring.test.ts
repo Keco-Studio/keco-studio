@@ -26,6 +26,11 @@ describe('Keco Script split view wiring', () => {
     expect(source).toContain("'script'");
     expect(source).toContain('source_document_id');
     expect(source).toContain('useScriptWorkspaceMembership');
+    expect(source).toContain('isFetching');
+    // Redirect waits for settled fetch; render keeps going while refetching.
+    expect(source).toMatch(/membershipSettled\s*=\s*membershipReady\s*&&\s*!isFetching/);
+    expect(source).toMatch(/canRender\s*=\s*membershipReady/);
+    expect(source).not.toMatch(/canRender\s*=\s*[^\n]*!isFetching/);
     expect(source).toMatch(/router\.(replace|push)/);
     expect(source).toContain(`/script-system/\${projectId}`);
     expect(source).toContain('getLibraryAssetsWithProperties');

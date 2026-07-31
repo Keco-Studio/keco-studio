@@ -77,15 +77,18 @@ export default function ScriptLibraryPage() {
     enabled: Boolean(libraryId),
   });
 
-  const membershipSettled = isFetched && !isLoading && !isFetching;
+  // First-load ready: keep rendering during background refetch once we have data.
+  const membershipReady = isFetched && !isLoading;
+  // Settled: only treat non-membership as final after refetch completes.
+  const membershipSettled = membershipReady && !isFetching;
   const assetsSchemaSettled = schemaFetched && assetsFetched;
   const sourceDocumentId = library?.source_document_id ?? null;
   const isScriptLibrary = library?.document_export_type === 'script';
   const inWorkspace =
     Boolean(sourceDocumentId) && isMember(sourceDocumentId as string);
 
-  const allowed =
-    membershipSettled &&
+  const canRender =
+    membershipReady &&
     libraryFetched &&
     assetsSchemaSettled &&
     !isError &&
@@ -152,7 +155,7 @@ export default function ScriptLibraryPage() {
   );
 
   if (
-    !allowed ||
+    !canRender ||
     schemaLoading ||
     assetsLoading ||
     libraryLoading ||

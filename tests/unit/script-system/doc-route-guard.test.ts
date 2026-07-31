@@ -37,7 +37,10 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     expect(source).toContain('useScriptWorkspaceMembership');
     expect(source).toMatch(/isMember/);
     expect(source).toContain('isFetching');
-    expect(source).toContain('!isFetching');
+    // Redirect waits for settled fetch; render keeps going while refetching.
+    expect(source).toMatch(/membershipSettled\s*=\s*membershipReady\s*&&\s*!isFetching/);
+    expect(source).toMatch(/canRender\s*=\s*membershipReady/);
+    expect(source).not.toMatch(/canRender\s*=\s*[^\n]*!isFetching/);
     expect(source).toMatch(/router\.(replace|push)/);
     expect(source).toContain(`/script-system/\${projectId}`);
     expect(source).toMatch(/showErrorToast|showWarningToast|showInfoToast/);
