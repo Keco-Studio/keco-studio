@@ -19,15 +19,12 @@
 
 ## Layout
 
-Inside `tableShell`, below the top bar: a horizontal split (`tableBodySplit`) containing:
+Portal the drawer into `#library-asset-detail-slot` on the library page `mainContent` — **same flex sibling level as Version History** (`height: calc(100vh - 4rem)`, sticky). Table stays in `tableContainer` and shrinks via `flex: 1`.
 
-1. Primary column (`flex: 1; min-width: 0`) with the existing `tableContainer`.
-2. When open: `AssetDetailDrawer` as a sibling, `flex-shrink: 0`, width 400px, stretched height.
-
-Remove `detailDrawerOverlay`. Drawer is `position: relative` (not `fixed` / full viewport).
+Keep panel width at **400px**. White surface + soft blue header (aligned with version history chrome), not grey card fill.
 
 ## Visual
 
-- Background: muted slate (e.g. `#F8FAFC`), not pure `#ffffff`.
-- Left border `#e2e8f0`; no large drop shadow.
-- Inputs remain readable (slightly lighter/white fields OK on muted panel).
+- Background: white panel with soft blue header tint.
+- Left border soft blue; no large drop shadow.
+- Inputs remain readable on the white panel.

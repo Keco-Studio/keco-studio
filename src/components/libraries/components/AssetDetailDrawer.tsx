@@ -139,6 +139,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
 
   const [localTextValues, setLocalTextValues] = useState<Record<string, string>>({});
   useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
     const next: Record<string, string> = {};
     orderedProperties.forEach((p) => {
       const v = row.propertyValues[p.key];
@@ -237,14 +248,10 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
   return (
     <>
       <div
-        className={styles.detailDrawerOverlay}
-        onClick={onClose}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
-        role="button"
-        tabIndex={0}
-        aria-label="Close drawer"
-      />
-      <div className={styles.detailDrawer} role="dialog" aria-label="Asset detail">
+        className={styles.detailDrawer}
+        role="dialog"
+        aria-label="Asset detail"
+      >
         <div className={styles.detailDrawerHeader}>
           <Tooltip
             title={titleDisplay}

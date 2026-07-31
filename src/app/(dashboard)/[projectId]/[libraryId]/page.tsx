@@ -652,7 +652,7 @@ export default function LibraryPage() {
   return (
     <div className={styles.container}>
       {/* Main content area: Table and Version Control Sidebar side by side */}
-      <div className={styles.mainContent}>
+      <div className={styles.mainContent} data-library-main-content>
         {/* Phase 2: Library assets table preview (placeholder data).
             Later phases will replace placeholder service logic with real Supabase-backed data
             and upgrade the table to a two-level header that mirrors predefine + Figma. */}
@@ -684,6 +684,9 @@ export default function LibraryPage() {
             />
           </RowStoreProvider>
         </div>
+
+        {/* Asset detail portal target — same flex level as version history */}
+        <div id="library-asset-detail-slot" className={styles.assetDetailSlot} />
 
         {/* Version Control Sidebar */}
         {isVersionControlOpen && (

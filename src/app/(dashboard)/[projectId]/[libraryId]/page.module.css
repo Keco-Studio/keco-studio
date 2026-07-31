@@ -32,6 +32,16 @@
   padding: 0 1.5rem;
 }
 
+.assetDetailSlot:empty {
+  display: none;
+}
+
+.assetDetailSlot:not(:empty) {
+  flex-shrink: 0;
+  display: flex;
+  align-self: flex-start;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
