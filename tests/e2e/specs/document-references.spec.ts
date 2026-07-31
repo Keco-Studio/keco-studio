@@ -92,11 +92,7 @@ async function insertTableReference(page: Page): Promise<void> {
   await tableSelect.click();
   await tableSelect.fill(TABLE_NAME);
   await tableSelect.press('Enter');
-  await dialog.getByRole('option', { name: `Row: ${ROW_NAME}` }).click();
-  const fieldSelect = dialog.getByRole('combobox', { name: 'Display field', exact: true });
-  await fieldSelect.click();
-  await fieldSelect.fill(FIELD_NAME);
-  await fieldSelect.press('Enter');
+  await dialog.getByRole('option', { name: `Row: ${TABLE_LABEL}` }).click();
   await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
   await expect(dialog).toBeHidden();
 }

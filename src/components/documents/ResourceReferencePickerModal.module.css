@@ -45,7 +45,7 @@
 
 .rowToolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.55fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -100,10 +100,21 @@
 .resultRow,
 .activeRow,
 .selectedRow {
-  min-height: 52px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 40px;
   padding: 7px 10px !important;
   cursor: pointer;
   transition: background-color 120ms ease;
+}
+
+.rowCheckbox {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  pointer-events: none;
 }
 
 .resultRow:hover {

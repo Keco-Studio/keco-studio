@@ -70,23 +70,25 @@ jest.mock('@/components/documents/ResourceReferencePickerModal.module.css', () =
   __esModule: true,
   default: new Proxy({}, { get: (_target, property) => String(property) }),
 }));
-jest.mock('@/components/documents/ResourceReferenceResultList', () => ({
-  ResourceReferenceResultList: (props: AnyProps) => {
+jest.mock('@/components/documents/ResourceReferenceTableRowList', () => ({
+  ResourceReferenceTableRowList: (props: AnyProps) => {
     const React = jest.requireActual<typeof import('react')>('react');
     ui.lists.set(props.ariaLabel, props);
-    ui.rows.set(props.ariaLabel, props.items.map((item: unknown) => {
-      const id = props.getId(item);
+    ui.rows.set(props.ariaLabel, props.items.map((item: { id: string; label: string }) => {
+      const selected = props.selectedIds.has(item.id);
       return React.createElement(
         'div',
         {
-          id: `${props.idPrefix}-${id}`,
+          id: `${props.idPrefix}-${item.id}`,
           role: 'option',
           tabIndex: -1,
-          'aria-label': props.getAriaLabel(item),
-          'aria-selected': id === props.selectedId,
-          onClick: () => props.onSelect(item),
+          'aria-label': `Row: ${item.label}`,
+          'aria-selected': selected,
+          'aria-checked': selected,
+          'data-label': item.label,
+          onClick: () => props.onToggle(item.id),
         },
-        React.createElement('span', { description: props.getDescription(item) })
+        item.label
       );
     }));
     return null;
@@ -233,14 +235,16 @@ async function waitFor(check: () => boolean) {
   expect(check()).toBe(true);
 }
 
-function available(target: ResourceReferenceTarget) {
-  return new Map([
-    [resourceReferenceKey(target), {
+function available(targets: ResourceReferenceTarget | ResourceReferenceTarget[]) {
+  const list = Array.isArray(targets) ? targets : [targets];
+  return new Map(list.map((target) => [
+    resourceReferenceKey(target),
+    {
       key: resourceReferenceKey(target),
       status: 'available',
       label: target.fallbackLabel,
-    }],
-  ]);
+    },
+  ]));
 }
 
 function latestSpin(label: string) {
@@ -291,7 +295,7 @@ describe('ResourceReferencePickerModal', () => {
     ]);
     listDocumentReferenceBlocks.mockReset();
     resolveResourceReferences.mockReset().mockImplementation(
-      async (_client, _projectId, targets: ResourceReferenceTarget[]) => available(targets[0])
+      async (_client, _projectId, targets: ResourceReferenceTarget[]) => available(targets)
     );
     insertJsx.mockReset();
     toolbarButtonProps = undefined;
@@ -327,14 +331,15 @@ describe('ResourceReferencePickerModal', () => {
     await settle();
   }
 
-  async function selectTableTarget(libraryId = LIBRARY_A, assetIndex = 0) {
+  async function selectTableRows(libraryId = LIBRARY_A, assetIndexes: number[] = [0]) {
     await act(async () => ui.selects.get('Table')?.onChange(libraryId));
-    await waitFor(() => (ui.rows.get('Table rows')?.length ?? 0) > assetIndex);
-    await act(async () => ui.rows.get('Table rows')?.[assetIndex].props.onClick());
-    await act(async () => ui.selects.get('Display field')?.onChange(FIELD_STATUS));
+    await waitFor(() => (ui.rows.get('Table rows')?.length ?? 0) > Math.max(...assetIndexes, -1));
+    for (const index of assetIndexes) {
+      await act(async () => ui.rows.get('Table rows')?.[index].props.onClick());
+    }
   }
 
-  it('selects a searchable table row and field, resets dependencies, and ignores stale row loads', async () => {
+  it('multi-selects whole-row table labels without a display field control', async () => {
     let resolveArchive!: (value: unknown) => void;
     listTableReferenceRows.mockImplementation((_client, _projectId, libraryId) => {
       if (libraryId === LIBRARY_A) {
@@ -359,6 +364,7 @@ describe('ResourceReferencePickerModal', () => {
       { label: 'Archive', value: LIBRARY_A },
       { label: 'Characters', value: LIBRARY_B },
     ]);
+    expect(ui.selects.get('Display field')).toBeUndefined();
 
     await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
     await waitFor(() => listTableReferenceRows.mock.calls.length === 1);
@@ -372,33 +378,39 @@ describe('ResourceReferencePickerModal', () => {
     }));
     await settle();
     expect(ui.rows.get('Table rows')?.map((row) => row.props['aria-label'])).toEqual([
-      'Row: Ada',
-      'Row: Byron',
+      'Row: Active',
+      'Row: Pending',
     ]);
 
     await act(async () => ui.inputs.get('Search table rows')?.onChange({ target: { value: 'active' } }));
     expect(ui.rows.get('Table rows')).toHaveLength(1);
     await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());
-    await act(async () => ui.selects.get('Display field')?.onChange(FIELD_STATUS));
-    expect(ui.rows.get('Table rows')?.[0].props.children.props.description).toBe(
-      'Characters / Ada / Status'
-    );
+    expect(ui.rows.get('Table rows')?.[0].props['data-label']).toBe('Active');
 
     await act(async () => ui.inputs.get('Search table rows')?.onChange({ target: { value: '' } }));
+    await waitFor(() => ui.rows.get('Table rows')?.length === 2);
     await act(async () => ui.rows.get('Table rows')?.[1].props.onClick());
     expect(ui.modal?.okButtonProps.disabled).toBe(false);
-    await act(async () => ui.selects.get('Display field')?.onChange(FIELD_EMPTY));
     await act(async () => ui.modal?.onOk());
 
-    const expected: ResourceReferenceTarget = {
-      kind: 'table-row',
-      libraryId: LIBRARY_B,
-      assetId: ASSET_B,
-      displayFieldId: FIELD_EMPTY,
-      fallbackLabel: '(empty)',
-    };
-    expect(resolveResourceReferences).toHaveBeenCalledWith(supabase, PROJECT_ID, [expected]);
-    expect(onConfirm).toHaveBeenCalledWith([expected]);
+    const expected: ResourceReferenceTarget[] = [
+      {
+        kind: 'table-row',
+        libraryId: LIBRARY_B,
+        assetId: ASSET_A,
+        displayFieldId: FIELD_STATUS,
+        fallbackLabel: 'Active',
+      },
+      {
+        kind: 'table-row',
+        libraryId: LIBRARY_B,
+        assetId: ASSET_B,
+        displayFieldId: FIELD_STATUS,
+        fallbackLabel: 'Pending',
+      },
+    ];
+    expect(resolveResourceReferences).toHaveBeenCalledWith(supabase, PROJECT_ID, expected);
+    expect(onConfirm).toHaveBeenCalledWith(expected);
   });
 
   it('excludes the open document, resets selection, and emits a cross-block range target', async () => {
@@ -480,7 +492,6 @@ describe('ResourceReferencePickerModal', () => {
     await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
     await waitFor(() => ui.rows.get('Table rows')?.length === 1);
     await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());
-    await act(async () => ui.selects.get('Display field')?.onChange(FIELD_STATUS));
     await act(async () => ui.modal?.onOk());
 
     expect(onConfirm).not.toHaveBeenCalled();
@@ -508,15 +519,15 @@ describe('ResourceReferencePickerModal', () => {
     });
     resolveResourceReferences
       .mockImplementationOnce(() => new Promise((resolve) => { resolveOldValidation = resolve; }))
-      .mockImplementation(async (_client, _projectId, targets) => available(targets[0]));
+      .mockImplementation(async (_client, _projectId, targets) => available(targets));
 
     await renderPicker();
-    await selectTableTarget(LIBRARY_A, 0);
+    await selectTableRows(LIBRARY_A, [0]);
     await act(async () => { void ui.modal?.onOk(); });
     await act(async () => ui.modal?.onCancel());
     await renderPickerState(false);
     await renderPicker();
-    await selectTableTarget(LIBRARY_A, 1);
+    await selectTableRows(LIBRARY_A, [1]);
 
     await act(async () => resolveOldValidation(available({
       kind: 'table-row',
@@ -552,7 +563,7 @@ describe('ResourceReferencePickerModal', () => {
     expect(latestSpin('Loading table rows')?.spinning)
       .toBe(false);
 
-    await selectTableTarget(LIBRARY_B);
+    await selectTableRows(LIBRARY_B);
     expect(ui.modal?.okButtonProps.disabled).toBe(false);
     await act(async () => resolveRows({ fields: [], rows: [] }));
   });
