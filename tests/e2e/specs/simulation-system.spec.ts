@@ -244,9 +244,9 @@ test.describe('Native simulation system', () => {
     await simulation.goto();
     await simulation.selectLibrary('Characters', libraryNames.characters);
 
-    await expect(page.getByRole('alert')).toContainText('AI mapping failed - map manually', {
-      timeout: 30_000,
-    });
+    await expect(
+      page.getByText('AI mapping failed - map manually', { exact: true })
+    ).toBeVisible({ timeout: 30_000 });
     const nameSlot = page.locator('[data-mapping-drop="slot:name"]');
     const unmapped = page.getByTestId('mapping-unmapped');
     await expect(unmapped.getByRole('button', { name: 'Drag name' })).toBeVisible();
