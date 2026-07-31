@@ -63,9 +63,9 @@ export function ImportDocumentationView({
         } | null;
         throw new Error(body?.error || 'Failed to import documentation');
       }
-      await queryClient.invalidateQueries({
-        queryKey: ['script-workspace', projectId],
-      });
+      const membershipKey = ['script-workspace', projectId] as const;
+      await queryClient.invalidateQueries({ queryKey: membershipKey });
+      await queryClient.refetchQueries({ queryKey: membershipKey });
       writeScriptProjectPreference({ projectId, projectName });
       router.push(`/script-system/${projectId}/doc/${selected.id}`);
     } catch (err) {

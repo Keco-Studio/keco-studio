@@ -43,6 +43,7 @@ export function useScriptWorkspaceMembership(projectId: string | null | undefine
     documents,
     isMember,
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     isFetched: query.isFetched,
     isError: query.isError,
     error: query.error,

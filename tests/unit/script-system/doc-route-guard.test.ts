@@ -14,6 +14,7 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     expect(source).toContain('/api/script-workspace/');
     expect(source).toMatch(/isMember\s*[:=(]/);
     expect(source).toMatch(/documentId/);
+    expect(source).toContain('isFetching');
     expect(source).toContain('staleTime: 0');
     expect(source).toContain("refetchOnMount: 'always'");
   });
@@ -35,6 +36,8 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     );
     expect(source).toContain('useScriptWorkspaceMembership');
     expect(source).toMatch(/isMember/);
+    expect(source).toContain('isFetching');
+    expect(source).toContain('!isFetching');
     expect(source).toMatch(/router\.(replace|push)/);
     expect(source).toContain(`/script-system/\${projectId}`);
     expect(source).toMatch(/showErrorToast|showWarningToast|showInfoToast/);

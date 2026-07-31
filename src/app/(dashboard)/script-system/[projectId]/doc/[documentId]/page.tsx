@@ -11,15 +11,16 @@ export default function ScriptDocumentPage() {
   const router = useRouter();
   const projectId = params.projectId as string;
   const documentId = params.documentId as string;
-  const { isMember, isLoading, isFetched, isError } =
+  const { isMember, isLoading, isFetching, isFetched, isError } =
     useScriptWorkspaceMembership(projectId);
   const handledRef = useRef(false);
 
+  const membershipSettled = isFetched && !isLoading && !isFetching;
   const allowed =
-    isFetched && !isLoading && !isError && isMember(documentId);
+    membershipSettled && !isError && isMember(documentId);
 
   useEffect(() => {
-    if (!isFetched || isLoading || handledRef.current) return;
+    if (!membershipSettled || handledRef.current) return;
 
     if (isError) {
       handledRef.current = true;
@@ -34,8 +35,7 @@ export default function ScriptDocumentPage() {
       router.replace(`/script-system/${projectId}`);
     }
   }, [
-    isFetched,
-    isLoading,
+    membershipSettled,
     isError,
     isMember,
     documentId,
