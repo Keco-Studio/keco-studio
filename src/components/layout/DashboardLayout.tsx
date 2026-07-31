@@ -77,11 +77,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       ) : null}
       <div className={styles.main}>
         {!hideSidebarForSimulation ? <TopBar /> : null}
-        <div className={styles.content}>
-          {children}
+        <div className={styles.workspace}>
+          <div className={styles.content}>
+            {children}
+          </div>
+          <ChatPanel />
         </div>
       </div>
-      <ChatPanel />
       <AgentImportBridge />
     </div>
   );
