@@ -1,4 +1,4 @@
-import { test, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LoginPage } from '../pages/login.page';
 import { SimulationSystemPage } from '../pages/simulation-system.page';
