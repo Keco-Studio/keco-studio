@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument } from '@/lib/services/documentService';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import { showErrorToast } from '@/lib/utils/toast';
 import { SelectDocumentModal } from './SelectDocumentModal';
@@ -78,7 +81,10 @@ export function ImportDocumentationView({
     }
   };
 
-  const previewContent = previewQuery.data?.content?.trim() ?? '';
+  const previewMarkdown = useMemo(() => {
+    const raw = previewQuery.data?.content?.trim() ?? '';
+    return raw ? toScriptImportPlainText(raw) : '';
+  }, [previewQuery.data?.content]);
   const previewTitle = selected?.name ?? previewQuery.data?.name;
 
   return (
@@ -123,11 +129,19 @@ export function ImportDocumentationView({
             <>
               <h2 className={styles.previewTitle}>{previewTitle}</h2>
               <div className={styles.previewBody}>
-                {previewQuery.isLoading
-                  ? 'Loading preview…'
-                  : previewQuery.isError
-                    ? 'Preview unavailable'
-                    : previewContent || 'This document has no content yet.'}
+                {previewQuery.isLoading ? (
+                  'Loading preview…'
+                ) : previewQuery.isError ? (
+                  'Preview unavailable'
+                ) : previewMarkdown ? (
+                  <div className={styles.previewMarkdown}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {previewMarkdown}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  'This document has no content yet.'
+                )}
               </div>
             </>
           ) : (

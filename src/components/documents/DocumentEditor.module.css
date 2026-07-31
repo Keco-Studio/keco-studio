@@ -15,6 +15,23 @@
   width: 100%;
 }
 
+.documentSectionFlush {
+  padding: 0;
+}
+
+.documentSectionFlush .stickyChrome {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.documentSectionFlush .connectionBanner,
+.documentSectionFlush .derivedImportBanner,
+.documentSectionFlush .derivedImportBannerSuccess,
+.documentSectionFlush .derivedImportBannerError {
+  margin-left: 24px;
+  margin-right: 24px;
+}
+
 .documentSectionWithHistory {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);

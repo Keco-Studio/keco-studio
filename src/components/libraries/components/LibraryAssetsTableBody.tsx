@@ -553,7 +553,7 @@ export function LibraryAssetsTableBody({
                             onViewAssetDetail(row, event);
                           }}
                           onDoubleClick={(event) => event.stopPropagation()}
-                          title="View asset details"
+                          aria-label="View asset details"
                         >
                           <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
                         </button>

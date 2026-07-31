@@ -190,7 +190,7 @@ test.describe('Keco Script workspace smoke (seeded)', () => {
     if (probe.error) {
       throw new Error(
         `script_workspace_documents unavailable (${probe.error.message}). ` +
-          'Apply supabase/migrations/20260731170000_script_workspace_documents.sql before running this smoke.'
+          'Apply supabase/migrations/20260731200000_script_workspace_documents.sql before running this smoke.'
       );
     }
 

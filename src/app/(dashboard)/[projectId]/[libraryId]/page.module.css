@@ -38,8 +38,9 @@
 
 .assetDetailSlot:not(:empty) {
   flex-shrink: 0;
-  display: flex;
-  align-self: flex-start;
+  width: 400px;
+  max-width: 400px;
+  /* Spacer only — panel is position:fixed on the viewport right */
 }
 
 .header {

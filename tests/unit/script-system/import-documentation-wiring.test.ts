@@ -29,6 +29,8 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(source).toContain('Select form');
     expect(source).toContain('Import documentation');
     expect(source).toContain('STUDIO SOURCE DOCUMENTATION');
+    expect(source).toContain('toScriptImportPlainText');
+    expect(source).toContain('ReactMarkdown');
     expect(source).toContain('/api/script-workspace/');
     expect(source).toContain('/doc/');
     expect(source).toContain('writeScriptProjectPreference');
@@ -58,6 +60,12 @@ describe('Keco Script Import Documentation wiring', () => {
     const source = read('src/components/script-system/ScriptShell.tsx');
     expect(source).toContain('ScriptSidebar');
     expect(source).toContain('children');
+  });
+
+  it('ScriptShell flush content allows document scroll', () => {
+    const css = read('src/components/script-system/ScriptShell.module.css');
+    expect(css).toMatch(/\.contentFlush\s*\{[^}]*overflow:\s*auto/);
+    expect(css).not.toMatch(/\.contentFlush\s*\{[^}]*overflow:\s*hidden/);
   });
 
   it('script-system routes wire landing, project import, and doc page', () => {

@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { createCharSnapshot, EL, sortRosterByTeam } from '@/lib/simulation/data';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
 import type { ElementName, Team } from '@/lib/simulation/types';
+import trashIcon from '@/assets/images/simulator/trash-2.svg';
 import { SimulationButton } from './SimulationButton';
 import styles from './SimulationWorkbench.module.css';
 
@@ -499,16 +501,17 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
                         borderRadius: 7,
                         border: 'none',
                         background: 'transparent',
-                        color: 'var(--keco-danger)',
                         cursor: 'pointer',
-                        fontSize: 15,
-                        lineHeight: 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0,
                         opacity: isHovered ? 1 : 0,
                         pointerEvents: isHovered ? 'auto' : 'none',
                         transition: 'opacity .15s ease',
                       }}
                     >
-                      🗑
+                      <Image src={trashIcon} alt="" width={16} height={16} aria-hidden="true" />
                     </button>
                   </div>
                 </div>

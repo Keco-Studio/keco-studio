@@ -54,6 +54,7 @@ export default function ScriptDocumentPage() {
       key={documentId}
       projectId={projectId}
       documentId={documentId}
+      flushLayout
     />
   );
 }

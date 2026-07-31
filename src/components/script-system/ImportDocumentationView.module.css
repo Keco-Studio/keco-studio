@@ -121,12 +121,83 @@
   color: var(--script-ink-700, #334155);
   font-size: 13px;
   line-height: 1.55;
-  white-space: pre-wrap;
   overflow: auto;
+}
+
+.previewMarkdown {
+  color: inherit;
+}
+
+.previewMarkdown :global(h1),
+.previewMarkdown :global(h2),
+.previewMarkdown :global(h3),
+.previewMarkdown :global(h4) {
+  margin: 0 0 0.6em;
+  color: var(--script-ink-900, #0f172a);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.previewMarkdown :global(h1) {
+  font-size: 1.35rem;
+}
+
+.previewMarkdown :global(h2) {
+  font-size: 1.15rem;
+}
+
+.previewMarkdown :global(h3),
+.previewMarkdown :global(h4) {
+  font-size: 1rem;
+}
+
+.previewMarkdown :global(p) {
+  margin: 0 0 0.85em;
+}
+
+.previewMarkdown :global(p:last-child),
+.previewMarkdown :global(ul:last-child),
+.previewMarkdown :global(ol:last-child) {
+  margin-bottom: 0;
+}
+
+.previewMarkdown :global(ul),
+.previewMarkdown :global(ol) {
+  margin: 0 0 0.85em;
+  padding-left: 1.35em;
+}
+
+.previewMarkdown :global(li) {
+  margin: 0.2em 0;
+}
+
+.previewMarkdown :global(a) {
+  color: var(--script-blue, #0b99ff);
+}
+
+.previewMarkdown :global(code) {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 0.92em;
+}
+
+.previewMarkdown :global(pre) {
+  margin: 0 0 0.85em;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.previewMarkdown :global(pre code) {
+  padding: 0;
+  background: none;
 }
 
 .previewEmpty {
   color: var(--script-ink-400, #7d7d7d);
+  white-space: pre-wrap;
 }
 
 .error {

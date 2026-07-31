@@ -303,10 +303,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.35rem;
+  margin: 0 -0.35rem;
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .sectionTitle span:first-child {
   text-transform: capitalize;
+}
+
+/* While dragging over Libraries, use the same gray as tree-row hover. */
+.librariesRootDropActive {
+  background-color: #f8fafc;
+  color: #334155;
 }
 
 .moveToOverlay {
@@ -861,6 +871,32 @@
 
 .tree :global(.ant-tree-node-content-wrapper:hover) {
   background-color: transparent;
+}
+
+/*
+ * DnD drop feedback: no blue gap line. Highlight the destination row with the
+ * same gray as mouse hover so "drop onto this item" is unambiguous.
+ */
+.tree :global(.ant-tree-drop-indicator) {
+  display: none !important;
+}
+
+.tree :global(.ant-tree-treenode.drag-over),
+.tree :global(.ant-tree-treenode.drag-over-gap-top),
+.tree :global(.ant-tree-treenode.drag-over-gap-bottom) {
+  background-color: #f8fafc !important;
+  border-radius: 0.5rem;
+}
+
+.tree :global(.ant-tree-treenode.drag-over > .ant-tree-node-content-wrapper),
+.tree :global(.ant-tree-treenode.drag-over-gap-top > .ant-tree-node-content-wrapper),
+.tree :global(.ant-tree-treenode.drag-over-gap-bottom > .ant-tree-node-content-wrapper),
+.tree :global(.ant-tree-node-content-wrapper.drag-over),
+.tree :global(.ant-tree-node-content-wrapper.drag-over-gap-top),
+.tree :global(.ant-tree-node-content-wrapper.drag-over-gap-bottom) {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
 }
 
 /* Selected state: full-width background from content to end (like project itemActive) */

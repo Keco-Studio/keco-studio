@@ -52,7 +52,7 @@
 
 .contentFlush {
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
 }

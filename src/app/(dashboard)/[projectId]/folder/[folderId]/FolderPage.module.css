@@ -137,26 +137,8 @@
   }
 }
 
-/* Medium screens: two columns with cards filling each track */
+/* Medium screens and up: four columns with cards filling each track */
 @media (min-width: 800px) {
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
-    justify-items: stretch; /* In multi-column layouts, cards fill the whole track */
-  }
-}
-
-/* Large screens: three columns near the 597px design width */
-@media (min-width: 1920px) {
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-    justify-items: stretch; /* In multi-column layouts, cards fill the whole track */
-  }
-}
-
-/* Extra-large screens: four columns */
-@media (min-width: 2560px) {
   .grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 1.5rem;

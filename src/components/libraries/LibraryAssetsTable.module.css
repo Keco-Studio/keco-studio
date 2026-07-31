@@ -2713,24 +2713,27 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .detailDrawer {
-  position: sticky;
-  top: 0;
-  align-self: flex-start;
-  flex: 0 0 400px;
+  position: fixed;
+  top: 4rem;
+  right: 0;
+  bottom: 0;
   box-sizing: border-box;
   width: 400px;
-  max-width: 400px;
+  max-width: min(400px, 100vw);
   height: calc(100vh - 4rem);
   background: #ffffff;
-  box-shadow: none;
   border-left: 1px solid rgba(11, 153, 255, 0.35);
+  border-bottom: 1px solid rgba(11, 153, 255, 0.35);
+  border-top: 1px solid rgba(11, 153, 255, 0.35);
+  box-shadow: -4px 0 16px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
   border-radius: 0;
-  z-index: 2;
+  z-index: 100;
   display: flex;
   flex-direction: column;
   animation: detailDrawerSlideIn 0.2s ease;
   font-family: 'Roboto', sans-serif;
   overflow: hidden;
+  pointer-events: auto;
 }
 
 @keyframes detailDrawerFadeIn {
@@ -2761,7 +2764,7 @@ td.cellCopy.copyBorderRight:hover {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid rgba(11, 153, 255, 0.35);
   background: rgba(11, 153, 255, 0.08);
 }
 

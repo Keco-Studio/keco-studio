@@ -271,7 +271,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                 }}
-                title={"View asset details"}
+                aria-label="View asset details"
               >
                 <Image src={assetTableIcon}
                   alt="View"

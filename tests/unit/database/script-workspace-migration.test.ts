@@ -4,7 +4,7 @@ import path from 'node:path';
 
 describe('script_workspace_documents migration', () => {
   const sql = readFileSync(
-    path.join(process.cwd(), 'supabase/migrations/20260731170000_script_workspace_documents.sql'),
+    path.join(process.cwd(), 'supabase/migrations/20260731200000_script_workspace_documents.sql'),
     'utf8'
   );
 

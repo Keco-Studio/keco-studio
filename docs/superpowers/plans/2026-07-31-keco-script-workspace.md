@@ -25,7 +25,7 @@
 
 | File | Responsibility |
 |------|----------------|
-| `supabase/migrations/20260731170000_script_workspace_documents.sql` | Table + RLS |
+| `supabase/migrations/20260731200000_script_workspace_documents.sql` | Table + RLS |
 | `src/lib/script-system/projectPreference.ts` | localStorage preferred project |
 | `src/lib/script-system/splitRatioStorage.ts` | Split pane ratio persistence |
 | `src/lib/script-system/scriptWorkspaceService.ts` | List / upsert / delete references |
@@ -161,7 +161,7 @@ cd /home/ltt/project/keco-studio && npx jest tests/unit/script-system/leftnav-sc
 ### Task 2: Migration + workspace service
 
 **Files:**
-- Create: `supabase/migrations/20260731170000_script_workspace_documents.sql`
+- Create: `supabase/migrations/20260731200000_script_workspace_documents.sql`
 - Create: `src/lib/script-system/scriptWorkspaceService.ts`
 - Test: `tests/unit/script-system/script-workspace-service.test.ts`
 - Test: `tests/unit/database/script-workspace-migration.test.ts` (source assertions)
@@ -183,7 +183,7 @@ import path from 'node:path';
 
 describe('script_workspace_documents migration', () => {
   const sql = readFileSync(
-    path.join(process.cwd(), 'supabase/migrations/20260731170000_script_workspace_documents.sql'),
+    path.join(process.cwd(), 'supabase/migrations/20260731200000_script_workspace_documents.sql'),
     'utf8'
   );
 

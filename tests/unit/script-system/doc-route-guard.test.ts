@@ -27,6 +27,7 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     expect(source).toContain('key={documentId}');
     expect(source).toContain('projectId={projectId}');
     expect(source).toContain('documentId={documentId}');
+    expect(source).toContain('flushLayout');
     expect(source).not.toMatch(/editor coming soon|DocumentDocumentPageStub|stub/i);
   });
 

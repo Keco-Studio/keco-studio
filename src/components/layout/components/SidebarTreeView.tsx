@@ -50,6 +50,9 @@ export type SidebarTreeViewProps = {
   onRightClick?: (info: { event: any; node: EventDataNode }) => void;
   /** P1–P3: document / table / folder DnD onto folder, root, or document */
   onTreeDrop?: (info: SidebarTreeDropInfo) => void | Promise<void>;
+  /** Notify parent when a tree drag starts/ends (e.g. Libraries root drop zone). */
+  onDragStart?: (dragKey: string) => void;
+  onDragEnd?: () => void;
 };
 
 function InlineEditRow({
@@ -206,6 +209,8 @@ export function SidebarTreeView({
   onExpand,
   onRightClick,
   onTreeDrop,
+  onDragStart,
+  onDragEnd,
 }: SidebarTreeViewProps) {
   const canEditTree = userRole === 'admin' || userRole === 'editor';
 
@@ -392,6 +397,21 @@ export function SidebarTreeView({
             : false
         }
         allowDrop={onTreeDrop ? allowDrop : undefined}
+        dropIndicatorRender={onTreeDrop ? () => null : undefined}
+        onDragStart={
+          onTreeDrop && onDragStart
+            ? (info) => {
+                onDragStart(String(info.node.key));
+              }
+            : undefined
+        }
+        onDragEnd={
+          onTreeDrop && onDragEnd
+            ? () => {
+                onDragEnd();
+              }
+            : undefined
+        }
         onDrop={onTreeDrop ? handleDrop : undefined}
         onDoubleClick={(e) => {
           e.preventDefault();

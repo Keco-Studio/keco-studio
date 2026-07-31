@@ -1431,6 +1431,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               onAddButtonClick={handleAddButtonClick}
               onTreeRightClick={handleTreeRightClick}
               onTreeDrop={handleTreeDrop}
+              onDropToRoot={(dragKey) => {
+                const lib = dragKey.startsWith('library-')
+                  ? libraries.find((item) => item.id === dragKey.slice('library-'.length))
+                  : undefined;
+                void handleTreeDrop({
+                  dragKey,
+                  dropKey: 'libraries-root',
+                  dropToGap: true,
+                  dragIsDerived: Boolean(lib?.source_document_id),
+                });
+              }}
             />
           )}
       </div>
