@@ -620,6 +620,135 @@ export async function moveLibraryToFolder(
 
 }
 
+async function assertLibraryNameAvailableInFolder(
+  supabase: SupabaseClient,
+  library: Library,
+  targetFolderId: string | null
+): Promise<void> {
+  let nameCheckQuery = supabase
+    .from('libraries')
+    .select('id')
+    .eq('project_id', library.project_id)
+    .eq('name', library.name)
+    .neq('id', library.id)
+    .limit(1);
+
+  if (targetFolderId) {
+    nameCheckQuery = nameCheckQuery.eq('folder_id', targetFolderId);
+  } else {
+    nameCheckQuery = nameCheckQuery.is('folder_id', null);
+  }
+
+  const { data: conflictingLibraries, error: nameCheckError } = await nameCheckQuery;
+  if (nameCheckError) {
+    throw new Error('Failed to verify library name in target location');
+  }
+  if (conflictingLibraries && conflictingLibraries.length > 0) {
+    throw new Error(
+      `Library name ${library.name} already exists in the target ${targetFolderId ? 'folder' : 'project root'}`
+    );
+  }
+}
+
+/** Attach an independent (or re-bind a derived) library under a document. */
+export async function attachLibraryToDocument(
+  supabase: SupabaseClient,
+  libraryId: string,
+  documentId: string,
+  exportType: DocumentExportType = 'table'
+): Promise<void> {
+  const library = await getLibrary(supabase, libraryId);
+  if (!library) {
+    throw new Error('Library not found');
+  }
+
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  if (!isUuid(documentId)) {
+    throw new Error('Invalid document ID format');
+  }
+
+  const placement = await resolveDerivedLibraryPlacement(supabase, library.project_id, {
+    sourceDocumentId: documentId,
+    exportType,
+  });
+
+  if (
+    library.source_document_id === placement.sourceDocumentId &&
+    library.document_export_type === placement.documentExportType &&
+    (library.folder_id ?? null) === (placement.folderId ?? null)
+  ) {
+    return;
+  }
+
+  await assertLibraryNameAvailableInFolder(supabase, library, placement.folderId);
+
+  const { error } = await supabase
+    .from('libraries')
+    .update({
+      source_document_id: placement.sourceDocumentId,
+      document_export_type: placement.documentExportType,
+      folder_id: placement.folderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', libraryId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+/** Detach a derived library and place it in a folder or project root. */
+export async function detachLibraryFromDocument(
+  supabase: SupabaseClient,
+  libraryId: string,
+  input: MoveLibraryTargetInput
+): Promise<void> {
+  const library = await getLibrary(supabase, libraryId);
+  if (!library) {
+    throw new Error('Library not found');
+  }
+
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  if (!library.source_document_id) {
+    throw new Error('Library is not attached to a document');
+  }
+
+  const targetFolderId = input.folderId;
+  if (targetFolderId !== null && !isUuid(targetFolderId)) {
+    throw new Error('Invalid folder ID format');
+  }
+
+  if (targetFolderId !== null) {
+    const { data: folderData, error: folderError } = await supabase
+      .from('folders')
+      .select('project_id')
+      .eq('id', targetFolderId)
+      .single();
+
+    if (folderError || !folderData || folderData.project_id !== library.project_id) {
+      throw new Error('Target folder not found or does not belong to the same project');
+    }
+  }
+
+  await assertLibraryNameAvailableInFolder(supabase, library, targetFolderId);
+
+  const { error } = await supabase
+    .from('libraries')
+    .update({
+      source_document_id: null,
+      document_export_type: null,
+      folder_id: targetFolderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', libraryId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function duplicateLibrary(
   supabase: SupabaseClient,
   libraryId: string,

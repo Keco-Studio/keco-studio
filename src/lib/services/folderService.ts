@@ -13,6 +13,7 @@ import { createDocument, getDocument, listDocuments } from './documentService';
 export type Folder = {
   id: string;
   project_id: string;
+  parent_folder_id: string | null;
   name: string;
   description: string | null;
   created_at: string;
@@ -42,6 +43,7 @@ type CreateFolderInput = {
   projectId: string;
   name: string;
   description?: string;
+  parentFolderId?: string | null;
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -83,19 +85,32 @@ export async function createFolder(
   // verify creation permission (only admin can create)
   await verifyFolderCreationPermission(supabase, projectId);
 
+  let parentFolderId: string | null = null;
+  if (input.parentFolderId) {
+    if (!isUuid(input.parentFolderId)) {
+      throw new Error('Invalid parent folder ID format');
+    }
+    const parent = await getFolder(supabase, input.parentFolderId);
+    if (!parent || parent.project_id !== projectId) {
+      throw new Error('Parent folder not found or does not belong to the project');
+    }
+    parentFolderId = input.parentFolderId;
+  }
+
   const { data, error } = await supabase
     .from('folders')
     .insert({
       project_id: projectId,
       name,
       description,
+      parent_folder_id: parentFolderId,
     })
     .select('id')
     .single();
 
   if (error) {
     if (error.code === '23505') {
-      throw new Error('A folder with this name already exists in the project.');
+      throw new Error('A folder with this name already exists in this location.');
     }
     throw error;
   }
@@ -208,14 +223,20 @@ export async function updateFolder(
     if (!name) {
       throw new Error('Folder name cannot be empty');
     }
-    // Check if the new name conflicts with another folder in the same project (excluding current folder)
-    const { data: conflictingFolders, error: checkError } = await supabase
+    // Check name conflict in the same parent location (root or parent folder)
+    let nameCheckQuery = supabase
       .from('folders')
       .select('id')
       .eq('project_id', folder.project_id)
       .eq('name', name)
       .neq('id', folderId)
       .limit(1);
+    if (folder.parent_folder_id) {
+      nameCheckQuery = nameCheckQuery.eq('parent_folder_id', folder.parent_folder_id);
+    } else {
+      nameCheckQuery = nameCheckQuery.is('parent_folder_id', null);
+    }
+    const { data: conflictingFolders, error: checkError } = await nameCheckQuery;
 
     if (checkError) {
       console.error('Error checking folder name:', checkError);
@@ -223,7 +244,7 @@ export async function updateFolder(
     }
 
     if (conflictingFolders && conflictingFolders.length > 0) {
-      throw new Error(`Folder name ${name} already exists in this project`);
+      throw new Error(`Folder name ${name} already exists in this location`);
     }
 
     updateData.name = name;
@@ -245,11 +266,76 @@ export async function updateFolder(
 
   if (error) {
     if (error.code === '23505') {
-      throw new Error('A folder with this name already exists in the project.');
+      throw new Error('A folder with this name already exists in this location.');
     }
     throw error;
   }
 
+}
+
+export async function moveFolderToParent(
+  supabase: SupabaseClient,
+  folderId: string,
+  parentFolderId: string | null
+): Promise<void> {
+  if (!isUuid(folderId)) {
+    throw new Error('Invalid folder ID format');
+  }
+  if (parentFolderId !== null && !isUuid(parentFolderId)) {
+    throw new Error('Invalid parent folder ID format');
+  }
+
+  const folder = await getFolder(supabase, folderId);
+  if (!folder) {
+    throw new Error('Folder not found');
+  }
+
+  await verifyFolderUpdatePermission(supabase, folderId);
+
+  if ((folder.parent_folder_id ?? null) === parentFolderId) {
+    return;
+  }
+
+  if (parentFolderId !== null) {
+    const parent = await getFolder(supabase, parentFolderId);
+    if (!parent || parent.project_id !== folder.project_id) {
+      throw new Error('Parent folder not found or does not belong to the same project');
+    }
+  }
+
+  let nameCheckQuery = supabase
+    .from('folders')
+    .select('id')
+    .eq('project_id', folder.project_id)
+    .eq('name', folder.name)
+    .neq('id', folderId)
+    .limit(1);
+  if (parentFolderId) {
+    nameCheckQuery = nameCheckQuery.eq('parent_folder_id', parentFolderId);
+  } else {
+    nameCheckQuery = nameCheckQuery.is('parent_folder_id', null);
+  }
+  const { data: conflictingFolders, error: nameCheckError } = await nameCheckQuery;
+  if (nameCheckError) {
+    throw new Error('Failed to verify folder name in target location');
+  }
+  if (conflictingFolders && conflictingFolders.length > 0) {
+    throw new Error(
+      `Folder name ${folder.name} already exists in the target ${parentFolderId ? 'folder' : 'project root'}`
+    );
+  }
+
+  const { error } = await supabase
+    .from('folders')
+    .update({
+      parent_folder_id: parentFolderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', folderId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function deleteFolder(
@@ -262,6 +348,19 @@ export async function deleteFolder(
 
   // verify deletion permission (only admin can delete)
   await verifyFolderDeletionPermission(supabase, folderId);
+
+  // Delete nested child folders first (parent_folder_id is ON DELETE RESTRICT).
+  const { data: childFolders, error: childQueryError } = await supabase
+    .from('folders')
+    .select('id')
+    .eq('parent_folder_id', folderId);
+
+  if (childQueryError) {
+    throw new Error(`Failed to list nested folders: ${childQueryError.message}`);
+  }
+  for (const child of childFolders ?? []) {
+    await deleteFolder(supabase, child.id);
+  }
 
   // First, delete all libraries associated with this folder (cascade delete)
   // Query libraries first to get their IDs, then delete them individually

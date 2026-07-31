@@ -13,6 +13,7 @@ import sidebarFolderIcon4 from '@/assets/images/SidebarFloderIcon4.svg';
 import sidebarFolderIcon5 from '@/assets/images/SidebarFolderInco5.svg';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import { SidebarTreeView } from './SidebarTreeView';
+import type { SidebarTreeDropInfo } from './SidebarTreeView';
 import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
@@ -48,6 +49,7 @@ export type SidebarLibrariesSectionProps = {
   addButtonRef: (el: HTMLButtonElement | null) => void;
   onAddButtonClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onTreeRightClick: (info: { event: any; node: any }) => void;
+  onTreeDrop?: (info: SidebarTreeDropInfo) => void | Promise<void>;
 };
 
 /**
@@ -80,6 +82,7 @@ export function SidebarLibrariesSection({
   addButtonRef,
   onAddButtonClick,
   onTreeRightClick,
+  onTreeDrop,
 }: SidebarLibrariesSectionProps) {
   return (
     <>
@@ -112,6 +115,7 @@ export function SidebarLibrariesSection({
           onSelect={onSelect}
           onExpand={onExpand}
           onRightClick={onTreeRightClick}
+          onTreeDrop={onTreeDrop}
         />
         {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
           <div className={styles.sidebarEmptyState}>

@@ -9,17 +9,25 @@
   border: none;
   background: transparent;
   color: #fff;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 8px 24px rgba(14, 83, 151, 0.18);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
+  touch-action: none;
+  user-select: none;
 }
 .launcher:hover {
   box-shadow: 0 10px 28px rgba(14, 83, 151, 0.28);
   transform: translateY(-1px);
+}
+.launcherDragging {
+  cursor: grabbing;
+  transition: none;
+  transform: none;
+  box-shadow: 0 12px 32px rgba(14, 83, 151, 0.32);
 }
 .launcherIcon {
   width: 56px;

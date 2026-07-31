@@ -27,6 +27,7 @@ export type DocumentRecord = {
   id: string;
   project_id: string;
   folder_id: string | null;
+  parent_document_id: string | null;
   name: string;
   content: string;
   created_by: string | null;
@@ -37,12 +38,13 @@ export type DocumentRecord = {
 /** Lightweight row for the sidebar tree: excludes the (potentially large) content. */
 export type DocumentSummary = Pick<
   DocumentRecord,
-  'id' | 'project_id' | 'folder_id' | 'name' | 'created_at' | 'updated_at'
+  'id' | 'project_id' | 'folder_id' | 'parent_document_id' | 'name' | 'created_at' | 'updated_at'
 >;
 
 const DOCUMENT_RECORD_COLUMNS =
-  'id, project_id, folder_id, name, content, created_by, created_at, updated_at';
-const DOCUMENT_SUMMARY_COLUMNS = 'id, project_id, folder_id, name, created_at, updated_at';
+  'id, project_id, folder_id, parent_document_id, name, content, created_by, created_at, updated_at';
+const DOCUMENT_SUMMARY_COLUMNS =
+  'id, project_id, folder_id, parent_document_id, name, created_at, updated_at';
 const DOCUMENT_LIST_PAGE_SIZE = 1000;
 
 /**
@@ -251,9 +253,11 @@ export async function updateDocumentName(
 
 type MoveDocumentInput = {
   folderId: string | null;
+  /** When set, nests under this document (folder follows parent). Null clears nesting. */
+  parentDocumentId?: string | null;
 };
 
-/** Move a document to another folder in the same project (or to the root). */
+/** Move a document to a folder/root and/or nest/unnest under another document. */
 export async function moveDocument(
   supabase: SupabaseClient,
   documentId: string,
@@ -266,19 +270,74 @@ export async function moveDocument(
   const projectId = await getDocumentProjectId(supabase, documentId);
   await verifyDocumentWritePermission(supabase, projectId);
 
-  let folderId: string | null = null;
-  if (input.folderId) {
-    folderId = await assertFolderInProject(supabase, input.folderId, projectId);
+  const parentDocumentId =
+    input.parentDocumentId === undefined ? undefined : input.parentDocumentId;
+
+  let folderId: string | null = input.folderId;
+  let nextParentId: string | null | undefined = parentDocumentId;
+
+  if (parentDocumentId) {
+    if (!isUuid(parentDocumentId)) {
+      throw new Error('Invalid parent document ID format');
+    }
+    if (parentDocumentId === documentId) {
+      throw new Error('Document cannot be its own parent');
+    }
+    const { data: parent, error: parentError } = await supabase
+      .from('documents')
+      .select('id, project_id, folder_id')
+      .eq('id', parentDocumentId)
+      .single();
+    if (parentError || !parent || parent.project_id !== projectId) {
+      throw new Error('Parent document not found in this project');
+    }
+    folderId = parent.folder_id ?? null;
+    nextParentId = parentDocumentId;
+  } else if (parentDocumentId === null) {
+    nextParentId = null;
+    if (input.folderId) {
+      folderId = await assertFolderInProject(supabase, input.folderId, projectId);
+    } else {
+      folderId = null;
+    }
+  } else {
+    // Folder-only move: clear nesting so folder_id can diverge from a former parent.
+    nextParentId = null;
+    if (input.folderId) {
+      folderId = await assertFolderInProject(supabase, input.folderId, projectId);
+    } else {
+      folderId = null;
+    }
+  }
+
+  const updatePayload: {
+    folder_id: string | null;
+    parent_document_id?: string | null;
+  } = { folder_id: folderId };
+  if (nextParentId !== undefined) {
+    updatePayload.parent_document_id = nextParentId;
   }
 
   const { error } = await supabase
     .from('documents')
-    .update({ folder_id: folderId })
+    .update(updatePayload)
     .eq('id', documentId);
 
   if (error) {
     throw error;
   }
+}
+
+/** Nest a document under another document (same folder as parent). */
+export async function nestDocumentUnderDocument(
+  supabase: SupabaseClient,
+  documentId: string,
+  parentDocumentId: string
+): Promise<void> {
+  await moveDocument(supabase, documentId, {
+    folderId: null,
+    parentDocumentId,
+  });
 }
 
 /** Delete a document. */

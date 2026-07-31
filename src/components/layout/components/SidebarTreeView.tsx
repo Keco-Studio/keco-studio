@@ -12,6 +12,10 @@ import folderIcon from '@/assets/images/folder.svg';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
+import {
+  canDragSidebarNode,
+  resolveSidebarDrop,
+} from '../sidebarTreeDnD';
 import styles from '../Sidebar.module.css';
 
 type SidebarTreeNodeMeta = {
@@ -19,6 +23,14 @@ type SidebarTreeNodeMeta = {
   _nodeType?: 'library' | 'folder' | 'document';
   _hasNoLibraries?: boolean;
   _isLibraryUnderFolder?: boolean;
+  _isDerived?: boolean;
+};
+
+export type SidebarTreeDropInfo = {
+  dragKey: string;
+  dropKey: string;
+  dropToGap: boolean;
+  dragIsDerived: boolean;
 };
 
 export type SidebarTreeViewProps = {
@@ -36,6 +48,8 @@ export type SidebarTreeViewProps = {
   onSelect: (keys: React.Key[], info: any) => void;
   onExpand: (expandedKeys: React.Key[], info: { node: EventDataNode }) => void;
   onRightClick?: (info: { event: any; node: EventDataNode }) => void;
+  /** P1–P3: document / table / folder DnD onto folder, root, or document */
+  onTreeDrop?: (info: SidebarTreeDropInfo) => void | Promise<void>;
 };
 
 function InlineEditRow({
@@ -191,7 +205,88 @@ export function SidebarTreeView({
   onSelect,
   onExpand,
   onRightClick,
+  onTreeDrop,
 }: SidebarTreeViewProps) {
+  const canEditTree = userRole === 'admin' || userRole === 'editor';
+
+  const nodeDraggable = useCallback(
+    (node: DataNode) => {
+      const meta = node as DataNode & SidebarTreeNodeMeta;
+      const key = String(meta.key ?? '');
+      if (
+        !canDragSidebarNode(
+          { ...meta, key },
+          canEditTree
+        )
+      ) {
+        return false;
+      }
+      // Tables: admin only (same as Move library modal); derived tables may drag to detach (P2).
+      if (meta._nodeType === 'library' || key.startsWith('library-')) {
+        return userRole === 'admin';
+      }
+      // Folders: admin only (create/update folder is admin).
+      if (meta._nodeType === 'folder' || key.startsWith('folder-')) {
+        return userRole === 'admin';
+      }
+      return true;
+    },
+    [canEditTree, userRole]
+  );
+
+  const allowDrop = useCallback(
+    ({
+      dragNode,
+      dropNode,
+      dropPosition,
+    }: {
+      dragNode: EventDataNode;
+      dropNode: EventDataNode;
+      dropPosition: number;
+    }) => {
+      if (!onTreeDrop) return false;
+      const dragKey = String(dragNode.key);
+      const dropKey = String(dropNode.key);
+      const dropToGap = dropPosition !== 0;
+      const dragMeta = dragNode as EventDataNode & SidebarTreeNodeMeta;
+      const resolved = resolveSidebarDrop({
+        dragKey,
+        dropKey,
+        dropToGap,
+        dragIsDerived: Boolean(dragMeta._isDerived),
+        treeData,
+      });
+      if (resolved.kind === 'invalid') return false;
+      if (dragKey.startsWith('library-') && userRole !== 'admin') return false;
+      if (dragKey.startsWith('folder-') && userRole !== 'admin') return false;
+      if (dragKey.startsWith('document-') && userRole !== 'admin' && userRole !== 'editor') {
+        return false;
+      }
+      return true;
+    },
+    [onTreeDrop, treeData, userRole]
+  );
+
+  const handleDrop = useCallback(
+    (info: {
+      node: EventDataNode;
+      dragNode: EventDataNode;
+      dropToGap: boolean;
+    }) => {
+      if (!onTreeDrop) return;
+      const dragKey = String(info.dragNode.key);
+      const dropKey = String(info.node.key);
+      const dragMeta = info.dragNode as EventDataNode & SidebarTreeNodeMeta;
+      void onTreeDrop({
+        dragKey,
+        dropKey,
+        dropToGap: info.dropToGap,
+        dragIsDerived: Boolean(dragMeta._isDerived),
+      });
+    },
+    [onTreeDrop]
+  );
+
   const switcherIcon = (node: any) => {
     const { expanded, isLeaf, data } = node || {};
     const key = (data?.key ?? node?.key) as string | undefined;
@@ -291,6 +386,13 @@ export function SidebarTreeView({
         onSelect={onSelect}
         onExpand={onExpand}
         onRightClick={onRightClick}
+        draggable={
+          onTreeDrop
+            ? { icon: false, nodeDraggable }
+            : false
+        }
+        allowDrop={onTreeDrop ? allowDrop : undefined}
+        onDrop={onTreeDrop ? handleDrop : undefined}
         onDoubleClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
