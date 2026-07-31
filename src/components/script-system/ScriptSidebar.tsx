@@ -127,6 +127,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
+  const didInitialExpandRef = useRef(false);
 
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null;
@@ -177,25 +178,42 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     return map;
   }, [libraries]);
 
-  // Expand ancestors for the selected route, and new docs that already have scripts
+  // Expand only the selected route; optionally seed docs-with-children once on first load
   useEffect(() => {
+    const shouldSeedInitial =
+      !didInitialExpandRef.current &&
+      workspaceDocs.some(
+        (doc) => (scriptsByDocument.get(doc.documentId) ?? []).length > 0
+      );
+
+    if (shouldSeedInitial) {
+      didInitialExpandRef.current = true;
+    }
+
     setExpandedDocs((prev) => {
       const next = new Set(prev);
       let changed = false;
-      for (const doc of workspaceDocs) {
-        const children = scriptsByDocument.get(doc.documentId) ?? [];
-        if (children.length > 0 && !next.has(doc.documentId)) {
-          next.add(doc.documentId);
-          changed = true;
+
+      if (shouldSeedInitial) {
+        for (const doc of workspaceDocs) {
+          const children = scriptsByDocument.get(doc.documentId) ?? [];
+          if (children.length > 0 && !next.has(doc.documentId)) {
+            next.add(doc.documentId);
+            changed = true;
+          }
         }
       }
+
       if (selectedDocumentId && !next.has(selectedDocumentId)) {
         next.add(selectedDocumentId);
         changed = true;
       }
       if (selectedLibraryId) {
         for (const [docId, children] of scriptsByDocument) {
-          if (children.some((c) => c.id === selectedLibraryId) && !next.has(docId)) {
+          if (
+            children.some((c) => c.id === selectedLibraryId) &&
+            !next.has(docId)
+          ) {
             next.add(docId);
             changed = true;
           }
