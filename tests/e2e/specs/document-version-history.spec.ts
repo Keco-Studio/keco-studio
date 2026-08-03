@@ -344,7 +344,12 @@ test.describe.serial('Document version history', () => {
       expect(newEpochResult.error).toBeNull();
       expect(Number(newEpochResult.data?.collab_epoch)).toBe(oldEpoch + 1);
 
-      await expect(viewer.page.getByRole('button', { name: 'Preview' }).first()).toBeVisible();
+      // Viewers preview by selecting a version row; there is no separate Preview button.
+      await expect(
+        viewer.page
+          .locator('[data-testid^="document-version-row-"]')
+          .filter({ hasText: 'Before rewrite' })
+      ).toBeVisible();
       await expect(viewer.page.getByRole('button', { name: 'Create version' })).toHaveCount(0);
       await expect(viewer.page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
 
