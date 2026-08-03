@@ -2,6 +2,24 @@ import type { ProjectMcpRequestContext } from "./context.ts";
 import { McpDomainError } from "./errors.ts";
 import { measureMcpPhase } from "./telemetry.ts";
 
+const ROW_OPERATIONS = new Set([
+  "mcp_update_table_row",
+  "mcp_delete_table_row",
+  "mcp_bulk_update_table_rows",
+  "mcp_upsert_table_rows",
+]);
+
+const FIELD_CONFLICT_OPERATIONS = new Set([
+  "mcp_delete_table_field",
+  "mcp_edit_table_field",
+]);
+
+function isTableMaintenancePrecondition(message: unknown): boolean {
+  if (typeof message !== "string") return false;
+  return /clearValues|clearReferences|confirmName|Existing match field values|Required field would be empty/i
+    .test(message);
+}
+
 export async function rpc<T>(
   context: ProjectMcpRequestContext,
   name: string,
@@ -13,13 +31,19 @@ export async function rpc<T>(
     async () => await context.supabase.rpc(name, parameters),
   );
   if (!error) return data as T;
+  const preconditionFailed = error.code === "PT409" &&
+    isTableMaintenancePrecondition(error.message);
   const code = error.code === "42501"
     ? "PROJECT_ACCESS_REVOKED"
-    : error.code === "PT409" && name === "mcp_update_table_row"
+    : preconditionFailed
+    ? "FIELD_VALIDATION_FAILED"
+    : error.code === "PT409" && ROW_OPERATIONS.has(name)
     ? "ROW_CONFLICT"
+    : error.code === "PT409" && FIELD_CONFLICT_OPERATIONS.has(name)
+    ? "FIELD_VALIDATION_FAILED"
     : error.code === "PT409"
     ? "DOCUMENT_CONFLICT"
-    : error.code === "P0002" && name === "mcp_update_table_row"
+    : error.code === "P0002" && ROW_OPERATIONS.has(name)
     ? "ROW_NOT_FOUND"
     : error.code === "P0002"
     ? "TABLE_NOT_FOUND"
@@ -36,6 +60,8 @@ export async function rpc<T>(
     ? "Row not found."
     : code === "TABLE_NOT_FOUND"
     ? "Table not found."
+    : preconditionFailed
+    ? "The table maintenance request is missing a required confirmation, clear flag, or stable match-field state."
     : code === "FIELD_VALIDATION_FAILED"
     ? "The supplied field values are invalid."
     : "The Keco database operation failed.";
