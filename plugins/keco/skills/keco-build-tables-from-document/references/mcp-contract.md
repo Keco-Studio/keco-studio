@@ -28,9 +28,11 @@ Continue paginated reads while `hasMore` is true using the returned opaque curso
 
 `create_table.fields[]` and `add_table_field.field` use semantic labels and these P0 `dataType` values: `string`, `string_array`, `int`, `int_array`, `float`, `float_array`, `boolean`, `enum`, `date`, and `reference`. An enum requires `enumOptions`. A reference requires existing target UUIDs in `referenceTableIds`.
 
-`upsert_table_rows.rows[]` has the shape `{ "values": { "Field Label": value } }`. Use no more than 100 rows per call. The match field must be a stable `string`, `int`, `float`, `boolean`, `enum`, or `date` field.
+`upsert_table_rows.rows[]` has the shape `{ "values": { "Field Label": value } }`. Use no more than 100 rows per call. The match field must be a stable `string`, `int`, `float`, `boolean`, `enum`, or `date` field. All `values` keys must be semantic field labels; they must not be field UUIDs or plan-local field keys. When a row has required reference fields, include their canonical reference values in this same upsert after the target row UUIDs are resolved.
 
 `create_table` creates one empty initial row. For the first `upsert_table_rows` call on a new table with planned rows, pass `reuseEmpty: true`; use `false` for later batches. The server default is `false`, which would otherwise leave an extra empty row.
+
+Each `bulk_update_table_rows.rows[]` entry must contain exactly one of `rowId` or `rowIndex`, may contain `expectedRowId`, and must contain a non-empty `values` map with between 1 and 100 fields. The outer `rows` array also contains between 1 and 100 entries. `values` keys must be semantic field labels and must not be field UUIDs.
 
 Reference cell values in `values` are arrays of objects with exactly `{ "assetId": "<target row UUID>", "fieldId": "<target display or match field UUID>" }`. Resolve both UUIDs from write responses or `query_table_rows`; never use a bare row-ID string or the source reference-field ID.
 

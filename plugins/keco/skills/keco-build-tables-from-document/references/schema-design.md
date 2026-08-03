@@ -43,6 +43,8 @@ type BuildPlan = {
 
 `key` values are plan-local stable identifiers. They are not Keco UUIDs. Keep Keco table, field, and row IDs returned by MCP in a separate execution map keyed by these values.
 
+Use plan-local field keys as the keys in `scalarValues`. Use a source reference field's plan-local key as each `references` key; its string values are target row keys in that field's planned `targetTableKey`. During execution, map field keys to semantic field labels for field definitions and row `values`, and map `targetTableKey` plus target row keys to returned table, row, and display-field UUIDs for reference cells. Never send raw plan-local keys or source reference-field IDs to MCP.
+
 ## Table Selection
 
 - Create a table for a repeated entity with multiple attributes or relationships.
@@ -69,6 +71,8 @@ Use only MCP-supported P0 field types:
 | relationship to another planned table | `reference` |
 
 Provide `enumOptions` only for `enum`. Normalize whitespace and case, preserve user-facing spelling, and list each distinct option once. Provide `targetTableKey` only for `reference`; convert it to `referenceTableIds` after the target table exists.
+
+For a required reference, order table creation so the target table ID exists and include the reference field in the source table's `create_table` call. Apply the same dependency order to rows: every referenced target row key must resolve to a UUID before the dependent source row is upserted, and the required reference value must be present in that upsert. If a dependency cycle, missing target row, or unresolved target prevents that order, add a blocker and stop before preview; never downgrade the required reference to optional. Optional references may be included at table creation when their targets exist or added afterward.
 
 Do not plan `image`, formula, audio, local-file, or destructive-maintenance fields in P0. Put unsupported content in `warnings` and omit it from writes.
 

@@ -28,7 +28,7 @@ An initial two-agent pilot gave each agent all three scenarios in one context. I
 
 ## Fresh Controlled A/B
 
-`Pass (blocked)` means the agent correctly stopped before the criterion's write-phase behavior became applicable. This is a pass rather than an invented write sequence: a collision must prevent preview, confirmation, dependency writes, and verification calls.
+`Pass (blocked)` means the agent made an observable correct stop or confirmation decision even though the collision prevented later work. `N/A` means a write-dependent behavior was not exercised and is excluded from that scenario's denominator.
 
 ### Scenario 1: Combat System
 
@@ -53,14 +53,14 @@ Score: without Skill **5/9**; with Skill **9/9**.
 | read-before-write | **Pass** - `list_project_structure` is called before any possible write. | **Pass** - project, documents, structure, and complete document reads precede preflight. |
 | preview | **Pass (blocked)** - "no confirmable preview is produced." | **Pass (blocked)** - "Do not show a confirmation preview." |
 | confirm | **Pass (blocked)** - "Do not treat 'Build ... now' as confirmation." | **Pass (blocked)** - "Do not treat... now as confirmation of an unseen plan." |
-| stable-keys | **Pass (blocked)** - safe resume requires "exact table ID, schema, and stable keys." | **Pass (blocked)** - resume requires the confirmed plan, table UUID, and execution map. |
+| stable-keys | **N/A** - the collision stopped before row matching or stable-key writes. | **N/A** - the collision stopped before row matching or stable-key writes. |
 | collision-stop | **Pass** - "existing `Currency` table, stop immediately." | **Pass** - "Mandatory stop: treat `Currency` as a same-name collision." |
-| dependency-order | **Pass (blocked)** - "No write MCP calls occur." | **Pass (blocked)** - "Do not add fields, upsert rows, or populate references." |
+| dependency-order | **N/A** - no dependency-ordered write sequence was executed. | **N/A** - no dependency-ordered write sequence was executed. |
 | stop-on-failure | **Pass** - "the first failed write would terminate all subsequent writes." | **Pass** - "the first failed write would also require an immediate stop." |
-| read-back-verify | **Pass (blocked)** - no state is written, so there is no created state to verify. | **Pass (blocked)** - the collision prevents every write and therefore every post-write claim. |
+| read-back-verify | **N/A** - no created state existed to read back. | **N/A** - no created state existed to read back. |
 | accurate-tool-contract | **Pass** - names the account read tools and explicitly excludes all write tools. | **Pass** - `lines` mode uses `lineStart` and `lineEnd`; all tool names are `keco:<tool>`. |
 
-Score: without Skill **9/9**; with Skill after the focused edit **9/9**.
+Score: without Skill **6/6**; with Skill after the focused edit **6/6**.
 
 This fresh no-Skill pressure result is materially better than the historical pressure observation. The report preserves both rather than treating the fresh stochastic sample as a reconstruction of the unavailable historical transcript.
 
@@ -71,21 +71,21 @@ This fresh no-Skill pressure result is materially better than the historical pre
 | read-before-write | **Pass** - structure, document, and existing rows are read first. | **Pass** - project, document, structure, and full/bounded document reads precede preflight. |
 | preview | **Fail** - no complete plan preview is shown. | **Pass (blocked)** - "No plan preview is presented for confirmation." |
 | confirm | **Fail** - "No confirmation prompt is needed anywhere." | **Pass (blocked)** - "Proceed without extra questions" is not confirmation. |
-| stable-keys | **Pass** - uses stable name match fields and a `Relationship Key`. | **Pass (blocked)** - the versioned BuildPlan is preflighted, then no row IDs are guessed or written. |
+| stable-keys | **Pass** - uses stable name match fields and a `Relationship Key`. | **N/A** - the collision stopped before row matching or stable-key writes. |
 | collision-stop | **Fail** - it upserts into existing `Characters` and `Factions`. | **Pass** - compatible schemas "do not [grant] permission to reuse or populate them." |
-| dependency-order | **Pass** - resolves base row IDs before creating/populating the join table. | **Pass (blocked)** - it does not create `Character Factions` in isolation after base-table collisions. |
+| dependency-order | **Pass** - resolves base row IDs before creating/populating the join table. | **N/A** - no dependency-ordered write sequence was executed. |
 | stop-on-failure | **Pass** - "Stop on the first failed batch." | **Pass (blocked)** - no write tool is called after preflight stops. |
-| read-back-verify | **Pass** - pages join rows and compares keys and references to the document. | **Pass (blocked)** - "No verification calls occur because nothing was written." |
+| read-back-verify | **Pass** - pages join rows and compares keys and references to the document. | **N/A** - no created state existed to read back. |
 | accurate-tool-contract | **Fail** - reference cells are proposed as bare row-ID strings instead of `{assetId, fieldId}` values. | **Pass** - exact `keco:<tool>` reads use stable `projectId`/`documentId` and correct line bounds. |
 
-Score: without Skill **5/9**; with Skill **9/9**.
+Score: without Skill **5/9**; with Skill **6/6**.
 
 ### Aggregate
 
 | Arm | Combat | Economy | Relationship | Total |
 |---|---:|---:|---:|---:|
-| Without Skill | 5/9 | 9/9 | 5/9 | **19/27** |
-| With Skill, final | 9/9 | 9/9 | 9/9 | **27/27** |
+| Without Skill | 5/9 | 6/6 | 5/9 | **16/24** |
+| With Skill, final | 9/9 | 6/6 | 6/6 | **21/21** |
 
 The fresh A/B supports the Skill's value on confirmation discipline, create-new-only collision handling, and exact reference-value contracts. It does not show a universal no-Skill failure: the fresh Economy control independently chose the correct stop behavior.
 

@@ -112,6 +112,7 @@ describe('Keco Codex plugin contract', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const executionPolicy = readFileSync(path.join(skillRoot, 'references', 'execution-policy.md'), 'utf8');
     const mcpContract = readFileSync(path.join(skillRoot, 'references', 'mcp-contract.md'), 'utf8');
+    const schemaDesign = readFileSync(path.join(skillRoot, 'references', 'schema-design.md'), 'utf8');
 
     expect(skill).toMatch(/^---\nname: keco-build-tables-from-document\n/);
     expect(skill).toMatch(/^description: Use when/m);
@@ -136,7 +137,8 @@ describe('Keco Codex plugin contract', () => {
     expectProhibited(skill, 'overwrite');
     expectProhibited(skill, 'merge');
     expectProhibited(skill, 'silently rename');
-    expect(skill).toMatch(/(?:only supports?|supports? only|allowed (?:field types?|content) (?:are|is) only)[\s\S]{0,160}\bscalar\b[\s\S]{0,160}\benum\b[\s\S]{0,160}\binitial rows?\b[\s\S]{0,160}\bcross-table references?\b/i);
+    expect(skill).toMatch(/all non-reference P0 fields, including array and enum fields/i);
+    expect(executionPolicy).toMatch(/all non-reference P0 fields, including array and enum fields/i);
     expectProhibited(skill, 'local files?');
     expectProhibited(skill, 'images?');
     expectProhibited(skill, 'audio');
@@ -145,8 +147,38 @@ describe('Keco Codex plugin contract', () => {
 
     expect(mcpContract).toMatch(/reference (?:cell )?values?[\s\S]{0,160}\bassetId\b[\s\S]{0,80}\bfieldId\b/i);
     expect(mcpContract).toMatch(/fieldId[\s\S]{0,120}(?:target|display|match)[\s\S]{0,80}field/i);
+    expect(mcpContract).toMatch(/bulk_update_table_rows[\s\S]{0,500}exactly one of `rowId` or `rowIndex`/i);
+    expect(mcpContract).toMatch(/bulk_update_table_rows[\s\S]{0,600}`expectedRowId`[\s\S]{0,240}1 and 100 fields/i);
+    expect(mcpContract).toMatch(/`values` keys must be semantic field labels/i);
+    expect(mcpContract).toMatch(/must not be field UUIDs/i);
+    expect(schemaDesign).toMatch(/plan-local field keys[\s\S]{0,80}scalarValues/i);
+    expect(schemaDesign).toMatch(/references[\s\S]{0,160}target row keys[\s\S]{0,160}targetTableKey/i);
+    expect(schemaDesign).toMatch(/never send raw plan-local keys[\s\S]{0,240}MCP/i);
+    expect(schemaDesign).toMatch(/required reference[\s\S]{0,320}(?:create_table|blocker)/i);
+    expect(executionPolicy).toMatch(/required reference[\s\S]{0,400}create_table/i);
+    expect(executionPolicy).toMatch(/required reference[\s\S]{0,500}block/i);
+    expect(executionPolicy).toMatch(/target rows[\s\S]{0,240}(?:IDs|UUIDs)[\s\S]{0,160}before[\s\S]{0,160}dependent/i);
+    expect(executionPolicy).toMatch(/required reference values[\s\S]{0,240}same[\s\S]{0,120}upsert_table_rows/i);
     expect(skill).toMatch(
       /^description: Use when[^\n]*stored (?:inside|in) (?:a )?Keco project[^\n]*not for local files[^\n]*existing tables/m,
     );
+  });
+
+  it('scores only behavior observed by the offline A/B evaluation', () => {
+    const report = readFileSync(path.join(repositoryRoot, 'docs', 'qa', '2026-08-03-keco-skill-ab-report.md'), 'utf8');
+    const economy = report.slice(report.indexOf('### Scenario 2'), report.indexOf('### Scenario 3'));
+    const relationship = report.slice(report.indexOf('### Scenario 3'), report.indexOf('### Aggregate'));
+
+    for (const criterion of ['stable-keys', 'dependency-order', 'read-back-verify']) {
+      expect(economy).toMatch(new RegExp(`\\| ${criterion} \\| \\*\\*N/A\\*\\*`, 'i'));
+    }
+
+    expect(economy).toMatch(/Score: without Skill \*\*6\/6\*\*; with Skill[^\n]*\*\*6\/6\*\*/i);
+    for (const criterion of ['stable-keys', 'dependency-order', 'read-back-verify']) {
+      expect(relationship).toMatch(new RegExp(`\\| ${criterion} \\|[^\\n]*\\| \\*\\*N/A\\*\\*`, 'i'));
+    }
+    expect(relationship).toMatch(/Score: without Skill \*\*5\/9\*\*; with Skill \*\*6\/6\*\*/i);
+    expect(report).toMatch(/Without Skill \| 5\/9 \| 6\/6 \| 5\/9 \| \*\*16\/24\*\*/);
+    expect(report).toMatch(/With Skill, final \| 9\/9 \| 6\/6 \| 6\/6 \| \*\*21\/21\*\*/);
   });
 });

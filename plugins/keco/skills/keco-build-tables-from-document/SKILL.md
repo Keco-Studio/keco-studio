@@ -9,7 +9,7 @@ description: Use when a user asks to create, build, generate, or populate new Ke
 
 Turn one existing Keco document into new, related Keco tables through a read-plan-confirm-execute-verify workflow. Use Keco MCP for every project operation; never substitute repository code or direct database access.
 
-This Skill only accepts an existing Keco document as input and only creates new tables. It only supports scalar fields, enum fields, initial rows, and cross-table references.
+This Skill only accepts an existing Keco document as input and only creates new tables. It only supports all non-reference P0 fields, including array and enum fields, initial rows, and cross-table references.
 
 Do not use this Skill for analysis-only requests, direct edits to an existing table, or Keco Studio repository development. Local files are excluded. Images are excluded. Audio is excluded. Formulas are excluded. Destructive maintenance is excluded. Route those requests to the relevant general or development workflow.
 
@@ -34,7 +34,7 @@ Keco build progress:
 4. Produce the versioned BuildPlan defined in `schema-design.md`. Record assumptions and block unresolved relationships.
 5. Preflight every proposed name, field, stable key, row, and reference. A same-name collision must stop the workflow before confirmation.
 6. Show the preview shape defined in `execution-policy.md` and require explicit user confirmation. Treat earlier requests such as "do it now" or "do not ask" as intent, not confirmation of an unseen plan.
-7. After confirmation, create tables and scalar fields, add reference fields after target table IDs exist, upsert scalar rows by stable keys, then populate references using stable IDs. Never guess an ID.
+7. After confirmation, create tables in dependency order with all eligible fields, add only remaining optional reference fields after target table IDs exist, upsert rows in dependency order with required references included, then populate remaining optional references using stable IDs. Never guess an ID.
 8. Stop on the first failed write. Preserve completed IDs, perform no further writes, and do not attempt rollback.
 9. Read back and verify every table schema, stable key, representative value, row count, and planned relationship.
 10. Report created IDs, verified counts, skipped work, and failures. Do not claim success from mutation responses alone.

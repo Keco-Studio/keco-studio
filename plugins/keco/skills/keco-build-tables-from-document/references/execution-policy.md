@@ -10,7 +10,8 @@ Perform zero writes while resolving scope, reading, planning, or preflighting.
 2. Read the current project structure and complete source.
 3. Validate every BuildPlan table name, field definition, enum option, match key, row, and reference.
 4. Stop if any proposed table name already exists after trimming and case folding. Do not reuse, modify, merge, overwrite, delete, or silently rename it.
-5. Stop if the plan has blockers, duplicate keys, unresolved references, unsupported required content, or unavailable write permission.
+5. Compute one required-reference dependency order for both table creation and row upserts. Each target table must exist before its source table is created, and target rows and their UUIDs must exist before dependent source rows are upserted. Stop if a required reference cannot satisfy both conditions; record the dependency cycle, missing target row, or unresolved target as a blocker before preview.
+6. Stop if the plan has blockers, duplicate keys, unresolved references, unsupported required content, or unavailable write permission.
 
 ## Required Preview
 
@@ -34,10 +35,10 @@ Assumptions and warnings
 - every item, or "None"
 
 Execution
-- create tables/scalar fields
-- add reference fields
-- upsert scalar rows
-- resolve and write references
+- create tables with all non-reference P0 fields and eligible references
+- add remaining optional reference fields
+- upsert rows in dependency order with required references
+- resolve and write remaining optional references
 - read back and verify
 ```
 
@@ -47,10 +48,10 @@ End with a direct request to confirm this exact plan. Do not treat approval give
 
 After explicit confirmation, execute four stages:
 
-1. Create every new table with its scalar and enum fields. Record returned table and field IDs by BuildPlan key.
-2. Add reference fields after all target table IDs exist. Added fields must be optional because `keco:add_table_field` rejects required fields on an existing table.
-3. Upsert scalar rows with the confirmed `matchField`. For each new table with planned rows, the first `keco:upsert_table_rows` call must set `reuseEmpty: true` to populate the empty row created by `keco:create_table`; set it to `false` for later batches. Record returned row IDs; query by match-field values when a response does not contain all required IDs.
-4. Populate cross-table references with returned or queried stable row IDs. Use `keco:bulk_update_table_rows` for multiple existing rows and `keco:update_table_row` for one row.
+1. Create every new table in the preflighted dependency order. Include all non-reference P0 fields, including array and enum fields, plus each reference field whose target table ID is already known. A required reference must be included in this `keco:create_table` call so its `required` value is preserved. Record returned table and field IDs by BuildPlan key.
+2. After all target table IDs exist, add any remaining optional reference fields. `keco:add_table_field` rejects required fields on an existing table, so never downgrade a required reference to optional. A required reference that cannot be included during table creation is a preflight blocker and must not reach execution.
+3. Upsert rows in the preflighted required-reference dependency order, so target rows and their UUIDs exist before dependent source rows. Each row's `values` must include all non-reference values and all required reference values in the same `keco:upsert_table_rows` call; otherwise row validation rejects the empty required field. Include optional reference values too when their targets are already resolved. For each new table with planned rows, the first `keco:upsert_table_rows` call must set `reuseEmpty: true` to populate the empty row created by `keco:create_table`; set it to `false` for later batches. Record returned row IDs and query by match-field values when a response does not contain all required IDs.
+4. Populate only the remaining optional cross-table references with returned or queried stable row IDs. Use `keco:bulk_update_table_rows` for multiple existing rows and `keco:update_table_row` for one row.
 
 Stop on the first failed write. Do not continue with another field, row, table, or relationship. Report the failed tool, stable error code, completed IDs, and unattempted stages. Do not call delete tools for rollback.
 
