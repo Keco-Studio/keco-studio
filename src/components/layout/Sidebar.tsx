@@ -34,6 +34,7 @@ import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder, attachLibraryToDocument, detachLibraryFromDocument } from "@/lib/services/libraryService";
 import { Folder, deleteFolder, duplicateFolder, moveFolderToParent } from "@/lib/services/folderService";
 import {
+  moveDocument,
   updateDocumentName,
   nestDocumentUnderDocument,
   type DocumentRecord,
@@ -45,6 +46,10 @@ import { notifyDocumentDerivedLibraryCreated } from "@/lib/documents/documentDer
 import { runDocumentDerivedImport } from "@/lib/documents/runDocumentDerivedImport";
 import { showErrorToast, showSuccessToast } from "@/lib/utils/toast";
 import { resolveSidebarDrop } from "./sidebarTreeDnD";
+import {
+  createSidebarOptimisticMove,
+  runOptimisticSidebarMutation,
+} from './sidebarOptimisticPlacement';
 import type { SidebarTreeDropInfo } from "./components/SidebarTreeView";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { EditDocumentModal } from "@/components/documents/EditDocumentModal";
@@ -239,6 +244,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [isMovingDocument, setIsMovingDocument] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
+  const pendingTreeDropKeysRef = useRef(new Set<string>());
+  const isTreeDragPending = useCallback(
+    (dragKey: string) => pendingTreeDropKeysRef.current.has(dragKey),
+    []
+  );
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
   const updateName = useUpdateEntityName();
 
@@ -878,6 +888,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (userRole !== 'admin' && userRole !== 'editor') return;
 
       const dragKey = info.dragKey;
+      if (pendingTreeDropKeysRef.current.has(dragKey)) return;
       const dropKey = info.dropKey;
       const target = resolveSidebarDrop({
         dragKey,
@@ -892,154 +903,134 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         return;
       }
 
-      if (dragKey.startsWith('folder-')) {
-        if (target.kind === 'document') return;
-        const folderId = dragKey.slice('folder-'.length);
-        const parentFolderId = target.kind === 'folder' ? target.folderId : null;
-        const folder = folders.find((item) => item.id === folderId);
-        if ((folder?.parent_folder_id ?? null) === parentFolderId) return;
-        try {
-          await moveFolderToParent(supabase, folderId, parentFolderId);
-          try {
-            await invalidateFolderData(queryClient, {
-              projectId: currentIds.projectId,
-              folderId: parentFolderId ?? folderId,
-              refetchActiveFoldersLibraries: true,
-            });
-          } catch (refreshError) {
-            console.warn('[handleTreeDrop] cache refresh failed after folder move', refreshError);
-          }
-          expandFolder(parentFolderId);
-          showSuccessToast('Folder moved successfully');
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Failed to move folder';
-          setError(msg);
-          showErrorToast(msg);
-        }
-        return;
+      const projectId = currentIds.projectId;
+      if (!projectId) return;
+      const optimisticMove = createSidebarOptimisticMove({
+        dragKey,
+        target,
+        folders,
+        libraries,
+        documents,
+      });
+      if (!optimisticMove) return;
+      pendingTreeDropKeysRef.current.add(dragKey);
+
+      if (target.kind === 'folder') {
+        expandFolder(target.folderId);
+      } else if (target.kind === 'document') {
+        const parentDocument = documents.find((document) => document.id === target.documentId);
+        expandFolder(parentDocument?.folder_id);
+        setExpandedKeys((previous) => {
+          const documentKey = `document-${target.documentId}`;
+          return previous.includes(documentKey) ? previous : [...previous, documentKey];
+        });
       }
-
-      if (dragKey.startsWith('document-')) {
-        const documentId = dragKey.slice('document-'.length);
-        const doc = documents.find((item) => item.id === documentId);
-
-        if (target.kind === 'document') {
-          if (doc?.parent_document_id === target.documentId) return;
-          try {
-            await nestDocumentUnderDocument(supabase, documentId, target.documentId);
-            if (currentIds.projectId) {
-              void broadcastProjectDocumentUpdate({
-                documentId,
-                projectId: currentIds.projectId,
-                action: 'move',
-              });
-              await queryClient.invalidateQueries({
-                queryKey: queryKeys.documents(currentIds.projectId),
-              });
-              await invalidateLibraryData(queryClient, {
-                projectId: currentIds.projectId,
-                refetchActiveFoldersLibraries: true,
-              });
-            }
-            const parentDoc = documents.find((d) => d.id === target.documentId);
-            expandFolder(parentDoc?.folder_id);
-            setExpandedKeys((prev) => {
-              const docKey = `document-${target.documentId}`;
-              return prev.includes(docKey) ? prev : [...prev, docKey];
-            });
-            showSuccessToast('Document nested successfully');
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Failed to nest document';
-            setError(msg);
-            showErrorToast(msg);
-          }
-          return;
-        }
-
-        const folderId = target.kind === 'folder' ? target.folderId : null;
-        if (
-          (doc?.folder_id ?? null) === folderId &&
-          (doc?.parent_document_id ?? null) === null
-        ) {
-          return;
-        }
-        try {
-          await moveSidebarDocument({
-            supabase,
-            documentId,
-            folderId,
-            projectId: currentIds.projectId,
-            queryClient,
-            expandFolder,
-          });
-          showSuccessToast('Document moved successfully');
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : 'Failed to move document';
-          setError(msg);
-          showErrorToast(msg);
-        }
-        return;
-      }
-
-      if (!dragKey.startsWith('library-')) return;
-
-      const libraryId = dragKey.slice('library-'.length);
-      const lib = libraries.find((item) => item.id === libraryId);
-      if (!lib) return;
 
       try {
-        if (target.kind === 'document') {
-          if (lib.source_document_id === target.documentId) return;
-          await attachLibraryToDocument(
-            supabase,
-            libraryId,
-            target.documentId,
-            lib.document_export_type ?? 'table'
-          );
-          await invalidateLibraryData(queryClient, {
-            projectId: currentIds.projectId,
-            folderId: documents.find((d) => d.id === target.documentId)?.folder_id ?? null,
-            libraryId,
-            refetchActiveFoldersLibraries: true,
-          });
-          expandFolder(documents.find((d) => d.id === target.documentId)?.folder_id);
-          setExpandedKeys((prev) => {
-            const docKey = `document-${target.documentId}`;
-            return prev.includes(docKey) ? prev : [...prev, docKey];
-          });
-          showSuccessToast('Library attached to document');
-          return;
-        }
-
-        const folderId = target.kind === 'folder' ? target.folderId : null;
-
-        if (lib.source_document_id) {
-          await detachLibraryFromDocument(supabase, libraryId, { folderId });
-          await invalidateLibraryData(queryClient, {
-            projectId: currentIds.projectId,
-            folderId,
-            libraryId,
-            refetchActiveFoldersLibraries: true,
-          });
-          expandFolder(folderId);
-          showSuccessToast('Library detached from document');
-          return;
-        }
-
-        if ((lib.folder_id ?? null) === folderId) return;
-        await moveLibraryToFolder(supabase, libraryId, { folderId });
-        await invalidateLibraryData(queryClient, {
-          projectId: currentIds.projectId,
-          folderId,
-          libraryId,
-          refetchActiveFoldersLibraries: true,
+        await runOptimisticSidebarMutation({
+          client: queryClient,
+          projectId,
+          move: optimisticMove,
+          persist: async () => {
+            if (optimisticMove.kind === 'folder') {
+              await moveFolderToParent(
+                supabase,
+                optimisticMove.id,
+                optimisticMove.after.parent_folder_id
+              );
+              return;
+            }
+            if (optimisticMove.kind === 'document') {
+              if (optimisticMove.after.parent_document_id) {
+                await nestDocumentUnderDocument(
+                  supabase,
+                  optimisticMove.id,
+                  optimisticMove.after.parent_document_id
+                );
+              } else {
+                await moveDocument(supabase, optimisticMove.id, {
+                  folderId: optimisticMove.after.folder_id,
+                });
+              }
+              return;
+            }
+            if (optimisticMove.after.source_document_id) {
+              await attachLibraryToDocument(
+                supabase,
+                optimisticMove.id,
+                optimisticMove.after.source_document_id,
+                optimisticMove.after.document_export_type ?? 'table'
+              );
+            } else if (optimisticMove.before.source_document_id) {
+              await detachLibraryFromDocument(supabase, optimisticMove.id, {
+                folderId: optimisticMove.after.folder_id,
+              });
+            } else {
+              await moveLibraryToFolder(supabase, optimisticMove.id, {
+                folderId: optimisticMove.after.folder_id,
+              });
+            }
+          },
+          reconcile: async () => {
+            if (optimisticMove.kind === 'folder') {
+              await invalidateFolderData(queryClient, {
+                projectId,
+                folderId: optimisticMove.after.parent_folder_id ?? optimisticMove.id,
+                refetchActiveFoldersLibraries: true,
+              });
+              return;
+            }
+            if (optimisticMove.kind === 'document') {
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queryKeys.documents(projectId) }),
+                invalidateLibraryData(queryClient, {
+                  projectId,
+                  refetchActiveFoldersLibraries: true,
+                }),
+              ]);
+              return;
+            }
+            await invalidateLibraryData(queryClient, {
+              projectId,
+              folderId: optimisticMove.after.folder_id,
+              libraryId: optimisticMove.id,
+              refetchActiveFoldersLibraries: true,
+            });
+          },
+          onReconcileError: (refreshError) => {
+            console.warn('[handleTreeDrop] cache refresh failed after move', refreshError);
+          },
         });
-        expandFolder(folderId);
-        showSuccessToast('Library moved successfully');
+
+        if (optimisticMove.kind === 'document') {
+          void broadcastProjectDocumentUpdate({
+            documentId: optimisticMove.id,
+            projectId,
+            action: 'move',
+          });
+        }
+
+        if (optimisticMove.kind === 'folder') {
+          showSuccessToast('Folder moved successfully');
+        } else if (optimisticMove.kind === 'document') {
+          showSuccessToast(
+            optimisticMove.after.parent_document_id
+              ? 'Document nested successfully'
+              : 'Document moved successfully'
+          );
+        } else if (optimisticMove.after.source_document_id) {
+          showSuccessToast('Library attached to document');
+        } else if (optimisticMove.before.source_document_id) {
+          showSuccessToast('Library detached from document');
+        } else {
+          showSuccessToast('Library moved successfully');
+        }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to move library';
+        const msg = err instanceof Error ? err.message : 'Failed to move sidebar item';
         setError(msg);
         showErrorToast(msg);
+      } finally {
+        pendingTreeDropKeysRef.current.delete(dragKey);
       }
     },
     [
@@ -1431,6 +1422,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               onAddButtonClick={handleAddButtonClick}
               onTreeRightClick={handleTreeRightClick}
               onTreeDrop={handleTreeDrop}
+              isDragPending={isTreeDragPending}
               onDropToRoot={(dragKey) => {
                 const lib = dragKey.startsWith('library-')
                   ? libraries.find((item) => item.id === dragKey.slice('library-'.length))

@@ -132,10 +132,9 @@ export function applySidebarOptimisticMove(
   move: SidebarOptimisticMove,
   direction: 'forward' | 'rollback'
 ): void {
-  const placement = direction === 'forward' ? move.after : move.before;
-  const expected = direction === 'rollback' ? move.after : null;
-
   if (move.kind === 'document') {
+    const placement = direction === 'forward' ? move.after : move.before;
+    const expected = direction === 'rollback' ? move.after : null;
     queryClient.setQueryData<DocumentSummary[]>(queryKeys.documents(projectId), (old) => {
       if (!old) return old;
       return old.map((document) => {
@@ -152,6 +151,8 @@ export function applySidebarOptimisticMove(
     (old) => {
       if (!old) return old;
       if (move.kind === 'folder') {
+        const placement = direction === 'forward' ? move.after : move.before;
+        const expected = direction === 'rollback' ? move.after : null;
         return {
           ...old,
           folders: old.folders.map((folder) => {
@@ -161,6 +162,8 @@ export function applySidebarOptimisticMove(
           }),
         };
       }
+      const placement = direction === 'forward' ? move.after : move.before;
+      const expected = direction === 'rollback' ? move.after : null;
       return {
         ...old,
         libraries: old.libraries.map((library) => {

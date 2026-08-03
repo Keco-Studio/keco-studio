@@ -32,6 +32,11 @@ describe('sidebar DnD wiring (P1–P3)', () => {
     const source = read('src/components/layout/Sidebar.tsx');
     expect(source).toContain('handleTreeDrop');
     expect(source).toContain('onTreeDrop={handleTreeDrop}');
+    expect(source).toContain('createSidebarOptimisticMove');
+    expect(source).toContain('runOptimisticSidebarMutation');
+    expect(source).toContain('pendingTreeDropKeysRef');
+    expect(source).toContain('isDragPending={isTreeDragPending}');
+    expect(source).toContain('moveDocument');
     expect(source).toContain('attachLibraryToDocument');
     expect(source).toContain('detachLibraryFromDocument');
     expect(source).toContain('moveFolderToParent');
