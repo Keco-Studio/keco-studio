@@ -1,0 +1,20 @@
+{
+  "name": "keco-studio",
+  "interface": {
+    "displayName": "Keco Studio"
+  },
+  "plugins": [
+    {
+      "name": "keco",
+      "source": {
+        "source": "local",
+        "path": "./plugins/keco"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

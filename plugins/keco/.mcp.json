@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "keco": {
+      "type": "http",
+      "url": "https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp"
+    }
+  }
+}
