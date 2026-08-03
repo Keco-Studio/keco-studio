@@ -6,15 +6,31 @@ import styles from './DocumentDropZone.module.css';
 type DocumentDropZoneProps = {
   selectedFile: File | null;
   disabled?: boolean;
+  /** Match Create Document input height for import dialogs. */
+  compact?: boolean;
+  accept?: string;
+  formatsHint?: string;
+  dropZoneTestId?: string;
+  fileInputTestId?: string;
+  selectedFileTestId?: string;
+  clearButtonTestId?: string;
   onFileSelected: (file: File) => void;
   onClear: () => void;
 };
 
-const ACCEPT = '.txt,.md,.docx';
+const DEFAULT_ACCEPT = '.txt,.md,.docx';
+const DEFAULT_FORMATS_HINT = 'Supported formats: .txt, .md, .docx';
 
 export function DocumentDropZone({
   selectedFile,
   disabled = false,
+  compact = false,
+  accept = DEFAULT_ACCEPT,
+  formatsHint = DEFAULT_FORMATS_HINT,
+  dropZoneTestId = 'design-upload-drop-zone',
+  fileInputTestId = 'design-upload-file-input',
+  selectedFileTestId = 'design-upload-selected-file',
+  clearButtonTestId = 'design-upload-clear-file',
   onFileSelected,
   onClear,
 }: DocumentDropZoneProps) {
@@ -33,9 +49,19 @@ export function DocumentDropZone({
 
   return (
     <div
-      className={`${styles.zone} ${dragOver ? styles.dragOver : ''} ${disabled ? styles.disabled : ''}`}
-      data-testid="design-upload-drop-zone"
+      className={[
+        compact ? styles.zoneCompact : styles.zone,
+        dragOver ? styles.dragOver : '',
+        disabled ? styles.disabled : '',
+      ].filter(Boolean).join(' ')}
+      data-testid={dropZoneTestId}
       onClick={openPicker}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openPicker();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         if (!disabled) setDragOver(true);
@@ -47,13 +73,13 @@ export function DocumentDropZone({
         if (!disabled) handleFiles(e.dataTransfer.files);
       }}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
     >
       <input
         ref={inputRef}
         type="file"
-        data-testid="design-upload-file-input"
-        accept={ACCEPT}
+        data-testid={fileInputTestId}
+        accept={accept}
         className={styles.input}
         disabled={disabled}
         onChange={(e) => {
@@ -63,12 +89,12 @@ export function DocumentDropZone({
       />
 
       {selectedFile ? (
-        <div className={styles.selected} data-testid="design-upload-selected-file">
+        <div className={styles.selected} data-testid={selectedFileTestId}>
           <span className={styles.fileName}>{selectedFile.name}</span>
           <button
             type="button"
             className={styles.clearButton}
-            data-testid="design-upload-clear-file"
+            data-testid={clearButtonTestId}
             onClick={(e) => {
               e.stopPropagation();
               onClear();
@@ -80,7 +106,7 @@ export function DocumentDropZone({
       ) : (
         <div className={styles.placeholder}>
           <div className={styles.primaryText}>Drag a file here, or click to choose</div>
-          <div className={styles.secondaryText}>Supported formats: .txt, .md, .docx</div>
+          <div className={styles.secondaryText}>{formatsHint}</div>
         </div>
       )}
     </div>

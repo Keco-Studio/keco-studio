@@ -5,6 +5,7 @@ import { importScriptFromFile } from './scriptImportService';
 import { importStoryDocument } from './scriptImportService';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import { buildStoryColumns } from '@/lib/story-ir/tableCompiler';
+import { buildDeterministicStoryPlotPlan } from '@/lib/story-plot/deterministicBuilder';
 
 jest.mock('@/lib/services/authorizationService', () => ({
   verifyLibraryCreationPermission: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
@@ -18,6 +19,7 @@ type InsertCall = {
 function fakeSupabase(options: {
   failValueInsert?: boolean;
   documentFolderId?: string | null;
+  missingPlotPlanColumn?: boolean;
 } = {}) {
   const insertCalls: InsertCall[] = [];
   const deleteCalls: Array<{ table: string; column: string; value: string }> = [];
@@ -78,6 +80,20 @@ function fakeSupabase(options: {
             });
           }
           if (table === 'libraries') {
+            if (
+              options.missingPlotPlanColumn
+              && typeof query.insertedValues === 'object'
+              && query.insertedValues !== null
+              && 'plot_plan' in query.insertedValues
+            ) {
+              return Promise.resolve({
+                data: null,
+                error: {
+                  code: 'PGRST204',
+                  message: "Could not find the 'plot_plan' column of 'libraries' in the schema cache",
+                },
+              });
+            }
             libraryIdCounter += 1;
             return Promise.resolve({
               data: { id: `33333333-3333-4333-8333-33333333333${libraryIdCounter}` },
@@ -189,6 +205,45 @@ describe('importScriptFromFile', () => {
     expect(fieldCall?.values).toHaveLength(buildStoryColumns(4).length);
     expect(buildStoryColumns(4).slice(17)).toEqual(['Option3', 'Option3_Next']);
     expect(result.rowCount).toBe(storyDocument.nodes.length);
+  });
+
+  it('persists the validated plot plan with the script library', async () => {
+    const { supabase, insertCalls } = fakeSupabase();
+    const plotPlan = buildDeterministicStoryPlotPlan(storyDocument);
+
+    await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: '11111111-1111-4111-8111-111111111111',
+      libraryName: 'Plot fixture',
+      fileName: 'fixture.txt',
+      document: storyDocument,
+      plotPlan,
+    });
+
+    expect(insertCalls.find((call) => call.table === 'libraries')?.values)
+      .toEqual(expect.objectContaining({ plot_plan: plotPlan }));
+  });
+
+  it('retries without plot metadata when the database migration is not applied yet', async () => {
+    const { supabase, insertCalls } = fakeSupabase({ missingPlotPlanColumn: true });
+    const plotPlan = buildDeterministicStoryPlotPlan(storyDocument);
+
+    const result = await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: '11111111-1111-4111-8111-111111111111',
+      libraryName: 'Compatible plot fixture',
+      fileName: 'fixture.txt',
+      document: storyDocument,
+      plotPlan,
+    });
+
+    expect(result.rowCount).toBe(storyDocument.nodes.length);
+    const libraryInserts = insertCalls.filter((call) => call.table === 'libraries');
+    expect(libraryInserts).toHaveLength(2);
+    expect(libraryInserts[0].values).toEqual(expect.objectContaining({ plot_plan: plotPlan }));
+    expect(libraryInserts[1].values).not.toHaveProperty('plot_plan');
   });
 
   it('persists a root document source on the imported script library', async () => {

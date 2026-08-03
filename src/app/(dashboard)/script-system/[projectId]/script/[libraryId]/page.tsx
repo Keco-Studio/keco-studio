@@ -18,6 +18,7 @@ import { useScriptWorkspaceMembership } from '@/components/script-system/useScri
 import { ScriptSplitView } from '@/components/script-system/ScriptSplitView';
 import { showErrorToast } from '@/lib/utils/toast';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import { buildPersistedPlotGraph } from '@/lib/script-system/buildPersistedPlotGraph';
 
 function assetRowsToFlowRecords(
   rows: AssetRow[],
@@ -141,8 +142,14 @@ export default function ScriptLibraryPage() {
     router,
   ]);
 
-  const properties = librarySchema?.properties ?? [];
-  const sections = librarySchema?.sections ?? [];
+  const properties = useMemo(
+    () => librarySchema?.properties ?? [],
+    [librarySchema?.properties]
+  );
+  const sections = useMemo(
+    () => librarySchema?.sections ?? [],
+    [librarySchema?.sections]
+  );
 
   const { scriptColumns } = useMemo(() => {
     const { orderedProperties } = buildPropertyGroups(sections, properties);
@@ -152,6 +159,10 @@ export default function ScriptLibraryPage() {
   const flowRows = useMemo(
     () => assetRowsToFlowRecords(assetRows, properties),
     [assetRows, properties]
+  );
+  const persistedGraph = useMemo(
+    () => buildPersistedPlotGraph(library?.plot_plan, assetRows.length),
+    [assetRows.length, library?.plot_plan]
   );
 
   if (
@@ -166,10 +177,12 @@ export default function ScriptLibraryPage() {
 
   return (
     <ScriptSplitView
+      libraryId={libraryId}
       libraryName={library?.name ?? 'Script'}
       rows={assetRows}
       scriptColumns={scriptColumns}
       flowRows={flowRows}
+      persistedGraph={persistedGraph}
     />
   );
 }

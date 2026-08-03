@@ -1,7 +1,6 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { ScriptSidebar } from './ScriptSidebar';
 import styles from './ScriptShell.module.css';
 
 export type ScriptShellProps = {
@@ -9,6 +8,10 @@ export type ScriptShellProps = {
   children: React.ReactNode;
 };
 
+/**
+ * Script main-content shell. The product sidebar is mounted by DashboardLayout
+ * as a left sibling of TopBar so the nav bar only spans the content column.
+ */
 export function ScriptShell({ projectId, children }: ScriptShellProps) {
   const pathname = usePathname();
   const flushMain =
@@ -17,7 +20,6 @@ export function ScriptShell({ projectId, children }: ScriptShellProps) {
 
   return (
     <div className={styles.root} data-script-root>
-      <ScriptSidebar projectId={projectId} />
       <div className={styles.main}>
         <div
           className={`${styles.content} ${flushMain ? styles.contentFlush : ''}`}

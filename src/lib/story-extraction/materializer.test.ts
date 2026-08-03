@@ -360,6 +360,114 @@ describe('full story extraction materializer', () => {
       .toEqual([['Boy', 2], ['You', 1]]);
   });
 
+  it('keeps the protagonist on Type 1 without an explicit character list', () => {
+    const text = '\u5973\u5e1d：\u5148\u8bae\u519b\u52a1。\n\u4f60：\u81e3\u9075\u65e8。';
+    const source = segmentStorySource(text, 'protagonist-side');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'empress',
+      structuralUnitIds: [],
+      nodes: [
+        {
+          id: 'empress', type: 'dialogue', presentationType: 1, speaker: '\u5973\u5e1d',
+          content: '\u5148\u8bae\u519b\u52a1。', sourceUnitIds: ['protagonist-side:0'], commandSources: [], nextNodeId: 'you',
+        },
+        {
+          id: 'you', type: 'dialogue', presentationType: 2, speaker: '\u4f60',
+          content: '\u81e3\u9075\u65e8。', sourceUnitIds: ['protagonist-side:1'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => [node.speaker, node.presentationType]))
+      .toEqual([['\u5973\u5e1d', 2], ['\u4f60', 1]]);
+  });
+
+  it('recognizes first-person \u6211 as the protagonist and keeps it on Type 1', () => {
+    const text = '\u5973\u5e1d：\u5148\u8bae\u519b\u52a1。\n\u6211：\u81e3\u9075\u65e8。';
+    const source = segmentStorySource(text, 'first-person-protagonist-side');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'empress',
+      structuralUnitIds: [],
+      nodes: [
+        {
+          id: 'empress', type: 'dialogue', presentationType: 1, speaker: '\u5973\u5e1d',
+          content: '\u5148\u8bae\u519b\u52a1。', sourceUnitIds: ['first-person-protagonist-side:0'], commandSources: [], nextNodeId: 'me',
+        },
+        {
+          id: 'me', type: 'dialogue', presentationType: 2, speaker: '\u6211',
+          content: '\u81e3\u9075\u65e8。', sourceUnitIds: ['first-person-protagonist-side:1'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => [node.speaker, node.presentationType]))
+      .toEqual([['\u5973\u5e1d', 2], ['\u6211', 1]]);
+  });
+
+  it('keeps the existing speaker types when no protagonist marker exists', () => {
+    const text = '\u5973\u5e1d：\u5148\u8bae\u519b\u52a1。\n\u5927\u5c06\u519b：\u81e3\u9886\u65e8。';
+    const source = segmentStorySource(text, 'existing-speaker-sides');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'empress',
+      structuralUnitIds: [],
+      nodes: [
+        {
+          id: 'empress', type: 'dialogue', presentationType: 2, speaker: '\u5973\u5e1d',
+          content: '\u5148\u8bae\u519b\u52a1。', sourceUnitIds: ['existing-speaker-sides:0'], commandSources: [], nextNodeId: 'general',
+        },
+        {
+          id: 'general', type: 'dialogue', presentationType: 1, speaker: '\u5927\u5c06\u519b',
+          content: '\u81e3\u9886\u65e8。', sourceUnitIds: ['existing-speaker-sides:1'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => [node.speaker, node.presentationType]))
+      .toEqual([['\u5973\u5e1d', 2], ['\u5927\u5c06\u519b', 1]]);
+  });
+
+  it('infers \u7537\u4e3b as the protagonist from a lead-role exchange', () => {
+    const text = [
+      '\u65c1\u767d：\u4f60\u6211\u90fd\u77e5\u9053\u8fd9\u5ea7\u53e4\u5b85。',
+      '\u5973\u4e3b：\u4f60\u7ec8\u4e8e\u56de\u6765\u4e86。',
+      '\u7537\u4e3b：\u59d1\u5a18\u8ba4\u9519\u4eba\u4e86，\u6211\u4ece\u672a\u6765\u8fc7\u8fd9\u91cc。',
+    ].join('\n');
+    const source = segmentStorySource(text, 'lead-role-exchange');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'narration',
+      structuralUnitIds: [],
+      nodes: [
+        {
+          id: 'narration', type: 'narration', presentationType: 3, speaker: '\u65c1\u767d',
+          content: '\u4f60\u6211\u90fd\u77e5\u9053\u8fd9\u5ea7\u53e4\u5b85。', sourceUnitIds: ['lead-role-exchange:0'], commandSources: [], nextNodeId: 'heroine',
+        },
+        {
+          id: 'heroine', type: 'dialogue', presentationType: 1, speaker: '\u5973\u4e3b',
+          content: '\u4f60\u7ec8\u4e8e\u56de\u6765\u4e86。', sourceUnitIds: ['lead-role-exchange:1'], commandSources: [], nextNodeId: 'hero',
+        },
+        {
+          id: 'hero', type: 'dialogue', presentationType: 2, speaker: '\u7537\u4e3b',
+          content: '\u59d1\u5a18\u8ba4\u9519\u4eba\u4e86，\u6211\u4ece\u672a\u6765\u8fc7\u8fd9\u91cc。', sourceUnitIds: ['lead-role-exchange:2'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => [node.speaker, node.presentationType]))
+      .toEqual([['\u65c1\u767d', 3], ['\u5973\u4e3b', 2], ['\u7537\u4e3b', 1]]);
+  });
+
   it('rejects a changed source command', () => {
     const value = extraction();
     value.choices[0].commandSources = ['$resolve+=9'];

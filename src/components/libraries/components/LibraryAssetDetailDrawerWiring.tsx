@@ -72,7 +72,8 @@ export function LibraryAssetDetailDrawerWiring({
     />
   );
 
-  // Portal beside the table at mainContent level (same hierarchy as version history).
+  // Portal beside the table at mainContent level (same hierarchy as version history),
+  // so Agent panel and asset detail can show side-by-side instead of overlapping.
   if (slotEl) {
     return createPortal(drawer, slotEl);
   }

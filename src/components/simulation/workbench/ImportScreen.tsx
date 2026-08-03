@@ -34,7 +34,6 @@ import type {
   FieldMappings,
   LibraryRole,
   SimulationImportError,
-  SimulationImportWarning,
   StudioColumnDefinition,
 } from '@/lib/simulation/types';
 import { SimulationButton } from './SimulationButton';
@@ -168,25 +167,55 @@ function DragHandle() {
   );
 }
 
-function StatusIcon({ ok }: { ok: boolean }) {
+function formatFieldImportErrors(fieldErrors: readonly SimulationImportError[]): string | null {
+  if (fieldErrors.length === 0) return null;
+  const reasons = [...new Set(fieldErrors.map((error) => error.reason).filter(Boolean))];
+  if (reasons.length === 0) return null;
+  if (reasons.length === 1) return reasons[0]!;
+  return reasons.slice(0, 2).join(' ');
+}
+
+function fieldMatchesImportError(
+  field: { id: string; label: string },
+  error: SimulationImportError,
+): boolean {
+  return error.field === field.id || error.field === field.label;
+}
+
+function StatusIcon({ ok, message }: { ok: boolean; message?: string | null }) {
+  const showTooltip = Boolean(!ok && message);
   return (
     <span
-      aria-hidden="true"
       style={{
-        width: 18,
-        height: 18,
-        borderRadius: '50%',
+        position: 'relative',
         flexShrink: 0,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 11,
-        fontWeight: 700,
-        color: '#fff',
-        background: ok ? 'var(--simulation-success, #16a34a)' : 'var(--simulation-danger)',
       }}
     >
-      {ok ? '✓' : '!'}
+      {showTooltip ? (
+        <span className={styles.mappingErrorTooltip} role="tooltip">
+          {message}
+        </span>
+      ) : null}
+      <span
+        aria-hidden="true"
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: '50%',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 11,
+          fontWeight: 700,
+          color: '#fff',
+          background: ok ? 'var(--simulation-success, #16a34a)' : 'var(--simulation-danger)',
+        }}
+      >
+        {ok ? '✓' : '!'}
+      </span>
     </span>
   );
 }
@@ -386,7 +415,6 @@ export function ImportScreen({
   const [schemas, setSchemas] = useState<Record<string, Array<StudioColumnDefinition & { key: string; name: string }>>>({});
   const [mappingStatus, setMappingStatus] = useState(emptyMappingStatus);
   const [errors, setErrors] = useState<readonly SimulationImportError[]>([]);
-  const [warnings, setWarnings] = useState<readonly SimulationImportWarning[]>([]);
   const [loading, setLoading] = useState(false);
   const [imported, setImported] = useState(false);
   const [activeRole, setActiveRole] = useState<LibraryRole>('characters');
@@ -406,6 +434,12 @@ export function ImportScreen({
   const [movingColumnIds, setMovingColumnIds] = useState<Set<string>>(() => new Set());
   const dropTargetRef = useRef<MappingDragTarget | null>(null);
   const dragSourceRef = useRef<MappingDragSource | null>(null);
+  const activeRoleRef = useRef(activeRole);
+  activeRoleRef.current = activeRole;
+  const dragListenersRef = useRef<{
+    onMove: (event: PointerEvent) => void;
+    onUp: (event: PointerEvent) => void;
+  } | null>(null);
   const slotRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const unmappedRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   /** Previous tops keyed by columnId (so slot↔slot content swaps FLIP). */
@@ -421,7 +455,6 @@ export function ImportScreen({
     setSchemas({});
     setMappingStatus(emptyMappingStatus());
     setErrors([]);
-    setWarnings([]);
     setImported(false);
     setActiveRole('characters');
     setDdOpen(null);
@@ -504,7 +537,6 @@ export function ImportScreen({
     setDdOpen(null);
     setImported(false);
     setErrors([]);
-    setWarnings([]);
     if (!libraryId || !selectedProjectId) return;
     const request = ++fieldRequestRef.current[role];
     let loadedFields: Array<StudioColumnDefinition & { key: string; name: string }> = [];
@@ -560,7 +592,6 @@ export function ImportScreen({
     if (!selectedProjectId || ROLES.some((role) => !selected[role])) return;
     setLoading(true);
     setErrors([]);
-    setWarnings([]);
     try {
       const sources = await loadSources(selected);
       const result = importSimulationSnapshot({
@@ -568,7 +599,6 @@ export function ImportScreen({
         sources,
         fieldMappings: mappings,
       });
-      setWarnings(result.warnings);
       if ('errors' in result) {
         setErrors(result.errors);
         return;
@@ -611,52 +641,21 @@ export function ImportScreen({
     };
   }, [activeLibSelected]);
 
-  useEffect(() => {
-    if (!dragSource) return;
+  function endCardDragListeners() {
+    const listeners = dragListenersRef.current;
+    if (!listeners) return;
+    window.removeEventListener('pointermove', listeners.onMove);
+    window.removeEventListener('pointerup', listeners.onUp);
+    window.removeEventListener('pointercancel', listeners.onUp);
+    dragListenersRef.current = null;
+  }
 
-    function onMove(event: PointerEvent) {
-      setDragPos({ x: event.clientX, y: event.clientY });
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      const dropEl = el?.closest?.('[data-mapping-drop]') as HTMLElement | null;
-      const next = parseDropTarget(dropEl?.dataset.mappingDrop);
-      dropTargetRef.current = next;
-      setDropTarget(next);
-    }
-
-    function onUp() {
-      const source = dragSourceRef.current;
-      const target = dropTargetRef.current;
-      if (source && target) {
-        const movingColumnId =
-          source.kind === 'unmapped'
-            ? source.columnId
-            : activeMappingsRef.current[source.fieldId] ?? null;
-        replaceRoleMapping(activeRole, applyMappingDrag(activeMappingsRef.current, source, target));
-        if (movingColumnId) {
-          setFlashColumnId(movingColumnId);
-          window.setTimeout(() => {
-            setFlashColumnId((current) => (current === movingColumnId ? null : current));
-          }, 550);
-        }
-      }
-      dragSourceRef.current = null;
-      dropTargetRef.current = null;
-      setDragSource(null);
-      setDropTarget(null);
-      setDragPos(null);
-    }
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [dragSource, activeRole]);
+  useEffect(() => () => endCardDragListeners(), []);
 
   function startCardDrag(source: MappingDragSource, event: ReactPointerEvent) {
     event.preventDefault();
     event.stopPropagation();
+    endCardDragListeners();
     const listWidth = sourceListRef.current?.clientWidth;
     if (listWidth && listWidth > 40) setDragPreviewWidth(listWidth - 28);
     dragSourceRef.current = source;
@@ -664,6 +663,49 @@ export function ImportScreen({
     setDragSource(source);
     setDropTarget(null);
     setDragPos({ x: event.clientX, y: event.clientY });
+
+    // Register move/up immediately on pointerdown so Playwright/CI drags cannot
+    // finish before a useEffect attaches listeners.
+    function onMove(moveEvent: PointerEvent) {
+      setDragPos({ x: moveEvent.clientX, y: moveEvent.clientY });
+      const el = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+      const dropEl = el?.closest?.('[data-mapping-drop]') as HTMLElement | null;
+      const next = parseDropTarget(dropEl?.dataset.mappingDrop);
+      dropTargetRef.current = next;
+      setDropTarget(next);
+    }
+
+    function onUp() {
+      const dragSourceCurrent = dragSourceRef.current;
+      const target = dropTargetRef.current;
+      if (dragSourceCurrent && target) {
+        const movingColumnId =
+          dragSourceCurrent.kind === 'unmapped'
+            ? dragSourceCurrent.columnId
+            : activeMappingsRef.current[dragSourceCurrent.fieldId] ?? null;
+        replaceRoleMapping(
+          activeRoleRef.current,
+          applyMappingDrag(activeMappingsRef.current, dragSourceCurrent, target),
+        );
+        if (movingColumnId) {
+          setFlashColumnId(movingColumnId);
+          window.setTimeout(() => {
+            setFlashColumnId((current) => (current === movingColumnId ? null : current));
+          }, 550);
+        }
+      }
+      endCardDragListeners();
+      dragSourceRef.current = null;
+      dropTargetRef.current = null;
+      setDragSource(null);
+      setDropTarget(null);
+      setDragPos(null);
+    }
+
+    dragListenersRef.current = { onMove, onUp };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   }
 
   function dragLabelFor(source: MappingDragSource): string {
@@ -740,34 +782,6 @@ export function ImportScreen({
             }}
           />
         </label>
-        {errors.length ? (
-          <div style={{
-            flex: '1 1 0',
-            minWidth: 0,
-            paddingBottom: 2,
-          }}
-          >
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              color: 'var(--simulation-danger)',
-              fontSize: 13,
-              fontWeight: 600,
-              lineHeight: 1.4,
-            }}
-            >
-              <span style={{ fontSize: 15, lineHeight: 1 }}>⚠</span>
-              <span>
-                {errors.some((e) => e.code === 'unresolved_reference' && e.field === 'Libraries')
-                  ? 'Import failed — see details below.'
-                  : errors.some((e) => e.field && e.reason?.toLowerCase().includes('missing'))
-                  ? `Missing required fields — see details below.`
-                  : `Field mapping issue${errors.length > 1 ? `s (${errors.length})` : ''} — see details below.`}
-              </span>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, alignItems: 'start' }}>
@@ -840,7 +854,7 @@ export function ImportScreen({
                 fontWeight: 600,
               }}
               >
-                <span>{warnings.length ? 'Imported with warnings' : 'Imported'}</span>
+                <span>Imported</span>
                 <span style={{ fontSize: 15 }}>✓</span>
               </div>
               <div style={{ fontSize: 13, color: 'var(--simulation-ink-500)', lineHeight: 1.45 }}>
@@ -930,7 +944,14 @@ export function ImportScreen({
 
           <div
             ref={sourceListRef}
-            style={{ gridColumn: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}
+            style={{
+              gridColumn: 1,
+              overflow: 'visible',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
           >
             {!activeLibSelected ? (
               <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--simulation-ink-400)', lineHeight: 1.5 }}>
@@ -948,7 +969,13 @@ export function ImportScreen({
                       field,
                       col ? { id: col.key, label: col.name, valueType: col.valueType } : null,
                     );
-                  const isError = status === 'empty-required' || status === 'incompatible';
+                  const fieldImportErrors = errors.filter(
+                    (error) => error.role === activeRole && fieldMatchesImportError(field, error),
+                  );
+                  const errorMessage = aiMapping ? null : formatFieldImportErrors(fieldImportErrors);
+                  const isError = fieldImportErrors.length > 0
+                    || status === 'empty-required'
+                    || status === 'incompatible';
                   const isDragging = dragSource?.kind === 'slot' && dragSource.fieldId === slot.fieldId;
                   const isDrop = dropTarget?.kind === 'slot' && dropTarget.fieldId === slot.fieldId;
                   const isFlash = Boolean(slot.columnId && flashColumnId === slot.columnId);
@@ -971,8 +998,9 @@ export function ImportScreen({
                         opacity: isDragging ? 0.35 : 1,
                         willChange: 'transform, box-shadow',
                         animation: isFlash ? 'kMappingCardFlash 0.55s ease' : 'none',
-                        zIndex: isMoving ? 20 : undefined,
+                        zIndex: isMoving ? 20 : (errorMessage ? 12 : undefined),
                         position: 'relative',
+                        overflow: 'visible',
                       }}
                     >
                       {aiMapping ? (
@@ -998,6 +1026,7 @@ export function ImportScreen({
                             cursor: 'grab',
                             font: 'inherit',
                             textAlign: 'left',
+                            overflow: 'visible',
                           }}
                         >
                           <DragHandle />
@@ -1015,14 +1044,14 @@ export function ImportScreen({
                             {col?.name ?? slot.columnId}
                             <span style={{ marginLeft: 6, fontWeight: 600 }}>→ {slot.fieldId}</span>
                           </span>
-                          <StatusIcon ok={status === 'ok'} />
+                          <StatusIcon ok={!isError} message={errorMessage} />
                         </button>
                       ) : (
                         <>
                           <span style={{ flex: 1, fontSize: 13, color: 'var(--simulation-ink-400)' }}>
                             Drop a source column
                           </span>
-                          {isError ? <StatusIcon ok={false} /> : null}
+                          {isError ? <StatusIcon ok={false} message={errorMessage} /> : null}
                         </>
                       )}
                     </div>
@@ -1240,39 +1269,6 @@ export function ImportScreen({
           >
             {dragLabelFor(dragSource)}
           </span>
-        </div>
-      ) : null}
-
-      {errors.length ? (
-        <div className={styles.errorList} role="alert" style={{ marginTop: 16 }}>
-          <strong>Import blocked</strong>
-          {errors.map((error, index) => (
-            <p key={index}>
-              {error.libraryName}
-              {error.assetName ? ` / ${error.assetName}` : ''}
-              {' / '}
-              {error.field}
-              :
-              {' '}
-              {error.reason}
-            </p>
-          ))}
-        </div>
-      ) : null}
-      {warnings.length ? (
-        <div className={styles.warningList} role="status" style={{ marginTop: 16 }}>
-          <strong>Imported with warnings</strong>
-          {warnings.map((warning, index) => (
-            <p key={index}>
-              {warning.libraryName}
-              {warning.assetName ? ` / ${warning.assetName}` : ''}
-              {' / '}
-              {warning.field}
-              :
-              {' '}
-              {warning.reason}
-            </p>
-          ))}
         </div>
       ) : null}
     </div>

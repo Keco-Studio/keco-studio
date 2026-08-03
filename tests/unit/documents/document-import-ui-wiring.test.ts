@@ -33,4 +33,21 @@ describe('document import UI wiring', () => {
     expect(modal).toMatch(/await createImportedDocument[\s\S]*await onImported/);
     expect(modal).toContain('DocumentDropZone');
   });
+
+  it('uses the shared import panel for both documents and tables', () => {
+    const documentModal = read('src/components/documents/ImportDocumentModal.tsx');
+    const tableModal = read('src/components/libraries/ImportLibraryModal.tsx');
+    const sharedModal = read('src/components/shared/ImportResourceModal.tsx');
+
+    expect(documentModal).toContain('<ImportResourceModal');
+    expect(documentModal).toContain('resourceLabel="Document"');
+    expect(tableModal).toContain('<ImportResourceModal');
+    expect(tableModal).toContain('resourceLabel="Table"');
+    expect(tableModal).toContain('DocumentDropZone');
+    expect(tableModal).toContain('Supported formats: .csv, .xlsx, .xls');
+    expect(sharedModal.indexOf('{resourceLabel} Name')).toBeLessThan(sharedModal.indexOf('>File<'));
+    expect(sharedModal.indexOf('>File<')).toBeLessThan(sharedModal.indexOf('>Notes<'));
+    expect(sharedModal).toContain('buttonFixed');
+    expect(sharedModal).toContain('dialog.primary');
+  });
 });

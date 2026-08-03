@@ -30,6 +30,7 @@ describe('spreadsheet import batching (issue #224)', () => {
     ]);
 
     const fieldInsertCalls: unknown[] = [];
+    const libraryInsertCalls: unknown[] = [];
     const supabase = {
       from: (table: string) => {
         let inserted: unknown;
@@ -41,6 +42,7 @@ describe('spreadsheet import batching (issue #224)', () => {
           limit: () => builder,
           insert: (rows: unknown) => {
             inserted = rows;
+            if (table === 'libraries') libraryInsertCalls.push(rows);
             if (table === 'library_field_definitions') fieldInsertCalls.push(rows);
             return builder;
           },
@@ -79,11 +81,15 @@ describe('spreadsheet import batching (issue #224)', () => {
       projectId: 'project-1',
       folderId: '00000000-0000-4000-8000-000000000001',
       libraryName: 'World bible',
+      description: 'Imported workbook notes',
       fileBuffer: Buffer.from('workbook'),
       fileName: 'world.xlsx',
     });
 
     expect(fieldInsertCalls).toHaveLength(1);
+    expect(libraryInsertCalls[0]).toEqual(expect.objectContaining({
+      description: 'Imported workbook notes',
+    }));
     expect(fieldInsertCalls[0]).toHaveLength(5);
     expect(result.fieldCount).toBe(5);
   });

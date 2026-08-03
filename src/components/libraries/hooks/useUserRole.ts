@@ -13,7 +13,8 @@ export function useUserRole(projectId: string | undefined, supabase: any): UserR
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const sessionRes = await supabase.auth.getSession();
+      const session = sessionRes?.data?.session ?? null;
       if (!session) {
         setUserRole(null);
         return;

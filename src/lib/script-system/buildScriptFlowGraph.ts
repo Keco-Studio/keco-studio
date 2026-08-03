@@ -1,10 +1,15 @@
 import { parseJumpTarget } from './parseJumpTarget';
+import {
+  isStoryPlotHeading,
+  storyPlotHeadingTitle,
+} from '@/lib/story-plot/headings';
 
 export type FlowGraphNode = {
-  id: string; // Label
-  label: string; // display = Label
-  speaker?: string; // Name column
+  id: string;
+  label: string;
+  speaker?: string;
   rowIndex: number;
+  rowIndexes: number[];
 };
 
 export type FlowGraphEdge = {
@@ -25,47 +30,129 @@ function resolveNextTarget(value: string): string | undefined {
   return parseJumpTarget(trimmed) ?? (LABEL_PATTERN.test(trimmed) ? trimmed : undefined);
 }
 
-/** rows: array of record keyed by column name (Label, Name, Option0, Option0_Next, ...) */
-export function buildScriptFlowGraph(
-  rows: Array<Record<string, string>>
-): FlowGraph {
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return { nodes: [], edges: [] };
+export function buildScriptFlowGraph(rows: Array<Record<string, string>>): FlowGraph {
+  if (!Array.isArray(rows) || rows.length === 0) return { nodes: [], edges: [] };
+
+  const meaningfulIndexes = rows.flatMap((row, index) => {
+    const hasVisibleContent = ['Label', 'Type', 'Content', 'Commands']
+      .some((key) => String(row?.[key] ?? '').trim());
+    return hasVisibleContent ? [index] : [];
+  });
+  if (meaningfulIndexes.length === 0) return { nodes: [], edges: [] };
+
+  const optionTextByTarget = new Map<string, string>();
+  const targetLabels = new Set<string>();
+  for (const row of rows) {
+    for (let index = 0; index < OPTION_SLOT_COUNT; index += 1) {
+      const target = resolveNextTarget(row[`Option${index}_Next`] ?? '');
+      if (!target) continue;
+      targetLabels.add(target);
+      const text = (row[`Option${index}`] ?? '').trim();
+      if (text && !optionTextByTarget.has(target)) optionTextByTarget.set(target, text);
+    }
+    const jump = parseJumpTarget(row.Commands ?? '');
+    if (jump) targetLabels.add(jump);
   }
 
-  const nodes: FlowGraphNode[] = [];
-  const seenLabels = new Set<string>();
-  const edges: FlowGraphEdge[] = [];
-
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-    const row = rows[rowIndex] ?? {};
+  const boundaries = new Set<number>([meaningfulIndexes[0]]);
+  rows.forEach((row, index) => {
     const label = (row.Label ?? '').trim();
-    if (!label) continue;
-
-    if (!seenLabels.has(label)) {
-      seenLabels.add(label);
-      const speaker = (row.Name ?? '').trim();
-      nodes.push({
-        id: label,
-        label,
-        ...(speaker ? { speaker } : {}),
-        rowIndex,
-      });
+    const content = (row.Content ?? '').trim();
+    if (isStoryPlotHeading(content) || (label && targetLabels.has(label))) {
+      boundaries.add(index);
     }
+  });
 
-    for (let n = 0; n < OPTION_SLOT_COUNT; n++) {
-      const nextRaw = row[`Option${n}_Next`] ?? '';
-      const to = resolveNextTarget(nextRaw);
-      if (!to) continue;
-      const optionText = (row[`Option${n}`] ?? '').trim();
-      edges.push({
-        from: label,
-        to,
-        optionIndex: n,
-        optionText,
-      });
-    }
+  const starts = [...boundaries].sort((left, right) => left - right);
+  const usedIds = new Set<string>();
+  const nodes: FlowGraphNode[] = starts.map((start, nodeIndex) => {
+    const end = starts[nodeIndex + 1] ?? rows.length;
+    const rowIndexes = meaningfulIndexes.filter((index) => index >= start && index < end);
+    const firstRow = rows[start] ?? {};
+    const sourceLabel = (firstRow.Label ?? '').trim();
+    let id = LABEL_PATTERN.test(sourceLabel) && !usedIds.has(sourceLabel)
+      ? sourceLabel
+      : `Plot${nodeIndex + 1}`;
+    while (usedIds.has(id)) id = `Plot${nodeIndex + 1}_${usedIds.size + 1}`;
+    usedIds.add(id);
+    const content = (firstRow.Content ?? '').trim();
+    const optionTitle = sourceLabel ? optionTextByTarget.get(sourceLabel) : undefined;
+    const title = optionTitle
+      || storyPlotHeadingTitle(content)
+      || sourceLabel
+      || `\u5267\u60c5 ${nodeIndex + 1}`;
+    const speaker = rowIndexes
+      .map((index) => (rows[index]?.Name ?? '').trim())
+      .find(Boolean);
+    return {
+      id,
+      label: title,
+      ...(speaker ? { speaker } : {}),
+      rowIndex: start,
+      rowIndexes,
+    };
+  });
+
+  const plotByRowIndex = new Map<number, string>();
+  const plotByLabel = new Map<string, string>();
+  for (const node of nodes) {
+    node.rowIndexes.forEach((index) => {
+      plotByRowIndex.set(index, node.id);
+      const label = (rows[index]?.Label ?? '').trim();
+      if (label && !plotByLabel.has(label)) plotByLabel.set(label, node.id);
+    });
   }
+
+  const edges: FlowGraphEdge[] = [];
+  const edgeKeys = new Set<string>();
+  const choiceTargetPlotIds = new Set(
+    [...optionTextByTarget.keys()]
+      .map((label) => plotByLabel.get(label))
+      .filter((id): id is string => Boolean(id))
+  );
+  const addEdge = (edge: FlowGraphEdge) => {
+    const key = JSON.stringify(edge);
+    if (edge.from === edge.to || edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push(edge);
+  };
+
+  nodes.forEach((node, nodeIndex) => {
+    let hasExplicitEdge = false;
+    let endsStory = false;
+    for (const rowIndex of node.rowIndexes) {
+      const row = rows[rowIndex] ?? {};
+      for (let optionIndex = 0; optionIndex < OPTION_SLOT_COUNT; optionIndex += 1) {
+        const target = resolveNextTarget(row[`Option${optionIndex}_Next`] ?? '');
+        const to = target ? plotByLabel.get(target) : undefined;
+        if (!to) continue;
+        hasExplicitEdge = true;
+        addEdge({
+          from: node.id,
+          to,
+          optionIndex,
+          optionText: (row[`Option${optionIndex}`] ?? '').trim(),
+        });
+      }
+      const commands = row.Commands ?? '';
+      const jump = parseJumpTarget(commands);
+      const jumpTarget = jump ? plotByLabel.get(jump) : undefined;
+      if (jumpTarget) {
+        hasExplicitEdge = true;
+        addEdge({ from: node.id, to: jumpTarget });
+      }
+      if (/\bEnd\b/i.test(commands)) endsStory = true;
+    }
+    const nextNode = nodes[nodeIndex + 1];
+    const crossesToSiblingChoice = Boolean(
+      nextNode
+      && choiceTargetPlotIds.has(node.id)
+      && choiceTargetPlotIds.has(nextNode.id)
+    );
+    if (!hasExplicitEdge && !endsStory && nextNode && !crossesToSiblingChoice) {
+      addEdge({ from: node.id, to: nextNode.id });
+    }
+  });
 
   return { nodes, edges };
 }

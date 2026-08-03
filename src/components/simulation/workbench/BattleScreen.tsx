@@ -94,15 +94,7 @@ export function BattleScreen({ onContinue }: { onContinue?: () => void }) {
 
   if (arenaConfig) {
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: 'calc(100vh - var(--simulation-header-height, 64px) - 24px)',
-        minHeight: 520,
-        margin: '-34px -44px -56px',
-        overflow: 'hidden',
-      }}
-      >
+      <div className={styles.activeBattleArena}>
         <StudioBattleStep
           arenaConfig={arenaConfig}
           onStop={() => setArenaConfig(null)}

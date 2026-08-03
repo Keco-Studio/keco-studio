@@ -435,6 +435,66 @@ export function useSidebarContextMenuActions({
         return;
       }
 
+      if (action === 'version-history') {
+        if (contextMenu.type === 'library') {
+          const projectId = currentIds.projectId;
+          const libraryId = contextMenu.id;
+          closeContextMenu();
+          if (!projectId) return;
+
+          const openVersionControl = () => {
+            window.dispatchEvent(
+              new CustomEvent('library-version-control-toggle', {
+                detail: {
+                  projectId,
+                  libraryId,
+                  open: true,
+                },
+              })
+            );
+          };
+
+          if (currentIds.libraryId === libraryId) {
+            openVersionControl();
+            return;
+          }
+
+          try {
+            window.sessionStorage.setItem(
+              'keco-open-library-version-control',
+              JSON.stringify({ projectId, libraryId })
+            );
+          } catch {
+            // Ignore sessionStorage failures; still navigate to the library.
+          }
+          router.push(`/${projectId}/${libraryId}`);
+          return;
+        }
+
+        if (contextMenu.type === 'document') {
+          const projectId = currentIds.projectId;
+          const documentId = contextMenu.id;
+          closeContextMenu();
+          if (!projectId) return;
+
+          if (currentIds.documentId === documentId) {
+            window.dispatchEvent(new CustomEvent('document-history-toggle'));
+            return;
+          }
+
+          try {
+            window.sessionStorage.setItem('keco-open-document-history', documentId);
+          } catch {
+            // Ignore sessionStorage failures; still navigate to the document.
+          }
+          router.push(`/${projectId}/doc/${documentId}`);
+          return;
+        }
+
+        closeContextMenu();
+        return;
+      }
+
       // Handle delete action
       if (action === 'delete') {
         if (contextMenu.type === 'project') {

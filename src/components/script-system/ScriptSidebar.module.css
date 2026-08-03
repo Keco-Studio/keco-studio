@@ -1,17 +1,55 @@
 .sidebar {
+  --script-blue: #0b99ff;
+  --script-blue-hover: #0090ee;
+  --script-blue-tint: #0b99ff14;
+  --script-blue-soft: #e6f4ff;
+  --script-ink-900: #0f172a;
+  --script-ink-850: #1c1d20;
+  --script-ink-800: #21272a;
+  --script-ink-700: #334155;
+  --script-ink-500: #64748b;
+  --script-ink-450: #697077;
+  --script-ink-400: #7d7d7d;
+  --script-ink-350: #94a3b8;
+  --script-line-200: #e2e8f0;
+  --script-surface-0: #ffffff;
+  --script-surface-1: #f8fafc;
+  --script-surface-3: #f6f7fb;
+  --script-surface-glass: rgba(255, 255, 255, 0.7);
+
   position: relative;
   z-index: 20;
+  box-sizing: border-box;
   display: flex;
   flex: 0 0 228px;
   width: 228px;
+  align-self: stretch;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   padding: 18px 12px 12px;
   flex-direction: column;
+  overflow: hidden;
   color: var(--script-ink-800);
   background: var(--script-surface-glass);
   border-right: 1px solid var(--script-line-200);
   backdrop-filter: blur(8px);
+  font-family: 'Roboto', sans-serif;
+}
+
+.sidebar * {
+  box-sizing: border-box;
+}
+
+.sidebarHidden {
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  flex: 0 0 0;
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .brand {
@@ -55,10 +93,11 @@
 }
 
 .projectName {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 150px;
 }
 
 .chevron {
@@ -93,6 +132,9 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .projectOptionSelected {
@@ -103,8 +145,10 @@
 
 .nav {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   margin-top: 2px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -145,17 +189,23 @@
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .treeChildren {
   list-style: none;
   margin: 0;
   padding: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .treeRow {
   display: flex;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   min-height: 36px;
   border-radius: 8px;
   color: var(--script-ink-700);
@@ -219,6 +269,7 @@
   display: block;
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   padding: 0;
   border: none;
   background: transparent;
@@ -228,6 +279,7 @@
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
+  overflow: hidden;
 }
 
 .treeIcon {
@@ -236,6 +288,8 @@
 }
 
 .treeLabel {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

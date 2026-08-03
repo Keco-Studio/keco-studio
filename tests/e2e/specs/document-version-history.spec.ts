@@ -259,12 +259,20 @@ test.describe.serial('Document version history', () => {
       }
 
       await viewer.page.getByTestId('version-history-toggle').click();
-      await expect(viewer.page.getByRole('button', { name: 'Preview' }).first()).toBeVisible();
       await expect(viewer.page.getByRole('button', { name: 'Create version' })).toHaveCount(0);
       await expect(viewer.page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
-      await viewer.page.getByRole('button', { name: 'Preview' }).first().click();
-      await expect(viewer.page.getByRole('dialog')).toContainText('Collaborative seed');
-      await viewer.page.getByRole('button', { name: 'Close' }).last().click();
+      await viewer.page
+        .locator('[data-testid^="document-version-row-"]')
+        .filter({ hasText: 'Before rewrite' })
+        .click();
+      await expect(viewer.page.getByText(/Viewing version/i)).toBeVisible();
+      // Historical preview mounts a read-only MDX editor (contenteditable=false).
+      await expect(viewer.page.locator('[contenteditable="false"]').first()).toContainText(
+        'Collaborative seed',
+        { timeout: 30_000 }
+      );
+      await viewer.page.getByRole('button', { name: 'Back to current' }).click();
+      await expect(viewer.page.getByText(/Viewing version/i)).toHaveCount(0);
 
       const oldEpochResult = await fixture.editor.client
         .from('documents')
@@ -336,7 +344,13 @@ test.describe.serial('Document version history', () => {
       expect(newEpochResult.error).toBeNull();
       expect(Number(newEpochResult.data?.collab_epoch)).toBe(oldEpoch + 1);
 
-      await expect(viewer.page.getByRole('button', { name: 'Preview' }).first()).toBeVisible();
+      // Viewers preview by selecting a version row; there is no separate Preview button.
+      // Prefer an exact name match so "Restored: Before rewrite" does not also match.
+      await expect(
+        viewer.page
+          .locator('[data-testid^="document-version-row-"]')
+          .filter({ has: viewer.page.getByText('Before rewrite', { exact: true }) })
+      ).toBeVisible();
       await expect(viewer.page.getByRole('button', { name: 'Create version' })).toHaveCount(0);
       await expect(viewer.page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
 

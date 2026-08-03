@@ -48,6 +48,7 @@ export async function publishImportedDocument(
     projectId: string;
     folderId: string | null;
     name: string;
+    description?: string | null;
     markdown: string;
   }
 ): Promise<DocumentRecord> {

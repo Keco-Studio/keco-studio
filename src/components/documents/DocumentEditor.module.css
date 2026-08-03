@@ -25,6 +25,7 @@
 }
 
 .documentSectionFlush .connectionBanner,
+.documentSectionFlush .versionPreviewBanner,
 .documentSectionFlush .derivedImportBanner,
 .documentSectionFlush .derivedImportBannerSuccess,
 .documentSectionFlush .derivedImportBannerError {
@@ -34,7 +35,7 @@
 
 .documentSectionWithHistory {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 24rem);
   align-items: start;
   column-gap: 0;
   padding-right: 0;
@@ -190,6 +191,34 @@
   border: 1px solid var(--ant-color-warning-border, #ffe58f);
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
   font-size: 13px;
+}
+
+.versionPreviewBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fff0f5;
+  border: 1px solid #ffc2d6;
+  color: #9f1239;
+  font-size: 13px;
+}
+
+.versionPreviewExit {
+  border: 1px solid #ff4d8d;
+  background: #fff;
+  color: #ff4d8d;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.versionPreviewExit:hover {
+  background: #fff0f5;
 }
 
 .derivedImportBanner,

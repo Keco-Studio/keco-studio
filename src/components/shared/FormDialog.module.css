@@ -40,6 +40,20 @@
   height: auto;
 }
 
+.importModal {
+  max-height: calc(100dvh - 2.5rem);
+}
+
+.importBody {
+  display: flex;
+  min-height: 0;
+  padding-right: 0.25rem;
+  padding-bottom: 0.25rem;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -123,9 +137,9 @@
 }
 
 .nameInput:focus {
-  outline: 0.125rem solid #a5b4fc;
+  outline: none;
   border-color: #a5b4fc;
-  outline-offset: 0;
+  box-shadow: inset 0 0 0 0.125rem #a5b4fc;
 }
 
 .field {
@@ -141,6 +155,10 @@
   width: 100%;
   flex: 1;
   min-height: 0;
+}
+
+.importNotesContainer {
+  flex: none;
 }
 
 .notesLabel {
@@ -215,9 +233,18 @@
 }
 
 .textareaWrapper:focus-within {
-  outline: 0.125rem solid #a5b4fc;
+  outline: none;
   border-color: #a5b4fc;
-  outline-offset: 0;
+  box-shadow: inset 0 0 0 0.125rem #a5b4fc;
+}
+
+/* Must follow .textareaWrapper / .textarea so these win on Import dialogs. */
+.importTextareaWrapper {
+  height: 5rem;
+}
+
+.importTextarea {
+  height: 3.75rem;
 }
 
 .footer {
@@ -296,4 +323,28 @@
   position: static;
   transform: none;
   margin-bottom: 0;
+}
+
+.filePickerButton {
+  width: fit-content;
+  height: 2rem;
+  padding: 0 0.875rem;
+  color: #475569;
+  background: #f1f5f9;
+  border: 0;
+  border-radius: 0.5rem;
+  font: 500 0.875rem/1 'Roboto', sans-serif;
+  cursor: pointer;
+}
+
+.filePickerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.filePreview {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }

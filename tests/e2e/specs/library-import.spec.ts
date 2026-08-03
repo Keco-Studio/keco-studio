@@ -56,7 +56,7 @@ test.describe('Spreadsheet library import', () => {
   test('previews and imports CSV columns and rows', async ({ page }) => {
     await openImport(page);
     const libraryName = `Imported items ${Date.now()}`;
-    await page.getByTestId('import-library-name').fill(libraryName);
+    await page.getByTestId('import-table-name').fill(libraryName);
     await page.getByTestId('import-library-file').setInputFiles({
       name: 'items.csv',
       mimeType: 'text/csv',
@@ -67,7 +67,7 @@ test.describe('Spreadsheet library import', () => {
     const responsePromise = page.waitForResponse(
       (response) => response.url().endsWith('/api/import') && response.request().method() === 'POST'
     );
-    await page.getByTestId('import-library-submit').click();
+    await page.getByTestId('import-table-submit').click();
     expect((await responsePromise).status()).toBe(200);
     await expect(page.getByText('Import completed (2 rows)', { exact: true })).toBeVisible();
 
@@ -109,9 +109,9 @@ test.describe('Spreadsheet library import', () => {
 
   test('rejects invalid files and invalid library names', async ({ page }) => {
     await openImport(page);
-    const name = page.getByTestId('import-library-name');
+    const name = page.getByTestId('import-table-name');
     const file = page.getByTestId('import-library-file');
-    const submit = page.getByTestId('import-library-submit');
+    const submit = page.getByTestId('import-table-submit');
 
     await expect(submit).toBeDisabled();
     await file.setInputFiles({ name: 'items.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
@@ -141,13 +141,13 @@ test.describe('Spreadsheet library import', () => {
     if (error) throw error;
 
     await openImport(page);
-    await page.getByTestId('import-library-name').fill(duplicateName);
+    await page.getByTestId('import-table-name').fill(duplicateName);
     await page.getByTestId('import-library-file').setInputFiles({
       name: 'items.csv',
       mimeType: 'text/csv',
       buffer: CSV,
     });
-    await page.getByTestId('import-library-submit').click();
+    await page.getByTestId('import-table-submit').click();
     await expect(page.getByText(/already exists/i)).toBeVisible({ timeout: 30000 });
   });
 });

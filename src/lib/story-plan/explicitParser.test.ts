@@ -116,6 +116,33 @@ describe('explicit story parser', () => {
     expect(plan!.nodes.find((node) => node.id === 'Node24')?.nextNodeId).toBe('');
   });
 
+  it('groups natural Chinese sibling branches under one decision', () => {
+    const source = segmentStorySource([
+      '【\u5f00\u573a\u5bf9\u8bdd】',
+      '\u5973\u4e3b：\u5b85\u5185\u6709\u4e24\u5904\u843d\u811a\u5904，\u516c\u5b50\u60f3\u9009\u54ea\u4e00\u5904？',
+      '【\u89e6\u53d1\u5206\u652f\u9009\u62e9】',
+      '\u5206\u652f\u4e00：\u9009\u62e9【\u4e1c\u4fa7\u5ba2\u623f】（\u5b89\u7a33\u8c28\u614e\u7ebf）',
+      '\u7537\u4e3b：\u6211\u9009\u4e1c\u4fa7\u5ba2\u623f。',
+      '【\u5206\u652f\u4e00\u7ed3\u5c40：\u5b89\u7a33\u7ed3\u5c40】',
+      '\u4e00\u591c\u5b89\u7136\u65e0\u68a6。',
+      '\u5206\u652f\u4e8c：\u9009\u62e9【\u897f\u4fa7\u9601\u697c】（\u597d\u5947\u63a2\u9669\u7ebf）',
+      '\u7537\u4e3b：\u6211\u9009\u897f\u4fa7\u9601\u697c。',
+      '【\u5973\u4e3b\u7684\u56de\u5fc6】',
+      '\u4e8c\u5341\u5e74\u524d\u7684\u5f80\u4e8b\u6d6e\u73b0。',
+      '【\u5206\u652f\u4e8c\u7ed3\u5c40：\u7f81\u7eca\u7ed3\u5c40】',
+      '\u4f60\u5931\u53bb\u4e86\u4e00\u6bb5\u8bb0\u5fc6。',
+    ].join('\n'), 'ancient-house');
+
+    const plan = tryParseNaturalBranchStory(source);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.choices).toEqual([
+      expect.objectContaining({ fromNodeId: 'Node3', targetNodeId: 'Node4' }),
+      expect.objectContaining({ fromNodeId: 'Node3', targetNodeId: 'Node7' }),
+    ]);
+    expect(plan!.nodes.find((node) => node.id === 'Node6')?.nextNodeId).toBe('');
+  });
+
   it('leaves duplicate natural branch ordinals for the Converter', () => {
     const source = segmentStorySource([
       'Guide: Choose.',

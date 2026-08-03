@@ -30,17 +30,9 @@ async function dragMappingCard(page: Page, sourceName: string, targetSelector: s
   await target.scrollIntoViewIfNeeded();
   await source.waitFor({ state: 'visible' });
   await target.waitFor({ state: 'visible' });
-
-  const sourceBox = await source.boundingBox();
-  const targetBox = await target.boundingBox();
-  if (!sourceBox || !targetBox) throw new Error(`Could not drag ${sourceName}: missing bounds`);
-
-  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
-    steps: 8,
-  });
-  await page.mouse.up();
+  // Prefer Playwright dragTo so pointerdown/move/up stay aligned with ImportScreen's
+  // pointer listeners (manual mouse paths can miss the Unmapped drop zone in CI).
+  await source.dragTo(target);
 }
 
 async function createSimulationLibrary(
@@ -227,8 +219,9 @@ test.describe('Native simulation system', () => {
     await expect(unmapped.getByRole('button', { name: 'Drag name' })).toBeVisible();
 
     await dragMappingCard(page, 'class name', '[data-mapping-drop="unmapped"]');
-    await expect(elementSlot.getByText('Drop a source column', { exact: true })).toBeVisible();
     await expect(unmapped.getByRole('button', { name: 'Drag class name' })).toBeVisible();
+    await expect(elementSlot.getByRole('button', { name: 'Drag class name' })).toHaveCount(0);
+    await expect(elementSlot.getByText('Drop a source column', { exact: true })).toBeVisible();
   });
 
   test('keeps manual field mapping available when AI mapping fails', async ({ page }) => {

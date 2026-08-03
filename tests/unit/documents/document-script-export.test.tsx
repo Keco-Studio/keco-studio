@@ -22,6 +22,7 @@ jest.mock(
 );
 
 import { ImportScriptModal } from '@/components/libraries/ImportScriptModal';
+import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 
 const projectId = '22222222-2222-4222-8222-222222222222';
 const sourceA: DocumentExportSource = {
@@ -231,7 +232,7 @@ describe('ImportScriptModal document source lifecycle', () => {
     expect(form.get('libraryName')).toBe(`${sourceA.documentName} Conversation`);
     const file = form.get('file') as File;
     expect(file.name).toBe(`${sourceA.documentName}.txt`);
-    expect(await file.text()).toBe(sourceA.markdown);
+    expect(await file.text()).toBe(toScriptImportPlainText(sourceA.markdown));
   });
 
   it('captures the current source again on the next false-to-true open edge', async () => {
@@ -247,6 +248,8 @@ describe('ImportScriptModal document source lifecycle', () => {
     expect(form.get('projectId')).toBe(sourceB.projectId);
     expect(form.get('sourceDocumentId')).toBe(sourceB.documentId);
     expect(form.get('libraryName')).toBe(`${sourceB.documentName} Conversation`);
-    expect(await (form.get('file') as File).text()).toBe(sourceB.markdown);
+    expect(await (form.get('file') as File).text()).toBe(
+      toScriptImportPlainText(sourceB.markdown)
+    );
   });
 });

@@ -17,6 +17,7 @@ export async function publishImportedDocumentAsActor(input: {
   projectId: string;
   folderId: string | null;
   name: string;
+  description?: string | null;
   markdown: string;
 }): Promise<DocumentRecord> {
   if (
@@ -30,6 +31,8 @@ export async function publishImportedDocumentAsActor(input: {
   }
   const name = input.name.trim();
   if (!name || name.length > 255) throw new Error('Invalid document name');
+  const description = input.description?.trim() ?? '';
+  if (description.length > 250) throw new Error('Invalid document notes');
   const { documentContentCodec } = await import('@/lib/documents/documentContentCodec');
   documentContentCodec.validate(input.markdown);
   const yjsState = await documentContentCodec.markdownToYjsState(input.markdown);
@@ -41,6 +44,7 @@ export async function publishImportedDocumentAsActor(input: {
     p_project_id: input.projectId,
     p_folder_id: input.folderId,
     p_name: name,
+    p_description: description,
     p_markdown: input.markdown,
     p_yjs_state: yjsState,
   });

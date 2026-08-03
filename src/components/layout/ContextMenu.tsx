@@ -334,10 +334,7 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
           )}
           <button
             className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
+            onClick={() => handleAction('version-history')}
           >
             Version history
           </button>

@@ -145,7 +145,6 @@ export interface SimulationImportError {
     | 'duplicate_mapping'
     | 'reserved_id'
     | 'empty_source'
-    | 'invalid_sequence'
     | 'invalid_enum'
     | 'unresolved_field'
     | 'unresolved_reference';
@@ -158,21 +157,9 @@ export interface SimulationImportError {
   readonly message: string;
 }
 
-export interface SimulationImportWarning {
-  readonly role: LibraryRole;
-  readonly code: 'duplicate_rule' | 'invalid_sequence' | 'missing_rule';
-  readonly libraryId: string;
-  readonly libraryName: string;
-  readonly assetId: string | null;
-  readonly assetName: string | null;
-  readonly field: string;
-  readonly reason: string;
-  readonly message: string;
-}
-
 export type SimulationImportResult =
-  | { ok: true; snapshot: ImportedSimulationSnapshot; warnings: SimulationImportWarning[] }
-  | { ok: false; errors: SimulationImportError[]; warnings: SimulationImportWarning[] };
+  | { ok: true; snapshot: ImportedSimulationSnapshot }
+  | { ok: false; errors: SimulationImportError[] };
 
 export interface FighterSnapshot {
   uid: string;

@@ -123,6 +123,9 @@ jest.mock('@/components/documents/useDocumentCollaboration', () => ({
 jest.mock('@/components/documents/DocumentVersionSidebar', () => ({
   DocumentVersionSidebar: () => null,
 }));
+jest.mock('@/lib/documents/documentVersionService', () => ({
+  getDocumentVersionPreview: jest.fn(async () => ({ markdown: '' })),
+}));
 jest.mock(
   '../../../src/components/documents/DocumentEditor.module.css',
   () => ({}),

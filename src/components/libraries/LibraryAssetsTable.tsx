@@ -9,6 +9,7 @@ import {
 } from '@/lib/types/libraryAssets';
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
+import { DeleteConfirmDialog } from '@/components/layout/components/DeleteConfirmDialog';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { type MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
@@ -88,6 +89,8 @@ export type LibraryAssetsTableProps = {
   onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
   /** Optional callback for the add-section button; may return the new section id. */
   onAddSection?: () => Promise<string | void>;
+  /** Optional callback for deleting a section from the section tab context menu. */
+  onDeleteSection?: (sectionId: string) => Promise<void>;
   /** Optional callback for in-table add-column submissions; otherwise routes to predefine. */
   onAddProperty?: (sectionId: string, sectionName: string, payload: AddColumnFormPayload) => Promise<void>;
   // Real-time collaboration props
@@ -126,6 +129,7 @@ export function LibraryAssetsTable({
   onDeleteAssets,
   onUpdateSection,
   onAddSection,
+  onDeleteSection,
   onAddProperty,
   currentUser = null,
   enableRealtime = false,
@@ -184,6 +188,11 @@ export function LibraryAssetsTable({
   // Toast message state (unified: success / error / default, bottom)
   const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' | 'default' } | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState<{
+    sectionId: string;
+    sectionName: string;
+    loading: boolean;
+  } | null>(null);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
 
   // Clear contents confirmation modal state
@@ -530,6 +539,47 @@ export function LibraryAssetsTable({
     setToastMessage,
     pendingNewSectionIdRef,
   });
+
+  const canManageSections =
+    (userRole === 'admin' || userRole === 'editor') &&
+    (!!onUpdateSection || !!onDeleteSection || !!onAddSection);
+
+  const handleRequestDeleteSection = useCallback(
+    (sectionId: string, sectionName: string) => {
+      if (!onDeleteSection || groups.length <= 1) return;
+      setSectionDeleteConfirm({ sectionId, sectionName, loading: false });
+    },
+    [groups.length, onDeleteSection]
+  );
+
+  const handleConfirmDeleteSection = useCallback(async () => {
+    if (!sectionDeleteConfirm || !onDeleteSection) return;
+    setSectionDeleteConfirm((prev) => (prev ? { ...prev, loading: true } : prev));
+    try {
+      await onDeleteSection(sectionDeleteConfirm.sectionId);
+      if (activeSectionId === sectionDeleteConfirm.sectionId) {
+        const remaining = groups.find((g) => g.section.id !== sectionDeleteConfirm.sectionId);
+        setActiveSectionId(remaining?.section.id ?? null);
+      }
+      setToastMessage({
+        message: `Section "${sectionDeleteConfirm.sectionName}" deleted`,
+        type: 'success',
+      });
+      setTimeout(() => setToastMessage(null), 2000);
+      setSectionDeleteConfirm(null);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Failed to delete section');
+      setSectionDeleteConfirm((prev) => (prev ? { ...prev, loading: false } : prev));
+    }
+  }, [
+    activeSectionId,
+    groups,
+    message,
+    onDeleteSection,
+    sectionDeleteConfirm,
+    setActiveSectionId,
+  ]);
+
   const activeGroup = useMemo(
     () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
     [groups, effectiveActiveSectionId]
@@ -1008,7 +1058,8 @@ export function LibraryAssetsTable({
           editingSectionId={editingSectionId}
           editingSectionName={editingSectionName}
           sectionInputRef={sectionInputRef}
-          canAddSection={!!onAddSection}
+          canAddSection={!!onAddSection && canManageSections}
+          canManageSections={canManageSections}
           hasScriptColumns={hasScriptColumns}
           scriptViewMode={scriptViewMode}
           showScriptViewToggle={false}
@@ -1022,6 +1073,7 @@ export function LibraryAssetsTable({
           onChangeSectionName={setEditingSectionName}
           onFinishSectionEdit={handleSectionEditEnd}
           onAddSection={handleAddSectionFromTabs}
+          onRequestDeleteSection={onDeleteSection ? handleRequestDeleteSection : undefined}
           onChangeScriptViewMode={() => undefined}
           onHighlightCells={handleTableFindHighlightCells}
           onClearHighlight={handleTableFindClearHighlight}
@@ -1282,6 +1334,19 @@ export function LibraryAssetsTable({
         onCancel={() => {
           setDeleteConfirmVisible(false);
           setDeletingAssetId(null);
+        }}
+      />
+      <DeleteConfirmDialog
+        open={!!sectionDeleteConfirm}
+        title="Confirm deletion"
+        content="Delete this section?"
+        confirmLoading={sectionDeleteConfirm?.loading}
+        onConfirm={() => {
+          void handleConfirmDeleteSection();
+        }}
+        onCancel={() => {
+          if (sectionDeleteConfirm?.loading) return;
+          setSectionDeleteConfirm(null);
         }}
       />
       <ClearContentsModal

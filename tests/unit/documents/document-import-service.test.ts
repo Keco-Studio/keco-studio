@@ -237,6 +237,22 @@ describe('document import service', () => {
     expect(createDocumentImportCheckpoint).not.toHaveBeenCalled();
   });
 
+  it('publishes the edited document name and notes', async () => {
+    parseDocument.mockResolvedValue({ text: '# World', images: [] });
+
+    await createImportedDocument(client, {
+      projectId: PROJECT_ID,
+      file: file('world.docx'),
+      name: 'Campaign guide',
+      description: 'Imported reference notes',
+    });
+
+    expect(publishImportedDocument).toHaveBeenCalledWith(client, expect.objectContaining({
+      name: 'Campaign guide',
+      description: 'Imported reference notes',
+    }));
+  });
+
   it('replaces 11 fixed-length sentinels without corrupting later image URLs', async () => {
     const placeholders = Array.from({ length: 11 }, (_, index) =>
       `https://document-import.invalid/00000000-0000-4000-8000-${String(index).padStart(12, '0')}`

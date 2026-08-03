@@ -29,12 +29,17 @@ import {
   type DocumentPermissionState,
 } from './useDocumentPermissions';
 import { useDocumentCollaboration } from './useDocumentCollaboration';
+import { getDocumentVersionPreview } from '@/lib/documents/documentVersionService';
 import { DocumentVersionSidebar } from './DocumentVersionSidebar';
 import type {
   MDXEditorMethods,
   MdxDocumentEditorProps,
 } from './MdxDocumentEditor';
 import styles from './DocumentEditor.module.css';
+
+const rejectHistoricalImageUpload = async () => {
+  throw new Error('Images cannot be uploaded while viewing a historical version');
+};
 
 const MdxDocumentEditor = dynamic<MdxDocumentEditorProps>(
   () => import('./MdxDocumentEditor'),
@@ -131,6 +136,7 @@ function DocumentEditorSession({
 }) {
   const supabase = useSupabase();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [scriptSource, setScriptSource] = useState<DocumentExportSource | null>(null);
@@ -147,6 +153,14 @@ function DocumentEditorSession({
     role: permissions.role,
     userName: permissions.userName,
   });
+  const historicalPreviewQuery = useQuery({
+    queryKey: queryKeys.documentVersion(document.id, selectedVersionId ?? ''),
+    queryFn: () => getDocumentVersionPreview(supabase, document.id, selectedVersionId!),
+    enabled: Boolean(selectedVersionId),
+  });
+  const viewingHistoricalVersion = Boolean(selectedVersionId);
+  const historicalMarkdown = historicalPreviewQuery.data?.markdown ?? '';
+  const historicalVersionName = historicalPreviewQuery.data?.name ?? 'selected version';
 
   useEffect(() => {
     setDerivedImportProgress(getDocumentDerivedImportProgress(projectId, document.id));
@@ -351,7 +365,10 @@ function DocumentEditorSession({
       void handleExport({ key: detail?.key ?? 'mdx' });
     };
     const handleTopbarHistoryToggle = () => {
-      setHistoryOpen((open) => !open);
+      setHistoryOpen((open) => {
+        if (open) setSelectedVersionId(null);
+        return !open;
+      });
     };
     window.addEventListener('document-export-trigger', handleTopbarExport);
     window.addEventListener('document-history-toggle', handleTopbarHistoryToggle);
@@ -360,6 +377,19 @@ function DocumentEditorSession({
       window.removeEventListener('document-history-toggle', handleTopbarHistoryToggle);
     };
   }, [handleExport]);
+
+  // Open history when navigated here from sidebar "Version history".
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const pendingDocumentId = window.sessionStorage.getItem('keco-open-document-history');
+      if (!pendingDocumentId || pendingDocumentId !== document.id) return;
+      window.sessionStorage.removeItem('keco-open-document-history');
+      setHistoryOpen(true);
+    } catch {
+      window.sessionStorage.removeItem('keco-open-document-history');
+    }
+  }, [document.id]);
 
   return (
     <div className={styles.container}>
@@ -447,9 +477,47 @@ function DocumentEditorSession({
             </div>
           )}
 
+          {viewingHistoricalVersion && (
+            <div className={styles.versionPreviewBanner} role="status" aria-live="polite">
+              <span>
+                Viewing version: <strong>{historicalVersionName}</strong>
+              </span>
+              <button
+                type="button"
+                className={styles.versionPreviewExit}
+                onClick={() => setSelectedVersionId(null)}
+              >
+                Back to current
+              </button>
+            </div>
+          )}
+
           <div className={styles.workspace}>
             <div className={styles.editorPane}>
-              {collaboration.isLegacyView ? (
+              {viewingHistoricalVersion ? (
+                historicalPreviewQuery.isLoading ? (
+                  <div className={styles.editorPlaceholder}>Loading version…</div>
+                ) : historicalPreviewQuery.error ? (
+                  <div className={styles.error} role="alert">
+                    {historicalPreviewQuery.error instanceof Error
+                      ? historicalPreviewQuery.error.message
+                      : 'Unable to load version preview.'}
+                  </div>
+                ) : (
+                  <MdxDocumentEditor
+                    key={`${document.id}:version:${selectedVersionId}`}
+                    projectId={projectId}
+                    documentId={document.id}
+                    markdown={historicalMarkdown}
+                    readOnly
+                    showToolbar={false}
+                    onChange={ignoreMarkdownChange}
+                    imageUploadHandler={rejectHistoricalImageUpload}
+                    editorRef={handleEditorRef}
+                    referenceNavigationReady={referenceNavigationReady}
+                  />
+                )
+              ) : collaboration.isLegacyView ? (
                 <MdxDocumentEditor
                   key={editorKey}
                   projectId={projectId}
@@ -492,7 +560,12 @@ function DocumentEditorSession({
           documentId={document.id}
           canMutate={permissions.role !== 'viewer'}
           session={collaboration.session}
-          onClose={() => setHistoryOpen(false)}
+          selectedVersionId={selectedVersionId}
+          onVersionSelect={setSelectedVersionId}
+          onClose={() => {
+            setSelectedVersionId(null);
+            setHistoryOpen(false);
+          }}
         />
       </section>
       <ImportScriptModal

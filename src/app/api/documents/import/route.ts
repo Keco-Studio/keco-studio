@@ -10,6 +10,7 @@ const Body = z.object({
   projectId: z.string().uuid(),
   folderId: z.string().uuid().nullable(),
   name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(250).nullable().optional().default(null),
   markdown: z.string().max(500_000),
 }).strict();
 
@@ -40,6 +41,7 @@ export const POST = withAuth(async function POST(
       projectId: body.data.projectId!,
       folderId: body.data.folderId ?? null,
       name: body.data.name!,
+      description: body.data.description,
       markdown: body.data.markdown!,
     });
     return NextResponse.json({ document });

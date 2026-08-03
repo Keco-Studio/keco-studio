@@ -100,6 +100,30 @@ describe('story source segmentation', () => {
     ]));
   });
 
+  it('extracts choice text from a Chinese numbered branch heading', () => {
+    const content = '【\u5206\u652f\u9009\u62e9\u4e00：\u7b54\u5e03\u9632——\u7a33\u5b88\u6d3e\u8def\u7ebf】';
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments).toEqual([
+      expect.objectContaining({
+        kind: 'choice_text',
+        text: '\u7b54\u5e03\u9632——\u7a33\u5b88\u6d3e\u8def\u7ebf',
+        display: true,
+        required: true,
+      }),
+    ]);
+  });
+
+  it('extracts a choice and route marker from a natural Chinese branch line', () => {
+    const content = '\u5206\u652f\u4e00：\u9009\u62e9【\u4e1c\u4fa7\u5ba2\u623f】（\u5b89\u7a33\u8c28\u614e\u7ebf）';
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'choice_text', text: '\u4e1c\u4fa7\u5ba2\u623f' }),
+      expect.objectContaining({ kind: 'branch_marker', text: '\u5b89\u7a33\u8c28\u614e\u7ebf' }),
+    ]));
+  });
+
   it('hydrates source refs from server-owned segment unit ids', () => {
     const result = segmentStorySource('You: Walk left.', 'fixture');
     const dialogue = result.segments.find((segment) => segment.kind === 'dialogue');

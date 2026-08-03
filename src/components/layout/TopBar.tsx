@@ -37,6 +37,8 @@ import {
   type CellReplacementUpdate,
 } from '@/lib/realtime/cell-replacement-broadcast';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
+import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { ScriptTopBarActions } from '@/components/script-system/ScriptTopBarActions';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -1254,6 +1256,24 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   const renderRightContent = () => {
+    const onScriptSystem = isScriptSystemPath(pathname);
+    if (onScriptSystem && currentProjectId) {
+      const isScriptSplitPage =
+        !!currentLibraryId &&
+        (pathname?.includes(`/script-system/${currentProjectId}/script/`) ??
+          false);
+
+      return (
+        <ScriptTopBarActions
+          projectId={currentProjectId}
+          projectName={shareProjectName}
+          userRole={(userRole || 'viewer') as CollaboratorRole}
+          libraryId={currentLibraryId}
+          showFlowChartToggle={isScriptSplitPage}
+        />
+      );
+    }
+
     if (isDocumentDetail) {
       return (
         <>

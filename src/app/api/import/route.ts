@@ -29,6 +29,7 @@ export const POST = withAuth(async function POST(
     return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
   }
   const libraryName = String(formData.get('libraryName') ?? '').trim();
+  const description = String(formData.get('description') ?? '').trim();
   const file = formData.get('file');
 
   if (!projectId || !isUuid(projectId)) {
@@ -36,6 +37,9 @@ export const POST = withAuth(async function POST(
   }
   if (!libraryName) {
     return NextResponse.json({ error: 'Library name is required' }, { status: 400 });
+  }
+  if (description.length > 250) {
+    return NextResponse.json({ error: 'Notes exceed 250 character limit' }, { status: 400 });
   }
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'File is required' }, { status: 400 });
@@ -56,6 +60,7 @@ export const POST = withAuth(async function POST(
       projectId,
       folderId,
       libraryName,
+      description: description || null,
       fileBuffer: buffer,
       fileName: file.name,
     });

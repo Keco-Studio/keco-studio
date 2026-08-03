@@ -1,12 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
+import { DocumentDropZone } from '@/components/design-upload/DocumentDropZone';
+import { ImportResourceModal } from '@/components/shared/ImportResourceModal';
+import {
+  nextImportName,
+  normalizeImportNotes,
+} from '@/components/shared/importResourceForm';
 import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { validateName } from '@/lib/utils/nameValidation';
 import { previewWorkbookFile } from '@/lib/utils/workbook';
-import styles from './ExportLibraryModal.module.css';
+import dialog from '@/components/shared/FormDialog.module.css';
 
 type ImportLibraryModalProps = {
   open: boolean;
@@ -24,6 +29,8 @@ type FilePreview = {
 };
 
 const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+const TABLE_ACCEPT = '.csv,.xlsx,.xls';
+const TABLE_FORMATS_HINT = 'Supported formats: .csv, .xlsx, .xls';
 
 function previewImportFile(file: File): Promise<FilePreview> {
   return previewWorkbookFile(file).then(({ sheetCount, columnCount, rowCount }) => {
@@ -36,11 +43,6 @@ function previewImportFile(file: File): Promise<FilePreview> {
   });
 }
 
-function defaultLibraryNameFromFile(fileName: string): string {
-  const base = fileName.replace(/\.[^.]+$/, '').trim();
-  return base || 'Imported Library';
-}
-
 export function ImportLibraryModal({
   open,
   projectId,
@@ -49,18 +51,18 @@ export function ImportLibraryModal({
   onImported,
 }: ImportLibraryModalProps) {
   const supabase = useSupabase();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [libraryName, setLibraryName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
+  const [notes, setNotes] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [importing, setImporting] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) {
       setLibraryName('');
+      setNameEdited(false);
+      setNotes('');
       setSelectedFile(null);
       setPreview(null);
     }
@@ -84,9 +86,12 @@ export function ImportLibraryModal({
     }
 
     setSelectedFile(file);
-    if (!libraryName.trim()) {
-      setLibraryName(defaultLibraryNameFromFile(file.name));
-    }
+    setLibraryName((currentName) => nextImportName({
+      currentName,
+      fileName: file.name,
+      kind: 'table',
+      nameEdited,
+    }));
 
     try {
       const nextPreview = await previewImportFile(file);
@@ -126,6 +131,8 @@ export function ImportLibraryModal({
       formData.append('projectId', projectId);
       if (folderId) formData.append('folderId', folderId);
       formData.append('libraryName', trimmedName);
+      const description = normalizeImportNotes(notes);
+      if (description) formData.append('description', description);
       formData.append('file', selectedFile);
 
       const res = await fetch('/api/import', {
@@ -153,95 +160,52 @@ export function ImportLibraryModal({
     }
   };
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose();
-  };
-
-  if (!open) return null;
-  if (!mounted) return null;
-
-  return createPortal(
-    <div className={styles.backdrop} onClick={handleBackdropClick}>
-      <div className={styles.modal} data-testid="import-library-modal" onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <div className={styles.title}>Import</div>
-          <button className={styles.close} onClick={onClose} aria-label="Close">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div className={styles.divider} />
-        <div className={styles.content}>
-          <p className={styles.hint}>
-            Import a spreadsheet to create a new library. The first row is used as column headers; all columns are created as string fields.
-          </p>
-
-          <div className={styles.nameContainer}>
-            <label htmlFor="import-library-name" className={styles.nameLabel}>Library Name</label>
-            <input
-              id="import-library-name"
-              data-testid="import-library-name"
-              className={styles.nameInput}
-              value={libraryName}
-              onChange={(e) => setLibraryName(e.target.value)}
-              placeholder="Enter library name"
-              disabled={importing}
-            />
-          </div>
-
-          <div className={styles.nameContainer}>
-            <span className={styles.nameLabel}>File</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              data-testid="import-library-file"
-              accept=".csv,.xlsx,.xls"
-              style={{ display: 'none' }}
-              onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-              disabled={importing}
-            />
-            <button
-              type="button"
-              className={styles.cancelButton}
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
+  return (
+    <ImportResourceModal
+      open={open}
+      resourceLabel="Table"
+      name={libraryName}
+      notes={notes}
+      submitting={importing}
+      submitDisabled={!selectedFile || !libraryName.trim()}
+      testId="import-library-modal"
+      onNameChange={(nextName) => {
+        setLibraryName(nextName);
+        setNameEdited(true);
+      }}
+      onNotesChange={setNotes}
+      onClose={onClose}
+      onSubmit={() => void handleImport()}
+      fileControl={(
+        <>
+          <DocumentDropZone
+            selectedFile={selectedFile}
+            compact
+            disabled={importing}
+            accept={TABLE_ACCEPT}
+            formatsHint={TABLE_FORMATS_HINT}
+            dropZoneTestId="import-library-drop-zone"
+            fileInputTestId="import-library-file"
+            selectedFileTestId="import-library-selected-file"
+            clearButtonTestId="import-library-clear-file"
+            onFileSelected={(file) => void handleFileChange(file)}
+            onClear={() => {
+              setSelectedFile(null);
+              setPreview(null);
+              if (!nameEdited) setLibraryName('');
+            }}
+          />
+          {preview ? (
+            <p
+              className={dialog.filePreview}
+              data-testid="import-library-preview"
             >
-              {selectedFile ? 'Change file' : 'Choose file'}
-            </button>
-            {preview && (
-              <p
-                className={styles.hint}
-                data-testid="import-library-preview"
-                style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}
-              >
-                {preview.fileName}: {preview.columnCount} columns, {preview.rowCount} rows
-                {preview.sectionCount > 1 ? `, ${preview.sectionCount} sheets` : ''}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className={styles.divider} />
-        <div className={styles.footer}>
-          <button
-            className={`${styles.button} ${styles.primary}`}
-            data-testid="import-library-submit"
-            onClick={handleImport}
-            disabled={importing || !selectedFile || !libraryName.trim()}
-          >
-            {importing ? (
-              <>
-                <span className={styles.spinner} aria-hidden />
-                Importing...
-              </>
-            ) : (
-              'Import'
-            )}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+              {preview.fileName}: {preview.columnCount} columns, {preview.rowCount} rows
+              {preview.sectionCount > 1 ? `, ${preview.sectionCount} sheets` : ''}
+            </p>
+          ) : null}
+        </>
+      )}
+    />
   );
 }

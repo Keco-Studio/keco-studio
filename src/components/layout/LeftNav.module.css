@@ -69,8 +69,7 @@
 .expandTab {
   position: fixed;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 12px;
   z-index: 40;
   width: 24px;
   height: 40px;

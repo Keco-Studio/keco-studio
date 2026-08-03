@@ -44,10 +44,12 @@ export interface SegmentedStorySource {
 
 const BACKGROUND_PATTERN = /^(?:Background|Setting|Characters?|Cast)[：:]\s*(.+)$/i;
 const NATURAL_BRANCH_PATTERN = /^Branch\s*\d+\s*[：:]\s*Choose\s*[【[]([^】\]]+)[】\]](?:\s*[（(]([^）)]+)[）)])?$/i;
+const CHINESE_NATURAL_BRANCH_PATTERN = /^\u5206\u652f\s*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+\s*[：:]\s*\u9009\u62e9\s*[【[]([^】\]]+)[】\]](?:\s*[（(]([^）)]+)[）)])?$/;
 const EXPLICIT_BRANCH_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(?:branch|merge)\s*[【[]\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*[|｜]\s*([^】\]]*)[】\]]$/i;
 const EXPLICIT_OPTION_PREFIX = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s*[：:]/;
 const JUMP_ONLY_PATTERN = /^[（(]\s*Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?\s*[）)]$/i;
 const JUMP_TOKEN_PATTERN = /Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
+const CHINESE_BRANCH_PATTERN = /^【\s*\u5206\u652f\u9009\u62e9(?:[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+)?\s*[：:]\s*([^】]+?)\s*】$/;
 const HEADING_PATTERN = /^【([^】]+)】$/;
 const DIALOGUE_PATTERN = /^([^：:]{1,64})[：:]\s*(.+)$/;
 const SPEAKER_CUE_PATTERN = /^(.+?)[（(]([^）)]*)[）)]$/;
@@ -124,6 +126,23 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
       return;
     }
 
+    const chineseNaturalBranch = CHINESE_NATURAL_BRANCH_PATTERN.exec(line);
+    if (chineseNaturalBranch) {
+      addMatchedText(unit, add, 'choice_text', chineseNaturalBranch[1], 0, true, true);
+      if (chineseNaturalBranch[2]) {
+        addMatchedText(
+          unit,
+          add,
+          'branch_marker',
+          chineseNaturalBranch[2],
+          line.indexOf(chineseNaturalBranch[1]) + chineseNaturalBranch[1].length,
+          false,
+          false
+        );
+      }
+      return;
+    }
+
     const explicitBranch = EXPLICIT_BRANCH_PATTERN.exec(line);
     if (explicitBranch) {
       if (explicitBranch[3]) {
@@ -135,6 +154,12 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
     const jumpOnly = JUMP_ONLY_PATTERN.exec(line);
     if (jumpOnly) {
       addMatchedText(unit, add, 'jump_hint', jumpOnly[1], 0, false, false);
+      return;
+    }
+
+    const chineseBranch = CHINESE_BRANCH_PATTERN.exec(line);
+    if (chineseBranch) {
+      addMatchedText(unit, add, 'choice_text', chineseBranch[1], 0, true, true);
       return;
     }
 

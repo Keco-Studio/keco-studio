@@ -181,6 +181,7 @@ describeDb('document version history RLS and transactions (live database)', () =
       projectId: string;
       folderId: string | null;
       name: string;
+      description: string;
       markdown: string;
       yjsState: string;
     }> = {}
@@ -192,6 +193,7 @@ describeDb('document version history RLS and transactions (live database)', () =
       p_project_id: overrides.projectId ?? fx.projectId,
       p_folder_id: overrides.folderId ?? null,
       p_name: overrides.name ?? 'Imported guide',
+      p_description: overrides.description ?? '',
       p_markdown: overrides.markdown ?? '# Imported',
       p_yjs_state: overrides.yjsState ?? 'AQID',
     };
@@ -585,6 +587,7 @@ describeDb('document version history RLS and transactions (live database)', () =
       p_project_id: fx.projectId,
       p_folder_id: null,
       p_name: 'Imported guide',
+      p_description: '',
       p_markdown: '# Imported',
       p_yjs_state: 'AQID',
     });
@@ -595,6 +598,7 @@ describeDb('document version history RLS and transactions (live database)', () =
         id: documentId,
         project_id: fx.projectId,
         name: 'Imported guide',
+        description: '',
         content: '# Imported',
       }),
     ]);
@@ -621,6 +625,7 @@ describeDb('document version history RLS and transactions (live database)', () =
         p_project_id: fx.projectId,
         p_folder_id: null,
         p_name: 'Denied import',
+        p_description: '',
         p_markdown: '# Denied',
         p_yjs_state: 'AQID',
       });

@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -15,34 +16,79 @@ import {
   readSplitRatio,
   writeSplitRatio,
 } from '@/lib/script-system/splitRatioStorage';
+import {
+  SCRIPT_FLOW_CHART_TOGGLE_EVENT,
+  broadcastScriptFlowChartState,
+} from '@/lib/script-system/flowChartTopBarEvents';
+import {
+  buildScriptFlowGraph,
+  type FlowGraph,
+} from '@/lib/script-system/buildScriptFlowGraph';
 import { FlowChartPanel } from './FlowChartPanel';
 import styles from './ScriptSplitView.module.css';
 
 export type ScriptSplitViewProps = {
+  libraryId: string;
   libraryName: string;
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   flowRows: Array<Record<string, string>>;
+  persistedGraph?: FlowGraph;
 };
 
 const MIN_PANE_PX = 240;
 const DIVIDER_WIDTH = 6;
 
 export function ScriptSplitView({
+  libraryId,
   libraryName,
   rows,
   scriptColumns,
   flowRows,
+  persistedGraph,
 }: ScriptSplitViewProps) {
+  const graph = useMemo(
+    () => persistedGraph ?? buildScriptFlowGraph(flowRows),
+    [flowRows, persistedGraph]
+  );
+  const [plotSelection, setPlotSelection] = useState(() => ({
+    libraryId,
+    nodeId: graph.nodes[0]?.id ?? '',
+  }));
+  const selectedPlotNodeId = plotSelection.libraryId === libraryId
+    && graph.nodes.some((node) => node.id === plotSelection.nodeId)
+    ? plotSelection.nodeId
+    : graph.nodes[0]?.id ?? '';
   const [ratio, setRatio] = useState(() => readSplitRatio());
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(ratio);
 
+  const selectedRows = useMemo(() => {
+    const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
+    return selected?.rowIndexes
+      .map((index) => rows[index])
+      .filter((row): row is AssetRow => Boolean(row)) ?? [];
+  }, [graph.nodes, rows, selectedPlotNodeId]);
+
   useEffect(() => {
     ratioRef.current = ratio;
   }, [ratio]);
+
+  useEffect(() => {
+    broadcastScriptFlowChartState({ libraryId, collapsed });
+  }, [libraryId, collapsed]);
+
+  useEffect(() => {
+    const onToggle = () => {
+      setCollapsed((prev) => !prev);
+    };
+    window.addEventListener(SCRIPT_FLOW_CHART_TOGGLE_EVENT, onToggle);
+    return () => {
+      window.removeEventListener(SCRIPT_FLOW_CHART_TOGGLE_EVENT, onToggle);
+    };
+  }, []);
 
   useEffect(() => {
     if (!dragging) return;
@@ -84,19 +130,6 @@ export function ScriptSplitView({
 
   return (
     <div className={styles.root}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>{libraryName}</h1>
-        {collapsed ? (
-          <button
-            type="button"
-            className={styles.reopenButton}
-            onClick={() => setCollapsed(false)}
-          >
-            Show Flow chart
-          </button>
-        ) : null}
-      </header>
-
       <div
         ref={bodyRef}
         className={`${styles.body} ${dragging ? styles.dragging : ''}`}
@@ -109,7 +142,16 @@ export function ScriptSplitView({
               : { flex: `${ratio} 1 0%` }
           }
         >
-          <VisualNovelScriptView rows={rows} scriptColumns={scriptColumns} />
+          <header className={styles.leftHeader}>
+            <h1 className={styles.title}>{libraryName}</h1>
+          </header>
+          <div className={styles.leftBody}>
+              <VisualNovelScriptView
+                rows={selectedRows}
+                scriptColumns={scriptColumns}
+                mode="plot-node"
+              />
+          </div>
         </div>
 
         {!collapsed ? (
@@ -126,7 +168,9 @@ export function ScriptSplitView({
               style={{ flex: `${1 - ratio} 1 0%` }}
             >
               <FlowChartPanel
-                rows={flowRows}
+                graph={graph}
+                selectedPlotNodeId={selectedPlotNodeId}
+                onSelectPlotNode={(nodeId) => setPlotSelection({ libraryId, nodeId })}
                 onClose={() => setCollapsed(true)}
               />
             </div>

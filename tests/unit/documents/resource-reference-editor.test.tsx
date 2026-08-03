@@ -43,15 +43,6 @@ jest.mock('next/link', () => ({
   },
 }));
 
-jest.mock('next/image', () => ({
-  __esModule: true,
-  default: ({ src, ...props }: { src: string; [key: string]: unknown }) => (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} data-icon="reference" alt="" {...props} />
-  ),
-}));
-jest.mock('@/assets/images/reference.svg', () => 'reference.svg', { virtual: true });
-
 jest.mock('@ant-design/icons', () => ({
   TableOutlined: () => <svg data-icon="table" />,
   WarningOutlined: () => <svg data-icon="warning" />,

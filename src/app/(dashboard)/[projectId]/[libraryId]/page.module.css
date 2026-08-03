@@ -40,7 +40,10 @@
   flex-shrink: 0;
   width: 400px;
   max-width: 400px;
-  /* Spacer only — panel is position:fixed on the viewport right */
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  min-height: 0;
 }
 
 .header {

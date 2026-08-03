@@ -4,9 +4,11 @@ import { Sidebar } from './Sidebar';
 import { LeftNav } from './LeftNav';
 import { TopBar } from './TopBar';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useNavigation } from '@/lib/contexts/NavigationContext';
 import AuthForm from '@/components/authform/AuthForm';
 import { ChatPanel } from '@/components/agent/ChatPanel';
 import { AgentImportBridge } from '@/components/agent/AgentImportBridge';
+import { ScriptSidebar } from '@/components/script-system/ScriptSidebar';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
@@ -19,10 +21,17 @@ type DashboardLayoutProps = {
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const { isAuthenticated, isLoading, userProfile, signOut } = useAuth();
+  const { currentProjectId } = useNavigation();
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
-  const hideStudioChrome = hideSidebarForSimulation || isScriptSystemPath(pathname);
+  const onScriptSystem = isScriptSystemPath(pathname);
+  // Simulation hides all Studio chrome. Script keeps TopBar and mounts ScriptSidebar
+  // as a left sibling of TopBar/main (matching design: sidebar left of nav bar).
+  const showStudioSidebar = !hideSidebarForSimulation && !onScriptSystem;
+  const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
+  const hideTopBar = hideSidebarForSimulation;
+  const hideChatPanel = hideSidebarForSimulation || onScriptSystem;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
@@ -72,18 +81,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className={styles.dashboard}>
       <LeftNav />
-      {!hideStudioChrome ? (
+      {showStudioSidebar ? (
         <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
           <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
         </div>
       ) : null}
+      {showScriptSidebar && currentProjectId ? (
+        <div className={styles.sidebarSlot}>
+          <ScriptSidebar projectId={currentProjectId} />
+        </div>
+      ) : null}
       <div className={styles.main}>
-        {!hideStudioChrome ? <TopBar /> : null}
+        {!hideTopBar ? <TopBar /> : null}
         <div className={styles.workspace}>
           <div className={styles.content}>
             {children}
           </div>
-          {!hideStudioChrome ? <ChatPanel /> : null}
+          {!hideChatPanel ? <ChatPanel /> : null}
         </div>
       </div>
       <AgentImportBridge />

@@ -11,7 +11,6 @@ import type {
   LibraryRole,
   SimulationImportError,
   SimulationImportResult,
-  SimulationImportWarning,
   SkillCostRule,
   SkillDefinition,
   SkillKind,
@@ -41,7 +40,6 @@ const SKILL_STATUSES: readonly Exclude<SkillStatus, null>[] = ['burn', 'dot', 'f
 const DECIMAL = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 
 type ErrorCode = SimulationImportError['code'];
-type WarningCode = SimulationImportWarning['code'];
 type ParsedRow<T> = { readonly asset: AssetRow; readonly value: T };
 
 function deepFreeze<T>(value: T): DeepReadonly<T> {
@@ -66,28 +64,6 @@ function pushError(
   asset: AssetRow | null = null,
 ): void {
   errors.push({
-    role,
-    code,
-    libraryId: source.libraryId,
-    libraryName: source.libraryName,
-    assetId: asset?.id ?? null,
-    assetName: asset?.name ?? null,
-    field: fieldLabel(role, canonical),
-    reason,
-    message: reason,
-  });
-}
-
-function pushWarning(
-  warnings: SimulationImportWarning[],
-  source: StudioLibrarySource,
-  role: LibraryRole,
-  code: WarningCode,
-  canonical: string,
-  reason: string,
-  asset: AssetRow | null = null,
-): void {
-  warnings.push({
     role,
     code,
     libraryId: source.libraryId,
@@ -357,88 +333,26 @@ function validateUniqueIds(
   }
 }
 
-function warnAndDedupeRules<T extends LevelRule | SkillCostRule>(
+function dedupeRules<T extends LevelRule | SkillCostRule>(
   role: 'level' | 'skillc',
-  source: StudioLibrarySource,
   rows: readonly ParsedRow<T>[],
-  warnings: SimulationImportWarning[],
 ): ParsedRow<T>[] {
-  const field = role === 'level' ? 'level' : 'lv';
   const keyOf = (value: T) => role === 'level'
     ? `${(value as LevelRule).characterId ?? ''}\u0000${(value as LevelRule).level}`
     : `${(value as SkillCostRule).skillId ?? ''}\u0000${(value as SkillCostRule).lv}`;
-  const dimensionOf = (value: T) => role === 'level'
-    ? (value as LevelRule).characterId ?? ''
-    : (value as SkillCostRule).skillId ?? '';
-  const indexOf = (value: T) => role === 'level'
-    ? (value as LevelRule).level
-    : (value as SkillCostRule).lv;
   const seen = new Set<string>();
   const kept: ParsedRow<T>[] = [];
   for (const row of rows) {
     const key = keyOf(row.value);
-    if (seen.has(key)) {
-      pushWarning(warnings, source, role, 'duplicate_rule', field, `Duplicate ${fieldLabel(role, field)} rule; the first row is used.`, row.asset);
-      continue;
-    }
+    if (seen.has(key)) continue;
     seen.add(key);
     kept.push(row);
-  }
-
-  const groups = new Map<string, number[]>();
-  for (const row of kept) {
-    const dimension = dimensionOf(row.value);
-    groups.set(dimension, [...(groups.get(dimension) ?? []), indexOf(row.value)]);
-  }
-  for (const [dimension, indexes] of groups) {
-    const ordered = [...indexes].sort((left, right) => left - right);
-    if (ordered.some((value, index) => value !== index + 1)) {
-      const scope = dimension ? ` for ${dimension}` : '';
-      pushWarning(warnings, source, role, 'invalid_sequence', field, `${fieldLabel(role, field)} values${scope} do not start at 1 or contain gaps.`);
-    }
   }
   return kept;
 }
 
-function warnMissingLevelCoverage(
-  source: StudioLibrarySource,
-  characterIds: ReadonlySet<string>,
-  rows: readonly ParsedRow<LevelRule>[],
-  warnings: SimulationImportWarning[],
-): void {
-  const expected = new Set(rows.map(({ value }) => value.level));
-  for (const characterId of characterIds) {
-    const available = new Set(rows
-      .filter(({ value }) => !value.characterId || value.characterId === characterId)
-      .map(({ value }) => value.level));
-    const missing = [...expected].filter((level) => !available.has(level)).sort((a, b) => a - b);
-    if (missing.length) {
-      pushWarning(warnings, source, 'level', 'missing_rule', 'characterId', `Character ${characterId} has no rule for level ${missing.join(', ')}.`);
-    }
-  }
-}
-
-function warnMissingSkillCoverage(
-  source: StudioLibrarySource,
-  skillIds: ReadonlySet<string>,
-  rows: readonly ParsedRow<SkillCostRule>[],
-  warnings: SimulationImportWarning[],
-): void {
-  const expected = new Set(rows.map(({ value }) => value.lv));
-  for (const skillId of skillIds) {
-    const available = new Set(rows
-      .filter(({ value }) => !value.skillId || value.skillId === skillId)
-      .map(({ value }) => value.lv));
-    const missing = [...expected].filter((level) => !available.has(level)).sort((a, b) => a - b);
-    if (missing.length) {
-      pushWarning(warnings, source, 'skillc', 'missing_rule', 'skillId', `Skill ${skillId} has no cost rule for level ${missing.join(', ')}.`);
-    }
-  }
-}
-
 export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): SimulationImportResult {
   const errors: SimulationImportError[] = [];
-  const warnings: SimulationImportWarning[] = [];
   const validMappings = Object.fromEntries(ROLES.map((role) => [
     role,
     validateMappings(role, input.sources[role], input.fieldMappings[role], errors),
@@ -472,12 +386,10 @@ export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): 
       pushError(errors, input.sources.skillc, 'skillc', 'unresolved_reference', 'skillId', `Skill ${row.value.skillId} does not exist.`, row.asset);
     }
   }
-  const levelRules = warnAndDedupeRules('level', input.sources.level, parsedLevelRules, warnings);
-  const skillCostRules = warnAndDedupeRules('skillc', input.sources.skillc, parsedSkillCostRules, warnings);
-  warnMissingLevelCoverage(input.sources.level, characterIds, levelRules, warnings);
-  warnMissingSkillCoverage(input.sources.skillc, skillIds, skillCostRules, warnings);
+  const levelRules = dedupeRules('level', parsedLevelRules);
+  const skillCostRules = dedupeRules('skillc', parsedSkillCostRules);
 
-  if (errors.length > 0) return { ok: false, errors, warnings };
+  if (errors.length > 0) return { ok: false, errors };
 
   const date = input.importedAt instanceof Date
     ? new Date(input.importedAt.getTime())
@@ -497,5 +409,5 @@ export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): 
     levelRules: levelRules.map((row) => ({ ...row.value })).sort((a, b) => a.level - b.level),
     skillCostRules: skillCostRules.map((row) => ({ ...row.value })).sort((a, b) => a.lv - b.lv),
   };
-  return { ok: true, snapshot: deepFreeze(snapshot), warnings };
+  return { ok: true, snapshot: deepFreeze(snapshot) };
 }

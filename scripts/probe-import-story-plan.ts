@@ -13,7 +13,7 @@ interface ProbeResult {
   attempts: number;
   nodeCount: number;
   auditVerdict: 'pass' | 'fail';
-  approval: 'primary_pass' | 'adjudicated_pass' | 'failed';
+  approval: 'primary_pass' | 'adjudicated_pass' | 'validation_pass' | 'failed';
   labels: string[];
   targets: string[];
   commands: string[];

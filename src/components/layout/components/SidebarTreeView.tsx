@@ -8,7 +8,6 @@ import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import FolderOpenIcon from '@/assets/images/FolderOpenIcon.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
-import folderIcon from '@/assets/images/folder.svg';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
@@ -21,7 +20,6 @@ import styles from '../Sidebar.module.css';
 type SidebarTreeNodeMeta = {
   _titleStr?: string;
   _nodeType?: 'library' | 'folder' | 'document';
-  _hasNoLibraries?: boolean;
   _isLibraryUnderFolder?: boolean;
   _isDerived?: boolean;
 };
@@ -53,13 +51,13 @@ export type SidebarTreeViewProps = {
   /** Notify parent when a tree drag starts/ends (e.g. Libraries root drop zone). */
   onDragStart?: (dragKey: string) => void;
   onDragEnd?: () => void;
+  isDragPending?: (dragKey: string) => boolean;
 };
 
 function InlineEditRow({
   nodeKey,
   initialValue,
   nodeType,
-  hasNoLibraries,
   userRole,
   onSave,
   onCancel,
@@ -72,7 +70,6 @@ function InlineEditRow({
   nodeKey: string;
   initialValue: string;
   nodeType: 'library' | 'folder' | 'document';
-  hasNoLibraries?: boolean;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   onSave: (key: string, newName: string) => void | Promise<void>;
   onCancel: () => void;
@@ -134,11 +131,6 @@ function InlineEditRow({
       onClick={(e) => e.stopPropagation()}
     >
       <div className={styles.itemMain}>
-        {isFolder && hasNoLibraries && (
-          <div className={styles.folderIconPlaceholder} aria-hidden>
-            <Image src={folderIcon} alt="" width={24} height={24} className="icon-24" />
-          </div>
-        )}
         {!isFolder && (
           <div className={styles.libraryIconContainer}>
             <Image
@@ -211,6 +203,7 @@ export function SidebarTreeView({
   onTreeDrop,
   onDragStart,
   onDragEnd,
+  isDragPending,
 }: SidebarTreeViewProps) {
   const canEditTree = userRole === 'admin' || userRole === 'editor';
 
@@ -218,6 +211,7 @@ export function SidebarTreeView({
     (node: DataNode) => {
       const meta = node as DataNode & SidebarTreeNodeMeta;
       const key = String(meta.key ?? '');
+      if (isDragPending?.(key)) return false;
       if (
         !canDragSidebarNode(
           { ...meta, key },
@@ -236,7 +230,7 @@ export function SidebarTreeView({
       }
       return true;
     },
-    [canEditTree, userRole]
+    [canEditTree, isDragPending, userRole]
   );
 
   const allowDrop = useCallback(
@@ -352,7 +346,6 @@ export function SidebarTreeView({
       const key = String(data.key);
       const titleStr = data._titleStr;
       const nodeType = data._nodeType;
-      const hasNoLibraries = data._hasNoLibraries;
       const isLibraryUnderFolder = data._isLibraryUnderFolder;
       const defaultTitle = data.title;
 
@@ -362,7 +355,6 @@ export function SidebarTreeView({
             nodeKey={key}
             initialValue={titleStr}
             nodeType={nodeType}
-            hasNoLibraries={hasNoLibraries}
             userRole={userRole}
             onSave={onSaveRename}
             onCancel={() => setEditingKey(null)}

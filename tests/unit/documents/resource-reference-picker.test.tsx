@@ -654,14 +654,15 @@ describe('document editor reference controls', () => {
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
 
-  it('preserves the toolbar selection, inserts sanctioned JSX, and hides the read-only trigger', async () => {
+  it('preserves the toolbar selection, inserts sanctioned JSX, and disables the read-only trigger', async () => {
     const onOpen = jest.fn();
     await act(async () => root.render(
       <ResourceReferenceInsertButton readOnly={false} onOpen={onOpen} />
     ));
     expect(toolbarButtonProps?.title).toBe('Insert reference');
     expect(toolbarButtonProps?.['aria-label']).toBe('Insert reference');
-    expect(toolbarButtonProps?.children?.type?.name).toBe('ReferenceToolbarIcon');
+    expect(toolbarButtonProps?.disabled).toBe(false);
+    expect(toolbarButtonProps?.children?.type?.name).toBe('DocumentReferenceIcon');
     const preventDefault = jest.fn();
     toolbarButtonProps?.onMouseDown({ preventDefault });
     toolbarButtonProps?.onClick();
@@ -686,7 +687,8 @@ describe('document editor reference controls', () => {
     await act(async () => root.render(
       <ResourceReferenceInsertButton readOnly onOpen={onOpen} />
     ));
-    expect(toolbarButtonProps).toBeUndefined();
+    expect(toolbarButtonProps?.disabled).toBe(true);
+    expect(toolbarButtonProps?.['aria-label']).toBe('Insert reference');
   });
 
   it('uses one controller for insertion, cancel, and focus restoration', async () => {

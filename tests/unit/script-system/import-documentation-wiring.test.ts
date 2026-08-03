@@ -56,10 +56,12 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(source).toMatch(/listDocuments|useSidebarDocuments/);
   });
 
-  it('ScriptShell renders sidebar beside main children', () => {
-    const source = read('src/components/script-system/ScriptShell.tsx');
-    expect(source).toContain('ScriptSidebar');
-    expect(source).toContain('children');
+  it('ScriptShell renders main content only; Sidebar is DashboardLayout chrome', () => {
+    const shell = read('src/components/script-system/ScriptShell.tsx');
+    const layout = read('src/components/layout/DashboardLayout.tsx');
+    expect(shell).not.toContain('ScriptSidebar');
+    expect(shell).toContain('children');
+    expect(layout).toContain('ScriptSidebar');
   });
 
   it('ScriptShell flush content allows document scroll', () => {
@@ -87,6 +89,8 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(landing).toContain('readScriptProjectPreference');
     expect(landing).toContain('writeScriptProjectPreference');
     expect(landing).toContain('/script-system/');
+    expect(landing).toContain('router.replace');
+    expect(landing).not.toContain('Choose a project');
     expect(projectLayout).toContain('ScriptShell');
     expect(importPage).toContain('ImportDocumentationView');
     expect(docPage).toMatch(/documentId|Document/);

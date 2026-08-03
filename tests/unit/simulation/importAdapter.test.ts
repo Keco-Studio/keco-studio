@@ -175,7 +175,7 @@ describe('strict Studio simulation import adapter', () => {
     ]));
   });
 
-  it('imports repeated and non-contiguous curve levels with warnings and keeps the first composite rule', () => {
+  it('imports repeated and non-contiguous curve levels and keeps the first composite rule', () => {
     const sources = createValidSources();
     sources.level.assets[1].propertyValues[FIELD_KEYS.level.level] = 4;
     sources.skillc.assets[1].propertyValues[FIELD_KEYS.skillc.lv] = 3;
@@ -188,12 +188,10 @@ describe('strict Studio simulation import adapter', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.warnings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'level', code: 'invalid_sequence', field: 'Level' }),
-      expect.objectContaining({ role: 'skillc', code: 'invalid_sequence', field: 'Level' }),
-      expect.objectContaining({ role: 'skillc', code: 'duplicate_rule', field: 'Level' }),
-    ]));
     expect(result.snapshot.skillCostRules).toHaveLength(2);
+    expect(result.snapshot.levelRules.map((rule) => rule.level)).toEqual(
+      expect.arrayContaining([4]),
+    );
   });
 
   it('imports character and skill dimensions and blocks unresolved references', () => {
@@ -223,7 +221,7 @@ describe('strict Studio simulation import adapter', () => {
     ]));
   });
 
-  it('warns when an entity is missing levels present elsewhere in its curve table', () => {
+  it('imports when an entity is missing levels present elsewhere in its curve table', () => {
     const sources = createValidSources();
     const secondSkill = structuredClone(sources.skills.assets[0]);
     secondSkill.id = 'second-skill-asset';
@@ -242,9 +240,7 @@ describe('strict Studio simulation import adapter', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.warnings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ role: 'skillc', code: 'missing_rule', field: 'Skill ID' }),
-    ]));
+    expect(result.snapshot.skillCostRules.some((rule) => rule.skillId === 'spark')).toBe(true);
   });
 
   it('returns all errors atomically and never exposes a partial snapshot', () => {

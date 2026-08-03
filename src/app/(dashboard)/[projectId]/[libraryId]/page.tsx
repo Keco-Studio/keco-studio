@@ -26,6 +26,7 @@ import {
   deleteAssets,
   updateSectionName,
   addLibrarySection,
+  deleteLibrarySection,
   addLibraryField,
   ensureDefaultLibraryField,
 } from '@/lib/services/libraryAssetsService';
@@ -119,6 +120,21 @@ export default function LibraryPage() {
         window.removeEventListener('library-version-control-toggle', handleToggleFromTopbar as EventListener);
       }
     };
+  }, [projectId, libraryId]);
+
+  // Open version history when navigated here from sidebar "Version history".
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem('keco-open-library-version-control');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { projectId?: string; libraryId?: string };
+      if (parsed.projectId !== projectId || parsed.libraryId !== libraryId) return;
+      window.sessionStorage.removeItem('keco-open-library-version-control');
+      setIsVersionControlOpen(true);
+    } catch {
+      window.sessionStorage.removeItem('keco-open-library-version-control');
+    }
   }, [projectId, libraryId]);
 
   // Use React Query for data fetching
@@ -376,7 +392,17 @@ export default function LibraryPage() {
 
     showSuccessToast(`Section "${sectionName}" added`);
     return sectionId;
-  }, [addLibrarySection, contextCreateAsset, libraryId, queryClient, supabase, invalidateFormulaFieldMeta]);
+  }, [contextCreateAsset, libraryId, queryClient, supabase, invalidateFormulaFieldMeta]);
+
+  const handleDeleteSection = useCallback(
+    async (sectionId: string) => {
+      await deleteLibrarySection(supabase, sectionId);
+      await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+      await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
+      invalidateFormulaFieldMeta();
+    },
+    [supabase, libraryId, queryClient, invalidateFormulaFieldMeta]
+  );
 
   const handleAddProperty = useCallback(
     async (
@@ -680,6 +706,7 @@ export default function LibraryPage() {
               overrideRows={versionAssetRows}
               onUpdateSection={handleUpdateSection}
               onAddSection={handleAddSection}
+              onDeleteSection={handleDeleteSection}
               onAddProperty={handleAddProperty}
             />
           </RowStoreProvider>

@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Button, Empty, Modal, Spin } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Modal, Spin } from 'antd';
+import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
   deleteDocumentVersion,
-  getDocumentVersionPreview,
   listDocumentVersions,
-  type DocumentVersionPreview,
   type DocumentVersionSummary,
 } from '@/lib/documents/documentVersionService';
 import type { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
@@ -16,8 +15,13 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 import { subscribeToProjectDocumentUpdates } from '@/lib/documents/projectDocumentChannel';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { CreateDocumentVersionModal } from './CreateDocumentVersionModal';
-import { DocumentVersionPreviewModal } from './DocumentVersionPreviewModal';
 import { RestoreDocumentVersionModal } from './RestoreDocumentVersionModal';
+import {
+  DocumentVersionItem,
+  type DocumentVersionListEntry,
+} from './DocumentVersionItem';
+import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
+import closeIcon from '@/assets/images/VersionBoardClose.svg';
 import styles from './DocumentVersionSidebar.module.css';
 
 type DocumentVersionSidebarProps = {
@@ -26,20 +30,10 @@ type DocumentVersionSidebarProps = {
   documentId: string;
   canMutate: boolean;
   session: DocumentCollaborationSession | null;
+  selectedVersionId: string | null;
+  onVersionSelect: (versionId: string | null) => void;
   onClose: () => void;
 };
-
-function versionTypeLabel(type: DocumentVersionSummary['type']): string {
-  return type === 'manual'
-    ? 'Manual'
-    : type === 'automatic'
-      ? 'Automatic'
-      : type === 'pre_restore'
-        ? 'Before restore'
-        : type === 'restore'
-          ? 'Restore'
-          : type;
-}
 
 function canDeleteVersion(type: DocumentVersionSummary['type']): boolean {
   return type === 'manual' || type === 'automatic';
@@ -51,28 +45,27 @@ export function DocumentVersionSidebar({
   documentId,
   canMutate,
   session,
+  selectedVersionId,
+  onVersionSelect,
   onClose,
 }: DocumentVersionSidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const [restoreVersion, setRestoreVersion] = useState<DocumentVersionSummary | null>(null);
+  const [restoreVersion, setRestoreVersion] = useState<DocumentVersionSummary | null>(
+    null
+  );
   const versionsQuery = useQuery({
     queryKey: queryKeys.documentVersions(documentId),
     queryFn: () => listDocumentVersions(supabase, documentId),
     enabled: open,
     staleTime: 0,
   });
-  const previewQuery = useQuery({
-    queryKey: queryKeys.documentVersion(documentId, previewId ?? ''),
-    queryFn: () => getDocumentVersionPreview(supabase, documentId, previewId!),
-    enabled: open && Boolean(previewId),
-  });
   const deleteMutation = useMutation({
     mutationFn: (versionId: string) =>
       deleteDocumentVersion(supabase, documentId, versionId),
-    onSuccess: () => {
+    onSuccess: (_data, versionId) => {
+      if (selectedVersionId === versionId) onVersionSelect(null);
       void queryClient.invalidateQueries({
         queryKey: queryKeys.documentVersions(documentId),
       });
@@ -104,80 +97,113 @@ export function DocumentVersionSidebar({
     });
   }, [documentId, projectId, queryClient]);
 
+  const entries = useMemo((): DocumentVersionListEntry[] => {
+    const history = [...(versionsQuery.data ?? [])].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return [{ kind: 'current' }, ...history.map((version) => ({ kind: 'history' as const, version }))];
+  }, [versionsQuery.data]);
+
   if (!open) return null;
+
   return (
     <aside className={styles.sidebar} aria-label="Version history">
       <div className={styles.header}>
-        <h2>Version history</h2>
-        <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close version history">
-          ×
-        </button>
+        <h2 className={styles.title}>Version History</h2>
+        <div className={styles.headerActions}>
+          {canMutate && (
+            <button
+              type="button"
+              className={styles.addButton}
+              aria-label="Create version"
+              title="Create version"
+              disabled={!session}
+              onClick={() => setCreateOpen(true)}
+            >
+              <Image
+                src={libraryAssetTableAddIcon}
+                alt=""
+                width={24}
+                height={24}
+                className="icon-24"
+              />
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.closeButton}
+            onClick={onClose}
+            aria-label="Close version history"
+            title="Close"
+          >
+            <Image src={closeIcon} alt="" width={24} height={24} className="icon-24" />
+          </button>
+        </div>
       </div>
-      {canMutate && (
-          <Button type="primary" block onClick={() => setCreateOpen(true)} disabled={!session}>
-            Create version
-          </Button>
-      )}
-      {versionsQuery.isLoading && <Spin aria-label="Loading versions" />}
-      {versionsQuery.error && <div role="alert">Unable to load version history.</div>}
-      {!versionsQuery.isLoading && !versionsQuery.error && versionsQuery.data?.length === 0 && (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No saved versions" />
-      )}
-      <div className={styles.list}>
-        {versionsQuery.data?.map((version) => (
-          <div className={styles.row} key={version.id} data-testid={`document-version-row-${version.id}`}>
-            <div className={styles.rowDetails}>
-              <strong>{version.name}</strong>
-              <span>{versionTypeLabel(version.type)}</span>
-              <span>{version.createdByName ?? 'Unknown collaborator'} · {new Date(version.createdAt).toLocaleString()}</span>
-            </div>
-            <div className={styles.actions}>
-              <Button type="link" size="small" onClick={() => setPreviewId(version.id)}>
-                Preview
-              </Button>
-              {canMutate && (
-                <Button type="link" danger size="small" data-testid={`restore-version-${version.id}`} onClick={() => setRestoreVersion(version)}>
-                  Restore
-                </Button>
-              )}
-              {canMutate && canDeleteVersion(version.type) && (
-                <Button
-                  type="link"
-                  danger
-                  size="small"
-                  loading={deleteMutation.isPending && deleteMutation.variables === version.id}
-                  data-testid={`delete-version-${version.id}`}
-                  onClick={() => confirmDelete(version)}
-                >
-                  Delete
-                </Button>
-              )}
-            </div>
+
+      <div className={styles.content}>
+        {versionsQuery.isLoading && (
+          <div className={styles.loading}>
+            <Spin aria-label="Loading versions" />
           </div>
-        ))}
+        )}
+        {versionsQuery.error && (
+          <div className={styles.error} role="alert">
+            Unable to load version history.
+          </div>
+        )}
+        {!versionsQuery.isLoading && !versionsQuery.error && (
+          <div className={styles.versionList}>
+            {entries.map((entry, index) => {
+              const isCurrent = entry.kind === 'current';
+              const versionId = isCurrent ? null : entry.version.id;
+              const isSelected = isCurrent
+                ? selectedVersionId === null
+                : selectedVersionId === versionId;
+              return (
+                <DocumentVersionItem
+                  key={isCurrent ? '__current__' : entry.version.id}
+                  entry={entry}
+                  isFirst={index === 0}
+                  isLast={index === entries.length - 1}
+                  isSelected={isSelected}
+                  canMutate={canMutate}
+                  canDelete={
+                    entry.kind === 'history' &&
+                    canDeleteVersion(entry.version.type)
+                  }
+                  onSelect={onVersionSelect}
+                  onRestore={setRestoreVersion}
+                  onDelete={confirmDelete}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
+
       <CreateDocumentVersionModal
         open={createOpen}
         documentId={documentId}
         session={session}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => queryClient.invalidateQueries({ queryKey: queryKeys.documentVersions(documentId) })}
-      />
-      <DocumentVersionPreviewModal
-        projectId={projectId}
-        documentId={documentId}
-        open={Boolean(previewId)}
-        loading={previewQuery.isLoading}
-        error={previewQuery.error instanceof Error ? previewQuery.error : null}
-        version={(previewQuery.data as DocumentVersionPreview | undefined) ?? null}
-        onClose={() => setPreviewId(null)}
+        onCreated={() =>
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.documentVersions(documentId),
+          })
+        }
       />
       <RestoreDocumentVersionModal
         open={Boolean(restoreVersion)}
         version={restoreVersion}
         session={session}
         onClose={() => setRestoreVersion(null)}
-        onRestored={() => queryClient.invalidateQueries({ queryKey: queryKeys.documentVersions(documentId) })}
+        onRestored={() => {
+          onVersionSelect(null);
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.documentVersions(documentId),
+          });
+        }}
       />
     </aside>
   );

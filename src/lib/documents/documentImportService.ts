@@ -111,6 +111,8 @@ export async function createImportedDocument(
     projectId: string;
     file: File;
     folderId?: string | null;
+    name?: string;
+    description?: string | null;
   }
 ): Promise<ImportedDocument> {
   const validation = validateDesignFile(input.file);
@@ -148,7 +150,8 @@ export async function createImportedDocument(
       versionId,
       projectId: input.projectId,
       folderId: input.folderId ?? null,
-      name: documentNameFromFile(input.file.name),
+      name: input.name?.trim() || documentNameFromFile(input.file.name),
+      description: input.description?.trim() || null,
       markdown,
     });
 

@@ -33,10 +33,37 @@ describe('Keco Script LeftNav wiring', () => {
     expect(source).toMatch(/!onSimulation\s*&&\s*!onScript|!onScript\s*&&\s*!onSimulation/);
   });
 
-  it('DashboardLayout hides Studio sidebar and ChatPanel on script-system', () => {
+  it('DashboardLayout mounts ScriptSidebar left of TopBar on script-system', () => {
     const source = read('src/components/layout/DashboardLayout.tsx');
     expect(source).toContain('isScriptSystemPath');
-    expect(source).toMatch(/hideSidebarForSimulation|hideStudioChrome/);
+    expect(source).toContain('showStudioSidebar');
+    expect(source).toContain('showScriptSidebar');
+    expect(source).toContain('ScriptSidebar');
+    expect(source).toContain('hideTopBar');
+    expect(source).toContain('hideChatPanel');
+    expect(source).toMatch(/hideTopBar\s*=\s*hideSidebarForSimulation/);
+    expect(source).toMatch(/showScriptSidebar\s*=\s*onScriptSystem/);
+  });
+
+  it('ScriptSidebar collapses on TopBar sidebar-toggle', () => {
+    const source = read('src/components/script-system/ScriptSidebar.tsx');
+    const css = read('src/components/script-system/ScriptSidebar.module.css');
+    expect(source).toContain('sidebar-toggle');
+    expect(source).toContain('isSidebarVisible');
+    expect(source).toContain('sidebarHidden');
+    expect(css).toMatch(/\.sidebarHidden/);
+  });
+
+  it('Script breadcrumbs follow sidebar tree not Studio folders', () => {
+    const source = read('src/lib/contexts/NavigationContext.tsx');
+    expect(source).toContain('scriptParentDocumentId');
+    expect(source).toContain('source_document_id');
+    expect(source).toMatch(/Script sidebar tree|onScript/);
+    expect(source).toContain('scriptParentDocumentName');
+    expect(source).toContain('library-breadcrumb');
+    expect(source).not.toMatch(
+      /queryKey:\s*queryKeys\.library\(currentLibraryId\)/
+    );
   });
 
   it('routeParams lists script-system as special segment', () => {
