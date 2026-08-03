@@ -85,7 +85,8 @@ $$;
 
 create or replace function public.mcp_clear_references_to_assets(
   p_project_id uuid,
-  p_asset_ids uuid[]
+  p_asset_ids uuid[],
+  p_target_table_ids uuid[]
 )
 returns integer
 language plpgsql
@@ -95,7 +96,8 @@ as $$
 declare
   v_updated integer := 0;
 begin
-  if coalesce(array_length(p_asset_ids, 1), 0) = 0 then
+  if coalesce(array_length(p_asset_ids, 1), 0) = 0
+    or coalesce(array_length(p_target_table_ids, 1), 0) = 0 then
     return 0;
   end if;
 
@@ -104,6 +106,7 @@ begin
     from public.library_asset_values as value
     join public.library_field_definitions as field
       on field.id = value.field_id and field.data_type = 'reference'
+      and coalesce(field.reference_libraries, array[]::uuid[]) && p_target_table_ids
     join public.library_assets as referencing_asset
       on referencing_asset.id = value.asset_id
     join public.libraries as referencing_table
@@ -200,7 +203,6 @@ begin
   v_section := coalesce(nullif(btrim(p_field ->> 'section'), ''), 'section1');
   v_section_id := nullif(btrim(p_field ->> 'sectionId'), '');
   v_description := nullif(p_field ->> 'description', '');
-  v_required := coalesce((p_field ->> 'required')::boolean, false);
 
   if v_type is null or v_type not in (
     'string','string_array','int','int_array','float','float_array',
@@ -261,6 +263,8 @@ begin
   elsif p_field ? 'referenceTableIds' then
     raise exception 'Reference targets require a reference field' using errcode = '22023';
   end if;
+
+  v_required := coalesce((p_field ->> 'required')::boolean, false);
 
   if v_section_id is null then
     select min(field.section_id), count(distinct field.section_id)
@@ -357,7 +361,7 @@ begin
     end if;
     if v_non_empty_count > 0 then
       delete from public.library_asset_values where field_id = p_field_id;
-      get diagnostics v_cleared_count = row_count;
+      v_cleared_count := v_non_empty_count;
     end if;
   end if;
 
@@ -371,6 +375,7 @@ begin
     required = v_next.required,
     enum_options = v_next.enum_options,
     reference_libraries = v_next.reference_table_ids,
+    -- Field formulas depend on the previous field definition and are reset on edit.
     formula_expression = null
   where id = p_field_id and library_id = p_table_id
   returning * into v_existing;
@@ -438,6 +443,7 @@ as $$
 declare
   v_actor uuid;
   v_table public.libraries%rowtype;
+  v_field public.library_field_definitions%rowtype;
   v_field_count integer;
   v_non_empty_count integer;
   v_deleted_values integer := 0;
@@ -446,9 +452,11 @@ begin
   v_actor := public.mcp_require_writer(p_project_id);
   select * into v_table from public.libraries where id = p_table_id and project_id = p_project_id for update;
   if not found then raise exception 'Table not found' using errcode = 'P0002'; end if;
-  if not exists (
-    select 1 from public.library_field_definitions where id = p_field_id and library_id = p_table_id for update
-  ) then
+  select * into v_field
+  from public.library_field_definitions
+  where id = p_field_id and library_id = p_table_id
+  for update;
+  if not found then
     raise exception 'Field not found' using errcode = 'P0002';
   end if;
   select count(*) into v_field_count from public.library_field_definitions where library_id = p_table_id;
@@ -517,6 +525,7 @@ begin
   from public.library_asset_values as value
   join public.library_field_definitions as field
     on field.id = value.field_id and field.data_type = 'reference'
+    and coalesce(field.reference_libraries, array[]::uuid[]) && array[p_table_id]
   join public.library_assets as referencing_asset
     on referencing_asset.id = value.asset_id
   join public.libraries as referencing_table
@@ -527,7 +536,11 @@ begin
     raise exception 'Row is referenced; clearReferences is required' using errcode = 'PT409';
   end if;
   if v_reference_count > 0 then
-    v_cleared_references := public.mcp_clear_references_to_assets(p_project_id, array[v_row.id]);
+    v_cleared_references := public.mcp_clear_references_to_assets(
+      p_project_id,
+      array[v_row.id],
+      array[p_table_id]
+    );
   end if;
   delete from public.library_assets where id = v_row.id and library_id = p_table_id;
   update public.libraries set updated_at = v_now, updated_by = v_actor where id = p_table_id;
@@ -560,6 +573,7 @@ as $$
 declare
   v_actor uuid;
   v_table public.libraries%rowtype;
+  v_previous_folder_id uuid;
   v_name text;
   v_description text;
   v_folder_id uuid;
@@ -591,6 +605,7 @@ begin
   ) then
     raise exception 'Table name already exists' using errcode = '23505';
   end if;
+  v_previous_folder_id := v_table.folder_id;
   update public.libraries
   set name = v_name, description = v_description, folder_id = v_folder_id,
       updated_at = v_now, updated_by = v_actor
@@ -598,6 +613,9 @@ begin
   returning * into v_table;
   update public.projects set updated_at = v_now where id = p_project_id;
   if v_table.folder_id is not null then update public.folders set updated_at = v_now where id = v_table.folder_id; end if;
+  if v_previous_folder_id is not null and v_previous_folder_id is distinct from v_table.folder_id then
+    update public.folders set updated_at = v_now where id = v_previous_folder_id;
+  end if;
   return query select v_table.id, v_table.name, v_table.description, v_table.folder_id, v_now;
 end;
 $$;
@@ -646,10 +664,13 @@ begin
     select 1
     from jsonb_array_elements(p_fields) as item(value)
     left join public.library_field_definitions as field
-      on field.id = (item.value ->> 'fieldId')::uuid
+      on jsonb_typeof(item.value -> 'fieldId') = 'string'
+      and (item.value ->> 'fieldId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      and field.id = (item.value ->> 'fieldId')::uuid
       and field.library_id = p_table_id
     where jsonb_typeof(item.value) is distinct from 'object'
       or jsonb_typeof(item.value -> 'fieldId') is distinct from 'string'
+      or not ((item.value ->> 'fieldId') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
       or jsonb_typeof(item.value -> 'section') is distinct from 'string'
       or (item.value ? 'sectionId' and jsonb_typeof(item.value -> 'sectionId') is distinct from 'string')
       or length(btrim(item.value ->> 'section')) not between 1 and 100
@@ -658,11 +679,19 @@ begin
   ) then
     raise exception 'Invalid reorder field entry' using errcode = '22023';
   end if;
+  if exists (
+    select 1
+    from jsonb_array_elements(p_fields) as item(value)
+    join public.library_field_definitions as existing_section
+      on existing_section.section_id = nullif(btrim(item.value ->> 'sectionId'), '')
+      and existing_section.library_id <> p_table_id
+    where item.value ? 'sectionId'
+  ) then
+    raise exception 'Section is outside table' using errcode = '23503';
+  end if;
 
   for v_item in select value from jsonb_array_elements(p_fields) loop
     v_field_id := (v_item ->> 'fieldId')::uuid;
-    v_section := btrim(v_item ->> 'section');
-    v_section_id := coalesce(nullif(btrim(v_item ->> 'sectionId'), ''), md5(p_table_id::text || ':' || v_section));
     update public.library_field_definitions set order_index = -(v_index + 1) where id = v_field_id and library_id = p_table_id;
     v_index := v_index + 1;
   end loop;
@@ -723,6 +752,7 @@ begin
   from public.library_asset_values as value
   join public.library_field_definitions as field
     on field.id = value.field_id and field.data_type = 'reference'
+    and coalesce(field.reference_libraries, array[]::uuid[]) && array[p_table_id]
   join public.library_assets as referencing_asset
     on referencing_asset.id = value.asset_id
   join public.libraries as referencing_table
@@ -737,7 +767,11 @@ begin
     raise exception 'Table rows are referenced; clearReferences is required' using errcode = 'PT409';
   end if;
   if v_reference_count > 0 then
-    v_cleared_references := public.mcp_clear_references_to_assets(p_project_id, v_row_ids);
+    v_cleared_references := public.mcp_clear_references_to_assets(
+      p_project_id,
+      v_row_ids,
+      array[p_table_id]
+    );
   end if;
   delete from public.libraries where id = p_table_id and project_id = p_project_id;
   update public.projects set updated_at = v_now where id = p_project_id;
@@ -779,11 +813,24 @@ begin
   if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) not between 1 and 100 then
     raise exception 'Rows must contain 1 to 100 updates' using errcode = '22023';
   end if;
+  if exists (
+    select 1
+    from jsonb_array_elements(p_rows) as item(value)
+    group by coalesce(item.value ->> 'rowId', '#' || (item.value ->> 'rowIndex'))
+    having count(*) > 1
+  ) then
+    raise exception 'Duplicate row selectors in request' using errcode = '22023';
+  end if;
 
   for v_item in select value from jsonb_array_elements(p_rows) loop
     if jsonb_typeof(v_item) is distinct from 'object'
       or jsonb_typeof(v_item -> 'values') is distinct from 'object'
-      or (v_item ? 'rowId') = (v_item ? 'rowIndex') then
+      or (v_item ? 'rowId') = (v_item ? 'rowIndex')
+      or (v_item ? 'rowIndex' and (
+        jsonb_typeof(v_item -> 'rowIndex') <> 'number'
+        or (v_item ->> 'rowIndex') !~ '^[0-9]+$'
+        or (v_item ->> 'rowIndex')::integer < 1
+      )) then
       raise exception 'Invalid row update entry' using errcode = '22023';
     end if;
     if v_item ? 'rowId' then
@@ -876,6 +923,22 @@ begin
   if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) not between 1 and 100 then
     raise exception 'Rows must contain 1 to 100 upserts' using errcode = '22023';
   end if;
+  if exists (
+    select 1
+    from jsonb_array_elements(p_rows) as item(value)
+    where jsonb_typeof(item.value) is distinct from 'object'
+      or jsonb_typeof(item.value -> 'values') is distinct from 'object'
+  ) then
+    raise exception 'Invalid row upsert entry' using errcode = '22023';
+  end if;
+  if exists (
+    select 1
+    from jsonb_array_elements(p_rows) as item(value)
+    where not ((item.value -> 'values') ? v_match_field.label)
+      and not ((item.value -> 'values') ? v_match_field.id::text)
+  ) then
+    raise exception 'Match field value is required' using errcode = '22023';
+  end if;
   if (
     select count(*)
     from (
@@ -896,6 +959,18 @@ begin
     ) as requested
   ) then
     raise exception 'Duplicate match values in request' using errcode = '22023';
+  end if;
+  if exists (
+    select 1
+    from public.library_asset_values as value
+    join public.library_assets as asset
+      on asset.id = value.asset_id and asset.library_id = p_table_id
+    where value.field_id = v_match_field.id
+      and not public.mcp_value_is_empty(value.value_json)
+    group by value.value_json
+    having count(*) > 1
+  ) then
+    raise exception 'Existing match field values are not unique' using errcode = 'PT409';
   end if;
 
   for v_item in select value from jsonb_array_elements(p_rows) loop
@@ -946,8 +1021,10 @@ begin
         insert into public.library_assets(id, library_id, name, row_index, created_at, updated_at, updated_by)
         values(gen_random_uuid(), p_table_id, 'Untitled', v_index, v_now, v_now, v_actor)
         returning * into v_row;
+        v_created := v_created + 1;
+      else
+        v_updated := v_updated + 1;
       end if;
-      v_created := v_created + 1;
     end if;
 
     select coalesce(jsonb_object_agg(field_id::text, value_json), '{}'::jsonb) into v_existing
@@ -977,7 +1054,7 @@ $$;
 
 revoke all on function public.mcp_reference_value_contains_asset(jsonb, uuid) from public, anon, authenticated;
 revoke all on function public.mcp_reference_value_remove_assets(jsonb, uuid[]) from public, anon, authenticated;
-revoke all on function public.mcp_clear_references_to_assets(uuid, uuid[]) from public, anon, authenticated;
+revoke all on function public.mcp_clear_references_to_assets(uuid, uuid[], uuid[]) from public, anon, authenticated;
 revoke all on function public.mcp_field_definition_from_json(uuid, uuid, jsonb) from public, anon, authenticated;
 revoke all on function public.mcp_edit_table_field(uuid, uuid, uuid, jsonb, boolean) from public, anon;
 revoke all on function public.mcp_delete_table_field(uuid, uuid, uuid, boolean) from public, anon;

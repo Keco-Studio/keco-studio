@@ -89,7 +89,8 @@ table exists:
   folder. Duplicate names in the target folder are rejected.
 - `edit_table_field` changes a field's label, type configuration, description,
   required flag, or section. Type changes reject non-empty fields unless
-  `clearValuesOnTypeChange: true` is provided.
+  `clearValuesOnTypeChange: true` is provided. Any field edit resets the field's
+  existing formula expression.
 - `reorder_table_fields` atomically rewrites the full field order. The request
   must include every field in the table exactly once.
 - `delete_table_field`, `delete_table_row`, and `delete_table` are destructive
@@ -98,12 +99,13 @@ table exists:
   current table name.
 - `bulk_update_table_rows` updates up to 100 existing rows atomically.
 - `upsert_table_rows` creates or updates up to 100 rows using a stable
-  non-media, non-reference match field.
+  `string`, `int`, `float`, `boolean`, `enum`, or `date` match field.
 
 Reference cleanup is conservative. Deleting a referenced row or table rejects by
 default. If `clearReferences: true` is supplied, only references pointing to the
-deleted rows are removed from reference cells; unrelated references in the same
-cell are preserved.
+deleted rows from fields that declare the deleted table as an allowed target are
+removed from reference cells; unrelated references in the same cell or unrelated
+reference fields are preserved.
 
 ## Image Uploads
 

@@ -596,7 +596,10 @@ Deno.test("table maintenance tools call their atomic RPCs with public arguments"
     name: "bulk_update_table_rows",
     arguments: {
       tableId,
-      rows: [{ rowId, values: { Title: "A" } }],
+      rows: [
+        { rowId, values: { Title: "A" } },
+        { rowIndex: 2, values: { Title: "B" } },
+      ],
     },
   }, writeContext);
   await rpc("tools/call", {
@@ -625,6 +628,8 @@ Deno.test("table maintenance tools call their atomic RPCs with public arguments"
   assertEquals(primaryCalls[0].parameters?.p_clear_values_on_type_change, true);
   assertEquals(primaryCalls[1].parameters?.p_clear_values, true);
   assertEquals(primaryCalls[2].parameters?.p_clear_references, true);
+  assertEquals(primaryCalls[2].parameters?.p_expected_row_id, rowId);
+  assertEquals(primaryCalls[2].parameters?.p_row_index, null);
   assertEquals(primaryCalls[3].parameters?.p_set_folder, true);
   assertEquals(primaryCalls[3].parameters?.p_set_description, false);
   assertEquals(primaryCalls[4].parameters?.p_fields, [
@@ -633,8 +638,109 @@ Deno.test("table maintenance tools call their atomic RPCs with public arguments"
   assertEquals(primaryCalls[5].parameters?.p_confirm_name, "Renamed");
   assertEquals(primaryCalls[6].parameters?.p_rows, [
     { rowId, values: { Title: "A" } },
+    { rowIndex: 2, values: { Title: "B" } },
   ]);
   assertEquals(primaryCalls[7].parameters?.p_match_field, "Title");
+  assertEquals(primaryCalls[7].parameters?.p_reuse_empty, true);
+});
+
+Deno.test("bulk and upsert table row writes schedule row reindexing from RPC row IDs", async () => {
+  const originalUrl = Deno.env.get("KECO_PUBLIC_URL");
+  const originalSecret = Deno.env.get("MCP_CODEC_SECRET");
+  const globalForTest = globalThis as unknown as {
+    EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void };
+    fetch: typeof fetch;
+  };
+  const originalEdgeRuntime = globalForTest.EdgeRuntime;
+  const originalFetch = globalForTest.fetch;
+  const waits: Promise<unknown>[] = [];
+  const requests: unknown[] = [];
+  Deno.env.set("KECO_PUBLIC_URL", "https://keco.test");
+  Deno.env.set("MCP_CODEC_SECRET", "reindex-test-secret");
+  globalForTest.EdgeRuntime = {
+    waitUntil(promise) {
+      waits.push(promise);
+    },
+  };
+  globalForTest.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }) as typeof fetch;
+
+  try {
+    const tableId = "22222222-2222-4222-8222-222222222222";
+    const rowA = "44444444-4444-4444-8444-444444444444";
+    const rowB = "55555555-5555-4555-8555-555555555555";
+    const rowC = "66666666-6666-4666-8666-666666666666";
+    const actorId = "77777777-7777-4777-8777-777777777777";
+    const writeContext = {
+      ...context,
+      userId: actorId,
+      supabase: {
+        async rpc(name: string) {
+          if (name === "mcp_begin_operation") {
+            return {
+              data: [{
+                operation_id: "00000000-0000-4000-8000-000000000012",
+                remaining: 29,
+                reset_at: new Date(Date.now() + 60_000).toISOString(),
+              }],
+              error: null,
+            };
+          }
+          if (name === "mcp_bulk_update_table_rows") {
+            return { data: [{ row_ids: [rowA, rowB] }], error: null };
+          }
+          if (name === "mcp_upsert_table_rows") {
+            return { data: [{ row_ids: [rowC] }], error: null };
+          }
+          return { data: null, error: null };
+        },
+      },
+    } as unknown as McpRequestContext;
+
+    await rpc("tools/call", {
+      name: "bulk_update_table_rows",
+      arguments: { tableId, rows: [{ rowId: rowA, values: { Title: "A" } }] },
+    }, writeContext);
+    await rpc("tools/call", {
+      name: "upsert_table_rows",
+      arguments: {
+        tableId,
+        matchField: "Title",
+        rows: [{ values: { Title: "B" } }],
+      },
+    }, writeContext);
+    await Promise.all(waits);
+
+    assertEquals(requests, [
+      {
+        kind: "row",
+        projectId: context.projectId,
+        actorUserId: actorId,
+        rowId: rowA,
+      },
+      {
+        kind: "row",
+        projectId: context.projectId,
+        actorUserId: actorId,
+        rowId: rowB,
+      },
+      {
+        kind: "row",
+        projectId: context.projectId,
+        actorUserId: actorId,
+        rowId: rowC,
+      },
+    ]);
+  } finally {
+    if (originalUrl === undefined) Deno.env.delete("KECO_PUBLIC_URL");
+    else Deno.env.set("KECO_PUBLIC_URL", originalUrl);
+    if (originalSecret === undefined) Deno.env.delete("MCP_CODEC_SECRET");
+    else Deno.env.set("MCP_CODEC_SECRET", originalSecret);
+    globalForTest.EdgeRuntime = originalEdgeRuntime;
+    globalForTest.fetch = originalFetch;
+  }
 });
 
 Deno.test("stale document state token is rejected before codec or privileged replacement", async () => {

@@ -33,6 +33,7 @@ The missing surface prevents agents from correcting schema mistakes, deleting st
    - Rejects row-index drift when `expectedRowId` is provided and the resolved row differs.
    - Rejects deletion when any reference field points at the row unless `clearReferences: true`.
    - When `clearReferences: true`, removes only references pointing at the deleted row from referencing cells.
+   - Ignores malformed references in fields that do not declare the deleted row's table as an allowed reference target.
 
 4. `update_table`
    - Updates one table's metadata.
@@ -55,6 +56,7 @@ The missing surface prevents agents from correcting schema mistakes, deleting st
    - Requires `confirmName` to match the current table name after trimming.
    - Rejects deletion when any reference cell points to the table's rows unless `clearReferences: true`.
    - When `clearReferences: true`, removes only references pointing at rows in the deleted table from referencing cells before deleting the table.
+   - Ignores malformed references in fields that do not declare the deleted table as an allowed reference target.
 
 7. `bulk_update_table_rows`
    - Updates multiple existing rows atomically.
@@ -71,6 +73,7 @@ The missing surface prevents agents from correcting schema mistakes, deleting st
    - Each row must include a non-empty value for the match field.
    - Max 100 rows per call.
    - Duplicate match values in the request or in existing table data are rejected.
+   - Existing match field values are checked globally for non-empty duplicates before any upsert row is written.
 
 ## Architecture
 
@@ -93,7 +96,10 @@ Destructive operations use MCP annotations with `destructiveHint: true`. Non-des
 
 - PostgreSQL `42501` maps to project access revocation.
 - PostgreSQL `P0002` maps to table or row not found depending on the RPC.
-- PostgreSQL `PT409` maps to conflict for row/field/table changes that require reread.
+- PostgreSQL `PT409` maps to conflict for row changes that require reread.
+- PostgreSQL `PT409` table-maintenance preconditions such as missing clear flags,
+  confirmation mismatches, required-field invalidation, and existing duplicate
+  match values map to stable validation guidance.
 - PostgreSQL `22023`, `23503`, and `23505` map to field validation failure.
 - The returned MCP error is intentionally stable and non-sensitive. Detailed SQL exception text is not surfaced to MCP clients.
 

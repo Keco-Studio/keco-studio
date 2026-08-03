@@ -101,6 +101,10 @@ const rowSelectorSchema = {
   rowIndex: z.number().int().min(1).optional(),
   expectedRowId: uuid.optional(),
 };
+const exactlyOneRowSelector = (
+  value: { rowId?: string; rowIndex?: number },
+): boolean => (value.rowId === undefined) !== (value.rowIndex === undefined);
+const ROW_SELECTOR_MESSAGE = "Exactly one of rowId or rowIndex is required.";
 
 const rowValuesSchema = z.record(
   z.string().trim().min(1).max(200),
@@ -119,10 +123,7 @@ const reorderFieldSchema = z.object({
 const bulkRowUpdateSchema = z.object({
   ...rowSelectorSchema,
   values: rowValuesSchema,
-}).strict().refine(
-  (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
-  "Exactly one of rowId or rowIndex is required.",
-);
+}).strict().refine(exactlyOneRowSelector, ROW_SELECTOR_MESSAGE);
 
 const upsertRowSchema = z.object({
   values: rowValuesSchema,
@@ -162,6 +163,13 @@ function firstRow(value: unknown): Record<string, unknown> | null {
   return row && typeof row === "object" && !Array.isArray(row)
     ? row as Record<string, unknown>
     : null;
+}
+
+function rowIdsFromResult(value: unknown): string[] {
+  const rowIds = firstRow(value)?.row_ids;
+  return Array.isArray(rowIds)
+    ? rowIds.filter((rowId): rowId is string => typeof rowId === "string")
+    : [];
 }
 
 function assertDocumentMarkdownSize(markdown: string): void {
@@ -419,8 +427,8 @@ function registerWriteToolSet(
     ...rowSelectorSchema,
     values: rowValuesSchema,
   }).strict().refine(
-    (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
-    "Exactly one of rowId or rowIndex is required.",
+    exactlyOneRowSelector,
+    ROW_SELECTOR_MESSAGE,
   );
   server.registerTool(
     "update_table_row",
@@ -470,7 +478,7 @@ function registerWriteToolSet(
     "edit_table_field",
     {
       description:
-        "Edit one table field. Type changes require clearValuesOnTypeChange when values exist.",
+        "Edit one table field. Type changes require clearValuesOnTypeChange when values exist; any edit resets the field formula.",
       inputSchema: editTableFieldSchema,
       annotations: writeAnnotations,
     },
@@ -542,8 +550,8 @@ function registerWriteToolSet(
     ...rowSelectorSchema,
     clearReferences: z.boolean().optional(),
   }).strict().refine(
-    (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
-    "Exactly one of rowId or rowIndex is required.",
+    exactlyOneRowSelector,
+    ROW_SELECTOR_MESSAGE,
   );
   server.registerTool(
     "delete_table_row",
@@ -712,13 +720,16 @@ function registerWriteToolSet(
           },
           input,
           "Table rows updated.",
-          () =>
-            scheduleMcpReindex({
-              kind: "table",
-              projectId: context.projectId,
-              actorUserId: context.userId,
-              tableId: input.tableId,
-            }),
+          (data) => {
+            for (const rowId of rowIdsFromResult(data)) {
+              scheduleMcpReindex({
+                kind: "row",
+                projectId: context.projectId,
+                actorUserId: context.userId,
+                rowId,
+              });
+            }
+          },
         )),
   );
 
@@ -751,13 +762,16 @@ function registerWriteToolSet(
           },
           input,
           "Table rows upserted.",
-          () =>
-            scheduleMcpReindex({
-              kind: "table",
-              projectId: context.projectId,
-              actorUserId: context.userId,
-              tableId: input.tableId,
-            }),
+          (data) => {
+            for (const rowId of rowIdsFromResult(data)) {
+              scheduleMcpReindex({
+                kind: "row",
+                projectId: context.projectId,
+                actorUserId: context.userId,
+                rowId,
+              });
+            }
+          },
         )),
   );
 

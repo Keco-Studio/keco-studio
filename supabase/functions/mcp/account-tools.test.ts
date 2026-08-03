@@ -277,10 +277,20 @@ Deno.test("account add_table_field resolves live access and calls the atomic RPC
   );
 });
 
-Deno.test("account table maintenance tools require projectId and resolve live access", async () => {
+Deno.test("account delete_table_field requires projectId and resolves live access", async () => {
   const calls: RpcCall[] = [];
   const fieldId = "33333333-3333-4333-8333-333333333333";
   const tableId = "44444444-4444-4444-8444-444444444444";
+  const missingProject = await rpc(accountContext(calls), "tools/call", {
+    name: "delete_table_field",
+    arguments: { tableId, fieldId, clearValues: true },
+  });
+  assertEquals(missingProject.result?.isError, true);
+  assertEquals(
+    calls.some((candidate) => candidate.name === "mcp_delete_table_field"),
+    false,
+  );
+
   const message = await rpc(accountContext(calls), "tools/call", {
     name: "delete_table_field",
     arguments: {

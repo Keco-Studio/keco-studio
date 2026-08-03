@@ -63,11 +63,13 @@ describe('mcp table maintenance p0/p1 migration', () => {
   it('clears references through a bounded helper before row or table deletion', () => {
     expect(sql).toMatch(/create or replace function public\.mcp_clear_references_to_assets/i);
     expect(sql).toMatch(/v_asset_id_texts text\[\]/i);
+    expect(sql).toMatch(/coalesce\(field\.reference_libraries, array\[\]::uuid\[\]\) && p_target_table_ids/i);
+    expect(sql).toMatch(/coalesce\(field\.reference_libraries, array\[\]::uuid\[\]\) && array\[p_table_id\]/i);
     expect(sql).toMatch(/\(p_value #>> '\{\}'\) = any\(v_asset_id_texts\)/i);
     expect(sql).toMatch(/coalesce\(item\.value ->> 'assetId', item\.value ->> 'id', ''\) = any\(v_asset_id_texts\)/i);
     expect(sql).toMatch(/public\.mcp_reference_value_contains_asset\(value\.value_json,\s*v_row\.id\)/i);
-    expect(sql).toMatch(/public\.mcp_clear_references_to_assets\(p_project_id,\s*array\[v_row\.id\]\)/i);
-    expect(sql).toMatch(/public\.mcp_clear_references_to_assets\(p_project_id,\s*v_row_ids\)/i);
+    expect(sql).toMatch(/public\.mcp_clear_references_to_assets\(\s*p_project_id,\s*array\[v_row\.id\],\s*array\[p_table_id\]\s*\)/i);
+    expect(sql).toMatch(/public\.mcp_clear_references_to_assets\(\s*p_project_id,\s*v_row_ids,\s*array\[p_table_id\]\s*\)/i);
   });
 
   it('keeps field reorder and bulk/upsert bounded and atomic', () => {
@@ -75,12 +77,15 @@ describe('mcp table maintenance p0/p1 migration', () => {
     expect(sql).toMatch(/Reorder must include every field exactly once/i);
     expect(sql).toMatch(/jsonb_array_length\(p_rows\) not between 1 and 100/i);
     expect(sql).toMatch(/Duplicate match values in request/i);
+    expect(sql).toMatch(/Duplicate row selectors in request/i);
+    expect(sql).toMatch(/Existing match field values are not unique/i);
+    expect(sql).toMatch(/v_created := v_created \+ 1/i);
     expect(sql).toMatch(/Match field type is not supported/i);
   });
 
   it('revokes helpers and grants only public RPCs to authenticated users', () => {
     expect(sql).toMatch(/revoke all on function public\.mcp_reference_value_contains_asset\(jsonb, uuid\) from public, anon, authenticated/i);
-    expect(sql).toMatch(/revoke all on function public\.mcp_clear_references_to_assets\(uuid, uuid\[\]\) from public, anon, authenticated/i);
+    expect(sql).toMatch(/revoke all on function public\.mcp_clear_references_to_assets\(uuid, uuid\[\], uuid\[\]\) from public, anon, authenticated/i);
     for (const signature of [
       'mcp_edit_table_field\\(uuid, uuid, uuid, jsonb, boolean\\)',
       'mcp_delete_table_field\\(uuid, uuid, uuid, boolean\\)',

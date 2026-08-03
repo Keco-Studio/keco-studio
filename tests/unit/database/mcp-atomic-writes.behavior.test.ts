@@ -476,6 +476,114 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     }]);
   });
 
+  it('ignores malformed references from fields that do not target a deleted row table', async () => {
+    const targetTableId = crypto.randomUUID();
+    const targetRowId = crypto.randomUUID();
+    const targetField = fields()[0];
+    const target = await createTable(targetTableId, [targetField], targetRowId);
+    expect(target.error).toBeNull();
+
+    const unrelatedTableId = crypto.randomUUID();
+    const unrelatedRowId = crypto.randomUUID();
+    const unrelated = await createTable(unrelatedTableId, fields(), unrelatedRowId);
+    expect(unrelated.error).toBeNull();
+
+    const referencingTableId = crypto.randomUUID();
+    const referencingRowId = crypto.randomUUID();
+    const referenceFieldId = crypto.randomUUID();
+    const referencing = await createTable(referencingTableId, [
+      { id: crypto.randomUUID(), label: 'Name', dataType: 'string', section: 'main' },
+      {
+        id: referenceFieldId,
+        label: 'Unrelated Link',
+        dataType: 'reference',
+        section: 'main',
+        referenceTableIds: [unrelatedTableId],
+      },
+    ], referencingRowId);
+    expect(referencing.error).toBeNull();
+
+    const malformed = await fx.svc.from('library_asset_values').insert({
+      asset_id: referencingRowId,
+      field_id: referenceFieldId,
+      value_json: { assetId: targetRowId, fieldId: targetField.id },
+    });
+    expect(malformed.error).toBeNull();
+
+    const deleted = await fx.editor.client.rpc('mcp_delete_table_row', {
+      p_project_id: fx.projectId,
+      p_table_id: targetTableId,
+      p_row_id: targetRowId,
+      p_row_index: null,
+      p_expected_row_id: targetRowId,
+      p_clear_references: false,
+    });
+    expect(deleted.error).toBeNull();
+    expect(deleted.data[0].cleared_reference_count).toBe(0);
+
+    const preserved = await fx.svc.from('library_asset_values')
+      .select('value_json')
+      .eq('asset_id', referencingRowId)
+      .eq('field_id', referenceFieldId)
+      .single();
+    expect(preserved.error).toBeNull();
+    expect(preserved.data?.value_json).toEqual({
+      assetId: targetRowId,
+      fieldId: targetField.id,
+    });
+  });
+
+  it('rejects globally duplicate upsert match values and counts reused empty rows as updates', async () => {
+    const tableId = crypto.randomUUID();
+    const initialRowId = crypto.randomUUID();
+    const field = fields()[0];
+    const table = await createTable(tableId, [field], initialRowId);
+    expect(table.error).toBeNull();
+
+    const reused = await fx.editor.client.rpc('mcp_upsert_table_rows', {
+      p_project_id: fx.projectId,
+      p_table_id: tableId,
+      p_match_field: 'Name',
+      p_rows: [{ values: { Name: 'Reused' } }],
+      p_reuse_empty: true,
+    });
+    expect(reused.error).toBeNull();
+    expect(reused.data[0]).toMatchObject({
+      upserted_row_count: 1,
+      created_row_count: 0,
+      updated_row_count: 1,
+      row_ids: [initialRowId],
+    });
+
+    const duplicateRows = [crypto.randomUUID(), crypto.randomUUID()];
+    const insertedRows = await fx.svc.from('library_assets').insert(
+      duplicateRows.map((rowId, index) => ({
+        id: rowId,
+        library_id: tableId,
+        name: `duplicate-${index}`,
+        row_index: index + 2,
+      }))
+    );
+    expect(insertedRows.error).toBeNull();
+    const insertedValues = await fx.svc.from('library_asset_values').insert(
+      duplicateRows.map((rowId) => ({
+        asset_id: rowId,
+        field_id: field.id,
+        value_json: 'Duplicate',
+      }))
+    );
+    expect(insertedValues.error).toBeNull();
+
+    const rejected = await fx.editor.client.rpc('mcp_upsert_table_rows', {
+      p_project_id: fx.projectId,
+      p_table_id: tableId,
+      p_match_field: 'Name',
+      p_rows: [{ values: { Name: 'Fresh' } }],
+      p_reuse_empty: false,
+    });
+    expect(rejected.error?.code).toBe('PT409');
+  });
+
   it('rejects cross-project reference table definitions atomically', async () => {
     const tableId = crypto.randomUUID();
     const result = await createTable(tableId, [{

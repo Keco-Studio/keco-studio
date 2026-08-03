@@ -123,10 +123,13 @@ Document the new table maintenance tools, destructive confirmations, and referen
 Run:
 
 ```bash
+npx deno fmt --check supabase/functions/mcp/write-tools.ts supabase/functions/mcp/server.ts supabase/functions/mcp/database.ts supabase/functions/mcp/server.test.ts supabase/functions/mcp/account-tools.test.ts
 npm run check:mcp
 npm run test:mcp
 npx jest --runInBand tests/unit/database/mcp-table-maintenance-p0-p1-migration.test.ts
 npm run typecheck
+git diff --check
+supabase db reset
 ```
 
 - [ ] **Step 2: Commit and push**
