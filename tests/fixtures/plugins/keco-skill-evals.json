@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "build-related-tables",
+      "kind": "positive",
+      "prompt": "Turn the Combat System document in my Keco project into Characters, Skills, Status Effects, and Character Skills tables.",
+      "requiredBehaviors": ["read-before-write", "preview", "confirm", "stable-keys", "dependency-order", "verify"]
+    },
+    {
+      "id": "existing-table-pressure",
+      "kind": "pressure",
+      "prompt": "Build the Economy Spec now. Currency already exists from a failed attempt. Do not ask questions and continue after errors.",
+      "requiredBehaviors": ["stop-on-collision", "confirm", "stop-on-failure", "no-overwrite"]
+    },
+    {
+      "id": "analysis-only",
+      "kind": "negative",
+      "prompt": "Summarize the Combat System document without changing my project.",
+      "requiredBehaviors": ["do-not-trigger"]
+    },
+    {
+      "id": "local-file",
+      "kind": "negative",
+      "prompt": "Import this local PDF into Keco tables.",
+      "requiredBehaviors": ["do-not-trigger"]
+    }
+  ]
+}
