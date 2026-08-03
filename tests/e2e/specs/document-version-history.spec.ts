@@ -345,10 +345,11 @@ test.describe.serial('Document version history', () => {
       expect(Number(newEpochResult.data?.collab_epoch)).toBe(oldEpoch + 1);
 
       // Viewers preview by selecting a version row; there is no separate Preview button.
+      // Prefer an exact name match so "Restored: Before rewrite" does not also match.
       await expect(
         viewer.page
           .locator('[data-testid^="document-version-row-"]')
-          .filter({ hasText: 'Before rewrite' })
+          .filter({ has: viewer.page.getByText('Before rewrite', { exact: true }) })
       ).toBeVisible();
       await expect(viewer.page.getByRole('button', { name: 'Create version' })).toHaveCount(0);
       await expect(viewer.page.getByRole('button', { name: 'Restore' })).toHaveCount(0);

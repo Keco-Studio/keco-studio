@@ -434,6 +434,12 @@ export function ImportScreen({
   const [movingColumnIds, setMovingColumnIds] = useState<Set<string>>(() => new Set());
   const dropTargetRef = useRef<MappingDragTarget | null>(null);
   const dragSourceRef = useRef<MappingDragSource | null>(null);
+  const activeRoleRef = useRef(activeRole);
+  activeRoleRef.current = activeRole;
+  const dragListenersRef = useRef<{
+    onMove: (event: PointerEvent) => void;
+    onUp: (event: PointerEvent) => void;
+  } | null>(null);
   const slotRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const unmappedRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   /** Previous tops keyed by columnId (so slot↔slot content swaps FLIP). */
@@ -635,52 +641,21 @@ export function ImportScreen({
     };
   }, [activeLibSelected]);
 
-  useEffect(() => {
-    if (!dragSource) return;
+  function endCardDragListeners() {
+    const listeners = dragListenersRef.current;
+    if (!listeners) return;
+    window.removeEventListener('pointermove', listeners.onMove);
+    window.removeEventListener('pointerup', listeners.onUp);
+    window.removeEventListener('pointercancel', listeners.onUp);
+    dragListenersRef.current = null;
+  }
 
-    function onMove(event: PointerEvent) {
-      setDragPos({ x: event.clientX, y: event.clientY });
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      const dropEl = el?.closest?.('[data-mapping-drop]') as HTMLElement | null;
-      const next = parseDropTarget(dropEl?.dataset.mappingDrop);
-      dropTargetRef.current = next;
-      setDropTarget(next);
-    }
-
-    function onUp() {
-      const source = dragSourceRef.current;
-      const target = dropTargetRef.current;
-      if (source && target) {
-        const movingColumnId =
-          source.kind === 'unmapped'
-            ? source.columnId
-            : activeMappingsRef.current[source.fieldId] ?? null;
-        replaceRoleMapping(activeRole, applyMappingDrag(activeMappingsRef.current, source, target));
-        if (movingColumnId) {
-          setFlashColumnId(movingColumnId);
-          window.setTimeout(() => {
-            setFlashColumnId((current) => (current === movingColumnId ? null : current));
-          }, 550);
-        }
-      }
-      dragSourceRef.current = null;
-      dropTargetRef.current = null;
-      setDragSource(null);
-      setDropTarget(null);
-      setDragPos(null);
-    }
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [dragSource, activeRole]);
+  useEffect(() => () => endCardDragListeners(), []);
 
   function startCardDrag(source: MappingDragSource, event: ReactPointerEvent) {
     event.preventDefault();
     event.stopPropagation();
+    endCardDragListeners();
     const listWidth = sourceListRef.current?.clientWidth;
     if (listWidth && listWidth > 40) setDragPreviewWidth(listWidth - 28);
     dragSourceRef.current = source;
@@ -688,6 +663,49 @@ export function ImportScreen({
     setDragSource(source);
     setDropTarget(null);
     setDragPos({ x: event.clientX, y: event.clientY });
+
+    // Register move/up immediately on pointerdown so Playwright/CI drags cannot
+    // finish before a useEffect attaches listeners.
+    function onMove(moveEvent: PointerEvent) {
+      setDragPos({ x: moveEvent.clientX, y: moveEvent.clientY });
+      const el = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+      const dropEl = el?.closest?.('[data-mapping-drop]') as HTMLElement | null;
+      const next = parseDropTarget(dropEl?.dataset.mappingDrop);
+      dropTargetRef.current = next;
+      setDropTarget(next);
+    }
+
+    function onUp() {
+      const dragSourceCurrent = dragSourceRef.current;
+      const target = dropTargetRef.current;
+      if (dragSourceCurrent && target) {
+        const movingColumnId =
+          dragSourceCurrent.kind === 'unmapped'
+            ? dragSourceCurrent.columnId
+            : activeMappingsRef.current[dragSourceCurrent.fieldId] ?? null;
+        replaceRoleMapping(
+          activeRoleRef.current,
+          applyMappingDrag(activeMappingsRef.current, dragSourceCurrent, target),
+        );
+        if (movingColumnId) {
+          setFlashColumnId(movingColumnId);
+          window.setTimeout(() => {
+            setFlashColumnId((current) => (current === movingColumnId ? null : current));
+          }, 550);
+        }
+      }
+      endCardDragListeners();
+      dragSourceRef.current = null;
+      dropTargetRef.current = null;
+      setDragSource(null);
+      setDropTarget(null);
+      setDragPos(null);
+    }
+
+    dragListenersRef.current = { onMove, onUp };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   }
 
   function dragLabelFor(source: MappingDragSource): string {
