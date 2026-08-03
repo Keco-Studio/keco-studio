@@ -14,7 +14,7 @@ The plugin uses the account endpoint. Include the stable `projectId` returned by
 | `keco:read_document` | `projectId`, `documentId` | Read `full`, `outline`, `heading`, or `lines` Markdown |
 | `keco:query_table_rows` | `projectId`, `tableId` | Page rows, select semantic fields, or read one exact 1-based `rowIndex` |
 
-Continue paginated reads while `hasMore` is true using the returned opaque cursor. Do not combine `cursor` with `rowIndex`. If a full document response is truncated, read `outline`, then every relevant `heading` or `lines` range needed to cover the plan.
+Continue paginated reads while `hasMore` is true using the returned opaque cursor. Do not combine `cursor` with `rowIndex`. If a full document response is truncated, read `outline`, then every relevant `heading` or `lines` range needed to cover the plan; `lines` mode requires the 1-based `lineStart` and `lineEnd` inputs.
 
 ## Write Tools
 
