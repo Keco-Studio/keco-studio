@@ -14,6 +14,7 @@ import {
 } from '@/lib/services/documentDerivedLibraryService';
 import { parseText, scriptLineToRow, SCRIPT_COLUMNS } from '@/lib/script-parser';
 import type { StoryDocument } from '@/lib/story-ir/schema';
+import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
 
 const BATCH_SIZE = 200;
@@ -32,10 +33,12 @@ interface ImportTableParams {
   libraryName: string;
   fileName: string;
   documentSource?: DocumentLibrarySource;
+  plotPlan?: StoryPlotPlan;
 }
 
 export interface ImportStoryParams extends ImportTableParams {
   document: StoryDocument;
+  plotPlan?: StoryPlotPlan;
 }
 
 const isUuid = (value: string) =>
@@ -83,7 +86,15 @@ async function importCompiledScript(
   columns: string[],
   rows: string[][]
 ): Promise<ImportScriptResult> {
-  const { userId, projectId, folderId, libraryName, fileName, documentSource } = params;
+  const {
+    userId,
+    projectId,
+    folderId,
+    libraryName,
+    fileName,
+    documentSource,
+    plotPlan,
+  } = params;
 
   if (!documentSource && folderId !== null && !isUuid(folderId)) {
     throw new Error('Invalid folder ID');
@@ -133,24 +144,35 @@ async function importCompiledScript(
     throw new Error(`Library name "${trimmedName}" already exists in this folder`);
   }
 
-  const { data: createdLibrary, error: createError } = await supabase
+  const baseLibraryValues = {
+    project_id: projectId,
+    folder_id: resolvedFolderId,
+    name: trimmedName,
+    description: `Imported from ${fileName}`,
+    // Only set derived-library columns when exporting from a document.
+    // Environments without the migration reject these keys in the schema cache.
+    ...(placement
+      ? {
+          source_document_id: placement.sourceDocumentId,
+          document_export_type: placement.documentExportType,
+        }
+      : {}),
+  };
+  let createResult = await supabase
     .from('libraries')
-    .insert({
-      project_id: projectId,
-      folder_id: resolvedFolderId,
-      name: trimmedName,
-      description: `Imported from ${fileName}`,
-      // Only set derived-library columns when exporting from a document.
-      // Environments without the migration reject these keys in the schema cache.
-      ...(placement
-        ? {
-            source_document_id: placement.sourceDocumentId,
-            document_export_type: placement.documentExportType,
-          }
-        : {}),
-    })
+    .insert(plotPlan ? { ...baseLibraryValues, plot_plan: plotPlan } : baseLibraryValues)
     .select('id')
     .single();
+
+  if (plotPlan && isMissingPlotPlanColumnError(createResult.error)) {
+    createResult = await supabase
+      .from('libraries')
+      .insert(baseLibraryValues)
+      .select('id')
+      .single();
+  }
+
+  const { data: createdLibrary, error: createError } = createResult;
 
   if (createError) {
     if (createError.code === '23505') {
@@ -171,6 +193,13 @@ async function importCompiledScript(
     }
     throw error;
   }
+}
+
+function isMissingPlotPlanColumnError(
+  error: { code?: string; message?: string } | null
+): boolean {
+  return error?.code === 'PGRST204'
+    && /plot_plan/i.test(error.message ?? '');
 }
 
 async function insertScriptTable(

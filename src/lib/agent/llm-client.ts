@@ -1,9 +1,9 @@
 /**
  * LLM streaming client (OpenAI-compatible Chat Completions API).
  *
- * Currently configured for MiniMax M3 (multimodal thinking model). Image parts
- * in user messages are forwarded verbatim as OpenAI-compatible `image_url`
- * content parts.
+ * Configured for DeepSeek (default deepseek-v4-flash). Image parts in user
+ * messages are forwarded as OpenAI-compatible `image_url` content parts when
+ * the upstream model supports them.
  * Parses the upstream SSE stream and re-yields normalized StreamChunk values.
  * Includes a single automatic retry with exponential backoff on transient
  * network / 5xx / 429 errors before the first chunk is read.
@@ -13,9 +13,9 @@ import type { ChatMessage, OpenAITool, StreamChunk } from './types';
 import { ThinkTagParser } from './think-tag-parser';
 import { outboundFetch } from './outbound-http';
 
-const LLM_BASE = (process.env.LLM_API_URL || 'https://api.minimax.io').replace(/\/+$/, '');
+const LLM_BASE = (process.env.LLM_API_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
 const LLM_API_KEY = process.env.LLM_API_KEY || '';
-const LLM_MODEL = process.env.LLM_MODEL || 'MiniMax-M3';
+const LLM_MODEL = process.env.LLM_MODEL || 'deepseek-v4-flash';
 
 export class LlmError extends Error {
   constructor(message: string) {

@@ -26,6 +26,7 @@ export interface ScriptColumns extends ScriptPlayerColumns {
 interface VisualNovelScriptViewProps {
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
+  mode?: 'player' | 'plot-node';
 }
 
 export type RevealedScriptRow = {
@@ -118,7 +119,11 @@ function scrollNodeToTop(node: ScrollContainerNode): void {
 
 /* ───────── component ───────── */
 
-export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScriptViewProps) {
+export function VisualNovelScriptView({
+  rows,
+  scriptColumns,
+  mode = 'player',
+}: VisualNovelScriptViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const {
     labelKey,
@@ -174,7 +179,7 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
         return String(nameVal ?? '').trim() !== 'Speaker';
       });
     }
-    if (labelKey) {
+    if (labelKey && mode === 'player') {
       const startIndex = filtered.findIndex((row) => {
         const labelVal = row.propertyValues[labelKey];
         return String(labelVal ?? '').trim().toLowerCase() === 'start';
@@ -184,7 +189,7 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
       }
     }
     return filtered;
-  }, [rows, labelKey, nameKey]);
+  }, [rows, labelKey, nameKey, mode]);
 
   const createInitialPlayerState = useCallback(
     () => createScriptPlayerState(filteredRows, playerColumns),
@@ -196,6 +201,10 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
   useEffect(() => {
     setPlayerState(createInitialPlayerState());
   }, [createInitialPlayerState]);
+
+  useEffect(() => {
+    if (mode === 'plot-node') resetNearestScrollContainer(rootRef.current);
+  }, [filteredRows, mode]);
 
   const restart = useCallback(() => {
     setPlayerState(createInitialPlayerState());
@@ -210,23 +219,29 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
     return <div className={styles.emptyState}>No script data</div>;
   }
 
-  const revealedRows = getRevealedScriptRows(filteredRows, playerState.revealed);
+  const revealedRows = mode === 'plot-node'
+    ? filteredRows.map((row, rowIndex) => ({ row, rowIndex }))
+    : getRevealedScriptRows(filteredRows, playerState.revealed);
 
   return (
     <div
       ref={rootRef}
       className={styles.container}
     >
-      <div className={styles.playerToolbar}>
-        <button type="button" className={styles.restartButton} onClick={restart}>
-          Restart
-        </button>
-      </div>
+      {mode === 'player' ? (
+        <div className={styles.playerToolbar}>
+          <button type="button" className={styles.restartButton} onClick={restart}>
+            Restart
+          </button>
+        </div>
+      ) : null}
       {revealedRows.map(({ row, rowIndex: index }) => {
         const labelVal = labelKey ? row.propertyValues[labelKey] : undefined;
         const typeVal = typeKey ? row.propertyValues[typeKey] : undefined;
         const nameVal = nameKey ? row.propertyValues[nameKey] : undefined;
-        const content = renderPlayerContent(row, contentKey, playerState.variables);
+        const content = mode === 'plot-node'
+          ? renderPlayerContent(row, contentKey, {})
+          : renderPlayerContent(row, contentKey, playerState.variables);
         const label = String(labelVal ?? '').trim();
 
         if (label.toLowerCase() === 'start' && !content) {
@@ -273,7 +288,7 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
 
         return renderScriptLine(row.id, typeVal, nameVal, content);
       })}
-      {playerState.atChoice && (
+      {mode === 'player' && playerState.atChoice && (
         <div className={styles.choicePanel}>
           {playerState.options.map((option) => (
             <button
@@ -287,12 +302,12 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
           ))}
         </div>
       )}
-      {playerState.warning && (
+      {mode === 'player' && playerState.warning && (
         <div className={styles.warningMessage} role="status">
           {playerState.warning}
         </div>
       )}
-      {playerState.error && (
+      {mode === 'player' && playerState.error && (
         <div className={styles.errorMessage} role="alert">
           {playerState.error}
         </div>

@@ -673,8 +673,8 @@ describe('navigation wiring and visual contract', () => {
       join(root, 'src/components/documents/ResourceReferenceInsertButton.tsx'),
       'utf8'
     );
-    expect(insertButton).toContain('width="24"');
-    expect(insertButton).toContain('height="24"');
+    expect(insertButton).toContain('DocumentReferenceIcon');
+    expect(insertButton).toContain('size={24}');
     expect(insertButton).toContain('aria-label="Insert reference"');
     expect(insertButton).not.toContain("iconComponentFor('link')");
   });

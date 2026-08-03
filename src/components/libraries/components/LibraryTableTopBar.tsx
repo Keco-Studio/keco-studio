@@ -25,6 +25,7 @@ type LibraryTableTopBarProps = {
   editingSectionName: string;
   sectionInputRef: React.RefObject<HTMLInputElement>;
   canAddSection: boolean;
+  canManageSections?: boolean;
   hasScriptColumns: boolean;
   scriptViewMode: 'table' | 'script';
   /** When false, hide Table/Script conversion toggle (script-only libraries). */
@@ -39,6 +40,7 @@ type LibraryTableTopBarProps = {
   onChangeSectionName: (name: string) => void;
   onFinishSectionEdit: (submit: boolean) => void;
   onAddSection: () => Promise<void>;
+  onRequestDeleteSection?: (sectionId: string, sectionName: string) => void;
   onChangeScriptViewMode: (mode: 'table' | 'script') => void;
   onHighlightCells: (cells: Array<{ assetId: string; fieldId: string }>) => void;
   onClearHighlight: () => void;
@@ -54,6 +56,7 @@ export function LibraryTableTopBar({
   editingSectionName,
   sectionInputRef,
   canAddSection,
+  canManageSections = false,
   hasScriptColumns,
   scriptViewMode,
   showScriptViewToggle = true,
@@ -67,6 +70,7 @@ export function LibraryTableTopBar({
   onChangeSectionName,
   onFinishSectionEdit,
   onAddSection,
+  onRequestDeleteSection,
   onChangeScriptViewMode,
   onHighlightCells,
   onClearHighlight,
@@ -88,11 +92,13 @@ export function LibraryTableTopBar({
           editingSectionName={editingSectionName}
           sectionInputRef={sectionInputRef}
           canAddSection={canAddSection}
+          canManageSections={canManageSections}
           onSelectSection={onSelectSection}
           onStartEdit={onStartSectionEdit}
           onChangeEditingName={onChangeSectionName}
           onFinishEdit={onFinishSectionEdit}
           onAddSection={onAddSection}
+          onRequestDeleteSection={onRequestDeleteSection}
         />
       ) : (
         <div className={styles.tableTopBarSpacer} />

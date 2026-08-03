@@ -80,6 +80,7 @@ async function* executeStream(
   const resolutionPromise = resolveStoryForImport(source.content, {
     sourceId: source.sourceId,
     roleMap: toRoleMap(data.characterMapping),
+    enableAiPlotPlanning: true,
     onProgress: (event) => queue.push(event),
   })
     .then((resolved) => ({ resolved }))
@@ -106,6 +107,7 @@ async function* executeStream(
       folderId: data.folderId,
       libraryName: data.libraryName,
       document: resolution.resolved.document,
+      plotPlan: resolution.resolved.plotPlan,
       fileName: `${data.libraryName}.txt`,
     });
     return {

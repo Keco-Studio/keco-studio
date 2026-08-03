@@ -7,6 +7,7 @@ import type {
   StoryExtractionChoice,
   StoryExtractionNode,
 } from './schema';
+import { resolveProtagonistSpeaker } from './roles';
 
 const CHOICE_TRIGGER_PHRASE = /when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)/i;
 
@@ -398,6 +399,13 @@ export function normalizeStoryExtraction(
       ));
       return role ? { ...node, presentationType: orderedTypes.get(role)! } : node;
     });
+  }
+  const protagonistSpeaker = resolveProtagonistSpeaker(nodes);
+  if (protagonistSpeaker) {
+    nodes = nodes.map((node) => node.type === 'dialogue' ? {
+      ...node,
+      presentationType: node.speaker.trim() === protagonistSpeaker ? 1 : 2,
+    } : node);
   }
   let choices = extraction.choices.map((choice) => {
     const commandSources = canonicalizeCommandSources(choice.commandSources);

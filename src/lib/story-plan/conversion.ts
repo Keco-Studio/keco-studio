@@ -28,6 +28,13 @@ import {
 } from '@/lib/story-extraction/prompts';
 import type { StoryExtraction } from '@/lib/story-extraction/schema';
 import type { StoryDocument } from '@/lib/story-ir/schema';
+import { buildDeterministicStoryPlotPlan } from '@/lib/story-plot/deterministicBuilder';
+import { buildStoryPlotPlanFromGrouping } from '@/lib/story-plot/aiPlanner';
+import {
+  STORY_PLOT_GROUPING_TOOL,
+  buildStoryPlotGroupingMessages,
+} from '@/lib/story-plot/prompts';
+import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 import { buildStoryAuditProjection, type StoryAuditProjection } from './projection';
 import {
   parseStoryAuditAdjudication,
@@ -36,18 +43,32 @@ import {
   type StoryPlanAudit,
   type StoryPlanAuditIssue,
 } from './schema';
-import { tryParseExplicitStory, tryParseNaturalBranchStory } from './explicitParser';
+import {
+  tryParseExplicitStory,
+  tryParseLinearScreenplay,
+  tryParseNaturalBranchStory,
+} from './explicitParser';
 import { segmentStorySource, type SegmentedStorySource } from './sourceSegments';
+import { chunkStorySource } from './chunkedSource';
+import { mergeChunkedStoryContentExtractions } from './chunkedExtraction';
 
-export const DEFAULT_STORY_PLAN_MAX_SOURCE_CHARS = 24_000;
+export const DEFAULT_STORY_PLAN_MAX_SOURCE_CHARS = 60_000;
 export const STORY_PLAN_LLM_TIMEOUT_MS = 150_000;
 const MAX_MODEL_JSON_BYTES = 10 * 1024 * 1024;
 const MAX_CANDIDATE_ATTEMPTS = 3;
 const MAX_GRAPH_ATTEMPTS = 5;
 const MAX_LLM_CALLS = 15;
 const MAX_PROVIDER_ABORT_RETRIES_PER_STAGE = 3;
+const CONTENT_CHUNK_THRESHOLD_CHARS = 10_000;
+const CONTENT_CHUNK_THRESHOLD_UNITS = 48;
+const MAX_CONTENT_CHUNK_CHARS = 8_000;
 
-export type StoryPlanLlmStage = 'Extractor' | 'Graph Planner' | 'Auditor' | 'Adjudicator';
+export type StoryPlanLlmStage =
+  | 'Extractor'
+  | 'Graph Planner'
+  | 'Plot Planner'
+  | 'Auditor'
+  | 'Adjudicator';
 type LlmStage = StoryPlanLlmStage;
 
 export interface StoryPlanLlmTelemetryEvent {
@@ -64,6 +85,7 @@ export type StoryPlanProgressPhase =
   | 'conversion'
   | 'deterministic_validation'
   | 'table_projection'
+  | 'plot_planning'
   | 'semantic_audit'
   | 'table_compile'
   | 'database_write'
@@ -82,19 +104,23 @@ export interface ResolveStoryPlanOptions {
   signal?: AbortSignal;
   llmTimeoutMs?: number;
   maxSourceChars?: number;
+  skipSemanticAuditAfterValidation?: boolean;
+  enableAiPlotPlanning?: boolean;
   onProgress?: (event: StoryPlanProgressEvent) => void;
   onLlmTelemetry?: (event: StoryPlanLlmTelemetryEvent) => void;
 }
 
 export interface ResolvedAuditedStory {
   document: StoryDocument;
+  plotPlan: StoryPlotPlan;
   source: SegmentedStorySource;
   extraction: StoryExtraction;
   projection: StoryAuditProjection;
   audit: StoryPlanAudit;
-  primaryAudit: StoryPlanAudit;
+  primaryAudit?: StoryPlanAudit;
   adjudication?: StoryAuditAdjudication;
-  approval: 'primary_pass' | 'adjudicated_pass';
+  approval: 'primary_pass' | 'adjudicated_pass' | 'validation_pass';
+  auditSkipped?: boolean;
   converted: boolean;
   attempts: number;
 }
@@ -150,7 +176,7 @@ export async function resolveStoryPlanForImport(
   const maxSourceChars = options.maxSourceChars ?? DEFAULT_STORY_PLAN_MAX_SOURCE_CHARS;
   if (sourceText.length > maxSourceChars) {
     throw new ImportStoryPlanError(
-      `Story is too long for one audited import (${sourceText.length}/${maxSourceChars} characters).`
+      `Story is too long for one import (${sourceText.length}/${maxSourceChars} characters).`
     );
   }
 
@@ -160,7 +186,13 @@ export async function resolveStoryPlanForImport(
   let priorIssues: StoryExtractionRetryIssue[] = [];
   const llmBudget: StoryPlanLlmBudget = { used: 0, max: MAX_LLM_CALLS };
 
-  const deterministicPlan = tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
+  const parsedDeterministicPlan = tryParseExplicitStory(source)
+    ?? tryParseNaturalBranchStory(source)
+    ?? tryParseLinearScreenplay(source);
+  const deterministicPlan = parsedDeterministicPlan
+    && !hasUnresolvedNaturalBranches(source, parsedDeterministicPlan.choices.length)
+    ? parsedDeterministicPlan
+    : null;
   if (deterministicPlan) {
     try {
       const extraction = buildStoryExtractionFromPlan(deterministicPlan, source);
@@ -176,6 +208,18 @@ export async function resolveStoryPlanForImport(
         message: 'Compiling deterministic table and path projection',
       });
       const projection = buildStoryAuditProjection(document);
+      if (options.skipSemanticAuditAfterValidation) {
+        return await acceptValidatedStory({
+          source,
+          extraction,
+          document,
+          projection,
+          converted: false,
+          attempt: 1,
+          options,
+          budget: llmBudget,
+        });
+      }
       const auditView = buildStoryAuditView(document, extraction, projection);
       return await auditExplicitCandidate(
         source,
@@ -227,12 +271,26 @@ export async function resolveStoryPlanForImport(
         message: `Compiling table and path projection (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
       });
       const projection = buildStoryAuditProjection(document);
+      if (options.skipSemanticAuditAfterValidation) {
+        return await acceptValidatedStory({
+          source,
+          extraction,
+          document,
+          projection,
+          converted: true,
+          attempt,
+          options,
+          budget: llmBudget,
+        });
+      }
       const auditView = buildStoryAuditView(document, extraction, projection);
       const review = await reviewCandidate(source, auditView, attempt, options, llmBudget);
       if (review.approved) {
+        const plotPlan = await resolvePlotPlan(document, options, llmBudget);
         emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
         return {
           document,
+          plotPlan,
           source,
           extraction,
           projection,
@@ -253,12 +311,64 @@ export async function resolveStoryPlanForImport(
     }
   }
 
+  const finalIssue = priorIssues.at(-1)?.message
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+  const finalMessage = `Story import failed after three conversion attempts${
+    finalIssue ? `: ${finalIssue}` : ''
+  }.`;
   emit(options, {
     phase: 'failed',
     attempt: MAX_CANDIDATE_ATTEMPTS,
-    message: 'Story import failed after three audited attempts',
+    message: finalMessage,
   });
-  throw new ImportStoryPlanError('Story import failed after three audited attempts.', priorIssues);
+  throw new ImportStoryPlanError(finalMessage, priorIssues);
+}
+
+function hasUnresolvedNaturalBranches(
+  source: SegmentedStorySource,
+  parsedChoiceCount: number
+): boolean {
+  const choiceMarkerPattern = /^(?:[A-Za-z]\d*\s*(?:\u9009\u9879|\u5206\u652f)|\u9009\u9879\s*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u4e24\d]+)\s*(?:[：:]|[（(])/i;
+  const branchContainerPattern = /^\u5206\u652f\s*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u4e24\d]+\s*(?:[：:]|[（(])/;
+  const choiceMarkerCount = source.units.filter((unit) => (
+    choiceMarkerPattern.test(unit.text.trim())
+  )).length;
+  if (choiceMarkerCount > parsedChoiceCount) return true;
+  return parsedChoiceCount === 0 && source.units.some((unit) => (
+    branchContainerPattern.test(unit.text.trim())
+  ));
+}
+
+async function acceptValidatedStory(input: {
+  source: SegmentedStorySource;
+  extraction: StoryExtraction;
+  document: StoryDocument;
+  projection: StoryAuditProjection;
+  converted: boolean;
+  attempt: number;
+  options: ResolveStoryPlanOptions;
+  budget: StoryPlanLlmBudget;
+}): Promise<ResolvedAuditedStory> {
+  const plotPlan = await resolvePlotPlan(input.document, input.options, input.budget);
+  emit(input.options, {
+    phase: 'complete',
+    attempt: input.attempt,
+    message: 'Story conversion and deterministic validation completed',
+  });
+  return {
+    document: input.document,
+    plotPlan,
+    source: input.source,
+    extraction: input.extraction,
+    projection: input.projection,
+    audit: { verdict: 'pass', issues: [] },
+    approval: 'validation_pass',
+    auditSkipped: true,
+    converted: input.converted,
+    attempts: input.attempt,
+  };
 }
 
 async function buildExtractionWithGraphRetries(
@@ -319,9 +429,11 @@ async function auditExplicitCandidate(
         review.confirmedIssues
       );
     }
+    const plotPlan = await resolvePlotPlan(document, options, budget);
     emit(options, { phase: 'complete', attempt: 1, message: 'Story conversion and audit completed' });
     return {
       document,
+      plotPlan,
       source,
       extraction,
       projection,
@@ -352,19 +464,46 @@ async function requestContentExtractor(
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<StoryContentExtraction> {
-  const raw = await completeStoryPlanLlm(
-    buildContentExtractionMessages(source, attempt, priorIssues),
-    EXTRACTOR_STORY_CONTENT_TOOL,
-    'Extractor',
-    attempt,
-    options,
-    budget
-  );
-  try {
-    return parseStoryContentExtraction(parseModelJson(raw));
-  } catch (error) {
-    throw new StoryModelContractError('Extractor', error);
+  const shouldChunk = source.content.length > CONTENT_CHUNK_THRESHOLD_CHARS
+    || source.units.length > CONTENT_CHUNK_THRESHOLD_UNITS;
+  const chunkLimit = source.content.length > CONTENT_CHUNK_THRESHOLD_CHARS
+    ? MAX_CONTENT_CHUNK_CHARS
+    : Math.max(2_000, Math.ceil(source.content.length / 2));
+  const chunks = shouldChunk ? chunkStorySource(source, chunkLimit) : [source];
+  const extractions: StoryContentExtraction[] = [];
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+    const chunk = chunks[chunkIndex];
+    if (chunks.length > 1) {
+      emit(options, {
+        phase: 'conversion',
+        attempt,
+        message: `Waiting for Extractor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS}, chunk ${chunkIndex + 1}/${chunks.length})`,
+      });
+    }
+    const unitIds = new Set(chunk.units.map((unit) => unit.id));
+    const chunkIssues = priorIssues.filter((issue) => (
+      issue.unitIds.length === 0
+      || issue.unitIds.some((unitId) => unitIds.has(unitId))
+    ));
+    const raw = await completeStoryPlanLlm(
+      buildContentExtractionMessages(chunk, attempt, chunkIssues),
+      EXTRACTOR_STORY_CONTENT_TOOL,
+      'Extractor',
+      attempt,
+      options,
+      budget
+    );
+    try {
+      extractions.push(parseStoryContentExtraction(parseModelJson(raw)));
+    } catch (error) {
+      throw new StoryModelContractError('Extractor', error);
+    }
   }
+
+  return extractions.length === 1
+    ? extractions[0]
+    : mergeChunkedStoryContentExtractions(extractions);
 }
 
 async function requestGraphPlanner(
@@ -516,13 +655,44 @@ function validateAdjudication(
   return issues.filter((_, index) => decisionsById.get(`issue-${index + 1}`) === 'confirmed');
 }
 
+async function resolvePlotPlan(
+  document: StoryDocument,
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
+): Promise<StoryPlotPlan> {
+  const fallback = () => buildDeterministicStoryPlotPlan(document);
+  if (!options.enableAiPlotPlanning) return fallback();
+
+  emit(options, {
+    phase: 'plot_planning',
+    attempt: 1,
+    message: 'Grouping canonical script rows into plot nodes',
+  });
+  try {
+    const raw = await completeStoryPlanLlm(
+      buildStoryPlotGroupingMessages(document),
+      STORY_PLOT_GROUPING_TOOL,
+      'Plot Planner',
+      1,
+      options,
+      budget,
+      0
+    );
+    return buildStoryPlotPlanFromGrouping(document, parseModelJson(raw));
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    return fallback();
+  }
+}
+
 async function completeStoryPlanLlm(
   messages: Parameters<typeof completeLlm>[0],
   tool: OpenAITool,
   stage: LlmStage,
   attempt: number,
   options: ResolveStoryPlanOptions,
-  budget: StoryPlanLlmBudget
+  budget: StoryPlanLlmBudget,
+  providerAbortRetryLimit = MAX_PROVIDER_ABORT_RETRIES_PER_STAGE
 ): Promise<string> {
   let providerAbortRetries = 0;
   const startedAt = Date.now();
@@ -552,7 +722,9 @@ async function completeStoryPlanLlm(
     try {
       const result = await completeLlm(messages, {
         temperature: 0,
-        maxCompletionTokens: stage === 'Extractor' ? 24_000 : 10_000,
+        maxCompletionTokens: stage === 'Extractor'
+          ? 24_000
+          : stage === 'Plot Planner' ? 4_000 : 10_000,
         thinking: 'disabled',
         tools: [tool],
         toolName: tool.function.name,
@@ -574,7 +746,7 @@ async function completeStoryPlanLlm(
       }
       providerAbortRetries += 1;
       if (
-        providerAbortRetries > MAX_PROVIDER_ABORT_RETRIES_PER_STAGE
+        providerAbortRetries > providerAbortRetryLimit
         || budget.used >= budget.max
       ) {
         report('error');

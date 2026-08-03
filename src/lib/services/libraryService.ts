@@ -14,6 +14,7 @@ import {
   type DocumentExportType,
   type DocumentLibrarySource,
 } from './documentDerivedLibraryService';
+import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 
 export type Library = {
   id: string;
@@ -26,6 +27,7 @@ export type Library = {
   updated_by: string | null;
   source_document_id: string | null;
   document_export_type: DocumentExportType | null;
+  plot_plan: StoryPlotPlan | null;
   asset_count?: number; // Number of assets in this library
   updater?: {
     id: string;

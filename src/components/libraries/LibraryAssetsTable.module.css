@@ -2707,19 +2707,18 @@ td.cellCopy.copyBorderRight:hover {
   color: #1f2937;
 }
 
-/* Asset Detail Panel — same layout level/height as version history sidebar */
+/* Asset Detail Panel — in-flow right column (same layout pattern as version history) */
 .detailDrawerOverlay {
   display: none;
 }
 
 .detailDrawer {
-  position: fixed;
-  top: 4rem;
-  right: 0;
-  bottom: 0;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex-shrink: 0;
   box-sizing: border-box;
-  width: 400px;
-  max-width: min(400px, 100vw);
+  width: 100%;
   height: calc(100vh - 4rem);
   background: #ffffff;
   border-left: 1px solid rgba(11, 153, 255, 0.35);
@@ -2727,7 +2726,6 @@ td.cellCopy.copyBorderRight:hover {
   border-top: 1px solid rgba(11, 153, 255, 0.35);
   box-shadow: -4px 0 16px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
   border-radius: 0;
-  z-index: 100;
   display: flex;
   flex-direction: column;
   animation: detailDrawerSlideIn 0.2s ease;

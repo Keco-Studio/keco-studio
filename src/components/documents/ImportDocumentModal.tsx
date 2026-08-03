@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import Image from 'next/image';
 import { DocumentDropZone } from '@/components/design-upload/DocumentDropZone';
+import { ImportResourceModal } from '@/components/shared/ImportResourceModal';
+import {
+  nextImportName,
+  normalizeImportNotes,
+} from '@/components/shared/importResourceForm';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { createImportedDocument } from '@/lib/documents/documentImportService';
 import { validateDesignFile } from '@/lib/document-parser';
-import closeIcon from '@/assets/images/closeIcon32.svg';
-import dialog from '@/components/shared/FormDialog.module.css';
+import { validateName } from '@/lib/utils/nameValidation';
 
 type ImportDocumentModalProps = {
   open: boolean;
@@ -26,14 +28,22 @@ export function ImportDocumentModal({
   onImported,
 }: ImportDocumentModalProps) {
   const supabase = useSupabase();
-  const [mounted, setMounted] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => setMounted(true), []);
-
-  if (!open || !mounted) return null;
+  useEffect(() => {
+    if (!open) {
+      setFile(null);
+      setName('');
+      setNameEdited(false);
+      setNotes('');
+      setError(null);
+    }
+  }, [open]);
 
   const handleFileSelected = (selected: File) => {
     const validation = validateDesignFile(selected);
@@ -43,11 +53,27 @@ export function ImportDocumentModal({
       return;
     }
     setFile(selected);
+    setName((currentName) => nextImportName({
+      currentName,
+      fileName: selected.name,
+      kind: 'document',
+      nameEdited,
+    }));
     setError(null);
   };
 
   const handleSubmit = async () => {
     if (!file || submitting) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError('Document name is required');
+      return;
+    }
+    const nameError = validateName(trimmedName);
+    if (nameError) {
+      setError(nameError);
+      return;
+    }
     const validation = validateDesignFile(file);
     if (!validation.ok) {
       setError(validation.error ?? 'Invalid file');
@@ -60,9 +86,10 @@ export function ImportDocumentModal({
         projectId,
         folderId: folderId ?? null,
         file,
+        name: trimmedName,
+        description: normalizeImportNotes(notes),
       });
       await onImported(imported.document.id);
-      setFile(null);
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to import document');
@@ -71,48 +98,36 @@ export function ImportDocumentModal({
     }
   };
 
-  return createPortal(
-    <div className={dialog.backdrop}>
-      <div className={`${dialog.modal} ${dialog.modalCompact}`} role="dialog" aria-modal="true">
-        <div className={dialog.header}>
-          <div className={dialog.title}>Import Document</div>
-          <button className={dialog.close} onClick={onClose} aria-label="Close" disabled={submitting}>
-            <Image src={closeIcon} alt="" width={32} height={32} className="icon-32" />
-          </button>
-        </div>
-
-        <div className={dialog.divider} />
-
+  return (
+    <ImportResourceModal
+      open={open}
+      resourceLabel="Document"
+      name={name}
+      notes={notes}
+      submitting={submitting}
+      submitDisabled={!file || !name.trim()}
+      error={error}
+      onNameChange={(nextName) => {
+        setName(nextName);
+        setNameEdited(true);
+        setError(null);
+      }}
+      onNotesChange={setNotes}
+      onClose={onClose}
+      onSubmit={() => void handleSubmit()}
+      fileControl={(
         <DocumentDropZone
           selectedFile={file}
+          compact
           disabled={submitting}
           onFileSelected={handleFileSelected}
           onClear={() => {
             setFile(null);
+            if (!nameEdited) setName('');
             setError(null);
           }}
         />
-
-        {error && <div className={`${dialog.error} ${dialog.errorInline}`} role="alert">{error}</div>}
-
-        <div className={dialog.footer}>
-          <button
-            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.secondary}`}
-            onClick={onClose}
-            disabled={submitting}
-          >
-            Cancel
-          </button>
-          <button
-            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.primary}`}
-            onClick={() => void handleSubmit()}
-            disabled={!file || submitting}
-          >
-            {submitting ? 'Importing...' : 'Import'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+      )}
+    />
   );
 }

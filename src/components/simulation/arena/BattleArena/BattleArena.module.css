@@ -26,10 +26,22 @@
   min-height: 0;
   overflow: hidden;
   background: #0b1220;
+  container-type: size;
 }
 
 .viewportDesign {
   background: #ffffff;
+}
+
+.mapLayer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100cqw, calc(100cqh * var(--battle-map-aspect)));
+  aspect-ratio: var(--battle-map-aspect);
+  overflow: hidden;
+  container-type: size;
+  transform: translate(-50%, -50%);
 }
 
 /* Fill the right-column stage edge-to-edge under design presentation. */
@@ -57,10 +69,8 @@
 .actor {
   position: absolute;
   z-index: 20;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  transform: translate(-50%, -50%);
+  width: 0;
+  height: 0;
   transition-property: left, top;
   transition-duration: 300ms;
   transition-timing-function: linear;
@@ -122,30 +132,46 @@
 }
 
 .spriteImg {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4));
+  translate: -50% -50%;
 }
 
 .spriteImgEnemy {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.45));
+  translate: -50% -50%;
 }
 
 .actorName {
-  margin-top: 6px;
+  position: absolute;
+  top: calc(var(--battle-actor-size) / 2 + 6px);
+  left: 0;
   padding: 2px 6px;
   border-radius: 4px;
+  max-width: 8rem;
   font-size: 10px;
   color: rgba(226, 232, 240, 0.95);
   background: rgba(0, 0, 0, 0.75);
   white-space: nowrap;
-  max-width: 8rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  transform: translateX(-50%);
+}
+
+.actorNameAbove {
+  top: auto;
+  bottom: calc(var(--battle-actor-size) / 2 + 6px);
 }
 
 .actorNameDesign {

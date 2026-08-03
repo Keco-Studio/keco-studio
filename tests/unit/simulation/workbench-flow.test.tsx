@@ -38,12 +38,17 @@ describe('simulation workbench flow', () => {
     expect(source).toContain('orderSlotsForDisplay');
     expect(source).toContain('mapping-drag-preview');
     expect(source).toContain('showUnmappedPool');
+    expect(source).toContain('formatFieldImportErrors');
+    expect(source).toContain('fieldMatchesImportError');
+    expect(source).toContain('styles.mappingErrorTooltip');
+    expect(source).toContain('role="tooltip"');
     expect(source).not.toContain('drag from a source port');
     expect(source).not.toContain('bezierPath');
     expect(source).not.toContain('startWire');
     expect(source).toContain('Continue to characters');
-    expect(source).toContain('Imported with warnings');
-    expect(source).toContain('result.warnings');
+    expect(source).toContain('Imported');
+    expect(source).not.toContain('Imported with warnings');
+    expect(source).not.toContain('result.warnings');
     expect(source).not.toContain('autoMapFields(');
   });
 
@@ -67,7 +72,24 @@ describe('simulation workbench flow', () => {
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('AI mapping...');
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('showUnmappedPool');
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('Unmapped');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('formatFieldImportErrors');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('fieldMatchesImportError');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('message={errorMessage}');
     expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('AI mapping...');
+    expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('mappingErrorTooltip');
+  });
+
+  it('keeps import field errors visible above the status icon', () => {
+    const source = read('ImportScreen.tsx');
+    expect(source).toContain('function formatFieldImportErrors');
+    expect(source).toContain('function fieldMatchesImportError');
+    expect(source).toContain('styles.mappingErrorTooltip');
+    expect(source).toContain('role="tooltip"');
+    expect(source).not.toContain('Import blocked');
+    expect(source).not.toContain('styles.errorList');
+    expect(read('SimulationWorkbench.module.css')).toContain('.mappingErrorTooltip');
+    expect(read('SimulationWorkbench.module.css')).toContain('bottom: calc(100% + 8px)');
+    expect(read('SimulationWorkbench.module.css')).toContain('transform: translateX(-50%)');
   });
 
   it('uses imported catalogs and rule tables for configuration', () => {

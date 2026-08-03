@@ -43,7 +43,7 @@ describe('Keco Script split view wiring', () => {
     expect(source).not.toContain('LibraryAssetsTable');
   });
 
-  it('ScriptSplitView wires VN pane, divider persistence, and collapsible Flow chart', () => {
+  it('ScriptSplitView wires VN pane, divider persistence, and TopBar Flow chart toggle', () => {
     const source = read(
       'src/components/script-system/ScriptSplitView.tsx'
     );
@@ -53,18 +53,36 @@ describe('Keco Script split view wiring', () => {
     expect(source).toContain('writeSplitRatio');
     expect(source).toMatch(/mousemove|mouseup/);
     expect(source).toContain('240');
-    expect(source).toContain('Flow chart');
     expect(source).toMatch(/collapse|collapsed|setCollapsed/i);
+    expect(source).toContain('SCRIPT_FLOW_CHART_TOGGLE_EVENT');
+    expect(source).toContain('broadcastScriptFlowChartState');
+    expect(source).toContain('selectedPlotNodeId');
+    expect(source).toContain('selectedRows');
+    expect(source).toContain('mode="plot-node"');
+    expect(source).not.toContain('Show Flow chart');
   });
 
-  it('FlowChartPanel builds SVG graph from buildScriptFlowGraph', () => {
+  it('TopBar Script actions reuse Share and Flow chart toggle', () => {
+    const topBar = read('src/components/layout/TopBar.tsx');
+    const actions = read(
+      'src/components/script-system/ScriptTopBarActions.tsx'
+    );
+    expect(topBar).toContain('ScriptTopBarActions');
+    expect(topBar).toContain('isScriptSystemPath');
+    expect(actions).toContain('InviteCollaboratorModal');
+    expect(actions).toContain('script-flow-chart-toggle');
+    expect(actions).toContain('requestScriptFlowChartToggle');
+  });
+
+  it('FlowChartPanel renders plot SVG nodes and option labels', () => {
     const source = read(
       'src/components/script-system/FlowChartPanel.tsx'
     );
-    expect(source).toContain('buildScriptFlowGraph');
     expect(source).toContain('<svg');
     expect(source).toContain('Flow chart');
-    expect(source).toMatch(/selected|onClick/);
+    expect(source).toContain('selectedPlotNodeId');
+    expect(source).toContain('onSelectPlotNode');
+    expect(source).toContain('edge.optionText');
     expect(source).toMatch(/empty|no nodes|No flow/i);
   });
 });

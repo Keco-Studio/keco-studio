@@ -5,6 +5,7 @@ import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
+import { getOrResolveStory } from '@/lib/import-script-conversion-cache';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 export const maxDuration = 300;
@@ -39,6 +40,7 @@ export const POST = withAuth(async function POST(
       : 'script';
   const libraryName = String(formData.get('libraryName') ?? '').trim();
   const file = formData.get('file');
+  const uploadedFile = file instanceof File ? file : undefined;
 
   if (!projectId || !isUuid(projectId)) {
     return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
@@ -62,16 +64,18 @@ export const POST = withAuth(async function POST(
   if (!libraryName) {
     return NextResponse.json({ error: 'Library name is required' }, { status: 400 });
   }
-  if (!(file instanceof File)) {
+  if (!sourceDocumentId && !uploadedFile) {
     return NextResponse.json({ error: 'File is required' }, { status: 400 });
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    return NextResponse.json({ error: 'File must be .txt or .md' }, { status: 400 });
-  }
-  if (file.size > MAX_FILE_BYTES) {
-    return NextResponse.json({ error: 'File exceeds 10 MB limit' }, { status: 400 });
+  if (uploadedFile) {
+    const ext = uploadedFile.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      return NextResponse.json({ error: 'File must be .txt or .md' }, { status: 400 });
+    }
+    if (uploadedFile.size > MAX_FILE_BYTES) {
+      return NextResponse.json({ error: 'File exceeds 10 MB limit' }, { status: 400 });
+    }
   }
 
   let verifiedSource: DocumentExportSnapshot | undefined;
@@ -128,14 +132,35 @@ export const POST = withAuth(async function POST(
       };
       void (async () => {
         try {
-          const rawContent = verifiedSource?.markdown ?? await file.text();
+          const rawContent = verifiedSource?.markdown ?? await uploadedFile!.text();
           const fileContent = toScriptImportPlainText(rawContent);
-          const resolved = await resolveStoryForImport(fileContent, {
-            sourceId: `modal:${crypto.randomUUID()}`,
-            signal: conversionController.signal,
-            onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
-            onLlmTelemetry: (event) => console.info('[import-script:llm]', event),
-          });
+          const skipSemanticAuditAfterValidation = Boolean(sourceDocumentId);
+          const conversion = await getOrResolveStory(
+            fileContent,
+            (content) => resolveStoryForImport(content, {
+              sourceId: `modal:${crypto.randomUUID()}`,
+              signal: conversionController.signal,
+              skipSemanticAuditAfterValidation,
+              enableAiPlotPlanning: true,
+              onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
+              onLlmTelemetry: (event) => console.info('[import-script:llm]', event),
+            }),
+            {
+              variant: skipSemanticAuditAfterValidation
+                ? 'document-validation-ai-plot-v2'
+                : 'mandatory-audit-ai-plot-v2',
+            }
+          );
+          if (conversion.cacheHit) {
+            send({
+              type: 'progress',
+              progress: {
+                phase: 'conversion',
+                message: 'Reusing cached Story IR conversion',
+              },
+            });
+          }
+          const resolved = conversion.value;
           if (conversionController.signal.aborted) return;
           send({
             type: 'progress',
@@ -151,7 +176,10 @@ export const POST = withAuth(async function POST(
             folderId: sourceDocumentId ? null : resolvedFolderId,
             libraryName,
             document: resolved.document,
-            fileName: file.name,
+            plotPlan: resolved.plotPlan,
+            fileName: uploadedFile
+              ? uploadedFile.name
+              : `${verifiedSource?.documentName ?? 'document'}.txt`,
             ...(sourceDocumentId
               ? { documentSource: { sourceDocumentId, exportType: documentExportType } }
               : {}),

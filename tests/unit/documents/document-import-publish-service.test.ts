@@ -24,6 +24,7 @@ describe('document import publish server command', () => {
       projectId: '22222222-2222-4222-8222-222222222222',
       folderId: null,
       name: 'Guide',
+      description: 'Imported reference notes',
       markdown: '# Guide',
     });
 
@@ -31,6 +32,7 @@ describe('document import publish server command', () => {
       p_document_id: '11111111-1111-4111-8111-111111111111',
       p_version_id: '44444444-4444-4444-8444-444444444444',
       p_actor_user_id: '33333333-3333-4333-8333-333333333333',
+      p_description: 'Imported reference notes',
       p_markdown: '# Guide',
       p_yjs_state: 'server-yjs-state',
     }));

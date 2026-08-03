@@ -54,10 +54,6 @@ export async function runDocumentDerivedImport(input: {
   formData.append('snapshotToken', source.snapshotToken ?? '');
   formData.append('documentExportType', exportType);
   formData.append('libraryName', libraryName);
-  formData.append(
-    'file',
-    new File([plainText], `${source.documentName}.txt`, { type: 'text/plain' })
-  );
 
   notifyDocumentDerivedImportProgress({
     projectId: source.projectId,

@@ -10,7 +10,6 @@ import { truncateText } from '@/lib/utils/truncateText';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
-import folderIcon from '@/assets/images/folder.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import styles from '../Sidebar.module.css';
 
@@ -263,10 +262,6 @@ export function useSidebarTree(
         children.push(buildDocumentNode(doc, true));
       });
 
-      const hasNoLibraries =
-        folderLibraries.length === 0 &&
-        folderDocuments.length === 0 &&
-        childFolders.length === 0;
       const folderKey = `folder-${folder.id}`;
       return {
         title: (
@@ -275,11 +270,6 @@ export function useSidebarTree(
             data-folder-row
           >
             <div className={styles.itemMain}>
-              {hasNoLibraries && (
-                <div className={styles.folderIconPlaceholder} aria-hidden>
-                  <Image src={folderIcon} alt="" width={24} height={24} className="icon-24" />
-                </div>
-              )}
               <span
                 className={styles.itemText}
                 style={{ fontWeight: 500 }}
@@ -317,12 +307,12 @@ export function useSidebarTree(
         ),
         key: folderKey,
         // Keep folders expandable/droppable even when empty (P1 DnD into folder).
+        // Use [] instead of undefined so rc-tree does not look up a missing child node.
         isLeaf: false,
-        children: children.length > 0 ? children : undefined,
+        children,
         _titleStr: folder.name,
         _nodeType: 'folder',
-        _hasNoLibraries: hasNoLibraries,
-      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document'; _hasNoLibraries?: boolean };
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document' };
     };
 
     const result: DataNode[] = [];

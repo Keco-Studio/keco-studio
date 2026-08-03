@@ -127,6 +127,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const didInitialExpandRef = useRef(false);
 
   const selectedProject =
@@ -237,6 +238,14 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [projectMenuOpen]);
 
+  useEffect(() => {
+    const onToggle = () => {
+      setIsSidebarVisible((prev) => !prev);
+    };
+    window.addEventListener('sidebar-toggle', onToggle);
+    return () => window.removeEventListener('sidebar-toggle', onToggle);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     await Promise.all([refetchWorkspace(), refetchLibraries()]);
   }, [refetchWorkspace, refetchLibraries]);
@@ -340,7 +349,11 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   };
 
   return (
-    <aside className={styles.sidebar} aria-label="Keco Script workspace">
+    <aside
+      className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}
+      aria-label="Keco Script workspace"
+      aria-hidden={!isSidebarVisible}
+    >
       <div className={styles.brand}>
         <strong className={styles.brandTitle}>Keco Script</strong>
         <p className={styles.brandSubtitle}>

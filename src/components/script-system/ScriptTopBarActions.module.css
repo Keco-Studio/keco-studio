@@ -1,0 +1,49 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.shareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 32px;
+  padding: 0.5rem 16px;
+  border: none;
+  border-radius: 0.5rem;
+  background: #0b99ff14;
+  color: #0b99ff;
+  font-size: 1rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.shareButton:hover {
+  background: #0b99ff22;
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #bcbcbc;
+  border-radius: 0.375rem;
+  background: white;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.iconButton:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.iconButtonActive,
+.iconButtonActive:hover {
+  background: #0b99ff14;
+  border-color: transparent;
+}

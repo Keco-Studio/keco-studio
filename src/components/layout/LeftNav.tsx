@@ -190,7 +190,9 @@ export function LeftNav() {
           aria-label="Script"
           aria-current={onScript ? 'page' : undefined}
           onClick={() => {
-            if (!onScript) router.push('/script-system');
+            if (onScript) return;
+            const pref = readScriptProjectPreference()?.projectId;
+            router.push(pref ? `/script-system/${pref}` : '/script-system');
           }}
         >
           <IconSpeechBubble active={onScript} />

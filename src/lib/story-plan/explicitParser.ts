@@ -14,6 +14,8 @@ const OPTION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s*[：:].*[（(]([\s\S]*)
 const JUMP_ONLY_PATTERN = /^[（(]\s*Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?\s*[）)]$/i;
 const JUMP_TOKEN_PATTERN = /Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
 const NATURAL_BRANCH_PATTERN = /^Branch\s*(\d+)\s*[：:]\s*Choose\s*[【[]/i;
+const CHINESE_NATURAL_BRANCH_PATTERN = /^\u5206\u652f\s*([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u4e24\d]+)\s*[：:]\s*\u9009\u62e9\s*[【[]/;
+const CHINESE_BRANCH_PATTERN = /^【\s*\u5206\u652f\u9009\u62e9([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u4e24\d]+)\s*[：:]/;
 
 export function tryParseExplicitStory(
   source: SegmentedStorySource
@@ -120,11 +122,11 @@ export function tryParseNaturalBranchStory(
   const unitIndexById = new Map(source.units.map((unit, index) => [unit.id, index]));
   const naturalChoices = inventory.choices.map((choice) => {
     const unit = source.units.find((candidate) => candidate.id === choice.unitId);
-    const match = unit ? NATURAL_BRANCH_PATTERN.exec(unit.text) : null;
-    return match && unit ? {
+    const ordinalText = unit ? naturalBranchOrdinalText(unit.text) : undefined;
+    return ordinalText && unit ? {
       choice,
       unitIndex: unitIndexById.get(unit.id)!,
-      ordinal: parseNaturalOrdinal(match[1]),
+      ordinal: parseNaturalOrdinal(ordinalText),
     } : null;
   });
   if (naturalChoices.some((choice) => !choice || choice.ordinal === null)) return null;
@@ -171,6 +173,150 @@ export function tryParseNaturalBranchStory(
   }
 }
 
+export function tryParseLinearScreenplay(
+  source: SegmentedStorySource
+): StoryRelationshipPlan | null {
+  const dialogueCount = source.segments.filter((segment) => segment.kind === 'dialogue').length;
+  const sceneCount = source.segments.filter((segment) => segment.kind === 'scene_heading').length;
+  if (dialogueCount < 2 || sceneCount < 1) return null;
+
+  const nodes: PlannedNode[] = [];
+  const branchChoices: Array<{
+    ordinal: number;
+    choice: Omit<PlannedChoice, 'targetNodeId'>;
+    targetNodeId?: string;
+  }> = [];
+  let currentNode: PlannedNode | undefined;
+  let branchOwner: PlannedNode | undefined;
+  let pendingChoiceIndex: number | undefined;
+
+  const appendNode = (
+    type: PlannedNode['type'],
+    speakerSegmentId: string,
+    contentSegmentIds: string[],
+    commandIds: string[]
+  ): void => {
+    const node: PlannedNode = {
+      id: `Node${nodes.length + 1}`,
+      type,
+      speakerSegmentId,
+      contentSegmentIds,
+      commandIds,
+      nextNodeId: '',
+    };
+
+    if (pendingChoiceIndex !== undefined) {
+      branchChoices[pendingChoiceIndex].targetNodeId = node.id;
+      pendingChoiceIndex = undefined;
+    } else if (currentNode) {
+      currentNode.nextNodeId = node.id;
+    }
+
+    nodes.push(node);
+    currentNode = node;
+  };
+
+  for (const unit of source.units) {
+    const segments = unitSegments(source, unit.id);
+    const choiceSegments = segments.filter((segment) => segment.kind === 'choice_text');
+    const contentSegments = segments.filter(isNodeContentSegment);
+    const commandIds = source.commands
+      .filter((command) => segmentUnitId(source, command.segmentId) === unit.id)
+      .map((command) => command.id);
+
+    if (choiceSegments.length > 0) {
+      const ordinal = parseChineseBranchOrdinal(unit.text);
+      if (
+        choiceSegments.length !== 1
+        || contentSegments.length > 0
+        || !currentNode
+        || pendingChoiceIndex !== undefined
+        || ordinal === null
+      ) return null;
+      if (ordinal === 1) {
+        if (branchChoices.length > 0) return null;
+        branchOwner = currentNode;
+      } else if (!branchOwner || ordinal !== branchChoices.length + 1) {
+        return null;
+      }
+      branchChoices.push({
+        ordinal,
+        choice: {
+          id: `Choice${branchChoices.length + 1}`,
+          fromNodeId: branchOwner!.id,
+          textSegmentIds: [choiceSegments[0].id],
+          commandIds,
+        },
+      });
+      pendingChoiceIndex = branchChoices.length - 1;
+      continue;
+    }
+
+    if (contentSegments.length === 0) continue;
+    const speaker = segments.find((segment) => segment.kind === 'speaker');
+    const dialogue = segments.find((segment) => segment.kind === 'dialogue');
+    const stageDirections = segments.filter((segment) => segment.kind === 'stage_direction');
+
+    if (speaker && dialogue) {
+      if (stageDirections.length > 0) {
+        appendNode('narration', speaker.id, stageDirections.map((segment) => segment.id), []);
+      }
+      appendNode('dialogue', speaker.id, [dialogue.id], commandIds);
+      continue;
+    }
+
+    appendNode(
+      contentSegments.some((segment) => segment.kind === 'scene_heading') ? 'scene' : 'narration',
+      '',
+      contentSegments.map((segment) => segment.id),
+      commandIds
+    );
+  }
+
+  if (
+    nodes.length === 0
+    || pendingChoiceIndex !== undefined
+    || branchChoices.length === 1
+    || branchChoices.some((branch) => !branch.targetNodeId)
+  ) return null;
+  const choices: PlannedChoice[] = branchChoices.map(({ choice, targetNodeId }) => ({
+    ...choice,
+    targetNodeId: targetNodeId!,
+  }));
+  return {
+    version: 2,
+    entryNodeId: nodes[0].id,
+    nodes,
+    choices,
+  };
+}
+
+function parseChineseBranchOrdinal(line: string): number | null {
+  const value = CHINESE_BRANCH_PATTERN.exec(line)?.[1];
+  return value ? parseOrdinal(value) : null;
+}
+
+function naturalBranchOrdinalText(line: string): string | undefined {
+  return NATURAL_BRANCH_PATTERN.exec(line)?.[1]
+    ?? CHINESE_NATURAL_BRANCH_PATTERN.exec(line)?.[1];
+}
+
+function parseOrdinal(value: string): number | null {
+  if (/^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  const digits: Record<string, number> = {
+    \u4e00: 1, \u4e8c: 2, \u4e24: 2, \u4e09: 3, \u56db: 4, \u4e94: 5,
+    \u516d: 6, \u4e03: 7, \u516b: 8, \u4e5d: 9,
+  };
+  if (!value.includes('\u5341')) return value.length === 1 ? digits[value] ?? null : null;
+  const [tensText, onesText] = value.split('\u5341');
+  const tens = tensText ? digits[tensText] : 1;
+  const ones = onesText ? digits[onesText] : 0;
+  return tens && ones !== undefined ? tens * 10 + ones : null;
+}
+
 function collectDeclarations(
   source: SegmentedStorySource
 ): { labels: Set<string>; mergeLabels: string[] } | null {
@@ -208,7 +354,5 @@ function isNodeContentSegment(segment: SourceSegment): boolean {
 }
 
 function parseNaturalOrdinal(value: string): number | null {
-  if (!/^\d+$/.test(value)) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  return parseOrdinal(value);
 }

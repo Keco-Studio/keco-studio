@@ -1,22 +1,28 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
-  buildScriptFlowGraph,
+  type FlowGraph,
   type FlowGraphNode,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import styles from './ScriptSplitView.module.css';
 
 export type FlowChartPanelProps = {
-  rows: Array<Record<string, string>>;
+  graph: FlowGraph;
+  selectedPlotNodeId: string;
+  onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
 };
 
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 44;
-const H_GAP = 28;
-const V_GAP = 56;
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 48;
+const H_GAP = 40;
+const V_GAP = 72;
 const PAD = 24;
+
+function compactLabel(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+}
 
 function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string }[]) {
   if (nodes.length === 0) {
@@ -129,14 +135,16 @@ function edgePath(
   return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
 }
 
-export function FlowChartPanel({ rows, onClose }: FlowChartPanelProps) {
-  const graph = useMemo(() => buildScriptFlowGraph(rows), [rows]);
+export function FlowChartPanel({
+  graph,
+  selectedPlotNodeId,
+  onSelectPlotNode,
+  onClose,
+}: FlowChartPanelProps) {
   const layout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
     [graph]
   );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
   return (
     <aside className={styles.flowPanel} aria-label="Flow chart">
       <div className={styles.flowHeader}>
@@ -170,61 +178,63 @@ export function FlowChartPanel({ rows, onClose }: FlowChartPanelProps) {
               const from = layout.positions.get(edge.from);
               const to = layout.positions.get(edge.to);
               if (!from || !to) return null;
+              const path = edgePath(from, to);
+              const labelX = (from.x + to.x) / 2 + NODE_WIDTH / 2;
+              const labelY = (from.y + NODE_HEIGHT + to.y) / 2 - 5;
               return (
-                <path
-                  key={`${edge.from}-${edge.to}-${index}`}
-                  d={edgePath(from, to)}
-                  className={styles.flowEdge}
-                  fill="none"
-                />
+                <g key={`${edge.from}-${edge.to}-${index}`}>
+                  <path d={path} className={styles.flowEdge} fill="none" />
+                  {edge.optionText ? (
+                    <text
+                      x={labelX}
+                      y={labelY}
+                      textAnchor="middle"
+                      className={styles.flowEdgeLabel}
+                    >
+                      {compactLabel(edge.optionText, 18)}
+                      <title>{edge.optionText}</title>
+                    </text>
+                  ) : null}
+                </g>
               );
             })}
             {graph.nodes.map((node) => {
               const pos = layout.positions.get(node.id);
               if (!pos) return null;
-              const selected = selectedId === node.id;
+              const selected = selectedPlotNodeId === node.id;
               return (
                 <g
                   key={node.id}
                   transform={`translate(${pos.x}, ${pos.y})`}
                   className={styles.flowNode}
-                  onClick={() => setSelectedId(node.id)}
+                  onClick={() => onSelectPlotNode(node.id)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      setSelectedId(node.id);
+                      onSelectPlotNode(node.id);
                     }
                   }}
                 >
                   <rect
                     width={NODE_WIDTH}
                     height={NODE_HEIGHT}
-                    rx={10}
-                    ry={10}
+                    rx={8}
+                    ry={8}
                     className={
                       selected ? styles.flowNodeSelected : styles.flowNodeRect
                     }
                   />
                   <text
                     x={NODE_WIDTH / 2}
-                    y={node.speaker ? 18 : 26}
+                    y={29}
                     textAnchor="middle"
                     className={styles.flowNodeLabel}
                   >
-                    {node.label}
+                    {compactLabel(node.label, 14)}
                   </text>
-                  {node.speaker ? (
-                    <text
-                      x={NODE_WIDTH / 2}
-                      y={34}
-                      textAnchor="middle"
-                      className={styles.flowNodeSpeaker}
-                    >
-                      {node.speaker}
-                    </text>
-                  ) : null}
+                  <title>{node.label}</title>
                 </g>
               );
             })}

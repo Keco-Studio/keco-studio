@@ -1,5 +1,6 @@
 import type { StoryRelationshipPlan } from '@/lib/story-plan/schema';
 import type { SegmentedStorySource, SourceSegment } from '@/lib/story-plan/sourceSegments';
+import { resolveProtagonistSpeaker } from './roles';
 import type { StoryExtraction } from './schema';
 
 export function buildStoryExtractionFromPlan(
@@ -9,6 +10,15 @@ export function buildStoryExtractionFromPlan(
   const segmentsById = new Map(source.segments.map((segment) => [segment.id, segment]));
   const commandsById = new Map(source.commands.map((command) => [command.id, command]));
   const dialogueTypes = new Map<string, 1 | 2>();
+  const protagonistSpeaker = resolveProtagonistSpeaker(plan.nodes.map((node) => ({
+    type: node.type,
+    speaker: node.speakerSegmentId
+      ? segmentsById.get(node.speakerSegmentId)?.text ?? ''
+      : '',
+    content: node.contentSegmentIds
+      .map((segmentId) => segmentsById.get(segmentId)?.text ?? '')
+      .join('\n'),
+  })));
 
   const nodes = plan.nodes.map((node) => {
     const speakerSegments = node.speakerSegmentId
@@ -80,7 +90,9 @@ export function buildStoryExtractionFromPlan(
     if (type === 'dialogue') {
       const existing = dialogueTypes.get(speaker);
       if (existing) return existing;
-      const assigned = dialogueTypes.size === 0 ? 1 : 2;
+      const assigned = protagonistSpeaker
+        ? speaker.trim() === protagonistSpeaker ? 1 : 2
+        : dialogueTypes.size === 0 ? 1 : 2;
       dialogueTypes.set(speaker, assigned);
       return assigned;
     }

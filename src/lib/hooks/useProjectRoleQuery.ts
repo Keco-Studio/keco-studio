@@ -21,7 +21,8 @@ export function useProjectRoleQuery(
         return { role: null, isOwner: false } as const;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const sessionRes = await supabase.auth.getSession();
+      const session = sessionRes?.data?.session ?? null;
       if (!session) return { role: null, isOwner: false } as const;
       return fetchProjectRoleWithRetry(validProjectId, session.access_token);
     },

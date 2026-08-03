@@ -27,6 +27,12 @@ import {
   toPlayerWalkFramePath,
   type RotationKey,
 } from '../poc-map-ui/gameMapSprites';
+import { eventToLogLine } from './eventToLogLine';
+import {
+  battleActorPercentPosition,
+  battleCanvasMetrics,
+  battleGridToScreen,
+} from '../battleViewport';
 import styles from './BattleArena.module.css';
 
 export type ProgressionRewardFxHandler = (
@@ -109,23 +115,6 @@ function extractUiState(session: BattleSession): BattleArenaUiState {
 
 const TICK_MS = 200;
 const SPEED_OPTIONS = [1, 2, 4] as const;
-
-function eventToLogLine(ev: { type: string; payload: Record<string, unknown> }): string | null {
-  if (ev.type === 'action_executed') {
-    const skill = ev.payload.skillName ?? ev.payload.skillId ?? ev.payload.action;
-    return `[T${ev.payload.tick ?? '?'}] ${ev.payload.actorId} → ${skill}`;
-  }
-  if (ev.type === 'damage_applied') {
-    return `  dmg ${ev.payload.damage}${ev.payload.resolver === 'keco_element' ? ' (keco)' : ''}`;
-  }
-  if (ev.type === 'command_rejected') {
-    return `  reject: ${ev.payload.reason}`;
-  }
-  if (ev.type === 'battle_ended') {
-    return `Ended: ${ev.payload.result}`;
-  }
-  return null;
-}
 
 function paintBattleCanvas(
   ctx: CanvasRenderingContext2D,
@@ -246,10 +235,17 @@ export function BattleArena({
   const [combatFxTick, setCombatFxTick] = useState(0);
 
   const [session, setSession] = useState<BattleSession | null>(null);
+  const hasSession = session !== null;
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(1);
   const [logLines, setLogLines] = useState<string[]>([]);
-  const [viewportSize, setViewportSize] = useState({ width: 800, height: 520 });
+  const [viewportSize, setViewportSize] = useState({
+    width: 800,
+    height: 520,
+    pixelRatio: 1,
+    backingWidth: 800,
+    backingHeight: 520,
+  });
 
   useEffect(() => {
     if (!onRegisterLogAppender) return;
@@ -257,7 +253,6 @@ export function BattleArena({
       setLogLines((prev) => [...prev.slice(-100), line]);
     });
   }, [onRegisterLogAppender]);
-  const [mounted, setMounted] = useState(false);
   const [mapBgImage, setMapBgImage] = useState<HTMLImageElement | null>(null);
   const [walkAnimTick, setWalkAnimTick] = useState(0);
   const [playerFacing, setPlayerFacing] = useState<RotationKey>(DEFAULT_DIRECTION);
@@ -270,13 +265,12 @@ export function BattleArena({
   } | null>(null);
   const [finishedSession, setFinishedSession] = useState<BattleSession | null>(null);
 
-  const { renderWidth, renderHeight, renderOffsetX, renderOffsetY, actorPx, gridToScreen } =
+  const { renderWidth, renderHeight, actorPx } =
     useMapRenderMetrics({
       viewportSize,
       mapWidth: config.mapWidth,
       mapHeight: config.mapHeight,
-      // Design battle fills the stage; debug keeps letterboxing for full map visibility.
-      fit: presentation === 'design' ? 'cover' : 'contain',
+      fit: 'cover',
     });
 
   const appendStepLogs = useCallback(
@@ -284,7 +278,13 @@ export function BattleArena({
       const evStart = lastEventCount.current;
       const newLines: string[] = [];
       for (let i = evStart; i < s.events.length; i++) {
-        const line = eventToLogLine(s.events[i] as { type: string; payload: Record<string, unknown> });
+        const line = eventToLogLine(
+          s.events[i] as {
+            type: string;
+            tick?: number;
+            payload: Record<string, unknown>;
+          }
+        );
         if (line) newLines.push(line);
       }
       lastEventCount.current = s.events.length;
@@ -474,7 +474,6 @@ export function BattleArena({
 
   useEffect(() => {
     initSession();
-    setMounted(true);
     return () => {
       controllerRef.current = null;
     };
@@ -505,15 +504,22 @@ export function BattleArena({
   const measureViewport = useCallback(() => {
     const el = mapViewportRef.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    if (r.width < 2 || r.height < 2) return;
-    const width = Math.max(1, Math.floor(r.width));
-    const height = Math.max(1, Math.floor(r.height));
+    const next = battleCanvasMetrics(
+      el.getBoundingClientRect(),
+      window.devicePixelRatio || 1
+    );
+    if (!next) return;
     setViewportSize((prev) => {
-      if (Math.abs(prev.width - width) <= 1 && Math.abs(prev.height - height) <= 1) {
+      if (
+        prev.width === next.width
+        && prev.height === next.height
+        && prev.pixelRatio === next.pixelRatio
+        && prev.backingWidth === next.backingWidth
+        && prev.backingHeight === next.backingHeight
+      ) {
         return prev;
       }
-      return { width, height };
+      return next;
     });
   }, []);
 
@@ -530,27 +536,33 @@ export function BattleArena({
       observer.disconnect();
       window.removeEventListener('resize', measureViewport);
     };
-  }, [measureViewport]);
+  }, [measureViewport, hasSession]);
 
   useEffect(() => {
     const canvas = mapCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const w = viewportSize.width;
-    const h = viewportSize.height;
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
+    const w = renderWidth;
+    const h = renderHeight;
+    const backingWidth = Math.max(1, Math.round(w * viewportSize.pixelRatio));
+    const backingHeight = Math.max(1, Math.round(h * viewportSize.pixelRatio));
+    if (
+      canvas.width !== backingWidth
+      || canvas.height !== backingHeight
+    ) {
+      canvas.width = backingWidth;
+      canvas.height = backingHeight;
     }
+    ctx.setTransform(viewportSize.pixelRatio, 0, 0, viewportSize.pixelRatio, 0, 0);
     paintBattleCanvas(
       ctx,
       w,
       h,
       config.mapWidth,
       config.mapHeight,
-      renderOffsetX,
-      renderOffsetY,
+      0,
+      0,
       renderWidth,
       renderHeight,
       mapBgImage,
@@ -562,11 +574,8 @@ export function BattleArena({
     isDesignPresentation,
     mapBgImage,
     renderHeight,
-    renderOffsetX,
-    renderOffsetY,
     renderWidth,
-    viewportSize.height,
-    viewportSize.width,
+    viewportSize.pixelRatio,
   ]);
 
   useEffect(() => {
@@ -617,12 +626,16 @@ export function BattleArena({
   }
 
   const { left, right } = session;
-  const playerScreen = mounted
-    ? gridToScreen(left.position.x, left.position.y)
-    : { x: viewportSize.width * 0.25, y: viewportSize.height * 0.5 };
-  const enemyScreen = mounted
-    ? gridToScreen(right.position.x, right.position.y)
-    : { x: viewportSize.width * 0.75, y: viewportSize.height * 0.5 };
+  const gridToMapScreen = (x: number, y: number) => battleGridToScreen({
+    x,
+    y,
+    mapWidth: config.mapWidth,
+    mapHeight: config.mapHeight,
+    renderWidth,
+    renderHeight,
+    renderOffsetX: 0,
+    renderOffsetY: 0,
+  });
   const playerHpPct = left.resources.maxHp > 0 ? (left.resources.hp / left.resources.maxHp) * 100 : 0;
   const enemyHpPct = right.resources.maxHp > 0 ? (right.resources.hp / right.resources.maxHp) * 100 : 0;
 
@@ -636,6 +649,15 @@ export function BattleArena({
   void combatFxTick;
   const playerSpriteFx = spriteMotionStyle(playerCombatFx, actorPx);
   const enemySpriteFx = spriteMotionStyle(enemyCombatFx, actorPx);
+  const actorPositionStyle = (position: { x: number; y: number }) => ({
+    ...battleActorPercentPosition({
+      ...position,
+      mapWidth: config.mapWidth,
+      mapHeight: config.mapHeight,
+      actorCells: 1.5,
+    }),
+    '--battle-actor-size': `${150 / config.mapWidth}cqw`,
+  } as React.CSSProperties);
 
   return (
     <div ref={arenaRootRef} className={styles.arenaRoot}>
@@ -643,84 +665,91 @@ export function BattleArena({
         ref={mapViewportRef}
         className={`${styles.viewport} ${isDesignPresentation ? styles.viewportDesign : ''}`}
       >
-        <canvas ref={mapCanvasRef} className={styles.canvas} />
-        <div className={styles.overlay}>
-          <div
-            className={styles.actor}
-            style={{ left: playerScreen.x, top: playerScreen.y }}
-          >
-            {!isDesignPresentation ? (
-              <div className={styles.hpBlock}>
-                <div className={styles.hpLabelPlayer}>HP</div>
-                <div className={`${styles.hpTrack} ${styles.hpTrackPlayer}`}>
-                  <div className={styles.hpFillPlayer} style={{ width: `${playerHpPct}%` }} />
-                </div>
-              </div>
-            ) : null}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={playerSprite}
-              alt={left.name}
-              className={styles.spriteImg}
-              style={{
-                width: actorPx,
-                height: actorPx,
-                transform: playerSpriteFx.transform,
-                filter: playerSpriteFx.filter,
-                transition: playerSpriteFx.transition,
-              }}
-              draggable={false}
-            />
+        <div
+          className={styles.mapLayer}
+          style={{
+            '--battle-map-aspect': config.mapWidth / config.mapHeight,
+          } as React.CSSProperties}
+        >
+          <canvas ref={mapCanvasRef} className={styles.canvas} />
+          <div className={styles.overlay}>
             <div
-              className={`${styles.actorName} ${isDesignPresentation ? styles.actorNameDesign : ''}`}
+              className={styles.actor}
+              style={actorPositionStyle(left.position)}
             >
-              {left.name}
+              {!isDesignPresentation ? (
+                <div className={styles.hpBlock}>
+                  <div className={styles.hpLabelPlayer}>HP</div>
+                  <div className={`${styles.hpTrack} ${styles.hpTrackPlayer}`}>
+                    <div className={styles.hpFillPlayer} style={{ width: `${playerHpPct}%` }} />
+                  </div>
+                </div>
+              ) : null}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={playerSprite}
+                alt={left.name}
+                className={styles.spriteImg}
+                style={{
+                  width: 'var(--battle-actor-size)',
+                  height: 'var(--battle-actor-size)',
+                  transform: playerSpriteFx.transform,
+                  filter: playerSpriteFx.filter,
+                  transition: playerSpriteFx.transition,
+                }}
+                draggable={false}
+              />
+              <div
+                className={`${styles.actorName} ${isDesignPresentation ? styles.actorNameDesign : ''}`}
+              >
+                {left.name}
+              </div>
+            </div>
+
+            <div
+              className={styles.actor}
+              style={actorPositionStyle(right.position)}
+            >
+              {!isDesignPresentation ? (
+                <div className={styles.hpBlock}>
+                  <div className={styles.hpLabelEnemy}>HP</div>
+                  <div className={`${styles.hpTrack} ${styles.hpTrackEnemy}`}>
+                    <div className={styles.hpFillEnemy} style={{ width: `${enemyHpPct}%` }} />
+                  </div>
+                </div>
+              ) : null}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={enemySprite}
+                alt={right.name}
+                className={styles.spriteImgEnemy}
+                style={{
+                  width: 'var(--battle-actor-size)',
+                  height: 'var(--battle-actor-size)',
+                  transform: enemySpriteFx.transform,
+                  filter: enemySpriteFx.filter,
+                  transition: enemySpriteFx.transition,
+                }}
+                draggable={false}
+              />
+              <div
+                className={`${styles.actorName} ${styles.actorNameAbove} ${isDesignPresentation ? styles.actorNameDesign : ''}`}
+              >
+                {right.name}
+              </div>
             </div>
           </div>
 
-          <div
-            className={styles.actor}
-            style={{ left: enemyScreen.x, top: enemyScreen.y }}
-          >
-            {!isDesignPresentation ? (
-              <div className={styles.hpBlock}>
-                <div className={styles.hpLabelEnemy}>HP</div>
-                <div className={`${styles.hpTrack} ${styles.hpTrackEnemy}`}>
-                  <div className={styles.hpFillEnemy} style={{ width: `${enemyHpPct}%` }} />
-                </div>
-              </div>
-            ) : null}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={enemySprite}
-              alt={right.name}
-              className={styles.spriteImgEnemy}
-              style={{
-                width: actorPx,
-                height: actorPx,
-                transform: enemySpriteFx.transform,
-                filter: enemySpriteFx.filter,
-                transition: enemySpriteFx.transition,
-              }}
-              draggable={false}
-            />
-            <div
-              className={`${styles.actorName} ${isDesignPresentation ? styles.actorNameDesign : ''}`}
-            >
-              {right.name}
-            </div>
-          </div>
+          <MapFxOverlay
+            gridToScreen={gridToMapScreen}
+            playerGrid={left.position}
+            enemyGrid={right.position}
+            projectileFx={projectileFx}
+            impactFx={impactFx}
+            moveFx={moveFx}
+            floatTexts={floatTexts}
+          />
         </div>
-
-        <MapFxOverlay
-          gridToScreen={gridToScreen}
-          playerGrid={left.position}
-          enemyGrid={right.position}
-          projectileFx={projectileFx}
-          impactFx={impactFx}
-          moveFx={moveFx}
-          floatTexts={floatTexts}
-        />
 
         {!hideInternalLog && !isDesignPresentation ? (
           <div className={`${styles.logHud} logHud`}>

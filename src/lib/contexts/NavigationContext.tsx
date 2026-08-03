@@ -15,6 +15,7 @@ import {
   AuthorizationError,
 } from '@/lib/services/authorizationService';
 import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
+import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 
 type BreadcrumbItem = {
   label: string;
@@ -53,6 +54,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [documentName, setDocumentName] = useState<string | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [libraryFolderId, setLibraryFolderId] = useState<string | null>(null);
+  const [scriptParentDocumentId, setScriptParentDocumentId] = useState<string | null>(null);
+  const [scriptParentDocumentName, setScriptParentDocumentName] = useState<string | null>(null);
   const [showCreateProjectBreadcrumb, setShowCreateProjectBreadcrumb] = useState(false);
   
   // Track current user ID to detect user switches
@@ -72,10 +75,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const currentDocumentId = routeParams.documentId;
   const currentFolderIdFromUrl = routeParams.folderId;
 
-  // Current folder: from URL (routeParams) or from library's folder_id
+  // Current folder: from URL (routeParams) or from library's folder_id.
+  // Script workspace breadcrumbs follow the Script sidebar tree (project / doc /
+  // script), not Studio folder paths — ignore library.folder_id there.
+  const onScriptSystem = isScriptSystemPath(pathname);
   const currentFolderId = useMemo(() => {
+    if (onScriptSystem) return currentFolderIdFromUrl;
     return currentFolderIdFromUrl || libraryFolderId;
-  }, [currentFolderIdFromUrl, libraryFolderId]);
+  }, [currentFolderIdFromUrl, libraryFolderId, onScriptSystem]);
 
   useEffect(() => {
     if (!currentProjectId || !projectName?.trim()) return;
@@ -119,6 +126,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       setDocumentName(null);
       setFolderName(null);
       setLibraryFolderId(null);
+      setScriptParentDocumentId(null);
+      setScriptParentDocumentName(null);
       isInitialFetchRef.current = true; // Reset for new user
       
       // If we're on a resource page (not /projects), redirect
@@ -143,6 +152,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           setDocumentName(null);
           setFolderName(null);
           setLibraryFolderId(null);
+          setScriptParentDocumentId(null);
+          setScriptParentDocumentName(null);
         }
         return;
       }
@@ -197,6 +208,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               setDocumentName(null);
               setFolderName(null);
               setLibraryFolderId(null);
+              setScriptParentDocumentId(null);
+              setScriptParentDocumentName(null);
               // Only redirect if this is not the initial fetch
               if (!isInitialFetch) {
                 router.push('/projects');
@@ -218,13 +231,16 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           try {
             // First verify user has access to this library
             await verifyLibraryAccess(supabase, currentLibraryId);
+            const onScript = isScriptSystemPath(pathname);
             
             const data = await queryClient.fetchQuery({
-              queryKey: queryKeys.library(currentLibraryId),
+              // Keep breadcrumb lookups off queryKeys.library — that key stores full
+              // Library rows (incl. document_export_type) used by Script/Studio pages.
+              queryKey: ['library-breadcrumb', currentLibraryId] as const,
               queryFn: async () => {
               const { data, error } = await supabase
                 .from('libraries')
-                .select('name, folder_id')
+                .select('name, folder_id, source_document_id')
                 .eq('id', currentLibraryId)
                 .single();
               
@@ -239,17 +255,44 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               if (!data) {
                 setLibraryName(null);
                 setLibraryFolderId(null);
+                setScriptParentDocumentId(null);
+                setScriptParentDocumentName(null);
                 // Only redirect if this is not the initial fetch
                 if (!isInitialFetch) {
                   if (currentProjectId) {
-                    router.push(`/${currentProjectId}`);
+                    router.push(onScript ? `/script-system/${currentProjectId}` : `/${currentProjectId}`);
                   } else {
                     router.push('/projects');
                   }
                 }
               } else {
                 setLibraryName(data.name ?? null);
-                setLibraryFolderId(data.folder_id ?? null);
+                setLibraryFolderId(onScript ? null : (data.folder_id ?? null));
+
+                const parentDocId =
+                  onScript && typeof data.source_document_id === 'string'
+                    ? data.source_document_id
+                    : null;
+                setScriptParentDocumentId(parentDocId);
+                if (parentDocId) {
+                  const parentDoc = await queryClient.fetchQuery({
+                    queryKey: ['document-name', parentDocId] as const,
+                    queryFn: async () => {
+                      const { data: doc, error } = await supabase
+                        .from('documents')
+                        .select('name')
+                        .eq('id', parentDocId)
+                        .single();
+                      if (error || !doc) return null;
+                      return doc;
+                    },
+                  });
+                  if (mounted) {
+                    setScriptParentDocumentName(parentDoc?.name ?? null);
+                  }
+                } else {
+                  setScriptParentDocumentName(null);
+                }
               }
             }
           } catch (authError: any) {
@@ -257,12 +300,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               // User doesn't have access - clear state
               setLibraryName(null);
               setLibraryFolderId(null);
+              setScriptParentDocumentId(null);
+              setScriptParentDocumentName(null);
               setAssetName(null);
               setDocumentName(null);
               // Only redirect if this is not the initial fetch
               if (!isInitialFetch) {
                 if (currentProjectId) {
-                  router.push(`/${currentProjectId}`);
+                  router.push(
+                    isScriptSystemPath(pathname)
+                      ? `/script-system/${currentProjectId}`
+                      : `/${currentProjectId}`
+                  );
                 } else {
                   router.push('/projects');
                 }
@@ -274,11 +323,15 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             if (mounted) {
               setLibraryName(null);
               setLibraryFolderId(null);
+              setScriptParentDocumentId(null);
+              setScriptParentDocumentName(null);
             }
           }
         } else {
           setLibraryName(null);
           setLibraryFolderId(null);
+          setScriptParentDocumentId(null);
+          setScriptParentDocumentName(null);
         }
 
         // Resolve current folder name with permission check
@@ -433,6 +486,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           setDocumentName(null);
           setFolderName(null);
           setLibraryFolderId(null);
+          setScriptParentDocumentId(null);
+          setScriptParentDocumentName(null);
         }
       }
     };
@@ -440,16 +495,47 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [currentProjectId, currentLibraryId, currentAssetId, currentDocumentId, currentFolderId, supabase, isAuthenticated, userId, router, queryClient]);
+  }, [currentProjectId, currentLibraryId, currentAssetId, currentDocumentId, currentFolderId, pathname, supabase, isAuthenticated, userId, router, queryClient]);
 
   const breadcrumbs = useMemo<BreadcrumbItem[]>(() => {
     const nextBreadcrumbs: BreadcrumbItem[] = [];
+    const onScript = onScriptSystem;
 
     if (pathname === '/mcp') {
       return [
         { label: 'Account', path: '/mcp' },
         { label: 'MCP', path: '/mcp' },
       ];
+    }
+
+    // Script sidebar tree: Project → Document → Script conversation
+    if (onScript) {
+      if (currentProjectId) {
+        nextBreadcrumbs.push({
+          label: projectName || 'Project',
+          path: `/script-system/${currentProjectId}`,
+        });
+      }
+
+      if (currentDocumentId) {
+        nextBreadcrumbs.push({
+          label: documentName || 'Document',
+          path: `/script-system/${currentProjectId}/doc/${currentDocumentId}`,
+        });
+      } else if (currentLibraryId) {
+        if (scriptParentDocumentId) {
+          nextBreadcrumbs.push({
+            label: scriptParentDocumentName || 'Document',
+            path: `/script-system/${currentProjectId}/doc/${scriptParentDocumentId}`,
+          });
+        }
+        nextBreadcrumbs.push({
+          label: libraryName || 'Script',
+          path: `/script-system/${currentProjectId}/script/${currentLibraryId}`,
+        });
+      }
+
+      return nextBreadcrumbs;
     }
     
     if (currentProjectId) {
@@ -499,8 +585,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentProjectId,
     folderName,
     libraryName,
+    onScriptSystem,
     projectName,
     pathname,
+    scriptParentDocumentId,
+    scriptParentDocumentName,
   ]);
 
   const value = useMemo<NavigationContextType>(() => ({

@@ -259,12 +259,18 @@ test.describe.serial('Document version history', () => {
       }
 
       await viewer.page.getByTestId('version-history-toggle').click();
-      await expect(viewer.page.getByRole('button', { name: 'Preview' }).first()).toBeVisible();
       await expect(viewer.page.getByRole('button', { name: 'Create version' })).toHaveCount(0);
       await expect(viewer.page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
-      await viewer.page.getByRole('button', { name: 'Preview' }).first().click();
-      await expect(viewer.page.getByRole('dialog')).toContainText('Collaborative seed');
-      await viewer.page.getByRole('button', { name: 'Close' }).last().click();
+      await viewer.page
+        .locator('[data-testid^="document-version-row-"]')
+        .filter({ hasText: 'Before rewrite' })
+        .click();
+      await expect(viewer.page.getByText(/Viewing version/i)).toBeVisible();
+      await expect(viewer.page.locator('[contenteditable="true"]').first()).toContainText(
+        'Collaborative seed'
+      );
+      await viewer.page.getByRole('button', { name: 'Back to current' }).click();
+      await expect(viewer.page.getByText(/Viewing version/i)).toHaveCount(0);
 
       const oldEpochResult = await fixture.editor.client
         .from('documents')

@@ -116,6 +116,7 @@ export async function importLibraryFromFile(
     projectId: string;
     folderId: string | null;
     libraryName: string;
+    description?: string | null;
     fileBuffer: Buffer;
     fileName: string;
   }
@@ -144,6 +145,10 @@ export async function importLibraryFromFile(
   if (!trimmedName) {
     throw new Error('Library name is required');
   }
+  const description = params.description?.trim() || null;
+  if (description && description.length > 250) {
+    throw new Error('Notes exceed 250 character limit');
+  }
 
   let nameCheckQuery = supabase
     .from('libraries')
@@ -171,7 +176,7 @@ export async function importLibraryFromFile(
       project_id: projectId,
       folder_id: folderId,
       name: trimmedName,
-      description: null,
+      description,
     })
     .select('id')
     .single();

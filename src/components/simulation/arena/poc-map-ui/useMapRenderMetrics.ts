@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { battleActorSize, battleGridToScreen } from '../battleViewport';
 
 type ViewportSize = {
   width: number;
@@ -48,12 +49,18 @@ export function useMapRenderMetrics({
     [mapHeight, mapWidth, renderHeight, renderWidth],
   );
 
-  const actorPx = useMemo(() => Math.max(32, Math.round(mapCellDisplayPx * 1.5)), [mapCellDisplayPx]);
+  const actorPx = useMemo(() => battleActorSize(mapCellDisplayPx), [mapCellDisplayPx]);
 
   const gridToScreen = useCallback(
-    (x: number, y: number) => ({
-      x: renderOffsetX + ((x + 0.5) / mapWidth) * renderWidth,
-      y: renderOffsetY + ((y + 0.5) / mapHeight) * renderHeight,
+    (x: number, y: number) => battleGridToScreen({
+      x,
+      y,
+      mapWidth,
+      mapHeight,
+      renderWidth,
+      renderHeight,
+      renderOffsetX,
+      renderOffsetY,
     }),
     [mapHeight, mapWidth, renderHeight, renderOffsetX, renderOffsetY, renderWidth],
   );

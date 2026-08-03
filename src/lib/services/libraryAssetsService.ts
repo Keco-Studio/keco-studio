@@ -603,6 +603,54 @@ export async function addLibrarySection(
   return { sectionId, sectionName, fieldId: inserted.id as string };
 }
 
+/**
+ * Delete a section by removing all field definitions for that section name.
+ * Asset values cascade via foreign keys. Matches client section ids (`libraryId:sectionName`).
+ */
+export async function deleteLibrarySection(
+  supabase: SupabaseClient,
+  sectionId: string
+): Promise<void> {
+  const colonIndex = sectionId.indexOf(':');
+  if (colonIndex < 0) {
+    throw new Error('Invalid section id');
+  }
+  const libraryId = sectionId.slice(0, colonIndex);
+  const sectionName = sectionId.slice(colonIndex + 1);
+  if (!libraryId || !sectionName) {
+    throw new Error('Invalid section id');
+  }
+
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const { data: existingRows, error: fetchError } = await supabase
+    .from('library_field_definitions')
+    .select('section')
+    .eq('library_id', libraryId);
+
+  if (fetchError) throw fetchError;
+
+  const distinctSections = new Set(
+    ((existingRows || []) as { section: string }[]).map((row) => row.section)
+  );
+  if (!distinctSections.has(sectionName)) {
+    throw new Error('Section not found');
+  }
+  if (distinctSections.size <= 1) {
+    throw new Error('Cannot delete the last section');
+  }
+
+  const { error } = await supabase
+    .from('library_field_definitions')
+    .delete()
+    .eq('library_id', libraryId)
+    .eq('section', sectionName);
+
+  if (error) throw error;
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
+}
+
 /** Add one field under the target section for the in-table Add Column modal. */
 export async function addLibraryField(
   supabase: SupabaseClient,

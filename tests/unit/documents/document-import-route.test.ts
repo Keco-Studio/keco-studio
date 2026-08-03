@@ -33,6 +33,7 @@ const body = {
   projectId: '11111111-1111-4111-8111-111111111111',
   folderId: null,
   name: 'Guide',
+  description: 'Import notes',
   markdown: '# Guide',
 };
 

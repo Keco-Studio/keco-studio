@@ -30,16 +30,32 @@ describe('document version history UI wiring', () => {
     );
     expect(editor).not.toContain('workspaceWithHistory');
     expect(sidebar).toContain('aria-label="Version history"');
+    expect(sidebar).toContain('Version History');
     expect(sidebar).toContain('queryKeys.documentVersions(documentId)');
     expect(sidebar).toContain('listDocumentVersions');
     expect(sidebar).toContain('canMutate');
     expect(sidebar).toContain('deleteDocumentVersion');
-    expect(sidebar).toContain('canDeleteVersion(version.type)');
+    expect(sidebar).toContain('canDeleteVersion(entry.version.type)');
     expect(sidebar).toContain("type === 'manual' || type === 'automatic'");
     expect(sidebar).toContain('Modal.confirm');
-    expect(sidebar).toContain('queryKeys.documentVersions(documentId)');
+    expect(sidebar).toContain('selectedVersionId');
+    expect(sidebar).toContain('onVersionSelect');
+    expect(sidebar).toContain('aria-label="Create version"');
+    expect(sidebar).toContain('DocumentVersionItem');
     expect(sidebar).not.toContain('@/lib/services/versionService');
     expect(sidebar).not.toContain('library_versions');
+    const item = readFileSync(componentPath('DocumentVersionItem.tsx'), 'utf8');
+    expect(item).toContain('modified by keco agent');
+    expect(item).toContain('Current Version');
+  });
+
+  it('wires inline historical preview selection from the editor', () => {
+    const editor = readFileSync(componentPath('DocumentEditor.tsx'), 'utf8');
+    expect(editor).toContain('selectedVersionId');
+    expect(editor).toContain('onVersionSelect');
+    expect(editor).toContain('getDocumentVersionPreview');
+    expect(editor).toMatch(/readOnly[\s\S]*selectedVersionId|selectedVersionId[\s\S]*readOnly/);
+    expect(editor).toContain('Viewing version');
   });
 
   it('flushes before create and gates create/restore while retaining viewer preview', () => {
@@ -51,10 +67,7 @@ describe('document version history UI wiring', () => {
       componentPath('RestoreDocumentVersionModal.tsx'),
       'utf8'
     );
-    const preview = readFileSync(
-      componentPath('DocumentVersionPreviewModal.tsx'),
-      'utf8'
-    );
+    const item = readFileSync(componentPath('DocumentVersionItem.tsx'), 'utf8');
     expect(create).toContain('await session.flush()');
     expect(create).toContain('createDocumentVersion');
     expect(restore).toContain('session.restoreVersion(version.id)');
@@ -71,8 +84,8 @@ describe('document version history UI wiring', () => {
       'okButtonProps={{ danger: true, disabled: submitting }}'
     );
     expect(restore).toContain('confirmLoading={submitting}');
-    expect(preview).toContain('readOnly');
-    expect(preview).toContain('showToolbar={false}');
-    expect(preview).toContain('markdown={version.markdown}');
+    expect(item).toContain('added by');
+    expect(item).toContain('onSelect');
+    expect(item).toContain('onRestore');
   });
 });

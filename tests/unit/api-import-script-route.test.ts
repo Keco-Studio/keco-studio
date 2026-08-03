@@ -16,6 +16,7 @@ import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { POST } from '@/app/api/import-script/route';
 import { createDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
+import { resetStoryConversionCache } from '@/lib/import-script-conversion-cache';
 
 const mockedCreateClient = createClient as jest.MockedFunction<typeof createClient>;
 const mockedResolve = resolveStoryForImport as jest.MockedFunction<typeof resolveStoryForImport>;
@@ -38,6 +39,7 @@ function request(options: {
   projectId?: string;
   fileContent?: string;
   snapshotToken?: string;
+  includeFile?: boolean;
 } = {}): NextRequest {
   const form = new FormData();
   form.append('projectId', options.projectId ?? projectId);
@@ -54,7 +56,9 @@ function request(options: {
     }));
   }
   form.append('libraryName', 'Story');
-  form.append('file', new File([options.fileContent ?? 'Story'], 'story.txt', { type: 'text/plain' }));
+  if (options.includeFile !== false) {
+    form.append('file', new File([options.fileContent ?? 'Story'], 'story.txt', { type: 'text/plain' }));
+  }
   return new NextRequest('https://example.test/api/import-script', {
     method: 'POST',
     headers: { Authorization: 'Bearer token' },
@@ -69,6 +73,7 @@ async function records(response: Response): Promise<Array<Record<string, unknown
 describe('POST /api/import-script streaming protocol', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetStoryConversionCache();
     mockedCreateClient.mockReturnValue({
       auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
     } as never);
@@ -181,6 +186,59 @@ describe('POST /api/import-script streaming protocol', () => {
     }));
   });
 
+  it('allows a document-derived request without a redundant file upload', async () => {
+    const response = await POST(request({
+      folderId: null,
+      sourceDocumentId: documentId,
+      includeFile: false,
+    }));
+
+    expect(response.status).toBe(200);
+    expect((await records(response)).at(-1)).toEqual({
+      type: 'result',
+      result: { libraryId: 'library-1', rowCount: 1, fieldCount: 11 },
+    });
+    expect(mockedResolve).toHaveBeenCalledWith(
+      'Latest server markdown',
+      expect.objectContaining({ skipSemanticAuditAfterValidation: true })
+    );
+  });
+
+  it('reuses the Story IR conversion while still writing a second derived library', async () => {
+    await records(await POST(request({
+      folderId: null,
+      sourceDocumentId: documentId,
+      includeFile: false,
+    })));
+    const second = await records(await POST(request({
+      folderId: null,
+      sourceDocumentId: documentId,
+      includeFile: false,
+    })));
+
+    expect(second).toContainEqual({
+      type: 'progress',
+      progress: {
+        phase: 'conversion',
+        message: 'Reusing cached Story IR conversion',
+      },
+    });
+    expect(mockedResolve).toHaveBeenCalledTimes(1);
+    expect(mockedImport).toHaveBeenCalledTimes(2);
+  });
+
+  it('still requires a file for ordinary imports', async () => {
+    const response = await POST(request({
+      folderId: null,
+      includeFile: false,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'File is required' });
+    expect(mockedResolve).not.toHaveBeenCalled();
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
+
   it('rejects document exports from another project before conversion or writing', async () => {
     mockedGetDocumentExportSource.mockResolvedValue({
       documentId,
@@ -255,6 +313,10 @@ describe('POST /api/import-script streaming protocol', () => {
     await records(response);
     expect(mockedGetDocumentExportSource).not.toHaveBeenCalled();
     expect(mockedResolve).toHaveBeenCalled();
+    expect(mockedResolve).toHaveBeenCalledWith(
+      'Story',
+      expect.not.objectContaining({ skipSemanticAuditAfterValidation: true })
+    );
     expect(mockedImport).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ folderId: null })
