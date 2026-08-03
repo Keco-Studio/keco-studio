@@ -110,6 +110,7 @@ describe('Keco Codex plugin contract', () => {
 
   it('ships the normalized Skill and its safety workflow references', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const mcpContract = readFileSync(path.join(skillRoot, 'references', 'mcp-contract.md'), 'utf8');
 
     expect(skill).toMatch(/^---\nname: keco-build-tables-from-document\n/);
     expect(skill).toMatch(/^description: Use when/m);
@@ -137,5 +138,8 @@ describe('Keco Codex plugin contract', () => {
     expectProhibited(skill, 'audio');
     expectProhibited(skill, 'formulas?');
     expectProhibited(skill, 'destructive maintenance');
+
+    expect(mcpContract).toMatch(/reference (?:cell )?values?[\s\S]{0,160}\bassetId\b[\s\S]{0,80}\bfieldId\b/i);
+    expect(mcpContract).toMatch(/fieldId[\s\S]{0,120}(?:target|display|match)[\s\S]{0,80}field/i);
   });
 });

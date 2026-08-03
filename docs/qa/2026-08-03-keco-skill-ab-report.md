@@ -103,6 +103,12 @@ The fresh post-edit Economy rerun emitted:
 
 It retained the correct `Currency` collision stop, zero-write decision, and first-failure stop rule. The final score uses this rerun; the pre-edit output remains in the internal raw evidence directory.
 
+## Post-Evaluation Contract Hardening
+
+Whole-branch review found that the treatment output used the correct reference-cell shape, but the Skill package did not state it explicitly. The MCP contract now requires reference values to be arrays of exact `{assetId, fieldId}` objects, using the target row UUID and target display or match field UUID. A focused contract test covers this wording.
+
+This clarification was added after the scored runs. It does not change the A/B totals and is not presented as evidence from those runs; the live chain must still verify the remote server accepts and reads back this value shape.
+
 ## Future Live MCP Chain
 
 No real Keco MCP call was made during this offline evaluation, so this report makes no claim about OAuth, remote project contents, mutation responses, persisted IDs, or read-back state.

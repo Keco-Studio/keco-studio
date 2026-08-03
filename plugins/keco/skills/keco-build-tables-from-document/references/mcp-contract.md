@@ -30,6 +30,8 @@ Continue paginated reads while `hasMore` is true using the returned opaque curso
 
 `upsert_table_rows.rows[]` has the shape `{ "values": { "Field Label": value } }`. Use no more than 100 rows per call. The match field must be a stable `string`, `int`, `float`, `boolean`, `enum`, or `date` field.
 
+Reference cell values in `values` are arrays of objects with exactly `{ "assetId": "<target row UUID>", "fieldId": "<target display or match field UUID>" }`. Resolve both UUIDs from write responses or `query_table_rows`; never use a bare row-ID string or the source reference-field ID.
+
 For `update_table_row`, provide exactly one of `rowId` or `rowIndex`. When using a row index discovered earlier, also provide `expectedRowId` to fail closed if row order changed. For bulk updates, apply the same stable selector rule to each row.
 
 ## Excluded Tools
