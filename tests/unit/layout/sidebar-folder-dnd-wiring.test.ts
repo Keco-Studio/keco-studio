@@ -17,10 +17,15 @@ describe('sidebar DnD wiring (P1–P3)', () => {
     const source = read('src/components/layout/components/SidebarTreeView.tsx');
     expect(source).toContain('canDragSidebarNode');
     expect(source).toContain('resolveSidebarDrop');
+    expect(source).toContain('isDragPending');
+    expect(source).toContain('isDragPending?.(key)');
     expect(source).toContain('draggable=');
     expect(source).toContain('allowDrop=');
     expect(source).toContain('onDrop=');
     expect(source).toContain('onTreeDrop');
+
+    const section = read('src/components/layout/components/SidebarLibrariesSection.tsx');
+    expect(section).toContain('isDragPending={isDragPending}');
   });
 
   it('Sidebar wires attach/detach, folder nest, and document nest', () => {

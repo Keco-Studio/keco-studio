@@ -47,6 +47,7 @@ export type SidebarLibrariesSectionProps = {
   onTreeDrop?: (info: SidebarTreeDropInfo) => void | Promise<void>;
   /** Drop onto Libraries title → move to project root. */
   onDropToRoot?: (dragKey: string) => void;
+  isDragPending?: (dragKey: string) => boolean;
 };
 
 /**
@@ -75,6 +76,7 @@ export function SidebarLibrariesSection({
   onTreeRightClick,
   onTreeDrop,
   onDropToRoot,
+  isDragPending,
 }: SidebarLibrariesSectionProps) {
   const canEdit = userRole === 'admin' || userRole === 'editor';
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
@@ -157,6 +159,7 @@ export function SidebarLibrariesSection({
           onTreeDrop={onTreeDrop}
           onDragStart={onDropToRoot ? handleDragStart : undefined}
           onDragEnd={onDropToRoot ? handleDragEnd : undefined}
+          isDragPending={isDragPending}
         />
         {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
           <div className={styles.sidebarEmptyState}>

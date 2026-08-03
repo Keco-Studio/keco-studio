@@ -53,6 +53,7 @@ export type SidebarTreeViewProps = {
   /** Notify parent when a tree drag starts/ends (e.g. Libraries root drop zone). */
   onDragStart?: (dragKey: string) => void;
   onDragEnd?: () => void;
+  isDragPending?: (dragKey: string) => boolean;
 };
 
 function InlineEditRow({
@@ -211,6 +212,7 @@ export function SidebarTreeView({
   onTreeDrop,
   onDragStart,
   onDragEnd,
+  isDragPending,
 }: SidebarTreeViewProps) {
   const canEditTree = userRole === 'admin' || userRole === 'editor';
 
@@ -218,6 +220,7 @@ export function SidebarTreeView({
     (node: DataNode) => {
       const meta = node as DataNode & SidebarTreeNodeMeta;
       const key = String(meta.key ?? '');
+      if (isDragPending?.(key)) return false;
       if (
         !canDragSidebarNode(
           { ...meta, key },
@@ -236,7 +239,7 @@ export function SidebarTreeView({
       }
       return true;
     },
-    [canEditTree, userRole]
+    [canEditTree, isDragPending, userRole]
   );
 
   const allowDrop = useCallback(
