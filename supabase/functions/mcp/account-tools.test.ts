@@ -4,6 +4,24 @@ import { handleProtocolRequest } from "./server.ts";
 
 const WRITABLE_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const VIEWER_PROJECT_ID = "22222222-2222-4222-8222-222222222222";
+const ACCOUNT_WRITE_TOOL_NAMES = [
+  "create_table",
+  "add_table_field",
+  "create_table_row",
+  "update_table_row",
+  "edit_table_field",
+  "delete_table_field",
+  "delete_table_row",
+  "update_table",
+  "reorder_table_fields",
+  "delete_table",
+  "bulk_update_table_rows",
+  "upsert_table_rows",
+  "create_document",
+  "update_document",
+  "create_image_upload",
+  "complete_image_upload",
+];
 
 type RpcCall = { name: string; parameters: Record<string, unknown> };
 type StorageCall = { name: string; arguments: unknown[] };
@@ -141,6 +159,20 @@ function accountContext(
         if (name === "mcp_add_table_field") {
           return { data: [{ field_id: parameters.p_field_id }], error: null };
         }
+        if (
+          [
+            "mcp_edit_table_field",
+            "mcp_delete_table_field",
+            "mcp_delete_table_row",
+            "mcp_update_table",
+            "mcp_reorder_table_fields",
+            "mcp_delete_table",
+            "mcp_bulk_update_table_rows",
+            "mcp_upsert_table_rows",
+          ].includes(name)
+        ) {
+          return { data: [{ ok: true }], error: null };
+        }
         throw new Error("Unexpected RPC: " + name);
       },
       storage: {
@@ -191,14 +223,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "list_documents",
     "read_document",
     "semantic_search",
-    "create_table",
-    "add_table_field",
-    "create_table_row",
-    "update_table_row",
-    "create_document",
-    "update_document",
-    "create_image_upload",
-    "complete_image_upload",
+    ...ACCOUNT_WRITE_TOOL_NAMES,
   ]);
   const listProjects = tools.find((tool) => tool.name === "list_projects")!;
   assertEquals(Object.keys(listProjects.inputSchema.properties ?? {}), [
@@ -245,6 +270,35 @@ Deno.test("account add_table_field resolves live access and calls the atomic RPC
     label: "Icon",
     dataType: "image",
   });
+  assertEquals(
+    calls.filter((candidate) => candidate.name === "mcp_resolve_project_role")
+      .length,
+    1,
+  );
+});
+
+Deno.test("account table maintenance tools require projectId and resolve live access", async () => {
+  const calls: RpcCall[] = [];
+  const fieldId = "33333333-3333-4333-8333-333333333333";
+  const tableId = "44444444-4444-4444-8444-444444444444";
+  const message = await rpc(accountContext(calls), "tools/call", {
+    name: "delete_table_field",
+    arguments: {
+      projectId: WRITABLE_PROJECT_ID,
+      tableId,
+      fieldId,
+      clearValues: true,
+    },
+  });
+  assertEquals(message.error, undefined);
+  assertEquals(message.result?.isError, undefined);
+  const call = calls.find((candidate) =>
+    candidate.name === "mcp_delete_table_field"
+  )!;
+  assertEquals(call.parameters.p_project_id, WRITABLE_PROJECT_ID);
+  assertEquals(call.parameters.p_table_id, tableId);
+  assertEquals(call.parameters.p_field_id, fieldId);
+  assertEquals(call.parameters.p_clear_values, true);
   assertEquals(
     calls.filter((candidate) => candidate.name === "mcp_resolve_project_role")
       .length,

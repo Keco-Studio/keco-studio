@@ -82,6 +82,29 @@ labels after trimming and case folding, invalid enum/reference definitions,
 and references to tables outside the selected project. It appends the field to
 the requested section, or to `section1` when no section is supplied.
 
+MCP table maintenance tools cover common correction and cleanup flows after a
+table exists:
+
+- `update_table` renames a table, updates its description, or moves it to a
+  folder. Duplicate names in the target folder are rejected.
+- `edit_table_field` changes a field's label, type configuration, description,
+  required flag, or section. Type changes reject non-empty fields unless
+  `clearValuesOnTypeChange: true` is provided.
+- `reorder_table_fields` atomically rewrites the full field order. The request
+  must include every field in the table exactly once.
+- `delete_table_field`, `delete_table_row`, and `delete_table` are destructive
+  tools. They require explicit clear/confirmation inputs when data or references
+  would be removed. `delete_table` also requires `confirmName` to match the
+  current table name.
+- `bulk_update_table_rows` updates up to 100 existing rows atomically.
+- `upsert_table_rows` creates or updates up to 100 rows using a stable
+  non-media, non-reference match field.
+
+Reference cleanup is conservative. Deleting a referenced row or table rejects by
+default. If `clearReferences: true` is supplied, only references pointing to the
+deleted rows are removed from reference cells; unrelated references in the same
+cell are preserved.
+
 ## Image Uploads
 
 The MCP image write flow stores raster images in the existing public

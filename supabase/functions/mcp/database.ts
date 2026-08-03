@@ -13,13 +13,30 @@ export async function rpc<T>(
     async () => await context.supabase.rpc(name, parameters),
   );
   if (!error) return data as T;
+  const rowOperations = new Set([
+    "mcp_update_table_row",
+    "mcp_delete_table_row",
+    "mcp_bulk_update_table_rows",
+    "mcp_upsert_table_rows",
+  ]);
+  const conflictOperations = new Set([
+    "mcp_update_table_row",
+    "mcp_delete_table_row",
+    "mcp_delete_table_field",
+    "mcp_edit_table_field",
+    "mcp_delete_table",
+    "mcp_bulk_update_table_rows",
+    "mcp_upsert_table_rows",
+  ]);
   const code = error.code === "42501"
     ? "PROJECT_ACCESS_REVOKED"
-    : error.code === "PT409" && name === "mcp_update_table_row"
+    : error.code === "PT409" && rowOperations.has(name)
     ? "ROW_CONFLICT"
+    : error.code === "PT409" && conflictOperations.has(name)
+    ? "FIELD_VALIDATION_FAILED"
     : error.code === "PT409"
     ? "DOCUMENT_CONFLICT"
-    : error.code === "P0002" && name === "mcp_update_table_row"
+    : error.code === "P0002" && rowOperations.has(name)
     ? "ROW_NOT_FOUND"
     : error.code === "P0002"
     ? "TABLE_NOT_FOUND"

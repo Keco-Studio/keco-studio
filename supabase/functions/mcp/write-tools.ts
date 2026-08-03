@@ -37,6 +37,12 @@ const writeAnnotations = {
   idempotentHint: false,
   openWorldHint: false,
 };
+const destructiveWriteAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: false,
+};
 const fieldSchema = z.object({
   label: z.string().trim().min(1).max(200),
   dataType: z.enum([
@@ -89,6 +95,38 @@ const fieldSchema = z.object({
 type ProjectContextResolver = (
   projectId: string,
 ) => Promise<ProjectMcpRequestContext>;
+
+const rowSelectorSchema = {
+  rowId: uuid.optional(),
+  rowIndex: z.number().int().min(1).optional(),
+  expectedRowId: uuid.optional(),
+};
+
+const rowValuesSchema = z.record(
+  z.string().trim().min(1).max(200),
+  z.unknown(),
+).refine(
+  (value) => Object.keys(value).length > 0 && Object.keys(value).length <= 100,
+  "values must contain between 1 and 100 fields.",
+);
+
+const reorderFieldSchema = z.object({
+  fieldId: uuid,
+  section: z.string().trim().min(1).max(100),
+  sectionId: z.string().trim().min(1).max(200).optional(),
+}).strict();
+
+const bulkRowUpdateSchema = z.object({
+  ...rowSelectorSchema,
+  values: rowValuesSchema,
+}).strict().refine(
+  (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
+  "Exactly one of rowId or rowIndex is required.",
+);
+
+const upsertRowSchema = z.object({
+  values: rowValuesSchema,
+}).strict();
 
 async function withProjectContext<T>(
   input: Record<string, unknown>,
@@ -378,14 +416,8 @@ function registerWriteToolSet(
   const updateRowSchema = z.object({
     ...projectShape,
     tableId: uuid,
-    rowId: uuid.optional(),
-    rowIndex: z.number().int().min(1).optional(),
-    expectedRowId: uuid.optional(),
-    values: z.record(z.string().trim().min(1).max(200), z.unknown()).refine(
-      (value) =>
-        Object.keys(value).length > 0 && Object.keys(value).length <= 100,
-      "values must contain between 1 and 100 fields.",
-    ),
+    ...rowSelectorSchema,
+    values: rowValuesSchema,
   }).strict().refine(
     (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
     "Exactly one of rowId or rowIndex is required.",
@@ -424,6 +456,308 @@ function registerWriteToolSet(
               });
             }
           },
+        )),
+  );
+
+  const editTableFieldSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    fieldId: uuid,
+    field: fieldSchema,
+    clearValuesOnTypeChange: z.boolean().optional(),
+  }).strict();
+  server.registerTool(
+    "edit_table_field",
+    {
+      description:
+        "Edit one table field. Type changes require clearValuesOnTypeChange when values exist.",
+      inputSchema: editTableFieldSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof editTableFieldSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_edit_table_field",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_field_id: input.fieldId,
+            p_field: input.field,
+            p_clear_values_on_type_change: input.clearValuesOnTypeChange ??
+              false,
+          },
+          input,
+          "Table field edited.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
+        )),
+  );
+
+  const deleteTableFieldSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    fieldId: uuid,
+    clearValues: z.boolean().optional(),
+  }).strict();
+  server.registerTool(
+    "delete_table_field",
+    {
+      description:
+        "Delete one table field. Non-empty fields require clearValues.",
+      inputSchema: deleteTableFieldSchema,
+      annotations: destructiveWriteAnnotations,
+    },
+    async (input: z.infer<typeof deleteTableFieldSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_delete_table_field",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_field_id: input.fieldId,
+            p_clear_values: input.clearValues ?? false,
+          },
+          input,
+          "Table field deleted.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
+        )),
+  );
+
+  const deleteTableRowSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    ...rowSelectorSchema,
+    clearReferences: z.boolean().optional(),
+  }).strict().refine(
+    (value) => (value.rowId === undefined) !== (value.rowIndex === undefined),
+    "Exactly one of rowId or rowIndex is required.",
+  );
+  server.registerTool(
+    "delete_table_row",
+    {
+      description:
+        "Delete one row selected by stable ID or exact 1-based row index. Referenced rows require clearReferences.",
+      inputSchema: deleteTableRowSchema,
+      annotations: destructiveWriteAnnotations,
+    },
+    async (input: z.infer<typeof deleteTableRowSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_delete_table_row",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_row_id: input.rowId ?? null,
+            p_row_index: input.rowIndex ?? null,
+            p_expected_row_id: input.expectedRowId ?? null,
+            p_clear_references: input.clearReferences ?? false,
+          },
+          input,
+          "Table row deleted.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
+        )),
+  );
+
+  const updateTableSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    name: z.string().trim().min(1).max(200).optional(),
+    description: z.string().max(2000).nullable().optional(),
+    folderId: uuid.nullable().optional(),
+  }).strict().refine(
+    (value) =>
+      value.name !== undefined || value.description !== undefined ||
+      value.folderId !== undefined,
+    "At least one of name, description, or folderId is required.",
+  );
+  server.registerTool(
+    "update_table",
+    {
+      description: "Update one table's name, description, or folder.",
+      inputSchema: updateTableSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof updateTableSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_update_table",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_name: input.name ?? null,
+            p_description: input.description ?? null,
+            p_folder_id: input.folderId ?? null,
+            p_set_folder: input.folderId !== undefined,
+            p_set_description: input.description !== undefined,
+          },
+          input,
+          "Table updated.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
+        )),
+  );
+
+  const reorderTableFieldsSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    fields: z.array(reorderFieldSchema).min(1).max(100),
+  }).strict();
+  server.registerTool(
+    "reorder_table_fields",
+    {
+      description:
+        "Atomically reorder every field in a table and optionally move fields between sections.",
+      inputSchema: reorderTableFieldsSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof reorderTableFieldsSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_reorder_table_fields",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_fields: input.fields,
+          },
+          input,
+          "Table fields reordered.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
+        )),
+  );
+
+  const deleteTableSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    confirmName: z.string().trim().min(1).max(200),
+    clearReferences: z.boolean().optional(),
+  }).strict();
+  server.registerTool(
+    "delete_table",
+    {
+      description:
+        "Delete one table. confirmName must match the table name; referenced rows require clearReferences.",
+      inputSchema: deleteTableSchema,
+      annotations: destructiveWriteAnnotations,
+    },
+    async (input: z.infer<typeof deleteTableSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_delete_table",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_confirm_name: input.confirmName,
+            p_clear_references: input.clearReferences ?? false,
+          },
+          input,
+          "Table deleted.",
+        )),
+  );
+
+  const bulkUpdateTableRowsSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    rows: z.array(bulkRowUpdateSchema).min(1).max(100),
+  }).strict();
+  server.registerTool(
+    "bulk_update_table_rows",
+    {
+      description: "Atomically update 1 to 100 existing table rows.",
+      inputSchema: bulkUpdateTableRowsSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof bulkUpdateTableRowsSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_bulk_update_table_rows",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_rows: input.rows,
+          },
+          input,
+          "Table rows updated.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
+        )),
+  );
+
+  const upsertTableRowsSchema = z.object({
+    ...projectShape,
+    tableId: uuid,
+    matchField: z.string().trim().min(1).max(200),
+    rows: z.array(upsertRowSchema).min(1).max(100),
+    reuseEmpty: z.boolean().optional(),
+  }).strict();
+  server.registerTool(
+    "upsert_table_rows",
+    {
+      description:
+        "Atomically create or update 1 to 100 rows using a stable match field.",
+      inputSchema: upsertTableRowsSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof upsertTableRowsSchema>) =>
+      withProjectContext(input, contextFor, async (context) =>
+        executeRpc(
+          context,
+          "mcp_upsert_table_rows",
+          {
+            p_project_id: context.projectId,
+            p_table_id: input.tableId,
+            p_match_field: input.matchField,
+            p_rows: input.rows,
+            p_reuse_empty: input.reuseEmpty ?? false,
+          },
+          input,
+          "Table rows upserted.",
+          () =>
+            scheduleMcpReindex({
+              kind: "table",
+              projectId: context.projectId,
+              actorUserId: context.userId,
+              tableId: input.tableId,
+            }),
         )),
   );
 

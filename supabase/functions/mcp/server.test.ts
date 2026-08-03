@@ -3,6 +3,33 @@ import { LATEST_PROTOCOL_VERSION } from "@mcp/types.js";
 import { handleProtocolRequest } from "./server.ts";
 import type { McpRequestContext, ProjectMcpRequestContext } from "./context.ts";
 
+const PROJECT_READ_TOOL_NAMES = [
+  "list_project_structure",
+  "query_table_rows",
+  "list_documents",
+  "read_document",
+  "semantic_search",
+];
+
+const PROJECT_WRITE_TOOL_NAMES = [
+  "create_table",
+  "add_table_field",
+  "create_table_row",
+  "update_table_row",
+  "edit_table_field",
+  "delete_table_field",
+  "delete_table_row",
+  "update_table",
+  "reorder_table_fields",
+  "delete_table",
+  "bulk_update_table_rows",
+  "upsert_table_rows",
+  "create_document",
+  "update_document",
+  "create_image_upload",
+  "complete_image_upload",
+];
+
 const context = {
   mode: "project",
   requestId: "00000000-0000-4000-8000-000000000001",
@@ -116,22 +143,37 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
   const names = tools.map((tool) => tool.name);
   assertEquals(names, [
     "keco_connection_probe",
-    "list_project_structure",
-    "query_table_rows",
-    "list_documents",
-    "read_document",
-    "semantic_search",
-    "create_table",
-    "add_table_field",
-    "create_table_row",
-    "update_table_row",
-    "create_document",
-    "update_document",
-    "create_image_upload",
-    "complete_image_upload",
+    ...PROJECT_READ_TOOL_NAMES,
+    ...PROJECT_WRITE_TOOL_NAMES,
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
+  for (
+    const name of [
+      "delete_table_field",
+      "delete_table_row",
+      "delete_table",
+    ]
+  ) {
+    const tool = tools.find((candidate) => candidate.name === name) as {
+      annotations?: { destructiveHint?: boolean };
+    };
+    assertEquals(tool.annotations?.destructiveHint, true);
+  }
+  for (
+    const name of [
+      "edit_table_field",
+      "update_table",
+      "reorder_table_fields",
+      "bulk_update_table_rows",
+      "upsert_table_rows",
+    ]
+  ) {
+    const tool = tools.find((candidate) => candidate.name === name) as {
+      annotations?: { destructiveHint?: boolean };
+    };
+    assertEquals(tool.annotations?.destructiveHint, false);
+  }
 });
 
 Deno.test("viewer tools/list excludes every write tool", async () => {
@@ -144,11 +186,7 @@ Deno.test("viewer tools/list excludes every write tool", async () => {
     (message.result?.tools as Array<{ name: string }>).map((tool) => tool.name),
     [
       "keco_connection_probe",
-      "list_project_structure",
-      "query_table_rows",
-      "list_documents",
-      "read_document",
-      "semantic_search",
+      ...PROJECT_READ_TOOL_NAMES,
     ],
   );
 });
@@ -491,6 +529,112 @@ Deno.test("add_table_field calls one atomic RPC and rejects required fields", as
     calls.some((call) => call.name === "mcp_add_table_field"),
     false,
   );
+});
+
+Deno.test("table maintenance tools call their atomic RPCs with public arguments", async () => {
+  const calls: Array<{ name: string; parameters?: Record<string, unknown> }> =
+    [];
+  const writeContext = {
+    ...context,
+    supabase: {
+      async rpc(name: string, parameters: Record<string, unknown>) {
+        calls.push({ name, parameters });
+        if (name === "mcp_begin_operation") {
+          return {
+            data: [{
+              operation_id: "00000000-0000-4000-8000-000000000012",
+              remaining: 29,
+              reset_at: new Date(Date.now() + 60_000).toISOString(),
+            }],
+            error: null,
+          };
+        }
+        if (name.startsWith("mcp_")) {
+          return { data: [{ ok: true }], error: null };
+        }
+        return { data: null, error: null };
+      },
+    },
+  } as unknown as McpRequestContext;
+  const tableId = "22222222-2222-4222-8222-222222222222";
+  const fieldId = "33333333-3333-4333-8333-333333333333";
+  const rowId = "44444444-4444-4444-8444-444444444444";
+
+  await rpc("tools/call", {
+    name: "edit_table_field",
+    arguments: {
+      tableId,
+      fieldId,
+      field: { label: "Title", dataType: "string" },
+      clearValuesOnTypeChange: true,
+    },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "delete_table_field",
+    arguments: { tableId, fieldId, clearValues: true },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "delete_table_row",
+    arguments: { tableId, rowId, expectedRowId: rowId, clearReferences: true },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "update_table",
+    arguments: { tableId, name: "Renamed", folderId: null },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "reorder_table_fields",
+    arguments: {
+      tableId,
+      fields: [{ fieldId, section: "Main", sectionId: "section-main" }],
+    },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "delete_table",
+    arguments: { tableId, confirmName: "Renamed", clearReferences: true },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "bulk_update_table_rows",
+    arguments: {
+      tableId,
+      rows: [{ rowId, values: { Title: "A" } }],
+    },
+  }, writeContext);
+  await rpc("tools/call", {
+    name: "upsert_table_rows",
+    arguments: {
+      tableId,
+      matchField: "Title",
+      rows: [{ values: { Title: "A" } }],
+      reuseEmpty: true,
+    },
+  }, writeContext);
+
+  const primaryCalls = calls.filter((call) =>
+    !["mcp_begin_operation", "mcp_complete_operation"].includes(call.name)
+  );
+  assertEquals(primaryCalls.map((call) => call.name), [
+    "mcp_edit_table_field",
+    "mcp_delete_table_field",
+    "mcp_delete_table_row",
+    "mcp_update_table",
+    "mcp_reorder_table_fields",
+    "mcp_delete_table",
+    "mcp_bulk_update_table_rows",
+    "mcp_upsert_table_rows",
+  ]);
+  assertEquals(primaryCalls[0].parameters?.p_clear_values_on_type_change, true);
+  assertEquals(primaryCalls[1].parameters?.p_clear_values, true);
+  assertEquals(primaryCalls[2].parameters?.p_clear_references, true);
+  assertEquals(primaryCalls[3].parameters?.p_set_folder, true);
+  assertEquals(primaryCalls[3].parameters?.p_set_description, false);
+  assertEquals(primaryCalls[4].parameters?.p_fields, [
+    { fieldId, section: "Main", sectionId: "section-main" },
+  ]);
+  assertEquals(primaryCalls[5].parameters?.p_confirm_name, "Renamed");
+  assertEquals(primaryCalls[6].parameters?.p_rows, [
+    { rowId, values: { Title: "A" } },
+  ]);
+  assertEquals(primaryCalls[7].parameters?.p_match_field, "Title");
 });
 
 Deno.test("stale document state token is rejected before codec or privileged replacement", async () => {
