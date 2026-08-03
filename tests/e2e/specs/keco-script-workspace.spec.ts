@@ -264,8 +264,7 @@ test.describe('Keco Script workspace smoke (seeded)', () => {
     await expect(page.getByRole('complementary', { name: 'Flow chart' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Flow chart', level: 2 })).toBeVisible();
 
-    // VisualNovelScriptView toolbar — proves the left VN pane mounted.
-    await expect(page.getByRole('button', { name: 'Restart' })).toBeVisible();
+    // Plot-node VN pane (no player Restart toolbar) — seed dialogue must be visible.
     await expect(page.getByText('Welcome to the city.')).toBeVisible();
   });
 });

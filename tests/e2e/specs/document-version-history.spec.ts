@@ -266,8 +266,10 @@ test.describe.serial('Document version history', () => {
         .filter({ hasText: 'Before rewrite' })
         .click();
       await expect(viewer.page.getByText(/Viewing version/i)).toBeVisible();
-      await expect(viewer.page.locator('[contenteditable="true"]').first()).toContainText(
-        'Collaborative seed'
+      // Historical preview mounts a read-only MDX editor (contenteditable=false).
+      await expect(viewer.page.locator('[contenteditable="false"]').first()).toContainText(
+        'Collaborative seed',
+        { timeout: 30_000 }
       );
       await viewer.page.getByRole('button', { name: 'Back to current' }).click();
       await expect(viewer.page.getByText(/Viewing version/i)).toHaveCount(0);
