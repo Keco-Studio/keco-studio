@@ -1,6 +1,6 @@
 ---
 name: keco-build-tables-from-document
-description: Use when a user asks to create, build, generate, or populate Keco tables from an existing Keco project document, design document, specification, or content plan.
+description: Use when a user asks to create, build, generate, or populate new Keco tables from an existing document stored inside a Keco project; not for local files or edits to existing tables.
 ---
 
 # Build Keco Tables From A Document

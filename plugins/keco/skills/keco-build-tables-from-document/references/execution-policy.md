@@ -49,7 +49,7 @@ After explicit confirmation, execute four stages:
 
 1. Create every new table with its scalar and enum fields. Record returned table and field IDs by BuildPlan key.
 2. Add reference fields after all target table IDs exist. Added fields must be optional because `keco:add_table_field` rejects required fields on an existing table.
-3. Upsert scalar rows with the confirmed `matchField`. Record returned row IDs; query by match-field values when a response does not contain all required IDs.
+3. Upsert scalar rows with the confirmed `matchField`. For each new table with planned rows, the first `keco:upsert_table_rows` call must set `reuseEmpty: true` to populate the empty row created by `keco:create_table`; set it to `false` for later batches. Record returned row IDs; query by match-field values when a response does not contain all required IDs.
 4. Populate cross-table references with returned or queried stable row IDs. Use `keco:bulk_update_table_rows` for multiple existing rows and `keco:update_table_row` for one row.
 
 Stop on the first failed write. Do not continue with another field, row, table, or relationship. Report the failed tool, stable error code, completed IDs, and unattempted stages. Do not call delete tools for rollback.

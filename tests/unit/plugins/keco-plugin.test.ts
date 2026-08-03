@@ -110,10 +110,14 @@ describe('Keco Codex plugin contract', () => {
 
   it('ships the normalized Skill and its safety workflow references', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const executionPolicy = readFileSync(path.join(skillRoot, 'references', 'execution-policy.md'), 'utf8');
     const mcpContract = readFileSync(path.join(skillRoot, 'references', 'mcp-contract.md'), 'utf8');
 
     expect(skill).toMatch(/^---\nname: keco-build-tables-from-document\n/);
     expect(skill).toMatch(/^description: Use when/m);
+    expect(executionPolicy).toMatch(
+      /first[^\n]*upsert_table_rows[^\n]*reuseEmpty[^\n]*true/i,
+    );
 
     for (const reference of ['schema-design.md', 'execution-policy.md', 'mcp-contract.md']) {
       expect(existsSync(path.join(skillRoot, 'references', reference))).toBe(true);
@@ -141,5 +145,8 @@ describe('Keco Codex plugin contract', () => {
 
     expect(mcpContract).toMatch(/reference (?:cell )?values?[\s\S]{0,160}\bassetId\b[\s\S]{0,80}\bfieldId\b/i);
     expect(mcpContract).toMatch(/fieldId[\s\S]{0,120}(?:target|display|match)[\s\S]{0,80}field/i);
+    expect(skill).toMatch(
+      /^description: Use when[^\n]*stored (?:inside|in) (?:a )?Keco project[^\n]*not for local files[^\n]*existing tables/m,
+    );
   });
 });
