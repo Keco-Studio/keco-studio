@@ -9,16 +9,29 @@ function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
 }
 
-function pngPaths(plugin: { interface?: Record<string, unknown> }): string[] {
-  const interfaceMetadata = plugin.interface ?? {};
-  const candidates = [
-    interfaceMetadata.composerIcon,
-    interfaceMetadata.logo,
-    interfaceMetadata.logoDark,
-    ...(Array.isArray(interfaceMetadata.screenshots) ? interfaceMetadata.screenshots : []),
-  ];
+function pngPaths(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return /\.png$/i.test(value) ? [value] : [];
+  }
 
-  return candidates.filter((candidate): candidate is string => typeof candidate === 'string');
+  if (Array.isArray(value)) {
+    return value.flatMap(pngPaths);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.values(value).flatMap(pngPaths);
+  }
+
+  return [];
+}
+
+function expectProhibited(skill: string, operation: string): void {
+  expect(skill).toMatch(
+    new RegExp(
+      `(?:do not|must not|never|not permitted|prohibited|forbidden|excluded)[\\s\\S]{0,80}\\b${operation}\\b|\\b${operation}\\w*\\b[\\s\\S]{0,80}(?:not permitted|prohibited|forbidden|excluded)`,
+      'i',
+    ),
+  );
 }
 
 describe('Keco Codex plugin contract', () => {
@@ -88,7 +101,7 @@ describe('Keco Codex plugin contract', () => {
       url: 'https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp',
     });
 
-    for (const assetPath of pngPaths(plugin)) {
+    for (const assetPath of pngPaths(plugin.interface)) {
       expect(assetPath).toMatch(/\.png$/i);
       const signature = readFileSync(path.join(pluginRoot, assetPath)).subarray(0, 8);
       expect(signature).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -111,5 +124,18 @@ describe('Keco Codex plugin contract', () => {
     expect(skill).toMatch(/stable (?:IDs|keys)/i);
     expect(skill).toMatch(/stop on (?:the )?first failed write|stop.*failure/i);
     expect(skill).toMatch(/read back.*verif|verif.*read back/i);
+
+    expect(skill).toMatch(/(?:only accepts?|accepts? only|input (?:must|may) be)[\s\S]{0,80}\bexisting Keco document\b/i);
+    expect(skill).toMatch(/(?:only creates?|creates? only|create-new-tables-only)[\s\S]{0,80}\bnew tables\b/i);
+    expectProhibited(skill, 'delete');
+    expectProhibited(skill, 'overwrite');
+    expectProhibited(skill, 'merge');
+    expectProhibited(skill, 'silently rename');
+    expect(skill).toMatch(/(?:only supports?|supports? only|allowed (?:field types?|content) (?:are|is) only)[\s\S]{0,160}\bscalar\b[\s\S]{0,160}\benum\b[\s\S]{0,160}\binitial rows?\b[\s\S]{0,160}\bcross-table references?\b/i);
+    expectProhibited(skill, 'local files?');
+    expectProhibited(skill, 'images?');
+    expectProhibited(skill, 'audio');
+    expectProhibited(skill, 'formulas?');
+    expectProhibited(skill, 'destructive maintenance');
   });
 });
