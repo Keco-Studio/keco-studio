@@ -4,6 +4,7 @@ import path from 'node:path';
 const repositoryRoot = process.cwd();
 const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
+const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
@@ -35,6 +36,34 @@ function expectProhibited(skill: string, operation: string): void {
 }
 
 describe('Keco Codex plugin contract', () => {
+  it('defines isolated trigger cases for Keco-to-Godot development', () => {
+    const evaluations = readJson<{
+      cases: Array<{
+        id: string;
+        kind: string;
+        prompt: string;
+        expectedSkill: string;
+        requiredBehaviors: string[];
+      }>;
+      baselineObservation: {
+        missingContracts: string[];
+      };
+    }>('tests/fixtures/plugins/keco-godot-skill-evals.json');
+
+    expect(evaluations.cases).toHaveLength(7);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice')).toHaveLength(3);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-build-tables-from-document')).toHaveLength(1);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'none')).toHaveLength(3);
+    expect(evaluations.baselineObservation.missingContracts).toEqual(
+      expect.arrayContaining([
+        'eval-spec-artifact',
+        'deterministic-snapshot-manifest',
+        'three-iteration-repair-limit',
+        'skill-routing-isolation',
+      ]),
+    );
+  });
+
   it('defines reusable positive, pressure, and negative evaluation cases', () => {
     const evaluations = readJson<{
       cases: Array<{
@@ -162,6 +191,62 @@ describe('Keco Codex plugin contract', () => {
     expect(skill).toMatch(
       /^description: Use when[^\n]*stored (?:inside|in) (?:a )?Keco project[^\n]*not for local files[^\n]*existing tables/m,
     );
+  });
+
+  it('ships one bounded Keco-to-Godot orchestration Skill', () => {
+    const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+    const agentMetadata = readFileSync(path.join(godotSkillRoot, 'agents', 'openai.yaml'), 'utf8');
+    const dataPlan = readFileSync(path.join(godotSkillRoot, 'references', 'data-plan.md'), 'utf8');
+
+    expect(skill).toMatch(/^---\nname: keco-develop-godot-slice\n/);
+    expect(skill).toMatch(/^description: Use when[^\n]*Godot[^\n]*Keco project/m);
+    expect(skill).toMatch(/CONNECT[\s\S]*DISCOVER[\s\S]*DEFINE_EVALS[\s\S]*IMPLEMENT[\s\S]*EVALUATE_RUNTIME/);
+    expect(skill).toMatch(/without (?:a second|additional) confirmation/i);
+    expect(skill).toMatch(/three repair iterations/i);
+    expect(skill).toMatch(/one (?:bounded |gameplay )?slice/i);
+    expect(skill).toMatch(/never (?:automatically )?delete/i);
+    expect(skill).toMatch(/snapshot[^\n]*hash/i);
+    expect(skill).toMatch(/runtime[^\n]*evidence/i);
+    expect(skill).toMatch(/successful Keco write[\s\S]{0,180}read all affected tables again/i);
+    expect(dataPlan).toMatch(/plan-local field key[\s\S]{0,180}semantic field label/i);
+    expect(dataPlan).toMatch(/never send plan-local keys or field UUIDs/i);
+    expect(dataPlan).toMatch(/first `upsert_table_rows` batch[\s\S]{0,120}`reuseEmpty: true`/i);
+    expect(dataPlan).toMatch(/later batches[\s\S]{0,80}`false`/i);
+
+    for (const reference of [
+      'source-priority.md',
+      'data-plan.md',
+      'slice-plan.md',
+      'eval-spec.md',
+      'godot-mcp-policy.md',
+      'recovery-policy.md',
+    ]) {
+      expect(existsSync(path.join(godotSkillRoot, 'references', reference))).toBe(true);
+      expect(skill).toContain(`references/${reference}`);
+    }
+
+    for (const script of ['export_keco_snapshot.py', 'validate_snapshot.py']) {
+      expect(existsSync(path.join(godotSkillRoot, 'scripts', script))).toBe(true);
+      expect(skill).toContain(`scripts/${script}`);
+    }
+
+    expect(agentMetadata).toMatch(/default_prompt: "Use \$keco-develop-godot-slice/);
+    expect(agentMetadata).toMatch(/value: "keco"/);
+    expect(agentMetadata).toMatch(/value: "godot"/);
+    expect(agentMetadata).toMatch(/allow_implicit_invocation: true/);
+  });
+
+  it('keeps Godot MCP external and routes overlapping work explicitly', () => {
+    const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco/.mcp.json');
+    const tableSkill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const godotSkill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+
+    expect(mcp.mcpServers).not.toHaveProperty('godot');
+    expect(tableSkill).toMatch(/only creates new tables/i);
+    expect(tableSkill).toMatch(/direct edits to an existing table/i);
+    expect(godotSkill).toMatch(/do not invoke[^\n]*keco-build-tables-from-document/i);
+    expect(godotSkill).toMatch(/Keco-only table creation/i);
+    expect(godotSkill).toMatch(/Godot work unrelated to Keco/i);
   });
 
   it('scores only behavior observed by the offline A/B evaluation', () => {
