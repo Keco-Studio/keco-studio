@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-04T12:00:00Z",
+  "project": {
+    "id": "7eeea945-2ce8-4142-9af7-7dfc55bb359b",
+    "name": "another-spring"
+  },
+  "sources": {
+    "documents": [
+      {
+        "id": "feedback-doc",
+        "name": "v0803 feedback",
+        "epoch": 0,
+        "revision": 148
+      }
+    ],
+    "tables": [
+      {
+        "id": "resources-table",
+        "name": "资源数据",
+        "updatedAt": "2026-08-02T17:38:59Z"
+      },
+      {
+        "id": "activities-table",
+        "name": "活动数值",
+        "updatedAt": "2026-08-02T17:39:11Z"
+      }
+    ]
+  },
+  "tables": [
+    {
+      "key": "resources",
+      "id": "resources-table",
+      "name": "资源数据",
+      "description": "Runtime resources.",
+      "updatedAt": "2026-08-02T17:38:59Z",
+      "fields": [
+        {
+          "key": "resource-id",
+          "id": "resource-id-field",
+          "label": "资源ID",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "name",
+          "id": "resource-name-field",
+          "label": "名称",
+          "dataType": "string",
+          "required": true
+        }
+      ],
+      "rows": [
+        {
+          "key": "food",
+          "id": "food-row",
+          "values": {
+            "name": "食物",
+            "resource-id": "food"
+          }
+        },
+        {
+          "key": "water",
+          "id": "water-row",
+          "values": {
+            "name": "水",
+            "resource-id": "water"
+          }
+        }
+      ]
+    },
+    {
+      "key": "activities",
+      "id": "activities-table",
+      "name": "活动数值",
+      "description": "Runtime activity values.",
+      "updatedAt": "2026-08-02T17:39:11Z",
+      "fields": [
+        {
+          "key": "activity-id",
+          "id": "activity-id-field",
+          "label": "活动ID",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "energy-change",
+          "id": "energy-change-field",
+          "label": "精力变化",
+          "dataType": "float",
+          "required": true
+        },
+        {
+          "key": "reward-resource",
+          "id": "reward-resource-field",
+          "label": "奖励资源",
+          "dataType": "reference",
+          "required": false,
+          "targetTableKey": "resources"
+        }
+      ],
+      "rows": [
+        {
+          "key": "gather",
+          "id": "gather-row",
+          "values": {
+            "activity-id": "gather",
+            "energy-change": -15,
+            "reward-resource": {
+              "targetTableKey": "resources",
+              "targetRowKeys": ["food", "water"]
+            }
+          }
+        },
+        {
+          "key": "rest",
+          "id": "rest-row",
+          "values": {
+            "activity-id": "rest",
+            "energy-change": 80
+          }
+        }
+      ]
+    }
+  ]
+}

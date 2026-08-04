@@ -1,22 +1,23 @@
 {
   "name": "keco",
-  "version": "0.1.0",
-  "description": "Build and manage Keco project data with guided Codex workflows.",
+  "version": "0.2.0",
+  "description": "Build Keco project data and evaluated Godot gameplay slices with guided Codex workflows.",
   "author": {
     "name": "Keco Studio"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Keco",
-    "shortDescription": "Build verified Keco tables from project documents.",
-    "longDescription": "Connect Codex to Keco and use guided workflows to turn project design documents into verified related tables.",
+    "shortDescription": "Build Keco tables and evaluated Godot gameplay slices.",
+    "longDescription": "Connect Codex to Keco and use guided workflows to build verified project tables or implement and evaluate bounded Godot gameplay slices from Keco designs.",
     "developerName": "Keco Studio",
     "category": "Productivity",
     "capabilities": ["Data access", "Write"],
     "defaultPrompt": [
       "Build Keco tables from a project design document.",
       "Turn my combat specification into related Keco tables.",
-      "Preview a Keco table plan from an existing project document."
+      "Preview a Keco table plan from an existing project document.",
+      "Implement the next Godot gameplay slice from my Keco project and evaluate it."
     ],
     "brandColor": "#0F766E",
     "composerIcon": "./assets/icon.png",
