@@ -237,7 +237,7 @@ Run:
 
 ```bash
 npx jest --runInBand tests/unit/plugins/keco-plugin.test.ts tests/unit/plugins/keco-godot-snapshot.test.ts
-npm test -- --runInBand
+npm run test:unit -- --runInBand
 npm run build
 git diff --check
 ```
