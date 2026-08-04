@@ -35,7 +35,7 @@ Post-merge routing and contract checks passed locally. The final local verificat
 - Project: `another-spring`
 - Keco project ID: `7eeea945-2ce8-4142-9af7-7dfc55bb359b`
 - Latest feedback document: `v0803 feedback`, document ID `2cbe6993-607a-4670-b1a4-397f20d2bd2c`, epoch `0`, revision `151`.
-- GDD document: `GDD v1.0（整理版）`, document ID `313a2dcb-98f8-4073-a990-69a6a34fae49`, epoch `0`, revision `2`.
+- GDD document: `GDD v1.0 (organized)`, document ID `313a2dcb-98f8-4073-a990-69a6a34fae49`, epoch `0`, revision `2`.
 - Current Keco structure read: 8 data tables and 12 documents; no Keco writes were attempted.
 
 ## Godot Gate
