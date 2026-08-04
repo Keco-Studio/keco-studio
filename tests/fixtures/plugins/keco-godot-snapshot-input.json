@@ -17,12 +17,12 @@
     "tables": [
       {
         "id": "resources-table",
-        "name": "资源数据",
+        "name": "Resources",
         "updatedAt": "2026-08-02T17:38:59Z"
       },
       {
         "id": "activities-table",
-        "name": "活动数值",
+        "name": "Activities",
         "updatedAt": "2026-08-02T17:39:11Z"
       }
     ]
@@ -31,21 +31,21 @@
     {
       "key": "resources",
       "id": "resources-table",
-      "name": "资源数据",
+      "name": "Resources",
       "description": "Runtime resources.",
       "updatedAt": "2026-08-02T17:38:59Z",
       "fields": [
         {
           "key": "resource-id",
           "id": "resource-id-field",
-          "label": "资源ID",
+          "label": "Resource ID",
           "dataType": "string",
           "required": true
         },
         {
           "key": "name",
           "id": "resource-name-field",
-          "label": "名称",
+          "label": "Name",
           "dataType": "string",
           "required": true
         }
@@ -55,7 +55,7 @@
           "key": "food",
           "id": "food-row",
           "values": {
-            "name": "食物",
+            "name": "Food",
             "resource-id": "food"
           }
         },
@@ -63,7 +63,7 @@
           "key": "water",
           "id": "water-row",
           "values": {
-            "name": "水",
+            "name": "Water",
             "resource-id": "water"
           }
         }
@@ -72,28 +72,28 @@
     {
       "key": "activities",
       "id": "activities-table",
-      "name": "活动数值",
+      "name": "Activities",
       "description": "Runtime activity values.",
       "updatedAt": "2026-08-02T17:39:11Z",
       "fields": [
         {
           "key": "activity-id",
           "id": "activity-id-field",
-          "label": "活动ID",
+          "label": "Activity ID",
           "dataType": "string",
           "required": true
         },
         {
           "key": "energy-change",
           "id": "energy-change-field",
-          "label": "精力变化",
+          "label": "Energy Change",
           "dataType": "float",
           "required": true
         },
         {
           "key": "reward-resource",
           "id": "reward-resource-field",
-          "label": "奖励资源",
+          "label": "Reward Resource",
           "dataType": "reference",
           "required": false,
           "targetTableKey": "resources"
