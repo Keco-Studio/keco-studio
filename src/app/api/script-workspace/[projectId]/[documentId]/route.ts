@@ -4,7 +4,10 @@ import {
   AuthorizationError,
   getUserProjectRole,
 } from '@/lib/services/authorizationService';
-import { deleteScriptWorkspaceDocument } from '@/lib/script-system/scriptWorkspaceService';
+import {
+  deleteScriptWorkspaceDocument,
+  isScriptWorkspaceDocument,
+} from '@/lib/script-system/scriptWorkspaceService';
 
 type Params = { params: Promise<{ projectId: string; documentId: string }> };
 
@@ -56,6 +59,35 @@ export const DELETE = withAuth(async function DELETE(
     );
     return NextResponse.json(
       { error: 'Failed to remove document from workspace' },
+      { status: 500 }
+    );
+  }
+}, { unauthorizedResponse: unauthorized });
+
+export const GET = withAuth(async function GET(
+  _req,
+  { params }: Params,
+  { supabase, user }
+) {
+  const { projectId, documentId } = await params;
+  const denied = await verifyProjectAccess(supabase, projectId, user.id);
+  if (denied) return denied;
+
+  try {
+    const member = await isScriptWorkspaceDocument(supabase, {
+      projectId,
+      documentId,
+    });
+    return NextResponse.json({ member });
+  } catch (error) {
+    const mapped = mapServiceError(error);
+    if (mapped) return mapped;
+    console.error(
+      '[GET /api/script-workspace/:projectId/:documentId]',
+      error
+    );
+    return NextResponse.json(
+      { error: 'Failed to verify document workspace membership' },
       { status: 500 }
     );
   }
