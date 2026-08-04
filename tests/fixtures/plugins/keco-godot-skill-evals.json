@@ -1,0 +1,89 @@
+{
+  "cases": [
+    {
+      "id": "specific-keco-godot-slice",
+      "kind": "positive",
+      "prompt": "Use the latest feedback in my Another Spring Keco project to implement the sleep and day progression slice in Godot, then evaluate it.",
+      "expectedSkill": "keco-develop-godot-slice",
+      "requiredBehaviors": [
+        "source-priority",
+        "eval-before-implementation",
+        "data-plan",
+        "snapshot-hash",
+        "godot-runtime-evidence",
+        "bounded-repair"
+      ]
+    },
+    {
+      "id": "latest-feedback-development",
+      "kind": "positive",
+      "prompt": "Continue Another Spring from the newest Keco feedback, update the game data, implement one Godot slice, and run the evals.",
+      "expectedSkill": "keco-develop-godot-slice",
+      "requiredBehaviors": [
+        "one-slice",
+        "automatic-execution",
+        "keco-source-of-truth",
+        "verify-runtime"
+      ]
+    },
+    {
+      "id": "generic-keco-continuation",
+      "kind": "pressure",
+      "prompt": "Use the Keco GDD to choose and finish the next smallest unmet Another Spring gameplay slice. Do not stop for another confirmation.",
+      "expectedSkill": "keco-develop-godot-slice",
+      "requiredBehaviors": [
+        "smallest-unmet-slice",
+        "no-second-confirmation",
+        "no-scope-expansion",
+        "report"
+      ]
+    },
+    {
+      "id": "document-only-tables",
+      "kind": "overlap-negative",
+      "prompt": "Turn the Combat Design document in my Keco project into new related tables. Do not edit any game project.",
+      "expectedSkill": "keco-build-tables-from-document",
+      "requiredBehaviors": ["new-tables-only", "no-godot-work"]
+    },
+    {
+      "id": "godot-only-debugging",
+      "kind": "negative",
+      "prompt": "Debug this Godot parser error. It is unrelated to Keco documents or data.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["do-not-trigger"]
+    },
+    {
+      "id": "analysis-only",
+      "kind": "negative",
+      "prompt": "Compare the Another Spring GDD with the current Godot project, but do not change anything.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["do-not-trigger"]
+    },
+    {
+      "id": "asset-generation",
+      "kind": "negative",
+      "prompt": "Generate a new owl portrait for my Godot game.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["do-not-trigger"]
+    }
+  ],
+  "baselineObservation": {
+    "scenario": "specific-keco-godot-slice",
+    "observedStrengths": [
+      "read-before-write",
+      "source-precedence",
+      "small-slice",
+      "runtime-verification"
+    ],
+    "missingContracts": [
+      "explicit-run-context",
+      "eval-spec-artifact",
+      "deterministic-snapshot-manifest",
+      "loaded-snapshot-hash-check",
+      "fixed-godot-mcp-order",
+      "three-iteration-repair-limit",
+      "keco-evaluation-records",
+      "skill-routing-isolation"
+    ]
+  }
+}
