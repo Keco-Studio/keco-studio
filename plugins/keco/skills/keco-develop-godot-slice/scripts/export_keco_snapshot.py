@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -36,7 +37,7 @@ class SnapshotError(ValueError):
 
 
 def canonical_bytes(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return (json.dumps(value, allow_nan=False, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -167,10 +168,14 @@ def _normalize_scalar(value: Any, field: dict[str, Any], location: str) -> Any:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise SnapshotError(f"{location} must be a number")
         value = float(value)
+        if not math.isfinite(value):
+            raise SnapshotError(f"{location} must be a finite number")
     elif data_type == "float_array":
         if not isinstance(value, list) or any(not isinstance(item, (int, float)) or isinstance(item, bool) for item in value):
             raise SnapshotError(f"{location} must be an array of numbers")
         value = [float(item) for item in value]
+        if any(not math.isfinite(item) for item in value):
+            raise SnapshotError(f"{location} must contain only finite numbers")
     elif data_type == "boolean":
         if not isinstance(value, bool):
             raise SnapshotError(f"{location} must be a boolean")

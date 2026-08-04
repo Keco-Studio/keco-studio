@@ -34,6 +34,8 @@ warnings: []
 
 Use plan-local lower-case hyphen keys and keep returned Keco UUIDs in a separate execution map. Every table and row requires a stable scalar match key. Preserve source evidence for tables, fields, rows, and relationships.
 
+Before any Keco write, resolve every plan-local field key to the exact semantic field label returned by the target table schema. Send only those labels across the MCP boundary; never send plan-local keys or field UUIDs in `values`. Resolve reference target row keys to returned row UUIDs and the target display/match field UUID before writing reference values.
+
 ## Allowed Operations
 
 - Create a domain table when no same-purpose table exists.
@@ -41,6 +43,8 @@ Use plan-local lower-case hyphen keys and keep returned Keco UUIDs in a separate
 - Create or update rows by a stable match field.
 - Add relationships after stable target table and row identities exist.
 - Update table-owned values when a higher-priority source changes them.
+
+For every newly created table, the first `upsert_table_rows` batch must set `reuseEmpty: true` to populate the empty row created by `create_table`; later batches must set it to `false`. Apply the same rule to the three development-record tables.
 
 Never automatically delete a table, field, or row. Never destructively change a populated field type. Never replace a compatible existing table merely to simplify execution. Put these needs in `blockers` and stop before writes.
 

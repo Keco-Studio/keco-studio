@@ -30,7 +30,7 @@ Keco Godot slice progress:
 4. Select one bounded slice. An explicit invocation authorizes that slice without a second confirmation; do not expand its scope.
 5. Create the EvalSpec before changing Keco data or Godot files. Every implementation change must serve one accepted evaluation.
 6. Design required Keco tables and rows through the DataPlan. Never automatically delete tables, fields, or rows, perform destructive type conversions, or copy local runtime state back into Keco.
-7. Export normalized data with `scripts/export_keco_snapshot.py`, validate it with `scripts/validate_snapshot.py`, and require the running game to expose the loaded snapshot hash.
+7. After every successful Keco write sequence, paginate-read all affected tables again and refresh their IDs, revisions, updated timestamps, field labels, row values, and reference UUIDs. Only then export normalized data with `scripts/export_keco_snapshot.py`, validate it with `scripts/validate_snapshot.py`, and require the running game to expose the loaded snapshot hash.
 8. Implement only `SlicePlan.allowedFiles`. Use Godot MCP in the fixed order from `godot-mcp-policy.md` and collect structured runtime evidence.
 9. Repair only failed evaluations for at most three repair iterations. Rerun affected regressions after every repair.
 10. Persist exact results and report failures, manual requirements, partial Keco writes, original dirty files, snapshot hash, and Godot evidence. Never infer success from writes, parsing, or screenshots alone.

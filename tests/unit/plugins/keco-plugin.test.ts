@@ -196,6 +196,7 @@ describe('Keco Codex plugin contract', () => {
   it('ships one bounded Keco-to-Godot orchestration Skill', () => {
     const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
     const agentMetadata = readFileSync(path.join(godotSkillRoot, 'agents', 'openai.yaml'), 'utf8');
+    const dataPlan = readFileSync(path.join(godotSkillRoot, 'references', 'data-plan.md'), 'utf8');
 
     expect(skill).toMatch(/^---\nname: keco-develop-godot-slice\n/);
     expect(skill).toMatch(/^description: Use when[^\n]*Godot[^\n]*Keco project/m);
@@ -206,6 +207,11 @@ describe('Keco Codex plugin contract', () => {
     expect(skill).toMatch(/never (?:automatically )?delete/i);
     expect(skill).toMatch(/snapshot[^\n]*hash/i);
     expect(skill).toMatch(/runtime[^\n]*evidence/i);
+    expect(skill).toMatch(/successful Keco write[\s\S]{0,180}read all affected tables again/i);
+    expect(dataPlan).toMatch(/plan-local field key[\s\S]{0,180}semantic field label/i);
+    expect(dataPlan).toMatch(/never send plan-local keys or field UUIDs/i);
+    expect(dataPlan).toMatch(/first `upsert_table_rows` batch[\s\S]{0,120}`reuseEmpty: true`/i);
+    expect(dataPlan).toMatch(/later batches[\s\S]{0,80}`false`/i);
 
     for (const reference of [
       'source-priority.md',

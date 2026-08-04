@@ -145,4 +145,20 @@ describe('Keco Godot snapshot scripts', () => {
     expect(validation.status).toBe(1);
     expect(validation.stderr).toMatch(/source input hash mismatch/i);
   });
+
+  it('rejects non-finite float values before producing Godot JSON', () => {
+    const input = path.join(temporaryRoot, 'non-finite.json');
+    const source = readFileSync(fixturePath, 'utf8').replace('"energy-change": -15', '"energy-change": NaN');
+    writeFileSync(input, source, 'utf8');
+
+    const result = runPython(exporter, [
+      '--input',
+      input,
+      '--output-dir',
+      path.join(temporaryRoot, 'non-finite'),
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/finite number/i);
+  });
 });
