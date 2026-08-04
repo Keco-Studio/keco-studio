@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+jest.mock('@/lib/contexts/AuthContext', () => ({
+  useAuth: () => ({ userProfile: null, isLoading: false }),
+}));
+jest.mock('@/lib/hooks/useProjectRoleQuery', () => ({
+  useProjectRoleQuery: () => ({ isLoading: false, isError: false, data: null }),
+}));
+
 import {
   loadDocumentPermissions,
 } from '@/components/documents/useDocumentPermissions';
@@ -99,8 +107,20 @@ describe('document permission loader', () => {
       'utf8'
     );
 
-    expect(source).toContain('requestKey');
-    expect(source).toMatch(/loaded\.requestKey !== requestKey/);
+    expect(source).toContain('sessionRequestKey');
+    expect(source).toMatch(/sessionState\.requestKey !== sessionRequestKey/);
     expect(source).toMatch(/return loadingState/);
+  });
+
+  it('uses the shared project-role query for React startup permissions', () => {
+    const source = readFileSync(
+      path.join(
+        process.cwd(),
+        'src/components/documents/useDocumentPermissions.ts'
+      ),
+      'utf8'
+    );
+
+    expect(source).toContain('useProjectRoleQuery');
   });
 });
