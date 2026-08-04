@@ -3,27 +3,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { LoadingOutlined } from '@ant-design/icons';
-import { Dropdown } from 'antd';
+import { Avatar, Dropdown, Tooltip } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument, type DocumentRecord } from '@/lib/services/documentService';
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { showErrorToast } from '@/lib/utils/toast';
-import { buildDesignMessage } from '@/lib/design-message';
-import {
-  DESIGN_UPLOAD_EVENT,
-  saveDesignHandoff,
-} from '@/lib/design-upload-handoff';
-import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
-import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
 import {
   DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT,
   clearDocumentDerivedImportProgress,
   getDocumentDerivedImportProgress,
   type DocumentDerivedImportProgress,
 } from '@/lib/documents/documentDerivedImportProgress';
-import { ImportScriptModal } from '@/components/libraries/ImportScriptModal';
 import {
   useDocumentPermissions,
   type DocumentPermissionState,
@@ -31,6 +23,7 @@ import {
 import { useDocumentCollaboration } from './useDocumentCollaboration';
 import { getDocumentVersionPreview } from '@/lib/documents/documentVersionService';
 import { DocumentVersionSidebar } from './DocumentVersionSidebar';
+import { getDocumentAvatarDisplay } from './documentCollaborationDisplay';
 import type {
   MDXEditorMethods,
   MdxDocumentEditorProps,
@@ -63,7 +56,6 @@ export function DocumentEditor({ projectId, documentId, flushLayout = false }: D
     queryFn: () => getDocument(supabase, documentId),
     enabled: Boolean(documentId),
     staleTime: 0,
-    refetchOnWindowFocus: true,
   });
   const permissions = useDocumentPermissions({
     projectId,
@@ -108,20 +100,6 @@ type ReadyDocumentPermissions = DocumentPermissionState & {
   userName: string;
 };
 
-function isDocumentExportSource(value: unknown): value is DocumentExportSource {
-  if (!value || typeof value !== 'object') return false;
-  const source = value as Partial<DocumentExportSource>;
-  return (
-    typeof source.documentId === 'string' &&
-    typeof source.documentName === 'string' &&
-    typeof source.projectId === 'string' &&
-    (source.folderId === null || typeof source.folderId === 'string') &&
-    typeof source.markdown === 'string' &&
-    typeof source.snapshotToken === 'string' &&
-    typeof source.token?.epoch === 'number' &&
-    typeof source.token?.revision === 'number'
-  );
-}
 
 function DocumentEditorSession({
   document,
@@ -139,7 +117,6 @@ function DocumentEditorSession({
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
-  const [scriptSource, setScriptSource] = useState<DocumentExportSource | null>(null);
   const [derivedImportProgress, setDerivedImportProgress] =
     useState<DocumentDerivedImportProgress | null>(() =>
       getDocumentDerivedImportProgress(projectId, document.id)
@@ -206,88 +183,11 @@ function DocumentEditorSession({
     const ready = methods !== null;
     setReferenceNavigationReady((current) => current === ready ? current : ready);
   }, []);
-  const loadExportSource = useCallback(async (): Promise<DocumentExportSource> => {
-    // Best-effort: derived exports read durable server state. A local Yjs flush
-    // failure or stall must not block opening the script/table export flow.
-    // Sync throws (common Yjs "Invalid access") must also be swallowed — an
-    // uncaught throw inside the Promise executor rejects and skips fetch.
-    if (permissions.role !== 'viewer' && collaboration.session) {
-      const session = collaboration.session;
-      await new Promise<void>((resolve) => {
-        const timeoutId = globalThis.setTimeout(resolve, 5_000);
-        try {
-          void Promise.resolve(session.flush()).then(
-            () => {
-              globalThis.clearTimeout(timeoutId);
-              resolve();
-            },
-            () => {
-              globalThis.clearTimeout(timeoutId);
-              resolve();
-            }
-          );
-        } catch {
-          globalThis.clearTimeout(timeoutId);
-          resolve();
-        }
-      });
-    }
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-    if (sessionError || !session?.access_token) {
-      throw new Error('Please sign in before exporting');
-    }
-    const response = await fetch(
-      `/api/documents/${document.id}/export-source`,
-      { headers: { Authorization: `Bearer ${session.access_token}` } }
-    );
-    if (!response.ok) throw new Error('Document export source failed');
-    const payload = await response.json() as { source?: unknown };
-    if (
-      !isDocumentExportSource(payload.source) ||
-      payload.source.documentId !== document.id ||
-      payload.source.projectId !== projectId
-    ) {
-      throw new Error('Document export source failed');
-    }
-    return payload.source;
-  }, [collaboration.session, document.id, permissions.role, projectId, supabase]);
   const handleExport = useCallback(
     async ({ key }: { key: string }) => {
       if (exportingFormat) return;
       setExportingFormat(key);
       try {
-        if (key === 'tables' || key === 'script') {
-          if (permissions.role !== 'admin') return;
-          const source = await loadExportSource();
-          if (key === 'tables') {
-            const message = buildDesignMessage({
-              fileName: source.documentName,
-              documentText: source.markdown,
-              intent: 'tables',
-              documentId: source.documentId,
-              sourceKind: 'project-document',
-            });
-            saveDesignHandoff(projectId, {
-              message,
-              fileName: source.documentName,
-              documentId: source.documentId,
-              documentExport: {
-                sourceDocumentId: source.documentId,
-                exportType: 'table',
-                snapshotToken: source.snapshotToken,
-              },
-            });
-            window.dispatchEvent(
-              new CustomEvent(DESIGN_UPLOAD_EVENT, { detail: { projectId } })
-            );
-          } else {
-            setScriptSource(source);
-          }
-          return;
-        }
         if (permissions.role !== 'viewer') {
           await collaboration.session?.flush();
         }
@@ -321,8 +221,6 @@ function DocumentEditorSession({
       document.id,
       document.name,
       exportingFormat,
-      loadExportSource,
-      projectId,
       permissions.role,
       supabase,
     ]
@@ -330,34 +228,19 @@ function DocumentEditorSession({
   const exportItems = [
     { key: 'docx', label: 'Download DOCX' },
     { key: 'pdf', label: 'Download PDF' },
-    { key: 'mdx', label: 'Download MDX' },
-    ...(permissions.role === 'admin'
-      ? [
-          { key: 'tables', label: 'Export as tables' },
-          { key: 'script', label: 'Export as script' },
-        ]
-      : []),
+    { key: 'mdx', label: 'Download Markdown' },
   ];
   const editorKey = `${document.id}:${collaboration.token.epoch}:${
     collaboration.isLegacyView ? 'legacy' : 'collaborative'
   }`;
-
-  useEffect(() => {
-    const publishStatus = () => {
-      window.dispatchEvent(
-        new CustomEvent('document-topbar-status', {
-          detail: {
-            label: collaboration.label,
-          },
-        })
-      );
-    };
-    publishStatus();
-    window.addEventListener('document-topbar-sync-request', publishStatus);
-    return () => {
-      window.removeEventListener('document-topbar-sync-request', publishStatus);
-    };
-  }, [collaboration.label]);
+  const documentAvatarDisplay = getDocumentAvatarDisplay(
+    {
+      id: permissions.userId,
+      name: permissions.userName,
+      color: collaboration.cursorColor,
+    },
+    collaboration.collaborators,
+  );
 
   useEffect(() => {
     const handleTopbarExport = (event: Event) => {
@@ -403,30 +286,40 @@ function DocumentEditorSession({
           .join(' ')}
       >
         <div className={styles.documentMain}>
+          <span
+            data-testid="document-collaboration-status"
+            data-label={collaboration.label}
+            hidden
+          />
           <header className={styles.stickyChrome}>
             <div className={styles.header}>
-              <h1 className={styles.title}>{document.name}</h1>
-              <div className={styles.status} aria-live="polite">
-                {collaboration.collaborators.length > 0 && (
+              {documentAvatarDisplay.visibleUsers.length > 0 && (
+                <div className={styles.status} aria-live="polite">
                   <div className={styles.collaborators} aria-label="Collaborators currently editing">
-                    {collaboration.collaborators.slice(0, 5).map((user) => (
-                      <span
+                    {documentAvatarDisplay.visibleUsers.map((user) => (
+                      <Tooltip
                         key={user.id}
-                        className={styles.collaboratorAvatar}
-                        style={{ backgroundColor: user.color }}
-                        title={`${user.name} is editing`}
+                        title={user.id === permissions.userId ? `${user.name} (you)` : `${user.name} is editing`}
+                        placement="top"
                       >
-                        {user.name.charAt(0).toUpperCase()}
-                      </span>
+                        <Avatar
+                          size={24}
+                          title={user.id === permissions.userId ? `${user.name} (you)` : `${user.name} is editing`}
+                          className={styles.collaboratorAvatar}
+                          style={{ backgroundColor: user.color }}
+                        >
+                          {user.name.charAt(0).toUpperCase()}
+                        </Avatar>
+                      </Tooltip>
                     ))}
-                    {collaboration.collaborators.length > 5 && (
+                    {documentAvatarDisplay.overflowCount > 0 && (
                       <span className={styles.collaboratorMore}>
-                        +{collaboration.collaborators.length - 5}
+                        +{documentAvatarDisplay.overflowCount}
                       </span>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               <div className={styles.topbarExportBridge} aria-hidden="true">
                 <Dropdown
                   menu={{ items: exportItems, onClick: handleExport }}
@@ -568,23 +461,6 @@ function DocumentEditorSession({
           }}
         />
       </section>
-      <ImportScriptModal
-        open={Boolean(scriptSource)}
-        projectId={projectId}
-        folderId={scriptSource?.folderId ?? null}
-        documentSource={scriptSource ?? undefined}
-        onClose={() => setScriptSource(null)}
-        onImported={(libraryId) => {
-          if (scriptSource) {
-            notifyDocumentDerivedLibraryCreated({
-              projectId,
-              documentId: scriptSource.documentId,
-              libraryId,
-            });
-          }
-          setScriptSource(null);
-        }}
-      />
     </div>
   );
 }

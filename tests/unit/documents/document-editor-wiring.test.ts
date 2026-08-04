@@ -23,6 +23,12 @@ describe('DocumentEditor collaboration wiring', () => {
     expect(source).not.toContain('getCurrentUserId');
   });
 
+  it('starts permission loading from the route project and avoids forced focus refetches', () => {
+    expect(source).toContain('projectId,');
+    expect(source).toContain('documentProjectId: document?.project_id ?? null');
+    expect(source).not.toContain('refetchOnWindowFocus: true');
+  });
+
   it('passes one session to the dynamically loaded editor and remounts by epoch', () => {
     expect(source).toContain('collaboration.session');
     expect(source).toContain('cursorColor: collaboration.cursorColor');
