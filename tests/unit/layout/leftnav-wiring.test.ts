@@ -45,11 +45,14 @@ describe('LeftNav wiring', () => {
     expect(source).toContain('readLeftNavCollapsed');
   });
 
-  it('always mounts LeftNav while simulation hides Studio resource chrome', () => {
+  it('keeps the shared TopBar while simulation hides Studio resource chrome', () => {
     const source = read('src/components/layout/DashboardLayout.tsx');
     expect(source).toContain("import { LeftNav } from './LeftNav'");
+    expect(source).toContain("import { TopBar } from './TopBar'");
     expect(source).toContain('<LeftNav');
+    expect(source).toContain('<TopBar');
     expect(source).toContain("pathname?.startsWith('/simulation-system')");
+    expect(source).not.toContain('hideTopBar');
     expect(source).not.toContain('SimulationOriginWarmup');
     expect(source).not.toContain('isSimulationEmbedConfigured');
   });

@@ -311,43 +311,6 @@
 .workflowButtonActive { padding: 0 14px; color: var(--simulation-blue); background: var(--simulation-blue-soft); font-weight: 600; }
 .workflowNumber { margin-right: 6px; font-weight: 700; }
 .workflowButton:disabled { cursor: not-allowed; opacity: .45; }
-.headerActions { display: flex; flex-shrink: 0; align-items: center; gap: 12px; }
-.search {
-  display: flex;
-  flex: 0 0 280px;
-  width: 280px;
-  height: 38px;
-  padding: 0 16px;
-  align-items: center;
-  gap: 8px;
-  color: var(--simulation-ink-400);
-  background: #f1f4f9;
-  border-radius: 999px;
-  font: 13px var(--simulation-font-body);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.search > span:last-child { overflow: hidden; text-overflow: ellipsis; }
-.searchIcon {
-  position: relative;
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
-  border: 1.8px solid currentColor;
-  border-radius: 50%;
-  opacity: 0.7;
-}
-.searchIcon::after {
-  position: absolute;
-  right: -4px;
-  bottom: -2px;
-  width: 6px;
-  height: 2px;
-  content: '';
-  background: currentColor;
-  transform: rotate(45deg);
-}
-.headerAvatar { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; color: #fff; background: linear-gradient(135deg, var(--simulation-app-icon-from), var(--simulation-app-icon-to)); border-radius: 50%; font-size: 14px; font-weight: 700; }
 
 .button { display: inline-flex; min-width: 0; min-height: 30px; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; font-family: var(--simulation-font-body); font-weight: 500; line-height: 1; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease; }
 .button_medium { height: 38px; padding: 0 16px; font-size: 14px; }
@@ -483,7 +446,6 @@
 .toastAction:focus-visible { outline: 3px solid var(--simulation-focus); outline-offset: 2px; }
 
 @media (max-width: 1180px) {
-  .search { display: none; }
   .workflowNav { overflow-x: auto; scrollbar-width: thin; }
   .content { padding-inline: 22px; }
 }

@@ -38,13 +38,21 @@ describe('native simulation workbench presentation', () => {
     expect(css).toMatch(/\.sidebarCollapsed\s*\{[^}]*width:\s*28px/s);
   });
 
-  it('exposes the workflow and a decorative Studio-native search icon', () => {
+  it('keeps workflow navigation without duplicate global controls', () => {
     const source = read('SimulationHeader.tsx');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('aria-current');
-    expect(source).toContain('aria-hidden="true"');
-    expect(source).not.toContain('<svg');
-    expect(source).toContain('Search libraries, characters, skills');
+    expect(source).not.toContain('Search libraries, characters, skills');
+    expect(source).not.toContain('Simulator profile');
+    expect(source).not.toContain('styles.headerActions');
+    expect(source).not.toContain('styles.search');
+
+    const css = read('SimulationWorkbench.module.css');
+    expect(css).not.toMatch(/\.headerActions\s*\{/);
+    expect(css).not.toMatch(/\.searchIcon\s*\{/);
+    expect(css).not.toMatch(/\.headerAvatar\s*\{/);
+    expect(css).not.toMatch(/\.search\s*\{/);
+    expect(css).not.toMatch(/\.search\s*>\s*span:last-child\s*\{/);
   });
 
   it('uses semantic status and battle health output', () => {
@@ -133,7 +141,6 @@ describe('native simulation workbench presentation', () => {
     }
     expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.search\s*\{[^}]*display:\s*none/);
     expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.workflowNav\s*\{[^}]*overflow-x:\s*auto/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)[\s\S]*\.sidebar\s*\{[^}]*(?:position:\s*absolute|position:\s*fixed)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)[\s\S]*\.battleGrid\s*\{[^}]*grid-template-columns:\s*1fr/);

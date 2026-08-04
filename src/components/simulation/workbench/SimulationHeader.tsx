@@ -57,14 +57,6 @@ export function SimulationHeader({
           </ol>
         </nav>
       )}
-
-      <div className={styles.headerActions}>
-        <div className={styles.search} aria-hidden="true">
-          <span className={styles.searchIcon} />
-          <span>Search libraries, characters, skills…</span>
-        </div>
-        <span className={styles.headerAvatar} aria-label="Simulator profile">R</span>
-      </div>
     </header>
   );
 }
