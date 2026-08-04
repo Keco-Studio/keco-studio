@@ -8,7 +8,7 @@ export class SimulationSystemPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.root = page.locator('[data-simulation-root]');
+    this.root = page.locator('[data-simulation-root]:not([data-simulation-sidebar-slot])');
   }
 
   async goto(): Promise<void> {

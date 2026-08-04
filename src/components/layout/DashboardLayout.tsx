@@ -90,6 +90,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <ScriptSidebar projectId={currentProjectId} />
         </div>
       ) : null}
+      {hideSidebarForSimulation ? (
+        <div className={styles.simulationSidebarSlot} data-simulation-sidebar-slot data-simulation-root />
+      ) : null}
       <div className={styles.main}>
         <TopBar />
         <div className={styles.workspace}>

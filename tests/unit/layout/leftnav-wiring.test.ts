@@ -51,6 +51,8 @@ describe('LeftNav wiring', () => {
     expect(source).toContain("import { TopBar } from './TopBar'");
     expect(source).toContain('<LeftNav');
     expect(source).toContain('<TopBar');
+    expect(source).toContain('data-simulation-sidebar-slot');
+    expect(source).toContain('simulationSidebarSlot');
     expect(source).toContain("pathname?.startsWith('/simulation-system')");
     expect(source).not.toContain('hideTopBar');
     expect(source).not.toContain('SimulationOriginWarmup');

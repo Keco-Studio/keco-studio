@@ -110,6 +110,10 @@ describe('simulation workbench flow', () => {
     const workbench = read('SimulationWorkbench.tsx');
     expect(workbench).toContain('useSimulationProject');
     expect(workbench).toContain('useSimulationSession');
+    expect(workbench).toMatch(/import\s+\{\s*createPortal\s*\}\s+from\s+['"]react-dom['"]/);
+    expect(workbench).toContain('data-simulation-sidebar-slot');
+    expect(workbench).toContain("document.querySelector<HTMLElement>('[data-simulation-sidebar-slot]')");
+    expect(workbench).toContain('sidebarHost ? createPortal');
     expect(workbench).toContain('data-simulation-root');
     expect(workbench).toContain('<SimulationSidebar');
     expect(workbench).toContain('<SimulationHeader');

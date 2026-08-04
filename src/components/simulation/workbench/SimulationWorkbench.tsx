@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
 import { STEPS } from '@/lib/simulation/data';
 import { useSimulationProject } from '@/lib/simulation/SimulationProjectProvider';
 import { useSimulationSession } from '@/lib/simulation/SimulationSessionProvider';
@@ -31,6 +32,11 @@ export function SimulationWorkbench() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [holdImportScreen, setHoldImportScreen] = useState(false);
+  const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setSidebarHost(document.querySelector<HTMLElement>('[data-simulation-sidebar-slot]'));
+  }, []);
 
   const screen: WorkbenchScreen = sessions.importing || holdImportScreen || !sessions.activeSession
     ? 'import'
@@ -69,7 +75,7 @@ export function SimulationWorkbench() {
         : null;
 
   return <div className={styles.root} data-simulation-root>
-    <SimulationSidebar items={items} activeId={screen === 'import' ? 'import' : sessions.activeSession?.id ?? 'import'} projectName={project.selectedProject?.name} projects={project.projects} projectId={project.selectedProjectId} onProjectSelect={project.selectProject} collapsed={collapsed} mobileOpen={mobileOpen} onToggleCollapsed={() => setCollapsed((value) => !value)} onCloseMobile={() => setMobileOpen(false)} onSelect={(id) => { if (id === 'import') { sessions.startFreshImport(); setHoldImportScreen(false); setRequestedScreen(null); } else { sessions.selectSession(id); setHoldImportScreen(false); setRequestedScreen(null); } }} />
+    {sidebarHost ? createPortal(<SimulationSidebar items={items} activeId={screen === 'import' ? 'import' : sessions.activeSession?.id ?? 'import'} projectName={project.selectedProject?.name} projects={project.projects} projectId={project.selectedProjectId} onProjectSelect={project.selectProject} collapsed={collapsed} mobileOpen={mobileOpen} onToggleCollapsed={() => setCollapsed((value) => !value)} onCloseMobile={() => setMobileOpen(false)} onSelect={(id) => { if (id === 'import') { sessions.startFreshImport(); setHoldImportScreen(false); setRequestedScreen(null); } else { sessions.selectSession(id); setHoldImportScreen(false); setRequestedScreen(null); } }} />, sidebarHost) : null}
     <div className={styles.main}>
       <SimulationHeader title={screen === 'import' ? 'Import' : screen[0].toUpperCase() + screen.slice(1)} projectName={project.selectedProject?.name} steps={workflow} activeStepId={screen} onStepSelect={(id) => navigate(id as SimulationScreen)} />
       <main className={styles.content}>
