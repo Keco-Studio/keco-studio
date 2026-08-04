@@ -47,6 +47,9 @@ describe('LeftNav wiring', () => {
 
   it('keeps the shared TopBar while simulation hides Studio resource chrome', () => {
     const source = read('src/components/layout/DashboardLayout.tsx');
+    const topBarSource = read('src/components/layout/TopBar.tsx');
+    const topBarCss = read('src/components/layout/TopBar.module.css');
+    const simulationCss = read('src/components/simulation/workbench/SimulationWorkbench.module.css');
     expect(source).toContain("import { LeftNav } from './LeftNav'");
     expect(source).toContain("import { TopBar } from './TopBar'");
     expect(source).toContain('<LeftNav');
@@ -57,5 +60,33 @@ describe('LeftNav wiring', () => {
     expect(source).not.toContain('hideTopBar');
     expect(source).not.toContain('SimulationOriginWarmup');
     expect(source).not.toContain('isSimulationEmbedConfigured');
+    expect(topBarSource).toContain('onSimulationSystem');
+    expect(topBarSource).toContain('if (onSimulationSystem)');
+    expect(topBarSource).toContain('data-simulation-header-slot');
+    expect(topBarSource).toContain('simulationHeaderSlot');
+    expect(topBarCss).toContain('.headerSimulation .simulationHeaderSlot');
+    expect(topBarCss).toMatch(/\.headerSimulation\s*\{[\s\S]*?grid-template-columns\s*:/);
+    expect(topBarCss).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+minmax\(280px,\s*33rem\)\s+minmax\(0,\s*1fr\)/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.searchContainer\s*\{[\s\S]*?grid-column\s*:\s*2\b/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.right\s*\{[\s\S]*?grid-column\s*:\s*3\b/);
+    expect(topBarCss).toContain('--simulation-topbar-workflow-gap');
+    expect(topBarCss).toContain('--simulation-topbar-workflow-button-size');
+    expect(topBarCss).toContain('--simulation-topbar-workflow-active-color');
+    expect(simulationCss).toContain('var(--simulation-topbar-workflow-gap');
+    expect(simulationCss).toContain('var(--simulation-topbar-workflow-button-size');
+    expect(simulationCss).toContain('var(--simulation-topbar-workflow-active-color');
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.right[\s\S]*?(?:gap:\s*12px|margin-left\s*:)/);
+  });
+
+  it('scopes simulation global search to the remembered simulation project', () => {
+    const source = read('src/components/layout/TopBar.tsx');
+    expect(source).toContain('readSimulationProjectPreference');
+    expect(source).toContain('simulationProjectId');
+    expect(source).toMatch(
+      /const\s+searchProjectId\s*=\s*onSimulationSystem\s*\?\s*simulationProjectId\s*:\s*currentProjectId/
+    );
+    expect(source).toMatch(/useSidebarFoldersLibraries\(searchProjectId\)/);
+    expect(source).toMatch(/addEventListener\(\s*['"]simulation-project-changed['"]/);
+    expect(source).toMatch(/removeEventListener\(\s*['"]simulation-project-changed['"]/);
   });
 });

@@ -44,9 +44,10 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(source).toContain('useQueryClient');
     expect(source).toContain('invalidateQueries');
     expect(source).toContain('refetchQueries');
-    expect(source).toMatch(
-      /queryKey:\s*(?:membershipKey|\[\s*['"]script-workspace['"]\s*,\s*projectId\s*\])/
-    );
+    const membershipQueryPattern =
+      /queryKey:\s*(?:membershipKey|\[\s*['"]script-workspace['"]\s*,\s*projectId\s*\])/;
+    expect(source).toMatch(membershipQueryPattern);
+    expect(source).toContain('scriptWorkspaceDocumentQueryKey(projectId, selected.id)');
   });
 
   it('SelectDocumentModal lists project documents via listDocuments', () => {

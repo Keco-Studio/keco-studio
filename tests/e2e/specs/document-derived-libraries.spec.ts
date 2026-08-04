@@ -307,51 +307,24 @@ test.describe.serial('Document-derived library lifecycle', () => {
     }
   });
 
-  test('admin sees five items while editor and viewer see three', async ({ browser }) => {
-    const roles: Array<{
-      user: TemporaryUser;
-      expected: string[];
-      canExportDerived: boolean;
-    }> = [
-      {
-        user: fixture.owner,
-        expected: [
-          'Download DOCX',
-          'Download PDF',
-          'Download MDX',
-          'Export as tables',
-          'Export as script',
-        ],
-        canExportDerived: true,
-      },
-      {
-        user: fixture.editor,
-        expected: ['Download DOCX', 'Download PDF', 'Download MDX'],
-        canExportDerived: false,
-      },
-      {
-        user: fixture.viewer,
-        expected: ['Download DOCX', 'Download PDF', 'Download MDX'],
-        canExportDerived: false,
-      },
-    ];
+  test('all roles see the same three download items', async ({ browser }) => {
+    const expected = ['Download DOCX', 'Download PDF', 'Download Markdown'];
+    const roles = [fixture.owner, fixture.editor, fixture.viewer];
 
-    for (const role of roles) {
+    for (const user of roles) {
       const { context, page } = await openDocumentInNewContext(
         browser,
-        role.user,
+        user,
         fixture,
         fixture.folderDocument.id
       );
       try {
-        const menu = await openExportMenu(page, role.expected);
+        const menu = await openExportMenu(page, expected);
         const labels = (await menu.locator('.ant-dropdown-menu-item').allTextContents())
           .map((label) => label.trim());
-        expect(labels).toEqual(role.expected);
-        await expect(menu.getByText('Export as tables', { exact: true }))
-          .toHaveCount(role.canExportDerived ? 1 : 0);
-        await expect(menu.getByText('Export as script', { exact: true }))
-          .toHaveCount(role.canExportDerived ? 1 : 0);
+        expect(labels).toEqual(expected);
+        await expect(menu.getByText('Export as tables', { exact: true })).toHaveCount(0);
+        await expect(menu.getByText('Export as script', { exact: true })).toHaveCount(0);
       } finally {
         await context.close();
       }
@@ -361,11 +334,9 @@ test.describe.serial('Document-derived library lifecycle', () => {
   test('table and script results appear once beneath their source document', async ({ page }) => {
     const tableName = `Derived table ${crypto.randomUUID().slice(0, 6)}`;
     const scriptName = `Derived script ${crypto.randomUUID().slice(0, 6)}`;
-    let tableRequest: Record<string, unknown> | undefined;
+    let tableRequestBody = '';
     let scriptRequestBody = '';
 
-    // Stub export-source so table/script flows do not depend on live Yjs flush
-    // succeeding after the agent panel has already been open (CI flake).
     await page.route(
       `**/api/documents/${fixture.folderDocument.id}/export-source`,
       async (route) => {
@@ -386,30 +357,35 @@ test.describe.serial('Document-derived library lifecycle', () => {
         });
       }
     );
-    await page.route('**/api/agent-chat', async (route) => {
-      tableRequest = route.request().postDataJSON() as Record<string, unknown>;
-      const id = await createDerivedLibrary(admin, fixture, {
-        name: tableName,
-        sourceDocumentId: fixture.folderDocument.id,
-        exportType: 'table',
-        folderId: fixture.sourceFolder.id,
-      });
-      tableLibrary = { id, name: tableName };
-      await fulfillAgentStream(route, crypto.randomUUID(), [
-        {
-          type: 'cache_invalidated',
-          invalidations: [{
-            type: 'library',
-            id,
-            projectId: fixture.projectId,
-            sourceDocumentId: fixture.folderDocument.id,
-          }],
-        },
-        { type: 'text_delta', content: 'Document table export complete.' },
-      ]);
-    });
     await page.route('**/api/import-script', async (route) => {
-      scriptRequestBody = route.request().postDataBuffer()?.toString('utf8') ?? '';
+      const body = route.request().postDataBuffer()?.toString('utf8') ?? '';
+      const exportType =
+        /documentExportType[\s\S]{0,80}table/.test(body) &&
+        !/documentExportType[\s\S]{0,80}script/.test(body)
+          ? 'table'
+          : 'script';
+
+      if (exportType === 'table') {
+        tableRequestBody = body;
+        const id = await createDerivedLibrary(admin, fixture, {
+          name: tableName,
+          sourceDocumentId: fixture.folderDocument.id,
+          exportType: 'table',
+          folderId: fixture.sourceFolder.id,
+        });
+        tableLibrary = { id, name: tableName };
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/x-ndjson; charset=utf-8',
+          body: `${JSON.stringify({
+            type: 'result',
+            result: { libraryId: id, rowCount: 2, fieldCount: 3 },
+          })}\n`,
+        });
+        return;
+      }
+
+      scriptRequestBody = body;
       const id = await createDerivedLibrary(admin, fixture, {
         name: scriptName,
         sourceDocumentId: fixture.folderDocument.id,
@@ -428,53 +404,23 @@ test.describe.serial('Document-derived library lifecycle', () => {
     });
 
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
-    let menu = await openExportMenu(page);
-    await menu.getByText('Export as tables', { exact: true }).click();
-    await expect(page.getByTestId('agent-panel')).toBeVisible();
-    await expect(page.getByTestId('agent-message-assistant')).toContainText(
-      'Document table export complete.'
+
+    await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Generate table', exact: true }).click();
+    await expect(page.getByTestId('document-derived-import-progress')).toContainText(
+      /Table generated|Generating table|Preparing table/,
+      { timeout: 45_000 }
     );
-    expect(tableRequest).toMatchObject({
-      projectId: fixture.projectId,
-      currentDocumentId: fixture.folderDocument.id,
-      documentExport: {
-        sourceDocumentId: fixture.folderDocument.id,
-        exportType: 'table',
-      },
-    });
+    expect(tableRequestBody).toContain(fixture.folderDocument.id);
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
 
-    // The assistant panel overlays the document toolbar after a table export.
-    // Close it before opening the document export menu for the script flow.
-    await page.getByTestId('agent-panel').getByRole('button', { name: 'Close Keco Agent' }).click();
-    await expect(page.getByTestId('agent-panel')).toBeHidden();
-    await expect(page.getByTestId('agent-launcher')).toBeVisible();
-    await expect(page.getByTestId('document-export')).toBeEnabled();
-
-    // Register the response waiter before opening the menu so a fast click cannot
-    // resolve export-source before Playwright starts listening.
-    const exportSourceResponse = page.waitForResponse(
-      (response) =>
-        response.url().includes(`/api/documents/${fixture.folderDocument.id}/export-source`) &&
-        response.ok(),
-      { timeout: 45_000 },
+    await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Generate conversation', exact: true }).click();
+    await expect(page.getByTestId('document-derived-import-progress')).toContainText(
+      /Conversation generated|Generating conversation|Preparing conversation/,
+      { timeout: 45_000 }
     );
-    menu = await openExportMenu(page);
-    await menu.getByText('Export as script', { exact: true }).click();
-    await exportSourceResponse;
-    const modal = page.getByTestId('import-script-modal');
-    await expect(modal).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByTestId('import-script-document-source')).toContainText(
-      fixture.folderDocument.name
-    );
-    await page.getByTestId('import-script-name').fill(scriptName);
-    await expect(page.getByTestId('import-script-preview')).toContainText('2 lines');
-    await page.getByTestId('import-script-submit').click();
-    await expect(page.getByText('Script imported (2 rows)', { exact: true })).toBeVisible({
-      timeout: 30_000,
-    });
     expect(scriptRequestBody).toContain(fixture.folderDocument.id);
-    expect(scriptRequestBody).toContain(scriptName);
 
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
     await expect(sidebarTitle(page, scriptName)).toHaveCount(1, { timeout: 30_000 });
@@ -629,14 +575,6 @@ test.describe.serial('Document-derived library lifecycle', () => {
     });
 
     await openDocument(page, fixture.owner, fixture, fixture.rootDocument.id);
-    const menu = await openExportMenu(page);
-    await menu.getByText('Export as script', { exact: true }).click();
-    await expect(page.getByTestId('import-script-document-source')).toContainText(
-      fixture.rootDocument.name
-    );
-    await expect(page.getByTestId('import-script-preview')).toContainText('2 lines');
-    await expect(page.getByTestId('import-script-preview')).toContainText('2 dialogues');
-    await page.getByTestId('import-script-name').fill(rootScriptName);
 
     const { error: updateError } = await admin
       .from('documents')
@@ -644,14 +582,16 @@ test.describe.serial('Document-derived library lifecycle', () => {
       .eq('id', fixture.rootDocument.id);
     if (updateError) throw updateError;
 
-    await page.getByTestId('import-script-submit').click();
-    await expect(page.getByText('Script imported (2 rows)', { exact: true })).toBeVisible({
-      timeout: 30_000,
-    });
-    expect(importRequestBody).toContain(ROOT_SNAPSHOT_MARKDOWN.trim());
-    expect(importRequestBody).not.toContain(ROOT_CHANGED_MARKDOWN.trim());
+    await sidebarTitle(page, fixture.rootDocument.name).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Generate conversation', exact: true }).click();
+    await expect(page.getByTestId('document-derived-import-progress')).toContainText(
+      /Conversation generated|Generating conversation|Preparing conversation/,
+      { timeout: 45_000 }
+    );
+
     expect(importRequestBody).toContain(fixture.rootDocument.id);
     expect(importRequestBody).toContain('test-snapshot-token');
+    expect(importRequestBody).toContain('script');
 
     const { data: library, error } = await admin
       .from('libraries')

@@ -123,12 +123,10 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
     });
   }
 
-  async function openExportModal(page: Page): Promise<void> {
-    const libraryNode = page.getByRole('tree').locator(`[title="${fixture.libraryName}"]`).first();
-    await expect(libraryNode).toBeVisible({ timeout: 30_000 });
-    await libraryNode.click({ button: 'right' });
-    await page.getByRole('button', { name: 'Export', exact: true }).click();
-    await expect(page.getByText('Please select a file type to export', { exact: true })).toBeVisible();
+  async function openLibraryDownloadMenu(page: Page): Promise<void> {
+    await page.getByTestId('library-export').click();
+    const menu = page.locator('.ant-dropdown:visible .ant-dropdown-menu');
+    await expect(menu).toBeVisible();
   }
 
   test.beforeAll(async () => {
@@ -146,10 +144,9 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
   test('downloads and parses complete XLSX and JSON exports', async ({ page }) => {
     await loginAndOpen(page);
 
-    await openExportModal(page);
-    await page.getByLabel('Export as .xlsx', { exact: true }).check();
+    await openLibraryDownloadMenu(page);
     const xlsxDownloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Export', exact: true }).last().click();
+    await page.getByText('Download XLSX', { exact: true }).click();
     const xlsxDownload = await xlsxDownloadPromise;
     expect(xlsxDownload.suggestedFilename()).toMatch(/\.xlsx$/);
 
@@ -166,10 +163,9 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
     expect(sheet?.getCell('C2').value).toBe('Snowville, "North"');
     expect(sheet?.getCell('C4').value).toBeNull();
 
-    await openExportModal(page);
-    await page.getByLabel('Export as .json', { exact: true }).check();
+    await openLibraryDownloadMenu(page);
     const jsonDownloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Export', exact: true }).last().click();
+    await page.getByText('Download JSON', { exact: true }).click();
     const jsonDownload = await jsonDownloadPromise;
     expect(jsonDownload.suggestedFilename()).toMatch(/\.json$/);
 

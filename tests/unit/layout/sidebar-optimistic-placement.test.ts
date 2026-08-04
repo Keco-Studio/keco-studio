@@ -66,19 +66,9 @@ describe('sidebar optimistic placement', () => {
       { folder_id: 'f1', parent_document_id: null },
     ],
     [
-      'document-d2',
-      { kind: 'document', documentId: 'd1' } as const,
-      { folder_id: 'f1', parent_document_id: 'd1' },
-    ],
-    [
       'library-l1',
       { kind: 'folder', folderId: 'f1' } as const,
       { folder_id: 'f1', source_document_id: null, document_export_type: null },
-    ],
-    [
-      'library-l1',
-      { kind: 'document', documentId: 'd1' } as const,
-      { folder_id: 'f1', source_document_id: 'd1', document_export_type: 'table' },
     ],
     [
       'library-l2',

@@ -79,8 +79,8 @@ describe('ensureDefaultLibraryField', () => {
         operation: 'insert',
         payload: {
           library_id: 'library-1',
-          section_id: 'library-1:section1',
-          section: 'section1',
+          section_id: 'library-1:keco-flat-fields',
+          section: '__keco_flat_fields__',
           label: 'ID',
           data_type: 'string',
           order_index: 0,
@@ -93,7 +93,7 @@ describe('ensureDefaultLibraryField', () => {
         operation: 'select',
         filters: [
           ['library_id', 'library-1'],
-          ['section_id', 'library-1:section1'],
+          ['library_id', 'library-1'],
           ['order_index', 0],
         ],
       },

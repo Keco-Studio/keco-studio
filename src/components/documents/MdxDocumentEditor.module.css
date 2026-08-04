@@ -15,7 +15,7 @@
 
 .stickyToolbar {
   position: sticky;
-  top: var(--document-sticky-chrome-height, 4rem);
+  top: var(--document-sticky-chrome-height, 0);
   z-index: 2;
   background-color: var(--ant-color-bg-container, #ffffff);
   border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);

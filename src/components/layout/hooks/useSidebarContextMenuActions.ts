@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  type Dispatch,
-  type Key,
-  type SetStateAction,
-} from 'react';
+import { useCallback, useEffect } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
@@ -75,7 +69,6 @@ type UseSidebarDocumentDerivedLibraryLifecycleParams = {
   documents: DocumentSummary[];
   queryClient: QueryClient;
   expandFolder: (folderId: string | null | undefined) => void;
-  setExpandedKeys: Dispatch<SetStateAction<Key[]>>;
 };
 
 export function useSidebarDocumentDerivedLibraryLifecycle({
@@ -83,7 +76,6 @@ export function useSidebarDocumentDerivedLibraryLifecycle({
   documents,
   queryClient,
   expandFolder,
-  setExpandedKeys,
 }: UseSidebarDocumentDerivedLibraryLifecycleParams) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -100,12 +92,6 @@ export function useSidebarDocumentDerivedLibraryLifecycle({
         (document) => document.id === detail.documentId
       );
       expandFolder(sourceDocument?.folder_id);
-      setExpandedKeys((previous) => {
-        const documentKey = `document-${detail.documentId}`;
-        return previous.includes(documentKey)
-          ? previous
-          : [...previous, documentKey];
-      });
     };
 
     window.addEventListener(
@@ -117,7 +103,7 @@ export function useSidebarDocumentDerivedLibraryLifecycle({
         DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT,
         handleDerivedLibraryCreated
       );
-  }, [currentProjectId, documents, expandFolder, queryClient, setExpandedKeys]);
+  }, [currentProjectId, documents, expandFolder, queryClient]);
 }
 
 export type UseSidebarContextMenuActionsParams = {
@@ -128,7 +114,6 @@ export type UseSidebarContextMenuActionsParams = {
   openEditLibrary: (id: string) => void;
   openEditDocument?: (id: string) => void;
   openDuplicateLibrary: (id: string) => void;
-  openExportLibrary: (id: string) => void;
   openImportLibrary: (folderId: string | null) => void;
   openImportScript: (folderId: string) => void;
   openEditFolder: (id: string) => void;
@@ -176,7 +161,6 @@ export function useSidebarContextMenuActions({
   openEditLibrary,
   openEditDocument,
   openDuplicateLibrary,
-  openExportLibrary,
   openImportLibrary,
   openImportScript,
   openEditFolder,
@@ -304,17 +288,6 @@ export function useSidebarContextMenuActions({
             return;
           }
           openMoveDocument(contextMenu.id);
-          closeContextMenu();
-          return;
-        }
-        closeContextMenu();
-        return;
-      }
-
-      // Handle export action (library: open export modal)
-      if (action === 'export') {
-        if (contextMenu.type === 'library') {
-          openExportLibrary(contextMenu.id);
           closeContextMenu();
           return;
         }
@@ -660,7 +633,6 @@ export function useSidebarContextMenuActions({
       openEditLibrary,
       openEditDocument,
       openDuplicateLibrary,
-      openExportLibrary,
       openImportLibrary,
       openImportScript,
       openEditFolder,

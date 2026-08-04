@@ -17,7 +17,6 @@ export interface NavigationInput {
   currentFolderName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
-  currentSectionName?: string;
 }
 
 /**
@@ -33,7 +32,6 @@ export function resolveScopeFromNavigation(nav: NavigationInput): ConversationSc
       folderName: nav.currentFolderName,
       libraryId: nav.currentLibraryId,
       libraryName: nav.currentLibraryName,
-      sectionName: nav.currentSectionName,
     };
   }
   if (nav.currentFolderId) {
@@ -58,7 +56,6 @@ export type ScopeContextFields = Pick<
   | 'currentFolderName'
   | 'currentLibraryId'
   | 'currentLibraryName'
-  | 'currentSectionName'
 >;
 
 /**
@@ -79,6 +76,5 @@ export function contextFieldsFromScope(
     currentFolderName: scope.folderName,
     currentLibraryId: scope.libraryId,
     currentLibraryName: scope.libraryName,
-    currentSectionName: scope.sectionName,
   };
 }

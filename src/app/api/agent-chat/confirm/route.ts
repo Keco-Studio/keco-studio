@@ -25,7 +25,6 @@ export const POST = withAuth(async function POST(
     currentFolderName?: string;
     currentLibraryId?: string;
     currentLibraryName?: string;
-    currentSectionName?: string;
     clientCompletedResult?: unknown;
   };
   try {
@@ -88,7 +87,6 @@ export const POST = withAuth(async function POST(
       currentFolderName: body.currentFolderName,
       currentLibraryId: body.currentLibraryId,
       currentLibraryName: body.currentLibraryName,
-      currentSectionName: body.currentSectionName,
       supabase,
       userRole,
       documentExport: boundMeta.documentExport,

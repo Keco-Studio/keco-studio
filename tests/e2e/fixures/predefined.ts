@@ -2,9 +2,7 @@
  * Predefined Template test fixtures for E2E tests
  * 
  * Predefined Templates define the structure of Assets.
- * They consist of:
- * - Multiple Sections
- * - Each Section has multiple Field Items
+ * They consist of one ordered field list.
  * 
  * Rules:
  * - Assets typically should have a "Name" field (string type) as the first field
@@ -25,15 +23,10 @@ export interface FieldItemData {
   referenceLibrary?: string;
 }
 
-export interface SectionData {
-  name: string;
-  fields: FieldItemData[];
-}
-
 export interface PredefinedTemplateData {
   name: string;
   description?: string;
-  sections: SectionData[];
+  fields: FieldItemData[];
 }
 
 /**
@@ -45,16 +38,11 @@ export function generatePredefinedTemplateData(): PredefinedTemplateData {
   return {
     name: `Test Template ${random}`,
     description: 'Generated test template',
-    sections: [
-      {
-        name: 'Basic Information',
-        fields: [
+    fields: [
           // Name field is required for assets
           { label: 'Name', datatype: 'string' },
           { label: 'Description', datatype: 'string' },
         ],
-      },
-    ],
   };
 }
 
@@ -69,10 +57,7 @@ export const predefinedTemplates = {
   breed: {
     name: 'Breed Template',
     description: 'Predefined template for creating breed assets',
-    sections: [
-      {
-        name: 'Basic Information',
-        fields: [
+    fields: [
           // Name field is required for assets
           {
             label: 'Name',
@@ -83,8 +68,6 @@ export const predefinedTemplates = {
             datatype: 'string',
           },
         ],
-      },
-    ],
   } as PredefinedTemplateData,
 
   /**
@@ -94,10 +77,7 @@ export const predefinedTemplates = {
   livestock: {
     name: 'Livestock Template',
     description: 'Predefined template for creating livestock assets',
-    sections: [
-      {
-        name: 'Basic Information',
-        fields: [
+    fields: [
           // Name field is required for assets
           {
             label: 'Name',
@@ -118,8 +98,6 @@ export const predefinedTemplates = {
             referenceLibrary: 'Breed Library', // References the breed library
           },
         ],
-      },
-    ],
   } as PredefinedTemplateData,
 
   /**
@@ -128,10 +106,7 @@ export const predefinedTemplates = {
   simple: {
     name: 'Simple Template',
     description: 'A simple template for basic testing',
-    sections: [
-      {
-        name: 'Main Section',
-        fields: [
+    fields: [
           // Name field is required for assets
           {
             label: 'Name',
@@ -139,8 +114,5 @@ export const predefinedTemplates = {
           },
           { label: 'Notes', datatype: 'string' },
         ],
-      },
-    ],
   } as PredefinedTemplateData,
 };
-

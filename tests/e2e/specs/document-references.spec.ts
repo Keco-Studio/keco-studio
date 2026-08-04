@@ -11,6 +11,7 @@ import {
   removeProjectFixture,
   type TemporaryUser,
 } from '../utils/supabase-admin';
+import { expectDocumentLive } from '../utils/document-assertions';
 
 type ReferenceFixture = {
   libraryId: string;
@@ -264,7 +265,7 @@ test.describe.serial('Document references smoke', () => {
         { timeout: 60_000 }
       ),
     ]);
-    await expect(page.getByText('Live', { exact: true })).toBeVisible({ timeout: 45_000 });
+    await expectDocumentLive(page);
     const sourceBlock = page.locator(
       `[data-document-block-type="paragraph"]:has-text("${SOURCE_PARAGRAPH}")`
     );
@@ -282,7 +283,7 @@ test.describe.serial('Document references smoke', () => {
     await page.goto(`/${projectId}/doc/${fixture.referencingDocumentId}`, {
       waitUntil: 'domcontentloaded',
     });
-    await expect(page.getByText('Live', { exact: true })).toBeVisible({ timeout: 45_000 });
+    await expectDocumentLive(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible();
     await editor.click();
@@ -337,7 +338,7 @@ test.describe.serial('Document references smoke', () => {
     await page.goto(`/${projectId}/doc/${fixture.sourceDocumentId}`, {
       waitUntil: 'domcontentloaded',
     });
-    await expect(page.getByText('Live', { exact: true })).toBeVisible({ timeout: 45_000 });
+    await expectDocumentLive(page);
     const updatedSourceBlock = page.locator(
       `[data-document-block-id="${sourceSecondBlockId}"]`
     );

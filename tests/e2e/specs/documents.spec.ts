@@ -4,6 +4,7 @@ import { ProjectPage } from '../pages/project.page';
 import { LoginPage } from '../pages/login.page';
 import { generateProjectData } from '../fixures/projects';
 import { users } from '../fixures/users';
+import { expectDocumentLive } from '../utils/document-assertions';
 
 /**
  * Document authoring E2E.
@@ -68,7 +69,7 @@ test.describe('Document authoring', () => {
       await editor.pressSequentially(bodyText, { delay: 10 });
 
       await durableAppend;
-      await expect(page.getByText('Live', { exact: true })).toBeVisible();
+      await expectDocumentLive(page);
     });
 
     await test.step('Turn selected text into a link and open it on double click', async () => {
@@ -135,7 +136,7 @@ test.describe('Document authoring', () => {
       const editor = page.locator('[contenteditable="true"]').first();
       await expect(editor.locator('img')).toBeVisible({ timeout: 20000 });
       await durableAppend;
-      await expect(page.getByText('Live', { exact: true })).toBeVisible();
+      await expectDocumentLive(page);
     });
 
     await test.step('Reload and confirm content persisted', async () => {
@@ -160,7 +161,7 @@ test.describe('Document authoring', () => {
       });
       await page.reload({ waitUntil: 'domcontentloaded' });
 
-      await expect(page.getByText('View only - Live')).toBeVisible({ timeout: 30000 });
+      await expectDocumentLive(page, 'View only - Live', 30_000);
       const viewerEditor = page.locator('[contenteditable="false"]').first();
       await expect(viewerEditor).toContainText(bodyText);
       await expect(page.getByRole('button', { name: /insert image/i })).toHaveCount(0);

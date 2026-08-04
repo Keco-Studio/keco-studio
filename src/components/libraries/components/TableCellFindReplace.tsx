@@ -21,7 +21,6 @@ type TableCellFindReplaceProps = {
   getAccessToken: () => Promise<string | undefined>;
   onHighlightCells: (cells: Array<{ assetId: string; fieldId: string }>) => void;
   onClearHighlight: () => void;
-  onFocusSection?: (sectionId: string) => void;
   scrollToCell?: (assetId: string, fieldId: string) => void;
 };
 
@@ -61,7 +60,6 @@ export function TableCellFindReplace({
   getAccessToken,
   onHighlightCells,
   onClearHighlight,
-  onFocusSection,
   scrollToCell,
 }: TableCellFindReplaceProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -94,7 +92,6 @@ export function TableCellFindReplace({
     canReplace,
     onHighlightCells,
     onClearHighlight,
-    onFocusSection,
     scrollToCell,
   });
 

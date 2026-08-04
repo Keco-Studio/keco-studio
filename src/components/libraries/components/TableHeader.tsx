@@ -7,7 +7,7 @@ import { Checkbox, Tooltip } from 'antd';
 import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AssetRow, SectionConfig, PropertyConfig } from '@/lib/types/libraryAssets';
+import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { deleteLibraryField, updateLibraryField } from '@/lib/services/libraryAssetsService';
 import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
@@ -78,11 +78,6 @@ function EllipsisTextWithTooltip({
   );
 }
 
-export type TableHeaderGroup = {
-  section: SectionConfig;
-  properties: PropertyConfig[];
-};
-
 function ColumnResizeHandle({
   columnKey,
   onColumnResizeStart,
@@ -110,14 +105,12 @@ function ColumnResizeHandle({
 }
 
 export type TableHeaderProps = {
-  groups: TableHeaderGroup[];
+  properties: PropertyConfig[];
   allRowsSelected: boolean;
   hasSomeRowsSelected: boolean;
   onToggleSelectAll: (checked: boolean) => void;
   /** All fields in the current library, used for duplicate-name validation in EditColumnModal. */
   existingProperties?: PropertyConfig[];
-  /** When true (e.g. section tabs mode), hide the section name row and only show property names */
-  showSectionRow?: boolean;
   /** Whether to show the "add column" button column at the right side of header */
   showAddColumn?: boolean;
   /** Click handler for the "add column" header button */
@@ -147,12 +140,11 @@ export type TableHeaderProps = {
 };
 
 export function TableHeader({
-  groups,
+  properties,
   allRowsSelected,
   hasSomeRowsSelected,
   onToggleSelectAll,
   existingProperties,
-  showSectionRow = true,
   showAddColumn = false,
   onAddColumnClick,
   addColumnButtonRef,
@@ -278,7 +270,7 @@ export function TableHeader({
   const openHeaderMenu = (
     anchorEl: HTMLDivElement,
     property: PropertyConfig,
-    sectionColumnCount: number,
+    propertyCount: number,
   ) => {
     const rect = anchorEl.getBoundingClientRect();
     setHeaderMenu({
@@ -287,7 +279,7 @@ export function TableHeader({
       x: rect.right,
       y: rect.bottom + 8,
       popupAnchorX: rect.right,
-      canDeleteColumn: sectionColumnCount > 1,
+      canDeleteColumn: propertyCount > 1,
       propertyId: property.id,
       propertyName: property.name,
       propertyDescription: property.description,
@@ -300,64 +292,22 @@ export function TableHeader({
 
   const header = (
     <thead>
-      {showSectionRow && (
-        <tr className={styles.headerRowTop}>
-          <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
-            <div className={styles.checkboxContainer}>
-              <Checkbox
-                checked={allRowsSelected}
-                indeterminate={hasSomeRowsSelected && !allRowsSelected}
-                onChange={(e) => onToggleSelectAll(e.target.checked)}
-              />
-            </div>
-            <ColumnResizeHandle
-              columnKey={NUMBER_COLUMN_KEY}
-              onColumnResizeStart={onColumnResizeStart}
-              isResizingColumn={isResizingColumn}
-            />
-          </th>
-          {groups.map((group, index) => (
-            <th
-              key={group.section.id}
-              scope="col"
-              colSpan={group.properties.length}
-              className={`${styles.headerCell} ${styles.sectionHeaderCell} ${
-                index < groups.length - 1 ? styles.sectionHeaderCellDivider : ''
-              }`}
-            >
-              {group.section.name}
-            </th>
-          ))}
-          {showAddColumn && (
-            <th
-              scope="col"
-              className={`${styles.headerCell} ${styles.addColumnHeaderCell} ${styles.addColumnHeaderCellSectionRow}`}
-              aria-hidden
-            />
-          )}
-        </tr>
-      )}
       <tr className={styles.headerRowBottom}>
         <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
-          {showSectionRow ? (
-            '#'
-          ) : (
-            <div className={styles.checkboxContainer}>
-              <Checkbox
-                checked={allRowsSelected}
-                indeterminate={hasSomeRowsSelected && !allRowsSelected}
-                onChange={(e) => onToggleSelectAll(e.target.checked)}
-              />
-            </div>
-          )}
+          <div className={styles.checkboxContainer}>
+            <Checkbox
+              checked={allRowsSelected}
+              indeterminate={hasSomeRowsSelected && !allRowsSelected}
+              onChange={(e) => onToggleSelectAll(e.target.checked)}
+            />
+          </div>
           <ColumnResizeHandle
             columnKey={NUMBER_COLUMN_KEY}
             onColumnResizeStart={onColumnResizeStart}
             isResizingColumn={isResizingColumn}
           />
         </th>
-        {groups.map((group) =>
-          group.properties.map((property) => (
+        {properties.map((property) => (
             <th
               key={property.id}
               scope="col"
@@ -371,7 +321,7 @@ export function TableHeader({
                   openHeaderMenu(
                     e.currentTarget as HTMLDivElement,
                     property,
-                    group.properties.length,
+                    properties.length,
                   );
                 }}
               >
@@ -477,7 +427,7 @@ export function TableHeader({
                         `.${styles.propertyHeaderContent}`
                       ) as HTMLDivElement | null;
                       if (contentEl) {
-                        openHeaderMenu(contentEl, property, group.properties.length);
+                        openHeaderMenu(contentEl, property, properties.length);
                       }
                     }}
                   >
@@ -497,8 +447,7 @@ export function TableHeader({
                 isResizingColumn={isResizingColumn}
               />
             </th>
-          )),
-        )}
+          ))}
         {showAddColumn && (
           <th
             scope="col"
@@ -687,7 +636,7 @@ export function TableHeader({
           anchorRect={filterTarget.anchorRect ?? null}
           property={filterTarget.property}
           rows={rows}
-          allProperties={existingProperties ?? groups.flatMap((group) => group.properties)}
+          allProperties={existingProperties ?? properties}
           checkedValues={getCheckedFilterValues?.(filterTarget.property.id)}
           assetNamesCache={assetNamesCache}
           onMergeAssetNamesCache={onMergeAssetNamesCache}

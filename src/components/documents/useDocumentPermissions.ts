@@ -133,14 +133,6 @@ export function useDocumentPermissions({
 
   useEffect(() => {
     let active = true;
-    setSessionState({
-      requestKey: sessionRequestKey,
-      loading: true,
-      userId: null,
-      accessToken: null,
-      userName: null,
-      error: null,
-    });
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
       const session = data.session;

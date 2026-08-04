@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Tooltip } from 'antd';
 import { showSuccessToast, showInfoToast } from '@/lib/utils/toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -15,7 +14,6 @@ import {
   AssetRow,
   LibrarySummary,
   PropertyConfig,
-  SectionConfig,
 } from '@/lib/types/libraryAssets';
 import {
   getLibraryAssetsWithProperties,
@@ -24,9 +22,6 @@ import {
   updateAsset,
   deleteAsset,
   deleteAssets,
-  updateSectionName,
-  addLibrarySection,
-  deleteLibrarySection,
   addLibraryField,
   ensureDefaultLibraryField,
 } from '@/lib/services/libraryAssetsService';
@@ -47,17 +42,6 @@ import {
 import styles from './page.module.css';
 import addColumIcon from "@/assets/images/addColumIcon.svg";
 
-type FieldDef = {
-  id: string;
-  library_id: string;
-  section: string;
-  label: string;
-  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date';
-  enum_options: string[] | null;
-  required: boolean;
-  order_index: number;
-};
-
 export default function LibraryPage() {
   const params = useParams();
   const router = useRouter();
@@ -67,13 +51,6 @@ export default function LibraryPage() {
   const libraryId = params.libraryId as string;
   
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
-  const [assetName, setAssetName] = useState('');
-  const [values, setValues] = useState<Record<string, any>>({});
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-  const [fieldValidationErrors, setFieldValidationErrors] = useState<Record<string, string>>({});
   const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
@@ -175,7 +152,6 @@ export default function LibraryPage() {
   const [versionAssetRows, setVersionAssetRows] = useState<AssetRow[] | null>(null);
   const assetRows = versionAssetRows !== null ? versionAssetRows : [];
 
-  const tableSections = librarySchema?.sections || [];
   const tableProperties = librarySchema?.properties || [];
   // Note: Asset loading is handled by LibraryDataContext (no need for assetsLoading here)
   const loading = projectLoading || libraryLoading || summaryLoading || schemaLoading;
@@ -234,7 +210,7 @@ export default function LibraryPage() {
         const props = librarySchema?.properties ?? [];
 
         if (!librarySchema || props.length === 0) {
-          // 2) no schema and no assets: create default section1 / field ID(String)
+          // 2) no schema and no assets: create the default ID field
           const { fieldId, created } = await ensureDefaultLibraryField(supabase, libraryId);
 
           // Update the table with the latest schema (including the ID field)
@@ -285,37 +261,6 @@ export default function LibraryPage() {
     return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
   }, [userProfile?.id]);
 
-  const sections = useMemo(() => {
-    const map: Record<string, FieldDef[]> = {};
-    fieldDefs.forEach((f) => {
-      if (!map[f.section]) map[f.section] = [];
-      map[f.section].push(f);
-    });
-    // ensure order within section
-    Object.keys(map).forEach((key) => {
-      map[key] = map[key].slice().sort((a, b) => a.order_index - b.order_index);
-    });
-    return map;
-  }, [fieldDefs]);
-
-  const fetchDefinitions = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('library_field_definitions')
-      .select('*')
-      .eq('library_id', libraryId)
-      .order('section', { ascending: true })
-      .order('order_index', { ascending: true });
-    if (error) throw error;
-    setFieldDefs((data as FieldDef[]) || []);
-  }, [supabase, libraryId]);
-
-  // Load field definitions (for legacy form)
-  useEffect(() => {
-    if (libraryId) {
-      fetchDefinitions();
-    }
-  }, [libraryId, fetchDefinitions]);
-
   // Fetch user role for this project
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -356,61 +301,9 @@ export default function LibraryPage() {
     fetchUserRole();
   }, [projectId, userProfile?.id, supabase]);
 
-  const handleUpdateSection = useCallback(
-    async (sectionId: string, newName: string) => {
-      await updateSectionName(supabase, sectionId, newName);
-      await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
-      invalidateFormulaFieldMeta();
-    },
-    [supabase, libraryId, queryClient, invalidateFormulaFieldMeta]
-  );
-
-  const handleAddSection = useCallback(async (): Promise<string> => {
-    const { sectionId, sectionName, fieldId } = await addLibrarySection(supabase, libraryId);
-
-    // Refresh schema so the new ID field appears in the table header.
-    await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
-    invalidateFormulaFieldMeta();
-
-    try {
-      // If the library has no assets yet, match initial table setup by creating 00001 and 00002.
-      const { count, error } = await supabase
-        .from('library_assets')
-        .select('id', { count: 'exact', head: true })
-        .eq('library_id', libraryId);
-
-      if (!error && (count ?? 0) === 0) {
-        const now = Date.now();
-        await contextCreateAsset('00001', { [fieldId]: '00001' }, { createdAt: new Date(now) });
-        await contextCreateAsset('00002', { [fieldId]: '00002' }, { createdAt: new Date(now + 1) });
-
-        await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
-      }
-    } catch (e) {
-      console.error('Failed to create default assets for new section', e);
-    }
-
-    showSuccessToast(`Section "${sectionName}" added`);
-    return sectionId;
-  }, [contextCreateAsset, libraryId, queryClient, supabase, invalidateFormulaFieldMeta]);
-
-  const handleDeleteSection = useCallback(
-    async (sectionId: string) => {
-      await deleteLibrarySection(supabase, sectionId);
-      await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
-      await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
-      invalidateFormulaFieldMeta();
-    },
-    [supabase, libraryId, queryClient, invalidateFormulaFieldMeta]
-  );
-
   const handleAddProperty = useCallback(
-    async (
-      sectionId: string,
-      sectionName: string,
-      payload: AddColumnFormPayload
-    ) => {
-      await addLibraryField(supabase, libraryId, sectionId, sectionName, {
+    async (payload: AddColumnFormPayload) => {
+      await addLibraryField(supabase, libraryId, {
         label: payload.name,
         dataType: payload.dataType as PropertyConfig['dataType'],
         description: payload.description,
@@ -518,109 +411,6 @@ export default function LibraryPage() {
   // Real-time updates are now handled by LibraryDataContext (via useRealtimeSubscription)
   // No need for separate postgres_changes subscription here
 
-  const handleValueChange = (fieldId: string, value: any) => {
-    setValues((prev) => ({ ...prev, [fieldId]: value }));
-  };
-
-  const handleCreateAsset = async () => {
-    setSaveError(null);
-    setSaveSuccess(null);
-    setFieldValidationErrors({});
-    
-    if (!assetName.trim()) {
-      setSaveError('Asset name is required');
-      return;
-    }
-    
-    // Validate field types before saving
-    const validationErrors: Record<string, string> = {};
-    fieldDefs.forEach((f) => {
-      const raw = values[f.id];
-      if (raw === '' || raw === undefined || raw === null) {
-        return; // Empty values are allowed
-      }
-      
-      if (f.data_type === 'int') {
-        // Int type: must be a valid integer (no decimal point)
-        const trimmed = String(raw).trim();
-        if (trimmed.includes('.')) {
-          validationErrors[f.id] = 'type mismatch';
-        } else {
-          const intValue = parseInt(trimmed, 10);
-          if (isNaN(intValue) || String(intValue) !== trimmed.replace(/^-/, '')) {
-            validationErrors[f.id] = 'type mismatch';
-          }
-        }
-      } else if (f.data_type === 'float') {
-        // Float type: must contain a decimal point (cannot be pure integer)
-        const trimmed = String(raw).trim();
-        if (!trimmed.includes('.')) {
-          validationErrors[f.id] = 'type mismatch';
-        } else {
-          const floatValue = parseFloat(trimmed);
-          if (isNaN(floatValue)) {
-            validationErrors[f.id] = 'type mismatch';
-          }
-        }
-      }
-    });
-    
-    if (Object.keys(validationErrors).length > 0) {
-      setFieldValidationErrors(validationErrors);
-      setSaveError('Please correct the type error before saving.');
-      return;
-    }
-    
-    setSaving(true);
-    try {
-      // create asset
-      const { data: asset, error: assetErr } = await supabase
-        .from('library_assets')
-        .insert({ library_id: libraryId, name: assetName.trim() })
-        .select()
-        .single();
-      if (assetErr) throw assetErr;
-
-      const assetId = asset.id as string;
-
-      // build values payload
-      const payload = fieldDefs.map((f) => {
-        const raw = values[f.id];
-        let v: any = raw;
-        if (f.data_type === 'int') {
-          v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
-        } else if (f.data_type === 'float') {
-          v = raw === '' || raw === undefined ? null : parseFloat(raw);
-        } else if (f.data_type === 'boolean') {
-          v = !!raw;
-        } else if (f.data_type === 'date') {
-          v = raw || null;
-        } else if (f.data_type === 'enum') {
-          v = raw || null;
-        } else {
-          v = raw ?? null;
-        }
-        return { asset_id: assetId, field_id: f.id, value_json: v };
-      });
-
-      if (payload.length > 0) {
-        const { error: valErr } = await supabase
-          .from('library_asset_values')
-          .upsert(payload, { onConflict: 'asset_id,field_id' });
-        if (valErr) throw valErr;
-      }
-
-      setSaveSuccess('Asset created');
-      setAssetName('');
-      setValues({});
-      await invalidateLibraryAssetsData(queryClient, { libraryId, assetId, refetchActiveAssets: true });
-    } catch (e: any) {
-      setSaveError(e?.message || 'Failed to create asset');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Callback for saving new asset from table (uses context so table updates immediately)
   const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => {
     const assetId = await contextCreateAsset(assetName, propertyValues, options);
@@ -701,12 +491,8 @@ export default function LibraryPage() {
                       documentExportType: library.document_export_type,
                     }
               }
-              sections={tableSections}
               properties={tableProperties}
               overrideRows={versionAssetRows}
-              onUpdateSection={handleUpdateSection}
-              onAddSection={handleAddSection}
-              onDeleteSection={handleDeleteSection}
               onAddProperty={handleAddProperty}
             />
           </RowStoreProvider>
@@ -770,221 +556,7 @@ export default function LibraryPage() {
         )}
       </div>
 
-      {saveError && (
-        <div className={styles.saveError}>
-          {saveError}
-        </div>
-      )}
-      {saveSuccess && (
-        <div className={styles.saveSuccess}>
-          {saveSuccess}
-        </div>
-      )}
-
       {!authLoading && !isAuthenticated && <div className={styles.authWarning}>Please sign in to edit.</div>}
-
-      {/* {userProfile && (
-        <div className={styles.formContainer}>
-          <div className={styles.inputRow}>
-            <input
-              className={styles.assetNameInput}
-              placeholder="Asset name"
-              value={assetName}
-              onChange={(e) => setAssetName(e.target.value)}
-            />
-            <button
-              onClick={handleCreateAsset}
-              disabled={saving}
-              className={styles.addButton}
-            >
-              {saving ? 'Saving...' : 'Add New Asset'}
-            </button>
-          </div>
-
-          <div className={styles.fieldsContainer}>
-            {Object.keys(sections).length === 0 && (
-              <div className={styles.emptyFieldsMessage}>No field definitions yet. Please configure fields in Predefine first.</div>
-            )}
-            {Object.entries(sections).map(([sectionName, fields]) => (
-              <div
-                key={sectionName}
-                className={styles.section}
-              >
-                <div className={styles.sectionTitle}>{sectionName}</div>
-                <div className={styles.fieldsGrid}>
-                  {fields.map((f) => {
-                    const value = values[f.id] ?? (f.data_type === 'boolean' ? false : '');
-                    const label = f.label + (f.required ? ' *' : '');
-                    if (f.data_type === 'boolean') {
-                      return (
-                        <label key={f.id} className={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={!!value}
-                            onChange={(e) => handleValueChange(f.id, e.target.checked)}
-                          />
-                          {label}
-                        </label>
-                      );
-                    }
-                    if (f.data_type === 'enum') {
-                      return (
-                        <label key={f.id} className={styles.fieldLabel}>
-                          <span>{label}</span>
-                          <select
-                            value={value || ''}
-                            onChange={(e) => handleValueChange(f.id, e.target.value || null)}
-                            className={styles.fieldSelect}
-                          >
-                            <option value="">-- Select --</option>
-                            {(f.enum_options || []).map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      );
-                    }
-                    const inputType = f.data_type === 'date' ? 'date' : 'text';
-                    return (
-                      <label key={f.id} className={styles.fieldLabel}>
-                        <span>{label}</span>
-                        <div style={{ position: 'relative', width: '100%' }}>
-                          <input
-                            type={inputType}
-                            value={value ?? ''}
-                            onChange={(e) => {
-                            let inputValue = e.target.value;
-                            
-                            // Validate int type: only allow integers
-                            if (f.data_type === 'int' && inputValue !== '') {
-                              // Check if contains decimal point - show error immediately
-                              if (inputValue.includes('.')) {
-                                setFieldValidationErrors(prev => ({
-                                  ...prev,
-                                  [f.id]: 'type mismatch'
-                                }));
-                                // Remove decimal point and everything after it
-                                inputValue = inputValue.split('.')[0];
-                              } else {
-                                // Clear error if no decimal point
-                                setFieldValidationErrors(prev => {
-                                  const newErrors = { ...prev };
-                                  delete newErrors[f.id];
-                                  return newErrors;
-                                });
-                              }
-                              
-                              // Remove any non-digit characters except minus sign at the start
-                              const cleaned = inputValue.replace(/[^\d-]/g, '');
-                              const intValue = cleaned.startsWith('-') 
-                                ? '-' + cleaned.slice(1).replace(/-/g, '')
-                                : cleaned.replace(/-/g, '');
-                              
-                              // Non-numeric input (e.g. letters): show type mismatch
-                              if (cleaned === '' && inputValue.trim() !== '') {
-                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
-                                return;
-                              }
-                              // Only update if valid integer format
-                              if (!/^-?\d*$/.test(intValue)) {
-                                return; // Don't update if invalid
-                              }
-                              inputValue = intValue;
-                            }
-                            // Validate float type: must contain decimal point
-                            else if (f.data_type === 'float' && inputValue !== '') {
-                              // Remove invalid characters but keep valid float format
-                              const cleaned = inputValue.replace(/[^\d.-]/g, '');
-                              const floatValue = cleaned.startsWith('-') 
-                                ? '-' + cleaned.slice(1).replace(/-/g, '')
-                                : cleaned.replace(/-/g, '');
-                              const parts = floatValue.split('.');
-                              const finalValue = parts.length > 2 
-                                ? parts[0] + '.' + parts.slice(1).join('')
-                                : floatValue;
-                              // Non-numeric input (e.g. letters) or invalid number: show type mismatch
-                              if ((finalValue === '' && inputValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
-                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
-                                return;
-                              }
-                              setFieldValidationErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors[f.id];
-                                return newErrors;
-                              });
-                              if (!/^-?\d*\.?\d*$/.test(finalValue)) {
-                                return; // Don't update if invalid
-                              }
-                              inputValue = finalValue;
-                            } else {
-                              // Clear error for other types
-                              setFieldValidationErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors[f.id];
-                                return newErrors;
-                              });
-                            }
-                            
-                            handleValueChange(f.id, inputValue);
-                          }}
-                          onBlur={() => {
-                            // Float type: check if value is a pure integer (no decimal point) on blur
-                            if (f.data_type === 'float') {
-                              const val = values[f.id];
-                              if (val !== '' && val !== undefined && val !== null) {
-                                const trimmed = String(val).trim();
-                                if (trimmed !== '' && trimmed !== '-' && trimmed !== '.' && !trimmed.includes('.')) {
-                                  setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
-                                  return;
-                                }
-                              }
-                            }
-                            // Clear type mismatch error on blur for other cases
-                            if (fieldValidationErrors[f.id]) {
-                              setFieldValidationErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors[f.id];
-                                return newErrors;
-                              });
-                            }
-                          }}
-                          className={styles.fieldInput}
-                          placeholder={f.label}
-                        />
-                        {fieldValidationErrors[f.id] && (
-                          <Tooltip 
-                            title={fieldValidationErrors[f.id]}
-                            open={true}
-                            placement="bottom"
-                            overlayStyle={{ fontSize: '12px' }}
-                          >
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: '4px',
-                                right: '4px',
-                                width: '8px',
-                                height: '8px',
-                                backgroundColor: '#ff4d4f',
-                                borderRadius: '50%',
-                                zIndex: 1001,
-                                pointerEvents: 'none'
-                              }}
-                            />
-                          </Tooltip>
-                        )}
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )} */}
     </div>
   );
 }

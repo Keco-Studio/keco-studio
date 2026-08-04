@@ -9,6 +9,7 @@ import {
   removeProjectFixture,
   type TemporaryUser,
 } from '../utils/supabase-admin';
+import { expectDocumentLive } from '../utils/document-assertions';
 
 type ClipboardFixture = {
   libraryId: string;
@@ -197,7 +198,7 @@ test.describe('Library table copy into document', () => {
         await page.goto(`/${projectId}/doc/${fixture.documentId}`);
         const editor = page.locator('[contenteditable="true"]').first();
         await expect(editor).toBeVisible({ timeout: 30000 });
-        await expect(page.getByText('Live', { exact: true })).toBeVisible({ timeout: 30000 });
+        await expectDocumentLive(page, 'Live', 30_000);
 
         const durablePaste = page.waitForResponse(isDurableDocumentWrite, { timeout: 30000 });
         await editor.click();

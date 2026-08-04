@@ -254,24 +254,91 @@
   transition: transform 160ms ease;
 }
 .sidebarCollapsed { width: 28px; flex-basis: 28px; }
-.sidebarExpand {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  margin: 12px 0 12px 4px;
-  align-self: flex-start;
-  color: var(--simulation-ink-500);
-  background: #fff;
-  border: 1px solid var(--simulation-line-200);
-  border-radius: 8px;
-  cursor: pointer;
+.sidebarHidden {
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  flex: 0 0 0;
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+  pointer-events: none;
 }
 .sidebarBrand { padding: 0 6px 2px; }
 .brandText { display: block; color: var(--simulation-ink-850); font-size: 20px; font-weight: 700; line-height: 1.1; }
 .sidebarBrand p { margin: 4px 0 0; color: var(--simulation-ink-450); font-size: 11px; line-height: 1.35; }
-.projectContext { position: relative; display: flex; margin: 12px 6px 8px; align-items: center; }
-.projectContext select { width: 100%; height: 30px; padding: 0 24px 0 0; overflow: hidden; color: var(--simulation-ink-800); background: transparent; border: 0; outline: 0; appearance: none; font: 500 14px/1 var(--simulation-font-body); text-overflow: ellipsis; cursor: pointer; }
-.projectContext > span { position: absolute; right: 0; color: var(--simulation-ink-400); pointer-events: none; }
+.projectWrap { position: relative; margin: 12px 0 8px; }
+.projectButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1.5px solid #94a3b8;
+  border-radius: 8px;
+  background: var(--simulation-surface-0, #fff);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--simulation-ink-800);
+  cursor: pointer;
+  font-family: var(--simulation-font-body, inherit);
+  line-height: 1.2;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.projectButton:hover { border-color: #64748b; }
+.projectButton:focus,
+.projectButton:focus-visible {
+  outline: none;
+  border-color: #64748b;
+  box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.22);
+}
+.projectButton[aria-expanded='true'] { border-color: #64748b; }
+.projectName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.projectChevron { color: var(--simulation-ink-400); display: inline-flex; flex-shrink: 0; }
+.projectMenu {
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #fff;
+  border: 1px solid var(--simulation-line-200);
+  border-radius: 8px;
+  box-shadow: var(--simulation-shadow-popover, 0 8px 24px rgba(15, 23, 42, 0.12));
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.projectOption {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--simulation-ink-700);
+  border-radius: 8px;
+  height: 34px;
+  padding: 0 10px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.projectOptionSelected {
+  background: var(--simulation-blue-tint, var(--keco-blue-tint));
+  color: var(--simulation-blue, var(--keco-blue));
+  font-weight: 600;
+}
 .sidebarNav { flex: 1; min-height: 0; margin-top: 2px; overflow-y: auto; }
 .sidebarMenu { display: flex; flex-direction: column; }
 .sidebarItem { display: grid; width: 100%; min-height: 44px; padding: 10px; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; color: var(--simulation-ink-700); text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--simulation-line-200); border-radius: 0; cursor: pointer; }
@@ -286,7 +353,6 @@
 .sidebarItemCopy strong { font-size: 13.5px; font-weight: inherit; }
 .sidebarItemCopy small { color: var(--simulation-ink-500); font-size: 10px; }
 .sidebarBadge { color: var(--simulation-blue); font-size: 10px; }
-.collapseButton { width: 32px; height: 28px; margin: 8px 0 0 4px; color: var(--simulation-ink-500); background: #fff; border: 1px solid var(--simulation-line-200); border-radius: 8px; cursor: pointer; }
 
 .header {
   display: flex;
@@ -305,11 +371,11 @@
 .headerTitle i { margin: 0 9px; color: var(--simulation-line-400); font-style: normal; }
 .headerTitle h1 { margin: 0; color: var(--simulation-ink-900); font-size: 15px; font-weight: 600; }
 .workflowNav { min-width: 0; overflow-x: auto; }
-.workflowList { display: flex; min-width: max-content; margin: 0; padding: 0; align-items: center; gap: 8px; list-style: none; }
+.workflowList { display: flex; min-width: max-content; margin: 0; padding: 0; align-items: center; gap: var(--simulation-topbar-workflow-gap, 8px); list-style: none; }
 .workflowItem { display: flex; }
-.workflowButton { display: inline-flex; height: 34px; padding: 0 10px; align-items: center; color: var(--simulation-ink-600); background: transparent; border: 0; border-radius: 999px; font: 500 14px/1 var(--simulation-font-body); white-space: nowrap; cursor: pointer; }
-.workflowButtonActive { padding: 0 14px; color: var(--simulation-blue); background: var(--simulation-blue-soft); font-weight: 600; }
-.workflowNumber { margin-right: 6px; font-weight: 700; }
+.workflowButton { display: inline-flex; height: var(--simulation-topbar-workflow-button-height, 34px); padding: var(--simulation-topbar-workflow-button-padding, 0 10px); align-items: center; color: var(--simulation-topbar-workflow-button-color, var(--simulation-ink-600)); background: transparent; border: 0; border-radius: var(--simulation-topbar-workflow-button-radius, 999px); font: 500 14px/1 var(--simulation-font-body); font-size: var(--simulation-topbar-workflow-button-size, 14px); white-space: nowrap; cursor: pointer; }
+.workflowButtonActive { padding: var(--simulation-topbar-workflow-active-padding, 0 14px); color: var(--simulation-topbar-workflow-active-color, var(--simulation-blue)); background: var(--simulation-topbar-workflow-active-background, var(--simulation-blue-soft)); font-weight: 600; }
+.workflowNumber { margin-right: 6px; color: var(--simulation-topbar-workflow-number-color, inherit); font-size: var(--simulation-topbar-workflow-number-size, inherit); font-weight: 700; }
 .workflowButton:disabled { cursor: not-allowed; opacity: .45; }
 
 .button { display: inline-flex; min-width: 0; min-height: 30px; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; font-family: var(--simulation-font-body); font-weight: 500; line-height: 1; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease; }
@@ -437,8 +503,6 @@
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-.collapseButton:focus-visible,
-.sidebarExpand:focus-visible,
 .sidebarItem:focus-visible,
 .workflowButton:focus-visible,
 .button:focus-visible,

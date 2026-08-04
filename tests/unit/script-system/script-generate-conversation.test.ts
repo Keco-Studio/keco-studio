@@ -102,6 +102,7 @@ describe('Script generate conversation', () => {
         onStartRename: jest.fn(),
         onRefreshWorkspace: opts.onRefreshWorkspace ?? jest.fn(),
         onExpandDocument: opts.onExpandDocument,
+        requestDeleteConfirm: jest.fn(),
       }).handleAction;
       return null;
     }

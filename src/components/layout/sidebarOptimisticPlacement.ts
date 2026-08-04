@@ -49,7 +49,6 @@ export function createSidebarOptimisticMove(input: {
   const { dragKey, target, folders, libraries, documents } = input;
 
   if (dragKey.startsWith('folder-')) {
-    if (target.kind === 'document') return null;
     const id = dragKey.slice('folder-'.length);
     const folder = folders.find((item) => item.id === id);
     if (!folder) return null;
@@ -68,20 +67,10 @@ export function createSidebarOptimisticMove(input: {
       folder_id: document.folder_id ?? null,
       parent_document_id: document.parent_document_id ?? null,
     };
-    let after: DocumentPlacement;
-    if (target.kind === 'document') {
-      const parent = documents.find((item) => item.id === target.documentId);
-      if (!parent) return null;
-      after = {
-        folder_id: parent.folder_id ?? null,
-        parent_document_id: parent.id,
-      };
-    } else {
-      after = {
-        folder_id: target.kind === 'folder' ? target.folderId : null,
-        parent_document_id: null,
-      };
-    }
+    const after: DocumentPlacement = {
+      folder_id: target.kind === 'folder' ? target.folderId : null,
+      parent_document_id: null,
+    };
     return placementsEqual(before, after) ? null : { kind: 'document', id, before, after };
   }
 
@@ -95,15 +84,7 @@ export function createSidebarOptimisticMove(input: {
     document_export_type: library.document_export_type ?? null,
   };
   let after: LibraryPlacement;
-  if (target.kind === 'document') {
-    const parent = documents.find((item) => item.id === target.documentId);
-    if (!parent) return null;
-    after = {
-      folder_id: parent.folder_id ?? null,
-      source_document_id: parent.id,
-      document_export_type: library.document_export_type ?? 'table',
-    };
-  } else if (library.source_document_id) {
+  if (library.source_document_id) {
     after = {
       folder_id: target.kind === 'folder' ? target.folderId : null,
       source_document_id: null,

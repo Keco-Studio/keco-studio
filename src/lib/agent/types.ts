@@ -43,7 +43,6 @@ export interface ToolContext {
   currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
-  currentSectionName?: string;
   supabase: SupabaseClient;
   userRole: UserRole;
   /** Server-validated source binding for tables generated from a document. */
@@ -142,7 +141,6 @@ export interface ConversationScope {
   folderName?: string;
   libraryId?: string;
   libraryName?: string;
-  sectionName?: string;
 }
 
 /** Per-conversation settings stored in agent_conversations.meta. */

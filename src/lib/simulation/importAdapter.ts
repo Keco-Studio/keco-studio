@@ -50,6 +50,32 @@ function deepFreeze<T>(value: T): DeepReadonly<T> {
   return value as DeepReadonly<T>;
 }
 
+function hasImportValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.some(hasImportValue);
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).some(hasImportValue);
+  return true;
+}
+
+function isBlankAssetRow(asset: AssetRow): boolean {
+  return !Object.values(asset.propertyValues).some(hasImportValue);
+}
+
+function sourcesWithoutBlankRows(
+  sources: Readonly<Record<LibraryRole, StudioLibrarySource>>,
+): Readonly<Record<LibraryRole, StudioLibrarySource>> {
+  return Object.fromEntries(
+    ROLES.map((role) => [
+      role,
+      {
+        ...sources[role],
+        assets: sources[role].assets.filter((asset) => !isBlankAssetRow(asset)),
+      },
+    ]),
+  ) as unknown as Readonly<Record<LibraryRole, StudioLibrarySource>>;
+}
+
 function fieldLabel(role: LibraryRole, canonical: string): string {
   return SIM_FIELDS[role].find((field) => field.id === canonical)?.label ?? canonical;
 }
@@ -353,37 +379,38 @@ function dedupeRules<T extends LevelRule | SkillCostRule>(
 
 export function importSimulationSnapshot(input: ImportSimulationSnapshotInput): SimulationImportResult {
   const errors: SimulationImportError[] = [];
+  const sources = sourcesWithoutBlankRows(input.sources);
   const validMappings = Object.fromEntries(ROLES.map((role) => [
     role,
-    validateMappings(role, input.sources[role], input.fieldMappings[role], errors),
+    validateMappings(role, sources[role], input.fieldMappings[role], errors),
   ])) as Record<LibraryRole, Set<string>>;
 
   for (const role of ROLES) {
-    if (input.sources[role].assets.length === 0) {
-      pushError(errors, input.sources[role], role, 'empty_source', role, 'Selected Studio library has no assets.');
+    if (sources[role].assets.length === 0) {
+      pushError(errors, sources[role], role, 'empty_source', role, 'Selected Studio library has no assets.');
     }
   }
 
-  const characters = parseCharacters(input.sources.characters, input.fieldMappings.characters, validMappings.characters, errors);
-  const skills = parseSkills(input.sources.skills, input.fieldMappings.skills, validMappings.skills, errors);
-  const parsedLevelRules = parseLevelRules(input.sources.level, input.fieldMappings.level, validMappings.level, errors);
-  const parsedSkillCostRules = parseSkillCostRules(input.sources.skillc, input.fieldMappings.skillc, validMappings.skillc, errors);
+  const characters = parseCharacters(sources.characters, input.fieldMappings.characters, validMappings.characters, errors);
+  const skills = parseSkills(sources.skills, input.fieldMappings.skills, validMappings.skills, errors);
+  const parsedLevelRules = parseLevelRules(sources.level, input.fieldMappings.level, validMappings.level, errors);
+  const parsedSkillCostRules = parseSkillCostRules(sources.skillc, input.fieldMappings.skillc, validMappings.skillc, errors);
 
-  validateUniqueIds('characters', input.sources.characters, input.fieldMappings.characters, validMappings.characters, errors);
-  validateUniqueIds('skills', input.sources.skills, input.fieldMappings.skills, validMappings.skills, errors);
-  for (const candidate of stringCandidates(input.sources.skills, input.fieldMappings.skills, validMappings.skills, 'id')) {
-    if (candidate.value === BASIC.id) pushError(errors, input.sources.skills, 'skills', 'reserved_id', 'id', 'Skill ID basic is reserved.', candidate.asset);
+  validateUniqueIds('characters', sources.characters, input.fieldMappings.characters, validMappings.characters, errors);
+  validateUniqueIds('skills', sources.skills, input.fieldMappings.skills, validMappings.skills, errors);
+  for (const candidate of stringCandidates(sources.skills, input.fieldMappings.skills, validMappings.skills, 'id')) {
+    if (candidate.value === BASIC.id) pushError(errors, sources.skills, 'skills', 'reserved_id', 'id', 'Skill ID basic is reserved.', candidate.asset);
   }
   const characterIds = new Set(characters.map(({ value }) => value.id));
   const skillIds = new Set(skills.map(({ value }) => value.id));
   for (const row of parsedLevelRules) {
     if (row.value.characterId && !characterIds.has(row.value.characterId)) {
-      pushError(errors, input.sources.level, 'level', 'unresolved_reference', 'characterId', `Character ${row.value.characterId} does not exist.`, row.asset);
+      pushError(errors, sources.level, 'level', 'unresolved_reference', 'characterId', `Character ${row.value.characterId} does not exist.`, row.asset);
     }
   }
   for (const row of parsedSkillCostRules) {
     if (row.value.skillId && !skillIds.has(row.value.skillId)) {
-      pushError(errors, input.sources.skillc, 'skillc', 'unresolved_reference', 'skillId', `Skill ${row.value.skillId} does not exist.`, row.asset);
+      pushError(errors, sources.skillc, 'skillc', 'unresolved_reference', 'skillId', `Skill ${row.value.skillId} does not exist.`, row.asset);
     }
   }
   const levelRules = dedupeRules('level', parsedLevelRules);

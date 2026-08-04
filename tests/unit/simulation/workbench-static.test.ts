@@ -24,18 +24,27 @@ describe('native simulation workbench presentation', () => {
   it('uses accessible button navigation in the sidebar', () => {
     const source = read('SimulationSidebar.tsx');
     expect(source).toContain('Keco Siumlator');
-    expect(source).toContain('Battle &amp; numbers sandbox for game designers.');
+    expect(source).toContain('Battle &amp; numbers sandbox · for game designers');
+    expect(source).toContain('projectButton');
+    expect(source).toContain('projectWrap');
+    expect(source).toContain('sidebarHidden');
+    expect(source).not.toContain('collapseButton');
+    expect(source).not.toContain('sidebarExpand');
+    expect(source).not.toContain('onToggleCollapsed');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('role="menu"');
     expect(source).toContain('role="menuitem"');
     expect(source).toContain('aria-current');
     expect(source).toContain('aria-expanded');
-    expect(source).toMatch(/<button[^>]+aria-label=.*[Cc]ollapse/s);
 
     const css = read('SimulationWorkbench.module.css');
     expect(css).toMatch(/\.sidebar\s*\{[^}]*width:\s*228px/s);
     expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--simulation-surface-glass\)/s);
-    expect(css).toMatch(/\.sidebarCollapsed\s*\{[^}]*width:\s*28px/s);
+    expect(css).toMatch(/\.sidebarHidden\s*\{/);
+    expect(css).not.toMatch(/\.collapseButton\s*\{/);
+    expect(css).not.toMatch(/\.sidebarExpand\s*\{/);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1\.5px solid/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*8px/s);
   });
 
   it('keeps workflow navigation without duplicate global controls', () => {
@@ -88,6 +97,7 @@ describe('native simulation workbench presentation', () => {
     expect(characters).toContain("label: 'Team A · Yours'");
     expect(characters).toContain("label: 'Team B · Enemy'");
     expect(characters).toContain('Studio snapshot');
+    expect(characters).toMatch(/maxWidth:\s*1000,\s*width:\s*'100%',\s*margin:\s*'0 auto'/);
 
     const skills = read('SkillsScreen.tsx');
     expect(skills).toContain('Configure skills');

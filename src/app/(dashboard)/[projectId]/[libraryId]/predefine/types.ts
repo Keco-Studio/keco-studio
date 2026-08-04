@@ -10,13 +10,6 @@ export type FieldConfig = {
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced
 };
 
-export type SectionConfig = {
-  id: string;
-  name: string;
-  fields: FieldConfig[];
-};
-
 export function uid() {
   return Math.random().toString(16).slice(2, 10);
 }
-

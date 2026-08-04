@@ -73,23 +73,42 @@
 
 .projectWrap {
   position: relative;
-  margin: 12px 6px 8px;
+  margin: 12px 0 8px;
 }
 
 .projectButton {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1.5px solid #94a3b8;
+  border-radius: 8px;
+  background: var(--script-surface-0);
   font-size: 14px;
   font-weight: 500;
   color: var(--script-ink-800);
   cursor: pointer;
   font-family: inherit;
-  line-height: 1;
+  line-height: 1.2;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.projectButton:hover {
+  border-color: #64748b;
+}
+
+.projectButton:focus,
+.projectButton:focus-visible {
+  outline: none;
+  border-color: #64748b;
+  box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.22);
+}
+
+.projectButton[aria-expanded='true'] {
+  border-color: #64748b;
 }
 
 .projectName {
@@ -98,11 +117,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
 }
 
 .chevron {
   color: var(--script-ink-400);
   display: inline-flex;
+  flex-shrink: 0;
 }
 
 .projectMenu {
@@ -113,7 +134,7 @@
   top: calc(100% + 4px);
   background: #fff;
   border: 1px solid var(--script-line-200);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   padding: 4px;
   max-height: 220px;

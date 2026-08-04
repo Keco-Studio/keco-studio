@@ -1,5 +1,5 @@
 /**
- * add_field — add a new column (field definition) to a library section.
+ * add_field — add a new column (field definition) to a library.
  */
 
 import { z } from 'zod';
@@ -12,7 +12,6 @@ import { errorFromLookupResult, libraryFromLookupResult, resolveLibraryForTool }
 
 const ParamsSchema = z.object({
   libraryName: z.string().min(1).optional(),
-  sectionName: z.string().min(1).optional(),
   label: z.string().min(1),
   dataType: z.string().min(1),
   description: z.string().optional(),
@@ -29,19 +28,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   const libraryName = parsed.data.libraryName ?? ctx.currentLibraryName;
-  const sectionName = parsed.data.sectionName ?? ctx.currentSectionName;
   const dataType = normalizeFieldDataType(parsed.data.dataType);
 
   if (!libraryName) {
     return {
       success: false,
       error: 'No library specified. Ask the user which library, or navigate to a library page first.',
-    };
-  }
-  if (!sectionName) {
-    return {
-      success: false,
-      error: 'No section specified. Ask the user which section tab, or navigate to a library section first.',
     };
   }
   if (!dataType) {
@@ -72,14 +64,10 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     }
   }
 
-  const sectionId = `${library.id}:${sectionName}`;
-
   try {
     const { id: fieldId } = await addLibraryField(
       ctx.supabase,
       library.id,
-      sectionId,
-      sectionName,
       {
         label: parsed.data.label,
         dataType,
@@ -101,8 +89,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         fieldId,
         libraryId: library.id,
         libraryName: library.name,
-        sectionName,
-        label: parsed.data.label.trim(),
+            label: parsed.data.label.trim(),
         dataType,
       },
       invalidations: [{ type: 'library', id: library.id }],
@@ -115,7 +102,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const addField: AgentTool = {
   name: 'add_field',
   description:
-    'Add a new column (field) to a library section schema. libraryName and sectionName default to the user\'s active library/section from page context when omitted. Params: label (column name, required), dataType (required, e.g. int, string, boolean), libraryName (optional), sectionName (optional).',
+    'Add a new column (field) to a library schema. libraryName defaults to the user\'s active library from page context when omitted. Params: label (column name, required), dataType (required, e.g. int, string, boolean), libraryName (optional).',
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',
@@ -125,10 +112,6 @@ export const addField: AgentTool = {
       libraryName: {
         type: 'string',
         description: 'Target library name. Omit to use the active library from page context.',
-      },
-      sectionName: {
-        type: 'string',
-        description: 'Target section tab name. Omit to use the active section from page context.',
       },
       label: { type: 'string', description: 'Column display name (field label)' },
       dataType: {

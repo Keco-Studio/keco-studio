@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
-import { getActiveSectionName } from '@/lib/agent/page-context';
 import { takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
 import botIcon from '@/assets/images/bot.svg';
@@ -31,7 +30,6 @@ export function ChatPanel() {
   } = useNavigation();
   const [open, setOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [currentSectionName, setCurrentSectionName] = useState<string | undefined>(undefined);
   const [pendingSelectionContext, setPendingSelectionContext] = useState<AgentSelectionContext | undefined>(undefined);
   const [inputFocusRequest, setInputFocusRequest] = useState(0);
   const [showScrollJump, setShowScrollJump] = useState(false);
@@ -45,31 +43,6 @@ export function ChatPanel() {
     isDragging: isLauncherDragging,
   } = useDraggableLauncherPosition();
 
-  // Active section tab lives in LibraryAssetsTable state, not the URL.
-  useEffect(() => {
-    if (!currentLibraryId) {
-      setCurrentSectionName(undefined);
-      return;
-    }
-    setCurrentSectionName(getActiveSectionName(currentLibraryId));
-  }, [currentLibraryId]);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ libraryId?: string; sectionName?: string }>).detail;
-      if (!detail?.libraryId || detail.libraryId !== currentLibraryId) return;
-      setCurrentSectionName(detail.sectionName || undefined);
-    };
-    window.addEventListener('library:active-section', handler);
-    return () => window.removeEventListener('library:active-section', handler);
-  }, [currentLibraryId]);
-
-  // Re-read persisted section when the panel opens (covers missed CustomEvents).
-  useEffect(() => {
-    if (!open || !currentLibraryId) return;
-    setCurrentSectionName(getActiveSectionName(currentLibraryId));
-  }, [open, currentLibraryId]);
-
   const ctx = useMemo(
     () => ({
       userId: userProfile?.id,
@@ -79,7 +52,6 @@ export function ChatPanel() {
       currentFolderName: currentFolderName ?? undefined,
       currentLibraryId: currentLibraryId ?? undefined,
       currentLibraryName: currentLibraryName ?? undefined,
-      currentSectionName,
     }),
     [
       userProfile?.id,
@@ -89,7 +61,6 @@ export function ChatPanel() {
       currentFolderName,
       currentLibraryId,
       currentLibraryName,
-      currentSectionName,
     ]
   );
 

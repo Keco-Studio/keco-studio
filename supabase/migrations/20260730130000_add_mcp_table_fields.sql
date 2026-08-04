@@ -9,7 +9,7 @@ returns table (table_id uuid, initial_row_id uuid, initial_row_index integer,
 language plpgsql security definer set search_path = '' as $$
 declare v_actor uuid; v_now timestamptz := pg_catalog.clock_timestamp();
   v_name text := btrim(p_name); v_count integer; v_item jsonb; v_ids uuid[] := array[]::uuid[];
-  v_field_id uuid; v_type text; v_label text; v_section text; v_section_id text;
+  v_field_id uuid; v_type text; v_label text; v_order_index integer;
 begin
   v_actor := public.mcp_require_writer(p_project_id);
   if p_table_id is null or p_initial_row_id is null or length(v_name) not between 1 and 200
@@ -41,8 +41,6 @@ begin
     begin v_field_id := (v_item->>'id')::uuid; exception when others then
       raise exception 'Invalid field id' using errcode = '22023'; end;
     v_type := v_item->>'dataType'; v_label := btrim(v_item->>'label');
-    v_section := coalesce(nullif(btrim(v_item->>'section'), ''), 'section1');
-    v_section_id := coalesce(nullif(v_item->>'sectionId', ''), md5(p_table_id::text || ':' || v_section));
     if v_type is null or v_type not in (
       'string','string_array','int','int_array','float','float_array',
       'boolean','enum','date','reference','image'
@@ -68,7 +66,7 @@ begin
       id, library_id, section, section_id, label, data_type, enum_options,
       reference_libraries, required, description, order_index
     ) values (
-      v_field_id, p_table_id, v_section, v_section_id, v_label, v_type,
+      v_field_id, p_table_id, '__keco_flat_fields__', md5(p_table_id::text || '::keco-flat-fields'), v_label, v_type,
       case when v_type='enum' then array(select jsonb_array_elements_text(v_item->'enumOptions')) end,
       case when v_type='reference' then array(select jsonb_array_elements_text(v_item->'referenceTableIds'))::uuid[] end,
       coalesce((v_item->>'required')::boolean, false), nullif(v_item->>'description',''),
@@ -95,8 +93,6 @@ returns table (
   table_id uuid,
   label text,
   data_type text,
-  section text,
-  section_id text,
   order_index integer,
   required boolean,
   description text,
@@ -115,12 +111,9 @@ declare
   v_now timestamptz := pg_catalog.clock_timestamp();
   v_type text;
   v_label text;
-  v_section text;
-  v_section_id text;
   v_description text;
   v_required boolean;
   v_order_index integer;
-  v_section_count integer;
   v_enum_options text[];
   v_reference_table_ids uuid[];
 begin
@@ -140,7 +133,7 @@ begin
   if exists (
     select 1 from jsonb_object_keys(p_field) as key(name)
     where key.name <> all (array[
-      'label', 'dataType', 'section', 'sectionId', 'description', 'required',
+      'label', 'dataType', 'description', 'required',
       'enumOptions', 'referenceTableIds'
     ])
   ) then
@@ -149,8 +142,6 @@ begin
 
   v_type := p_field ->> 'dataType';
   v_label := btrim(p_field ->> 'label');
-  v_section := coalesce(nullif(btrim(p_field ->> 'section'), ''), 'section1');
-  v_section_id := nullif(btrim(p_field ->> 'sectionId'), '');
   v_description := nullif(p_field ->> 'description', '');
 
   if v_type is null or v_type not in (
@@ -159,33 +150,12 @@ begin
   )
     or jsonb_typeof(p_field -> 'label') is distinct from 'string'
     or length(v_label) not between 1 and 200
-    or length(v_section) not between 1 and 100
     or length(v_description) > 1000
-    or (p_field ? 'section' and jsonb_typeof(p_field -> 'section') <> 'string')
-    or (p_field ? 'sectionId' and (
-      jsonb_typeof(p_field -> 'sectionId') <> 'string'
-      or length(btrim(p_field ->> 'sectionId')) not between 1 and 200
-    ))
     or (p_field ? 'description'
       and jsonb_typeof(p_field -> 'description') not in ('string', 'null'))
     or (p_field ? 'required'
       and jsonb_typeof(p_field -> 'required') <> 'boolean') then
     raise exception 'Unsupported field definition' using errcode = '22023';
-  end if;
-
-  if v_section_id is null then
-    select min(f.section_id), count(distinct f.section_id)
-    into v_section_id, v_section_count
-    from public.library_field_definitions as f
-    where f.library_id = p_table_id and f.section = v_section;
-    if v_section_count > 1 then
-      raise exception 'Section name is ambiguous; sectionId is required'
-        using errcode = '22023';
-    end if;
-    v_section_id := coalesce(
-      v_section_id,
-      md5(p_table_id::text || ':' || v_section)
-    );
   end if;
 
   v_required := coalesce((p_field ->> 'required')::boolean, false);
@@ -252,26 +222,15 @@ begin
     raise exception 'Reference targets require a reference field' using errcode = '22023';
   end if;
 
-  if exists (
-    select 1 from public.library_field_definitions as f
-    where f.section_id = v_section_id and f.library_id <> p_table_id
-  ) or exists (
-    select 1 from public.library_field_definitions as f
-    where f.library_id = p_table_id and f.section_id = v_section_id
-      and f.section <> v_section
-  ) then
-    raise exception 'Section is outside table' using errcode = '23503';
-  end if;
-
   select coalesce(max(f.order_index), -1) + 1 into v_order_index
   from public.library_field_definitions as f
-  where f.library_id = p_table_id and f.section_id = v_section_id;
+  where f.library_id = p_table_id;
 
   insert into public.library_field_definitions(
     id, library_id, section, section_id, label, data_type, enum_options,
     reference_libraries, required, description, order_index, created_at
   ) values (
-    p_field_id, p_table_id, v_section, v_section_id, v_label, v_type,
+    p_field_id, p_table_id, '__keco_flat_fields__', md5(p_table_id::text || '::keco-flat-fields'), v_label, v_type,
     v_enum_options, v_reference_table_ids, false, v_description, v_order_index, v_now
   ) returning * into v_created;
 
@@ -288,8 +247,6 @@ begin
     v_created.library_id,
     v_created.label,
     v_created.data_type,
-    v_created.section,
-    v_created.section_id,
     v_created.order_index,
     coalesce(v_created.required, false),
     v_created.description,

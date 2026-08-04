@@ -9,6 +9,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as Y from 'yjs';
 import { LoginPage } from '../pages/login.page';
 import { users } from '../fixures/users';
+import { expectDocumentLive } from '../utils/document-assertions';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -122,9 +123,10 @@ async function openDocument(
   await page.goto(`/${fixture.projectId}/doc/${fixture.documentId}`, {
     waitUntil: 'domcontentloaded',
   });
-  await expect(
-    page.getByText(role === 'viewer' ? 'View only - Live' : 'Live', { exact: true })
-  ).toBeVisible({ timeout: 45_000 });
+  await expectDocumentLive(
+    page,
+    role === 'viewer' ? 'View only - Live' : 'Live'
+  );
   return { page, context };
 }
 

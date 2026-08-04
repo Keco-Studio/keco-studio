@@ -158,7 +158,6 @@ describe('GET /api/export', () => {
 
     expect(payload).toMatchObject({
       libraryName: 'Locations',
-      sections: [{ name: 'Main', orderIndex: 1 }],
       properties: [{ id: fieldId, name: 'Title', dataType: 'string' }],
       rows: [
         {
@@ -170,10 +169,12 @@ describe('GET /api/export', () => {
         },
       ],
     });
+    expect(payload).not.toHaveProperty('sections');
+    expect(payload.properties[0]).not.toHaveProperty('sectionId');
     expect(typeof payload.exportedAt).toBe('string');
   });
 
-  it('exports XLSX with the section name, typed header, special characters, and blanks', async () => {
+  it('exports XLSX with one flat typed header row, special characters, and blanks', async () => {
     createClientMock.mockReturnValue(createExportClient({ id: userId }, {
       fields: defaultDataset.fields,
       assets: [
@@ -207,9 +208,9 @@ describe('GET /api/export', () => {
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(await response.arrayBuffer());
-    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Main']);
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Locations']);
 
-    const sheet = workbook.getWorksheet('Main');
+    const sheet = workbook.getWorksheet('Locations');
     expect(sheet?.getRow(1).values).toEqual([, 'Title (string)']);
     expect(sheet?.getCell('A2').value).toBe('Snowville, "North"');
     expect(sheet?.getCell('A3').value).toBeNull();

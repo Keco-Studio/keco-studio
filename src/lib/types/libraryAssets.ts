@@ -5,16 +5,8 @@ export type LibrarySummary = {
   description?: string | null;
 };
 
-export type SectionConfig = {
-  id: string;
-  libraryId: string;
-  name: string;
-  orderIndex: number;
-};
-
 export type PropertyConfig = {
   id: string;
-  sectionId: string;
   key: string;
   name: string;
   description?: string | null;
@@ -54,4 +46,3 @@ export type CreateLibraryAssetOptions = {
   skipReload?: boolean;
   rowIndexUpdates?: RowIndexUpdate[];
 };
-

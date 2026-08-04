@@ -123,5 +123,9 @@ describe('simulation workbench flow', () => {
     expect(workbench).toContain('sessions.retryPersistence');
     expect(workbench).toContain('sessions.loadCloudVersion');
     expect(workbench).toContain('actionLabel');
+    expect(workbench).toContain("addEventListener('sidebar-toggle'");
+    expect(workbench).toContain("removeEventListener('sidebar-toggle'");
+    expect(workbench).toContain("document.querySelector<HTMLElement>('[data-simulation-header-slot]')");
+    expect(workbench).toContain('headerHost ? createPortal');
   });
 });

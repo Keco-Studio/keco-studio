@@ -123,7 +123,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const queryAssets: AgentTool = {
   name: 'query_assets',
   description:
-    'Query library assets. For reference writes use referenceTargets (assetId+fieldId per cell), NOT row.id. summary.nonEmptyCellCount equals referenceTargets.length. Each row may have multiple cells across sections. Params: libraryName, rowIndex, includeEmpty, nameFilter, type, limit.',
+    'Query library assets. For reference writes use referenceTargets (assetId+fieldId per cell), NOT row.id. summary.nonEmptyCellCount equals referenceTargets.length. Params: libraryName, rowIndex, includeEmpty, nameFilter, type, limit.',
   category: 'read',
   confirmationMode: 'pre_execute', // unused for read tools
   parameters: {

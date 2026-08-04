@@ -4,17 +4,12 @@ const flush = jest.fn<Promise<void>, []>();
 const showErrorToast = jest.fn();
 const getSession = jest.fn();
 const stateSetter = jest.fn();
-const saveDesignHandoff = jest.fn();
-const buildDesignMessage = jest.fn(() => 'built design message');
 const mockCollaborationSession = { flush };
 const mockSupabase = { auth: { getSession } };
 let mockCallbackHookIndex = 0;
 let mockStateHookIndex = 0;
 const mockCallbackCache: Array<{ deps: unknown[]; callback: unknown }> = [];
 const mockStateValues: unknown[] = [];
-const mockImportScriptModal = (props: Record<string, unknown>) => {
-  return { type: 'ImportScriptModal', props };
-};
 let permissionRole: 'admin' | 'editor' | 'viewer' = 'editor';
 
 function depsEqual(left: unknown[], right: unknown[]) {
@@ -84,16 +79,6 @@ jest.mock('@/lib/SupabaseContext', () => ({
 jest.mock('@/lib/services/documentImageUpload', () => ({ uploadImageFiles: jest.fn() }));
 jest.mock('@/lib/utils/toast', () => ({
   showErrorToast: (...args: unknown[]) => showErrorToast(...args),
-}));
-jest.mock('@/lib/design-message', () => ({
-  buildDesignMessage: (...args: unknown[]) => buildDesignMessage(...args),
-}));
-jest.mock('@/lib/design-upload-handoff', () => ({
-  DESIGN_UPLOAD_EVENT: 'design-upload:submitted',
-  saveDesignHandoff: (...args: unknown[]) => saveDesignHandoff(...args),
-}));
-jest.mock('@/components/libraries/ImportScriptModal', () => ({
-  ImportScriptModal: mockImportScriptModal,
 }));
 jest.mock('@/components/documents/useDocumentPermissions', () => ({
   useDocumentPermissions: () => ({
@@ -169,20 +154,6 @@ function findExportMenuItems(node: ReactNode): Array<{ key: string; label: strin
   throw new Error('Export menu not found');
 }
 
-function findScriptModalProps(node: ReactNode): Record<string, unknown> {
-  if (!node || typeof node !== 'object') throw new Error('Script modal not found');
-  const element = node as ReactElement<{ children?: ReactNode }>;
-  if (element.type === mockImportScriptModal) return element.props as Record<string, unknown>;
-  const children = element.props?.children;
-  for (const child of Array.isArray(children) ? children : [children]) {
-    try {
-      return findScriptModalProps(child);
-    } catch {
-      // Keep searching sibling elements.
-    }
-  }
-  throw new Error('Script modal not found');
-}
 
 function renderSession(projectId = 'project-id') {
   beginRender();
@@ -208,8 +179,6 @@ describe('DocumentEditor export durability', () => {
     flush.mockReset();
     flush.mockResolvedValue(undefined);
     stateSetter.mockReset();
-    saveDesignHandoff.mockReset();
-    buildDesignMessage.mockClear();
     showErrorToast.mockReset();
     getSession.mockReset();
     getSession.mockResolvedValue({
@@ -310,171 +279,21 @@ describe('DocumentEditor export durability', () => {
     expect(showErrorToast).toHaveBeenCalledWith('Please sign in before exporting');
   });
 
-  it('renders five ungrouped items in order for an admin', () => {
+  it('renders three download items in order for every role', () => {
     permissionRole = 'admin';
     expect(exportMenuItems()).toEqual([
       { key: 'docx', label: 'Download DOCX' },
       { key: 'pdf', label: 'Download PDF' },
-      { key: 'mdx', label: 'Download MDX' },
-      { key: 'tables', label: 'Export as tables' },
-      { key: 'script', label: 'Export as script' },
+      { key: 'mdx', label: 'Download Markdown' },
     ]);
   });
 
-  it.each(['editor', 'viewer'] as const)('hides project-content exports for %s', (role) => {
+  it.each(['editor', 'viewer'] as const)('keeps the same download menu for %s', (role) => {
     permissionRole = role;
     expect(exportMenuItems().map((item) => item.label)).toEqual([
       'Download DOCX',
       'Download PDF',
-      'Download MDX',
+      'Download Markdown',
     ]);
-  });
-
-  it('flushes and saves the frozen source for table export, then dispatches the upload event', async () => {
-    permissionRole = 'admin';
-    const source = {
-      documentId: 'document-id',
-      documentName: 'Export me',
-      projectId: 'project-id',
-      folderId: null,
-      markdown: '| Name | Value |',
-      token: { epoch: 4, revision: 9 },
-      snapshotToken: 'signed-snapshot-token',
-    };
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
-
-    const exporting = exportHandler()({ key: 'tables' });
-    expect(flush).toHaveBeenCalledTimes(1);
-    await exporting;
-
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/documents/document-id/export-source',
-      { headers: { Authorization: 'Bearer fresh-access-token' } }
-    );
-    expect(saveDesignHandoff).toHaveBeenCalledWith('project-id', {
-      message: 'built design message',
-      fileName: 'Export me',
-      documentId: 'document-id',
-      documentExport: {
-        sourceDocumentId: 'document-id',
-        exportType: 'table',
-        snapshotToken: 'signed-snapshot-token',
-      },
-    });
-    expect(window.dispatchEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'design-upload:submitted', detail: { projectId: 'project-id' } })
-    );
-    expect(buildDesignMessage).toHaveBeenCalledWith({
-      fileName: 'Export me',
-      documentText: '| Name | Value |',
-      documentId: 'document-id',
-      sourceKind: 'project-document',
-      intent: 'tables',
-    });
-  });
-
-  it('flushes and stores the exact source snapshot for script export', async () => {
-    permissionRole = 'admin';
-    const source = {
-      documentId: 'document-id',
-      documentName: 'Export me',
-      projectId: 'project-id',
-      folderId: 'folder-id',
-      markdown: 'Scene: Start',
-      token: { epoch: 7, revision: 3 },
-      snapshotToken: 'signed-snapshot-token',
-    };
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
-
-    await exportHandler()({ key: 'script' });
-
-    expect(flush).toHaveBeenCalledTimes(1);
-    expect(stateSetter).toHaveBeenCalledWith(source);
-
-    expect(findScriptModalProps(renderSession())).toMatchObject({
-      open: true,
-      folderId: 'folder-id',
-      documentSource: source,
-    });
-  });
-
-  it('still opens script export when the collaboration flush fails', async () => {
-    permissionRole = 'admin';
-    flush.mockRejectedValue(new Error('Pending changes could not be saved'));
-    const source = {
-      documentId: 'document-id',
-      documentName: 'Export me',
-      projectId: 'project-id',
-      folderId: 'folder-id',
-      markdown: 'Scene: Start',
-      token: { epoch: 7, revision: 3 },
-      snapshotToken: 'signed-snapshot-token',
-    };
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
-
-    await exportHandler()({ key: 'script' });
-
-    expect(flush).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/documents/document-id/export-source',
-      { headers: { Authorization: 'Bearer fresh-access-token' } }
-    );
-    expect(stateSetter).toHaveBeenCalledWith(source);
-    expect(showErrorToast).not.toHaveBeenCalled();
-  });
-
-  it('still opens script export when the collaboration flush throws synchronously', async () => {
-    permissionRole = 'admin';
-    flush.mockImplementation(() => {
-      throw new Error('Invalid access: Add Yjs type to a document before reading data.');
-    });
-    const source = {
-      documentId: 'document-id',
-      documentName: 'Export me',
-      projectId: 'project-id',
-      folderId: 'folder-id',
-      markdown: 'Scene: Start',
-      token: { epoch: 7, revision: 3 },
-      snapshotToken: 'signed-snapshot-token',
-    };
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
-
-    await exportHandler()({ key: 'script' });
-
-    expect(flush).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(
-      '/api/documents/document-id/export-source',
-      { headers: { Authorization: 'Bearer fresh-access-token' } }
-    );
-    expect(stateSetter).toHaveBeenCalledWith(source);
-    expect(showErrorToast).not.toHaveBeenCalled();
-  });
-
-  it('uses the latest project binding when the editor project changes', async () => {
-    permissionRole = 'admin';
-    exportHandler('old-project');
-    const handler = exportHandler('new-project');
-    const source = {
-      documentId: 'document-id',
-      documentName: 'Export me',
-      projectId: 'new-project',
-      folderId: null,
-      markdown: '| Name | Value |',
-      token: { epoch: 4, revision: 9 },
-      snapshotToken: 'signed-snapshot-token',
-    };
-    (fetch as jest.Mock)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
-
-    await handler({ key: 'tables' });
-
-    expect(saveDesignHandoff).toHaveBeenCalledWith(
-      'new-project',
-      expect.objectContaining({ documentId: 'document-id' })
-    );
   });
 });

@@ -8,11 +8,6 @@ import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const DOCUMENT_SUMMARY_LIMIT = 50;
 
-function sectionNameFromId(sectionId: string, libraryId: string): string {
-  const prefix = `${libraryId}:`;
-  return sectionId.startsWith(prefix) ? sectionId.slice(prefix.length) : sectionId;
-}
-
 async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     const [folders, documents] = await Promise.all([
@@ -33,17 +28,13 @@ async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> 
       (libraryRows ?? []).map(async (row) => {
         const libraryId = row.id as string;
         const properties = await getLibraryProperties(ctx.supabase, libraryId, ctx);
-        const sectionIds = [...new Set(properties.map((p) => p.sectionId))];
-
         return {
           id: libraryId,
           name: row.name as string,
           folderName: row.folder_id ? folderNameById.get(row.folder_id as string) ?? null : null,
-          sections: sectionIds.map((sectionId) => ({
-            name: sectionNameFromId(sectionId, libraryId),
-            fields: properties
-              .filter((p) => p.sectionId === sectionId)
-              .map((p) => ({ label: p.name, dataType: p.dataType })),
+          fields: properties.map((property) => ({
+            label: property.name,
+            dataType: property.dataType,
           })),
         };
       })
@@ -86,7 +77,7 @@ async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> 
 export const listProjectStructure: AgentTool = {
   name: 'list_project_structure',
   description:
-    'List folders, libraries, bounded document summaries, sections, and field definitions in the current project. Use this FIRST when exploring project layout or before creating new libraries. Use list_documents to page through additional document metadata. Document content is not included. No parameters.',
+    'List folders, libraries, bounded document summaries, and field definitions in the current project. Use this FIRST when exploring project layout or before creating new libraries. Use list_documents to page through additional document metadata. Document content is not included. No parameters.',
   category: 'read',
   confirmationMode: 'pre_execute',
   parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },

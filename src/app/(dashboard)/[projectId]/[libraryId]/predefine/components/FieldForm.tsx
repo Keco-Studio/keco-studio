@@ -13,7 +13,6 @@ import { listLibraries, type Library } from '@/lib/services/libraryService';
 import styles from './FieldForm.module.css';
 
 interface FieldFormProps {
-  sectionId?: string;
   initialField?: Omit<FieldConfig, 'id'>;
   onSubmit: (field: Omit<FieldConfig, 'id'>) => void;
   onCancel?: () => void;
@@ -23,7 +22,7 @@ interface FieldFormProps {
   validationError?: { labelInvalid: boolean; dataTypeInvalid: boolean };
 }
 
-export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disabled, onFieldChange, onFieldBlur, validationError }: FieldFormProps) {
+export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange, onFieldBlur, validationError }: FieldFormProps) {
   const supabase = useSupabase();
   const params = useParams();
   const projectId = params?.projectId as string | undefined;
@@ -81,31 +80,24 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
   // Listen for reset event from parent (when user clicks add button or auto-save adds field)
   useEffect(() => {
     const handleReset = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const eventSectionId = customEvent.detail?.sectionId;
-      
-      // Only reset if the event is for this specific section (or no section specified for backwards compatibility)
-      if (!eventSectionId || eventSectionId === sectionId) {
-        // Reset form to initial empty state
-        setField({
-          label: '',
-          dataType: undefined,
-          required: false,
-          enumOptions: [],
-          referenceLibraries: [],
-        });
-        setLocalLabel('');
-        setDataTypeSelected(false);
-        setShowSlashMenu(false);
-        setShowConfigMenu(false);
-      }
+      setField({
+        label: '',
+        dataType: undefined,
+        required: false,
+        enumOptions: [],
+        referenceLibraries: [],
+      });
+      setLocalLabel('');
+      setDataTypeSelected(false);
+      setShowSlashMenu(false);
+      setShowConfigMenu(false);
     };
 
     window.addEventListener('fieldform-reset', handleReset as EventListener);
     return () => {
       window.removeEventListener('fieldform-reset', handleReset as EventListener);
     };
-  }, [sectionId]);
+  }, []);
 
   // Notify parent of field changes (always notify, even if empty)
   useEffect(() => {
@@ -234,7 +226,7 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
 
   const handleSubmit = () => {
     // Allow adding empty field rows (user can fill them later)
-    // Validation will happen at section save time
+    // Validation runs when the schema is saved.
     const payload = {
       ...field,
       enumOptions:
@@ -585,4 +577,3 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
     </div>
   );
 }
-

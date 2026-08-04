@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useMemo, type Key, type MouseEvent } from 'react';
+import { useMemo, type MouseEvent } from 'react';
 import type { DataNode } from 'antd/es/tree';
 import type { Folder } from '@/lib/services/folderService';
 import type { Library } from '@/lib/services/libraryService';
@@ -10,7 +10,6 @@ import { truncateText } from '@/lib/utils/truncateText';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
-import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
 import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
@@ -32,12 +31,10 @@ export type UseSidebarTreeContext = {
   setError: (msg: string | null) => void;
   setEditingKey: (key: string | null) => void;
   onSaveRename: (key: string, newName: string) => void | Promise<void>;
-  expandedKeys: Key[];
-  onToggleDocumentExpand: (docKey: string) => void;
 };
 
 /**
- * Builds Ant Design Tree data and selected keys from folders + libraries for the Sidebar.
+ * Builds Ant Design Tree data and selected keys from folders, documents, and tables.
  */
 export function useSidebarTree(
   currentIds: SidebarCurrentIds,
@@ -55,8 +52,6 @@ export function useSidebarTree(
     setSelectedFolderId,
     setError,
     setEditingKey,
-    expandedKeys,
-    onToggleDocumentExpand,
   } = context;
 
   const treeData: DataNode[] = useMemo(() => {
@@ -80,15 +75,7 @@ export function useSidebarTree(
     };
 
     const librariesByFolder = new Map<string, Library[]>();
-    const librariesByDocument = new Map<string, Library[]>();
     projectLibraries.forEach((lib) => {
-      if (lib.source_document_id) {
-        if (!librariesByDocument.has(lib.source_document_id)) {
-          librariesByDocument.set(lib.source_document_id, []);
-        }
-        librariesByDocument.get(lib.source_document_id)!.push(lib);
-        return;
-      }
       const folderId = lib.folder_id ? String(lib.folder_id) : '';
       if (!librariesByFolder.has(folderId)) {
         librariesByFolder.set(folderId, []);
@@ -97,16 +84,7 @@ export function useSidebarTree(
     });
 
     const documentsByFolder = new Map<string, DocumentSummary[]>();
-    const documentsByParent = new Map<string, DocumentSummary[]>();
     projectDocuments.forEach((doc) => {
-      if (doc.parent_document_id) {
-        const parentId = String(doc.parent_document_id);
-        if (!documentsByParent.has(parentId)) {
-          documentsByParent.set(parentId, []);
-        }
-        documentsByParent.get(parentId)!.push(doc);
-        return;
-      }
       const folderId = doc.folder_id ? String(doc.folder_id) : '';
       if (!documentsByFolder.has(folderId)) {
         documentsByFolder.set(folderId, []);
@@ -125,16 +103,15 @@ export function useSidebarTree(
 
     const buildLibraryNode = (
       lib: Library,
-      options: { underFolder?: boolean; underDocument?: boolean } = {}
+      options: { underFolder?: boolean } = {}
     ): DataNode => {
-      const { underFolder = false, underDocument = false } = options;
+      const { underFolder = false } = options;
       const libKey = `library-${lib.id}`;
       return {
         title: (
           <div
-            className={`${styles.itemRow} ${styles.libraryRow} ${underFolder || underDocument ? '' : styles.rootLibraryRow}`}
+            className={`${styles.itemRow} ${styles.libraryRow} ${underFolder ? '' : styles.rootLibraryRow}`}
             data-library-under-folder={underFolder ? true : undefined}
-            data-library-under-document={underDocument ? true : undefined}
             onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
           >
             <div className={styles.itemMain}>
@@ -143,7 +120,7 @@ export function useSidebarTree(
               </div>
               <span
                 className={styles.itemText}
-                style={{ fontWeight: underFolder || underDocument ? undefined : 500 }}
+                style={{ fontWeight: underFolder ? undefined : 500 }}
                 title={lib.name}
                 onDoubleClick={(e) => {
                   e.preventDefault();
@@ -159,7 +136,6 @@ export function useSidebarTree(
         key: libKey,
         isLeaf: true,
         children: undefined,
-        className: underDocument ? styles.documentChildTreeNode : undefined,
         _titleStr: lib.name,
         _nodeType: 'library',
         _isLibraryUnderFolder: underFolder,
@@ -172,24 +148,10 @@ export function useSidebarTree(
       };
     };
 
-    // Build a document node with nested child documents + derived libraries beneath it.
+    // Documents and tables are sibling leaves; only folders can contain them.
     const buildDocumentNode = (doc: DocumentSummary, isUnderFolder: boolean): DataNode => {
       const docKey = `document-${doc.id}`;
       const canRename = userRole === 'admin' || userRole === 'editor';
-      const childDocuments = [...(documentsByParent.get(doc.id) ?? [])].sort(
-        (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
-      );
-      const derivedLibraries = [...(librariesByDocument.get(doc.id) ?? [])].sort(
-        (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
-      );
-      const children: DataNode[] = [
-        ...childDocuments.map((child) => buildDocumentNode(child, isUnderFolder)),
-        ...derivedLibraries.map((library) =>
-          buildLibraryNode(library, { underFolder: isUnderFolder, underDocument: true })
-        ),
-      ];
-      const hasChildren = children.length > 0;
-      const isExpanded = expandedKeys.includes(docKey);
       return {
         title: (
           <div
@@ -213,35 +175,11 @@ export function useSidebarTree(
                 {truncateText(doc.name, computeMaxChars(15))}
               </span>
             </div>
-            {hasChildren && (
-              <div className={styles.itemActions}>
-                <button
-                  type="button"
-                  className={styles.documentExpandButton}
-                  aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                  title={isExpanded ? 'Collapse' : 'Expand'}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onToggleDocumentExpand(docKey);
-                  }}
-                >
-                  <Image
-                    src={folderExpandIcon}
-                    alt={isExpanded ? 'Collapse' : 'Expand'}
-                    width={14}
-                    height={8}
-                    className={isExpanded ? styles.documentExpandIconExpanded : undefined}
-                  />
-                </button>
-              </div>
-            )}
           </div>
         ),
         key: docKey,
-        isLeaf: !hasChildren,
-        children: hasChildren ? children : undefined,
-        className: styles.documentTreeNode,
+        isLeaf: true,
+        children: undefined,
         _titleStr: doc.name,
         _nodeType: 'document',
         _isLibraryUnderFolder: isUnderFolder,
@@ -337,15 +275,11 @@ export function useSidebarTree(
     libraries,
     documents,
     handleContextMenu,
-    router,
     userRole,
     onFolderAddClick,
-    setSelectedFolderId,
     setError,
     setEditingKey,
     sidebarWidth,
-    expandedKeys,
-    onToggleDocumentExpand,
   ]);
 
   const selectedKeys = useMemo(() => {

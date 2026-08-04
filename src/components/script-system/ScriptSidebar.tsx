@@ -16,6 +16,7 @@ import {
   useScriptSidebarActions,
   type ScriptSidebarTarget,
 } from './useScriptSidebarActions';
+import { DeleteConfirmDialog } from '@/components/layout/components/DeleteConfirmDialog';
 import styles from './ScriptSidebar.module.css';
 
 export type ScriptSidebarProps = {
@@ -129,6 +130,19 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const didInitialExpandRef = useRef(false);
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    content: string;
+    loading: boolean;
+    onConfirm?: () => Promise<void> | PromiseLike<void> | void;
+  }>({
+    open: false,
+    title: 'Confirm deletion',
+    content: '',
+    loading: false,
+    onConfirm: undefined,
+  });
 
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null;
@@ -287,7 +301,43 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
         return next;
       });
     },
+    requestDeleteConfirm: ({ title, content, onConfirm }) => {
+      setDeleteConfirmState({
+        open: true,
+        title,
+        content,
+        loading: false,
+        onConfirm,
+      });
+    },
   });
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteConfirmState.onConfirm) return;
+    setDeleteConfirmState((prev) => ({ ...prev, loading: true }));
+    try {
+      await deleteConfirmState.onConfirm();
+    } finally {
+      setDeleteConfirmState({
+        open: false,
+        title: 'Confirm deletion',
+        content: '',
+        loading: false,
+        onConfirm: undefined,
+      });
+    }
+  }, [deleteConfirmState]);
+
+  const closeDeleteConfirm = useCallback(() => {
+    if (deleteConfirmState.loading) return;
+    setDeleteConfirmState({
+      open: false,
+      title: 'Confirm deletion',
+      content: '',
+      loading: false,
+      onConfirm: undefined,
+    });
+  }, [deleteConfirmState.loading]);
 
   const goToImport = () => {
     router.push(`/script-system/${projectId}`);
@@ -576,6 +626,15 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
           onAction={handleAction}
         />
       ) : null}
+
+      <DeleteConfirmDialog
+        open={deleteConfirmState.open}
+        title={deleteConfirmState.title}
+        content={deleteConfirmState.content}
+        confirmLoading={deleteConfirmState.loading}
+        onConfirm={handleDeleteConfirm}
+        onCancel={closeDeleteConfirm}
+      />
     </aside>
   );
 }

@@ -5,7 +5,6 @@ import type { CellKey } from '../hooks/useCellSelection';
 export interface BuildAgentSelectionContextInput {
   libraryId: string;
   libraryName?: string;
-  sectionName?: string;
   rows: AssetRow[];
   visibleProperties: PropertyConfig[];
   selectedCells: Set<CellKey>;
@@ -107,7 +106,6 @@ export function buildAgentSelectionContext(
       source: 'library_table',
       libraryId: input.libraryId,
       libraryName: input.libraryName,
-      sectionName: input.sectionName,
       selectionLabel: `${tableName} · ${rowLabel}`,
       mode: 'rows',
       selectedCellCount: rows.reduce((sum, row) => sum + row.cells.length, 0),
@@ -148,7 +146,6 @@ export function buildAgentSelectionContext(
     source: 'library_table',
     libraryId: input.libraryId,
     libraryName: input.libraryName,
-    sectionName: input.sectionName,
     selectionLabel: `${tableName} · ${selectedCellCount === 1 ? '1 cell selected' : `${selectedCellCount} cells selected`}`,
     mode: 'cells',
     selectedCellCount,

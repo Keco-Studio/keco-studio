@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { getDocumentAvatarDisplay } from '@/components/documents/documentCollaborationDisplay';
 
 const hookPath = path.join(
   process.cwd(),
@@ -14,8 +15,42 @@ const editorPath = path.join(
   process.cwd(),
   'src/components/documents/MdxDocumentEditor.tsx'
 );
+const documentEditorPath = path.join(
+  process.cwd(),
+  'src/components/documents/DocumentEditor.tsx'
+);
 
 describe('document collaboration React boundary', () => {
+  it('renders local-inclusive avatars only for multi-user sessions', () => {
+    const source = readFileSync(documentEditorPath, 'utf8');
+    expect(source).toContain('getDocumentAvatarDisplay');
+    expect(source).toContain('documentAvatarDisplay.visibleUsers.length > 0');
+  });
+
+  it('hides solo document avatars and prepends the local user for collaborators', () => {
+    const local = { id: 'local', name: 'Local editor', color: '#1677ff' };
+    const remote = { id: 'remote', name: 'Remote editor', color: '#52c41a' };
+
+    expect(getDocumentAvatarDisplay(local, [])).toEqual({
+      visibleUsers: [],
+      overflowCount: 0,
+    });
+    expect(getDocumentAvatarDisplay(local, [remote])).toEqual({
+      visibleUsers: [local, remote],
+      overflowCount: 0,
+    });
+
+    const sixRemoteUsers = Array.from({ length: 6 }, (_, index) => ({
+      id: `remote-${index}`,
+      name: `Remote ${index}`,
+      color: '#52c41a',
+    }));
+    expect(getDocumentAvatarDisplay(local, sixRemoteUsers)).toMatchObject({
+      visibleUsers: [local, ...sixRemoteUsers.slice(0, 4)],
+      overflowCount: 2,
+    });
+  });
+
   it('registers a higher-priority synced CodeMirror editor descriptor', () => {
     const source = readFileSync(editorPath, 'utf8');
     expect(source).toContain('Editor: SyncedCodeMirrorEditor');

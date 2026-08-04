@@ -387,7 +387,7 @@ export async function indexLibraryCell(
 
     const { data: field } = await supabase
       .from('library_field_definitions')
-      .select('id, label, data_type, section')
+      .select('id, label, data_type')
       .eq('id', params.fieldId)
       .single();
     if (!field || !isIndexableLibraryFieldType(field.data_type as string)) return;
@@ -453,7 +453,6 @@ export async function indexLibraryCell(
           assetName: asset.name,
           fieldId: field.id,
           fieldLabel: field.label,
-          sectionId: `${library.id}:${field.section ?? ''}`,
           cellUpdatedAt: asset.updated_at,
           rowIndex: uiRowIndex,
         },

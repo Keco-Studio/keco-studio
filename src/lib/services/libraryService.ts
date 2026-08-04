@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { getInternalFieldGroupColumns } from '@/lib/library/fieldCompatibility';
 import {
   type AccessVerificationContext,
   verifyProjectOwnership,
@@ -796,22 +797,21 @@ export async function duplicateLibrary(
     .from('library_field_definitions')
     .select('*')
     .eq('library_id', libraryId)
-    .order('section', { ascending: true })
     .order('order_index', { ascending: true })
     .order('id', { ascending: true });
   if (fieldsError) throw fieldsError;
 
   const oldToNewFieldMap = new Map<string, string>();
+  const compatibility = getInternalFieldGroupColumns(newLibraryId);
   if (fields && fields.length > 0) {
     for (const field of fields) {
       const { id, created_at, updated_at, library_id, section_id, ...rest } = field;
-      const newSectionId = `${newLibraryId}:${field.section}`;
       const { data: insertedField, error: insertFieldError } = await supabase
         .from('library_field_definitions')
         .insert({
           ...rest,
           library_id: newLibraryId,
-          section_id: newSectionId,
+          ...compatibility,
         })
         .select('id')
         .single();

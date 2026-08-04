@@ -5,7 +5,11 @@
   text-align: center;
   cursor: pointer;
   background: #f8fafc;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    min-height 0.15s ease,
+    padding 0.15s ease;
 }
 
 /* Standalone compact styles for Import dialogs (do not combine with .zone). */
@@ -21,7 +25,12 @@
   text-align: left;
   cursor: pointer;
   background: #fff;
-  transition: border-color 0.15s ease, background 0.15s ease, outline 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    outline 0.15s ease,
+    min-height 0.15s ease,
+    padding 0.15s ease;
 }
 
 .zone:hover {
@@ -40,16 +49,63 @@
   box-shadow: inset 0 0 0 0.125rem #a5b4fc;
 }
 
-.dragOver {
-  border-color: #2563eb;
-  background: #eff6ff;
+/* Empty File field: tall light-gray drop target with a soft plus. */
+.emptyDrop {
+  border-style: dashed;
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  box-shadow: none;
 }
 
-.zoneCompact.dragOver {
+.zone.emptyDrop {
+  min-height: 10rem;
+  padding: 48px 24px;
+}
+
+.zoneCompact.emptyDrop {
   outline: none;
-  border-color: #a5b4fc;
-  box-shadow: inset 0 0 0 0.125rem #a5b4fc;
-  background: #eff6ff;
+  min-height: 6.5rem;
+  padding: 1.25rem 0.75rem;
+  border-width: 1px;
+  text-align: center;
+}
+
+.zone.emptyDrop:hover,
+.zoneCompact.emptyDrop:hover {
+  border-color: #94a3b8;
+  background: #e8eef5;
+}
+
+.zoneCompact.emptyDrop:focus,
+.zoneCompact.emptyDrop:focus-visible {
+  border-color: #94a3b8;
+  box-shadow: inset 0 0 0 0.125rem rgba(148, 163, 184, 0.45);
+}
+
+.dragOver {
+  border-color: #94a3b8;
+  background: #e2e8f0;
+}
+
+.emptyHint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.dropPlusIcon {
+  color: #94a3b8;
+  display: block;
+  flex-shrink: 0;
+}
+
+.emptyDrop:hover .dropPlusIcon,
+.dragOver .dropPlusIcon {
+  color: #64748b;
 }
 
 .disabled {
@@ -62,41 +118,24 @@
   background: #f8fafc;
 }
 
-.zoneCompact.disabled:hover {
+.zone.emptyDrop.disabled:hover,
+.zoneCompact.emptyDrop.disabled:hover {
   border-color: #cbd5e1;
-  background: #f8fafc;
+  background: #f1f5f9;
+}
+
+.zoneCompact.disabled:hover {
+  border-color: #e2e8f0;
+  background: #fff;
 }
 
 .input {
   display: none;
 }
 
-.placeholder {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.zoneCompact .placeholder {
-  gap: 2px;
-  width: 100%;
-}
-
-.primaryText {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.zoneCompact .primaryText {
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.25;
-}
-
 .secondaryText {
   font-size: 13px;
-  color: #6b7280;
+  color: rgba(55, 65, 81, 0.75);
 }
 
 .zoneCompact .secondaryText {
@@ -109,10 +148,10 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
+  width: 100%;
 }
 
 .zoneCompact .selected {
-  width: 100%;
   justify-content: space-between;
   gap: 8px;
 }

@@ -54,13 +54,22 @@ describe('Keco Script LeftNav wiring', () => {
     expect(css).toMatch(/\.sidebarHidden/);
   });
 
+  it('Script project picker matches the bordered select control used by Simulation', () => {
+    const css = read('src/components/script-system/ScriptSidebar.module.css');
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1\.5px solid/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*8px/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*min-height:\s*36px/s);
+  });
+
   it('Script delete uses the shared DeleteConfirmDialog like Studio libraries', () => {
     const sidebar = read('src/components/script-system/ScriptSidebar.tsx');
     const actions = read('src/components/script-system/useScriptSidebarActions.ts');
     expect(sidebar).toContain('DeleteConfirmDialog');
     expect(sidebar).toContain('requestDeleteConfirm');
     expect(actions).toContain('requestDeleteConfirm');
-    expect(actions).toContain("content: 'Delete this library?'");
+    expect(actions).toContain("content: 'Delete this script?'");
+    expect(actions).toContain('Remove this document from the Script workspace');
+    expect(actions).not.toContain("content: 'Delete this library?'");
     expect(actions).not.toContain('window.confirm');
   });
 

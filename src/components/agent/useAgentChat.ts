@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { getActiveSectionName } from '@/lib/agent/page-context';
 import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
@@ -582,7 +581,6 @@ export function useAgentChat(ctx: SendContext) {
               currentFolderName: ctx.currentFolderName,
               currentLibraryId: ctx.currentLibraryId,
               currentLibraryName: ctx.currentLibraryName,
-              currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
             }
           : {
               conversationId: selectedRuntime.conversationId,
@@ -819,7 +817,6 @@ export function useAgentChat(ctx: SendContext) {
             currentFolderName: ctx.currentFolderName,
             currentLibraryId: ctx.currentLibraryId,
             currentLibraryName: ctx.currentLibraryName,
-            currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
             ...(clientCompletedResult !== undefined ? { clientCompletedResult } : {}),
           }),
           signal: abortController.signal,

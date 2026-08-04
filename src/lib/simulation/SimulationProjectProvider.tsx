@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { listFolders } from '@/lib/services/folderService';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
 import type { Project } from '@/lib/services/projectService';
-import { readSimulationProjectPreference } from './projectPreference';
+import { readSimulationProjectPreference, writeSimulationProjectPreference } from './projectPreference';
 import type { StudioLibrarySource } from './importAdapter';
 import { loadSimulationLibraryFields, loadSimulationProjectSources } from './studioData';
 import type { LibraryRole, StudioColumnDefinition } from './types';
@@ -71,8 +71,34 @@ export function SimulationProjectProvider({ children }: { children: React.ReactN
   }, [foldersQuery.data]);
   const selectedProject = useMemo(() => projects.find(({ id }) => id === selectedProjectId) ?? null, [projects, selectedProjectId]);
 
+  useEffect(() => {
+    if (!selectedProject) return;
+    writeSimulationProjectPreference({
+      projectId: selectedProject.id,
+      projectName: selectedProject.name,
+    });
+    window.dispatchEvent(new CustomEvent('simulation-project-changed', {
+      detail: {
+        projectId: selectedProject.id,
+        projectName: selectedProject.name,
+      },
+    }));
+  }, [selectedProject]);
+
   const selectProject = useCallback((projectId: string) => {
     if (!projects.some(({ id }) => id === projectId)) return;
+    const selectedProject = projects.find(({ id }) => id === projectId);
+    if (!selectedProject) return;
+    writeSimulationProjectPreference({
+      projectId,
+      projectName: selectedProject.name,
+    });
+    window.dispatchEvent(new CustomEvent('simulation-project-changed', {
+      detail: {
+        projectId: projectId,
+        projectName: selectedProject.name,
+      },
+    }));
     requestGenerationRef.current += 1;
     setRequestedProjectId(projectId);
   }, [projects]);

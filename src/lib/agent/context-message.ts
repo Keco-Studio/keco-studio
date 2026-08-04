@@ -29,7 +29,6 @@ export function augmentUserMessageForLlm(
   const hasPageContext =
     ctx.currentLibraryName ||
     ctx.currentLibraryId ||
-    ctx.currentSectionName ||
     ctx.currentFolderName ||
     ctx.currentDocumentId;
 
@@ -44,9 +43,6 @@ export function augmentUserMessageForLlm(
       hints.push(`active library "${ctx.currentLibraryName}"`);
     } else if (ctx.currentLibraryId) {
       hints.push(`active library (id: ${ctx.currentLibraryId})`);
-    }
-    if (ctx.currentSectionName) {
-      hints.push(`active section tab "${ctx.currentSectionName}"`);
     }
     if (ctx.currentFolderName) {
       hints.push(`folder "${ctx.currentFolderName}"`);
@@ -63,7 +59,7 @@ export function augmentUserMessageForLlm(
       ? ' The current document is the default target, not a locked scope; an explicitly named same-project document overrides it.'
       : '';
     prefixes.push(
-      `[User is viewing: ${hints.join(', ')}. Use this library/section by default in tool calls — do not ask which library unless they name a different one.${documentGuidance}]`
+      `[User is viewing: ${hints.join(', ')}. Use this library by default in tool calls — do not ask which library unless they name a different one.${documentGuidance}]`
     );
   }
 

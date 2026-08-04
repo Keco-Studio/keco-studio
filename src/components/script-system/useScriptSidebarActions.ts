@@ -12,6 +12,7 @@ import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImpo
 import { notifyDocumentDerivedImportProgress } from '@/lib/documents/documentDerivedImportProgress';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import type { ScriptContextMenuAction } from './ScriptContextMenu';
+import { scriptWorkspaceDocumentQueryKey } from './useScriptWorkspaceDocumentMembership';
 
 export type ScriptSidebarTarget = {
   type: 'document' | 'script';
@@ -26,6 +27,11 @@ type UseScriptSidebarActionsParams = {
   onStartRename: (target: { type: 'document' | 'script'; id: string }) => void;
   onRefreshWorkspace: () => Promise<unknown> | unknown;
   onExpandDocument?: (documentId: string) => void;
+  requestDeleteConfirm: (options: {
+    title: string;
+    content: string;
+    onConfirm: () => Promise<void> | PromiseLike<void> | void;
+  }) => void;
 };
 
 /**
@@ -40,6 +46,7 @@ export function useScriptSidebarActions({
   onStartRename,
   onRefreshWorkspace,
   onExpandDocument,
+  requestDeleteConfirm,
 }: UseScriptSidebarActionsParams) {
   const router = useRouter();
   const supabase = useSupabase();
@@ -131,77 +138,83 @@ export function useScriptSidebarActions({
         if (target.type === 'document') {
           if (userRole !== 'admin' && userRole !== 'editor') return;
           const documentId = target.id;
-          const confirmed = window.confirm(
-            'Remove this document from the Script workspace? The Studio document will not be deleted.'
-          );
-          if (!confirmed) return;
-          void (async () => {
-            try {
-              const response = await fetch(
-                `/api/script-workspace/${projectId}/${documentId}`,
-                { method: 'DELETE' }
-              );
-              if (!response.ok) {
-                const body = (await response.json().catch(() => null)) as {
-                  error?: string;
-                } | null;
-                throw new Error(
-                  body?.error || 'Failed to remove document from workspace'
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content:
+              'Remove this document from the Script workspace? The Studio document will not be deleted.',
+            onConfirm: async () => {
+              try {
+                const response = await fetch(
+                  `/api/script-workspace/${projectId}/${documentId}`,
+                  { method: 'DELETE' }
+                );
+                if (!response.ok) {
+                  const body = (await response.json().catch(() => null)) as {
+                    error?: string;
+                  } | null;
+                  throw new Error(
+                    body?.error || 'Failed to remove document from workspace'
+                  );
+                }
+                await queryClient.invalidateQueries({
+                  queryKey: ['script-workspace', projectId],
+                });
+                await queryClient.invalidateQueries({
+                  queryKey: scriptWorkspaceDocumentQueryKey(projectId, documentId),
+                });
+                await onRefreshWorkspace();
+                showSuccessToast('Removed from Script workspace');
+                if (
+                  typeof window !== 'undefined' &&
+                  window.location.pathname.includes(
+                    `/script-system/${projectId}/doc/${documentId}`
+                  )
+                ) {
+                  router.push(`/script-system/${projectId}`);
+                }
+              } catch (err) {
+                showErrorToast(
+                  err instanceof Error
+                    ? err.message
+                    : 'Failed to remove document from workspace'
                 );
               }
-              await queryClient.invalidateQueries({
-                queryKey: ['script-workspace', projectId],
-              });
-              await onRefreshWorkspace();
-              showSuccessToast('Removed from Script workspace');
-              if (
-                typeof window !== 'undefined' &&
-                window.location.pathname.includes(
-                  `/script-system/${projectId}/doc/${documentId}`
-                )
-              ) {
-                router.push(`/script-system/${projectId}`);
-              }
-            } catch (err) {
-              showErrorToast(
-                err instanceof Error
-                  ? err.message
-                  : 'Failed to remove document from workspace'
-              );
-            }
-          })();
+            },
+          });
           return;
         }
 
         if (target.type === 'script') {
           if (userRole !== 'admin') return;
           const libraryId = target.id;
-          const confirmed = window.confirm('Delete this script library?');
-          if (!confirmed) return;
-          void (async () => {
-            try {
-              await deleteLibrary(supabase, libraryId);
-              await invalidateLibraryData(queryClient, {
-                projectId,
-                libraryId,
-                refetchActiveFoldersLibraries: true,
-              });
-              await onRefreshWorkspace();
-              showSuccessToast('Script deleted');
-              if (
-                typeof window !== 'undefined' &&
-                window.location.pathname.includes(
-                  `/script-system/${projectId}/script/${libraryId}`
-                )
-              ) {
-                router.push(`/script-system/${projectId}`);
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this script?',
+            onConfirm: async () => {
+              try {
+                await deleteLibrary(supabase, libraryId);
+                await invalidateLibraryData(queryClient, {
+                  projectId,
+                  libraryId,
+                  refetchActiveFoldersLibraries: true,
+                });
+                await onRefreshWorkspace();
+                showSuccessToast('Script deleted');
+                if (
+                  typeof window !== 'undefined' &&
+                  window.location.pathname.includes(
+                    `/script-system/${projectId}/script/${libraryId}`
+                  )
+                ) {
+                  router.push(`/script-system/${projectId}`);
+                }
+              } catch (err) {
+                showErrorToast(
+                  err instanceof Error ? err.message : 'Failed to delete script'
+                );
               }
-            } catch (err) {
-              showErrorToast(
-                err instanceof Error ? err.message : 'Failed to delete script'
-              );
-            }
-          })();
+            },
+          });
         }
       }
     },
@@ -215,6 +228,7 @@ export function useScriptSidebarActions({
       onStartRename,
       onRefreshWorkspace,
       onExpandDocument,
+      requestDeleteConfirm,
     ]
   );
 

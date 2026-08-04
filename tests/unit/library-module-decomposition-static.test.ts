@@ -89,13 +89,10 @@ describe('library module decomposition guard', () => {
     expect(exists('src/components/libraries/hooks/useLibraryTableStructure.ts')).toBe(true);
     expect(exists('src/components/libraries/components/LibraryAssetsTableBody.tsx')).toBe(true);
     expect(exists('src/components/libraries/components/LibraryAssetDetailDrawerWiring.tsx')).toBe(true);
-    expect(exists('src/components/libraries/hooks/useLibrarySectionEditing.ts')).toBe(true);
     expect(exists('src/components/libraries/hooks/useLibraryTableFindReplaceWiring.ts')).toBe(true);
 
-    expect(source).toContain('useLibraryTableStructure');
     expect(source).toContain('LibraryAssetsTableBody');
     expect(source).toContain('LibraryAssetDetailDrawerWiring');
-    expect(source).toContain('useLibrarySectionEditing');
     expect(source).toContain('useLibraryTableFindReplaceWiring');
 
     for (const inlineBlock of [

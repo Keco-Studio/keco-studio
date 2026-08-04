@@ -47,15 +47,23 @@ export type DocumentEditorProps = {
   documentId: string;
   /** Script workspace: no side padding so the editor sits flush to the shell sidebar. */
   flushLayout?: boolean;
+  /** Keeps document data loading parallel to the Script membership guard. */
+  scriptWorkspaceMembershipReady?: boolean;
 };
 
-export function DocumentEditor({ projectId, documentId, flushLayout = false }: DocumentEditorProps) {
+export function DocumentEditor({
+  projectId,
+  documentId,
+  flushLayout = false,
+  scriptWorkspaceMembershipReady = true,
+}: DocumentEditorProps) {
   const supabase = useSupabase();
   const { data: document, isLoading, error } = useQuery({
     queryKey: queryKeys.document(documentId),
     queryFn: () => getDocument(supabase, documentId),
     enabled: Boolean(documentId),
     staleTime: 0,
+    refetchOnMount: true,
   });
   const permissions = useDocumentPermissions({
     projectId,
@@ -66,7 +74,12 @@ export function DocumentEditor({ projectId, documentId, flushLayout = false }: D
   if (error) {
     return <div className={styles.error}>This document could not be loaded.</div>;
   }
-  if (isLoading || !document || permissions.isLoading) {
+  if (
+    isLoading ||
+    !document ||
+    permissions.isLoading ||
+    !scriptWorkspaceMembershipReady
+  ) {
     return <div className={styles.loading}>Loading document...</div>;
   }
   if (
@@ -442,7 +455,18 @@ function DocumentEditorSession({
                   }}
                 />
               ) : (
-                <div className={styles.editorPlaceholder}>{collaboration.label}</div>
+                <MdxDocumentEditor
+                  key={`${document.id}:pending`}
+                  projectId={projectId}
+                  documentId={document.id}
+                  markdown={document.content ?? ''}
+                  readOnly
+                  showToolbar={false}
+                  onChange={ignoreMarkdownChange}
+                  imageUploadHandler={imageUploadHandler}
+                  editorRef={handleEditorRef}
+                  referenceNavigationReady={referenceNavigationReady}
+                />
               )}
             </div>
           </div>

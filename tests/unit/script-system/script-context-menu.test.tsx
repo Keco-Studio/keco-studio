@@ -98,6 +98,7 @@ describe('ScriptContextMenu', () => {
     expect(source).toMatch(
       /DELETE.*script-workspace|script-workspace.*DELETE|\/api\/script-workspace\//
     );
+    expect(source).toContain('scriptWorkspaceDocumentQueryKey(projectId, documentId)');
   });
 
   it('ScriptSidebar navigates parent to doc and child to script routes', () => {

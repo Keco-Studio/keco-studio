@@ -50,4 +50,18 @@ describe('document import UI wiring', () => {
     expect(sharedModal).toContain('buttonFixed');
     expect(sharedModal).toContain('dialog.primary');
   });
+
+  it('shows a tall gray File drop target with a light plus by default', () => {
+    const dropZone = read('src/components/design-upload/DocumentDropZone.tsx');
+    const css = read('src/components/design-upload/DocumentDropZone.module.css');
+    expect(dropZone).toContain('emptyDrop');
+    expect(dropZone).toContain('DropPlusIcon');
+    expect(dropZone).toContain('emptyHint');
+    expect(dropZone).not.toContain('className={styles.dropPlus}');
+    expect(dropZone).not.toContain('Drag a file here, or click to choose');
+    expect(css).toMatch(/\.zoneCompact\.emptyDrop\s*\{[^}]*min-height:\s*6\.5rem/);
+    expect(css).toMatch(/\.emptyDrop\s*\{[^}]*background:\s*#f1f5f9/);
+    expect(css).not.toMatch(/\.dropPlus\s*\{/);
+    expect(css).toMatch(/\.dropPlusIcon\s*\{[^}]*#94a3b8/);
+  });
 });

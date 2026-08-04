@@ -20,6 +20,33 @@ describe('simulation provider contracts', () => {
     expect(source).toContain('requestedProjectId');
   });
 
+  it('persists selected projects and announces same-tab project changes', () => {
+    const source = read('src/lib/simulation/SimulationProjectProvider.tsx');
+    expect(source).toMatch(/import\s+\{[^}]*writeSimulationProjectPreference[^}]*\}\s+from\s+['"]\.\/projectPreference['"]/);
+
+    const selectProjectBlock = source.match(
+      /const\s+selectProject\s*=\s*useCallback\([\s\S]*?\},\s*\[[^\]]*projects[^\]]*\]\);/
+    )?.[0] ?? '';
+    expect(selectProjectBlock).toBeTruthy();
+
+    const validProjectGuard = selectProjectBlock.search(
+      /if\s*\(!projects\.some\(\(\{\s*id\s*\}\)\s*=>\s*id\s*===\s*projectId\)\)\s*return\s*;/
+    );
+    expect(validProjectGuard).toBeGreaterThanOrEqual(0);
+    const afterValidProjectGuard = selectProjectBlock.slice(validProjectGuard);
+    expect(afterValidProjectGuard).toMatch(/writeSimulationProjectPreference/);
+    expect(afterValidProjectGuard).toMatch(/writeSimulationProjectPreference[\s\S]*projectId/);
+    expect(afterValidProjectGuard).toMatch(/writeSimulationProjectPreference[\s\S]*projectName/);
+
+    const dispatchIndex = afterValidProjectGuard.indexOf(
+      "window.dispatchEvent(new CustomEvent('simulation-project-changed'"
+    );
+    expect(dispatchIndex).toBeGreaterThanOrEqual(0);
+    const eventSource = afterValidProjectGuard.slice(dispatchIndex);
+    expect(eventSource).toMatch(/detail\s*:\s*\{[\s\S]*projectId\s*:/);
+    expect(eventSource).toMatch(/detail\s*:\s*\{[\s\S]*projectName\s*:/);
+  });
+
   it('hydrates before saving and uses the storage repository boundary', () => {
     const source = read('src/lib/simulation/SimulationSessionProvider.tsx');
     expect(source).toContain('useSupabase');

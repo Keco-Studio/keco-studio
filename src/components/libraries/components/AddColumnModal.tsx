@@ -37,8 +37,6 @@ export type AddColumnFormPayload = {
 export type AddColumnModalProps = {
   open: boolean;
   onClose: () => void;
-  sectionId: string;
-  sectionName: string;
   onSubmit: (payload: AddColumnFormPayload) => Promise<void>;
   /** Anchor element for positioning the popup below the trigger; centered when omitted. */
   anchorRef?: React.RefObject<HTMLElement | null>;

@@ -20,7 +20,6 @@ export type TableCellSearchHit = {
   assetName: string;
   fieldId: string;
   fieldLabel: string;
-  sectionId: string;
   valueDisplay: string;
 };
 
@@ -57,7 +56,6 @@ function buildSearchableCells(
         assetName: row.name,
         fieldId: prop.key,
         fieldLabel: prop.name,
-        sectionId: prop.sectionId,
         valueDisplay,
         normalizedDisplay: buildNormalizedIndexMap(valueDisplay).normalized,
       });
@@ -90,7 +88,6 @@ type UseTableCellFindReplaceParams = {
   canReplace: boolean;
   onHighlightCells: (cells: Array<{ assetId: string; fieldId: string }>) => void;
   onClearHighlight: () => void;
-  onFocusSection?: (sectionId: string) => void;
   scrollToCell?: (assetId: string, fieldId: string) => void;
 };
 
@@ -102,7 +99,6 @@ export function useTableCellFindReplace({
   canReplace,
   onHighlightCells,
   onClearHighlight,
-  onFocusSection,
   scrollToCell,
 }: UseTableCellFindReplaceParams) {
   const queryClient = useQueryClient();
@@ -342,11 +338,10 @@ export function useTableCellFindReplace({
 
   const navigateToHit = useCallback(
     (hit: TableCellSearchHit) => {
-      onFocusSection?.(hit.sectionId);
       onHighlightCells([{ assetId: hit.assetId, fieldId: hit.fieldId }]);
       scrollToCell?.(hit.assetId, hit.fieldId);
     },
-    [onFocusSection, onHighlightCells, scrollToCell]
+    [onHighlightCells, scrollToCell]
   );
 
   const clearSearch = useCallback(() => {

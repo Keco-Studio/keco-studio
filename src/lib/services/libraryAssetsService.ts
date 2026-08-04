@@ -3,8 +3,8 @@ import {
   AssetRow,
   LibrarySummary,
   PropertyConfig,
-  SectionConfig,
 } from '@/lib/types/libraryAssets';
+import { getInternalFieldGroupColumns } from '@/lib/library/fieldCompatibility';
 import {
   computeFormulaValueForField,
   computeFormulaValuesForRow,
@@ -27,6 +27,7 @@ import {
 type FieldDefinitionRow = {
   id: string;
   library_id: string;
+  section_id: string;
   section: string;
   label: string;
   description: string | null;
@@ -383,13 +384,12 @@ export async function getLibrarySummary(
   };
 }
 
-// T008: Load predefine schema for a library and aggregate Sections + Properties.
+// T008: Load the flat predefine schema for a library.
 export async function getLibrarySchema(
   supabase: SupabaseClient,
   libraryId: string,
   access?: AccessVerificationContext
 ): Promise<{
-  sections: SectionConfig[];
   properties: PropertyConfig[];
 }> {
   // verify library access
@@ -399,7 +399,6 @@ export async function getLibrarySchema(
     .from('library_field_definitions')
     .select('*')
     .eq('library_id', libraryId)
-    .order('section', { ascending: true })
     .order('order_index', { ascending: true });
 
   if (error) {
@@ -409,16 +408,8 @@ export async function getLibrarySchema(
   const rows = (data ?? []) as FieldDefinitionRow[];
 
   if (rows.length === 0) {
-    return { sections: [], properties: [] };
+    return { properties: [] };
   }
-
-  const sectionsByName = new Map<
-    string,
-    {
-      section: SectionConfig;
-      minOrderIndex: number;
-    }
-  >();
 
   const properties: PropertyConfig[] = [];
 
@@ -427,27 +418,8 @@ export async function getLibrarySchema(
     if (row.data_type === 'media' as any) {
       row = { ...row, data_type: 'image' };
     }
-    let grouped = sectionsByName.get(row.section);
-    if (!grouped) {
-      const sectionId = `${row.library_id}:${row.section}`;
-      grouped = {
-        section: {
-          id: sectionId,
-          libraryId: row.library_id,
-          name: row.section,
-          orderIndex: row.order_index,
-        },
-        minOrderIndex: row.order_index,
-      };
-      sectionsByName.set(row.section, grouped);
-    } else if (row.order_index < grouped.minOrderIndex) {
-      grouped.minOrderIndex = row.order_index;
-      grouped.section.orderIndex = row.order_index;
-    }
-
     properties.push({
       id: row.id,
-      sectionId: grouped.section.id,
       key: row.id, // propertyValues keyed by field definition id
       name: row.label,
       description: row.description,
@@ -460,50 +432,7 @@ export async function getLibrarySchema(
       orderIndex: row.order_index,
     });
   }
-
-  const sections = Array.from(sectionsByName.values())
-    .map((entry) => entry.section)
-    .sort((a, b) => a.orderIndex - b.orderIndex);
-
-  const sectionOrderIndexById = new Map<string, number>();
-  sections.forEach((section, index) => {
-    sectionOrderIndexById.set(section.id, index);
-  });
-
-  properties.sort((a, b) => {
-    const sa = sectionOrderIndexById.get(a.sectionId) ?? 0;
-    const sb = sectionOrderIndexById.get(b.sectionId) ?? 0;
-    if (sa !== sb) return sa - sb;
-    return a.orderIndex - b.orderIndex;
-  });
-
-  return { sections, properties };
-}
-
-/** Rename a section by updating all matching field definition rows. */
-export async function updateSectionName(
-  supabase: SupabaseClient,
-  sectionId: string,
-  newName: string
-): Promise<void> {
-  const colonIndex = sectionId.indexOf(':');
-  if (colonIndex < 0) return;
-  const libraryId = sectionId.slice(0, colonIndex);
-  const oldName = sectionId.slice(colonIndex + 1);
-  const trimmed = newName.trim();
-  if (!trimmed || trimmed === oldName) return;
-
-  await verifyLibraryUpdatePermission(supabase, libraryId);
-
-  const { error } = await supabase
-    .from('library_field_definitions')
-    .update({ section: trimmed })
-    .eq('library_id', libraryId)
-    .eq('section', oldName);
-
-  if (error) throw error;
-
-  await touchLibraryUpdatedAt(supabase, libraryId);
+  return { properties };
 }
 
 /** Ensure a brand-new library has its default section1 / ID field exactly once. */
@@ -511,11 +440,10 @@ export async function ensureDefaultLibraryField(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<{ fieldId: string; created: boolean }> {
-  const sectionId = `${libraryId}:section1`;
+  const compatibility = getInternalFieldGroupColumns(libraryId);
   const defaultField = {
     library_id: libraryId,
-    section_id: sectionId,
-    section: 'section1',
+    ...compatibility,
     label: 'ID',
     data_type: 'string',
     order_index: 0,
@@ -540,7 +468,7 @@ export async function ensureDefaultLibraryField(
     .from('library_field_definitions')
     .select('id')
     .eq('library_id', libraryId)
-    .eq('section_id', sectionId)
+    .eq('library_id', libraryId)
     .eq('order_index', 0)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -552,111 +480,10 @@ export async function ensureDefaultLibraryField(
   return { fieldId: existingField.id as string, created: false };
 }
 
-/** Add a section by inserting its default field definition row. */
-export async function addLibrarySection(
-  supabase: SupabaseClient,
-  libraryId: string,
-  options?: { name?: string }
-): Promise<{ sectionId: string; sectionName: string; fieldId: string }> {
-  await verifyLibraryUpdatePermission(supabase, libraryId);
-
-  const { data: existingRows } = await supabase
-    .from('library_field_definitions')
-    .select('section, order_index')
-    .eq('library_id', libraryId);
-
-  const existing = (existingRows || []) as { section: string; order_index: number }[];
-  const existingSectionNames = new Set(existing.map((r) => r.section));
-  const maxOrderIndex = existing.length > 0 ? Math.max(...existing.map((r) => r.order_index)) : -1;
-  const nextOrderIndex = maxOrderIndex + 1000;
-
-  let sectionName = (options?.name ?? 'New Section').trim() || 'New Section';
-  let counter = 1;
-  while (existingSectionNames.has(sectionName)) {
-    sectionName = `New Section ${counter}`;
-    counter += 1;
-  }
-
-  const sectionId = `${libraryId}:${sectionName}`;
-
-  // Match table initialization: create a default ID string field.
-  const { data: inserted, error } = await supabase
-    .from('library_field_definitions')
-    .insert({
-      library_id: libraryId,
-      section_id: sectionId,
-      section: sectionName,
-      label: 'ID',
-      description: null,
-      data_type: 'string',
-      required: false,
-      order_index: nextOrderIndex,
-      enum_options: null,
-      reference_libraries: null,
-    })
-    .select('id')
-    .single();
-
-  if (error) throw error;
-
-  await touchLibraryUpdatedAt(supabase, libraryId);
-  return { sectionId, sectionName, fieldId: inserted.id as string };
-}
-
-/**
- * Delete a section by removing all field definitions for that section name.
- * Asset values cascade via foreign keys. Matches client section ids (`libraryId:sectionName`).
- */
-export async function deleteLibrarySection(
-  supabase: SupabaseClient,
-  sectionId: string
-): Promise<void> {
-  const colonIndex = sectionId.indexOf(':');
-  if (colonIndex < 0) {
-    throw new Error('Invalid section id');
-  }
-  const libraryId = sectionId.slice(0, colonIndex);
-  const sectionName = sectionId.slice(colonIndex + 1);
-  if (!libraryId || !sectionName) {
-    throw new Error('Invalid section id');
-  }
-
-  await verifyLibraryUpdatePermission(supabase, libraryId);
-
-  const { data: existingRows, error: fetchError } = await supabase
-    .from('library_field_definitions')
-    .select('section')
-    .eq('library_id', libraryId);
-
-  if (fetchError) throw fetchError;
-
-  const distinctSections = new Set(
-    ((existingRows || []) as { section: string }[]).map((row) => row.section)
-  );
-  if (!distinctSections.has(sectionName)) {
-    throw new Error('Section not found');
-  }
-  if (distinctSections.size <= 1) {
-    throw new Error('Cannot delete the last section');
-  }
-
-  const { error } = await supabase
-    .from('library_field_definitions')
-    .delete()
-    .eq('library_id', libraryId)
-    .eq('section', sectionName);
-
-  if (error) throw error;
-
-  await touchLibraryUpdatedAt(supabase, libraryId);
-}
-
-/** Add one field under the target section for the in-table Add Column modal. */
+/** Add one field to the single flat schema for a library. */
 export async function addLibraryField(
   supabase: SupabaseClient,
   libraryId: string,
-  _sectionId: string,
-  sectionName: string,
   payload: {
     label: string;
     dataType: PropertyConfig['dataType'];
@@ -671,37 +498,40 @@ export async function addLibraryField(
 
   const { data: existingRows, error: fetchError } = await supabase
     .from('library_field_definitions')
-    .select('section_id, order_index')
+    .select('section_id, section, order_index')
     .eq('library_id', libraryId)
-    .eq('section', sectionName)
-    .order('order_index', { ascending: false });
-
+    .order('order_index', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1);
   if (fetchError) throw fetchError;
-  const existing = (existingRows || []) as { section_id: string; order_index: number }[];
-  const nextOrderIndex = existing.length > 0 ? existing[0].order_index + 1 : 0;
-  const dbSectionId =
-    existing.length > 0 ? existing[0].section_id : `${libraryId}:${sectionName}`;
 
-  const enumOptions =
-    payload.dataType === 'enum'
-      ? (payload.enumOptions ?? []).map((v) => v.trim()).filter((v) => v.length > 0)
-      : null;
-
-  const referenceLibraries =
-    payload.dataType === 'reference'
-      ? (payload.referenceLibraries ?? [])
-      : null;
+  const existing = (existingRows || []) as Array<{
+    section_id: string;
+    section: string;
+    order_index: number;
+  }>;
+  const currentGroup = existing[0];
+  const compatibility = currentGroup
+    ? { section: currentGroup.section, section_id: currentGroup.section_id }
+    : getInternalFieldGroupColumns(libraryId);
+  const nextOrderIndex = (currentGroup?.order_index ?? -1) + 1;
+  const enumOptions = payload.dataType === 'enum'
+    ? (payload.enumOptions ?? []).map((value) => value.trim()).filter(Boolean)
+    : null;
+  const referenceLibraries = payload.dataType === 'reference'
+    ? (payload.referenceLibraries ?? [])
+    : null;
 
   const { data: inserted, error } = await supabase
     .from('library_field_definitions')
     .insert({
       library_id: libraryId,
-      section_id: dbSectionId,
-      section: sectionName,
+      ...compatibility,
       label: payload.label.trim(),
       description: payload.description?.trim() || null,
       data_type: payload.dataType ?? 'string',
-      formula_expression: payload.dataType === 'formula' ? (payload.formulaExpression?.trim() || null) : null,
+      formula_expression:
+        payload.dataType === 'formula' ? payload.formulaExpression?.trim() || null : null,
       required: payload.required ?? false,
       order_index: nextOrderIndex,
       enum_options: enumOptions,
@@ -709,17 +539,14 @@ export async function addLibraryField(
     })
     .select('id')
     .single();
-
   if (error) throw error;
 
   if (payload.dataType === 'formula') {
     await recalculateAndPersistFormulaFieldValues(supabase, libraryId, inserted.id);
   }
-
   if (payload.dataType === 'boolean') {
     await backfillBooleanFieldDefaults(supabase, libraryId, inserted.id);
   }
-
   await touchLibraryUpdatedAt(supabase, libraryId);
   return { id: inserted.id };
 }

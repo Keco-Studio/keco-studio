@@ -16,9 +16,9 @@ import { parseText, scriptLineToRow, SCRIPT_COLUMNS } from '@/lib/script-parser'
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
+import { getInternalFieldGroupColumns } from '@/lib/library/fieldCompatibility';
 
 const BATCH_SIZE = 200;
-const SCRIPT_SECTION_NAME = 'Section';
 
 export type ImportScriptResult = {
   libraryId: string;
@@ -211,8 +211,7 @@ async function insertScriptTable(
 
   const fieldRows = columns.map((label, colIdx) => ({
     library_id: libraryId,
-    section_id: `${libraryId}:${SCRIPT_SECTION_NAME}`,
-    section: SCRIPT_SECTION_NAME,
+    ...getInternalFieldGroupColumns(libraryId),
     label,
     description: null,
     data_type: 'string',

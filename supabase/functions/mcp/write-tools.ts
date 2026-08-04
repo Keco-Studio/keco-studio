@@ -52,8 +52,6 @@ const fieldSchema = z.object({
     "reference",
     "image",
   ]),
-  section: z.string().trim().min(1).max(100).optional(),
-  sectionId: z.string().trim().min(1).max(200).optional(),
   description: z.string().max(1000).nullable().optional(),
   required: z.boolean().optional(),
   enumOptions: z.array(z.string().trim().min(1).max(200)).min(1).max(100)

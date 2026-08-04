@@ -80,7 +80,6 @@ const batchTouchedFiles = [
   'src/components/libraries/hooks/useLibraryAssetDetailDrawerUpdate.ts',
   'src/components/libraries/hooks/useLibraryAssetMutations.ts',
   'src/components/libraries/hooks/useLibraryRealtimeHandlers.ts',
-  'src/components/libraries/hooks/useLibrarySectionEditing.ts',
   'src/components/libraries/hooks/useLibraryTableFindReplaceWiring.ts',
   'src/components/libraries/hooks/useReferenceModal.ts',
   'src/components/libraries/hooks/useTableCellFindReplace.ts',

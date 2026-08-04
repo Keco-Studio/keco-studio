@@ -188,7 +188,6 @@ async function buildSystemMessage(
       currentDocumentName: ctx.currentDocumentName,
       currentLibraryId: ctx.currentLibraryId,
       currentLibraryName,
-      currentSectionName: ctx.currentSectionName,
       userRole: ctx.userRole,
     });
 
