@@ -122,6 +122,7 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
         }
         if (
           item.confirmation.tool === 'propose_document_edit' ||
+          preview?.type === 'story_graph_edit' ||
           preview?.type === 'document_delete' ||
           preview?.type === 'update_row' ||
           preview?.type === 'set_reference'

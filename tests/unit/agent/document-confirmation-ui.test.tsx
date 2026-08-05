@@ -401,4 +401,88 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).toContain('aria-label="Reject action"');
     expect(markup).not.toContain('Import Directly');
   });
+
+  it('renders a compact story graph diff without exposing mutation internals', () => {
+    const item: ChatItem = {
+      id: 'confirmation-story-graph',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-story-graph',
+        tool: 'propose_story_graph_edit',
+        args: {
+          libraryId: '11111111-1111-4111-8111-111111111111',
+          expectedSnapshot: { updatedAt: 'must-not-render' },
+          assetUpdates: [{ id: '22222222-2222-4222-8222-222222222222' }],
+        },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'story_graph_edit',
+          libraryId: '33333333-3333-4333-8333-333333333333',
+          libraryName: 'MainChoice',
+          createdNodes: [
+            { label: 'EscapeRoute', contentSummary: 'The hero escapes.', rowIndex: 4 },
+          ],
+          edgeChanges: [
+            {
+              kind: 'added',
+              fromLabel: 'MainChoice',
+              text: 'Escape',
+              fromTarget: null,
+              toTarget: 'EscapeRoute',
+            },
+            {
+              kind: 'redirected',
+              fromLabel: 'MainChoice',
+              text: 'Stay',
+              fromTarget: 'OldEnding',
+              toTarget: 'SafeRoom',
+            },
+            {
+              kind: 'removed',
+              fromLabel: 'MainChoice',
+              text: 'Wait',
+              fromTarget: 'WaitEnding',
+              toTarget: null,
+            },
+          ],
+          affectedRows: [2, 4],
+          addedFields: ['Option3', 'Option3_Next'],
+          warnings: [{ code: 'unreachable_node', label: 'OldEnding' }],
+          before: {
+            nodeCount: 4,
+            edgeCount: 3,
+            endingCount: 2,
+            unreachableCount: 0,
+            entryToEndingPathCount: '2',
+          },
+          after: {
+            nodeCount: 5,
+            edgeCount: 4,
+            endingCount: 2,
+            unreachableCount: 1,
+            entryToEndingPathCount: '2',
+          },
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Modify story graph');
+    expect(markup).toContain('MainChoice');
+    expect(markup).toContain('EscapeRoute');
+    expect(markup).toContain('OldEnding');
+    expect(markup).toContain('SafeRoom');
+    expect(markup).toContain('Unreachable after this edit');
+    expect(markup).toContain('Nodes');
+    expect(markup).toContain('4');
+    expect(markup).toContain('5');
+    expect(markup).not.toContain('expectedSnapshot');
+    expect(markup).not.toContain('assetUpdates');
+    expect(markup).not.toContain('11111111-1111-4111-8111-111111111111');
+    expect(markup).not.toContain('22222222-2222-4222-8222-222222222222');
+    expect(markup).not.toContain('33333333-3333-4333-8333-333333333333');
+  });
 });

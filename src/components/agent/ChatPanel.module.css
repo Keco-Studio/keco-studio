@@ -778,6 +778,89 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   margin-top: 6px;
 }
 
+.graphPreviewTarget {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.graphSummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 12px;
+  margin: 9px 0 10px;
+}
+.graphSummaryItem {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 11px;
+}
+.graphSummaryItem strong {
+  color: #1f2937;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.graphChangeSection {
+  margin-top: 9px;
+}
+.graphSectionTitle {
+  margin-bottom: 4px;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 700;
+}
+.graphChangeList {
+  display: grid;
+  gap: 3px;
+}
+.graphChangeRow {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 4px;
+  color: #374151;
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.graphMarker {
+  font-family: var(--font-mono, monospace);
+  font-weight: 800;
+  text-align: center;
+}
+.graphMarkerAdded { color: #15803d; }
+.graphMarkerRemoved { color: #be123c; }
+.graphMarkerChanged { color: #0369a1; }
+.graphLabel {
+  color: inherit;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.96em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.graphDetail {
+  color: #6b7280;
+}
+.graphPatchMeta {
+  margin-top: 9px;
+  color: #6b7280;
+  font-size: 10.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.graphWarning {
+  margin-top: 6px;
+  color: #92400e;
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .composer {
   border-top: none;
   padding: 6px 6px 10px;

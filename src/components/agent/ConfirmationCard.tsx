@@ -21,7 +21,70 @@ const TOOL_LABELS: Record<string, string> = {
   move_document: 'Move document',
   generate_from_document: 'Generate from document',
   insert_resource_reference: 'Insert reference',
+  propose_story_graph_edit: 'Modify story graph',
 };
+
+type StoryGraphSummary = {
+  nodeCount: number;
+  edgeCount: number;
+  endingCount: number;
+  unreachableCount: number;
+  entryToEndingPathCount: string;
+};
+
+type StoryGraphEditPreview = {
+  type: 'story_graph_edit';
+  libraryName: string;
+  createdNodes: Array<{ label: string; contentSummary: string; rowIndex: number }>;
+  edgeChanges: Array<{
+    kind: 'added' | 'removed' | 'redirected' | 'next_changed' | 'ending_changed';
+    fromLabel: string;
+    text?: string;
+    fromTarget?: string | null;
+    toTarget?: string | null;
+  }>;
+  affectedRows: number[];
+  addedFields: string[];
+  warnings: Array<{ code: 'unreachable_node'; label: string }>;
+  before: StoryGraphSummary;
+  after: StoryGraphSummary;
+};
+
+function isStoryGraphEditPreview(value: unknown): value is StoryGraphEditPreview {
+  if (!value || typeof value !== 'object') return false;
+  const preview = value as Partial<StoryGraphEditPreview>;
+  return (
+    preview.type === 'story_graph_edit' &&
+    typeof preview.libraryName === 'string' &&
+    Array.isArray(preview.createdNodes) &&
+    Array.isArray(preview.edgeChanges) &&
+    Array.isArray(preview.affectedRows) &&
+    Array.isArray(preview.addedFields) &&
+    Array.isArray(preview.warnings) &&
+    Boolean(preview.before) &&
+    Boolean(preview.after)
+  );
+}
+
+function graphTarget(target: string | null | undefined): string {
+  return target ?? 'End';
+}
+
+function graphEdgeDescription(change: StoryGraphEditPreview['edgeChanges'][number]): string {
+  const choice = change.text ? ` \"${change.text}\"` : '';
+  switch (change.kind) {
+    case 'added':
+      return `${change.fromLabel}${choice} -> ${graphTarget(change.toTarget)}`;
+    case 'removed':
+      return `${change.fromLabel}${choice} -> ${graphTarget(change.fromTarget)}`;
+    case 'redirected':
+      return `${change.fromLabel}${choice}: ${graphTarget(change.fromTarget)} -> ${graphTarget(change.toTarget)}`;
+    case 'next_changed':
+      return `${change.fromLabel} next: ${graphTarget(change.fromTarget)} -> ${graphTarget(change.toTarget)}`;
+    case 'ending_changed':
+      return `${change.fromLabel}: ${graphTarget(change.fromTarget)} -> End`;
+  }
+}
 
 export type DiffRow = {
   kind: 'context' | 'added' | 'removed' | 'collapsed';
@@ -340,6 +403,9 @@ function summarizeChangeParts(
 export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) {
   const { actionId, tool, args, resolved } = confirmation;
   const label = TOOL_LABELS[tool] ?? tool;
+  const storyGraphPreview = isStoryGraphEditPreview(confirmation.preview)
+    ? confirmation.preview
+    : undefined;
   const documentPreview = confirmation.preview as
     | {
         type?: string;
@@ -392,11 +458,130 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
 
   const changeParts = summarizeChangeParts(args, documentPreview, label);
   const useSimpleCard =
+    !storyGraphPreview &&
     !isDocumentEdit &&
     !isDocumentDelete &&
     !isBoundDocument &&
     !isGenerateFromDocument &&
     !isInsertResourceReference;
+
+  if (storyGraphPreview) {
+    const summaryRows: Array<[string, string | number, string | number]> = [
+      ['Nodes', storyGraphPreview.before.nodeCount, storyGraphPreview.after.nodeCount],
+      ['Edges', storyGraphPreview.before.edgeCount, storyGraphPreview.after.edgeCount],
+      ['Endings', storyGraphPreview.before.endingCount, storyGraphPreview.after.endingCount],
+      [
+        'Paths',
+        storyGraphPreview.before.entryToEndingPathCount,
+        storyGraphPreview.after.entryToEndingPathCount,
+      ],
+    ];
+    return (
+      <div
+        className={styles.confirmCard}
+        data-testid="agent-confirmation"
+        role="group"
+        aria-label="Confirmation required"
+      >
+        <div className={styles.confirmTitle}>
+          {resolved === 'approved'
+            ? 'Applying story graph edit...'
+            : resolved === 'rejected'
+              ? 'Story graph edit cancelled.'
+              : 'Confirm: Modify story graph'}
+        </div>
+        <div className={styles.graphPreviewTarget}>{storyGraphPreview.libraryName}</div>
+
+        <div className={styles.graphSummary} aria-label="Story graph summary">
+          {summaryRows.map(([name, before, after]) => (
+            <div className={styles.graphSummaryItem} key={name}>
+              <span>{name}</span>
+              <strong>{before} -&gt; {after}</strong>
+            </div>
+          ))}
+        </div>
+
+        {storyGraphPreview.createdNodes.length > 0 ? (
+          <section className={styles.graphChangeSection} aria-label="Created nodes">
+            <div className={styles.graphSectionTitle}>Created nodes</div>
+            <div className={styles.graphChangeList}>
+              {storyGraphPreview.createdNodes.map((node) => (
+                <div className={styles.graphChangeRow} key={`${node.label}-${node.rowIndex}`}>
+                  <span className={`${styles.graphMarker} ${styles.graphMarkerAdded}`}>+</span>
+                  <span>
+                    <code className={styles.graphLabel}>{node.label}</code>
+                    <span className={styles.graphDetail}> Row {node.rowIndex}: {node.contentSummary}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {storyGraphPreview.edgeChanges.length > 0 ? (
+          <section className={styles.graphChangeSection} aria-label="Edge changes">
+            <div className={styles.graphSectionTitle}>Edge changes</div>
+            <div className={styles.graphChangeList}>
+              {storyGraphPreview.edgeChanges.map((change, index) => {
+                const removed = change.kind === 'removed';
+                return (
+                  <div className={styles.graphChangeRow} key={`${change.kind}-${change.fromLabel}-${index}`}>
+                    <span
+                      className={`${styles.graphMarker} ${
+                        removed ? styles.graphMarkerRemoved : styles.graphMarkerChanged
+                      }`}
+                    >
+                      {removed ? '-' : change.kind === 'added' ? '+' : '~'}
+                    </span>
+                    <code className={styles.graphLabel}>{graphEdgeDescription(change)}</code>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        <div className={styles.graphPatchMeta}>
+          Affected rows: {storyGraphPreview.affectedRows.join(', ') || 'none'}
+          {storyGraphPreview.addedFields.length > 0
+            ? ` | Added fields: ${storyGraphPreview.addedFields.join(', ')}`
+            : ''}
+        </div>
+        {storyGraphPreview.warnings.map((warning) => (
+          <div className={styles.graphWarning} key={`${warning.code}-${warning.label}`}>
+            Unreachable after this edit: <code className={styles.graphLabel}>{warning.label}</code>
+          </div>
+        ))}
+
+        {resolved ? (
+          <div className={styles.resolvedNote}>
+            {resolved === 'approved' ? 'Approved.' : 'Cancelled.'}
+          </div>
+        ) : (
+          <div className={styles.confirmInlineActions}>
+            <button
+              className={`${styles.btn} ${styles.btnPillPrimary}`}
+              data-testid="agent-confirm"
+              disabled={disabled}
+              aria-label="Approve action"
+              onClick={() => onDecision(actionId, 'approve')}
+            >
+              ✓ Confirm
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPillGhost}`}
+              data-testid="agent-reject"
+              disabled={disabled}
+              aria-label="Reject action"
+              onClick={() => onDecision(actionId, 'reject')}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (isInsertResourceReference) {
     const location = documentPreview.folderName
