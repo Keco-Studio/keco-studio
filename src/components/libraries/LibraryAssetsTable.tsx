@@ -55,7 +55,8 @@ import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization
 import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
 import { getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
-import { detectScriptColumns, getColumnWidthClassKey, orderProperties } from './utils/tableStructure';
+import { getColumnWidthClassKey } from './utils/tableStructure';
+import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
 import { resolveLibraryViewMode } from './libraryViewMode';
 
 export type LibraryAssetsTableProps = {
@@ -458,11 +459,8 @@ export function LibraryAssetsTable({
     setTypeValidationError,
   });
 
-  const orderedProperties = useMemo(() => orderProperties(properties), [properties]);
-  const { scriptColumns, hasScriptColumns } = useMemo(
-    () => detectScriptColumns(orderedProperties),
-    [orderedProperties]
-  );
+  const { orderedProperties, scriptColumns, hasScriptColumns } =
+    useLibraryTableStructure(properties);
   // The current library metadata is authoritative; route reuse must not retain
   // the previously viewed derived library's mode.
   const scriptViewMode = resolveLibraryViewMode(library?.documentExportType);

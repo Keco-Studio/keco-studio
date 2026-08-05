@@ -27,6 +27,9 @@ const allowedUiEventNames = new Set([
   'predefine-cancel-or-delete',
   'predefine-state',
   'sidebar-toggle',
+  // TopBar renders outside SimulationProjectProvider, so the selected project
+  // reaches it through this event rather than context.
+  'simulation-project-changed',
 ]);
 
 function collectFiles(dir: string): string[] {
