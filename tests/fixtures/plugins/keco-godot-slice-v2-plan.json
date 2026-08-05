@@ -1,0 +1,13 @@
+{
+  "tasks": [
+    {
+      "id": "task-01",
+      "files": ["scripts/game.gd"],
+      "dependsOn": [],
+      "servesEvaluations": ["eval-01"],
+      "red": {"command": "pytest tests/test_missing.py", "expected": "fails for missing behavior"},
+      "green": {"command": "pytest tests/test_missing.py", "expected": "passes with zero errors"},
+      "review": {"spec": true, "quality": true}
+    }
+  ]
+}

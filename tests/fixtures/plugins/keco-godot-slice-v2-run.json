@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "runId": "fixture-run",
+  "mode": "manual-v2",
+  "kecoProjectId": "fixture-project",
+  "godotProjectPath": "C:/fixture/game",
+  "godotGitCommit": "fixture-commit",
+  "sliceId": "fixture-slice",
+  "allowedFiles": ["scripts/game.gd"],
+  "writeToken": null,
+  "sourceRevisions": {},
+  "iteration": 0
+}
