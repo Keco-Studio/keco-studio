@@ -66,6 +66,31 @@ type ProposeDocumentEditData = {
   _llmNote?: string;
 };
 
+type ReadStoryGraphData = {
+  libraryId?: string;
+  libraryName?: string;
+  entryLabel?: string;
+  nodes?: unknown[];
+  warnings?: unknown[];
+  summary?: { nodeCount?: number; [key: string]: unknown };
+  nodeCount?: number;
+  visibleNodeCount?: number;
+  _llmNote?: string;
+};
+
+type StoryGraphEditPreviewData = {
+  type?: string;
+  libraryId?: string;
+  libraryName?: string;
+  createdNodes?: unknown[];
+  edgeChanges?: unknown[];
+  affectedRows?: unknown[];
+  addedFields?: unknown[];
+  warnings?: unknown[];
+  before?: unknown;
+  after?: unknown;
+};
+
 function toolNameForMessage(messages: ChatMessage[], toolMessage: ChatMessage): string | undefined {
   const toolCallId = toolMessage.tool_call_id;
   if (!toolCallId) return undefined;
@@ -187,6 +212,78 @@ function compactProposeDocumentEditPayload(result: ToolResult): ToolResult {
   };
 }
 
+function compactReadStoryGraphPayload(result: ToolResult): ToolResult {
+  if (!result.success || !result.data || typeof result.data !== 'object') return result;
+  const data = result.data as ReadStoryGraphData;
+  const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+  const nodeCount = data.summary?.nodeCount ?? data.nodeCount ?? nodes.length;
+  const maxVisible = Math.min(80, nodes.length);
+  const build = (visibleNodeCount: number): ToolResult => ({
+    success: result.success,
+    error: result.error,
+    displayHint: result.displayHint,
+    data: {
+      libraryId: data.libraryId,
+      libraryName: data.libraryName,
+      entryLabel: data.entryLabel,
+      nodes: nodes.slice(0, visibleNodeCount),
+      warnings: warnings.slice(0, 20),
+      summary: data.summary,
+      nodeCount,
+      visibleNodeCount,
+      ...(visibleNodeCount < nodes.length || warnings.length > 20 ? {
+        _llmNote:
+          `This is a partial story graph read: ${visibleNodeCount} of ${nodeCount} nodes are visible. Narrow the request by stable label before editing; do not infer unseen nodes or edges.`,
+      } : {}),
+    },
+  });
+  const complete = build(maxVisible);
+  if (
+    nodes.length <= 80
+    && warnings.length <= 20
+    && JSON.stringify(complete).length <= MAX_TOOL_CONTENT_CHARS
+  ) {
+    return result;
+  }
+  let low = 0;
+  let high = maxVisible;
+  let best = build(0);
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = build(middle);
+    if (JSON.stringify(candidate).length <= MAX_TOOL_CONTENT_CHARS) {
+      best = candidate;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return best;
+}
+
+function compactStoryGraphEditPreview(result: ToolResult): ToolResult {
+  if (!result.success || !result.data || typeof result.data !== 'object') return result;
+  const data = result.data as StoryGraphEditPreviewData;
+  return {
+    success: result.success,
+    error: result.error,
+    displayHint: result.displayHint,
+    data: {
+      type: data.type,
+      libraryId: data.libraryId,
+      libraryName: data.libraryName,
+      createdNodes: data.createdNodes,
+      edgeChanges: data.edgeChanges,
+      affectedRows: data.affectedRows,
+      addedFields: data.addedFields,
+      warnings: data.warnings,
+      before: data.before,
+      after: data.after,
+    },
+  };
+}
+
 function compactToolResult(result: ToolResult, toolName?: string): ToolResult {
   if (toolName === 'query_assets') {
     return compactQueryAssetsPayload(result);
@@ -196,6 +293,12 @@ function compactToolResult(result: ToolResult, toolName?: string): ToolResult {
   }
   if (toolName === 'propose_document_edit') {
     return compactProposeDocumentEditPayload(result);
+  }
+  if (toolName === 'read_story_graph') {
+    return compactReadStoryGraphPayload(result);
+  }
+  if (toolName === 'propose_story_graph_edit') {
+    return compactStoryGraphEditPreview(result);
   }
   return result;
 }
@@ -247,6 +350,14 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
 
   if (toolName === 'propose_document_edit') {
     return JSON.stringify(compactProposeDocumentEditPayload(compact));
+  }
+
+  if (toolName === 'read_story_graph') {
+    return JSON.stringify(compactReadStoryGraphPayload(compact));
+  }
+
+  if (toolName === 'propose_story_graph_edit') {
+    return JSON.stringify(compactStoryGraphEditPreview(compact));
   }
 
   if (toolName === 'query_assets' && compact.data && typeof compact.data === 'object') {

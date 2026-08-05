@@ -75,6 +75,67 @@ describe('compactToolContentForLlm', () => {
     expect(compact.data._llmNote).toMatch(/replace_text|do not use replace_all from partial/i);
   });
 
+  it('compacts a large story graph into bounded valid JSON with explicit visibility counts', () => {
+    const nodes = Array.from({ length: 120 }, (_, index) => ({
+      label: `Node${index}`,
+      title: `Plot ${index}`,
+      rowIndex: index + 1,
+      content: `Long story content ${index} `.repeat(30),
+      outgoing: index < 119 ? [{ kind: 'next', target: `Node${index + 1}` }] : [],
+    }));
+    const compactText = compactToolContentForLlm(JSON.stringify({
+      success: true,
+      displayHint: 'list',
+      data: {
+        libraryId: '11111111-1111-4111-8111-111111111111',
+        libraryName: 'Story',
+        entryLabel: 'Node0',
+        nodes,
+        warnings: [],
+        summary: { nodeCount: 120, edgeCount: 119 },
+      },
+    }), 'read_story_graph');
+    const compact = JSON.parse(compactText) as {
+      data: { nodes: unknown[]; nodeCount: number; visibleNodeCount: number; _llmNote: string };
+    };
+
+    expect(compactText.length).toBeLessThanOrEqual(16_000);
+    expect(compact.data.nodeCount).toBe(120);
+    expect(compact.data.visibleNodeCount).toBe(compact.data.nodes.length);
+    expect(compact.data.visibleNodeCount).toBeLessThan(120);
+    expect(compact.data._llmNote).toMatch(/partial|narrow|label/i);
+  });
+
+  it('keeps only public story graph diff data for the next model turn', () => {
+    const compactText = compactToolContentForLlm(JSON.stringify({
+      success: true,
+      displayHint: 'skill_preview',
+      data: {
+        type: 'story_graph_edit',
+        libraryId: '11111111-1111-4111-8111-111111111111',
+        libraryName: 'Story',
+        createdNodes: [{ label: 'EscapeRoute', contentSummary: 'Escape', rowIndex: 2 }],
+        edgeChanges: [{ kind: 'added', fromLabel: 'Start', toTarget: 'EscapeRoute' }],
+        affectedRows: [1, 2],
+        addedFields: ['Option3'],
+        warnings: [],
+        before: { nodeCount: 1 },
+        after: { nodeCount: 2 },
+        expectedSnapshot: { secret: true },
+        assetUpdates: [{ secret: true }],
+      },
+      internalData: {
+        approvalSignature: 'server-secret',
+        expectedSnapshot: { secret: true },
+      },
+    }), 'propose_story_graph_edit');
+
+    expect(compactText).toContain('EscapeRoute');
+    expect(compactText).not.toContain('server-secret');
+    expect(compactText).not.toContain('expectedSnapshot');
+    expect(compactText).not.toContain('assetUpdates');
+  });
+
   it('keeps a complete in-budget read_document result unchanged', () => {
     const raw = JSON.stringify({
       success: true,
