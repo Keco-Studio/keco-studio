@@ -50,8 +50,8 @@ describe('Keco Codex plugin contract', () => {
       };
     }>('tests/fixtures/plugins/keco-godot-skill-evals.json');
 
-    expect(evaluations.cases).toHaveLength(7);
-    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice')).toHaveLength(3);
+    expect(evaluations.cases).toHaveLength(8);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice')).toHaveLength(4);
     expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-build-tables-from-document')).toHaveLength(1);
     expect(evaluations.cases.filter((item) => item.expectedSkill === 'none')).toHaveLength(3);
     expect(evaluations.baselineObservation.missingContracts).toEqual(
@@ -119,7 +119,7 @@ describe('Keco Codex plugin contract', () => {
     });
     expect(plugin).toMatchObject({
       name: 'keco',
-      version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      version: expect.stringMatching(/^\d+\.\d+\.\d+(?:\+codex\.[0-9A-Za-z.-]+)?$/),
       skills: './skills/',
       mcpServers: './.mcp.json',
     });
@@ -236,12 +236,79 @@ describe('Keco Codex plugin contract', () => {
     expect(agentMetadata).toMatch(/allow_implicit_invocation: true/);
   });
 
+  it('limits Godot orchestration to the installed fourteen-tool MCP contract', () => {
+    const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+    const policy = readFileSync(path.join(godotSkillRoot, 'references', 'godot-mcp-policy.md'), 'utf8');
+    const evalSpec = readFileSync(path.join(godotSkillRoot, 'references', 'eval-spec.md'), 'utf8');
+    const sequence = policy.match(/## Deterministic Evaluation Sequence[\s\S]*?```text\n([\s\S]*?)```/)?.[1];
+
+    expect(sequence).toBeDefined();
+    expect(sequence).toMatch(/run_project[\s\S]*get_debug_output[\s\S]*stop_project/);
+
+    for (const tool of [
+      'get_godot_version',
+      'get_project_info',
+      'list_projects',
+      'launch_editor',
+      'create_scene',
+      'add_node',
+      'load_sprite',
+      'save_scene',
+      'run_project',
+      'stop_project',
+      'get_debug_output',
+      'export_mesh_library',
+      'get_uid',
+      'update_project_uids',
+    ]) {
+      expect(policy).toContain(tool);
+    }
+
+    for (const unavailable of [
+      'godot_exec',
+      'godot_runtime_state',
+      'godot_game_time',
+      'godot_editor_edit',
+    ]) {
+      expect(sequence).not.toContain(unavailable);
+      expect(skill).toMatch(new RegExp(`Do not call or assume[\\s\\S]*${unavailable}`));
+    }
+
+    expect(policy).toMatch(/repository editing tools for text files/i);
+    expect(policy).toMatch(/KECO_EVAL/);
+    expect(evalSpec).toMatch(/no input injection, runtime-state query, time-step control, or screenshot tool/i);
+    expect(evalSpec).toMatch(/manualRequired: true|manual_required/i);
+  });
+
+  it('plans slice-owned UI assets through PixelLab while preserving the existing style', () => {
+    const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+    const assetPlan = readFileSync(path.join(godotSkillRoot, 'references', 'asset-plan.md'), 'utf8');
+    const agentMetadata = readFileSync(path.join(godotSkillRoot, 'agents', 'openai.yaml'), 'utf8');
+
+    expect(skill).toMatch(/DESIGN_DATA[\s\S]*DESIGN_ASSETS[\s\S]*EXPORT_SNAPSHOT/);
+    expect(skill).toMatch(/GENERATE_ASSETS[\s\S]*PERSIST_ASSETS[\s\S]*EXPORT_SNAPSHOT/);
+    expect(skill).toContain('references/asset-plan.md');
+    expect(skill).toMatch(/standalone asset generation/i);
+    expect(assetPlan).toMatch(/create_s_xl_image_pro/);
+    expect(assetPlan).toMatch(/extend-existing-ui[\s\S]*reference/i);
+    expect(assetPlan).toMatch(/new-ui[\s\S]*existing UI/i);
+    expect(assetPlan).toMatch(/API key[\s\S]*(?:environment|MCP configuration)/i);
+    expect(assetPlan).toMatch(/provenance/i);
+    expect(assetPlan).toMatch(/UI Assets/);
+    expect(assetPlan).toMatch(/create_image_upload[\s\S]*HTTP `PUT`[\s\S]*complete_image_upload[\s\S]*update_table_row/i);
+    expect(assetPlan).toMatch(/query_table_rows[\s\S]*before[\s\S]*EXPORT_SNAPSHOT/i);
+    expect(assetPlan).toMatch(/verified `image` object/i);
+    expect(assetPlan).toMatch(/manualRequired|manual_required/);
+    expect(agentMetadata).toMatch(/value: "pixellab"/);
+  });
+
   it('keeps Godot MCP external and routes overlapping work explicitly', () => {
     const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco/.mcp.json');
     const tableSkill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const godotSkill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
 
     expect(mcp.mcpServers).not.toHaveProperty('godot');
+    expect(mcp.mcpServers).not.toHaveProperty('pixellab');
     expect(tableSkill).toMatch(/only creates new tables/i);
     expect(tableSkill).toMatch(/direct edits to an existing table/i);
     expect(godotSkill).toMatch(/do not invoke[^\n]*keco-build-tables-from-document/i);

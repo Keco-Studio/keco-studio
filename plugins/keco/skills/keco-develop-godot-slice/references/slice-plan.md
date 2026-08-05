@@ -45,11 +45,14 @@ outOfScope:
   - save-slot UI
   - new location art
 dataChanges: []
+assetChanges:
+  - create selected inventory-slot state matching existing UI
 godotChanges: []
 allowedFiles:
   - res://scripts/main/state/game_state.gd
   - res://data/generated/keco/**
+  - res://ui/generated/inventory_slot_active.png
 risks: []
 ```
 
-List exact repository paths. Original user changes are never part of the plan unless the slice explicitly builds on them. When a required dependency is discovered outside `allowedFiles`, return to `SELECT_SLICE`, update the plan and affected regressions, and record why; do not silently edit it.
+List exact repository paths, including PixelLab outputs and the UI asset provenance manifest when `assetChanges` is non-empty. Original user changes are never part of the plan unless the slice explicitly builds on them. When a required dependency is discovered outside `allowedFiles`, return to `SELECT_SLICE`, update the plan and affected regressions, and record why; do not silently edit it.

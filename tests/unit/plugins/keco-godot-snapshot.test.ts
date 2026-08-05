@@ -161,4 +161,54 @@ describe('Keco Godot snapshot scripts', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/finite number/i);
   });
+
+  it('normalizes complete Keco image metadata and rejects incomplete image objects', () => {
+    const validImage = writeVariant(temporaryRoot, (value) => {
+      value.tables[0].fields.push({
+        key: 'image',
+        id: 'resource-image-field',
+        label: 'Image',
+        dataType: 'image',
+        required: false,
+      });
+      value.tables[0].rows[0].values.image = {
+        url: 'https://storage.example/food.png',
+        path: 'user/project/food.png',
+        fileName: 'food.png',
+        fileSize: 1024,
+        fileType: 'image/png',
+        uploadedAt: '2026-08-05T12:00:00Z',
+      };
+    });
+    const validOutput = path.join(temporaryRoot, 'valid-image');
+    const validResult = runPython(exporter, ['--input', validImage, '--output-dir', validOutput]);
+
+    expect(validResult.status).toBe(0);
+    const table = JSON.parse(readFileSync(path.join(validOutput, 'tables', 'resources.json'), 'utf8'));
+    expect(table.rows[0].values.image).toMatchObject({
+      fileName: 'food.png',
+      fileType: 'image/png',
+      fileSize: 1024,
+    });
+
+    const incompleteImage = writeVariant(temporaryRoot, (value) => {
+      value.tables[0].fields.push({
+        key: 'image',
+        id: 'resource-image-field',
+        label: 'Image',
+        dataType: 'image',
+        required: false,
+      });
+      value.tables[0].rows[0].values.image = { url: 'https://storage.example/food.png' };
+    });
+    const invalidResult = runPython(exporter, [
+      '--input',
+      incompleteImage,
+      '--output-dir',
+      path.join(temporaryRoot, 'incomplete-image'),
+    ]);
+
+    expect(invalidResult.status).toBe(1);
+    expect(invalidResult.stderr).toMatch(/image metadata/i);
+  });
 });

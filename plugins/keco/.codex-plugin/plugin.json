@@ -1,6 +1,6 @@
 {
   "name": "keco",
-  "version": "0.2.0",
+  "version": "0.2.0+codex.20260805022052",
   "description": "Build Keco project data and evaluated Godot gameplay slices with guided Codex workflows.",
   "author": {
     "name": "Keco Studio"
@@ -12,7 +12,10 @@
     "longDescription": "Connect Codex to Keco and use guided workflows to build verified project tables or implement and evaluate bounded Godot gameplay slices from Keco designs.",
     "developerName": "Keco Studio",
     "category": "Productivity",
-    "capabilities": ["Data access", "Write"],
+    "capabilities": [
+      "Data access",
+      "Write"
+    ],
     "defaultPrompt": [
       "Build Keco tables from a project design document.",
       "Turn my combat specification into related Keco tables.",

@@ -30,6 +30,14 @@ DATA_TYPES = {
     "reference",
     "image",
 }
+IMAGE_FILE_TYPES = {
+    "image/png": {"png"},
+    "image/jpeg": {"jpg", "jpeg"},
+    "image/gif": {"gif"},
+    "image/webp": {"webp"},
+    "image/svg+xml": {"svg"},
+}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 class SnapshotError(ValueError):
@@ -185,6 +193,30 @@ def _normalize_scalar(value: Any, field: dict[str, Any], location: str) -> Any:
     elif data_type == "image":
         if not isinstance(value, (str, dict)):
             raise SnapshotError(f"{location} must be an image string or object")
+        if isinstance(value, str):
+            value = _string(value, location)
+        else:
+            required_keys = {"url", "path", "fileName", "fileSize", "fileType", "uploadedAt"}
+            if set(value) != required_keys:
+                raise SnapshotError(f"{location} image metadata must contain exactly {sorted(required_keys)}")
+            file_name = _string(value.get("fileName"), f"{location}.fileName")
+            file_type = _string(value.get("fileType"), f"{location}.fileType")
+            file_size = value.get("fileSize")
+            if file_type not in IMAGE_FILE_TYPES:
+                raise SnapshotError(f"{location} image metadata has unsupported fileType {file_type!r}")
+            if not isinstance(file_size, int) or isinstance(file_size, bool) or not 1 <= file_size <= MAX_IMAGE_BYTES:
+                raise SnapshotError(f"{location} image metadata fileSize must be between 1 and {MAX_IMAGE_BYTES}")
+            extension = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+            if extension not in IMAGE_FILE_TYPES[file_type]:
+                raise SnapshotError(f"{location} image metadata fileName does not match fileType")
+            value = {
+                "fileName": file_name,
+                "fileSize": file_size,
+                "fileType": file_type,
+                "path": _string(value.get("path"), f"{location}.path"),
+                "uploadedAt": _string(value.get("uploadedAt"), f"{location}.uploadedAt"),
+                "url": _string(value.get("url"), f"{location}.url"),
+            }
     elif data_type == "reference":
         reference = _mapping(value, location)
         target_table_key = _key(reference.get("targetTableKey"), "target table key")

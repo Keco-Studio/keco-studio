@@ -13,5 +13,8 @@ dependencies:
     - type: "mcp"
       value: "godot"
       description: "Godot editor and runtime MCP server"
+    - type: "mcp"
+      value: "pixellab"
+      description: "PixelLab UI image generation MCP server"
 policy:
   allow_implicit_invocation: true

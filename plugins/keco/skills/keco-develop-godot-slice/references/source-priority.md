@@ -7,8 +7,8 @@ Use this contract during `CONNECT`, `DISCOVER`, and `RESOLVE_SOURCES`. Perform n
 1. Probe the Keco connection and resolve a unique stable `projectId`.
 2. Read project structure, page document metadata, and read every relevant document section without treating truncation as complete.
 3. Query every relevant Keco table page with stable IDs and semantic field labels.
-4. Use `godot_project get_info` and `addon_status` to verify the configured editor is open on the intended project.
-5. Record the Godot project path, engine version, main scene, addon status, Git commit, branch, and dirty paths.
+4. Use `get_godot_version`, `list_projects`, and `get_project_info` to verify the intended project. Resolve addon/plugin configuration by reading `project.godot` and repository files because this MCP has no `addon_status` tool.
+5. Record the Godot project path, engine version, main scene, addon configuration (`configured`, `missing`, or `unknown`), Git commit, branch, and dirty paths. If the editor is not running, `launch_editor` may be used before the final project-info check.
 6. Stop before any write if either project identity is missing, ambiguous, or mismatched.
 
 ## Priority
@@ -44,7 +44,7 @@ godot:
   projectPath: C:\\path\\to\\game
   engineVersion: 4.7
   mainScene: res://scenes/main.tscn
-  addonStatus: compatible
+  addonStatus: configured|missing|unknown
   gitCommit: full-sha
   branch: feature
   dirtyPaths: []
