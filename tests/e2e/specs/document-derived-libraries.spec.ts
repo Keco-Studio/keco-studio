@@ -331,7 +331,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     }
   });
 
-  test('table and script results appear once beneath their source document', async ({ page }) => {
+  test('table and script results appear once beside their source document', async ({ page }) => {
     const tableName = `Derived table ${crypto.randomUUID().slice(0, 6)}`;
     const scriptName = `Derived script ${crypto.randomUUID().slice(0, 6)}`;
     let tableRequestBody = '';
@@ -424,14 +424,15 @@ test.describe.serial('Document-derived library lifecycle', () => {
 
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
     await expect(sidebarTitle(page, scriptName)).toHaveCount(1, { timeout: 30_000 });
+    // Documents and their generated tables/scripts are sibling leaves of the folder.
     await expectTreeParent(page, fixture.folderDocument.name, fixture.sourceFolder.name);
-    await expectTreeParent(page, tableName, fixture.folderDocument.name);
-    await expectTreeParent(page, scriptName, fixture.folderDocument.name);
+    await expectTreeParent(page, tableName, fixture.sourceFolder.name);
+    await expectTreeParent(page, scriptName, fixture.sourceFolder.name);
   });
 
   test('moving a document moves its complete subtree', async ({ page }) => {
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
-    await expandTreeNode(page, fixture.folderDocument.name);
+    await expandTreeNode(page, fixture.sourceFolder.name);
     await expect(sidebarTitle(page, tableLibrary.name)).toBeVisible();
     await expect(sidebarTitle(page, scriptLibrary.name)).toBeVisible();
 
@@ -449,8 +450,8 @@ test.describe.serial('Document-derived library lifecycle', () => {
     expect(await treeParentTitle(page, fixture.folderDocument.name)).not.toBe(
       fixture.sourceFolder.name
     );
-    await expectTreeParent(page, tableLibrary.name, fixture.folderDocument.name);
-    await expectTreeParent(page, scriptLibrary.name, fixture.folderDocument.name);
+    await expectTreeParent(page, tableLibrary.name, fixture.destinationFolder.name);
+    await expectTreeParent(page, scriptLibrary.name, fixture.destinationFolder.name);
 
     const [{ data: documentRow, error: documentError }, { data: libraryRows, error: libraryError }] =
       await Promise.all([
@@ -473,7 +474,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
 
   test('deleting one child preserves the document and sibling', async ({ page }) => {
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
-    await expandTreeNode(page, fixture.folderDocument.name);
+    await expandTreeNode(page, fixture.destinationFolder.name);
     await sidebarTitle(page, tableLibrary.name).click({ button: 'right' });
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     const dialog = page.getByRole('alertdialog', { name: 'Confirm deletion' });
@@ -490,7 +491,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     expect(document?.id).toBe(fixture.folderDocument.id);
     expect(script?.id).toBe(scriptLibrary.id);
     await expect(sidebarTitle(page, scriptLibrary.name)).toBeVisible();
-    await expectTreeParent(page, scriptLibrary.name, fixture.folderDocument.name);
+    await expectTreeParent(page, scriptLibrary.name, fixture.destinationFolder.name);
   });
 
   test('deleting the document cascades every child', async ({ page }) => {
@@ -503,7 +504,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     });
 
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
-    await expandTreeNode(page, fixture.folderDocument.name);
+    await expandTreeNode(page, fixture.destinationFolder.name);
     await expect(sidebarTitle(page, replacementTableName)).toBeVisible();
     await expect(sidebarTitle(page, scriptLibrary.name)).toBeVisible();
 
@@ -606,6 +607,9 @@ test.describe.serial('Document-derived library lifecycle', () => {
       document_export_type: 'script',
     });
     await expect(sidebarTitle(page, rootScriptName)).toHaveCount(1, { timeout: 30_000 });
-    await expectTreeParent(page, rootScriptName, fixture.rootDocument.name);
+    // A root document's script is a root-level sibling, so it sits outside any folder.
+    await expect
+      .poll(() => treeParentTitle(page, rootScriptName), { timeout: 30_000 })
+      .toBeNull();
   });
 });
