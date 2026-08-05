@@ -8,7 +8,9 @@ export function buildPersistedPlotGraph(
 ): FlowGraph | undefined {
   try {
     const parsed = parseStoryPlotPlan(value);
-    const storyNodeIds = parsed.nodes.flatMap((node) => node.storyNodeIds);
+    const storyNodeIds = parsed.version === 2
+      ? parsed.storyNodeOrder
+      : parsed.nodes.flatMap((node) => node.storyNodeIds);
     if (storyNodeIds.length !== rowCount) return undefined;
     const plan = validateStoryPlotPlan(parsed, storyNodeIds);
     const rowIndexByStoryNodeId = new Map(

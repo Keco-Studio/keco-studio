@@ -30,5 +30,6 @@ function chunkedId(
   sourceId: string
 ): string {
   const prefix = `C${chunkIndex + 1}${kind}${itemIndex + 1}_`;
-  return `${prefix}${sourceId.slice(0, MAX_STORY_ID_LENGTH - prefix.length)}`;
+  const unprefixed = sourceId.replace(/^(?:C\d+[NC]\d+_)+/, '');
+  return `${prefix}${unprefixed.slice(0, MAX_STORY_ID_LENGTH - prefix.length)}`;
 }

@@ -1,7 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
 import { parseStoryExtraction, type StoryExtraction } from './schema';
-import { materializeStoryExtraction } from './materializer';
+import {
+  materializeStoryExtraction,
+  StoryExtractionValidationError,
+} from './materializer';
 
 const sourceText = [
   'Seven: We must pick a route.',
@@ -93,6 +96,26 @@ describe('full story extraction materializer', () => {
     expect(() => materialize(value)).toThrow(/unknown source unit/i);
   });
 
+  it('auto-assigns source units already classified as structural controls', () => {
+    const source = segmentStorySource([
+      'Pick a route.',
+      '【选项出现】',
+      'The story continues.',
+    ].join('\n'), 'structural-control');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      choices: [],
+      nodes: [
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['structural-control:0'], commandSources: [], nextNodeId: 'end' },
+        { id: 'end', type: 'narration', speaker: '', content: 'The story continues.', sourceUnitIds: ['structural-control:2'], commandSources: [], nextNodeId: '' },
+      ],
+    };
+
+    expect(materializeStoryExtraction(value, source).nodes).toHaveLength(2);
+  });
+
   it('normalizes redundant structural ownership when visible evidence uses the unit', () => {
     const value = extraction();
     value.structuralUnitIds.push('fixture:0');
@@ -138,6 +161,36 @@ describe('full story extraction materializer', () => {
     const value = extraction();
     value.structuralUnitIds = [];
     expect(() => materialize(value)).toThrow(/not assigned/i);
+  });
+
+  it('rejects an orphan component even when it already targets a reachable node', () => {
+    const source = segmentStorySource([
+      'The story starts.',
+      'The main path continues.',
+      'A displaced scene returns to the main path.',
+    ].join('\n'), 'orphan-insert');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      choices: [],
+      nodes: [
+        {
+          id: 'start', type: 'narration', speaker: '', content: 'The story starts.',
+          sourceUnitIds: ['orphan-insert:0'], commandSources: [], nextNodeId: 'main',
+        },
+        {
+          id: 'main', type: 'narration', speaker: '', content: 'The main path continues.',
+          sourceUnitIds: ['orphan-insert:1'], commandSources: [], nextNodeId: '',
+        },
+        {
+          id: 'orphan', type: 'narration', speaker: '', content: 'A displaced scene returns to the main path.',
+          sourceUnitIds: ['orphan-insert:2'], commandSources: [], nextNodeId: 'main',
+        },
+      ],
+    };
+
+    expect(() => materializeStoryExtraction(value, source)).toThrow(/unreachable.*orphan/i);
   });
 
   it('classifies an omitted pure merge marker as structural evidence', () => {
@@ -658,7 +711,19 @@ describe('full story extraction materializer', () => {
     const unreachable = extraction();
     unreachable.choices = [];
     unreachable.nodes[0].nextNodeId = 'end';
-    expect(() => materialize(unreachable)).toThrow(/unreachable.*energy/i);
+    try {
+      materialize(unreachable);
+      throw new Error('Expected unreachable graph validation to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(StoryExtractionValidationError);
+      expect((error as StoryExtractionValidationError).issues).toContainEqual(
+        expect.objectContaining({
+          code: 'unreachable_node',
+          nodeIds: ['energy'],
+          unitIds: ['fixture:3'],
+        })
+      );
+    }
   });
 
   it('rejects choice fallthrough and automatic cycles', () => {
@@ -669,5 +734,32 @@ describe('full story extraction materializer', () => {
     const cycle = extraction();
     cycle.nodes[1].nextNodeId = 'energy';
     expect(() => materialize(cycle)).toThrow(/automatic cycle/i);
+  });
+
+  it('rejects an automatic path from one sibling choice into another sibling target', () => {
+    const text = [
+      'Pick a route.',
+      'Take the left route.',
+      'Take the right route.',
+      'The left route begins.',
+      'The right route begins.',
+    ].join('\n');
+    const source = segmentStorySource(text, 'sibling-leak');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      choices: [
+        { id: 'left_choice', fromNodeId: 'start', text: 'Take the left route.', targetNodeId: 'left', sourceUnitIds: ['sibling-leak:1'], commandSources: [] },
+        { id: 'right_choice', fromNodeId: 'start', text: 'Take the right route.', targetNodeId: 'right', sourceUnitIds: ['sibling-leak:2'], commandSources: [] },
+      ],
+      nodes: [
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['sibling-leak:0'], commandSources: [], nextNodeId: '' },
+        { id: 'left', type: 'narration', speaker: '', content: 'The left route begins.', sourceUnitIds: ['sibling-leak:3'], commandSources: [], nextNodeId: 'right' },
+        { id: 'right', type: 'narration', speaker: '', content: 'The right route begins.', sourceUnitIds: ['sibling-leak:4'], commandSources: [], nextNodeId: '' },
+      ],
+    };
+
+    expect(() => materializeStoryExtraction(value, source)).toThrow(/sibling.*target/i);
   });
 });

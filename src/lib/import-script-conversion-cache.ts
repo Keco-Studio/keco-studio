@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const CACHE_VERSION = 'story-ir-conversion-v1';
+const CACHE_VERSION = 'story-ir-conversion-v50-merge-plot-titles';
 const MAX_ENTRIES = 8;
 const TTL_MS = 10 * 60 * 1000;
 

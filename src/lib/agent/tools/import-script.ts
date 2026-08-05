@@ -78,10 +78,10 @@ async function* executeStream(
 
   const queue = new ProgressQueue();
   const resolutionPromise = resolveStoryForImport(source.content, {
-    sourceId: source.sourceId,
-    roleMap: toRoleMap(data.characterMapping),
-    enableAiPlotPlanning: true,
-    onProgress: (event) => queue.push(event),
+        sourceId: source.sourceId,
+        roleMap: toRoleMap(data.characterMapping),
+        enableAiPlotPlanning: false,
+        onProgress: (event) => queue.push(event),
   })
     .then((resolved) => ({ resolved }))
     .catch((error: unknown) => ({ error }))

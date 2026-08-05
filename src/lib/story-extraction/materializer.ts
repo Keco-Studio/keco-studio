@@ -567,7 +567,10 @@ export function normalizeStoryExtraction(
     if (
       !visibleUnitIds.has(unit.id)
       && !structuralUnitIds.has(unit.id)
-      && isClearlyStructuralUnit(unit.text)
+      && (
+        isClearlyStructuralUnit(unit.text)
+        || isSourceUnitStructurallyClassified(source, unit.id)
+      )
     ) {
       structuralUnitIds.add(unit.id);
     }
@@ -581,14 +584,32 @@ export function normalizeStoryExtraction(
   };
 }
 
+function isSourceUnitStructurallyClassified(
+  source: SegmentedStorySource,
+  unitId: string
+): boolean {
+  const segments = source.segments.filter((segment) => segment.unitId === unitId);
+  const controlKinds = new Set(['structural', 'branch_marker', 'jump_hint', 'command']);
+  return segments.length > 0 && segments.every((segment) => (
+    !segment.display && controlKinds.has(segment.kind)
+  ));
+}
+
 function validateGraph(
   extraction: StoryExtraction,
   nodesById: Map<string, StoryExtractionNode>,
   choicesByNode: Map<string, StoryExtractionChoice[]>,
   issues: StoryExtractionIssue[]
 ): void {
-  const add = (code: StoryExtractionIssueCode, message: string, nodeIds: string[]) => {
-    issues.push({ code, message, unitIds: [], nodeIds });
+  const add = (
+    code: StoryExtractionIssueCode,
+    message: string,
+    nodeIds: string[],
+    unitIds = [...new Set(nodeIds.flatMap((nodeId) => (
+      nodesById.get(nodeId)?.sourceUnitIds ?? []
+    )))]
+  ) => {
+    issues.push({ code, message, unitIds, nodeIds });
   };
   if (!nodesById.has(extraction.entryNodeId)) {
     add('invalid_entry', `Entry node ${extraction.entryNodeId} does not exist`, [extraction.entryNodeId]);
@@ -601,6 +622,7 @@ function validateGraph(
       add('unresolved_target', `Target ${node.nextNodeId} does not exist`, [node.id]);
     }
   }
+  validateSiblingBranchIsolation(nodesById, choicesByNode, add);
   for (const choice of extraction.choices) {
     if (!nodesById.has(choice.fromNodeId)) {
       add('unresolved_target', `Choice owner ${choice.fromNodeId} does not exist`, [choice.fromNodeId]);
@@ -638,6 +660,36 @@ function validateGraph(
       }
       trail.add(current.id);
       current = nodesById.get(current.nextNodeId);
+    }
+  }
+}
+
+function validateSiblingBranchIsolation(
+  nodesById: Map<string, StoryExtractionNode>,
+  choicesByNode: Map<string, StoryExtractionChoice[]>,
+  add: (code: StoryExtractionIssueCode, message: string, nodeIds: string[]) => void
+): void {
+  for (const choices of choicesByNode.values()) {
+    if (choices.length < 2) continue;
+    const siblingTargets = new Set(choices.map((choice) => choice.targetNodeId));
+    for (const choice of choices) {
+      const seen = new Set<string>();
+      let currentId = choice.targetNodeId;
+      while (currentId && !seen.has(currentId)) {
+        seen.add(currentId);
+        if (currentId !== choice.targetNodeId && siblingTargets.has(currentId)) {
+          add(
+            'branch_leak',
+            `Sibling branch ${choice.targetNodeId} enters sibling target ${currentId}`,
+            [choice.fromNodeId, choice.targetNodeId, currentId]
+          );
+          break;
+        }
+        // A nested decision owns the next edge; stop here and validate that
+        // decision's sibling paths independently.
+        if (choicesByNode.has(currentId)) break;
+        currentId = nodesById.get(currentId)?.nextNodeId ?? '';
+      }
     }
   }
 }

@@ -5,6 +5,8 @@ export const STORY_PLOT_GROUPING_PROMPT = `You group one canonical visual-novel 
 Call submit_story_plot_grouping exactly once and return no prose.
 Use every supplied story node ID exactly once, in the exact supplied order.
 Each plot node must contain one or more contiguous story nodes. Never reorder, omit, duplicate, or invent IDs.
+Decision constraints are server-owned: every listed decision owner must be in a different plot node from every listed option target. Never group a decision owner with one of its option targets, because that would hide the selectable edge.
+Keep sibling option targets in separate plot nodes when they lead to different branches. A shared merge node may be grouped with later shared content only when every incoming branch reaches that same node.
 Create a separate plot node for meaningful story sections such as background, character introduction, suspense opening, opening dialogue, a decision point, each branch route, each route ending, flashback, epilogue, and teaser when present.
 Do not create plot nodes for selectable option text. Options belong only on graph edges, which the server derives from canonical options.
 Titles must be concise Chinese labels copied or minimally shortened from visible section headings, route names, or ending names. Do not summarize dialogue as a new event.
@@ -46,6 +48,13 @@ export function buildStoryPlotGroupingMessages(document: StoryDocument): ChatMes
     { role: 'user', content: JSON.stringify({
       task: 'GROUP_CANONICAL_STORY_PLOT',
       entryNodeId: document.entryLabel,
+      decisionPoints: document.nodes.flatMap((node) => node.options.length > 0 ? [{
+        ownerNodeId: node.label,
+        options: node.options.map((option) => ({
+          text: option.text,
+          targetNodeId: option.target,
+        })),
+      }] : []),
       nodes: document.nodes.map((node) => ({
         id: node.label,
         type: node.type,

@@ -96,4 +96,18 @@ describe('Keco Script Import Documentation wiring', () => {
     expect(importPage).toContain('ImportDocumentationView');
     expect(docPage).toMatch(/documentId|Document/);
   });
+
+  it('projects imported flow charts deterministically without AI plot planning', () => {
+    const route = read('src/app/api/import-script/route.ts');
+
+    expect(route).toContain('enableAiPlotPlanning: false');
+    expect(route).not.toContain('enableAiPlotPlanning: true');
+  });
+
+  it('uses the same deterministic plot projection for Agent script imports', () => {
+    const source = read('src/lib/agent/tools/import-script.ts');
+
+    expect(source).toContain('enableAiPlotPlanning: false');
+    expect(source).not.toContain('enableAiPlotPlanning: true');
+  });
 });

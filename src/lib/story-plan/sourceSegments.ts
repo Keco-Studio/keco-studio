@@ -1,6 +1,17 @@
 import { parseNumericCommand } from '@/lib/story-ir/commands';
 import type { SourceRef, SourceUnit } from '@/lib/story-ir/schema';
 import { sourceRefForUnit, unitizeSource } from '@/lib/story-ir/sourceUnits';
+import { parseHierarchicalBranchMarker } from './hierarchicalBranchMarkers';
+import {
+  isFinalMenuMerge,
+  isMenuDivider,
+  isMenuMarker,
+  parseFinalMenuMerge,
+  parseMenuBranchTarget,
+  parseMenuChoiceLine,
+  type MenuChoiceLine,
+} from './menuBranchMarkers';
+import { parseScenarioBranchMarker } from './scenarioBranchMarkers';
 
 export type SourceSegmentKind =
   | 'speaker'
@@ -50,9 +61,20 @@ const EXPLICIT_OPTION_PREFIX = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s*[：:]/;
 const JUMP_ONLY_PATTERN = /^[（(]\s*Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?\s*[）)]$/i;
 const JUMP_TOKEN_PATTERN = /Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
 const CHINESE_BRANCH_PATTERN = /^【\s*\u5206\u652f\u9009\u62e9(?:[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+)?\s*[：:]\s*([^】]+?)\s*】$/;
+const OUTCOME_PATTERN = /^\s*\*?\s*→\s*结局[^：:]*[：:]\s*(.+)$/;
+const BRACKETED_ENDING_PATTERN = /^\s*【\s*结局[^：:】]*[：:][^】]+】[\s\S]*$/;
 const HEADING_PATTERN = /^【([^】]+)】$/;
+const ACT_OR_SCENE_PATTERN = /^(?:第[一二三四五六七八九十百零〇两\d]+幕(?:[（(][^）)]*[）)])?|场景[一二三四五六七八九十百零〇两\d]+)\s*[：:].+$/;
+const CHINESE_SCRIPT_SECTION_PATTERN = /^(?:人物|角色|剧情背景|场景|字幕)\s*[：:][\s\S]*$/;
+const CHARACTER_PROFILE_PATTERN = /^[^：:]{1,32}[：:]\s*\d{1,3}岁[，,]/;
+const PAREN_CHARACTER_PROFILE_PATTERN = /^[^：:]{1,32}[（(][^）)]*\d{1,3}岁[^）)]*[）)][：:]/;
+const BARE_CHARACTER_SECTION_PATTERN = /^(?:人物|角色|人物设定|角色设定)$/;
+const BRACKETED_BRANCH_CONTROL_PATTERN = /^【\s*(?:开篇固定剧情|第[一二三四五六七八九十百零〇两\d]+层级.*分支.*|.*分支.*(?:统一|共同).*(?:汇入|汇合|汇聚).*)\s*】$/;
+const VOICEOVER_CUE_PATTERN = /^[（(](画外音[：:].+)[）)]$/;
+const NUMBERED_ENDING_PATTERN = /^结局\s*\d+\s*[：:].+$/;
 const DIALOGUE_PATTERN = /^([^：:]{1,64})[：:]\s*(.+)$/;
 const SPEAKER_CUE_PATTERN = /^(.+?)[（(]([^）)]*)[）)]$/;
+const LEADING_STAGE_DIRECTION_PATTERN = /^[（(]([^）)]*)[）)]\s*/;
 const COMMAND_TOKEN_PATTERN = /\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g;
 
 export function segmentStorySource(content: string, sourceId: string): SegmentedStorySource {
@@ -61,6 +83,7 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
   const commands: SourceCommand[] = [];
   const segmentCounts = new Map<string, number>();
   const commandCounts = new Map<string, number>();
+  const menuStructure = collectMenuStructure();
 
   const push = (
     unit: SourceUnit,
@@ -117,6 +140,67 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
   ): void {
     const line = unit.text;
 
+    if (
+      BARE_CHARACTER_SECTION_PATTERN.test(line)
+      || BRACKETED_BRANCH_CONTROL_PATTERN.test(line)
+    ) {
+      add(unit, 'structural', 0, line.length, false, true);
+      return;
+    }
+
+    if (isMenuDivider(line)) {
+      add(unit, 'structural', 0, line.length, false, false);
+      return;
+    }
+
+    if (isMenuMarker(line)) {
+      add(unit, 'structural', 0, line.length, false, true);
+      return;
+    }
+
+    const menuChoice = menuStructure.choicesByUnitId.get(unit.id);
+    if (menuChoice) {
+      add(unit, 'choice_text', menuChoice.textStart, menuChoice.textEnd, true, true);
+      return;
+    }
+
+    const menuTarget = menuStructure.targetsByUnitId.get(unit.id);
+    if (menuTarget) {
+      add(unit, 'scene_heading', menuTarget.headingStart, menuTarget.headingEnd, true, true);
+      return;
+    }
+
+    if (menuStructure.mergeUnitIds.has(unit.id)) {
+      const merge = parseFinalMenuMerge(line)!;
+      add(unit, 'scene_heading', merge.headingStart, merge.headingEnd, true, true);
+      return;
+    }
+
+    const scenarioBranch = parseScenarioBranchMarker(line);
+    if (scenarioBranch) {
+      if (scenarioBranch.kind === 'choice') {
+        add(unit, 'choice_text', scenarioBranch.textStart, scenarioBranch.textEnd, true, true);
+      } else if (scenarioBranch.kind === 'core' || scenarioBranch.kind === 'section') {
+        add(unit, 'scene_heading', scenarioBranch.textStart, scenarioBranch.textEnd, true, true);
+      } else {
+        add(unit, 'structural', 0, line.length, false, true);
+      }
+      return;
+    }
+
+    const hierarchicalBranch = parseHierarchicalBranchMarker(line);
+    if (hierarchicalBranch) {
+      add(
+        unit,
+        'choice_text',
+        hierarchicalBranch.choiceStart,
+        hierarchicalBranch.choiceEnd,
+        true,
+        true
+      );
+      return;
+    }
+
     const naturalBranch = NATURAL_BRANCH_PATTERN.exec(line);
     if (naturalBranch) {
       addMatchedText(unit, add, 'choice_text', naturalBranch[1], 0, true, true);
@@ -163,9 +247,43 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
       return;
     }
 
+    if (OUTCOME_PATTERN.test(line)) {
+      add(unit, 'narration', 0, line.length, true, true);
+      return;
+    }
+
+    if (BRACKETED_ENDING_PATTERN.test(line)) {
+      add(unit, 'narration', 0, line.length, true, true);
+      return;
+    }
+
     const heading = HEADING_PATTERN.exec(line);
     if (heading) {
       addMatchedText(unit, add, 'scene_heading', heading[1], 0, true, true);
+      return;
+    }
+
+    if (ACT_OR_SCENE_PATTERN.test(line)) {
+      add(unit, 'scene_heading', 0, line.length, true, true);
+      return;
+    }
+
+    if (CHINESE_SCRIPT_SECTION_PATTERN.test(line) || NUMBERED_ENDING_PATTERN.test(line)) {
+      add(unit, 'scene_heading', 0, line.length, true, true);
+      return;
+    }
+
+    const voiceoverCue = VOICEOVER_CUE_PATTERN.exec(line);
+    if (voiceoverCue) {
+      addMatchedText(unit, add, 'scene_heading', voiceoverCue[1], 0, true, true);
+      return;
+    }
+
+    if (
+      CHARACTER_PROFILE_PATTERN.test(line)
+      || PAREN_CHARACTER_PROFILE_PATTERN.test(line)
+    ) {
+      add(unit, 'narration', 0, line.length, true, true);
       return;
     }
 
@@ -198,13 +316,72 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
       } else {
         addMatchedText(unit, add, 'speaker', left, 0, false, true);
       }
-      const dialogueStart = skipWhitespace(line, colonIndex + 1);
+      let dialogueStart = skipWhitespace(line, colonIndex + 1);
+      const leadingStageDirection = LEADING_STAGE_DIRECTION_PATTERN.exec(
+        line.slice(dialogueStart)
+      );
+      if (leadingStageDirection) {
+        addMatchedText(
+          unit,
+          add,
+          'stage_direction',
+          leadingStageDirection[1].trim(),
+          dialogueStart,
+          true,
+          true
+        );
+        dialogueStart += leadingStageDirection[0].length;
+      }
       const [start, end] = stripMatchedQuoteSpan(line, dialogueStart, line.length);
-      add(unit, 'dialogue', start, end, true, true);
+      if (end > start) add(unit, 'dialogue', start, end, true, true);
       return;
     }
 
     add(unit, 'narration', 0, line.length, true, true);
+  }
+
+  function collectMenuStructure(): {
+    choicesByUnitId: Map<string, MenuChoiceLine>;
+    targetsByUnitId: Map<string, ReturnType<typeof parseMenuBranchTarget> & {}>;
+    mergeUnitIds: Set<string>;
+  } {
+    const choicesByUnitId = new Map<string, MenuChoiceLine>();
+    const targetsByUnitId = new Map<string, ReturnType<typeof parseMenuBranchTarget> & {}>();
+    const mergeUnitIds = new Set<string>();
+    const declaredCodes = new Set<string>();
+    let collectingChoices = false;
+    let collectingBranches = false;
+    for (const unit of units) {
+      if (isMenuMarker(unit.text)) {
+        collectingChoices = true;
+        collectingBranches = false;
+        declaredCodes.clear();
+        continue;
+      }
+      if (collectingChoices) {
+        if (isMenuDivider(unit.text)) continue;
+        const choice = parseMenuChoiceLine(unit.text);
+        if (choice) {
+          choicesByUnitId.set(unit.id, choice);
+          declaredCodes.add(choice.code);
+          continue;
+        }
+        const target = parseMenuBranchTarget(unit.text);
+        collectingChoices = false;
+        collectingBranches = Boolean(target && declaredCodes.has(target.code));
+        if (collectingBranches && target) targetsByUnitId.set(unit.id, target);
+        continue;
+      }
+      if (!collectingBranches) continue;
+      if (isFinalMenuMerge(unit.text)) {
+        mergeUnitIds.add(unit.id);
+        collectingBranches = false;
+        continue;
+      }
+      const target = parseMenuBranchTarget(unit.text);
+      if (target && declaredCodes.has(target.code)) targetsByUnitId.set(unit.id, target);
+    }
+    return { choicesByUnitId, targetsByUnitId, mergeUnitIds };
   }
 }
 

@@ -166,6 +166,10 @@
   stroke-width: 1.5;
 }
 
+.flowMergeJunction {
+  fill: #94a3b8;
+}
+
 .flowEdgeLabel {
   fill: #475569;
   stroke: #ffffff;
@@ -177,6 +181,12 @@
 
 .flowNode {
   cursor: pointer;
+  outline: none;
+}
+
+.flowNode:focus,
+.flowNode:focus-visible {
+  outline: none;
 }
 
 .flowNodeRect {

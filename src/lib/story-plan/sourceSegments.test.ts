@@ -124,6 +124,176 @@ describe('story source segmentation', () => {
     ]));
   });
 
+  it('extracts explicit hierarchical branch headings as choices instead of dialogue', () => {
+    const content = [
+      '分支点 A：理性判断',
+      '分支点 A1：触碰黑镜',
+      '→ 分支 B1：信任日记，按原序开门',
+      '嵌套分支A2：温柔宽慰 → 结局二（善意留白）',
+      '分支二：沉默旁观 → 结局三（擦肩陌路）',
+    ].join('\n');
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments.filter((segment) => segment.kind === 'choice_text').map((segment) => segment.text))
+      .toEqual(['理性判断', '触碰黑镜', '信任日记，按原序开门', '温柔宽慰', '沉默旁观']);
+    expect(result.segments.some((segment) => segment.kind === 'speaker')).toBe(false);
+  });
+
+  it('classifies explicit ending arrows as narration instead of a speaker', () => {
+    const result = segmentStorySource('→ 结局一：错失之门（三天后入口被封死。）', 'fixture');
+
+    expect(result.segments).toEqual([
+      expect.objectContaining({ kind: 'narration', text: '→ 结局一：错失之门（三天后入口被封死。）' }),
+    ]);
+    expect(result.segments.some((segment) => segment.kind === 'speaker')).toBe(false);
+  });
+
+  it('keeps a bracketed ending title and summary together as narration', () => {
+    const result = segmentStorySource(
+      '【结局：花香引路】—— 阿城获得了工作机会。',
+      'fixture'
+    );
+
+    expect(result.segments).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'narration',
+        text: '【结局：花香引路】—— 阿城获得了工作机会。',
+      }),
+    ]));
+    expect(result.segments.some((segment) => segment.kind === 'speaker')).toBe(false);
+  });
+
+  it('extracts wrapped branch choices and classifies act headings as scenes', () => {
+    const content = [
+      '第一幕：抉择之夜',
+      '场景一：林晓家卧室。夜。',
+      '【分支点 A：选择宏图资本，挑战终面。】（转第二幕）',
+      '【分支点 B2a：坚持专业操守，拒绝“注水”。】（转第六幕）',
+    ].join('\n');
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments.filter((segment) => segment.kind === 'scene_heading').map((segment) => segment.text))
+      .toEqual(['第一幕：抉择之夜', '场景一：林晓家卧室。夜。']);
+    expect(result.segments.filter((segment) => segment.kind === 'choice_text').map((segment) => segment.text))
+      .toEqual(['选择宏图资本，挑战终面', '坚持专业操守，拒绝“注水”']);
+    expect(result.segments.some((segment) => segment.kind === 'speaker')).toBe(false);
+  });
+
+  it('separates scenario decision choices, section headings, and control markers', () => {
+    const content = [
+      '（核心分支点A：技术问题回答）',
+      '（子分支点A1：技术深度回答）',
+      '（嵌套子分支点A1a：方案对比）',
+      '（转向子分支点A2：技术瓶颈回答。如果回答过于笼统。）',
+      '（闪回/假设场景：如果李明这样回答……）',
+      '（此分支通向结局3：技术能力存疑。）',
+      '（回到主线：技术回答结束。）',
+    ].join('\n');
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments.filter((segment) => segment.kind === 'choice_text').map((segment) => segment.text))
+      .toEqual(['技术深度回答', '技术瓶颈回答']);
+    expect(result.segments.filter((segment) => segment.kind === 'scene_heading').map((segment) => segment.text))
+      .toEqual(['技术问题回答', '方案对比']);
+    expect(result.segments.filter((segment) => segment.kind === 'structural')).toHaveLength(3);
+    expect(result.segments.some((segment) => segment.kind === 'narration')).toBe(false);
+  });
+
+  it('keeps Chinese script metadata and endings out of dialogue speakers', () => {
+    const content = [
+      '人物：',
+      '李明：28岁，程序员，焦虑。',
+      '场景：一间现代化的会议室。',
+      '（画外音：李明的声音）',
+      '结局1：录用通知。',
+    ].join('\n');
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments.some((segment) => segment.kind === 'speaker')).toBe(false);
+    expect(result.segments.filter((segment) => segment.kind === 'scene_heading').map((segment) => segment.text))
+      .toEqual(['人物：', '场景：一间现代化的会议室。', '画外音：李明的声音', '结局1：录用通知。']);
+    expect(result.segments.filter((segment) => segment.kind === 'narration').map((segment) => segment.text))
+      .toEqual(['李明：28岁，程序员，焦虑。']);
+  });
+
+  it('keeps bulleted parenthesized character profiles visible', () => {
+    const content = [
+      '人物：',
+      '* 林晓（女，23岁）：应届毕业生，名校金融系。',
+      '* 李明（男，28岁）：职场老油条，林晓的学长。',
+      '第一幕：抉择之夜',
+    ].join('\n');
+    const result = segmentStorySource(content, 'profiles');
+
+    expect(result.segments.filter((segment) => segment.kind === 'narration').map((segment) => ({
+      text: segment.text,
+      display: segment.display,
+    }))).toEqual([
+      { text: '* 林晓（女，23岁）：应届毕业生，名校金融系。', display: true },
+      { text: '* 李明（男，28岁）：职场老油条，林晓的学长。', display: true },
+    ]);
+  });
+
+  it('extracts lettered menu options without treating A B C as speakers', () => {
+    const content = [
+      '林浩：你想怎么调查？',
+      '【选项出现】',
+      'A：立刻前往钟楼',
+      'B：先查阅更多历史档案',
+      'C：询问陈教授更多细节',
+      '【选择A - 立刻前往钟楼】',
+    ].join('\n');
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments.filter((segment) => segment.kind === 'choice_text').map((segment) => segment.text))
+      .toEqual(['立刻前往钟楼', '先查阅更多历史档案', '询问陈教授更多细节']);
+    expect(result.segments.filter((segment) => segment.kind === 'speaker').map((segment) => segment.text))
+      .toEqual(['林浩']);
+    expect(result.segments.find((segment) => segment.unitId === 'fixture:1')?.kind)
+      .toBe('structural');
+  });
+
+  it.each([
+    {
+      marker: '[请选择]',
+      choices: ['1. 调查钟楼', '2、查阅档案'],
+      target: '[选择 1：调查钟楼]',
+    },
+    {
+      marker: '选项：',
+      choices: ['（一）调查钟楼', '（二）查阅档案'],
+      target: '【分支一 - 调查钟楼】',
+    },
+  ])('normalizes numbered menu syntax: $marker', ({ marker, choices, target }) => {
+    const result = segmentStorySource([
+      '林浩：你想怎么调查？',
+      marker,
+      ...choices,
+      target,
+    ].join('\n'), 'fixture');
+
+    expect(result.segments.filter((segment) => segment.kind === 'choice_text').map((segment) => segment.text))
+      .toEqual(['调查钟楼', '查阅档案']);
+    expect(result.segments.filter((segment) => segment.kind === 'speaker').map((segment) => segment.text))
+      .toEqual(['林浩']);
+  });
+
+  it('accepts Markdown list options and treats horizontal rules as structural', () => {
+    const result = segmentStorySource([
+      '林浩：你想怎么调查？',
+      '【选项出现】',
+      '* A：调查钟楼',
+      '- B: 查阅档案',
+      '***',
+      '【选择A - 调查钟楼】',
+    ].join('\n'), 'markdown-menu');
+
+    expect(result.segments.filter((segment) => segment.kind === 'choice_text').map((segment) => segment.text))
+      .toEqual(['调查钟楼', '查阅档案']);
+    expect(result.segments.filter((segment) => segment.kind === 'structural')).toHaveLength(2);
+  });
+
+
   it('hydrates source refs from server-owned segment unit ids', () => {
     const result = segmentStorySource('You: Walk left.', 'fixture');
     const dialogue = result.segments.find((segment) => segment.kind === 'dialogue');

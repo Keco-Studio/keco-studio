@@ -41,4 +41,15 @@ describe('chunked content extraction merge', () => {
     expect(merged.nodes.flatMap((node) => node.sourceUnitIds))
       .toEqual(['first:1', 'second:1']);
   });
+
+  it('does not stack chunk prefixes reused by a retrying model', () => {
+    const retried = extraction('retry');
+    retried.nodes[0].id = 'C3N10_narration_lights_out';
+    retried.choices[0].id = 'C3C2_choice_exit';
+
+    const merged = mergeChunkedStoryContentExtractions([retried]);
+
+    expect(merged.nodes[0].id).toBe('C1N1_narration_lights_out');
+    expect(merged.choices[0].id).toBe('C1C1_choice_exit');
+  });
 });

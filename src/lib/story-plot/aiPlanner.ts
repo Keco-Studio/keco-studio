@@ -40,6 +40,18 @@ export function buildStoryPlotPlanFromGrouping(
     plot.storyNodeIds.forEach((storyNodeId) => plotByStoryNodeId.set(storyNodeId, plot.id));
   });
 
+  for (const storyNode of document.nodes) {
+    const ownerPlotNodeId = plotByStoryNodeId.get(storyNode.label);
+    for (const option of storyNode.options) {
+      const targetPlotNodeId = plotByStoryNodeId.get(option.target);
+      if (ownerPlotNodeId && ownerPlotNodeId === targetPlotNodeId) {
+        throw new Error(
+          `Plot grouping hides option target ${option.target} inside decision ${storyNode.label}`
+        );
+      }
+    }
+  }
+
   const edges: StoryPlotEdge[] = [];
   const edgeKeys = new Set<string>();
   const addEdge = (edge: StoryPlotEdge) => {

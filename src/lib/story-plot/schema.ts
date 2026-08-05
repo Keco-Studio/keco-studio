@@ -25,12 +25,19 @@ export const StoryPlotEdgeSchema = z.union([
   }).strict(),
 ]);
 
-export const StoryPlotPlanSchema = z.object({
-  version: z.literal(1),
+const StoryPlotPlanBaseSchema = z.object({
   entryPlotNodeId: IdSchema,
   nodes: z.array(StoryPlotNodeSchema).min(1),
   edges: z.array(StoryPlotEdgeSchema),
-}).strict();
+});
+
+export const StoryPlotPlanSchema = z.union([
+  StoryPlotPlanBaseSchema.extend({ version: z.literal(1) }).strict(),
+  StoryPlotPlanBaseSchema.extend({
+    version: z.literal(2),
+    storyNodeOrder: z.array(IdSchema).min(1),
+  }).strict(),
+]);
 
 export type StoryPlotNode = z.infer<typeof StoryPlotNodeSchema>;
 export type StoryPlotEdge = z.infer<typeof StoryPlotEdgeSchema>;

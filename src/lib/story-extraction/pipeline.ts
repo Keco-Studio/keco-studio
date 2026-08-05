@@ -67,8 +67,187 @@ export function parseStoryContentExtraction(value: unknown): StoryContentExtract
   return StoryContentExtractionSchema.parse(value);
 }
 
+export function normalizeStoryContentExtractionContract(
+  value: unknown
+): StoryContentExtraction {
+  const root = asRecord(value);
+  const rawNodes = Array.isArray(root?.nodes) ? root.nodes : [];
+  const rawChoices = Array.isArray(root?.choices) ? root.choices : [];
+  const nodeIds = normalizeGeneratedIds(rawNodes, 'Node');
+  const choiceIds = normalizeGeneratedIds(rawChoices, 'Choice');
+  const dialogueTypes = new Map<string, 1 | 2>();
+
+  const normalizedChoices = rawChoices.map((rawChoice, index) => {
+    const choice = asRecord(rawChoice) ?? {};
+    const rawText = typeof choice.text === 'string' ? choice.text : '';
+    return {
+      id: choiceIds[index],
+      text: cleanChoiceDisplayText(rawText),
+      sourceUnitIds: uniqueStrings(choice.sourceUnitIds),
+    };
+  });
+  const choices: typeof normalizedChoices = [];
+  for (const choice of normalizedChoices) {
+    const textKey = normalizedVisibleValue(choice.text);
+    const duplicate = choices.find((candidate) => (
+      normalizedVisibleValue(candidate.text) === textKey
+      && candidate.sourceUnitIds.some((unitId) => choice.sourceUnitIds.includes(unitId))
+    ));
+    if (!duplicate) {
+      choices.push(choice);
+      continue;
+    }
+    duplicate.sourceUnitIds = [...new Set([
+      ...duplicate.sourceUnitIds,
+      ...choice.sourceUnitIds,
+    ])];
+  }
+  const choiceClaims = new Set(choices.flatMap((choice) => (
+    choice.sourceUnitIds.map((unitId) => visibleClaimKey(unitId, choice.text))
+  )));
+  const normalizedNodes = rawNodes.map((rawNode, index) => {
+      const node = asRecord(rawNode) ?? {};
+      const speaker = typeof node.speaker === 'string' ? node.speaker : '';
+      const type = normalizeContentNodeType(node.type, speaker);
+      const numericPresentation = Number(node.presentationType);
+      let presentationType: 1 | 2 | 3 | 4 | 5;
+      if (type === 'dialogue') {
+        const normalizedSpeaker = speaker.trim();
+        const existing = dialogueTypes.get(normalizedSpeaker);
+        const supplied = numericPresentation === 1 || numericPresentation === 2
+          ? numericPresentation
+          : undefined;
+        presentationType = existing
+          ?? supplied
+          ?? (dialogueTypes.size === 0 ? 1 : 2);
+        dialogueTypes.set(normalizedSpeaker, presentationType);
+      } else if (
+        numericPresentation === 3
+        || numericPresentation === 4
+        || numericPresentation === 5
+      ) {
+        presentationType = numericPresentation;
+      } else {
+        presentationType = type === 'scene' ? 4 : type === 'system' ? 5 : 3;
+      }
+      return {
+        id: nodeIds[index],
+        type,
+        presentationType,
+        speaker,
+        content: typeof node.content === 'string' ? node.content : '',
+        sourceUnitIds: uniqueStrings(node.sourceUnitIds),
+      };
+    });
+  const nodes: typeof normalizedNodes = [];
+  for (const normalizedNode of normalizedNodes) {
+    const node = {
+      ...normalizedNode,
+      sourceUnitIds: normalizedNode.sourceUnitIds.filter((unitId) => (
+        !choiceClaims.has(visibleClaimKey(unitId, normalizedNode.content))
+      )),
+    };
+    if (node.sourceUnitIds.length === 0) continue;
+
+    const contentKey = normalizedVisibleValue(node.content);
+    const duplicate = nodes.find((candidate) => (
+      normalizedVisibleValue(candidate.content) === contentKey
+      && candidate.sourceUnitIds.some((unitId) => node.sourceUnitIds.includes(unitId))
+    ));
+    if (!duplicate) {
+      nodes.push(node);
+      continue;
+    }
+    duplicate.sourceUnitIds = [...new Set([
+      ...duplicate.sourceUnitIds,
+      ...node.sourceUnitIds,
+    ])];
+  }
+
+  return parseStoryContentExtraction({
+    version: 3,
+    structuralUnitIds: uniqueStrings(root?.structuralUnitIds),
+    nodes,
+    choices,
+  });
+}
+
 export function parseStoryGraphExtraction(value: unknown): StoryGraphExtraction {
   return StoryGraphExtractionSchema.parse(value);
+}
+
+export function normalizeStoryGraphExtractionContract(
+  value: unknown,
+  content?: StoryContentExtraction
+): StoryGraphExtraction {
+  const root = asRecord(value) ?? {};
+  const parsed = parseStoryGraphExtraction({
+    version: 3,
+    entryNodeId: typeof root.entryNodeId === 'string' ? root.entryNodeId : '',
+    nodeLinks: normalizeNodeLinks(root.nodeLinks),
+    choiceLinks: normalizeChoiceLinks(root.choiceLinks),
+    commandLinks: normalizeCommandLinks(root.commandLinks),
+  });
+  if (!content) return parsed;
+
+  const existingNodeLinks = new Map(parsed.nodeLinks.map((link) => {
+    const [nodeId] = link.split('->');
+    return [nodeId, link] as const;
+  }));
+  const choiceOwners = new Set<string>();
+  const choiceTargets = new Set<string>();
+  parsed.choiceLinks.forEach((link) => {
+    const [, owner, target] = link.split('->');
+    choiceOwners.add(owner);
+    choiceTargets.add(target);
+  });
+  const nodeLinks = content.nodes.map((node, index) => {
+    const existing = existingNodeLinks.get(node.id);
+    if (existing) return existing;
+    if (choiceOwners.has(node.id) || choiceTargets.has(node.id)) return `${node.id}->`;
+    const next = content.nodes[index + 1]?.id ?? '';
+    return `${node.id}->${next}`;
+  });
+  return { ...parsed, nodeLinks };
+}
+
+function normalizeNodeLinks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    const edge = asRecord(item);
+    return edge && typeof edge.nodeId === 'string' && typeof edge.nextNodeId === 'string'
+      ? [`${edge.nodeId}->${edge.nextNodeId}`]
+      : [];
+  });
+}
+
+function normalizeChoiceLinks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    const edge = asRecord(item);
+    return edge
+      && typeof edge.choiceId === 'string'
+      && typeof edge.fromNodeId === 'string'
+      && typeof edge.targetNodeId === 'string'
+      ? [`${edge.choiceId}->${edge.fromNodeId}->${edge.targetNodeId}`]
+      : [];
+  });
+}
+
+function normalizeCommandLinks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    const edge = asRecord(item);
+    return edge
+      && typeof edge.commandId === 'string'
+      && (edge.kind === 'node' || edge.kind === 'choice')
+      && typeof edge.ownerId === 'string'
+      ? [`${edge.commandId}->${edge.kind}->${edge.ownerId}`]
+      : [];
+  });
 }
 
 export function combineStoryExtraction(
@@ -182,4 +361,66 @@ function assertExactEdges(kind: 'node' | 'choice', expectedIds: string[], actual
   ) {
     throw new Error(`Story ${kind} edges do not match extracted ${kind} IDs`);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+}
+
+function uniqueStrings(value: unknown): string[] {
+  return [...new Set(stringArrayValue(value))];
+}
+
+function visibleClaimKey(unitId: string, value: string): string {
+  return `${unitId}\u0000${normalizedVisibleValue(value)}`;
+}
+
+function normalizedVisibleValue(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g, '')
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s*)/, '')
+    .replace(/[\s“”‘’"'【】()[\]（）:：,.!?;，。！？、\-—_]/g, '')
+    .toLowerCase();
+}
+
+function cleanChoiceDisplayText(value: string): string {
+  const text = value.trim();
+  const labeled = /^(?:(?:嵌套|子)?选择|可选方案|选项|option)\s*[A-Za-z0-9一二三四五六七八九十百零〇两]+\s*(?:[：:]\s*(.+)|[（(]([^）)]+)[）)])/iu.exec(text);
+  if (labeled) return (labeled[1] ?? labeled[2] ?? text).trim();
+  const coded = /^[A-Za-z]\d*\s*[：:]\s*(.+)$/u.exec(text);
+  return (coded?.[1] ?? text).trim();
+}
+
+function normalizeGeneratedIds(values: unknown[], prefix: 'Node' | 'Choice'): string[] {
+  const used = new Set<string>();
+  return values.map((value, index) => {
+    const supplied = asRecord(value)?.id;
+    let id = typeof supplied === 'string' && LABEL_PATTERN.test(supplied) && !used.has(supplied)
+      ? supplied
+      : `${prefix}${index + 1}`;
+    while (used.has(id)) id = `${prefix}${index + 1}_${used.size + 1}`;
+    used.add(id);
+    return id;
+  });
+}
+
+function normalizeContentNodeType(
+  value: unknown,
+  speaker: string
+): StoryContentExtraction['nodes'][number]['type'] {
+  if (value === 'dialogue' || value === 'narration' || value === 'scene' || value === 'system') {
+    return value;
+  }
+  if (value === 'scene_heading' || value === 'background' || value === 'prose') return 'scene';
+  if (value === 'action' || value === 'stage_direction') return 'narration';
+  return speaker.trim() ? 'dialogue' : 'narration';
 }

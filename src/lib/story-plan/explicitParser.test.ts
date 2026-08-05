@@ -3,7 +3,10 @@ import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import {
   tryParseExplicitStory,
+  tryParseHierarchicalBranchStory,
   tryParseNaturalBranchStory,
+  tryParseMenuBranchStory,
+  tryParseScenarioDecisionStory,
 } from './explicitParser';
 import { segmentStorySource } from './sourceSegments';
 
@@ -13,6 +16,30 @@ const fixture = fs.readFileSync(
 );
 const rainyFixture = fs.readFileSync(
   path.join(process.cwd(), 'tests/fixtures/import-script/rainy-manor-story.txt'),
+  'utf8'
+);
+const busStopFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/hierarchical-bus-stop-story.txt'),
+  'utf8'
+);
+const corridorFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/hierarchical-corridor-story.txt'),
+  'utf8'
+);
+const careerFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/hierarchical-career-story.txt'),
+  'utf8'
+);
+const layeredBookstoreFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/layered-bookstore-story.txt'),
+  'utf8'
+);
+const interviewFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/scenario-interview-story.txt'),
+  'utf8'
+);
+const menuBranchFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/menu-branch-story.txt'),
   'utf8'
 );
 
@@ -96,6 +123,231 @@ describe('explicit story parser', () => {
 
     expect(tryParseExplicitStory(source)).toBeNull();
   });
+
+  it('parses top-level and nested bus-stop choices under separate owners', () => {
+    const source = segmentStorySource(busStopFixture, 'bus');
+    const plan = tryParseHierarchicalBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const choiceByText = new Map(plan?.choices.map((choice) => [
+      choice.textSegmentIds.map((id) => segmentText.get(id)).join(''),
+      choice,
+    ]));
+
+    expect(plan).not.toBeNull();
+    expect(choiceByText.get('主动搭话')?.fromNodeId).toBe(choiceByText.get('沉默旁观')?.fromNodeId);
+    expect(choiceByText.get('主动借伞')?.fromNodeId).toBe(choiceByText.get('温柔宽慰')?.fromNodeId);
+    expect(choiceByText.get('主动借伞')?.fromNodeId).not.toBe(choiceByText.get('主动搭话')?.fromNodeId);
+  });
+
+  it('parses three successive decision groups in the corridor screenplay', () => {
+    const source = segmentStorySource(corridorFixture, 'corridor');
+    const plan = tryParseHierarchicalBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const ownerGroups = new Map<string, string[]>();
+    for (const choice of plan?.choices ?? []) {
+      const text = choice.textSegmentIds.map((id) => segmentText.get(id)).join('');
+      ownerGroups.set(choice.fromNodeId, [...(ownerGroups.get(choice.fromNodeId) ?? []), text]);
+    }
+
+    expect(plan).not.toBeNull();
+    expect([...ownerGroups.values()]).toEqual(expect.arrayContaining([
+      ['理性判断', '直觉先行'],
+      ['触碰黑镜', '绕行黑镜'],
+      ['信任日记，按原序开门', '怀疑日记，按补注顺序调整'],
+    ]));
+  });
+
+  it('keeps a named action separate from the following dialogue', () => {
+    const source = segmentStorySource([
+      '苏晚：我们必须选择。',
+      '分支点 A：理性判断',
+      '林默：（合上日记）不行。',
+      '→ 结局一：等待审批。',
+      '分支点 B：直觉先行',
+      '林默：（长叹一口气）好吧。',
+      '→ 结局二：立刻出发。',
+    ].join('\n'), 'actions');
+    const plan = tryParseHierarchicalBranchStory(source)!;
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const actionNode = plan.nodes.find((node) => (
+      node.contentSegmentIds.some((id) => segmentText.get(id) === '合上日记')
+    ));
+    const dialogueNode = plan.nodes.find((node) => (
+      node.contentSegmentIds.some((id) => segmentText.get(id) === '不行。')
+    ));
+
+    expect(actionNode).toMatchObject({ type: 'narration' });
+    expect(segmentText.get(actionNode?.speakerSegmentId ?? '')).toBe('林默');
+    expect(dialogueNode).toMatchObject({ type: 'dialogue' });
+    expect(actionNode?.nextNodeId).toBe(dialogueNode?.id);
+  });
+
+  it('parses wrapped three-level choices and merges every leaf into the summary act', () => {
+    const source = segmentStorySource(careerFixture, 'career');
+    const plan = tryParseHierarchicalBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const ownerGroups = new Map<string, string[]>();
+    for (const choice of plan?.choices ?? []) {
+      const text = choice.textSegmentIds.map((id) => segmentText.get(id)).join('');
+      ownerGroups.set(choice.fromNodeId, [...(ownerGroups.get(choice.fromNodeId) ?? []), text]);
+    }
+    const summary = plan?.nodes.find((node) => node.contentSegmentIds.some((id) => (
+      segmentText.get(id)?.includes('殊途同归')
+    )));
+    const incomingSummaryNodes = plan?.nodes.filter((node) => node.nextNodeId === summary?.id) ?? [];
+
+    expect(plan).not.toBeNull();
+    expect([...ownerGroups.values()]).toEqual(expect.arrayContaining([
+      ['选择宏图资本，挑战终面', '选择启航咨询，接受录用'],
+      ['接受“快速晋升”项目', '选择稳健的“行业研究”岗位'],
+      ['坚持专业操守，拒绝“注水”', '顺应公司文化，学会“包装”'],
+    ]));
+    expect(summary).toBeDefined();
+    expect(incomingSummaryNodes).toHaveLength(4);
+  });
+
+  it('parses successive layered choices and keeps the final epilogue reachable', () => {
+    const source = segmentStorySource(layeredBookstoreFixture, 'bookstore');
+    const plan = tryParseHierarchicalBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const decisions = new Map<string, string[]>();
+    for (const choice of plan?.choices ?? []) {
+      const text = choice.textSegmentIds.map((id) => segmentText.get(id)).join('');
+      decisions.set(choice.fromNodeId, [...(decisions.get(choice.fromNodeId) ?? []), text]);
+    }
+
+    expect(plan).not.toBeNull();
+    expect([...decisions.values()]).toEqual(expect.arrayContaining([
+      ['温和主动问询', '安静留白陪伴'],
+      ['理性剖析利弊', '共情治愈安抚'],
+      ['取舍开导', '落地劝解'],
+      ['温柔共情宽慰', '温柔兜底劝解'],
+    ]));
+
+    const nodesById = new Map(plan!.nodes.map((node) => [node.id, node]));
+    const choicesByOwner = new Map<string, typeof plan.choices>();
+    for (const choice of plan!.choices) {
+      choicesByOwner.set(choice.fromNodeId, [
+        ...(choicesByOwner.get(choice.fromNodeId) ?? []),
+        choice,
+      ]);
+    }
+    const reachable = new Set<string>();
+    const pending = [plan!.entryNodeId];
+    while (pending.length > 0) {
+      const nodeId = pending.pop()!;
+      if (reachable.has(nodeId)) continue;
+      const node = nodesById.get(nodeId);
+      if (!node) continue;
+      reachable.add(nodeId);
+      if (node.nextNodeId) pending.push(node.nextNodeId);
+      for (const choice of choicesByOwner.get(nodeId) ?? []) pending.push(choice.targetNodeId);
+    }
+    expect(reachable.size).toBe(plan!.nodes.length);
+  });
+
+  it('parses successive hypothetical interview decisions and rejoins the main line', () => {
+    const source = segmentStorySource(interviewFixture, 'interview');
+    const plan = tryParseScenarioDecisionStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const ownerGroups = new Map<string, string[]>();
+    for (const choice of plan?.choices ?? []) {
+      const text = choice.textSegmentIds.map((id) => segmentText.get(id)).join('');
+      ownerGroups.set(choice.fromNodeId, [...(ownerGroups.get(choice.fromNodeId) ?? []), text]);
+    }
+
+    expect(plan).not.toBeNull();
+    expect([...ownerGroups.values()]).toEqual(expect.arrayContaining([
+      ['技术深度回答', '技术瓶颈回答'],
+      ['诚实回答', '如果李明谎称主动辞职'],
+      ['坚持底线', '如果李明立刻妥协', '如果李明强硬拒绝'],
+    ]));
+    expect(new Set(plan?.nodes.map((node) => node.id)).size).toBe(plan?.nodes.length);
+  });
+
+  it('parses lettered menu options into sibling branches with one final merge', () => {
+    const source = segmentStorySource(menuBranchFixture, 'menu');
+    const plan = tryParseMenuBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const choices = plan?.choices.map((choice) => ({
+      text: choice.textSegmentIds.map((id) => segmentText.get(id)).join(''),
+      owner: choice.fromNodeId,
+      target: choice.targetNodeId,
+    })) ?? [];
+    const epilogue = plan?.nodes.find((node) => node.contentSegmentIds.some((id) => (
+      segmentText.get(id)?.includes('最终尾声')
+    )));
+
+    expect(choices.map((choice) => choice.text)).toEqual([
+      '立刻前往钟楼', '先查阅更多历史档案', '询问陈教授更多细节',
+    ]);
+    expect(new Set(choices.map((choice) => choice.owner)).size).toBe(1);
+    expect(plan?.nodes.filter((node) => node.nextNodeId === epilogue?.id)).toHaveLength(3);
+  });
+
+  it('parses numeric menu labels and a common ending into sibling branches', () => {
+    const source = segmentStorySource([
+      '林浩：你想怎么调查？',
+      '[请选择]',
+      '1. 调查钟楼',
+      '2、查阅档案',
+      '[选择 1：调查钟楼]',
+      '林浩进入钟楼。',
+      '[选择 2：查阅档案]',
+      '林浩进入档案馆。',
+      '[共同结局]',
+      '林浩找到了真相。',
+    ].join('\n'), 'numeric-menu');
+    const plan = tryParseMenuBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const choices = plan?.choices.map((choice) => (
+      choice.textSegmentIds.map((id) => segmentText.get(id)).join('')
+    ));
+    const epilogue = plan?.nodes.find((node) => node.contentSegmentIds.some((id) => (
+      segmentText.get(id) === '共同结局'
+    )));
+
+    expect(choices).toEqual(['调查钟楼', '查阅档案']);
+    expect(plan?.nodes.filter((node) => node.nextNodeId === epilogue?.id)).toHaveLength(2);
+  });
+
+  it('keeps multiple menu decisions independent even when option codes repeat', () => {
+    const source = segmentStorySource([
+      '林浩：先决定调查方向。',
+      '【选项出现】',
+      'A：去钟楼',
+      'B：去档案馆',
+      '【选择A - 去钟楼】',
+      '林浩来到钟楼。',
+      '【选择B - 去档案馆】',
+      '林浩来到档案馆。',
+      '【共同结局】',
+      '林浩带着线索回到广场。',
+      '【选项出现】',
+      'A：公开证据',
+      'B：继续保密',
+      '【选择A - 公开证据】',
+      '林浩公开了档案。',
+      '【选择B - 继续保密】',
+      '林浩暂时保密。',
+      '【最终尾声】',
+      '真相终于被记录。',
+    ].join('\n'), 'multi-menu');
+    const plan = tryParseMenuBranchStory(source);
+    const segmentText = new Map(source.segments.map((segment) => [segment.id, segment.text]));
+    const decisions = new Map<string, string[]>();
+    for (const choice of plan?.choices ?? []) {
+      const text = choice.textSegmentIds.map((id) => segmentText.get(id)).join('');
+      decisions.set(choice.fromNodeId, [...(decisions.get(choice.fromNodeId) ?? []), text]);
+    }
+
+    expect([...decisions.values()]).toEqual(expect.arrayContaining([
+      ['去钟楼', '去档案馆'],
+      ['公开证据', '继续保密'],
+    ]));
+    expect(plan).not.toBeNull();
+  });
+
 
   it('parses unambiguous numbered natural branches without a Converter call', () => {
     const source = segmentStorySource(rainyFixture, 'rainy');
