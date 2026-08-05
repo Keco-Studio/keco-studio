@@ -43,6 +43,8 @@ describe('Keco Script LeftNav wiring', () => {
     expect(source).toContain('<TopBar');
     expect(source).not.toContain('hideTopBar');
     expect(source).toMatch(/showScriptSidebar\s*=\s*onScriptSystem/);
+    expect(source).toMatch(/hideChatPanel\s*=\s*hideSidebarForSimulation\s*;/);
+    expect(source).not.toMatch(/hideChatPanel\s*=\s*hideSidebarForSimulation\s*\|\|\s*onScriptSystem/);
   });
 
   it('ScriptSidebar collapses on TopBar sidebar-toggle', () => {
