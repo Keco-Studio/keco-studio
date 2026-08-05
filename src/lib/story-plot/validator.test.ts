@@ -121,6 +121,14 @@ describe('Story plot deterministic validation', () => {
       .toThrow(/unreachable plot node/i);
   });
 
+  it('allows unreachable plot nodes only when the editing caller opts in', () => {
+    expect(validateStoryPlotPlan(
+      { ...plan, edges: [plan.edges[0]] },
+      storyNodeIds,
+      { allowUnreachable: true }
+    )).toMatchObject({ nodes: plan.nodes });
+  });
+
   it('rejects duplicate identical edges', () => {
     expect(() => validateStoryPlotPlan({
       ...plan,

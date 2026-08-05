@@ -2,7 +2,8 @@ import type { StoryPlotPlan } from './schema';
 
 export function validateStoryPlotPlan(
   plan: StoryPlotPlan,
-  storyNodeIds: string[]
+  storyNodeIds: string[],
+  options: { allowUnreachable?: boolean } = {}
 ): StoryPlotPlan {
   if (plan.version === 2 && (
     plan.storyNodeOrder.length !== storyNodeIds.length
@@ -98,7 +99,7 @@ export function validateStoryPlotPlan(
     }
   }
   const unreachableNode = plan.nodes.find((node) => !reachablePlotNodeIds.has(node.id));
-  if (unreachableNode) {
+  if (unreachableNode && !options.allowUnreachable) {
     throw new Error(`Unreachable plot node ${unreachableNode.id}`);
   }
 
