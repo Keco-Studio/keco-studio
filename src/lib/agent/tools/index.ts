@@ -32,6 +32,7 @@ import { moveDocumentTool } from './move-document';
 import { deleteDocumentTool } from './delete-document';
 import { generateFromDocument } from './generate-from-document';
 import { insertResourceReference } from './insert-resource-reference';
+import { readStoryGraph } from './read-story-graph';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
@@ -47,6 +48,7 @@ const tools: AgentTool[] = [
   moveDocumentTool,
   deleteDocumentTool,
   generateFromDocument,
+  readStoryGraph,
   queryScriptLines,
   addField,
   createAsset,
