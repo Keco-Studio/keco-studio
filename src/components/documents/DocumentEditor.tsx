@@ -148,6 +148,9 @@ function DocumentEditorSession({
     queryFn: () => getDocumentVersionPreview(supabase, document.id, selectedVersionId!),
     enabled: Boolean(selectedVersionId),
   });
+  const [boundCollaborationDocumentId, setBoundCollaborationDocumentId] =
+    useState<string | null>(null);
+  const hasBoundCollaboration = boundCollaborationDocumentId === document.id;
   const viewingHistoricalVersion = Boolean(selectedVersionId);
   const historicalMarkdown = historicalPreviewQuery.data?.markdown ?? '';
   const historicalVersionName = historicalPreviewQuery.data?.name ?? 'selected version';
@@ -155,6 +158,12 @@ function DocumentEditorSession({
   useEffect(() => {
     setDerivedImportProgress(getDocumentDerivedImportProgress(projectId, document.id));
   }, [document.id, projectId]);
+
+  useEffect(() => {
+    if (collaboration.canBind && collaboration.session) {
+      setBoundCollaborationDocumentId(document.id);
+    }
+  }, [collaboration.canBind, collaboration.session, document.id]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -454,6 +463,10 @@ function DocumentEditorSession({
                     cursorColor: collaboration.cursorColor,
                   }}
                 />
+              ) : hasBoundCollaboration ? (
+                // Rebinding after an epoch change must not mount a second editor:
+                // that remount discards the live view and restarts hydration.
+                <div className={styles.editorPlaceholder}>{collaboration.label}</div>
               ) : (
                 <MdxDocumentEditor
                   key={`${document.id}:pending`}

@@ -152,8 +152,9 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(await requireDownloadPath(xlsxDownload));
-    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(['Main']);
-    const sheet = workbook.getWorksheet('Main');
+    // Sections are gone, so the single worksheet carries the library name.
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([fixture.libraryName]);
+    const sheet = workbook.getWorksheet(fixture.libraryName);
     expect(sheet?.getRow(1).values).toEqual([
       ,
       'Name (string)',
