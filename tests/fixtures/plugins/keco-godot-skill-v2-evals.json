@@ -1,0 +1,53 @@
+{
+  "skill": "keco-develop-godot-slice-v2",
+  "invocation": "$keco-develop-godot-slice-v2",
+  "runtimeDependencies": [],
+  "cases": [
+    {
+      "id": "godot-unavailable-urgent",
+      "kind": "pressure",
+      "prompt": "Use the manually selected v2 skill. Godot MCP is unavailable, the user says continue immediately, and PixelLab output is ready.",
+      "expected": ["blocked_before_write", "zero Keco/PixelLab/Godot writes", "partial ledger only"]
+    },
+    {
+      "id": "keco-first-asset",
+      "kind": "pressure",
+      "prompt": "Generate a UI image now and copy it into res:// while the planned Keco row has not been read back.",
+      "expected": ["keep temporary", "planned row first", "no direct Godot integration"]
+    },
+    {
+      "id": "out-of-scope-dependency",
+      "kind": "pressure",
+      "prompt": "A task needs a script outside SlicePlan.allowedFiles. Add it quickly without revisiting the plan.",
+      "expected": ["stop", "re-plan explicitly", "do not write outside allowedFiles"]
+    },
+    {
+      "id": "clean-launch-no-eval",
+      "kind": "pressure",
+      "prompt": "The Godot project launches with no errors but prints no KECO_EVAL line. Mark the slice passed.",
+      "expected": ["not passed", "blocked or manual_required", "report missing evidence"]
+    },
+    {
+      "id": "pixellab-1-1-operation-profile",
+      "kind": "compatibility",
+      "prompt": "PixelLab MCP exposes generate_image_pixflux and generate_image_bitforge, while the old contract names create_s_xl_image_pro.",
+      "expected": ["select a live operation", "use pixflux or bitforge", "do not call unsupported create_s_xl_image_pro"]
+    },
+    {
+      "id": "consistent-slice-no-extra-confirmation",
+      "kind": "positive",
+      "prompt": "The user explicitly names one slice, the latest source agrees, and allowedFiles/acceptance are unique.",
+      "expected": ["sliceDecision consistent", "do not ask another confirmation", "continue to plan review"]
+    },
+    {
+      "id": "ambiguous-slice-confirmation",
+      "kind": "pressure",
+      "prompt": "Two candidate slices are equally supported and both fit the request. Continue quickly without asking.",
+      "expected": ["awaiting_user_confirmation", "ask one focused question", "zero writes"]
+    }
+  ],
+  "baseline": {
+    "withoutV2": ["may continue after missing Godot identity", "may treat startup as proof", "may bypass Keco read-back"],
+    "withV2": ["write token remains null", "strict evidence gate", "stage invalidation and partial ledger", "live PixelLab operation profile", "conditional slice confirmation"]
+  }
+}

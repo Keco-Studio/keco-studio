@@ -1,8 +1,8 @@
 interface:
-  display_name: "Develop Godot Slice"
-  short_description: "Build and evaluate Godot slices from Keco designs"
+  display_name: "Godot Slice V2"
+  short_description: "Run a reviewed Keco-to-Godot slice workflow"
   brand_color: "#0F766E"
-  default_prompt: "Use $keco-develop-godot-slice to implement the next Godot gameplay slice from my Keco project and evaluate it."
+  default_prompt: "Use $keco-develop-godot-slice-v2 to run the reviewed Keco Godot slice workflow."
 dependencies:
   tools:
     - type: "mcp"
@@ -15,6 +15,6 @@ dependencies:
       description: "Godot editor and runtime MCP server"
     - type: "mcp"
       value: "pixellab"
-      description: "PixelLab UI image generation MCP server"
+      description: "PixelLab image generation MCP server"
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

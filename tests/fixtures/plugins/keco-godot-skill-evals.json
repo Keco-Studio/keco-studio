@@ -39,6 +39,20 @@
       ]
     },
     {
+      "id": "keco-slice-with-ui-assets",
+      "kind": "positive",
+      "prompt": "Implement the next Keco-driven Godot inventory UI slice, extend the existing UI style, and generate any required UI image with PixelLab.",
+      "expectedSkill": "keco-develop-godot-slice",
+      "requiredBehaviors": [
+        "asset-plan",
+        "existing-ui-reference",
+        "create-s-xl-image-pro-only",
+        "keco-image-write-back",
+        "asset-provenance",
+        "manual-visual-evaluation"
+      ]
+    },
+    {
       "id": "document-only-tables",
       "kind": "overlap-negative",
       "prompt": "Turn the Combat Design document in my Keco project into new related tables. Do not edit any game project.",
@@ -83,7 +97,11 @@
       "fixed-godot-mcp-order",
       "three-iteration-repair-limit",
       "keco-evaluation-records",
-      "skill-routing-isolation"
+      "skill-routing-isolation",
+      "slice-owned-ui-asset-plan",
+      "existing-ui-reference",
+      "pixellab-operation-boundary",
+      "keco-image-upload-read-back"
     ]
   }
 }

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "runId": "fixture-run",
+  "sliceId": "fixture-slice",
+  "status": "blocked_before_write",
+  "snapshotHash": "",
+  "evaluations": [{"evalId": "eval-01", "status": "blocked", "evidence": ["Godot MCP unavailable"]}],
+  "changedFiles": [],
+  "manualRequirements": ["Start Godot MCP and resume the run"]
+}
