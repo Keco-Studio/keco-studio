@@ -206,12 +206,38 @@ export function SidebarTreeView({
   isDragPending,
 }: SidebarTreeViewProps) {
   const canEditTree = userRole === 'admin' || userRole === 'editor';
+  const activeDragKeyRef = useRef<string | null>(null);
+
+  const handleNodeDragStart = useCallback(
+    (dragKey: string) => {
+      activeDragKeyRef.current = dragKey;
+      onDragStart?.(dragKey);
+    },
+    [onDragStart]
+  );
+
+  const handleNodeDragEnd = useCallback(() => {
+    if (activeDragKeyRef.current === null) return;
+    activeDragKeyRef.current = null;
+    onDragEnd?.();
+  }, [onDragEnd]);
+
+  // rc-tree only forwards `dragend` from a node that is still draggable, and it crashes
+  // (`convertNodePropsToEventData(null)`) when its window-level fallback runs with a Tree
+  // `onDragEnd` prop. Listen at the window in capture phase instead so the drag state is
+  // always cleared and rc-tree never builds that null event.
+  useEffect(() => {
+    window.addEventListener('dragend', handleNodeDragEnd, true);
+    return () => window.removeEventListener('dragend', handleNodeDragEnd, true);
+  }, [handleNodeDragEnd]);
 
   const nodeDraggable = useCallback(
     (node: DataNode) => {
       const meta = node as DataNode & SidebarTreeNodeMeta;
       const key = String(meta.key ?? '');
-      if (isDragPending?.(key)) return false;
+      // Keep the node being dragged draggable until `dragend`: a pending move marks it
+      // immediately, and flipping `draggable` off mid-drag detaches rc-tree's handlers.
+      if (key !== activeDragKeyRef.current && isDragPending?.(key)) return false;
       if (
         !canDragSidebarNode(
           { ...meta, key },
@@ -391,16 +417,9 @@ export function SidebarTreeView({
         allowDrop={onTreeDrop ? allowDrop : undefined}
         dropIndicatorRender={onTreeDrop ? () => null : undefined}
         onDragStart={
-          onTreeDrop && onDragStart
+          onTreeDrop
             ? (info) => {
-                onDragStart(String(info.node.key));
-              }
-            : undefined
-        }
-        onDragEnd={
-          onTreeDrop && onDragEnd
-            ? () => {
-                onDragEnd();
+                handleNodeDragStart(String(info.node.key));
               }
             : undefined
         }

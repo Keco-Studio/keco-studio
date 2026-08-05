@@ -28,6 +28,14 @@ describe('sidebar DnD wiring (P1–P3)', () => {
     expect(section).toContain('isDragPending={isDragPending}');
   });
 
+  it('keeps the in-flight drag node draggable and clears drag state outside rc-tree', () => {
+    const source = read('src/components/layout/components/SidebarTreeView.tsx');
+    expect(source).toContain('key !== activeDragKeyRef.current && isDragPending?.(key)');
+    expect(source).toContain("window.addEventListener('dragend', handleNodeDragEnd, true)");
+    // Passing onDragEnd to rc-tree makes its window-level fallback build a null event.
+    expect(source).not.toMatch(/onDragEnd=\{/);
+  });
+
   it('Sidebar wires leaf moves and folder nesting without document/table nesting', () => {
     const source = read('src/components/layout/Sidebar.tsx');
     expect(source).toContain('handleTreeDrop');
