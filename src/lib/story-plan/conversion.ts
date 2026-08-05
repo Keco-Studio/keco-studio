@@ -241,14 +241,18 @@ export async function resolveStoryPlanForImport(
   let priorIssues: StoryExtractionRetryIssue[] = [];
   const llmBudget: StoryPlanLlmBudget = { used: 0, max: MAX_LLM_CALLS };
 
+  const linearCandidate = tryParseLinearScreenplay(source);
+  // Human-readable formats belong to the Branch Planner; the natural-language
+  // parsers below stay opt-in compatibility helpers. A choiceless linear parse
+  // additionally cannot tell branch prose from narration, so it never qualifies.
   const parsedDeterministicPlan = tryParseExplicitStory(source)
     ?? (options.enableHeuristicBranchParsing
       ? tryParseNaturalBranchStory(source)
         ?? tryParseScenarioDecisionStory(source)
         ?? tryParseMenuBranchStory(source)
         ?? tryParseHierarchicalBranchStory(source)
+        ?? (linearCandidate?.choices.length ? linearCandidate : null)
       : null);
-  const linearCandidate = tryParseLinearScreenplay(source);
   const deterministicPlan = parsedDeterministicPlan
     && !hasUnresolvedNaturalBranches(source, parsedDeterministicPlan.choices.length)
     ? parsedDeterministicPlan

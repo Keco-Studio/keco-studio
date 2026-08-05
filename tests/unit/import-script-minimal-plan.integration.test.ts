@@ -28,6 +28,10 @@ const rainy = fs.readFileSync(
   'utf8'
 );
 const passAudit = { verdict: 'pass', issues: [] };
+// Imports send human-readable formats to the Branch Planner. The natural-language
+// parsers stay available as opt-in compatibility helpers, so the cases below that
+// assert a zero-AI parse have to request them explicitly.
+const compatibilityParsing = { enableHeuristicBranchParsing: true } as const;
 
 function tableRows(columns: string[], rows: string[][]): AssetRow[] {
   return rows.map((values, rowIndex) => ({
@@ -97,6 +101,7 @@ describe('minimal audited story plan integration', () => {
     const progress: StoryPlanProgressEvent[] = [];
 
     const resolved = await resolveStoryPlanForImport(rainy, {
+      ...compatibilityParsing,
       sourceId: 'rainy',
       onProgress: (event) => progress.push(event),
     });
@@ -118,6 +123,7 @@ describe('minimal audited story plan integration', () => {
     mockedCompleteLlm.mockRejectedValue(new Error('LLM should not run'));
 
     const resolved = await resolveStoryPlanForImport(rainy, {
+      ...compatibilityParsing,
       sourceId: 'rainy-fast',
       skipSemanticAuditAfterValidation: true,
     });
@@ -156,6 +162,7 @@ describe('minimal audited story plan integration', () => {
     ].join('\n\n'));
 
     const resolved = await resolveStoryPlanForImport(screenplay, {
+      ...compatibilityParsing,
       sourceId: 'chinese-screenplay',
       skipSemanticAuditAfterValidation: true,
     });
