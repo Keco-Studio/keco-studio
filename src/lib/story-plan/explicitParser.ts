@@ -592,7 +592,7 @@ export function tryParseMenuBranchStory(
 }
 
 export function isExplicitMergeBoundary(text: string): boolean {
-  return /分支汇总|统一(?:合并)?结局|共同结局|(?:全部|全都|所有).*(?:汇入|汇合|汇聚|合流)|(?:统一|共同).*(?:汇入|汇合|汇聚|合流)|第[一二三四五六七八九十百零〇两\d]+幕.*(?:汇入|汇合|汇聚|合流)|(?:最后|最终).*(?:镜头|画面)|字幕浮现/.test(text);
+  return /\u5206\u652f\u6c47\u603b|\u7edf\u4e00(?:\u5408\u5e76)?\u7ed3\u5c40|\u5171\u540c\u7ed3\u5c40|(?:\u5168\u90e8|\u5168\u90fd|\u6240\u6709).*(?:\u6c47\u5165|\u6c47\u5408|\u6c47\u805a|\u5408\u6d41)|(?:\u7edf\u4e00|\u5171\u540c).*(?:\u6c47\u5165|\u6c47\u5408|\u6c47\u805a|\u5408\u6d41)|\u7b2c[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+\u5e55.*(?:\u6c47\u5165|\u6c47\u5408|\u6c47\u805a|\u5408\u6d41)|(?:\u6700\u540e|\u6700\u7ec8).*(?:\u955c\u5934|\u753b\u9762)|\u5b57\u5e55\u6d6e\u73b0/.test(text);
 }
 
 export function buildHierarchicalStoryPlanInventory(

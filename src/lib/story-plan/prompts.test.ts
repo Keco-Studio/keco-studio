@@ -87,9 +87,9 @@ describe('two-stage full story extraction prompts', () => {
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('presentationType 1 and 2 are both dialogue boxes');
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('MUST follow that order');
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('known character name followed by an action cue');
-    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('分支点 A / B');
-    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('嵌套选择 A1');
-    expect(GRAPH_STORY_PLAN_PROMPT).toContain('来自分支 A');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('\u5206\u652f\u70b9 A / B');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('\u5d4c\u5957\u9009\u62e9 A1');
+    expect(GRAPH_STORY_PLAN_PROMPT).toContain('\u6765\u81ea\u5206\u652f A');
     expect(GRAPH_STORY_PLAN_PROMPT).toContain('Every node must be reachable');
     expect(GRAPH_STORY_PLAN_PROMPT).toContain('Keep paths separate through those exclusive sections');
   });

@@ -18,7 +18,7 @@ export interface MenuMergeMarker {
   headingEnd: number;
 }
 
-const CODE_PATTERN = '[A-Za-z]{1,3}\\d{0,3}|\\d{1,3}|[一二三四五六七八九十百零〇两]{1,4}';
+const CODE_PATTERN = '[A-Za-z]{1,3}\\d{0,3}|\\d{1,3}|[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24]{1,4}';
 const LIST_PREFIX_PATTERN = '(?:[-*+]\\s+)?';
 const WRAPPED_CHOICE_PATTERN = new RegExp(
   `^${LIST_PREFIX_PATTERN}[（(\\[【]\\s*(${CODE_PATTERN})\\s*[）)\\]】]\\s*(.+)$`,
@@ -29,14 +29,14 @@ const PREFIXED_CHOICE_PATTERN = new RegExp(
   'i'
 );
 const TARGET_PATTERN = new RegExp(
-  `^(?:选择|选项|分支|子分支|路线|路径)\\s*(${CODE_PATTERN})(?:\\s*(?:[：:、.．]|[-—–]))?\\s*(.*)$`,
+  `^(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f|\u5b50\u5206\u652f|\u8def\u7ebf|\u8def\u5f84)\\s*(${CODE_PATTERN})(?:\\s*(?:[：:、.．]|[-—–]))?\\s*(.*)$`,
   'i'
 );
 
 export function isMenuMarker(line: string): boolean {
   const { text } = unwrapLine(line);
   const normalized = text.replace(/[：:]$/, '').replace(/\s+/g, '');
-  return /^(?:选项出现|选项|可选项|分支选项|选择出现|请选择|请选择一项|做出选择)$/.test(normalized);
+  return /^(?:\u9009\u9879\u51fa\u73b0|\u9009\u9879|\u53ef\u9009\u9879|\u5206\u652f\u9009\u9879|\u9009\u62e9\u51fa\u73b0|\u8bf7\u9009\u62e9|\u8bf7\u9009\u62e9\u4e00\u9879|\u505a\u51fa\u9009\u62e9)$/.test(normalized);
 }
 
 export function isMenuDivider(line: string): boolean {
@@ -73,7 +73,7 @@ export function isFinalMenuMerge(line: string): boolean {
 
 export function parseFinalMenuMerge(line: string): MenuMergeMarker | null {
   const { text } = unwrapLine(line);
-  if (!/(?:最终尾声|共同结局|统一结局|分支汇总|汇聚与尾声|最终汇合|所有分支.*(?:汇聚|汇合|合流)|(?:全部|全线|所有路线).*(?:汇聚|汇合|合流))/.test(text)) {
+  if (!/(?:\u6700\u7ec8\u5c3e\u58f0|\u5171\u540c\u7ed3\u5c40|\u7edf\u4e00\u7ed3\u5c40|\u5206\u652f\u6c47\u603b|\u6c47\u805a\u4e0e\u5c3e\u58f0|\u6700\u7ec8\u6c47\u5408|\u6240\u6709\u5206\u652f.*(?:\u6c47\u805a|\u6c47\u5408|\u5408\u6d41)|(?:\u5168\u90e8|\u5168\u7ebf|\u6240\u6709\u8def\u7ebf).*(?:\u6c47\u805a|\u6c47\u5408|\u5408\u6d41))/.test(text)) {
     return null;
   }
   const unwrapped = unwrapLine(line);
@@ -97,12 +97,12 @@ function normalizeMenuCode(value: string): string | null {
 
 function parseChineseOrdinal(value: string): number | null {
   const digits: Record<string, number> = {
-    零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5,
-    六: 6, 七: 7, 八: 8, 九: 9,
+    '\u96f6': 0, '〇': 0, '\u4e00': 1, '\u4e8c': 2, '\u4e24': 2, '\u4e09': 3, '\u56db': 4, '\u4e94': 5,
+    '\u516d': 6, '\u4e03': 7, '\u516b': 8, '\u4e5d': 9,
   };
   if (value.length === 1) return digits[value] || null;
-  if (!value.includes('十')) return null;
-  const [tensText, onesText] = value.split('十');
+  if (!value.includes('\u5341')) return null;
+  const [tensText, onesText] = value.split('\u5341');
   const tens = tensText ? digits[tensText] : 1;
   const ones = onesText ? digits[onesText] : 0;
   if (tens === undefined || ones === undefined) return null;

@@ -1,5 +1,7 @@
 # AI Semantic Lineage Story Graph Design
 
+> **Notation:** Chinese screenplay markers appear as `\uXXXX` escapes so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
+
 ## Status
 
 Approved direction: use AI semantic understanding for broad document compatibility, while compiling Script rows and graph edges deterministically. Left-side Script content and right-side plot nodes must share one canonical node-to-row mapping.
@@ -22,7 +24,7 @@ There is also a separate presentation mapping defect. Persisted plot graphs curr
 
 ## Non-Goals
 
-- Adding article-specific parsers for phrases such as `来自 A1` or `内心独白`.
+- Adding article-specific parsers for phrases such as `\u6765\u81ea A1` or `\u5185\u5fc3\u72ec\u767d`.
 - Adding runtime variables or conditional jumps based on remembered choices.
 - Allowing AI to generate the persisted PlotPlan independently from the Script graph.
 - Weakening validation to accept unreachable or cross-branch content.

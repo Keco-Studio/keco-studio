@@ -99,7 +99,7 @@ describe('full story extraction materializer', () => {
   it('auto-assigns source units already classified as structural controls', () => {
     const source = segmentStorySource([
       'Pick a route.',
-      '【选项出现】',
+      '【\u9009\u9879\u51fa\u73b0】',
       'The story continues.',
     ].join('\n'), 'structural-control');
     const value: StoryExtraction = {

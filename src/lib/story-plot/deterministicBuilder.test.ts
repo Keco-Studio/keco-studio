@@ -55,17 +55,17 @@ describe('deterministic plot grouping', () => {
       version: 1,
       entryLabel: 'Opening',
       nodes: [
-        node({ label: 'Opening', type: 'scene', content: '开场', next: 'Decision' }),
+        node({ label: 'Opening', type: 'scene', content: '\u5f00\u573a', next: 'Decision' }),
         node({
-          label: 'Decision', type: 'dialogue', content: '如何选择？', speaker: '你',
+          label: 'Decision', type: 'dialogue', content: '\u5982\u4f55\u9009\u62e9？', speaker: '\u4f60',
           options: [
-            { text: '买花', target: 'Buy', commands: [], sourceRefs: [ref] },
-            { text: '不买', target: 'Skip', commands: [], sourceRefs: [ref] },
+            { text: '\u4e70\u82b1', target: 'Buy', commands: [], sourceRefs: [ref] },
+            { text: '\u4e0d\u4e70', target: 'Skip', commands: [], sourceRefs: [ref] },
           ],
         }),
-        node({ label: 'Buy', type: 'narration', content: '阿城买花。', next: 'Merge' }),
-        node({ label: 'Skip', type: 'narration', content: '阿城暂时没买。', next: 'Merge' }),
-        node({ label: 'Merge', type: 'narration', content: '一个月后，他再次来到地铁口。' }),
+        node({ label: 'Buy', type: 'narration', content: '\u963f\u57ce\u4e70\u82b1。', next: 'Merge' }),
+        node({ label: 'Skip', type: 'narration', content: '\u963f\u57ce\u6682\u65f6\u6ca1\u4e70。', next: 'Merge' }),
+        node({ label: 'Merge', type: 'narration', content: '\u4e00\u4e2a\u6708\u540e，\u4ed6\u518d\u6b21\u6765\u5230\u5730\u94c1\u53e3。' }),
       ],
     };
 
@@ -78,12 +78,12 @@ describe('deterministic plot grouping', () => {
       ['Merge', ['Merge']],
     ]);
     expect(result.edges).toEqual(expect.arrayContaining([
-      { fromPlotNodeId: 'Opening', toPlotNodeId: 'Buy', optionText: '买花', optionIndex: 0 },
-      { fromPlotNodeId: 'Opening', toPlotNodeId: 'Skip', optionText: '不买', optionIndex: 1 },
+      { fromPlotNodeId: 'Opening', toPlotNodeId: 'Buy', optionText: '\u4e70\u82b1', optionIndex: 0 },
+      { fromPlotNodeId: 'Opening', toPlotNodeId: 'Skip', optionText: '\u4e0d\u4e70', optionIndex: 1 },
       { fromPlotNodeId: 'Buy', toPlotNodeId: 'Merge', optionText: null, optionIndex: null },
       { fromPlotNodeId: 'Skip', toPlotNodeId: 'Merge', optionText: null, optionIndex: null },
     ]));
-    expect(result.nodes.find((plot) => plot.id === 'Merge')?.title).toBe('最终汇聚');
+    expect(result.nodes.find((plot) => plot.id === 'Merge')?.title).toBe('\u6700\u7ec8\u6c47\u805a');
   });
 
   it('uses an original bracketed heading and removes only its outer brackets', () => {
@@ -94,14 +94,14 @@ describe('deterministic plot grouping', () => {
         node({
           label: 'Finale',
           type: 'scene',
-          content: '【结局A：英雄的“沉默”（钟楼）】',
+          content: '【\u7ed3\u5c40A：\u82f1\u96c4\u7684“\u6c89\u9ed8”（\u949f\u697c）】',
         }),
       ],
     };
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes[0]?.title).toBe('结局A：英雄的“沉默”（钟楼）');
+    expect(result.nodes[0]?.title).toBe('\u7ed3\u5c40A：\u82f1\u96c4\u7684“\u6c89\u9ed8”（\u949f\u697c）');
   });
 
   it('groups visible character profiles under a character introduction title', () => {
@@ -109,10 +109,10 @@ describe('deterministic plot grouping', () => {
       version: 1,
       entryLabel: 'Characters',
       nodes: [
-        node({ label: 'Characters', type: 'scene', content: '人物：', next: 'Lin' }),
-        node({ label: 'Lin', type: 'narration', content: '林晓（女，23岁）：应届毕业生。', next: 'Li' }),
-        node({ label: 'Li', type: 'narration', content: '李明（男，28岁）：职场老油条。', next: 'ActOne' }),
-        node({ label: 'ActOne', type: 'scene', content: '第一幕：抉择之夜' }),
+        node({ label: 'Characters', type: 'scene', content: '\u4eba\u7269：', next: 'Lin' }),
+        node({ label: 'Lin', type: 'narration', content: '\u6797\u6653（\u5973，23\u5c81）：\u5e94\u5c4a\u6bd5\u4e1a\u751f。', next: 'Li' }),
+        node({ label: 'Li', type: 'narration', content: '\u674e\u660e（\u7537，28\u5c81）：\u804c\u573a\u8001\u6cb9\u6761。', next: 'ActOne' }),
+        node({ label: 'ActOne', type: 'scene', content: '\u7b2c\u4e00\u5e55：\u6289\u62e9\u4e4b\u591c' }),
       ],
     };
 
@@ -120,7 +120,7 @@ describe('deterministic plot grouping', () => {
 
     expect(result.nodes[0]).toEqual({
       id: 'Characters',
-      title: '人物介绍',
+      title: '\u4eba\u7269\u4ecb\u7ecd',
       storyNodeIds: ['Characters', 'Lin', 'Li'],
     });
   });
@@ -131,22 +131,22 @@ describe('deterministic plot grouping', () => {
       entryLabel: 'Decision',
       nodes: [
         node({
-          label: 'Decision', type: 'dialogue', content: '买不买？', speaker: '阿城',
+          label: 'Decision', type: 'dialogue', content: '\u4e70\u4e0d\u4e70？', speaker: '\u963f\u57ce',
           options: [
-            { text: '买', target: 'Buy', commands: [], sourceRefs: [ref] },
-            { text: '不买', target: 'Skip', commands: [], sourceRefs: [ref] },
+            { text: '\u4e70', target: 'Buy', commands: [], sourceRefs: [ref] },
+            { text: '\u4e0d\u4e70', target: 'Skip', commands: [], sourceRefs: [ref] },
           ],
         }),
-        node({ label: 'Buy', type: 'narration', content: '阿城买花。', next: 'Skip' }),
-        node({ label: 'Skip', type: 'narration', content: '阿城不买花。' }),
+        node({ label: 'Buy', type: 'narration', content: '\u963f\u57ce\u4e70\u82b1。', next: 'Skip' }),
+        node({ label: 'Skip', type: 'narration', content: '\u963f\u57ce\u4e0d\u4e70\u82b1。' }),
       ],
     };
 
     const result = buildDeterministicStoryPlotPlan(document);
 
     expect(result.edges).toEqual(expect.arrayContaining([
-      { fromPlotNodeId: 'Decision', toPlotNodeId: 'Buy', optionText: '买', optionIndex: 0 },
-      { fromPlotNodeId: 'Decision', toPlotNodeId: 'Skip', optionText: '不买', optionIndex: 1 },
+      { fromPlotNodeId: 'Decision', toPlotNodeId: 'Buy', optionText: '\u4e70', optionIndex: 0 },
+      { fromPlotNodeId: 'Decision', toPlotNodeId: 'Skip', optionText: '\u4e0d\u4e70', optionIndex: 1 },
     ]));
     expect(result.edges).not.toContainEqual({
       fromPlotNodeId: 'Buy', toPlotNodeId: 'Skip', optionText: null, optionIndex: null,
@@ -159,17 +159,17 @@ describe('deterministic plot grouping', () => {
       entryLabel: 'Opening',
       nodes: [
         node({
-          label: 'Opening', type: 'scene', content: '第一幕',
-          options: [{ text: '买', target: 'Buy', commands: [], sourceRefs: [ref] }],
+          label: 'Opening', type: 'scene', content: '\u7b2c\u4e00\u5e55',
+          options: [{ text: '\u4e70', target: 'Buy', commands: [], sourceRefs: [ref] }],
         }),
-        node({ label: 'Buy', type: 'narration', content: '阿城买下两把花。', next: 'BuyEnd' }),
-        node({ label: 'BuyEnd', type: 'narration', content: '【结局：花香引路】阿城获得了工作机会。' }),
+        node({ label: 'Buy', type: 'narration', content: '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。', next: 'BuyEnd' }),
+        node({ label: 'BuyEnd', type: 'narration', content: '【\u7ed3\u5c40：\u82b1\u9999\u5f15\u8def】\u963f\u57ce\u83b7\u5f97\u4e86\u5de5\u4f5c\u673a\u4f1a。' }),
       ],
     };
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes.find((plot) => plot.id === 'BuyEnd')?.title).toBe('花香引路');
+    expect(result.nodes.find((plot) => plot.id === 'BuyEnd')?.title).toBe('\u82b1\u9999\u5f15\u8def');
   });
 
   it('groups branch plots by graph path when their source rows are discontiguous', () => {
@@ -178,36 +178,36 @@ describe('deterministic plot grouping', () => {
       entryLabel: 'Opening',
       nodes: [
         node({
-          label: 'Opening', type: 'scene', content: '第一幕',
+          label: 'Opening', type: 'scene', content: '\u7b2c\u4e00\u5e55',
           options: [
-            { text: '买。', target: 'BuyStart', commands: [], sourceRefs: [ref] },
-            { text: '不买。', target: 'SkipStart', commands: [], sourceRefs: [ref] },
+            { text: '\u4e70。', target: 'BuyStart', commands: [], sourceRefs: [ref] },
+            { text: '\u4e0d\u4e70。', target: 'SkipStart', commands: [], sourceRefs: [ref] },
           ],
         }),
-        node({ label: 'BuyStart', type: 'narration', content: '阿城买下两把花。', next: 'BuyEnding' }),
-        node({ label: 'BuyEnding', type: 'narration', content: '【结局：花香引路】阿城获得了工作机会。', next: 'BuyReturn' }),
-        node({ label: 'SkipStart', type: 'narration', content: '阿城暂时没有买花。', next: 'SkipEnding' }),
-        node({ label: 'SkipEnding', type: 'narration', content: '【结局：花香迟到】阿城后来补买了花。', next: 'SkipReturn' }),
-        node({ label: 'SharedAct', type: 'scene', content: '第二幕：汇聚', next: 'SharedFinal' }),
-        node({ label: 'BuyReturn', type: 'narration', content: '来自分支 A 的阿城拿出干枯的栀子花。', next: 'SharedAct' }),
-        node({ label: 'SkipReturn', type: 'narration', content: '来自分支 B 的阿城买了十把花。', next: 'SharedAct' }),
-        node({ label: 'SharedFinal', type: 'narration', content: '阿城拿着花汇入人流。' }),
+        node({ label: 'BuyStart', type: 'narration', content: '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。', next: 'BuyEnding' }),
+        node({ label: 'BuyEnding', type: 'narration', content: '【\u7ed3\u5c40：\u82b1\u9999\u5f15\u8def】\u963f\u57ce\u83b7\u5f97\u4e86\u5de5\u4f5c\u673a\u4f1a。', next: 'BuyReturn' }),
+        node({ label: 'SkipStart', type: 'narration', content: '\u963f\u57ce\u6682\u65f6\u6ca1\u6709\u4e70\u82b1。', next: 'SkipEnding' }),
+        node({ label: 'SkipEnding', type: 'narration', content: '【\u7ed3\u5c40：\u82b1\u9999\u8fdf\u5230】\u963f\u57ce\u540e\u6765\u8865\u4e70\u4e86\u82b1。', next: 'SkipReturn' }),
+        node({ label: 'SharedAct', type: 'scene', content: '\u7b2c\u4e8c\u5e55：\u6c47\u805a', next: 'SharedFinal' }),
+        node({ label: 'BuyReturn', type: 'narration', content: '\u6765\u81ea\u5206\u652f A \u7684\u963f\u57ce\u62ff\u51fa\u5e72\u67af\u7684\u6800\u5b50\u82b1。', next: 'SharedAct' }),
+        node({ label: 'SkipReturn', type: 'narration', content: '\u6765\u81ea\u5206\u652f B \u7684\u963f\u57ce\u4e70\u4e86\u5341\u628a\u82b1。', next: 'SharedAct' }),
+        node({ label: 'SharedFinal', type: 'narration', content: '\u963f\u57ce\u62ff\u7740\u82b1\u6c47\u5165\u4eba\u6d41。' }),
       ],
     };
 
     const result = buildDeterministicStoryPlotPlan(document);
 
     expect(result.nodes.map((plot) => [plot.title, plot.storyNodeIds])).toEqual([
-      ['第一幕', ['Opening']],
-      ['买。', ['BuyStart']],
-      ['花香引路', ['BuyEnding', 'BuyReturn']],
-      ['不买。', ['SkipStart']],
-      ['花香迟到', ['SkipEnding', 'SkipReturn']],
-      ['第二幕：汇聚', ['SharedAct', 'SharedFinal']],
+      ['\u7b2c\u4e00\u5e55', ['Opening']],
+      ['\u4e70。', ['BuyStart']],
+      ['\u82b1\u9999\u5f15\u8def', ['BuyEnding', 'BuyReturn']],
+      ['\u4e0d\u4e70。', ['SkipStart']],
+      ['\u82b1\u9999\u8fdf\u5230', ['SkipEnding', 'SkipReturn']],
+      ['\u7b2c\u4e8c\u5e55：\u6c47\u805a', ['SharedAct', 'SharedFinal']],
     ]);
     expect(result.edges).toEqual(expect.arrayContaining([
-      { fromPlotNodeId: 'Opening', toPlotNodeId: 'BuyStart', optionText: '买。', optionIndex: 0 },
-      { fromPlotNodeId: 'Opening', toPlotNodeId: 'SkipStart', optionText: '不买。', optionIndex: 1 },
+      { fromPlotNodeId: 'Opening', toPlotNodeId: 'BuyStart', optionText: '\u4e70。', optionIndex: 0 },
+      { fromPlotNodeId: 'Opening', toPlotNodeId: 'SkipStart', optionText: '\u4e0d\u4e70。', optionIndex: 1 },
       { fromPlotNodeId: 'BuyStart', toPlotNodeId: 'BuyEnding', optionText: null, optionIndex: null },
       { fromPlotNodeId: 'BuyEnding', toPlotNodeId: 'SharedAct', optionText: null, optionIndex: null },
       { fromPlotNodeId: 'SkipStart', toPlotNodeId: 'SkipEnding', optionText: null, optionIndex: null },

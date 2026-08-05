@@ -394,7 +394,7 @@ function normalizedVisibleValue(value: string): string {
 
 function cleanChoiceDisplayText(value: string): string {
   const text = value.trim();
-  const labeled = /^(?:(?:嵌套|子)?选择|可选方案|选项|option)\s*[A-Za-z0-9一二三四五六七八九十百零〇两]+\s*(?:[：:]\s*(.+)|[（(]([^）)]+)[）)])/iu.exec(text);
+  const labeled = /^(?:(?:\u5d4c\u5957|\u5b50)?\u9009\u62e9|\u53ef\u9009\u65b9\u6848|\u9009\u9879|option)\s*[A-Za-z0-9\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24]+\s*(?:[：:]\s*(.+)|[（(]([^）)]+)[）)])/iu.exec(text);
   if (labeled) return (labeled[1] ?? labeled[2] ?? text).trim();
   const coded = /^[A-Za-z]\d*\s*[：:]\s*(.+)$/u.exec(text);
   return (coded?.[1] ?? text).trim();

@@ -27,13 +27,24 @@ const naturalContent = [
 ].join('\n');
 const labeledBranchContent = [
   'Seven: We must choose a route.',
-  '选择 A（Go to the energy bay.）：$trust+=1',
+  '\u9009\u62e9 A（Go to the energy bay.）：$trust+=1',
   'You enter the energy bay.',
 ].join('\n');
 const explicitContent = fs.readFileSync(
   path.join(process.cwd(), 'tests/fixtures/import-script/nested-trust-story.txt'),
   'utf8'
 );
+
+// Scripts written in Chinese are stored as JSON so their characters stay
+// escaped on disk; `lines` round-trips to the exact original text.
+function readEscapedScriptFixture(name: string): string {
+  const raw = fs.readFileSync(
+    path.join(process.cwd(), `tests/fixtures/import-script/${name}.json`),
+    'utf8'
+  );
+  return (JSON.parse(raw) as { lines: string[] }).lines.join('\n');
+}
+
 const passAudit: StoryPlanAudit = { verdict: 'pass', issues: [] };
 const naturalCommandId = segmentStorySource(naturalContent, 'fixture').commands[0].id;
 const failAudit: StoryPlanAudit = {
@@ -202,21 +213,21 @@ describe('two-stage audited story extraction', () => {
 
   it('uses the lightweight Branch Planner and repairs sibling leakage locally', async () => {
     const source = [
-      '场景：地铁口。',
-      '阿城：买不买花？',
-      '选择 A：买。',
-      '阿城买下两把花。',
-      '选择 B：不买。',
-      '阿城把手缩了回来。',
-      '一个月后，阿城再次来到地铁口。',
+      '\u573a\u666f：\u5730\u94c1\u53e3。',
+      '\u963f\u57ce：\u4e70\u4e0d\u4e70\u82b1？',
+      '\u9009\u62e9 A：\u4e70。',
+      '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。',
+      '\u9009\u62e9 B：\u4e0d\u4e70。',
+      '\u963f\u57ce\u628a\u624b\u7f29\u4e86\u56de\u6765。',
+      '\u4e00\u4e2a\u6708\u540e，\u963f\u57ce\u518d\u6b21\u6765\u5230\u5730\u94c1\u53e3。',
     ].join('\n');
     const sourceIds = (index: number): string => `short:${index}`;
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
         version: 1,
         structuralUnitIds: [],
         choices: [
-          { sourceUnitId: sourceIds(2), text: '选择 A：买。', fromUnitId: sourceIds(1), targetUnitId: sourceIds(3) },
-          { sourceUnitId: sourceIds(4), text: '选择 B：不买。', fromUnitId: sourceIds(1), targetUnitId: sourceIds(5) },
+          { sourceUnitId: sourceIds(2), text: '\u9009\u62e9 A：\u4e70。', fromUnitId: sourceIds(1), targetUnitId: sourceIds(3) },
+          { sourceUnitId: sourceIds(4), text: '\u9009\u62e9 B：\u4e0d\u4e70。', fromUnitId: sourceIds(1), targetUnitId: sourceIds(5) },
         ],
         jumps: [],
         breakAfterUnitIds: [sourceIds(6)],
@@ -228,7 +239,7 @@ describe('two-stage audited story extraction', () => {
     });
     const owner = result.document.nodes.find((node) => node.options.length === 2);
 
-    expect(owner?.options.map((option) => option.text)).toEqual(['买。', '不买。']);
+    expect(owner?.options.map((option) => option.text)).toEqual(['\u4e70。', '\u4e0d\u4e70。']);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_branch_structure',
     ]);
@@ -236,12 +247,12 @@ describe('two-stage audited story extraction', () => {
 
   it('uses AI-first planning for human-readable explicit branch formats', async () => {
     const source = [
-      '【开场对话】',
-      '旅人：选择哪条小径？',
-      '分支一：选择【青石小径】',
-      '旅人走入青石小径。',
-      '分支二：选择【灯影小径】',
-      '旅人走入灯影小径。',
+      '【\u5f00\u573a\u5bf9\u8bdd】',
+      '\u65c5\u4eba：\u9009\u62e9\u54ea\u6761\u5c0f\u5f84？',
+      '\u5206\u652f\u4e00：\u9009\u62e9【\u9752\u77f3\u5c0f\u5f84】',
+      '\u65c5\u4eba\u8d70\u5165\u9752\u77f3\u5c0f\u5f84。',
+      '\u5206\u652f\u4e8c：\u9009\u62e9【\u706f\u5f71\u5c0f\u5f84】',
+      '\u65c5\u4eba\u8d70\u5165\u706f\u5f71\u5c0f\u5f84。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 2,
@@ -251,20 +262,20 @@ describe('two-stage audited story extraction', () => {
         mergeUnitId: null,
         options: [
           {
-            sourceUnitId: 'u2', text: '青石小径',
+            sourceUnitId: 'u2', text: '\u9752\u77f3\u5c0f\u5f84',
             routeUnitIds: ['u3'], nextUnitId: null,
           },
           {
-            sourceUnitId: 'u4', text: '灯影小径',
+            sourceUnitId: 'u4', text: '\u706f\u5f71\u5c0f\u5f84',
             routeUnitIds: ['u5'], nextUnitId: null,
           },
         ],
       }],
       breakAfterUnitIds: ['u3', 'u5'],
       plotGroups: [
-        { title: '迷雾中的选择', sourceUnitIds: ['u0', 'u1'] },
-        { title: '青石小径', sourceUnitIds: ['u3'] },
-        { title: '灯影小径', sourceUnitIds: ['u5'] },
+        { title: '\u8ff7\u96fe\u4e2d\u7684\u9009\u62e9', sourceUnitIds: ['u0', 'u1'] },
+        { title: '\u9752\u77f3\u5c0f\u5f84', sourceUnitIds: ['u3'] },
+        { title: '\u706f\u5f71\u5c0f\u5f84', sourceUnitIds: ['u5'] },
       ],
     }));
 
@@ -274,7 +285,7 @@ describe('two-stage audited story extraction', () => {
     });
 
     expect(result.plotPlan.nodes.map((node) => node.title)).toEqual([
-      '开场对话', '青石小径', '灯影小径',
+      '\u5f00\u573a\u5bf9\u8bdd', '\u9752\u77f3\u5c0f\u5f84', '\u706f\u5f71\u5c0f\u5f84',
     ]);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_branch_structure',
@@ -284,12 +295,12 @@ describe('two-stage audited story extraction', () => {
 
   it('ignores Branch Planner plot groups when projecting imported Story IR', async () => {
     const source = [
-      '场景：地铁口。',
-      '阿城：买不买花？',
-      '选择 A：买。',
-      '阿城买下两把花。',
-      '选择 B：不买。',
-      '阿城把手缩了回来。',
+      '\u573a\u666f：\u5730\u94c1\u53e3。',
+      '\u963f\u57ce：\u4e70\u4e0d\u4e70\u82b1？',
+      '\u9009\u62e9 A：\u4e70。',
+      '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。',
+      '\u9009\u62e9 B：\u4e0d\u4e70。',
+      '\u963f\u57ce\u628a\u624b\u7f29\u4e86\u56de\u6765。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 2,
@@ -300,20 +311,20 @@ describe('two-stage audited story extraction', () => {
         mergeUnitId: null,
         options: [
           {
-            sourceUnitId: 'u2', text: '选择 A：买。',
+            sourceUnitId: 'u2', text: '\u9009\u62e9 A：\u4e70。',
             routeUnitIds: ['u3'], nextUnitId: null,
           },
           {
-            sourceUnitId: 'u4', text: '选择 B：不买。',
+            sourceUnitId: 'u4', text: '\u9009\u62e9 B：\u4e0d\u4e70。',
             routeUnitIds: ['u5'], nextUnitId: null,
           },
         ],
       }],
       breakAfterUnitIds: ['u3', 'u5'],
       plotGroups: [
-        { title: '开场', sourceUnitIds: ['u0', 'u1'] },
-        { title: '错误的分支B分组', sourceUnitIds: ['u3'] },
-        { title: '真正的分支B', sourceUnitIds: ['u5'] },
+        { title: '\u5f00\u573a', sourceUnitIds: ['u0', 'u1'] },
+        { title: '\u9519\u8bef\u7684\u5206\u652fB\u5206\u7ec4', sourceUnitIds: ['u3'] },
+        { title: '\u771f\u6b63\u7684\u5206\u652fB', sourceUnitIds: ['u5'] },
       ],
     }));
 
@@ -323,22 +334,22 @@ describe('two-stage audited story extraction', () => {
     });
 
     expect(result.plotPlan.nodes.map((node) => node.title))
-      .not.toContain('错误的分支B分组');
+      .not.toContain('\u9519\u8bef\u7684\u5206\u652fB\u5206\u7ec4');
     expect(result.plotPlan.edges
       .filter((edge) => edge.optionText)
       .map((edge) => edge.optionText))
-      .toEqual(['买。', '不买。']);
+      .toEqual(['\u4e70。', '\u4e0d\u4e70。']);
   });
 
   it('reports the source alias and text for a node left unreachable after repairs', async () => {
     const source = [
-      '场景：开场。',
-      '林远：怎么说服他？',
-      '选择 A：用事实证明。',
-      '林远拿出了调查记录。',
-      '选择 B：用感情唤醒。',
-      '林远讲起了共同的往事。',
-      '尾声：两人终于踏上归途。',
+      '\u573a\u666f：\u5f00\u573a。',
+      '\u6797\u8fdc：\u600e\u4e48\u8bf4\u670d\u4ed6？',
+      '\u9009\u62e9 A：\u7528\u4e8b\u5b9e\u8bc1\u660e。',
+      '\u6797\u8fdc\u62ff\u51fa\u4e86\u8c03\u67e5\u8bb0\u5f55。',
+      '\u9009\u62e9 B：\u7528\u611f\u60c5\u5524\u9192。',
+      '\u6797\u8fdc\u8bb2\u8d77\u4e86\u5171\u540c\u7684\u5f80\u4e8b。',
+      '\u5c3e\u58f0：\u4e24\u4eba\u7ec8\u4e8e\u8e0f\u4e0a\u5f52\u9014。',
     ].join('\n');
     const invalid = {
       version: 2,
@@ -348,15 +359,15 @@ describe('two-stage audited story extraction', () => {
         ownerUnitId: 'u1',
         mergeUnitId: null,
         options: [
-          { sourceUnitId: 'u2', text: '用事实证明。', routeUnitIds: ['u3'], nextUnitId: null },
-          { sourceUnitId: 'u4', text: '用感情唤醒。', routeUnitIds: ['u5'], nextUnitId: null },
+          { sourceUnitId: 'u2', text: '\u7528\u4e8b\u5b9e\u8bc1\u660e。', routeUnitIds: ['u3'], nextUnitId: null },
+          { sourceUnitId: 'u4', text: '\u7528\u611f\u60c5\u5524\u9192。', routeUnitIds: ['u5'], nextUnitId: null },
         ],
       }],
       plotGroups: [
-        { title: '开场', sourceUnitIds: ['u0', 'u1'] },
-        { title: '事实证明', sourceUnitIds: ['u3'] },
-        { title: '感情唤醒', sourceUnitIds: ['u5'] },
-        { title: '归途', sourceUnitIds: ['u6'] },
+        { title: '\u5f00\u573a', sourceUnitIds: ['u0', 'u1'] },
+        { title: '\u4e8b\u5b9e\u8bc1\u660e', sourceUnitIds: ['u3'] },
+        { title: '\u611f\u60c5\u5524\u9192', sourceUnitIds: ['u5'] },
+        { title: '\u5f52\u9014', sourceUnitIds: ['u6'] },
       ],
       breakAfterUnitIds: ['u3', 'u5'],
     };
@@ -369,18 +380,18 @@ describe('two-stage audited story extraction', () => {
     await expect(resolveStoryPlanForImport(source, {
       sourceId: 'unreachable-detail',
       skipSemanticAuditAfterValidation: true,
-    })).rejects.toThrow(/u6.*尾声.*归途/i);
+    })).rejects.toThrow(/u6.*\u5c3e\u58f0.*\u5f52\u9014/i);
   });
 
   it('repairs an unreachable shared suffix with a constrained branch patch', async () => {
     const source = [
-      '场景：开场。',
-      '林远：怎么说服他？',
-      '选择 A：用事实证明。',
-      '林远拿出了调查记录。',
-      '选择 B：用感情唤醒。',
-      '林远讲起了共同的往事。',
-      '结局标记：【即时救赎】 —— 林远换回了当下的温情。',
+      '\u573a\u666f：\u5f00\u573a。',
+      '\u6797\u8fdc：\u600e\u4e48\u8bf4\u670d\u4ed6？',
+      '\u9009\u62e9 A：\u7528\u4e8b\u5b9e\u8bc1\u660e。',
+      '\u6797\u8fdc\u62ff\u51fa\u4e86\u8c03\u67e5\u8bb0\u5f55。',
+      '\u9009\u62e9 B：\u7528\u611f\u60c5\u5524\u9192。',
+      '\u6797\u8fdc\u8bb2\u8d77\u4e86\u5171\u540c\u7684\u5f80\u4e8b。',
+      '\u7ed3\u5c40\u6807\u8bb0：【\u5373\u65f6\u6551\u8d4e】 —— \u6797\u8fdc\u6362\u56de\u4e86\u5f53\u4e0b\u7684\u6e29\u60c5。',
     ].join('\n');
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify({
@@ -388,15 +399,15 @@ describe('two-stage audited story extraction', () => {
         decisions: [{
           ownerUnitId: 'u1', mergeUnitId: null,
           options: [
-            { sourceUnitId: 'u2', text: '用事实证明。', routeUnitIds: ['u3'], nextUnitId: null },
-            { sourceUnitId: 'u4', text: '用感情唤醒。', routeUnitIds: ['u5'], nextUnitId: null },
+            { sourceUnitId: 'u2', text: '\u7528\u4e8b\u5b9e\u8bc1\u660e。', routeUnitIds: ['u3'], nextUnitId: null },
+            { sourceUnitId: 'u4', text: '\u7528\u611f\u60c5\u5524\u9192。', routeUnitIds: ['u5'], nextUnitId: null },
           ],
         }],
         plotGroups: [
-          { title: '开场', sourceUnitIds: ['u0', 'u1'] },
+          { title: '\u5f00\u573a', sourceUnitIds: ['u0', 'u1'] },
           { title: 'A', sourceUnitIds: ['u3'] },
           { title: 'B', sourceUnitIds: ['u5'] },
-          { title: '结局', sourceUnitIds: ['u6'] },
+          { title: '\u7ed3\u5c40', sourceUnitIds: ['u6'] },
         ],
         breakAfterUnitIds: ['u3', 'u5'],
       }))
@@ -410,7 +421,7 @@ describe('two-stage audited story extraction', () => {
       sourceId: 'patch-shared-ending', skipSemanticAuditAfterValidation: true,
     });
 
-    expect(result.document.nodes.some((node) => node.content.includes('即时救赎'))).toBe(true);
+    expect(result.document.nodes.some((node) => node.content.includes('\u5373\u65f6\u6551\u8d4e'))).toBe(true);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_branch_structure', 'submit_branch_patch',
     ]);
@@ -418,41 +429,41 @@ describe('two-stage audited story extraction', () => {
 
   it('compiles semantic histories through shared content and exclusive later variants', async () => {
     const source = [
-      '王大可：周报怎么写？',
-      '选择 A：胡编乱造。',
-      '选择 B：硬刚坦白。',
-      '王大可：如何应对 AI 警告？',
-      '选择 A1：对质。',
-      'A1 的前置结局。',
-      '选择 A2：自首。',
-      'A2 的前置结局。',
-      '王大可：如何回应意外走红？',
-      '选择 B1：改革。',
-      'B1 的前置结局。',
-      '选择 B2：道歉。',
-      'B2 的前置结局。',
-      '所有路线来到同一场颁奖典礼。',
-      '来自 A1 的内心独白。',
-      '来自 A2 的内心独白。',
-      '来自 B1 的内心独白。',
-      '来自 B2 的内心独白。',
-      '字幕：所有笑话最终都会重逢。',
+      '\u738b\u5927\u53ef：\u5468\u62a5\u600e\u4e48\u5199？',
+      '\u9009\u62e9 A：\u80e1\u7f16\u4e71\u9020。',
+      '\u9009\u62e9 B：\u786c\u521a\u5766\u767d。',
+      '\u738b\u5927\u53ef：\u5982\u4f55\u5e94\u5bf9 AI \u8b66\u544a？',
+      '\u9009\u62e9 A1：\u5bf9\u8d28。',
+      'A1 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u9009\u62e9 A2：\u81ea\u9996。',
+      'A2 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u738b\u5927\u53ef：\u5982\u4f55\u56de\u5e94\u610f\u5916\u8d70\u7ea2？',
+      '\u9009\u62e9 B1：\u6539\u9769。',
+      'B1 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u9009\u62e9 B2：\u9053\u6b49。',
+      'B2 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u6240\u6709\u8def\u7ebf\u6765\u5230\u540c\u4e00\u573a\u9881\u5956\u5178\u793c。',
+      '\u6765\u81ea A1 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u6765\u81ea A2 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u6765\u81ea B1 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u6765\u81ea B2 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u5b57\u5e55：\u6240\u6709\u7b11\u8bdd\u6700\u7ec8\u90fd\u4f1a\u91cd\u9022。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 3,
       structuralUnitIds: [],
       decisions: [
         { id: 'd0', ownerUnitId: 'u0', options: [
-          { id: 'oa', sourceUnitId: 'u1', text: '胡编乱造。' },
-          { id: 'ob', sourceUnitId: 'u2', text: '硬刚坦白。' },
+          { id: 'oa', sourceUnitId: 'u1', text: '\u80e1\u7f16\u4e71\u9020。' },
+          { id: 'ob', sourceUnitId: 'u2', text: '\u786c\u521a\u5766\u767d。' },
         ] },
         { id: 'da', ownerUnitId: 'u3', options: [
-          { id: 'oa1', sourceUnitId: 'u4', text: '对质。' },
-          { id: 'oa2', sourceUnitId: 'u6', text: '自首。' },
+          { id: 'oa1', sourceUnitId: 'u4', text: '\u5bf9\u8d28。' },
+          { id: 'oa2', sourceUnitId: 'u6', text: '\u81ea\u9996。' },
         ] },
         { id: 'db', ownerUnitId: 'u8', options: [
-          { id: 'ob1', sourceUnitId: 'u9', text: '改革。' },
-          { id: 'ob2', sourceUnitId: 'u11', text: '道歉。' },
+          { id: 'ob1', sourceUnitId: 'u9', text: '\u6539\u9769。' },
+          { id: 'ob2', sourceUnitId: 'u11', text: '\u9053\u6b49。' },
         ] },
       ],
       histories: [
@@ -498,22 +509,22 @@ describe('two-stage audited story extraction', () => {
     expect(paths).toHaveLength(4);
     expect(result.plotPlan.version).toBe(2);
     for (const marker of ['A1', 'A2', 'B1', 'B2']) {
-      const path = paths.find((candidate) => candidate.includes(`来自 ${marker} 的内心独白`));
-      expect(path).toContain('所有路线来到同一场颁奖典礼');
-      expect(path).not.toMatch(new RegExp(`来自 (?!${marker})[AB][12] 的内心独白`));
+      const path = paths.find((candidate) => candidate.includes(`\u6765\u81ea ${marker} \u7684\u5185\u5fc3\u72ec\u767d`));
+      expect(path).toContain('\u6240\u6709\u8def\u7ebf\u6765\u5230\u540c\u4e00\u573a\u9881\u5956\u5178\u793c');
+      expect(path).not.toMatch(new RegExp(`\u6765\u81ea (?!${marker})[AB][12] \u7684\u5185\u5fc3\u72ec\u767d`));
     }
   });
 
   it('repairs explicit branch ownership with a source-targeted semantic patch', async () => {
     const source = [
-      '林溪：怎么安慰他？',
-      '选择 A：温柔倾听。',
-      '选择 B：安静陪伴。',
-      '分支 A（温柔倾听）',
-      '林溪耐心听完了故事。',
-      '分支 B（安静陪伴）',
-      '林溪安静地陪在一旁。',
-      '两条路径最终都走向和解。',
+      '\u6797\u6eaa：\u600e\u4e48\u5b89\u6170\u4ed6？',
+      '\u9009\u62e9 A：\u6e29\u67d4\u503e\u542c。',
+      '\u9009\u62e9 B：\u5b89\u9759\u966a\u4f34。',
+      '\u5206\u652f A（\u6e29\u67d4\u503e\u542c）',
+      '\u6797\u6eaa\u8010\u5fc3\u542c\u5b8c\u4e86\u6545\u4e8b。',
+      '\u5206\u652f B（\u5b89\u9759\u966a\u4f34）',
+      '\u6797\u6eaa\u5b89\u9759\u5730\u966a\u5728\u4e00\u65c1。',
+      '\u4e24\u6761\u8def\u5f84\u6700\u7ec8\u90fd\u8d70\u5411\u548c\u89e3。',
     ].join('\n');
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify({
@@ -521,8 +532,8 @@ describe('two-stage audited story extraction', () => {
         structuralUnitIds: ['u3', 'u5'],
         decisions: [{
           id: 'd0', ownerUnitId: 'u0', options: [
-            { id: 'oa', sourceUnitId: 'u1', text: '温柔倾听。' },
-            { id: 'ob', sourceUnitId: 'u2', text: '安静陪伴。' },
+            { id: 'oa', sourceUnitId: 'u1', text: '\u6e29\u67d4\u503e\u542c。' },
+            { id: 'ob', sourceUnitId: 'u2', text: '\u5b89\u9759\u966a\u4f34。' },
           ],
         }],
         histories: [
@@ -544,7 +555,7 @@ describe('two-stage audited story extraction', () => {
       sourceId: 'semantic-part-repair', skipSemanticAuditAfterValidation: true,
     });
 
-    expect(result.document.nodes.some((node) => node.content.includes('安静地陪在一旁')))
+    expect(result.document.nodes.some((node) => node.content.includes('\u5b89\u9759\u5730\u966a\u5728\u4e00\u65c1')))
       .toBe(true);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_branch_structure', 'submit_branch_patch',
@@ -553,19 +564,19 @@ describe('two-stage audited story extraction', () => {
 
   it('repairs repeated sibling leakage without falling back to Extractor or Graph Planner', async () => {
     const source = [
-      '场景：地铁口。',
-      '阿城：买不买花？',
-      '选择 A：买。',
-      '阿城买下两把花。',
-      '选择 B：不买。',
-      '阿城把手缩了回来。',
+      '\u573a\u666f：\u5730\u94c1\u53e3。',
+      '\u963f\u57ce：\u4e70\u4e0d\u4e70\u82b1？',
+      '\u9009\u62e9 A：\u4e70。',
+      '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。',
+      '\u9009\u62e9 B：\u4e0d\u4e70。',
+      '\u963f\u57ce\u628a\u624b\u7f29\u4e86\u56de\u6765。',
     ].join('\n');
     const leaking = {
       version: 1,
       structuralUnitIds: [],
       choices: [
-        { sourceUnitId: 'branch-stop:2', text: '选择 A：买。', fromUnitId: 'branch-stop:1', targetUnitId: 'branch-stop:3' },
-        { sourceUnitId: 'branch-stop:4', text: '选择 B：不买。', fromUnitId: 'branch-stop:1', targetUnitId: 'branch-stop:5' },
+        { sourceUnitId: 'branch-stop:2', text: '\u9009\u62e9 A：\u4e70。', fromUnitId: 'branch-stop:1', targetUnitId: 'branch-stop:3' },
+        { sourceUnitId: 'branch-stop:4', text: '\u9009\u62e9 B：\u4e0d\u4e70。', fromUnitId: 'branch-stop:1', targetUnitId: 'branch-stop:5' },
       ],
       jumps: [],
       breakAfterUnitIds: ['branch-stop:5'],
@@ -586,18 +597,18 @@ describe('two-stage audited story extraction', () => {
 
   it('uses Branch Planner before Graph Planner for non-standard prose without scene headings', async () => {
     const source = [
-      '李明：今天留下，还是现在离开？',
-      '可选方案一：留下。',
-      '李明收起车票，留在屋里。',
-      '可选方案二：离开。',
-      '李明拖着箱子走向车站。',
+      '\u674e\u660e：\u4eca\u5929\u7559\u4e0b，\u8fd8\u662f\u73b0\u5728\u79bb\u5f00？',
+      '\u53ef\u9009\u65b9\u6848\u4e00：\u7559\u4e0b。',
+      '\u674e\u660e\u6536\u8d77\u8f66\u7968，\u7559\u5728\u5c4b\u91cc。',
+      '\u53ef\u9009\u65b9\u6848\u4e8c：\u79bb\u5f00。',
+      '\u674e\u660e\u62d6\u7740\u7bb1\u5b50\u8d70\u5411\u8f66\u7ad9。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 1,
       structuralUnitIds: [],
       choices: [
-        { sourceUnitId: 'prose:1', text: '可选方案一：留下。', fromUnitId: 'prose:0', targetUnitId: 'prose:2' },
-        { sourceUnitId: 'prose:3', text: '可选方案二：离开。', fromUnitId: 'prose:0', targetUnitId: 'prose:4' },
+        { sourceUnitId: 'prose:1', text: '\u53ef\u9009\u65b9\u6848\u4e00：\u7559\u4e0b。', fromUnitId: 'prose:0', targetUnitId: 'prose:2' },
+        { sourceUnitId: 'prose:3', text: '\u53ef\u9009\u65b9\u6848\u4e8c：\u79bb\u5f00。', fromUnitId: 'prose:0', targetUnitId: 'prose:4' },
       ],
       jumps: [],
       breakAfterUnitIds: ['prose:2', 'prose:4'],
@@ -609,7 +620,7 @@ describe('two-stage audited story extraction', () => {
     });
 
     expect(result.document.nodes.find((node) => node.options.length === 2)?.options
-      .map((option) => option.text)).toEqual(['留下。', '离开。']);
+      .map((option) => option.text)).toEqual(['\u7559\u4e0b。', '\u79bb\u5f00。']);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_branch_structure',
     ]);
@@ -617,20 +628,20 @@ describe('two-stage audited story extraction', () => {
 
   it('uses Branch Planner for long multi-unit branch stories before chunked extraction', async () => {
     const source = [
-      `场景：${'长夜'.repeat(5_100)}`,
-      ...Array.from({ length: 19 }, (_, index) => `背景段落 ${index + 1}`),
-      '阿城：买不买花？',
-      '选择 A：买。',
-      '阿城买下两把花。',
-      '选择 B：不买。',
-      '阿城把手缩了回来。',
+      `\u573a\u666f：${'\u957f\u591c'.repeat(5_100)}`,
+      ...Array.from({ length: 19 }, (_, index) => `\u80cc\u666f\u6bb5\u843d ${index + 1}`),
+      '\u963f\u57ce：\u4e70\u4e0d\u4e70\u82b1？',
+      '\u9009\u62e9 A：\u4e70。',
+      '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。',
+      '\u9009\u62e9 B：\u4e0d\u4e70。',
+      '\u963f\u57ce\u628a\u624b\u7f29\u4e86\u56de\u6765。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 1,
       structuralUnitIds: [],
       choices: [
-        { sourceUnitId: 'long-branch:21', text: '选择 A：买。', fromUnitId: 'long-branch:20', targetUnitId: 'long-branch:22' },
-        { sourceUnitId: 'long-branch:23', text: '选择 B：不买。', fromUnitId: 'long-branch:20', targetUnitId: 'long-branch:24' },
+        { sourceUnitId: 'long-branch:21', text: '\u9009\u62e9 A：\u4e70。', fromUnitId: 'long-branch:20', targetUnitId: 'long-branch:22' },
+        { sourceUnitId: 'long-branch:23', text: '\u9009\u62e9 B：\u4e0d\u4e70。', fromUnitId: 'long-branch:20', targetUnitId: 'long-branch:24' },
       ],
       jumps: [],
       breakAfterUnitIds: ['long-branch:22', 'long-branch:24'],
@@ -757,10 +768,7 @@ describe('two-stage audited story extraction', () => {
   });
 
   it('imports explicit multi-level Chinese branches without Extractor or Graph Planner calls', async () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'tests/fixtures/import-script/hierarchical-corridor-story.txt'),
-      'utf8'
-    );
+    const source = readEscapedScriptFixture('hierarchical-corridor-story');
 
     const result = await resolveStoryPlanForImport(source, {
       sourceId: 'corridor-fast',
@@ -773,18 +781,15 @@ describe('two-stage audited story extraction', () => {
 
     expect(result.converted).toBe(false);
     expect(decisionOptions).toEqual(expect.arrayContaining([
-      ['理性判断', '直觉先行'],
-      ['触碰黑镜', '绕行黑镜'],
-      ['信任日记，按原序开门', '怀疑日记，按补注顺序调整'],
+      ['\u7406\u6027\u5224\u65ad', '\u76f4\u89c9\u5148\u884c'],
+      ['\u89e6\u78b0\u9ed1\u955c', '\u7ed5\u884c\u9ed1\u955c'],
+      ['\u4fe1\u4efb\u65e5\u8bb0，\u6309\u539f\u5e8f\u5f00\u95e8', '\u6000\u7591\u65e5\u8bb0，\u6309\u8865\u6ce8\u987a\u5e8f\u8c03\u6574'],
     ]));
     expect(mockedCompleteLlm).not.toHaveBeenCalled();
   });
 
   it('imports wrapped act branches and their summary merge without LLM conversion calls', async () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'tests/fixtures/import-script/hierarchical-career-story.txt'),
-      'utf8'
-    );
+    const source = readEscapedScriptFixture('hierarchical-career-story');
 
     const result = await resolveStoryPlanForImport(source, {
       sourceId: 'career-fast',
@@ -794,22 +799,19 @@ describe('two-stage audited story extraction', () => {
     const decisions = result.document.nodes
       .filter((node) => node.options.length > 0)
       .map((node) => node.options.map((option) => option.text));
-    const summary = result.document.nodes.find((node) => node.content.includes('殊途同归'));
+    const summary = result.document.nodes.find((node) => node.content.includes('\u6b8a\u9014\u540c\u5f52'));
 
     expect(decisions).toEqual(expect.arrayContaining([
-      ['选择宏图资本，挑战终面', '选择启航咨询，接受录用'],
-      ['接受“快速晋升”项目', '选择稳健的“行业研究”岗位'],
-      ['坚持专业操守，拒绝“注水”', '顺应公司文化，学会“包装”'],
+      ['\u9009\u62e9\u5b8f\u56fe\u8d44\u672c，\u6311\u6218\u7ec8\u9762', '\u9009\u62e9\u542f\u822a\u54a8\u8be2，\u63a5\u53d7\u5f55\u7528'],
+      ['\u63a5\u53d7“\u5feb\u901f\u664b\u5347”\u9879\u76ee', '\u9009\u62e9\u7a33\u5065\u7684“\u884c\u4e1a\u7814\u7a76”\u5c97\u4f4d'],
+      ['\u575a\u6301\u4e13\u4e1a\u64cd\u5b88，\u62d2\u7edd“\u6ce8\u6c34”', '\u987a\u5e94\u516c\u53f8\u6587\u5316，\u5b66\u4f1a“\u5305\u88c5”'],
     ]));
     expect(result.document.nodes.filter((node) => node.next === summary?.label)).toHaveLength(4);
     expect(mockedCompleteLlm).not.toHaveBeenCalled();
   });
 
   it('imports successive layered bookstore branches with a reachable final ending', async () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'tests/fixtures/import-script/layered-bookstore-story.txt'),
-      'utf8'
-    );
+    const source = readEscapedScriptFixture('layered-bookstore-story');
 
     const result = await resolveStoryPlanForImport(source, {
       sourceId: 'bookstore-fast',
@@ -821,30 +823,27 @@ describe('two-stage audited story extraction', () => {
       .map((node) => node.options.map((option) => option.text));
 
     expect(decisions).toEqual(expect.arrayContaining([
-      ['温和主动问询', '安静留白陪伴'],
-      ['理性剖析利弊', '共情治愈安抚'],
-      ['取舍开导', '落地劝解'],
-      ['温柔共情宽慰', '温柔兜底劝解'],
+      ['\u6e29\u548c\u4e3b\u52a8\u95ee\u8be2', '\u5b89\u9759\u7559\u767d\u966a\u4f34'],
+      ['\u7406\u6027\u5256\u6790\u5229\u5f0a', '\u5171\u60c5\u6cbb\u6108\u5b89\u629a'],
+      ['\u53d6\u820d\u5f00\u5bfc', '\u843d\u5730\u529d\u89e3'],
+      ['\u6e29\u67d4\u5171\u60c5\u5bbd\u6170', '\u6e29\u67d4\u515c\u5e95\u529d\u89e3'],
     ]));
     const visibleContent = result.document.nodes.map((node) => node.content);
     expect(visibleContent).not.toEqual(expect.arrayContaining([
-      '人物',
-      expect.stringContaining('旧书店店主'),
-      expect.stringContaining('应届毕业生'),
-      expect.stringContaining('第一层级双并行分支'),
-      expect.stringContaining('并行分支统一汇入'),
-      expect.stringContaining('第二层级嵌套分支'),
-      expect.stringContaining('所有嵌套分支统一汇聚'),
+      '\u4eba\u7269',
+      expect.stringContaining('\u65e7\u4e66\u5e97\u5e97\u4e3b'),
+      expect.stringContaining('\u5e94\u5c4a\u6bd5\u4e1a\u751f'),
+      expect.stringContaining('\u7b2c\u4e00\u5c42\u7ea7\u53cc\u5e76\u884c\u5206\u652f'),
+      expect.stringContaining('\u5e76\u884c\u5206\u652f\u7edf\u4e00\u6c47\u5165'),
+      expect.stringContaining('\u7b2c\u4e8c\u5c42\u7ea7\u5d4c\u5957\u5206\u652f'),
+      expect.stringContaining('\u6240\u6709\u5d4c\u5957\u5206\u652f\u7edf\u4e00\u6c47\u805a'),
     ]));
-    expect(result.document.nodes.at(-1)?.content).toContain('剧终');
+    expect(result.document.nodes.at(-1)?.content).toContain('\u5267\u7ec8');
     expect(mockedCompleteLlm).not.toHaveBeenCalled();
   });
 
   it('imports hypothetical interview decisions without Extractor or duplicate source ownership', async () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'tests/fixtures/import-script/scenario-interview-story.txt'),
-      'utf8'
-    );
+    const source = readEscapedScriptFixture('scenario-interview-story');
 
     const result = await resolveStoryPlanForImport(source, {
       sourceId: 'interview-fast',
@@ -856,18 +855,15 @@ describe('two-stage audited story extraction', () => {
     expect(result.document.nodes.filter((node) => node.options.length > 0).map((node) => (
       node.options.map((option) => option.text)
     ))).toEqual(expect.arrayContaining([
-      ['技术深度回答', '技术瓶颈回答'],
-      ['诚实回答', '如果李明谎称主动辞职'],
-      ['坚持底线', '如果李明立刻妥协', '如果李明强硬拒绝'],
+      ['\u6280\u672f\u6df1\u5ea6\u56de\u7b54', '\u6280\u672f\u74f6\u9888\u56de\u7b54'],
+      ['\u8bda\u5b9e\u56de\u7b54', '\u5982\u679c\u674e\u660e\u8c0e\u79f0\u4e3b\u52a8\u8f9e\u804c'],
+      ['\u575a\u6301\u5e95\u7ebf', '\u5982\u679c\u674e\u660e\u7acb\u523b\u59a5\u534f', '\u5982\u679c\u674e\u660e\u5f3a\u786c\u62d2\u7edd'],
     ]));
     expect(mockedCompleteLlm).not.toHaveBeenCalled();
   });
 
   it('imports a lettered option menu as sibling branches without LLM conversion', async () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'tests/fixtures/import-script/menu-branch-story.txt'),
-      'utf8'
-    );
+    const source = readEscapedScriptFixture('menu-branch-story');
 
     const result = await resolveStoryPlanForImport(source, {
       sourceId: 'menu-fast',
@@ -878,7 +874,7 @@ describe('two-stage audited story extraction', () => {
     expect(result.converted).toBe(false);
     expect(result.document.nodes.filter((node) => node.options.length > 0).map((node) => (
       node.options.map((option) => option.text)
-    ))).toContainEqual(['立刻前往钟楼', '先查阅更多历史档案', '询问陈教授更多细节']);
+    ))).toContainEqual(['\u7acb\u523b\u524d\u5f80\u949f\u697c', '\u5148\u67e5\u9605\u66f4\u591a\u5386\u53f2\u6863\u6848', '\u8be2\u95ee\u9648\u6559\u6388\u66f4\u591a\u7ec6\u8282']);
     expect(mockedCompleteLlm).not.toHaveBeenCalled();
   });
 
@@ -970,22 +966,22 @@ describe('two-stage audited story extraction', () => {
 
   it('sends bracketed natural-language branch selections to the Branch Planner', async () => {
     const source = [
-      '【开场】',
-      '女帝：三策当前，卿择其一。',
-      '【分支选择一：答布防】',
-      '丞相：臣以为，当抚民为先。',
-      '【分支一结局：英雄的沉默】',
-      '群臣默然。',
-      '【分支选择二：回应女帝】',
-      '丞相：臣愿为陛下执笔。',
-      '【分支二结局：声音的代价】',
-      '女帝颔首。',
-      '【分支选择三：回应大将军】',
-      '丞相：军心不可轻动。',
-      '【分支三结局：无名的忠诚】',
-      '大将军抱拳。',
-      '【最终尾声 - 所有分支汇聚】',
-      '史官落下最后一笔。',
+      '【\u5f00\u573a】',
+      '\u5973\u5e1d：\u4e09\u7b56\u5f53\u524d，\u537f\u62e9\u5176\u4e00。',
+      '【\u5206\u652f\u9009\u62e9\u4e00：\u7b54\u5e03\u9632】',
+      '\u4e1e\u76f8：\u81e3\u4ee5\u4e3a，\u5f53\u629a\u6c11\u4e3a\u5148。',
+      '【\u5206\u652f\u4e00\u7ed3\u5c40：\u82f1\u96c4\u7684\u6c89\u9ed8】',
+      '\u7fa4\u81e3\u9ed8\u7136。',
+      '【\u5206\u652f\u9009\u62e9\u4e8c：\u56de\u5e94\u5973\u5e1d】',
+      '\u4e1e\u76f8：\u81e3\u613f\u4e3a\u965b\u4e0b\u6267\u7b14。',
+      '【\u5206\u652f\u4e8c\u7ed3\u5c40：\u58f0\u97f3\u7684\u4ee3\u4ef7】',
+      '\u5973\u5e1d\u9894\u9996。',
+      '【\u5206\u652f\u9009\u62e9\u4e09：\u56de\u5e94\u5927\u5c06\u519b】',
+      '\u4e1e\u76f8：\u519b\u5fc3\u4e0d\u53ef\u8f7b\u52a8。',
+      '【\u5206\u652f\u4e09\u7ed3\u5c40：\u65e0\u540d\u7684\u5fe0\u8bda】',
+      '\u5927\u5c06\u519b\u62b1\u62f3。',
+      '【\u6700\u7ec8\u5c3e\u58f0 - \u6240\u6709\u5206\u652f\u6c47\u805a】',
+      '\u53f2\u5b98\u843d\u4e0b\u6700\u540e\u4e00\u7b14。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 2,
@@ -996,17 +992,17 @@ describe('two-stage audited story extraction', () => {
         options: [
           {
             sourceUnitId: 'natural-bracketed:2',
-            text: '答布防',
+            text: '\u7b54\u5e03\u9632',
             routeUnitIds: ['natural-bracketed:3', 'natural-bracketed:4', 'natural-bracketed:5'],
           },
           {
             sourceUnitId: 'natural-bracketed:6',
-            text: '回应女帝',
+            text: '\u56de\u5e94\u5973\u5e1d',
             routeUnitIds: ['natural-bracketed:7', 'natural-bracketed:8', 'natural-bracketed:9'],
           },
           {
             sourceUnitId: 'natural-bracketed:10',
-            text: '回应大将军',
+            text: '\u56de\u5e94\u5927\u5c06\u519b',
             routeUnitIds: ['natural-bracketed:11', 'natural-bracketed:12', 'natural-bracketed:13'],
           },
         ],
@@ -1021,19 +1017,19 @@ describe('two-stage audited story extraction', () => {
 
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName))
       .toEqual(['submit_branch_structure']);
-    expect(result.document.nodes.find((node) => node.content.includes('三策当前'))?.options)
+    expect(result.document.nodes.find((node) => node.content.includes('\u4e09\u7b56\u5f53\u524d'))?.options)
       .toHaveLength(3);
   });
 
   it('uses deterministic plot titles for both panes without a second Plot Planner call', async () => {
     const source = [
-      '场景：地铁口。',
-      '阿城：买不买花？',
-      '选择 A：买。',
-      '阿城买下两把花。',
-      '选择 B：不买。',
-      '阿城把手缩了回来。',
-      '一个月后，阿城再次来到地铁口。',
+      '\u573a\u666f：\u5730\u94c1\u53e3。',
+      '\u963f\u57ce：\u4e70\u4e0d\u4e70\u82b1？',
+      '\u9009\u62e9 A：\u4e70。',
+      '\u963f\u57ce\u4e70\u4e0b\u4e24\u628a\u82b1。',
+      '\u9009\u62e9 B：\u4e0d\u4e70。',
+      '\u963f\u57ce\u628a\u624b\u7f29\u4e86\u56de\u6765。',
+      '\u4e00\u4e2a\u6708\u540e，\u963f\u57ce\u518d\u6b21\u6765\u5230\u5730\u94c1\u53e3。',
     ].join('\n');
     mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({
       version: 2,
@@ -1042,15 +1038,15 @@ describe('two-stage audited story extraction', () => {
         ownerUnitId: 'unified:1',
         mergeUnitId: 'unified:6',
         options: [
-          { sourceUnitId: 'unified:2', text: '选择 A：买。', routeUnitIds: ['unified:3'] },
-          { sourceUnitId: 'unified:4', text: '选择 B：不买。', routeUnitIds: ['unified:5'] },
+          { sourceUnitId: 'unified:2', text: '\u9009\u62e9 A：\u4e70。', routeUnitIds: ['unified:3'] },
+          { sourceUnitId: 'unified:4', text: '\u9009\u62e9 B：\u4e0d\u4e70。', routeUnitIds: ['unified:5'] },
         ],
       }],
       plotGroups: [
-        { title: '地铁口的选择', sourceUnitIds: ['unified:0', 'unified:1'] },
-        { title: '买花路线', sourceUnitIds: ['unified:3'] },
-        { title: '放弃路线', sourceUnitIds: ['unified:5'] },
-        { title: '一个月后的重逢', sourceUnitIds: ['unified:6'] },
+        { title: '\u5730\u94c1\u53e3\u7684\u9009\u62e9', sourceUnitIds: ['unified:0', 'unified:1'] },
+        { title: '\u4e70\u82b1\u8def\u7ebf', sourceUnitIds: ['unified:3'] },
+        { title: '\u653e\u5f03\u8def\u7ebf', sourceUnitIds: ['unified:5'] },
+        { title: '\u4e00\u4e2a\u6708\u540e\u7684\u91cd\u9022', sourceUnitIds: ['unified:6'] },
       ],
     }));
 
@@ -1063,7 +1059,7 @@ describe('two-stage audited story extraction', () => {
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName))
       .toEqual(['submit_branch_structure']);
     expect(result.plotPlan.nodes.map((node) => node.title)).toEqual([
-      '剧情 1', '买。', '不买。', '最终汇聚',
+      '\u5267\u60c5 1', '\u4e70。', '\u4e0d\u4e70。', '\u6700\u7ec8\u6c47\u805a',
     ]);
   });
 

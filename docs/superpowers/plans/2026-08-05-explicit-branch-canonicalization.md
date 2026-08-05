@@ -1,5 +1,7 @@
 # Explicit Branch Canonicalization Implementation Plan
 
+> **Notation:** Chinese screenplay markers appear as `\uXXXX` escapes so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make explicit nested branch outcomes hard-owned, keep sibling routes isolated, and derive imported flow charts only from validated Story relationships.
@@ -37,15 +39,15 @@ Add a test using this source and a Branch Planner candidate that omits both outc
 ```ts
 it('hard-assigns visible nested outcome markers to their coded routes', () => {
   const source = segmentStorySource([
-    '掌柜：接不接这笔钱？',
-    '嵌套选择 B1（接下银元，离开）：',
-    '伙计接过银元。',
-    '嵌套选择 B2（拒绝银元，留下）：',
-    '伙计把银元推了回去。',
-    '子分支 B1 结局（接下银元，离开）：',
-    '伙计消失在雨幕里。',
-    '子分支 B2 结局（拒绝银元，留下）：',
-    '伙计留在店里守夜。',
+    '\u638c\u67dc：\u63a5\u4e0d\u63a5\u8fd9\u7b14\u94b1？',
+    '\u5d4c\u5957\u9009\u62e9 B1（\u63a5\u4e0b\u94f6\u5143，\u79bb\u5f00）：',
+    '\u4f19\u8ba1\u63a5\u8fc7\u94f6\u5143。',
+    '\u5d4c\u5957\u9009\u62e9 B2（\u62d2\u7edd\u94f6\u5143，\u7559\u4e0b）：',
+    '\u4f19\u8ba1\u628a\u94f6\u5143\u63a8\u4e86\u56de\u53bb。',
+    '\u5b50\u5206\u652f B1 \u7ed3\u5c40（\u63a5\u4e0b\u94f6\u5143，\u79bb\u5f00）：',
+    '\u4f19\u8ba1\u6d88\u5931\u5728\u96e8\u5e55\u91cc。',
+    '\u5b50\u5206\u652f B2 \u7ed3\u5c40（\u62d2\u7edd\u94f6\u5143，\u7559\u4e0b）：',
+    '\u4f19\u8ba1\u7559\u5728\u5e97\u91cc\u5b88\u591c。',
   ].join('\n'), 'explicit-outcome-owner');
   const structure = parseAiBranchStructure({
     version: 2,
@@ -56,11 +58,11 @@ it('hard-assigns visible nested outcome markers to their coded routes', () => {
       mergeUnitId: null,
       options: [
         {
-          sourceUnitId: 'explicit-outcome-owner:1', text: '接下银元，离开',
+          sourceUnitId: 'explicit-outcome-owner:1', text: '\u63a5\u4e0b\u94f6\u5143，\u79bb\u5f00',
           routeUnitIds: ['explicit-outcome-owner:2'], nextUnitId: null,
         },
         {
-          sourceUnitId: 'explicit-outcome-owner:3', text: '拒绝银元，留下',
+          sourceUnitId: 'explicit-outcome-owner:3', text: '\u62d2\u7edd\u94f6\u5143，\u7559\u4e0b',
           routeUnitIds: ['explicit-outcome-owner:4'], nextUnitId: null,
         },
       ],
@@ -88,19 +90,19 @@ it('hard-assigns visible nested outcome markers to their coded routes', () => {
     }
     return content;
   };
-  const routeB1 = walk(decision.options.find((option) => option.text.includes('接下银元'))!.target);
-  const routeB2 = walk(decision.options.find((option) => option.text.includes('拒绝银元'))!.target);
+  const routeB1 = walk(decision.options.find((option) => option.text.includes('\u63a5\u4e0b\u94f6\u5143'))!.target);
+  const routeB2 = walk(decision.options.find((option) => option.text.includes('\u62d2\u7edd\u94f6\u5143'))!.target);
 
   expect(routeB1).toEqual(expect.arrayContaining([
-    '子分支 B1 结局（接下银元，离开）：',
-    '伙计消失在雨幕里。',
+    '\u5b50\u5206\u652f B1 \u7ed3\u5c40（\u63a5\u4e0b\u94f6\u5143，\u79bb\u5f00）：',
+    '\u4f19\u8ba1\u6d88\u5931\u5728\u96e8\u5e55\u91cc。',
   ]));
   expect(routeB1).not.toEqual(expect.arrayContaining([
-    '子分支 B2 结局（拒绝银元，留下）：',
+    '\u5b50\u5206\u652f B2 \u7ed3\u5c40（\u62d2\u7edd\u94f6\u5143，\u7559\u4e0b）：',
   ]));
   expect(routeB2).toEqual(expect.arrayContaining([
-    '子分支 B2 结局（拒绝银元，留下）：',
-    '伙计留在店里守夜。',
+    '\u5b50\u5206\u652f B2 \u7ed3\u5c40（\u62d2\u7edd\u94f6\u5143，\u7559\u4e0b）：',
+    '\u4f19\u8ba1\u7559\u5728\u5e97\u91cc\u5b88\u591c。',
   ]));
 });
 ```
@@ -193,9 +195,9 @@ Expected: all selected tests PASS; outcomes are reachable only on their coded ro
 Add a Branch Planner conversion test whose canonical Story routes are A/B but whose `plotGroups` deliberately assign A content under the B title. Assert the result uses canonical titles/branch boundaries from `buildDeterministicStoryPlotPlan`, not the supplied AI titles:
 
 ```ts
-expect(result.plotPlan.nodes.map((node) => node.title)).not.toContain('错误的分支B分组');
+expect(result.plotPlan.nodes.map((node) => node.title)).not.toContain('\u9519\u8bef\u7684\u5206\u652fB\u5206\u7ec4');
 expect(result.plotPlan.edges.filter((edge) => edge.optionText).map((edge) => edge.optionText))
-  .toEqual(['买。', '不买。']);
+  .toEqual(['\u4e70。', '\u4e0d\u4e70。']);
 ```
 
 - [ ] **Step 2: Verify RED**

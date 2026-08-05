@@ -15,12 +15,12 @@ import {
 describe('semantic lineage story compiler', () => {
   it('resolves claimed structural and option units by their source roles', () => {
     const source = segmentStorySource([
-      '人物：',
-      '林默：走哪条路？',
-      'A：左路。',
-      'B：右路。',
-      '林默走上左路。',
-      '林默走上右路。',
+      '\u4eba\u7269：',
+      '\u6797\u9ed8：\u8d70\u54ea\u6761\u8def？',
+      'A：\u5de6\u8def。',
+      'B：\u53f3\u8def。',
+      '\u6797\u9ed8\u8d70\u4e0a\u5de6\u8def。',
+      '\u6797\u9ed8\u8d70\u4e0a\u53f3\u8def。',
     ].join('\n'), 'semantic-role-conflict');
     const structure = parseSemanticLineage({
       version: 3,
@@ -30,8 +30,8 @@ describe('semantic lineage story compiler', () => {
       ],
       decisions: [{
         id: 'd0', ownerUnitId: 'semantic-role-conflict:1', options: [
-          { id: 'oa', sourceUnitId: 'semantic-role-conflict:2', text: '左路。' },
-          { id: 'ob', sourceUnitId: 'semantic-role-conflict:3', text: '右路。' },
+          { id: 'oa', sourceUnitId: 'semantic-role-conflict:2', text: '\u5de6\u8def。' },
+          { id: 'ob', sourceUnitId: 'semantic-role-conflict:3', text: '\u53f3\u8def。' },
         ],
       }],
       histories: [
@@ -53,7 +53,7 @@ describe('semantic lineage story compiler', () => {
       candidate.source
     );
 
-    expect(document.nodes.map((node) => node.content)).toContain('人物：');
+    expect(document.nodes.map((node) => node.content)).toContain('\u4eba\u7269：');
     expect(enumeratePaths(document)).toHaveLength(2);
   });
 
@@ -64,8 +64,8 @@ describe('semantic lineage story compiler', () => {
       decisions: [{
         id: 'd0', ownerUnitId: 'u0',
         options: [
-          { id: 'o0', sourceUnitId: 'u1', text: '左' },
-          { id: 'o1', sourceUnitId: 'u2', text: '右' },
+          { id: 'o0', sourceUnitId: 'u1', text: '\u5de6' },
+          { id: 'o1', sourceUnitId: 'u2', text: '\u53f3' },
         ],
       }],
       histories: [
@@ -88,9 +88,9 @@ describe('semantic lineage story compiler', () => {
 
   it('uses compact source aliases in the semantic AI contract', () => {
     const source = segmentStorySource([
-      '王大可：怎么写？',
-      '选择 A：坦白。',
-      '王大可说了实话。',
+      '\u738b\u5927\u53ef：\u600e\u4e48\u5199？',
+      '\u9009\u62e9 A：\u5766\u767d。',
+      '\u738b\u5927\u53ef\u8bf4\u4e86\u5b9e\u8bdd。',
     ].join('\n'), 'semantic-alias');
     const messages = buildSemanticLineageMessages(source);
     const input = JSON.parse(messages[1].content as string);
@@ -99,7 +99,7 @@ describe('semantic lineage story compiler', () => {
       structuralUnitIds: [],
       decisions: [{
         id: 'd0', ownerUnitId: 'u0',
-        options: [{ id: 'o0', sourceUnitId: 'u1', text: '坦白。' }],
+        options: [{ id: 'o0', sourceUnitId: 'u1', text: '\u5766\u767d。' }],
       }],
       histories: [{ id: 'h0', optionIds: ['o0'] }],
       unitClaims: [
@@ -117,25 +117,25 @@ describe('semantic lineage story compiler', () => {
 
   it('keeps history variants isolated through shared pre-variant content', () => {
     const source = segmentStorySource([
-      '王大可：周报怎么写？',
-      '选择 A：胡编乱造。',
-      '选择 B：硬刚坦白。',
-      '王大可：如何应对 AI 警告？',
-      '选择 A1：对质。',
-      'A1 的前置结局。',
-      '选择 A2：自首。',
-      'A2 的前置结局。',
-      '王大可：如何回应意外走红？',
-      '选择 B1：改革。',
-      'B1 的前置结局。',
-      '选择 B2：道歉。',
-      'B2 的前置结局。',
-      '所有路线来到同一场颁奖典礼。',
-      '来自 A1 的内心独白。',
-      '来自 A2 的内心独白。',
-      '来自 B1 的内心独白。',
-      '来自 B2 的内心独白。',
-      '字幕：所有笑话最终都会重逢。',
+      '\u738b\u5927\u53ef：\u5468\u62a5\u600e\u4e48\u5199？',
+      '\u9009\u62e9 A：\u80e1\u7f16\u4e71\u9020。',
+      '\u9009\u62e9 B：\u786c\u521a\u5766\u767d。',
+      '\u738b\u5927\u53ef：\u5982\u4f55\u5e94\u5bf9 AI \u8b66\u544a？',
+      '\u9009\u62e9 A1：\u5bf9\u8d28。',
+      'A1 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u9009\u62e9 A2：\u81ea\u9996。',
+      'A2 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u738b\u5927\u53ef：\u5982\u4f55\u56de\u5e94\u610f\u5916\u8d70\u7ea2？',
+      '\u9009\u62e9 B1：\u6539\u9769。',
+      'B1 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u9009\u62e9 B2：\u9053\u6b49。',
+      'B2 \u7684\u524d\u7f6e\u7ed3\u5c40。',
+      '\u6240\u6709\u8def\u7ebf\u6765\u5230\u540c\u4e00\u573a\u9881\u5956\u5178\u793c。',
+      '\u6765\u81ea A1 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u6765\u81ea A2 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u6765\u81ea B1 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u6765\u81ea B2 \u7684\u5185\u5fc3\u72ec\u767d。',
+      '\u5b57\u5e55：\u6240\u6709\u7b11\u8bdd\u6700\u7ec8\u90fd\u4f1a\u91cd\u9022。',
     ].join('\n'), 'semantic-history');
     const structure = parseSemanticLineage({
       version: 3,
@@ -144,22 +144,22 @@ describe('semantic lineage story compiler', () => {
         {
           id: 'd-root', ownerUnitId: 'semantic-history:0',
           options: [
-            { id: 'o-a', sourceUnitId: 'semantic-history:1', text: '胡编乱造。' },
-            { id: 'o-b', sourceUnitId: 'semantic-history:2', text: '硬刚坦白。' },
+            { id: 'o-a', sourceUnitId: 'semantic-history:1', text: '\u80e1\u7f16\u4e71\u9020。' },
+            { id: 'o-b', sourceUnitId: 'semantic-history:2', text: '\u786c\u521a\u5766\u767d。' },
           ],
         },
         {
           id: 'd-a', ownerUnitId: 'semantic-history:3',
           options: [
-            { id: 'o-a1', sourceUnitId: 'semantic-history:4', text: '对质。' },
-            { id: 'o-a2', sourceUnitId: 'semantic-history:6', text: '自首。' },
+            { id: 'o-a1', sourceUnitId: 'semantic-history:4', text: '\u5bf9\u8d28。' },
+            { id: 'o-a2', sourceUnitId: 'semantic-history:6', text: '\u81ea\u9996。' },
           ],
         },
         {
           id: 'd-b', ownerUnitId: 'semantic-history:8',
           options: [
-            { id: 'o-b1', sourceUnitId: 'semantic-history:9', text: '改革。' },
-            { id: 'o-b2', sourceUnitId: 'semantic-history:11', text: '道歉。' },
+            { id: 'o-b1', sourceUnitId: 'semantic-history:9', text: '\u6539\u9769。' },
+            { id: 'o-b2', sourceUnitId: 'semantic-history:11', text: '\u9053\u6b49。' },
           ],
         },
       ],
@@ -195,31 +195,31 @@ describe('semantic lineage story compiler', () => {
 
     expect(paths).toHaveLength(4);
     for (const marker of ['A1', 'A2', 'B1', 'B2']) {
-      const path = paths.find((candidatePath) => candidatePath.includes(`来自 ${marker} 的内心独白`));
-      expect(path).toContain('所有路线来到同一场颁奖典礼');
-      expect(path).toContain('所有笑话最终都会重逢');
-      expect(path).not.toMatch(new RegExp(`来自 (?!${marker})[AB][12] 的内心独白`));
+      const path = paths.find((candidatePath) => candidatePath.includes(`\u6765\u81ea ${marker} \u7684\u5185\u5fc3\u72ec\u767d`));
+      expect(path).toContain('\u6240\u6709\u8def\u7ebf\u6765\u5230\u540c\u4e00\u573a\u9881\u5956\u5178\u793c');
+      expect(path).toContain('\u6240\u6709\u7b11\u8bdd\u6700\u7ec8\u90fd\u4f1a\u91cd\u9022');
+      expect(path).not.toMatch(new RegExp(`\u6765\u81ea (?!${marker})[AB][12] \u7684\u5185\u5fc3\u72ec\u767d`));
     }
   });
 
   it('merges sibling routes before a later independent decision', () => {
     const source = segmentStorySource([
-      '苏禾：先怎么回应？',
-      '选择 A：温和问询。',
-      '选择 B：安静陪伴。',
-      '分支 A（温和问询）',
-      '苏禾主动询问他的烦恼。',
-      '分支 B（安静陪伴）',
-      '苏禾安静地留在一旁。',
-      '【并行分支统一汇入：中段固定剧情】',
-      '江屿终于说出了毕业的迷茫。',
-      '苏禾：接下来从哪个角度开导？',
-      '选择 1：理性分析。',
-      '苏禾帮他梳理利弊。',
-      '选择 2：共情安抚。',
-      '苏禾温柔地理解他的不安。',
-      '【所有分支统一汇聚：最终结局】',
-      '江屿最终释怀。',
+      '\u82cf\u79be：\u5148\u600e\u4e48\u56de\u5e94？',
+      '\u9009\u62e9 A：\u6e29\u548c\u95ee\u8be2。',
+      '\u9009\u62e9 B：\u5b89\u9759\u966a\u4f34。',
+      '\u5206\u652f A（\u6e29\u548c\u95ee\u8be2）',
+      '\u82cf\u79be\u4e3b\u52a8\u8be2\u95ee\u4ed6\u7684\u70e6\u607c。',
+      '\u5206\u652f B（\u5b89\u9759\u966a\u4f34）',
+      '\u82cf\u79be\u5b89\u9759\u5730\u7559\u5728\u4e00\u65c1。',
+      '【\u5e76\u884c\u5206\u652f\u7edf\u4e00\u6c47\u5165：\u4e2d\u6bb5\u56fa\u5b9a\u5267\u60c5】',
+      '\u6c5f\u5c7f\u7ec8\u4e8e\u8bf4\u51fa\u4e86\u6bd5\u4e1a\u7684\u8ff7\u832b。',
+      '\u82cf\u79be：\u63a5\u4e0b\u6765\u4ece\u54ea\u4e2a\u89d2\u5ea6\u5f00\u5bfc？',
+      '\u9009\u62e9 1：\u7406\u6027\u5206\u6790。',
+      '\u82cf\u79be\u5e2e\u4ed6\u68b3\u7406\u5229\u5f0a。',
+      '\u9009\u62e9 2：\u5171\u60c5\u5b89\u629a。',
+      '\u82cf\u79be\u6e29\u67d4\u5730\u7406\u89e3\u4ed6\u7684\u4e0d\u5b89。',
+      '【\u6240\u6709\u5206\u652f\u7edf\u4e00\u6c47\u805a：\u6700\u7ec8\u7ed3\u5c40】',
+      '\u6c5f\u5c7f\u6700\u7ec8\u91ca\u6000。',
     ].join('\n'), 'semantic-middle-merge');
     const structure = parseSemanticLineage({
       version: 3,
@@ -229,12 +229,12 @@ describe('semantic lineage story compiler', () => {
       ],
       decisions: [
         { id: 'd0', ownerUnitId: 'semantic-middle-merge:0', options: [
-          { id: 'oa', sourceUnitId: 'semantic-middle-merge:1', text: '温和问询。' },
-          { id: 'ob', sourceUnitId: 'semantic-middle-merge:2', text: '安静陪伴。' },
+          { id: 'oa', sourceUnitId: 'semantic-middle-merge:1', text: '\u6e29\u548c\u95ee\u8be2。' },
+          { id: 'ob', sourceUnitId: 'semantic-middle-merge:2', text: '\u5b89\u9759\u966a\u4f34。' },
         ] },
         { id: 'd1', ownerUnitId: 'semantic-middle-merge:9', options: [
-          { id: 'o1', sourceUnitId: 'semantic-middle-merge:10', text: '理性分析。' },
-          { id: 'o2', sourceUnitId: 'semantic-middle-merge:12', text: '共情安抚。' },
+          { id: 'o1', sourceUnitId: 'semantic-middle-merge:10', text: '\u7406\u6027\u5206\u6790。' },
+          { id: 'o2', sourceUnitId: 'semantic-middle-merge:12', text: '\u5171\u60c5\u5b89\u629a。' },
         ] },
       ],
       histories: [
@@ -260,7 +260,7 @@ describe('semantic lineage story compiler', () => {
       buildStoryExtractionFromPlan(candidate.plan, candidate.source),
       candidate.source
     );
-    const shared = document.nodes.find((node) => node.content.includes('毕业的迷茫'));
+    const shared = document.nodes.find((node) => node.content.includes('\u6bd5\u4e1a\u7684\u8ff7\u832b'));
     const incoming = document.nodes.filter((node) => node.next === shared?.label);
 
     expect(shared).toBeDefined();
@@ -270,24 +270,24 @@ describe('semantic lineage story compiler', () => {
 
   it('treats a final merge control heading as structural and merges into its first story unit', () => {
     const source = segmentStorySource([
-      '林浩：从哪里调查？',
-      'A：前往钟楼。',
-      'B：查阅档案。',
-      '【选择A - 前往钟楼】',
-      '林浩在钟楼找到了勋章。',
-      '【选择B - 查阅档案】',
-      '林浩在档案中找到了哨子的记录。',
-      '【最终尾声 - 所有分支汇聚】',
-      '无论选择哪条路，林浩最终都站在地下密室中。',
-      '字幕：现在，我们听到了。',
+      '\u6797\u6d69：\u4ece\u54ea\u91cc\u8c03\u67e5？',
+      'A：\u524d\u5f80\u949f\u697c。',
+      'B：\u67e5\u9605\u6863\u6848。',
+      '【\u9009\u62e9A - \u524d\u5f80\u949f\u697c】',
+      '\u6797\u6d69\u5728\u949f\u697c\u627e\u5230\u4e86\u52cb\u7ae0。',
+      '【\u9009\u62e9B - \u67e5\u9605\u6863\u6848】',
+      '\u6797\u6d69\u5728\u6863\u6848\u4e2d\u627e\u5230\u4e86\u54e8\u5b50\u7684\u8bb0\u5f55。',
+      '【\u6700\u7ec8\u5c3e\u58f0 - \u6240\u6709\u5206\u652f\u6c47\u805a】',
+      '\u65e0\u8bba\u9009\u62e9\u54ea\u6761\u8def，\u6797\u6d69\u6700\u7ec8\u90fd\u7ad9\u5728\u5730\u4e0b\u5bc6\u5ba4\u4e2d。',
+      '\u5b57\u5e55：\u73b0\u5728，\u6211\u4eec\u542c\u5230\u4e86。',
     ].join('\n'), 'semantic-final-heading');
     const structure = parseSemanticLineage({
       version: 3,
       structuralUnitIds: ['semantic-final-heading:3', 'semantic-final-heading:5'],
       decisions: [{
         id: 'd0', ownerUnitId: 'semantic-final-heading:0', options: [
-          { id: 'oa', sourceUnitId: 'semantic-final-heading:1', text: '前往钟楼。' },
-          { id: 'ob', sourceUnitId: 'semantic-final-heading:2', text: '查阅档案。' },
+          { id: 'oa', sourceUnitId: 'semantic-final-heading:1', text: '\u524d\u5f80\u949f\u697c。' },
+          { id: 'ob', sourceUnitId: 'semantic-final-heading:2', text: '\u67e5\u9605\u6863\u6848。' },
         ],
       }],
       histories: [
@@ -311,9 +311,9 @@ describe('semantic lineage story compiler', () => {
     );
 
     expect(document.nodes.map((node) => node.content))
-      .not.toContain('【最终尾声 - 所有分支汇聚】');
+      .not.toContain('【\u6700\u7ec8\u5c3e\u58f0 - \u6240\u6709\u5206\u652f\u6c47\u805a】');
     expect(document.nodes.filter((node) => (
-      node.content.includes('最终都站在地下密室')
+      node.content.includes('\u6700\u7ec8\u90fd\u7ad9\u5728\u5730\u4e0b\u5bc6\u5ba4')
     ))).toHaveLength(1);
     expect(enumeratePaths(document)).toHaveLength(2);
   });

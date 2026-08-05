@@ -63,24 +63,24 @@ Call submit_branch_structure exactly once and return no prose.
 Use semantic judgment, not naming conventions or regex assumptions. The source may describe choices and nested branches in arbitrary language.
 
 Return grouped branch ownership, not a flat list of guessed jumps:
-- structuralUnitIds: pure choice prompts, branch labels, branch-container act/scene headings (for example "第二幕：两种选择"), merge labels, and formatting rows with no visible story content. An opening act/scene heading that establishes the playable setting remains visible unless it is explicitly only a container label.
+- structuralUnitIds: pure choice prompts, branch labels, branch-container act/scene headings (for example "\u7b2c\u4e8c\u5e55：\u4e24\u79cd\u9009\u62e9"), merge labels, and formatting rows with no visible story content. An opening act/scene heading that establishes the playable setting remains visible unless it is explicitly only a container label.
 - sharedReplayUnitIds: only source units that are genuinely shared setup played once on multiple history-specific routes before those routes diverge again. Every unit repeated across options[].routeUnitIds must be listed here. Never list branch-exclusive dialogue from one sibling merely because another route should reach a similar beat.
 - decisions: one object per real player decision. Put every sibling option in the same decision object.
 - ownerUnitId: the visible prompt/content row that owns all options in that decision.
 - options[].sourceUnitId and text: the option row and an exact contiguous option substring.
-- options[].routeUnitIds: every visible story unit exclusive to that option, in playback order. Include discontiguous later continuations such as "来自分支 A". Do not include sibling content or shared merge content.
+- options[].routeUnitIds: every visible story unit exclusive to that option, in playback order. Include discontiguous later continuations such as "\u6765\u81ea\u5206\u652f A". Do not include sibling content or shared merge content.
 - options[].nextUnitId: the first visible unit played after that option's exclusive route. Set it independently for every option because siblings may lead to different endings or one option may rejoin another branch. Use null only when the option terminates or its route ends at a nested decision owner.
 - mergeUnitId: the first visible unit shared by all sibling options after their exclusive routes, or null when the routes terminate separately.
-- breakAfterUnitIds: every truly terminal visible unit. A row titled "结局" is not terminal when a later act explicitly continues, converges, or provides a history-specific epilogue for that route; keep such an ending row inside its route. Independent final endings must never automatically link to the next ending in source order.
+- breakAfterUnitIds: every truly terminal visible unit. A row titled "\u7ed3\u5c40" is not terminal when a later act explicitly continues, converges, or provides a history-specific epilogue for that route; keep such an ending row inside its route. Independent final endings must never automatically link to the next ending in source order.
 - plotGroups: group visible source units into playback-level plot nodes and provide a concise title for every group. Cover every visible story unit exactly once; do not include choice-only or structural units.
 
-The user input may include branchPartHints derived from explicit headings such as "分支 A（...）" and "来自分支 B...". Treat those unit lists as hard ownership evidence: an A option route must never contain a unit owned by part B, including later history-specific continuations.
+The user input may include branchPartHints derived from explicit headings such as "\u5206\u652f A（...）" and "\u6765\u81ea\u5206\u652f B...". Treat those unit lists as hard ownership evidence: an A option route must never contain a unit owned by part B, including later history-specific continuations.
 
-When a source unit includes explicitChoiceTexts, it is a server-recognized player option. Use those exact texts as options and never invent an option from dialogue while explicitChoiceTexts are present. Units labeled 分支选择一/二/三 are sibling options of one decision even when each option's route prose is written between the markers.
-All unit IDs must come from sourceUnits. Choice rows are not visible story content and must not also be structural. Branch-body labels such as "分支 A（买花）" are structural, not decisions. Ending markers and ending summaries are visible story content; never put them in structuralUnitIds.
+When a source unit includes explicitChoiceTexts, it is a server-recognized player option. Use those exact texts as options and never invent an option from dialogue while explicitChoiceTexts are present. Units labeled \u5206\u652f\u9009\u62e9\u4e00/\u4e8c/\u4e09 are sibling options of one decision even when each option's route prose is written between the markers.
+All unit IDs must come from sourceUnits. Choice rows are not visible story content and must not also be structural. Branch-body labels such as "\u5206\u652f A（\u4e70\u82b1）" are structural, not decisions. Ending markers and ending summaries are visible story content; never put them in structuralUnitIds.
 When alternatives are listed together, emit them inside the same decision object. Never split sibling options across decisions and never emit only the last option. Never let one sibling route contain another sibling's target, body, ending, or later branch-specific continuation.
-If shared setup prose appears before later "来自分支 A" / "来自分支 B" variants, preserve playback order by repeating the shared setup unit IDs inside every affected option's routeUnitIds before its history-specific continuation. Repeating the same source unit across sibling routes explicitly authorizes the server to replay that exact source content once per path. Set mergeUnitId and nextUnitId to the first truly shared unit after all history-specific variants, never to the earlier shared setup.
-Concrete pattern: u0="买不买？", u1="选择 A：买。", u2="买花正文", u3="选择 B：不买。", u4="不买正文" becomes one decision with ownerUnitId=u0, option A routeUnitIds=[u2] and nextUnitId=null, option B routeUnitIds=[u4] and nextUnitId=null, mergeUnitId=null, and breakAfterUnitIds=[u2,u4]. Do not make u1 or u3 visible nodes.
+If shared setup prose appears before later "\u6765\u81ea\u5206\u652f A" / "\u6765\u81ea\u5206\u652f B" variants, preserve playback order by repeating the shared setup unit IDs inside every affected option's routeUnitIds before its history-specific continuation. Repeating the same source unit across sibling routes explicitly authorizes the server to replay that exact source content once per path. Set mergeUnitId and nextUnitId to the first truly shared unit after all history-specific variants, never to the earlier shared setup.
+Concrete pattern: u0="\u4e70\u4e0d\u4e70？", u1="\u9009\u62e9 A：\u4e70。", u2="\u4e70\u82b1\u6b63\u6587", u3="\u9009\u62e9 B：\u4e0d\u4e70。", u4="\u4e0d\u4e70\u6b63\u6587" becomes one decision with ownerUnitId=u0, option A routeUnitIds=[u2] and nextUnitId=null, option B routeUnitIds=[u4] and nextUnitId=null, mergeUnitId=null, and breakAfterUnitIds=[u2,u4]. Do not make u1 or u3 visible nodes.
 On a retry, previousStructureCandidate is the last parseable structure. Preserve its valid choices and transitions, and change only the relationships required to resolve validationIssues. Do not recreate unrelated branches.
 Follow each validationIssues[].repairHint exactly. A route unit cannot be both terminal in breakAfterUnitIds and continue through options[].nextUnitId or its decision mergeUnitId.
 Before returning, verify that branch-exclusive route units belong to exactly one sibling. Sibling routeUnitIds may overlap only for shared setup that must replay before later history-specific continuations.`;
@@ -441,7 +441,7 @@ type ExplicitBranchPartHint = { partCode: string; unitIds: string[] };
 function collectExplicitBranchPartHints(
   source: SegmentedStorySource
 ): ExplicitBranchPartHint[] {
-  const markerPattern = /^\s*(?:[（(]\s*)?(?:来自分支\s*([A-Za-z]\d*)\s*(?=【|的|[（(:：]|$)|(?:嵌套|子)?分支\s*([A-Za-z]\d*)\s*(?:正文|结局)?\s*(?=[（(:：]|$))/i;
+  const markerPattern = /^\s*(?:[（(]\s*)?(?:\u6765\u81ea\u5206\u652f\s*([A-Za-z]\d*)\s*(?=【|\u7684|[（(:：]|$)|(?:\u5d4c\u5957|\u5b50)?\u5206\u652f\s*([A-Za-z]\d*)\s*(?:\u6b63\u6587|\u7ed3\u5c40)?\s*(?=[（(:：]|$))/i;
   const markers = source.units.flatMap((unit, unitIndex) => {
     const match = markerPattern.exec(unit.text);
     const partCode = match?.[1] ?? match?.[2];
@@ -486,7 +486,7 @@ function assertExplicitBranchPartOwnership(
   const unitAlias = new Map(source.units.map((unit, index) => [unit.id, `u${index}`]));
   const optionCode = (option: AiBranchStructure['decisions'][number]['options'][number]) => {
     const evidence = `${unitsById.get(option.sourceUnitId)?.text ?? ''} ${option.text}`;
-    return /(?:选择|选项|分支)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
+    return /(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
   };
   for (const decision of decisions) {
     for (const option of decision.options) {
@@ -515,7 +515,7 @@ function inferExplicitParentReplayUnitIds(
   const unitsById = new Map(source.units.map((unit) => [unit.id, unit]));
   const optionCode = (option: AiBranchStructure['decisions'][number]['options'][number]) => {
     const evidence = `${unitsById.get(option.sourceUnitId)?.text ?? ''} ${option.text}`;
-    return /(?:选择|选项|分支)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
+    return /(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
   };
   const optionCodesByUnit = new Map<string, Set<string>>();
   decisions.forEach((decision) => decision.options.forEach((option) => {
@@ -545,7 +545,7 @@ function normalizeAncestorRouteOverlaps(
   const unitIndex = new Map(source.units.map((unit, index) => [unit.id, index]));
   const optionCode = (option: AiBranchStructure['decisions'][number]['options'][number]) => {
     const evidence = `${unitsById.get(option.sourceUnitId)?.text ?? ''} ${option.text}`;
-    return /(?:选择|选项|分支)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
+    return /(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
   };
   const normalized = decisions.map((decision) => ({
     ...decision,
@@ -617,7 +617,7 @@ function normalizeDescendantPartOwnership(
     option: AiBranchStructure['decisions'][number]['options'][number]
   ): string | undefined => {
     const evidence = `${unitsById.get(option.sourceUnitId)?.text ?? ''} ${option.text}`;
-    return /(?:选择|选项|分支)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
+    return /(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
   };
   const normalized = decisions.map((decision) => ({
     ...decision,
@@ -682,7 +682,7 @@ function normalizeExplicitOptionPreviews(
   );
   const decisionOwnerUnitIds = new Set(decisions.map((decision) => decision.ownerUnitId));
   const structural = new Set(structuralUnitIds);
-  const branchBodyMarkerPattern = /^\s*(?:[（(]\s*)?(?:来自分支|(?:嵌套|子)?分支)\s*[A-Za-z]\d*/i;
+  const branchBodyMarkerPattern = /^\s*(?:[（(]\s*)?(?:\u6765\u81ea\u5206\u652f|(?:\u5d4c\u5957|\u5b50)?\u5206\u652f)\s*[A-Za-z]\d*/i;
   const normalized = decisions.map((decision) => ({
     ...decision,
     options: decision.options.map((option) => ({
@@ -762,7 +762,7 @@ function normalizeCrossPartContinuations(
   const unitsById = new Map(source.units.map((unit) => [unit.id, unit]));
   const optionCode = (option: AiBranchStructure['decisions'][number]['options'][number]) => {
     const evidence = `${unitsById.get(option.sourceUnitId)?.text ?? ''} ${option.text}`;
-    return /(?:选择|选项|分支)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
+    return /(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
   };
   const compatible = (code: string | undefined, owner: string | undefined) => (
     !code || !owner || code === owner || code.startsWith(owner)
@@ -1344,7 +1344,7 @@ function expandPlotGroupsWithRouteReplays(
     ...[...replayGroups.values()]
       .filter((replay) => replay.groupIndex === groupIndex)
       .map((replay) => ({
-        title: `${group.title?.trim() ?? '剧情'}（路径 ${replay.replayKey.slice(1).replace(':o', '-')}）`,
+        title: `${group.title?.trim() ?? '\u5267\u60c5'}（\u8def\u5f84 ${replay.replayKey.slice(1).replace(':o', '-')}）`,
         sourceUnitIds: replay.sourceUnitIds,
       })),
   ]);
@@ -1806,7 +1806,7 @@ function alignDecisionsToExplicitChoiceAnchors(
 
   const rootUnits = source.units.filter((unit) => (
     explicitUnitIds.has(unit.id)
-    && /^\s*【?\s*分支选择[一二三四五六七八九十百零〇两\d]+\s*[：:]/.test(unit.text)
+    && /^\s*【?\s*\u5206\u652f\u9009\u62e9[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+\s*[：:]/.test(unit.text)
   ));
   if (rootUnits.length < 2) return filtered;
 
@@ -1829,7 +1829,7 @@ function alignDecisionsToExplicitChoiceAnchors(
     index > lastRootIndex
     && (
       isExplicitEndingSourceUnit(unit.text)
-      || /(?:最终尾声|所有分支.*(?:汇聚|汇合|合流))/.test(unit.text)
+      || /(?:\u6700\u7ec8\u5c3e\u58f0|\u6240\u6709\u5206\u652f.*(?:\u6c47\u805a|\u6c47\u5408|\u5408\u6d41))/.test(unit.text)
     )
   ));
   const mergeIndex = merge ? unitIndex.get(merge.id)! : source.units.length;
@@ -2017,8 +2017,8 @@ function repairAnchoredRouteOwnership(
 }
 
 function isExplicitEndingSourceUnit(value: string): boolean {
-  return /(?:【\s*)?结局(?:标记|[A-Za-z0-9一二三四五六七八九十百零〇两]*)?\s*[：:]/.test(value)
-    || /^\s*结局\s*\d+\s*[-—]/.test(value);
+  return /(?:【\s*)?\u7ed3\u5c40(?:\u6807\u8bb0|[A-Za-z0-9\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24]*)?\s*[：:]/.test(value)
+    || /^\s*\u7ed3\u5c40\s*\d+\s*[-—]/.test(value);
 }
 
 function promoteSharedSiblingRouteUnits(
@@ -2185,7 +2185,7 @@ function isolateSiblingBranchLeaks(plan: StoryRelationshipPlan): StoryRelationsh
 }
 
 function cleanChoiceDisplayText(value: string): string {
-  const labeled = /^(?:(?:嵌套|子)?选择|可选方案|选项|option)\s*[A-Za-z0-9一二三四五六七八九十百零〇两]+\s*(?:[：:]\s*(.+)|[（(]([^）)]+)[）)])/iu.exec(value.trim());
+  const labeled = /^(?:(?:\u5d4c\u5957|\u5b50)?\u9009\u62e9|\u53ef\u9009\u65b9\u6848|\u9009\u9879|option)\s*[A-Za-z0-9\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24]+\s*(?:[：:]\s*(.+)|[（(]([^）)]+)[）)])/iu.exec(value.trim());
   return (labeled?.[1] ?? labeled?.[2] ?? value).trim();
 }
 

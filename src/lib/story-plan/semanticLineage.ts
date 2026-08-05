@@ -552,7 +552,7 @@ function normalizeMergeControlHeadings(
   const controlUnitIds = new Set(source.units.flatMap((unit) => {
     const text = unit.text.trim();
     const controlHeading = /^【[^】]+】$/.test(text)
-      || /^第[一二三四五六七八九十百零〇两\d]+幕(?:[：:]|.*(?:汇入|汇合|汇聚|合流))/.test(text);
+      || /^\u7b2c[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+\u5e55(?:[：:]|.*(?:\u6c47\u5165|\u6c47\u5408|\u6c47\u805a|\u5408\u6d41))/.test(text);
     return controlHeading && isExplicitMergeBoundary(text) ? [unit.id] : [];
   }));
   if (controlUnitIds.size === 0) return structure;

@@ -7,9 +7,9 @@ export type ScenarioBranchMarker = {
   control?: 'outcome' | 'return' | 'hypothetical';
 };
 
-const CORE_PATTERN = /^核心分支点\s*([A-Za-z][A-Za-z0-9-]*)\s*[：:]\s*(.+)$/i;
-const SECTION_PATTERN = /^嵌套子分支点\s*([A-Za-z][A-Za-z0-9-]*)\s*[：:]\s*(.+)$/i;
-const CHOICE_PATTERN = /^(?:转向)?子分支点\s*([A-Za-z][A-Za-z0-9-]*)\s*[：:]\s*(.+)$/i;
+const CORE_PATTERN = /^\u6838\u5fc3\u5206\u652f\u70b9\s*([A-Za-z][A-Za-z0-9-]*)\s*[：:]\s*(.+)$/i;
+const SECTION_PATTERN = /^\u5d4c\u5957\u5b50\u5206\u652f\u70b9\s*([A-Za-z][A-Za-z0-9-]*)\s*[：:]\s*(.+)$/i;
+const CHOICE_PATTERN = /^(?:\u8f6c\u5411)?\u5b50\u5206\u652f\u70b9\s*([A-Za-z][A-Za-z0-9-]*)\s*[：:]\s*(.+)$/i;
 
 export function parseScenarioBranchMarker(line: string): ScenarioBranchMarker | null {
   const inner = unwrapParenthetical(line);
@@ -20,7 +20,7 @@ export function parseScenarioBranchMarker(line: string): ScenarioBranchMarker | 
   const choice = CHOICE_PATTERN.exec(inner.text);
   if (choice) return visibleMarker('choice', choice[1], choice[2], line, inner.offset);
 
-  const control = /^(?:此分支通向结局|回到主线|主线[：:]|闪回\/?假设场景)/.exec(inner.text);
+  const control = /^(?:\u6b64\u5206\u652f\u901a\u5411\u7ed3\u5c40|\u56de\u5230\u4e3b\u7ebf|\u4e3b\u7ebf[：:]|\u95ea\u56de\/?\u5047\u8bbe\u573a\u666f)/.exec(inner.text);
   if (!control) return null;
   return {
     kind: 'structural',
@@ -28,9 +28,9 @@ export function parseScenarioBranchMarker(line: string): ScenarioBranchMarker | 
     text: inner.text,
     textStart: inner.offset,
     textEnd: inner.offset + inner.text.length,
-    control: /^此分支通向结局/.test(inner.text)
+    control: /^\u6b64\u5206\u652f\u901a\u5411\u7ed3\u5c40/.test(inner.text)
       ? 'outcome'
-      : /^(?:回到主线|主线[：:])/.test(inner.text)
+      : /^(?:\u56de\u5230\u4e3b\u7ebf|\u4e3b\u7ebf[：:])/.test(inner.text)
         ? 'return'
         : 'hypothetical',
   };
@@ -57,7 +57,7 @@ function visibleMarker(
 
 function cleanVisibleText(value: string): string {
   return value
-    .replace(/[。.]如果[\s\S]*$/, '')
+    .replace(/[。.]\u5982\u679c[\s\S]*$/, '')
     .replace(/[。.!！]+$/, '')
     .trim();
 }

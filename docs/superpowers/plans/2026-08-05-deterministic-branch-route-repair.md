@@ -1,5 +1,7 @@
 # Deterministic Branch Route Repair Implementation Plan
 
+> **Notation:** Chinese screenplay markers appear as `\uXXXX` escapes so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Repair unambiguous nested branch-route ownership locally so valid screenplay imports do not exhaust two Branch Planner attempts with misplaced or unreachable source units.
@@ -31,16 +33,16 @@ Add this test beside `assigns contiguous option preview dialogue before later br
 ```ts
 it('moves a final option preview out of a wrongly claiming sibling route', () => {
   const source = segmentStorySource([
-    '王大可：该怎么回应？',
-    '嵌套选择 B1（顺势而为）：',
-    '王大可立即敲响了总监的门。',
-    '嵌套选择 B2（惊慌失措）：',
-    '王大可面如土色，疯狂发消息。',
-    '“李总我错了！我那是情绪发泄！您别截图了！我马上重写！”',
-    '子分支 B1 结局（改革先锋）：',
-    '王大可推动了周报改革。',
-    '子分支 B2 结局（道歉立功）：',
-    '李总给王大可加了绩效分。',
+    '\u738b\u5927\u53ef：\u8be5\u600e\u4e48\u56de\u5e94？',
+    '\u5d4c\u5957\u9009\u62e9 B1（\u987a\u52bf\u800c\u4e3a）：',
+    '\u738b\u5927\u53ef\u7acb\u5373\u6572\u54cd\u4e86\u603b\u76d1\u7684\u95e8。',
+    '\u5d4c\u5957\u9009\u62e9 B2（\u60ca\u614c\u5931\u63aa）：',
+    '\u738b\u5927\u53ef\u9762\u5982\u571f\u8272，\u75af\u72c2\u53d1\u6d88\u606f。',
+    '“\u674e\u603b\u6211\u9519\u4e86！\u6211\u90a3\u662f\u60c5\u7eea\u53d1\u6cc4！\u60a8\u522b\u622a\u56fe\u4e86！\u6211\u9a6c\u4e0a\u91cd\u5199！”',
+    '\u5b50\u5206\u652f B1 \u7ed3\u5c40（\u6539\u9769\u5148\u950b）：',
+    '\u738b\u5927\u53ef\u63a8\u52a8\u4e86\u5468\u62a5\u6539\u9769。',
+    '\u5b50\u5206\u652f B2 \u7ed3\u5c40（\u9053\u6b49\u7acb\u529f）：',
+    '\u674e\u603b\u7ed9\u738b\u5927\u53ef\u52a0\u4e86\u7ee9\u6548\u5206。',
   ].join('\n'), 'misclaimed-option-preview');
   const structure = parseAiBranchStructure({
     version: 2,
@@ -55,7 +57,7 @@ it('moves a final option preview out of a wrongly claiming sibling route', () =>
       options: [
         {
           sourceUnitId: 'misclaimed-option-preview:1',
-          text: '顺势而为',
+          text: '\u987a\u52bf\u800c\u4e3a',
           routeUnitIds: [
             'misclaimed-option-preview:2',
             'misclaimed-option-preview:5',
@@ -65,7 +67,7 @@ it('moves a final option preview out of a wrongly claiming sibling route', () =>
         },
         {
           sourceUnitId: 'misclaimed-option-preview:3',
-          text: '惊慌失措',
+          text: '\u60ca\u614c\u5931\u63aa',
           routeUnitIds: ['misclaimed-option-preview:9'],
           nextUnitId: null,
         },
@@ -99,12 +101,12 @@ it('moves a final option preview out of a wrongly claiming sibling route', () =>
   const [routeB1, routeB2] = document.nodes[0].options.map((option) => walk(option.target));
 
   expect(routeB1).not.toContain(
-    '“李总我错了！我那是情绪发泄！您别截图了！我马上重写！”'
+    '“\u674e\u603b\u6211\u9519\u4e86！\u6211\u90a3\u662f\u60c5\u7eea\u53d1\u6cc4！\u60a8\u522b\u622a\u56fe\u4e86！\u6211\u9a6c\u4e0a\u91cd\u5199！”'
   );
   expect(routeB2).toEqual(expect.arrayContaining([
-    '王大可面如土色，疯狂发消息。',
-    '“李总我错了！我那是情绪发泄！您别截图了！我马上重写！”',
-    '李总给王大可加了绩效分。',
+    '\u738b\u5927\u53ef\u9762\u5982\u571f\u8272，\u75af\u72c2\u53d1\u6d88\u606f。',
+    '“\u674e\u603b\u6211\u9519\u4e86！\u6211\u90a3\u662f\u60c5\u7eea\u53d1\u6cc4！\u60a8\u522b\u622a\u56fe\u4e86！\u6211\u9a6c\u4e0a\u91cd\u5199！”',
+    '\u674e\u603b\u7ed9\u738b\u5927\u53ef\u52a0\u4e86\u7ee9\u6548\u5206。',
   ]));
 });
 ```
@@ -180,19 +182,19 @@ Add this test beside the explicit part ownership tests:
 ```ts
 it('moves a child-part unit claimed only by its parent option to the child option', () => {
   const source = segmentStorySource([
-    '王大可：周报怎么写？',
-    '选择 A：胡编乱造。',
-    '选择 B：硬刚坦白。',
-    '分支 A（胡编乱造）',
-    '王大可：AI误判了我，怎么办？',
-    '选择 A1：对质AI系统。',
-    '选择 A2：承认是AI写的。',
-    '子分支 A1 结局（对质）：',
-    '王大可被实际操作记录拆穿。',
-    '子分支 A2 结局（自首）：',
-    '王大可成了全公司的笑话。',
-    '分支 B（硬刚坦白）',
-    '王大可的诚实周报意外走红。',
+    '\u738b\u5927\u53ef：\u5468\u62a5\u600e\u4e48\u5199？',
+    '\u9009\u62e9 A：\u80e1\u7f16\u4e71\u9020。',
+    '\u9009\u62e9 B：\u786c\u521a\u5766\u767d。',
+    '\u5206\u652f A（\u80e1\u7f16\u4e71\u9020）',
+    '\u738b\u5927\u53ef：AI\u8bef\u5224\u4e86\u6211，\u600e\u4e48\u529e？',
+    '\u9009\u62e9 A1：\u5bf9\u8d28AI\u7cfb\u7edf。',
+    '\u9009\u62e9 A2：\u627f\u8ba4\u662fAI\u5199\u7684。',
+    '\u5b50\u5206\u652f A1 \u7ed3\u5c40（\u5bf9\u8d28）：',
+    '\u738b\u5927\u53ef\u88ab\u5b9e\u9645\u64cd\u4f5c\u8bb0\u5f55\u62c6\u7a7f。',
+    '\u5b50\u5206\u652f A2 \u7ed3\u5c40（\u81ea\u9996）：',
+    '\u738b\u5927\u53ef\u6210\u4e86\u5168\u516c\u53f8\u7684\u7b11\u8bdd。',
+    '\u5206\u652f B（\u786c\u521a\u5766\u767d）',
+    '\u738b\u5927\u53ef\u7684\u8bda\u5b9e\u5468\u62a5\u610f\u5916\u8d70\u7ea2。',
   ].join('\n'), 'descendant-route-repair');
   const structure = parseAiBranchStructure({
     version: 2,
@@ -210,7 +212,7 @@ it('moves a child-part unit claimed only by its parent option to the child optio
         options: [
           {
             sourceUnitId: 'descendant-route-repair:1',
-            text: '选择 A：胡编乱造。',
+            text: '\u9009\u62e9 A：\u80e1\u7f16\u4e71\u9020。',
             routeUnitIds: [
               'descendant-route-repair:4',
               'descendant-route-repair:8',
@@ -219,7 +221,7 @@ it('moves a child-part unit claimed only by its parent option to the child optio
           },
           {
             sourceUnitId: 'descendant-route-repair:2',
-            text: '选择 B：硬刚坦白。',
+            text: '\u9009\u62e9 B：\u786c\u521a\u5766\u767d。',
             routeUnitIds: ['descendant-route-repair:12'],
             nextUnitId: null,
           },
@@ -231,13 +233,13 @@ it('moves a child-part unit claimed only by its parent option to the child optio
         options: [
           {
             sourceUnitId: 'descendant-route-repair:5',
-            text: '选择 A1：对质AI系统。',
+            text: '\u9009\u62e9 A1：\u5bf9\u8d28AI\u7cfb\u7edf。',
             routeUnitIds: [],
             nextUnitId: null,
           },
           {
             sourceUnitId: 'descendant-route-repair:6',
-            text: '选择 A2：承认是AI写的。',
+            text: '\u9009\u62e9 A2：\u627f\u8ba4\u662fAI\u5199\u7684。',
             routeUnitIds: ['descendant-route-repair:10'],
             nextUnitId: null,
           },
@@ -301,7 +303,7 @@ function normalizeDescendantPartOwnership(
     option: AiBranchStructure['decisions'][number]['options'][number]
   ): string | undefined => {
     const evidence = `${unitsById.get(option.sourceUnitId)?.text ?? ''} ${option.text}`;
-    return /(?:选择|选项|分支)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
+    return /(?:\u9009\u62e9|\u9009\u9879|\u5206\u652f)\s*([A-Za-z]\d*)\b/i.exec(evidence)?.[1].toUpperCase();
   };
   const normalized = decisions.map((decision) => ({
     ...decision,
@@ -387,7 +389,7 @@ Run:
 npm run test:unit -- --runInBand src/lib/story-plan/aiBranchPlanner.test.ts -t "replays shared setup on each route"
 ```
 
-Expected: FAIL because route A stops after its history-specific continuation while route B alone reaches `风吹过墓碑，纸张微微作响。`.
+Expected: FAIL because route A stops after its history-specific continuation while route B alone reaches `\u98ce\u5439\u8fc7\u5893\u7891，\u7eb8\u5f20\u5fae\u5fae\u4f5c\u54cd。`.
 
 - [ ] **Step 2: Preserve explicit agreement on a decision merge**
 

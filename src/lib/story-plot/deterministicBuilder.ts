@@ -68,14 +68,14 @@ export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryP
     const optionTitle = optionByTarget.get(first.label)?.text;
     const endingTitle = storyNodes.map((node) => explicitEndingTitle(node.content)).find(Boolean);
     const decisionTitle = first.options.length > 0
-      ? `决策点：${compactTitle(first.content)}`
+      ? `\u51b3\u7b56\u70b9：${compactTitle(first.content)}`
       : '';
     const headingTitle = storyPlotHeadingTitle(first.content);
     const lastStoryNode = storyNodes.at(-1);
     const mergeTitle = (incomingCount.get(first.label) ?? 0) > 1
       ? lastStoryNode && !lastStoryNode.next && lastStoryNode.options.length === 0
-        ? '最终汇聚'
-        : '剧情汇聚'
+        ? '\u6700\u7ec8\u6c47\u805a'
+        : '\u5267\u60c5\u6c47\u805a'
       : '';
     nodes.push({
       id: first.label,
@@ -168,6 +168,6 @@ function compactTitle(value: string): string {
 }
 
 function explicitEndingTitle(value: string): string {
-  const match = /(?:【\s*)?结局(?:[A-Za-z0-9一二三四五六七八九十]*)?\s*[：:]\s*([^】—\-（(\n]+)/.exec(value);
+  const match = /(?:【\s*)?\u7ed3\u5c40(?:[A-Za-z0-9\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]*)?\s*[：:]\s*([^】—\-（(\n]+)/.exec(value);
   return match?.[1]?.trim() ?? '';
 }

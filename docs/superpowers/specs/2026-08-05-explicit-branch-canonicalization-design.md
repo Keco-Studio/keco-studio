@@ -1,11 +1,13 @@
 # Explicit Branch Canonicalization
 
+> **Notation:** Chinese screenplay markers appear as `\uXXXX` escapes so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
+
 **Date:** 2026-08-05
 **Status:** Approved for implementation
 
 ## Goal
 
-Make explicit screenplay branches accurate and stable across nested formats such as `选择 A`, `嵌套选择 A1`, `分支 A`, and `子分支 B1 结局`. Explicit source markers are hard ownership evidence that AI output cannot override. Natural-language prose without explicit markers continues to use the Branch Planner.
+Make explicit screenplay branches accurate and stable across nested formats such as `\u9009\u62e9 A`, `\u5d4c\u5957\u9009\u62e9 A1`, `\u5206\u652f A`, and `\u5b50\u5206\u652f B1 \u7ed3\u5c40`. Explicit source markers are hard ownership evidence that AI output cannot override. Natural-language prose without explicit markers continues to use the Branch Planner.
 
 ## Root Cause
 
@@ -19,9 +21,9 @@ The import path also accepts Branch Planner `plotGroups` whenever present, even 
 
 Classify recognized branch markers into:
 
-- choice declarations, such as `选择 A` and `嵌套选择 A1`;
-- pure structural body labels, such as `分支 A（...）`;
-- visible outcomes, such as `子分支 B1 结局（...）`;
+- choice declarations, such as `\u9009\u62e9 A` and `\u5d4c\u5957\u9009\u62e9 A1`;
+- pure structural body labels, such as `\u5206\u652f A（...）`;
+- visible outcomes, such as `\u5b50\u5206\u652f B1 \u7ed3\u5c40（...）`;
 - common merge boundaries.
 
 Visible outcomes remain Story content. Pure body labels remain structural. Both carry a normalized branch code.
@@ -73,7 +75,7 @@ Bump the conversion cache version so previously mis-grouped Story/plot results a
 
 ## Testing
 
-- Reproduce `子分支 B1 结局（接下银元，离开）` omitted from the AI route and verify it is assigned to B1 and reachable.
+- Reproduce `\u5b50\u5206\u652f B1 \u7ed3\u5c40（\u63a5\u4e0b\u94f6\u5143，\u79bb\u5f00）` omitted from the AI route and verify it is assigned to B1 and reachable.
 - Reproduce A1/A2 outcome markers omitted from both routes and verify they do not form `A1 -> A2 -> B` automatic edges.
 - Verify selecting plot branch B cannot return branch A Story rows.
 - Preserve natural-language Branch Planner coverage and strict sibling mismatch rejection.

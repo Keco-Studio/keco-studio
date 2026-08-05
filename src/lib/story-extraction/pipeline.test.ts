@@ -88,21 +88,21 @@ describe('two-stage story extraction pipeline', () => {
           id: 'invalid scene id',
           type: 'action',
           speaker: '',
-          content: '灯光熄灭。',
+          content: '\u706f\u5149\u7184\u706d。',
           sourceUnitIds: ['fixture:1'],
           nextNodeId: 'model-added-extra',
         },
         {
           id: 'dialogue',
           type: 'dialogue',
-          speaker: '林默',
-          content: '我们回来了。',
+          speaker: '\u6797\u9ed8',
+          content: '\u6211\u4eec\u56de\u6765\u4e86。',
           sourceUnitIds: ['fixture:2'],
         },
       ],
       choices: [{
         id: 'invalid choice id',
-        text: '继续前进',
+        text: '\u7ee7\u7eed\u524d\u8fdb',
         sourceUnitIds: ['fixture:3'],
         targetNodeId: 'model-added-extra',
       }],
@@ -115,14 +115,14 @@ describe('two-stage story extraction pipeline', () => {
       nodes: [
         {
           id: 'Node1', type: 'narration', presentationType: 3, speaker: '',
-          content: '灯光熄灭。', sourceUnitIds: ['fixture:1'],
+          content: '\u706f\u5149\u7184\u706d。', sourceUnitIds: ['fixture:1'],
         },
         {
-          id: 'dialogue', type: 'dialogue', presentationType: 1, speaker: '林默',
-          content: '我们回来了。', sourceUnitIds: ['fixture:2'],
+          id: 'dialogue', type: 'dialogue', presentationType: 1, speaker: '\u6797\u9ed8',
+          content: '\u6211\u4eec\u56de\u6765\u4e86。', sourceUnitIds: ['fixture:2'],
         },
       ],
-      choices: [{ id: 'Choice1', text: '继续前进', sourceUnitIds: ['fixture:3'] }],
+      choices: [{ id: 'Choice1', text: '\u7ee7\u7eed\u524d\u8fdb', sourceUnitIds: ['fixture:3'] }],
     });
   });
 
@@ -133,11 +133,11 @@ describe('two-stage story extraction pipeline', () => {
       nodes: [
         {
           id: 'first', type: 'narration', presentationType: 3, speaker: '',
-          content: '风吹过地铁口。', sourceUnitIds: ['modal:test:56'],
+          content: '\u98ce\u5439\u8fc7\u5730\u94c1\u53e3。', sourceUnitIds: ['modal:test:56'],
         },
         {
           id: 'duplicate', type: 'narration', presentationType: 3, speaker: '',
-          content: '风吹过地铁口。', sourceUnitIds: ['modal:test:56'],
+          content: '\u98ce\u5439\u8fc7\u5730\u94c1\u53e3。', sourceUnitIds: ['modal:test:56'],
         },
       ],
       choices: [],
@@ -153,11 +153,11 @@ describe('two-stage story extraction pipeline', () => {
       nodes: [
         {
           id: 'first', type: 'narration', presentationType: 3, speaker: '',
-          content: '阿城握着那把花。', sourceUnitIds: ['modal:test:55', 'modal:test:56'],
+          content: '\u963f\u57ce\u63e1\u7740\u90a3\u628a\u82b1。', sourceUnitIds: ['modal:test:55', 'modal:test:56'],
         },
         {
           id: 'duplicate', type: 'narration', presentationType: 3, speaker: '',
-          content: '阿城握着那把花。', sourceUnitIds: ['modal:test:56', 'modal:test:57'],
+          content: '\u963f\u57ce\u63e1\u7740\u90a3\u628a\u82b1。', sourceUnitIds: ['modal:test:56', 'modal:test:57'],
         },
       ],
       choices: [],
@@ -178,14 +178,14 @@ describe('two-stage story extraction pipeline', () => {
       nodes: [
         {
           id: 'prompt', type: 'narration', presentationType: 3, speaker: '',
-          content: '阿城买不买花？', sourceUnitIds: ['modal:test:55'],
+          content: '\u963f\u57ce\u4e70\u4e0d\u4e70\u82b1？', sourceUnitIds: ['modal:test:55'],
         },
         {
           id: 'preview', type: 'narration', presentationType: 3, speaker: '',
-          content: '买花', sourceUnitIds: ['modal:test:56'],
+          content: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56'],
         },
       ],
-      choices: [{ id: 'buy', text: '买花', sourceUnitIds: ['modal:test:56'] }],
+      choices: [{ id: 'buy', text: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56'] }],
     });
 
     expect(normalized.nodes.map((node) => node.id)).toEqual(['prompt']);
@@ -199,14 +199,14 @@ describe('two-stage story extraction pipeline', () => {
       nodes: [
         {
           id: 'prompt', type: 'narration', presentationType: 3, speaker: '',
-          content: '阿城买不买花？', sourceUnitIds: ['modal:test:55'],
+          content: '\u963f\u57ce\u4e70\u4e0d\u4e70\u82b1？', sourceUnitIds: ['modal:test:55'],
         },
         {
           id: 'preview', type: 'narration', presentationType: 3, speaker: '',
-          content: '买花', sourceUnitIds: ['modal:test:56'],
+          content: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56'],
         },
       ],
-      choices: [{ id: 'buy', text: '选择 A（买花）', sourceUnitIds: ['modal:test:56'] }],
+      choices: [{ id: 'buy', text: '\u9009\u62e9 A（\u4e70\u82b1）', sourceUnitIds: ['modal:test:56'] }],
     });
 
     expect(normalized.nodes.map((node) => node.id)).toEqual(['prompt']);
@@ -218,16 +218,16 @@ describe('two-stage story extraction pipeline', () => {
       structuralUnitIds: [],
       nodes: [{
         id: 'prompt', type: 'narration', presentationType: 3, speaker: '',
-        content: '阿城买不买花？', sourceUnitIds: ['modal:test:55'],
+        content: '\u963f\u57ce\u4e70\u4e0d\u4e70\u82b1？', sourceUnitIds: ['modal:test:55'],
       }],
       choices: [
-        { id: 'buy', text: '选择 A（买花）', sourceUnitIds: ['modal:test:56'] },
-        { id: 'buy_again', text: '买花', sourceUnitIds: ['modal:test:56'] },
+        { id: 'buy', text: '\u9009\u62e9 A（\u4e70\u82b1）', sourceUnitIds: ['modal:test:56'] },
+        { id: 'buy_again', text: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56'] },
       ],
     });
 
     expect(normalized.choices).toEqual([
-      expect.objectContaining({ id: 'buy', text: '买花', sourceUnitIds: ['modal:test:56'] }),
+      expect.objectContaining({ id: 'buy', text: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56'] }),
     ]);
   });
 
@@ -238,14 +238,14 @@ describe('two-stage story extraction pipeline', () => {
       nodes: [
         {
           id: 'prompt', type: 'narration', presentationType: 3, speaker: '',
-          content: '阿城买不买花？', sourceUnitIds: ['modal:test:55'],
+          content: '\u963f\u57ce\u4e70\u4e0d\u4e70\u82b1？', sourceUnitIds: ['modal:test:55'],
         },
         {
           id: 'preview', type: 'narration', presentationType: 3, speaker: '',
-          content: '买花', sourceUnitIds: ['modal:test:56', 'modal:test:57'],
+          content: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56', 'modal:test:57'],
         },
       ],
-      choices: [{ id: 'buy', text: '买花', sourceUnitIds: ['modal:test:56'] }],
+      choices: [{ id: 'buy', text: '\u4e70\u82b1', sourceUnitIds: ['modal:test:56'] }],
     });
 
     expect(normalized.nodes.find((node) => node.id === 'preview')?.sourceUnitIds)

@@ -11,8 +11,8 @@ type BranchMarker = {
   text: string;
 };
 
-const NESTED_BRANCH_PATTERN = /^嵌套分支\s*[A-Za-z]\d+\s*[：:]\s*(.+)$/i;
-const TOP_BRANCH_PATTERN = /^分支(?:点)?\s*(?:[A-Za-z]|[一二三四五六七八九十两\d]+)\s*[：:]\s*(.+)$/i;
+const NESTED_BRANCH_PATTERN = /^\u5d4c\u5957\u5206\u652f\s*[A-Za-z]\d+\s*[：:]\s*(.+)$/i;
+const TOP_BRANCH_PATTERN = /^\u5206\u652f(?:\u70b9)?\s*(?:[A-Za-z]|[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u4e24\d]+)\s*[：:]\s*(.+)$/i;
 
 export function recoverExplicitNestedBranchChoices(
   source: SegmentedStorySource,
@@ -141,7 +141,7 @@ function hasNestedHierarchy(markers: BranchMarker[]): boolean {
 function choiceText(value: string): string {
   return value
     .replace(/\s*[→].*$/, '')
-    .replace(/\s*[（(][^）)]*(?:嵌套|结局)[^）)]*[）)]\s*$/, '')
+    .replace(/\s*[（(][^）)]*(?:\u5d4c\u5957|\u7ed3\u5c40)[^）)]*[）)]\s*$/, '')
     .trim();
 }
 

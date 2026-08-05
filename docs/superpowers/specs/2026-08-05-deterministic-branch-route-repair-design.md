@@ -1,5 +1,7 @@
 # Deterministic Branch Route Repair
 
+> **Notation:** Chinese screenplay markers appear as `\uXXXX` escapes so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
+
 **Date:** 2026-08-05
 **Status:** Approved for implementation
 
@@ -23,7 +25,7 @@ For example, option `A` may contain common setup owned by part `A`, but content 
 
 For each decision, derive the visible source range after an option marker and before its next sibling option marker or the first later explicit branch-body marker. These rows are direct option-preview evidence.
 
-Remove preview units from any other option route in the same structure, then add them to the owning option route in source order. Choice units, decision owners, structural units, and non-visible units remain excluded. This rule handles the final option in a decision, including multi-line dialogue immediately before later `子分支 ... 结局` sections.
+Remove preview units from any other option route in the same structure, then add them to the owning option route in source order. Choice units, decision owners, structural units, and non-visible units remain excluded. This rule handles the final option in a decision, including multi-line dialogue immediately before later `\u5b50\u5206\u652f ... \u7ed3\u5c40` sections.
 
 ### Validation
 

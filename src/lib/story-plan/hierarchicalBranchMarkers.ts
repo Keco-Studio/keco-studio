@@ -6,12 +6,12 @@ export interface HierarchicalBranchMarker {
   choiceEnd: number;
 }
 
-const ALPHA_POINT_PATTERN = /^\s*(?:[*→]\s*)?分支点\s*([A-Za-z][A-Za-z0-9]*)\s*[：:]\s*(.+?)\s*$/i;
-const NESTED_ALPHA_PATTERN = /^\s*(?:[*→]\s*)?嵌套分支\s*([A-Za-z][A-Za-z0-9]*)\s*[：:]\s*(.+?)\s*$/i;
-const ALPHA_BRANCH_PATTERN = /^\s*(?:[*→]\s*)?分支\s*([A-Za-z][A-Za-z0-9]*)\s*[：:]\s*(.+?)\s*$/i;
-const ORDINAL_BRANCH_PATTERN = /^\s*(?:[*→]\s*)?分支\s*([一二三四五六七八九十百零〇两\d]+)\s*[：:]\s*(.+?)\s*$/;
-const LAYERED_ROOT_PATTERN = /^\s*一级选择\s*([\d]+)\s*[：:]\s*(.+?)\s*$/;
-const LAYERED_NESTED_PATTERN = /^\s*二级嵌套分支\s*([\d]+)\s*[-－]\s*([\d]+)\s*[：:]\s*(.+?)\s*$/;
+const ALPHA_POINT_PATTERN = /^\s*(?:[*→]\s*)?\u5206\u652f\u70b9\s*([A-Za-z][A-Za-z0-9]*)\s*[：:]\s*(.+?)\s*$/i;
+const NESTED_ALPHA_PATTERN = /^\s*(?:[*→]\s*)?\u5d4c\u5957\u5206\u652f\s*([A-Za-z][A-Za-z0-9]*)\s*[：:]\s*(.+?)\s*$/i;
+const ALPHA_BRANCH_PATTERN = /^\s*(?:[*→]\s*)?\u5206\u652f\s*([A-Za-z][A-Za-z0-9]*)\s*[：:]\s*(.+?)\s*$/i;
+const ORDINAL_BRANCH_PATTERN = /^\s*(?:[*→]\s*)?\u5206\u652f\s*([\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24\d]+)\s*[：:]\s*(.+?)\s*$/;
+const LAYERED_ROOT_PATTERN = /^\s*\u4e00\u7ea7\u9009\u62e9\s*([\d]+)\s*[：:]\s*(.+?)\s*$/;
+const LAYERED_NESTED_PATTERN = /^\s*\u4e8c\u7ea7\u5d4c\u5957\u5206\u652f\s*([\d]+)\s*[-－]\s*([\d]+)\s*[：:]\s*(.+?)\s*$/;
 
 export function parseHierarchicalBranchMarker(
   line: string
@@ -31,7 +31,7 @@ export function parseHierarchicalBranchMarker(
       ? `L1-${layeredRoot[1]}`
       : match![1].toUpperCase();
   const rawChoice = layeredNested?.[3] ?? layeredRoot?.[2] ?? match![2];
-  if (/^选择\s*[【[]/.test(rawChoice)) return null;
+  if (/^\u9009\u62e9\s*[【[]/.test(rawChoice)) return null;
   const cleaned = cleanChoice(rawChoice);
   if (!cleaned) return null;
   const rawStart = line.indexOf(rawChoice, unwrapped.offset);
@@ -62,7 +62,7 @@ function groupKey(code: string): string {
 function cleanChoice(value: string): string {
   const beforeOutcome = value.replace(/\s*→[\s\S]*$/, '').trim();
   return beforeOutcome
-    .replace(/\s*[（(][^）)]*(?:嵌套|结局)[^）)]*[）)]\s*$/, '')
+    .replace(/\s*[（(][^）)]*(?:\u5d4c\u5957|\u7ed3\u5c40)[^）)]*[）)]\s*$/, '')
     .replace(/[。.!！]+$/, '')
     .trim();
 }
@@ -73,7 +73,7 @@ function unwrapMarkerLine(line: string): { text: string; offset: number } {
   while (start < end && /\s/.test(line[start])) start += 1;
   while (end > start && /\s/.test(line[end - 1])) end -= 1;
 
-  const transfer = /\s*[（(]\s*转[^）)]*[）)]\s*$/.exec(line.slice(start, end));
+  const transfer = /\s*[（(]\s*\u8f6c[^）)]*[）)]\s*$/.exec(line.slice(start, end));
   if (transfer?.index !== undefined) end = start + transfer.index;
   while (end > start && /\s/.test(line[end - 1])) end -= 1;
   if (line[start] === '【' && line[end - 1] === '】') {
