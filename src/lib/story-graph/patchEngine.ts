@@ -98,6 +98,28 @@ export function applyStoryGraphPatch(
   return { graph, normalizedPatch: { operations: normalized }, changes };
 }
 
+export function applyNormalizedStoryGraphPatch(
+  input: EditableStoryGraph,
+  normalizedPatch: NormalizedStoryGraphPatch
+): ReturnType<typeof applyStoryGraphPatch> {
+  const operations = normalizedPatch.operations.map((operation) => {
+    const {
+      expectedText: _expectedText,
+      expectedTargetLabel: _expectedTargetLabel,
+      ...raw
+    } = operation;
+    return raw as StoryGraphPatchOperation;
+  });
+  const applied = applyStoryGraphPatch(input, { operations });
+  if (JSON.stringify(applied.normalizedPatch) !== JSON.stringify(normalizedPatch)) {
+    throw new StoryGraphPatchError(
+      'STORY_GRAPH_INVALID_PATCH',
+      'Approved story graph patch no longer matches its expected edges'
+    );
+  }
+  return applied;
+}
+
 function applyOperation(
   graph: EditableStoryGraph,
   operation: StoryGraphPatchOperation,
@@ -319,4 +341,3 @@ function compactTitle(content: string, fallback: string): string {
 function invalid(message: string): never {
   throw new StoryGraphPatchError('STORY_GRAPH_INVALID_PATCH', message);
 }
-
