@@ -160,7 +160,8 @@ Use stable public MCP errors:
 - `STORY_GRAPH_UNSUPPORTED_LIBRARY`: the library is not a supported document-derived Script or does not use plot-plan version 2.
 - `STORY_GRAPH_INVALID_SNAPSHOT`: rows, fields, values, or Plot membership cannot form a valid canonical graph.
 - `STORY_GRAPH_CONFLICT`: the graph changed between pages.
-- `FIELD_VALIDATION_FAILED`: input or cursor arguments are invalid.
+- `FIELD_VALIDATION_FAILED`: non-cursor input arguments are invalid.
+- `INVALID_CURSOR`: the signed cursor is malformed, expired, or bound to another project, library, or page limit.
 - `PAYLOAD_TOO_LARGE`: a lossless response cannot fit even after page reduction.
 - `PROJECT_ACCESS_REVOKED`: current project membership no longer permits reading.
 - `INTERNAL_ERROR`: the database operation failed without a safe domain-specific diagnostic.
