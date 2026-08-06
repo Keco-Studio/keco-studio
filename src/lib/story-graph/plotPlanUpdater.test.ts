@@ -77,8 +77,8 @@ describe('plot plan updater', () => {
   it('prepends a new entry Plot without splitting the previous entry Plot', () => {
     const graph = fixture();
     graph.nodes.unshift(node('Prologue', {
-      plotTitle: '开场白',
-      content: '你好',
+      plotTitle: 'Prologue',
+      content: 'Hello',
       nextLabel: 'Start',
       terminal: false,
     }));
@@ -90,7 +90,7 @@ describe('plot plan updater', () => {
         type: 'node_created',
         label: 'Prologue',
         rowIndex: 0,
-        plotTitle: '开场白',
+        plotTitle: 'Prologue',
         insertBeforeLabel: 'Start',
       },
       { type: 'entry_changed', fromLabel: 'Start', toLabel: 'Prologue' },
@@ -98,7 +98,7 @@ describe('plot plan updater', () => {
 
     expect(updated.entryPlotNodeId).toBe('Prologue');
     expect(updated.nodes).toEqual(expect.arrayContaining([
-      { id: 'Prologue', title: '开场白', storyNodeIds: ['Prologue'] },
+      { id: 'Prologue', title: 'Prologue', storyNodeIds: ['Prologue'] },
       { id: 'Start', title: 'Opening', storyNodeIds: ['Start', 'Decision'] },
     ]));
     expect(updated.nodes.filter((item) => item.title === 'Opening')).toHaveLength(1);
@@ -156,8 +156,8 @@ describe('plot plan updater', () => {
     end.terminal = false;
     graph.nodes.push(node('CurtainCall', {
       rowIndex: graph.nodes.length,
-      plotTitle: '谢幕',
-      content: '再见',
+      plotTitle: 'Curtain call',
+      content: 'Goodbye',
     }));
 
     const updated = updatePlotPlanAfterPatch(graph.plotPlan, graph, [
@@ -165,7 +165,7 @@ describe('plot plan updater', () => {
         type: 'node_created',
         label: 'CurtainCall',
         rowIndex: 6,
-        plotTitle: '谢幕',
+        plotTitle: 'Curtain call',
       },
       {
         type: 'next_changed',
@@ -177,7 +177,7 @@ describe('plot plan updater', () => {
 
     expect(updated.nodes).toEqual(expect.arrayContaining([
       { id: 'Merge', title: 'Finale', storyNodeIds: ['Merge', 'End'] },
-      { id: 'CurtainCall', title: '谢幕', storyNodeIds: ['CurtainCall'] },
+      { id: 'CurtainCall', title: 'Curtain call', storyNodeIds: ['CurtainCall'] },
     ]));
     expect(updated.nodes).not.toContainEqual({
       id: 'End', title: 'Finale', storyNodeIds: ['End'],

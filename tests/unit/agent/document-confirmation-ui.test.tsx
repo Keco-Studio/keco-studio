@@ -493,10 +493,10 @@ describe('Agent document edit confirmation UI', () => {
       <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
     );
 
-    expect(markup).toContain('确认剧情修改');
+    expect(markup).toContain('Confirm story graph changes');
     expect(markup).toContain('MainChoice');
-    expect(markup).toContain('添加「Escape ending」');
-    expect(markup).toContain('在「Main choice」之后');
+    expect(markup).toContain('Add &quot;Escape ending&quot;');
+    expect(markup).toContain('After &quot;Main choice&quot;');
     expect(markup).toContain('The hero escapes.');
     expect(markup).not.toContain('EscapeRoute');
     expect(markup).not.toContain('OldEnding');

@@ -33,20 +33,20 @@ describe('persisted plot graph row mapping', () => {
       nodes: [
         {
           id: 'FinalMerge',
-          title: '最终汇聚',
+          title: 'Final merge',
           storyNodeIds: ['Node104', 'Node105'],
         },
-        { id: 'CurtainCall', title: '谢幕', storyNodeIds: ['Node109'] },
+        { id: 'CurtainCall', title: 'Curtain call', storyNodeIds: ['Node109'] },
       ],
       edges: [],
     }, 3);
 
     expect(graph?.nodes).toEqual([
       {
-        id: 'FinalMerge', label: '最终汇聚', rowIndex: 0, rowIndexes: [0, 1],
+        id: 'FinalMerge', label: 'Final merge', rowIndex: 0, rowIndexes: [0, 1],
       },
       {
-        id: 'CurtainCall', label: '谢幕', rowIndex: 2, rowIndexes: [2],
+        id: 'CurtainCall', label: 'Curtain call', rowIndex: 2, rowIndexes: [2],
       },
     ]);
   });
@@ -57,9 +57,9 @@ describe('persisted plot graph row mapping', () => {
       entryPlotNodeId: 'Prologue',
       storyNodeOrder: ['Prologue', 'Node1', 'Node2'],
       nodes: [
-        { id: 'Prologue', title: '开场白', storyNodeIds: ['Prologue'] },
-        { id: 'Node1', title: '剧情 1', storyNodeIds: ['Node1'] },
-        { id: 'Node2', title: '剧情 1', storyNodeIds: ['Node2'] },
+        { id: 'Prologue', title: 'Prologue', storyNodeIds: ['Prologue'] },
+        { id: 'Node1', title: 'Plot 1', storyNodeIds: ['Node1'] },
+        { id: 'Node2', title: 'Plot 1', storyNodeIds: ['Node2'] },
       ],
       edges: [
         {
@@ -75,8 +75,8 @@ describe('persisted plot graph row mapping', () => {
 
     expect(graph).toEqual({
       nodes: [
-        { id: 'Prologue', label: '开场白', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Node1', label: '剧情 1', rowIndex: 1, rowIndexes: [1, 2] },
+        { id: 'Prologue', label: 'Prologue', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Node1', label: 'Plot 1', rowIndex: 1, rowIndexes: [1, 2] },
       ],
       edges: [{ from: 'Prologue', to: 'Node1' }],
     });

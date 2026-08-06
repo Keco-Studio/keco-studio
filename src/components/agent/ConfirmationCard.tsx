@@ -488,24 +488,24 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
       >
         <div className={styles.confirmTitle}>
           {resolved === 'approved'
-            ? '正在应用剧情修改...'
+            ? 'Applying story graph changes...'
             : resolved === 'rejected'
-              ? '已取消剧情修改'
-              : '确认剧情修改'}
+              ? 'Story graph changes cancelled'
+              : 'Confirm story graph changes'}
         </div>
         <div className={styles.graphPreviewTarget}>{storyGraphPreview.libraryName}</div>
 
         {storyGraphPreview.createdNodes.length > 0 ? (
-          <section className={styles.graphIntentList} aria-label="待添加节点">
+          <section className={styles.graphIntentList} aria-label="Pending additions">
             {storyGraphPreview.createdNodes.map((node) => (
               <div className={styles.graphIntent} key={`${node.label}-${node.rowIndex}`}>
-                <strong>添加「{node.title ?? node.contentSummary}」</strong>
+                <strong>{`Add "${node.title ?? node.contentSummary}"`}</strong>
                 <span className={styles.graphIntentLocation}>
                   {node.placement?.relation === 'before' && node.placement.anchorTitle
-                    ? `在「${node.placement.anchorTitle}」之前`
+                    ? `Before "${node.placement.anchorTitle}"`
                     : node.placement?.relation === 'after' && node.placement.anchorTitle
-                      ? `在「${node.placement.anchorTitle}」之后`
-                      : '在剧情末尾'}
+                      ? `After "${node.placement.anchorTitle}"`
+                      : 'At the end of the story'}
                 </span>
                 {node.contentSummary ? (
                   <span className={styles.graphIntentContent}>{node.contentSummary}</span>
@@ -514,11 +514,14 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
             ))}
           </section>
         ) : (
-          <div className={styles.graphIntentFallback}>将更新剧情节点之间的连接关系</div>
+          <div className={styles.graphIntentFallback}>
+            Will update connections between story nodes
+          </div>
         )}
         {storyGraphPreview.warnings.length > 0 ? (
           <div className={styles.graphWarning}>
-            修改后有 {storyGraphPreview.warnings.length} 个节点无法从入口到达
+            After this change, {storyGraphPreview.warnings.length} node(s) will be
+            unreachable from the entry
           </div>
         ) : null}
 

@@ -194,8 +194,8 @@ describe('propose_story_graph_edit', () => {
         node: {
           label: 'CurtainCall',
           nodeType: 'narration',
-          content: '再见',
-          plotTitle: '谢幕',
+          content: 'Goodbye',
+          plotTitle: 'Curtain call',
         },
         insertAfterLabel: 'OldEnd',
       }],

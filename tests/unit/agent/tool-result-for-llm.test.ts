@@ -91,9 +91,9 @@ describe('compactToolContentForLlm', () => {
         libraryName: 'Story',
         entryLabel: 'Node0',
         plotNodes: [
-          { id: 'opening', title: '开场', firstLabel: 'Node0', lastLabel: 'Node1', nodeCount: 2 },
-          { id: 'final-merge', title: '最终汇聚', firstLabel: 'Node100', lastLabel: 'Node105', nodeCount: 6 },
-          { id: 'curtain-call', title: '谢幕', firstLabel: 'Node106', lastLabel: 'Node106', nodeCount: 1 },
+          { id: 'opening', title: 'Opening', firstLabel: 'Node0', lastLabel: 'Node1', nodeCount: 2 },
+          { id: 'final-merge', title: 'Final merge', firstLabel: 'Node100', lastLabel: 'Node105', nodeCount: 6 },
+          { id: 'curtain-call', title: 'Curtain call', firstLabel: 'Node106', lastLabel: 'Node106', nodeCount: 1 },
         ],
         plotEdges: [{ fromPlotNodeId: 'final-merge', toPlotNodeId: 'curtain-call' }],
         nodes,
@@ -117,8 +117,8 @@ describe('compactToolContentForLlm', () => {
     expect(compact.data.visibleNodeCount).toBe(compact.data.nodes.length);
     expect(compact.data.visibleNodeCount).toBeLessThan(120);
     expect(compact.data.plotNodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: '最终汇聚', lastLabel: 'Node105' }),
-      expect.objectContaining({ title: '谢幕', lastLabel: 'Node106' }),
+      expect.objectContaining({ title: 'Final merge', lastLabel: 'Node105' }),
+      expect.objectContaining({ title: 'Curtain call', lastLabel: 'Node106' }),
     ]));
     expect(compact.data.plotEdges).toEqual([{ fromPlotNodeId: 'final-merge', toPlotNodeId: 'curtain-call' }]);
     expect(compact.data._llmNote).toMatch(/partial|narrow|label/i);

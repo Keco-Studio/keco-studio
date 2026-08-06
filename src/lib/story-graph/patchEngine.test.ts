@@ -55,8 +55,8 @@ describe('story graph patch engine', () => {
           node: {
             label: 'Prologue',
             nodeType: 'narration',
-            plotTitle: '开场白',
-            content: '你好',
+            plotTitle: 'Prologue',
+            content: 'Hello',
             nextLabel: 'Node1',
           },
           insertBeforeLabel: 'Node1',
@@ -69,8 +69,8 @@ describe('story graph patch engine', () => {
     expect(result.graph.nodes.map((item) => item.label)).toEqual(['Prologue', 'Node1', 'Node2']);
     expect(result.graph.nodes[0]).toMatchObject({
       nextLabel: 'Node1',
-      content: '你好',
-      plotTitle: '开场白',
+      content: 'Hello',
+      plotTitle: 'Prologue',
     });
     expect(result.changes).toEqual([
       expect.objectContaining({ type: 'node_created', label: 'Prologue', rowIndex: 0 }),

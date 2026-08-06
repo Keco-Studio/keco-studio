@@ -78,8 +78,8 @@ describe('FlowChartPanel', () => {
   it('marks pending nodes and their connecting edges as a preview', () => {
     const graph: FlowGraph = {
       nodes: [
-        { id: 'Prologue', label: '开场白', rowIndex: 0, rowIndexes: [] },
-        { id: 'Opening', label: '人物介绍', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Prologue', label: 'Prologue', rowIndex: 0, rowIndexes: [] },
+        { id: 'Opening', label: 'Character intro', rowIndex: 0, rowIndexes: [0] },
       ],
       edges: [{ from: 'Prologue', to: 'Opening' }],
     };
