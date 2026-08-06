@@ -141,14 +141,14 @@ export const POST = withAuth(async function POST(
               sourceId: `modal:${crypto.randomUUID()}`,
               signal: conversionController.signal,
               skipSemanticAuditAfterValidation,
-              enableAiPlotPlanning: true,
+              enableAiPlotPlanning: false,
               onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
               onLlmTelemetry: (event) => console.info('[import-script:llm]', event),
             }),
             {
               variant: skipSemanticAuditAfterValidation
-                ? 'document-validation-ai-plot-v2'
-                : 'mandatory-audit-ai-plot-v2',
+                ? 'document-validation-merge-heading-v12'
+                : 'mandatory-audit-merge-heading-v12',
             }
           );
           if (conversion.cacheHit) {

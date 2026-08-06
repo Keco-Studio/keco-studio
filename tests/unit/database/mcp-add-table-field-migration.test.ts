@@ -25,10 +25,9 @@ describe('MCP add-table-field migration', () => {
     expect(sql).toMatch(/lower\(btrim\(f\.label\)\)\s*=\s*lower\(v_label\)/i);
     expect(sql).toMatch(/Fields added to existing tables cannot be required/i);
     expect(sql).toMatch(/coalesce\(max\(f\.order_index\),\s*-1\)\s*\+\s*1/i);
-    expect(sql).toMatch(
-      /count\(distinct f\.section_id\)[\s\S]*f\.library_id = p_table_id[\s\S]*f\.section = v_section/i
-    );
-    expect(sql).toMatch(/Section name is ambiguous/i);
+    expect(sql).toMatch(/where f\.library_id = p_table_id;/i);
+    expect(sql).toMatch(/__keco_flat_fields__/i);
+    expect(sql).not.toMatch(/Section name is ambiguous/i);
   });
 
   it('validates field types and retains explicit execution grants', () => {

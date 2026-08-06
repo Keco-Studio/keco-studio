@@ -23,6 +23,7 @@ import type {
 import { getLibrary } from './libraryService';
 import { getLibraryAssetsWithProperties, getLibrarySchema } from './libraryAssetsService';
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import { getInternalFieldGroupColumns } from '@/lib/library/fieldCompatibility';
 
 /**
  * Extract display name from user profile
@@ -137,7 +138,6 @@ async function createLibrarySnapshot(
       description: library.description,
     },
     schema: {
-      sections: schema.sections,
       properties: schema.properties,
     },
     assets: snapshotAssets,
@@ -717,7 +717,6 @@ export async function duplicateVersionAsLibrary(
       .from('library_field_definitions')
       .select('*')
       .eq('library_id', libraryId)
-      .order('section', { ascending: true })
       .order('order_index', { ascending: true });
 
     if (fieldDefsError) {
@@ -725,21 +724,10 @@ export async function duplicateVersionAsLibrary(
     }
 
     if (originalFieldDefs && originalFieldDefs.length > 0) {
-      // section_id is NOT NULL in library_field_definitions; assign one per distinct section name
-      const sectionIdBySectionName = new Map<string, string>();
-      const getSectionId = (sectionName: string): string => {
-        let id = sectionIdBySectionName.get(sectionName);
-        if (!id) {
-          id = crypto.randomUUID();
-          sectionIdBySectionName.set(sectionName, id);
-        }
-        return id;
-      };
-      // Create new field definitions for the new library (include section_id)
+      const compatibility = getInternalFieldGroupColumns(newLibrary.id);
       const newFieldDefs = originalFieldDefs.map((field) => ({
         library_id: newLibrary.id,
-        section_id: getSectionId(field.section),
-        section: field.section,
+        ...compatibility,
         label: field.label,
         data_type: field.data_type,
         enum_options: field.enum_options,

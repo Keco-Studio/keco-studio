@@ -3,17 +3,18 @@ import {
   verifyLibraryCreationPermission,
 } from '@/lib/services/authorizationService';
 import { parseWorkbookRows } from '@/lib/utils/workbook';
+import { getInternalFieldGroupColumns } from '@/lib/library/fieldCompatibility';
 
 const BATCH_SIZE = 200;
 
-export type ImportSectionData = {
+export type ImportSheetData = {
   name: string;
   columns: string[];
   rows: string[][];
 };
 
 export type ParsedImportFile = {
-  sections: ImportSectionData[];
+  sheets: ImportSheetData[];
 };
 
 const isUuid = (value: string) =>
@@ -51,7 +52,7 @@ function normalizeColumns(rawHeaders: unknown[]): string[] {
   });
 }
 
-function rowsToSection(rows: unknown[][], sectionName: string): ImportSectionData | null {
+function rowsToSheet(rows: unknown[][], sheetName: string): ImportSheetData | null {
   if (rows.length === 0) return null;
 
   const headerRow = rows[0] ?? [];
@@ -63,42 +64,42 @@ function rowsToSection(rows: unknown[][], sectionName: string): ImportSectionDat
     .map((row) => columns.map((_, colIdx) => cellToString(row[colIdx])))
     .filter((row) => row.some((cell) => cell.length > 0));
 
-  return { name: sectionName, columns, rows: dataRows };
+  return { name: sheetName, columns, rows: dataRows };
 }
 
 export async function parseImportFile(buffer: Buffer, fileName: string): Promise<ParsedImportFile> {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  const sheets = await parseWorkbookRows(buffer, fileName);
+  const workbookSheets = await parseWorkbookRows(buffer, fileName);
 
-  if (sheets.length === 0) {
+  if (workbookSheets.length === 0) {
     throw new Error('File has no sheets');
   }
 
-  const sections: ImportSectionData[] = [];
-  for (const sheet of sheets) {
-    const section = rowsToSection(sheet.rows, sheet.name.trim() || 'Section');
-    if (section) sections.push(section);
+  const sheets: ImportSheetData[] = [];
+  for (const sheet of workbookSheets) {
+    const parsedSheet = rowsToSheet(sheet.rows, sheet.name.trim() || 'Sheet');
+    if (parsedSheet) sheets.push(parsedSheet);
   }
 
-  if (sections.length === 0) {
+  if (sheets.length === 0) {
     throw new Error('No valid header row found in file');
   }
 
   // CSV imports use a single default section, matching manually created libraries.
-  if (ext === 'csv' && sections.length === 1) {
-    sections[0].name = 'Section';
-  } else if (ext !== 'csv' && sections.length === 1 && /^sheet1$/i.test(sections[0].name)) {
-    sections[0].name = 'Section';
+  if (ext === 'csv' && sheets.length === 1) {
+    sheets[0].name = 'Sheet';
+  } else if (ext !== 'csv' && sheets.length === 1 && /^sheet1$/i.test(sheets[0].name)) {
+    sheets[0].name = 'Sheet';
   }
 
-  return { sections };
+  return { sheets };
 }
 
 export type ImportLibraryResult = {
   libraryId: string;
   rowCount: number;
   fieldCount: number;
-  sectionCount: number;
+  sheetCount: number;
 };
 
 
@@ -190,7 +191,7 @@ export async function importLibraryFromFile(
 
   const libraryId = createdLibrary.id as string;
 
-  const fieldIdsBySectionColumn = new Map<string, string>();
+  const fieldIdsBySheetColumn = new Map<string, string>();
   let globalFieldOrder = 0;
   const fieldRows: Array<{
     key: string;
@@ -209,16 +210,15 @@ export async function importLibraryFromFile(
     };
   }> = [];
 
-  for (const section of parsed.sections) {
-    const sectionId = `${libraryId}:${section.name}`;
-    for (let colIdx = 0; colIdx < section.columns.length; colIdx += 1) {
-      const label = section.columns[colIdx];
+  const compatibility = getInternalFieldGroupColumns(libraryId);
+  for (const sheet of parsed.sheets) {
+    for (let colIdx = 0; colIdx < sheet.columns.length; colIdx += 1) {
+      const label = sheet.columns[colIdx];
       fieldRows.push({
-        key: `${section.name}:${colIdx}`,
+        key: `${sheet.name}:${colIdx}`,
         row: {
           library_id: libraryId,
-          section_id: sectionId,
-          section: section.name,
+          ...compatibility,
           label,
           description: null,
           data_type: 'string',
@@ -243,20 +243,20 @@ export async function importLibraryFromFile(
     throw new Error('Failed to create all imported fields');
   }
   fieldRows.forEach(({ key }, index) => {
-    fieldIdsBySectionColumn.set(key, insertedFields[index].id);
+    fieldIdsBySheetColumn.set(key, insertedFields[index].id);
   });
   const fieldCount = fieldRows.length;
 
-  // One asset per row index; multiple sheets (sections) merge into the same asset row.
-  const maxRows = Math.max(...parsed.sections.map((s) => s.rows.length), 0);
-  const primarySection = parsed.sections[0];
+  // One asset per row index; multiple source sheets merge into the same asset row.
+  const maxRows = Math.max(...parsed.sheets.map((sheet) => sheet.rows.length), 0);
+  const primarySheet = parsed.sheets[0];
 
   let rowCount = 0;
   for (let start = 0; start < maxRows; start += BATCH_SIZE) {
     const batchEnd = Math.min(start + BATCH_SIZE, maxRows);
     const assetRows = [];
     for (let rowIdx = start; rowIdx < batchEnd; rowIdx += 1) {
-      const primaryRow = primarySection.rows[rowIdx] ?? [];
+      const primaryRow = primarySheet.rows[rowIdx] ?? [];
       const assetName = (primaryRow[0] ?? '').trim() || 'Untitled';
       assetRows.push({
         library_id: libraryId,
@@ -275,10 +275,10 @@ export async function importLibraryFromFile(
     const valueRows: Array<{ asset_id: string; field_id: string; value_json: string }> = [];
     (insertedAssets ?? []).forEach((asset, batchOffset) => {
       const rowIdx = start + batchOffset;
-      for (const section of parsed.sections) {
-        const rowValues = section.rows[rowIdx] ?? [];
-        section.columns.forEach((_, colIdx) => {
-          const fieldId = fieldIdsBySectionColumn.get(`${section.name}:${colIdx}`);
+        for (const sheet of parsed.sheets) {
+          const rowValues = sheet.rows[rowIdx] ?? [];
+          sheet.columns.forEach((_, colIdx) => {
+            const fieldId = fieldIdsBySheetColumn.get(`${sheet.name}:${colIdx}`);
           const cell = rowValues[colIdx] ?? '';
           if (!fieldId || cell === '') return;
           valueRows.push({
@@ -302,6 +302,6 @@ export async function importLibraryFromFile(
     libraryId,
     rowCount,
     fieldCount,
-    sectionCount: parsed.sections.length,
+    sheetCount: parsed.sheets.length,
   };
 }

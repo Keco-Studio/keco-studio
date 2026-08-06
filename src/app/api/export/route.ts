@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
+import type { PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import type { FormulaEvaluableField } from '@/lib/utils/formula';
 import { computeFormulaValuesForRow, createFormulaFieldByName } from '@/lib/utils/formula';
 import {
@@ -41,6 +41,7 @@ function parseJsonString(value: unknown): unknown {
 type FieldDefinitionRow = {
   id: string;
   library_id: string;
+  section_id: string;
   section: string;
   label: string;
   description: string | null;
@@ -135,44 +136,23 @@ async function verifyLibraryAccessDirect(
 async function getLibrarySchemaDirect(
   supabase: SupabaseClient,
   libraryId: string
-): Promise<{ sections: SectionConfig[]; properties: PropertyConfig[] }> {
+): Promise<{ properties: PropertyConfig[] }> {
   const { data, error } = await supabase
     .from('library_field_definitions')
     .select('*')
     .eq('library_id', libraryId)
-    .order('section', { ascending: true })
     .order('order_index', { ascending: true });
 
   if (error) throw error;
 
   const rows = (data ?? []) as FieldDefinitionRow[];
-  if (rows.length === 0) return { sections: [], properties: [] };
+  if (rows.length === 0) return { properties: [] };
 
-  const sectionsByName = new Map<string, { section: SectionConfig; minOrderIndex: number }>();
   const properties: PropertyConfig[] = [];
 
   for (const row of rows) {
-    let grouped = sectionsByName.get(row.section);
-    if (!grouped) {
-      const sectionId = `${row.library_id}:${row.section}`;
-      grouped = {
-        section: {
-          id: sectionId,
-          libraryId: row.library_id,
-          name: row.section,
-          orderIndex: row.order_index,
-        },
-        minOrderIndex: row.order_index,
-      };
-      sectionsByName.set(row.section, grouped);
-    } else if (row.order_index < grouped.minOrderIndex) {
-      grouped.minOrderIndex = row.order_index;
-      grouped.section.orderIndex = row.order_index;
-    }
-
     properties.push({
       id: row.id,
-      sectionId: grouped.section.id,
       key: row.id,
       name: row.label,
       description: row.description,
@@ -184,22 +164,7 @@ async function getLibrarySchemaDirect(
       orderIndex: row.order_index,
     });
   }
-
-  const sections = Array.from(sectionsByName.values())
-    .map((entry) => entry.section)
-    .sort((a, b) => a.orderIndex - b.orderIndex);
-
-  const sectionOrderById = new Map<string, number>();
-  sections.forEach((section, index) => sectionOrderById.set(section.id, index));
-
-  properties.sort((a, b) => {
-    const sa = sectionOrderById.get(a.sectionId) ?? 0;
-    const sb = sectionOrderById.get(b.sectionId) ?? 0;
-    if (sa !== sb) return sa - sb;
-    return a.orderIndex - b.orderIndex;
-  });
-
-  return { sections, properties };
+  return { properties };
 }
 
 async function getLibraryAssetsWithPropertiesDirect(
@@ -442,7 +407,6 @@ export const GET = withAuth(async function GET(
   const libraryName = libraryNameFromAccess || 'table';
   const exportedAt = timestamp();
   const baseName = `${safeFileName(libraryName)}_${exportedAt}`;
-  const sections = schema.sections;
   const properties = schema.properties;
   const propertyByName = createPropertyByName(properties);
 
@@ -455,10 +419,8 @@ export const GET = withAuth(async function GET(
     const payload = {
       libraryName,
       exportedAt,
-      sections: sections.map((s: SectionConfig) => ({ id: s.id, name: s.name, orderIndex: s.orderIndex })),
       properties: properties.map((p: PropertyConfig) => ({
         id: p.id,
-        sectionId: p.sectionId,
         key: p.key,
         name: p.name,
         dataType: p.dataType,
@@ -499,8 +461,7 @@ export const GET = withAuth(async function GET(
     });
   }
 
-  // xlsx: one sheet, row0 = section names, row1 = label (datatype), row2+ = data
-  const sectionById = new Map(sections.map((s) => [s.id, s]));
+  // xlsx: one sheet, row0 = typed field labels, row1+ = data
   const referenceNameById = new Map(assets.map((row) => [row.id, row.name]));
 
   // Reference fields may point to assets in other libraries.
@@ -606,13 +567,6 @@ export const GET = withAuth(async function GET(
       }
     }
   }
-  const propertiesBySection = new Map<string, PropertyConfig[]>();
-  for (const section of sections) propertiesBySection.set(section.id, []);
-  for (const p of properties) {
-    if (!propertiesBySection.has(p.sectionId)) propertiesBySection.set(p.sectionId, []);
-    propertiesBySection.get(p.sectionId)?.push(p);
-  }
-
   const formulaFields: FormulaEvaluableField[] = properties.map((p) => ({
     id: p.id,
     name: p.name,
@@ -649,28 +603,17 @@ export const GET = withAuth(async function GET(
     return fallback;
   };
 
-  const usedSheetNames = new Set<string>();
-  const exportSections =
-    sections.length > 0
-      ? sections
-      : ([{ id: '__default__', name: 'Section', libraryId, orderIndex: 0 }] as SectionConfig[]);
   const outputSheets: Array<{
     name: string;
     rows: Array<Array<string | number | boolean | null>>;
     columns?: Array<{ width?: number }>;
   }> = [];
-  const exportedSectionProps: PropertyConfig[][] = [];
-
-  for (const section of exportSections) {
-    const sectionProps =
-      section.id === '__default__' ? properties : propertiesBySection.get(section.id) ?? [];
-    exportedSectionProps.push(sectionProps);
-    const headerRow = sectionProps.map(
+  const headerRow = properties.map(
       (p) => `${p.name} (${p.dataType ?? p.valueType ?? 'other'})`
     );
-    const sheetRows: (string | number | boolean | null)[][] = assets.map((row) => {
+  const sheetRows: (string | number | boolean | null)[][] = assets.map((row) => {
       const computedFormulaValues = computedFormulaByRowId.get(row.id) ?? {};
-      return sectionProps.map((p) => {
+      return properties.map((p) => {
         const raw = row.propertyValues[p.key];
         if (p.dataType === 'formula') {
           // If formula cell stores a custom expression (e.g. "=a + b"),
@@ -707,7 +650,7 @@ export const GET = withAuth(async function GET(
 
     // Auto-fit column width for readability.
     const maxRowsForWidth = Math.min(wsData.length, 101);
-    const columns = sectionProps.map((_, colIdx) => {
+  const columns = properties.map((_, colIdx) => {
       let maxLen = 10;
       for (let rowIdx = 0; rowIdx < maxRowsForWidth; rowIdx += 1) {
         const cellValue = wsData[rowIdx]?.[colIdx];
@@ -715,21 +658,13 @@ export const GET = withAuth(async function GET(
         if (text.length > maxLen) maxLen = text.length;
       }
       return { width: Math.min(Math.max(maxLen + 2, 12), 40) };
-    });
-
-    const sectionName =
-      section.id === '__default__' ? 'Section' : sectionById.get(section.id)?.name ?? 'Section';
-    outputSheets.push({
-      name: makeUniqueSheetName(sectionName, usedSheetNames),
-      rows: wsData,
-      columns,
-    });
-  }
+  });
+  outputSheets.push({ name: libraryName, rows: wsData, columns });
 
   const storySheet = outputSheets.length === 1
     ? buildStoryWorkbookSheet(
         outputSheets[0].name,
-        exportedSectionProps[0],
+        properties,
         outputSheets[0].rows.slice(1)
       )
     : null;

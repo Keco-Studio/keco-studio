@@ -12,6 +12,46 @@
   backdrop-filter: blur(8px);
 }
 
+.headerSimulation .left {
+  grid-column: 1;
+  flex: 1;
+  min-width: 0;
+}
+
+.headerSimulation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 33rem) minmax(0, 1fr);
+  column-gap: 24px;
+  justify-content: initial;
+}
+
+.headerSimulation .breadcrumb {
+  width: 100%;
+  min-width: 0;
+}
+
+.headerSimulation .simulationHeaderSlot {
+  width: 100%;
+  --simulation-topbar-workflow-gap: 20px;
+  --simulation-topbar-workflow-button-height: 38px;
+  --simulation-topbar-workflow-button-padding: 0;
+  --simulation-topbar-workflow-button-color: #64748b;
+  --simulation-topbar-workflow-button-radius: 0;
+  --simulation-topbar-workflow-button-size: 14px;
+  --simulation-topbar-workflow-active-padding: 0;
+  --simulation-topbar-workflow-active-color: #0f172a;
+  --simulation-topbar-workflow-active-background: transparent;
+  --simulation-topbar-workflow-number-color: #94a3b8;
+  --simulation-topbar-workflow-number-size: 13px;
+}
+
+.headerSimulation .right {
+  grid-column: 3;
+  justify-self: end;
+  gap: 12px;
+  margin-left: 12px;
+}
+
 .left {
   display: flex;
   flex-direction: column;
@@ -29,6 +69,23 @@
   /* padding-bottom: 0.75rem; */
   /* margin-bottom: rem; */
   height: 2.75rem;
+}
+
+.headerSimulation .searchContainer {
+  grid-column: 2;
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .headerSimulation {
+    display: flex;
+    column-gap: 12px;
+  }
+
+  .headerSimulation .searchContainer {
+    position: relative;
+    width: min(33rem, calc(100vw - 32px));
+  }
 }
 
 .searchLabel {
@@ -572,6 +629,23 @@
   align-items: center;
 }
 
+.simulationHeaderSlot {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+
+.simulationHeaderSlot > header {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
 .breadcrumbItem {
   background: none;
   border: none;
@@ -631,13 +705,6 @@
 .documentActionButton:hover {
   color: #1677ff;
   border-color: #1677ff;
-}
-
-.documentLiveText {
-  font-size: 14px;
-  font-weight: 500;
-  color: #0b99ff;
-  margin-left: 4px;
 }
 
 .documentShareButton {

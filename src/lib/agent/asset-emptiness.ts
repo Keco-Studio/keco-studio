@@ -64,7 +64,7 @@ export type QueryAssetRow = {
   isEmpty: boolean;
   /** First non-empty column display text; empty string when isEmpty. */
   displayLabel: string;
-  /** Labels of all columns with visible values on this row (all sections). */
+  /** Labels of all columns with visible values on this row. */
   filledColumns: string[];
 };
 
@@ -85,7 +85,7 @@ export type QueryReferenceTarget = ReferenceSelection & {
 export type QueryAssetSummary = {
   /** Total asset rows in the library (including empty). */
   totalAssets: number;
-  /** Asset rows with at least one visible cell (all sections combined). */
+  /** Asset rows with at least one visible cell. */
   nonEmptyAssetCount: number;
   /** Count of individual non-empty cells across all non-empty assets. */
   nonEmptyCellCount: number;

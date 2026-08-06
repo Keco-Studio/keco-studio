@@ -12,6 +12,7 @@ import {
 } from '@supabase/supabase-js';
 import { LoginPage, type UserCredentials } from '../pages/login.page';
 import { users } from '../fixures/users';
+import { expectDocumentLive } from '../utils/document-assertions';
 import { captureRealtimeErrors } from '../utils/realtime-errors';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -513,14 +514,10 @@ test.describe.serial('Document realtime collaboration', () => {
     const owner = await loginAndOpen(browser, users.seedEmpty2, fixture);
     const contexts: BrowserContext[] = [owner.context];
     try {
-      await expect(owner.page.getByText('Live', { exact: true })).toBeVisible({
-        timeout: 45_000,
-      });
+      await expectDocumentLive(owner.page);
       const editor = await loginAndOpen(browser, users.seedEmpty3, fixture);
       contexts.push(editor.context);
-      await expect(editor.page.getByText('Live', { exact: true })).toBeVisible({
-        timeout: 45_000,
-      });
+      await expectDocumentLive(editor.page);
       for (const page of [owner.page, editor.page]) {
         await expect(page.locator('.document-collab-cursors')).toHaveCount(1);
         await expect(page.locator('[contenteditable]').first()).toContainText(
@@ -775,9 +772,7 @@ test.describe.serial('Document realtime collaboration', () => {
 
       const viewer = await loginAndOpen(browser, users.seedEmpty4, fixture);
       contexts.push(viewer.context);
-      await expect(viewer.page.getByText('View only - Live')).toBeVisible({
-        timeout: 45_000,
-      });
+      await expectDocumentLive(viewer.page, 'View only - Live');
       await expect(
         viewer.page.locator('[contenteditable="false"]').first()
       ).toContainText('owner-overlap');
@@ -856,9 +851,7 @@ test.describe.serial('Document realtime collaboration', () => {
       ).toBeVisible();
       await owner.page.unroute('**/rest/v1/rpc/append_document_yjs_updates');
       await owner.page.getByRole('button', { name: 'Retry' }).click();
-      await expect(owner.page.getByText('Live', { exact: true })).toBeVisible({
-        timeout: 30_000,
-      });
+      await expectDocumentLive(owner.page, 'Live', 30_000);
       await expect(
         owner.page.locator('[contenteditable="true"]').first()
       ).toBeVisible({ timeout: 30_000 });
@@ -883,13 +876,18 @@ test.describe.serial('Document realtime collaboration', () => {
 
       await owner.context.setOffline(false);
       await owner.page.evaluate(() => window.dispatchEvent(new Event('online')));
-      const ownerLive = owner.page.getByText('Live', { exact: true });
       const ownerRetry = owner.page.getByRole('button', { name: 'Retry' });
-      await expect(ownerLive.or(ownerRetry)).toBeVisible({
-        timeout: 30_000,
-      });
+      await expect
+        .poll(async () => {
+          if (await ownerRetry.isVisible()) return true;
+          const label = await owner.page
+            .getByTestId('document-collaboration-status')
+            .getAttribute('data-label');
+          return label === 'Live';
+        }, { timeout: 30_000 })
+        .toBeTruthy();
       if (await ownerRetry.isVisible()) await ownerRetry.click();
-      await expect(ownerLive).toBeVisible({ timeout: 30_000 });
+      await expectDocumentLive(owner.page, 'Live', 30_000);
 
       const navigationAppendRelease = createDeferred();
       const navigationAppendSeen = createDeferred();

@@ -87,6 +87,11 @@ describe('two-stage full story extraction prompts', () => {
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('presentationType 1 and 2 are both dialogue boxes');
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('MUST follow that order');
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('known character name followed by an action cue');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('\u5206\u652f\u70b9 A / B');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('\u5d4c\u5957\u9009\u62e9 A1');
+    expect(GRAPH_STORY_PLAN_PROMPT).toContain('\u6765\u81ea\u5206\u652f A');
+    expect(GRAPH_STORY_PLAN_PROMPT).toContain('Every node must be reachable');
+    expect(GRAPH_STORY_PLAN_PROMPT).toContain('Keep paths separate through those exclusive sections');
   });
 
   it('gives structural declarations and option rows one unambiguous owner', () => {
@@ -120,13 +125,47 @@ describe('two-stage full story extraction prompts', () => {
     };
     const graphMessages = buildGraphExtractionMessages(source, inventory, 1, []);
     const graphInput = JSON.parse(graphMessages[1].content as string);
-    expect(graphInput.nodeInventory).toEqual(inventory.nodes);
+    expect(graphInput.nodeInventory).toEqual([
+      { id: 'start', sourceUnitIds: ['fixture:0'] },
+    ]);
     expect(graphInput.choiceInventory).toEqual(inventory.choices);
     expect(graphInput.commands).toEqual([{
       id: source.commands[0].id,
       source: '$trust+=1',
       unitId: 'fixture:1',
     }]);
+  });
+
+  it('includes the prior graph candidate for a targeted Graph Planner retry', () => {
+    const source = segmentStorySource('Seven: Choose.\n- Left\nLeft ending.', 'fixture');
+    const inventory = {
+      version: 3 as const,
+      structuralUnitIds: [],
+      nodes: [
+        { id: 'start', type: 'dialogue' as const, presentationType: 1 as const, speaker: 'Seven', content: 'Choose.', sourceUnitIds: ['fixture:0'] },
+        { id: 'left', type: 'narration' as const, presentationType: 3 as const, speaker: '', content: 'Left ending.', sourceUnitIds: ['fixture:2'] },
+      ],
+      choices: [{ id: 'go_left', text: 'Left', sourceUnitIds: ['fixture:1'] }],
+    };
+    const previousGraph = {
+      version: 3 as const,
+      entryNodeId: 'start',
+      nodeLinks: ['start->', 'left->'],
+      choiceLinks: ['go_left->start->left'],
+      commandLinks: [],
+    };
+    const messages = buildGraphExtractionMessages(
+      source,
+      inventory,
+      2,
+      [{ code: 'unreachable_node', message: 'Unreachable node left', unitIds: [], nodeIds: ['left'] }],
+      previousGraph
+    );
+    const input = JSON.parse(messages[1].content as string);
+
+    expect(input.task).toBe('REPAIR_STORY_GRAPH');
+    expect(input.previousGraphCandidate).toEqual(previousGraph);
+    expect(GRAPH_STORY_PLAN_PROMPT).toContain('change only the links required');
   });
 
   it('requires the Primary Auditor to inspect one canonical audit view', () => {
@@ -194,7 +233,9 @@ describe('two-stage full story extraction prompts', () => {
     }]);
     const input = JSON.parse(messages[1].content as string);
     expect(input.allegations).toEqual([expect.objectContaining({ issueId: 'issue-1' })]);
-    expect(input.sourceUnits).toEqual([{ id: 'fixture:0', text: 'Seven: Choose.' }]);
+    expect(input.sourceUnits).toEqual([{
+      id: 'fixture:0', text: 'Seven: Choose.', authoritative: true,
+    }]);
     expect(input.rows).toEqual([auditView.rows[0]]);
     expect(input.paths).toEqual([auditView.paths[0]]);
     expect(input).not.toHaveProperty('auditView');
@@ -202,7 +243,7 @@ describe('two-stage full story extraction prompts', () => {
 
   it('keeps Graph Planner focused on real choices and automatic edges', () => {
     expect(GRAPH_STORY_PLAN_PROMPT).toContain('Never create or delete');
-    expect(GRAPH_STORY_PLAN_PROMPT).toContain('nodeId->nextNodeId');
+    expect(GRAPH_STORY_PLAN_PROMPT).toContain('{nodeId, nextNodeId}');
     expect(GRAPH_STORY_PLAN_PROMPT).toContain('ordinary sequential playback');
     expect(GRAPH_STORY_PLAN_PROMPT).toContain('sibling branches');
   });

@@ -20,7 +20,6 @@ export interface SimulationSidebarProps {
   readonly collapsed?: boolean;
   readonly mobileOpen?: boolean;
   readonly onSelect: (id: string) => void;
-  readonly onToggleCollapsed: () => void;
   readonly onProjectSelect?: (projectId: string) => void;
   readonly onCloseMobile?: () => void;
 }
@@ -50,7 +49,6 @@ export function SimulationSidebar({
   collapsed = false,
   mobileOpen = false,
   onSelect,
-  onToggleCollapsed,
   onProjectSelect,
   onCloseMobile,
 }: SimulationSidebarProps) {
@@ -68,97 +66,54 @@ export function SimulationSidebar({
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [projectMenuOpen]);
 
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        className={styles.sidebarExpand}
-        aria-label="Expand simulation sidebar"
-        aria-expanded="false"
-        title="Expand sidebar"
-        onClick={onToggleCollapsed}
-      >
-        ≫
-      </button>
-    );
-  }
-
   return (
     <aside
-      className={`${styles.sidebar} ${mobileOpen ? styles.sidebarMobileOpen : ''}`}
+      className={[
+        styles.sidebar,
+        collapsed ? styles.sidebarHidden : '',
+        mobileOpen ? styles.sidebarMobileOpen : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       aria-label="Simulation workspace"
+      aria-hidden={collapsed}
       style={{ backdropFilter: 'var(--blur-glass)' }}
     >
       <div className={styles.sidebarBrand}>
         <strong className={styles.brandText}>Keco Siumlator</strong>
-        <p>Battle &amp; numbers sandbox for game designers.</p>
+        <p>Battle &amp; numbers sandbox · for game designers</p>
       </div>
 
-      <div ref={projectMenuRef} style={{ position: 'relative' }}>
+      <div ref={projectMenuRef} className={styles.projectWrap}>
         <button
           type="button"
+          className={styles.projectButton}
           title="Project"
+          aria-haspopup="listbox"
+          aria-expanded={projectMenuOpen}
           onClick={() => setProjectMenuOpen((value) => !value)}
-          style={{
-            margin: '12px 6px 8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            width: 'calc(100% - 12px)',
-            padding: 0,
-            border: 'none',
-            background: 'transparent',
-            fontSize: 14,
-            fontWeight: 500,
-            color: 'var(--ink-800)',
-            cursor: 'pointer',
-            fontFamily: 'var(--font-roboto)',
-            lineHeight: 1,
-          }}
         >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
-            {projectName || 'Project'}
+          <span className={styles.projectName}>{projectName || 'Project'}</span>
+          <span className={styles.projectChevron}>
+            <ChevronDownIcon />
           </span>
-          <span style={{ color: 'var(--ink-400)', display: 'inline-flex' }}><ChevronDownIcon /></span>
         </button>
         {projectMenuOpen && projects.length > 0 ? (
-          <div style={{
-            position: 'absolute',
-            zIndex: 50,
-            left: 6,
-            right: 6,
-            top: 'calc(100% + 4px)',
-            background: '#fff',
-            border: '1px solid var(--line-200)',
-            borderRadius: 10,
-            boxShadow: 'var(--shadow-popover)',
-            padding: 4,
-            maxHeight: 220,
-            overflowY: 'auto',
-          }}
-          >
+          <div className={styles.projectMenu} role="listbox" aria-label="Projects">
             {projects.map((project) => {
               const selected = project.id === projectId;
               return (
                 <button
                   key={project.id}
                   type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`${styles.projectOption} ${
+                    selected ? styles.projectOptionSelected : ''
+                  }`}
                   onClick={() => {
                     onProjectSelect?.(project.id);
                     setProjectMenuOpen(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    border: 'none',
-                    background: selected ? 'var(--keco-blue-tint)' : 'transparent',
-                    color: selected ? 'var(--keco-blue)' : 'var(--ink-700)',
-                    borderRadius: 8,
-                    height: 34,
-                    padding: '0 10px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: selected ? 600 : 500,
                   }}
                 >
                   {project.name}
@@ -198,17 +153,6 @@ export function SimulationSidebar({
           })}
         </div>
       </nav>
-
-      <button
-        type="button"
-        className={styles.collapseButton}
-        aria-label="Collapse simulation sidebar"
-        aria-expanded="true"
-        title="Collapse sidebar"
-        onClick={onToggleCollapsed}
-      >
-        ≪
-      </button>
     </aside>
   );
 }

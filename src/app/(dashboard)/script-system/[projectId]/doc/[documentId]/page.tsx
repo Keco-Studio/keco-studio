@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DocumentEditor } from '@/components/documents/DocumentEditor';
-import { useScriptWorkspaceMembership } from '@/components/script-system/useScriptWorkspaceMembership';
+import { useScriptWorkspaceDocumentMembership } from '@/components/script-system/useScriptWorkspaceDocumentMembership';
 import { showErrorToast } from '@/lib/utils/toast';
 
 export default function ScriptDocumentPage() {
@@ -12,14 +12,14 @@ export default function ScriptDocumentPage() {
   const projectId = params.projectId as string;
   const documentId = params.documentId as string;
   const { isMember, isLoading, isFetching, isFetched, isError } =
-    useScriptWorkspaceMembership(projectId);
+    useScriptWorkspaceDocumentMembership(projectId, documentId);
   const handledRef = useRef(false);
 
   // First-load ready: keep rendering during background refetch once we have data.
   const membershipReady = isFetched && !isLoading;
   // Settled: only treat non-membership as final after refetch completes.
   const membershipSettled = membershipReady && !isFetching;
-  const canRender = membershipReady && !isError && isMember(documentId);
+  const canRender = membershipReady && !isError && isMember;
 
   useEffect(() => {
     if (!membershipSettled || handledRef.current) return;
@@ -31,7 +31,7 @@ export default function ScriptDocumentPage() {
       return;
     }
 
-    if (!isMember(documentId)) {
+    if (!isMember) {
       handledRef.current = true;
       showErrorToast('This document is not in the Script workspace');
       router.replace(`/script-system/${projectId}`);
@@ -40,12 +40,11 @@ export default function ScriptDocumentPage() {
     membershipSettled,
     isError,
     isMember,
-    documentId,
     projectId,
     router,
   ]);
 
-  if (!canRender) {
+  if (membershipSettled && !canRender) {
     return null;
   }
 
@@ -55,6 +54,7 @@ export default function ScriptDocumentPage() {
       projectId={projectId}
       documentId={documentId}
       flushLayout
+      scriptWorkspaceMembershipReady={canRender}
     />
   );
 }

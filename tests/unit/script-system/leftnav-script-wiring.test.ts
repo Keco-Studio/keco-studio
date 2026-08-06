@@ -33,16 +33,18 @@ describe('Keco Script LeftNav wiring', () => {
     expect(source).toMatch(/!onSimulation\s*&&\s*!onScript|!onScript\s*&&\s*!onSimulation/);
   });
 
-  it('DashboardLayout mounts ScriptSidebar left of TopBar on script-system', () => {
+  it('DashboardLayout mounts product sidebars beside the shared TopBar', () => {
     const source = read('src/components/layout/DashboardLayout.tsx');
     expect(source).toContain('isScriptSystemPath');
     expect(source).toContain('showStudioSidebar');
     expect(source).toContain('showScriptSidebar');
     expect(source).toContain('ScriptSidebar');
-    expect(source).toContain('hideTopBar');
     expect(source).toContain('hideChatPanel');
-    expect(source).toMatch(/hideTopBar\s*=\s*hideSidebarForSimulation/);
+    expect(source).toContain('<TopBar');
+    expect(source).not.toContain('hideTopBar');
     expect(source).toMatch(/showScriptSidebar\s*=\s*onScriptSystem/);
+    expect(source).toMatch(/hideChatPanel\s*=\s*hideSidebarForSimulation\s*;/);
+    expect(source).not.toMatch(/hideChatPanel\s*=\s*hideSidebarForSimulation\s*\|\|\s*onScriptSystem/);
   });
 
   it('ScriptSidebar collapses on TopBar sidebar-toggle', () => {
@@ -52,6 +54,25 @@ describe('Keco Script LeftNav wiring', () => {
     expect(source).toContain('isSidebarVisible');
     expect(source).toContain('sidebarHidden');
     expect(css).toMatch(/\.sidebarHidden/);
+  });
+
+  it('Script project picker matches the bordered select control used by Simulation', () => {
+    const css = read('src/components/script-system/ScriptSidebar.module.css');
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1\.5px solid/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*8px/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*min-height:\s*36px/s);
+  });
+
+  it('Script delete uses the shared DeleteConfirmDialog like Studio libraries', () => {
+    const sidebar = read('src/components/script-system/ScriptSidebar.tsx');
+    const actions = read('src/components/script-system/useScriptSidebarActions.ts');
+    expect(sidebar).toContain('DeleteConfirmDialog');
+    expect(sidebar).toContain('requestDeleteConfirm');
+    expect(actions).toContain('requestDeleteConfirm');
+    expect(actions).toContain("content: 'Delete this script?'");
+    expect(actions).toContain('Remove this document from the Script workspace');
+    expect(actions).not.toContain("content: 'Delete this library?'");
+    expect(actions).not.toContain('window.confirm');
   });
 
   it('Script breadcrumbs follow sidebar tree not Studio folders', () => {

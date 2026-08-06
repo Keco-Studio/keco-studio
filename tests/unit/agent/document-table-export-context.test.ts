@@ -52,6 +52,7 @@ describe('document table export conversation context', () => {
     deleteLibraryServer.mockResolvedValue(undefined);
     listProjectLibraries.mockResolvedValue([]);
     getLibraryProperties.mockResolvedValue([]);
+    addLibraryField.mockResolvedValue({ id: 'field-id' });
     resolveDocumentLibrarySourceDisplay.mockResolvedValue({
       documentName: 'World Notes',
       folderId: FOLDER_ID,
@@ -99,7 +100,7 @@ describe('document table export conversation context', () => {
       data: {
         type: 'setup_library',
         libraryName: 'Characters',
-        sections: { section1: [] },
+        fields: [],
         totalFields: 0,
       },
     };

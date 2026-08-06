@@ -16,7 +16,6 @@ describe('resolveScopeFromNavigation', () => {
       currentFolderName: 'Worldview',
       currentLibraryId: LIBRARY,
       currentLibraryName: 'Characters',
-      currentSectionName: 'Basic',
     });
     expect(scope).toEqual({
       level: 'table',
@@ -25,7 +24,6 @@ describe('resolveScopeFromNavigation', () => {
       folderName: 'Worldview',
       libraryId: LIBRARY,
       libraryName: 'Characters',
-      sectionName: 'Basic',
     });
   });
 
@@ -78,7 +76,6 @@ describe('contextFieldsFromScope', () => {
       folderName: 'Worldview',
       libraryId: LIBRARY,
       libraryName: 'Characters',
-      sectionName: 'Basic',
     };
     expect(contextFieldsFromScope(scope, 'fallback')).toEqual({
       projectId: PROJECT,
@@ -86,7 +83,6 @@ describe('contextFieldsFromScope', () => {
       currentFolderName: 'Worldview',
       currentLibraryId: LIBRARY,
       currentLibraryName: 'Characters',
-      currentSectionName: 'Basic',
     });
   });
 
@@ -103,7 +99,6 @@ describe('contextFieldsFromScope', () => {
       currentFolderName: 'Worldview',
       currentLibraryId: undefined,
       currentLibraryName: undefined,
-      currentSectionName: undefined,
     });
   });
 

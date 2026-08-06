@@ -22,6 +22,7 @@ import {
 } from 'docx';
 import { LoginPage, type UserCredentials } from '../pages/login.page';
 import { users } from '../fixures/users';
+import { expectDocumentLive } from '../utils/document-assertions';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -452,9 +453,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       });
       expect(documentId).toMatch(/^[0-9a-f-]{36}$/i);
       importedMarkdownDocumentId = documentId;
-      await expect(owner.page.getByText('Live', { exact: true })).toBeVisible({
-        timeout: 45_000,
-      });
+      await expectDocumentLive(owner.page);
       await expect(owner.page.locator('[data-component="Callout"]')).toContainText(
         `Callout localized text ${suffix}`
       );
@@ -518,9 +517,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       `/${fixture.projectId}/doc/${documentId}`
     );
     try {
-      await expect(
-        viewer.page.getByText('View only - Live', { exact: true })
-      ).toBeVisible({ timeout: 45_000 });
+      await expectDocumentLive(viewer.page, 'View only - Live');
       await expect(viewer.page.locator('[data-component="Callout"]')).toContainText(
         `Callout localized text ${suffix}`
       );
@@ -558,9 +555,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
         buffer: await makeStructuredDocx(suffix),
       });
       expect(documentId).toMatch(/^[0-9a-f-]{36}$/i);
-      await expect(owner.page.getByText('Live', { exact: true })).toBeVisible({
-        timeout: 45_000,
-      });
+      await expectDocumentLive(owner.page);
       await expect(owner.page.getByRole('heading', {
         name: `DOCX Phase 2 ${suffix}`,
       })).toBeVisible();
@@ -575,9 +570,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       await expect(owner.page.locator('img[alt="Imported image 1"]')).toBeVisible();
 
       await owner.page.reload({ waitUntil: 'domcontentloaded' });
-      await expect(owner.page.getByText('Live', { exact: true })).toBeVisible({
-        timeout: 45_000,
-      });
+      await expectDocumentLive(owner.page);
       await expect(owner.page.getByRole('heading', {
         name: `DOCX Phase 2 ${suffix}`,
       })).toBeVisible();

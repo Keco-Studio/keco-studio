@@ -6,7 +6,7 @@ import { listProjects, Project } from '@/lib/services/projectService';
 
 /**
  * Fetches and caches the project list for the Sidebar.
- * Uses the same queryKey as the Projects page for cache sharing.
+ * Uses the same user-scoped query key as the Projects page for cache sharing.
  */
 export function useSidebarProjects(userId?: string | null) {
   const supabase = useSupabase();
@@ -17,9 +17,9 @@ export function useSidebarProjects(userId?: string | null) {
     error: projectsError,
     refetch: refetchProjects,
   } = useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', userId],
     queryFn: () => listProjects(supabase, userId ?? undefined),
-    enabled: true,
+    enabled: Boolean(userId),
     staleTime: 2 * 60 * 1000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
@@ -27,7 +27,7 @@ export function useSidebarProjects(userId?: string | null) {
 
   return {
     projects: projects as Project[],
-    isLoading: loadingProjects,
+    isLoading: !userId || loadingProjects,
     error: projectsError,
     refetch: refetchProjects,
   };

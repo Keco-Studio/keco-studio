@@ -10,7 +10,6 @@ export type SidebarDragNodeType = 'library' | 'folder' | 'document';
 export type SidebarDropTarget =
   | { kind: 'folder'; folderId: string }
   | { kind: 'root' }
-  | { kind: 'document'; documentId: string }
   | { kind: 'invalid'; reason: string };
 
 /** @deprecated Use SidebarDropTarget */
@@ -64,24 +63,6 @@ function folderParentMapFromTree(treeData: DataNode[]): Map<string, string | nul
   return map;
 }
 
-function documentParentMapFromTree(treeData: DataNode[]): Map<string, string | null> {
-  const map = new Map<string, string | null>();
-  const walk = (nodes: DataNode[], parentDocumentId: string | null) => {
-    for (const node of nodes) {
-      const key = String(node.key);
-      if (key.startsWith('document-')) {
-        const id = key.slice('document-'.length);
-        map.set(id, parentDocumentId);
-        walk(node.children || [], id);
-      } else {
-        walk(node.children || [], parentDocumentId);
-      }
-    }
-  };
-  walk(treeData, null);
-  return map;
-}
-
 function resolveParentDropTarget(
   treeData: DataNode[],
   dropKey: string,
@@ -101,10 +82,10 @@ function resolveParentDropTarget(
   }
 
   if (!dropToGap) {
-    if (dropKey.startsWith('document-')) {
-      return { kind: 'document', documentId: dropKey.slice('document-'.length) };
+    if (dropKey.startsWith('document-') || dropKey.startsWith('library-')) {
+      return { kind: 'invalid', reason: 'Documents and tables cannot contain items' };
     }
-    return { kind: 'invalid', reason: 'Drop onto a folder or document' };
+    return { kind: 'invalid', reason: 'Drop onto a folder' };
   }
 
   // Gap next to a folder: place as sibling of that folder (root if the folder is root-level).
@@ -123,13 +104,13 @@ function resolveParentDropTarget(
     return { kind: 'folder', folderId: parentKey.slice('folder-'.length) };
   }
   if (parentKey.startsWith('document-')) {
-    return { kind: 'document', documentId: parentKey.slice('document-'.length) };
+    return { kind: 'invalid', reason: 'Documents and tables cannot contain items' };
   }
   return { kind: 'invalid', reason: 'Cannot move into this location yet' };
 }
 
 /**
- * Resolve a sidebar tree drop for P1–P3 (folder/root, attach/detach, nest folders/docs).
+ * Resolve a sidebar tree drop. Folders can nest; documents and tables are leaves.
  */
 export function resolveSidebarDrop(input: {
   dragKey: string;
@@ -159,9 +140,6 @@ export function resolveSidebarDrop(input: {
 
   if (isFolder) {
     const folderId = dragKey.slice('folder-'.length);
-    if (target.kind === 'document') {
-      return { kind: 'invalid', reason: 'Folders cannot nest under documents' };
-    }
     if (target.kind === 'folder') {
       if (target.folderId === folderId) {
         return { kind: 'invalid', reason: 'Cannot drop onto itself' };
@@ -178,25 +156,11 @@ export function resolveSidebarDrop(input: {
   }
 
   if (isDocument) {
-    const documentId = dragKey.slice('document-'.length);
-    if (target.kind === 'document') {
-      if (target.documentId === documentId) {
-        return { kind: 'invalid', reason: 'Cannot drop onto itself' };
-      }
-      const parentById = documentParentMapFromTree(treeData);
-      if (wouldCreateIdCycle(parentById, documentId, target.documentId)) {
-        return { kind: 'invalid', reason: 'That would create a document cycle' };
-      }
-      if (nestingDepthAfterMove(parentById, documentId, target.documentId) > SIDEBAR_MAX_NEST_DEPTH) {
-        return { kind: 'invalid', reason: `Document nesting exceeds maximum depth of ${SIDEBAR_MAX_NEST_DEPTH}` };
-      }
-      return target;
-    }
-    // folder or root → place in folder/root (clears parent nesting in handler)
+    // Moving a legacy nested document to a folder/root clears parent_document_id.
     return target;
   }
 
-  // Library: document = attach; folder/root = move or detach
+  // Tables move between folders/root; moving a derived table also detaches it.
   return target;
 }
 

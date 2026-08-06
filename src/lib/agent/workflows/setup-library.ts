@@ -1,11 +1,11 @@
 /**
  * setup_library — skill that creates a library together with all of its fields
- * (columns), grouped into sections, in one step.
+ * (columns) in one step.
  *
  * Code-orchestrated composite tool (post_preview confirmation):
  * - execute()       NON-MUTATING. Resolves the folder, checks for a duplicate
  *                   library name, validates every field's data type, resolves
- *                   reference-library names to UUIDs, groups fields by section
+ *                   reference-library names to UUIDs, and returns a flat field list
  *                   and returns a preview (displayHint: 'skill_preview').
  * - executeImport() MUTATING. Creates the library, then inserts each field. If a
  *                   field fails midway the freshly created library is rolled back.
@@ -29,12 +29,9 @@ import { buildLibraryWriteGuide } from '../library-schema-builder';
 import { scheduleLibrarySchemaReindex } from '../embedding-index';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
-const DEFAULT_SECTION = 'section1';
-
 const FieldSchema = z.object({
   label: z.string().min(1),
   dataType: z.string().min(1),
-  section: z.string().optional(),
   description: z.string().optional(),
   required: z.boolean().optional(),
   enumOptions: z.array(z.string()).optional(),
@@ -55,7 +52,6 @@ export type SetupFieldInput = z.infer<typeof FieldSchema>;
 interface ResolvedField {
   label: string;
   dataType: PropertyConfig['dataType'];
-  section: string;
   description?: string;
   required?: boolean;
   enumOptions?: string[];
@@ -73,29 +69,11 @@ interface SetupLibraryPreview {
   folderName?: string;
   sourceDocumentName?: string;
   description?: string;
-  sections: Record<string, ResolvedField[]>;
+  fields: ResolvedField[];
   totalFields: number;
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
-
-/**
- * Group fields by their section, preserving the order in which sections and
- * fields first appear. Fields without a section default to "section1".
- */
-export function groupFieldsBySection<T extends { section?: string }>(
-  fields: T[]
-): Record<string, T[]> {
-  const grouped: Record<string, T[]> = {};
-  for (const field of fields) {
-    const sectionName = field.section?.trim() || DEFAULT_SECTION;
-    if (!grouped[sectionName]) {
-      grouped[sectionName] = [];
-    }
-    grouped[sectionName].push(field);
-  }
-  return grouped;
-}
 
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const parsed = ParamsSchema.safeParse(params);
@@ -182,7 +160,6 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       resolvedFields.push({
         label: field.label.trim(),
         dataType,
-        section: field.section?.trim() || DEFAULT_SECTION,
         description: field.description,
         required: field.required,
         enumOptions: field.enumOptions,
@@ -192,10 +169,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       });
     }
 
-    // 5. Group by section.
-    const sections = groupFieldsBySection(resolvedFields);
-
-    // 6. Build preview.
+    // 5. Build the ordered flat preview.
     const preview: SetupLibraryPreview = {
       type: 'setup_library',
       libraryName: libraryName.trim(),
@@ -203,7 +177,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       folderName: resolvedFolderName,
       sourceDocumentName,
       description,
-      sections,
+      fields: resolvedFields,
       totalFields: resolvedFields.length,
     };
 
@@ -238,10 +212,8 @@ async function executeImport(
   }
 
   try {
-    for (const [sectionName, sectionFields] of Object.entries(preview.sections)) {
-      const sectionId = `${libraryId}:${sectionName}`;
-      for (const field of sectionFields) {
-        await addLibraryField(ctx.supabase, libraryId, sectionId, sectionName, {
+    for (const field of preview.fields) {
+        await addLibraryField(ctx.supabase, libraryId, {
           label: field.label,
           dataType: field.dataType,
           description: field.description,
@@ -250,7 +222,6 @@ async function executeImport(
           referenceLibraries: field.referenceLibraryIds,
           formulaExpression: field.formulaExpression,
         });
-      }
     }
   } catch (e) {
     // Rollback: the library was just created (no user data yet), so delete it to
@@ -282,7 +253,7 @@ async function executeImport(
       libraryId,
       libraryName: preview.libraryName,
       folderName: preview.folderName,
-      sections: Object.keys(preview.sections),
+      fields: preview.fields.map((field) => ({ label: field.label, dataType: field.dataType })),
       totalFields: preview.totalFields,
       writeGuide,
     },
@@ -302,7 +273,7 @@ async function executeImport(
 export const setupLibrary: AgentTool = {
   name: 'setup_library',
   description:
-    'Create a new library (table) together with all of its fields/columns in one step. Fields can be grouped into sections (tabs). Use this when the user wants a new table with columns; use create_library only for an empty table. Params: libraryName (required), folderName (optional), description (optional), fields (required array; each field needs label and dataType, optionally section, description, required, enumOptions, referenceLibraries, formulaExpression).',
+    'Create a new library (table) together with all of its fields/columns in one step. Use this when the user wants a new table with columns; use create_library only for an empty table. Params: libraryName (required), folderName (optional), description (optional), fields (required array; each field needs label and dataType, optionally description, required, enumOptions, referenceLibraries, formulaExpression).',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'mode',
@@ -327,10 +298,6 @@ export const setupLibrary: AgentTool = {
             dataType: {
               type: 'string',
               description: buildDataTypeParamDescription(),
-            },
-            section: {
-              type: 'string',
-              description: 'Section/tab name. Defaults to "section1".',
             },
             description: { type: 'string', description: 'Optional field description' },
             required: { type: 'boolean', description: 'Whether the field is required' },

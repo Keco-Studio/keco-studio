@@ -23,6 +23,21 @@ export async function listScriptWorkspaceDocuments(
   return (data ?? []) as ScriptWorkspaceDocumentRow[];
 }
 
+export async function isScriptWorkspaceDocument(
+  supabase: SupabaseClient,
+  { projectId, documentId }: { projectId: string; documentId: string }
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('script_workspace_documents')
+    .select('document_id')
+    .eq('project_id', projectId)
+    .eq('document_id', documentId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
 export async function upsertScriptWorkspaceDocument(
   supabase: SupabaseClient,
   {

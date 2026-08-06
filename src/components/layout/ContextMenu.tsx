@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom';
 import styles from './ContextMenu.module.css';
 
 export type ContextMenuAction = 
-  | 'export'
   | 'import'
   | 'import-script'
   | 'new-document'
@@ -229,11 +228,6 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     return userRole === 'admin' || userRole === 'editor';
   };
 
-  // Export: only admin and editor can see and use
-  const canExport = () => {
-    return userRole === 'admin' || userRole === 'editor';
-  };
-
   // Import (creates library): admin only, same as create library
   const canImport = () => userRole === 'admin';
 
@@ -321,17 +315,9 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
           </>
         );
       }
-      // Library: Export (admin/editor), Version history, separator, Library info (admin only), Duplicate, Move to... (admin only), separator, Delete (admin only)
+      // Library: Version history, separator, Library info (admin only), Duplicate, Move to... (admin only), separator, Delete (admin only)
       return (
         <>
-          {canExport() && (
-            <button
-              className={styles.menuItem}
-              onClick={() => handleAction('export')}
-            >
-              Export
-            </button>
-          )}
           <button
             className={styles.menuItem}
             onClick={() => handleAction('version-history')}
@@ -477,12 +463,6 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     // Default: Show all items (fallback)
     return (
       <>
-        <button
-          className={styles.menuItem}
-          onClick={() => handleAction('export')}
-        >
-          Export
-        </button>
         <button
           className={styles.menuItem}
           onClick={() => handleAction('version-history')}

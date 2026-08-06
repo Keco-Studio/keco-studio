@@ -26,12 +26,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
-  // Simulation hides all Studio chrome. Script keeps TopBar and mounts ScriptSidebar
-  // as a left sibling of TopBar/main (matching design: sidebar left of nav bar).
+  // Simulation hides the Studio resource sidebar and Agent Chat. Script keeps TopBar and Agent Chat,
+  // and mounts ScriptSidebar as a left sibling of TopBar/main.
   const showStudioSidebar = !hideSidebarForSimulation && !onScriptSystem;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
-  const hideTopBar = hideSidebarForSimulation;
-  const hideChatPanel = hideSidebarForSimulation || onScriptSystem;
+  const hideChatPanel = hideSidebarForSimulation;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
@@ -91,8 +90,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <ScriptSidebar projectId={currentProjectId} />
         </div>
       ) : null}
+      {hideSidebarForSimulation ? (
+        <div className={styles.simulationSidebarSlot} data-simulation-sidebar-slot data-simulation-root />
+      ) : null}
       <div className={styles.main}>
-        {!hideTopBar ? <TopBar /> : null}
+        <TopBar />
         <div className={styles.workspace}>
           <div className={styles.content}>
             {children}

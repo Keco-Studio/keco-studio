@@ -1,18 +1,11 @@
 import { useMemo } from 'react';
-import type { PropertyConfig, SectionConfig } from '@/lib/types/libraryAssets';
-import {
-  buildPropertyGroups,
-  detectScriptColumns,
-} from '../utils/tableStructure';
+import type { PropertyConfig } from '@/lib/types/libraryAssets';
+import { detectScriptColumns, orderProperties } from '../utils/tableStructure';
 
 export function useLibraryTableStructure(
-  sections: SectionConfig[],
   properties: PropertyConfig[]
 ) {
-  const { groups, orderedProperties } = useMemo(
-    () => buildPropertyGroups(sections, properties),
-    [sections, properties]
-  );
+  const orderedProperties = useMemo(() => orderProperties(properties), [properties]);
 
   const { scriptColumns, hasScriptColumns } = useMemo(
     () => detectScriptColumns(orderedProperties),
@@ -20,7 +13,6 @@ export function useLibraryTableStructure(
   );
 
   return {
-    groups,
     orderedProperties,
     scriptColumns,
     hasScriptColumns,

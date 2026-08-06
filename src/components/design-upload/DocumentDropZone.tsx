@@ -21,6 +21,27 @@ type DocumentDropZoneProps = {
 const DEFAULT_ACCEPT = '.txt,.md,.docx';
 const DEFAULT_FORMATS_HINT = 'Supported formats: .txt, .md, .docx';
 
+function DropPlusIcon() {
+  return (
+    <svg
+      className={styles.dropPlusIcon}
+      width="28"
+      height="28"
+      viewBox="0 0 28 28"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M14 6v16M6 14h16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function DocumentDropZone({
   selectedFile,
   disabled = false,
@@ -36,6 +57,8 @@ export function DocumentDropZone({
 }: DocumentDropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+  const isEmpty = !selectedFile;
 
   const openPicker = () => {
     if (disabled) return;
@@ -47,14 +70,22 @@ export function DocumentDropZone({
     if (file) onFileSelected(file);
   };
 
+  const clearDragState = () => {
+    dragDepthRef.current = 0;
+    setDragOver(false);
+  };
+
   return (
     <div
       className={[
         compact ? styles.zoneCompact : styles.zone,
+        isEmpty ? styles.emptyDrop : '',
         dragOver ? styles.dragOver : '',
         disabled ? styles.disabled : '',
       ].filter(Boolean).join(' ')}
       data-testid={dropZoneTestId}
+      data-drag-over={dragOver ? 'true' : undefined}
+      aria-label={isEmpty ? `Choose a file. ${formatsHint}` : undefined}
       onClick={openPicker}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -62,14 +93,25 @@ export function DocumentDropZone({
           openPicker();
         }
       }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        if (disabled) return;
+        dragDepthRef.current += 1;
+        setDragOver(true);
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         if (!disabled) setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        if (disabled) return;
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setDragOver(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
-        setDragOver(false);
+        clearDragState();
         if (!disabled) handleFiles(e.dataTransfer.files);
       }}
       role="button"
@@ -104,8 +146,8 @@ export function DocumentDropZone({
           </button>
         </div>
       ) : (
-        <div className={styles.placeholder}>
-          <div className={styles.primaryText}>Drag a file here, or click to choose</div>
+        <div className={styles.emptyHint}>
+          <DropPlusIcon />
           <div className={styles.secondaryText}>{formatsHint}</div>
         </div>
       )}

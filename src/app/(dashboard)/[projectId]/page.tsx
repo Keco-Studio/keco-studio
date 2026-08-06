@@ -23,7 +23,6 @@ import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
 import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
 import { NewFolderModal } from '@/components/folders/NewFolderModal';
 import { EditFolderModal } from '@/components/folders/EditFolderModal';
-import { ExportLibraryModal } from '@/components/libraries/ExportLibraryModal';
 import { ImportLibraryModal } from '@/components/libraries/ImportLibraryModal';
 import { ImportScriptModal } from '@/components/libraries/ImportScriptModal';
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
@@ -65,7 +64,6 @@ export default function ProjectPage() {
   const [showEditFolderModal, setShowEditFolderModal] = useState(false);
   const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
-  const [exportLibraryId, setExportLibraryId] = useState<string | null>(null);
   const [importFolderId, setImportFolderId] = useState<string | null>(null);
   const [importScriptFolderId, setImportScriptFolderId] = useState<string | null>(null);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({}); 
@@ -239,9 +237,6 @@ export default function ProjectPage() {
 
   const handleLibraryAction = async (libraryId: string, action: ContextMenuAction) => {
     switch (action) {
-      case 'export':
-        setExportLibraryId(libraryId);
-        break;
       case 'rename':
         setEditingLibraryId(libraryId);
         setShowEditLibraryModal(true);
@@ -565,14 +560,6 @@ export default function ProjectPage() {
             // No need to manually invalidate - the hook already does this
             // Event is also dispatched automatically by useUpdateEntityName hook
           }}
-        />
-      )}
-      {exportLibraryId && (
-        <ExportLibraryModal
-          open={!!exportLibraryId}
-          libraryId={exportLibraryId}
-          libraryName={libraries.find(l => l.id === exportLibraryId)?.name}
-          onClose={() => setExportLibraryId(null)}
         />
       )}
       {importFolderId && (

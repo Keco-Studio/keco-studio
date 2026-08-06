@@ -121,6 +121,26 @@ describe('buildSystemPrompt design-document table rules', () => {
     );
   });
 
+  it('routes structural Script edits through the guarded story graph tools', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('STORY GRAPH EDITS');
+    expect(prompt).toContain('read_story_graph');
+    expect(prompt).toContain('propose_story_graph_edit');
+    expect(prompt).toMatch(/stable labels/i);
+    expect(prompt).toMatch(/before every story graph write/i);
+    expect(prompt).toMatch(/do not use update_asset or update_row/i);
+    expect(prompt).toMatch(/disconnected nodes are preserved/i);
+    expect(prompt).toMatch(/insertBeforeLabel/i);
+    expect(prompt).toMatch(/set_entry/i);
+    expect(prompt).toMatch(/plot title/i);
+    expect(prompt).toMatch(/lastLabel/i);
+    expect(prompt).toMatch(/plotTitle/i);
+    expect(prompt).toMatch(/set_next.*lastLabel|lastLabel.*set_next/i);
+    expect(prompt).toMatch(/newly created.*reachable|reachable.*newly created/i);
+    expect(prompt).toMatch(/never ask.*internal.*label/i);
+  });
+
   it('requires a fresh structure list before claiming resources are missing', () => {
     const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'admin' });
 

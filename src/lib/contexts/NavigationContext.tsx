@@ -16,6 +16,7 @@ import {
 } from '@/lib/services/authorizationService';
 import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { buildFolderBreadcrumbPath, type FolderBreadcrumb } from '@/lib/navigation/folderBreadcrumbs';
 
 type BreadcrumbItem = {
   label: string;
@@ -53,6 +54,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [assetName, setAssetName] = useState<string | null>(null);
   const [documentName, setDocumentName] = useState<string | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
+  const [folderPath, setFolderPath] = useState<FolderBreadcrumb[]>([]);
+  const [documentFolderId, setDocumentFolderId] = useState<string | null>(null);
   const [libraryFolderId, setLibraryFolderId] = useState<string | null>(null);
   const [scriptParentDocumentId, setScriptParentDocumentId] = useState<string | null>(null);
   const [scriptParentDocumentName, setScriptParentDocumentName] = useState<string | null>(null);
@@ -75,14 +78,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const currentDocumentId = routeParams.documentId;
   const currentFolderIdFromUrl = routeParams.folderId;
 
-  // Current folder: from URL (routeParams) or from library's folder_id.
+  // Current folder: from URL, library.folder_id, or document.folder_id.
   // Script workspace breadcrumbs follow the Script sidebar tree (project / doc /
   // script), not Studio folder paths — ignore library.folder_id there.
   const onScriptSystem = isScriptSystemPath(pathname);
   const currentFolderId = useMemo(() => {
     if (onScriptSystem) return currentFolderIdFromUrl;
-    return currentFolderIdFromUrl || libraryFolderId;
-  }, [currentFolderIdFromUrl, libraryFolderId, onScriptSystem]);
+    return currentFolderIdFromUrl || libraryFolderId || documentFolderId;
+  }, [currentFolderIdFromUrl, documentFolderId, libraryFolderId, onScriptSystem]);
 
   useEffect(() => {
     if (!currentProjectId || !projectName?.trim()) return;
@@ -125,6 +128,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       setAssetName(null);
       setDocumentName(null);
       setFolderName(null);
+      setFolderPath([]);
+      setDocumentFolderId(null);
       setLibraryFolderId(null);
       setScriptParentDocumentId(null);
       setScriptParentDocumentName(null);
@@ -151,6 +156,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           setAssetName(null);
           setDocumentName(null);
           setFolderName(null);
+          setFolderPath([]);
+          setDocumentFolderId(null);
           setLibraryFolderId(null);
           setScriptParentDocumentId(null);
           setScriptParentDocumentName(null);
@@ -207,6 +214,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               setAssetName(null);
               setDocumentName(null);
               setFolderName(null);
+              setFolderPath([]);
+              setDocumentFolderId(null);
               setLibraryFolderId(null);
               setScriptParentDocumentId(null);
               setScriptParentDocumentName(null);
@@ -360,24 +369,40 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               if (mounted) {
                 if (!data) {
                   setFolderName(null);
+                  setFolderPath([]);
                 } else {
+                  const projectFolders = await queryClient.fetchQuery({
+                    queryKey: queryKeys.projectFolders(currentProjectId),
+                    queryFn: async () => {
+                      const { data: folders, error } = await supabase
+                        .from('folders')
+                        .select('id, name, parent_folder_id')
+                        .eq('project_id', currentProjectId);
+                      if (error) throw error;
+                      return folders ?? [];
+                    },
+                  });
                   setFolderName(data.name ?? null);
+                  setFolderPath(buildFolderBreadcrumbPath(projectFolders, currentFolderId));
                 }
               }
             } catch (authError: any) {
               if (authError instanceof AuthorizationError && mounted) {
                 // User doesn't have access - clear
                 setFolderName(null);
+                setFolderPath([]);
               }
             }
           } else {
             // Invalid UUID format, skip query
             if (mounted) {
               setFolderName(null);
+              setFolderPath([]);
             }
           }
         } else {
           setFolderName(null);
+          setFolderPath([]);
         }
 
         // Resolve current asset name with permission check
@@ -454,11 +479,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         if (currentDocumentId) {
           try {
             const data = await queryClient.fetchQuery({
-              queryKey: queryKeys.document(currentDocumentId),
+              // This query only contains breadcrumb metadata. Keep it separate
+              // from the full DocumentRecord cache consumed by DocumentEditor.
+              queryKey: ['document-name', currentDocumentId] as const,
               queryFn: async () => {
                 const { data, error } = await supabase
                   .from('documents')
-                  .select('name')
+                  .select('name, folder_id')
                   .eq('id', currentDocumentId)
                   .single();
                 if (error || !data) return null;
@@ -467,14 +494,17 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             });
             if (mounted) {
               setDocumentName(data?.name ?? null);
+              setDocumentFolderId(data?.folder_id ?? null);
             }
           } catch {
             if (mounted) {
               setDocumentName(null);
+              setDocumentFolderId(null);
             }
           }
         } else {
           setDocumentName(null);
+          setDocumentFolderId(null);
         }
       } catch (error) {
         console.error('Error fetching navigation names:', error);
@@ -485,6 +515,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
           setAssetName(null);
           setDocumentName(null);
           setFolderName(null);
+          setFolderPath([]);
+          setDocumentFolderId(null);
           setLibraryFolderId(null);
           setScriptParentDocumentId(null);
           setScriptParentDocumentName(null);
@@ -545,11 +577,16 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // Add folder to breadcrumbs if it exists
+    // Add the complete folder ancestry to breadcrumbs when available.
     if (currentFolderId && currentProjectId) {
-      nextBreadcrumbs.push({
-        label: folderName || 'Folder',
-        path: `/${currentProjectId}/folder/${currentFolderId}`,
+      const path = folderPath.length > 0
+        ? folderPath
+        : [{ id: currentFolderId, name: folderName || 'Folder' }];
+      path.forEach((folder) => {
+        nextBreadcrumbs.push({
+          label: folder.name || 'Folder',
+          path: `/${currentProjectId}/folder/${folder.id}`,
+        });
       });
     }
 
@@ -581,6 +618,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentAssetId,
     currentDocumentId,
     currentFolderId,
+    folderPath,
     currentLibraryId,
     currentProjectId,
     folderName,

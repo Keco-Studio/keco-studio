@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 
 export type DocumentRole = 'admin' | 'editor' | 'viewer';
 
@@ -104,23 +106,106 @@ export function useDocumentPermissions({
   documentProjectId: string | null;
   supabase: SupabaseClient;
 }): DocumentPermissionState {
-  const requestKey = `${projectId}:${documentProjectId ?? ''}`;
-  const [loaded, setLoaded] = useState<{
+  const { userProfile, isLoading: authLoading } = useAuth();
+  const profileUserId = userProfile?.id ?? null;
+  const sessionRequestKey = `${projectId}:${profileUserId ?? ''}`;
+  const [sessionState, setSessionState] = useState<{
     requestKey: string;
-    permission: DocumentPermissionState;
-  }>({ requestKey: '', permission: loadingState });
+    loading: boolean;
+    userId: string | null;
+    accessToken: string | null;
+    userName: string | null;
+    error: string | null;
+  }>({
+    requestKey: '',
+    loading: true,
+    userId: null,
+    accessToken: null,
+    userName: null,
+    error: null,
+  });
+  const roleUserId =
+    profileUserId ??
+    (sessionState.requestKey === sessionRequestKey && !sessionState.loading
+      ? sessionState.userId
+      : null);
+  const roleQuery = useProjectRoleQuery(projectId, roleUserId);
 
   useEffect(() => {
-    if (!documentProjectId) return;
     let active = true;
-    void loadDocumentPermissions({ projectId, documentProjectId, supabase }).then((next) => {
-      if (active) setLoaded({ requestKey, permission: next });
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      const session = data.session;
+      if (error || !session?.user?.id || !session.access_token) {
+        setSessionState({
+          requestKey: sessionRequestKey,
+          loading: false,
+          userId: null,
+          accessToken: null,
+          userName: null,
+          error: 'Your session could not be verified.',
+        });
+        return;
+      }
+      setSessionState({
+        requestKey: sessionRequestKey,
+        loading: false,
+        userId: session.user.id,
+        accessToken: session.access_token,
+        userName:
+          (typeof session.user.user_metadata?.full_name === 'string' &&
+          session.user.user_metadata.full_name.trim()
+            ? session.user.user_metadata.full_name.trim()
+            : null) ??
+          (typeof session.user.user_metadata?.name === 'string' &&
+          session.user.user_metadata.name.trim()
+            ? session.user.user_metadata.name.trim()
+            : null) ??
+          session.user.email?.split('@')[0] ??
+          'Collaborator',
+        error: null,
+      });
+    }).catch(() => {
+      if (!active) return;
+      setSessionState({
+        requestKey: sessionRequestKey,
+        loading: false,
+        userId: null,
+        accessToken: null,
+        userName: null,
+        error: 'Your session could not be verified.',
+      });
     });
     return () => {
       active = false;
     };
-  }, [documentProjectId, projectId, requestKey, supabase]);
+  }, [projectId, sessionRequestKey, supabase]);
 
-  if (loaded.requestKey !== requestKey) return loadingState;
-  return loaded.permission;
+  if (documentProjectId && documentProjectId !== projectId) {
+    return denied('This document does not belong to this project.');
+  }
+  if (
+    authLoading ||
+    sessionState.requestKey !== sessionRequestKey ||
+    sessionState.loading ||
+    roleQuery.isLoading
+  ) {
+    return loadingState;
+  }
+  if (sessionState.error || !sessionState.userId || !sessionState.accessToken) {
+    return denied(sessionState.error ?? 'Your session could not be verified.');
+  }
+  if (roleQuery.isError || !roleQuery.data?.role) {
+    return denied('Project permissions could not be loaded.');
+  }
+
+  return {
+    role: roleQuery.data.role,
+    isLoading: false,
+    error: null,
+    readOnly: roleQuery.data.role === 'viewer',
+    userId: sessionState.userId,
+    accessToken: sessionState.accessToken,
+    userName: sessionState.userName,
+  };
 }

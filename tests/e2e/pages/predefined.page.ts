@@ -1,12 +1,11 @@
 import { expect, type Page, type Locator } from '@playwright/test';
-import type { PredefinedTemplateData, SectionData, FieldItemData } from '../fixures/predefined';
+import type { PredefinedTemplateData, FieldItemData } from '../fixures/predefined';
 
 /**
  * PredefinedPage - Page Object Model for Predefined Template management
  * 
  * Handles all interactions with Predefined Templates, including:
  * - Template creation
- * - Section management
  * - Field Item configuration
  * - Special field type configurations (option, reference)
  * 
@@ -21,12 +20,6 @@ export class PredefinedPage {
   // Page elements
   readonly pageHeading: Locator;
   readonly saveButton: Locator;
-
-  // Section management
-  readonly addSectionButton: Locator;
-  // Section name is edited in tab name input (auto-focused when creating new section)
-  // Use more flexible selector to match the tab name input in both new and existing sections
-  readonly tabNameInput: Locator;
 
   // Field Item management
   readonly addFieldButton: Locator;
@@ -54,18 +47,6 @@ export class PredefinedPage {
     // Page elements
     this.pageHeading = page.getByRole('heading', { name: /predefine/i });
     this.saveButton = page.getByRole('button', { name: /^save$/i });
-
-    // Section management
-    // Add section button appears next to tabs (has image alt="Add Section")
-    this.addSectionButton = page.locator('button').filter({ has: page.locator('img[alt="Add Section"]') });
-    
-    // Tab name input - appears when creating or editing a section name
-    // It's an Ant Design Input component within the tab label
-    // Use class selector to target the specific input used for tab names
-    this.tabNameInput = page.locator('input').filter({ 
-      hasText: /.*/  // Any text (including empty)
-    }).and(page.locator('[class*="tabNameInput"]'))
-      .or(page.locator('.ant-tabs-tab input[type="text"]'));
 
     // Field management
     // Note: Button has title="Add property", use exact title to avoid matching Sidebar "Add" button
@@ -95,15 +76,8 @@ export class PredefinedPage {
     this.errorMessage = page.locator('[class*="error"], [role="alert"]').filter({ hasText: /error/i });
   }
 
-  private getVisibleTabNameInput(): Locator {
-    return this.page
-      .locator('[class*="tabNameInput"]:visible')
-      .or(this.page.locator('.ant-tabs-tab input[type="text"]:visible'))
-      .first();
-  }
-
   /**
-   * Create a predefined schema with sections and fields
+   * Create a predefined schema with fields
    * New logic: Auto-save enabled, no need to click save button
    * @param template - Complete schema configuration
    */
@@ -111,23 +85,9 @@ export class PredefinedPage {
     // Wait for page to be ready
     await this.waitForPageLoad();
 
-    // Handle sections
-    for (let i = 0; i < template.sections.length; i++) {
-      const section = template.sections[i];
-      
-      // Add a new section (includes auto-save after creating section)
-      await this.addSection(section.name);
-      
-      // Wait for section to be active and ready for fields
+    for (const field of template.fields) {
+      await this.addField(field);
       await this.page.waitForTimeout(500);
-
-      // Add fields to this section
-      // Note: Fields are auto-saved after being added
-      for (const field of section.fields) {
-        await this.addField(field);
-        // Wait for auto-save after each field
-        await this.page.waitForTimeout(500);
-      }
     }
 
     // No need to click save button - schema is auto-saved
@@ -139,85 +99,7 @@ export class PredefinedPage {
   }
 
   /**
-   * Add a new section to the schema
-   * New logic: Section name is edited in tab name (auto-focused when creating)
-   * @param sectionName - Name of the section
-   */
-  async addSection(sectionName: string): Promise<void> {
-    // Check if add section button is visible (means there are existing sections)
-    const addButton = this.addSectionButton;
-    const hasExistingSections = await addButton.isVisible({ timeout: 2000 }).catch(() => false);
-    
-    const activeFieldForm = this.page
-      .locator('.ant-tabs-tabpane-active [data-testid="field-form"]:visible')
-      .first();
-    const anyVisibleFieldForm = this.page
-      .locator('[data-testid="field-form"]:visible')
-      .first();
-
-    // Try multiple times to ensure section creation mode is really ready.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (attempt === 0 && hasExistingSections) {
-        await addButton.click();
-        await this.page.waitForTimeout(300);
-      } else if (attempt > 0 && hasExistingSections) {
-        if (await addButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await addButton.click();
-          await this.page.waitForTimeout(400);
-        }
-      }
-
-      let tabInput = this.getVisibleTabNameInput();
-      let inputVisible = await tabInput.isVisible({ timeout: 3000 }).catch(() => false);
-      let fieldFormVisible = await activeFieldForm.isVisible({ timeout: 2000 }).catch(() => false);
-      if (!fieldFormVisible) {
-        fieldFormVisible = await anyVisibleFieldForm.isVisible({ timeout: 1000 }).catch(() => false);
-      }
-
-      if (!inputVisible && !fieldFormVisible) {
-        const newSectionTab = this.page.locator('.ant-tabs-tab').filter({ hasText: /new section/i }).first();
-        if (await newSectionTab.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await newSectionTab.click();
-          await this.page.waitForTimeout(400);
-        }
-        tabInput = this.getVisibleTabNameInput();
-        inputVisible = await tabInput.isVisible({ timeout: 3000 }).catch(() => false);
-        fieldFormVisible = await activeFieldForm.isVisible({ timeout: 3000 }).catch(() => false);
-        if (!fieldFormVisible) {
-          fieldFormVisible = await anyVisibleFieldForm.isVisible({ timeout: 1000 }).catch(() => false);
-        }
-      }
-
-      if (inputVisible) {
-        await tabInput.click({ clickCount: 3 });
-        await tabInput.press('ControlOrMeta+a').catch(() => {});
-        await tabInput.type(sectionName, { delay: 40 });
-        await tabInput.press('Enter');
-        await expect(tabInput).not.toBeVisible({ timeout: 4000 }).catch(() => {});
-      }
-
-      await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-      fieldFormVisible = await activeFieldForm.isVisible({ timeout: 4000 }).catch(() => false);
-      if (!fieldFormVisible) {
-        fieldFormVisible = await anyVisibleFieldForm.isVisible({ timeout: 1000 }).catch(() => false);
-      }
-      if (fieldFormVisible) {
-        await this.page.waitForTimeout(500);
-        return;
-      }
-    }
-
-    // Final grace period for first-section auto-enter mode in slow CI.
-    const finallyVisible = await anyVisibleFieldForm.isVisible({ timeout: 10000 }).catch(() => false);
-    if (finallyVisible) {
-      return;
-    }
-
-    throw new Error('Section creation mode not ready: field form did not appear.');
-  }
-
-  /**
-   * Add a field item to the current section
+   * Add a field item to the ordered schema list
    * New logic: Auto-save converts FieldForm to FieldItem after blur
    * @param field - Field configuration including label, datatype, and optional config
    */
@@ -225,7 +107,7 @@ export class PredefinedPage {
     // Step 1: Fill in field label in FieldForm (input with placeholder "Type label for property...")
     // Use data-testid to precisely target FieldForm's input, not FieldItem's input
     const activeFieldForm = this.page
-      .locator('.ant-tabs-tabpane-active [data-testid="field-form"]:visible')
+      .locator('[data-testid="field-form"]:visible')
       .first();
     const anyVisibleFieldForm = this.page.locator('[data-testid="field-form"]:visible').first();
     let fieldForm = activeFieldForm;
@@ -235,11 +117,7 @@ export class PredefinedPage {
       fieldFormVisible = await fieldForm.isVisible({ timeout: 2000 }).catch(() => false);
     }
     if (!fieldFormVisible) {
-      // Recovery path: ensure a section tab is active, then retry waiting for form.
-      const firstTab = this.page.locator('.ant-tabs-tab').first();
-      if (await firstTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await firstTab.click();
-      }
+      // Recovery path: retry waiting for the field form.
       await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
       fieldForm = activeFieldForm;
       fieldFormVisible = await fieldForm.isVisible({ timeout: 10000 }).catch(() => false);
@@ -265,7 +143,7 @@ export class PredefinedPage {
     
     // Step 4: Wait for the new FieldItem to appear
     // Use data-testid selector to find FieldItems
-    const allFieldItems = this.page.locator('.ant-tabs-tabpane-active [data-testid="field-item"]:visible');
+    const allFieldItems = this.page.locator('[data-testid="field-item"]:visible');
     
     // Wait for at least one FieldItem to exist
     await expect(allFieldItems.first()).toBeVisible({ timeout: 5000 });
@@ -412,15 +290,6 @@ export class PredefinedPage {
   }
 
   /**
-   * Assert section exists in the schema
-   * @param sectionName - Name of the section to verify
-   */
-  async expectSectionExists(sectionName: string): Promise<void> {
-    const sectionTab = this.page.getByRole('tab', { name: sectionName });
-    await expect(sectionTab).toBeVisible({ timeout: 5000 });
-  }
-
-  /**
    * Assert successful schema save and navigate back to library page
    * New logic: Auto-save enabled, click back button to return to library
    */
@@ -445,7 +314,6 @@ export class PredefinedPage {
   
   /**
    * Assert template exists (for backward compatibility)
-   * In this system, we check if sections exist
    */
   async expectTemplateExists(templateName: string): Promise<void> {
     // Template name is not used in this system, just verify page is loaded
@@ -465,4 +333,3 @@ export class PredefinedPage {
     await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   }
 }
-

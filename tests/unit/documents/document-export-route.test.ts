@@ -121,21 +121,22 @@ describe('document export route and UI wiring', () => {
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('private details');
   });
 
-  it('offers DOCX, PDF, and MDX from one compact download menu', () => {
+  it('offers DOCX, PDF, and Markdown from one compact download menu', () => {
     expect(editor).toContain("key: 'docx'");
     expect(editor).toContain("key: 'pdf'");
     expect(editor).toContain("key: 'mdx'");
-    expect(editor).toContain('Download MDX');
-    expect(editor).toContain("key: 'tables'");
-    expect(editor).toContain('Export as tables');
-    expect(editor).toContain("key: 'script'");
-    expect(editor).toContain('Export as script');
+    expect(editor).toContain('Download Markdown');
+    expect(editor).not.toContain('Export as tables');
+    expect(editor).not.toContain('Export as script');
     expect(editor).toContain('document-export-trigger');
-    expect(editor).toContain('document-topbar-sync-request');
+    expect(editor).toContain('document-collaboration-status');
     expect(topBar).toContain('DownloadOutlined');
+    expect(topBar).not.toContain('documentLiveText');
+    expect(topBar).not.toContain('document-topbar-status');
     expect(topBar).toContain('data-testid="document-export"');
-    expect(topBar).toContain('Export as tables');
-    expect(topBar).toContain('Export as script');
+    expect(topBar).toContain('Download Markdown');
+    expect(topBar).not.toContain('Export as tables');
+    expect(topBar).not.toContain('Export as script');
     expect(nextConfig).toContain("'@mdxeditor/editor'");
   });
 

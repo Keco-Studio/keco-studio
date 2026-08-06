@@ -17,6 +17,7 @@ import { Avatar, Tooltip } from 'antd';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { prependLocalUserWhenCollaborating } from '@/components/collaboration/collaborationAvatarDisplay';
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
@@ -83,30 +84,20 @@ export function AssetHeader({
 
   // Filter presence users to only show those viewing/editing this specific asset
   const assetPresenceUsers = useMemo(() => {
-    const filtered = presenceUsers.filter(user => {
+    const remoteUsers = presenceUsers.filter(user => {
       // Check if user is viewing or editing this asset
-      return user.activeCell?.assetId === assetId;
+      return user.userId !== currentUserId && user.activeCell?.assetId === assetId;
     });
-    
-    // Check if current user is in the list
-    const hasCurrentUser = filtered.some(u => u.userId === currentUserId);
-    
-    // Always add current user to ensure they see themselves
-    // This is a UI-only addition and doesn't affect the underlying presence system
-    if (!hasCurrentUser) {
-      filtered.push({
-        userId: currentUserId,
-        userName: currentUserName,
-        userEmail: currentUserEmail,
-        avatarColor: currentUserAvatarColor,
-        activeCell: { assetId, propertyKey: '__viewing__' },
-        cursorPosition: null,
-        lastActivity: new Date().toISOString(),
-        connectionStatus: 'online' as const,
-      });
-    }
-    
-    return filtered;
+    return prependLocalUserWhenCollaborating(remoteUsers, {
+      userId: currentUserId,
+      userName: currentUserName,
+      userEmail: currentUserEmail,
+      avatarColor: currentUserAvatarColor,
+      activeCell: { assetId, propertyKey: '__viewing__' },
+      cursorPosition: null,
+      lastActivity: new Date().toISOString(),
+      connectionStatus: 'online' as const,
+    });
   }, [presenceUsers, assetId, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
 
   // Sort presence users: current user first, then by last activity
@@ -125,6 +116,7 @@ export function AssetHeader({
   // Get users for avatar display (max 2)
   // Memoized more aggressively to avoid flickering
   const displayUsers = useMemo(() => {
+    if (sortedPresenceUsers.length === 0) return [];
     const result = [];
     
     // Find current user in sorted list
@@ -210,7 +202,7 @@ export function AssetHeader({
 
       <div className={styles.rightSection}>
         {/* Viewing Members Indicator */}
-        <div className={styles.membersSection} ref={membersPanelRef}>
+        {sortedPresenceUsers.length > 0 && <div className={styles.membersSection} ref={membersPanelRef}>
           <div className={styles.membersAvatars}>
             {displayUsers.map((user, index) => (
               <Tooltip key={user.userId} title={user.userName} placement="bottom">
@@ -329,7 +321,7 @@ export function AssetHeader({
               </div>
             );
           })()}
-        </div>
+        </div>}
 
         {/* Share Button */}
         <div className={styles.shareSection}>
@@ -385,4 +377,3 @@ export function AssetHeader({
     </div>
   );
 }
-

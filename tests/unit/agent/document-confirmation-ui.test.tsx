@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
-import { buildDocumentEditDiff } from '@/components/agent/ConfirmationCard';
+import {
+  buildDocumentEditDiff,
+  shouldShowStoryGraphPreview,
+} from '@/components/agent/ConfirmationCard';
 import type { ChatItem } from '@/components/agent/types';
 
 jest.mock('next/image', () => {
@@ -23,6 +26,12 @@ jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true })
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
+  it('shows a graph preview only while the confirmation is unresolved', () => {
+    expect(shouldShowStoryGraphPreview(undefined)).toBe(true);
+    expect(shouldShowStoryGraphPreview('approved')).toBe(false);
+    expect(shouldShowStoryGraphPreview('rejected')).toBe(false);
+  });
+
   it('shows the document bound to a rename confirmation', () => {
     const item: ChatItem = {
       id: 'confirmation-rename',
@@ -400,5 +409,105 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup).toContain('aria-label="Approve action"');
     expect(markup).toContain('aria-label="Reject action"');
     expect(markup).not.toContain('Import Directly');
+  });
+
+  it('renders a compact story graph diff without exposing mutation internals', () => {
+    const item: ChatItem = {
+      id: 'confirmation-story-graph',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-story-graph',
+        tool: 'propose_story_graph_edit',
+        args: {
+          libraryId: '11111111-1111-4111-8111-111111111111',
+          expectedSnapshot: { updatedAt: 'must-not-render' },
+          assetUpdates: [{ id: '22222222-2222-4222-8222-222222222222' }],
+        },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'story_graph_edit',
+          libraryId: '33333333-3333-4333-8333-333333333333',
+          libraryName: 'MainChoice',
+          createdNodes: [
+            {
+              label: 'EscapeRoute',
+              title: 'Escape ending',
+              contentSummary: 'The hero escapes.',
+              rowIndex: 4,
+              placement: { relation: 'after', anchorTitle: 'Main choice' },
+            },
+          ],
+          plotGraph: {
+            nodes: [
+              { id: 'MainChoice', label: 'Main choice', rowIndex: 1, rowIndexes: [1] },
+              { id: 'EscapeRoute', label: 'Escape ending', rowIndex: 3, rowIndexes: [3] },
+            ],
+            edges: [{ from: 'MainChoice', to: 'EscapeRoute' }],
+            createdNodeIds: ['EscapeRoute'],
+          },
+          edgeChanges: [
+            {
+              kind: 'added',
+              fromLabel: 'MainChoice',
+              text: 'Escape',
+              fromTarget: null,
+              toTarget: 'EscapeRoute',
+            },
+            {
+              kind: 'redirected',
+              fromLabel: 'MainChoice',
+              text: 'Stay',
+              fromTarget: 'OldEnding',
+              toTarget: 'SafeRoom',
+            },
+            {
+              kind: 'removed',
+              fromLabel: 'MainChoice',
+              text: 'Wait',
+              fromTarget: 'WaitEnding',
+              toTarget: null,
+            },
+          ],
+          affectedRows: [2, 4],
+          addedFields: ['Option3', 'Option3_Next'],
+          warnings: [{ code: 'unreachable_node', label: 'OldEnding' }],
+          before: {
+            nodeCount: 4,
+            edgeCount: 3,
+            endingCount: 2,
+            unreachableCount: 0,
+            entryToEndingPathCount: '2',
+          },
+          after: {
+            nodeCount: 5,
+            edgeCount: 4,
+            endingCount: 2,
+            unreachableCount: 1,
+            entryToEndingPathCount: '2',
+          },
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm story graph changes');
+    expect(markup).toContain('MainChoice');
+    expect(markup).toContain('Add &quot;Escape ending&quot;');
+    expect(markup).toContain('After &quot;Main choice&quot;');
+    expect(markup).toContain('The hero escapes.');
+    expect(markup).not.toContain('EscapeRoute');
+    expect(markup).not.toContain('OldEnding');
+    expect(markup).not.toContain('SafeRoom');
+    expect(markup).not.toContain('Nodes');
+    expect(markup).not.toContain('Edges');
+    expect(markup).not.toContain('Row 4');
+    expect(markup).not.toContain('expectedSnapshot');
+    expect(markup).not.toContain('assetUpdates');
+    expect(markup).not.toContain('11111111-1111-4111-8111-111111111111');
+    expect(markup).not.toContain('22222222-2222-4222-8222-222222222222');
+    expect(markup).not.toContain('33333333-3333-4333-8333-333333333333');
   });
 });

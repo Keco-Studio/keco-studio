@@ -28,6 +28,7 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     expect(source).toContain('projectId={projectId}');
     expect(source).toContain('documentId={documentId}');
     expect(source).toContain('flushLayout');
+    expect(source).toContain('scriptWorkspaceMembershipReady={canRender}');
     expect(source).not.toMatch(/editor coming soon|DocumentDocumentPageStub|stub/i);
   });
 
@@ -35,15 +36,28 @@ describe('Keco Script doc route guard + DocumentEditor', () => {
     const source = read(
       'src/app/(dashboard)/script-system/[projectId]/doc/[documentId]/page.tsx'
     );
-    expect(source).toContain('useScriptWorkspaceMembership');
+    expect(source).toContain('useScriptWorkspaceDocumentMembership');
+    expect(source).not.toContain('useScriptWorkspaceMembership');
     expect(source).toMatch(/isMember/);
     expect(source).toContain('isFetching');
     // Redirect waits for settled fetch; render keeps going while refetching.
     expect(source).toMatch(/membershipSettled\s*=\s*membershipReady\s*&&\s*!isFetching/);
     expect(source).toMatch(/canRender\s*=\s*membershipReady/);
+    expect(source).toContain('membershipSettled && !canRender');
     expect(source).not.toMatch(/canRender\s*=\s*[^\n]*!isFetching/);
     expect(source).toMatch(/router\.(replace|push)/);
     expect(source).toContain(`/script-system/\${projectId}`);
     expect(source).toMatch(/showErrorToast|showWarningToast|showInfoToast/);
+  });
+
+  it('targeted membership hook checks only the requested document', () => {
+    const source = read(
+      'src/components/script-system/useScriptWorkspaceDocumentMembership.ts'
+    );
+    expect(source).toContain('useQuery');
+    expect(source).toContain('/api/script-workspace/${projectId}/${documentId}');
+    expect(source).toContain("['script-workspace-document'");
+    expect(source).toContain('staleTime: 30_000');
+    expect(source).toContain('member');
   });
 });

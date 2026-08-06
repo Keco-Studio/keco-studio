@@ -17,7 +17,6 @@ type FieldInput = {
   required?: boolean;
   enumOptions?: string[];
   referenceTableIds?: string[];
-  sectionId?: string;
 };
 
 type NormalizedDocument = { yjsStateBase64: string; markdown: string };
@@ -266,13 +265,11 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
     }
   });
 
-  it('appends image fields with section-local ordering', async () => {
+  it('appends image fields with global flat ordering', async () => {
     const tableId = crypto.randomUUID();
-    const initialField = fields()[0];
-    initialField.sectionId = `${tableId}:main`;
     const table = await createTable(
       tableId,
-      [initialField],
+      [fields()[0]],
       crypto.randomUUID()
     );
     expect(table.error).toBeNull();
@@ -282,7 +279,7 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       p_project_id: fx.projectId,
       p_table_id: tableId,
       p_field_id: iconId,
-      p_field: { label: 'Icon', dataType: 'image', section: 'main' },
+      p_field: { label: 'Icon', dataType: 'image' },
     });
     expect(icon.error).toBeNull();
     expect(icon.data).toEqual([expect.objectContaining({
@@ -290,36 +287,50 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       table_id: tableId,
       label: 'Icon',
       data_type: 'image',
-      section: 'main',
-      section_id: `${tableId}:main`,
       order_index: 1,
       required: false,
     })]);
+    expect(icon.data[0]).not.toHaveProperty('section');
+    expect(icon.data[0]).not.toHaveProperty('section_id');
 
     const notesId = crypto.randomUUID();
     const notes = await fx.editor.client.rpc('mcp_add_table_field', {
       p_project_id: fx.projectId,
       p_table_id: tableId,
       p_field_id: notesId,
-      p_field: { label: 'Notes', dataType: 'string', section: 'details' },
+      p_field: { label: 'Notes', dataType: 'string' },
     });
     expect(notes.error).toBeNull();
     expect(notes.data[0]).toMatchObject({
       field_id: notesId,
-      section: 'details',
-      order_index: 0,
+      order_index: 2,
     });
 
     const persisted = await fx.svc.from('library_field_definitions')
-      .select('id,label,data_type,section,order_index')
+      .select('id,label,data_type,section,section_id,order_index')
       .eq('library_id', tableId)
-      .order('section')
       .order('order_index');
     expect(persisted.error).toBeNull();
-    expect(persisted.data).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: iconId, data_type: 'image', order_index: 1 }),
-      expect.objectContaining({ id: notesId, section: 'details', order_index: 0 }),
-    ]));
+    expect(persisted.data).toEqual([
+      expect.objectContaining({
+        label: 'Name',
+        section: '__keco_flat_fields__',
+        order_index: 0,
+      }),
+      expect.objectContaining({
+        id: iconId,
+        data_type: 'image',
+        section: '__keco_flat_fields__',
+        order_index: 1,
+      }),
+      expect.objectContaining({
+        id: notesId,
+        label: 'Notes',
+        section: '__keco_flat_fields__',
+        order_index: 2,
+      }),
+    ]);
+    expect(new Set(persisted.data?.map((row) => row.section_id)).size).toBe(1);
   });
 
   it('rejects invalid added fields without partial inserts', async () => {
@@ -331,6 +342,7 @@ describeDb('MCP atomic writes real Postgres behavior', () => {
       [{ label: ' name ', dataType: 'string' }, '23505'],
       [{ label: 'Required', dataType: 'string', required: true }, '22023'],
       [{ dataType: 'string' }, '22023'],
+      [{ label: 'With section', dataType: 'string', section: 'main' }, '22023'],
       [{ label: 'Enum', dataType: 'enum' }, '22023'],
       [{ label: 'Reference', dataType: 'reference' }, '22023'],
       [{

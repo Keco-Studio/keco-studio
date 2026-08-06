@@ -11,6 +11,7 @@ import { toScriptImportPlainText } from '@/lib/documents/scriptImportPlainText';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import { showErrorToast } from '@/lib/utils/toast';
 import { SelectDocumentModal } from './SelectDocumentModal';
+import { scriptWorkspaceDocumentQueryKey } from './useScriptWorkspaceDocumentMembership';
 import styles from './ImportDocumentationView.module.css';
 
 const HELPER_COPY =
@@ -69,6 +70,9 @@ export function ImportDocumentationView({
       const membershipKey = ['script-workspace', projectId] as const;
       await queryClient.invalidateQueries({ queryKey: membershipKey });
       await queryClient.refetchQueries({ queryKey: membershipKey });
+      await queryClient.invalidateQueries({
+        queryKey: scriptWorkspaceDocumentQueryKey(projectId, selected.id),
+      });
       writeScriptProjectPreference({ projectId, projectName });
       router.push(`/script-system/${projectId}/doc/${selected.id}`);
     } catch (err) {

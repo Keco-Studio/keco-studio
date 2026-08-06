@@ -39,6 +39,7 @@ import {
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { ScriptTopBarActions } from '@/components/script-system/ScriptTopBarActions';
+import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -53,6 +54,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const router = useRouter();
   const queryClient = useQueryClient();
   const pathname = usePathname();
+  const onSimulationSystem = pathname?.startsWith('/simulation-system') ?? false;
   const {
     breadcrumbs,
     currentAssetId,
@@ -74,8 +76,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const menuRef = useRef<HTMLDivElement>(null);
   const [assetMode, setAssetMode] = useState<AssetMode>('edit');
   const [isCreatingNewAsset, setIsCreatingNewAsset] = useState(false);
-  const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
-  const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
   const [libraryViewMode, setLibraryViewMode] = useState<'list' | 'grid'>('grid');
   const [libraryVersionControlOpen, setLibraryVersionControlOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -84,21 +84,15 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('all');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
-  const [documentLiveLabel, setDocumentLiveLabel] = useState('Live');
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [simulationProjectId, setSimulationProjectId] = useState<string | null>(null);
   const documentExportItems = useMemo<DocumentExportItem[]>(
     () => [
       { key: 'docx', label: 'Download DOCX' },
       { key: 'pdf', label: 'Download PDF' },
-      { key: 'mdx', label: 'Download MDX' },
-      ...(userRole === 'admin'
-        ? [
-            { key: 'tables', label: 'Export as tables' },
-            { key: 'script', label: 'Export as script' },
-          ]
-        : []),
+      { key: 'mdx', label: 'Download Markdown' },
     ],
-    [userRole]
+    []
   );
 
   // Resolve display name: prefer username, then full_name, then email
@@ -112,7 +106,27 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   }, [userProfile?.id]);
 
   const { projects } = useSidebarProjects(userProfile?.id);
-  const { folders, libraries } = useSidebarFoldersLibraries(currentProjectId);
+  useEffect(() => {
+    if (onSimulationSystem) {
+      setSimulationProjectId(readSimulationProjectPreference()?.projectId ?? null);
+
+      const handler = (event: Event) => {
+        const custom = event as CustomEvent<{ projectId?: string }>;
+        setSimulationProjectId(custom.detail?.projectId ?? null);
+      };
+
+      window.addEventListener('simulation-project-changed', handler as EventListener);
+      return () => {
+        window.removeEventListener('simulation-project-changed', handler as EventListener);
+      };
+    }
+
+    setSimulationProjectId(null);
+    return undefined;
+  }, [onSimulationSystem]);
+
+  const searchProjectId = onSimulationSystem ? simulationProjectId : currentProjectId;
+  const { folders, libraries } = useSidebarFoldersLibraries(searchProjectId);
 
   type SearchResultType = 'project' | 'folder' | 'library';
 
@@ -190,7 +204,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     libraryName: string;
     assetId: string;
     assetName: string;
-    sectionId: string;
     fieldId: string;
     fieldLabel: string;
     valueSnippet: string;
@@ -327,7 +340,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           libraryName: String(r.library_name ?? r.libraryName ?? ''),
           assetId: String(r.asset_id ?? r.assetId ?? ''),
           assetName: String(r.asset_name ?? r.assetName ?? ''),
-          sectionId: String(r.section_id ?? r.sectionId ?? ''),
           fieldId: String(r.field_id ?? r.fieldId ?? ''),
           fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
           valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
@@ -584,21 +596,16 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   }, []);
 
   const navigateToCellHit = (hit: CellSearchHit) => {
-    const focusSectionId = hit.sectionId?.trim();
     const focusParams = new URLSearchParams({
       focusAssetId: hit.assetId,
       focusFieldId: hit.fieldId,
     });
-    if (focusSectionId) {
-      focusParams.set('focusSectionId', focusSectionId);
-    }
     router.push(`/${hit.projectId}/${hit.libraryId}?${focusParams.toString()}`);
   };
 
   const clearCellSearchFocusState = useCallback(() => {
     if (typeof window === 'undefined') return;
     const nextParams = new URLSearchParams(window.location.search);
-    nextParams.delete('focusSectionId');
     nextParams.delete('focusAssetId');
     nextParams.delete('focusFieldId');
     nextParams.delete('cellSearchQ');
@@ -793,7 +800,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             libraryName: String(r.library_name ?? r.libraryName ?? ''),
             assetId: String(r.asset_id ?? r.assetId ?? ''),
             assetName: String(r.asset_name ?? r.assetName ?? ''),
-            sectionId: String(r.section_id ?? r.sectionId ?? ''),
             fieldId: String(r.field_id ?? r.fieldId ?? ''),
             fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
             valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
@@ -861,29 +867,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('asset-page-mode', handler as EventListener);
-      }
-    };
-  }, []);
-
-  // Listen to Predefine page state updates (e.g. creating new section)
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const custom = event as CustomEvent<{ isCreatingNewSection?: boolean; activeSectionId?: string | null }>;
-      if (typeof custom.detail?.isCreatingNewSection === 'boolean') {
-        setIsPredefineCreatingNewSection(custom.detail.isCreatingNewSection);
-      }
-      if (custom.detail?.activeSectionId !== undefined) {
-        setPredefineActiveSectionId(custom.detail.activeSectionId);
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('predefine-state', handler as EventListener);
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('predefine-state', handler as EventListener);
       }
     };
   }, []);
@@ -982,28 +965,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     };
   }, [currentProjectId, currentLibraryId]);
 
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ label?: string }>).detail;
-      if (!detail?.label) return;
-      setDocumentLiveLabel(detail.label);
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('document-topbar-status', handler as EventListener);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('document-topbar-status', handler as EventListener);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!currentDocumentId || typeof window === 'undefined') return;
-    // Ask the document editor to republish in case its mount effect already ran.
-    window.dispatchEvent(new CustomEvent('document-topbar-sync-request'));
-  }, [currentDocumentId]);
-
   // Receive presence updates from LibraryPage (LibraryDataContext) so TopBar
   // can render LibraryHeader with real-time collaborators in the top row.
   useEffect(() => {
@@ -1031,12 +992,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       }
     };
   }, [currentProjectId, currentLibraryId]);
-
-  const handlePredefineCancelOrDelete = () => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('predefine-cancel-or-delete'));
-    }
-  };
 
   const handlePredefinePublish = () => {
     // Placeholder for future publish behavior
@@ -1256,6 +1211,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   const renderRightContent = () => {
+    if (onSimulationSystem) {
+      return null;
+    }
+
     const onScriptSystem = isScriptSystemPath(pathname);
     if (onScriptSystem && currentProjectId) {
       const isScriptSplitPage =
@@ -1314,7 +1273,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           >
             <HistoryOutlined aria-hidden="true" />
           </button>
-          <span className={styles.documentLiveText}>{documentLiveLabel}</span>
         </>
       );
     }
@@ -1322,25 +1280,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     if (isPredefine) {
       return (
         <>
-          <button
-            className={styles.topbarPillButton}
-            onClick={handlePredefineCancelOrDelete}
-          >
-            <span className={styles.topbarPillIcon}>
-              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-16">
-                <g clipPath="url(#clip0_1420_346)">
-                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </g>
-                <defs>
-                  <clipPath id="clip0_1420_346">
-                    <rect width="16" height="16" fill="white" />
-                  </clipPath>
-                </defs>
-              </svg>
-            </span>
-            <span>{isPredefineCreatingNewSection ? 'Cancel' : 'Delete Section'}</span>
-          </button>
           <button
             className={styles.topbarPillButton}
             onClick={handlePredefinePublish}
@@ -1451,7 +1390,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   return (
-    <header className={styles.header}>
+    <header className={`${styles.header} ${onSimulationSystem ? styles.headerSimulation : ''}`}>
       <div className={styles.left}>
         {showCreateProjectBreadcrumb ? (
           <div className={styles.createProjectBreadcrumb}>
@@ -1466,28 +1405,32 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               style={{ marginRight: '5px', cursor: 'pointer' }}
               onClick={handleSidebarToggle}
             />
-            {displayBreadcrumbs.map((item, index) => {
-              const isLast = index === displayBreadcrumbs.length - 1;
-              const label = isLast && isAssetDetail ? 'asset' : item.label;
-              const displayLabel =
-                label && label.length > 25 ? `${label.slice(0, 25)}...` : label;
+            {onSimulationSystem ? (
+              <div className={styles.simulationHeaderSlot} data-simulation-header-slot />
+            ) : (
+              displayBreadcrumbs.map((item, index) => {
+                const isLast = index === displayBreadcrumbs.length - 1;
+                const label = isLast && isAssetDetail ? 'asset' : item.label;
+                const displayLabel =
+                  label && label.length > 25 ? `${label.slice(0, 25)}...` : label;
 
-              return (
-                <span key={index}>
-                  <button
-                    className={`${styles.breadcrumbItem} ${isLast ? styles.breadcrumbItemActive : styles.breadcrumbItemClickable
-                      }`}
-                    onClick={() => handleBreadcrumbClick(item.path, index)}
-                    disabled={isLast}
-                  >
-                    {displayLabel}
-                  </button>
-                  {index < displayBreadcrumbs.length - 1 && (
-                    <span className={styles.breadcrumbSeparator}> / </span>
-                  )}
-                </span>
-              );
-            })}
+                return (
+                  <span key={index}>
+                    <button
+                      className={`${styles.breadcrumbItem} ${isLast ? styles.breadcrumbItemActive : styles.breadcrumbItemClickable
+                        }`}
+                      onClick={() => handleBreadcrumbClick(item.path, index)}
+                      disabled={isLast}
+                    >
+                      {displayLabel}
+                    </button>
+                    {index < displayBreadcrumbs.length - 1 && (
+                      <span className={styles.breadcrumbSeparator}> / </span>
+                    )}
+                  </span>
+                );
+              })
+            )}
           </div>
         )}
       </div>

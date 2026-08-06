@@ -23,7 +23,7 @@ type ImportLibraryModalProps = {
 
 type FilePreview = {
   fileName: string;
-  sectionCount: number;
+  sheetCount: number;
   columnCount: number;
   rowCount: number;
 };
@@ -36,7 +36,7 @@ function previewImportFile(file: File): Promise<FilePreview> {
   return previewWorkbookFile(file).then(({ sheetCount, columnCount, rowCount }) => {
     return {
       fileName: file.name,
-      sectionCount: sheetCount,
+      sheetCount,
       columnCount,
       rowCount,
     };
@@ -201,7 +201,7 @@ export function ImportLibraryModal({
               data-testid="import-library-preview"
             >
               {preview.fileName}: {preview.columnCount} columns, {preview.rowCount} rows
-              {preview.sectionCount > 1 ? `, ${preview.sectionCount} sheets` : ''}
+              {preview.sheetCount > 1 ? `, ${preview.sheetCount} sheets` : ''}
             </p>
           ) : null}
         </>

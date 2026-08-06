@@ -66,8 +66,9 @@ describe('sanctioned MDX editor wiring', () => {
     const sidebar = source('src/components/documents/DocumentVersionSidebar.tsx');
     const liveEditorCalls = documentEditor.match(/<MdxDocumentEditor\s[\s\S]*?\/>/g);
 
-    // Live collaborative editor, live read-only fallback, and historical version preview.
-    expect(liveEditorCalls).toHaveLength(3);
+    // Live collaborative editor, legacy read-only view, the read-only render
+    // shown while collaboration is still binding, and historical version preview.
+    expect(liveEditorCalls).toHaveLength(4);
     liveEditorCalls?.forEach((call) => {
       expect(call).toContain('projectId={projectId}');
       expect(call).toContain('documentId={document.id}');

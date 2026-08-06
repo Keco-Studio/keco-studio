@@ -24,19 +24,17 @@ import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
-import { ExportLibraryModal } from "@/components/libraries/ExportLibraryModal";
 import { ImportScriptModal } from "@/components/libraries/ImportScriptModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project } from "@/lib/services/projectService";
-import { Library, deleteLibrary, moveLibraryToFolder, attachLibraryToDocument, detachLibraryFromDocument } from "@/lib/services/libraryService";
+import { Library, deleteLibrary, moveLibraryToFolder, detachLibraryFromDocument } from "@/lib/services/libraryService";
 import { Folder, deleteFolder, duplicateFolder, moveFolderToParent } from "@/lib/services/folderService";
 import {
   moveDocument,
   updateDocumentName,
-  nestDocumentUnderDocument,
   type DocumentRecord,
   type DocumentSummary,
 } from "@/lib/services/documentService";
@@ -168,8 +166,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     editingLibraryId,
     showDuplicateLibraryModal,
     duplicatingLibraryId,
-    showExportLibraryModal,
-    exportingLibraryId,
     showImportLibraryModal,
     importingFolderId,
     showFolderModal,
@@ -187,8 +183,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     closeEditLibraryModal,
     openDuplicateLibrary,
     closeDuplicateLibraryModal,
-    openExportLibrary,
-    closeExportLibraryModal,
     openImportLibrary,
     closeImportLibraryModal,
     openNewFolder,
@@ -516,7 +510,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     documents,
     queryClient,
     expandFolder,
-    setExpandedKeys,
   });
 
   /**
@@ -702,12 +695,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
-  const onToggleDocumentExpand = useCallback((docKey: string) => {
-    setExpandedKeys((prev) =>
-      prev.includes(docKey) ? prev.filter((key) => key !== docKey) : [...prev, docKey]
-    );
-  }, []);
-
   const handleTreeRightClick = ({ event, node }: { event: any; node: EventDataNode }) => {
     if (!node || !node.key) return;
 
@@ -765,8 +752,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setError,
       setEditingKey,
       onSaveRename: handleSaveRename,
-      expandedKeys,
-      onToggleDocumentExpand,
     },
     sidebarWidth
   );
@@ -917,13 +902,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       if (target.kind === 'folder') {
         expandFolder(target.folderId);
-      } else if (target.kind === 'document') {
-        const parentDocument = documents.find((document) => document.id === target.documentId);
-        expandFolder(parentDocument?.folder_id);
-        setExpandedKeys((previous) => {
-          const documentKey = `document-${target.documentId}`;
-          return previous.includes(documentKey) ? previous : [...previous, documentKey];
-        });
       }
 
       try {
@@ -941,27 +919,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               return;
             }
             if (optimisticMove.kind === 'document') {
-              if (optimisticMove.after.parent_document_id) {
-                await nestDocumentUnderDocument(
-                  supabase,
-                  optimisticMove.id,
-                  optimisticMove.after.parent_document_id
-                );
-              } else {
-                await moveDocument(supabase, optimisticMove.id, {
-                  folderId: optimisticMove.after.folder_id,
-                });
-              }
+              await moveDocument(supabase, optimisticMove.id, {
+                folderId: optimisticMove.after.folder_id,
+              });
               return;
             }
-            if (optimisticMove.after.source_document_id) {
-              await attachLibraryToDocument(
-                supabase,
-                optimisticMove.id,
-                optimisticMove.after.source_document_id,
-                optimisticMove.after.document_export_type ?? 'table'
-              );
-            } else if (optimisticMove.before.source_document_id) {
+            if (optimisticMove.before.source_document_id) {
               await detachLibraryFromDocument(supabase, optimisticMove.id, {
                 folderId: optimisticMove.after.folder_id,
               });
@@ -1013,13 +976,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         if (optimisticMove.kind === 'folder') {
           showSuccessToast('Folder moved successfully');
         } else if (optimisticMove.kind === 'document') {
-          showSuccessToast(
-            optimisticMove.after.parent_document_id
-              ? 'Document nested successfully'
-              : 'Document moved successfully'
-          );
-        } else if (optimisticMove.after.source_document_id) {
-          showSuccessToast('Library attached to document');
+          showSuccessToast('Document moved successfully');
         } else if (optimisticMove.before.source_document_id) {
           showSuccessToast('Library detached from document');
         } else {
@@ -1043,7 +1000,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       currentIds.projectId,
       queryClient,
       expandFolder,
-      setExpandedKeys,
       setError,
     ]
   );
@@ -1120,7 +1076,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openEditLibrary,
     openEditDocument,
     openDuplicateLibrary,
-    openExportLibrary,
     openImportLibrary,
     openImportScript,
     openEditFolder,
@@ -1507,15 +1462,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             }
             showSuccessToast('Library duplicated successfully');
           }}
-        />
-      )}
-
-      {exportingLibraryId && (
-        <ExportLibraryModal
-          open={showExportLibraryModal}
-          libraryId={exportingLibraryId}
-          libraryName={libraries.find(lib => lib.id === exportingLibraryId)?.name}
-          onClose={closeExportLibraryModal}
         />
       )}
 

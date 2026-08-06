@@ -84,6 +84,25 @@ describe('finalizeFieldMapping', () => {
     expect(layout.slots.every((slot) => slot.columnId)).toBe(true);
     expect(layout.unmapped).toEqual(['skill_ids']);
   });
+
+  it('repairs an AI swap when exact level and exp column names are available', () => {
+    const columns: StudioColumnDefinition[] = [
+      { id: 'level', label: 'level', valueType: 'number' },
+      { id: 'need_exp', label: 'need_exp', valueType: 'number' },
+      { id: 'grant_sp', label: 'grant_sp', valueType: 'number' },
+    ];
+    const finalized = finalizeFieldMapping('level', {
+      level: 'need_exp',
+      exp: 'level',
+      sp: 'grant_sp',
+    }, columns);
+
+    expect(finalized).toEqual({
+      level: 'level',
+      exp: 'need_exp',
+      sp: 'grant_sp',
+    });
+  });
 });
 
 describe('fillEmptySlotsPositionally', () => {

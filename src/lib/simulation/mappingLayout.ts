@@ -72,7 +72,8 @@ export function finalizeFieldMapping(
   mapping: FieldMapping,
   columns: readonly StudioColumnDefinition[],
 ): FieldMapping {
-  const withAliases = autoMapFields(libraryRole, mapping, columns);
+  const semanticMapping = prioritizeSemanticMappings(libraryRole, mapping, columns);
+  const withAliases = autoMapFields(libraryRole, semanticMapping, columns);
   return fillEmptySlotsPositionally(
     SIM_FIELDS[libraryRole].map((field) => field.id),
     withAliases,
@@ -135,6 +136,45 @@ function namesAlign(
   const targets = [field.id, field.label, ...(field.aliases ?? [])].map(normKey).filter(Boolean);
   const sources = [normKey(column.id), normKey(column.label)];
   return sources.some((source) => targets.includes(source));
+}
+
+function semanticNamesAlign(
+  field: SimulationFieldDefinition,
+  column: StudioColumnDefinition,
+): boolean {
+  if (namesAlign(field, column)) return true;
+  const targets = [field.id, field.label, ...(field.aliases ?? [])]
+    .flatMap((value) => value.toLowerCase().split(/[\s_-]+/))
+    .filter((value) => value.length > 0);
+  const sources = [column.id, column.label]
+    .flatMap((value) => value.toLowerCase().split(/[\s_-]+/))
+    .filter((value) => value.length > 0);
+  return sources.some((source) => targets.includes(source));
+}
+
+function prioritizeSemanticMappings(
+  libraryRole: LibraryRole,
+  mapping: FieldMapping,
+  columns: readonly StudioColumnDefinition[],
+): FieldMapping {
+  const result: Record<string, string> = { ...mapping };
+  const usedColumns = new Set<string>();
+
+  for (const field of SIM_FIELDS[libraryRole]) {
+    const match = columns.find(
+      (column) => !usedColumns.has(column.id)
+        && semanticNamesAlign(field, column)
+        && typesCompatible(field, column),
+    );
+    if (!match) continue;
+    for (const [fieldId, columnId] of Object.entries(result)) {
+      if (fieldId !== field.id && columnId === match.id) delete result[fieldId];
+    }
+    result[field.id] = match.id;
+    usedColumns.add(match.id);
+  }
+
+  return result;
 }
 
 function typesCompatible(

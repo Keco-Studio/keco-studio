@@ -21,6 +21,12 @@ import {
   broadcastScriptFlowChartState,
 } from '@/lib/script-system/flowChartTopBarEvents';
 import {
+  STORY_GRAPH_PREVIEW_CLEAR_EVENT,
+  STORY_GRAPH_PREVIEW_SHOW_EVENT,
+  type StoryGraphPreviewClearDetail,
+  type StoryGraphPreviewShowDetail,
+} from '@/lib/script-system/storyGraphPreviewEvents';
+import {
   buildScriptFlowGraph,
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
@@ -51,6 +57,8 @@ export function ScriptSplitView({
     () => persistedGraph ?? buildScriptFlowGraph(flowRows),
     [flowRows, persistedGraph]
   );
+  const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);
+  const displayedGraph = graphPreview?.graph ?? graph;
   const [plotSelection, setPlotSelection] = useState(() => ({
     libraryId,
     nodeId: graph.nodes[0]?.id ?? '',
@@ -89,6 +97,25 @@ export function ScriptSplitView({
       window.removeEventListener(SCRIPT_FLOW_CHART_TOGGLE_EVENT, onToggle);
     };
   }, []);
+
+  useEffect(() => {
+    const onShow = (event: Event) => {
+      const detail = (event as CustomEvent<StoryGraphPreviewShowDetail>).detail;
+      if (detail?.libraryId === libraryId) setGraphPreview(detail);
+    };
+    const onClear = (event: Event) => {
+      const detail = (event as CustomEvent<StoryGraphPreviewClearDetail>).detail;
+      setGraphPreview((current) => (
+        current?.actionId === detail?.actionId ? null : current
+      ));
+    };
+    window.addEventListener(STORY_GRAPH_PREVIEW_SHOW_EVENT, onShow);
+    window.addEventListener(STORY_GRAPH_PREVIEW_CLEAR_EVENT, onClear);
+    return () => {
+      window.removeEventListener(STORY_GRAPH_PREVIEW_SHOW_EVENT, onShow);
+      window.removeEventListener(STORY_GRAPH_PREVIEW_CLEAR_EVENT, onClear);
+    };
+  }, [libraryId]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -168,8 +195,9 @@ export function ScriptSplitView({
               style={{ flex: `${1 - ratio} 1 0%` }}
             >
               <FlowChartPanel
-                graph={graph}
+                graph={displayedGraph}
                 selectedPlotNodeId={selectedPlotNodeId}
+                previewNodeIds={graphPreview?.graph.createdNodeIds}
                 onSelectPlotNode={(nodeId) => setPlotSelection({ libraryId, nodeId })}
                 onClose={() => setCollapsed(true)}
               />

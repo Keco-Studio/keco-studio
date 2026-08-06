@@ -147,7 +147,7 @@ describe('resolveSidebarDrop', () => {
     ).toEqual({ kind: 'folder', folderId: 'f1' });
   });
 
-  it('rejects document drop onto document/library (not gap)', () => {
+  it('rejects dropping a table or document onto another leaf node', () => {
     expect(
       resolveSidebarDrop({
         dragKey: 'library-l2',
@@ -155,21 +155,18 @@ describe('resolveSidebarDrop', () => {
         dropToGap: false,
         treeData,
       })
-    ).toEqual({ kind: 'document', documentId: 'd2' });
-  });
-
-  it('attaches library when dropped onto document', () => {
+    ).toEqual({ kind: 'invalid', reason: 'Documents and tables cannot contain items' });
     expect(
       resolveSidebarDrop({
-        dragKey: 'library-l2',
-        dropKey: 'document-d3',
+        dragKey: 'document-d2',
+        dropKey: 'library-l2',
         dropToGap: false,
         treeData,
       })
-    ).toEqual({ kind: 'document', documentId: 'd3' });
+    ).toEqual({ kind: 'invalid', reason: 'Documents and tables cannot contain items' });
   });
 
-  it('attaches library when gap-dropped under document children', () => {
+  it('rejects legacy gaps whose parent is a document leaf', () => {
     expect(
       resolveSidebarDrop({
         dragKey: 'library-l2',
@@ -177,7 +174,7 @@ describe('resolveSidebarDrop', () => {
         dropToGap: true,
         treeData,
       })
-    ).toEqual({ kind: 'document', documentId: 'd3' });
+    ).toEqual({ kind: 'invalid', reason: 'Documents and tables cannot contain items' });
   });
 
   it('detaches derived library to folder or root', () => {
@@ -230,7 +227,7 @@ describe('resolveSidebarDrop', () => {
     ).toBe('invalid');
   });
 
-  it('nests document under document', () => {
+  it('does not nest a document under another document', () => {
     expect(
       resolveSidebarDrop({
         dragKey: 'document-d2',
@@ -238,6 +235,6 @@ describe('resolveSidebarDrop', () => {
         dropToGap: false,
         treeData,
       })
-    ).toEqual({ kind: 'document', documentId: 'd3' });
+    ).toEqual({ kind: 'invalid', reason: 'Documents and tables cannot contain items' });
   });
 });

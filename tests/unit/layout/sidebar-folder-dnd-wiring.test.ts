@@ -9,7 +9,7 @@ describe('sidebar DnD wiring (P1–P3)', () => {
   it('marks derived libraries with _isDerived in useSidebarTree', () => {
     const source = read('src/components/layout/hooks/useSidebarTree.tsx');
     expect(source).toContain('_isDerived: Boolean(lib.source_document_id)');
-    expect(source).toContain('documentsByParent');
+    expect(source).not.toContain('documentsByParent');
     expect(source).toContain('foldersByParent');
   });
 
@@ -28,7 +28,15 @@ describe('sidebar DnD wiring (P1–P3)', () => {
     expect(section).toContain('isDragPending={isDragPending}');
   });
 
-  it('Sidebar wires attach/detach, folder nest, and document nest', () => {
+  it('keeps the in-flight drag node draggable and clears drag state outside rc-tree', () => {
+    const source = read('src/components/layout/components/SidebarTreeView.tsx');
+    expect(source).toContain('key !== activeDragKeyRef.current && isDragPending?.(key)');
+    expect(source).toContain("window.addEventListener('dragend', handleNodeDragEnd, true)");
+    // Passing onDragEnd to rc-tree makes its window-level fallback build a null event.
+    expect(source).not.toMatch(/onDragEnd=\{/);
+  });
+
+  it('Sidebar wires leaf moves and folder nesting without document/table nesting', () => {
     const source = read('src/components/layout/Sidebar.tsx');
     expect(source).toContain('handleTreeDrop');
     expect(source).toContain('onTreeDrop={handleTreeDrop}');
@@ -37,10 +45,10 @@ describe('sidebar DnD wiring (P1–P3)', () => {
     expect(source).toContain('pendingTreeDropKeysRef');
     expect(source).toContain('isDragPending={isTreeDragPending}');
     expect(source).toContain('moveDocument');
-    expect(source).toContain('attachLibraryToDocument');
     expect(source).toContain('detachLibraryFromDocument');
     expect(source).toContain('moveFolderToParent');
-    expect(source).toContain('nestDocumentUnderDocument');
+    expect(source).not.toContain('attachLibraryToDocument');
+    expect(source).not.toContain('nestDocumentUnderDocument');
   });
 
   it('exposes attach/detach and moveFolderToParent services', () => {

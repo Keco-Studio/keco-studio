@@ -60,22 +60,16 @@ describe('document-derived sidebar tree', () => {
     jest.clearAllMocks();
   });
 
-  it('indents derived libraries one level under the parent document (keeps tree indent)', () => {
+  it('does not keep document-child indentation styles', () => {
     const css = readFileSync(
       resolve(__dirname, '../../../src/components/layout/Sidebar.module.css'),
       'utf8'
     );
-    expect(css).toMatch(/keep ant-tree indent so children sit one\n \* level deeper than the parent/);
-    // Switcher is hidden for derived libs; indent must NOT be forcibly removed.
-    expect(css).toMatch(
-      /\.documentChildTreeNode\s*>\s*:global\(\.ant-tree-switcher\)[\s\S]*?display:\s*none/
-    );
-    expect(css).not.toMatch(
-      /\.documentChildTreeNode\s*>\s*:global\(\.ant-tree-indent\)[\s\S]*?display:\s*none/
-    );
+    expect(css).not.toContain('documentChildTreeNode');
+    expect(css).not.toContain('data-library-under-document');
   });
 
-  it('groups derived libraries beneath their document and excludes them from roots', () => {
+  it('renders documents and derived libraries as sibling leaf nodes', () => {
     const projectId = '11111111-1111-4111-8111-111111111111';
     const documentId = '22222222-2222-4222-8222-222222222222';
     const older = '33333333-3333-4333-8333-333333333333';
@@ -89,28 +83,32 @@ describe('document-derived sidebar tree', () => {
           { id: older, project_id: projectId, folder_id: null, name: 'Table', description: null, created_at: '2026-01-01', updated_at: '2026-01-01', updated_by: null, source_document_id: documentId, document_export_type: 'table' },
           { id: newer, project_id: projectId, folder_id: null, name: 'Script', description: null, created_at: '2026-01-02', updated_at: '2026-01-02', updated_by: null, source_document_id: documentId, document_export_type: 'script' },
         ],
-        [{ id: documentId, project_id: projectId, folder_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' }],
-        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn(), expandedKeys: [], onToggleDocumentExpand: jest.fn() }
+        [
+          { id: documentId, project_id: projectId, folder_id: null, parent_document_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' },
+          { id: '55555555-5555-4555-8555-555555555555', project_id: projectId, folder_id: null, parent_document_id: documentId, name: 'Legacy child', created_at: '2026-01-02', updated_at: '2026-01-02' },
+        ],
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
       ).treeData;
       return null;
     }
     renderToStaticMarkup(React.createElement(Harness));
-    const documentNode = treeData.find((node) => node.key === `document-${documentId}`);
-    expect(documentNode.isLeaf).toBe(false);
-    expect(documentNode.children.map((child: any) => child.key)).toEqual([`library-${older}`, `library-${newer}`]);
+    expect(treeData.map((node) => node.key)).toEqual(expect.arrayContaining([
+      `document-${documentId}`,
+      'document-55555555-5555-4555-8555-555555555555',
+      `library-${older}`,
+      `library-${newer}`,
+    ]));
+    expect(treeData.every((node) => node.isLeaf && node.children === undefined)).toBe(true);
     expect(
-      documentNode.children.every((child: any) =>
-        renderToStaticMarkup(child.title).includes('data-library-under-document')
-      )
+      treeData.every((node) => !renderToStaticMarkup(node.title).includes('data-library-under-document'))
     ).toBe(true);
-    expect(treeData.map((node) => node.key)).not.toContain(`library-${older}`);
 
     let emptyTree: any[] = [];
     function EmptyHarness() {
       emptyTree = useSidebarTree(
         { projectId, libraryId: null, folderId: null, assetId: null, documentId: null, isLibraryPage: false, isPredefinePage: false },
         [], [], [{ id: documentId, project_id: projectId, folder_id: null, name: 'Source', created_at: '2026-01-01', updated_at: '2026-01-01' }],
-        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn(), expandedKeys: [], onToggleDocumentExpand: jest.fn() }
+        { router: { push: jest.fn() }, userRole: 'admin', onContextMenu: jest.fn(), onFolderAddClick: jest.fn(), setSelectedFolderId: jest.fn(), setError: jest.fn(), setEditingKey: jest.fn(), onSaveRename: jest.fn() }
       ).treeData;
       return null;
     }
@@ -119,7 +117,7 @@ describe('document-derived sidebar tree', () => {
     expect(emptyTree[0].children).toBeUndefined();
   });
 
-  it('refreshes and expands the matching project document on a typed creation event', async () => {
+  it('refreshes and expands the matching folder on a typed creation event', async () => {
     expect(sidebarActions.useSidebarDocumentDerivedLibraryLifecycle).toEqual(expect.any(Function));
     if (!sidebarActions.useSidebarDocumentDerivedLibraryLifecycle) return;
 
@@ -199,7 +197,6 @@ describe('document-derived sidebar tree', () => {
         documents,
         queryClient: queryClient as never,
         expandFolder,
-        setExpandedKeys: setKeys,
       });
       return null;
     }
@@ -223,7 +220,7 @@ describe('document-derived sidebar tree', () => {
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['project', 'project-1', 'libraries'] });
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['folders-libraries', 'project-1'] });
       expect(queryClient.refetchQueries).toHaveBeenCalledWith({ queryKey: ['folders-libraries', 'project-1'], type: 'active' });
-      expect(expandedKeys).toEqual(expect.arrayContaining(['folder-folder-1', 'document-document-1']));
+      expect(expandedKeys).toEqual(['folder-folder-1']);
 
       queryClient.invalidateQueries.mockClear();
       queryClient.refetchQueries.mockClear();
@@ -302,7 +299,7 @@ describe('document-derived sidebar tree', () => {
         contextMenu: { x: 0, y: 0, type: 'library', id: 'derived', elementRef: null },
         closeContextMenu,
         router: { push: jest.fn() } as any,
-        openEditProject: jest.fn(), openEditLibrary: jest.fn(), openDuplicateLibrary: jest.fn(), openExportLibrary: jest.fn(),
+        openEditProject: jest.fn(), openEditLibrary: jest.fn(), openDuplicateLibrary: jest.fn(),
         openImportLibrary: jest.fn(), openImportScript: jest.fn(), openEditFolder: jest.fn(), openEditAsset: jest.fn(),
         supabase: {} as any, queryClient: {} as any,
         currentIds: { projectId: 'project', libraryId: null, folderId: null, assetId: null, documentId: null },
@@ -312,7 +309,7 @@ describe('document-derived sidebar tree', () => {
           { id: 'table2', project_id: 'project', folder_id: null, name: 'Table 2', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'table' },
         ],
         setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(), openMoveLibrary,
-        openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), openDocumentScriptExport: jest.fn(), userRole: 'admin', requestDeleteConfirm,
+        openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), startDocumentDerivedImport: jest.fn(), userRole: 'admin', requestDeleteConfirm,
       }).handleContextMenuAction;
       return null;
     }
@@ -325,7 +322,7 @@ describe('document-derived sidebar tree', () => {
       handleAction = useSidebarContextMenuActions({
         contextMenu: { x: 0, y: 0, type: 'document', id: 'doc', elementRef: null },
         closeContextMenu, router: { push: jest.fn() } as any,
-        openEditProject: jest.fn(), openEditLibrary: jest.fn(), openDuplicateLibrary: jest.fn(), openExportLibrary: jest.fn(), openImportLibrary: jest.fn(), openImportScript: jest.fn(), openEditFolder: jest.fn(), openEditAsset: jest.fn(),
+        openEditProject: jest.fn(), openEditLibrary: jest.fn(), openDuplicateLibrary: jest.fn(), openImportLibrary: jest.fn(), openImportScript: jest.fn(), openEditFolder: jest.fn(), openEditAsset: jest.fn(),
         supabase: deleteSupabase, queryClient: deleteQueryClient as any,
         currentIds: { projectId: 'project', libraryId: null, folderId: null, assetId: null, documentId: null },
         libraries: [
@@ -333,7 +330,7 @@ describe('document-derived sidebar tree', () => {
           { id: 'script', project_id: 'project', folder_id: null, name: 'Script', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'script' },
           { id: 'table2', project_id: 'project', folder_id: null, name: 'Table 2', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'table' },
         ],
-        setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(), openMoveLibrary: jest.fn(), openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), openDocumentScriptExport: jest.fn(), userRole: 'admin', requestDeleteConfirm,
+        setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(), openMoveLibrary: jest.fn(), openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(), startInlineRename: jest.fn(), startDocumentDerivedImport: jest.fn(), userRole: 'admin', requestDeleteConfirm,
       }).handleContextMenuAction;
       return null;
     }

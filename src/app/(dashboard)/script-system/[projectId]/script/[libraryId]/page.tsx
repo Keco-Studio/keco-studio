@@ -10,10 +10,7 @@ import {
   getLibraryAssetsWithProperties,
   getLibrarySchema,
 } from '@/lib/services/libraryAssetsService';
-import {
-  buildPropertyGroups,
-  detectScriptColumns,
-} from '@/components/libraries/utils/tableStructure';
+import { detectScriptColumns, orderProperties } from '@/components/libraries/utils/tableStructure';
 import { useScriptWorkspaceMembership } from '@/components/script-system/useScriptWorkspaceMembership';
 import { ScriptSplitView } from '@/components/script-system/ScriptSplitView';
 import { showErrorToast } from '@/lib/utils/toast';
@@ -146,15 +143,9 @@ export default function ScriptLibraryPage() {
     () => librarySchema?.properties ?? [],
     [librarySchema?.properties]
   );
-  const sections = useMemo(
-    () => librarySchema?.sections ?? [],
-    [librarySchema?.sections]
-  );
-
   const { scriptColumns } = useMemo(() => {
-    const { orderedProperties } = buildPropertyGroups(sections, properties);
-    return detectScriptColumns(orderedProperties);
-  }, [sections, properties]);
+    return detectScriptColumns(orderProperties(properties));
+  }, [properties]);
 
   const flowRows = useMemo(
     () => assetRowsToFlowRecords(assetRows, properties),

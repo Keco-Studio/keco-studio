@@ -1,36 +1,22 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { z } from 'zod';
-import { useSupabase } from '@/lib/SupabaseContext';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ConfigProvider } from 'antd';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSupabase } from '@/lib/SupabaseContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import { Tabs, Button, ConfigProvider, Input, Tooltip } from 'antd';
-import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
-import type { TabsProps } from 'antd/es/tabs';
-import type { InputRef } from 'antd/es/input';
-import Image from 'next/image';
-import predefineLabelAddIcon from '@/assets/images/predefineLabelAddIcon.svg';
-import predefineLabelDelIcon from '@/assets/images/predefineLabelDelIcon.svg';
-import predefineAddSectionIcon from '@/assets/images/addProjectIcon.svg';
-import type { SectionConfig, FieldConfig } from './types';
-import type { Library } from '@/lib/services/libraryService';
-import { getLibrary } from '@/lib/services/libraryService';
-import { sectionSchema } from './validation';
+import { getLibrary, type Library } from '@/lib/services/libraryService';
+import { showErrorToast } from '@/lib/utils/toast';
+import type { FieldConfig } from './types';
 import { uid } from './types';
 import { useSchemaData } from './hooks/useSchemaData';
 import { saveSchemaIncremental } from './hooks/useSchemaSave';
 import { FieldsList } from './components/FieldsList';
 import { FieldForm } from './components/FieldForm';
-import { NewSectionForm } from './components/NewSectionForm';
 import styles from './page.module.css';
-import sectionHeaderStyles from './components/SectionHeader.module.css';
-import predefineDragIcon from '@/assets/images/predefineDragIcon.svg';
-import predefineExpandIcon from '@/assets/images/predefineExpandIcon.svg';
 import PredefineBackIcon from '@/assets/images/collaborationReturnIcon.svg';
-
-const NEW_SECTION_TAB_KEY = '__new_section__';
 
 function PredefinePageContent() {
   const supabase = useSupabase();
@@ -39,981 +25,176 @@ function PredefinePageContent() {
   const params = useParams();
   const projectId = params?.projectId as string | undefined;
   const libraryId = params?.libraryId as string | undefined;
-
-  const { sections, setSections, loading: sectionsLoading, reload: reloadSections } = useSchemaData({
-    libraryId,
-    supabase,
-  });
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const { fields, setFields, loading, error, reload } = useSchemaData({ libraryId, supabase });
   const [library, setLibrary] = useState<Library | null>(null);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
-  const [isCreatingNewSection, setIsCreatingNewSection] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  // Track pending field for each section (field in FieldForm that hasn't been submitted yet)
-  const [pendingFields, setPendingFields] = useState<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
-  // Use ref to store latest pendingFields for synchronous access in saveSchema
-  const pendingFieldsRef = useRef<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
-  // Flag to prevent auto-save during reload/save operations
-  const isSavingOrReloading = useRef(false);
-  // Track temporary section name edits (only applied on save)
-  const [tempSectionNames, setTempSectionNames] = useState<Map<string, string>>(new Map());
-  // Track if we've already checked for auto-enter new section mode (to avoid re-triggering)
-  const autoEnterChecked = useRef(false);
-  // Track if we auto-entered creation mode due to empty sections (to handle slow loading)
-  const autoEnteredCreationMode = useRef(false);
-  // Ref for tabs container to calculate add button position
-  const tabsContainerRef = useRef<HTMLDivElement>(null);
-  const [addButtonLeft, setAddButtonLeft] = useState<number>(0);
-  // Track which tab name is being edited (section ID)
-  const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  // Track new section name when creating
-  const [newSectionName, setNewSectionName] = useState('');
-  // Ref for new section tab name input to auto-focus
-  const newSectionInputRef = useRef<InputRef>(null);
-  // Flag to prevent immediate blur after auto-focus
-  const isAutoFocusing = useRef(false);
-  // Track auto-save timer to debounce saves
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Track if user saved schema this session → back goes to library table, else router.back()
+  const [pendingField, setPendingField] = useState<Omit<FieldConfig, 'id'> | null>(null);
+  const pendingFieldRef = useRef<Omit<FieldConfig, 'id'> | null>(null);
+  const saveInFlight = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSavedThisSessionRef = useRef(false);
 
-  const activeSection = useMemo(
-    () => sections.find((s) => s.id === activeSectionId) || null,
-    [sections, activeSectionId]
-  );
-
-  // Load current library info (name, description) for page title display
   useEffect(() => {
     if (!libraryId) {
       setLoadingLibrary(false);
       return;
     }
-
-    const fetchLibrary = async () => {
-      setLoadingLibrary(true);
-      try {
-        const lib = await getLibrary(supabase, libraryId);
-        setLibrary(lib);
-      } catch (e) {
-        // Only used for title display, ignore on failure
-        console.error('Failed to load library info', e);
-      } finally {
-        setLoadingLibrary(false);
-      }
-    };
-
-    fetchLibrary();
+    void getLibrary(supabase, libraryId)
+      .then(setLibrary)
+      .catch((loadError) => console.error('Failed to load library info', loadError))
+      .finally(() => setLoadingLibrary(false));
   }, [libraryId, supabase]);
 
-  // Consolidated effect: Set active section and handle creation mode initialization
-  useEffect(() => {
-    // Wait for initial data load to complete
-    if (sectionsLoading) return;
-    
-    // Only run initialization check once
-    if (!autoEnterChecked.current) {
-      autoEnterChecked.current = true;
-      
-      if (sections.length === 0) {
-        // No sections exist, auto-enter creation mode
-        setIsCreatingNewSection(true);
-        setNewSectionName('New Section'); // Initialize default section name
-        autoEnteredCreationMode.current = true;
-      } else {
-        // Sections exist, set first as active if needed
-        setIsCreatingNewSection(false);
-        if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
-          setActiveSectionId(sections[0].id);
-        }
-      }
-    } else {
-      // After initialization, handle slow-loading sections data
-      if (sections.length > 0) {
-        // If we auto-entered creation mode due to empty initial state,
-        // but now sections exist (slow loading), exit creation mode
-        if (autoEnteredCreationMode.current && isCreatingNewSection) {
-          setIsCreatingNewSection(false);
-          setNewSectionName(''); // Clear section name when exiting creation mode
-          setEditingTabId(null); // Clear editing state when exiting creation mode
-          autoEnteredCreationMode.current = false;
-        }
-        if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
-          setActiveSectionId(sections[0].id);
-        }
-      } else {
-        setActiveSectionId(null);
-      }
+  const saveSchema = useCallback(async (fieldsToSave: FieldConfig[] = fields, shouldReload = true) => {
+    if (!libraryId || saveInFlight.current) return;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     }
-  }, [sections, sectionsLoading, activeSectionId, isCreatingNewSection]);
-
-  const startCreatingNewSection = useCallback(() => {
-    setIsCreatingNewSection(true);
-    setNewSectionName('New Section');
-    setErrors([]);
-  }, []);
-
-  const cancelCreatingNewSection = useCallback(() => {
-    setIsCreatingNewSection(false);
-    setNewSectionName('');
-    setEditingTabId(null); // Clear editing state when canceling
-    setErrors([]);
-  }, []);
-
-  // Auto-enter edit mode for new section tab name
-  useEffect(() => {
-    if (isCreatingNewSection) {
-      // First set editing state, then focus the input after it's rendered
-      setEditingTabId(NEW_SECTION_TAB_KEY);
-      
-      // Set flag to prevent immediate blur
-      isAutoFocusing.current = true;
-      
-      // Use multiple animation frames to ensure the input is fully rendered
-      const focusTimer = setTimeout(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (newSectionInputRef.current) {
-              newSectionInputRef.current.focus();
-              // Also select all text so user can immediately start typing
-              newSectionInputRef.current.select();
-            }
-          });
-        });
-      }, 100);
-      
-      // Clear the auto-focusing flag after a longer delay to prevent accidental blur
-      const flagTimer = setTimeout(() => {
-        isAutoFocusing.current = false;
-      }, 1000);
-      
-      return () => {
-        clearTimeout(focusTimer);
-        clearTimeout(flagTimer);
-        isAutoFocusing.current = false;
-      };
-    }
-  }, [isCreatingNewSection]);
-
-  const handleAddField = (sectionId: string, fieldData: Omit<FieldConfig, 'id'>) => {
-    const field: FieldConfig = {
-      id: uid(),
-      label: fieldData.label || '',
-      dataType: fieldData.dataType, // Allow undefined dataType
-      required: fieldData.required,
-      ...(fieldData.enumOptions && { enumOptions: fieldData.enumOptions }),
-      ...(fieldData.referenceLibraries && { referenceLibraries: fieldData.referenceLibraries }),
-    };
-
-    const updatedSections = sections.map((s) =>
-      s.id === sectionId
-        ? {
-            ...s,
-            fields: [...s.fields, field],
-          }
-        : s
-    );
-    
-    setSections(updatedSections);
-    setActiveSectionId(sectionId);
-    setErrors([]);
-    
-    // Clear pending field for this section after adding it to the list
-    // This prevents duplicate additions when saving
-    setPendingFields((prev) => {
-      const newMap = new Map(prev);
-      newMap.delete(sectionId);
-      return newMap;
-    });
-    pendingFieldsRef.current.delete(sectionId);
-    
-    // Trigger FieldForm reset by dispatching a custom event
-    window.dispatchEvent(new CustomEvent('fieldform-reset', { detail: { sectionId } }));
-    
-    // Auto-save immediately after adding field (important operation)
-    // Skip if currently saving or reloading
-    if (!isSavingOrReloading.current) {
-      // Clear any pending auto-save timer
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = null;
-      }
-      // Save immediately (no delay) to ensure data is persisted
-      void saveSchema(updatedSections, false); // false = don't reload after save
-    }
-  };
-
-  const handleChangeField = (
-    sectionId: string,
-    fieldId: string,
-    fieldData: Omit<FieldConfig, 'id'>
-  ) => {
-    const updatedSections = sections.map((s) =>
-      s.id === sectionId
-        ? {
-            ...s,
-            fields: s.fields.map((f) => (f.id === fieldId ? { 
-              ...f, 
-              ...fieldData,
-              label: fieldData.label !== undefined ? fieldData.label : f.label,
-              dataType: fieldData.dataType !== undefined ? fieldData.dataType : f.dataType,
-            } : f)),
-          }
-        : s
-    );
-    
-    setSections(updatedSections);
-    setErrors([]);
-    
-    // Check if enumOptions or referenceLibraries changed - if so, save immediately to prevent data loss
-    const field = sections.find(s => s.id === sectionId)?.fields.find(f => f.id === fieldId);
-    const enumOptionsChanged = field?.dataType === 'enum' && 
-      JSON.stringify(field.enumOptions) !== JSON.stringify(fieldData.enumOptions);
-    const referenceLibrariesChanged = field?.dataType === 'reference' &&
-      JSON.stringify(field.referenceLibraries) !== JSON.stringify(fieldData.referenceLibraries);
-    
-    if (enumOptionsChanged || referenceLibrariesChanged) {
-      // Save immediately for config changes (important data that shouldn't be lost)
-      if (!isSavingOrReloading.current) {
-        // Clear any pending auto-save timer
-        if (autoSaveTimerRef.current) {
-          clearTimeout(autoSaveTimerRef.current);
-          autoSaveTimerRef.current = null;
-        }
-        void saveSchema(updatedSections, false); // false = don't reload after save
-      }
-    } else {
-      // Debounce auto-save for other field changes
-    // Clear previous timer and set new one
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    autoSaveTimerRef.current = setTimeout(() => {
-      if (!isSavingOrReloading.current) {
-        void saveSchema(updatedSections, false); // false = don't reload after save
-      }
-    }, 500); // Increased to 500ms for debouncing
-    }
-  };
-
-  const handleDeleteField = (sectionId: string, fieldId: string) => {
-    const updatedSections = sections.map((s) =>
-      s.id === sectionId ? { ...s, fields: s.fields.filter((f) => f.id !== fieldId) } : s
-    );
-    
-    setSections(updatedSections);
-    
-    // Auto-save immediately after deleting field (important operation)
-    if (!isSavingOrReloading.current) {
-      // Clear any pending auto-save timer
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = null;
-      }
-      // Save immediately to ensure data is persisted
-      void saveSchema(updatedSections, false); // false = don't reload after save
-    }
-  };
-
-  const handleReorderFields = (sectionId: string, newFieldOrder: FieldConfig[]) => {
-    const updatedSections = sections.map((s) =>
-      s.id === sectionId ? { ...s, fields: newFieldOrder } : s
-    );
-    
-    setSections(updatedSections);
-    setErrors([]);
-    
-    // Auto-save after reordering fields (debounced to allow multiple drag operations)
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    autoSaveTimerRef.current = setTimeout(() => {
-      if (!isSavingOrReloading.current) {
-        void saveSchema(updatedSections, false); // false = don't reload after save
-      }
-    }, 800); // Longer delay for drag operations
-  };
-
-  const handleSaveNewSection = async (newSection: { name: string; fields: FieldConfig[] }) => {
-    if (!libraryId) {
-      showErrorToast('Missing libraryId, cannot save');
-      return;
-    }
-
-    const trimmedName = newSection.name.trim() || 'Untitled Section';
-
-    // Combine with existing sections (allow undefined dataType)
-    // Note: Section names can be duplicate since section_id is the unique identifier
-    const allSections = [...sections, { id: uid(), name: trimmedName, fields: newSection.fields }];
-    await saveSchema(allSections);
-  };
-
-  const saveSchema = useCallback(async (sectionsToSave: SectionConfig[] = sections, shouldReload: boolean = true) => {
-    if (!libraryId) {
-      showErrorToast('Missing libraryId, cannot save');
-      return;
-    }
-
-    // Prevent concurrent saves or auto-saves during save/reload
-    if (isSavingOrReloading.current) {
-      return;
-    }
-
-    // Clear any pending auto-save timers
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    
-    // Check if there are any pending fields and add them to their respective sections
-    // Also apply temporary section name changes
-    // Use ref to get latest pendingFields value to avoid stale closure issue
-    // Track which sections had pending fields added (to reset their FieldForms later)
-    const sectionsWithAddedFields: string[] = [];
-    
-    const finalSections = sectionsToSave.map((section) => {
-      const pendingField = pendingFieldsRef.current.get(section.id);
-      const tempName = tempSectionNames.get(section.id);
-      
-      let updatedSection = { ...section };
-      
-      // Apply temp section name if exists
-      if (tempName !== undefined) {
-        updatedSection.name = tempName || 'Untitled Section';
-      }
-      
-      // Add pending field ONLY if it has actual content (label or dataType)
-      // This prevents saving empty fields when auto-saving other changes (like reordering)
-      if (pendingField) {
-        const hasLabel = pendingField.label && pendingField.label.trim().length > 0;
-        const hasDataType = pendingField.dataType !== undefined && pendingField.dataType !== null;
-        
-        // Only add if field has at least label or dataType
-        if (hasLabel || hasDataType) {
-          const newField = {
-            id: uid(),
-            label: pendingField.label || '',
-            dataType: pendingField.dataType, // Allow undefined
-            required: pendingField.required,
-            ...(pendingField.enumOptions && { enumOptions: pendingField.enumOptions }),
-            ...(pendingField.referenceLibraries && { referenceLibraries: pendingField.referenceLibraries }),
-          };
-          updatedSection.fields = [...updatedSection.fields, newField];
-          // Track that this section had a pending field added
-          sectionsWithAddedFields.push(section.id);
-        }
-      }
-      
-      return updatedSection;
-    });
-
-    // Use finalSections directly (allow undefined dataType)
-    const sectionsWithDefaults = finalSections;
-
-    isSavingOrReloading.current = true;
+    saveInFlight.current = true;
     setSaving(true);
     setErrors([]);
     try {
-      // Use incremental update to preserve field IDs and asset data
-      const { tempIdToDbIdMap } = await saveSchemaIncremental(supabase, libraryId, sectionsWithDefaults);
-      
-      // Update sections state to replace temp IDs with database IDs
-      if (tempIdToDbIdMap.size > 0) {
-        const updatedSectionsWithDbIds = sectionsWithDefaults.map(section => ({
-          ...section,
-          fields: section.fields.map(field => {
-            const dbId = tempIdToDbIdMap.get(field.id);
-            if (dbId) {
-              console.log(`[saveSchema] Replacing temp ID ${field.id} with DB ID ${dbId} for field: ${field.label}`);
-              return { ...field, id: dbId };
-            }
-            return field;
-          }),
-        }));
-        setSections(updatedSectionsWithDbIds);
-      }
-      
+      const pending = pendingFieldRef.current;
+      const finalFields = pending && (pending.label.trim() || pending.dataType)
+        ? [...fieldsToSave, { id: uid(), ...pending }]
+        : fieldsToSave;
+      const { tempIdToDbIdMap } = await saveSchemaIncremental(supabase, libraryId, finalFields);
+      const withDatabaseIds = finalFields.map((field) => ({
+        ...field,
+        id: tempIdToDbIdMap.get(field.id) ?? field.id,
+      }));
+      setFields(withDatabaseIds);
+      setPendingField(null);
+      pendingFieldRef.current = null;
       hasSavedThisSessionRef.current = true;
-
-      // Invalidate React Query cache to ensure LibraryPage gets fresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-      
-      // Refetch to ensure data is updated immediately
-      await queryClient.refetchQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-      
-      // If creating new section, exit creation mode and reload sections
-      if (isCreatingNewSection) {
-        setIsCreatingNewSection(false);
-        setNewSectionName(''); // Clear new section name
-        setEditingTabId(null); // Clear editing state after saving
-        const loadedSections = await reloadSections();
-        // Keep the newly created section active (last one in the list)
-        if (loadedSections && loadedSections.length > 0) {
-          setActiveSectionId(loadedSections[loadedSections.length - 1].id);
-        }
-      } else if (shouldReload) {
-        // Only reload if explicitly requested (e.g., after deleting section)
-        const currentActiveId = activeSectionId;
-        const loadedSections = await reloadSections();
-        // Restore the active section ID if it still exists
-        if (currentActiveId && loadedSections?.find(s => s.id === currentActiveId)) {
-          setActiveSectionId(currentActiveId);
-        }
-      } else {
-        // No reload needed - update local state with the applied changes
-        // This ensures tempSectionNames and pendingFields changes are reflected in the UI
-        setSections(finalSections);
-      }
-      
-      // Clear pending fields and temp section names after successful save
-      // Do this AFTER updating sections to avoid UI flickering
-      const emptyMap = new Map();
-      setPendingFields(emptyMap);
-      pendingFieldsRef.current = emptyMap;
-      setTempSectionNames(new Map());
-      
-      // Reset FieldForm for sections that had pending fields added
-      // This ensures the form is cleared after auto-save adds the field
-      sectionsWithAddedFields.forEach((sectionId) => {
-        window.dispatchEvent(new CustomEvent('fieldform-reset', { detail: { sectionId } }));
-      });
-    } catch (e: any) {
-      showErrorToast(e?.message || 'Failed to save');
-      setErrors([e?.message || 'Failed to save']);
+      if (shouldReload) await reload();
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : 'Failed to save fields';
+      setErrors([message]);
+      showErrorToast(message);
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
-      // Reset flag after a brief delay to ensure all updates are complete
-      setTimeout(() => {
-        isSavingOrReloading.current = false;
-      }, 500);
     }
-  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, tempSectionNames]);
+  }, [fields, libraryId, queryClient, reload, setFields, supabase]);
 
-  // Broadcast predefine UI state (e.g. whether creating a new section) to TopBar
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('predefine-state', {
-          detail: { isCreatingNewSection, activeSectionId },
-        })
-      );
-    }
-  }, [isCreatingNewSection, activeSectionId]);
+  const scheduleSave = useCallback((nextFields: FieldConfig[], delay: number) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void saveSchema(nextFields, false);
+    }, delay);
+  }, [saveSchema]);
 
-  const handleDeleteSection = useCallback(async (sectionId: string) => {
-    if (!libraryId) {
-      showErrorToast('Missing libraryId, cannot delete');
-      return;
-    }
-
-    const sectionToDelete = sections.find((s) => s.id === sectionId);
-    if (!sectionToDelete) {
-      showErrorToast('Section not found');
-      return;
-    }
-
-    // Confirm deletion
-    if (!confirm(`Are you sure you want to delete section "${sectionToDelete.name}"? This will also delete all asset values for this section.`)) {
-      return;
-    }
-
-    setSaving(true);
+  const handleAddField = useCallback((data: Omit<FieldConfig, 'id'>) => {
+    const nextFields = [...fields, { id: uid(), ...data, label: data.label || '' }];
+    setFields(nextFields);
+    setPendingField(null);
+    pendingFieldRef.current = null;
     setErrors([]);
-    try {
-      // Delete all field definitions for this section using section_id (not section name)
-      // This ensures only the specific section is deleted, even if there are duplicate names
-      // This will cascade delete asset values due to foreign key constraint
-      const { error: delError } = await supabase
-        .from('library_field_definitions')
-        .delete()
-        .eq('library_id', libraryId)
-        .eq('section_id', sectionId);
+    window.dispatchEvent(new CustomEvent('fieldform-reset'));
+    void saveSchema(nextFields, false);
+  }, [fields, saveSchema, setFields]);
 
-      if (delError) throw delError;
-
-      showSuccessToast(`Section "${sectionToDelete.name}" deleted successfully`);
-
-      // Invalidate React Query cache to ensure LibraryPage gets fresh data
-      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-      
-      // Refetch to ensure data is updated immediately
-      await queryClient.refetchQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-
-      // Reload to sync with database
-      const loadedSections = await reloadSections();
-      
-      // Update active section after reload
-      if (activeSectionId === sectionId) {
-        if (loadedSections && loadedSections.length > 0) {
-          setActiveSectionId(loadedSections[0].id);
-        } else {
-          setActiveSectionId(null);
-        }
-      }
-    } catch (e: any) {
-      showErrorToast(e?.message || 'Failed to delete section');
-      setErrors([e?.message || 'Failed to delete section']);
-    } finally {
-      setSaving(false);
+  const handleChangeField = useCallback((fieldId: string, data: Omit<FieldConfig, 'id'>) => {
+    const nextFields = fields.map((field) => field.id === fieldId ? { ...field, ...data } : field);
+    setFields(nextFields);
+    setErrors([]);
+    if (data.dataType === 'enum' || data.dataType === 'reference') {
+      void saveSchema(nextFields, false);
+    } else {
+      scheduleSave(nextFields, 500);
     }
-  }, [libraryId, sections, activeSectionId, reloadSections, supabase]);
+  }, [fields, saveSchema, scheduleSave, setFields]);
 
-  // Listen to top bar "Cancel/Delete" button for Predefine
-  useEffect(() => {
-    const handler = () => {
-      if (isCreatingNewSection) {
-        cancelCreatingNewSection();
-      } else if (activeSectionId) {
-        void handleDeleteSection(activeSectionId);
-      }
-    };
+  const handleDeleteField = useCallback((fieldId: string) => {
+    const nextFields = fields.filter((field) => field.id !== fieldId);
+    setFields(nextFields);
+    void saveSchema(nextFields, false);
+  }, [fields, saveSchema, setFields]);
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('predefine-cancel-or-delete', handler);
-    }
+  const handleReorderFields = useCallback((nextFields: FieldConfig[]) => {
+    setFields(nextFields);
+    scheduleSave(nextFields, 800);
+  }, [scheduleSave, setFields]);
 
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('predefine-cancel-or-delete', handler);
-      }
-    };
-  }, [isCreatingNewSection, activeSectionId, cancelCreatingNewSection, handleDeleteSection]);
+  return (
+    <div className={styles.container}>
+      <div className={styles.contentWrapper}>
+        <div className={styles.header}>
+          <div className={styles.headerTitleRow}>
+            {projectId && libraryId && (
+              <button
+                type="button"
+                className={styles.backButton}
+                onClick={() => {
+                  if (hasSavedThisSessionRef.current) router.push(`/${projectId}/${libraryId}`);
+                  else router.back();
+                }}
+                title="Back to library"
+                aria-label="Back to library"
+              >
+                <Image src={PredefineBackIcon} alt="Back" width={20} height={20} className="icon-20" />
+              </button>
+            )}
+            <div>
+              <h1 className={styles.title}>
+                {loadingLibrary ? 'Loading...' : `Predefine ${library?.name ?? ''} Library`}
+              </h1>
+            </div>
+          </div>
+        </div>
 
-  // Cleanup auto-save timer on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, []);
-
-  // Calculate add button position based on the rightmost tab
-  useEffect(() => {
-    const calculateButtonPosition = () => {
-      if (!tabsContainerRef.current) return;
-      
-      // Find all tab elements
-      const tabNavWrap = tabsContainerRef.current.querySelector('.ant-tabs-nav-wrap');
-      if (!tabNavWrap) return;
-      
-      const tabList = tabNavWrap.querySelector('.ant-tabs-nav-list');
-      if (!tabList) return;
-      
-      const tabs = tabList.querySelectorAll('.ant-tabs-tab');
-      if (tabs.length === 0) return;
-      
-      // Get the last tab (rightmost)
-      const lastTab = tabs[tabs.length - 1] as HTMLElement;
-      const tabRect = lastTab.getBoundingClientRect();
-      const containerRect = tabsContainerRef.current.getBoundingClientRect();
-      
-      // Calculate position: right edge of last tab + some margin
-      const leftPosition = tabRect.right - containerRect.left + 25;
-      setAddButtonLeft(leftPosition);
-    };
-    
-    // Calculate on mount and when dependencies change
-    calculateButtonPosition();
-    
-    // Recalculate after a short delay to ensure tabs are rendered
-    const timer = setTimeout(calculateButtonPosition, 100);
-    
-    // Set up ResizeObserver to watch for tab size changes
-    let resizeObserver: ResizeObserver | null = null;
-    let mutationObserver: MutationObserver | null = null;
-    
-    const setupObservers = () => {
-      if (!tabsContainerRef.current) return;
-      
-      const tabNavWrap = tabsContainerRef.current.querySelector('.ant-tabs-nav-wrap');
-      if (!tabNavWrap) return;
-      
-      const tabList = tabNavWrap.querySelector('.ant-tabs-nav-list');
-      if (!tabList) return;
-      
-      // Watch for size changes in the tab list
-      resizeObserver = new ResizeObserver(() => {
-        calculateButtonPosition();
-      });
-      resizeObserver.observe(tabList);
-      
-      // Watch for DOM changes (adding/removing tabs, content changes)
-      mutationObserver = new MutationObserver(() => {
-        calculateButtonPosition();
-      });
-      mutationObserver.observe(tabList, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-    };
-    
-    // Set up observers after a delay to ensure DOM is ready
-    const observerTimer = setTimeout(setupObservers, 200);
-    
-    return () => {
-      clearTimeout(timer);
-      clearTimeout(observerTimer);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-      if (mutationObserver) {
-        mutationObserver.disconnect();
-      }
-    };
-  }, [sections, isCreatingNewSection, activeSectionId, editingTabId, tempSectionNames, newSectionName]);
-
-  const baseTabItems = sections.map((section, sectionIndex): TabsProps['items'][0] => ({
-    key: section.id,
-    label: (
-      <div
-        onClick={(e) => {
-          // Only trigger edit mode if clicking on the tab itself, not during onChange
-          if (activeSectionId === section.id) {
-            e.stopPropagation();
-            setEditingTabId(section.id);
-          }
-        }}
-        style={{ display: 'inline-block' }}
-      >
-        {editingTabId === section.id ? (
-          <Input
-            autoFocus
-            value={tempSectionNames.get(section.id) ?? section.name}
-            onChange={(e) => {
-              e.stopPropagation();
-              const newName = e.target.value;
-              
-              // Always update the value (even during composition)
-              // Note: Section names can be duplicate since section_id is the unique identifier
-              setTempSectionNames((prev) => {
-                const newMap = new Map(prev);
-                newMap.set(section.id, newName);
-                return newMap;
-              });
-            }}
-            onKeyDown={(e) => {
-              // Allow space key and other normal input keys
-              if (e.key === ' ' || e.key === 'Enter') {
-                e.stopPropagation();
-              }
-            }}
-            onBlur={() => {
-              setEditingTabId(null);
-              
-              // Auto-save after section name loses focus
-              // Skip if currently saving or reloading
-              if (isSavingOrReloading.current) {
-                return;
-              }
-              
-              if (autoSaveTimerRef.current) {
-                clearTimeout(autoSaveTimerRef.current);
-              }
-              autoSaveTimerRef.current = setTimeout(() => {
-                if (!isSavingOrReloading.current) {
-                  void saveSchema(sections, false); // false = don't reload after save
-                }
-              }, 300);
-            }}
-            onPressEnter={() => {
-              setEditingTabId(null);
-              
-              // Auto-save after pressing Enter
-              // Skip if currently saving or reloading
-              if (isSavingOrReloading.current) {
-                return;
-              }
-              
-              if (autoSaveTimerRef.current) {
-                clearTimeout(autoSaveTimerRef.current);
-              }
-              autoSaveTimerRef.current = setTimeout(() => {
-                if (!isSavingOrReloading.current) {
-                  void saveSchema(sections, false); // false = don't reload after save
-                }
-              }, 300);
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            className={styles.tabNameInput}
-            style={{ 
-              width: `${Math.max(60, Math.min(200, (tempSectionNames.get(section.id) ?? section.name).length * 8 + 30))}px`, 
-              height: '24px', 
-              padding: '0 8px' 
-            }}
-          />
-        ) : (
-          <span>{tempSectionNames.get(section.id) ?? section.name}</span>
+        {(error || errors.length > 0) && (
+          <div className={styles.errorsContainer}>
+            {[...(error ? [error] : []), ...errors].map((message, index) => (
+              <div key={`${message}-${index}`}>{message}</div>
+            ))}
+          </div>
         )}
-      </div>
-    ),
-    children: (
-      <div className={styles.tabContent}>
-        <div>
+
+        <div className={styles.tabContent}>
           <div className={styles.headerRow}>
             <div className={styles.headerLabel}>Label text</div>
             <div className={styles.headerDataType}>Data type</div>
             <div className={styles.headerActions} />
           </div>
-        </div>
-        <FieldsList
-          fields={section.fields}
-          onChangeField={(fieldId, data) => {
-            handleChangeField(section.id, fieldId, data);
-          }}
-          onDeleteField={(fieldId) => handleDeleteField(section.id, fieldId)}
-          onReorderFields={(newOrder) => handleReorderFields(section.id, newOrder)}
-          disabled={saving}
-          isFirstSection={sectionIndex === 0}
-          invalidFields={new Set()}
-        />
-        <FieldForm
-          sectionId={section.id}
-          onSubmit={(data) => handleAddField(section.id, data)}
-          disabled={saving}
-          onFieldChange={(field) => {
-            // Always update pending field (even if empty)
-            setPendingFields((prev) => {
-              const newMap = new Map(prev);
-              newMap.set(section.id, field);
-              // Update ref synchronously to ensure saveSchema can access latest value
-              pendingFieldsRef.current = newMap;
-              return newMap;
-            });
-          }}
-          onFieldBlur={() => {
-            // Auto-save when field loses focus
-            // Skip if currently saving or reloading
-            if (isSavingOrReloading.current) {
-              return;
-            }
-            
-            if (autoSaveTimerRef.current) {
-              clearTimeout(autoSaveTimerRef.current);
-            }
-            autoSaveTimerRef.current = setTimeout(() => {
-              if (!isSavingOrReloading.current) {
-                void saveSchema(sections, false); // false = don't reload after save
-              }
-            }, 300);
-          }}
-          validationError={undefined}
-        />
-      </div>
-    ),
-  }));
-
-  const tabItems: TabsProps['items'] = [...baseTabItems];
-
-  // Add "New Section" tab when creating new section
-  if (isCreatingNewSection) {
-    tabItems.push({
-      key: NEW_SECTION_TAB_KEY,
-      label: (
-        <div
-          onClick={(e) => {
-            // Only allow setting edit mode when not already editing
-            if (editingTabId !== NEW_SECTION_TAB_KEY) {
-              e.stopPropagation();
-              setEditingTabId(NEW_SECTION_TAB_KEY);
-            }
-          }}
-          style={{ display: 'inline-block' }}
-        >
-          {editingTabId === NEW_SECTION_TAB_KEY ? (
-            <Input
-              ref={newSectionInputRef}
-              autoFocus
-              value={newSectionName}
-              onChange={(e) => {
-                e.stopPropagation();
-                const newName = e.target.value;
-                
-                // Always update the value (even during composition)
-                // Note: Section names can be duplicate since section_id is the unique identifier
-                setNewSectionName(newName);
-              }}
-              onKeyDown={(e) => {
-                // Allow space key and other normal input keys
-                if (e.key === ' ' || e.key === 'Enter') {
-                  e.stopPropagation();
-                }
-              }}
-              onBlur={(e) => {
-                // Ignore blur during auto-focusing period
-                if (!isAutoFocusing.current) {
-                  setEditingTabId(null);
-                  
-                  // Auto-save new section name after losing focus
-                  // Note: The section hasn't been created yet, so we don't trigger saveSchema here
-                  // The name will be saved when the section is actually created (when user adds first field or clicks save)
-                }
-              }}
-              onPressEnter={() => {
-                // Always allow Enter to exit editing
-                isAutoFocusing.current = false;
-                setEditingTabId(null);
-              }}
-              onFocus={(e) => {
-                // Select all text when focused
-                e.target.select();
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                // Ensure input stays focused when clicked
-                if (e.currentTarget) {
-                  e.currentTarget.focus();
-                }
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className={styles.tabNameInput}
-              style={{ 
-                width: `${Math.max(60, Math.min(200, newSectionName.length * 8 + 30))}px`, 
-                height: '24px', 
-                padding: '0 8px' 
-              }}
+          {!loading && (
+            <FieldsList
+              fields={fields}
+              onChangeField={handleChangeField}
+              onDeleteField={handleDeleteField}
+              onReorderFields={handleReorderFields}
+              disabled={saving}
+              isFirstSection
+              invalidFields={new Set()}
             />
-          ) : (
-            <span>{newSectionName || 'New Section'}</span>
           )}
-        </div>
-      ),
-      children: (
-        <div className={styles.tabContent}>
-          <NewSectionForm
-            onCancel={sections.length > 0 ? cancelCreatingNewSection : undefined}
-            onSave={(section) => handleSaveNewSection({ ...section, name: newSectionName || section.name })}
-            saving={saving}
-            isFirstSection={sections.length === 0}
-            sectionName={newSectionName}
+          <FieldForm
+            onSubmit={handleAddField}
+            disabled={saving}
+            onFieldChange={(field) => {
+              setPendingField(field);
+              pendingFieldRef.current = field;
+            }}
+            onFieldBlur={() => {
+              scheduleSave(fields, 300);
+            }}
+            validationError={undefined}
           />
         </div>
-      ),
-    });
-  }
-
-  return (
-    <div className={styles.container}>
-        <div className={styles.contentWrapper}>
-          <div className={styles.header}>
-            <div className={styles.headerTitleRow}>
-              {projectId && libraryId && (
-                <button
-                  type="button"
-                  className={styles.backButton}
-                  onClick={() => {
-                    if (hasSavedThisSessionRef.current) {
-                      router.push(`/${projectId}/${libraryId}`);
-                    } else {
-                      router.back();
-                    }
-                  }}
-                  title="Back to library"
-                  aria-label="Back to library"
-                >
-                  <Image src={PredefineBackIcon}
-                    alt="Back"
-                    width={20} height={20} className="icon-20"
-                  />
-                </button>
-              )}
-              <div>
-                {loadingLibrary ? (
-                  <h1 className={styles.title}>
-                    Loading...
-                  </h1>
-                ) : (
-                  <>
-                    <h1 className={styles.title}>
-                      {`Predefine ${library?.name ?? ''} Library`}
-                    </h1>
-                    {/* {library?.description && (
-                      <Tooltip title={library.description.length > 50 ? library.description : undefined}>
-                        <p className={styles.subtitle}>
-                          {library.description.length > 50
-                            ? `${library.description.slice(0, 50)}...`
-                            : library.description}
-                        </p>
-                      </Tooltip>
-                    )} */}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {errors.length > 0 && (
-            <div className={styles.errorsContainer}>
-              {errors.map((err, idx) => (
-                <div key={idx}>{err}</div>
-              ))}
-            </div>
-          )}
-
-          <>
-            <div className={styles.tabsContainer} ref={tabsContainerRef}>
-              {(sections.length > 0 || isCreatingNewSection) && (
-                <>
-                  <Tabs
-                    activeKey={
-                      isCreatingNewSection
-                        ? NEW_SECTION_TAB_KEY
-                        : activeSectionId || undefined
-                    }
-                    onChange={(key) => {
-                      if (key === NEW_SECTION_TAB_KEY) {
-                        startCreatingNewSection();
-                      } else {
-                        setIsCreatingNewSection(false);
-                        setActiveSectionId(key);
-                      }
-                    }}
-                    items={tabItems}
-                  />
-                  {sections.length > 0 && (
-                    <button
-                      onClick={startCreatingNewSection}
-                      className={styles.addSectionButton}
-                      style={{ left: `${addButtonLeft}px` }}
-                    >
-                      <Image src={predefineAddSectionIcon} alt="Add Section" width={16} height={16} className="icon-16" />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        </div>
       </div>
+    </div>
   );
 }
 
 export default function PredefinePage() {
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#8726EE',
-        },
-        components: {
-          Tabs: {
-            itemActiveColor: '#8726EE',
-            itemSelectedColor: '#8726EE',
-            inkBarColor: '#8726EE',
-          },
-        },
-      }}
-    >
+    <ConfigProvider theme={{ token: { colorPrimary: '#8726EE' } }}>
       <PredefinePageContent />
     </ConfigProvider>
   );

@@ -10,8 +10,8 @@ import {
 } from '@/lib/story-extraction/materializer';
 import {
   combineStoryExtraction,
-  parseStoryContentExtraction,
-  parseStoryGraphExtraction,
+  normalizeStoryContentExtractionContract,
+  normalizeStoryGraphExtractionContract,
   type StoryContentExtraction,
   type StoryGraphExtraction,
 } from '@/lib/story-extraction/pipeline';
@@ -35,6 +35,14 @@ import {
   buildStoryPlotGroupingMessages,
 } from '@/lib/story-plot/prompts';
 import type { StoryPlotPlan } from '@/lib/story-plot/schema';
+import {
+  applyAiBranchPatch,
+  buildAiBranchPatchMessages,
+  buildAiBranchPatchTool,
+  materializeAiBranchStructure,
+  parseAiBranchPatchForSource,
+  parseAiBranchStructureForSource,
+} from './aiBranchPlanner';
 import { buildStoryAuditProjection, type StoryAuditProjection } from './projection';
 import {
   parseStoryAuditAdjudication,
@@ -45,25 +53,58 @@ import {
 } from './schema';
 import {
   tryParseExplicitStory,
+  tryParseHierarchicalBranchStory,
   tryParseLinearScreenplay,
+  tryParseMenuBranchStory,
   tryParseNaturalBranchStory,
+  tryParseScenarioDecisionStory,
 } from './explicitParser';
 import { segmentStorySource, type SegmentedStorySource } from './sourceSegments';
+import {
+  AI_SEMANTIC_LINEAGE_TOOL,
+  AI_SEMANTIC_LINEAGE_PATCH_TOOL,
+  applySemanticLineagePatch,
+  buildSemanticLineageMessages,
+  buildSemanticLineagePatchMessages,
+  materializeSemanticLineage,
+  parseSemanticLineageForSource,
+  parseSemanticLineagePatchForSource,
+} from './semanticLineage';
 import { chunkStorySource } from './chunkedSource';
 import { mergeChunkedStoryContentExtractions } from './chunkedExtraction';
+import {
+  applyExplicitNestedBranchGraph,
+  recoverExplicitNestedBranchChoices,
+} from './explicitNestedBranches';
 
 export const DEFAULT_STORY_PLAN_MAX_SOURCE_CHARS = 60_000;
 export const STORY_PLAN_LLM_TIMEOUT_MS = 150_000;
+export const STORY_GRAPH_LLM_TIMEOUT_MS = 30_000;
+export const STORY_PLOT_LLM_TIMEOUT_MS = 15_000;
+export const STORY_BRANCH_LLM_TIMEOUT_MS = 120_000;
 const MAX_MODEL_JSON_BYTES = 10 * 1024 * 1024;
 const MAX_CANDIDATE_ATTEMPTS = 3;
-const MAX_GRAPH_ATTEMPTS = 5;
+const MAX_GRAPH_ATTEMPTS = 2;
 const MAX_LLM_CALLS = 15;
 const MAX_PROVIDER_ABORT_RETRIES_PER_STAGE = 3;
 const CONTENT_CHUNK_THRESHOLD_CHARS = 10_000;
-const CONTENT_CHUNK_THRESHOLD_UNITS = 48;
+// Rich screenplay prose often has short lines, so character count alone can
+// still produce an oversized source-unit inventory for the Extractor.
+const CONTENT_CHUNK_THRESHOLD_UNITS = 80;
+const BRANCH_PLANNER_LONG_MIN_UNITS = 20;
 const MAX_CONTENT_CHUNK_CHARS = 8_000;
 
+export function branchPlannerTimeoutMs(sourceChars: number, unitCount: number): number {
+  const characterSteps = Math.ceil(Math.max(0, sourceChars - 2_000) / 2_000);
+  const unitSteps = Math.ceil(Math.max(0, unitCount - 20) / 20);
+  return Math.min(
+    STORY_BRANCH_LLM_TIMEOUT_MS,
+    45_000 + (characterSteps + unitSteps) * 5_000
+  );
+}
+
 export type StoryPlanLlmStage =
+  | 'Branch Planner'
   | 'Extractor'
   | 'Graph Planner'
   | 'Plot Planner'
@@ -106,6 +147,7 @@ export interface ResolveStoryPlanOptions {
   maxSourceChars?: number;
   skipSemanticAuditAfterValidation?: boolean;
   enableAiPlotPlanning?: boolean;
+  enableHeuristicBranchParsing?: boolean;
   onProgress?: (event: StoryPlanProgressEvent) => void;
   onLlmTelemetry?: (event: StoryPlanLlmTelemetryEvent) => void;
 }
@@ -168,6 +210,19 @@ class StoryModelContractError extends Error {
   }
 }
 
+class StoryGraphPlanningExhaustedError extends Error {
+  readonly issues: StoryExtractionRetryIssue[];
+
+  constructor(issues: StoryExtractionRetryIssue[]) {
+    const detail = issues.at(-1)?.message.replace(/\s+/g, ' ').trim().slice(0, 240);
+    super(`Story graph planning failed after ${MAX_GRAPH_ATTEMPTS} attempts${
+      detail ? `: ${detail}` : ''
+    }.`);
+    this.name = 'StoryGraphPlanningExhaustedError';
+    this.issues = issues;
+  }
+}
+
 export async function resolveStoryPlanForImport(
   sourceText: string,
   options: ResolveStoryPlanOptions = {}
@@ -186,9 +241,18 @@ export async function resolveStoryPlanForImport(
   let priorIssues: StoryExtractionRetryIssue[] = [];
   const llmBudget: StoryPlanLlmBudget = { used: 0, max: MAX_LLM_CALLS };
 
+  const linearCandidate = tryParseLinearScreenplay(source);
+  // Human-readable formats belong to the Branch Planner; the natural-language
+  // parsers below stay opt-in compatibility helpers. A choiceless linear parse
+  // additionally cannot tell branch prose from narration, so it never qualifies.
   const parsedDeterministicPlan = tryParseExplicitStory(source)
-    ?? tryParseNaturalBranchStory(source)
-    ?? tryParseLinearScreenplay(source);
+    ?? (options.enableHeuristicBranchParsing
+      ? tryParseNaturalBranchStory(source)
+        ?? tryParseScenarioDecisionStory(source)
+        ?? tryParseMenuBranchStory(source)
+        ?? tryParseHierarchicalBranchStory(source)
+        ?? (linearCandidate?.choices.length ? linearCandidate : null)
+      : null);
   const deterministicPlan = parsedDeterministicPlan
     && !hasUnresolvedNaturalBranches(source, parsedDeterministicPlan.choices.length)
     ? parsedDeterministicPlan
@@ -208,6 +272,7 @@ export async function resolveStoryPlanForImport(
         message: 'Compiling deterministic table and path projection',
       });
       const projection = buildStoryAuditProjection(document);
+      const plotPlan = await resolvePlotPlan(document, options, llmBudget);
       if (options.skipSemanticAuditAfterValidation) {
         return await acceptValidatedStory({
           source,
@@ -218,6 +283,7 @@ export async function resolveStoryPlanForImport(
           attempt: 1,
           options,
           budget: llmBudget,
+          plotPlan,
         });
       }
       const auditView = buildStoryAuditView(document, extraction, projection);
@@ -228,7 +294,8 @@ export async function resolveStoryPlanForImport(
         projection,
         auditView,
         options,
-        llmBudget
+        llmBudget,
+        plotPlan
       );
     } catch (error) {
       if (
@@ -240,6 +307,144 @@ export async function resolveStoryPlanForImport(
         ? error.issues
         : [modelOutputIssue(publicModelOutputError(error))];
     }
+  }
+
+  // Even prose without a standard scene heading can contain mutually
+  // exclusive branches. Use the compact structure-only model before the
+  // heavier Extractor/Graph pair unless the source must be chunked.
+  const shouldTryBranchPlanner = source.units.length >= 5
+    && (
+      source.content.length <= CONTENT_CHUNK_THRESHOLD_CHARS
+      || source.units.length >= BRANCH_PLANNER_LONG_MIN_UNITS
+  );
+  if (shouldTryBranchPlanner) {
+    let branchIssues: StoryExtractionRetryIssue[] = [];
+    let previousStructureCandidate: ReturnType<typeof parseAiBranchStructureForSource> | undefined;
+    let previousSemanticCandidate: ReturnType<typeof parseSemanticLineageForSource> | undefined;
+    for (let branchAttempt = 1; branchAttempt <= 2; branchAttempt += 1) {
+      emit(options, {
+        phase: 'conversion',
+        attempt: branchAttempt,
+        message: `Waiting for Branch Planner LLM response (attempt ${branchAttempt}/2)`,
+      });
+      try {
+        const useLegacyPatchRepair = Boolean(
+          previousStructureCandidate
+          && branchIssues.some((issue) => issue.unitIds.length > 0)
+        );
+        const useSemanticPatchRepair = Boolean(
+          previousSemanticCandidate
+          && branchIssues.some((issue) => issue.unitIds.length > 0)
+        );
+        const raw = await completeStoryPlanLlm(
+          useLegacyPatchRepair
+            ? buildAiBranchPatchMessages(source, branchIssues, previousStructureCandidate!)
+            : useSemanticPatchRepair
+              ? buildSemanticLineagePatchMessages(
+                  source,
+                  branchIssues,
+                  previousSemanticCandidate!
+                )
+            : buildSemanticLineageMessages(
+                source,
+                branchIssues,
+                previousSemanticCandidate
+              ),
+          useLegacyPatchRepair
+            ? buildAiBranchPatchTool(previousStructureCandidate!)
+            : useSemanticPatchRepair
+              ? AI_SEMANTIC_LINEAGE_PATCH_TOOL
+            : AI_SEMANTIC_LINEAGE_TOOL,
+          'Branch Planner',
+          branchAttempt,
+          options,
+          llmBudget,
+          0,
+          branchPlannerTimeoutMs(source.content.length, source.units.length)
+        );
+        const parsedModelOutput = parseModelJson(raw);
+        let candidate: ReturnType<typeof materializeAiBranchStructure> | null;
+        if (useLegacyPatchRepair) {
+          const structure = applyAiBranchPatch(
+            previousStructureCandidate!,
+            parseAiBranchPatchForSource(parsedModelOutput, source),
+            source,
+            branchIssues
+          );
+          previousStructureCandidate = structure;
+          candidate = materializeAiBranchStructure(source, structure);
+        } else if (useSemanticPatchRepair) {
+          const semantic = applySemanticLineagePatch(
+            previousSemanticCandidate!,
+            parseSemanticLineagePatchForSource(parsedModelOutput, source),
+            branchIssues
+          );
+          previousSemanticCandidate = semantic;
+          candidate = materializeSemanticLineage(source, semantic);
+        } else if (
+          parsedModelOutput
+          && typeof parsedModelOutput === 'object'
+          && 'version' in parsedModelOutput
+          && parsedModelOutput.version === 3
+        ) {
+          const semantic = parseSemanticLineageForSource(parsedModelOutput, source);
+          previousSemanticCandidate = semantic;
+          candidate = materializeSemanticLineage(source, semantic);
+        } else {
+          const structure = parseAiBranchStructureForSource(parsedModelOutput, source);
+          previousStructureCandidate = structure;
+          candidate = (
+            structure.decisions.some((decision) => decision.options.length > 0)
+            || structure.choices.length > 0
+          )
+            ? materializeAiBranchStructure(source, structure)
+            : linearCandidate
+              ? { source, plan: linearCandidate }
+              : null;
+        }
+        if (!candidate) {
+          throw new Error('Branch Planner did not produce a playable structure');
+        }
+        const extraction = buildStoryExtractionFromPlan(candidate.plan, candidate.source);
+        const document = materializeStoryExtraction(extraction, candidate.source, options.roleMap);
+        const plotPlan = buildDeterministicStoryPlotPlan(document);
+        const projection = buildStoryAuditProjection(document);
+        if (options.skipSemanticAuditAfterValidation) {
+          return await acceptValidatedStory({
+            source: candidate.source,
+            extraction,
+            document,
+            projection,
+            converted: true,
+            attempt: branchAttempt,
+            options,
+            budget: llmBudget,
+            plotPlan,
+          });
+        }
+        const auditView = buildStoryAuditView(document, extraction, projection);
+        return await auditExplicitCandidate(
+          candidate.source,
+          extraction,
+          document,
+          projection,
+          auditView,
+          options,
+          llmBudget,
+          plotPlan
+        );
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        branchIssues = error instanceof StoryExtractionValidationError
+          ? error.issues
+          : [branchPlannerRetryIssue(error, source)];
+      }
+    }
+    const detail = formatBranchIssueDetail(branchIssues.at(-1), source);
+    throw new ImportStoryPlanError(
+      `Story branch planning failed after 2 attempts${detail ? `: ${detail}` : ''}.`,
+      branchIssues
+    );
   }
 
   for (let attempt = 1; attempt <= MAX_CANDIDATE_ATTEMPTS; attempt += 1) {
@@ -286,7 +491,7 @@ export async function resolveStoryPlanForImport(
       const auditView = buildStoryAuditView(document, extraction, projection);
       const review = await reviewCandidate(source, auditView, attempt, options, llmBudget);
       if (review.approved) {
-        const plotPlan = await resolvePlotPlan(document, options, llmBudget);
+        const plotPlan = buildDeterministicStoryPlotPlan(document);
         emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
         return {
           document,
@@ -305,6 +510,9 @@ export async function resolveStoryPlanForImport(
       priorIssues = review.confirmedIssues;
     } catch (error) {
       if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
+      if (error instanceof StoryGraphPlanningExhaustedError) {
+        throw new ImportStoryPlanError(error.message, error.issues);
+      }
       priorIssues = error instanceof StoryExtractionValidationError
         ? error.issues
         : [modelOutputIssue(publicModelOutputError(error))];
@@ -350,8 +558,10 @@ async function acceptValidatedStory(input: {
   attempt: number;
   options: ResolveStoryPlanOptions;
   budget: StoryPlanLlmBudget;
+  plotPlan?: StoryPlotPlan;
 }): Promise<ResolvedAuditedStory> {
-  const plotPlan = await resolvePlotPlan(input.document, input.options, input.budget);
+  const plotPlan = input.plotPlan
+    ?? await resolvePlotPlan(input.document, input.options, input.budget);
   emit(input.options, {
     phase: 'complete',
     attempt: input.attempt,
@@ -380,6 +590,7 @@ async function buildExtractionWithGraphRetries(
   budget: StoryPlanLlmBudget
 ): Promise<StoryExtraction> {
   let graphIssues = priorIssues;
+  let previousGraphCandidate: StoryGraphExtraction | undefined;
   for (let graphAttempt = 1; graphAttempt <= MAX_GRAPH_ATTEMPTS; graphAttempt += 1) {
     emit(options, {
       phase: 'conversion',
@@ -393,15 +604,24 @@ async function buildExtractionWithGraphRetries(
         graphAttempt,
         graphIssues,
         options,
-        budget
+        budget,
+        previousGraphCandidate
       );
-      return normalizeStoryExtraction(combineStoryExtraction(content, graph), source);
+      previousGraphCandidate = graph;
+      const normalized = normalizeStoryExtraction(
+        combineStoryExtraction(content, graph),
+        source
+      );
+      materializeStoryExtraction(normalized, source, options.roleMap);
+      return normalized;
     } catch (error) {
       if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
       graphIssues = error instanceof StoryExtractionValidationError
         ? error.issues
         : [modelOutputIssue(publicModelOutputError(error))];
-      if (graphAttempt === MAX_GRAPH_ATTEMPTS || budget.used >= budget.max) throw error;
+      if (graphAttempt === MAX_GRAPH_ATTEMPTS || budget.used >= budget.max) {
+        throw new StoryGraphPlanningExhaustedError(graphIssues);
+      }
     }
   }
   throw new Error('Graph Planner retry loop exhausted.');
@@ -414,7 +634,8 @@ async function auditExplicitCandidate(
   projection: StoryAuditProjection,
   auditView: StoryAuditView,
   options: ResolveStoryPlanOptions,
-  budget: StoryPlanLlmBudget
+  budget: StoryPlanLlmBudget,
+  plotPlan?: StoryPlotPlan
 ): Promise<ResolvedAuditedStory> {
   try {
     const review = await reviewCandidate(source, auditView, 1, options, budget);
@@ -429,11 +650,11 @@ async function auditExplicitCandidate(
         review.confirmedIssues
       );
     }
-    const plotPlan = await resolvePlotPlan(document, options, budget);
+    const resolvedPlotPlan = plotPlan ?? await resolvePlotPlan(document, options, budget);
     emit(options, { phase: 'complete', attempt: 1, message: 'Story conversion and audit completed' });
     return {
       document,
-      plotPlan,
+      plotPlan: resolvedPlotPlan,
       source,
       extraction,
       projection,
@@ -466,14 +687,12 @@ async function requestContentExtractor(
 ): Promise<StoryContentExtraction> {
   const shouldChunk = source.content.length > CONTENT_CHUNK_THRESHOLD_CHARS
     || source.units.length > CONTENT_CHUNK_THRESHOLD_UNITS;
+  const unitChunkCount = Math.ceil(source.units.length / CONTENT_CHUNK_THRESHOLD_UNITS);
   const chunkLimit = source.content.length > CONTENT_CHUNK_THRESHOLD_CHARS
     ? MAX_CONTENT_CHUNK_CHARS
-    : Math.max(2_000, Math.ceil(source.content.length / 2));
+    : Math.max(1_000, Math.ceil(source.content.length / Math.max(2, unitChunkCount)));
   const chunks = shouldChunk ? chunkStorySource(source, chunkLimit) : [source];
-  const extractions: StoryContentExtraction[] = [];
-
-  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
-    const chunk = chunks[chunkIndex];
+  const extractions = await Promise.all(chunks.map(async (chunk, chunkIndex) => {
     if (chunks.length > 1) {
       emit(options, {
         phase: 'conversion',
@@ -495,15 +714,16 @@ async function requestContentExtractor(
       budget
     );
     try {
-      extractions.push(parseStoryContentExtraction(parseModelJson(raw)));
+      return normalizeStoryContentExtractionContract(parseModelJson(raw));
     } catch (error) {
       throw new StoryModelContractError('Extractor', error);
     }
-  }
+  }));
 
-  return extractions.length === 1
+  const merged = extractions.length === 1
     ? extractions[0]
     : mergeChunkedStoryContentExtractions(extractions);
+  return recoverExplicitNestedBranchChoices(source, merged);
 }
 
 async function requestGraphPlanner(
@@ -512,10 +732,17 @@ async function requestGraphPlanner(
   attempt: number,
   priorIssues: StoryExtractionRetryIssue[],
   options: ResolveStoryPlanOptions,
-  budget: StoryPlanLlmBudget
+  budget: StoryPlanLlmBudget,
+  previousGraphCandidate?: StoryGraphExtraction
 ): Promise<StoryGraphExtraction> {
   const raw = await completeStoryPlanLlm(
-    buildGraphExtractionMessages(source, content, attempt, priorIssues),
+    buildGraphExtractionMessages(
+      source,
+      content,
+      attempt,
+      priorIssues,
+      previousGraphCandidate
+    ),
     GRAPH_STORY_PLAN_TOOL,
     'Graph Planner',
     attempt,
@@ -523,7 +750,11 @@ async function requestGraphPlanner(
     budget
   );
   try {
-    return parseStoryGraphExtraction(parseModelJson(raw));
+    return applyExplicitNestedBranchGraph(
+      source,
+      content,
+      normalizeStoryGraphExtractionContract(parseModelJson(raw), content)
+    );
   } catch (error) {
     throw new StoryModelContractError('Graph Planner', error);
   }
@@ -692,7 +923,8 @@ async function completeStoryPlanLlm(
   attempt: number,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget,
-  providerAbortRetryLimit = MAX_PROVIDER_ABORT_RETRIES_PER_STAGE
+  providerAbortRetryLimit = MAX_PROVIDER_ABORT_RETRIES_PER_STAGE,
+  timeoutOverrideMs?: number
 ): Promise<string> {
   let providerAbortRetries = 0;
   const startedAt = Date.now();
@@ -714,17 +946,30 @@ async function completeStoryPlanLlm(
     const timeoutController = new AbortController();
     const combined = combineAbortSignals(options.signal, timeoutController.signal);
     let timedOut = false;
+    const configuredTimeout = options.llmTimeoutMs ?? STORY_PLAN_LLM_TIMEOUT_MS;
+    const timeoutMs = stage === 'Plot Planner'
+      ? Math.min(configuredTimeout, STORY_PLOT_LLM_TIMEOUT_MS)
+      : stage === 'Graph Planner'
+        ? Math.min(configuredTimeout, STORY_GRAPH_LLM_TIMEOUT_MS)
+      : stage === 'Branch Planner'
+        ? Math.min(
+            configuredTimeout,
+            timeoutOverrideMs ?? STORY_BRANCH_LLM_TIMEOUT_MS
+          )
+        : configuredTimeout;
     const timeout = setTimeout(() => {
       timedOut = true;
       timeoutController.abort(new DOMException('Story extraction LLM deadline exceeded', 'TimeoutError'));
-    }, options.llmTimeoutMs ?? STORY_PLAN_LLM_TIMEOUT_MS);
+    }, timeoutMs);
 
     try {
       const result = await completeLlm(messages, {
         temperature: 0,
         maxCompletionTokens: stage === 'Extractor'
           ? 24_000
-          : stage === 'Plot Planner' ? 4_000 : 10_000,
+          : stage === 'Graph Planner' ? 6_000
+            : stage === 'Branch Planner' ? 24_000
+            : stage === 'Plot Planner' ? 4_000 : 10_000,
         thinking: 'disabled',
         tools: [tool],
         toolName: tool.function.name,
@@ -787,6 +1032,47 @@ function publicModelOutputError(error: unknown): string {
   }
   if (error instanceof SyntaxError) return 'Model output was not valid JSON';
   return 'Model output did not match the complete Story IR contract';
+}
+
+function branchPlannerError(error: unknown): string {
+  if (!(error instanceof Error)) return 'Branch Planner returned an invalid structure';
+  const detail = error.message.replace(/\s+/g, ' ').trim().slice(0, 300);
+  return detail || 'Branch Planner returned an invalid structure';
+}
+
+function branchPlannerRetryIssue(
+  error: unknown,
+  source: SegmentedStorySource
+): StoryExtractionRetryIssue {
+  const message = branchPlannerError(error);
+  const unitIds = [...message.matchAll(/\bu(\d+)\b/g)].flatMap((match) => {
+    const unit = source.units[Number(match[1])];
+    return unit ? [unit.id] : [];
+  });
+  return {
+    code: 'model_output',
+    message,
+    unitIds: [...new Set(unitIds)],
+    nodeIds: [],
+  };
+}
+
+function formatBranchIssueDetail(
+  issue: StoryExtractionRetryIssue | undefined,
+  source: SegmentedStorySource
+): string {
+  if (!issue) return '';
+  const message = issue.message.replace(/\s+/g, ' ').trim();
+  const unitIndexById = new Map(source.units.map((unit, index) => [unit.id, index]));
+  const sourceDetails = [...new Set(issue.unitIds)].flatMap((unitId) => {
+    const index = unitIndexById.get(unitId);
+    if (index === undefined) return [];
+    const text = source.units[index].text.replace(/\s+/g, ' ').trim().slice(0, 100);
+    return [`u${index}: "${text}"`];
+  }).slice(0, 3);
+  return `${message}${sourceDetails.length > 0
+    ? ` (source ${sourceDetails.join('; ')})`
+    : ''}`.slice(0, 500);
 }
 
 function emit(options: ResolveStoryPlanOptions, event: StoryPlanProgressEvent): void {

@@ -18,7 +18,6 @@ export interface AgentSelectionContext {
   source: 'library_table';
   libraryId: string;
   libraryName?: string;
-  sectionName?: string;
   selectionLabel: string;
   mode: 'cells' | 'rows';
   selectedCellCount: number;
@@ -67,7 +66,6 @@ export function isAgentSelectionContext(value: unknown): value is AgentSelection
     typeof value.libraryId === 'string' &&
     value.libraryId.length > 0 &&
     (typeof value.libraryName === 'undefined' || typeof value.libraryName === 'string') &&
-    (typeof value.sectionName === 'undefined' || typeof value.sectionName === 'string') &&
     typeof value.selectionLabel === 'string' &&
     value.selectionLabel.length > 0 &&
     (value.mode === 'cells' || value.mode === 'rows') &&
@@ -86,7 +84,6 @@ export function formatSelectionContextForLlm(ctx: AgentSelectionContext): string
       source: ctx.source,
       libraryId: ctx.libraryId,
       libraryName: ctx.libraryName,
-      sectionName: ctx.sectionName,
       mode: ctx.mode,
       selectedCellCount: ctx.selectedCellCount,
       selectedRowCount: ctx.selectedRowCount,

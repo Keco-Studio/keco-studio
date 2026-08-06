@@ -65,6 +65,54 @@ describe('strict Studio simulation import adapter', () => {
     expect(result.snapshot.fieldMappings.characters.name).toBe(FIELD_KEYS.characters.name);
   });
 
+  it('ignores fully blank asset rows without hiding partially filled rows', () => {
+    const sources = createValidSources();
+    for (const source of Object.values(sources)) {
+      source.assets.push({
+        ...structuredClone(source.assets[0]),
+        id: `${source.libraryId}-blank`,
+        name: 'Untitled',
+        propertyValues: {},
+      });
+    }
+
+    const result = importSimulationSnapshot({
+      sourceProjectId: PROJECT_ID,
+      sources,
+      fieldMappings: createValidMappings(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.catalog.characters).toHaveLength(1);
+    expect(result.snapshot.catalog.skills).toHaveLength(1);
+    expect(result.snapshot.levelRules).toHaveLength(2);
+    expect(result.snapshot.skillCostRules).toHaveLength(2);
+  });
+
+  it('still rejects a partially filled row after blank-row filtering', () => {
+    const sources = createValidSources();
+    sources.level.assets.push({
+      ...structuredClone(sources.level.assets[0]),
+      id: `${sources.level.libraryId}-partial`,
+      name: 'Partial level row',
+      propertyValues: {
+        [FIELD_KEYS.level.level]: 3,
+      },
+    });
+
+    const errors = errorsFor(importSimulationSnapshot({
+      sourceProjectId: PROJECT_ID,
+      sources,
+      fieldMappings: createValidMappings(),
+    }));
+
+    expect(errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'level', code: 'missing_value', field: 'EXP', assetName: 'Partial level row' }),
+      expect.objectContaining({ role: 'level', code: 'missing_value', field: 'SP', assetName: 'Partial level row' }),
+    ]));
+  });
+
   it('reports missing mappings and never substitutes AssetRow.name for canonical name', () => {
     const sources = createValidSources();
     const mappings = createValidMappings();

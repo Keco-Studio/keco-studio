@@ -10,6 +10,7 @@ import styles from './ScriptSplitView.module.css';
 export type FlowChartPanelProps = {
   graph: FlowGraph;
   selectedPlotNodeId: string;
+  previewNodeIds?: string[];
   onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
 };
@@ -19,6 +20,7 @@ const NODE_HEIGHT = 48;
 const H_GAP = 40;
 const V_GAP = 72;
 const PAD = 24;
+const OUTER_ROUTE_GUTTER = 64;
 
 function compactLabel(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
@@ -33,8 +35,10 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
     };
   }
 
+  const knownIds = new Set(nodes.map((node) => node.id));
   const adjacency = new Map<string, string[]>();
   for (const edge of edges) {
+    if (!knownIds.has(edge.from) || !knownIds.has(edge.to)) continue;
     const list = adjacency.get(edge.from) ?? [];
     if (!list.includes(edge.to)) list.push(edge.to);
     adjacency.set(edge.from, list);
@@ -42,25 +46,43 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
 
   const firstId = nodes[0]?.id;
   const layerById = new Map<string, number>();
-  const queue: string[] = [];
-
-  if (firstId) {
-    layerById.set(firstId, 0);
-    queue.push(firstId);
+  const reachable = new Set<string>();
+  const pending = firstId ? [firstId] : [];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    pending.push(...(adjacency.get(id) ?? []));
   }
 
+  const indegree = new Map<string, number>();
+  reachable.forEach((id) => indegree.set(id, 0));
+  for (const [from, targets] of adjacency) {
+    if (!reachable.has(from)) continue;
+    for (const target of targets) {
+      if (reachable.has(target)) {
+        indegree.set(target, (indegree.get(target) ?? 0) + 1);
+      }
+    }
+  }
+
+  const queue = nodes
+    .filter((node) => reachable.has(node.id) && (indegree.get(node.id) ?? 0) === 0)
+    .map((node) => node.id);
+  if (firstId) layerById.set(firstId, 0);
   while (queue.length > 0) {
     const id = queue.shift()!;
     const layer = layerById.get(id) ?? 0;
     for (const next of adjacency.get(id) ?? []) {
-      if (layerById.has(next)) continue;
-      if (!nodes.some((n) => n.id === next)) continue;
-      layerById.set(next, layer + 1);
-      queue.push(next);
+      if (!reachable.has(next)) continue;
+      layerById.set(next, Math.max(layerById.get(next) ?? 0, layer + 1));
+      const remaining = (indegree.get(next) ?? 0) - 1;
+      indegree.set(next, remaining);
+      if (remaining === 0) queue.push(next);
     }
   }
 
-  // Unreachable nodes go after the deepest BFS layer, preserving row order.
+  // Unreachable or cyclic nodes go after the deepest valid layer in row order.
   let orphanLayer =
     Math.max(0, ...Array.from(layerById.values()), -1) + 1;
   for (const node of nodes) {
@@ -80,6 +102,10 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
 
   const positions = new Map<string, { x: number; y: number; layer: number }>();
   let maxWidth = 0;
+  const needsOuterRoute = edges.some((edge) => (
+    (layerById.get(edge.to) ?? 0) - (layerById.get(edge.from) ?? 0) > 1
+  ));
+  const horizontalPad = PAD + (needsOuterRoute ? OUTER_ROUTE_GUTTER : 0);
 
   const layers = Array.from(byLayer.keys()).sort((a, b) => a - b);
   for (const layer of layers) {
@@ -88,7 +114,7 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
       layerNodes.length * NODE_WIDTH +
       Math.max(0, layerNodes.length - 1) * H_GAP;
     maxWidth = Math.max(maxWidth, rowWidth);
-    const startX = PAD + Math.max(0, (maxWidth - rowWidth) / 2);
+    const startX = horizontalPad + Math.max(0, (maxWidth - rowWidth) / 2);
     layerNodes.forEach((node, index) => {
       positions.set(node.id, {
         x: startX + index * (NODE_WIDTH + H_GAP),
@@ -104,7 +130,7 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
     const rowWidth =
       layerNodes.length * NODE_WIDTH +
       Math.max(0, layerNodes.length - 1) * H_GAP;
-    const startX = PAD + Math.max(0, (maxWidth - rowWidth) / 2);
+    const startX = horizontalPad + Math.max(0, (maxWidth - rowWidth) / 2);
     layerNodes.forEach((node, index) => {
       const prev = positions.get(node.id);
       if (!prev) return;
@@ -118,37 +144,91 @@ function layoutLayers(nodes: FlowGraphNode[], edges: { from: string; to: string 
   const maxLayer = layers.length > 0 ? Math.max(...layers) : 0;
   return {
     positions,
-    width: maxWidth + PAD * 2,
+    width: maxWidth + horizontalPad * 2,
     height: PAD * 2 + (maxLayer + 1) * NODE_HEIGHT + maxLayer * V_GAP,
   };
 }
 
 function edgePath(
-  from: { x: number; y: number },
-  to: { x: number; y: number }
-): string {
+  from: { x: number; y: number; layer: number },
+  to: { x: number; y: number; layer: number },
+  canvasWidth: number
+): { path: string; route: 'direct' | 'outer' } {
   const x1 = from.x + NODE_WIDTH / 2;
   const y1 = from.y + NODE_HEIGHT;
   const x2 = to.x + NODE_WIDTH / 2;
   const y2 = to.y;
+  if (to.layer - from.layer > 1) {
+    const channelX = x1 <= x2 ? PAD : canvasWidth - PAD;
+    const bend = Math.max(28, V_GAP * 0.65);
+    const approachY = y2 - bend;
+    return {
+      path: `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${channelX} ${y1 + bend}, ${channelX} ${approachY} C ${channelX} ${y2 - bend / 2}, ${x2} ${y2 - bend / 2}, ${x2} ${y2}`,
+      route: 'outer',
+    };
+  }
   const midY = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+  return {
+    path: `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`,
+    route: 'direct',
+  };
+}
+
+function mergeBranchRoute(
+  from: { x: number; y: number; layer: number },
+  target: { layer: number },
+  junction: { x: number; y: number },
+  canvasWidth: number
+): { path: string; route: 'direct' | 'outer' } {
+  const x1 = from.x + NODE_WIDTH / 2;
+  const y1 = from.y + NODE_HEIGHT;
+  if (target.layer - from.layer > 1) {
+    const channelX = x1 <= junction.x ? PAD : canvasWidth - PAD;
+    const bend = Math.max(28, V_GAP * 0.65);
+    const approachY = junction.y - bend;
+    return {
+      path: `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${channelX} ${y1 + bend}, ${channelX} ${approachY} C ${channelX} ${junction.y - bend / 2}, ${junction.x} ${junction.y - bend / 2}, ${junction.x} ${junction.y}`,
+      route: 'outer',
+    };
+  }
+  const midY = (y1 + junction.y) / 2;
+  return {
+    path: `M ${x1} ${y1} C ${x1} ${midY}, ${junction.x} ${midY}, ${junction.x} ${junction.y}`,
+    route: 'direct',
+  };
 }
 
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
+  previewNodeIds = [],
   onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
+  const previewNodes = useMemo(() => new Set(previewNodeIds), [previewNodeIds]);
   const layout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
     [graph]
   );
+  const ordinaryMergeEdges = useMemo(() => {
+    const incoming = new Map<string, FlowGraph['edges']>();
+    for (const edge of graph.edges) {
+      if (edge.optionText) continue;
+      const edges = incoming.get(edge.to) ?? [];
+      edges.push(edge);
+      incoming.set(edge.to, edges);
+    }
+    return new Map([...incoming].filter(([, edges]) => edges.length > 1));
+  }, [graph.edges]);
   return (
     <aside className={styles.flowPanel} aria-label="Flow chart">
       <div className={styles.flowHeader}>
-        <h2 className={styles.flowTitle}>Flow chart</h2>
+        <div className={styles.flowTitleGroup}>
+          <h2 className={styles.flowTitle}>Flow chart</h2>
+          {previewNodes.size > 0 ? (
+            <span className={styles.flowPreviewBadge}>Preview</span>
+          ) : null}
+        </div>
         {onClose ? (
           <button
             type="button"
@@ -175,15 +255,23 @@ export function FlowChartPanel({
             aria-label="Script flow chart"
           >
             {graph.edges.map((edge, index) => {
+              if (!edge.optionText && ordinaryMergeEdges.has(edge.to)) return null;
               const from = layout.positions.get(edge.from);
               const to = layout.positions.get(edge.to);
               if (!from || !to) return null;
-              const path = edgePath(from, to);
+              const routed = edgePath(from, to, layout.width);
+              const previewEdge = previewNodes.has(edge.from) || previewNodes.has(edge.to);
               const labelX = (from.x + to.x) / 2 + NODE_WIDTH / 2;
               const labelY = (from.y + NODE_HEIGHT + to.y) / 2 - 5;
               return (
                 <g key={`${edge.from}-${edge.to}-${index}`}>
-                  <path d={path} className={styles.flowEdge} fill="none" />
+                  <path
+                    d={routed.path}
+                    data-flow-route={routed.route}
+                    data-flow-preview-edge={previewEdge || undefined}
+                    className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
+                    fill="none"
+                  />
                   {edge.optionText ? (
                     <text
                       x={labelX}
@@ -198,19 +286,71 @@ export function FlowChartPanel({
                 </g>
               );
             })}
+            {[...ordinaryMergeEdges].map(([targetId, edges]) => {
+              const target = layout.positions.get(targetId);
+              if (!target) return null;
+              const junction = {
+                x: target.x + NODE_WIDTH / 2,
+                y: target.y - V_GAP / 2,
+              };
+              return (
+                <g key={`merge-${targetId}`} data-flow-merge-target={targetId}>
+                  {edges.map((edge, index) => {
+                    const from = layout.positions.get(edge.from);
+                    if (!from) return null;
+                    const routed = mergeBranchRoute(
+                      from,
+                      target,
+                      junction,
+                      layout.width
+                    );
+                    const previewEdge = previewNodes.has(edge.from) || previewNodes.has(targetId);
+                    return (
+                      <path
+                        key={`${edge.from}-${index}`}
+                        data-flow-merge-branch-from={edge.from}
+                        data-flow-route={routed.route}
+                        data-flow-preview-edge={previewEdge || undefined}
+                        d={routed.path}
+                        className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
+                        fill="none"
+                      />
+                    );
+                  })}
+                  <circle
+                    cx={junction.x}
+                    cy={junction.y}
+                    r={2.5}
+                    className={styles.flowMergeJunction}
+                  />
+                  <path
+                    d={`M ${junction.x} ${junction.y} L ${junction.x} ${target.y}`}
+                    data-flow-preview-edge={previewNodes.has(targetId) || undefined}
+                    className={previewNodes.has(targetId) ? styles.flowEdgePreview : styles.flowEdge}
+                    fill="none"
+                    data-flow-merge-trunk={targetId}
+                  />
+                </g>
+              );
+            })}
             {graph.nodes.map((node) => {
               const pos = layout.positions.get(node.id);
               if (!pos) return null;
               const selected = selectedPlotNodeId === node.id;
+              const preview = previewNodes.has(node.id);
               return (
                 <g
                   key={node.id}
+                  data-flow-node-id={node.id}
+                  data-flow-layer={pos.layer}
+                  data-flow-preview-node={preview || undefined}
                   transform={`translate(${pos.x}, ${pos.y})`}
                   className={styles.flowNode}
-                  onClick={() => onSelectPlotNode(node.id)}
-                  role="button"
-                  tabIndex={0}
+                  onClick={preview ? undefined : () => onSelectPlotNode(node.id)}
+                  role={preview ? undefined : 'button'}
+                  tabIndex={preview ? undefined : 0}
                   onKeyDown={(event) => {
+                    if (preview) return;
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       onSelectPlotNode(node.id);
@@ -223,7 +363,9 @@ export function FlowChartPanel({
                     rx={8}
                     ry={8}
                     className={
-                      selected ? styles.flowNodeSelected : styles.flowNodeRect
+                      preview
+                        ? styles.flowNodePreview
+                        : selected ? styles.flowNodeSelected : styles.flowNodeRect
                     }
                   />
                   <text

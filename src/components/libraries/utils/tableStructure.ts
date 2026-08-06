@@ -1,47 +1,10 @@
-import type { PropertyConfig, SectionConfig } from '@/lib/types/libraryAssets';
+import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import type { ScriptColumns } from '../components/VisualNovelScriptView';
 
-export type PropertyGroup = {
-  section: SectionConfig;
-  properties: PropertyConfig[];
-};
-
-export function buildPropertyGroups(
-  sections: SectionConfig[],
-  properties: PropertyConfig[]
-): {
-  groups: PropertyGroup[];
-  orderedProperties: PropertyConfig[];
-} {
-  const byId = new Map<string, SectionConfig>();
-  sections.forEach((section) => byId.set(section.id, section));
-
-  const groupMap = new Map<string, PropertyGroup>();
-
-  for (const property of properties) {
-    const section = byId.get(property.sectionId);
-    if (!section) continue;
-
-    let group = groupMap.get(section.id);
-    if (!group) {
-      group = { section, properties: [] };
-      groupMap.set(section.id, group);
-    }
-    group.properties.push(property);
-  }
-
-  const groups = Array.from(groupMap.values()).sort(
-    (a, b) => a.section.orderIndex - b.section.orderIndex
+export function orderProperties<T extends PropertyConfig>(properties: T[]): T[] {
+  return [...properties].sort(
+    (a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id)
   );
-
-  groups.forEach((group) => {
-    group.properties.sort((a, b) => a.orderIndex - b.orderIndex);
-  });
-
-  return {
-    groups,
-    orderedProperties: groups.flatMap((group) => group.properties),
-  };
 }
 
 export function detectScriptColumns(

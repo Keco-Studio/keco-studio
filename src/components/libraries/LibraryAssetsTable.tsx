@@ -5,11 +5,9 @@ import {
   AssetRow,
   CreateLibraryAssetOptions,
   PropertyConfig,
-  SectionConfig,
 } from '@/lib/types/libraryAssets';
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
-import { DeleteConfirmDialog } from '@/components/layout/components/DeleteConfirmDialog';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { type MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
@@ -23,7 +21,6 @@ import { useRowSync } from './hooks/useRowSync';
 import { useRowStore } from '@/lib/contexts/RowStoreContext';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { parseReferencedAssetSearch } from '@/components/documents/useReferencedDocumentBlock';
-import { persistActiveSection } from '@/lib/agent/page-context';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
@@ -38,8 +35,6 @@ import { useCloseOnDocumentClick } from './hooks/useCloseOnDocumentClick';
 import { useOptimisticUpdates } from './hooks/useOptimisticUpdates';
 import { useMediaFileUpdate } from './hooks/useMediaFileUpdate';
 import { useContextMenu } from './hooks/useContextMenu';
-import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
-import { useLibrarySectionEditing } from './hooks/useLibrarySectionEditing';
 import { useLibraryTableFindReplaceWiring } from './hooks/useLibraryTableFindReplaceWiring';
 import { useLibraryAssetDetailDrawerUpdate } from './hooks/useLibraryAssetDetailDrawerUpdate';
 import { TableToast } from './components/TableToast';
@@ -61,6 +56,7 @@ import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
 import { getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
 import { getColumnWidthClassKey } from './utils/tableStructure';
+import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
 import { resolveLibraryViewMode } from './libraryViewMode';
 
 export type LibraryAssetsTableProps = {
@@ -71,7 +67,6 @@ export type LibraryAssetsTableProps = {
     /** script → dialogue view only; table/other → grid only. */
     documentExportType?: 'table' | 'script' | null;
   } | null;
-  sections: SectionConfig[];
   properties: PropertyConfig[];
   rows: AssetRow[];
   onSaveAsset?: (
@@ -85,14 +80,8 @@ export type LibraryAssetsTableProps = {
   onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
-  /** Optional callback for persisting a section rename from a double-clicked tab. */
-  onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
-  /** Optional callback for the add-section button; may return the new section id. */
-  onAddSection?: () => Promise<string | void>;
-  /** Optional callback for deleting a section from the section tab context menu. */
-  onDeleteSection?: (sectionId: string) => Promise<void>;
   /** Optional callback for in-table add-column submissions; otherwise routes to predefine. */
-  onAddProperty?: (sectionId: string, sectionName: string, payload: AddColumnFormPayload) => Promise<void>;
+  onAddProperty?: (payload: AddColumnFormPayload) => Promise<void>;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -118,7 +107,6 @@ export type LibraryAssetsTableProps = {
 
 export function LibraryAssetsTable({
   library,
-  sections,
   properties,
   rows,
   onSaveAsset,
@@ -127,9 +115,6 @@ export function LibraryAssetsTable({
   onUpdateAssetsWithBatchBroadcast,
   onDeleteAsset,
   onDeleteAssets,
-  onUpdateSection,
-  onAddSection,
-  onDeleteSection,
   onAddProperty,
   currentUser = null,
   enableRealtime = false,
@@ -188,11 +173,6 @@ export function LibraryAssetsTable({
   // Toast message state (unified: success / error / default, bottom)
   const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' | 'default' } | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState<{
-    sectionId: string;
-    sectionName: string;
-    loading: boolean;
-  } | null>(null);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
 
   // Clear contents confirmation modal state
@@ -327,7 +307,6 @@ export function LibraryAssetsTable({
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  const focusSectionIdFromQuery = searchParams.get('focusSectionId');
   const focusAssetIdFromQuery = searchParams.get('focusAssetId');
   const focusFieldIdFromQuery = searchParams.get('focusFieldId');
   const referencedAssetIdFromQuery = parseReferencedAssetSearch(
@@ -348,7 +327,6 @@ export function LibraryAssetsTable({
     avatarRefs,
     setAssetCardRef,
   } = useAssetHover(supabase);
-  const hasSections = sections.length > 0;
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
 
   // Asset detail drawer (right side panel)
@@ -481,12 +459,8 @@ export function LibraryAssetsTable({
     setTypeValidationError,
   });
 
-  const {
-    groups,
-    orderedProperties,
-    scriptColumns,
-    hasScriptColumns,
-  } = useLibraryTableStructure(sections, properties);
+  const { orderedProperties, scriptColumns, hasScriptColumns } =
+    useLibraryTableStructure(properties);
   // The current library metadata is authoritative; route reuse must not retain
   // the previously viewed derived library's mode.
   const scriptViewMode = resolveLibraryViewMode(library?.documentExportType);
@@ -504,103 +478,7 @@ export function LibraryAssetsTable({
     }
   }, [detailDrawerRowId, displayRows]);
 
-  // Section tab: which section's columns to show (default first section)
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-  const [preferredSectionNameAfterRename, setPreferredSectionNameAfterRename] = useState<string | null>(null);
-  const pendingNewSectionIdRef = useRef<string | null>(null);
-  const sectionStateStorageKey = useMemo(
-    () => `keco-active-section:${library?.id ?? 'unknown'}`,
-    [library?.id]
-  );
-  const sectionRenameHintStorageKey = useMemo(
-    () => `keco-active-section-rename-hint:${library?.id ?? 'unknown'}`,
-    [library?.id]
-  );
-  const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
-
-  // Double-click the section TAB to enter editing: The section id currently being edited and the content of the input box
-  const {
-    editingSectionId,
-    editingSectionName,
-    sectionInputRef,
-    setEditingSectionName,
-    handleSectionEditStart,
-    handleSectionEditEnd,
-    handleSelectSection,
-    handleAddSectionFromTabs,
-  } = useLibrarySectionEditing({
-    onAddSection,
-    onUpdateSection,
-    sectionStateStorageKey,
-    sectionRenameHintStorageKey,
-    message,
-    setActiveSectionId,
-    setPreferredSectionNameAfterRename,
-    setToastMessage,
-    pendingNewSectionIdRef,
-  });
-
-  const canManageSections =
-    (userRole === 'admin' || userRole === 'editor') &&
-    (!!onUpdateSection || !!onDeleteSection || !!onAddSection);
-
-  const handleRequestDeleteSection = useCallback(
-    (sectionId: string, sectionName: string) => {
-      if (!onDeleteSection || groups.length <= 1) return;
-      setSectionDeleteConfirm({ sectionId, sectionName, loading: false });
-    },
-    [groups.length, onDeleteSection]
-  );
-
-  const handleConfirmDeleteSection = useCallback(async () => {
-    if (!sectionDeleteConfirm || !onDeleteSection) return;
-    setSectionDeleteConfirm((prev) => (prev ? { ...prev, loading: true } : prev));
-    try {
-      await onDeleteSection(sectionDeleteConfirm.sectionId);
-      if (activeSectionId === sectionDeleteConfirm.sectionId) {
-        const remaining = groups.find((g) => g.section.id !== sectionDeleteConfirm.sectionId);
-        setActiveSectionId(remaining?.section.id ?? null);
-      }
-      setToastMessage({
-        message: `Section "${sectionDeleteConfirm.sectionName}" deleted`,
-        type: 'success',
-      });
-      setTimeout(() => setToastMessage(null), 2000);
-      setSectionDeleteConfirm(null);
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Failed to delete section');
-      setSectionDeleteConfirm((prev) => (prev ? { ...prev, loading: false } : prev));
-    }
-  }, [
-    activeSectionId,
-    groups,
-    message,
-    onDeleteSection,
-    sectionDeleteConfirm,
-    setActiveSectionId,
-  ]);
-
-  const activeGroup = useMemo(
-    () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
-    [groups, effectiveActiveSectionId]
-  );
-
-  // Broadcast active section to ChatPanel / agent context.
-  useEffect(() => {
-    if (!library?.id || !activeGroup) return;
-    persistActiveSection(library.id, activeGroup.section.id, activeGroup.section.name);
-    window.dispatchEvent(
-      new CustomEvent('library:active-section', {
-        detail: {
-          libraryId: library.id,
-          sectionId: activeGroup.section.id,
-          sectionName: activeGroup.section.name,
-        },
-      })
-    );
-  }, [library?.id, activeGroup?.section.id, activeGroup?.section.name]);
-
-  const activeProperties = activeGroup ? activeGroup.properties : orderedProperties;
+  const activeProperties = orderedProperties;
   const resizeColumnKeys = useMemo(
     () => [NUMBER_COLUMN_KEY, ...activeProperties.map((property) => property.id)],
     [activeProperties],
@@ -620,16 +498,11 @@ export function LibraryAssetsTable({
     scrollTargetCell,
     handleTableFindHighlightCells,
     handleTableFindClearHighlight,
-    handleTableFindFocusSection,
     handleTableFindScrollToCell,
   } = useLibraryTableFindReplaceWiring({
     libraryId: library?.id,
-    groups,
-    sectionStateStorageKey,
-    focusSectionIdFromQuery,
     focusAssetIdFromQuery,
     focusFieldIdFromQuery,
-    setActiveSectionId,
   });
 
   const handlePredefineClick = () => {
@@ -858,7 +731,6 @@ export function LibraryAssetsTable({
       const selectionContext = buildAgentSelectionContext({
         libraryId: library?.id ?? '',
         libraryName: library?.name,
-        sectionName: activeGroup?.section.name,
         rows: getAllRowsForCellSelection(),
         visibleProperties: activeProperties,
         selectedCells,
@@ -878,7 +750,6 @@ export function LibraryAssetsTable({
     window.addEventListener('keydown', handleOpenAgentWithSelection);
     return () => window.removeEventListener('keydown', handleOpenAgentWithSelection);
   }, [
-    activeGroup?.section.name,
     activeProperties,
     getAllRowsForCellSelection,
     library?.id,
@@ -1052,14 +923,6 @@ export function LibraryAssetsTable({
         }`}
       >
         <LibraryTableTopBar
-          hasSections={hasSections}
-          groups={groups}
-          activeSectionId={effectiveActiveSectionId}
-          editingSectionId={editingSectionId}
-          editingSectionName={editingSectionName}
-          sectionInputRef={sectionInputRef}
-          canAddSection={!!onAddSection && canManageSections}
-          canManageSections={canManageSections}
           hasScriptColumns={hasScriptColumns}
           scriptViewMode={scriptViewMode}
           showScriptViewToggle={false}
@@ -1068,16 +931,9 @@ export function LibraryAssetsTable({
           properties={orderedProperties}
           canReplace={userRole === 'admin' || userRole === 'editor'}
           supabase={supabase}
-          onSelectSection={handleSelectSection}
-          onStartSectionEdit={handleSectionEditStart}
-          onChangeSectionName={setEditingSectionName}
-          onFinishSectionEdit={handleSectionEditEnd}
-          onAddSection={handleAddSectionFromTabs}
-          onRequestDeleteSection={onDeleteSection ? handleRequestDeleteSection : undefined}
           onChangeScriptViewMode={() => undefined}
           onHighlightCells={handleTableFindHighlightCells}
           onClearHighlight={handleTableFindClearHighlight}
-          onFocusSection={hasSections ? handleTableFindFocusSection : undefined}
           scrollToCell={handleTableFindScrollToCell}
         />
         <div
@@ -1108,12 +964,11 @@ export function LibraryAssetsTable({
               )}
             </colgroup>
             <TableHeader
-              groups={hasSections && activeGroup ? [activeGroup] : groups}
+              properties={activeProperties}
               allRowsSelected={headerAllRowsSelected}
               hasSomeRowsSelected={headerHasSomeRowsSelected}
               onToggleSelectAll={handleToggleSelectAllRows}
               existingProperties={properties}
-              showSectionRow={!hasSections}
               showAddColumn={userRole === 'admin' || userRole === 'editor'}
               onAddColumnClick={handleAddColumnClick}
               addColumnButtonRef={addColumnButtonRef}
@@ -1232,16 +1087,14 @@ export function LibraryAssetsTable({
       )}
 
       {/* Add Column modal - floating over table */}
-      {onAddProperty && activeGroup && (
+      {onAddProperty && (
         <AddColumnModal
           open={addColumnModalOpen}
           onClose={() => setAddColumnModalOpen(false)}
-          sectionId={activeGroup.section.id}
-          sectionName={activeGroup.section.name}
           anchorRef={addColumnButtonRef}
           existingProperties={properties}
           onSubmit={async (payload) => {
-            await onAddProperty(activeGroup.section.id, activeGroup.section.name, payload);
+            await onAddProperty(payload);
           }}
         />
       )}
@@ -1334,19 +1187,6 @@ export function LibraryAssetsTable({
         onCancel={() => {
           setDeleteConfirmVisible(false);
           setDeletingAssetId(null);
-        }}
-      />
-      <DeleteConfirmDialog
-        open={!!sectionDeleteConfirm}
-        title="Confirm deletion"
-        content="Delete this section?"
-        confirmLoading={sectionDeleteConfirm?.loading}
-        onConfirm={() => {
-          void handleConfirmDeleteSection();
-        }}
-        onCancel={() => {
-          if (sectionDeleteConfirm?.loading) return;
-          setSectionDeleteConfirm(null);
         }}
       />
       <ClearContentsModal

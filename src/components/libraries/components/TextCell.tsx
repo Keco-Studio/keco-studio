@@ -15,7 +15,7 @@ export interface TextCellProps {
   actualRowIndex: number;
   display: string | null;
   isNameField: boolean;
-  /** First column in the current section, used to show the detail button. */
+  /** First visible column, used to show the detail button. */
   isFirstColumn?: boolean;
   // Cell editing state
   editingCell: { rowId: string; propertyKey: string } | null;

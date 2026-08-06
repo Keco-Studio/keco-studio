@@ -24,27 +24,44 @@ describe('native simulation workbench presentation', () => {
   it('uses accessible button navigation in the sidebar', () => {
     const source = read('SimulationSidebar.tsx');
     expect(source).toContain('Keco Siumlator');
-    expect(source).toContain('Battle &amp; numbers sandbox for game designers.');
+    expect(source).toContain('Battle &amp; numbers sandbox · for game designers');
+    expect(source).toContain('projectButton');
+    expect(source).toContain('projectWrap');
+    expect(source).toContain('sidebarHidden');
+    expect(source).not.toContain('collapseButton');
+    expect(source).not.toContain('sidebarExpand');
+    expect(source).not.toContain('onToggleCollapsed');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('role="menu"');
     expect(source).toContain('role="menuitem"');
     expect(source).toContain('aria-current');
     expect(source).toContain('aria-expanded');
-    expect(source).toMatch(/<button[^>]+aria-label=.*[Cc]ollapse/s);
 
     const css = read('SimulationWorkbench.module.css');
     expect(css).toMatch(/\.sidebar\s*\{[^}]*width:\s*228px/s);
     expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--simulation-surface-glass\)/s);
-    expect(css).toMatch(/\.sidebarCollapsed\s*\{[^}]*width:\s*28px/s);
+    expect(css).toMatch(/\.sidebarHidden\s*\{/);
+    expect(css).not.toMatch(/\.collapseButton\s*\{/);
+    expect(css).not.toMatch(/\.sidebarExpand\s*\{/);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1\.5px solid/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*8px/s);
   });
 
-  it('exposes the workflow and a decorative Studio-native search icon', () => {
+  it('keeps workflow navigation without duplicate global controls', () => {
     const source = read('SimulationHeader.tsx');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('aria-current');
-    expect(source).toContain('aria-hidden="true"');
-    expect(source).not.toContain('<svg');
-    expect(source).toContain('Search libraries, characters, skills');
+    expect(source).not.toContain('Search libraries, characters, skills');
+    expect(source).not.toContain('Simulator profile');
+    expect(source).not.toContain('styles.headerActions');
+    expect(source).not.toContain('styles.search');
+
+    const css = read('SimulationWorkbench.module.css');
+    expect(css).not.toMatch(/\.headerActions\s*\{/);
+    expect(css).not.toMatch(/\.searchIcon\s*\{/);
+    expect(css).not.toMatch(/\.headerAvatar\s*\{/);
+    expect(css).not.toMatch(/\.search\s*\{/);
+    expect(css).not.toMatch(/\.search\s*>\s*span:last-child\s*\{/);
   });
 
   it('uses semantic status and battle health output', () => {
@@ -80,6 +97,7 @@ describe('native simulation workbench presentation', () => {
     expect(characters).toContain("label: 'Team A · Yours'");
     expect(characters).toContain("label: 'Team B · Enemy'");
     expect(characters).toContain('Studio snapshot');
+    expect(characters).toMatch(/maxWidth:\s*1000,\s*width:\s*'100%',\s*margin:\s*'0 auto'/);
 
     const skills = read('SkillsScreen.tsx');
     expect(skills).toContain('Configure skills');
@@ -133,7 +151,6 @@ describe('native simulation workbench presentation', () => {
     }
     expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.search\s*\{[^}]*display:\s*none/);
     expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.workflowNav\s*\{[^}]*overflow-x:\s*auto/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)[\s\S]*\.sidebar\s*\{[^}]*(?:position:\s*absolute|position:\s*fixed)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)[\s\S]*\.battleGrid\s*\{[^}]*grid-template-columns:\s*1fr/);

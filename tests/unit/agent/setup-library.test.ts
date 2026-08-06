@@ -1,29 +1,9 @@
-import { groupFieldsBySection, type SetupFieldInput } from '../../../src/lib/agent/workflows/setup-library';
+import { setupLibrary } from '@/lib/agent/workflows/setup-library';
 
-describe('groupFieldsBySection', () => {
-  it('groups fields by their section preserving order', () => {
-    const fields: SetupFieldInput[] = [
-      { label: 'ID', dataType: 'string', section: 'section1' },
-      { label: 'HP', dataType: 'int', section: 'stats' },
-      { label: 'Name', dataType: 'string', section: 'section1' },
-    ];
-
-    const grouped = groupFieldsBySection(fields);
-
-    expect(Object.keys(grouped)).toEqual(['section1', 'stats']);
-    expect(grouped.section1.map((f) => f.label)).toEqual(['ID', 'Name']);
-    expect(grouped.stats.map((f) => f.label)).toEqual(['HP']);
-  });
-
-  it('defaults missing section to "section1"', () => {
-    const fields: SetupFieldInput[] = [
-      { label: 'ID', dataType: 'string' },
-      { label: 'Name', dataType: 'string', section: '  ' },
-    ];
-
-    const grouped = groupFieldsBySection(fields);
-
-    expect(Object.keys(grouped)).toEqual(['section1']);
-    expect(grouped.section1.map((f) => f.label)).toEqual(['ID', 'Name']);
+describe('setup_library flat field contract', () => {
+  it('does not advertise section grouping', () => {
+    const fields = (setupLibrary.parameters.properties as Record<string, any>).fields;
+    expect(fields.items.properties).not.toHaveProperty('section');
+    expect(setupLibrary.description).not.toMatch(/\bsections?\b|\btabs?\b/i);
   });
 });

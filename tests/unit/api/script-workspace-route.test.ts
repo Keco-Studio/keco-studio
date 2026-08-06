@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 const listScriptWorkspaceDocuments = jest.fn();
 const upsertScriptWorkspaceDocument = jest.fn();
 const deleteScriptWorkspaceDocument = jest.fn();
+const isScriptWorkspaceDocument = jest.fn();
 const getUserProjectRole = jest.fn();
 
 let authenticatedUser: { id: string } | null = null;
@@ -37,6 +38,8 @@ jest.mock('@/lib/script-system/scriptWorkspaceService', () => ({
     upsertScriptWorkspaceDocument(...args),
   deleteScriptWorkspaceDocument: (...args: unknown[]) =>
     deleteScriptWorkspaceDocument(...args),
+  isScriptWorkspaceDocument: (...args: unknown[]) =>
+    isScriptWorkspaceDocument(...args),
 }));
 jest.mock('@/lib/auth/route-auth', () => ({
   withAuth: (...args: unknown[]) => withAuth(...args),
@@ -49,7 +52,7 @@ jest.mock('@/lib/services/authorizationService', () => ({
 }));
 
 import { GET, POST } from '@/app/api/script-workspace/[projectId]/route';
-import { DELETE } from '@/app/api/script-workspace/[projectId]/[documentId]/route';
+import { DELETE, GET as GET_DOCUMENT } from '@/app/api/script-workspace/[projectId]/[documentId]/route';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const DOCUMENT_ID = '33333333-3333-4333-8333-333333333333';
@@ -59,6 +62,7 @@ const params = { params: Promise.resolve({ projectId: PROJECT_ID }) };
 const deleteParams = {
   params: Promise.resolve({ projectId: PROJECT_ID, documentId: DOCUMENT_ID }),
 };
+const documentParams = deleteParams;
 
 function documentsClient(docs: Array<{ id: string; name: string; folder_id: string | null }>) {
   return {
@@ -78,6 +82,7 @@ describe('script-workspace API routes', () => {
     listScriptWorkspaceDocuments.mockReset();
     upsertScriptWorkspaceDocument.mockReset();
     deleteScriptWorkspaceDocument.mockReset();
+    isScriptWorkspaceDocument.mockReset();
     getUserProjectRole.mockReset();
     authenticatedUser = { id: USER_ID };
     mockSupabase = documentsClient([]);
@@ -85,6 +90,7 @@ describe('script-workspace API routes', () => {
     listScriptWorkspaceDocuments.mockResolvedValue([]);
     upsertScriptWorkspaceDocument.mockResolvedValue(undefined);
     deleteScriptWorkspaceDocument.mockResolvedValue(undefined);
+    isScriptWorkspaceDocument.mockResolvedValue(true);
   });
 
   describe('GET /api/script-workspace/:projectId', () => {
@@ -219,7 +225,52 @@ describe('script-workspace API routes', () => {
     });
   });
 
+  describe('GET /api/script-workspace/:projectId/:documentId', () => {
+    function getDocumentRequest() {
+      return GET_DOCUMENT(
+        new NextRequest(
+          `https://example.test/api/script-workspace/${PROJECT_ID}/${DOCUMENT_ID}`
+        ),
+        documentParams
+      );
+    }
+
+    it('returns 401 when unauthenticated', async () => {
+      authenticatedUser = null;
+      expect((await getDocumentRequest()).status).toBe(401);
+    });
+
+    it('returns targeted membership without listing the workspace', async () => {
+      const response = await getDocumentRequest();
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ member: true });
+      expect(isScriptWorkspaceDocument).toHaveBeenCalledWith(mockSupabase, {
+        projectId: PROJECT_ID,
+        documentId: DOCUMENT_ID,
+      });
+      expect(listScriptWorkspaceDocuments).not.toHaveBeenCalled();
+    });
+
+    it('returns member false when the document is not in the workspace', async () => {
+      isScriptWorkspaceDocument.mockResolvedValue(false);
+
+      const response = await getDocumentRequest();
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ member: false });
+    });
+
+    it('returns 403 when the user lacks project access', async () => {
+      const { AuthorizationError } = await import('@/lib/services/authorizationService');
+      getUserProjectRole.mockRejectedValue(new AuthorizationError('Forbidden'));
+
+      expect((await getDocumentRequest()).status).toBe(403);
+      expect(isScriptWorkspaceDocument).not.toHaveBeenCalled();
+    });
+  });
+
   it('wraps handlers with withAuth', () => {
-    expect(withAuth).toHaveBeenCalledTimes(3);
+    expect(withAuth).toHaveBeenCalledTimes(4);
   });
 });

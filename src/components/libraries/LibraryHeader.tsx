@@ -10,14 +10,17 @@
 
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Avatar, Tooltip, Badge } from 'antd';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Avatar, Tooltip, Dropdown } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
-import { showSuccessToast } from '@/lib/utils/toast';
+import { prependLocalUserWhenCollaborating } from '@/components/collaboration/collaborationAvatarDisplay';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { useLibraryDataOptional } from '@/lib/contexts/LibraryDataContext';
+import { useSupabase } from '@/lib/SupabaseContext';
 import styles from './LibraryHeader.module.css';
 import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
@@ -54,10 +57,62 @@ export function LibraryHeader({
   isVersionControlOpen = false,
   onVersionControlToggle,
 }: LibraryHeaderProps) {
+  const supabase = useSupabase();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const membersPanelRef = useRef<HTMLDivElement>(null);
   const hasInitializedPresence = useRef(false);
+
+  const libraryExportItems = useMemo(
+    () => [
+      { key: 'xlsx', label: 'Download XLSX' },
+      { key: 'json', label: 'Download JSON' },
+    ],
+    []
+  );
+
+  const handleLibraryExport = useCallback(
+    async ({ key }: { key: string }) => {
+      if (exportingFormat) return;
+      setExportingFormat(key);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('Please sign in before exporting');
+        }
+        const url = `/api/export?libraryId=${encodeURIComponent(libraryId)}&format=${key}`;
+        const res = await fetch(url, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || 'Export failed');
+        }
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition');
+        const match = disposition?.match(/filename="?([^";]+)"?/);
+        const fileName = match
+          ? match[1].trim()
+          : `export_${key === 'xlsx' ? 'table' : 'data'}.${key}`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      } catch (e) {
+        showErrorToast(e instanceof Error ? e.message : 'Export failed');
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [exportingFormat, libraryId, supabase]
+  );
 
   // Get role display text
   const getRoleText = (role: CollaboratorRole): string => {
@@ -86,24 +141,17 @@ export function LibraryHeader({
 
   // Sort presence users: current user first, then by last activity
   const sortedPresenceUsers = useMemo(() => {
-    let users = [...presenceSource];
-    
-    // Check if current user is in the list
-    const hasCurrentUser = users.some(u => u.userId === currentUserId);
-    
-    // Always add current user to ensure they see themselves
-    if (!hasCurrentUser) {
-      users.push({
-        userId: currentUserId,
-        userName: currentUserName,
-        userEmail: currentUserEmail,
-        avatarColor: currentUserAvatarColor,
-        activeCell: { assetId: null, propertyKey: '__viewing_library__' },
-        cursorPosition: null,
-        lastActivity: new Date().toISOString(),
-        connectionStatus: 'online' as const,
-      });
-    }
+    const remoteUsers = presenceSource.filter((user) => user.userId !== currentUserId);
+    const users = prependLocalUserWhenCollaborating(remoteUsers, {
+      userId: currentUserId,
+      userName: currentUserName,
+      userEmail: currentUserEmail,
+      avatarColor: currentUserAvatarColor,
+      activeCell: { assetId: null, propertyKey: '__viewing_library__' },
+      cursorPosition: null,
+      lastActivity: new Date().toISOString(),
+      connectionStatus: 'online' as const,
+    });
     
     return users.sort((a, b) => {
       // Current user always first
@@ -169,7 +217,7 @@ export function LibraryHeader({
 
       <div className={styles.rightSection}>
            {/* Viewing Members Indicator */}
-        <div className={styles.membersSection} ref={membersPanelRef}>
+            {sortedPresenceUsers.length > 0 && <div className={styles.membersSection} ref={membersPanelRef}>
           <div className={styles.membersAvatars}>
             {displayUsers.map((user, index) => (
               <Tooltip key={user.userId} title={user.userName} placement="bottom">
@@ -203,7 +251,7 @@ export function LibraryHeader({
                 </Avatar>
               </Tooltip>
             )}
-          </div>
+            </div>
           
           {/* Expand Collaborators Button */}
           <Tooltip title="View all members">
@@ -289,7 +337,7 @@ export function LibraryHeader({
               </div>
             );
           })()}
-        </div>
+        </div>}
         {/* Share Button */}
         <div className={styles.shareSection}>
           <button
@@ -303,6 +351,27 @@ export function LibraryHeader({
               Share
           </button>
         </div>
+
+        <Dropdown
+          menu={{
+            items: libraryExportItems,
+            onClick: ({ key }) => void handleLibraryExport({ key }),
+          }}
+          placement="bottomRight"
+          trigger={['click']}
+          disabled={Boolean(exportingFormat)}
+        >
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label="Export library"
+            data-testid="library-export"
+            title="Export library"
+            disabled={Boolean(exportingFormat)}
+          >
+            <DownloadOutlined aria-hidden="true" />
+          </button>
+        </Dropdown>
 
         {/* More Options: mount to body + fixed so tooltip does not extend scroll area */}
         {/* <Tooltip
@@ -355,4 +424,3 @@ export function LibraryHeader({
     </div>
   );
 }
-

@@ -13,7 +13,6 @@ export interface SystemPromptContext {
   currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
-  currentSectionName?: string;
   userRole: UserRole;
 }
 
@@ -23,7 +22,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 You help users manage their project data through tool calls. You can:
 - Query assets and script lines
 - Create, update, and delete assets
-- Add columns (fields) to a library section via add_field
+- Add columns (fields) to a library via add_field
 - Import narrative text through the audited Story IR pipeline
 
 RULES:
@@ -38,9 +37,8 @@ RULES:
 8. For create/update_asset, use semantic field names (e.g. "Type", "Tags") — the system resolves them to internal IDs.
 9. For import_script, use the currentFolderId from context. If it is empty, ask the user which folder to import into — do NOT guess.
 10. When CURRENT CONTEXT lists an active library, use that libraryName in tool calls by default. Do NOT ask which library unless the user names a different one or context shows (none).
-11. When CURRENT CONTEXT lists an active section, the user is viewing that section tab. Prefer fields from that section when creating assets.
-12. For create_asset, only ask for fields still missing (usually asset name and property values). Never re-ask for library when one is already in context. create_asset fills the first empty UI row when one exists (typically row 1); only appends when all rows have data.
-13. For add_field (new column), use active library and section from context by default. Only ask for missing label or dataType — never re-ask for library/section when already in context.
+11. For create_asset, only ask for fields still missing (usually asset name and property values). Never re-ask for library when one is already in context. create_asset fills the first empty UI row when one exists (typically row 1); only appends when all rows have data.
+12. For add_field (new column), use active library from context by default. Only ask for missing label or dataType — never re-ask for library when already in context.
 14. "Untitled" is a placeholder name for newly created empty rows. An asset is "empty" when it has no visible cell data (empty displayLabel / isEmpty=true in query_assets). Never treat name="Untitled" as meaningful data.
 15. WRITES NEED DATA: create_asset / update_asset / update_row persist a cell ONLY when propertyValues actually contains that field with a value. Empty propertyValues returns an error (not success). Omit propertyValues entirely only when creating a name-only skeleton row. The create_asset "name" parameter is auto-copied into the row's primary label column (e.g. Name, Rule Name, Item Name — or any column whose label ends with "Name") when that column is omitted. For enum columns, values MUST exactly match enumOptions — invalid values are rejected with WRITE_VALIDATION_FAILED and appear blank in the UI. On create_asset, all required columns must be filled (or covered by "name" for the primary label column).
 15a. SCHEMA BEFORE WRITE: Before filling a library that was NOT just created by setup_library in this conversation, call get_library_schema to fetch columns, required flags, enum legal values, reference targets, and a writeExample. setup_library already returns writeGuide — use that instead of calling get_library_schema again for the same table.
@@ -147,7 +145,26 @@ DOCUMENT ATTACHMENT ROUTING:
     not exist yet, create/edit it first, then call generate_from_document. Do not
     confuse this with [Document intent] tables / Export as tables design-document
     handoff, which still uses setup_library.
-31. STRUCTURE FRESHNESS: Prior tool results and chat memory about folders,
+31. STORY GRAPH EDITS: For structural changes to an existing document-derived
+    Script — create story nodes, add/redirect/remove choices, change jumps or
+    merges, or set endings — call read_story_graph before every story graph write,
+    then call propose_story_graph_edit using the stable labels from that latest
+    read. Do not use update_asset or update_row for multi-row graph changes. A
+    removed edge only disconnects its target; disconnected nodes are preserved
+    and reported as warnings, never claim they were deleted. To add a node before
+    the current entry, create_node with insertBeforeLabel and nextLabel set to the
+    old entry, then set_entry to the new stable label. Never assume an unanchored
+    create_node becomes the entry; it appends to the graph. Users identify visible
+    tree nodes by Plot title, not by internal Story labels. When a user names a Plot
+    title, call read_story_graph with the exact plotTitle: use selectedPlot.lastLabel
+    for "after" and selectedPlot.firstLabel for "before", then write with those stable
+    labels. For "after", create the node after selectedPlot.lastLabel and call set_next
+    from that lastLabel to the new node in the same edit; if inserting between Plot
+    groups, give the new node the old successor so the remaining story is preserved.
+    Every newly created node must be reachable from the story entry. If the title is
+    duplicated, ask the user to disambiguate using the returned candidates.
+    Never ask the user for an internal label such as Node104.
+32. STRUCTURE FRESHNESS: Prior tool results and chat memory about folders,
     libraries, documents, and derived children can be stale — the user may recreate
     or restore them in the UI outside this conversation. Never claim a project
     resource is missing, deleted, or unavailable unless list_project_structure or
@@ -164,6 +181,5 @@ CURRENT CONTEXT:
 - Current folder: ${ctx.currentFolderName ? `${ctx.currentFolderName} (${ctx.currentFolderId})` : ctx.currentFolderId ?? '(none)'}
 - Current document: ${ctx.currentDocumentName ? `${ctx.currentDocumentName} (id: ${ctx.currentDocumentId})` : ctx.currentDocumentId ? `(id: ${ctx.currentDocumentId})` : '(none)'}
 - Active library: ${ctx.currentLibraryName ? `${ctx.currentLibraryName}${ctx.currentLibraryId ? ` (id: ${ctx.currentLibraryId})` : ''}` : '(none — ask user which library)'}
-- Active section tab: ${ctx.currentSectionName ?? '(none)'}
 - User role: ${ctx.userRole}`;
 }

@@ -18,7 +18,7 @@ interface SetupLibraryPreview {
   libraryName: string;
   folderName?: string;
   description?: string;
-  sections: Record<string, PreviewField[]>;
+  fields: PreviewField[];
   totalFields: number;
 }
 
@@ -53,12 +53,10 @@ export function SetupLibraryPreviewCard({ confirmation, disabled, onDecision }: 
     );
   }
 
-  const { libraryName, folderName, description, sections, totalFields, resolved } = {
+  const { libraryName, folderName, description, fields, totalFields, resolved } = {
     ...preview,
     resolved: confirmation.resolved,
   } as SetupLibraryPreview & { resolved?: 'approved' | 'rejected' };
-
-  const sectionEntries = Object.entries(sections ?? {});
 
   return (
     <div className={styles.confirmCard}>
@@ -70,15 +68,10 @@ export function SetupLibraryPreviewCard({ confirmation, disabled, onDecision }: 
       {description ? <div className={styles.previewStats}>{description}</div> : null}
 
       <div className={styles.previewLines}>
-        {sectionEntries.map(([sectionName, fields]) => (
-          <div key={sectionName} className={styles.previewSection}>
-            <div className={styles.previewSectionTitle}>{sectionName}</div>
-            {fields.map((field, index) => (
-              <div key={`${sectionName}-${field.label}-${index}`} className={styles.previewLine}>
-                <strong>{field.label}</strong>
-                <span className={styles.previewFieldMeta}> — {formatFieldDetail(field)}</span>
-              </div>
-            ))}
+        {(fields ?? []).map((field, index) => (
+          <div key={`${field.label}-${index}`} className={styles.previewLine}>
+            <strong>{field.label}</strong>
+            <span className={styles.previewFieldMeta}> — {formatFieldDetail(field)}</span>
           </div>
         ))}
       </div>

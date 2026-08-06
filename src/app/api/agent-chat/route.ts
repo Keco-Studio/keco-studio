@@ -36,7 +36,6 @@ export const POST = withAuth(async function POST(
     currentFolderName?: string;
     currentLibraryId?: string;
     currentLibraryName?: string;
-    currentSectionName?: string;
     /** Default for newly created conversations (from user preference). */
     autoExecute?: unknown;
     documentExport?: unknown;
@@ -135,7 +134,6 @@ export const POST = withAuth(async function POST(
           currentFolderName: body.currentFolderName,
           currentLibraryId: body.currentLibraryId,
           currentLibraryName: body.currentLibraryName,
-          currentSectionName: body.currentSectionName,
         })
       : undefined;
 

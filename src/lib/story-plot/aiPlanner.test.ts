@@ -64,6 +64,16 @@ describe('AI story plot grouping', () => {
     expect(plan.nodes.some((plot) => plot.title === '\u4e1c\u4fa7\u5ba2\u623f')).toBe(false);
   });
 
+  it('rejects a grouping that hides an option target inside its decision node', () => {
+    expect(() => buildStoryPlotPlanFromGrouping(ancientHouseDocument(), {
+      nodes: [
+        { title: 'Everything', storyNodeIds: [
+          'Background', 'Suspense', 'Decision', 'East', 'SafeEnd', 'West', 'Memory', 'BondEnd', 'Teaser',
+        ] },
+      ],
+    })).toThrow(/decision|option|target/i);
+  });
+
   it.each([
     {
       nodes: [

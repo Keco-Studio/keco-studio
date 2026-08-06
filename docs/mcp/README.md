@@ -80,7 +80,7 @@ Fields added to existing tables must be optional because existing rows do not
 have a value for the new field. The tool rejects `required: true`, duplicate
 labels after trimming and case folding, invalid enum/reference definitions,
 and references to tables outside the selected project. It appends the field to
-the requested section, or to `section1` when no section is supplied.
+the table's single ordered field list.
 
 MCP table maintenance tools cover common correction and cleanup flows after a
 table exists:
