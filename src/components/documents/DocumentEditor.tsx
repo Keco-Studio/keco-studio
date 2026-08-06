@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { LoadingOutlined } from '@ant-design/icons';
-import { Avatar, Dropdown, Tooltip } from 'antd';
+import { Dropdown } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument, type DocumentRecord } from '@/lib/services/documentService';
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import { showErrorToast } from '@/lib/utils/toast';
+import { dismissToast, showErrorToast, showToast } from '@/lib/utils/toast';
 import {
   DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT,
+  DOCUMENT_DERIVED_IMPORT_UI_LABEL,
   clearDocumentDerivedImportProgress,
   getDocumentDerivedImportProgress,
   type DocumentDerivedImportProgress,
@@ -23,7 +23,10 @@ import {
 import { useDocumentCollaboration } from './useDocumentCollaboration';
 import { getDocumentVersionPreview } from '@/lib/documents/documentVersionService';
 import { DocumentVersionSidebar } from './DocumentVersionSidebar';
-import { getDocumentAvatarDisplay } from './documentCollaborationDisplay';
+import {
+  dispatchDocumentPresenceUpdate,
+  toDocumentPresenceUser,
+} from './documentPresenceEvents';
 import type {
   MDXEditorMethods,
   MdxDocumentEditorProps,
@@ -178,19 +181,50 @@ function DocumentEditorSession({
   }, [document.id, projectId]);
 
   useEffect(() => {
+    if (!derivedImportProgress) return;
+
     if (
-      !derivedImportProgress ||
-      (derivedImportProgress.phase !== 'success' && derivedImportProgress.phase !== 'error')
+      derivedImportProgress.phase === 'preparing' ||
+      derivedImportProgress.phase === 'running'
     ) {
+      showToast({
+        message: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
+        type: 'info',
+        duration: 0,
+        testId: 'document-derived-import-progress',
+      });
       return;
     }
-    const ms = derivedImportProgress.phase === 'success' ? 3500 : 8000;
-    const timeout = window.setTimeout(() => {
+
+    if (derivedImportProgress.phase === 'error') {
+      showToast({
+        message:
+          derivedImportProgress.error ||
+          derivedImportProgress.label ||
+          DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
+        type: 'error',
+        duration: 8000,
+        testId: 'document-derived-import-progress',
+      });
+      const timeout = window.setTimeout(() => {
+        clearDocumentDerivedImportProgress(projectId, document.id);
+        setDerivedImportProgress(null);
+      }, 8000);
+      return () => window.clearTimeout(timeout);
+    }
+
+    if (derivedImportProgress.phase === 'success') {
+      dismissToast();
       clearDocumentDerivedImportProgress(projectId, document.id);
       setDerivedImportProgress(null);
-    }, ms);
-    return () => window.clearTimeout(timeout);
+    }
   }, [derivedImportProgress, projectId, document.id]);
+
+  useEffect(() => {
+    return () => {
+      dismissToast();
+    };
+  }, [document.id]);
 
   const imageUploadHandler = useCallback(
     async (image: File): Promise<string> => {
@@ -255,14 +289,22 @@ function DocumentEditorSession({
   const editorKey = `${document.id}:${collaboration.token.epoch}:${
     collaboration.isLegacyView ? 'legacy' : 'collaborative'
   }`;
-  const documentAvatarDisplay = getDocumentAvatarDisplay(
-    {
-      id: permissions.userId,
-      name: permissions.userName,
-      color: collaboration.cursorColor,
-    },
-    collaboration.collaborators,
-  );
+
+  useEffect(() => {
+    const presenceUsers = collaboration.collaborators.map(toDocumentPresenceUser);
+    dispatchDocumentPresenceUpdate({
+      projectId,
+      documentId: document.id,
+      presenceUsers,
+    });
+    return () => {
+      dispatchDocumentPresenceUpdate({
+        projectId,
+        documentId: document.id,
+        presenceUsers: [],
+      });
+    };
+  }, [collaboration.collaborators, document.id, projectId]);
 
   useEffect(() => {
     const handleTopbarExport = (event: Event) => {
@@ -315,33 +357,6 @@ function DocumentEditorSession({
           />
           <header className={styles.stickyChrome}>
             <div className={styles.header}>
-              {documentAvatarDisplay.visibleUsers.length > 0 && (
-                <div className={styles.status} aria-live="polite">
-                  <div className={styles.collaborators} aria-label="Collaborators currently editing">
-                    {documentAvatarDisplay.visibleUsers.map((user) => (
-                      <Tooltip
-                        key={user.id}
-                        title={user.id === permissions.userId ? `${user.name} (you)` : `${user.name} is editing`}
-                        placement="top"
-                      >
-                        <Avatar
-                          size={24}
-                          title={user.id === permissions.userId ? `${user.name} (you)` : `${user.name} is editing`}
-                          className={styles.collaboratorAvatar}
-                          style={{ backgroundColor: user.color }}
-                        >
-                          {user.name.charAt(0).toUpperCase()}
-                        </Avatar>
-                      </Tooltip>
-                    ))}
-                    {documentAvatarDisplay.overflowCount > 0 && (
-                      <span className={styles.collaboratorMore}>
-                        +{documentAvatarDisplay.overflowCount}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
               <div className={styles.topbarExportBridge} aria-hidden="true">
                 <Dropdown
                   menu={{ items: exportItems, onClick: handleExport }}
@@ -368,27 +383,6 @@ function DocumentEditorSession({
               >
                 Retry
               </button>
-            </div>
-          )}
-
-          {derivedImportProgress && (
-            <div
-              className={
-                derivedImportProgress.phase === 'error'
-                  ? styles.derivedImportBannerError
-                  : derivedImportProgress.phase === 'success'
-                    ? styles.derivedImportBannerSuccess
-                    : styles.derivedImportBanner
-              }
-              role="status"
-              aria-live="polite"
-              data-testid="document-derived-import-progress"
-            >
-              <span className={styles.derivedImportLabel}>{derivedImportProgress.label}</span>
-              {(derivedImportProgress.phase === 'preparing' ||
-                derivedImportProgress.phase === 'running') && (
-                <LoadingOutlined className={styles.derivedImportSpinner} spin />
-              )}
             </div>
           )}
 

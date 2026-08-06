@@ -30,7 +30,7 @@ import type { DocumentExportSource } from '@/lib/documents/documentExportSource'
 import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
 import { showErrorToast } from '@/lib/utils/toast';
 import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
-import { notifyDocumentDerivedImportProgress } from '@/lib/documents/documentDerivedImportProgress';
+import { notifyDocumentDerivedImportProgress, DOCUMENT_DERIVED_IMPORT_UI_LABEL } from '@/lib/documents/documentDerivedImportProgress';
 export async function moveSidebarDocument({
   supabase,
   documentId,
@@ -332,7 +332,7 @@ export function useSidebarContextMenuActions({
           documentId,
           exportType: 'table',
           phase: 'preparing',
-          label: 'Preparing table…',
+          label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
           startedAt,
         });
         router.push(`/${projectId}/doc/${documentId}`);
@@ -348,16 +348,20 @@ export function useSidebarContextMenuActions({
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Failed to generate table';
             setError(msg);
+            console.info('[document-derived-import]', 'error', msg, {
+              projectId,
+              documentId,
+            });
             notifyDocumentDerivedImportProgress({
               projectId,
               documentId,
               exportType: 'table',
               phase: 'error',
-              label: msg,
+              label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
               error: msg,
               startedAt,
             });
-            showErrorToast(msg);
+            showErrorToast(msg, 8000);
           }
         })();
         return;
@@ -377,7 +381,7 @@ export function useSidebarContextMenuActions({
           documentId,
           exportType: 'script',
           phase: 'preparing',
-          label: 'Preparing conversation…',
+          label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
           startedAt,
         });
         router.push(`/${projectId}/doc/${documentId}`);
@@ -393,16 +397,20 @@ export function useSidebarContextMenuActions({
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Failed to generate conversation';
             setError(msg);
+            console.info('[document-derived-import]', 'error', msg, {
+              projectId,
+              documentId,
+            });
             notifyDocumentDerivedImportProgress({
               projectId,
               documentId,
               exportType: 'script',
               phase: 'error',
-              label: msg,
+              label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
               error: msg,
               startedAt,
             });
-            showErrorToast(msg);
+            showErrorToast(msg, 8000);
           }
         })();
         return;

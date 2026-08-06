@@ -30,10 +30,7 @@
 }
 
 .documentSectionFlush .connectionBanner,
-.documentSectionFlush .versionPreviewBanner,
-.documentSectionFlush .derivedImportBanner,
-.documentSectionFlush .derivedImportBannerSuccess,
-.documentSectionFlush .derivedImportBannerError {
+.documentSectionFlush .versionPreviewBanner {
   margin-left: 24px;
   margin-right: 24px;
 }
@@ -201,46 +198,6 @@
 
 .versionPreviewExit:hover {
   background: #fff0f5;
-}
-
-.derivedImportBanner,
-.derivedImportBannerSuccess,
-.derivedImportBannerError {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.derivedImportBanner {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1e3a8a;
-}
-
-.derivedImportBannerSuccess {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
-}
-
-.derivedImportBannerError {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-}
-
-.derivedImportSpinner {
-  font-size: 14px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.derivedImportLabel {
-  min-width: 0;
 }
 
 .retryButton {

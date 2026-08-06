@@ -1,12 +1,18 @@
 /**
  * Progress bus for silent document Generate conversation / Generate table.
- * Shown as a banner on the document page — no ImportScriptModal.
+ * DocumentEditor mirrors this into the shared bottom toast — no ImportScriptModal.
  */
 
 import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
 
 export const DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT =
   'document-derived-import:progress';
+
+/** Generating label for the shared toast; errors show the real message instead. */
+export const DOCUMENT_DERIVED_IMPORT_UI_LABEL = {
+  generating: 'Generating…',
+  failed: 'Generation failed.',
+} as const;
 
 export type DocumentDerivedImportPhase =
   | 'preparing'

@@ -23,6 +23,7 @@ import menuIcon from '@/assets/images/menuIcon36.svg';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { LibraryHeader } from '@/components/libraries/LibraryHeader';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { PresenceMembersStack } from '@/components/collaboration/PresenceMembersStack';
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import searchIcon from "@/assets/images/searchIcon.svg";
@@ -40,6 +41,10 @@ import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { ScriptTopBarActions } from '@/components/script-system/ScriptTopBarActions';
 import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
+import {
+  DOCUMENT_PRESENCE_UPDATE_EVENT,
+  type DocumentPresenceUpdateDetail,
+} from '@/components/documents/documentPresenceEvents';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -84,6 +89,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('all');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
+  const [topbarDocumentPresenceUsers, setTopbarDocumentPresenceUsers] = useState<PresenceState[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [simulationProjectId, setSimulationProjectId] = useState<string | null>(null);
   const documentExportItems = useMemo<DocumentExportItem[]>(
@@ -993,6 +999,26 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     };
   }, [currentProjectId, currentLibraryId]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<DocumentPresenceUpdateDetail>).detail;
+      if (!detail) return;
+      if (detail.projectId !== currentProjectId || detail.documentId !== currentDocumentId) {
+        return;
+      }
+      setTopbarDocumentPresenceUsers(detail.presenceUsers || []);
+    };
+
+    window.addEventListener(DOCUMENT_PRESENCE_UPDATE_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(DOCUMENT_PRESENCE_UPDATE_EVENT, handler as EventListener);
+    };
+  }, [currentProjectId, currentDocumentId]);
+
+  useEffect(() => {
+    setTopbarDocumentPresenceUsers([]);
+  }, [currentDocumentId]);
+
   const handlePredefinePublish = () => {
     // Placeholder for future publish behavior
     // eslint-disable-next-line no-console
@@ -1229,6 +1255,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           userRole={(userRole || 'viewer') as CollaboratorRole}
           libraryId={currentLibraryId}
           showFlowChartToggle={isScriptSplitPage}
+          presenceUsers={currentDocumentId ? topbarDocumentPresenceUsers : []}
+          currentUserId={userProfile?.id ?? null}
+          currentUserName={displayName}
+          currentUserEmail={userProfile?.email || ''}
+          currentUserAvatarColor={userAvatarColor}
         />
       );
     }
@@ -1236,6 +1267,16 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     if (isDocumentDetail) {
       return (
         <>
+          {userProfile ? (
+            <PresenceMembersStack
+              presenceUsers={topbarDocumentPresenceUsers}
+              currentUserId={userProfile.id}
+              currentUserName={displayName}
+              currentUserEmail={userProfile.email || ''}
+              currentUserAvatarColor={userAvatarColor}
+              emptyViewingMessage="No one else is currently viewing this document"
+            />
+          ) : null}
           <button
             type="button"
             className={styles.documentShareButton}

@@ -10,22 +10,20 @@
 
 'use client';
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Avatar, Tooltip, Dropdown } from 'antd';
+import { useState, useMemo, useCallback } from 'react';
+import { Dropdown, Tooltip } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
-import { prependLocalUserWhenCollaborating } from '@/components/collaboration/collaborationAvatarDisplay';
+import { PresenceMembersStack } from '@/components/collaboration/PresenceMembersStack';
 import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { useLibraryDataOptional } from '@/lib/contexts/LibraryDataContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import styles from './LibraryHeader.module.css';
-import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
 import libraryHeadVersionClick from '@/assets/images/libraryHeadVersionClick.svg';
-import libraryHeadExpandCollaborators from '@/assets/images/libraryHeadExpandCollaborators.svg';
 import libraryHeadShareIcon from '@/assets/images/libraryHeadShareIcon.svg';
 
 interface LibraryHeaderProps {
@@ -59,10 +57,7 @@ export function LibraryHeader({
 }: LibraryHeaderProps) {
   const supabase = useSupabase();
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [showMembersPanel, setShowMembersPanel] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
-  const membersPanelRef = useRef<HTMLDivElement>(null);
-  const hasInitializedPresence = useRef(false);
 
   const libraryExportItems = useMemo(
     () => [
@@ -114,20 +109,6 @@ export function LibraryHeader({
     [exportingFormat, libraryId, supabase]
   );
 
-  // Get role display text
-  const getRoleText = (role: CollaboratorRole): string => {
-    switch (role) {
-      case 'admin':
-        return 'predefine';
-      case 'editor':
-        return 'editing';
-      case 'viewer':
-        return 'viewing';
-      default:
-        return 'viewing';
-    }
-  };
-
   // Prefer presence from LibraryDataContext when available (single source of truth),
   // otherwise fall back to the presenceUsers prop (e.g. in TopBar or tests).
   const libraryData = useLibraryDataOptional();
@@ -139,205 +120,17 @@ export function LibraryHeader({
     return presenceUsers;
   })();
 
-  // Sort presence users: current user first, then by last activity
-  const sortedPresenceUsers = useMemo(() => {
-    const remoteUsers = presenceSource.filter((user) => user.userId !== currentUserId);
-    const users = prependLocalUserWhenCollaborating(remoteUsers, {
-      userId: currentUserId,
-      userName: currentUserName,
-      userEmail: currentUserEmail,
-      avatarColor: currentUserAvatarColor,
-      activeCell: { assetId: null, propertyKey: '__viewing_library__' },
-      cursorPosition: null,
-      lastActivity: new Date().toISOString(),
-      connectionStatus: 'online' as const,
-    });
-    
-    return users.sort((a, b) => {
-      // Current user always first
-      if (a.userId === currentUserId) return -1;
-      if (b.userId === currentUserId) return 1;
-      
-      // Then sort by last activity (most recent first)
-      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
-    });
-  }, [presenceSource, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
-
-  // Get users for avatar display – show all sorted users
-  const displayUsers = useMemo(() => {
-    return sortedPresenceUsers;
-  }, [sortedPresenceUsers]);
-
-  // Get remaining count (excluding displayed users)
-  // If current user is displayed, count should exclude them
-  const remainingCount = useMemo(() => {
-    const displayed = displayUsers.length;
-    const total = sortedPresenceUsers.length;
-    return Math.max(0, total - displayed);
-  }, [displayUsers.length, sortedPresenceUsers.length]);
-
-  // Get user initials
-  const getUserInitials = (name: string): string => {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 0) return '?';
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-  };
-
-  // Close members panel when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (membersPanelRef.current && !membersPanelRef.current.contains(event.target as Node)) {
-        setShowMembersPanel(false);
-      }
-    };
-
-    if (showMembersPanel) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [showMembersPanel]);
-
   return (
     <div className={styles.header}>
-      {/* <div className={styles.leftSection}>
-        <h1 className={styles.title}>{libraryName}</h1>
-        {libraryDescription && (
-          <Tooltip title={libraryDescription.length > 50 ? libraryDescription : undefined}>
-            <div className={styles.description}>
-              {libraryDescription.length > 50
-                ? `${libraryDescription.slice(0, 50)}...`
-                : libraryDescription}
-            </div>
-          </Tooltip>
-        )}
-      </div> */}
-
       <div className={styles.rightSection}>
-           {/* Viewing Members Indicator */}
-            {sortedPresenceUsers.length > 0 && <div className={styles.membersSection} ref={membersPanelRef}>
-          <div className={styles.membersAvatars}>
-            {displayUsers.map((user, index) => (
-              <Tooltip key={user.userId} title={user.userName} placement="bottom">
-                <Avatar
-                  size={30}
-                  className={styles.memberAvatar}
-                  style={{
-                    backgroundColor: user.avatarColor,
-                    zIndex: displayUsers.length - index,
-                    marginLeft: index > 0 ? '-8px' : '0',
-                  }}
-                >
-                  {getUserInitials(user.userName)}
-                </Avatar>
-              </Tooltip>
-            ))}
-            
-            {remainingCount > 0 && (
-              <Tooltip title={`${remainingCount} more ${remainingCount === 1 ? 'member' : 'members'}`} placement="bottom">
-                <Avatar
-                  size={30}
-                  className={`${styles.memberAvatar} ${styles.remainingCount}`}
-                  style={{
-                    backgroundColor: '#f0f0f0',
-                    color: '#666',
-                    marginLeft: '-8px',
-                    zIndex: 0,
-                  }}
-                >
-                  +{remainingCount}
-                </Avatar>
-              </Tooltip>
-            )}
-            </div>
-          
-          {/* Expand Collaborators Button */}
-          <Tooltip title="View all members">
-            <button
-              className={styles.expandCollaboratorsButton}
-              onClick={() => setShowMembersPanel(!showMembersPanel)}
-              aria-label="View all members"
-            >
-              <Image src={libraryHeadExpandCollaborators}
-                alt="Expand"
-                width={16} height={16} className="icon-16"
-              />
-            </button>
-          </Tooltip>
-
-          {/* Members Panel */}
-          {showMembersPanel && (() => {
-            const currentUser = sortedPresenceUsers.find(u => u.userId === currentUserId);
-            const otherUsers = sortedPresenceUsers.filter(u => u.userId !== currentUserId);
-            
-            return (
-              <div className={styles.membersPanel}>
-                {/* Current User Section */}
-                {currentUser && (
-                  <div className={styles.currentUserSection}>
-                    <div className={styles.currentUserItem}>
-                      <Avatar
-                        className={styles.currentUserAvatar}
-                        size={30}
-                        style={{ backgroundColor: currentUser.avatarColor }}
-                      >
-                        {getUserInitials(currentUser.userName)}
-                      </Avatar>
-                      <div className={styles.memberInfo}>
-                        <Tooltip title={currentUser.userName}>
-                          <div className={styles.memberName}>
-                            {currentUser.userName && currentUser.userName.length > 10
-                              ? `${currentUser.userName.slice(0, 10)}...`
-                              : currentUser.userName}{' '}  
-                            <span className={styles.youLabel}>(you)</span>
-                          </div>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Currently Viewing Section */}
-                <div className={styles.membersPanelHeader}>
-                  CURRENTLY VIEWING
-                </div>
-                <div className={styles.membersList}>
-                  {otherUsers.length > 0 ? (
-                    otherUsers.map((user) => (
-                      <div
-                        key={user.userId}
-                        className={styles.memberItem}
-                      >
-                        <Avatar
-                          size={30}
-                          className={styles.memberAvatar}
-                          style={{ backgroundColor: user.avatarColor }}
-                        >
-                          {getUserInitials(user.userName)}
-                        </Avatar>
-                        <div className={styles.memberInfo}>
-                          <Tooltip title={user.userName}>
-                            <div className={styles.memberName}>
-                              {user.userName && user.userName.length > 10
-                                ? `${user.userName.slice(0, 10)}...`
-                                : user.userName}
-                            </div>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className={styles.emptyState}>
-                      No one else is currently viewing this library
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-        </div>}
+        <PresenceMembersStack
+          presenceUsers={presenceSource}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          currentUserEmail={currentUserEmail}
+          currentUserAvatarColor={currentUserAvatarColor}
+          emptyViewingMessage="No one else is currently viewing this library"
+        />
         {/* Share Button */}
         <div className={styles.shareSection}>
           <button

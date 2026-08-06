@@ -32,6 +32,35 @@ describe('FlowChartPanel', () => {
     expect(markup).toContain('\u7b54\u5e03\u9632');
     expect(markup).toContain('\u56de\u5e94\u5973\u5e1d');
     expect(markup).not.toContain('Option0');
+    expect(markup).toContain('data-flow-centered="true"');
+    expect(markup).toContain('data-flow-edge-label=');
+  });
+
+  it('wraps long option labels onto multiple tspans', () => {
+    const graph: FlowGraph = {
+      nodes: [
+        { id: 'Start', label: '开场', rowIndex: 0, rowIndexes: [0] },
+        { id: 'A', label: '分支A', rowIndex: 1, rowIndexes: [1] },
+      ],
+      edges: [
+        {
+          from: 'Start',
+          to: 'A',
+          optionIndex: 0,
+          optionText: '这是一段很长的分支选项文案内容',
+        },
+      ],
+    };
+
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={graph}
+        selectedPlotNodeId="Start"
+        onSelectPlotNode={() => undefined}
+      />
+    );
+
+    expect(markup.match(/<tspan\b/g)?.length ?? 0).toBeGreaterThan(1);
   });
 
   it('places a merge below the deepest branch and bundles its incoming trunk', () => {
