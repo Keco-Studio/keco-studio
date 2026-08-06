@@ -1,7 +1,12 @@
 import type { ProjectMcpRequestContext } from "./context.ts";
+import { decodeCursor, encodeCursor } from "./cursor.ts";
 import { rpc } from "./database.ts";
 import { McpDomainError } from "./errors.ts";
-import { validateLimit } from "./limits.ts";
+import {
+  MAX_STORY_GRAPH_RESULT_BYTES,
+  utf8ByteLength,
+  validateLimit,
+} from "./limits.ts";
 import { decodeEditableStoryGraph } from "../../../src/lib/story-graph/rowCodec.ts";
 import { validateEditableStoryGraph } from "../../../src/lib/story-graph/validator.ts";
 import { summarizeVisiblePlotGraph } from "../../../src/lib/story-graph/plotSummary.ts";
@@ -82,7 +87,7 @@ type RawSnapshot = {
 };
 
 export type StoryGraphReadResult = {
-  library: { id: string; name: string };
+  library: { id: string; name: string; snapshotId: string };
   graph: {
     entryLabel: string;
     entryPlotNodeId: string;
@@ -98,7 +103,16 @@ export async function readStoryGraph(
   context: ProjectMcpRequestContext,
   input: ReadStoryGraphInput,
 ): Promise<StoryGraphReadResult> {
-  validateLimit(input.limit, { defaultValue: 100, maximum: 200 });
+  const limit = validateLimit(input.limit, { defaultValue: 100, maximum: 200 });
+  const binding = {
+    kind: "story_graph",
+    scope: "project" as const,
+    projectId: context.projectId,
+    objectId: input.libraryId,
+  };
+  const position = input.cursor
+    ? await decodeStoryGraphCursor(input.cursor, binding, limit)
+    : null;
   const raw = await rpc<unknown>(context, "mcp_read_story_graph_snapshot", {
     p_project_id: context.projectId,
     p_library_id: input.libraryId,
@@ -114,6 +128,13 @@ export async function readStoryGraph(
   }
 
   try {
+    const currentSnapshotId = await snapshotDigest(raw);
+    if (position && position.snapshotId !== currentSnapshotId) {
+      throw new McpDomainError(
+        "STORY_GRAPH_CONFLICT",
+        "The story graph changed; discard prior pages and restart.",
+      );
+    }
     const snapshot = parseRawSnapshot(raw);
     if (
       snapshot.library.documentExportType !== "script" ||
@@ -203,18 +224,67 @@ export async function readStoryGraph(
         };
       }),
     ];
-    return {
-      library: { id: snapshot.library.id, name: snapshot.library.name },
+    const overview = {
+      library: {
+        id: snapshot.library.id,
+        name: snapshot.library.name,
+        snapshotId: currentSnapshotId,
+      },
       graph: {
         entryLabel: graph.entryLabel,
         entryPlotNodeId: graph.plotPlan.entryPlotNodeId,
         summary: validation.summary,
       },
-      items,
-      returnedCount: items.length,
+    };
+    const offset = position?.offset ?? 0;
+    if (offset > items.length) invalidCursor();
+    let result: StoryGraphReadResult | null = null;
+    const pageItems: StoryGraphStreamItem[] = [];
+    for (let index = offset; index < items.length && pageItems.length < limit; index += 1) {
+      const candidateItems = [...pageItems, items[index]];
+      const nextOffset = offset + candidateItems.length;
+      const hasMore = nextOffset < items.length;
+      const nextCursor = hasMore
+        ? await encodeCursor(
+          binding,
+          { offset: nextOffset, snapshotId: currentSnapshotId, limit },
+          cursorSecret(),
+        )
+        : null;
+      const candidate: StoryGraphReadResult = {
+        ...overview,
+        items: candidateItems,
+        returnedCount: candidateItems.length,
+        hasMore,
+        nextCursor,
+      };
+      if (utf8ByteLength(JSON.stringify(candidate)) >= MAX_STORY_GRAPH_RESULT_BYTES) {
+        if (!result) {
+          throw new McpDomainError(
+            "PAYLOAD_TOO_LARGE",
+            "One story graph item is too large to return losslessly.",
+          );
+        }
+        break;
+      }
+      pageItems.push(items[index]);
+      result = candidate;
+    }
+    if (result) return result;
+    const emptyResult: StoryGraphReadResult = {
+      ...overview,
+      items: [],
+      returnedCount: 0,
       hasMore: false,
       nextCursor: null,
     };
+    if (utf8ByteLength(JSON.stringify(emptyResult)) >= MAX_STORY_GRAPH_RESULT_BYTES) {
+      throw new McpDomainError(
+        "PAYLOAD_TOO_LARGE",
+        "Story graph metadata is too large to return losslessly.",
+      );
+    }
+    return emptyResult;
   } catch (error) {
     if (error instanceof McpDomainError) throw error;
     throw new McpDomainError(
@@ -222,6 +292,61 @@ export async function readStoryGraph(
       error instanceof Error ? error.message : "Story graph snapshot is invalid.",
     );
   }
+}
+
+type StoryGraphCursorPosition = {
+  offset: number;
+  snapshotId: string;
+  limit: number;
+};
+
+async function decodeStoryGraphCursor(
+  cursor: string,
+  binding: {
+    kind: string;
+    scope: "project";
+    projectId: string;
+    objectId: string;
+  },
+  limit: number,
+): Promise<StoryGraphCursorPosition> {
+  const value = await decodeCursor<unknown>(cursor, binding, cursorSecret());
+  if (
+    !isRecord(value) ||
+    Object.keys(value).sort().join(",") !== "limit,offset,snapshotId" ||
+    !Number.isSafeInteger(value.offset) || Number(value.offset) < 0 ||
+    typeof value.snapshotId !== "string" || !/^[a-f0-9]{64}$/.test(value.snapshotId) ||
+    !Number.isSafeInteger(value.limit) || value.limit !== limit
+  ) invalidCursor();
+  return value as StoryGraphCursorPosition;
+}
+
+function cursorSecret(): string {
+  const value = Deno.env.get("MCP_CURSOR_SECRET");
+  if (!value) throw new Error("MCP_CURSOR_SECRET is required.");
+  return value;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+async function snapshotDigest(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonicalJson(value)),
+  );
+  return Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function parseRawSnapshot(value: unknown): RawSnapshot {
@@ -284,4 +409,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function invalid(message: string): never {
   throw new Error(message);
+}
+
+function invalidCursor(): never {
+  throw new McpDomainError(
+    "INVALID_CURSOR",
+    "The pagination cursor is invalid or expired.",
+  );
 }

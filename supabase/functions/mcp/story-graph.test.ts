@@ -1,12 +1,14 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { ProjectMcpRequestContext } from "./context.ts";
 import { McpDomainError } from "./errors.ts";
+import { MAX_STORY_GRAPH_RESULT_BYTES, utf8ByteLength } from "./limits.ts";
 import { readStoryGraph } from "./story-graph.ts";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const LIBRARY_ID = "22222222-2222-4222-8222-222222222222";
 const ROW_1 = "33333333-3333-4333-8333-333333333333";
 const ROW_2 = "44444444-4444-4444-8444-444444444444";
+Deno.env.set("MCP_CURSOR_SECRET", "story-graph-test-cursor-secret");
 
 const fieldIds = {
   Label: "50000000-0000-4000-8000-000000000001",
@@ -110,6 +112,45 @@ function makeContext(data: unknown) {
   return { context, calls };
 }
 
+function linearSnapshot(nodeCount: number, contentBytes: number) {
+  const labels = Array.from({ length: nodeCount }, (_, index) => `Node${index}`);
+  return snapshot({
+    library: {
+      ...(snapshot().library as Record<string, unknown>),
+      plotPlan: {
+        version: 2,
+        entryPlotNodeId: "Plot0",
+        storyNodeOrder: labels,
+        nodes: labels.map((label, index) => ({
+          id: `Plot${index}`,
+          title: `Plot ${index}`,
+          storyNodeIds: [label],
+        })),
+        edges: labels.slice(1).map((_, index) => ({
+          fromPlotNodeId: `Plot${index}`,
+          toPlotNodeId: `Plot${index + 1}`,
+          optionText: null,
+          optionIndex: null,
+        })),
+      },
+    },
+    rows: labels.map((label, index) => ({
+      id: crypto.randomUUID(),
+      name: label,
+      rowIndex: index,
+      createdAt: `2026-08-06T00:00:${String(index).padStart(2, "0")}.000Z`,
+      updatedAt: `2026-08-06T00:00:${String(index).padStart(2, "0")}.000Z`,
+      values: values({
+        Label: label,
+        Type: "3",
+        Name: "",
+        Content: "x".repeat(contentBytes),
+        Commands: index === labels.length - 1 ? "End" : "",
+      }),
+    })),
+  });
+}
+
 Deno.test("story graph read maps one atomic snapshot into complete canonical semantics", async () => {
   const { context, calls } = makeContext(snapshot());
 
@@ -200,4 +241,90 @@ Deno.test("story graph read rejects unsupported and invalid snapshots", async ()
     );
     assertEquals(error.code, code);
   }
+});
+
+Deno.test("story graph cursor pages one stable typed stream without gaps", async () => {
+  const { context } = makeContext(snapshot());
+  const items: Array<{ kind: string }> = [];
+  let cursor: string | undefined;
+  do {
+    const page = await readStoryGraph(context, {
+      libraryId: LIBRARY_ID,
+      limit: 2,
+      ...(cursor ? { cursor } : {}),
+    });
+    items.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+    assertEquals(page.returnedCount, page.items.length);
+    assertEquals(page.hasMore, cursor !== undefined);
+  } while (cursor);
+
+  assertEquals(items.map((item) => item.kind), [
+    "plot_node",
+    "plot_node",
+    "plot_edge",
+    "story_node",
+    "story_node",
+  ]);
+});
+
+Deno.test("story graph cursor rejects changed snapshots and changed limits", async () => {
+  const first = await readStoryGraph(makeContext(snapshot()).context, {
+    libraryId: LIBRARY_ID,
+    limit: 2,
+  });
+  const changed = snapshot();
+  const changedRows = structuredClone(changed.rows) as Array<Record<string, unknown>>;
+  const firstValues = changedRows[0].values as Array<Record<string, unknown>>;
+  firstValues.find((value) => value.fieldId === fieldIds.Content)!.value = "Changed.";
+
+  const conflict = await assertRejects(
+    () => readStoryGraph(makeContext({ ...changed, rows: changedRows }).context, {
+      libraryId: LIBRARY_ID,
+      limit: 2,
+      cursor: first.nextCursor!,
+    }),
+    McpDomainError,
+  );
+  assertEquals(conflict.code, "STORY_GRAPH_CONFLICT");
+
+  const invalid = await assertRejects(
+    () => readStoryGraph(makeContext(snapshot()).context, {
+      libraryId: LIBRARY_ID,
+      limit: 3,
+      cursor: first.nextCursor!,
+    }),
+    McpDomainError,
+  );
+  assertEquals(invalid.code, "INVALID_CURSOR");
+});
+
+Deno.test("story graph pages adapt to the response budget without truncating items", async () => {
+  const result = await readStoryGraph(makeContext(linearSnapshot(4, 300 * 1024)).context, {
+    libraryId: LIBRARY_ID,
+    limit: 200,
+  });
+
+  assertEquals(result.hasMore, true);
+  assertEquals(result.returnedCount < 11, true);
+  assertEquals(
+    utf8ByteLength(JSON.stringify(result)) < MAX_STORY_GRAPH_RESULT_BYTES,
+    true,
+  );
+});
+
+Deno.test("story graph rejects a single item that cannot fit losslessly", async () => {
+  const context = makeContext(linearSnapshot(1, 1024 * 1024)).context;
+  const first = await readStoryGraph(context, { libraryId: LIBRARY_ID, limit: 200 });
+  assertEquals(first.items.map((item) => item.kind), ["plot_node"]);
+
+  const error = await assertRejects(
+    () => readStoryGraph(context, {
+      libraryId: LIBRARY_ID,
+      limit: 200,
+      cursor: first.nextCursor!,
+    }),
+    McpDomainError,
+  );
+  assertEquals(error.code, "PAYLOAD_TOO_LARGE");
 });
