@@ -130,8 +130,9 @@
   left: 50%;
   bottom: calc(100% + 8px);
   z-index: 30;
-  width: max-content;
-  max-width: 260px;
+  box-sizing: border-box;
+  width: 168px;
+  max-width: 168px;
   padding: 8px 10px;
   margin: 0;
   border-radius: 8px;
@@ -142,6 +143,7 @@
   line-height: 1.4;
   text-align: left;
   white-space: normal;
+  overflow-wrap: anywhere;
   pointer-events: none;
   transform: translateX(-50%);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
@@ -370,7 +372,7 @@
 .headerTitle > span { overflow: hidden; color: var(--simulation-ink-400); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .headerTitle i { margin: 0 9px; color: var(--simulation-line-400); font-style: normal; }
 .headerTitle h1 { margin: 0; color: var(--simulation-ink-900); font-size: 15px; font-weight: 600; }
-.workflowNav { min-width: 0; overflow-x: auto; }
+.workflowNav { min-width: max-content; overflow-x: visible; }
 .workflowList { display: flex; min-width: max-content; margin: 0; padding: 0; align-items: center; gap: var(--simulation-topbar-workflow-gap, 8px); list-style: none; }
 .workflowItem { display: flex; }
 .workflowButton { display: inline-flex; height: var(--simulation-topbar-workflow-button-height, 34px); padding: var(--simulation-topbar-workflow-button-padding, 0 10px); align-items: center; color: var(--simulation-topbar-workflow-button-color, var(--simulation-ink-600)); background: transparent; border: 0; border-radius: var(--simulation-topbar-workflow-button-radius, 999px); font: 500 14px/1 var(--simulation-font-body); font-size: var(--simulation-topbar-workflow-button-size, 14px); white-space: nowrap; cursor: pointer; }
@@ -510,7 +512,7 @@
 .toastAction:focus-visible { outline: 3px solid var(--simulation-focus); outline-offset: 2px; }
 
 @media (max-width: 1180px) {
-  .workflowNav { overflow-x: auto; scrollbar-width: thin; }
+  .workflowNav { overflow-x: visible; }
   .content { padding-inline: 22px; }
 }
 

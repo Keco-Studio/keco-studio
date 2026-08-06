@@ -263,6 +263,7 @@ function LibSlot({
     const display = formatLibraryLabel(library, duplicateNames, folderNameById);
     return display.toLowerCase().includes(query) || library.name.toLowerCase().includes(query);
   });
+  const hasError = Boolean(errorText);
 
   useEffect(() => {
     if (!open) return;
@@ -276,6 +277,8 @@ function LibSlot({
   return (
     <div ref={slotRef} style={{ position: 'relative' }}>
       <div
+        data-testid={`import-library-slot-${role}`}
+        data-error={hasError ? 'true' : undefined}
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -283,8 +286,18 @@ function LibSlot({
           padding: '12px 14px',
           borderRadius: 10,
           cursor: 'pointer',
-          border: `1.5px solid ${active ? 'var(--simulation-blue)' : 'var(--simulation-line-200)'}`,
-          background: active ? 'var(--simulation-blue-soft)' : '#fff',
+          border: `1.5px solid ${
+            hasError
+              ? 'var(--simulation-danger)'
+              : active
+                ? 'var(--simulation-blue)'
+                : 'var(--simulation-line-200)'
+          }`,
+          background: hasError
+            ? 'var(--simulation-danger-wash)'
+            : active
+              ? 'var(--simulation-blue-soft)'
+              : '#fff',
           transition: 'border-color .15s, background .15s',
         }}
         onClick={() => {
@@ -292,11 +305,31 @@ function LibSlot({
           if (!open) onToggle();
         }}
       >
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--simulation-ink-800)' }}>{label}</span>
+        <span style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+        >
+          <span style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: hasError ? 'var(--simulation-danger-ink)' : 'var(--simulation-ink-800)',
+          }}
+          >
+            {label}
+          </span>
+          {hasError ? <StatusIcon ok={false} message={errorText} /> : null}
+        </span>
         <span style={{
           fontSize: 12,
           color: libraryId
-            ? (active ? 'var(--simulation-blue)' : 'var(--simulation-ink-600)')
+            ? (hasError
+              ? 'var(--simulation-danger-ink)'
+              : active
+                ? 'var(--simulation-blue)'
+                : 'var(--simulation-ink-600)')
             : 'var(--simulation-blue)',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -305,11 +338,6 @@ function LibSlot({
         >
           {selectedLabel || 'Select library...'}
         </span>
-        {errorText ? (
-          <span style={{ fontSize: 11, lineHeight: 1.3, color: 'var(--simulation-danger)' }}>
-            {errorText}
-          </span>
-        ) : null}
       </div>
       {open ? (
         <div style={{
@@ -803,6 +831,11 @@ export function ImportScreen({
             const selectedLabel = library
               ? formatLibraryLabel(library, duplicateNames, folderNameById)
               : '';
+            const roleImportErrors = errors.filter((error) => error.role === def.key);
+            const errorText = formatFieldImportErrors(roleImportErrors)
+              ?? (roleImportErrors.length > 0
+                ? `${roleImportErrors.length} mapping error${roleImportErrors.length === 1 ? '' : 's'}`
+                : '');
             return (
               <LibSlot
                 key={def.key}
@@ -815,13 +848,7 @@ export function ImportScreen({
                 folderNameById={folderNameById}
                 active={activeRole === def.key}
                 open={ddOpen === def.key}
-                errorText={
-                  mappingStatus[def.key] === 'error'
-                    ? 'AI mapping failed - drag fields manually.'
-                    : libraryId && missingByLib[def.key].length
-                    ? `Missing required: ${missingByLib[def.key].join(', ')}`
-                    : ''
-                }
+                errorText={errorText}
                 onActivate={() => setActiveRole(def.key)}
                 onToggle={() => setDdOpen((current) => (current === def.key ? null : def.key))}
                 onSelect={(nextId) => void selectLibrary(def.key, nextId)}
@@ -1155,21 +1182,21 @@ export function ImportScreen({
             ref={targetListRef}
             style={{ gridColumn: 3, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}
           >
-            {!activeLibSelected ? (
-              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--simulation-ink-400)', lineHeight: 1.5 }}>
-                Simulation fields appear here after you select a library.
-              </div>
-            ) : null}
-            {activeLibSelected
-              ? activeDefinitions.map((field) => {
+            {activeDefinitions.map((field) => {
                 const mappedCol = activeMappings[field.id];
                 const mappedLabel = mappedCol
                   ? activeFields.find((col) => col.key === mappedCol)?.name
                   : null;
-                const missingRequired = Boolean(field.required && !mappedCol && mappingStatus[activeRole] !== 'loading');
+                const missingRequired = Boolean(
+                  activeLibSelected
+                  && field.required
+                  && !mappedCol
+                  && mappingStatus[activeRole] !== 'loading',
+                );
                 return (
                   <div
                     key={field.id}
+                    data-testid="simulation-field-slot"
                     style={mapBoxStyle(Boolean(mappedCol), missingRequired ? 'error' : 'default')}
                   >
                     <span style={{
@@ -1186,19 +1213,21 @@ export function ImportScreen({
                         color: missingRequired ? 'var(--simulation-danger)' : 'var(--simulation-ink-800)',
                       }}
                       >
-                        {field.id}
+                        {field.label}
                         {field.required ? <span aria-hidden="true"> *</span> : null}
                       </span>
-                      <span style={{
-                        fontSize: 12,
-                        color: 'var(--simulation-ink-400)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      >
-                        {mappedLabel ?? field.label}
-                      </span>
+                      {mappedLabel ? (
+                        <span style={{
+                          fontSize: 12,
+                          color: 'var(--simulation-ink-400)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        >
+                          {mappedLabel}
+                        </span>
+                      ) : null}
                     </span>
                     <span
                       role={mappedCol ? 'button' : undefined}
@@ -1232,8 +1261,7 @@ export function ImportScreen({
                     </span>
                   </div>
                 );
-              })
-              : null}
+              })}
           </div>
 
         </div>

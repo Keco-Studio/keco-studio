@@ -65,17 +65,19 @@ describe('LeftNav wiring', () => {
     expect(topBarSource).toContain('data-simulation-header-slot');
     expect(topBarSource).toContain('simulationHeaderSlot');
     expect(topBarCss).toContain('.headerSimulation .simulationHeaderSlot');
-    expect(topBarCss).toMatch(/\.headerSimulation\s*\{[\s\S]*?grid-template-columns\s*:/);
-    expect(topBarCss).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+minmax\(280px,\s*33rem\)\s+minmax\(0,\s*1fr\)/);
-    expect(topBarCss).toMatch(/\.headerSimulation\s+\.searchContainer\s*\{[\s\S]*?grid-column\s*:\s*2\b/);
-    expect(topBarCss).toMatch(/\.headerSimulation\s+\.right\s*\{[\s\S]*?grid-column\s*:\s*3\b/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s*\{[\s\S]*?display:\s*flex/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.searchContainer\s*\{[\s\S]*?margin-left:\s*auto/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.searchContainer\s*\{[\s\S]*?margin-right:\s*auto/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.searchContainer\s*\{[\s\S]*?width:\s*33rem/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.left\s*\{[\s\S]*?flex:\s*0\s+0\s+auto/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.right\s*\{[\s\S]*?flex:\s*0\s+0\s+auto/);
     expect(topBarCss).toContain('--simulation-topbar-workflow-gap');
     expect(topBarCss).toContain('--simulation-topbar-workflow-button-size');
     expect(topBarCss).toContain('--simulation-topbar-workflow-active-color');
     expect(simulationCss).toContain('var(--simulation-topbar-workflow-gap');
     expect(simulationCss).toContain('var(--simulation-topbar-workflow-button-size');
     expect(simulationCss).toContain('var(--simulation-topbar-workflow-active-color');
-    expect(topBarCss).toMatch(/\.headerSimulation\s+\.right[\s\S]*?(?:gap:\s*12px|margin-left\s*:)/);
+    expect(topBarCss).toMatch(/\.headerSimulation\s+\.right[\s\S]*?gap:\s*12px/);
   });
 
   it('scopes simulation global search to the remembered simulation project', () => {

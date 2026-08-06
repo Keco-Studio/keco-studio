@@ -214,7 +214,7 @@ export function CharactersScreen({ onContinue }: { onContinue: () => void }) {
             Configure characters
           </h1>
           <p style={{ color: 'var(--ink-500)', fontSize: 15, margin: 0, maxWidth: 620, lineHeight: 1.55 }}>
-            Pick the fighters that take the field and split them into Team A (yours) and Team B (enemy).
+            Pick the fighters that take the field and split them into Team A and Team B.
           </p>
         </div>
         <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>

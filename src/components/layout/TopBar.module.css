@@ -13,25 +13,25 @@
 }
 
 .headerSimulation .left {
-  grid-column: 1;
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 
 .headerSimulation {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 33rem) minmax(0, 1fr);
-  column-gap: 24px;
-  justify-content: initial;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  column-gap: 0;
+  /* Equal free space on both sides of the fixed search (after step 4 / before avatar). */
 }
 
 .headerSimulation .breadcrumb {
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  min-width: max-content;
 }
 
 .headerSimulation .simulationHeaderSlot {
-  width: 100%;
+  width: auto;
   --simulation-topbar-workflow-gap: 20px;
   --simulation-topbar-workflow-button-height: 38px;
   --simulation-topbar-workflow-button-padding: 0;
@@ -46,10 +46,9 @@
 }
 
 .headerSimulation .right {
-  grid-column: 3;
-  justify-self: end;
+  flex: 0 0 auto;
   gap: 12px;
-  margin-left: 12px;
+  margin-left: 0;
 }
 
 .left {
@@ -72,8 +71,11 @@
 }
 
 .headerSimulation .searchContainer {
-  grid-column: 2;
-  width: 100%;
+  flex: 0 0 33rem;
+  width: 33rem;
+  max-width: 33rem;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 @media (max-width: 760px) {
@@ -631,14 +633,14 @@
 
 .simulationHeaderSlot {
   display: flex;
-  min-width: 0;
+  min-width: max-content;
   flex: 1;
   align-items: center;
 }
 
 .simulationHeaderSlot > header {
   flex: 1;
-  min-width: 0;
+  min-width: max-content;
   height: 100%;
   min-height: 0;
   padding: 0;
