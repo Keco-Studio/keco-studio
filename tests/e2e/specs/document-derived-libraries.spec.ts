@@ -75,6 +75,18 @@ async function openDocument(
   await expect(page.getByTestId('document-export')).toBeVisible({ timeout: 45_000 });
 }
 
+/** Wait for Generating toast concurrently with click — click triggers router.push and Playwright waits for navigation, during which success may already be queued. */
+async function clickGenerateAndExpectProgress(
+  page: Page,
+  buttonName: 'Generate table' | 'Generate conversation'
+): Promise<void> {
+  const progress = page.getByTestId('document-derived-import-progress');
+  await Promise.all([
+    expect(progress).toContainText(/Generating/, { timeout: 45_000 }),
+    page.getByRole('button', { name: buttonName, exact: true }).click(),
+  ]);
+}
+
 async function openDocumentInNewContext(
   browser: Browser,
   user: TemporaryUser,
@@ -406,20 +418,12 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
 
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
-    await page.getByRole('button', { name: 'Generate table', exact: true }).click();
-    await expect(page.getByTestId('document-derived-import-progress')).toContainText(
-      /Generating/,
-      { timeout: 45_000 }
-    );
+    await clickGenerateAndExpectProgress(page, 'Generate table');
     expect(tableRequestBody).toContain(fixture.folderDocument.id);
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
 
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
-    await page.getByRole('button', { name: 'Generate conversation', exact: true }).click();
-    await expect(page.getByTestId('document-derived-import-progress')).toContainText(
-      /Generating/,
-      { timeout: 45_000 }
-    );
+    await clickGenerateAndExpectProgress(page, 'Generate conversation');
     expect(scriptRequestBody).toContain(fixture.folderDocument.id);
 
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
@@ -584,11 +588,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     if (updateError) throw updateError;
 
     await sidebarTitle(page, fixture.rootDocument.name).click({ button: 'right' });
-    await page.getByRole('button', { name: 'Generate conversation', exact: true }).click();
-    await expect(page.getByTestId('document-derived-import-progress')).toContainText(
-      /Generating/,
-      { timeout: 45_000 }
-    );
+    await clickGenerateAndExpectProgress(page, 'Generate conversation');
 
     expect(importRequestBody).toContain(fixture.rootDocument.id);
     expect(importRequestBody).toContain('test-snapshot-token');
