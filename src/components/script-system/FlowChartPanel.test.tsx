@@ -74,4 +74,27 @@ describe('FlowChartPanel', () => {
     expect(markup).toContain('width="576"');
     expect(silentPath).toContain('552');
   });
+
+  it('marks pending nodes and their connecting edges as a preview', () => {
+    const graph: FlowGraph = {
+      nodes: [
+        { id: 'Prologue', label: '开场白', rowIndex: 0, rowIndexes: [] },
+        { id: 'Opening', label: '人物介绍', rowIndex: 0, rowIndexes: [0] },
+      ],
+      edges: [{ from: 'Prologue', to: 'Opening' }],
+    };
+
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={graph}
+        selectedPlotNodeId="Opening"
+        previewNodeIds={['Prologue']}
+        onSelectPlotNode={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('data-flow-preview-node="true"');
+    expect(markup).toContain('data-flow-preview-edge="true"');
+    expect(markup).toContain('Preview');
+  });
 });

@@ -10,6 +10,7 @@ import styles from './ScriptSplitView.module.css';
 export type FlowChartPanelProps = {
   graph: FlowGraph;
   selectedPlotNodeId: string;
+  previewNodeIds?: string[];
   onSelectPlotNode: (plotNodeId: string) => void;
   onClose?: () => void;
 };
@@ -200,9 +201,11 @@ function mergeBranchRoute(
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
+  previewNodeIds = [],
   onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
+  const previewNodes = useMemo(() => new Set(previewNodeIds), [previewNodeIds]);
   const layout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
     [graph]
@@ -220,7 +223,12 @@ export function FlowChartPanel({
   return (
     <aside className={styles.flowPanel} aria-label="Flow chart">
       <div className={styles.flowHeader}>
-        <h2 className={styles.flowTitle}>Flow chart</h2>
+        <div className={styles.flowTitleGroup}>
+          <h2 className={styles.flowTitle}>Flow chart</h2>
+          {previewNodes.size > 0 ? (
+            <span className={styles.flowPreviewBadge}>Preview</span>
+          ) : null}
+        </div>
         {onClose ? (
           <button
             type="button"
@@ -252,6 +260,7 @@ export function FlowChartPanel({
               const to = layout.positions.get(edge.to);
               if (!from || !to) return null;
               const routed = edgePath(from, to, layout.width);
+              const previewEdge = previewNodes.has(edge.from) || previewNodes.has(edge.to);
               const labelX = (from.x + to.x) / 2 + NODE_WIDTH / 2;
               const labelY = (from.y + NODE_HEIGHT + to.y) / 2 - 5;
               return (
@@ -259,7 +268,8 @@ export function FlowChartPanel({
                   <path
                     d={routed.path}
                     data-flow-route={routed.route}
-                    className={styles.flowEdge}
+                    data-flow-preview-edge={previewEdge || undefined}
+                    className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
                     fill="none"
                   />
                   {edge.optionText ? (
@@ -294,13 +304,15 @@ export function FlowChartPanel({
                       junction,
                       layout.width
                     );
+                    const previewEdge = previewNodes.has(edge.from) || previewNodes.has(targetId);
                     return (
                       <path
                         key={`${edge.from}-${index}`}
                         data-flow-merge-branch-from={edge.from}
                         data-flow-route={routed.route}
+                        data-flow-preview-edge={previewEdge || undefined}
                         d={routed.path}
-                        className={styles.flowEdge}
+                        className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
                         fill="none"
                       />
                     );
@@ -313,7 +325,8 @@ export function FlowChartPanel({
                   />
                   <path
                     d={`M ${junction.x} ${junction.y} L ${junction.x} ${target.y}`}
-                    className={styles.flowEdge}
+                    data-flow-preview-edge={previewNodes.has(targetId) || undefined}
+                    className={previewNodes.has(targetId) ? styles.flowEdgePreview : styles.flowEdge}
                     fill="none"
                     data-flow-merge-trunk={targetId}
                   />
@@ -324,17 +337,20 @@ export function FlowChartPanel({
               const pos = layout.positions.get(node.id);
               if (!pos) return null;
               const selected = selectedPlotNodeId === node.id;
+              const preview = previewNodes.has(node.id);
               return (
                 <g
                   key={node.id}
                   data-flow-node-id={node.id}
                   data-flow-layer={pos.layer}
+                  data-flow-preview-node={preview || undefined}
                   transform={`translate(${pos.x}, ${pos.y})`}
                   className={styles.flowNode}
-                  onClick={() => onSelectPlotNode(node.id)}
-                  role="button"
-                  tabIndex={0}
+                  onClick={preview ? undefined : () => onSelectPlotNode(node.id)}
+                  role={preview ? undefined : 'button'}
+                  tabIndex={preview ? undefined : 0}
                   onKeyDown={(event) => {
+                    if (preview) return;
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
                       onSelectPlotNode(node.id);
@@ -347,7 +363,9 @@ export function FlowChartPanel({
                     rx={8}
                     ry={8}
                     className={
-                      selected ? styles.flowNodeSelected : styles.flowNodeRect
+                      preview
+                        ? styles.flowNodePreview
+                        : selected ? styles.flowNodeSelected : styles.flowNodeRect
                     }
                   />
                   <text

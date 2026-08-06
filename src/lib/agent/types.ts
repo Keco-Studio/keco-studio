@@ -185,6 +185,8 @@ export type ChatContentPart = ChatTextPart | ChatImagePart;
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | ChatContentPart[] | null;
+  /** Provider thinking payload required when replaying assistant tool-call turns. */
+  reasoning_content?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -238,6 +240,7 @@ export type SSEEvent =
 export interface SuspendedState {
   messages: ChatMessage[];
   pendingToolCall: ToolCall;
+  reasoning_content?: string;
   toolResult?: ToolResult;
   /** Links confirmation resume to the same agent_traces row. */
   turnId?: string;

@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 import { ChatMessage } from '@/components/agent/ChatMessage';
-import { buildDocumentEditDiff } from '@/components/agent/ConfirmationCard';
+import {
+  buildDocumentEditDiff,
+  shouldShowStoryGraphPreview,
+} from '@/components/agent/ConfirmationCard';
 import type { ChatItem } from '@/components/agent/types';
 
 jest.mock('next/image', () => {
@@ -23,6 +26,12 @@ jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true })
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
+  it('shows a graph preview only while the confirmation is unresolved', () => {
+    expect(shouldShowStoryGraphPreview(undefined)).toBe(true);
+    expect(shouldShowStoryGraphPreview('approved')).toBe(false);
+    expect(shouldShowStoryGraphPreview('rejected')).toBe(false);
+  });
+
   it('shows the document bound to a rename confirmation', () => {
     const item: ChatItem = {
       id: 'confirmation-rename',
@@ -420,8 +429,22 @@ describe('Agent document edit confirmation UI', () => {
           libraryId: '33333333-3333-4333-8333-333333333333',
           libraryName: 'MainChoice',
           createdNodes: [
-            { label: 'EscapeRoute', contentSummary: 'The hero escapes.', rowIndex: 4 },
+            {
+              label: 'EscapeRoute',
+              title: 'Escape ending',
+              contentSummary: 'The hero escapes.',
+              rowIndex: 4,
+              placement: { relation: 'after', anchorTitle: 'Main choice' },
+            },
           ],
+          plotGraph: {
+            nodes: [
+              { id: 'MainChoice', label: 'Main choice', rowIndex: 1, rowIndexes: [1] },
+              { id: 'EscapeRoute', label: 'Escape ending', rowIndex: 3, rowIndexes: [3] },
+            ],
+            edges: [{ from: 'MainChoice', to: 'EscapeRoute' }],
+            createdNodeIds: ['EscapeRoute'],
+          },
           edgeChanges: [
             {
               kind: 'added',
@@ -470,15 +493,17 @@ describe('Agent document edit confirmation UI', () => {
       <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
     );
 
-    expect(markup).toContain('Confirm: Modify story graph');
+    expect(markup).toContain('确认剧情修改');
     expect(markup).toContain('MainChoice');
-    expect(markup).toContain('EscapeRoute');
-    expect(markup).toContain('OldEnding');
-    expect(markup).toContain('SafeRoom');
-    expect(markup).toContain('Unreachable after this edit');
-    expect(markup).toContain('Nodes');
-    expect(markup).toContain('4');
-    expect(markup).toContain('5');
+    expect(markup).toContain('添加「Escape ending」');
+    expect(markup).toContain('在「Main choice」之后');
+    expect(markup).toContain('The hero escapes.');
+    expect(markup).not.toContain('EscapeRoute');
+    expect(markup).not.toContain('OldEnding');
+    expect(markup).not.toContain('SafeRoom');
+    expect(markup).not.toContain('Nodes');
+    expect(markup).not.toContain('Edges');
+    expect(markup).not.toContain('Row 4');
     expect(markup).not.toContain('expectedSnapshot');
     expect(markup).not.toContain('assetUpdates');
     expect(markup).not.toContain('11111111-1111-4111-8111-111111111111');

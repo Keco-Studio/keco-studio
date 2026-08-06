@@ -6,6 +6,7 @@ jest.mock('@/lib/story-graph/snapshotReader', () => ({
 }));
 jest.mock('@/lib/story-graph/atomicWriter', () => ({
   applyStoryGraphMutation: jest.fn(),
+  StoryGraphWriteError: class StoryGraphWriteError extends Error {},
 }));
 jest.mock('@/lib/server/agentConfirmationSigning', () => ({
   getAgentConfirmationSigningSecret: () => 'story-graph-test-secret',
@@ -185,6 +186,28 @@ describe('propose_story_graph_edit', () => {
     expect(applyMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a newly created node that remains unreachable', async () => {
+    const result = await proposeStoryGraphEdit.execute({
+      libraryId,
+      operations: [{
+        type: 'create_node',
+        node: {
+          label: 'CurtainCall',
+          nodeType: 'narration',
+          content: '再见',
+          plotTitle: '谢幕',
+        },
+        insertAfterLabel: 'OldEnd',
+      }],
+    }, ctx);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/CurtainCall.*unreachable|unreachable.*CurtainCall/i),
+    });
+    expect(applyMutationMock).not.toHaveBeenCalled();
+  });
+
   it('revalidates and applies the signed patch once after confirmation', async () => {
     const preview = await proposeStoryGraphEdit.execute(params, ctx);
     const result = await proposeStoryGraphEdit.executeImport!(preview, params, ctx);
@@ -234,4 +257,3 @@ describe('propose_story_graph_edit', () => {
     expect(applyMutationMock).not.toHaveBeenCalled();
   });
 });
-

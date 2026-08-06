@@ -16,6 +16,11 @@ const OperationSchema = z.discriminatedUnion('type', [
       nextLabel: NodeReferenceSchema.optional(),
     }).strict(),
     insertAfterLabel: NodeReferenceSchema.optional(),
+    insertBeforeLabel: NodeReferenceSchema.optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('set_entry'),
+    entryLabel: NodeReferenceSchema,
   }).strict(),
   z.object({
     type: z.literal('add_choice'),
@@ -52,4 +57,3 @@ export const StoryGraphPatchSchema = z.object({
 
 export type StoryGraphPatch = z.infer<typeof StoryGraphPatchSchema>;
 export type StoryGraphPatchOperation = StoryGraphPatch['operations'][number];
-

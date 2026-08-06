@@ -51,16 +51,20 @@ describe('story graph edit preview', () => {
         terminal: false,
         choices: [{ optionIndex: 0, text: 'Escape', targetLabel: 'EscapeRoute', commands: '' }],
       },
-      node('EscapeRoute', 1),
+      { ...node('EscapeRoute', 1), plotTitle: 'Escape ending' },
       node('OldEnd', 2),
     ]);
     const changes: StoryGraphChange[] = [
       { type: 'ending_changed', fromLabel: 'Start', fromTargetLabel: 'OldEnd', terminal: true },
-      { type: 'node_created', label: 'EscapeRoute', rowIndex: 1, plotTitle: 'Escape ending' },
+      {
+        type: 'node_created', label: 'EscapeRoute', rowIndex: 1,
+        plotTitle: 'Escape ending', insertAfterLabel: 'Start',
+      } as unknown as StoryGraphChange,
       {
         type: 'choice_added', fromLabel: 'Start', optionIndex: 0,
         text: 'Escape', targetLabel: 'EscapeRoute',
       },
+      { type: 'entry_changed', fromLabel: 'OldEnd', toLabel: 'Start' },
     ];
 
     const preview = buildStoryGraphEditPreview({
@@ -80,10 +84,15 @@ describe('story graph edit preview', () => {
       libraryName: 'Story Conversation',
       createdNodes: [{
         label: 'EscapeRoute',
+        title: 'Escape ending',
         contentSummary: 'EscapeRoute content',
         rowIndex: 2,
+        placement: {
+          relation: 'after',
+          anchorTitle: 'Start',
+        },
       }],
-      affectedRows: [1, 2],
+      affectedRows: [1, 2, 3],
       addedFields: ['Option3', 'Option3_Next'],
       warnings: [{ code: 'unreachable_node', label: 'OldEnd' }],
     });
@@ -96,8 +105,17 @@ describe('story graph edit preview', () => {
         kind: 'added', fromLabel: 'Start', text: 'Escape',
         fromTarget: null, toTarget: 'EscapeRoute',
       },
+      {
+        kind: 'entry_changed', fromLabel: 'OldEnd',
+        fromTarget: 'OldEnd', toTarget: 'Start',
+      },
     ]);
+    expect(preview.plotGraph).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({ id: 'EscapeRoute', label: 'Escape ending' }),
+      ]),
+      createdNodeIds: ['EscapeRoute'],
+    });
     expect(JSON.stringify(preview)).not.toContain('must-not-leak');
   });
 });
-

@@ -56,7 +56,20 @@ describe('read_story_graph', () => {
             nextLabel: null, terminal: true, choices: [], values: {},
           },
         ],
-        plotPlan: {} as never,
+        plotPlan: {
+          version: 2,
+          entryPlotNodeId: 'Intro',
+          storyNodeOrder: ['Intro', 'Decision', 'LeftEnd'],
+          nodes: [
+            { id: 'Intro', title: '开场', storyNodeIds: ['Intro'] },
+            { id: 'Decision', title: '分支', storyNodeIds: ['Decision'] },
+            { id: 'LeftEnd', title: '最终汇聚', storyNodeIds: ['LeftEnd'] },
+          ],
+          edges: [
+            { fromPlotNodeId: 'Intro', toPlotNodeId: 'Decision', optionText: null, optionIndex: null },
+            { fromPlotNodeId: 'Decision', toPlotNodeId: 'LeftEnd', optionText: 'Left', optionIndex: 0 },
+          ],
+        },
       },
       fields: [],
       assets: [],
@@ -85,6 +98,16 @@ describe('read_story_graph', () => {
       displayHint: 'list',
       data: {
         entryLabel: 'Intro',
+        plotNodes: expect.arrayContaining([
+          expect.objectContaining({
+            title: '最终汇聚',
+            firstLabel: 'LeftEnd',
+            lastLabel: 'LeftEnd',
+          }),
+        ]),
+        plotEdges: expect.arrayContaining([
+          expect.objectContaining({ fromPlotNodeId: 'Decision', toPlotNodeId: 'LeftEnd' }),
+        ]),
         nodes: expect.arrayContaining([
           expect.objectContaining({
             label: 'Intro', rowIndex: 1,
@@ -96,6 +119,61 @@ describe('read_story_graph', () => {
               kind: 'choice', optionIndex: 0, text: 'Left', target: 'LeftEnd',
             }],
           }),
+        ]),
+      },
+    });
+
+    const selected = await readStoryGraph.execute({ plotTitle: '最终汇聚' }, ctx);
+    expect(selected).toMatchObject({
+      success: true,
+      data: {
+        selectedPlot: {
+          title: '最终汇聚',
+          firstLabel: 'LeftEnd',
+          lastLabel: 'LeftEnd',
+          outgoing: [],
+        },
+        nodes: [expect.objectContaining({ label: 'LeftEnd' })],
+      },
+    });
+
+    const missing = await readStoryGraph.execute({ plotTitle: '不存在' }, ctx);
+    expect(missing).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/不存在.*not found|not found.*不存在/i),
+    });
+
+    const snapshot = await loadSnapshotMock.mock.results[0].value;
+    snapshot.graph.plotPlan.nodes[1].title = '开场';
+    loadSnapshotMock.mockResolvedValue(snapshot);
+    const coalesced = await readStoryGraph.execute({ plotTitle: '开场' }, ctx);
+    expect(coalesced).toMatchObject({
+      success: true,
+      data: {
+        selectedPlot: {
+          title: '开场',
+          firstLabel: 'Intro',
+          lastLabel: 'Decision',
+          nodeCount: 2,
+        },
+        nodes: [
+          expect.objectContaining({ label: 'Intro' }),
+          expect.objectContaining({ label: 'Decision' }),
+        ],
+      },
+    });
+
+    snapshot.graph.plotPlan.nodes[1].title = '分支';
+    snapshot.graph.plotPlan.nodes[0].title = '最终汇聚';
+    loadSnapshotMock.mockResolvedValue(snapshot);
+    const ambiguous = await readStoryGraph.execute({ plotTitle: '最终汇聚' }, ctx);
+    expect(ambiguous).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/multiple|ambiguous/i),
+      data: {
+        candidates: expect.arrayContaining([
+          expect.objectContaining({ id: 'Intro', title: '最终汇聚' }),
+          expect.objectContaining({ id: 'LeftEnd', title: '最终汇聚' }),
         ]),
       },
     });

@@ -131,6 +131,14 @@ describe('buildSystemPrompt design-document table rules', () => {
     expect(prompt).toMatch(/before every story graph write/i);
     expect(prompt).toMatch(/do not use update_asset or update_row/i);
     expect(prompt).toMatch(/disconnected nodes are preserved/i);
+    expect(prompt).toMatch(/insertBeforeLabel/i);
+    expect(prompt).toMatch(/set_entry/i);
+    expect(prompt).toMatch(/plot title/i);
+    expect(prompt).toMatch(/lastLabel/i);
+    expect(prompt).toMatch(/plotTitle/i);
+    expect(prompt).toMatch(/set_next.*lastLabel|lastLabel.*set_next/i);
+    expect(prompt).toMatch(/newly created.*reachable|reachable.*newly created/i);
+    expect(prompt).toMatch(/never ask.*internal.*label/i);
   });
 
   it('requires a fresh structure list before claiming resources are missing', () => {

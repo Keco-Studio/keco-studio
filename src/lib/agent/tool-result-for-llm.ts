@@ -70,6 +70,10 @@ type ReadStoryGraphData = {
   libraryId?: string;
   libraryName?: string;
   entryLabel?: string;
+  entryPlotNodeId?: string;
+  plotNodes?: unknown[];
+  plotEdges?: unknown[];
+  selectedPlot?: unknown;
   nodes?: unknown[];
   warnings?: unknown[];
   summary?: { nodeCount?: number; [key: string]: unknown };
@@ -216,6 +220,8 @@ function compactReadStoryGraphPayload(result: ToolResult): ToolResult {
   if (!result.success || !result.data || typeof result.data !== 'object') return result;
   const data = result.data as ReadStoryGraphData;
   const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+  const plotNodes = Array.isArray(data.plotNodes) ? data.plotNodes : [];
+  const plotEdges = Array.isArray(data.plotEdges) ? data.plotEdges : [];
   const warnings = Array.isArray(data.warnings) ? data.warnings : [];
   const nodeCount = data.summary?.nodeCount ?? data.nodeCount ?? nodes.length;
   const maxVisible = Math.min(80, nodes.length);
@@ -227,6 +233,10 @@ function compactReadStoryGraphPayload(result: ToolResult): ToolResult {
       libraryId: data.libraryId,
       libraryName: data.libraryName,
       entryLabel: data.entryLabel,
+      entryPlotNodeId: data.entryPlotNodeId,
+      plotNodes,
+      plotEdges,
+      selectedPlot: data.selectedPlot,
       nodes: nodes.slice(0, visibleNodeCount),
       warnings: warnings.slice(0, 20),
       summary: data.summary,
@@ -234,7 +244,7 @@ function compactReadStoryGraphPayload(result: ToolResult): ToolResult {
       visibleNodeCount,
       ...(visibleNodeCount < nodes.length || warnings.length > 20 ? {
         _llmNote:
-          `This is a partial story graph read: ${visibleNodeCount} of ${nodeCount} nodes are visible. Narrow the request by stable label before editing; do not infer unseen nodes or edges.`,
+          `This is a partial Story-node read: ${visibleNodeCount} of ${nodeCount} detailed nodes are visible, but plotNodes and plotEdges are complete. Narrow by exact visible plotTitle before editing; use its firstLabel/lastLabel and do not infer unseen Story nodes or edges.`,
       } : {}),
     },
   });

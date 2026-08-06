@@ -1,8 +1,14 @@
 'use client';
 
+import { useEffect } from 'react';
 import styles from './ChatPanel.module.css';
 import type { ConfirmationView } from './types';
 import { AssistantMarkdown } from './AssistantMarkdown';
+import {
+  clearStoryGraphPreview,
+  showStoryGraphPreview,
+  type StoryGraphFlowPreview,
+} from '@/lib/script-system/storyGraphPreviewEvents';
 
 interface Props {
   confirmation: ConfirmationView;
@@ -34,10 +40,21 @@ type StoryGraphSummary = {
 
 type StoryGraphEditPreview = {
   type: 'story_graph_edit';
+  libraryId: string;
   libraryName: string;
-  createdNodes: Array<{ label: string; contentSummary: string; rowIndex: number }>;
+  createdNodes: Array<{
+    label: string;
+    title?: string;
+    contentSummary: string;
+    rowIndex: number;
+    placement?: {
+      relation: 'before' | 'after' | 'end';
+      anchorTitle?: string;
+    };
+  }>;
+  plotGraph?: StoryGraphFlowPreview;
   edgeChanges: Array<{
-    kind: 'added' | 'removed' | 'redirected' | 'next_changed' | 'ending_changed';
+    kind: 'added' | 'removed' | 'redirected' | 'next_changed' | 'ending_changed' | 'entry_changed';
     fromLabel: string;
     text?: string;
     fromTarget?: string | null;
@@ -55,6 +72,7 @@ function isStoryGraphEditPreview(value: unknown): value is StoryGraphEditPreview
   const preview = value as Partial<StoryGraphEditPreview>;
   return (
     preview.type === 'story_graph_edit' &&
+    typeof preview.libraryId === 'string' &&
     typeof preview.libraryName === 'string' &&
     Array.isArray(preview.createdNodes) &&
     Array.isArray(preview.edgeChanges) &&
@@ -66,24 +84,10 @@ function isStoryGraphEditPreview(value: unknown): value is StoryGraphEditPreview
   );
 }
 
-function graphTarget(target: string | null | undefined): string {
-  return target ?? 'End';
-}
-
-function graphEdgeDescription(change: StoryGraphEditPreview['edgeChanges'][number]): string {
-  const choice = change.text ? ` \"${change.text}\"` : '';
-  switch (change.kind) {
-    case 'added':
-      return `${change.fromLabel}${choice} -> ${graphTarget(change.toTarget)}`;
-    case 'removed':
-      return `${change.fromLabel}${choice} -> ${graphTarget(change.fromTarget)}`;
-    case 'redirected':
-      return `${change.fromLabel}${choice}: ${graphTarget(change.fromTarget)} -> ${graphTarget(change.toTarget)}`;
-    case 'next_changed':
-      return `${change.fromLabel} next: ${graphTarget(change.fromTarget)} -> ${graphTarget(change.toTarget)}`;
-    case 'ending_changed':
-      return `${change.fromLabel}: ${graphTarget(change.fromTarget)} -> End`;
-  }
+export function shouldShowStoryGraphPreview(
+  resolved: ConfirmationView['resolved']
+): boolean {
+  return resolved === undefined;
 }
 
 export type DiffRow = {
@@ -406,6 +410,15 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const storyGraphPreview = isStoryGraphEditPreview(confirmation.preview)
     ? confirmation.preview
     : undefined;
+  useEffect(() => {
+    if (!storyGraphPreview?.plotGraph || !shouldShowStoryGraphPreview(resolved)) return;
+    showStoryGraphPreview({
+      actionId,
+      libraryId: storyGraphPreview.libraryId,
+      graph: storyGraphPreview.plotGraph,
+    });
+    return () => clearStoryGraphPreview(actionId);
+  }, [actionId, resolved, storyGraphPreview]);
   const documentPreview = confirmation.preview as
     | {
         type?: string;
@@ -466,16 +479,6 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     !isInsertResourceReference;
 
   if (storyGraphPreview) {
-    const summaryRows: Array<[string, string | number, string | number]> = [
-      ['Nodes', storyGraphPreview.before.nodeCount, storyGraphPreview.after.nodeCount],
-      ['Edges', storyGraphPreview.before.edgeCount, storyGraphPreview.after.edgeCount],
-      ['Endings', storyGraphPreview.before.endingCount, storyGraphPreview.after.endingCount],
-      [
-        'Paths',
-        storyGraphPreview.before.entryToEndingPathCount,
-        storyGraphPreview.after.entryToEndingPathCount,
-      ],
-    ];
     return (
       <div
         className={styles.confirmCard}
@@ -485,73 +488,39 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
       >
         <div className={styles.confirmTitle}>
           {resolved === 'approved'
-            ? 'Applying story graph edit...'
+            ? '正在应用剧情修改...'
             : resolved === 'rejected'
-              ? 'Story graph edit cancelled.'
-              : 'Confirm: Modify story graph'}
+              ? '已取消剧情修改'
+              : '确认剧情修改'}
         </div>
         <div className={styles.graphPreviewTarget}>{storyGraphPreview.libraryName}</div>
 
-        <div className={styles.graphSummary} aria-label="Story graph summary">
-          {summaryRows.map(([name, before, after]) => (
-            <div className={styles.graphSummaryItem} key={name}>
-              <span>{name}</span>
-              <strong>{before} -&gt; {after}</strong>
-            </div>
-          ))}
-        </div>
-
         {storyGraphPreview.createdNodes.length > 0 ? (
-          <section className={styles.graphChangeSection} aria-label="Created nodes">
-            <div className={styles.graphSectionTitle}>Created nodes</div>
-            <div className={styles.graphChangeList}>
-              {storyGraphPreview.createdNodes.map((node) => (
-                <div className={styles.graphChangeRow} key={`${node.label}-${node.rowIndex}`}>
-                  <span className={`${styles.graphMarker} ${styles.graphMarkerAdded}`}>+</span>
-                  <span>
-                    <code className={styles.graphLabel}>{node.label}</code>
-                    <span className={styles.graphDetail}> Row {node.rowIndex}: {node.contentSummary}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
+          <section className={styles.graphIntentList} aria-label="待添加节点">
+            {storyGraphPreview.createdNodes.map((node) => (
+              <div className={styles.graphIntent} key={`${node.label}-${node.rowIndex}`}>
+                <strong>添加「{node.title ?? node.contentSummary}」</strong>
+                <span className={styles.graphIntentLocation}>
+                  {node.placement?.relation === 'before' && node.placement.anchorTitle
+                    ? `在「${node.placement.anchorTitle}」之前`
+                    : node.placement?.relation === 'after' && node.placement.anchorTitle
+                      ? `在「${node.placement.anchorTitle}」之后`
+                      : '在剧情末尾'}
+                </span>
+                {node.contentSummary ? (
+                  <span className={styles.graphIntentContent}>{node.contentSummary}</span>
+                ) : null}
+              </div>
+            ))}
           </section>
-        ) : null}
-
-        {storyGraphPreview.edgeChanges.length > 0 ? (
-          <section className={styles.graphChangeSection} aria-label="Edge changes">
-            <div className={styles.graphSectionTitle}>Edge changes</div>
-            <div className={styles.graphChangeList}>
-              {storyGraphPreview.edgeChanges.map((change, index) => {
-                const removed = change.kind === 'removed';
-                return (
-                  <div className={styles.graphChangeRow} key={`${change.kind}-${change.fromLabel}-${index}`}>
-                    <span
-                      className={`${styles.graphMarker} ${
-                        removed ? styles.graphMarkerRemoved : styles.graphMarkerChanged
-                      }`}
-                    >
-                      {removed ? '-' : change.kind === 'added' ? '+' : '~'}
-                    </span>
-                    <code className={styles.graphLabel}>{graphEdgeDescription(change)}</code>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        <div className={styles.graphPatchMeta}>
-          Affected rows: {storyGraphPreview.affectedRows.join(', ') || 'none'}
-          {storyGraphPreview.addedFields.length > 0
-            ? ` | Added fields: ${storyGraphPreview.addedFields.join(', ')}`
-            : ''}
-        </div>
-        {storyGraphPreview.warnings.map((warning) => (
-          <div className={styles.graphWarning} key={`${warning.code}-${warning.label}`}>
-            Unreachable after this edit: <code className={styles.graphLabel}>{warning.label}</code>
+        ) : (
+          <div className={styles.graphIntentFallback}>将更新剧情节点之间的连接关系</div>
+        )}
+        {storyGraphPreview.warnings.length > 0 ? (
+          <div className={styles.graphWarning}>
+            修改后有 {storyGraphPreview.warnings.length} 个节点无法从入口到达
           </div>
-        ))}
+        ) : null}
 
         {resolved ? (
           <div className={styles.resolvedNote}>

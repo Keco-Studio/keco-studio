@@ -58,4 +58,24 @@ describe('loadConversationHistory with content parts', () => {
     const history = await loadConversationHistory(supabase, 'conv-1');
     expect(history[0].content).toBe('plain text');
   });
+
+  it('preserves reasoning_content on assistant tool-call messages', async () => {
+    const supabase = makeSupabase([{
+      role: 'assistant',
+      content: {
+        content: '',
+        reasoning_content: 'Inspect the current story graph first.',
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'read_story_graph', arguments: '{}' },
+        }],
+      },
+    }]);
+    const history = await loadConversationHistory(supabase, 'conv-1');
+    expect(history[0]).toMatchObject({
+      role: 'assistant',
+      reasoning_content: 'Inspect the current story graph first.',
+    });
+  });
 });

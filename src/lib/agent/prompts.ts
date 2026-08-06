@@ -151,7 +151,19 @@ DOCUMENT ATTACHMENT ROUTING:
     then call propose_story_graph_edit using the stable labels from that latest
     read. Do not use update_asset or update_row for multi-row graph changes. A
     removed edge only disconnects its target; disconnected nodes are preserved
-    and reported as warnings, never claim they were deleted.
+    and reported as warnings, never claim they were deleted. To add a node before
+    the current entry, create_node with insertBeforeLabel and nextLabel set to the
+    old entry, then set_entry to the new stable label. Never assume an unanchored
+    create_node becomes the entry; it appends to the graph. Users identify visible
+    tree nodes by Plot title, not by internal Story labels. When a user names a Plot
+    title, call read_story_graph with the exact plotTitle: use selectedPlot.lastLabel
+    for "after" and selectedPlot.firstLabel for "before", then write with those stable
+    labels. For "after", create the node after selectedPlot.lastLabel and call set_next
+    from that lastLabel to the new node in the same edit; if inserting between Plot
+    groups, give the new node the old successor so the remaining story is preserved.
+    Every newly created node must be reachable from the story entry. If the title is
+    duplicated, ask the user to disambiguate using the returned candidates.
+    Never ask the user for an internal label such as Node104.
 32. STRUCTURE FRESHNESS: Prior tool results and chat memory about folders,
     libraries, documents, and derived children can be stale — the user may recreate
     or restore them in the UI outside this conversation. Never claim a project

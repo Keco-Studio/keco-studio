@@ -22,20 +22,19 @@ export default function ProjectsPage() {
   const { setShowCreateProjectBreadcrumb } = useNavigation();
   const [showModal, setShowModal] = useState(false);
 
-  // When userProfile.id is available, pass it to skip getCurrentUserId/getUser(), avoiding slow
-  // auth round-trip on first login. Otherwise fall back to getCurrentUserId.
   const {
     data: projects = [],
-    isLoading: loading,
+    isLoading: projectsLoading,
     error: projectsError,
   } = useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', userProfile?.id],
     queryFn: () => listProjects(supabase, userProfile?.id),
-    enabled: true,
+    enabled: Boolean(userProfile?.id),
     staleTime: 2 * 60 * 1000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
+  const loading = !userProfile?.id || projectsLoading;
 
   // Check for pending invitation token after user logs in
   useEffect(() => {

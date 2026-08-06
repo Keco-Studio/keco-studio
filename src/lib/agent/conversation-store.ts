@@ -149,6 +149,9 @@ export async function loadConversationHistory(
         role: row.role as ChatMessage['role'],
         content: parseStoredContent(body.content),
       };
+      if (typeof body.reasoning_content === 'string') {
+        message.reasoning_content = body.reasoning_content;
+      }
       if (Array.isArray(body.tool_calls)) message.tool_calls = body.tool_calls as ChatMessage['tool_calls'];
       if (typeof body.tool_call_id === 'string') message.tool_call_id = body.tool_call_id;
       if (typeof body.name === 'string') message.name = body.name;
@@ -230,6 +233,7 @@ export async function saveMessage(
   indexingContext?: SaveMessageIndexingContext
 ): Promise<SaveMessageResult | void> {
   const content: Record<string, unknown> = { content: message.content ?? '' };
+  if (message.reasoning_content) content.reasoning_content = message.reasoning_content;
   if (message.tool_calls) content.tool_calls = message.tool_calls;
   if (message.tool_call_id) content.tool_call_id = message.tool_call_id;
   if (message.name) content.name = message.name;

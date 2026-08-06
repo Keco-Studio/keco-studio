@@ -352,6 +352,7 @@ async function* continueLoop(
     }
 
     let assistantContent = '';
+    let assistantReasoning = '';
     const toolCallsByIndex = new Map<number, ToolCall>();
     let finishReason = '';
     let llmUsage: TokenUsage | undefined;
@@ -369,6 +370,7 @@ async function* continueLoop(
         assistantContent += chunk.content;
         yield { type: 'text_delta', content: chunk.content };
       } else if (chunk.type === 'reasoning_delta') {
+        assistantReasoning += chunk.content;
         yield { type: 'reasoning_delta', content: chunk.content };
       } else if (chunk.type === 'tool_call_delta') {
         const existing = toolCallsByIndex.get(chunk.index);
@@ -414,8 +416,13 @@ async function* continueLoop(
         yield { type: 'done' };
         return;
       }
-      messages.push({ role: 'assistant', content: assistantContent });
-      await persistMessage(ctx, conversationId, { role: 'assistant', content: assistantContent });
+      const completedAssistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: assistantContent,
+        ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
+      };
+      messages.push(completedAssistantMessage);
+      await persistMessage(ctx, conversationId, completedAssistantMessage);
       yield { type: 'done' };
       return;
     }
@@ -425,6 +432,7 @@ async function* continueLoop(
     const assistantMessage: ChatMessage = {
       role: 'assistant',
       content: assistantContent || '',
+      ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
       tool_calls: [call],
     };
 
@@ -539,8 +547,12 @@ async function* continueLoop(
         }
         const actionId = crypto.randomUUID();
         // Persist assistant text (tool_calls deferred until resume) for display continuity.
-        if (assistantContent) {
-          await persistMessage(ctx, conversationId, { role: 'assistant', content: assistantContent });
+        if (assistantContent || assistantReasoning) {
+          await persistMessage(ctx, conversationId, {
+            role: 'assistant',
+            content: assistantContent,
+            ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
+          });
         }
         await savePendingAction(ctx.supabase, {
           id: actionId,
@@ -551,6 +563,7 @@ async function* continueLoop(
           suspendedState: {
             messages: [...messages],
             pendingToolCall: call,
+            ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
             turnId: trace?.turnId,
             nextIteration: iterations,
             tokenUsageTotal: usedTokenTotal,
@@ -599,8 +612,12 @@ async function* continueLoop(
           continue;
         }
         const actionId = crypto.randomUUID();
-        if (assistantContent) {
-          await persistMessage(ctx, conversationId, { role: 'assistant', content: assistantContent });
+        if (assistantContent || assistantReasoning) {
+          await persistMessage(ctx, conversationId, {
+            role: 'assistant',
+            content: assistantContent,
+            ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
+          });
         }
         await savePendingAction(ctx.supabase, {
           id: actionId,
@@ -611,6 +628,7 @@ async function* continueLoop(
           suspendedState: {
             messages: [...messages],
             pendingToolCall: call,
+            ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
             toolResult: result,
             turnId: trace?.turnId,
             nextIteration: iterations,
@@ -826,7 +844,12 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     const meta = conversation?.meta ?? input.conversationMeta;
 
     const systemMessage = await buildSystemMessage(turnContext);
-    const { messages: suspendedMessages, pendingToolCall, toolResult: savedResult } = pending.suspendedState;
+    const {
+      messages: suspendedMessages,
+      pendingToolCall,
+      reasoning_content: pendingReasoningContent,
+      toolResult: savedResult,
+    } = pending.suspendedState;
 
     // Ensure the working messages start with the current system prompt.
     const messages: ChatMessage[] = suspendedMessages[0]?.role === 'system'
@@ -933,7 +956,12 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     }
     // Persist assistant+tool_calls only after we have the tool result, so a
     // failed execution never leaves orphan tool_calls in the DB.
-    const assistantMessage: ChatMessage = { role: 'assistant', content: '', tool_calls: [pendingToolCall] };
+    const assistantMessage: ChatMessage = {
+      role: 'assistant',
+      content: '',
+      ...(pendingReasoningContent ? { reasoning_content: pendingReasoningContent } : {}),
+      tool_calls: [pendingToolCall],
+    };
     const toolMessage: ChatMessage = {
       role: 'tool',
       tool_call_id: pendingToolCall.id,

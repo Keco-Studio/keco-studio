@@ -42,6 +42,42 @@ function graph(nodes: EditableStoryNode[]): EditableStoryGraph {
 }
 
 describe('story graph patch engine', () => {
+  it('inserts a prologue before the current entry and makes it the new entry', () => {
+    const before = graph([
+      node('Node1', { nextLabel: 'Node2', terminal: false }),
+      node('Node2'),
+    ]);
+
+    const result = applyStoryGraphPatch(before, {
+      operations: [
+        {
+          type: 'create_node',
+          node: {
+            label: 'Prologue',
+            nodeType: 'narration',
+            plotTitle: '开场白',
+            content: '你好',
+            nextLabel: 'Node1',
+          },
+          insertBeforeLabel: 'Node1',
+        },
+        { type: 'set_entry', entryLabel: 'Prologue' },
+      ],
+    });
+
+    expect(result.graph.entryLabel).toBe('Prologue');
+    expect(result.graph.nodes.map((item) => item.label)).toEqual(['Prologue', 'Node1', 'Node2']);
+    expect(result.graph.nodes[0]).toMatchObject({
+      nextLabel: 'Node1',
+      content: '你好',
+      plotTitle: '开场白',
+    });
+    expect(result.changes).toEqual([
+      expect.objectContaining({ type: 'node_created', label: 'Prologue', rowIndex: 0 }),
+      { type: 'entry_changed', fromLabel: 'Node1', toLabel: 'Prologue' },
+    ]);
+  });
+
   it('applies ordered operations to create a new branch without discarding the old route', () => {
     const before = graph([
       node('Intro', { nextLabel: 'Decision', terminal: false }),

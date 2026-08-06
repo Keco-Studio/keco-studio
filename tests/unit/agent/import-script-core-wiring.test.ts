@@ -35,4 +35,10 @@ describe('Agent import source and progress wiring', () => {
     expect(chatSource).toContain('toolCall: { ...item.toolCall, progressMessage }');
     expect(cardSource).toContain('toolCall.progressMessage');
   });
+
+  it('forwards model reasoning_content when an assistant turn calls a tool', () => {
+    expect(coreSource).toContain('let assistantReasoning =');
+    expect(coreSource).toContain('assistantReasoning += chunk.content');
+    expect(coreSource).toContain('reasoning_content: assistantReasoning');
+  });
 });

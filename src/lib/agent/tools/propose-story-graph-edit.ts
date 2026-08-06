@@ -6,6 +6,7 @@ import {
   applyNormalizedStoryGraphPatch,
   applyStoryGraphPatch,
   type NormalizedStoryGraphPatch,
+  StoryGraphPatchError,
 } from '@/lib/story-graph/patchEngine';
 import { updatePlotPlanAfterPatch } from '@/lib/story-graph/plotPlanUpdater';
 import { validateEditableStoryGraph } from '@/lib/story-graph/validator';
@@ -64,6 +65,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       applied.changes
     );
     const afterValidation = validateEditableStoryGraph(applied.graph);
+    assertCreatedNodesReachable(applied.changes, afterValidation.warnings);
     const mutation = buildMutation(snapshot, applied.graph);
     const preview = buildStoryGraphEditPreview({
       libraryId: snapshot.libraryId,
@@ -146,6 +148,7 @@ async function executeImport(
       applied.changes
     );
     const validation = validateEditableStoryGraph(applied.graph);
+    assertCreatedNodesReachable(applied.changes, validation.warnings);
     const mutation = buildMutation(snapshot, applied.graph);
     const write = await applyStoryGraphMutation(
       ctx.supabase,
@@ -173,6 +176,28 @@ async function executeImport(
   } catch (error) {
     return failure(error);
   }
+}
+
+function assertCreatedNodesReachable(
+  changes: Array<{ type: string; label?: string }>,
+  warnings: Array<{ code: string; label: string }>
+): void {
+  const unreachable = new Set(
+    warnings
+      .filter((warning) => warning.code === 'unreachable_node')
+      .map((warning) => warning.label)
+  );
+  const disconnectedCreated = changes.flatMap((change) => (
+    change.type === 'node_created' && change.label && unreachable.has(change.label)
+      ? [change.label]
+      : []
+  ));
+  if (disconnectedCreated.length === 0) return;
+
+  throw new StoryGraphPatchError(
+    'STORY_GRAPH_INVALID_PATCH',
+    `Newly created story node ${disconnectedCreated.join(', ')} is unreachable. Connect it from the existing graph with set_next or add_choice in the same edit.`
+  );
 }
 
 async function loadSnapshot(params: ParsedParams, ctx: ToolContext) {
@@ -278,9 +303,10 @@ function fieldValues(
 }
 
 function optionFieldOrder(left: string, right: string): number {
-  const parse = (value: string) => {
+  const parse = (value: string): [number, number] => {
     const match = /^Option(\d+)(|_Next|_Commands)$/.exec(value)!;
-    return [Number(match[1]), { '': 0, _Next: 1, _Commands: 2 }[match[2]]];
+    const kind = { '': 0, _Next: 1, _Commands: 2 }[match[2] as '' | '_Next' | '_Commands'];
+    return [Number(match[1]), kind];
   };
   const [leftIndex, leftKind] = parse(left);
   const [rightIndex, rightKind] = parse(right);
@@ -363,8 +389,17 @@ const operationSchemas = [
         required: ['label', 'nodeType', 'content'],
       },
       insertAfterLabel: { type: 'string' },
+      insertBeforeLabel: { type: 'string' },
     },
     required: ['type', 'node'],
+  },
+  {
+    type: 'object', additionalProperties: false,
+    properties: {
+      type: { const: 'set_entry' },
+      entryLabel: { type: 'string' },
+    },
+    required: ['type', 'entryLabel'],
   },
   ...(['add_choice', 'redirect_choice', 'remove_choice', 'set_next', 'set_end'] as const)
     .map((type) => ({
@@ -395,7 +430,7 @@ const operationSchemas = [
 export const proposeStoryGraphEdit: AgentTool = {
   name: 'propose_story_graph_edit',
   description:
-    'Preview and atomically edit the executable graph of a document-derived Script. Always call read_story_graph first and use its stable labels. Supports creating nodes, adding/redirecting/removing choices, setting ordinary successors, and setting endings. Removing a choice never deletes downstream content.',
+    'Preview and atomically edit the executable graph of a document-derived Script. Always call read_story_graph first and use its stable labels. Supports creating and positioning nodes, changing the entry, adding/redirecting/removing choices, setting ordinary successors, and setting endings. To prepend a new entry, create it with insertBeforeLabel and nextLabel pointing to the old entry, then call set_entry. Removing a choice never deletes downstream content.',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'mode',
@@ -416,4 +451,3 @@ export const proposeStoryGraphEdit: AgentTool = {
   execute,
   executeImport,
 };
-

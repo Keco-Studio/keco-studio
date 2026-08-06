@@ -19,7 +19,7 @@ export function updatePlotPlanAfterPatch(
   const storyNodeOrder = graph.nodes.map((node) => node.label);
   const knownLabels = new Set(storyNodeOrder);
   const indexByLabel = new Map(storyNodeOrder.map((label, index) => [label, index]));
-  const splitLabels = collectSplitLabels(changes);
+  const splitLabels = collectSplitLabels(previous, changes);
   const createdTitles = new Map(changes.flatMap((change) => (
     change.type === 'node_created' && change.plotTitle
       ? [[change.label, change.plotTitle] as const]
@@ -90,35 +90,63 @@ export function updatePlotPlanAfterPatch(
   ) as StoryPlotPlanV2;
 }
 
-function collectSplitLabels(changes: StoryGraphChange[]): Set<string> {
+function collectSplitLabels(
+  previous: StoryPlotPlan,
+  changes: StoryGraphChange[]
+): Set<string> {
   const labels = new Set<string>();
   for (const change of changes) {
-    switch (change.type) {
-      case 'node_created':
-        labels.add(change.label);
-        break;
-      case 'choice_added':
-        labels.add(change.fromLabel);
-        labels.add(change.targetLabel);
-        break;
-      case 'choice_removed':
-        labels.add(change.fromLabel);
-        break;
-      case 'choice_redirected':
-        labels.add(change.fromLabel);
-        labels.add(change.fromTargetLabel);
-        labels.add(change.toTargetLabel);
-        break;
-      case 'next_changed':
-        labels.add(change.fromLabel);
-        labels.add(change.toTargetLabel);
-        break;
-      case 'ending_changed':
-        labels.add(change.fromLabel);
-        break;
+    changeLabels(change).forEach((label) => labels.add(label));
+  }
+
+  for (const change of changes) {
+    if (change.type !== 'entry_changed') continue;
+    const prependedEntry = changes.some((candidate) => (
+      candidate.type === 'node_created'
+      && candidate.label === change.toLabel
+      && candidate.insertBeforeLabel === change.fromLabel
+    ));
+    const oldEntryChangedElsewhere = changes.some((candidate) => (
+      candidate !== change
+      && candidate.type !== 'node_created'
+      && changeLabels(candidate).includes(change.fromLabel)
+    ));
+    if (prependedEntry && !oldEntryChangedElsewhere) {
+      labels.delete(change.fromLabel);
+    }
+  }
+
+  for (const plotNode of previous.nodes) {
+    const tail = plotNode.storyNodeIds.at(-1);
+    if (!tail || !labels.has(tail)) continue;
+    const tailChanges = changes.filter((change) => changeLabels(change).includes(tail));
+    if (tailChanges.every((change) => (
+      (change.type === 'next_changed' || change.type === 'ending_changed')
+      && change.fromLabel === tail
+    ))) {
+      labels.delete(tail);
     }
   }
   return labels;
+}
+
+function changeLabels(change: StoryGraphChange): string[] {
+  switch (change.type) {
+    case 'node_created':
+      return [change.label];
+    case 'entry_changed':
+      return [change.fromLabel, change.toLabel];
+    case 'choice_added':
+      return [change.fromLabel, change.targetLabel];
+    case 'choice_removed':
+      return [change.fromLabel];
+    case 'choice_redirected':
+      return [change.fromLabel, change.fromTargetLabel, change.toTargetLabel];
+    case 'next_changed':
+      return [change.fromLabel, change.toTargetLabel];
+    case 'ending_changed':
+      return [change.fromLabel];
+  }
 }
 
 function singletonPlotNode(

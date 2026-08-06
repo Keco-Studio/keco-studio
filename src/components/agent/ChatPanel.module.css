@@ -860,6 +860,37 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.graphIntentList {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.graphIntent {
+  display: grid;
+  gap: 3px;
+  padding-left: 10px;
+  border-left: 2px solid #0b99ff;
+  color: #111827;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.graphIntent strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+.graphIntentLocation {
+  color: #334155;
+}
+.graphIntentContent {
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+.graphIntentFallback {
+  margin: 10px 0 12px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 .composer {
   border-top: none;

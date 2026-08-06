@@ -10,7 +10,15 @@ import {
 } from './patchSchema';
 
 export type StoryGraphChange =
-  | { type: 'node_created'; label: string; rowIndex: number; plotTitle?: string }
+  | {
+      type: 'node_created';
+      label: string;
+      rowIndex: number;
+      plotTitle?: string;
+      insertAfterLabel?: string;
+      insertBeforeLabel?: string;
+    }
+  | { type: 'entry_changed'; fromLabel: string; toLabel: string }
   | {
       type: 'choice_added'; fromLabel: string; optionIndex: number;
       text: string; targetLabel: string;
@@ -131,12 +139,17 @@ function applyOperation(
       if (graph.nodes.some((node) => node.label === operation.node.label)) {
         invalid(`Story node ${operation.node.label} already exists`);
       }
+      if (operation.insertAfterLabel && operation.insertBeforeLabel) {
+        invalid('create_node accepts only one insertion anchor');
+      }
       const nextLabel = operation.node.nextLabel
         ? resolveNode(graph, operation.node.nextLabel).label
         : null;
-      const insertIndex = operation.insertAfterLabel
-        ? graph.nodes.indexOf(resolveNode(graph, operation.insertAfterLabel)) + 1
-        : graph.nodes.length;
+      const insertIndex = operation.insertBeforeLabel
+        ? graph.nodes.indexOf(resolveNode(graph, operation.insertBeforeLabel))
+        : operation.insertAfterLabel
+          ? graph.nodes.indexOf(resolveNode(graph, operation.insertAfterLabel)) + 1
+          : graph.nodes.length;
       const plotTitle = operation.node.plotTitle ?? compactTitle(
         operation.node.content,
         operation.node.label
@@ -154,13 +167,30 @@ function applyOperation(
         ...(operation.insertAfterLabel
           ? { insertAfterLabel: graph.nodes[insertIndex - 1].label }
           : {}),
+        ...(operation.insertBeforeLabel
+          ? { insertBeforeLabel: graph.nodes[insertIndex + 1].label }
+          : {}),
       });
       changes.push({
         type: 'node_created',
         label: created.label,
         rowIndex: insertIndex,
         ...(operation.node.plotTitle ? { plotTitle: operation.node.plotTitle } : {}),
+        ...(operation.insertAfterLabel
+          ? { insertAfterLabel: graph.nodes[insertIndex - 1].label }
+          : {}),
+        ...(operation.insertBeforeLabel
+          ? { insertBeforeLabel: graph.nodes[insertIndex + 1].label }
+          : {}),
       });
+      return;
+    }
+    case 'set_entry': {
+      const entry = resolveNode(graph, operation.entryLabel);
+      const previous = graph.entryLabel;
+      graph.entryLabel = entry.label;
+      normalized.push({ ...operation, entryLabel: entry.label });
+      changes.push({ type: 'entry_changed', fromLabel: previous, toLabel: entry.label });
       return;
     }
     case 'add_choice': {
