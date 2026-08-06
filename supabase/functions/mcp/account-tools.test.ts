@@ -4,6 +4,8 @@ import { handleProtocolRequest } from "./server.ts";
 
 const WRITABLE_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const VIEWER_PROJECT_ID = "22222222-2222-4222-8222-222222222222";
+const STORY_LIBRARY_ID = "33333333-3333-4333-8333-333333333333";
+Deno.env.set("MCP_CURSOR_SECRET", "account-tools-story-graph-secret");
 const ACCOUNT_WRITE_TOOL_NAMES = [
   "create_table",
   "add_table_field",
@@ -150,6 +152,59 @@ function accountContext(
             error: null,
           };
         }
+        if (name === "mcp_read_story_graph_snapshot") {
+          const field = (suffix: number, label: string, orderIndex: number) => ({
+            id: `50000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`,
+            label,
+            dataType: "string",
+            orderIndex,
+          });
+          const fields = [
+            field(1, "Label", 0),
+            field(2, "Type", 1),
+            field(3, "Name", 2),
+            field(4, "Content", 3),
+            field(5, "Commands", 4),
+          ];
+          return {
+            data: {
+              status: "ok",
+              library: {
+                id: STORY_LIBRARY_ID,
+                name: "Story",
+                documentExportType: "script",
+                updatedAt: "2026-08-06T00:00:00.000Z",
+                plotPlan: {
+                  version: 2,
+                  entryPlotNodeId: "OnlyPlot",
+                  storyNodeOrder: ["OnlyNode"],
+                  nodes: [{
+                    id: "OnlyPlot",
+                    title: "Only plot",
+                    storyNodeIds: ["OnlyNode"],
+                  }],
+                  edges: [],
+                },
+              },
+              fields,
+              rows: [{
+                id: "60000000-0000-4000-8000-000000000001",
+                name: "OnlyNode",
+                rowIndex: 0,
+                createdAt: "2026-08-06T00:00:00.000Z",
+                updatedAt: "2026-08-06T00:00:00.000Z",
+                values: [
+                  { fieldId: fields[0].id, value: "OnlyNode" },
+                  { fieldId: fields[1].id, value: "3" },
+                  { fieldId: fields[2].id, value: "" },
+                  { fieldId: fields[3].id, value: "Done." },
+                  { fieldId: fields[4].id, value: "End" },
+                ],
+              }],
+            },
+            error: null,
+          };
+        }
         if (name === "mcp_complete_operation") {
           return { data: null, error: null };
         }
@@ -222,6 +277,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "query_table_rows",
     "list_documents",
     "read_document",
+    "read_story_graph",
     "semantic_search",
     ...ACCOUNT_WRITE_TOOL_NAMES,
   ]);
@@ -243,6 +299,35 @@ Deno.test("account schemas require projectId except list_projects", async () => 
   assertEquals(calls[0].name, "mcp_begin_account_operation");
   assertEquals(calls[1].name, "mcp_has_writable_project");
   assertEquals(calls[1].parameters, undefined);
+});
+
+Deno.test("account story graph read resolves live access before its snapshot", async () => {
+  const calls: RpcCall[] = [];
+  const message = await rpc(accountContext(calls), "tools/call", {
+    name: "read_story_graph",
+    arguments: {
+      projectId: WRITABLE_PROJECT_ID,
+      libraryId: STORY_LIBRARY_ID,
+      limit: 200,
+    },
+  });
+
+  assertEquals(message.error, undefined);
+  assertEquals(
+    message.result?.isError,
+    undefined,
+    JSON.stringify(message.result),
+  );
+  assertEquals(
+    calls.filter((call) => [
+      "mcp_resolve_project_role",
+      "mcp_read_story_graph_snapshot",
+    ].includes(call.name)).map((call) => call.name),
+    ["mcp_resolve_project_role", "mcp_read_story_graph_snapshot"],
+  );
+  const admission = calls.find((call) => call.name === "mcp_begin_account_operation")!;
+  assertEquals(admission.parameters.p_operation, "read_story_graph");
+  assertEquals(admission.parameters.p_operation_class, "read");
 });
 
 Deno.test("account add_table_field resolves live access and calls the atomic RPC", async () => {

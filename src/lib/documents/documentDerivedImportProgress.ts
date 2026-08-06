@@ -1,9 +1,11 @@
 /**
  * Progress bus for silent document Generate conversation / Generate table.
- * DocumentEditor mirrors this into the shared bottom toast — no ImportScriptModal.
+ * Drives the shared bottom toast directly so Generating stays visible even when
+ * DocumentEditor is unmounted (e.g. after navigating to a newly created library).
  */
 
 import type { DocumentExportType } from '@/lib/services/documentDerivedLibraryService';
+import { dismissToast, showToast } from '@/lib/utils/toast';
 
 export const DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT =
   'document-derived-import:progress';
@@ -13,6 +15,9 @@ export const DOCUMENT_DERIVED_IMPORT_UI_LABEL = {
   generating: 'Generating…',
   failed: 'Generation failed.',
 } as const;
+
+export const DOCUMENT_DERIVED_IMPORT_PROGRESS_TEST_ID =
+  'document-derived-import-progress';
 
 export type DocumentDerivedImportPhase =
   | 'preparing'
@@ -50,6 +55,49 @@ export function clearDocumentDerivedImportProgress(
   latestByDocument.delete(progressKey(projectId, documentId));
 }
 
+function mirrorProgressToast(detail: DocumentDerivedImportProgress): void {
+  if (detail.phase === 'preparing' || detail.phase === 'running') {
+    showToast({
+      message: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
+      type: 'info',
+      duration: 0,
+      testId: DOCUMENT_DERIVED_IMPORT_PROGRESS_TEST_ID,
+    });
+    return;
+  }
+
+  if (detail.phase === 'error') {
+    showToast({
+      message:
+        detail.error ||
+        detail.label ||
+        DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
+      type: 'error',
+      duration: 8000,
+      testId: DOCUMENT_DERIVED_IMPORT_PROGRESS_TEST_ID,
+    });
+    window.setTimeout(() => {
+      const current = latestByDocument.get(
+        progressKey(detail.projectId, detail.documentId)
+      );
+      if (
+        current?.startedAt === detail.startedAt &&
+        current.phase === 'error'
+      ) {
+        latestByDocument.delete(
+          progressKey(detail.projectId, detail.documentId)
+        );
+      }
+    }, 8000);
+    return;
+  }
+
+  if (detail.phase === 'success') {
+    dismissToast();
+    latestByDocument.delete(progressKey(detail.projectId, detail.documentId));
+  }
+}
+
 export function notifyDocumentDerivedImportProgress(
   detail: DocumentDerivedImportProgress
 ): void {
@@ -58,6 +106,7 @@ export function notifyDocumentDerivedImportProgress(
   window.dispatchEvent(
     new CustomEvent(DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT, { detail })
   );
+  mirrorProgressToast(detail);
 }
 
 export function defaultDerivedLibraryName(

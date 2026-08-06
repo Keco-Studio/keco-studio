@@ -1,6 +1,5 @@
 'use client';
 
-import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import searchIcon from "@/assets/images/searchIcon.svg";
 import moveToSearchIcon from "@/assets/images/moveToSearch.svg";
 import moveToCloseIcon from "@/assets/images/moveToClose.svg";
@@ -1276,30 +1275,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setShowImportDocumentModal(true);
   };
 
-  const handleLogoClick = () => {
-    // Navigate to first project if available, otherwise go to projects list
-    if (projects.length > 0) {
-      const firstProject = projects[0];
-      router.push(`/${firstProject.id}`);
-    } else {
-      router.push('/projects');
-    }
-  };
-
   return (
     <aside
       className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''} ${isResizing ? styles.sidebarResizing : ''}`}
       style={{ width: isSidebarVisible ? sidebarWidth : 0 }}
     >
-      <div className={styles.header}>
-        <div
-          className={styles.headerLogo}
-          onClick={handleLogoClick}
-          style={{ cursor: 'pointer' }}
-        >
-          <Image src={loginProductIcon} alt="Keco Studio" width={112} height={48} />
-          <div className={styles.brandSlogan}>for game designers</div>
-        </div>
+      <div className={styles.brand}>
+        <strong className={styles.brandTitle}>Keco Studio</strong>
+        <p className={styles.brandSubtitle}>
+          Manage and config game assets for game designers.
+        </p>
       </div>
 
       {/* <div className={styles.searchContainer}>

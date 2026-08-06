@@ -2,6 +2,7 @@ import { McpDomainError } from "./errors.ts";
 
 export const MAX_REQUEST_BYTES = 256 * 1024;
 export const MAX_RESPONSE_BYTES = 1024 * 1024;
+export const MAX_STORY_GRAPH_RESULT_BYTES = MAX_RESPONSE_BYTES - 64 * 1024;
 export const MAX_DOCUMENT_MARKDOWN_BYTES = 100 * 1024;
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 200;

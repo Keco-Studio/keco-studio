@@ -3,7 +3,8 @@ import { capabilitiesProbeOptions, runCapabilitiesProbe } from '../../../scripts
 
 const accountEndpoint = 'https://example.supabase.co/functions/v1/mcp';
 const legacyEndpoint = 'https://example.supabase.co/functions/v1/mcp/11111111-1111-4111-8111-111111111111';
-const readTools = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document', 'semantic_search'];
+const readTools = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document',
+  'read_story_graph', 'semantic_search'];
 const writeTools = ['add_table_field', 'complete_image_upload', 'create_document', 'create_image_upload',
   'create_table', 'create_table_row', 'update_document', 'update_table_row', 'edit_table_field',
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
@@ -55,7 +56,7 @@ it('records account discovery, role counts, and generated labels without exposin
     ] } });
   });
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: token, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence).toEqual(expect.objectContaining({ mode: 'account', capabilities: expect.objectContaining({ tools: 7, writableToolAdvertisement: false }),
+  expect(evidence).toEqual(expect.objectContaining({ mode: 'account', capabilities: expect.objectContaining({ tools: 8, writableToolAdvertisement: false }),
     projects: { count: 2, roles: { admin: 1, viewer: 1 }, duplicateNameGroups: 1, labels: ['project-1', 'project-2'] },
     timings: expect.objectContaining({ listProjectsMs: expect.any(Number) }),
   }));
@@ -86,7 +87,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: accountToken,
     viewerAccessToken: accountToken, viewerProjectId: '11111111-1111-4111-8111-111111111111',
     legacyMcpUrl: legacyEndpoint, legacyAccessToken: legacyToken, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence.capabilities.tools).toBe(23);
+  expect(evidence.capabilities.tools).toBe(24);
   expect(evidence.roleEnforcement.viewerWriteDenial).toBe('succeeded');
   expect(evidence.crossResourceReplay).toBe('succeeded');
   expect(JSON.stringify(evidence)).not.toContain(accountToken);
@@ -106,12 +107,40 @@ it('preserves the exact legacy capability surface', async () => {
     };
     if (message.method !== 'tools/call') return rpcResult(message.id, result[message.method]);
     const name = (message.params as { name: string }).name;
-    const structuredContent = name === 'list_project_structure' ? { ok: true, project: {}, tables: [] }
-      : name === 'list_documents' ? { ok: true, items: [] } : { ok: true, searchMode: 'text_fuzzy' };
-    return rpcResult(message.id, { structuredContent });
+    if (name === 'list_project_structure') {
+      return rpcResult(message.id, { structuredContent: { ok: true, project: {}, tables: [
+        { id: 'private-table-id' }, { id: 'private-script-id' },
+      ] } });
+    }
+    if (name === 'list_documents') {
+      return rpcResult(message.id, { structuredContent: { ok: true, items: [] } });
+    }
+    if (name === 'read_story_graph') {
+      const libraryId = (message.params as { arguments: { libraryId: string } }).arguments.libraryId;
+      if (libraryId === 'private-table-id') {
+        return rpcResult(message.id, { isError: true, structuredContent: {
+          ok: false, error: { code: 'STORY_GRAPH_UNSUPPORTED_LIBRARY' },
+        } });
+      }
+      return rpcResult(message.id, { structuredContent: {
+        ok: true,
+        library: { snapshotId: 'private-snapshot' },
+        graph: { entryLabel: 'PrivateEntry' },
+        items: [{ kind: 'story_node', content: 'Private story content' }],
+        hasMore: false,
+      } });
+    }
+    return rpcResult(message.id, { structuredContent: { ok: true, searchMode: 'text_fuzzy' } });
   });
   const evidence = await runCapabilitiesProbe({ mcpUrl: legacyEndpoint, accessToken: 'token', fetchImpl: fetchMock as typeof fetch });
-  expect(evidence).toEqual(expect.objectContaining({ mode: 'legacy', capabilities: expect.objectContaining({ tools: 22, resources: 3, resourceTemplates: 4, prompts: 3 }) }));
+  expect(evidence).toEqual(expect.objectContaining({
+    mode: 'legacy',
+    storyGraphRead: 'succeeded',
+    capabilities: expect.objectContaining({ tools: 23, resources: 3, resourceTemplates: 4, prompts: 3 }),
+  }));
+  expect(JSON.stringify(evidence)).not.toContain('PrivateEntry');
+  expect(JSON.stringify(evidence)).not.toContain('Private story content');
+  expect(JSON.stringify(evidence)).not.toContain('private-script-id');
 });
 
 it('exercises add_table_field in the legacy write acceptance flow', async () => {

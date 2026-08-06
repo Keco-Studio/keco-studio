@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { STORY_LABEL_PATTERN } from '../story-graph/constants.ts';
 
-export const LABEL_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+export const LABEL_PATTERN = STORY_LABEL_PATTERN;
 
 export const SourceRefSchema = z.object({
   sourceId: z.string().min(1),

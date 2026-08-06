@@ -8,6 +8,7 @@ const PROJECT_READ_TOOL_NAMES = [
   "query_table_rows",
   "list_documents",
   "read_document",
+  "read_story_graph",
   "semantic_search",
 ];
 
@@ -148,6 +149,12 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
+  const storyGraph = tools.find((tool) => tool.name === "read_story_graph")!;
+  assertEquals(Object.keys(storyGraph.inputSchema.properties ?? {}), [
+    "libraryId",
+    "limit",
+    "cursor",
+  ]);
   for (
     const name of [
       "delete_table_field",
@@ -240,6 +247,7 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       "query_table_rows",
       "list_documents",
       "read_document",
+      "read_story_graph",
       "semantic_search",
     ],
   );

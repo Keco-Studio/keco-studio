@@ -1,5 +1,5 @@
-import { LABEL_PATTERN } from '@/lib/story-ir/schema';
-import type { EditableStoryGraph, EditableStoryNode } from './editableGraph';
+import { STORY_LABEL_PATTERN } from './constants.ts';
+import type { EditableStoryGraph, EditableStoryNode } from './editableGraph.ts';
 
 export type StoryGraphWarning = { code: 'unreachable_node'; label: string };
 
@@ -28,7 +28,7 @@ export function validateEditableStoryGraph(graph: EditableStoryGraph): {
 
   const nodesByLabel = new Map<string, EditableStoryNode>();
   for (const node of graph.nodes) {
-    if (!LABEL_PATTERN.test(node.label)) invalid(`Invalid story label ${node.label}`, node.label);
+    if (!STORY_LABEL_PATTERN.test(node.label)) invalid(`Invalid story label ${node.label}`, node.label);
     if (nodesByLabel.has(node.label)) invalid(`Duplicate story label ${node.label}`, node.label);
     nodesByLabel.set(node.label, node);
   }

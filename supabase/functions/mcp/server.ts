@@ -19,6 +19,7 @@ const READ_TOOLS = new Set([
   "query_table_rows",
   "list_documents",
   "read_document",
+  "read_story_graph",
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",

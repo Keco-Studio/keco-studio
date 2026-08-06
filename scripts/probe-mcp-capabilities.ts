@@ -1,7 +1,8 @@
 import { replaceEvidenceAtomically } from './lib/atomic-evidence';
 import { createMcpRpcClient, MCP_PROTOCOL_VERSION, structuredToolResult, type McpRpcClient } from './lib/mcp-json-rpc';
 
-const READ_TOOLS = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document', 'semantic_search'];
+const READ_TOOLS = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document',
+  'read_story_graph', 'semantic_search'];
 const WRITE_TOOLS = ['add_table_field', 'complete_image_upload', 'create_document', 'create_image_upload',
   'create_table', 'create_table_row', 'update_document', 'update_table_row', 'edit_table_field',
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
@@ -158,6 +159,7 @@ export async function runCapabilitiesProbe(options: {
   let projects: { count: number; roles: Record<string, number>; duplicateNameGroups: number; labels: string[] } | null = null;
   let listProjectsMs: number | null = null;
   let writableToolAdvertisement: boolean | null = null;
+  let storyGraphRead: 'succeeded' | 'not_available' | null = null;
   if (mode === 'account') {
     writableToolAdvertisement = accountToolSet(toolNames).writableToolAdvertisement;
     exact(names(resources, 'uri'), ACCOUNT_RESOURCES, 'Account resource');
@@ -182,6 +184,28 @@ export async function runCapabilitiesProbe(options: {
     const documents = Array.isArray(documentsResult.items) ? documentsResult.items as Array<Record<string, unknown>> : [];
     if (tables[0]?.id) await callTool(client, 'query_table_rows', { tableId: tables[0].id, limit: 1 });
     if (documents[0]?.id) await callTool(client, 'read_document', { documentId: documents[0].id, mode: 'outline' });
+    storyGraphRead = 'not_available';
+    for (const table of tables) {
+      if (typeof table.id !== 'string') continue;
+      const raw = await client.call('tools/call', {
+        name: 'read_story_graph', arguments: { libraryId: table.id, limit: 1 },
+      });
+      const structured = raw.structuredContent as Record<string, unknown> | undefined;
+      const error = structured?.error as Record<string, unknown> | undefined;
+      if (raw.isError === true) {
+        if (error?.code === 'STORY_GRAPH_UNSUPPORTED_LIBRARY') continue;
+        throw new Error('read_story_graph returned an unexpected domain error.');
+      }
+      const value = structuredToolResult(raw);
+      const library = value.library as Record<string, unknown> | undefined;
+      const graph = value.graph as Record<string, unknown> | undefined;
+      if (typeof library?.snapshotId !== 'string' || typeof graph?.entryLabel !== 'string' ||
+          !Array.isArray(value.items) || typeof value.hasMore !== 'boolean') {
+        throw new Error('read_story_graph omitted bounded graph metadata.');
+      }
+      storyGraphRead = 'succeeded';
+      break;
+    }
     const search = await callTool(client, 'semantic_search', { query: 'project', limit: 1 });
     if (search.searchMode !== 'semantic' && search.searchMode !== 'text_fuzzy') throw new Error('semantic_search omitted its actual searchMode.');
   }
@@ -218,6 +242,7 @@ export async function runCapabilitiesProbe(options: {
     checkedAt: new Date().toISOString(), passed: true, mode,
     capabilities: { tools: toolNames.length, resources: resources.length,
       resourceTemplates: templates.length, prompts: prompts.length, writableToolAdvertisement },
+    storyGraphRead,
     projects: projects && { count: projects.count, roles: projects.roles, duplicateNameGroups: projects.duplicateNameGroups,
       labels: projects.labels },
     timings: { listProjectsMs }, roleEnforcement: { viewerWriteDenial }, crossResourceReplay, writes,

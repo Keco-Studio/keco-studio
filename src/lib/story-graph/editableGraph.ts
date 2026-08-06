@@ -1,4 +1,4 @@
-import type { StoryPlotPlan } from '@/lib/story-plot/schema';
+import type { StoryPlotPlan } from '../story-plot/schema.ts';
 
 export type EditableNodeType = 'dialogue' | 'narration' | 'scene' | 'system';
 
