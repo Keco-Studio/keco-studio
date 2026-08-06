@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { PresenceMembersStack } from '@/components/collaboration/PresenceMembersStack';
 import { showSuccessToast } from '@/lib/utils/toast';
-import type { CollaboratorRole } from '@/lib/types/collaboration';
+import type { CollaboratorRole, PresenceState } from '@/lib/types/collaboration';
 import {
   SCRIPT_FLOW_CHART_STATE_EVENT,
   requestScriptFlowChartToggle,
@@ -20,6 +21,11 @@ export type ScriptTopBarActionsProps = {
   userRole: CollaboratorRole;
   libraryId?: string | null;
   showFlowChartToggle?: boolean;
+  presenceUsers?: PresenceState[];
+  currentUserId?: string | null;
+  currentUserName?: string;
+  currentUserEmail?: string;
+  currentUserAvatarColor?: string;
 };
 
 function FlowChartIcon({ active }: { active: boolean }) {
@@ -53,6 +59,11 @@ export function ScriptTopBarActions({
   userRole,
   libraryId = null,
   showFlowChartToggle = false,
+  presenceUsers = [],
+  currentUserId = null,
+  currentUserName = 'You',
+  currentUserEmail = '',
+  currentUserAvatarColor = '#999999',
 }: ScriptTopBarActionsProps) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [flowChartOpen, setFlowChartOpen] = useState(true);
@@ -74,6 +85,17 @@ export function ScriptTopBarActions({
 
   return (
     <div className={styles.root}>
+      {currentUserId ? (
+        <PresenceMembersStack
+          presenceUsers={presenceUsers}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          currentUserEmail={currentUserEmail}
+          currentUserAvatarColor={currentUserAvatarColor}
+          emptyViewingMessage="No one else is currently viewing this document"
+        />
+      ) : null}
+
       <button
         type="button"
         className={styles.shareButton}

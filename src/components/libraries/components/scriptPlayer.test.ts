@@ -260,8 +260,14 @@ describe('visual novel player wiring', () => {
     expect(viewSource).toContain('options,');
   });
 
+  it('shows named actions as chips beside the speaker name', () => {
+    expect(viewSource).toContain('actionChip');
+    expect(viewSource).toContain('mergedSpeechByActionIndex');
+    expect(viewSource).toContain('isNamedActionType');
+  });
+
   it('keeps content on the Start-labelled story node visible', () => {
-    expect(viewSource).toContain("label.toLowerCase() === 'start' && !content");
+    expect(viewSource).toContain("label.toLowerCase() === 'start' && !lineContent && !action");
   });
 });
 

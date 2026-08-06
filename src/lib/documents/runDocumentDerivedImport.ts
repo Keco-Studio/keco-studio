@@ -1,7 +1,7 @@
 /**
  * Run document Generate conversation / Generate table without ImportScriptModal.
- * Uses the same /api/import-script Story IR pipeline; progress is emitted for
- * the document-page banner.
+ * Uses the same /api/import-script Story IR pipeline; the document page shows a
+ * brief Generating / Generation failed toast — detailed steps go to the console.
  */
 
 import { consumeImportStream } from '@/lib/import-script-stream';
@@ -12,7 +12,17 @@ import type { ImportScriptResult } from '@/lib/services/scriptImportService';
 import {
   defaultDerivedLibraryName,
   notifyDocumentDerivedImportProgress,
+  DOCUMENT_DERIVED_IMPORT_UI_LABEL,
+  type DocumentDerivedImportPhase,
 } from '@/lib/documents/documentDerivedImportProgress';
+
+function logDerivedImport(
+  phase: DocumentDerivedImportPhase,
+  detail: string,
+  meta: { projectId: string; documentId: string; exportType: DocumentExportType }
+): void {
+  console.info('[document-derived-import]', phase, detail, meta);
+}
 
 export async function runDocumentDerivedImport(input: {
   source: DocumentExportSource;
@@ -22,25 +32,28 @@ export async function runDocumentDerivedImport(input: {
   const { source, exportType, accessToken } = input;
   const startedAt = Date.now();
   const kindLabel = exportType === 'table' ? 'table' : 'conversation';
-
-  notifyDocumentDerivedImportProgress({
+  const meta = {
     projectId: source.projectId,
     documentId: source.documentId,
     exportType,
+  };
+
+  logDerivedImport('preparing', `Preparing ${kindLabel}…`, meta);
+  notifyDocumentDerivedImportProgress({
+    ...meta,
     phase: 'preparing',
-    label: `Preparing ${kindLabel}…`,
+    label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
     startedAt,
   });
 
   const plainText = toScriptImportPlainText(source.markdown);
   if (!plainText.trim()) {
     const error = 'Document is empty';
+    logDerivedImport('error', error, meta);
     notifyDocumentDerivedImportProgress({
-      projectId: source.projectId,
-      documentId: source.documentId,
-      exportType,
+      ...meta,
       phase: 'error',
-      label: error,
+      label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
       error,
       startedAt,
     });
@@ -55,12 +68,11 @@ export async function runDocumentDerivedImport(input: {
   formData.append('documentExportType', exportType);
   formData.append('libraryName', libraryName);
 
+  logDerivedImport('running', `Generating ${kindLabel}…`, meta);
   notifyDocumentDerivedImportProgress({
-    projectId: source.projectId,
-    documentId: source.documentId,
-    exportType,
+    ...meta,
     phase: 'running',
-    label: `Generating ${kindLabel}…`,
+    label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
     startedAt,
   });
 
@@ -73,37 +85,34 @@ export async function runDocumentDerivedImport(input: {
     });
 
     const result = await consumeImportStream(response, (progress) => {
+      const detail = progress.message || `Generating ${kindLabel}…`;
+      logDerivedImport('running', detail, meta);
       notifyDocumentDerivedImportProgress({
-        projectId: source.projectId,
-        documentId: source.documentId,
-        exportType,
+        ...meta,
         phase: 'running',
-        label: progress.message || `Generating ${kindLabel}…`,
+        label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
         startedAt,
       });
     });
 
+    const successLabel =
+      exportType === 'table' ? 'Table generated.' : 'Conversation generated.';
+    logDerivedImport('success', successLabel, meta);
     notifyDocumentDerivedImportProgress({
-      projectId: source.projectId,
-      documentId: source.documentId,
-      exportType,
+      ...meta,
       phase: 'success',
-      label:
-        exportType === 'table'
-          ? 'Table generated.'
-          : 'Conversation generated.',
+      label: successLabel,
       startedAt,
     });
 
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Import failed';
+    logDerivedImport('error', message, meta);
     notifyDocumentDerivedImportProgress({
-      projectId: source.projectId,
-      documentId: source.documentId,
-      exportType,
+      ...meta,
       phase: 'error',
-      label: message,
+      label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
       error: message,
       startedAt,
     });

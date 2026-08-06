@@ -4,6 +4,7 @@
  * Provides a native browser-based toast notification system
  * without relying on AntD or other UI libraries.
  * Unified design: success / error / default, all shown at bottom.
+ * Only one toast is visible at a time (new toasts replace the previous).
  */
 
 // Inject CSS animations once
@@ -44,15 +45,17 @@ export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'default';
 export interface ToastOptions {
   message: string;
   type?: ToastType;
+  /** Auto-dismiss ms. Use 0 for a sticky toast until replaced or dismissed. */
   duration?: number;
   bottom?: number;
+  testId?: string;
 }
 
-/** Design spec: success / error / default (info & warning map to default) */
+/** Design spec: success / error / generating (info & warning map to default blue) */
 const toastStyles: Record<'success' | 'error' | 'default', { bg: string; color: string }> = {
   success: { bg: '#F0FAF3', color: '#228B22' },
-  error: { bg: '#FFF0F0', color: '#FF0000' },
-  default: { bg: '#F0F8FF', color: '#000000' },
+  error: { bg: '#FEEDEA', color: '#FF0000' },
+  default: { bg: '#EAF4FE', color: '#092C6C' },
 };
 
 function getToastStyle(type: ToastType): { bg: string; color: string } {
@@ -61,8 +64,31 @@ function getToastStyle(type: ToastType): { bg: string; color: string } {
   return toastStyles.default;
 }
 
+let activeToast: HTMLDivElement | null = null;
+let activeDismissTimer: ReturnType<typeof setTimeout> | null = null;
+let activeRemoveTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
- * Show a toast notification (bottom-center, design spec colors)
+ * Dismiss the current toast immediately (no exit animation if already gone).
+ */
+export function dismissToast() {
+  if (activeDismissTimer) {
+    clearTimeout(activeDismissTimer);
+    activeDismissTimer = null;
+  }
+  if (activeRemoveTimer) {
+    clearTimeout(activeRemoveTimer);
+    activeRemoveTimer = null;
+  }
+  if (activeToast?.parentNode) {
+    activeToast.parentNode.removeChild(activeToast);
+  }
+  activeToast = null;
+}
+
+/**
+ * Show a toast notification (bottom-center, design spec colors).
+ * Replaces any currently visible toast so messages never stack on top of each other.
  */
 export function showToast(options: ToastOptions) {
   const {
@@ -70,13 +96,18 @@ export function showToast(options: ToastOptions) {
     type = 'default',
     duration = 3000,
     bottom = 24,
+    testId,
   } = options;
 
   injectAnimations();
-  const { bg, color } = getToastStyle(type);
+  dismissToast();
 
+  const { bg, color } = getToastStyle(type);
   const toast = document.createElement('div');
   toast.textContent = message;
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
+  if (testId) toast.setAttribute('data-testid', testId);
   toast.style.cssText = `
     position: fixed;
     bottom: ${bottom}px;
@@ -85,25 +116,34 @@ export function showToast(options: ToastOptions) {
     background: ${bg};
     color: ${color};
     padding: 12px 24px;
-    border-radius: 8px;
+    border-radius: 999px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     z-index: 10000;
     font-size: 14px;
     font-weight: 500;
+    max-width: min(90vw, 36rem);
+    text-align: center;
     animation: toastFadeIn 0.3s ease-in-out;
     pointer-events: none;
   `;
 
   document.body.appendChild(toast);
+  activeToast = toast;
 
-  setTimeout(() => {
-    toast.style.animation = 'toastFadeOut 0.3s ease-in-out';
-    setTimeout(() => {
-      if (toast.parentNode) {
-        document.body.removeChild(toast);
-      }
-    }, 300);
-  }, duration);
+  if (duration > 0) {
+    activeDismissTimer = setTimeout(() => {
+      activeDismissTimer = null;
+      if (activeToast !== toast) return;
+      toast.style.animation = 'toastFadeOut 0.3s ease-in-out';
+      activeRemoveTimer = setTimeout(() => {
+        activeRemoveTimer = null;
+        if (activeToast === toast && toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+        if (activeToast === toast) activeToast = null;
+      }, 300);
+    }, duration);
+  }
 }
 
 /**
@@ -133,4 +173,3 @@ export function showInfoToast(message: string, duration?: number) {
 export function showWarningToast(message: string, duration?: number) {
   showToast({ message, type: 'warning', duration });
 }
-

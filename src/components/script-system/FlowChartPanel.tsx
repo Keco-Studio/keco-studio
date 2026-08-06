@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   type FlowGraph,
   type FlowGraphNode,
 } from '@/lib/script-system/buildScriptFlowGraph';
+import { placeEdgeLabels } from '@/lib/script-system/flowChartEdgeLabels';
 import styles from './ScriptSplitView.module.css';
 
 export type FlowChartPanelProps = {
@@ -198,6 +199,11 @@ function mergeBranchRoute(
   };
 }
 
+function centerScrollElement(el: HTMLElement) {
+  el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+  el.scrollTop = Math.max(0, (el.scrollHeight - el.clientHeight) / 2);
+}
+
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
@@ -205,6 +211,7 @@ export function FlowChartPanel({
   onSelectPlotNode,
   onClose,
 }: FlowChartPanelProps) {
+  const bodyRef = useRef<HTMLDivElement>(null);
   const previewNodes = useMemo(() => new Set(previewNodeIds), [previewNodeIds]);
   const layout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
@@ -220,6 +227,43 @@ export function FlowChartPanel({
     }
     return new Map([...incoming].filter(([, edges]) => edges.length > 1));
   }, [graph.edges]);
+
+  const edgeLabels = useMemo(() => {
+    const anchors = graph.edges.flatMap((edge, index) => {
+      if (!edge.optionText) return [];
+      const from = layout.positions.get(edge.from);
+      const to = layout.positions.get(edge.to);
+      if (!from || !to) return [];
+      return [{
+        id: `${edge.from}-${edge.to}-${index}`,
+        text: edge.optionText,
+        x: (from.x + to.x) / 2 + NODE_WIDTH / 2,
+        y: (from.y + NODE_HEIGHT + to.y) / 2 - 5,
+      }];
+    });
+    const placed = placeEdgeLabels(anchors);
+    return new Map(placed.map((label) => [label.id, label]));
+  }, [graph.edges, layout.positions]);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') {
+      if (el) centerScrollElement(el);
+      return;
+    }
+
+    const recenter = () => {
+      centerScrollElement(el);
+    };
+
+    recenter();
+    const observer = new ResizeObserver(() => {
+      recenter();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [layout.width, layout.height, graph.nodes.length]);
+
   return (
     <aside className={styles.flowPanel} aria-label="Flow chart">
       <div className={styles.flowHeader}>
@@ -240,147 +284,165 @@ export function FlowChartPanel({
           </button>
         ) : null}
       </div>
-      <div className={styles.flowBody}>
+      <div
+        ref={bodyRef}
+        className={styles.flowBody}
+        data-flow-centered="true"
+      >
         {graph.nodes.length === 0 ? (
           <p className={styles.emptyState}>
             No flow nodes yet. Add Label values to script rows to build the chart.
           </p>
         ) : (
-          <svg
-            className={styles.flowSvg}
-            width={layout.width}
-            height={layout.height}
-            viewBox={`0 0 ${layout.width} ${layout.height}`}
-            role="img"
-            aria-label="Script flow chart"
+          <div
+            className={styles.flowCanvas}
+            style={{ width: layout.width, height: layout.height }}
           >
-            {graph.edges.map((edge, index) => {
-              if (!edge.optionText && ordinaryMergeEdges.has(edge.to)) return null;
-              const from = layout.positions.get(edge.from);
-              const to = layout.positions.get(edge.to);
-              if (!from || !to) return null;
-              const routed = edgePath(from, to, layout.width);
-              const previewEdge = previewNodes.has(edge.from) || previewNodes.has(edge.to);
-              const labelX = (from.x + to.x) / 2 + NODE_WIDTH / 2;
-              const labelY = (from.y + NODE_HEIGHT + to.y) / 2 - 5;
-              return (
-                <g key={`${edge.from}-${edge.to}-${index}`}>
-                  <path
-                    d={routed.path}
-                    data-flow-route={routed.route}
-                    data-flow-preview-edge={previewEdge || undefined}
-                    className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
-                    fill="none"
-                  />
-                  {edge.optionText ? (
-                    <text
-                      x={labelX}
-                      y={labelY}
-                      textAnchor="middle"
-                      className={styles.flowEdgeLabel}
-                    >
-                      {compactLabel(edge.optionText, 18)}
-                      <title>{edge.optionText}</title>
-                    </text>
-                  ) : null}
-                </g>
-              );
-            })}
-            {[...ordinaryMergeEdges].map(([targetId, edges]) => {
-              const target = layout.positions.get(targetId);
-              if (!target) return null;
-              const junction = {
-                x: target.x + NODE_WIDTH / 2,
-                y: target.y - V_GAP / 2,
-              };
-              return (
-                <g key={`merge-${targetId}`} data-flow-merge-target={targetId}>
-                  {edges.map((edge, index) => {
-                    const from = layout.positions.get(edge.from);
-                    if (!from) return null;
-                    const routed = mergeBranchRoute(
-                      from,
-                      target,
-                      junction,
-                      layout.width
-                    );
-                    const previewEdge = previewNodes.has(edge.from) || previewNodes.has(targetId);
-                    return (
-                      <path
-                        key={`${edge.from}-${index}`}
-                        data-flow-merge-branch-from={edge.from}
-                        data-flow-route={routed.route}
-                        data-flow-preview-edge={previewEdge || undefined}
-                        d={routed.path}
-                        className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
-                        fill="none"
-                      />
-                    );
-                  })}
-                  <circle
-                    cx={junction.x}
-                    cy={junction.y}
-                    r={2.5}
-                    className={styles.flowMergeJunction}
-                  />
-                  <path
-                    d={`M ${junction.x} ${junction.y} L ${junction.x} ${target.y}`}
-                    data-flow-preview-edge={previewNodes.has(targetId) || undefined}
-                    className={previewNodes.has(targetId) ? styles.flowEdgePreview : styles.flowEdge}
-                    fill="none"
-                    data-flow-merge-trunk={targetId}
-                  />
-                </g>
-              );
-            })}
-            {graph.nodes.map((node) => {
-              const pos = layout.positions.get(node.id);
-              if (!pos) return null;
-              const selected = selectedPlotNodeId === node.id;
-              const preview = previewNodes.has(node.id);
-              return (
-                <g
-                  key={node.id}
-                  data-flow-node-id={node.id}
-                  data-flow-layer={pos.layer}
-                  data-flow-preview-node={preview || undefined}
-                  transform={`translate(${pos.x}, ${pos.y})`}
-                  className={styles.flowNode}
-                  onClick={preview ? undefined : () => onSelectPlotNode(node.id)}
-                  role={preview ? undefined : 'button'}
-                  tabIndex={preview ? undefined : 0}
-                  onKeyDown={(event) => {
-                    if (preview) return;
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onSelectPlotNode(node.id);
-                    }
-                  }}
-                >
-                  <rect
-                    width={NODE_WIDTH}
-                    height={NODE_HEIGHT}
-                    rx={8}
-                    ry={8}
-                    className={
-                      preview
-                        ? styles.flowNodePreview
-                        : selected ? styles.flowNodeSelected : styles.flowNodeRect
-                    }
-                  />
-                  <text
-                    x={NODE_WIDTH / 2}
-                    y={29}
-                    textAnchor="middle"
-                    className={styles.flowNodeLabel}
+            <svg
+              className={styles.flowSvg}
+              width={layout.width}
+              height={layout.height}
+              viewBox={`0 0 ${layout.width} ${layout.height}`}
+              role="img"
+              aria-label="Script flow chart"
+            >
+              {graph.edges.map((edge, index) => {
+                if (!edge.optionText && ordinaryMergeEdges.has(edge.to)) return null;
+                const from = layout.positions.get(edge.from);
+                const to = layout.positions.get(edge.to);
+                if (!from || !to) return null;
+                const routed = edgePath(from, to, layout.width);
+                const previewEdge = previewNodes.has(edge.from) || previewNodes.has(edge.to);
+                const labelId = `${edge.from}-${edge.to}-${index}`;
+                const label = edge.optionText ? edgeLabels.get(labelId) : undefined;
+                return (
+                  <g key={labelId}>
+                    <path
+                      d={routed.path}
+                      data-flow-route={routed.route}
+                      data-flow-preview-edge={previewEdge || undefined}
+                      className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
+                      fill="none"
+                    />
+                    {label ? (
+                      <text
+                        x={label.x}
+                        y={label.y - (label.lines.length - 1) * 7}
+                        textAnchor="middle"
+                        className={styles.flowEdgeLabel}
+                        data-flow-edge-label={labelId}
+                      >
+                        {label.lines.map((line, lineIndex) => (
+                          <tspan
+                            key={`${labelId}-${lineIndex}`}
+                            x={label.x}
+                            dy={lineIndex === 0 ? 0 : 14}
+                          >
+                            {line}
+                          </tspan>
+                        ))}
+                        <title>{label.text}</title>
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
+              {[...ordinaryMergeEdges].map(([targetId, edges]) => {
+                const target = layout.positions.get(targetId);
+                if (!target) return null;
+                const junction = {
+                  x: target.x + NODE_WIDTH / 2,
+                  y: target.y - V_GAP / 2,
+                };
+                return (
+                  <g key={`merge-${targetId}`} data-flow-merge-target={targetId}>
+                    {edges.map((edge, index) => {
+                      const from = layout.positions.get(edge.from);
+                      if (!from) return null;
+                      const routed = mergeBranchRoute(
+                        from,
+                        target,
+                        junction,
+                        layout.width
+                      );
+                      const previewEdge = previewNodes.has(edge.from) || previewNodes.has(targetId);
+                      return (
+                        <path
+                          key={`${edge.from}-${index}`}
+                          data-flow-merge-branch-from={edge.from}
+                          data-flow-route={routed.route}
+                          data-flow-preview-edge={previewEdge || undefined}
+                          d={routed.path}
+                          className={previewEdge ? styles.flowEdgePreview : styles.flowEdge}
+                          fill="none"
+                        />
+                      );
+                    })}
+                    <circle
+                      cx={junction.x}
+                      cy={junction.y}
+                      r={2}
+                      className={styles.flowMergeJunction}
+                    />
+                    <path
+                      d={`M ${junction.x} ${junction.y} L ${junction.x} ${target.y}`}
+                      data-flow-preview-edge={previewNodes.has(targetId) || undefined}
+                      className={previewNodes.has(targetId) ? styles.flowEdgePreview : styles.flowEdge}
+                      fill="none"
+                      data-flow-merge-trunk={targetId}
+                    />
+                  </g>
+                );
+              })}
+              {graph.nodes.map((node) => {
+                const pos = layout.positions.get(node.id);
+                if (!pos) return null;
+                const selected = selectedPlotNodeId === node.id;
+                const preview = previewNodes.has(node.id);
+                return (
+                  <g
+                    key={node.id}
+                    data-flow-node-id={node.id}
+                    data-flow-layer={pos.layer}
+                    data-flow-preview-node={preview || undefined}
+                    transform={`translate(${pos.x}, ${pos.y})`}
+                    className={styles.flowNode}
+                    onClick={preview ? undefined : () => onSelectPlotNode(node.id)}
+                    role={preview ? undefined : 'button'}
+                    tabIndex={preview ? undefined : 0}
+                    onKeyDown={(event) => {
+                      if (preview) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelectPlotNode(node.id);
+                      }
+                    }}
                   >
-                    {compactLabel(node.label, 14)}
-                  </text>
-                  <title>{node.label}</title>
-                </g>
-              );
-            })}
-          </svg>
+                    <rect
+                      width={NODE_WIDTH}
+                      height={NODE_HEIGHT}
+                      rx={8}
+                      ry={8}
+                      className={
+                        preview
+                          ? styles.flowNodePreview
+                          : selected ? styles.flowNodeSelected : styles.flowNodeRect
+                      }
+                    />
+                    <text
+                      x={NODE_WIDTH / 2}
+                      y={29}
+                      textAnchor="middle"
+                      className={styles.flowNodeLabel}
+                    >
+                      {compactLabel(node.label, 14)}
+                    </text>
+                    <title>{node.label}</title>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         )}
       </div>
     </aside>

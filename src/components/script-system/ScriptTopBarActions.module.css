@@ -4,6 +4,10 @@
   gap: 0.75rem;
 }
 
+.root :global([data-testid='presence-members-stack']) {
+  padding-left: 0;
+}
+
 .shareButton {
   display: inline-flex;
   align-items: center;

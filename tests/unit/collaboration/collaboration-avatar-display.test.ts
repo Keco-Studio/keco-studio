@@ -16,7 +16,8 @@ describe('collaboration avatar display list', () => {
 
   it('uses the same solo-session rule in table and asset headers', () => {
     for (const relativePath of [
-      'src/components/libraries/LibraryHeader.tsx',
+      // Library/table headers share PresenceMembersStack; assets still wire the helper locally.
+      'src/components/collaboration/PresenceMembersStack.tsx',
       'src/components/asset/AssetHeader.tsx',
     ]) {
       const source = readFileSync(path.join(process.cwd(), relativePath), 'utf8');

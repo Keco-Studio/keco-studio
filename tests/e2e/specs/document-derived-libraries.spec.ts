@@ -408,7 +408,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
     await page.getByRole('button', { name: 'Generate table', exact: true }).click();
     await expect(page.getByTestId('document-derived-import-progress')).toContainText(
-      /Table generated|Generating table|Preparing table/,
+      /Generating/,
       { timeout: 45_000 }
     );
     expect(tableRequestBody).toContain(fixture.folderDocument.id);
@@ -417,7 +417,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
     await page.getByRole('button', { name: 'Generate conversation', exact: true }).click();
     await expect(page.getByTestId('document-derived-import-progress')).toContainText(
-      /Conversation generated|Generating conversation|Preparing conversation/,
+      /Generating/,
       { timeout: 45_000 }
     );
     expect(scriptRequestBody).toContain(fixture.folderDocument.id);
@@ -586,7 +586,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await sidebarTitle(page, fixture.rootDocument.name).click({ button: 'right' });
     await page.getByRole('button', { name: 'Generate conversation', exact: true }).click();
     await expect(page.getByTestId('document-derived-import-progress')).toContainText(
-      /Conversation generated|Generating conversation|Preparing conversation/,
+      /Generating/,
       { timeout: 45_000 }
     );
 

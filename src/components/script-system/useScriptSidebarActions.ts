@@ -9,7 +9,7 @@ import { deleteLibrary, updateLibrary } from '@/lib/services/libraryService';
 import { invalidateLibraryData } from '@/lib/queryInvalidation';
 import { fetchDocumentExportSource } from '@/lib/documents/startDocumentExport';
 import { runDocumentDerivedImport } from '@/lib/documents/runDocumentDerivedImport';
-import { notifyDocumentDerivedImportProgress } from '@/lib/documents/documentDerivedImportProgress';
+import { notifyDocumentDerivedImportProgress, DOCUMENT_DERIVED_IMPORT_UI_LABEL } from '@/lib/documents/documentDerivedImportProgress';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import type { ScriptContextMenuAction } from './ScriptContextMenu';
 import { scriptWorkspaceDocumentQueryKey } from './useScriptWorkspaceDocumentMembership';
@@ -65,7 +65,7 @@ export function useScriptSidebarActions({
           documentId,
           exportType: 'script',
           phase: 'preparing',
-          label: 'Preparing conversation…',
+          label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
           startedAt,
         });
         router.push(`/script-system/${projectId}/doc/${documentId}`);
@@ -106,16 +106,20 @@ export function useScriptSidebarActions({
               err instanceof Error
                 ? err.message
                 : 'Failed to generate conversation';
+            console.info('[document-derived-import]', 'error', msg, {
+              projectId,
+              documentId,
+            });
             notifyDocumentDerivedImportProgress({
               projectId,
               documentId,
               exportType: 'script',
               phase: 'error',
-              label: msg,
+              label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
               error: msg,
               startedAt,
             });
-            showErrorToast(msg);
+            showErrorToast(msg, 8000);
           }
         })();
         return;

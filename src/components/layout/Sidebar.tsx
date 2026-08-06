@@ -1117,7 +1117,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           });
           router.push(`/${source.projectId}/${result.libraryId}`);
         } catch (err) {
-          showErrorToast(err instanceof Error ? err.message : 'Import failed');
+          showErrorToast(err instanceof Error ? err.message : 'Import failed', 8000);
         }
       })();
     },

@@ -14,6 +14,7 @@ const allowedUiEventNames = new Set([
   'asset-page-mode',
   'document-export-trigger',
   'document-history-toggle',
+  'document-presence-update',
   'fieldform-reset',
   'library-page-view-mode-change',
   'library-presence-update',

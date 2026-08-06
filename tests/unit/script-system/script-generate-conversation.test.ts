@@ -38,6 +38,10 @@ jest.mock('@/lib/documents/runDocumentDerivedImport', () => ({
 }));
 
 jest.mock('@/lib/documents/documentDerivedImportProgress', () => ({
+  DOCUMENT_DERIVED_IMPORT_UI_LABEL: {
+    generating: 'Generating…',
+    failed: 'Generation failed.',
+  },
   notifyDocumentDerivedImportProgress: (...args: unknown[]) =>
     mockNotifyProgress(...args),
 }));

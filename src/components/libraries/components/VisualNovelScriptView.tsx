@@ -51,6 +51,20 @@ function resolveSpeakerName(nameValue: string | undefined | null): string {
   return v;
 }
 
+function hasNamedSpeaker(nameValue: string | undefined | null): boolean {
+  const v = String(nameValue ?? '').trim();
+  return Boolean(v) && v !== 'Speaker';
+}
+
+function isNamedActionType(typeValue: string | number | undefined | null): boolean {
+  return String(typeValue ?? '').trim() === '3';
+}
+
+function isSpeechDialogueType(typeValue: string | number | undefined | null): boolean {
+  const type = String(typeValue ?? '').trim();
+  return type === '1' || type === '2';
+}
+
 function getAvatarLetter(speakerName: string): string {
   return speakerName.charAt(0) || 'N';
 }
@@ -223,6 +237,42 @@ export function VisualNovelScriptView({
     ? filteredRows.map((row, rowIndex) => ({ row, rowIndex }))
     : getRevealedScriptRows(filteredRows, playerState.revealed);
 
+  const preparedRows = revealedRows.map(({ row, rowIndex }) => {
+    const labelVal = labelKey ? row.propertyValues[labelKey] : undefined;
+    const typeVal = typeKey ? row.propertyValues[typeKey] : undefined;
+    const nameVal = nameKey ? row.propertyValues[nameKey] : undefined;
+    const content = mode === 'plot-node'
+      ? renderPlayerContent(row, contentKey, {})
+      : renderPlayerContent(row, contentKey, playerState.variables);
+    return {
+      row,
+      rowIndex,
+      label: String(labelVal ?? '').trim(),
+      typeVal,
+      nameVal,
+      content,
+    };
+  });
+
+  const mergedIntoPrevious = new Set<number>();
+  const mergedSpeechByActionIndex = new Map<number, (typeof preparedRows)[number]>();
+
+  for (let i = 0; i < preparedRows.length - 1; i++) {
+    const current = preparedRows[i];
+    const next = preparedRows[i + 1];
+    if (
+      isNamedActionType(current.typeVal)
+      && hasNamedSpeaker(current.nameVal)
+      && current.content
+      && isSpeechDialogueType(next.typeVal)
+      && hasNamedSpeaker(next.nameVal)
+      && resolveSpeakerName(current.nameVal) === resolveSpeakerName(next.nameVal)
+    ) {
+      mergedSpeechByActionIndex.set(i, next);
+      mergedIntoPrevious.add(i + 1);
+    }
+  }
+
   return (
     <div
       ref={rootRef}
@@ -235,16 +285,26 @@ export function VisualNovelScriptView({
           </button>
         </div>
       ) : null}
-      {revealedRows.map(({ row, rowIndex: index }) => {
-        const labelVal = labelKey ? row.propertyValues[labelKey] : undefined;
-        const typeVal = typeKey ? row.propertyValues[typeKey] : undefined;
-        const nameVal = nameKey ? row.propertyValues[nameKey] : undefined;
-        const content = mode === 'plot-node'
-          ? renderPlayerContent(row, contentKey, {})
-          : renderPlayerContent(row, contentKey, playerState.variables);
-        const label = String(labelVal ?? '').trim();
+      {preparedRows.map((prepared, index) => {
+        if (mergedIntoPrevious.has(index)) return null;
 
-        if (label.toLowerCase() === 'start' && !content) {
+        const { row, rowIndex, label, content } = prepared;
+        let { typeVal, nameVal } = prepared;
+        let lineContent = content;
+        let action: string | undefined;
+
+        const mergedSpeech = mergedSpeechByActionIndex.get(index);
+        if (mergedSpeech) {
+          action = content;
+          lineContent = mergedSpeech.content;
+          typeVal = mergedSpeech.typeVal;
+          nameVal = mergedSpeech.nameVal;
+        } else if (isNamedActionType(typeVal) && hasNamedSpeaker(nameVal) && content) {
+          action = content;
+          lineContent = '';
+        }
+
+        if (label.toLowerCase() === 'start' && !lineContent && !action) {
           return renderPartTitle(row.id, label);
         }
 
@@ -252,41 +312,41 @@ export function VisualNovelScriptView({
           return (
             <React.Fragment key={row.id}>
               {renderPartTitle(`${row.id}-title`, label)}
-              {renderScriptLine(row.id, typeVal, nameVal, content)}
+              {renderScriptLine(row.id, typeVal, nameVal, lineContent, action)}
             </React.Fragment>
           );
         }
 
         if (label === '*') return null;
 
-        const prevLabel = index > 0
-          ? String(filteredRows[index - 1].propertyValues[labelKey ?? ''] ?? '').trim()
+        const prevLabel = rowIndex > 0
+          ? String(filteredRows[rowIndex - 1].propertyValues[labelKey ?? ''] ?? '').trim()
           : '';
         const isChapterTitle = prevLabel === '*' && label;
 
         if (isChapterTitle) {
-          if (!content) {
+          if (!lineContent && !action) {
             return renderPartTitle(row.id, label);
           }
           return (
             <React.Fragment key={row.id}>
               {renderPartTitle(`${row.id}-title`, label)}
-              {renderScriptLine(row.id, typeVal, nameVal, content)}
+              {renderScriptLine(row.id, typeVal, nameVal, lineContent, action)}
             </React.Fragment>
           );
         }
 
-        if (label && !content) {
+        if (label && !lineContent && !action) {
           return renderPartTitle(row.id, label);
         }
 
         if (resolveVisualNovelPresentation(typeVal, nameVal).kind === 'plain' && label) {
-          return renderSceneTitle(row.id, label, content);
+          return renderSceneTitle(row.id, label, lineContent);
         }
 
-        if (!content && !label) return null;
+        if (!lineContent && !label && !action) return null;
 
-        return renderScriptLine(row.id, typeVal, nameVal, content);
+        return renderScriptLine(row.id, typeVal, nameVal, lineContent, action);
       })}
       {mode === 'player' && playerState.atChoice && (
         <div className={styles.choicePanel}>
@@ -321,6 +381,7 @@ function renderScriptLine(
   typeVal: string | number | undefined | null,
   nameVal: string | undefined | null,
   content: string,
+  action?: string,
 ) {
   const presentation = resolveVisualNovelPresentation(typeVal, nameVal);
   if (presentation.kind === 'plain') {
@@ -329,7 +390,7 @@ function renderScriptLine(
   if (presentation.kind === 'fullscreen') {
     return renderFullscreenText(rowId, content);
   }
-  return renderDialog(rowId, nameVal, content, presentation.color, presentation.alignment);
+  return renderDialog(rowId, nameVal, content, presentation.color, presentation.alignment, action);
 }
 
 function renderDialog(
@@ -338,9 +399,11 @@ function renderDialog(
   content: string,
   dialogColor: VisualNovelDialogColor,
   alignment: 'left' | 'right',
+  action?: string,
 ) {
   const speakerName = resolveSpeakerName(nameVal);
   const avatarLetter = getAvatarLetter(speakerName);
+  const actionText = action?.trim();
 
   return (
     <div key={rowId} className={`${styles.dialogRow} ${styles[alignment]}`}>
@@ -350,10 +413,17 @@ function renderDialog(
             {avatarLetter}
           </div>
           <span className={styles.speakerName}>{speakerName}</span>
+          {actionText ? (
+            <span className={styles.actionChip} title={actionText}>
+              {actionText}
+            </span>
+          ) : null}
         </div>
-        <div className={`${styles.dialogBubble} ${styles[dialogColor]}`}>
-          {content}
-        </div>
+        {content ? (
+          <div className={`${styles.dialogBubble} ${styles[dialogColor]}`}>
+            {content}
+          </div>
+        ) : null}
       </div>
     </div>
   );

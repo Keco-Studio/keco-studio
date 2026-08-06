@@ -21,10 +21,12 @@ const documentEditorPath = path.join(
 );
 
 describe('document collaboration React boundary', () => {
-  it('renders local-inclusive avatars only for multi-user sessions', () => {
+  it('publishes document presence to the top bar instead of sticky chrome avatars', () => {
     const source = readFileSync(documentEditorPath, 'utf8');
-    expect(source).toContain('getDocumentAvatarDisplay');
-    expect(source).toContain('documentAvatarDisplay.visibleUsers.length > 0');
+    expect(source).toContain('dispatchDocumentPresenceUpdate');
+    expect(source).toContain('toDocumentPresenceUser');
+    expect(source).not.toContain('getDocumentAvatarDisplay');
+    expect(source).not.toContain('Collaborators currently editing');
   });
 
   it('hides solo document avatars and prepends the local user for collaborators', () => {

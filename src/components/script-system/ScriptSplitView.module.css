@@ -72,8 +72,8 @@
 }
 
 .divider {
-  flex: 0 0 6px;
-  width: 6px;
+  flex: 0 0 1px;
+  width: 1px;
   cursor: col-resize;
   background: var(--script-line-200);
   position: relative;
@@ -82,7 +82,7 @@
 .divider::after {
   content: '';
   position: absolute;
-  inset: 0 -4px;
+  inset: 0 -5px;
 }
 
 .divider:hover,
@@ -96,7 +96,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: var(--script-surface-1);
+  background: var(--script-surface-0);
   border-left: 1px solid var(--script-line-200);
 }
 
@@ -172,23 +172,28 @@
   padding: 12px;
 }
 
+.flowCanvas {
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+
 .flowSvg {
   display: block;
   max-width: none;
 }
 
 .flowEdge {
-  stroke: #94a3b8;
-  stroke-width: 1.5;
+  stroke: #d9d9d9;
+  stroke-width: 1;
 }
 .flowEdgePreview {
   stroke: #0b99ff;
-  stroke-width: 1.75;
+  stroke-width: 1.25;
   stroke-dasharray: 6 4;
 }
 
 .flowMergeJunction {
-  fill: #94a3b8;
+  fill: #d9d9d9;
 }
 
 .flowEdgeLabel {
@@ -197,6 +202,7 @@
   stroke-width: 4px;
   paint-order: stroke fill;
   font-size: 11px;
+  line-height: 14px;
   pointer-events: none;
 }
 
@@ -211,20 +217,20 @@
 }
 
 .flowNodeRect {
-  fill: #ffffff;
-  stroke: #cbd5e1;
-  stroke-width: 1.5;
+  fill: #edf0f2;
+  stroke: #0000001f;
+  stroke-width: 1;
 }
 
 .flowNodeSelected {
-  fill: #eff8ff;
+  fill: #ffffff;
   stroke: #0b99ff;
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 .flowNodePreview {
   fill: #eff8ff;
   stroke: #0b99ff;
-  stroke-width: 2;
+  stroke-width: 1.5;
   stroke-dasharray: 7 4;
 }
 
