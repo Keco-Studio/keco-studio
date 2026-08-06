@@ -88,6 +88,9 @@ describe('simulation workbench flow', () => {
     expect(source).not.toContain('Import blocked');
     expect(source).not.toContain('styles.errorList');
     expect(read('SimulationWorkbench.module.css')).toContain('.mappingErrorTooltip');
+    expect(read('SimulationWorkbench.module.css')).toMatch(
+      /\.mappingErrorTooltip\s*\{[^}]*width:\s*168px/s,
+    );
     expect(read('SimulationWorkbench.module.css')).toContain('bottom: calc(100% + 8px)');
     expect(read('SimulationWorkbench.module.css')).toContain('transform: translateX(-50%)');
   });

@@ -130,8 +130,9 @@
   left: 50%;
   bottom: calc(100% + 8px);
   z-index: 30;
-  width: max-content;
-  max-width: 260px;
+  box-sizing: border-box;
+  width: 168px;
+  max-width: 168px;
   padding: 8px 10px;
   margin: 0;
   border-radius: 8px;
@@ -142,6 +143,7 @@
   line-height: 1.4;
   text-align: left;
   white-space: normal;
+  overflow-wrap: anywhere;
   pointer-events: none;
   transform: translateX(-50%);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);

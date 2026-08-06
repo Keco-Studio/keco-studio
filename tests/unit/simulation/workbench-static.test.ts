@@ -86,12 +86,22 @@ describe('native simulation workbench presentation', () => {
     expect(importScreen).toContain('Import Studio libraries');
     expect(importScreen).toContain('Studio source table');
     expect(importScreen).toContain('Simulation fields');
+    expect(importScreen).not.toContain('Simulation fields appear here after you select a library.');
+    expect(importScreen).toContain('simulation-field-slot');
     expect(importScreen).toContain('styles.mappingBridge');
     expect(importScreen).toContain('duplicateLibraryNames');
     expect(importScreen).toContain('folderLabelForLibrary');
     expect(importScreen).toContain('formatLibraryLabel');
     expect(importScreen).toContain('selectedLabel');
     expect(importScreen).toContain('/${library.name}');
+    expect(importScreen).toContain('import-library-slot-');
+    expect(importScreen).toContain('data-error');
+    expect(importScreen).toContain('StatusIcon');
+    expect(importScreen).toContain('roleImportErrors');
+    expect(importScreen).toContain('formatFieldImportErrors(roleImportErrors)');
+    expect(importScreen).not.toContain('Missing required:');
+    expect(importScreen).toContain('var(--simulation-danger)');
+    expect(importScreen).toContain('var(--simulation-danger-wash)');
 
     const characters = read('CharactersScreen.tsx');
     expect(characters).toContain("label: 'Team A · Yours'");
