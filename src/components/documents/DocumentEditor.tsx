@@ -8,14 +8,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument, type DocumentRecord } from '@/lib/services/documentService';
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import { dismissToast, showErrorToast, showToast } from '@/lib/utils/toast';
-import {
-  DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT,
-  DOCUMENT_DERIVED_IMPORT_UI_LABEL,
-  clearDocumentDerivedImportProgress,
-  getDocumentDerivedImportProgress,
-  type DocumentDerivedImportProgress,
-} from '@/lib/documents/documentDerivedImportProgress';
+import { showErrorToast } from '@/lib/utils/toast';
 import {
   useDocumentPermissions,
   type DocumentPermissionState,
@@ -133,10 +126,6 @@ function DocumentEditorSession({
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
-  const [derivedImportProgress, setDerivedImportProgress] =
-    useState<DocumentDerivedImportProgress | null>(() =>
-      getDocumentDerivedImportProgress(projectId, document.id)
-    );
   const collaboration = useDocumentCollaboration({
     supabase,
     documentId: document.id,
@@ -159,72 +148,10 @@ function DocumentEditorSession({
   const historicalVersionName = historicalPreviewQuery.data?.name ?? 'selected version';
 
   useEffect(() => {
-    setDerivedImportProgress(getDocumentDerivedImportProgress(projectId, document.id));
-  }, [document.id, projectId]);
-
-  useEffect(() => {
     if (collaboration.canBind && collaboration.session) {
       setBoundCollaborationDocumentId(document.id);
     }
   }, [collaboration.canBind, collaboration.session, document.id]);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<DocumentDerivedImportProgress>).detail;
-      if (!detail || detail.projectId !== projectId || detail.documentId !== document.id) {
-        return;
-      }
-      setDerivedImportProgress(detail);
-    };
-    window.addEventListener(DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT, handler);
-    return () => window.removeEventListener(DOCUMENT_DERIVED_IMPORT_PROGRESS_EVENT, handler);
-  }, [document.id, projectId]);
-
-  useEffect(() => {
-    if (!derivedImportProgress) return;
-
-    if (
-      derivedImportProgress.phase === 'preparing' ||
-      derivedImportProgress.phase === 'running'
-    ) {
-      showToast({
-        message: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
-        type: 'info',
-        duration: 0,
-        testId: 'document-derived-import-progress',
-      });
-      return;
-    }
-
-    if (derivedImportProgress.phase === 'error') {
-      showToast({
-        message:
-          derivedImportProgress.error ||
-          derivedImportProgress.label ||
-          DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
-        type: 'error',
-        duration: 8000,
-        testId: 'document-derived-import-progress',
-      });
-      const timeout = window.setTimeout(() => {
-        clearDocumentDerivedImportProgress(projectId, document.id);
-        setDerivedImportProgress(null);
-      }, 8000);
-      return () => window.clearTimeout(timeout);
-    }
-
-    if (derivedImportProgress.phase === 'success') {
-      dismissToast();
-      clearDocumentDerivedImportProgress(projectId, document.id);
-      setDerivedImportProgress(null);
-    }
-  }, [derivedImportProgress, projectId, document.id]);
-
-  useEffect(() => {
-    return () => {
-      dismissToast();
-    };
-  }, [document.id]);
 
   const imageUploadHandler = useCallback(
     async (image: File): Promise<string> => {

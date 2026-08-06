@@ -1,7 +1,7 @@
 /**
  * Run document Generate conversation / Generate table without ImportScriptModal.
  * Uses the same /api/import-script Story IR pipeline; the document page shows a
- * brief Generating / Generation failed toast — detailed steps go to the console.
+ * brief Generating / Generation failed toast (via progress bus) — detailed steps go to the console.
  */
 
 import { consumeImportStream } from '@/lib/import-script-stream';
