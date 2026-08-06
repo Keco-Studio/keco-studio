@@ -107,6 +107,32 @@ deleted rows from fields that declare the deleted table as an allowed target are
 removed from reference cells; unrelated references in the same cell or unrelated
 reference fields are preserved.
 
+## Story Graph Reads
+
+Use `read_story_graph` to read the complete canonical graph of a
+document-derived Script library. Obtain the stable `libraryId` from
+`list_project_structure`. The account endpoint also requires the `projectId`
+returned by `list_projects`; the legacy project endpoint omits `projectId`.
+
+```json
+{
+  "projectId": "from list_projects",
+  "libraryId": "from list_project_structure",
+  "limit": 100
+}
+```
+
+The result is a typed stream of `warning`, `plot_node`, `plot_edge`, and
+`story_node` items. Follow `nextCursor` with the same project, library, and
+limit until `hasMore` is false. This preserves complete node content,
+commands, choices, Plot grouping, edges, endings, warnings, and graph summary
+without exceeding the MCP response limit.
+
+Each cursor is bound to one graph snapshot. If a later page returns
+`STORY_GRAPH_CONFLICT`, discard every page already collected and restart the
+read without a cursor. The tool is read-only and is available to viewers,
+editors, and admins.
+
 ## Image Uploads
 
 The MCP image write flow stores raster images in the existing public
