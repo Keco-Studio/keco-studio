@@ -33,7 +33,7 @@ Before a batch, read the current credit balance and model/capability cost. Recor
 
 ## Parent/child files
 
-Multi-file outputs use a parent `Generated Assets` record and one `Generated Asset Files` record per output. Each child stores `fileKey`, source file, target `res://` path, file hash, dimensions, sequence/frame/direction/tile coordinates, and the typed animation or tileset metadata. The parent is `ready` only after every child is uploaded, read back, hash-checked, and materializable.
+Multi-file outputs use a parent row in the selected asset registry and, when needed, one compatible child-file registry row per output. The display names `Generated Assets` and `Generated Asset Files` are examples, not required table names. Each child stores `fileKey`, source file, target `res://` path, file hash, dimensions, sequence/frame/direction/tile coordinates, and the typed animation or tileset metadata. The parent is `ready` only after every child is uploaded, read back, hash-checked, and materializable.
 
 ## Persistence and recovery
 

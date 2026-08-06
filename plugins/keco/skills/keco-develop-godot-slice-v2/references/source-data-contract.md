@@ -4,6 +4,8 @@
 
 Resolve material conflicts in this order: current user instruction, newest explicit Keco feedback, current GDD goals and acceptance criteria, Keco table values, then current Godot behavior. Record document revisions, table IDs, field IDs, row IDs, Git commit, branch, dirty paths, Godot version, main scene, canonical path, and addon status in `SourceSnapshot`. If a selected revision changes, invalidate the ledger and restart at `BASELINE`.
 
+Before `WRITE_SPEC`, resolve the canonical Keco Project by stable project ID and discover the folder that owns slice planning documents. Read folder metadata and representative documents from the fresh project structure; never assume a folder name or use a folder from another project. Record `kecoProjectId`, `kecoFolderId`, folder name, document IDs, and revisions in `SourceSnapshot` and `RunContext`. A missing or ambiguous folder is a pre-write blocker.
+
 ## DataPlan
 
 Use plan-local lower-case keys, but send only exact semantic field labels across the Keco MCP boundary. Resolve field labels and reference target row UUIDs from fresh schemas before every write. Use stable scalar match keys for every table and row. Discover and reuse compatible existing tables, fields, references, and rows before considering creation; extend schemas additively and upsert by stable key. Never automatically delete tables/fields/rows or destructively change a populated field type. Stop on the first write failure, retain IDs, and re-read before any retry.
