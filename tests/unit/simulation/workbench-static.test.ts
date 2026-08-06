@@ -151,7 +151,8 @@ describe('native simulation workbench presentation', () => {
     }
     expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.workflowNav\s*\{[^}]*overflow-x:\s*auto/);
+    expect(css).toMatch(/\.workflowNav\s*\{[^}]*overflow-x:\s*visible/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.workflowNav\s*\{[^}]*overflow-x:\s*visible/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)[\s\S]*\.sidebar\s*\{[^}]*(?:position:\s*absolute|position:\s*fixed)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*760px\)[\s\S]*\.battleGrid\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
