@@ -44,6 +44,8 @@ Keco Godot slice progress:
 
 Do not invoke `keco-build-tables-from-document` from this workflow. Route Keco-only new-table requests to that Skill. Route standalone asset generation, analysis-only work, and Godot work unrelated to Keco to their general workflows. PixelLab generation belongs here only when an AssetPlan binds it to the active `runId`, `sliceId`, EvalSpec, and `allowedFiles`.
 
+For character, animation, spritesheet, tileset, TileMap, resource-evolution, or persistent slice-document work, explicitly select `$keco-develop-godot-slice-v2`. V1 does not silently emulate those newer contracts: route the request to v2, or state that the requested contract is outside v1. This routing is self-contained in the repository.
+
 ## Common Mistakes
 
 | Mistake | Correction |

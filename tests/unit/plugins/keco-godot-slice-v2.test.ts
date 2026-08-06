@@ -1,13 +1,28 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
 const skillRoot = path.join(repositoryRoot, 'plugins', 'keco', 'skills', 'keco-develop-godot-slice-v2');
 
+function writePngHeader(filePath: string, width: number, height: number): void {
+  const header = Buffer.alloc(24);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header, 0);
+  header.writeUInt32BE(13, 8);
+  header.write('IHDR', 12, 'ascii');
+  header.writeUInt32BE(width, 16);
+  header.writeUInt32BE(height, 20);
+  writeFileSync(filePath, header);
+}
+
+function sha256(filePath: string): string {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+}
+
 describe('Keco Godot Slice V2 skill contract', () => {
-  it('is manual-only and exposes the reviewed Superpowers-style ledger', () => {
+  it('is manual-only and exposes a self-contained reviewed ledger', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const metadata = readFileSync(path.join(skillRoot, 'agents', 'openai.yaml'), 'utf8');
     expect(skill).toMatch(/^---\nname: keco-develop-godot-slice-v2\n/);
@@ -16,9 +31,12 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(skill).toMatch(/write token/i);
     expect(skill).toMatch(/blocked_before_write/);
     expect(skill).toMatch(/independent review/i);
-    expect(skill).not.toMatch(/superpowers:[a-z-]+/i);
+    expect(skill).not.toMatch(/superpowers/i);
+    expect(skill).toMatch(/bundled|self-contained/i);
     expect(skill).toMatch(/already consistent[\s\S]*without asking|without asking[\s\S]*already consistent/i);
     expect(skill).toMatch(/unresolved ambiguity[\s\S]*zero writes|zero writes[\s\S]*unresolved ambiguity/i);
+    expect(skill).toMatch(/spec\.md[\s\S]*plan\.md[\s\S]*status\.json[\s\S]*eval-report\.json/i);
+    expect(skill).toMatch(/validate_slice_documents\.py/);
     expect(metadata).toMatch(/allow_implicit_invocation: false/);
   });
 
@@ -30,14 +48,22 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'references/ab-matrix.md',
       'references/source-data-contract.md',
       'references/eval-contract.md',
-      'references/superpowers-adapted.md',
+      'references/review-workflow.md',
       'references/slice-decision.md',
       'references/pixellab-capability-registry.md',
+      'references/generated-asset-contract.md',
+      'references/existing-resource-evolution.md',
+      'references/godot-animation-contract.md',
+      'references/godot-tileset-contract.md',
+      'references/slice-document-contract.md',
       'scripts/validate_run_context.py',
       'scripts/validate_plan.py',
       'scripts/validate_eval_report.py',
       'scripts/export_keco_snapshot.py',
       'scripts/validate_snapshot.py',
+      'scripts/build_spriteframes_resource.py',
+      'scripts/validate_generated_asset_package.py',
+      'scripts/validate_slice_documents.py',
     ];
     for (const file of files) expect(existsSync(path.join(skillRoot, file))).toBe(true);
     const assets = readFileSync(path.join(skillRoot, 'references', 'keco-pixellab-contract.md'), 'utf8');
@@ -74,11 +100,176 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(sourceData).toMatch(/never automatically delete/i);
     const evalContract = readFileSync(path.join(skillRoot, 'references', 'eval-contract.md'), 'utf8');
     expect(evalContract).toMatch(/Create EvalSpec before any Keco, PixelLab, or Godot write/i);
-    const adapted = readFileSync(path.join(skillRoot, 'references', 'superpowers-adapted.md'), 'utf8');
-    expect(adapted).toMatch(/Plan validation[\s\S]*Task RED\/GREEN[\s\S]*Independent completion review/i);
+    const reviewWorkflow = readFileSync(path.join(skillRoot, 'references', 'review-workflow.md'), 'utf8');
+    expect(reviewWorkflow).toMatch(/Plan validation[\s\S]*Task RED\/GREEN[\s\S]*Independent completion review/i);
+    expect(reviewWorkflow).not.toMatch(/superpowers/i);
+    const generatedAssets = readFileSync(path.join(skillRoot, 'references', 'generated-asset-contract.md'), 'utf8');
+    expect(generatedAssets).toMatch(/canonical asset/i);
+    expect(generatedAssets).toMatch(/upload[\s\S]*import[\s\S]*animation/i);
+    expect(generatedAssets).toMatch(/credit[\s\S]*job/i);
+    expect(generatedAssets).toMatch(/style[\s\S]*reference[\s\S]*edit/i);
+    const evolution = readFileSync(path.join(skillRoot, 'references', 'existing-resource-evolution.md'), 'utf8');
+    expect(evolution).toMatch(/reuse[\s\S]*extend[\s\S]*create/i);
+    expect(evolution).toMatch(/stable key[\s\S]*existing resource/i);
+    const animation = readFileSync(path.join(skillRoot, 'references', 'godot-animation-contract.md'), 'utf8');
+    expect(animation).toMatch(/SpriteFrames[\s\S]*AtlasTexture[\s\S]*AnimatedSprite2D/i);
+    expect(animation).toMatch(/frameCount[\s\S]*frameWidth[\s\S]*fps[\s\S]*loop/i);
+    expect(animation).toMatch(/packaged export[\s\S]*materialize/i);
+    const tileset = readFileSync(path.join(skillRoot, 'references', 'godot-tileset-contract.md'), 'utf8');
+    expect(tileset).toMatch(/TileSet[\s\S]*TileMapLayer[\s\S]*terrain/i);
+    expect(tileset).toMatch(/topdown-15[\s\S]*platformer-16[\s\S]*isometric-atlas/i);
+    expect(tileset).toMatch(/do not infer|never infer/i);
+    const sliceDocuments = readFileSync(path.join(skillRoot, 'references', 'slice-document-contract.md'), 'utf8');
+    expect(sliceDocuments).toMatch(/docs\/keco-godot-slices[\s\S]*spec\.md[\s\S]*plan\.md[\s\S]*status\.json/i);
+    expect(sliceDocuments).toMatch(/latest[\s\S]*superseded[\s\S]*completed/i);
     const sliceDecision = readFileSync(path.join(skillRoot, 'references', 'slice-decision.md'), 'utf8');
     expect(sliceDecision).toMatch(/consistent[\s\S]*without[\s\S]*confirmation/i);
     expect(sliceDecision).toMatch(/awaiting_user_confirmation[\s\S]*zero-write/i);
+    const orchestration = readFileSync(path.join(skillRoot, 'references', 'orchestration-contract.md'), 'utf8');
+    expect(orchestration).toMatch(/specPath[\s\S]*planPath[\s\S]*statusPath/i);
+    expect(orchestration).toMatch(/evolution[\s\S]*reuse_exact[\s\S]*create_new/i);
+  });
+
+  it('builds deterministic Godot SpriteFrames resources and rejects bad frame geometry', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-animation-'));
+    try {
+      const idle = path.join(tempRoot, 'hero_idle.png');
+      const attack = path.join(tempRoot, 'hero_attack.png');
+      writePngHeader(idle, 128, 32);
+      writePngHeader(attack, 96, 32);
+      const manifest = path.join(tempRoot, 'animations.json');
+      const output = path.join(tempRoot, 'hero_frames.tres');
+      writeFileSync(manifest, JSON.stringify({
+        version: 1,
+        resourcePath: 'res://generated/hero_frames.tres',
+        animations: [
+          { name: 'idle', sheetPath: 'res://generated/hero_idle.png', sheetFile: idle, frameWidth: 32, frameHeight: 32, frameCount: 4, fps: 8, loop: true },
+          { name: 'attack', sheetPath: 'res://generated/hero_attack.png', sheetFile: attack, frameWidth: 32, frameHeight: 32, frameCount: 3, fps: 12, loop: false },
+        ],
+      }));
+      const builder = path.join(skillRoot, 'scripts', 'build_spriteframes_resource.py');
+      const valid = spawnSync('python3', [builder, '--manifest', manifest, '--output', output], { encoding: 'utf8' });
+      expect(valid.status).toBe(0);
+      const resource = readFileSync(output, 'utf8');
+      expect(resource).toContain('[gd_resource type="SpriteFrames"');
+      expect(resource.match(/type="AtlasTexture"/g)).toHaveLength(7);
+      expect(resource).toContain('"name": &"idle"');
+      expect(resource).toContain('"name": &"attack"');
+      expect(resource).toContain('"loop": false');
+      expect(resource).toContain('region = Rect2(64, 0, 32, 32)');
+
+      writeFileSync(manifest, JSON.stringify({
+        version: 1,
+        resourcePath: 'res://generated/hero_frames.tres',
+        animations: [{ name: 'idle', sheetPath: 'res://generated/hero_idle.png', sheetFile: idle, frameWidth: 32, frameHeight: 32, frameCount: 5, fps: 8, loop: true }],
+      }));
+      const invalid = spawnSync('python3', [builder, '--manifest', manifest, '--output', output], { encoding: 'utf8' });
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.stderr).toMatch(/frame geometry/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('validates generated asset packages before Godot materialization', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-assets-'));
+    try {
+      const assetDir = path.join(tempRoot, 'assets');
+      mkdirSync(assetDir, { recursive: true });
+      const idle = path.join(assetDir, 'hero_idle.png');
+      const terrain = path.join(assetDir, 'terrain.png');
+      writePngHeader(idle, 128, 32);
+      writePngHeader(terrain, 64, 64);
+      const packagePath = path.join(tempRoot, 'package.json');
+      const packageData = {
+        version: 1,
+        runId: 'asset-run',
+        sliceId: 'asset-slice',
+        projectRoot: tempRoot,
+        assets: [
+          {
+            assetKey: 'hero-idle',
+            assetKind: 'animation',
+            provider: { capability: 'animate-text-pro', transportTool: 'animate_with_text', assetId: 'provider-idle' },
+            status: 'ready',
+            files: [{
+              fileKey: 'hero-idle-sheet', sourceFile: 'assets/hero_idle.png', targetPath: 'res://generated/hero_idle.png',
+              sha256: sha256(idle), width: 128, height: 32,
+              animation: { name: 'idle', frameWidth: 32, frameHeight: 32, frameCount: 4, fps: 8, loop: true },
+            }],
+          },
+          {
+            assetKey: 'terrain-grass',
+            assetKind: 'tileset',
+            provider: { capability: 'top-down-tileset', transportTool: 'generate_tileset', assetId: 'provider-terrain' },
+            status: 'ready',
+            files: [{
+              fileKey: 'terrain-grass-atlas', sourceFile: 'assets/terrain.png', targetPath: 'res://generated/terrain.png',
+              sha256: sha256(terrain), width: 64, height: 64,
+              tileset: { layout: 'topdown-15', tileSize: 16, columns: 4, rows: 4, terrainMapping: 'provider-metadata' },
+            }],
+          },
+        ],
+      };
+      writeFileSync(packagePath, JSON.stringify(packageData));
+      const validator = path.join(skillRoot, 'scripts', 'validate_generated_asset_package.py');
+      const valid = spawnSync('python3', [validator, packagePath], { encoding: 'utf8' });
+      expect(valid.status).toBe(0);
+      expect(valid.stdout).toMatch(/"ok": true/);
+
+      packageData.assets[1].files[0].targetPath = 'res://generated/hero_idle.png';
+      writeFileSync(packagePath, JSON.stringify(packageData));
+      const invalid = spawnSync('python3', [validator, packagePath], { encoding: 'utf8' });
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.stderr).toMatch(/duplicate targetPath/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('validates dated slice documents and completion state', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-slice-docs-'));
+    try {
+      const sliceDir = path.join(tempRoot, 'docs', 'keco-godot-slices', 'hero-animation');
+      mkdirSync(sliceDir, { recursive: true });
+      const frontmatter = (documentType: string) => `---\nsliceId: hero-animation\ndocumentType: ${documentType}\ncreatedDate: 2026-08-06\nupdatedDate: 2026-08-06\nstatus: in_progress\nlatest: true\n---\n`;
+      writeFileSync(path.join(sliceDir, 'spec.md'), frontmatter('spec') + '\n# Hero animation\n');
+      writeFileSync(path.join(sliceDir, 'plan.md'), frontmatter('plan') + '\n# Plan\n');
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        version: 1,
+        sliceId: 'hero-animation',
+        createdDate: '2026-08-06',
+        updatedDate: '2026-08-06',
+        status: 'in_progress',
+        latest: true,
+        completed: false,
+        supersedes: [],
+        tasks: [{ id: 'task-01', status: 'pending' }],
+      }));
+      const validator = path.join(skillRoot, 'scripts', 'validate_slice_documents.py');
+      const valid = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(valid.status).toBe(0);
+      expect(valid.stdout).toMatch(/"ok": true/);
+
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        version: 1,
+        sliceId: 'hero-animation',
+        createdDate: '2026-08-06',
+        updatedDate: '2026-08-06',
+        status: 'completed',
+        latest: true,
+        completed: true,
+        supersedes: [],
+        tasks: [{ id: 'task-01', status: 'completed' }],
+      }));
+      writeFileSync(path.join(sliceDir, 'spec.md'), frontmatter('spec').replace(/status: in_progress/, 'status: completed') + '# Hero animation\n');
+      writeFileSync(path.join(sliceDir, 'plan.md'), frontmatter('plan').replace(/status: in_progress/, 'status: completed') + '# Plan\n');
+      const invalid = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(invalid.status).not.toBe(0);
+      expect(invalid.stderr).toMatch(/eval-report/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('keeps the pressure scenarios as reviewable fixtures', () => {
