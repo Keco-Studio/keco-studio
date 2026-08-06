@@ -6,7 +6,7 @@ Resolve material conflicts in this order: current user instruction, newest expli
 
 ## DataPlan
 
-Use plan-local lower-case keys, but send only exact semantic field labels across the Keco MCP boundary. Resolve field labels and reference target row UUIDs from fresh schemas before every write. Use stable scalar match keys for every table and row. Create or update compatible tables, fields, references, and rows; never automatically delete tables/fields/rows or destructively change a populated field type. Stop on the first write failure, retain IDs, and re-read before any retry.
+Use plan-local lower-case keys, but send only exact semantic field labels across the Keco MCP boundary. Resolve field labels and reference target row UUIDs from fresh schemas before every write. Use stable scalar match keys for every table and row. Discover and reuse compatible existing tables, fields, references, and rows before considering creation; extend schemas additively and upsert by stable key. Never automatically delete tables/fields/rows or destructively change a populated field type. Stop on the first write failure, retain IDs, and re-read before any retry.
 
 Maintain separate development records: `Development Slices` keyed by `Slice ID`, `Evaluation Cases` keyed by `Eval ID`, and `Evaluation Runs` keyed by `Run ID`. Do not put evaluation state into runtime configuration tables.
 

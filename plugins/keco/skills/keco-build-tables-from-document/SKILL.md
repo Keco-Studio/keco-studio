@@ -9,7 +9,7 @@ description: Use when a user asks to create, build, generate, or populate new Ke
 
 Turn one existing Keco document into new, related Keco tables through a read-plan-confirm-execute-verify workflow. Use Keco MCP for every project operation; never substitute repository code or direct database access.
 
-This Skill only accepts an existing Keco document as input and only creates new tables. It only supports all non-reference P0 fields, including array and enum fields, initial rows, and cross-table references.
+This Skill only accepts an existing Keco document as input and only creates new tables. It only supports all non-reference P0 fields, including array and enum fields, initial rows, and cross-table references. It intentionally does not evolve an existing table: requests to add rows/fields to an existing table, reconcile existing resource IDs, or feed an existing table into a Godot slice must use the relevant maintenance or Godot slice workflow (for Keco-driven character, animation, tileset, and persistent-document evolution, select `$keco-develop-godot-slice-v2`).
 
 Do not use this Skill for analysis-only requests, direct edits to an existing table, or Keco Studio repository development. Local files are excluded. Images are excluded. Audio is excluded. Formulas are excluded. Destructive maintenance is excluded. Route those requests to the relevant general or development workflow.
 

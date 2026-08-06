@@ -314,6 +314,9 @@ describe('Keco Codex plugin contract', () => {
     expect(godotSkill).toMatch(/do not invoke[^\n]*keco-build-tables-from-document/i);
     expect(godotSkill).toMatch(/Keco-only table creation/i);
     expect(godotSkill).toMatch(/Godot work unrelated to Keco/i);
+    expect(godotSkill).toMatch(/character|animation|tileset/i);
+    expect(godotSkill).toMatch(/keco-develop-godot-slice-v2/i);
+    expect(tableSkill).toMatch(/existing table|existing tables|Godot slice/i);
   });
 
   it('scores only behavior observed by the offline A/B evaluation', () => {

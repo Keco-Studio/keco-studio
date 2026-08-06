@@ -1,6 +1,6 @@
-# Local Superpowers Adaptation
+# Bundled Review Workflow
 
-This file is intentionally self-contained. It adapts the useful process patterns without requiring a `superpowers` plugin on Windows.
+This file is self-contained. It gives the skill deterministic plan, task, and completion review rules without requiring another plugin.
 
 ## Plan validation
 

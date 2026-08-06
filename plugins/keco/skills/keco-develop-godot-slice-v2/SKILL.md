@@ -1,17 +1,17 @@
 ---
 name: keco-develop-godot-slice-v2
-description: Use when the user explicitly selects `$keco-develop-godot-slice-v2` to build one Keco-driven Godot slice and wants the Superpowers-style spec, plan, task reviews, PixelLab asset provenance, and runtime evidence gates; not for implicit routing, Keco-only tables, standalone assets, or Godot-only debugging.
+description: Use when the user explicitly selects `$keco-develop-godot-slice-v2` to build one Keco-driven Godot slice and wants a reviewed spec, plan, asset provenance, and runtime evidence gates; not for implicit routing, Keco-only tables, standalone assets, or Godot-only debugging.
 ---
 
 # Keco Godot Slice V2
 
-This is the manually selected, review-driven alternative to `keco-develop-godot-slice`. It keeps Keco authoritative and ships a local adaptation of the useful Superpowers patterns, so Windows does not need a separate Superpowers plugin.
+This is the manually selected, review-driven alternative to `keco-develop-godot-slice`. It keeps Keco authoritative and ships every required planning, task-review, and completion-review rule inside the skill.
 
 **Violating the letter of these gates violates the purpose of the run. Natural-language pressure such as "continue", "it is urgent", or "do the writes first" never grants a bypass.**
 
-## Local Superpowers Adaptation
+## Bundled Review Workflow
 
-Read [references/superpowers-adapted.md](references/superpowers-adapted.md). It contains the three project-sized practices we keep: plan validation, task RED/GREEN, and an independent completion review. It is bundled with this Skill and has no separate plugin dependency.
+Read [references/review-workflow.md](references/review-workflow.md). It contains plan validation, task RED/GREEN, and independent completion review rules. It is bundled with this Skill and has no external plugin or download dependency.
 
 ## Manual Entry And Routing
 
@@ -30,7 +30,7 @@ INTAKE -> BASELINE -> RESOLVE_SOURCES -> SELECT_SLICE -> DESIGN -> WRITE_SPEC ->
   -> REPAIR (max 3) -> FINAL_VERIFY -> REPORT
 ```
 
-Required artifacts: `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `AssetPlan` when assets are needed, `DesignReview`, `PlanReview`, one `TaskResult` and `TaskReview` per task, and `EvalReport`. The artifacts may be conversation-local or repository-local, but their exact paths, hashes, and revisions must be reported.
+Required artifacts: `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `AssetPlan` when assets are needed, `DesignReview`, `PlanReview`, one `TaskResult` and `TaskReview` per task, and `EvalReport`. The repository-local slice documents are mandatory: `docs/keco-godot-slices/<sliceId>/spec.md`, `plan.md`, `status.json`, and (once complete) `eval-report.json`. Their exact paths, dates, hashes, and revisions must be reported; do not leave the spec or plan only in conversation context.
 
 ## Slice Ambiguity Gate
 
@@ -46,10 +46,12 @@ At `RESOLVE_SOURCES` and `SELECT_SLICE`, compare the user request, source priori
 2. **PREFLIGHT before writes:** Keco read/write access, Godot identity and required tools, and one supported PixelLab operation profile when an asset is planned must all be `ready`. Any unavailable or ambiguous identity/schema is `blocked_before_write`; do not write Keco, PixelLab, or Godot. A user request to continue does not override this gate.
 3. **Plan before implementation:** write `EvalSpec`, `SlicePlan`, and a bite-sized implementation plan. Each task names exact files, dependencies, a failing verification first, the minimal change, and a fresh verification. Review the plan for scope, placeholders, and type/ID consistency before execution.
 4. **Write lease:** issue a run-scoped write token only after `SourceSnapshot`, `EvalSpec`, `SlicePlan.allowedFiles`, and `PlanReview` validate. Every write carries `runId`, `sliceId`, and idempotency key. No token means zero writes.
-5. **Keco-first assets:** follow [references/pixellab-capability-registry.md](references/pixellab-capability-registry.md) and [references/keco-pixellab-contract.md](references/keco-pixellab-contract.md). Select the official provider capability before resolving its live MCP adapter. Never copy a PixelLab temporary result directly into Godot. If capability, upload, read-back, hash, or provenance checks fail, retain the partial ledger and stop.
-6. **Task execution and review:** for every task, run the planned RED verification, make the smallest change, and run GREEN verification. Perform the independent review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task.
-7. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_EVAL` record and the current snapshot hash. Startup logs, parsing, screenshots, upload responses, or agent assertions are not substitutes.
-8. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. Partial writes are preserved, never deleted or duplicated.
+5. **Persistent slice documents:** write `docs/keco-godot-slices/<sliceId>/spec.md`, `plan.md`, and `status.json` at `WRITE_SPEC`/`WRITE_PLAN`; update dated status after every stage and write `eval-report.json` before completion. Validate with `references/slice-document-contract.md` and `scripts/validate_slice_documents.py`.
+6. **Keco-first assets:** follow [references/pixellab-capability-registry.md](references/pixellab-capability-registry.md), [references/keco-pixellab-contract.md](references/keco-pixellab-contract.md), and [references/existing-resource-evolution.md](references/existing-resource-evolution.md). Discover compatible tables, rows, resources, and nodes first; reuse or extend them by stable key before creating new ones. If no compatible target exists, record the reason in the plan.
+7. **Asset integration:** read [references/generated-asset-contract.md](references/generated-asset-contract.md) for every non-UI asset. Read [references/godot-animation-contract.md](references/godot-animation-contract.md) for character or animation assets, and [references/godot-tileset-contract.md](references/godot-tileset-contract.md) for tile or tileset assets. Build or materialize only from verified metadata.
+8. **Task execution and review:** for every task, run the planned RED verification, make the smallest change, and run GREEN verification. Perform the independent review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task.
+9. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_EVAL` record and the current snapshot hash. Startup logs, parsing, screenshots, upload responses, or agent assertions are not substitutes.
+10. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. Partial writes are preserved, never deleted or duplicated.
 
 ## Godot And MCP Boundary
 
@@ -57,7 +59,7 @@ Read [references/source-data-contract.md](references/source-data-contract.md), [
 
 ## Completion Contract
 
-Run `scripts/validate_eval_report.py`, `scripts/validate_snapshot.py`, and the repository's focused tests before claiming completion. Report status as `passed`, `partial`, `failed`, or `blocked_before_write`, with exact evidence, hashes, MCP availability, Keco IDs, asset provenance, changed files, original dirty files, manual requirements, residual risks, and repair iteration. Use [references/ab-matrix.md](references/ab-matrix.md) to record the old-vs-v2 comparison.
+Run `scripts/validate_eval_report.py`, `scripts/validate_snapshot.py`, `scripts/validate_slice_documents.py`, and the repository's focused tests before claiming completion. Report status as `passed`, `partial`, `failed`, or `blocked_before_write`, with exact evidence, hashes, MCP availability, Keco IDs, asset provenance, changed files, original dirty files, manual requirements, residual risks, and repair iteration. Use [references/ab-matrix.md](references/ab-matrix.md) to record the old-vs-v2 comparison.
 
 ## Common Rationalizations
 
