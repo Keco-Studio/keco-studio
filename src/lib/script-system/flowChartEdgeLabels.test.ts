@@ -6,28 +6,36 @@ import {
 
 describe('wrapEdgeLabel', () => {
   it('keeps short text on one line', () => {
-    expect(wrapEdgeLabel('答布防')).toEqual(['答布防']);
+    expect(wrapEdgeLabel('\u7b54\u5e03\u9632')).toEqual(['\u7b54\u5e03\u9632']);
   });
 
   it('wraps long text onto multiple lines of at most 8 characters', () => {
-    const lines = wrapEdgeLabel('这是一段很长的分支选项文案内容');
+    const lines = wrapEdgeLabel(
+      '\u8fd9\u662f\u4e00\u6bb5\u5f88\u957f\u7684\u5206\u652f\u9009\u9879\u6587\u6848\u5185\u5bb9'
+    );
     expect(lines.length).toBeGreaterThan(1);
-    expect(lines.join('')).toBe('这是一段很长的分支选项文案内容');
+    expect(lines.join('')).toBe(
+      '\u8fd9\u662f\u4e00\u6bb5\u5f88\u957f\u7684\u5206\u652f\u9009\u9879\u6587\u6848\u5185\u5bb9'
+    );
     expect(lines.every((line) => Array.from(line).length <= 8)).toBe(true);
   });
 
   it('truncates with ellipsis after the max line count', () => {
-    const lines = wrapEdgeLabel('一二三四五六七八九十一二三四五六七八九十ABCDEFGH', 8, 3);
+    const lines = wrapEdgeLabel(
+      '\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341ABCDEFGH',
+      8,
+      3
+    );
     expect(lines).toHaveLength(3);
-    expect(lines[2]?.endsWith('…')).toBe(true);
+    expect(lines[2]?.endsWith('\u2026')).toBe(true);
   });
 });
 
 describe('placeEdgeLabels', () => {
   it('keeps labels that already have space at their anchors', () => {
     const placed = placeEdgeLabels([
-      { id: 'a', text: '左分支', x: 100, y: 80 },
-      { id: 'b', text: '右分支', x: 320, y: 80 },
+      { id: 'a', text: '\u5de6\u5206\u652f', x: 100, y: 80 },
+      { id: 'b', text: '\u53f3\u5206\u652f', x: 320, y: 80 },
     ]);
     expect(placed[0]?.x).toBe(100);
     expect(placed[1]?.x).toBe(320);
@@ -37,9 +45,9 @@ describe('placeEdgeLabels', () => {
 
   it('nudges overlapping labels so their boxes no longer collide', () => {
     const placed = placeEdgeLabels([
-      { id: 'a', text: '选择安抚女帝并稳住朝堂', x: 200, y: 100 },
-      { id: 'b', text: '选择强硬回击并发动政变', x: 200, y: 100 },
-      { id: 'c', text: '选择沉默旁观等待时机', x: 200, y: 100 },
+      { id: 'a', text: '\u9009\u62e9\u5b89\u629a\u5973\u5e1d\u5e76\u7a33\u4f4f\u671d\u5802', x: 200, y: 100 },
+      { id: 'b', text: '\u9009\u62e9\u5f3a\u786c\u56de\u51fb\u5e76\u53d1\u52a8\u653f\u53d8', x: 200, y: 100 },
+      { id: 'c', text: '\u9009\u62e9\u6c89\u9ed8\u65c1\u89c2\u7b49\u5f85\u65f6\u673a', x: 200, y: 100 },
     ]);
 
     for (let i = 0; i < placed.length; i += 1) {

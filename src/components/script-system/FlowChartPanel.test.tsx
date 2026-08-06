@@ -39,15 +39,15 @@ describe('FlowChartPanel', () => {
   it('wraps long option labels onto multiple tspans', () => {
     const graph: FlowGraph = {
       nodes: [
-        { id: 'Start', label: '开场', rowIndex: 0, rowIndexes: [0] },
-        { id: 'A', label: '分支A', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Start', label: '\u5f00\u573a', rowIndex: 0, rowIndexes: [0] },
+        { id: 'A', label: '\u5206\u652fA', rowIndex: 1, rowIndexes: [1] },
       ],
       edges: [
         {
           from: 'Start',
           to: 'A',
           optionIndex: 0,
-          optionText: '这是一段很长的分支选项文案内容',
+          optionText: '\u8fd9\u662f\u4e00\u6bb5\u5f88\u957f\u7684\u5206\u652f\u9009\u9879\u6587\u6848\u5185\u5bb9',
         },
       ],
     };
