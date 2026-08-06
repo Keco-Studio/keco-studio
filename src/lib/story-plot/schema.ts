@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { LABEL_PATTERN } from '@/lib/story-ir/schema';
+import { STORY_LABEL_PATTERN } from '../story-graph/constants.ts';
 
-const IdSchema = z.string().regex(LABEL_PATTERN);
+const IdSchema = z.string().regex(STORY_LABEL_PATTERN);
 
 export const StoryPlotNodeSchema = z.object({
   id: IdSchema,

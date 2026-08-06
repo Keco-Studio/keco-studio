@@ -1,11 +1,11 @@
-import { parseJumpTarget } from '@/lib/script-system/parseJumpTarget';
-import { parseStoryPlotPlan } from '@/lib/story-plot/schema';
+import { parseJumpTarget } from '../script-system/parseJumpTarget.ts';
+import { parseStoryPlotPlan } from '../story-plot/schema.ts';
 import type {
   EditableChoice,
   EditableNodeType,
   EditableStoryGraph,
   NamedScriptRow,
-} from './editableGraph';
+} from './editableGraph.ts';
 
 const OPTION_TEXT_PATTERN = /^Option(\d+)$/;
 const OPTION_VALUE_PATTERN = /^Option\d+(?:_Next|_Commands)?$/;
