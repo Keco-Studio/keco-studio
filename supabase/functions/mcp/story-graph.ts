@@ -323,7 +323,12 @@ async function decodeStoryGraphCursor(
 
 function cursorSecret(): string {
   const value = Deno.env.get("MCP_CURSOR_SECRET");
-  if (!value) throw new Error("MCP_CURSOR_SECRET is required.");
+  if (!value) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "MCP cursor configuration is unavailable.",
+    );
+  }
   return value;
 }
 

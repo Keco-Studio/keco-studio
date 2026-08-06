@@ -9,6 +9,7 @@ import {
   readDocument,
   semanticSearch,
 } from "./operations.ts";
+import { readStoryGraph } from "./story-graph.ts";
 
 const uuid = z.string().uuid();
 const annotations = {
@@ -156,6 +157,27 @@ function registerReadToolSet(
       run("Document loaded.", async () => {
         const context = await contextFor(input);
         return readDocument(context, withoutProjectId(input));
+      }),
+  );
+
+  const storyGraphSchema = z.object({
+    ...projectShape,
+    libraryId: uuid,
+    limit: z.number().int().min(1).max(200).optional(),
+    cursor: z.string().min(1).max(4096).optional(),
+  }).strict();
+  server.registerTool(
+    "read_story_graph",
+    {
+      description:
+        "Read and validate a complete document-derived Script story graph. Follow nextCursor until hasMore is false; if STORY_GRAPH_CONFLICT is returned, discard prior pages and restart. Obtain libraryId from list_project_structure.",
+      inputSchema: storyGraphSchema,
+      annotations,
+    },
+    async (input: z.infer<typeof storyGraphSchema>) =>
+      run("Story graph loaded.", async () => {
+        const context = await contextFor(input);
+        return await readStoryGraph(context, withoutProjectId(input));
       }),
   );
 

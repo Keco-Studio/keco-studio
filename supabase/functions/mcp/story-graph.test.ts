@@ -328,3 +328,20 @@ Deno.test("story graph rejects a single item that cannot fit losslessly", async 
   );
   assertEquals(error.code, "PAYLOAD_TOO_LARGE");
 });
+
+Deno.test("story graph reports missing cursor configuration as an internal error", async () => {
+  const previous = Deno.env.get("MCP_CURSOR_SECRET");
+  Deno.env.delete("MCP_CURSOR_SECRET");
+  try {
+    const error = await assertRejects(
+      () => readStoryGraph(makeContext(snapshot()).context, {
+        libraryId: LIBRARY_ID,
+        limit: 1,
+      }),
+      McpDomainError,
+    );
+    assertEquals(error.code, "INTERNAL_ERROR");
+  } finally {
+    if (previous) Deno.env.set("MCP_CURSOR_SECRET", previous);
+  }
+});
