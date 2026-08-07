@@ -16,11 +16,11 @@ import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { scheduleReindexForAssetFields } from '../embedding-index';
 import { resolvePropertyValues, isExplicitEmptyPropertyValues, buildEmptyPropertyValuesError } from '../field-resolver';
 import { prepareAgentPropertyValues } from '../property-value-validation';
-import { getLibraryAssets } from '../data-access';
+import { getLibraryAssets, getLibraryProperties } from '../data-access';
+import { removeUnusedDefaultIdField } from '../default-id-cleanup';
 import {
   errorFromLookupResult,
   errorFromOkResult,
-  getLibraryProperties,
   libraryFromLookupResult,
   resolveLibraryForTool,
 } from './_shared';
@@ -57,10 +57,34 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     return { success: false, error: buildEmptyPropertyValuesError(availableFields) };
   }
 
-  const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
+  let [properties, assets] = await Promise.all([
     getLibraryProperties(ctx.supabase, library.id, ctx),
-    resolvePropertyValues(ctx.supabase, library.id, propertyValues),
+    getLibraryAssets(ctx.supabase, library.id, ctx),
   ]);
+  let cleanup: Awaited<ReturnType<typeof removeUnusedDefaultIdField>>;
+  try {
+    cleanup = await removeUnusedDefaultIdField(
+      ctx.supabase,
+      library.id,
+      properties,
+      assets,
+      propertyValues
+    );
+  } catch (e) {
+    return {
+      success: false,
+      error: (e as Error).message || 'Failed to remove unused default ID field.',
+    };
+  }
+  if (cleanup.removed) {
+    properties = await getLibraryProperties(ctx.supabase, library.id, ctx);
+  }
+
+  const { resolved, unresolved, availableFields } = await resolvePropertyValues(
+    ctx.supabase,
+    library.id,
+    propertyValues
+  );
   if (unresolved.length > 0) {
     return {
       success: false,
@@ -99,7 +123,6 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   try {
-    const assets = await getLibraryAssets(ctx.supabase, library.id, ctx);
     const emptyRow = findFirstEmptyUiRowAsset(assets);
 
     if (emptyRow) {

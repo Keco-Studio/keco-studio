@@ -12,7 +12,7 @@ The change applies only to Agent row writes into an existing table. It does not 
 
 ## Approach
 
-Add a shared Agent-side cleanup function and call it before resolving the target table schema in `create_asset`, `update_asset`, and `update_row`. Covering all three row-write entry points prevents the Agent from bypassing cleanup by choosing a different write tool during an import. The function reuses the existing permission-checked `deleteLibraryField` service.
+Add a shared Agent-side cleanup function and cover all three row-write entry points so the Agent cannot bypass cleanup by choosing a different write tool during an import. `create_asset` and `update_asset` use pre-execute confirmation, so they clean before resolving the target table schema. `update_row` uses a read-only post-preview contract, so it rechecks and cleans in `executeImport()` after confirmation and immediately before persisting the row. The function reuses the existing permission-checked `deleteLibraryField` service.
 
 An `ID` field is disposable only when all of these conditions are true:
 
@@ -28,7 +28,7 @@ If any condition is false, cleanup is a no-op.
 
 ## Data Flow
 
-For `create_asset`, `update_asset`, and `update_row`:
+For `create_asset` and `update_asset`:
 
 1. Resolve the target library.
 2. Load its current fields and rows.
@@ -38,7 +38,9 @@ For `create_asset`, `update_asset`, and `update_row`:
 6. Resolve and validate the incoming property values against the refreshed schema.
 7. Perform the existing row write.
 
-Cleanup must finish before field-name resolution. This prevents a deleted field UUID from entering the write payload or the generated preview.
+For `update_row`, `execute()` remains non-mutating and builds its preview through the existing read path. After confirmation, `executeImport()` reloads the current fields and rows, reevaluates the disposable-default predicate, deletes the field if it is still unused, and only then persists the previewed business-field values.
+
+Cleanup must finish before field-name resolution in the pre-execute tools and before the persisted write in `update_row`. This prevents a deleted field UUID from entering a write payload while preserving the preview tool's read-only contract.
 
 The existing row-name merge remains available for real primary label fields, but `findPrimaryLabelField` must not select a disposable default `ID` field. This provides a second guard against invented ID values if cleanup cannot run or deletion fails.
 

@@ -4,7 +4,7 @@
 
 **Goal:** Automatically remove an unused, automatically initialized `ID` field before Agent row imports while preserving deliberate or populated ID fields.
 
-**Architecture:** Put the conservative field-shape and emptiness predicate in a pure Agent module, then wrap the existing permission-checked field deletion service in a small cleanup function. Each Agent row-write entry point loads its current fields and rows, invokes cleanup before semantic field resolution, reloads the schema after deletion, and continues through its existing validation/write path. A prompt rule prevents the model from turning invented ID content into an apparently explicit user value.
+**Architecture:** Put the conservative field-shape and emptiness predicate in a pure Agent module, then wrap the existing permission-checked field deletion service in a small cleanup function. Pre-execute tools clean before semantic field resolution and reload the schema after deletion; the post-preview `update_row` workflow keeps preview read-only and performs the same current-state check immediately before its confirmed import write. A prompt rule prevents the model from turning invented ID content into an apparently explicit user value.
 
 **Tech Stack:** TypeScript 5.9, Jest 30 with ts-jest, Zod, Supabase client services.
 
@@ -21,7 +21,7 @@
 - Modify `tests/unit/agent/property-value-validation.test.ts`: cover the row-name merge guard.
 - Modify `src/lib/agent/tools/create-asset.ts`: clean and refresh the schema before create/reuse writes.
 - Modify `src/lib/agent/tools/update-asset.ts`: clean and refresh the schema after target validation and before update resolution.
-- Modify `src/lib/agent/workflows/update-row.ts`: clean and refresh the schema after row validation and before preview resolution.
+- Modify `src/lib/agent/workflows/update-row.ts`: preserve the read-only preview and clean against fresh state immediately before confirmed import.
 - Modify `src/lib/agent/prompts.ts`: tell the model to omit unused default ID values instead of inventing them.
 - Modify `tests/unit/agent/system-prompt.test.ts`: lock in the prompt rule.
 
@@ -339,23 +339,36 @@ Create `tests/unit/agent/default-id-write-wiring.test.ts`:
 ```ts
 import { readFileSync } from 'node:fs';
 
-const files = [
+const preExecuteFiles = [
   'src/lib/agent/tools/create-asset.ts',
   'src/lib/agent/tools/update-asset.ts',
-  'src/lib/agent/workflows/update-row.ts',
 ];
 
 describe('Agent default ID cleanup wiring', () => {
-  it.each(files)('%s removes the unused default before semantic field resolution', (file) => {
+  it.each(preExecuteFiles)('%s removes the unused default before semantic field resolution', (file) => {
     const source = readFileSync(file, 'utf8');
     const cleanupIndex = source.indexOf('removeUnusedDefaultIdField(');
-    const resolutionIndex = source.indexOf('resolvePropertyValues(');
+    const resolutionIndex = source.indexOf('resolvePropertyValues(', cleanupIndex);
     const refreshIndex = source.lastIndexOf('getLibraryProperties(', resolutionIndex);
     expect(cleanupIndex).toBeGreaterThan(-1);
     expect(resolutionIndex).toBeGreaterThan(cleanupIndex);
     expect(refreshIndex).toBeGreaterThan(cleanupIndex);
     expect(source).toContain('if (cleanup.removed)');
     expect(source).toContain('getLibraryProperties(');
+  });
+
+  it('keeps update_row preview read-only and removes the field before confirmed import', () => {
+    const source = readFileSync('src/lib/agent/workflows/update-row.ts', 'utf8');
+    const importIndex = source.indexOf('async function executeImport(');
+    const previewSource = source.slice(0, importIndex);
+    const importSource = source.slice(importIndex);
+    const cleanupIndex = importSource.indexOf('removeUnusedDefaultIdField(');
+    const writeIndex = importSource.indexOf('updateAssetService(');
+
+    expect(importIndex).toBeGreaterThan(-1);
+    expect(previewSource).not.toContain('removeUnusedDefaultIdField(');
+    expect(cleanupIndex).toBeGreaterThan(-1);
+    expect(writeIndex).toBeGreaterThan(cleanupIndex);
   });
 });
 ```
@@ -463,29 +476,23 @@ This placement ensures an invalid asset target cannot trigger schema deletion.
 
 - [ ] **Step 7: Wire cleanup into `update_row`**
 
-In `src/lib/agent/workflows/update-row.ts`, import `removeUnusedDefaultIdField`. Keep the existing asset load, UI sort, row bounds check, and `targetAsset` selection before cleanup. Replace the existing parallel property/resolution block after the explicit-empty check with:
+In `src/lib/agent/workflows/update-row.ts`, import `removeUnusedDefaultIdField`. Keep `execute()` unchanged so its post-preview contract remains non-mutating. At the beginning of the existing `try` block in `executeImport()`, add:
 
 ```ts
-  let properties = await getLibraryProperties(ctx.supabase, library.id, ctx);
-  const cleanup = await removeUnusedDefaultIdField(
+  const [properties, assets] = await Promise.all([
+    getLibraryProperties(ctx.supabase, preview.libraryId, ctx),
+    getLibraryAssets(ctx.supabase, preview.libraryId, ctx),
+  ]);
+  await removeUnusedDefaultIdField(
     ctx.supabase,
-    library.id,
+    preview.libraryId,
     properties,
     assets,
-    propertyValues
-  );
-  if (cleanup.removed) {
-    properties = await getLibraryProperties(ctx.supabase, library.id, ctx);
-  }
-
-  const { resolved, unresolved, availableFields } = await resolvePropertyValues(
-    ctx.supabase,
-    library.id,
-    propertyValues
+    preview.resolvedValues
   );
 ```
 
-This placement ensures an invalid row number cannot trigger schema deletion and that the preview is built only from the refreshed schema.
+This placement ensures an invalid row number or cancelled preview cannot trigger schema deletion. The cleanup predicate is reevaluated from fresh fields and rows, and any deletion failure is caught by the existing import error path before `updateAssetService` runs.
 
 - [ ] **Step 8: Run the cleanup and wiring tests and verify GREEN**
 
