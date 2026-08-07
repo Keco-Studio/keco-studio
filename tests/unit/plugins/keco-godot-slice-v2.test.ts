@@ -101,6 +101,11 @@ describe('Keco Godot Slice V2 skill contract', () => {
     const sourceData = readFileSync(path.join(skillRoot, 'references', 'source-data-contract.md'), 'utf8');
     expect(sourceData).toMatch(/semantic field labels[\s\S]*stable scalar match keys/i);
     expect(sourceData).toMatch(/semantic[\s\S]*clearly dominant[\s\S]*awaiting_user_confirmation/i);
+    expect(sourceData).toMatch(/arbitrary[\s\S]*source document names/i);
+    expect(sourceData).toMatch(/(?:no|not)[\s\S]*(?:fixed[\s\S]*Feedback|Feedback[\s\S]*fixed)/i);
+    expect(sourceData).toMatch(/(?:no|not)[\s\S]*(?:recency|latest)[\s\S]*(?:alone|only)/i);
+    expect(sourceData).toMatch(/exactly one[\s\S]*clearly dominant[\s\S]*(?:auto-select|automatically select)/i);
+    expect(sourceData).toMatch(/tied candidates[\s\S]*one focused question[\s\S]*zero writes/i);
     expect(sourceData).toMatch(/never automatically delete/i);
     expect(sourceData).toMatch(/canonical Keco Project[\s\S]*kecoFolderId[\s\S]*pre-write blocker/i);
     const evalContract = readFileSync(path.join(skillRoot, 'references', 'eval-contract.md'), 'utf8');
@@ -147,6 +152,10 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(multiSlice).toMatch(/roadmap[\s\S]*dependencies[\s\S]*priority/i);
     expect(multiSlice).toMatch(/NEXT_SLICE[\s\S]*completed/i);
     expect(multiSlice).toMatch(/three|3[\s\S]*paused[\s\S]*user/i);
+    expect(multiSlice).toMatch(/all planned[\s\S]*Slices[\s\S]*sequentially[\s\S]*dependencies[\s\S]*complete/i);
+    expect(multiSlice).toMatch(/priority[\s\S]*tie-breaker/i);
+    expect(multiSlice).toMatch(/third failed repair iteration[\s\S]*persist[\s\S]*evidence[\s\S]*status[\s\S]*eval-report/i);
+    expect(multiSlice).toMatch(/third failed repair iteration[\s\S]*roadmap[\s\S]*paused[\s\S]*NEXT_SLICE[\s\S]*clear[\s\S]*ask[\s\S]*user/i);
   });
 
   it('builds deterministic Godot SpriteFrames resources and rejects bad frame geometry', () => {
