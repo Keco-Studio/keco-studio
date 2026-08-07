@@ -14,6 +14,7 @@ import {
   useMemo,
   useRef,
   type ChangeEvent,
+  type ClipboardEvent,
   type ComponentType,
   type MouseEvent,
   type Ref,
@@ -87,6 +88,10 @@ import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
 import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
+import {
+  extractClipboardImageFiles,
+  uploadClipboardImages,
+} from './documentClipboardImages';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -319,6 +324,8 @@ export default function MdxDocumentEditor({
 }: MdxDocumentEditorProps) {
   const editorMethodsRef = useRef<MDXEditorMethods | null>(null);
   const editorFrameRef = useRef<HTMLDivElement>(null);
+  const activeEditor = useCellValue(activeEditor$);
+  const insertImage = usePublisher(insertImage$);
   const collaborationSession = collaboration?.session;
   const collaborationUsername = collaboration?.username;
   const collaborationCursorColor = collaboration?.cursorColor;
@@ -342,6 +349,21 @@ export default function MdxDocumentEditor({
     ready: referenceNavigationReady,
     highlightClassName: styles.referencedDocumentBlock,
   });
+  const handlePasteCapture = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    if (readOnly) return;
+    const imageFiles = extractClipboardImageFiles(event.clipboardData);
+    if (imageFiles.length === 0) return;
+
+    if (!activeEditor) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    void uploadClipboardImages(imageFiles, imageUploadHandler).then((images) => {
+      images.forEach(({ file, url }) => {
+        insertImage({ src: url, altText: file.name });
+      });
+    });
+  }, [activeEditor, imageUploadHandler, insertImage, readOnly]);
   const plugins = useMemo(() => {
     const ResourceReference = (props: JsxEditorProps) => (
       <ResourceReferenceEditor
@@ -457,6 +479,7 @@ export default function MdxDocumentEditor({
       ref={editorFrameRef}
       className={styles.editorFrame}
       onDoubleClick={handleLinkDoubleClick}
+      onPasteCapture={handlePasteCapture}
     >
       <ResourceReferenceProvider key={documentId} projectId={projectId}>
         <MDXEditor
