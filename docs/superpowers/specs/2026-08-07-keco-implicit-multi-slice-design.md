@@ -64,4 +64,3 @@ The roadmap aggregates Slice states such as `planned`, `in_progress`, `completed
 ## Verification
 
 Add contract tests for implicit invocation, semantic source discovery, roadmap and per-Slice document structure, sequential execution, three-repair pause behavior, and V1/V2 routing. Run Skill validation, plugin validation, focused Jest tests, and reinstall the cache-busted plugin in both WSL and Windows before reporting completion.
-
