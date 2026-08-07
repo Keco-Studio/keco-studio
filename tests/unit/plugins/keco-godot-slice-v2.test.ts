@@ -22,11 +22,12 @@ function sha256(filePath: string): string {
 }
 
 describe('Keco Godot Slice V2 skill contract', () => {
-  it('is manual-only and exposes a self-contained reviewed ledger', () => {
+  it('supports document-driven implicit invocation and exposes a self-contained reviewed ledger', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const metadata = readFileSync(path.join(skillRoot, 'agents', 'openai.yaml'), 'utf8');
     expect(skill).toMatch(/^---\nname: keco-develop-godot-slice-v2\n/);
-    expect(skill).toContain('explicitly selects `$keco-develop-godot-slice-v2`');
+    expect(skill).toMatch(/document-driven[\s\S]*implicit/i);
+    expect(skill).not.toContain('explicitly selects `$keco-develop-godot-slice-v2`');
     expect(skill).toMatch(/INTAKE[\s\S]*WRITE_PLAN[\s\S]*TASK_REVIEW[\s\S]*FINAL_VERIFY/);
     expect(skill).toMatch(/write token/i);
     expect(skill).toMatch(/blocked_before_write/);
@@ -39,7 +40,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(skill).toMatch(/matching Keco Project[\s\S]*create_document\(projectId, folderId/i);
     expect(skill).toMatch(/local mirror[\s\S]*never as the only copy|never as the only copy[\s\S]*local mirror/i);
     expect(skill).toMatch(/validate_slice_documents\.py/);
-    expect(metadata).toMatch(/allow_implicit_invocation: false/);
+    expect(metadata).toMatch(/allow_implicit_invocation: true/);
   });
 
   it('ships all contracts and deterministic validators', () => {
@@ -99,6 +100,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(godot).toMatch(/KECO_EVAL/);
     const sourceData = readFileSync(path.join(skillRoot, 'references', 'source-data-contract.md'), 'utf8');
     expect(sourceData).toMatch(/semantic field labels[\s\S]*stable scalar match keys/i);
+    expect(sourceData).toMatch(/semantic[\s\S]*clearly dominant[\s\S]*awaiting_user_confirmation/i);
     expect(sourceData).toMatch(/never automatically delete/i);
     expect(sourceData).toMatch(/canonical Keco Project[\s\S]*kecoFolderId[\s\S]*pre-write blocker/i);
     const evalContract = readFileSync(path.join(skillRoot, 'references', 'eval-contract.md'), 'utf8');
@@ -134,6 +136,17 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(orchestration).toMatch(/specPath[\s\S]*planPath[\s\S]*statusPath/i);
     expect(orchestration).toMatch(/kecoFolderId[\s\S]*kecoDocumentIds[\s\S]*localMirrorRoot/i);
     expect(orchestration).toMatch(/evolution[\s\S]*reuse_exact[\s\S]*create_new/i);
+  });
+
+  it('ships the multi-Slice roadmap and recovery contract', () => {
+    const multiSlicePath = path.join(skillRoot, 'references', 'multi-slice-orchestration.md');
+    expect(existsSync(multiSlicePath)).toBe(true);
+    if (!existsSync(multiSlicePath)) return;
+
+    const multiSlice = readFileSync(multiSlicePath, 'utf8');
+    expect(multiSlice).toMatch(/roadmap[\s\S]*dependencies[\s\S]*priority/i);
+    expect(multiSlice).toMatch(/NEXT_SLICE[\s\S]*completed/i);
+    expect(multiSlice).toMatch(/three|3[\s\S]*paused[\s\S]*user/i);
   });
 
   it('builds deterministic Godot SpriteFrames resources and rejects bad frame geometry', () => {
