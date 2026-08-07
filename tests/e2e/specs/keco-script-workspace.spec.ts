@@ -258,9 +258,10 @@ test.describe('Keco Script workspace smoke (seeded)', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByRole('heading', { name: fixture.libraryName, level: 1 })).toBeVisible({
-      timeout: 45_000,
-    });
+    // Library title lives in the Script sidebar tree (split view no longer renders an h1).
+    await expect(
+      page.locator('aside').locator(`[title="${fixture.libraryName}"]`)
+    ).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole('complementary', { name: 'Flow chart' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Flow chart', level: 2 })).toBeVisible();
 

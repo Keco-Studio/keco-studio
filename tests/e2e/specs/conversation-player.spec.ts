@@ -11,15 +11,17 @@ import {
 } from '../utils/supabase-admin';
 
 type ConversationFixture = {
+  documentId: string;
   libraryId: string;
   libraryName: string;
 };
 
+/** Script workspace flow graph reads these canonical labels from flowRows. */
 const FIELD_LABELS = [
-  'Story jump node',
+  'Label',
   'Type',
-  'Speaker',
-  'Dialogue and options',
+  'Name',
+  'Content',
   'Commands',
   'Option0',
   'Option0_Next',
@@ -50,6 +52,13 @@ async function createConversationFixture(
     throw documentError ?? new Error('Failed to create conversation source document');
   }
 
+  const { error: membershipError } = await admin.from('script_workspace_documents').insert({
+    project_id: projectId,
+    document_id: document.id,
+    imported_by: ownerId,
+  });
+  if (membershipError) throw membershipError;
+
   const libraryName = `Rainy manor Conversation ${suffix}`;
   const { data: library, error: libraryError } = await admin
     .from('libraries')
@@ -67,13 +76,13 @@ async function createConversationFixture(
     throw libraryError ?? new Error('Failed to create conversation library');
   }
 
-  const sectionId = `${library.id}:Conversation`;
+  const sectionId = `${library.id}:Script`;
   const { data: fields, error: fieldsError } = await admin
     .from('library_field_definitions')
     .insert(FIELD_LABELS.map((label, orderIndex) => ({
       library_id: library.id,
       section_id: sectionId,
-      section: 'Conversation',
+      section: 'Script',
       label,
       data_type: 'string',
       order_index: orderIndex,
@@ -88,10 +97,10 @@ async function createConversationFixture(
     {
       name: 'Opening choice',
       values: {
-        'Story jump node': 'Start',
+        Label: 'Start',
         Type: '4',
-        Speaker: 'Narrator',
-        'Dialogue and options': 'Rain surrounds the old manor.',
+        Name: 'Narrator',
+        Content: 'Rain surrounds the old manor.',
         Option0: 'Enter the manor',
         Option0_Next: 'Jump Inside',
         Option0_Commands: '$courage+=2',
@@ -103,20 +112,20 @@ async function createConversationFixture(
     {
       name: 'Inside branch',
       values: {
-        'Story jump node': 'Inside',
+        Label: 'Inside',
         Type: '1',
-        Speaker: 'Mara',
-        'Dialogue and options': 'Inside courage: [courage]',
+        Name: 'Mara',
+        Content: 'Inside courage: [courage]',
         Commands: 'End',
       },
     },
     {
       name: 'Outside branch',
       values: {
-        'Story jump node': 'Outside',
+        Label: 'Outside',
         Type: '2',
-        Speaker: 'Iris',
-        'Dialogue and options': 'Outside courage: [courage]',
+        Name: 'Iris',
+        Content: 'Outside courage: [courage]',
         Commands: 'End',
       },
     },
@@ -146,7 +155,11 @@ async function createConversationFixture(
   const { error: valuesError } = await admin.from('library_asset_values').insert(values);
   if (valuesError) throw valuesError;
 
-  return { libraryId: library.id as string, libraryName };
+  return {
+    documentId: document.id as string,
+    libraryId: library.id as string,
+    libraryName,
+  };
 }
 
 test.describe.serial('Conversation player PR regression', () => {
@@ -162,9 +175,13 @@ test.describe.serial('Conversation player PR regression', () => {
     await login.goto();
     await login.login(owner);
     await login.expectLoginSuccess();
-    await page.goto(`/${projectId}/${fixture.libraryId}`, { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('button', { name: 'Restart', exact: true })).toBeVisible({
-      timeout: 30_000,
+    // Studio routes redirect script libraries into Script; open Script directly.
+    await page.goto(
+      `/script-system/${projectId}/script/${fixture.libraryId}`,
+      { waitUntil: 'domcontentloaded' }
+    );
+    await expect(page.getByText('Rain surrounds the old manor.', { exact: true })).toBeVisible({
+      timeout: 45_000,
     });
   }
 
@@ -180,31 +197,29 @@ test.describe.serial('Conversation player PR regression', () => {
     if (owner) await deleteTemporaryUser(admin, owner);
   });
 
-  test('opens a conversation, follows both branches, and resets variables on Restart', async ({
+  test('opens Script plot-node dialogue and follows both branches', async ({
     page,
   }) => {
     await loginAndOpen(page);
 
-    await expect(page.getByText('Rain surrounds the old manor.', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Leave the manor', exact: true })).toBeVisible();
+    // Script plot-node mode has no player Restart toolbar.
+    await expect(page.getByRole('button', { name: 'Restart', exact: true })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Enter the manor', exact: true }).click();
-    await expect(page.getByText('Inside courage: 2', { exact: true })).toBeVisible();
-    await expect(page.getByText('Outside courage: -1', { exact: true })).toHaveCount(0);
+    // Plot-node mode does not execute player variable commands; content stays unsubstituted.
+    await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
+    await expect(page.getByText('Outside courage: [courage]', { exact: true })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Restart', exact: true }).click();
-    await expect(page.getByText('Inside courage: 2', { exact: true })).toHaveCount(0);
+    await page.locator('[data-flow-node-id="Start"]').click();
     await expect(page.getByRole('button', { name: 'Leave the manor', exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Leave the manor', exact: true }).click();
-    await expect(page.getByText('Outside courage: -1', { exact: true })).toBeVisible();
+    await expect(page.getByText('Outside courage: [courage]', { exact: true })).toBeVisible();
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await page.getByRole('button', { name: 'Restart', exact: true }).click();
-      await expect(page.getByText('Outside courage: -1', { exact: true })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toBeVisible();
-    }
+    await page.locator('[data-flow-node-id="Start"]').click();
+    await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toBeVisible();
   });
 
   test('restores revealed dialogue and variables after a page refresh', async ({ page }) => {
@@ -212,11 +227,11 @@ test.describe.serial('Conversation player PR regression', () => {
 
     await loginAndOpen(page);
     await page.getByRole('button', { name: 'Enter the manor', exact: true }).click();
-    await expect(page.getByText('Inside courage: 2', { exact: true })).toBeVisible();
+    await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
 
     await page.reload({ waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByText('Inside courage: 2', { exact: true })).toBeVisible();
+    await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toHaveCount(0);
   });
 });

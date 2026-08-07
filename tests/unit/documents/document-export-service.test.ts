@@ -473,7 +473,7 @@ const n = 1
 
   it('renders Chinese text with an embedded Unicode font', async () => {
     const bytes = await renderDocumentExportModel(
-      buildDocumentExportModel('# Hello world\n\nPDF export content'),
+      buildDocumentExportModel('# \u4f60\u597d\u4e16\u754c\n\nPDF \u5bfc\u51fa\u5185\u5bb9'),
       'pdf'
     );
     const pdf = bytes.toString('latin1');

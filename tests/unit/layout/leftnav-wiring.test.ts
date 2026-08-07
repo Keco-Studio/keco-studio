@@ -87,7 +87,9 @@ describe('LeftNav wiring', () => {
     expect(source).toMatch(
       /const\s+searchProjectId\s*=\s*onSimulationSystem\s*\?\s*simulationProjectId\s*:\s*currentProjectId/
     );
-    expect(source).toMatch(/useSidebarFoldersLibraries\(searchProjectId\)/);
+    expect(source).toMatch(
+      /useSidebarFoldersLibraries\(\s*searchProjectId\s*,\s*\{[\s\S]*?excludeScriptLibraries:\s*!onScriptSystem[\s\S]*?\}\s*\)/
+    );
     expect(source).toMatch(/addEventListener\(\s*['"]simulation-project-changed['"]/);
     expect(source).toMatch(/removeEventListener\(\s*['"]simulation-project-changed['"]/);
   });

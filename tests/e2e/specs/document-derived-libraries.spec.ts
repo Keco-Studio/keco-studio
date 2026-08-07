@@ -75,14 +75,24 @@ async function openDocument(
   await expect(page.getByTestId('document-export')).toBeVisible({ timeout: 45_000 });
 }
 
-/** Wait for Generating toast concurrently with click — click triggers router.push and Playwright waits for navigation, during which success may already be queued. */
+/**
+ * Wait for Generating toast and the import-script POST together.
+ * Preparing toast appears before fetch completes; asserting the request body
+ * immediately after toast alone races and flaked CI.
+ */
 async function clickGenerateAndExpectProgress(
   page: Page,
   buttonName: 'Generate table' | 'Generate conversation'
 ): Promise<void> {
   const progress = page.getByTestId('document-derived-import-progress');
+  const importRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/api/import-script'),
+    { timeout: 45_000 }
+  );
   await Promise.all([
     expect(progress).toContainText(/Generating/, { timeout: 45_000 }),
+    importRequest,
     page.getByRole('button', { name: buttonName, exact: true }).click(),
   ]);
 }
@@ -343,11 +353,12 @@ test.describe.serial('Document-derived library lifecycle', () => {
     }
   });
 
-  test('table and script results appear once beside their source document', async ({ page }) => {
+  test('table results appear beside their source document; scripts stay out of Studio', async ({
+    page,
+  }) => {
     const tableName = `Derived table ${crypto.randomUUID().slice(0, 6)}`;
     const scriptName = `Derived script ${crypto.randomUUID().slice(0, 6)}`;
     let tableRequestBody = '';
-    let scriptRequestBody = '';
 
     await page.route(
       `**/api/documents/${fixture.folderDocument.id}/export-source`,
@@ -371,40 +382,14 @@ test.describe.serial('Document-derived library lifecycle', () => {
     );
     await page.route('**/api/import-script', async (route) => {
       const body = route.request().postDataBuffer()?.toString('utf8') ?? '';
-      const exportType =
-        /documentExportType[\s\S]{0,80}table/.test(body) &&
-        !/documentExportType[\s\S]{0,80}script/.test(body)
-          ? 'table'
-          : 'script';
-
-      if (exportType === 'table') {
-        tableRequestBody = body;
-        const id = await createDerivedLibrary(admin, fixture, {
-          name: tableName,
-          sourceDocumentId: fixture.folderDocument.id,
-          exportType: 'table',
-          folderId: fixture.sourceFolder.id,
-        });
-        tableLibrary = { id, name: tableName };
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/x-ndjson; charset=utf-8',
-          body: `${JSON.stringify({
-            type: 'result',
-            result: { libraryId: id, rowCount: 2, fieldCount: 3 },
-          })}\n`,
-        });
-        return;
-      }
-
-      scriptRequestBody = body;
+      tableRequestBody = body;
       const id = await createDerivedLibrary(admin, fixture, {
-        name: scriptName,
+        name: tableName,
         sourceDocumentId: fixture.folderDocument.id,
-        exportType: 'script',
+        exportType: 'table',
         folderId: fixture.sourceFolder.id,
       });
-      scriptLibrary = { id, name: scriptName };
+      tableLibrary = { id, name: tableName };
       await route.fulfill({
         status: 200,
         contentType: 'application/x-ndjson; charset=utf-8',
@@ -418,27 +403,37 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
 
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
+    await expect(page.getByRole('button', { name: 'Generate conversation', exact: true })).toHaveCount(
+      0
+    );
     await clickGenerateAndExpectProgress(page, 'Generate table');
     expect(tableRequestBody).toContain(fixture.folderDocument.id);
+    expect(tableRequestBody).toContain('table');
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
 
-    await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
-    await clickGenerateAndExpectProgress(page, 'Generate conversation');
-    expect(scriptRequestBody).toContain(fixture.folderDocument.id);
-
+    // Script libraries remain in DB for cascade/move coverage, but Studio isolation hides them.
+    const scriptId = await createDerivedLibrary(admin, fixture, {
+      name: scriptName,
+      sourceDocumentId: fixture.folderDocument.id,
+      exportType: 'script',
+      folderId: fixture.sourceFolder.id,
+    });
+    scriptLibrary = { id: scriptId, name: scriptName };
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('document-export')).toBeVisible({ timeout: 45_000 });
+    await expandTreeNode(page, fixture.sourceFolder.name);
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
-    await expect(sidebarTitle(page, scriptName)).toHaveCount(1, { timeout: 30_000 });
-    // Documents and their generated tables/scripts are sibling leaves of the folder.
+    await expect(sidebarTitle(page, scriptName)).toHaveCount(0);
+
     await expectTreeParent(page, fixture.folderDocument.name, fixture.sourceFolder.name);
     await expectTreeParent(page, tableName, fixture.sourceFolder.name);
-    await expectTreeParent(page, scriptName, fixture.sourceFolder.name);
   });
 
   test('moving a document moves its complete subtree', async ({ page }) => {
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
     await expandTreeNode(page, fixture.sourceFolder.name);
     await expect(sidebarTitle(page, tableLibrary.name)).toBeVisible();
-    await expect(sidebarTitle(page, scriptLibrary.name)).toBeVisible();
+    await expect(sidebarTitle(page, scriptLibrary.name)).toHaveCount(0);
 
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
     await page.getByRole('button', { name: 'Move to...', exact: true }).click();
@@ -455,7 +450,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
       fixture.sourceFolder.name
     );
     await expectTreeParent(page, tableLibrary.name, fixture.destinationFolder.name);
-    await expectTreeParent(page, scriptLibrary.name, fixture.destinationFolder.name);
+    await expect(sidebarTitle(page, scriptLibrary.name)).toHaveCount(0);
 
     const [{ data: documentRow, error: documentError }, { data: libraryRows, error: libraryError }] =
       await Promise.all([
@@ -494,8 +489,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     expect(table).toBeNull();
     expect(document?.id).toBe(fixture.folderDocument.id);
     expect(script?.id).toBe(scriptLibrary.id);
-    await expect(sidebarTitle(page, scriptLibrary.name)).toBeVisible();
-    await expectTreeParent(page, scriptLibrary.name, fixture.destinationFolder.name);
+    await expect(sidebarTitle(page, scriptLibrary.name)).toHaveCount(0);
   });
 
   test('deleting the document cascades every child', async ({ page }) => {
@@ -510,7 +504,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await openDocument(page, fixture.owner, fixture, fixture.folderDocument.id);
     await expandTreeNode(page, fixture.destinationFolder.name);
     await expect(sidebarTitle(page, replacementTableName)).toBeVisible();
-    await expect(sidebarTitle(page, scriptLibrary.name)).toBeVisible();
+    await expect(sidebarTitle(page, scriptLibrary.name)).toHaveCount(0);
 
     await sidebarTitle(page, fixture.folderDocument.name).click({ button: 'right' });
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -536,10 +530,10 @@ test.describe.serial('Document-derived library lifecycle', () => {
     expect(replacementTable).toBeNull();
   });
 
-  test('a root document exports a script from its frozen snapshot', async ({ page }) => {
-    const rootScriptName = `Root script ${crypto.randomUUID().slice(0, 6)}`;
+  test('a root document exports a table from its frozen snapshot', async ({ page }) => {
+    const rootTableName = `Root table ${crypto.randomUUID().slice(0, 6)}`;
     let importRequestBody = '';
-    let rootScriptId = '';
+    let rootTableId = '';
 
     await page.route(
       `**/api/documents/${fixture.rootDocument.id}/export-source`,
@@ -563,10 +557,10 @@ test.describe.serial('Document-derived library lifecycle', () => {
     );
     await page.route('**/api/import-script', async (route) => {
       importRequestBody = route.request().postDataBuffer()?.toString('utf8') ?? '';
-      rootScriptId = await createDerivedLibrary(admin, fixture, {
-        name: rootScriptName,
+      rootTableId = await createDerivedLibrary(admin, fixture, {
+        name: rootTableName,
         sourceDocumentId: fixture.rootDocument.id,
-        exportType: 'script',
+        exportType: 'table',
         folderId: null,
       });
       await route.fulfill({
@@ -574,7 +568,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
         contentType: 'application/x-ndjson; charset=utf-8',
         body: `${JSON.stringify({
           type: 'result',
-          result: { libraryId: rootScriptId, rowCount: 2, fieldCount: 3 },
+          result: { libraryId: rootTableId, rowCount: 2, fieldCount: 3 },
         })}\n`,
       });
     });
@@ -588,28 +582,27 @@ test.describe.serial('Document-derived library lifecycle', () => {
     if (updateError) throw updateError;
 
     await sidebarTitle(page, fixture.rootDocument.name).click({ button: 'right' });
-    await clickGenerateAndExpectProgress(page, 'Generate conversation');
+    await clickGenerateAndExpectProgress(page, 'Generate table');
 
     expect(importRequestBody).toContain(fixture.rootDocument.id);
     expect(importRequestBody).toContain('test-snapshot-token');
-    expect(importRequestBody).toContain('script');
+    expect(importRequestBody).toContain('table');
 
     const { data: library, error } = await admin
       .from('libraries')
       .select('id, folder_id, source_document_id, document_export_type')
-      .eq('id', rootScriptId)
+      .eq('id', rootTableId)
       .single();
     if (error) throw error;
     expect(library).toMatchObject({
-      id: rootScriptId,
+      id: rootTableId,
       folder_id: null,
       source_document_id: fixture.rootDocument.id,
-      document_export_type: 'script',
+      document_export_type: 'table',
     });
-    await expect(sidebarTitle(page, rootScriptName)).toHaveCount(1, { timeout: 30_000 });
-    // A root document's script is a root-level sibling, so it sits outside any folder.
+    await expect(sidebarTitle(page, rootTableName)).toHaveCount(1, { timeout: 30_000 });
     await expect
-      .poll(() => treeParentTitle(page, rootScriptName), { timeout: 30_000 })
+      .poll(() => treeParentTitle(page, rootTableName), { timeout: 30_000 })
       .toBeNull();
   });
 });
