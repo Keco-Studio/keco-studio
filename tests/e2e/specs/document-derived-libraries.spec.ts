@@ -77,24 +77,25 @@ async function openDocument(
 
 /**
  * Wait for Generating toast and the import-script POST together.
- * Preparing toast appears before fetch completes; asserting the request body
- * immediately after toast alone races and flaked CI.
+ * Preparing toast appears before fetch completes; asserting a route-handler
+ * side effect alone can still race — return the request post body instead.
  */
 async function clickGenerateAndExpectProgress(
   page: Page,
   buttonName: 'Generate table' | 'Generate conversation'
-): Promise<void> {
+): Promise<string> {
   const progress = page.getByTestId('document-derived-import-progress');
-  const importRequest = page.waitForRequest(
+  const importRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === 'POST' && request.url().includes('/api/import-script'),
     { timeout: 45_000 }
   );
-  await Promise.all([
+  const [, importRequest] = await Promise.all([
     expect(progress).toContainText(/Generating/, { timeout: 45_000 }),
-    importRequest,
+    importRequestPromise,
     page.getByRole('button', { name: buttonName, exact: true }).click(),
   ]);
+  return importRequest.postDataBuffer()?.toString('utf8') ?? '';
 }
 
 async function openDocumentInNewContext(
@@ -358,7 +359,6 @@ test.describe.serial('Document-derived library lifecycle', () => {
   }) => {
     const tableName = `Derived table ${crypto.randomUUID().slice(0, 6)}`;
     const scriptName = `Derived script ${crypto.randomUUID().slice(0, 6)}`;
-    let tableRequestBody = '';
 
     await page.route(
       `**/api/documents/${fixture.folderDocument.id}/export-source`,
@@ -381,8 +381,6 @@ test.describe.serial('Document-derived library lifecycle', () => {
       }
     );
     await page.route('**/api/import-script', async (route) => {
-      const body = route.request().postDataBuffer()?.toString('utf8') ?? '';
-      tableRequestBody = body;
       const id = await createDerivedLibrary(admin, fixture, {
         name: tableName,
         sourceDocumentId: fixture.folderDocument.id,
@@ -406,7 +404,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await expect(page.getByRole('button', { name: 'Generate conversation', exact: true })).toHaveCount(
       0
     );
-    await clickGenerateAndExpectProgress(page, 'Generate table');
+    const tableRequestBody = await clickGenerateAndExpectProgress(page, 'Generate table');
     expect(tableRequestBody).toContain(fixture.folderDocument.id);
     expect(tableRequestBody).toContain('table');
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
@@ -532,7 +530,6 @@ test.describe.serial('Document-derived library lifecycle', () => {
 
   test('a root document exports a table from its frozen snapshot', async ({ page }) => {
     const rootTableName = `Root table ${crypto.randomUUID().slice(0, 6)}`;
-    let importRequestBody = '';
     let rootTableId = '';
 
     await page.route(
@@ -556,7 +553,6 @@ test.describe.serial('Document-derived library lifecycle', () => {
       }
     );
     await page.route('**/api/import-script', async (route) => {
-      importRequestBody = route.request().postDataBuffer()?.toString('utf8') ?? '';
       rootTableId = await createDerivedLibrary(admin, fixture, {
         name: rootTableName,
         sourceDocumentId: fixture.rootDocument.id,
@@ -582,7 +578,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     if (updateError) throw updateError;
 
     await sidebarTitle(page, fixture.rootDocument.name).click({ button: 'right' });
-    await clickGenerateAndExpectProgress(page, 'Generate table');
+    const importRequestBody = await clickGenerateAndExpectProgress(page, 'Generate table');
 
     expect(importRequestBody).toContain(fixture.rootDocument.id);
     expect(importRequestBody).toContain('test-snapshot-token');

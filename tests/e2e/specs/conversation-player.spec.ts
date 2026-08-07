@@ -213,15 +213,15 @@ test.describe.serial('Conversation player PR regression', () => {
     await expect(page.getByRole('button', { name: 'Restart', exact: true })).toHaveCount(0);
 
     await choiceButton(page, 'Enter the manor').click();
-    // Plot-node mode does not execute player variable commands; content stays unsubstituted.
-    await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
-    await expect(page.getByText('Outside courage: [courage]', { exact: true })).toHaveCount(0);
+    // Plot-node mode does not run option commands; missing vars interpolate to 0.
+    await expect(page.getByText('Inside courage: 0', { exact: true })).toBeVisible();
+    await expect(page.getByText('Outside courage: 0', { exact: true })).toHaveCount(0);
 
     await page.locator('[data-flow-node-id="Start"]').click();
     await expect(choiceButton(page, 'Leave the manor')).toBeVisible();
 
     await choiceButton(page, 'Leave the manor').click();
-    await expect(page.getByText('Outside courage: [courage]', { exact: true })).toBeVisible();
+    await expect(page.getByText('Outside courage: 0', { exact: true })).toBeVisible();
 
     await page.locator('[data-flow-node-id="Start"]').click();
     await expect(choiceButton(page, 'Enter the manor')).toBeVisible();
@@ -232,11 +232,11 @@ test.describe.serial('Conversation player PR regression', () => {
 
     await loginAndOpen(page);
     await choiceButton(page, 'Enter the manor').click();
-    await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
+    await expect(page.getByText('Inside courage: 0', { exact: true })).toBeVisible();
 
     await page.reload({ waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
+    await expect(page.getByText('Inside courage: 0', { exact: true })).toBeVisible();
     await expect(choiceButton(page, 'Enter the manor')).toHaveCount(0);
   });
 });
