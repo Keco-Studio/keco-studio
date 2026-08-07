@@ -5,10 +5,13 @@
 ```yaml
 version: 2
 runId: stable-run-id
-mode: manual-v2
+mode: implicit-v2|explicit-v2
 kecoProjectId: uuid
 godotProjectPath: absolute-canonical-path
 godotGitCommit: full-sha
+roadmapId: stable-roadmap-key
+roadmapDocumentId: document-uuid
+sourceDocumentId: document-uuid
 sliceId: lower-case-hyphen-key
 allowedFiles: []
 writeToken: null
@@ -18,6 +21,7 @@ documents:
   kecoFolderId: existing-folder-uuid
   kecoFolderName: discovered-project-folder-name
   kecoDocumentIds:
+    roadmap: null
     spec: null
     plan: null
     status: null
@@ -35,11 +39,11 @@ evolution:
   discoveryEvidence: []
   noCompatibleTarget: false
 ```
-The write token is null until the source, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs. Keco folder/document IDs and state tokens are execution state, not guesses.
+The write token is null until the semantic source decision, roadmap read-back, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and state tokens are execution state, not guesses.
 
 ## Artifact Ledger
 
-Each stage records `stage`, `status`, `createdAt`, `inputHashes`, `outputHash`, and `blockingReason`. The ledger records Keco folder/document IDs and local mirror paths under `documents`; Keco documents are the dated source of truth for the spec, plan, status, and final evaluation report. A later stage may consume only an accepted artifact with unchanged input revisions. If a selected Keco document, folder, table, project identity, or dirty-path baseline changes, invalidate the ledger and return to `BASELINE`.
+Each stage records `stage`, `status`, `createdAt`, `inputHashes`, `outputHash`, and `blockingReason`. The outer ledger records semantic source selection, Slice decomposition, roadmap revision, dependencies, priority, current Slice, and next Slice. The inner ledger records Keco folder/document IDs and local mirror paths under `documents`; Keco documents are the dated source of truth for the roadmap, spec, plan, status, and final evaluation report. A later stage may consume only an accepted artifact with unchanged input revisions. If a selected Keco document, roadmap, folder, table, project identity, or dirty-path baseline changes, invalidate the ledger and return to the earliest affected stage.
 
 Every resource or table change records one `evolution.strategy`. `reuse_exact` and `extend_compatible` are preferred; `migrate_additive` preserves existing IDs while adding compatible fields or rows. `create_new` requires `noCompatibleTarget: true` or an explicit isolation requirement, with discovery evidence recorded. An ambiguous target keeps the write token null and performs zero writes.
 

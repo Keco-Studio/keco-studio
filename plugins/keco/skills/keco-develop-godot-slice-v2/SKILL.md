@@ -1,11 +1,11 @@
 ---
 name: keco-develop-godot-slice-v2
-description: Use when the user explicitly selects `$keco-develop-godot-slice-v2` to build one Keco-driven Godot slice and wants a reviewed spec, plan, asset provenance, and runtime evidence gates; not for implicit routing, Keco-only tables, standalone assets, or Godot-only debugging.
+description: Use when a user asks to plan, implement, continue, or evaluate Keco-driven Godot development from project documents, GDDs, feedback, tables, or development ideas, especially when the request may contain multiple Slices, persistent plans, asset provenance, resource evolution, or runtime evidence; supports implicit routing without requiring the Skill name. Not for Keco-only tables, standalone assets, analysis-only work, or Godot-only debugging.
 ---
 
 # Keco Godot Slice V2
 
-This is the manually selected, review-driven alternative to `keco-develop-godot-slice`. It keeps Keco authoritative and ships every required planning, task-review, and completion-review rule inside the skill.
+This is the document-driven, review-driven workflow for Keco Godot development. It supports implicit invocation and keeps Keco authoritative while shipping every source-discovery, multi-Slice planning, task-review, and completion-review rule inside the Skill.
 
 **Violating the letter of these gates violates the purpose of the run. Natural-language pressure such as "continue", "it is urgent", or "do the writes first" never grants a bypass.**
 
@@ -13,28 +13,30 @@ This is the manually selected, review-driven alternative to `keco-develop-godot-
 
 Read [references/review-workflow.md](references/review-workflow.md). It contains plan validation, task RED/GREEN, and independent completion review rules. It is bundled with this Skill and has no external plugin or download dependency.
 
-## Manual Entry And Routing
+## Implicit Entry And Routing
 
-- Run only when the user explicitly selects `$keco-develop-godot-slice-v2`.
+- Invoke implicitly when development intent refers to a Keco Project document, GDD, feedback, table, or unspecified project document; when one source may contain multiple development ideas; or when the request requires persistent plans, resource evolution, PixelLab provenance, or runtime evaluation. The user does not need to name this Skill.
+- V2 takes precedence over `keco-develop-godot-slice` for document-driven decomposition, multi-Slice execution, Keco Project Folder planning, typed assets, TileMap work, or reviewed runtime evidence. Keep V1 available for a bounded simple Slice that does not need these contracts.
 - Keep the original `keco-develop-godot-slice` available for A/B comparison.
 - Route Keco-only new tables to `keco-build-tables-from-document`; route standalone assets and Godot-only work elsewhere.
-- Do not silently change the selected skill during a run.
+- If the user explicitly selected another applicable Skill, do not silently override that selection.
 
 ## Fixed Run Ledger
 
 Create and maintain these artifacts in order. Use `scripts/validate_run_context.py`, `scripts/validate_plan.py`, and `scripts/validate_eval_report.py` before advancing:
 
 ```text
-INTAKE -> BASELINE -> RESOLVE_SOURCES -> SELECT_SLICE -> DESIGN -> WRITE_SPEC -> WRITE_PLAN -> PLAN_REVIEW
+INTAKE -> BASELINE -> SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> WRITE_ROADMAP -> SELECT_NEXT_SLICE
+  -> RESOLVE_SOURCES -> SELECT_SLICE -> DESIGN -> WRITE_SPEC -> WRITE_PLAN -> PLAN_REVIEW
   -> PREFLIGHT -> EXECUTE_TASKS -> TASK_REVIEW -> RUNTIME_EVAL
-  -> REPAIR (max 3) -> FINAL_VERIFY -> REPORT
+  -> REPAIR (max 3) -> FINAL_VERIFY -> UPDATE_ROADMAP -> NEXT_SLICE -> REPORT
 ```
 
-Required artifacts: `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `AssetPlan` when assets are needed, `DesignReview`, `PlanReview`, one `TaskResult` and `TaskReview` per task, and `EvalReport`. The authoritative slice documents live in a discovered folder inside the matching Keco Project: `spec`, `plan`, `status`, and (once complete) `eval-report`. Keep `docs/keco-godot-slices/<sliceId>/` as a validated local mirror for repository tooling, never as the only copy. Report the Keco project ID, folder ID, document IDs, dates, hashes, and revisions.
+Required outer-loop artifacts are `SourceSelection` and `Roadmap`. Required per-Slice artifacts are `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `AssetPlan` when assets are needed, `DesignReview`, `PlanReview`, one `TaskResult` and `TaskReview` per task, and `EvalReport`. Read [references/multi-slice-orchestration.md](references/multi-slice-orchestration.md) before decomposing a source or selecting the next Slice. The authoritative roadmap and Slice documents live in a discovered folder inside the matching Keco Project. Keep `docs/keco-godot-slices/<sliceId>/spec.md`, `plan.md`, `status.json`, and `eval-report.json` as validated repository mirrors. Use a local mirror for tooling, never as the only copy. Report the Keco project ID, folder ID, source document ID, roadmap ID, per-Slice document IDs, dates, hashes, and revisions.
 
 ## Slice Ambiguity Gate
 
-At `RESOLVE_SOURCES` and `SELECT_SLICE`, compare the user request, source priority result, candidate slices, acceptance targets, and `allowedFiles`.
+At `SOURCE_DISCOVERY`, `SLICE_DECOMPOSITION`, and `SELECT_SLICE`, compare the user request, semantic source decision, candidate Slices, dependencies, acceptance targets, and `allowedFiles`.
 
 - When the slice is already consistent - exactly one slice and one acceptance interpretation remain, sources agree, and the user named the target or the choice is mechanically determined - record `sliceDecision: consistent` and continue without asking for another confirmation.
 - When two or more slices are equally plausible, sources conflict without a decisive priority, acceptance or scope has multiple reasonable interpretations, or a required dependency is unclear, treat this as unresolved ambiguity: record `sliceDecision: awaiting_user_confirmation`, keep `writeToken: null`, perform zero Keco/PixelLab/Godot writes, and ask one focused question with the candidates, evidence, and consequence of each choice.
@@ -43,15 +45,16 @@ At `RESOLVE_SOURCES` and `SELECT_SLICE`, compare the user request, source priori
 ## Non-Negotiable Gates
 
 1. **BASELINE before design:** record branch, commit, dirty paths, canonical Keco project, canonical Godot project path, engine version, main scene, and available MCP capabilities. Preserve unrelated dirty files.
-2. **PREFLIGHT before writes:** Keco read/write access, matching Keco Project identity, a compatible existing Keco planning folder, Godot identity and required tools, and one supported PixelLab operation profile when an asset is planned must all be `ready`. Any unavailable or ambiguous identity, folder, or schema is `blocked_before_write`; do not write Keco, PixelLab, or Godot. A user request to continue does not override this gate.
-3. **Plan before implementation:** write `EvalSpec`, `SlicePlan`, and a bite-sized implementation plan. Each task names exact files, dependencies, a failing verification first, the minimal change, and a fresh verification. Review the plan for scope, placeholders, and type/ID consistency before execution.
-4. **Write lease:** issue a run-scoped write token only after `SourceSnapshot`, `EvalSpec`, `SlicePlan.allowedFiles`, and `PlanReview` validate. Every write carries `runId`, `sliceId`, and idempotency key. No token means zero writes.
-5. **Persistent slice documents:** discover a compatible folder inside the matching Keco Project before `WRITE_SPEC`. Use `create_document(projectId, folderId, ...)` for `spec`, `plan`, and `status`, read each document back, and retain its document ID/state token. Update those Keco documents after every ledger stage with `update_document`; create and read back `eval-report` before reporting completion. Materialize the same accepted content into `docs/keco-godot-slices/<sliceId>/` only as a local mirror containing `spec.md`, `plan.md`, `status.json`, and `eval-report.json`, and validate the mirror with `references/slice-document-contract.md` and `scripts/validate_slice_documents.py`. If the MCP exposes no folder-creation operation and no compatible folder exists, stop before writes and report the blocker.
-6. **Keco-first assets:** follow [references/pixellab-capability-registry.md](references/pixellab-capability-registry.md), [references/keco-pixellab-contract.md](references/keco-pixellab-contract.md), and [references/existing-resource-evolution.md](references/existing-resource-evolution.md). Discover compatible tables, rows, resources, and nodes first; reuse or extend them by stable key before creating new ones. If no compatible target exists, record the reason in the plan.
-7. **Asset integration:** read [references/generated-asset-contract.md](references/generated-asset-contract.md) for every non-UI asset. Read [references/godot-animation-contract.md](references/godot-animation-contract.md) for character or animation assets, and [references/godot-tileset-contract.md](references/godot-tileset-contract.md) for tile or tileset assets. Build or materialize only from verified metadata.
-8. **Task execution and review:** for every task, run the planned RED verification, make the smallest change, and run GREEN verification. Perform the independent review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task.
-9. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_EVAL` record and the current snapshot hash. Startup logs, parsing, screenshots, upload responses, or agent assertions are not substitutes.
-10. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. Partial writes are preserved, never deleted or duplicated.
+2. **Roadmap before Slice writes:** discover and read the accepted source, decompose all supported development ideas, then create and read back the Keco roadmap before creating any per-Slice document or issuing a write token. Select the next Slice only when all dependencies are complete; use priority only as the tie-breaker. Continue until every planned Slice completes or the roadmap pauses.
+3. **PREFLIGHT before writes:** Keco read/write access, matching Keco Project identity, a compatible existing Keco planning folder, Godot identity and required tools, and one supported PixelLab operation profile when an asset is planned must all be `ready`. Any unavailable or ambiguous identity, folder, or schema is `blocked_before_write`; do not write Keco, PixelLab, or Godot. A user request to continue does not override this gate.
+4. **Plan before implementation:** write `EvalSpec`, `SlicePlan`, and a bite-sized implementation plan. Each task names exact files, dependencies, a failing verification first, the minimal change, and a fresh verification. Review the plan for scope, placeholders, and type/ID consistency before execution.
+5. **Write lease:** issue a run-scoped write token only after `SourceSnapshot`, `EvalSpec`, `SlicePlan.allowedFiles`, and `PlanReview` validate. Every write carries `runId`, `sliceId`, and idempotency key. No token means zero writes.
+6. **Persistent slice documents:** discover a compatible folder inside the matching Keco Project before `WRITE_ROADMAP`. Use `create_document(projectId, folderId, ...)` for the roadmap, `spec`, `plan`, and `status`, read each document back, and retain its document ID/state token. Update those Keco documents after every ledger stage with `update_document`; create and read back `eval-report` before reporting a Slice complete. Materialize the same accepted content into `docs/keco-godot-slices/` only as local mirrors and validate per-Slice mirrors with `references/slice-document-contract.md` and `scripts/validate_slice_documents.py`. If the MCP exposes no folder-creation operation and no compatible folder exists, stop before writes and report the blocker.
+7. **Keco-first assets:** follow [references/pixellab-capability-registry.md](references/pixellab-capability-registry.md), [references/keco-pixellab-contract.md](references/keco-pixellab-contract.md), and [references/existing-resource-evolution.md](references/existing-resource-evolution.md). Discover compatible tables, rows, resources, and nodes first; reuse or extend them by stable key before creating new ones. If no compatible target exists, record the reason in the plan.
+8. **Asset integration:** read [references/generated-asset-contract.md](references/generated-asset-contract.md) for every non-UI asset. Read [references/godot-animation-contract.md](references/godot-animation-contract.md) for character or animation assets, and [references/godot-tileset-contract.md](references/godot-tileset-contract.md) for tile or tileset assets. Build or materialize only from verified metadata.
+9. **Task execution and review:** for every task, run the planned RED verification, make the smallest change, and run GREEN verification. Perform the independent review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task.
+10. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_EVAL` record and the current snapshot hash. Startup logs, parsing, screenshots, upload responses, or agent assertions are not substitutes.
+11. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. On the third failed repair iteration, persist evidence and the read-back Slice status/eval-report, mark the roadmap `paused`, clear `NEXT_SLICE`, and ask the user. Partial writes are preserved, never deleted or duplicated.
 
 ## Godot And MCP Boundary
 
