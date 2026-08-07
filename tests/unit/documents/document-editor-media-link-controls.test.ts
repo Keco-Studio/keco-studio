@@ -15,6 +15,17 @@ describe('document editor media and link controls', () => {
     expect(source).toMatch(/insertImage\(\{ file, altText: '' \}\)/);
   });
 
+  it('uploads mixed clipboard images before inserting them into editable documents', () => {
+    expect(source).toContain('onPasteCapture={handlePasteCapture}');
+    expect(source).toContain('if (readOnly) return;');
+    expect(source).toContain('extractClipboardImageFiles(event.clipboardData)');
+    expect(source).toContain('event.preventDefault()');
+    expect(source).toContain('event.stopPropagation()');
+    expect(source).toContain('uploadClipboardImages(imageFiles, imageUploadHandler)');
+    expect(source).toContain('clipboardImagesToMarkdown(images)');
+    expect(source).toContain('editorMethodsRef.current?.insertMarkdown(markdown)');
+  });
+
   it('creates a URL-only link from selected text', () => {
     expect(source).not.toMatch(/\bCreateLink\b/);
     expect(source).toContain('currentSelection$');
