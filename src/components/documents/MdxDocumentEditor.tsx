@@ -14,7 +14,6 @@ import {
   useMemo,
   useRef,
   type ChangeEvent,
-  type ClipboardEvent,
   type ComponentType,
   type MouseEvent,
   type Ref,
@@ -88,11 +87,7 @@ import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
 import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
-import {
-  clipboardImagesToMarkdown,
-  extractClipboardImageFiles,
-  uploadClipboardImages,
-} from './documentClipboardImages';
+import { documentClipboardImagePastePlugin } from './documentClipboardImagePastePlugin';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -348,18 +343,6 @@ export default function MdxDocumentEditor({
     ready: referenceNavigationReady,
     highlightClassName: styles.referencedDocumentBlock,
   });
-  const handlePasteCapture = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
-    if (readOnly) return;
-    const imageFiles = extractClipboardImageFiles(event.clipboardData);
-    if (imageFiles.length === 0) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    void uploadClipboardImages(imageFiles, imageUploadHandler).then((images) => {
-      const markdown = clipboardImagesToMarkdown(images);
-      if (markdown) editorMethodsRef.current?.insertMarkdown(markdown);
-    });
-  }, [imageUploadHandler, readOnly]);
   const plugins = useMemo(() => {
     const ResourceReference = (props: JsxEditorProps) => (
       <ResourceReferenceEditor
@@ -387,6 +370,7 @@ export default function MdxDocumentEditor({
       linkPlugin(),
       linkDialogPlugin({ showLinkTitleField: false }),
       imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
+      documentClipboardImagePastePlugin({ imageUploadHandler }),
       markdownImageExportPlugin(),
       tablePlugin(),
       codeBlockPlugin({
@@ -432,7 +416,11 @@ export default function MdxDocumentEditor({
         toolbarPlugin({
           toolbarClassName: styles.stickyToolbar,
           toolbarContents: () => (
-            <>
+            <div
+              className={styles.toolbarContents}
+              aria-disabled={readOnly}
+              inert={readOnly}
+            >
               <UndoRedo />
               <Separator />
               <BoldItalicUnderlineToggles />
@@ -453,7 +441,7 @@ export default function MdxDocumentEditor({
               <InsertTable />
               <InsertThematicBreak />
               <InsertCodeBlock />
-            </>
+            </div>
           ),
         })
       );
@@ -475,7 +463,6 @@ export default function MdxDocumentEditor({
       ref={editorFrameRef}
       className={styles.editorFrame}
       onDoubleClick={handleLinkDoubleClick}
-      onPasteCapture={handlePasteCapture}
     >
       <ResourceReferenceProvider key={documentId} projectId={projectId}>
         <MDXEditor

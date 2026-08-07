@@ -1,6 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
-  clipboardImagesToMarkdown,
   extractClipboardImageFiles,
   uploadClipboardImages,
 } from '@/components/documents/documentClipboardImages';
@@ -65,18 +64,5 @@ describe('document clipboard images', () => {
     } finally {
       errorSpy.mockRestore();
     }
-  });
-
-  it('serializes uploaded images as markdown with escaped alt text', () => {
-    const first = new File(['first'], 'screen [1].png', { type: 'image/png' });
-    const second = new File(['second'], 'second.png', { type: 'image/png' });
-
-    expect(clipboardImagesToMarkdown([
-      { file: first, url: 'https://storage.test/first.png' },
-      { file: second, url: 'https://storage.test/second.png' },
-    ])).toBe(
-      '![screen \\[1\\].png](https://storage.test/first.png)\n\n' +
-      '![second.png](https://storage.test/second.png)',
-    );
   });
 });
