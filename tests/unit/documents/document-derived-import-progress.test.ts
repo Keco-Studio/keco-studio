@@ -132,4 +132,42 @@ describe('documentDerivedImportProgress toast mirroring', () => {
       'preparing'
     );
   });
+
+  it('re-notifies generating on each running tick so stream progress stays mirrored', () => {
+    const startedAt = Date.now();
+    notifyDocumentDerivedImportProgress({
+      projectId: 'project-1',
+      documentId: 'doc-1',
+      exportType: 'script',
+      phase: 'preparing',
+      label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
+      startedAt,
+    });
+    notifyDocumentDerivedImportProgress({
+      projectId: 'project-1',
+      documentId: 'doc-1',
+      exportType: 'script',
+      phase: 'running',
+      label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
+      startedAt,
+    });
+    notifyDocumentDerivedImportProgress({
+      projectId: 'project-1',
+      documentId: 'doc-1',
+      exportType: 'script',
+      phase: 'running',
+      label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
+      startedAt,
+    });
+
+    expect(mockShowToast).toHaveBeenCalledTimes(3);
+    expect(mockShowToast).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        message: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
+        duration: 0,
+        testId: DOCUMENT_DERIVED_IMPORT_PROGRESS_TEST_ID,
+      })
+    );
+  });
 });

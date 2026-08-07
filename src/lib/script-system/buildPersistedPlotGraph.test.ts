@@ -8,8 +8,8 @@ describe('persisted plot graph row mapping', () => {
       entryPlotNodeId: 'RightPlot',
       storyNodeOrder: ['LeftStory', 'RightStory'],
       nodes: [
-        { id: 'RightPlot', title: '\u53f3\u4fa7\u5267\u60c5', storyNodeIds: ['RightStory'] },
-        { id: 'LeftPlot', title: '\u5de6\u4fa7\u5267\u60c5', storyNodeIds: ['LeftStory'] },
+        { id: 'RightPlot', title: 'Right plot', storyNodeIds: ['RightStory'] },
+        { id: 'LeftPlot', title: 'Left plot', storyNodeIds: ['LeftStory'] },
       ],
       edges: [{
         fromPlotNodeId: 'RightPlot',
@@ -20,8 +20,8 @@ describe('persisted plot graph row mapping', () => {
     }, 2);
 
     expect(graph?.nodes).toEqual([
-      { id: 'RightPlot', label: '\u53f3\u4fa7\u5267\u60c5', rowIndex: 1, rowIndexes: [1] },
-      { id: 'LeftPlot', label: '\u5de6\u4fa7\u5267\u60c5', rowIndex: 0, rowIndexes: [0] },
+      { id: 'RightPlot', label: 'Right plot', rowIndex: 1, rowIndexes: [1] },
+      { id: 'LeftPlot', label: 'Left plot', rowIndex: 0, rowIndexes: [0] },
     ]);
   });
 
@@ -80,5 +80,16 @@ describe('persisted plot graph row mapping', () => {
       ],
       edges: [{ from: 'Prologue', to: 'Node1' }],
     });
+  });
+
+  it('rejects invalid metadata and a stale row count', () => {
+    expect(buildPersistedPlotGraph({ version: 1, nodes: [] } as never, 7)).toBeUndefined();
+    expect(buildPersistedPlotGraph({
+      version: 2,
+      entryPlotNodeId: 'Only',
+      storyNodeOrder: ['A'],
+      nodes: [{ id: 'Only', title: 'Only', storyNodeIds: ['A'] }],
+      edges: [],
+    }, 2)).toBeUndefined();
   });
 });

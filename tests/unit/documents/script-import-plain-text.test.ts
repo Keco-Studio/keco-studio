@@ -27,23 +27,23 @@ describe('toScriptImportPlainText', () => {
 
   it('normalizes escaped Markdown screenplay lines into importable text', () => {
     const input = [
-      '\\### 【\u5f00\u573a\u5bf9\u8bdd】',
+      '\\### 【Opening dialogue】',
       '',
-      '\\*\\*\u5973\u5e1d\\*\\*（\u672a\u56de\u5934）：\u6c99\u66b4\u5c01\u4e86\u9000\u8def。',
+      '\\*\\*Empress\\*\\*（without turning）：The sandstorm sealed the retreat.',
       '',
-      '\\- \\*\\*\u4f60\\*\\*：\u81e3\u8bf7\u79fb\u5e10。',
+      '\\- \\*\\*You\\*\\*：I request to move the camp.',
       '',
-      '\\> \\*\\*“\u5171\u996e\u52ff\u4e89。”\\*\\*',
+      '\\> \\*\\*“Share the wine, do not quarrel.”\\*\\*',
     ].join('\n');
 
     expect(toScriptImportPlainText(input)).toBe([
-      '【\u5f00\u573a\u5bf9\u8bdd】',
+      '【Opening dialogue】',
       '',
-      '\u5973\u5e1d（\u672a\u56de\u5934）：\u6c99\u66b4\u5c01\u4e86\u9000\u8def。',
+      'Empress（without turning）：The sandstorm sealed the retreat.',
       '',
-      '\u4f60：\u81e3\u8bf7\u79fb\u5e10。',
+      'You：I request to move the camp.',
       '',
-      '“\u5171\u996e\u52ff\u4e89。”',
+      '“Share the wine, do not quarrel.”',
     ].join('\n'));
   });
 });
