@@ -3,6 +3,7 @@
  */
 
 import { lookupFieldTypeSpec } from './field-type-catalog';
+import { isDefaultIdFieldShape } from './default-id-field';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 
 const LEGACY_NAME_LABELS = new Set(['name', 'Name']);
@@ -23,7 +24,9 @@ export function findPrimaryLabelField(
   properties: PropertyConfig[]
 ): PropertyConfig | undefined {
   const sorted = [...properties].sort((a, b) => a.orderIndex - b.orderIndex);
-  const stringFields = sorted.filter((p) => p.dataType === 'string');
+  const stringFields = sorted.filter(
+    (field) => field.dataType === 'string' && !isDefaultIdFieldShape(field)
+  );
 
   const legacy = stringFields.find((p) => LEGACY_NAME_LABELS.has(p.name));
   if (legacy) return legacy;

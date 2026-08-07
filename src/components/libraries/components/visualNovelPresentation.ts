@@ -2,7 +2,7 @@ export type VisualNovelDialogColor = 'blue' | 'pink' | 'gray';
 
 export type VisualNovelPresentation =
   | { kind: 'dialogue'; color: VisualNovelDialogColor; alignment: 'left' | 'right' }
-  | { kind: 'plain'; color: null; alignment: 'left' }
+  | { kind: 'plain'; color: null; alignment: 'center' }
   | { kind: 'fullscreen'; color: null; alignment: 'center' };
 
 export function resolveVisualNovelPresentation(
@@ -17,7 +17,7 @@ export function resolveVisualNovelPresentation(
     case '3':
       return { kind: 'dialogue', color: 'gray', alignment: 'left' };
     case '4':
-      return { kind: 'plain', color: null, alignment: 'left' };
+      return { kind: 'plain', color: null, alignment: 'center' };
     case '5':
       return { kind: 'fullscreen', color: null, alignment: 'center' };
     default: {

@@ -129,6 +129,26 @@ describe('mergeAssetNameIntoPropertyValues', () => {
     );
     expect(out['rule-name-id']).toBe('Existing Name');
   });
+
+  it('does not fill a default-shaped ID field from the internal asset name', () => {
+    const defaultIdField: PropertyConfig = {
+      id: 'id-field',
+      key: 'id-field',
+      name: 'ID',
+      valueType: 'string',
+      dataType: 'string',
+      required: false,
+      orderIndex: 0,
+    };
+
+    const out = mergeAssetNameIntoPropertyValues(
+      { 'float-id': 0.75 },
+      [defaultIdField, discountField],
+      'Agile Cat'
+    );
+
+    expect(out).toEqual({ 'float-id': 0.75 });
+  });
 });
 
 describe('validateRequiredPropertyValues', () => {

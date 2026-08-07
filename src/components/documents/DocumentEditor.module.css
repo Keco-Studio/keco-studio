@@ -215,6 +215,15 @@
   background: var(--ant-color-primary-bg, #e6f4ff);
 }
 
+.retryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.retryButton:disabled:hover {
+  background: transparent;
+}
+
 .editorPlaceholder {
   min-height: 60vh;
   padding: 24px;

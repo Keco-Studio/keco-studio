@@ -48,14 +48,34 @@ describe('DocumentEditor collaboration wiring', () => {
 
   it('shows the current document read-only while collaboration is connecting', () => {
     expect(source).toContain("markdown={document.content ?? ''}");
-    expect(source).toContain('showToolbar={false}');
     expect(source).toContain('collaboration.canBind && collaboration.session');
     expect(source).toContain('key={`${document.id}:pending`');
+    const pendingEditorStart = source.indexOf('key={`${document.id}:pending`');
+    const pendingEditorEnd = source.indexOf('/>', pendingEditorStart);
+    const pendingEditor = source.slice(pendingEditorStart, pendingEditorEnd);
+    expect(pendingEditor).toContain("markdown={document.content ?? ''}");
+    expect(pendingEditor).toContain("showToolbar={permissions.role !== 'viewer'}");
+  });
+
+  it('skips the pending markdown editor when the document already has images', () => {
+    // Resize width/height live in Yjs, not Markdown. Painting images from the
+    // pending markdown mount then remounting collaborative content flashes them
+    // large then small. Wait for the live editor instead.
+    expect(source).toContain('markdownHasImages');
+    expect(source).toMatch(
+      /hasBoundCollaboration\s*\|\|\s*markdownHasImages\(\s*document\.content\s*\?\?\s*''\s*\)/
+    );
   });
 
   it('renders fail-closed recovery without stale-copy decisions', () => {
     expect(source).toContain('collaboration.canRetry');
-    expect(source).toContain('collaboration.retry');
+    expect(source).toContain('const [retrying, setRetrying] = useState(false)');
+    expect(source).toContain('await collaboration.retry()');
+    expect(source).toContain(
+      "showErrorToast(error instanceof Error ? error.message : 'Document retry failed')"
+    );
+    expect(source).toContain('disabled={retrying}');
+    expect(source).toContain("retrying ? 'Retrying...' : 'Retry'");
     expect(source).not.toContain('Reload remote');
     expect(source).not.toContain('Keep mine');
   });

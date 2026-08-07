@@ -5,6 +5,17 @@ const source = readFileSync(
   path.join(process.cwd(), 'src/components/documents/MdxDocumentEditor.tsx'),
   'utf8'
 );
+const clipboardPluginSource = readFileSync(
+  path.join(
+    process.cwd(),
+    'src/components/documents/documentClipboardImagePastePlugin.tsx'
+  ),
+  'utf8'
+);
+const editorStyles = readFileSync(
+  path.join(process.cwd(), 'src/components/documents/MdxDocumentEditor.module.css'),
+  'utf8'
+);
 
 describe('document editor media and link controls', () => {
   it('inserts one selected image file without the default metadata dialog', () => {
@@ -13,6 +24,38 @@ describe('document editor media and link controls', () => {
     expect(source).toContain('accept="image/*"');
     expect(source).not.toContain('multiple');
     expect(source).toMatch(/insertImage\(\{ file, altText: '' \}\)/);
+  });
+
+  it('inserts mixed clipboard images through the native editor image pipeline', () => {
+    expect(clipboardPluginSource).toContain('addComposerChild$');
+    expect(clipboardPluginSource).toContain('PASTE_COMMAND');
+    expect(clipboardPluginSource).toContain('insertImage$');
+    expect(clipboardPluginSource).toContain('$createImageNode');
+    expect(clipboardPluginSource).toContain('SKIP_DOM_SELECTION_TAG');
+    expect(clipboardPluginSource).toContain('pasteSelection');
+    expect(clipboardPluginSource).toContain('currentSelection');
+    expect(clipboardPluginSource).toContain('rootHadFocus');
+    expect(clipboardPluginSource).toContain('editor.isEditable()');
+    expect(clipboardPluginSource).toContain('event.preventDefault()');
+    expect(clipboardPluginSource).toContain(
+      'uploadClipboardImages(imageFiles, imageUploadHandler)'
+    );
+    expect(clipboardPluginSource).toContain(
+      "insertImage({ src: image.url, altText: image.file.name })"
+    );
+    expect(source).toContain(
+      'documentClipboardImagePastePlugin({ imageUploadHandler })'
+    );
+    expect(source).not.toContain('onPasteCapture={handlePasteCapture}');
+    expect(source).not.toContain('insertMarkdown(markdown)');
+    expect(source).not.toContain('clipboardImagesToMarkdown');
+    expect(source).toContain('inert={readOnly}');
+  });
+
+  it('keeps oversized images inside the editable document width', () => {
+    expect(editorStyles).toContain("[data-editor-block-type='image']");
+    expect(editorStyles).toContain('max-width: 100%');
+    expect(editorStyles).toContain('height: auto');
   });
 
   it('creates a URL-only link from selected text', () => {

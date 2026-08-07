@@ -21,6 +21,18 @@
   border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
 
+.toolbarContents {
+  display: contents;
+}
+
+.toolbarContents[aria-disabled='true'] {
+  pointer-events: none;
+}
+
+.toolbarContents[aria-disabled='true'] :global(button) {
+  opacity: 0.45;
+}
+
 /* Tooltips portal into the editor root; keep them above the sticky title
    (z-index: 1) and sticky toolbar (z-index: 2). */
 .editor :global([class*='tooltipContent']) {
@@ -37,6 +49,45 @@
 
 .contentEditable:focus {
   outline: none;
+}
+
+/* Keep inserted images inside the editor page so oversized imports
+   do not spill into the grey chrome and push resize handles off-screen. */
+.contentEditable :global([data-editor-block-type='image']) {
+  max-width: 100%;
+}
+
+.contentEditable :global([data-editor-block-type='image'] img) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Image delete control: mid-right outside the image, only on hover/selection.
+   Overlap the image edge slightly so the hit target stays continuous and the
+   control does not vanish while the cursor moves onto it. */
+.contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']) {
+  top: 50%;
+  right: auto;
+  left: calc(100% - 4px);
+  transform: translateY(-50%);
+  padding-left: 8px;
+  box-sizing: content-box;
+  opacity: 0;
+  background: transparent;
+  transition: opacity 120ms ease;
+}
+
+.contentEditable :global([data-editor-block-type='image']:hover [class*='editImageToolbar']),
+.contentEditable :global([data-editor-block-type='image']:focus-within [class*='editImageToolbar']),
+.contentEditable :global([data-editor-block-type='image']:has([class*='focusedImage']) [class*='editImageToolbar']),
+.contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']:hover) {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']) {
+    transition: none;
+  }
 }
 
 .referencedDocumentBlock {

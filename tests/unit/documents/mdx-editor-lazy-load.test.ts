@@ -24,6 +24,7 @@ describe('MDXEditor route-level lazy loading', () => {
       'src/components/documents/ResourceReferenceEditor.tsx',
       'src/components/documents/ResourceReferenceInsertButton.tsx',
       'src/components/documents/documentBlockIdentityPlugin.ts',
+      'src/components/documents/documentClipboardImagePastePlugin.tsx',
       'src/components/documents/documentCollaborationPlugin.ts',
       'src/lib/documents/documentBlockIdentity.ts',
       'src/lib/documents/headlessDocumentNodes.ts',

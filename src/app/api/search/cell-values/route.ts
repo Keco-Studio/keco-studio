@@ -12,6 +12,7 @@ export const GET = withAuth(async function GET(
 ) {
   const url = new URL(req.url);
   const q = (url.searchParams.get('q') ?? '').trim();
+  const includeScript = url.searchParams.get('includeScript') === 'true';
   const limitParam = Number(url.searchParams.get('limit') ?? '30');
   const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 100) : 30;
 
@@ -32,7 +33,39 @@ export const GET = withAuth(async function GET(
     );
   }
 
-  return NextResponse.json({ results: data ?? [] });
+  const results = Array.isArray(data) ? data : [];
+  if (includeScript || results.length === 0) {
+    return NextResponse.json({ results });
+  }
+
+  const libraryIds = [...new Set(results.flatMap((result) => {
+    const value = (result as { library_id?: unknown }).library_id;
+    return typeof value === 'string' && value ? [value] : [];
+  }))];
+  if (libraryIds.length === 0) {
+    return NextResponse.json({ results: [] });
+  }
+
+  const { data: studioLibraries, error: libraryError } = await supabase
+    .from('libraries')
+    .select('id')
+    .in('id', libraryIds)
+    .or('document_export_type.is.null,document_export_type.neq.script');
+
+  if (libraryError) {
+    console.error('[GET /api/search/cell-values] Library isolation failed:', libraryError);
+    return NextResponse.json(
+      { error: 'Cell value search failed' },
+      { status: 400 }
+    );
+  }
+
+  const studioLibraryIds = new Set((studioLibraries ?? []).map((library) => library.id));
+  return NextResponse.json({
+    results: results.filter((result) => (
+      studioLibraryIds.has((result as { library_id?: string }).library_id ?? '')
+    )),
+  });
 }, {
   unauthorizedResponse: () =>
     NextResponse.json({ error: 'unauthorized' }, { status: 401 }),

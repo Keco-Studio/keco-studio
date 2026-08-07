@@ -60,6 +60,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const queryClient = useQueryClient();
   const pathname = usePathname();
   const onSimulationSystem = pathname?.startsWith('/simulation-system') ?? false;
+  const onScriptSystem = isScriptSystemPath(pathname);
   const {
     breadcrumbs,
     currentAssetId,
@@ -132,7 +133,9 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   }, [onSimulationSystem]);
 
   const searchProjectId = onSimulationSystem ? simulationProjectId : currentProjectId;
-  const { folders, libraries } = useSidebarFoldersLibraries(searchProjectId);
+  const { folders, libraries } = useSidebarFoldersLibraries(searchProjectId, {
+    excludeScriptLibraries: !onScriptSystem,
+  });
 
   type SearchResultType = 'project' | 'folder' | 'library';
 
@@ -326,10 +329,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         const sessionRes = await supabase.auth.getSession();
         const token = sessionRes.data?.session?.access_token;
 
-        const res = await fetch(`/api/search/cell-values?q=${encodeURIComponent(q)}&limit=80`, {
+        const res = await fetch(
+          `/api/search/cell-values?q=${encodeURIComponent(q)}&limit=80&includeScript=${onScriptSystem}`,
+          {
           signal: controller.signal,
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
+          }
+        );
 
         if (!res.ok) {
           if (aborted) return;
@@ -367,7 +373,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       window.clearTimeout(t);
       controller.abort();
     };
-  }, [searchFilter, searchQuery, supabase, cellSearchRefreshKey]);
+  }, [searchFilter, searchQuery, supabase, cellSearchRefreshKey, onScriptSystem]);
 
   // Projects, folders, and libraries active in the last 7 days.
   const recentResults = useMemo<SearchResult[]>(() => {
@@ -1241,7 +1247,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       return null;
     }
 
-    const onScriptSystem = isScriptSystemPath(pathname);
     if (onScriptSystem && currentProjectId) {
       const isScriptSplitPage =
         !!currentLibraryId &&

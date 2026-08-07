@@ -136,7 +136,7 @@ export function nextPosition(
     };
   }
 
-  const options = readOptions(row, columns);
+  const options = readScriptOptions(row, columns);
   if (options.length > 0) {
     return {
       ...state,
@@ -251,7 +251,10 @@ function chooseBranch(
   }, rows, columns);
 }
 
-function readOptions(row: AssetRow, columns: ScriptPlayerColumns): ScriptPlayerOption[] {
+export function readScriptOptions(
+  row: AssetRow,
+  columns: ScriptPlayerColumns
+): ScriptPlayerOption[] {
   const optionColumns = columns.options ?? legacyOptionColumns(columns);
   return optionColumns.flatMap(({ index, textKey, nextKey, commandsKey }) => {
     const text = readString(row, textKey).trim();

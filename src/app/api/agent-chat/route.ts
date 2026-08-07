@@ -12,7 +12,7 @@ import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-cont
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import { buildDesignMessage } from '@/lib/design-message';
-import type { DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
+import type { AgentWorkspace, DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
 export const maxDuration = 120;
@@ -36,6 +36,7 @@ export const POST = withAuth(async function POST(
     currentFolderName?: string;
     currentLibraryId?: string;
     currentLibraryName?: string;
+    workspace?: AgentWorkspace;
     /** Default for newly created conversations (from user preference). */
     autoExecute?: unknown;
     documentExport?: unknown;
@@ -53,6 +54,7 @@ export const POST = withAuth(async function POST(
 
   const isNewConversation = !body.conversationId;
   const bodyProjectId = String(body.projectId ?? '').trim();
+  const liveWorkspace: AgentWorkspace = body.workspace === 'script' ? 'script' : 'studio';
 
   // A new conversation must be opened inside a project — that project (and the
   // current folder/table selection) is snapshotted as the conversation's frozen
@@ -130,6 +132,7 @@ export const POST = withAuth(async function POST(
     const scopeSnapshot = isNewConversation
       ? resolveScopeFromNavigation({
           projectId: bodyProjectId,
+          workspace: liveWorkspace,
           currentFolderId: body.currentFolderId,
           currentFolderName: body.currentFolderName,
           currentLibraryId: body.currentLibraryId,
@@ -192,6 +195,7 @@ export const POST = withAuth(async function POST(
       documentExport: boundMeta.documentExport,
       ...contextFields,
       ...currentDocumentContext,
+      workspace: contextFields.workspace ?? liveWorkspace,
     };
 
     const message = documentSnapshot

@@ -1,7 +1,7 @@
 /**
  * generate_from_document — generate a derived table/conversation library from
  * an existing project Document using the same Story IR pipeline as sidebar
- * right-click Generate table / Generate conversation.
+ * right-click Generate table / Script Generate conversation.
  *
  * Story IR conversion runs on the client via `/api/import-script` (same as RMB),
  * because it commonly exceeds the agent-chat turn deadline (~110s).
@@ -103,6 +103,12 @@ async function prepareConfirmation(
   const parsed = ParamsSchema.safeParse(params);
   if (!parsed.success) {
     return { success: false, error: `Invalid parameters: ${parsed.error.message}` };
+  }
+  if (parsed.data.exportType === 'script' && ctx.workspace !== 'script') {
+    return {
+      success: false,
+      error: 'Generate conversation is available only in Script. Open Script and try again.',
+    };
   }
   const resolved = await resolveTarget(parsed.data, ctx);
   if (!resolved.ok) {
@@ -218,7 +224,7 @@ async function execute(params: unknown, _ctx: ToolContext): Promise<ToolResult> 
 export const generateFromDocument: AgentTool = {
   name: 'generate_from_document',
   description:
-    'Generate a derived table or conversation library from an existing project Document using the same Story IR pipeline as Document right-click Generate table / Generate conversation. Use exportType "table" for Generate table and "script" for Generate conversation. Do not use setup_library, create_library, or folder import_script for this intent. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Admin only. In Confirm mode the user approves once; in Auto mode the UI runs the import without a confirmation card.',
+    'Generate a derived table or conversation library from an existing project Document using the shared Story IR pipeline. Use exportType "table" for Studio Generate table and "script" only from the Script workspace for Generate conversation. Do not use setup_library, create_library, or folder import_script for this intent. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Admin only. In Confirm mode the user approves once; in Auto mode the UI runs the import without a confirmation card.',
   category: 'write',
   confirmationMode: 'pre_execute',
   confirmationPolicy: 'always',

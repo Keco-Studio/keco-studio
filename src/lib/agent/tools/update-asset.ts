@@ -8,7 +8,8 @@ import {
   resolveAgentReferencePropertyValues,
   validateReferencePropertyValues,
 } from '../asset-emptiness';
-import { resolveAssetByRowIndex } from '../data-access';
+import { getLibraryAssets, getLibraryProperties, resolveAssetByRowIndex } from '../data-access';
+import { removeUnusedDefaultIdField } from '../default-id-cleanup';
 import { scheduleReindexForAssetFields } from '../embedding-index';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { resolvePropertyValues, isExplicitEmptyPropertyValues, buildEmptyPropertyValuesError } from '../field-resolver';
@@ -16,7 +17,6 @@ import { prepareAgentPropertyValues } from '../property-value-validation';
 import {
   errorFromLookupResult,
   errorFromOkResult,
-  getLibraryProperties,
   libraryFromLookupResult,
   resolveLibraryForTool,
 } from './_shared';
@@ -101,10 +101,26 @@ async function executeUpdateAsset(params: unknown, ctx: ToolContext): Promise<To
     return { success: false, error: buildEmptyPropertyValuesError(availableFields) };
   }
 
-  const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
+  let [properties, assets] = await Promise.all([
     getLibraryProperties(ctx.supabase, library.id, ctx),
-    resolvePropertyValues(ctx.supabase, library.id, propertyValues),
+    getLibraryAssets(ctx.supabase, library.id, ctx),
   ]);
+  const cleanup = await removeUnusedDefaultIdField(
+    ctx.supabase,
+    library.id,
+    properties,
+    assets,
+    propertyValues
+  );
+  if (cleanup.removed) {
+    properties = await getLibraryProperties(ctx.supabase, library.id, ctx);
+  }
+
+  const { resolved, unresolved, availableFields } = await resolvePropertyValues(
+    ctx.supabase,
+    library.id,
+    propertyValues
+  );
   if (unresolved.length > 0) {
     return {
       success: false,

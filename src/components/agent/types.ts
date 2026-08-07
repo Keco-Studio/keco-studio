@@ -71,4 +71,5 @@ export interface SendContext {
   currentFolderName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
+  workspace: 'studio' | 'script';
 }

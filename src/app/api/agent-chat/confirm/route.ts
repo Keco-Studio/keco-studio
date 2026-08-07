@@ -8,7 +8,7 @@ import { loadPendingAction } from '@/lib/agent/confirmation';
 import { sseResponse } from '@/lib/agent/sse';
 import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
 import { verifyDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
-import type { ToolContext } from '@/lib/agent/types';
+import type { AgentWorkspace, ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
 
@@ -25,6 +25,7 @@ export const POST = withAuth(async function POST(
     currentFolderName?: string;
     currentLibraryId?: string;
     currentLibraryName?: string;
+    workspace?: AgentWorkspace;
     clientCompletedResult?: unknown;
   };
   try {
@@ -91,6 +92,8 @@ export const POST = withAuth(async function POST(
       userRole,
       documentExport: boundMeta.documentExport,
       ...currentDocumentContext,
+      workspace:
+        boundMeta.scope?.workspace ?? (body.workspace === 'script' ? 'script' : 'studio'),
     };
 
     const abortController = new AbortController();

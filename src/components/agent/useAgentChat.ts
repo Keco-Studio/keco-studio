@@ -581,10 +581,12 @@ export function useAgentChat(ctx: SendContext) {
               currentFolderName: ctx.currentFolderName,
               currentLibraryId: ctx.currentLibraryId,
               currentLibraryName: ctx.currentLibraryName,
+              workspace: ctx.workspace,
             }
           : {
               conversationId: selectedRuntime.conversationId,
               currentDocumentId: ctx.currentDocumentId,
+              workspace: ctx.workspace,
               message,
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,
@@ -817,6 +819,7 @@ export function useAgentChat(ctx: SendContext) {
             currentFolderName: ctx.currentFolderName,
             currentLibraryId: ctx.currentLibraryId,
             currentLibraryName: ctx.currentLibraryName,
+            workspace: ctx.workspace,
             ...(clientCompletedResult !== undefined ? { clientCompletedResult } : {}),
           }),
           signal: abortController.signal,

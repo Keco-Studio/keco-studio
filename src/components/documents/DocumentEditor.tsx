@@ -15,6 +15,7 @@ import {
 } from './useDocumentPermissions';
 import { useDocumentCollaboration } from './useDocumentCollaboration';
 import { getDocumentVersionPreview } from '@/lib/documents/documentVersionService';
+import { markdownHasImages } from '@/lib/documents/markdownHasImages';
 import { DocumentVersionSidebar } from './DocumentVersionSidebar';
 import {
   dispatchDocumentPresenceUpdate,
@@ -126,6 +127,7 @@ function DocumentEditorSession({
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const collaboration = useDocumentCollaboration({
     supabase,
     documentId: document.id,
@@ -161,6 +163,17 @@ function DocumentEditorSession({
     },
     [permissions.userId, supabase]
   );
+  const handleRetry = useCallback(async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await collaboration.retry();
+    } catch (error) {
+      showErrorToast(error instanceof Error ? error.message : 'Document retry failed');
+    } finally {
+      setRetrying(false);
+    }
+  }, [collaboration, retrying]);
   const ignoreMarkdownChange = useCallback(() => undefined, []);
   const handleEditorRef = useCallback((methods: MDXEditorMethods | null) => {
     const ready = methods !== null;
@@ -306,9 +319,10 @@ function DocumentEditorSession({
               <button
                 type="button"
                 className={styles.retryButton}
-                onClick={() => void collaboration.retry()}
+                disabled={retrying}
+                onClick={() => void handleRetry()}
               >
-                Retry
+                {retrying ? 'Retrying...' : 'Retry'}
               </button>
             </div>
           )}
@@ -384,9 +398,13 @@ function DocumentEditorSession({
                     cursorColor: collaboration.cursorColor,
                   }}
                 />
-              ) : hasBoundCollaboration ? (
+              ) : hasBoundCollaboration ||
+                markdownHasImages(document.content ?? '') ? (
                 // Rebinding after an epoch change must not mount a second editor:
                 // that remount discards the live view and restarts hydration.
+                // Image docs also skip the pending markdown mount: resize
+                // width/height live in Yjs only, so Markdown would paint images
+                // full-width and then shrink when the collaborative editor binds.
                 <div className={styles.editorPlaceholder}>{collaboration.label}</div>
               ) : (
                 <MdxDocumentEditor
@@ -395,7 +413,7 @@ function DocumentEditorSession({
                   documentId={document.id}
                   markdown={document.content ?? ''}
                   readOnly
-                  showToolbar={false}
+                  showToolbar={permissions.role !== 'viewer'}
                   onChange={ignoreMarkdownChange}
                   imageUploadHandler={imageUploadHandler}
                   editorRef={handleEditorRef}

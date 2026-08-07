@@ -41,6 +41,7 @@ import {
 } from '@/lib/queryInvalidation';
 import styles from './page.module.css';
 import addColumIcon from "@/assets/images/addColumIcon.svg";
+import { getStudioLibraryRedirectPath } from '@/lib/studioLibraryIsolation';
 
 export default function LibraryPage() {
   const params = useParams();
@@ -126,6 +127,11 @@ export default function LibraryPage() {
     queryFn: () => getLibrary(supabase, libraryId, projectId),
     enabled: !!libraryId && !!projectId,
   });
+  const studioRedirectPath = getStudioLibraryRedirectPath(projectId, library);
+
+  useEffect(() => {
+    if (studioRedirectPath) router.replace(studioRedirectPath);
+  }, [router, studioRedirectPath]);
 
   const { data: librarySummary, isLoading: summaryLoading } = useQuery({
     queryKey: queryKeys.librarySummary(libraryId),
@@ -441,7 +447,7 @@ export default function LibraryPage() {
     await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   };
 
-  if (loading) {
+  if (loading || studioRedirectPath) {
     return (
       <div className={styles.loadingContainer}>
         <div>Loading library...</div>

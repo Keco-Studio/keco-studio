@@ -4,19 +4,39 @@ import type { FlowGraph } from '@/lib/script-system/buildScriptFlowGraph';
 
 jest.mock('./ScriptSplitView.module.css', () => ({}));
 
-import { FlowChartPanel } from './FlowChartPanel';
+import {
+  calculateFitScale,
+  clampFlowScale,
+  FlowChartPanel,
+  MAX_FLOW_SCALE,
+  MIN_FLOW_SCALE,
+} from './FlowChartPanel';
 
 describe('FlowChartPanel', () => {
+  it('fits wide canvases by shrinking and narrow canvases by enlarging', () => {
+    expect(calculateFitScale(500, 1000)).toBe(0.5);
+    expect(calculateFitScale(1200, 600)).toBe(2);
+    expect(calculateFitScale(900, 600)).toBe(1.5);
+    expect(calculateFitScale(3000, 600)).toBe(MAX_FLOW_SCALE);
+    expect(calculateFitScale(0, 600)).toBe(1);
+  });
+
+  it('clamps manual zoom to usable bounds', () => {
+    expect(clampFlowScale(0.01)).toBe(MIN_FLOW_SCALE);
+    expect(clampFlowScale(5)).toBe(MAX_FLOW_SCALE);
+    expect(clampFlowScale(0.75)).toBe(0.75);
+  });
+
   it('renders only plot nodes and places option text on edges', () => {
     const graph: FlowGraph = {
       nodes: [
-        { id: 'Start', label: '\u5f00\u573a', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Stable', label: '\u7a33\u5b88\u8def\u7ebf', rowIndex: 1, rowIndexes: [1] },
-        { id: 'Loyal', label: '\u5fe0\u541b\u8def\u7ebf', rowIndex: 2, rowIndexes: [2] },
+        { id: 'Start', label: 'Opening', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Stable', label: 'Stable route', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Loyal', label: 'Loyal route', rowIndex: 2, rowIndexes: [2] },
       ],
       edges: [
-        { from: 'Start', to: 'Stable', optionIndex: 0, optionText: '\u7b54\u5e03\u9632' },
-        { from: 'Start', to: 'Loyal', optionIndex: 1, optionText: '\u56de\u5e94\u5973\u5e1d' },
+        { from: 'Start', to: 'Stable', optionIndex: 0, optionText: 'Fortify' },
+        { from: 'Start', to: 'Loyal', optionIndex: 1, optionText: 'Answer the empress' },
       ],
     };
 
@@ -29,25 +49,26 @@ describe('FlowChartPanel', () => {
     );
 
     expect(markup.match(/role="button"/g)).toHaveLength(3);
-    expect(markup).toContain('\u7b54\u5e03\u9632');
-    expect(markup).toContain('\u56de\u5e94\u5973\u5e1d');
+    expect(markup).toContain('Fortify');
+    expect(markup).toContain('Answer the empress');
     expect(markup).not.toContain('Option0');
-    expect(markup).toContain('data-flow-centered="true"');
+    expect(markup).toContain('data-flow-scale-viewport="true"');
+    expect(markup).not.toContain('data-flow-centered');
     expect(markup).toContain('data-flow-edge-label=');
   });
 
   it('wraps long option labels onto multiple tspans', () => {
     const graph: FlowGraph = {
       nodes: [
-        { id: 'Start', label: '\u5f00\u573a', rowIndex: 0, rowIndexes: [0] },
-        { id: 'A', label: '\u5206\u652fA', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Start', label: 'Opening', rowIndex: 0, rowIndexes: [0] },
+        { id: 'A', label: 'Branch A', rowIndex: 1, rowIndexes: [1] },
       ],
       edges: [
         {
           from: 'Start',
           to: 'A',
           optionIndex: 0,
-          optionText: '\u8fd9\u662f\u4e00\u6bb5\u5f88\u957f\u7684\u5206\u652f\u9009\u9879\u6587\u6848\u5185\u5bb9',
+          optionText: 'This is a very long branch option label for wrapping',
         },
       ],
     };
@@ -67,17 +88,17 @@ describe('FlowChartPanel', () => {
     const graph: FlowGraph = {
       nodes: [
         { id: 'Start', label: 'title', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Active', label: '\u4e3b\u52a8\u642d\u8bdd', rowIndex: 1, rowIndexes: [1] },
-        { id: 'Silent', label: '\u6c89\u9ed8\u4e0d\u6253\u6270', rowIndex: 2, rowIndexes: [2] },
-        { id: 'Water', label: '\u9012\u6e29\u6c34', rowIndex: 3, rowIndexes: [3] },
-        { id: 'Comfort', label: '\u8a00\u8bed\u5b89\u6170', rowIndex: 4, rowIndexes: [4] },
-        { id: 'Merge', label: '\u5408\u6d41', rowIndex: 5, rowIndexes: [5] },
+        { id: 'Active', label: 'Start conversation', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Silent', label: 'Stay silent', rowIndex: 2, rowIndexes: [2] },
+        { id: 'Water', label: 'Offer water', rowIndex: 3, rowIndexes: [3] },
+        { id: 'Comfort', label: 'Comfort with words', rowIndex: 4, rowIndexes: [4] },
+        { id: 'Merge', label: 'Merge', rowIndex: 5, rowIndexes: [5] },
       ],
       edges: [
-        { from: 'Start', to: 'Active', optionIndex: 0, optionText: '\u4e3b\u52a8\u642d\u8bdd' },
-        { from: 'Start', to: 'Silent', optionIndex: 1, optionText: '\u6c89\u9ed8\u4e0d\u6253\u6270' },
-        { from: 'Active', to: 'Water', optionIndex: 0, optionText: '\u9012\u6e29\u6c34' },
-        { from: 'Active', to: 'Comfort', optionIndex: 1, optionText: '\u8a00\u8bed\u5b89\u6170' },
+        { from: 'Start', to: 'Active', optionIndex: 0, optionText: 'Start conversation' },
+        { from: 'Start', to: 'Silent', optionIndex: 1, optionText: 'Stay silent' },
+        { from: 'Active', to: 'Water', optionIndex: 0, optionText: 'Offer water' },
+        { from: 'Active', to: 'Comfort', optionIndex: 1, optionText: 'Comfort with words' },
         { from: 'Silent', to: 'Merge' },
         { from: 'Water', to: 'Merge' },
         { from: 'Comfort', to: 'Merge' },

@@ -110,6 +110,14 @@ describe('buildSystemPrompt design-document table rules', () => {
     expect(prompt).not.toContain('Branch labels use letter O + digit');
   });
 
+  it('forbids invented values for an unused default ID column', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('DEFAULT ID CLEANUP');
+    expect(prompt).toMatch(/omit ID from propertyValues/i);
+    expect(prompt).toMatch(/never invent an ID/i);
+  });
+
   it('routes existing-document generate table/conversation through generate_from_document', () => {
     const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'admin' });
 

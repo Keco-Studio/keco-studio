@@ -86,9 +86,22 @@ export function dismissToast() {
   activeToast = null;
 }
 
+function isSameStickyToast(
+  toast: HTMLDivElement,
+  options: Pick<ToastOptions, 'message' | 'testId'>
+): boolean {
+  return (
+    toast.textContent === options.message &&
+    (options.testId
+      ? toast.getAttribute('data-testid') === options.testId
+      : !toast.getAttribute('data-testid'))
+  );
+}
+
 /**
  * Show a toast notification (bottom-center, design spec colors).
  * Replaces any currently visible toast so messages never stack on top of each other.
+ * Identical sticky toasts (duration 0) are kept in place so progress ticks do not flash.
  */
 export function showToast(options: ToastOptions) {
   const {
@@ -100,6 +113,15 @@ export function showToast(options: ToastOptions) {
   } = options;
 
   injectAnimations();
+
+  if (
+    duration === 0 &&
+    activeToast?.parentNode &&
+    isSameStickyToast(activeToast, { message, testId })
+  ) {
+    return;
+  }
+
   dismissToast();
 
   const { bg, color } = getToastStyle(type);

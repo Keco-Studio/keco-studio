@@ -93,8 +93,23 @@ function mirrorProgressToast(detail: DocumentDerivedImportProgress): void {
   }
 
   if (detail.phase === 'success') {
-    dismissToast();
-    latestByDocument.delete(progressKey(detail.projectId, detail.documentId));
+    // Keep Generating visible briefly so navigation-bound clicks (Playwright
+    // waits for router.push) and users can still observe progress.
+    const key = progressKey(detail.projectId, detail.documentId);
+    const startedAt = detail.startedAt;
+    const minVisibleMs = 600;
+    const dismiss = () => {
+      const current = latestByDocument.get(key);
+      if (!current || current.startedAt !== startedAt) return;
+      dismissToast();
+      latestByDocument.delete(key);
+    };
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < minVisibleMs) {
+      window.setTimeout(dismiss, minVisibleMs - elapsed);
+    } else {
+      dismiss();
+    }
   }
 }
 

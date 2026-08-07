@@ -9,6 +9,7 @@ import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
 import {
   createScriptPlayerState,
   nextPosition,
+  readScriptOptions,
   renderPlayerContent,
   type ScriptPlayerColumns,
   type ScriptPlayerState,
@@ -116,6 +117,17 @@ function play(choices: number[]) {
 }
 
 describe('script player variable runtime', () => {
+  it('reads only filled options and exposes their target labels', () => {
+    expect(readScriptOptions(row('choice', {
+      option0: '  Left path  ',
+      option0Next: 'Jump Left',
+      option1: '   ',
+      option1Next: 'Jump Hidden',
+    }), columns)).toEqual([
+      { index: 0, text: 'Left path', targetLabel: 'Left', commands: '' },
+    ]);
+  });
+
   it.each([
     [[0, 0], 2],
     [[0, 1], 0],

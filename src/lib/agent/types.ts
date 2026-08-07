@@ -12,6 +12,7 @@ import type { AgentSelectionContext } from './selection-context';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
+export type AgentWorkspace = 'studio' | 'script';
 
 export interface DocumentTableExportContext {
   sourceDocumentId: string;
@@ -45,6 +46,7 @@ export interface ToolContext {
   currentLibraryName?: string;
   supabase: SupabaseClient;
   userRole: UserRole;
+  workspace?: AgentWorkspace;
   /** Server-validated source binding for tables generated from a document. */
   documentExport?: DocumentTableExportContext;
   /** Request-scoped authorization results; a new map is created for every turn. */
@@ -136,6 +138,7 @@ export type ScopeLevel = 'global' | 'project' | 'folder' | 'table';
  */
 export interface ConversationScope {
   level: ScopeLevel;
+  workspace?: AgentWorkspace;
   projectId?: string;
   folderId?: string;
   folderName?: string;

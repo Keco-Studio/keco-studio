@@ -24,6 +24,7 @@ import { resolvePropertyValues, isExplicitEmptyPropertyValues, buildEmptyPropert
 import { prepareAgentPropertyValues } from '../property-value-validation';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { scheduleReindexForAssetFields } from '../embedding-index';
+import { removeUnusedDefaultIdField } from '../default-id-cleanup';
 import {
   errorFromLookupResult,
   errorFromOkResult,
@@ -179,6 +180,17 @@ async function executeImport(
   }
 
   try {
+    const [properties, assets] = await Promise.all([
+      getLibraryProperties(ctx.supabase, preview.libraryId, ctx),
+      getLibraryAssets(ctx.supabase, preview.libraryId, ctx),
+    ]);
+    await removeUnusedDefaultIdField(
+      ctx.supabase,
+      preview.libraryId,
+      properties,
+      assets,
+      preview.resolvedValues
+    );
     await updateAssetService(ctx.supabase, preview.assetId, preview.assetName, preview.resolvedValues);
     scheduleReindexForAssetFields(
       ctx.supabase,

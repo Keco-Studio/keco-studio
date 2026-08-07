@@ -87,6 +87,7 @@ import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
 import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
+import { documentClipboardImagePastePlugin } from './documentClipboardImagePastePlugin';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -369,6 +370,7 @@ export default function MdxDocumentEditor({
       linkPlugin(),
       linkDialogPlugin({ showLinkTitleField: false }),
       imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
+      documentClipboardImagePastePlugin({ imageUploadHandler }),
       markdownImageExportPlugin(),
       tablePlugin(),
       codeBlockPlugin({
@@ -414,7 +416,11 @@ export default function MdxDocumentEditor({
         toolbarPlugin({
           toolbarClassName: styles.stickyToolbar,
           toolbarContents: () => (
-            <>
+            <div
+              className={styles.toolbarContents}
+              aria-disabled={readOnly}
+              inert={readOnly}
+            >
               <UndoRedo />
               <Separator />
               <BoldItalicUnderlineToggles />
@@ -435,7 +441,7 @@ export default function MdxDocumentEditor({
               <InsertTable />
               <InsertThematicBreak />
               <InsertCodeBlock />
-            </>
+            </div>
           ),
         })
       );

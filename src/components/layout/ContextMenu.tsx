@@ -15,7 +15,6 @@ export type ContextMenuAction =
   | 'duplicate'
   | 'move-to'
   | 'delete'
-  | 'generate-conversation'
   | 'generate-table';
 
 type ContextMenuProps = {
@@ -405,20 +404,12 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
       return (
         <>
           {userRole === 'admin' && (
-            <>
-              <button
-                className={styles.menuItem}
-                onClick={() => handleAction('generate-conversation')}
-              >
-                Generate conversation
-              </button>
-              <button
-                className={styles.menuItem}
-                onClick={() => handleAction('generate-table')}
-              >
-                Generate table
-              </button>
-            </>
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('generate-table')}
+            >
+              Generate table
+            </button>
           )}
           <button
             className={styles.menuItem}
