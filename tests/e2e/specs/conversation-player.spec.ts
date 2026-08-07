@@ -185,6 +185,11 @@ test.describe.serial('Conversation player PR regression', () => {
     });
   }
 
+  /** Choice buttons only — flow-chart nodes also use role=button with option titles. */
+  function choiceButton(page: Page, name: string) {
+    return page.locator('button', { hasText: new RegExp(`^${name}$`) });
+  }
+
   test.beforeAll(async () => {
     admin = getE2EAdminClient();
     owner = await createTemporaryUser(admin, 'conversation-player-owner');
@@ -202,36 +207,36 @@ test.describe.serial('Conversation player PR regression', () => {
   }) => {
     await loginAndOpen(page);
 
-    await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Leave the manor', exact: true })).toBeVisible();
+    await expect(choiceButton(page, 'Enter the manor')).toBeVisible();
+    await expect(choiceButton(page, 'Leave the manor')).toBeVisible();
     // Script plot-node mode has no player Restart toolbar.
     await expect(page.getByRole('button', { name: 'Restart', exact: true })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Enter the manor', exact: true }).click();
+    await choiceButton(page, 'Enter the manor').click();
     // Plot-node mode does not execute player variable commands; content stays unsubstituted.
     await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
     await expect(page.getByText('Outside courage: [courage]', { exact: true })).toHaveCount(0);
 
     await page.locator('[data-flow-node-id="Start"]').click();
-    await expect(page.getByRole('button', { name: 'Leave the manor', exact: true })).toBeVisible();
+    await expect(choiceButton(page, 'Leave the manor')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Leave the manor', exact: true }).click();
+    await choiceButton(page, 'Leave the manor').click();
     await expect(page.getByText('Outside courage: [courage]', { exact: true })).toBeVisible();
 
     await page.locator('[data-flow-node-id="Start"]').click();
-    await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toBeVisible();
+    await expect(choiceButton(page, 'Enter the manor')).toBeVisible();
   });
 
   test('restores revealed dialogue and variables after a page refresh', async ({ page }) => {
     test.fail(true, 'Conversation playback progress is not persisted yet');
 
     await loginAndOpen(page);
-    await page.getByRole('button', { name: 'Enter the manor', exact: true }).click();
+    await choiceButton(page, 'Enter the manor').click();
     await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
 
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     await expect(page.getByText('Inside courage: [courage]', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Enter the manor', exact: true })).toHaveCount(0);
+    await expect(choiceButton(page, 'Enter the manor')).toHaveCount(0);
   });
 });
