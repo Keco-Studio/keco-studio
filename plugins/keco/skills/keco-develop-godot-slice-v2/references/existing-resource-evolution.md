@@ -12,7 +12,7 @@ The stable key is the join between an existing resource and its next additive re
 4. Put additive changes in the DataPlan and preserve all unknown fields, rows, references, and user values.
 5. Create a new table only with an explicit `noCompatibleTarget` reason and a recorded discovery snapshot.
 
-Never create a second asset registry merely because a new asset kind appears. This applies regardless of whether the existing registry is named `媒体资源`, `Generated Assets`, `UI Assets`, `Assets`, or something else. Extend the compatible table schema or use its existing parent/child asset tables. Never merge incompatible semantics silently; stop for a new decision instead.
+Never create a second asset registry merely because a new asset kind appears. This applies regardless of whether the existing registry is named `Media Assets`, `Generated Assets`, `UI Assets`, `Assets`, or something else. Extend the compatible table schema or use its existing parent/child asset tables. Never merge incompatible semantics silently; stop for a new decision instead.
 
 ## Godot resources and nodes
 

@@ -16,7 +16,7 @@ Read [references/review-workflow.md](references/review-workflow.md). It contains
 ## Implicit Entry And Routing
 
 - Invoke implicitly when development intent refers to a Keco Project document, GDD, feedback, table, or unspecified project document; when one source may contain multiple development ideas; or when the request requires persistent plans, resource evolution, PixelLab provenance, or runtime evaluation. The user does not need to name this Skill.
-- V2 takes precedence over `keco-develop-godot-slice` for document-driven decomposition, multi-Slice execution, Keco Project Folder planning, typed assets, TileMap work, or reviewed runtime evidence. Keep V1 available for a bounded simple Slice that does not need these contracts.
+- V2 takes precedence over `keco-develop-godot-slice` for document-driven decomposition, multi-Slice execution, Keco Project Folder planning, typed assets, TileMap work, or reviewed runtime evidence. V2 is the canonical creation workflow for Keco-driven Godot development; do not route document-driven Godot creation to V1. Keep V1 available for a bounded simple Slice that does not need these contracts.
 - Keep the original `keco-develop-godot-slice` available for A/B comparison.
 - Route Keco-only new tables to `keco-build-tables-from-document`; route standalone assets and Godot-only work elsewhere.
 - If the user explicitly selected another applicable Skill, do not silently override that selection.
@@ -57,6 +57,8 @@ At `SOURCE_DISCOVERY`, `SLICE_DECOMPOSITION`, and `SELECT_SLICE`, compare the us
 10. **Task execution and review:** for every task, run the planned RED verification, make the smallest change, and run GREEN verification. Perform the independent review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task.
 11. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_EVAL` record and the current snapshot hash. Startup logs, parsing, screenshots, upload responses, or agent assertions are not substitutes.
 12. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. On the third failed repair iteration, persist evidence and the read-back Slice status/eval-report, mark the roadmap `paused`, clear `NEXT_SLICE`, and ask the user. Partial writes are preserved, never deleted or duplicated.
+
+Roadmaps and per-Slice plans must be Markdown checklists in their authoritative Keco Project Folder documents. Use `- [ ]` for planned or in-progress entries and change it to `- [x]` only after the required evidence and Keco read-back succeed. Do not execute from free-form roadmap prose. The Keco read-back plan is authoritative; local repository mirrors are secondary.
 
 ## Godot And MCP Boundary
 

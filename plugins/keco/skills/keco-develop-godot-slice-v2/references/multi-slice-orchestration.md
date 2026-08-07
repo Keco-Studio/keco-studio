@@ -40,6 +40,21 @@ The roadmap records all candidate Slices from the accepted source. Preserve sour
 
 Create the roadmap with `create_document(projectId, folderId, ...)`, then use `read_document` to verify its Project, Folder, document ID, source binding, revision, state token, and content hash. A mutation response without read-back does not authorize a Slice write.
 
+The authoritative roadmap document must include a Markdown checklist for every Slice. Keep the machine-readable fields above in the document metadata or front matter, and use this checklist as the execution view:
+
+## Slice Checklist
+
+- [ ] slice-001: Add gathering point
+  - Dependencies: none
+  - Priority: 1
+  - Status: planned
+- [ ] slice-002: Add village signpost
+  - Dependencies: slice-001
+  - Priority: 2
+  - Status: planned
+
+Change a Slice entry to `- [x]` only after its tasks, regressions, status read-back, and eval-report read-back pass. Keco's read-back plan is authoritative; a local mirror or mutation response alone is never sufficient.
+
 ## Sequential Execution
 
 Execute all planned Slices sequentially. A Slice is eligible only after every ID in its dependencies is complete with a read-back `eval-report`. When multiple eligible Slices remain, priority is the tie-breaker; stable `sliceId` order is the deterministic final tie-breaker.
@@ -58,7 +73,27 @@ Do not ask for confirmation between unambiguous Slices. Ask only when source, de
 
 ## Per-Slice Superpowers-Style Plan
 
-Every Slice owns `spec`, `plan`, `status`, and `eval-report`. Its plan contains small tasks with exact files, dependencies, served evaluation IDs, a RED command and expected missing behavior, the minimal implementation, a GREEN command and expected evidence, and a review gate. Never execute directly from roadmap prose.
+Every Slice owns `spec`, `plan`, `status`, and `eval-report`. Its authoritative `plan` document is a Markdown checklist containing small tasks with exact files, dependencies, served evaluation IDs, a RED command and expected missing behavior, the minimal implementation, a GREEN command and expected evidence, and a review gate. Never execute directly from roadmap prose or an unchecked task.
+
+## Task Checklist
+
+- [ ] task-001: Update existing gathering-point data
+  - Files: `game/data/gathering_points.json`
+  - Depends on: none
+  - RED: `python3 tests/check_gathering_points.py` fails because the new key is missing
+  - Minimal implementation: add the new entry using the existing schema
+  - GREEN: `python3 tests/check_gathering_points.py` passes and records the expected key
+  - Review: required
+
+- [ ] task-002: Add Godot scene integration
+  - Files: `game/scenes/village.tscn`, `game/scripts/village.gd`
+  - Depends on: task-001
+  - RED: the scene test fails because the node and collision shape are absent
+  - Minimal implementation: instance the existing resource and configure the declared Godot collision
+  - GREEN: the scene test and runtime `KECO_EVAL` pass with the current snapshot hash
+  - Review: required
+
+Change each task to `- [x]` only after its RED/GREEN evidence, review, and Keco document read-back succeed. A free-form paragraph is not a substitute for a task checklist.
 
 ## Repair Exhaustion
 

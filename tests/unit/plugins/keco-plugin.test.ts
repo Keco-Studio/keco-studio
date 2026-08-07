@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
@@ -36,7 +36,25 @@ function expectProhibited(skill: string, operation: string): void {
   );
 }
 
+function skillTextFiles(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) return skillTextFiles(entryPath);
+    return /\.(?:md|ya?ml)$/i.test(entry.name) ? [entryPath] : [];
+  });
+}
+
 describe('Keco Codex plugin contract', () => {
+  it('keeps all Skill Markdown and YAML files ASCII-only', () => {
+    const cjk = /[\u4e00-\u9fff]/u;
+    const skillFiles = skillTextFiles(path.join(pluginRoot, 'skills'));
+    const violations = skillFiles
+      .filter((filePath) => cjk.test(readFileSync(filePath, 'utf8')))
+      .map((filePath) => path.relative(repositoryRoot, filePath));
+
+    expect(violations).toEqual([]);
+  });
+
   it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {
     const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco/.codex-plugin/plugin.json');
     const v1Skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');

@@ -38,7 +38,7 @@ Every generated file and the provenance manifest must be listed in `SlicePlan.al
 
 ## Keco Asset Registry (often named `UI Assets`)
 
-When any asset is planned, first read the project's table schemas and select a same-purpose compatible asset registry by semantic fields, not by table name. Existing projects may call it `媒体资源`, `UI Assets`, `Generated Assets`, `Assets`, or something else. Reuse its table ID and stable match field. Create a new registry only when no compatible target exists, and record the discovery snapshot and reason. If two candidates are equally compatible, ask the user before writing.
+When any asset is planned, first read the project's table schemas and select a same-purpose compatible asset registry by semantic fields, not by table name. Existing projects may call it `Media Assets`, `UI Assets`, `Generated Assets`, `Assets`, or something else. Reuse its table ID and stable match field. Create a new registry only when no compatible target exists, and record the discovery snapshot and reason. If two candidates are equally compatible, ask the user before writing.
 
 The selected registry must preserve or add compatible fields for the asset metadata below. These are semantic roles, not literal MCP field keys; resolve each role to the project's actual label and field ID.
 

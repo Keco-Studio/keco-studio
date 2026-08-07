@@ -18,7 +18,7 @@ compatibilityReason: exact semantic difference or blocker
 
 ## Required order
 
-At `PREFLIGHT`, inspect the fresh Keco table schemas and discover the project's asset registry by semantic compatibility. A compatible table may be named `媒体资源`, `UI Assets`, `Generated Assets`, `Assets`, or use another project-specific name. Match fields such as asset key, kind/purpose, generator or operation, prompt, references, target path, dimensions, hashes, status, and verified image object. Reuse the compatible table and stable match field. If candidates tie, set the slice decision to `awaiting_user_confirmation` and perform zero writes; create a new table only with an explicit `noCompatibleTarget` discovery record.
+At `PREFLIGHT`, inspect the fresh Keco table schemas and discover the project's asset registry by semantic compatibility. A compatible table may be named `Media Assets`, `UI Assets`, `Generated Assets`, `Assets`, or use another project-specific name. Match fields such as asset key, kind/purpose, generator or operation, prompt, references, target path, dimensions, hashes, status, and verified image object. Reuse the compatible table and stable match field. If candidates tie, set the slice decision to `awaiting_user_confirmation` and perform zero writes; create a new table only with an explicit `noCompatibleTarget` discovery record.
 
 ```text
 PREFLIGHT PixelLab schema and operationProfile

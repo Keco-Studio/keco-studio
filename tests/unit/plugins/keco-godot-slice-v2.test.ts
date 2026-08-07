@@ -22,6 +22,29 @@ function sha256(filePath: string): string {
 }
 
 describe('Keco Godot Slice V2 skill contract', () => {
+  it('requires checklist-based authoritative Keco roadmap and Slice plans', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const orchestration = readFileSync(
+      path.join(skillRoot, 'references', 'multi-slice-orchestration.md'),
+      'utf8',
+    );
+
+    expect(orchestration).toContain('Slice Checklist');
+    expect(orchestration).toContain('- [ ]');
+    expect(orchestration).toContain('- [x]');
+    expect(orchestration).toContain('Task Checklist');
+    expect(orchestration).toMatch(/- \[ \] task-001:/);
+    expect(orchestration).toMatch(/Keco(?:'s|’s) read-back plan is authoritative/i);
+    expect(skill).toMatch(/roadmap[\s\S]{0,180}checklist/i);
+    expect(skill).toMatch(/Slice[\s\S]{0,180}plan[\s\S]{0,180}checklist/i);
+  });
+
+  it('keeps V2 as the canonical workflow for document-driven Godot creation', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    expect(skill).toMatch(/V2 is the canonical creation workflow for Keco-driven Godot development/i);
+    expect(skill).toMatch(/do not route document-driven Godot creation to V1/i);
+  });
+
   it('supports document-driven implicit invocation and exposes a self-contained reviewed ledger', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const metadata = readFileSync(path.join(skillRoot, 'agents', 'openai.yaml'), 'utf8');
