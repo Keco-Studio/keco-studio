@@ -136,7 +136,7 @@ export type UseSidebarContextMenuActionsParams = {
   openMoveDocument: (documentId: string) => void;
   openNewDocumentInFolder: (folderId: string) => void;
   startInlineRename: (key: string) => void;
-  /** Silent document Generate conversation/table (no ImportScriptModal). */
+  /** Silent document Generate table (no ImportScriptModal). */
   startDocumentDerivedImport: (
     source: DocumentExportSource,
     exportType: DocumentExportType
@@ -342,7 +342,7 @@ export function useSidebarContextMenuActions({
             if (sessionError || !session?.access_token) {
               throw new Error('Please sign in before exporting');
             }
-            // Same import_script / Story IR pipeline as Generate conversation; nests as a table.
+            // Shared import_script / Story IR pipeline; Studio nests the result as a table.
             const source = await fetchDocumentExportSource(documentId, session.access_token);
             startDocumentDerivedImport(source, 'table');
           } catch (err) {
@@ -356,55 +356,6 @@ export function useSidebarContextMenuActions({
               projectId,
               documentId,
               exportType: 'table',
-              phase: 'error',
-              label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
-              error: msg,
-              startedAt,
-            });
-            showErrorToast(msg, 8000);
-          }
-        })();
-        return;
-      }
-
-      if (action === 'generate-conversation' && contextMenu.type === 'document') {
-        if (userRole !== 'admin' || !currentIds.projectId) {
-          closeContextMenu();
-          return;
-        }
-        const documentId = contextMenu.id;
-        const projectId = currentIds.projectId;
-        closeContextMenu();
-        const startedAt = Date.now();
-        notifyDocumentDerivedImportProgress({
-          projectId,
-          documentId,
-          exportType: 'script',
-          phase: 'preparing',
-          label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.generating,
-          startedAt,
-        });
-        router.push(`/${projectId}/doc/${documentId}`);
-        void (async () => {
-          try {
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-            if (sessionError || !session?.access_token) {
-              throw new Error('Please sign in before exporting');
-            }
-            // Document-derived Export as script: result nests under this document.
-            const source = await fetchDocumentExportSource(documentId, session.access_token);
-            startDocumentDerivedImport(source, 'script');
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Failed to generate conversation';
-            setError(msg);
-            console.info('[document-derived-import]', 'error', msg, {
-              projectId,
-              documentId,
-            });
-            notifyDocumentDerivedImportProgress({
-              projectId,
-              documentId,
-              exportType: 'script',
               phase: 'error',
               label: DOCUMENT_DERIVED_IMPORT_UI_LABEL.failed,
               error: msg,

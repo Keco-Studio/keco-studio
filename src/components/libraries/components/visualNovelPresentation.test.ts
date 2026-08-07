@@ -6,7 +6,7 @@ describe('visual novel Type presentation', () => {
     ['1', { kind: 'dialogue', color: 'blue', alignment: 'right' }],
     ['2', { kind: 'dialogue', color: 'pink', alignment: 'left' }],
     ['3', { kind: 'dialogue', color: 'gray', alignment: 'left' }],
-    ['4', { kind: 'plain', color: null, alignment: 'left' }],
+    ['4', { kind: 'plain', color: null, alignment: 'center' }],
     ['5', { kind: 'fullscreen', color: null, alignment: 'center' }],
   ] as const)('uses Type %s as a presentation style', (type, expected) => {
     expect(resolveVisualNovelPresentation(type, 'Speaker')).toEqual(expected);

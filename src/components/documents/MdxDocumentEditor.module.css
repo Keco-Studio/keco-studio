@@ -39,6 +39,41 @@
   outline: none;
 }
 
+/* Keep inserted images inside the editor page so oversized imports
+   do not spill into the grey chrome and push resize handles off-screen. */
+.contentEditable :global([data-editor-block-type='image']) {
+  max-width: 100%;
+}
+
+.contentEditable :global([data-editor-block-type='image'] img) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Image delete control: outside the image, only on hover/selection. */
+.contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']) {
+  top: 0;
+  right: 0;
+  transform: translateY(calc(-100% - 4px));
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
+  transition: opacity 120ms ease;
+}
+
+.contentEditable :global([data-editor-block-type='image']:hover [class*='editImageToolbar']),
+.contentEditable :global([data-editor-block-type='image']:focus-within [class*='editImageToolbar']),
+.contentEditable :global([data-editor-block-type='image']:has([class*='focusedImage']) [class*='editImageToolbar']) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']) {
+    transition: none;
+  }
+}
+
 .referencedDocumentBlock {
   outline: 2px solid var(--ant-color-primary-border, #91caff);
   outline-offset: 3px;

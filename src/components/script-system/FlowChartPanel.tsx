@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type WheelEvent as ReactWheelEvent,
+} from 'react';
 import {
   type FlowGraph,
   type FlowGraphNode,
@@ -22,6 +29,19 @@ const H_GAP = 40;
 const V_GAP = 72;
 const PAD = 24;
 const OUTER_ROUTE_GUTTER = 64;
+const FLOW_BODY_HORIZONTAL_PADDING = 24;
+
+export const MIN_FLOW_SCALE = 0.1;
+export const MAX_FLOW_SCALE = 2;
+
+export function calculateFitScale(containerWidth: number, canvasWidth: number): number {
+  if (containerWidth <= 0 || canvasWidth <= 0) return 1;
+  return clampFlowScale(containerWidth / canvasWidth);
+}
+
+export function clampFlowScale(scale: number): number {
+  return Math.min(MAX_FLOW_SCALE, Math.max(MIN_FLOW_SCALE, scale));
+}
 
 function compactLabel(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
@@ -199,11 +219,6 @@ function mergeBranchRoute(
   };
 }
 
-function centerScrollElement(el: HTMLElement) {
-  el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
-  el.scrollTop = Math.max(0, (el.scrollHeight - el.clientHeight) / 2);
-}
-
 export function FlowChartPanel({
   graph,
   selectedPlotNodeId,
@@ -212,6 +227,7 @@ export function FlowChartPanel({
   onClose,
 }: FlowChartPanelProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
   const previewNodes = useMemo(() => new Set(previewNodeIds), [previewNodeIds]);
   const layout = useMemo(
     () => layoutLayers(graph.nodes, graph.edges),
@@ -245,24 +261,31 @@ export function FlowChartPanel({
     return new Map(placed.map((label) => [label.id, label]));
   }, [graph.edges, layout.positions]);
 
+  const fitToWidth = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const availableWidth = Math.max(0, el.clientWidth - FLOW_BODY_HORIZONTAL_PADDING);
+    setScale(calculateFitScale(availableWidth, layout.width));
+    el.scrollTop = 0;
+  }, [layout.width]);
+
   useEffect(() => {
     const el = bodyRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') {
-      if (el) centerScrollElement(el);
-      return;
-    }
+    if (!el) return;
+    fitToWidth();
+    if (typeof ResizeObserver === 'undefined') return;
 
-    const recenter = () => {
-      centerScrollElement(el);
-    };
-
-    recenter();
-    const observer = new ResizeObserver(() => {
-      recenter();
-    });
+    const observer = new ResizeObserver(fitToWidth);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [layout.width, layout.height, graph.nodes.length]);
+  }, [fitToWidth, graph, layout.height]);
+
+  const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const factor = event.deltaY > 0 ? 0.9 : 1.1;
+    setScale((current) => clampFlowScale(current * factor));
+  }, []);
 
   return (
     <aside className={styles.flowPanel} aria-label="Flow chart">
@@ -287,7 +310,7 @@ export function FlowChartPanel({
       <div
         ref={bodyRef}
         className={styles.flowBody}
-        data-flow-centered="true"
+        onWheel={handleWheel}
       >
         {graph.nodes.length === 0 ? (
           <p className={styles.emptyState}>
@@ -295,17 +318,30 @@ export function FlowChartPanel({
           </p>
         ) : (
           <div
-            className={styles.flowCanvas}
-            style={{ width: layout.width, height: layout.height }}
+            className={styles.flowCanvasViewport}
+            data-flow-scale-viewport="true"
+            data-flow-scale={scale}
+            style={{
+              width: layout.width * scale,
+              height: layout.height * scale,
+            }}
           >
-            <svg
-              className={styles.flowSvg}
-              width={layout.width}
-              height={layout.height}
-              viewBox={`0 0 ${layout.width} ${layout.height}`}
-              role="img"
-              aria-label="Script flow chart"
+            <div
+              className={styles.flowCanvas}
+              style={{
+                width: layout.width,
+                height: layout.height,
+                transform: `scale(${scale})`,
+              }}
             >
+              <svg
+                className={styles.flowSvg}
+                width={layout.width}
+                height={layout.height}
+                viewBox={`0 0 ${layout.width} ${layout.height}`}
+                role="img"
+                aria-label="Script flow chart"
+              >
               {graph.edges.map((edge, index) => {
                 if (!edge.optionText && ordinaryMergeEdges.has(edge.to)) return null;
                 const from = layout.positions.get(edge.from);
@@ -441,7 +477,8 @@ export function FlowChartPanel({
                   </g>
                 );
               })}
-            </svg>
+              </svg>
+            </div>
           </div>
         )}
       </div>

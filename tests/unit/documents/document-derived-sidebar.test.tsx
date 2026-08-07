@@ -281,6 +281,33 @@ describe('document-derived sidebar tree', () => {
     }
   });
 
+  it('keeps Generate table but removes Generate conversation from Studio documents', () => {
+    const originalDocument = globalThis.document;
+    Object.assign(globalThis, {
+      document: { querySelector: () => null },
+    });
+
+    try {
+      const markup = renderToStaticMarkup(
+        React.createElement(ContextMenu, {
+          x: 10,
+          y: 10,
+          type: 'document',
+          userRole: 'admin',
+          onClose: jest.fn(),
+        })
+      );
+      expect(markup).toContain('Generate table');
+      expect(markup).not.toContain('Generate conversation');
+    } finally {
+      if (originalDocument === undefined) {
+        delete (globalThis as { document?: unknown }).document;
+      } else {
+        globalThis.document = originalDocument;
+      }
+    }
+  });
+
   it('guards stale derived-library move actions and executes document delete cascades', async () => {
     const openMoveLibrary = jest.fn();
     const closeContextMenu = jest.fn();

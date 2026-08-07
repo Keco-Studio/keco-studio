@@ -11,7 +11,7 @@ Improve the Script workspace dialogue and flow-chart presentation, and isolate d
 
 - In Script plot-node dialogue, show branch choice buttons matching library player mode.
 - Center Type 4 / plain scene lines in the visual-novel dialogue view.
-- Fit the Script flow chart so all nodes are visible horizontally without left-right scrolling, while keeping vertical scroll and manual zoom.
+- Fit the Script flow chart so all nodes are visible horizontally without left-right scrolling (narrow trees enlarge to fill width; wide trees shrink), while keeping vertical scroll and manual zoom.
 - Remove Studio's Generate conversation entry and stop Studio from listing or opening `document_export_type === 'script'` libraries.
 
 ## Non-Goals
@@ -62,7 +62,7 @@ Minimal reuse of existing components (Approach 1):
 
 ### Behavior
 
-- On library enter, library switch, graph layout change, or flow panel resize: compute a scale from container width so every node fits horizontally (fit width).
+- On library enter, library switch, graph layout change, or flow panel resize: compute a scale from container width so every node fits horizontally (fit width). Narrow canvases may scale **above** 1 (up to `MAX_FLOW_SCALE`) so the tree fills the panel width; wide canvases still shrink below 1.
 - Set `overflow-x: hidden` so horizontal panning/scrolling is gone.
 - If scaled height still exceeds the viewport, allow vertical scrolling only.
 - Preserve Ctrl/⌘ + wheel (or equivalent) manual zoom. After manual zoom-in that clips horizontally, still hide horizontal scroll; the user can zoom back out. Switching library resets to fit.
@@ -117,7 +117,7 @@ Minimal reuse of existing components (Approach 1):
 
 ### Flow chart
 
-- Wide graphs fit width with no horizontal scrollbar.
+- Wide graphs shrink to fit width with no horizontal scrollbar; narrow graphs enlarge up to `MAX_FLOW_SCALE` to fill width.
 - Tall graphs remain vertically scrollable.
 - Resize and library switch re-fit.
 - Manual zoom works; library switch resets fit.
@@ -134,5 +134,5 @@ Minimal reuse of existing components (Approach 1):
 ## Acceptance Criteria
 
 - Script plot-node dialogue shows player-style branch buttons when options exist, and scene (Type 4) content is centered.
-- Script flow chart shows all nodes without horizontal scrolling after automatic fit, with optional manual zoom and vertical scroll when needed.
+- Script flow chart shows all nodes without horizontal scrolling after automatic fit (including enlarge-to-width for narrow trees), with optional manual zoom and vertical scroll when needed.
 - Studio no longer offers Generate conversation and no longer shows or opens script-derived libraries; Script remains the only UI surface for those libraries and that generation entry.

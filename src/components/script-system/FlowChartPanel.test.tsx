@@ -4,9 +4,29 @@ import type { FlowGraph } from '@/lib/script-system/buildScriptFlowGraph';
 
 jest.mock('./ScriptSplitView.module.css', () => ({}));
 
-import { FlowChartPanel } from './FlowChartPanel';
+import {
+  calculateFitScale,
+  clampFlowScale,
+  FlowChartPanel,
+  MAX_FLOW_SCALE,
+  MIN_FLOW_SCALE,
+} from './FlowChartPanel';
 
 describe('FlowChartPanel', () => {
+  it('fits wide canvases by shrinking and narrow canvases by enlarging', () => {
+    expect(calculateFitScale(500, 1000)).toBe(0.5);
+    expect(calculateFitScale(1200, 600)).toBe(2);
+    expect(calculateFitScale(900, 600)).toBe(1.5);
+    expect(calculateFitScale(3000, 600)).toBe(MAX_FLOW_SCALE);
+    expect(calculateFitScale(0, 600)).toBe(1);
+  });
+
+  it('clamps manual zoom to usable bounds', () => {
+    expect(clampFlowScale(0.01)).toBe(MIN_FLOW_SCALE);
+    expect(clampFlowScale(5)).toBe(MAX_FLOW_SCALE);
+    expect(clampFlowScale(0.75)).toBe(0.75);
+  });
+
   it('renders only plot nodes and places option text on edges', () => {
     const graph: FlowGraph = {
       nodes: [
@@ -32,7 +52,8 @@ describe('FlowChartPanel', () => {
     expect(markup).toContain('\u7b54\u5e03\u9632');
     expect(markup).toContain('\u56de\u5e94\u5973\u5e1d');
     expect(markup).not.toContain('Option0');
-    expect(markup).toContain('data-flow-centered="true"');
+    expect(markup).toContain('data-flow-scale-viewport="true"');
+    expect(markup).not.toContain('data-flow-centered');
     expect(markup).toContain('data-flow-edge-label=');
   });
 

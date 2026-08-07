@@ -399,8 +399,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const {
     folders,
     libraries,
+    allLibraries,
     isLoading: loadingFoldersAndLibraries,
-  } = useSidebarFoldersLibraries(currentIds.projectId);
+  } = useSidebarFoldersLibraries(currentIds.projectId, {
+    excludeScriptLibraries: true,
+  });
 
   const { documents } = useSidebarDocuments(currentIds.projectId);
 
@@ -1082,7 +1085,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     supabase,
     queryClient,
     currentIds,
-    libraries,
+    libraries: allLibraries,
     setError,
     assets,
     fetchAssets,

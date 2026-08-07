@@ -31,6 +31,7 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
     userId: '11111111-1111-4111-8111-111111111111',
     projectId: '22222222-2222-4222-8222-222222222222',
     userRole: 'admin',
+    workspace: 'script',
     ...overrides,
   } as ToolContext;
 }
@@ -95,6 +96,19 @@ describe('generate_from_document', () => {
     expect(preparation.error).toContain('Only admin');
   });
 
+  it('rejects Generate conversation in Studio before resolving the document', async () => {
+    const preparation = await generateFromDocument.prepareConfirmation!(
+      { documentId: '33333333-3333-4333-8333-333333333333', exportType: 'script' },
+      makeCtx({ workspace: 'studio' })
+    );
+
+    expect(preparation).toEqual({
+      success: false,
+      error: 'Generate conversation is available only in Script. Open Script and try again.',
+    });
+    expect(resolveDocumentForToolMock).not.toHaveBeenCalled();
+  });
+
   it('prepareConfirmation seals documentId and exportType for matching RMB path', async () => {
     resolveDocumentForToolMock.mockResolvedValue({
       ok: true,
@@ -121,7 +135,7 @@ describe('generate_from_document', () => {
 
     const preparation = await generateFromDocument.prepareConfirmation!(
       { documentId: '33333333-3333-4333-8333-333333333333', exportType: 'table' },
-      makeCtx()
+      makeCtx({ workspace: 'studio' })
     );
 
     expect(preparation.success).toBe(true);

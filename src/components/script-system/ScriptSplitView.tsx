@@ -35,7 +35,6 @@ import styles from './ScriptSplitView.module.css';
 
 export type ScriptSplitViewProps = {
   libraryId: string;
-  libraryName: string;
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   flowRows: Array<Record<string, string>>;
@@ -45,9 +44,24 @@ export type ScriptSplitViewProps = {
 const MIN_PANE_PX = 240;
 const DIVIDER_WIDTH = 6;
 
+export function resolveOptionTargetPlotNodeId(
+  targetLabel: string,
+  rows: AssetRow[],
+  labelKey: string | undefined,
+  graph: FlowGraph,
+): string | undefined {
+  if (!labelKey) return undefined;
+  const normalizedTarget = targetLabel.trim();
+  if (!normalizedTarget) return undefined;
+  const targetRowIndex = rows.findIndex((row) => (
+    String(row.propertyValues[labelKey] ?? '').trim() === normalizedTarget
+  ));
+  if (targetRowIndex < 0) return undefined;
+  return graph.nodes.find((node) => node.rowIndexes.includes(targetRowIndex))?.id;
+}
+
 export function ScriptSplitView({
   libraryId,
-  libraryName,
   rows,
   scriptColumns,
   flowRows,
@@ -155,6 +169,16 @@ export function ScriptSplitView({
     setDragging(true);
   }, []);
 
+  const selectOptionTarget = useCallback((targetLabel: string) => {
+    const nodeId = resolveOptionTargetPlotNodeId(
+      targetLabel,
+      rows,
+      scriptColumns.labelKey,
+      graph,
+    );
+    if (nodeId) setPlotSelection({ libraryId, nodeId });
+  }, [graph, libraryId, rows, scriptColumns.labelKey]);
+
   return (
     <div className={styles.root}>
       <div
@@ -169,14 +193,12 @@ export function ScriptSplitView({
               : { flex: `${ratio} 1 0%` }
           }
         >
-          <header className={styles.leftHeader}>
-            <h1 className={styles.title}>{libraryName}</h1>
-          </header>
           <div className={styles.leftBody}>
               <VisualNovelScriptView
                 rows={selectedRows}
                 scriptColumns={scriptColumns}
                 mode="plot-node"
+                onSelectOptionTarget={selectOptionTarget}
               />
           </div>
         </div>

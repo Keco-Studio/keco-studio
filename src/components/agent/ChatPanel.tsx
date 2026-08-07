@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -15,9 +16,12 @@ import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
 import { AgentPanelHeader } from './AgentPanelHeader';
 import { useDraggableLauncherPosition } from './useDraggableLauncherPosition';
+import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import styles from './ChatPanel.module.css';
 
 export function ChatPanel() {
+  const pathname = usePathname();
+  const workspace = isScriptSystemPath(pathname) ? 'script' as const : 'studio' as const;
   const { userProfile } = useAuth();
   const {
     currentProjectId,
@@ -52,6 +56,7 @@ export function ChatPanel() {
       currentFolderName: currentFolderName ?? undefined,
       currentLibraryId: currentLibraryId ?? undefined,
       currentLibraryName: currentLibraryName ?? undefined,
+      workspace,
     }),
     [
       userProfile?.id,
@@ -61,6 +66,7 @@ export function ChatPanel() {
       currentFolderName,
       currentLibraryId,
       currentLibraryName,
+      workspace,
     ]
   );
 
@@ -94,7 +100,7 @@ export function ChatPanel() {
       return;
     }
     if (!currentProjectId) return;
-    const scopeKey = `${currentProjectId}|${currentFolderId ?? ''}|${currentLibraryId ?? ''}`;
+    const scopeKey = `${workspace}|${currentProjectId}|${currentFolderId ?? ''}|${currentLibraryId ?? ''}`;
     if (openScopeRef.current === null) {
       openScopeRef.current = scopeKey;
       return;
@@ -104,7 +110,7 @@ export function ChatPanel() {
       setShowHistory(false);
       setPendingSelectionContext(undefined);
     }
-  }, [open, currentProjectId, currentFolderId, currentLibraryId]);
+  }, [open, currentProjectId, currentFolderId, currentLibraryId, workspace]);
 
   // Locked-target label: an existing conversation shows its frozen scope; a new
   // one previews what the current navigation will bind to on first message.

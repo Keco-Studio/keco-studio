@@ -6,6 +6,7 @@ import { interpolateVariables } from '@/lib/story-ir/commands';
 import {
   createScriptPlayerState,
   nextPosition,
+  readScriptOptions,
   renderPlayerContent,
   type ScriptPlayerColumns,
   type ScriptPlayerState,
@@ -27,6 +28,7 @@ interface VisualNovelScriptViewProps {
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   mode?: 'player' | 'plot-node';
+  onSelectOptionTarget?: (targetLabel: string) => void;
 }
 
 export type RevealedScriptRow = {
@@ -137,6 +139,7 @@ export function VisualNovelScriptView({
   rows,
   scriptColumns,
   mode = 'player',
+  onSelectOptionTarget,
 }: VisualNovelScriptViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const {
@@ -187,7 +190,7 @@ export function VisualNovelScriptView({
 
   const filteredRows = useMemo(() => {
     let filtered = rows;
-    if (nameKey) {
+    if (nameKey && mode === 'player') {
       filtered = filtered.filter((row) => {
         const nameVal = row.propertyValues[nameKey];
         return String(nameVal ?? '').trim() !== 'Speaker';
@@ -229,7 +232,14 @@ export function VisualNovelScriptView({
     setPlayerState((state) => nextPosition(state, filteredRows, playerColumns, choice));
   }, [filteredRows, playerColumns]);
 
-  if (!filteredRows.length) {
+  const plotNodeOptions = useMemo(
+    () => mode === 'plot-node'
+      ? rows.flatMap((row) => readScriptOptions(row, playerColumns))
+      : [],
+    [mode, playerColumns, rows],
+  );
+
+  if (!filteredRows.length && plotNodeOptions.length === 0) {
     return <div className={styles.emptyState}>No script data</div>;
   }
 
@@ -348,16 +358,23 @@ export function VisualNovelScriptView({
 
         return renderScriptLine(row.id, typeVal, nameVal, lineContent, action);
       })}
-      {mode === 'player' && playerState.atChoice && (
+      {((mode === 'player' && playerState.atChoice) || plotNodeOptions.length > 0) && (
         <div className={styles.choicePanel}>
-          {playerState.options.map((option) => (
+          {(mode === 'plot-node' ? plotNodeOptions : playerState.options).map((option, position) => (
             <button
-              key={option.index}
+              key={`${option.index}-${position}`}
               type="button"
               className={styles.choiceButton}
-              onClick={() => chooseOption(option.index)}
+              onClick={mode === 'plot-node'
+                ? () => {
+                    if (option.targetLabel) onSelectOptionTarget?.(option.targetLabel);
+                  }
+                : () => chooseOption(option.index)}
             >
-              {interpolateVariables(option.text, playerState.variables)}
+              {interpolateVariables(
+                option.text,
+                mode === 'plot-node' ? {} : playerState.variables,
+              )}
             </button>
           ))}
         </div>
@@ -414,7 +431,7 @@ function renderDialog(
           </div>
           <span className={styles.speakerName}>{speakerName}</span>
           {actionText ? (
-            <span className={styles.actionChip} title={actionText}>
+            <span className={styles.actionChip}>
               {actionText}
             </span>
           ) : null}

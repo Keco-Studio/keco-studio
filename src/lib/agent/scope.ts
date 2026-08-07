@@ -8,11 +8,12 @@
  * conversation.
  */
 
-import type { ConversationScope, ToolContext } from './types';
+import type { AgentWorkspace, ConversationScope, ToolContext } from './types';
 
 /** Live-navigation fields sent by the client when a turn starts. */
 export interface NavigationInput {
   projectId?: string;
+  workspace?: AgentWorkspace;
   currentFolderId?: string;
   currentFolderName?: string;
   currentLibraryId?: string;
@@ -24,9 +25,11 @@ export interface NavigationInput {
  * table (library selected) > folder > project > global (nothing selected).
  */
 export function resolveScopeFromNavigation(nav: NavigationInput): ConversationScope {
+  const workspace = nav.workspace ? { workspace: nav.workspace } : {};
   if (nav.currentLibraryId) {
     return {
       level: 'table',
+      ...workspace,
       projectId: nav.projectId,
       folderId: nav.currentFolderId,
       folderName: nav.currentFolderName,
@@ -37,15 +40,16 @@ export function resolveScopeFromNavigation(nav: NavigationInput): ConversationSc
   if (nav.currentFolderId) {
     return {
       level: 'folder',
+      ...workspace,
       projectId: nav.projectId,
       folderId: nav.currentFolderId,
       folderName: nav.currentFolderName,
     };
   }
   if (nav.projectId) {
-    return { level: 'project', projectId: nav.projectId };
+    return { level: 'project', projectId: nav.projectId, ...workspace };
   }
-  return { level: 'global' };
+  return { level: 'global', ...workspace };
 }
 
 /** Navigation-related subset of ToolContext derived from a bound scope. */
@@ -56,6 +60,7 @@ export type ScopeContextFields = Pick<
   | 'currentFolderName'
   | 'currentLibraryId'
   | 'currentLibraryName'
+  | 'workspace'
 >;
 
 /**
@@ -70,8 +75,10 @@ export function contextFieldsFromScope(
   if (!scope) {
     return { projectId: fallbackProjectId };
   }
+  const workspace = scope.workspace ? { workspace: scope.workspace } : {};
   return {
     projectId: scope.projectId ?? fallbackProjectId,
+    ...workspace,
     currentFolderId: scope.folderId,
     currentFolderName: scope.folderName,
     currentLibraryId: scope.libraryId,

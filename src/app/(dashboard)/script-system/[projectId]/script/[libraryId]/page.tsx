@@ -169,7 +169,6 @@ export default function ScriptLibraryPage() {
   return (
     <ScriptSplitView
       libraryId={libraryId}
-      libraryName={library?.name ?? 'Script'}
       rows={assetRows}
       scriptColumns={scriptColumns}
       flowRows={flowRows}

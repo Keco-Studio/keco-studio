@@ -9,6 +9,19 @@ const FOLDER = 'folder-1';
 const LIBRARY = 'library-1';
 
 describe('resolveScopeFromNavigation', () => {
+  it('freezes the originating workspace into the conversation scope', () => {
+    const scope = resolveScopeFromNavigation({
+      projectId: PROJECT,
+      workspace: 'script',
+    });
+    expect(scope).toEqual({
+      level: 'project',
+      projectId: PROJECT,
+      workspace: 'script',
+    });
+    expect(contextFieldsFromScope(scope, 'fallback').workspace).toBe('script');
+  });
+
   it('resolves table level when a library is selected', () => {
     const scope = resolveScopeFromNavigation({
       projectId: PROJECT,
