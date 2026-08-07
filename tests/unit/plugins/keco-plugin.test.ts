@@ -5,6 +5,7 @@ const repositoryRoot = process.cwd();
 const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
+const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
@@ -36,6 +37,21 @@ function expectProhibited(skill: string, operation: string): void {
 }
 
 describe('Keco Codex plugin contract', () => {
+  it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {
+    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco/.codex-plugin/plugin.json');
+    const v1Skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+    const v2Skill = readFileSync(path.join(godotV2SkillRoot, 'SKILL.md'), 'utf8');
+    const v2Metadata = readFileSync(path.join(godotV2SkillRoot, 'agents', 'openai.yaml'), 'utf8');
+
+    expect(manifest.interface.defaultPrompt).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Keco project document[\s\S]*ordered Godot slices[\s\S]*execute/i),
+    ]));
+    expect(v2Skill).toMatch(/implicit[\s\S]*document-driven|document-driven[\s\S]*implicit/i);
+    expect(v2Skill).toMatch(/V2 takes precedence[\s\S]*bounded simple Slice/i);
+    expect(v2Metadata).toMatch(/allow_implicit_invocation: true/);
+    expect(v1Skill).toMatch(/one (?:bounded |gameplay )?slice/i);
+  });
+
   it('defines isolated trigger cases for Keco-to-Godot development', () => {
     const evaluations = readJson<{
       cases: Array<{

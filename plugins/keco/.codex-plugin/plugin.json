@@ -21,6 +21,7 @@
       "Turn my combat specification into related Keco tables.",
       "Preview a Keco table plan from an existing project document.",
       "Implement the next Godot gameplay slice from my Keco project and evaluate it.",
+      "Read a Keco project document, plan its development ideas as ordered Godot slices, and execute them.",
       "Generate a top-down PixelLab tileset and map-object pack for my Godot scene."
     ],
     "brandColor": "#0F766E",
