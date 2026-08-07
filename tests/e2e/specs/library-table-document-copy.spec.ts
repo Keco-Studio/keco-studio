@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { LoginPage } from '../pages/login.page';
 import {
   createProjectFixture,
@@ -133,6 +135,81 @@ test.describe('Library table copy into document', () => {
     if (owner) await deleteTemporaryUser(admin, owner);
   });
 
+  test('uploads a mixed clipboard image before inserting it into the document', async ({ browser }) => {
+    const context = await browser.newContext();
+    await context.grantPermissions(
+      ['clipboard-read', 'clipboard-write'],
+      { origin: 'http://localhost:3000' },
+    );
+    const page = await context.newPage();
+
+    try {
+      const loginPage = new LoginPage(page);
+      await loginPage.goto();
+      await loginPage.login(owner);
+      await loginPage.expectLoginSuccess();
+      await page.goto(`/${projectId}/doc/${fixture.documentId}`);
+
+      const editor = page.locator('[contenteditable="true"]').first();
+      await expect(editor).toBeVisible({ timeout: 30000 });
+      await expectDocumentLive(page, 'Live', 30_000);
+
+      const pngBase64 = readFileSync(
+        path.resolve(process.cwd(), 'src/assets/images/projectEmptyIcon_2.png'),
+      ).toString('base64');
+      await page.evaluate(async (encodedPng) => {
+        const bytes = Uint8Array.from(atob(encodedPng), (character) =>
+          character.charCodeAt(0)
+        );
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'image/png': new Blob([bytes], { type: 'image/png' }),
+            'text/html': new Blob(
+              ['<img src="https://external.invalid/copied.png" alt="External image">'],
+              { type: 'text/html' },
+            ),
+            'text/plain': new Blob(['External image'], { type: 'text/plain' }),
+          }),
+        ]);
+      }, pngBase64);
+
+      const durablePaste = page.waitForResponse(isDurableDocumentWrite, { timeout: 30000 });
+      await editor.click();
+      await page.keyboard.press('Control+v');
+
+      const pastedImage = editor.getByRole('img', { name: 'image.png' });
+      await expect(pastedImage).toBeVisible({ timeout: 20000 });
+      await expect(pastedImage).toHaveAttribute(
+        'src',
+        /\/storage\/v1\/object\/public\/library-media-files\//,
+      );
+      await expect(pastedImage).not.toHaveAttribute('src', /external\.invalid/);
+      const pastedImageUrl = await pastedImage.getAttribute('src');
+      expect(pastedImageUrl).toBeTruthy();
+      await durablePaste;
+
+      await expect.poll(async () => {
+        const { data, error } = await admin
+          .from('documents')
+          .select('content')
+          .eq('id', fixture.documentId)
+          .single();
+        if (error) throw error;
+        return data.content;
+      }, { timeout: 30000 }).toContain(pastedImageUrl!);
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      const reloadedEditor = page.locator('[contenteditable="true"]').first();
+      await expect(reloadedEditor.getByRole('img', { name: 'image.png' })).toHaveAttribute(
+        'src',
+        pastedImageUrl!,
+        { timeout: 20000 },
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
   test('pastes an editable independent GFM table and persists document edits', async ({ browser }) => {
     const context = await browser.newContext();
     await context.grantPermissions(
@@ -238,6 +315,18 @@ test.describe('Library table copy into document', () => {
         await expect(aliceCell).toContainText('Alicia in document');
         await page.keyboard.press('Tab');
         await durableEdit;
+
+        await expect.poll(async () => {
+          const { data, error } = await admin
+            .from('documents')
+            .select('content')
+            .eq('id', fixture.documentId)
+            .single();
+          if (error) throw error;
+          return data.content;
+        }, { timeout: 30000 }).toMatch(
+          /\|\s*Name\s*\|\s*Score\s*\|[\s\S]*\|\s*:?-+\s*\|\s*:?-+\s*\|[\s\S]*\|\s*Alicia in document\s*\|\s*10\s*\|/,
+        );
       });
 
       await test.step('reload the document and keep the source table unchanged', async () => {
