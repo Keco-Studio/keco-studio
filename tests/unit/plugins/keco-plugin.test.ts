@@ -1,10 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
 const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
+const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
@@ -35,7 +36,40 @@ function expectProhibited(skill: string, operation: string): void {
   );
 }
 
+function skillTextFiles(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) return skillTextFiles(entryPath);
+    return /\.(?:md|ya?ml)$/i.test(entry.name) ? [entryPath] : [];
+  });
+}
+
 describe('Keco Codex plugin contract', () => {
+  it('keeps all Skill Markdown and YAML files ASCII-only', () => {
+    const cjk = /[\u4e00-\u9fff]/u;
+    const skillFiles = skillTextFiles(path.join(pluginRoot, 'skills'));
+    const violations = skillFiles
+      .filter((filePath) => cjk.test(readFileSync(filePath, 'utf8')))
+      .map((filePath) => path.relative(repositoryRoot, filePath));
+
+    expect(violations).toEqual([]);
+  });
+
+  it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {
+    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco/.codex-plugin/plugin.json');
+    const v1Skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+    const v2Skill = readFileSync(path.join(godotV2SkillRoot, 'SKILL.md'), 'utf8');
+    const v2Metadata = readFileSync(path.join(godotV2SkillRoot, 'agents', 'openai.yaml'), 'utf8');
+
+    expect(manifest.interface.defaultPrompt).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Keco project document[\s\S]*ordered Godot slices[\s\S]*execute/i),
+    ]));
+    expect(v2Skill).toMatch(/implicit[\s\S]*document-driven|document-driven[\s\S]*implicit/i);
+    expect(v2Skill).toMatch(/V2 takes precedence[\s\S]*bounded simple Slice/i);
+    expect(v2Metadata).toMatch(/allow_implicit_invocation: true/);
+    expect(v1Skill).toMatch(/one (?:bounded |gameplay )?slice/i);
+  });
+
   it('defines isolated trigger cases for Keco-to-Godot development', () => {
     const evaluations = readJson<{
       cases: Array<{

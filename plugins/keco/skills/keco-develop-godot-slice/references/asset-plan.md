@@ -24,7 +24,7 @@ assets:
     alpha: true
     states: [active]
     targetPath: res://ui/generated/inventory_slot_active.png
-    kecoTableKey: ui-assets
+    kecoTableKey: discovered-asset-registry
     kecoRowKey: inventory-slot-active
     imageFieldLabel: Image
     integrationFiles: []
@@ -36,19 +36,26 @@ warnings: []
 
 Every generated file and the provenance manifest must be listed in `SlicePlan.allowedFiles`. Use stable lower-case file names. Do not overwrite an original reference asset unless the current user instruction explicitly requires replacement.
 
-## Keco UI Assets Table
+## Keco Asset Registry (often named `UI Assets`)
 
-When any asset is planned, include one `UI Assets` table in the DataPlan, reusing a same-purpose compatible table when present. Use `Asset Key` as the stable match field and include:
+When any asset is planned, first read the project's table schemas and select a same-purpose compatible asset registry by semantic fields, not by table name. Existing projects may call it `Media Assets`, `UI Assets`, `Generated Assets`, `Assets`, or something else. Reuse its table ID and stable match field. Create a new registry only when no compatible target exists, and record the discovery snapshot and reason. If two candidates are equally compatible, ask the user before writing.
+
+The selected registry must preserve or add compatible fields for the asset metadata below. These are semantic roles, not literal MCP field keys; resolve each role to the project's actual label and field ID.
 
 | Field | Type | Requirement |
 |---|---|---|
 | Asset Key | string | Required stable key |
+| Asset Kind | string/enum | Required resource type |
 | Display Name | string | Required |
 | Purpose | string | Required |
 | Image | image | Optional while `planned`, required when `ready` |
 | Width | int | Required |
 | Height | int | Required |
+| Transparency | boolean | Required |
 | Target Path | string | Required Godot path |
+| Run ID | string | Required slice run binding |
+| Slice ID | string | Required gameplay slice binding |
+| Generator | string | Provider/generator name, required |
 | PixelLab Operation | string | `create_s_xl_image_pro` |
 | Prompt | string | Exact prompt without credentials |
 | Reference Paths | string_array | Existing UI inputs |
@@ -74,7 +81,7 @@ Use only the PixelLab MCP operation `create_s_xl_image_pro` for UI image generat
 
 The PixelLab API key belongs in the user's environment or MCP configuration. Never ask the user to paste it into chat, read it, print it, store it in Keco, add it to provenance, or write it into the repository.
 
-Generate only after the planned Keco `UI Assets` rows have been read back. Save the PixelLab result to a temporary or planned local path, then verify file type, dimensions, alpha requirement, non-empty pixels, file size at most 5 MiB, and SHA-256 before persistence. A successful tool response is not proof that the asset matches the game.
+Generate only after the planned rows in the selected Keco asset registry have been read back. Save the PixelLab result to a temporary or planned local path, then verify file type, dimensions, alpha requirement, non-empty pixels, file size at most 5 MiB, and SHA-256 before persistence. A successful tool response is not proof that the asset matches the game.
 
 ## Keco Image Persistence
 
@@ -96,7 +103,7 @@ Complete paginated `query_table_rows` read-back and verify the bound image metad
 
 If image upload completes but the row update fails, retain the completed image object and path in the partial-write report, re-read Keco, and retry the row binding without generating or uploading a duplicate. Never delete a Keco image as an automatic rollback.
 
-After read-back, normalize the `UI Assets` table into the snapshot. Download the authoritative bytes from the read-back image URL to a temporary file, verify them against `Output SHA-256`, then atomically materialize `targetPath`. Do not integrate the original PixelLab download directly into Godot.
+After read-back, normalize the selected asset registry into the snapshot. Download the authoritative bytes from the read-back image URL to a temporary file, verify them against `Output SHA-256`, then atomically materialize `targetPath`. Do not integrate the original PixelLab download directly into Godot.
 
 ## Provenance And Evaluation
 

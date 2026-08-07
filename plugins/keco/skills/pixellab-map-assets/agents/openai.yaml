@@ -1,0 +1,19 @@
+interface:
+  display_name: "PixelLab Map Assets"
+  short_description: "Generate PixelLab map tiles and objects for Godot"
+  default_prompt: "Use $pixellab-map-assets to generate the planned PixelLab tilesets, paths, building pieces, and map objects for my Godot scene."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "pixellab"
+      description: "PixelLab map-resource generation MCP server"
+    - type: "mcp"
+      value: "godot"
+      description: "Godot editor and runtime MCP server"
+    - type: "mcp"
+      value: "keco"
+      description: "Keco project tables and asset provenance MCP server"
+
+policy:
+  allow_implicit_invocation: true

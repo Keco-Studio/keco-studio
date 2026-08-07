@@ -1,8 +1,8 @@
 interface:
   display_name: "Godot Slice V2"
-  short_description: "Run a reviewed Keco-to-Godot slice workflow"
+  short_description: "Plan and execute document-driven Keco Godot slices"
   brand_color: "#0F766E"
-  default_prompt: "Use $keco-develop-godot-slice-v2 to run the reviewed Keco Godot slice workflow."
+  default_prompt: "Read the relevant Keco project document, plan its development ideas as ordered Godot slices, and execute them with reviewed runtime evidence."
 dependencies:
   tools:
     - type: "mcp"
@@ -17,4 +17,4 @@ dependencies:
       value: "pixellab"
       description: "PixelLab image generation MCP server"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
