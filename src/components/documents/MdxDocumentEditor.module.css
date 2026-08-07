@@ -50,22 +50,26 @@
   height: auto;
 }
 
-/* Image delete control: outside the image, only on hover/selection. */
+/* Image delete control: mid-right outside the image, only on hover/selection.
+   Overlap the image edge slightly so the hit target stays continuous and the
+   control does not vanish while the cursor moves onto it. */
 .contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']) {
-  top: 0;
-  right: 0;
-  transform: translateY(calc(-100% - 4px));
+  top: 50%;
+  right: auto;
+  left: calc(100% - 4px);
+  transform: translateY(-50%);
+  padding-left: 8px;
+  box-sizing: content-box;
   opacity: 0;
-  pointer-events: none;
   background: transparent;
   transition: opacity 120ms ease;
 }
 
 .contentEditable :global([data-editor-block-type='image']:hover [class*='editImageToolbar']),
 .contentEditable :global([data-editor-block-type='image']:focus-within [class*='editImageToolbar']),
-.contentEditable :global([data-editor-block-type='image']:has([class*='focusedImage']) [class*='editImageToolbar']) {
+.contentEditable :global([data-editor-block-type='image']:has([class*='focusedImage']) [class*='editImageToolbar']),
+.contentEditable :global([data-editor-block-type='image'] [class*='editImageToolbar']:hover) {
   opacity: 1;
-  pointer-events: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
