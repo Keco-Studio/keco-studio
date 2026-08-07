@@ -36,6 +36,8 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(skill).toMatch(/bundled|self-contained/i);
     expect(skill).toMatch(/already consistent[\s\S]*without asking|without asking[\s\S]*already consistent/i);
     expect(skill).toMatch(/unresolved ambiguity[\s\S]*zero writes|zero writes[\s\S]*unresolved ambiguity/i);
+    expect(skill).toMatch(/multiple independent[\s\S]*not[\s\S]*ambiguity/i);
+    expect(skill).toMatch(/planning-document preflight[\s\S]*execution preflight/i);
     expect(skill).toMatch(/spec\.md[\s\S]*plan\.md[\s\S]*status\.json[\s\S]*eval-report\.json/i);
     expect(skill).toMatch(/matching Keco Project[\s\S]*create_document\(projectId, folderId/i);
     expect(skill).toMatch(/local mirror[\s\S]*never as the only copy|never as the only copy[\s\S]*local mirror/i);
@@ -156,6 +158,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(multiSlice).toMatch(/priority[\s\S]*tie-breaker/i);
     expect(multiSlice).toMatch(/third failed repair iteration[\s\S]*persist[\s\S]*evidence[\s\S]*status[\s\S]*eval-report/i);
     expect(multiSlice).toMatch(/third failed repair iteration[\s\S]*roadmap[\s\S]*paused[\s\S]*NEXT_SLICE[\s\S]*clear[\s\S]*ask[\s\S]*user/i);
+    expect(multiSlice).toMatch(/status: planned\|in_progress\|completed\|failed\|blocked[\s\S]*evalResult: passed\|partial\|failed\|blocked_before_write/i);
   });
 
   it('builds deterministic Godot SpriteFrames resources and rejects bad frame geometry', () => {

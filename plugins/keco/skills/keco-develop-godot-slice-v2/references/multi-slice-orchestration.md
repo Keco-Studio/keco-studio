@@ -26,7 +26,8 @@ slices:
     dependencies: []
     priority: 1
     allowedFiles: []
-    status: planned|in_progress|passed|failed|blocked
+    status: planned|in_progress|completed|failed|blocked
+    evalResult: passed|partial|failed|blocked_before_write
     documentIds:
       spec: null
       plan: null
@@ -44,9 +45,10 @@ Create the roadmap with `create_document(projectId, folderId, ...)`, then use `r
 Execute all planned Slices sequentially. A Slice is eligible only after every ID in its dependencies is complete with a read-back `eval-report`. When multiple eligible Slices remain, priority is the tie-breaker; stable `sliceId` order is the deterministic final tie-breaker.
 
 ```text
-SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> WRITE_ROADMAP
+SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> ROADMAP_REVIEW
+  -> PLANNING_DOCUMENT_PREFLIGHT -> WRITE_ROADMAP
   -> SELECT_NEXT_SLICE -> DESIGN -> WRITE_SPEC -> WRITE_PLAN -> PLAN_REVIEW
-  -> PREFLIGHT -> EXECUTE_TASKS -> TASK_REVIEW -> RUNTIME_EVAL
+  -> EXECUTION_PREFLIGHT -> EXECUTE_TASKS -> TASK_REVIEW -> RUNTIME_EVAL
   -> REPAIR -> FINAL_VERIFY -> UPDATE_ROADMAP -> NEXT_SLICE
 ```
 
