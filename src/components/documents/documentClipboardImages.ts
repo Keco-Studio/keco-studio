@@ -32,3 +32,15 @@ export async function uploadClipboardImages(
     return [];
   });
 }
+
+export function clipboardImagesToMarkdown(
+  images: readonly UploadedClipboardImage[],
+): string {
+  return images.map(({ file, url }) => {
+    const altText = file.name
+      .replaceAll('\\', '\\\\')
+      .replaceAll('[', '\\[')
+      .replaceAll(']', '\\]');
+    return `![${altText}](${url})`;
+  }).join('\n\n');
+}

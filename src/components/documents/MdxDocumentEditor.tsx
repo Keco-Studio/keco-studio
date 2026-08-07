@@ -89,6 +89,7 @@ import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
 import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
 import {
+  clipboardImagesToMarkdown,
   extractClipboardImageFiles,
   uploadClipboardImages,
 } from './documentClipboardImages';
@@ -324,8 +325,6 @@ export default function MdxDocumentEditor({
 }: MdxDocumentEditorProps) {
   const editorMethodsRef = useRef<MDXEditorMethods | null>(null);
   const editorFrameRef = useRef<HTMLDivElement>(null);
-  const activeEditor = useCellValue(activeEditor$);
-  const insertImage = usePublisher(insertImage$);
   const collaborationSession = collaboration?.session;
   const collaborationUsername = collaboration?.username;
   const collaborationCursorColor = collaboration?.cursorColor;
@@ -354,16 +353,13 @@ export default function MdxDocumentEditor({
     const imageFiles = extractClipboardImageFiles(event.clipboardData);
     if (imageFiles.length === 0) return;
 
-    if (!activeEditor) return;
-
     event.preventDefault();
     event.stopPropagation();
     void uploadClipboardImages(imageFiles, imageUploadHandler).then((images) => {
-      images.forEach(({ file, url }) => {
-        insertImage({ src: url, altText: file.name });
-      });
+      const markdown = clipboardImagesToMarkdown(images);
+      if (markdown) editorMethodsRef.current?.insertMarkdown(markdown);
     });
-  }, [activeEditor, imageUploadHandler, insertImage, readOnly]);
+  }, [imageUploadHandler, readOnly]);
   const plugins = useMemo(() => {
     const ResourceReference = (props: JsxEditorProps) => (
       <ResourceReferenceEditor

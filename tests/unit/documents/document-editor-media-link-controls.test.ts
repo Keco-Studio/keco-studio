@@ -22,7 +22,8 @@ describe('document editor media and link controls', () => {
     expect(source).toContain('event.preventDefault()');
     expect(source).toContain('event.stopPropagation()');
     expect(source).toContain('uploadClipboardImages(imageFiles, imageUploadHandler)');
-    expect(source).toContain('insertImage({ src: url, altText: file.name })');
+    expect(source).toContain('clipboardImagesToMarkdown(images)');
+    expect(source).toContain('editorMethodsRef.current?.insertMarkdown(markdown)');
   });
 
   it('creates a URL-only link from selected text', () => {
