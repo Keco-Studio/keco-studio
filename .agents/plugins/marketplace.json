@@ -8,7 +8,7 @@
       "name": "keco",
       "source": {
         "source": "local",
-        "path": "./plugins/keco"
+        "path": "./plugins/keco-codex"
       },
       "policy": {
         "installation": "AVAILABLE",

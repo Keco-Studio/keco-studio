@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
-const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco');
+const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-codex');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
@@ -56,7 +56,7 @@ describe('Keco Codex plugin contract', () => {
   });
 
   it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {
-    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco/.codex-plugin/plugin.json');
+    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco-codex/.codex-plugin/plugin.json');
     const v1Skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
     const v2Skill = readFileSync(path.join(godotV2SkillRoot, 'SKILL.md'), 'utf8');
     const v2Metadata = readFileSync(path.join(godotV2SkillRoot, 'agents', 'openai.yaml'), 'utf8');
@@ -144,8 +144,8 @@ describe('Keco Codex plugin contract', () => {
       skills: string;
       mcpServers: string;
       interface?: Record<string, unknown>;
-    }>('plugins/keco/.codex-plugin/plugin.json');
-    const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco/.mcp.json');
+    }>('plugins/keco-codex/.codex-plugin/plugin.json');
+    const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco-codex/.mcp.json');
 
     expect(marketplace.plugins[0]).toMatchObject({
       name: 'keco',
@@ -337,7 +337,7 @@ describe('Keco Codex plugin contract', () => {
   });
 
   it('keeps Godot MCP external and routes overlapping work explicitly', () => {
-    const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco/.mcp.json');
+    const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco-codex/.mcp.json');
     const tableSkill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const godotSkill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
 

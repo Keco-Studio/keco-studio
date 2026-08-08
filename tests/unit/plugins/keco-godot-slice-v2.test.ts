@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
-const skillRoot = path.join(repositoryRoot, 'plugins', 'keco', 'skills', 'keco-develop-godot-slice-v2');
+const skillRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-develop-godot-slice-v2');
 
 function writePngHeader(filePath: string, width: number, height: number): void {
   const header = Buffer.alloc(24);
