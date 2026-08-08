@@ -1,7 +1,7 @@
 # Keco (Claude Code plugin)
 
 Claude Code packaging of the Keco Studio workflows. The Codex packaging lives in
-`plugins/keco/` and is unchanged; this plugin is the Claude-side equivalent with
+`plugins/keco-codex/` and is unchanged; this plugin is the Claude-side equivalent with
 the contract defects found in the 2026-08-07 audit corrected.
 
 ## Install
@@ -48,7 +48,7 @@ Skills reference the shared scripts as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py`
 
 All are offline and contact no service.
 
-## Changes against `plugins/keco/`
+## Changes against `plugins/keco-codex/`
 
 Fixes carried into this packaging:
 

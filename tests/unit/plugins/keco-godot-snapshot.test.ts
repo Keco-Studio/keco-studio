@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
-const skillRoot = path.join(repositoryRoot, 'plugins', 'keco', 'skills', 'keco-develop-godot-slice');
+const skillRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-develop-godot-slice');
 const exporter = path.join(skillRoot, 'scripts', 'export_keco_snapshot.py');
 const validator = path.join(skillRoot, 'scripts', 'validate_snapshot.py');
 const fixturePath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-snapshot-input.json');
