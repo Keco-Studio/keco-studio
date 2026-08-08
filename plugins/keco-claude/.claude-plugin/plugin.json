@@ -1,0 +1,18 @@
+{
+  "name": "keco",
+  "version": "0.4.0",
+  "description": "Build Keco project data and evaluated Godot gameplay slices with guided, review-gated workflows.",
+  "author": {
+    "name": "Keco Studio"
+  },
+  "keywords": [
+    "keco",
+    "godot",
+    "gamedev",
+    "pixellab",
+    "mcp"
+  ],
+  "license": "UNLICENSED",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

@@ -19,6 +19,10 @@ supabase_linux_amd64.tar.gz
 .vercel
 .worktrees/
 .csv
+# Python bytecode from the bundled plugin scripts
+__pycache__/
+*.pyc
+
 # TypeScript build info
 *.tsbuildinfo
 .md
