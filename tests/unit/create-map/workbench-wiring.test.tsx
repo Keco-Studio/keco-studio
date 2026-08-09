@@ -15,6 +15,9 @@ jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 jest.mock('@/features/create-map/hooks/useMapSources', () => ({
   useMapSources: () => ({ projects: [], documents: [], isLoading: false, error: null }),
 }));
+jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
+  useSavedMaps: () => ({ maps: [], isLoading: false, error: null, refetch: jest.fn() }),
+}));
 jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
   useMapDraft: () => ({
     identity: null, status: 'idle', error: null, isDirty: false,
@@ -90,5 +93,40 @@ describe('Create Map workbench controls', () => {
     expect(canvas).toContain('commandForInteraction(');
     expect(canvas).toContain('onPointerCancel={handlePointerCancel}');
     expect(canvas).toMatch(/setInteraction\(null\)[\s\S]*setInteractionPoint\(null\)/);
+  });
+
+  it('installs only a complete, current saved-map request and clears transient editor state', () => {
+    const workbench = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.tsx'),
+      'utf8'
+    );
+
+    expect(workbench).toContain('useSavedMaps()');
+    expect(workbench).toContain('openRequestRef.current');
+    expect(workbench).toContain('setGeneratedImages(new Map())');
+    expect(workbench).toContain("key={draft.identity?.mapId ?? 'local-preview'}");
+
+    const openStart = workbench.indexOf('const openSavedMap');
+    const openEnd = workbench.indexOf('\n  return (', openStart);
+    const openSavedMap = workbench.slice(openStart, openEnd);
+    const loadIndex = openSavedMap.indexOf('await service.loadSavedMap(summary.id)');
+    const prepareIndex = openSavedMap.indexOf('await generation.prepareRestore(');
+    const staleGuardIndex = openSavedMap.indexOf('if (request !== openRequestRef.current) return;');
+
+    expect(loadIndex).toBeGreaterThan(-1);
+    expect(prepareIndex).toBeGreaterThan(loadIndex);
+    expect(staleGuardIndex).toBeGreaterThan(prepareIndex);
+    for (const installation of [
+      'setProjectId(loaded.projectId)',
+      'setDocumentId(loaded.sourceDocumentId)',
+      'setPlan(loaded.plan)',
+      'setEditor(createEditorState(loaded.scene))',
+      'setSelection(null)',
+      'setGeneratedImages(new Map())',
+      'draft.install(loaded)',
+      'generation.installRestore(prepared)',
+    ]) {
+      expect(openSavedMap.indexOf(installation)).toBeGreaterThan(staleGuardIndex);
+    }
   });
 });
