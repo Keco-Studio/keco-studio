@@ -94,10 +94,18 @@ export function plannedAssetsForSubmission(assets: MapGenerationAsset[]): Planne
   return assets.filter((asset): asset is PlannedGenerationAsset => asset.status === 'planned' && asset.id !== null);
 }
 
-export function generationWatchPlan(assets: MapGenerationAsset[]): { active: boolean; pollAssetIds: string[] } {
+export function generationWatchPlan(assets: MapGenerationAsset[]): { active: boolean; pollAssetIds: string[]; key: string } {
+  const watchedAssets = assets.flatMap((asset) =>
+    asset.status === 'queued' || asset.status === 'generating'
+      ? [[asset.status, asset.id] as const]
+      : []
+  ).sort(([leftStatus, leftId], [rightStatus, rightId]) =>
+    leftStatus.localeCompare(rightStatus) || (leftId ?? '').localeCompare(rightId ?? '')
+  );
   return {
-    active: assets.some((asset) => asset.status === 'queued' || asset.status === 'generating'),
+    active: watchedAssets.length > 0,
     pollAssetIds: assets.flatMap((asset) => asset.status === 'generating' && asset.id ? [asset.id] : []),
+    key: JSON.stringify(watchedAssets),
   };
 }
 
@@ -146,6 +154,9 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
   const [error, setError] = useState<string | null>(null);
   const pollActive = useRef(false);
   const submissionActive = useRef(false);
+  const watch = generationWatchPlan(assets);
+  const watchRef = useRef(watch);
+  watchRef.current = watch;
 
   useEffect(() => {
     if (phase === 'idle') setAssets(planRows.map(previewAsset));
@@ -307,13 +318,13 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
   }, [projectId, service, target]);
 
   useEffect(() => {
-    const watch = generationWatchPlan(assets);
     if (!target || !watch.active) return;
     const poll = async () => {
       if (submissionActive.current || pollActive.current) return;
       pollActive.current = true;
       try {
-        await Promise.allSettled(watch.pollAssetIds.map((assetId) =>
+        const latestWatch = watchRef.current;
+        await Promise.allSettled(latestWatch.pollAssetIds.map((assetId) =>
           service.invokePixelLab({ operation: 'poll', projectId, assetId })
         ));
         await refresh(target.revisionId);
@@ -326,7 +337,7 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
     void poll();
     const timer = window.setInterval(() => void poll(), 2500);
     return () => window.clearInterval(timer);
-  }, [assets, projectId, refresh, service, target]);
+  }, [projectId, refresh, service, target, watch.active, watch.key]);
 
   const readyCount = assets.filter((asset) => asset.status === 'ready').length;
   const failedCount = assets.filter((asset) => asset.status === 'failed' || asset.status === 'blocked').length;

@@ -91,4 +91,17 @@ describe('Create Map workbench controls', () => {
     expect(canvas).toContain('onPointerCancel={handlePointerCancel}');
     expect(canvas).toMatch(/setInteraction\(null\)[\s\S]*setInteractionPoint\(null\)/);
   });
+
+  it('keys generation monitoring by semantic watch identity while reading the latest plan', () => {
+    const generation = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/hooks/useMapGeneration.ts'),
+      'utf8'
+    );
+
+    expect(generation).toContain('const watchRef = useRef(watch);');
+    expect(generation).toContain('watchRef.current = watch;');
+    expect(generation).toContain('const latestWatch = watchRef.current;');
+    expect(generation).toMatch(/\}, \[[^\]]*watch\.active[^\]]*watch\.key[^\]]*\]\);/);
+    expect(generation).not.toContain('}, [assets, projectId, refresh, service, target]);');
+  });
 });

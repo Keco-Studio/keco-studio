@@ -140,10 +140,35 @@ describe('prepareGenerationRestore', () => {
       signedUrl: null,
     }));
 
-    expect(generationWatchPlan(assets)).toEqual({
+    expect(generationWatchPlan(assets)).toMatchObject({
       active: true,
       pollAssetIds: ['asset-1'],
     });
+  });
+
+  it('keeps scheduling identity stable for clones and changes it for watched status or ID changes', () => {
+    const rows = buildMapAssetPlans(makeValidMapPlan());
+    const statuses: MapGenerationAsset['status'][] = ['queued', 'generating', 'ready', 'failed'];
+    const assets = rows.map((row, index): MapGenerationAsset => ({
+      ...row,
+      id: `asset-${index}`,
+      status: statuses[index],
+      attemptCount: 0,
+      errorCode: null,
+      storagePath: null,
+      signedUrl: null,
+    }));
+    const clones = assets.map((asset) => ({ ...asset }));
+    const statusChanged = clones.map((asset) =>
+      asset.id === 'asset-0' ? { ...asset, status: 'generating' as const } : asset
+    );
+    const idChanged = clones.map((asset) =>
+      asset.id === 'asset-1' ? { ...asset, id: 'asset-next' } : asset
+    );
+
+    expect(generationWatchPlan(clones).key).toBe(generationWatchPlan(assets).key);
+    expect(generationWatchPlan(statusChanged).key).not.toBe(generationWatchPlan(assets).key);
+    expect(generationWatchPlan(idChanged).key).not.toBe(generationWatchPlan(assets).key);
   });
 
   it('selects only planned assets with IDs for a resumed submission', () => {
