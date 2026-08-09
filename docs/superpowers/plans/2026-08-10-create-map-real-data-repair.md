@@ -181,7 +181,57 @@ const digest = await crypto.subtle.digest('SHA-256', digestBytes);
 
 Run the strict Deno test command again. Expected: type checking succeeds and all PixelLab tests PASS without `--no-check`.
 
-### Task 5: Run the Retained Real-Data Workflow on Port 3000
+### Task 5: Support Real PixelLab MCP Text and Road Overlays
+
+**Files:**
+- Create: `supabase/functions/pixellab-map/provider-response.ts`
+- Create: `supabase/functions/pixellab-map/provider-response.test.ts`
+- Modify: `supabase/functions/pixellab-map/pixellab-client.ts`
+- Modify: `supabase/functions/pixellab-map/pixellab-client.test.ts`
+- Modify: `supabase/functions/pixellab-map/png.ts`
+- Modify: `supabase/functions/pixellab-map/png.test.ts`
+- Modify: `supabase/functions/pixellab-map/index.ts`
+- Modify: `src/features/create-map/CreateMapWorkbench.tsx`
+- Modify: `src/features/create-map/components/MapCanvas.tsx`
+- Modify: `tests/unit/create-map/canvas-renderer.test.ts`
+
+**Interfaces:**
+- Produces: `providerJobId()` and `providerStatus()` for JSON and line-based MCP results.
+- Produces: `PixelLabClient.pollJob()` routing `path_tiles` to `get_tiles_pro(tile_id)`.
+- Produces: `PixelLabClient.downloadResult(result, semantic?)` selecting the first `mask=15` road PNG.
+- Produces: road validation requiring transparency and `MapRenderAsset.underlayAssetKey` rendering terrain before road.
+
+- [ ] **Step 1: Write failing MCP response tests**
+
+Use captured text blocks containing `id:`, `status:`, `error:`, `download:`, placement masks, and storage URLs. Assert job extraction, terminal error classification, `get_tiles_pro` routing, and selection of the first `mask=15` PNG.
+
+- [ ] **Step 2: Verify RED**
+
+Run: `node_modules/.bin/deno test --config supabase/functions/pixellab-map/deno.json --allow-env --allow-net supabase/functions/pixellab-map/provider-response.test.ts supabase/functions/pixellab-map/pixellab-client.test.ts`
+
+Expected: FAIL because real MCP text and path tile polling are unsupported.
+
+- [ ] **Step 3: Implement strict MCP text parsing and path tile routing**
+
+Recognize only whitelisted line keys, preserve JSON parsing, route `path_tiles` to `get_tiles_pro` with `tile_id`, and select the first storage PNG whose placement rule is `mask=15`.
+
+- [ ] **Step 4: Write failing road overlay tests**
+
+Assert road validation requires transparent pixels. Build a one-tile road scene with a road asset carrying `underlayAssetKey` and require canvas draw order `terrain`, then `road`.
+
+- [ ] **Step 5: Verify RED**
+
+Run the focused Deno PNG test and Jest canvas renderer test. Expected: FAIL because road validation is opaque and road tiles replace their terrain.
+
+- [ ] **Step 6: Implement road overlay validation and rendering**
+
+Require transparency for roads, attach each road plan's `terrainKey` as `underlayAssetKey`, and draw that terrain beneath each road tile before drawing the road image.
+
+- [ ] **Step 7: Verify GREEN**
+
+Run all PixelLab Deno tests and Create Map Jest tests. Expected: PASS with strict Deno type checking.
+
+### Task 6: Run the Retained Real-Data Workflow on Port 3000
 
 **Files:**
 - No source changes unless a newly reproduced defect requires another explicit red-green cycle.
