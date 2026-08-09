@@ -206,6 +206,8 @@ export function CreateMapWorkbench() {
     setSelection(null);
   };
   const canSwitchMaps = !draft.isDirty && !['creating', 'saving', 'conflict'].includes(draft.status);
+  const canSwitchMapsRef = useRef(canSwitchMaps);
+  canSwitchMapsRef.current = canSwitchMaps;
   const openSavedMap = async (summary: SavedMapSummary) => {
     if (!canSwitchMaps || summary.id === draft.identity?.mapId) return;
     const request = ++openRequestRef.current;
@@ -220,6 +222,7 @@ export function CreateMapWorkbench() {
         records: loaded.assets,
       });
       if (request !== openRequestRef.current) return;
+      if (!canSwitchMapsRef.current) return;
       setProjectId(loaded.projectId);
       setDocumentId(loaded.sourceDocumentId);
       setPlan(loaded.plan);

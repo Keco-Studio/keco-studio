@@ -103,6 +103,7 @@ describe('Create Map workbench controls', () => {
 
     expect(workbench).toContain('useSavedMaps()');
     expect(workbench).toContain('openRequestRef.current');
+    expect(workbench).toContain('canSwitchMapsRef.current');
     expect(workbench).toContain('setGeneratedImages(new Map())');
     expect(workbench).toContain("key={draft.identity?.mapId ?? 'local-preview'}");
 
@@ -112,10 +113,12 @@ describe('Create Map workbench controls', () => {
     const loadIndex = openSavedMap.indexOf('await service.loadSavedMap(summary.id)');
     const prepareIndex = openSavedMap.indexOf('await generation.prepareRestore(');
     const staleGuardIndex = openSavedMap.indexOf('if (request !== openRequestRef.current) return;');
+    const dirtyGuardIndex = openSavedMap.indexOf('if (!canSwitchMapsRef.current) return;');
 
     expect(loadIndex).toBeGreaterThan(-1);
     expect(prepareIndex).toBeGreaterThan(loadIndex);
     expect(staleGuardIndex).toBeGreaterThan(prepareIndex);
+    expect(dirtyGuardIndex).toBeGreaterThan(staleGuardIndex);
     for (const installation of [
       'setProjectId(loaded.projectId)',
       'setDocumentId(loaded.sourceDocumentId)',
@@ -126,7 +129,7 @@ describe('Create Map workbench controls', () => {
       'draft.install(loaded)',
       'generation.installRestore(prepared)',
     ]) {
-      expect(openSavedMap.indexOf(installation)).toBeGreaterThan(staleGuardIndex);
+      expect(openSavedMap.indexOf(installation)).toBeGreaterThan(dirtyGuardIndex);
     }
   });
 });
