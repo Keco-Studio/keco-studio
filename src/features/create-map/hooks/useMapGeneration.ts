@@ -62,7 +62,8 @@ function verifiedAsset(row: MapAssetPlanRow, record: MapAssetRecord): MapGenerat
     && record.kind === row.kind
     && record.prompt === row.prompt
     && record.requested_capability === row.requestedCapability
-    && canonical(record.generation_params) === canonical(row.generationParams);
+    && canonical(record.generation_params) === canonical(row.generationParams)
+    && canonical(record.metadata) === canonical(row.metadata);
   if (!matches) throw new Error(`Asset plan read-back mismatch: ${row.assetKey}`);
   return {
     ...row,
@@ -77,6 +78,7 @@ function verifiedAsset(row: MapAssetPlanRow, record: MapAssetRecord): MapGenerat
 
 function phaseFor(assets: MapGenerationAsset[]): MapGenerationPhase {
   if (assets.length > 0 && assets.every((asset) => asset.status === 'ready')) return 'ready';
+  if (assets.length > 0 && assets.every((asset) => asset.status === 'planned')) return 'awaiting-confirmation';
   const hasFailure = assets.some((asset) => asset.status === 'failed' || asset.status === 'blocked');
   const hasReady = assets.some((asset) => asset.status === 'ready');
   if (hasFailure && hasReady) return 'partial';

@@ -19,6 +19,10 @@ function assetRecordFor(
   };
 }
 
+function assetRecordsFor(plan: ReturnType<typeof makeValidMapPlan>): MapAssetRecord[] {
+  return buildMapAssetPlans(plan).map((row) => assetRecordFor(row));
+}
+
 describe('prepareGenerationRestore', () => {
   it('matches persisted assets to Plan rows and refreshes ready signed URLs', async () => {
     const plan = makeValidMapPlan();
@@ -50,6 +54,17 @@ describe('prepareGenerationRestore', () => {
     expect(restored.assets.every((asset) => asset.status === 'unplanned')).toBe(true);
   });
 
+  it('restores planned assets to awaiting confirmation', async () => {
+    const plan = makeValidMapPlan();
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records: assetRecordsFor(plan) },
+      jest.fn()
+    );
+
+    expect(restored.phase).toBe('awaiting-confirmation');
+    expect(restored.assets.every((asset) => asset.status === 'planned')).toBe(true);
+  });
+
   it('keeps one unavailable signed URL local without failing the restore', async () => {
     const plan = makeValidMapPlan();
     const row = buildMapAssetPlans(plan)[0];
@@ -66,12 +81,17 @@ describe('prepareGenerationRestore', () => {
     expect(restored.assets.find((asset) => asset.assetKey === row.assetKey)?.signedUrl).toBeNull();
   });
 
-  it('opens an edited current Plan with incompatible old assets as unplanned', async () => {
+  it('opens an edited current Plan with one mismatched metadata field as unplanned', async () => {
     const plan = makeValidMapPlan();
-    const row = buildMapAssetPlans(plan)[0];
-    const stale = assetRecordFor(row, { prompt: `${row.prompt} stale` });
+    const row = buildMapAssetPlans(plan).find((candidate) => candidate.kind === 'road');
+    if (!row) throw new Error('Expected a road asset plan row');
+    const records = assetRecordsFor(plan).map((record) =>
+      record.asset_key === row.assetKey
+        ? { ...record, metadata: { ...record.metadata, width: 999 } }
+        : record
+    );
     const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records: [stale] },
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
       jest.fn()
     );
 
