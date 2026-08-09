@@ -221,4 +221,20 @@ describe('prepareGenerationRestore', () => {
     expect(restored.phase).toBe('idle');
     expect(restored.assets.every((asset) => asset.status === 'unplanned')).toBe(true);
   });
+
+  it('rejects a persisted batch when any record belongs to another Revision', async () => {
+    const plan = makeValidMapPlan();
+    const records = assetRecordsFor(plan).map((record, index) =>
+      index === 0 ? { ...record, map_revision_id: 'revision-other' } : record
+    );
+
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
+      jest.fn()
+    );
+
+    expect(restored.target).toBeNull();
+    expect(restored.phase).toBe('idle');
+    expect(restored.assets.every((asset) => asset.status === 'unplanned')).toBe(true);
+  });
 });

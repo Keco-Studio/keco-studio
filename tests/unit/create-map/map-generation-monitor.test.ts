@@ -111,6 +111,16 @@ async function flushAsync(): Promise<void> {
   await Promise.resolve();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, reject, resolve };
+}
+
 function createMonitorSetup() {
   const runtime = new HookRuntime();
   const service = { invokePixelLab: jest.fn(async (_input: unknown) => undefined) };
@@ -120,10 +130,10 @@ function createMonitorSetup() {
   const target = { mapId: 'map-1', revisionId: 'revision-assets' };
   mockHookRuntime = runtime;
 
-  const render = (assets: MapGenerationAsset[]) => runtime.render(() => {
+  const render = (assets: MapGenerationAsset[], nextTarget = target) => runtime.render(() => {
     useMapGenerationMonitoring({
       watch: generationWatchPlan(assets),
-      target,
+      target: nextTarget,
       projectId: 'project-1',
       service,
       refresh,
@@ -135,7 +145,7 @@ function createMonitorSetup() {
     (input as { assetId: string }).assetId
   );
 
-  return { polledIds, refresh, render, runtime, service };
+  return { polledIds, refresh, render, runtime, service, setError };
 }
 
 beforeEach(() => {
@@ -194,6 +204,53 @@ describe('map generation monitoring lifecycle', () => {
     await flushAsync();
     expect(setup.polledIds()).toEqual(['asset-1', 'asset-2']);
     expect(setup.refresh).toHaveBeenCalledTimes(3);
+
+    setup.runtime.unmount();
+  });
+
+  it('invalidates an old semantic watch cycle without delaying the replacement cycle', async () => {
+    const setup = createMonitorSetup();
+    const oldPoll = deferred<void>();
+    setup.service.invokePixelLab.mockImplementation(async ({ assetId }: { assetId: string }) =>
+      assetId === 'old-asset' ? oldPoll.promise : undefined
+    );
+
+    setup.render([generationAsset('old-asset', 'generating')]);
+    await flushAsync();
+    expect(setup.polledIds()).toEqual(['old-asset']);
+    expect(setup.refresh).not.toHaveBeenCalled();
+
+    setup.render([generationAsset('new-asset', 'generating')]);
+    await flushAsync();
+    expect(setup.polledIds()).toEqual(['old-asset', 'new-asset']);
+    expect(setup.refresh).toHaveBeenCalledTimes(1);
+
+    oldPoll.resolve();
+    await flushAsync();
+    expect(setup.refresh).toHaveBeenCalledTimes(1);
+    expect(setup.setError).not.toHaveBeenCalled();
+
+    setup.runtime.unmount();
+  });
+
+  it('does not report an old target refresh failure after replacing the workspace target', async () => {
+    const setup = createMonitorSetup();
+    const oldRefresh = deferred<void>();
+    setup.refresh.mockImplementation(async (revisionId: string) =>
+      revisionId === 'revision-old' ? oldRefresh.promise : undefined
+    );
+
+    setup.render([generationAsset('old-asset', 'generating')], { mapId: 'map-old', revisionId: 'revision-old' });
+    await flushAsync();
+    expect(setup.refresh).toHaveBeenCalledWith('revision-old');
+
+    setup.render([generationAsset('new-asset', 'generating')], { mapId: 'map-new', revisionId: 'revision-new' });
+    await flushAsync();
+    expect(setup.refresh).toHaveBeenCalledWith('revision-new');
+
+    oldRefresh.reject(new Error('old target refresh failed'));
+    await flushAsync();
+    expect(setup.setError).not.toHaveBeenCalled();
 
     setup.runtime.unmount();
   });

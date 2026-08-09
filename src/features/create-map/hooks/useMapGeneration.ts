@@ -132,31 +132,41 @@ export function useMapGenerationMonitoring({
   setError,
   submissionActive,
 }: UseMapGenerationMonitoringInput): void {
-  const pollActive = useRef(false);
+  const pollActive = useRef<number | null>(null);
+  const monitoringCycle = useRef(0);
   const watchRef = useRef(watch);
   watchRef.current = watch;
+  const targetMapId = target?.mapId;
+  const targetRevisionId = target?.revisionId;
 
   useEffect(() => {
-    if (!target || !watch.active) return;
+    const cycle = ++monitoringCycle.current;
+    if (!targetRevisionId || !watch.active) return;
     const poll = async () => {
-      if (submissionActive.current || pollActive.current) return;
-      pollActive.current = true;
+      if (submissionActive.current || pollActive.current === cycle) return;
+      pollActive.current = cycle;
       try {
         const latestWatch = watchRef.current;
         await Promise.allSettled(latestWatch.pollAssetIds.map((assetId) =>
           service.invokePixelLab({ operation: 'poll', projectId, assetId })
         ));
-        await refresh(target.revisionId);
+        if (monitoringCycle.current !== cycle) return;
+        await refresh(targetRevisionId);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Could not refresh PixelLab progress.');
+        if (monitoringCycle.current === cycle) {
+          setError(cause instanceof Error ? cause.message : 'Could not refresh PixelLab progress.');
+        }
       } finally {
-        pollActive.current = false;
+        if (pollActive.current === cycle) pollActive.current = null;
       }
     };
     void poll();
     const timer = setInterval(() => void poll(), 2500);
-    return () => clearInterval(timer);
-  }, [projectId, refresh, service, setError, submissionActive, target, watch.active, watch.key]);
+    return () => {
+      clearInterval(timer);
+      if (monitoringCycle.current === cycle) monitoringCycle.current += 1;
+    };
+  }, [projectId, refresh, service, setError, submissionActive, targetMapId, targetRevisionId, watch.active, watch.key]);
 }
 
 export async function prepareGenerationRestore(
@@ -165,6 +175,9 @@ export async function prepareGenerationRestore(
 ): Promise<PreparedGenerationRestore> {
   const rows = buildMapAssetPlans(input.plan);
   if (!input.revisionId || input.records.length === 0) {
+    return { target: null, assets: rows.map(previewAsset), phase: 'idle' };
+  }
+  if (input.records.some((record) => record.map_revision_id !== input.revisionId)) {
     return { target: null, assets: rows.map(previewAsset), phase: 'idle' };
   }
   const byKey = new Map(input.records.map((record) => [record.asset_key, record]));

@@ -289,6 +289,11 @@ export function createMapService(supabase: SupabaseClient) {
         .eq('id', map.current_revision_id)
         .single();
       if (error || !data) throw new CreateMapServiceError(error?.code ?? 'load_failed', error?.message);
+      const parsedPlan = MapPlanSchema.safeParse(data.plan);
+      const parsedScene = MapSceneSchema.safeParse(data.scene);
+      if (!parsedPlan.success || !parsedScene.success) {
+        throw new CreateMapServiceError('invalid_saved_map', 'Saved map Plan or Scene is invalid');
+      }
       return {
         identity: {
           mapId,
@@ -296,8 +301,8 @@ export function createMapService(supabase: SupabaseClient) {
           revisionNumber: Number(data.revision_number),
           saveVersion: Number(data.save_version),
         },
-        plan: data.plan as MapPlan,
-        scene: data.scene as MapScene,
+        plan: parsedPlan.data,
+        scene: parsedScene.data,
       };
     },
 

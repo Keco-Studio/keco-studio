@@ -127,7 +127,33 @@ describe('Create Map browser service', () => {
     await expect(createMapService({ from } as never).loadSavedMap('map-1'))
       .rejects.toMatchObject({ code: 'invalid_saved_map' });
   });
+
+  it.each([
+    ['Plan', { schemaVersion: 1 }, makeValidMapScene()],
+    ['Scene', makeValidMapPlan(), { schemaVersion: 1 }],
+  ])('rejects a malformed persisted current draft %s before returning it', async (_kind, plan, scene) => {
+    const from = createCurrentDraftLoadMock(plan, scene);
+
+    await expect(createMapService({ from } as never).loadCurrentDraft('map-1'))
+      .rejects.toMatchObject({ code: 'invalid_saved_map' });
+  });
 });
+
+function createCurrentDraftLoadMock(plan: unknown, scene: unknown) {
+  return jest.fn((table: string) => {
+    if (table === 'map_projects') {
+      return { select: () => ({ eq: () => ({ single: async () => ({
+        data: { current_revision_id: 'revision-current' }, error: null,
+      }) }) }) };
+    }
+    if (table === 'map_revisions') {
+      return { select: () => ({ eq: () => ({ single: async () => ({
+        data: { plan, scene, save_version: 0, revision_number: 1 }, error: null,
+      }) }) }) };
+    }
+    throw new Error(`Unexpected table: ${table}`);
+  });
+}
 
 function makeMapAssetRecord(overrides: Partial<MapAssetRecord> = {}): MapAssetRecord {
   return {
