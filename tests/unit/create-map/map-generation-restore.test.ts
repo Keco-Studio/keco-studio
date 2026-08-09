@@ -203,6 +203,29 @@ describe('prepareGenerationRestore', () => {
     expect(restored.assets.find((asset) => asset.assetKey === row.assetKey)?.signedUrl).toBeNull();
   });
 
+  it('accepts server-owned metadata fields when every planned field still matches', async () => {
+    const plan = makeValidMapPlan();
+    const records = assetRecordsFor(plan).map((record) => ({
+      ...record,
+      status: 'ready' as const,
+      storage_path: `private/${record.asset_key}.png`,
+      metadata: {
+        ...record.metadata,
+        verifiedReadBack: true,
+        schemaFingerprint: 'server-owned-fingerprint',
+      },
+    }));
+
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
+      async (path) => `signed://${path}`
+    );
+
+    expect(restored.target).toEqual({ mapId: 'map-1', revisionId: 'revision-assets' });
+    expect(restored.phase).toBe('ready');
+    expect(restored.assets.every((asset) => asset.status === 'ready' && asset.signedUrl)).toBe(true);
+  });
+
   it('opens an edited current Plan with one mismatched metadata field as unplanned', async () => {
     const plan = makeValidMapPlan();
     const row = buildMapAssetPlans(plan).find((candidate) => candidate.kind === 'road');

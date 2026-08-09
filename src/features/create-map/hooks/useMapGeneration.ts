@@ -57,6 +57,23 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
+function containsPlannedValue(actual: unknown, planned: unknown): boolean {
+  if (Array.isArray(planned)) {
+    return Array.isArray(actual)
+      && actual.length === planned.length
+      && planned.every((value, index) => containsPlannedValue(actual[index], value));
+  }
+  if (planned && typeof planned === 'object') {
+    if (!actual || typeof actual !== 'object' || Array.isArray(actual)) return false;
+    const actualRecord = actual as Record<string, unknown>;
+    return Object.entries(planned as Record<string, unknown>).every(([key, value]) =>
+      Object.prototype.hasOwnProperty.call(actualRecord, key)
+      && containsPlannedValue(actualRecord[key], value)
+    );
+  }
+  return canonical(actual) === canonical(planned);
+}
+
 function previewAsset(row: MapAssetPlanRow): MapGenerationAsset {
   return { ...row, id: null, status: 'unplanned', attemptCount: 0, errorCode: null, storagePath: null, signedUrl: null };
 }
@@ -67,7 +84,7 @@ function verifiedAsset(row: MapAssetPlanRow, record: MapAssetRecord): MapGenerat
     && record.prompt === row.prompt
     && record.requested_capability === row.requestedCapability
     && canonical(record.generation_params) === canonical(row.generationParams)
-    && canonical(record.metadata) === canonical(row.metadata);
+    && containsPlannedValue(record.metadata, row.metadata);
   if (!matches) throw new Error(`Asset plan read-back mismatch: ${row.assetKey}`);
   return {
     ...row,
