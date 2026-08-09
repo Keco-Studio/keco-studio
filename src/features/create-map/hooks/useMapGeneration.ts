@@ -28,6 +28,8 @@ export type MapGenerationAsset = MapAssetPlanRow & {
   signedUrl: string | null;
 };
 
+type PlannedGenerationAsset = MapGenerationAsset & { id: string; status: 'planned' };
+
 export type PublishedTarget = { mapId: string; revisionId: string };
 
 export type PreparedGenerationRestore = {
@@ -78,12 +80,18 @@ function verifiedAsset(row: MapAssetPlanRow, record: MapAssetRecord): MapGenerat
 
 function phaseFor(assets: MapGenerationAsset[]): MapGenerationPhase {
   if (assets.length > 0 && assets.every((asset) => asset.status === 'ready')) return 'ready';
-  if (assets.length > 0 && assets.every((asset) => asset.status === 'planned')) return 'awaiting-confirmation';
+  const hasPlanned = assets.some((asset) => asset.status === 'planned');
+  const hasActive = assets.some((asset) => asset.status === 'queued' || asset.status === 'generating');
+  if (hasPlanned && !hasActive) return 'awaiting-confirmation';
   const hasFailure = assets.some((asset) => asset.status === 'failed' || asset.status === 'blocked');
   const hasReady = assets.some((asset) => asset.status === 'ready');
   if (hasFailure && hasReady) return 'partial';
   if (hasFailure && assets.every((asset) => ['ready', 'failed', 'blocked'].includes(asset.status))) return 'failed';
   return 'generating';
+}
+
+export function plannedAssetsForSubmission(assets: MapGenerationAsset[]): PlannedGenerationAsset[] {
+  return assets.filter((asset): asset is PlannedGenerationAsset => asset.status === 'planned' && asset.id !== null);
 }
 
 export async function prepareGenerationRestore(
@@ -219,13 +227,14 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
   }, [canPrepare, plan, projectId, publishForGeneration, service]);
 
   const confirm = useCallback(async () => {
-    if (!target || phase !== 'awaiting-confirmation' || assets.some((asset) => !asset.id || asset.status !== 'planned')) return;
+    const plannedAssets = plannedAssetsForSubmission(assets);
+    if (!target || phase !== 'awaiting-confirmation' || plannedAssets.length === 0) return;
     setPhase('submitting');
     setError(null);
     submissionActive.current = true;
     try {
       await submitMapAssetsInBatches(
-        assets,
+        plannedAssets,
         async (asset) => {
           await service.invokePixelLab({
             operation: 'submit',

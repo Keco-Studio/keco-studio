@@ -1,5 +1,9 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { prepareGenerationRestore } from '@/features/create-map/hooks/useMapGeneration';
+import {
+  plannedAssetsForSubmission,
+  prepareGenerationRestore,
+  type MapGenerationAsset,
+} from '@/features/create-map/hooks/useMapGeneration';
 import { buildMapAssetPlans, type MapAssetPlanRow } from '@/features/create-map/model/mapAssetPlan';
 import type { MapAssetRecord } from '@/features/create-map/services/createMapService';
 import { makeValidMapPlan } from './fixtures';
@@ -63,6 +67,52 @@ describe('prepareGenerationRestore', () => {
 
     expect(restored.phase).toBe('awaiting-confirmation');
     expect(restored.assets.every((asset) => asset.status === 'planned')).toBe(true);
+  });
+
+  it('restores mixed ready and planned assets to awaiting confirmation', async () => {
+    const plan = makeValidMapPlan();
+    const records = assetRecordsFor(plan).map((record, index) =>
+      index === 0 ? { ...record, status: 'ready' as const } : record
+    );
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
+      jest.fn()
+    );
+
+    expect(restored.phase).toBe('awaiting-confirmation');
+    expect(restored.assets.map((asset) => asset.status)).toContain('ready');
+    expect(restored.assets.map((asset) => asset.status)).toContain('planned');
+  });
+
+  it('restores terminal and planned assets to awaiting confirmation when no work is active', async () => {
+    const plan = makeValidMapPlan();
+    const records = assetRecordsFor(plan).map((record, index) =>
+      index === 0 ? { ...record, status: 'ready' as const }
+        : index === 1 ? { ...record, status: 'failed' as const }
+          : record
+    );
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
+      jest.fn()
+    );
+
+    expect(restored.phase).toBe('awaiting-confirmation');
+  });
+
+  it('selects only planned assets with IDs for a resumed submission', () => {
+    const rows = buildMapAssetPlans(makeValidMapPlan());
+    const statuses: MapGenerationAsset['status'][] = ['ready', 'planned', 'failed', 'planned'];
+    const assets = rows.map((row, index): MapGenerationAsset => ({
+      ...row,
+      id: index === 3 ? null : `asset-${index}`,
+      status: statuses[index],
+      attemptCount: 0,
+      errorCode: null,
+      storagePath: null,
+      signedUrl: null,
+    }));
+
+    expect(plannedAssetsForSubmission(assets).map((asset) => asset.id)).toEqual(['asset-1']);
   });
 
   it('keeps one unavailable signed URL local without failing the restore', async () => {
