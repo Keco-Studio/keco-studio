@@ -1,5 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
+  generationWatchPlan,
   plannedAssetsForSubmission,
   prepareGenerationRestore,
   type MapGenerationAsset,
@@ -97,6 +98,52 @@ describe('prepareGenerationRestore', () => {
     );
 
     expect(restored.phase).toBe('awaiting-confirmation');
+  });
+
+  it('restores queued-only assets as active generation work', async () => {
+    const plan = makeValidMapPlan();
+    const records = assetRecordsFor(plan).map((record) => ({ ...record, status: 'queued' as const }));
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
+      jest.fn()
+    );
+
+    expect(restored.phase).toBe('generating');
+    expect(restored.assets.every((asset) => asset.status === 'queued')).toBe(true);
+  });
+
+  it('restores queued and planned assets as active generation work', async () => {
+    const plan = makeValidMapPlan();
+    const records = assetRecordsFor(plan).map((record, index) =>
+      index === 0 ? { ...record, status: 'queued' as const } : record
+    );
+    const restored = await prepareGenerationRestore(
+      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
+      jest.fn()
+    );
+
+    expect(restored.phase).toBe('generating');
+    expect(restored.assets.map((asset) => asset.status)).toContain('queued');
+    expect(restored.assets.map((asset) => asset.status)).toContain('planned');
+  });
+
+  it('watches queued assets but selects only generating assets for direct polling', () => {
+    const rows = buildMapAssetPlans(makeValidMapPlan());
+    const statuses: MapGenerationAsset['status'][] = ['queued', 'generating', 'ready', 'failed'];
+    const assets = rows.map((row, index): MapGenerationAsset => ({
+      ...row,
+      id: `asset-${index}`,
+      status: statuses[index],
+      attemptCount: 0,
+      errorCode: null,
+      storagePath: null,
+      signedUrl: null,
+    }));
+
+    expect(generationWatchPlan(assets)).toEqual({
+      active: true,
+      pollAssetIds: ['asset-1'],
+    });
   });
 
   it('selects only planned assets with IDs for a resumed submission', () => {

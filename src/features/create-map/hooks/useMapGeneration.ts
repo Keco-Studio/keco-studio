@@ -94,6 +94,13 @@ export function plannedAssetsForSubmission(assets: MapGenerationAsset[]): Planne
   return assets.filter((asset): asset is PlannedGenerationAsset => asset.status === 'planned' && asset.id !== null);
 }
 
+export function generationWatchPlan(assets: MapGenerationAsset[]): { active: boolean; pollAssetIds: string[] } {
+  return {
+    active: assets.some((asset) => asset.status === 'queued' || asset.status === 'generating'),
+    pollAssetIds: assets.flatMap((asset) => asset.status === 'generating' && asset.id ? [asset.id] : []),
+  };
+}
+
 export async function prepareGenerationRestore(
   input: { mapId: string; revisionId: string | null; plan: MapPlan; records: MapAssetRecord[] },
   createSignedUrl: (storagePath: string) => Promise<string>
@@ -300,13 +307,15 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
   }, [projectId, service, target]);
 
   useEffect(() => {
-    if (!target || !assets.some((asset) => asset.status === 'generating')) return;
+    const watch = generationWatchPlan(assets);
+    if (!target || !watch.active) return;
     const poll = async () => {
       if (submissionActive.current || pollActive.current) return;
       pollActive.current = true;
       try {
-        const pending = assets.filter((asset) => asset.id && asset.status === 'generating');
-        await Promise.allSettled(pending.map((asset) => service.invokePixelLab({ operation: 'poll', projectId, assetId: asset.id })));
+        await Promise.allSettled(watch.pollAssetIds.map((assetId) =>
+          service.invokePixelLab({ operation: 'poll', projectId, assetId })
+        ));
         await refresh(target.revisionId);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not refresh PixelLab progress.');
