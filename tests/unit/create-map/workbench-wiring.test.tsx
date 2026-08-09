@@ -17,8 +17,9 @@ jest.mock('@/features/create-map/hooks/useMapSources', () => ({
 }));
 jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
   useMapDraft: () => ({
-    identity: null, status: 'idle', error: null,
-    create: jest.fn(), reload: jest.fn(), saveAsNewRevision: jest.fn(),
+    identity: null, status: 'idle', error: null, isDirty: false,
+    create: jest.fn(), reload: jest.fn(), saveAsNewRevision: jest.fn(), install: jest.fn(),
+    publishForGeneration: jest.fn(),
   }),
 }));
 
