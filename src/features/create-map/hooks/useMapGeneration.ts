@@ -30,6 +30,8 @@ export type MapGenerationAsset = MapAssetPlanRow & {
 
 type PlannedGenerationAsset = MapGenerationAsset & { id: string; status: 'planned' };
 
+export type GenerationWatchPlan = { active: boolean; pollAssetIds: string[]; key: string };
+
 export type PublishedTarget = { mapId: string; revisionId: string };
 
 export type PreparedGenerationRestore = {
@@ -94,7 +96,7 @@ export function plannedAssetsForSubmission(assets: MapGenerationAsset[]): Planne
   return assets.filter((asset): asset is PlannedGenerationAsset => asset.status === 'planned' && asset.id !== null);
 }
 
-export function generationWatchPlan(assets: MapGenerationAsset[]): { active: boolean; pollAssetIds: string[]; key: string } {
+export function generationWatchPlan(assets: MapGenerationAsset[]): GenerationWatchPlan {
   const watchedAssets = assets.flatMap((asset) =>
     asset.status === 'queued' || asset.status === 'generating'
       ? [[asset.status, asset.id] as const]
@@ -107,6 +109,54 @@ export function generationWatchPlan(assets: MapGenerationAsset[]): { active: boo
     pollAssetIds: assets.flatMap((asset) => asset.status === 'generating' && asset.id ? [asset.id] : []),
     key: JSON.stringify(watchedAssets),
   };
+}
+
+type UseMapGenerationMonitoringInput = {
+  watch: GenerationWatchPlan;
+  target: PublishedTarget | null;
+  projectId: string;
+  service: {
+    invokePixelLab: (input: { operation: 'poll'; projectId: string; assetId: string }) => Promise<unknown>;
+  };
+  refresh: (revisionId: string) => Promise<void>;
+  setError: (error: string | null) => void;
+  submissionActive: { current: boolean };
+};
+
+export function useMapGenerationMonitoring({
+  watch,
+  target,
+  projectId,
+  service,
+  refresh,
+  setError,
+  submissionActive,
+}: UseMapGenerationMonitoringInput): void {
+  const pollActive = useRef(false);
+  const watchRef = useRef(watch);
+  watchRef.current = watch;
+
+  useEffect(() => {
+    if (!target || !watch.active) return;
+    const poll = async () => {
+      if (submissionActive.current || pollActive.current) return;
+      pollActive.current = true;
+      try {
+        const latestWatch = watchRef.current;
+        await Promise.allSettled(latestWatch.pollAssetIds.map((assetId) =>
+          service.invokePixelLab({ operation: 'poll', projectId, assetId })
+        ));
+        await refresh(target.revisionId);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Could not refresh PixelLab progress.');
+      } finally {
+        pollActive.current = false;
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 2500);
+    return () => clearInterval(timer);
+  }, [projectId, refresh, service, setError, submissionActive, target, watch.active, watch.key]);
 }
 
 export async function prepareGenerationRestore(
@@ -152,11 +202,8 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
   const [phase, setPhase] = useState<MapGenerationPhase>('idle');
   const [target, setTarget] = useState<PublishedTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pollActive = useRef(false);
   const submissionActive = useRef(false);
   const watch = generationWatchPlan(assets);
-  const watchRef = useRef(watch);
-  watchRef.current = watch;
 
   useEffect(() => {
     if (phase === 'idle') setAssets(planRows.map(previewAsset));
@@ -317,27 +364,7 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
     }
   }, [projectId, service, target]);
 
-  useEffect(() => {
-    if (!target || !watch.active) return;
-    const poll = async () => {
-      if (submissionActive.current || pollActive.current) return;
-      pollActive.current = true;
-      try {
-        const latestWatch = watchRef.current;
-        await Promise.allSettled(latestWatch.pollAssetIds.map((assetId) =>
-          service.invokePixelLab({ operation: 'poll', projectId, assetId })
-        ));
-        await refresh(target.revisionId);
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Could not refresh PixelLab progress.');
-      } finally {
-        pollActive.current = false;
-      }
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 2500);
-    return () => window.clearInterval(timer);
-  }, [projectId, refresh, service, target, watch.active, watch.key]);
+  useMapGenerationMonitoring({ watch, target, projectId, service, refresh, setError, submissionActive });
 
   const readyCount = assets.filter((asset) => asset.status === 'ready').length;
   const failedCount = assets.filter((asset) => asset.status === 'failed' || asset.status === 'blocked').length;
