@@ -1,8 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { listDocuments } from '@/lib/services/documentService';
 import { listProjects } from '@/lib/services/projectService';
-import { MapPlanSchema, type MapPlan } from '../model/mapPlanSchema';
-import { MapSceneSchema, type MapScene } from '../model/mapSceneSchema';
+import { MapPlanSchema, MapPlanV2Schema, type MapPlan, type MapPlanV2 } from '../model/mapPlanSchema';
+import {
+  MapSceneSchema,
+  MapSceneV2Schema,
+  validateMapSceneV2,
+  type MapAssetKind,
+  type MapScene,
+  type MapSceneV2,
+} from '../model/mapSceneSchema';
 
 export type MapSourceToken = {
   documentId: string;
@@ -22,7 +29,7 @@ export type MapAssetRecord = {
   id: string;
   map_revision_id: string;
   asset_key: string;
-  kind: 'terrain' | 'road' | 'object' | 'inpaint';
+  kind: 'terrain' | 'road' | 'object' | 'inpaint' | 'path' | 'obstacle' | 'background';
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'blocked';
   requested_capability: string | null;
   prompt: string;
@@ -35,6 +42,24 @@ export type MapAssetRecord = {
   has_transparency: boolean | null;
   last_error_code: string | null;
   attempt_count: number;
+  generation_id?: string | null;
+  plan_fingerprint?: string | null;
+};
+
+export type MapRevisionRowV2 = {
+  id: string;
+  map_project_id: string;
+  revision_number: number;
+  save_version: number;
+  parent_revision_id: string | null;
+  source_document_id: string | null;
+  source_document_updated_at: string | null;
+  source_epoch: number | null;
+  source_revision: number | null;
+  schema_version: 2;
+  plan: unknown;
+  scene: unknown;
+  status: 'draft' | 'generating' | 'partial' | 'ready' | 'failed';
 };
 
 export type SavedMapSummary = {
@@ -56,6 +81,30 @@ export type SavedMapWorkspace = {
   assets: MapAssetRecord[];
 };
 
+export type SavedMapWorkspaceV2 = {
+  identity: MapDraftIdentity;
+  plan: MapPlanV2;
+  scene: MapSceneV2;
+  projectId: string;
+  sourceDocumentId: string | null;
+  assetRevisionId: string | null;
+  assets: MapAssetRecord[];
+};
+
+export type CreateMapAssetPlanV2Input = {
+  revisionId: string;
+  generationId: string;
+  assetKey: string;
+  kind: MapAssetKind;
+  prompt: string;
+  requestedCapability: string | null;
+  generationParams: Record<string, unknown>;
+  referenceAssetIds: string[];
+  referenceHashes: string[];
+  planFingerprint: string;
+  metadata: Record<string, unknown>;
+};
+
 export class CreateMapServiceError extends Error {
   constructor(readonly code: string, message = code) {
     super(message);
@@ -74,6 +123,19 @@ function projectName(value: unknown): string {
   return relation && typeof relation === 'object' && typeof (relation as { name?: unknown }).name === 'string'
     ? (relation as { name: string }).name
     : 'Unknown project';
+}
+
+function parseMapV2(planInput: unknown, sceneInput: unknown): { plan: MapPlanV2; scene: MapSceneV2 } {
+  const plan = MapPlanV2Schema.safeParse(planInput);
+  const scene = MapSceneV2Schema.safeParse(sceneInput);
+  if (!plan.success || !scene.success) {
+    throw new CreateMapServiceError('invalid_saved_map', 'Saved map Plan or Scene is invalid');
+  }
+  const validation = validateMapSceneV2(plan.data, scene.data);
+  if (validation.success === false) {
+    throw new CreateMapServiceError('invalid_saved_map', validation.issues.map((issue) => issue.message).join('; '));
+  }
+  return { plan: plan.data, scene: validation.data };
 }
 
 async function listMapAssets(supabase: SupabaseClient, revisionId: string): Promise<MapAssetRecord[]> {
@@ -167,6 +229,24 @@ export function createMapService(supabase: SupabaseClient) {
       });
     },
 
+    async listSavedMapsV2(): Promise<SavedMapSummary[]> {
+      const { data, error } = await supabase
+        .from('map_projects')
+        .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name)')
+        .eq('current_revision.schema_version', 2)
+        .order('updated_at', { ascending: false })
+        .limit(50);
+      if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
+      return (data ?? []).flatMap((row) => {
+        if (!row.current_revision_id) return [];
+        return [{
+          id: String(row.id), projectId: String(row.project_id), projectName: projectName(row.projects),
+          name: String(row.name), currentRevisionId: String(row.current_revision_id),
+          updatedAt: String(row.updated_at),
+        }];
+      });
+    },
+
     async loadSavedMap(mapId: string): Promise<SavedMapWorkspace> {
       const { data: map, error: mapError } = await supabase
         .from('map_projects').select('project_id, current_revision_id').eq('id', mapId).single();
@@ -205,6 +285,40 @@ export function createMapService(supabase: SupabaseClient) {
       };
     },
 
+    async loadSavedMapV2(mapId: string): Promise<SavedMapWorkspaceV2> {
+      const { data: map, error: mapError } = await supabase
+        .from('map_projects').select('project_id, current_revision_id').eq('id', mapId).single();
+      if (mapError || !map?.current_revision_id) {
+        throw new CreateMapServiceError(mapError?.code ?? 'map_load_failed', mapError?.message ?? 'Map has no current revision');
+      }
+      const { data: revision, error: revisionError } = await supabase
+        .from('map_revisions')
+        .select('id, revision_number, save_version, source_document_id, schema_version, plan, scene')
+        .eq('id', map.current_revision_id)
+        .eq('schema_version', 2)
+        .single();
+      if (revisionError || !revision) {
+        throw new CreateMapServiceError(revisionError?.code ?? 'map_load_failed', revisionError?.message);
+      }
+      const parsed = parseMapV2(revision.plan, revision.scene);
+      const assetRevisionId = parsed.scene.background?.sourceRevisionId ?? null;
+      const assets = assetRevisionId ? await listMapAssets(supabase, assetRevisionId) : [];
+      return {
+        identity: {
+          mapId,
+          revisionId: String(revision.id),
+          revisionNumber: Number(revision.revision_number),
+          saveVersion: Number(revision.save_version),
+        },
+        plan: parsed.plan,
+        scene: parsed.scene,
+        projectId: String(map.project_id),
+        sourceDocumentId: revision.source_document_id == null ? null : String(revision.source_document_id),
+        assetRevisionId,
+        assets,
+      };
+    },
+
     async createPlan(projectId: string, documentId: string): Promise<{ plan: MapPlan; sourceToken: MapSourceToken }> {
       const payload = await responseJson(await fetch('/api/create-map/plan', {
         method: 'POST',
@@ -230,8 +344,46 @@ export function createMapService(supabase: SupabaseClient) {
       return { mapId: row.map_id, revisionId: row.draft_revision_id, revisionNumber: row.revision_number, saveVersion: row.save_version };
     },
 
+    async createProjectV2(
+      projectId: string,
+      planInput: MapPlanV2,
+      sceneInput: MapSceneV2,
+      source: MapSourceToken | null
+    ): Promise<MapDraftIdentity> {
+      const { plan, scene } = parseMapV2(planInput, sceneInput);
+      const { data, error } = await supabase.rpc('create_map_project_v2', {
+        p_project_id: projectId,
+        p_name: plan.name,
+        p_source_document_id: source?.documentId ?? null,
+        p_source_document_updated_at: source?.documentUpdatedAt ?? null,
+        p_source_epoch: source?.epoch ?? null,
+        p_source_revision: source?.revision ?? null,
+        p_plan: plan,
+        p_scene: scene,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'create_failed', error.message);
+      const row = firstRow<{ map_id: string; draft_revision_id: string; revision_number: number; save_version: number }>(data);
+      return { mapId: row.map_id, revisionId: row.draft_revision_id, revisionNumber: row.revision_number, saveVersion: row.save_version };
+    },
+
     async saveDraft(identity: MapDraftIdentity, plan: MapPlan, scene: MapScene): Promise<number> {
       const { data, error } = await supabase.rpc('save_map_draft', {
+        p_map_id: identity.mapId,
+        p_revision_id: identity.revisionId,
+        p_expected_save_version: identity.saveVersion,
+        p_plan: plan,
+        p_scene: scene,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'save_failed', error.message);
+      const row = firstRow<{ status: string; save_version: number | null }>(data);
+      if (row.status === 'conflict') throw new CreateMapServiceError('save_conflict');
+      if (row.status !== 'saved' || row.save_version == null) throw new CreateMapServiceError('invalid_response');
+      return row.save_version;
+    },
+
+    async saveDraftV2(identity: MapDraftIdentity, planInput: MapPlanV2, sceneInput: MapSceneV2): Promise<number> {
+      const { plan, scene } = parseMapV2(planInput, sceneInput);
+      const { data, error } = await supabase.rpc('save_map_draft_v2', {
         p_map_id: identity.mapId,
         p_revision_id: identity.revisionId,
         p_expected_save_version: identity.saveVersion,
@@ -316,6 +468,21 @@ export function createMapService(supabase: SupabaseClient) {
       return firstRow<{ status: string; published_revision_id: string; next_draft_revision_id: string }>(data);
     },
 
+    async publishV2(identity: MapDraftIdentity) {
+      const { data, error } = await supabase.rpc('publish_map_revision_v2', {
+        p_map_id: identity.mapId,
+        p_draft_revision_id: identity.revisionId,
+        p_expected_save_version: identity.saveVersion,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'publish_failed', error.message);
+      const row = firstRow<{ status: string; published_revision_id: string | null; next_draft_revision_id: string | null }>(data);
+      if (row.status === 'conflict') throw new CreateMapServiceError('save_conflict');
+      if (row.status !== 'published' || !row.published_revision_id || !row.next_draft_revision_id) {
+        throw new CreateMapServiceError('invalid_response');
+      }
+      return row as { status: 'published'; published_revision_id: string; next_draft_revision_id: string };
+    },
+
     async readAssetPlan(assetId: string): Promise<MapAssetRecord> {
       const { data, error } = await supabase.from('map_assets').select('*').eq('id', assetId).single();
       if (error || !data) throw new CreateMapServiceError(error?.code ?? 'asset_load_failed', error?.message);
@@ -334,6 +501,24 @@ export function createMapService(supabase: SupabaseClient) {
 
     async createAssetPlan(input: Record<string, unknown>) {
       const { data, error } = await supabase.rpc('create_map_asset_plan', input);
+      if (error) throw new CreateMapServiceError(error.code ?? 'asset_plan_failed', error.message);
+      return firstRow<{ asset_id: string; status: string }>(data);
+    },
+
+    async createAssetPlanV2(input: CreateMapAssetPlanV2Input) {
+      const { data, error } = await supabase.rpc('create_map_asset_plan_v2', {
+        p_revision_id: input.revisionId,
+        p_generation_id: input.generationId,
+        p_asset_key: input.assetKey,
+        p_kind: input.kind,
+        p_prompt: input.prompt,
+        p_requested_capability: input.requestedCapability,
+        p_generation_params: input.generationParams,
+        p_reference_asset_ids: input.referenceAssetIds,
+        p_reference_hashes: input.referenceHashes,
+        p_plan_fingerprint: input.planFingerprint,
+        p_metadata: input.metadata,
+      });
       if (error) throw new CreateMapServiceError(error.code ?? 'asset_plan_failed', error.message);
       return firstRow<{ asset_id: string; status: string }>(data);
     },

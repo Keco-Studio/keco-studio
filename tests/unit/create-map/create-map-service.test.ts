@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { makeValidMapPlan, makeValidMapScene } from './fixtures';
+import {
+  makeEmptyMapSceneV2,
+  makeValidMapPlan,
+  makeValidMapPlanV2,
+  makeValidMapScene,
+} from './fixtures';
 import {
   CreateMapServiceError,
   createMapService,
@@ -36,6 +41,39 @@ describe('Create Map browser service', () => {
     await expect(service.saveDraft(identity, makeValidMapPlan(), makeValidMapScene()))
       .rejects.toMatchObject(new CreateMapServiceError('save_conflict'));
     expect(rpc).toHaveBeenCalledWith('save_map_draft', expect.objectContaining({ p_expected_save_version: 4 }));
+  });
+
+  it('creates a description-only V2 project with a completely null source tuple', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [{ map_id: 'map-v2', draft_revision_id: 'revision-v2', revision_number: 1, save_version: 0 }],
+      error: null,
+    }));
+    const plan = makeValidMapPlanV2();
+    const scene = makeEmptyMapSceneV2();
+
+    await expect(createMapService({ rpc } as never).createProjectV2('project-1', plan, scene, null))
+      .resolves.toEqual({ mapId: 'map-v2', revisionId: 'revision-v2', revisionNumber: 1, saveVersion: 0 });
+    expect(rpc).toHaveBeenCalledWith('create_map_project_v2', expect.objectContaining({
+      p_name: plan.name,
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: plan,
+      p_scene: scene,
+    }));
+  });
+
+  it('maps V2 compare-and-swap conflicts to the same stable service error', async () => {
+    const rpc = jest.fn(async () => ({ data: [{ status: 'conflict', save_version: null }], error: null }));
+    const identity = { mapId: 'map-v2', revisionId: 'revision-v2', revisionNumber: 1, saveVersion: 3 };
+
+    await expect(createMapService({ rpc } as never).saveDraftV2(
+      identity,
+      makeValidMapPlanV2(),
+      makeEmptyMapSceneV2()
+    )).rejects.toMatchObject(new CreateMapServiceError('save_conflict'));
+    expect(rpc).toHaveBeenCalledWith('save_map_draft_v2', expect.objectContaining({ p_expected_save_version: 3 }));
   });
 
   it('creates editable scene objects and Keco obstacle geometry from a plan', () => {
@@ -88,6 +126,46 @@ describe('Create Map browser service', () => {
     expect(limit).toHaveBeenCalledWith(50);
   });
 
+  it('lists only maps whose current revision is schema V2', async () => {
+    const limit = jest.fn(async () => ({ data: [], error: null }));
+    const order = jest.fn(() => ({ limit }));
+    const eq = jest.fn(() => ({ order }));
+    const select = jest.fn(() => ({ eq }));
+    const from = jest.fn(() => ({ select }));
+
+    await expect(createMapService({ from } as never).listSavedMapsV2()).resolves.toEqual([]);
+
+    expect(select.mock.calls[0][0]).toContain('!inner(schema_version)');
+    expect(eq).toHaveBeenCalledWith('current_revision.schema_version', 2);
+    expect(order).toHaveBeenCalledWith('updated_at', { ascending: false });
+    expect(limit).toHaveBeenCalledWith(50);
+  });
+
+  it('creates V2 asset plans with explicit generation and fingerprint identity', async () => {
+    const rpc = jest.fn(async () => ({ data: [{ asset_id: 'asset-v2', status: 'planned' }], error: null }));
+    const fingerprint = 'a'.repeat(64);
+
+    await expect(createMapService({ rpc } as never).createAssetPlanV2({
+      revisionId: 'revision-v2',
+      generationId: '10000000-0000-4000-8000-000000000002',
+      assetKey: 'market-road',
+      kind: 'path',
+      prompt: 'Generate a complete road atlas.',
+      requestedCapability: 'path_tiles',
+      generationParams: { tileSize: 32 },
+      referenceAssetIds: [],
+      referenceHashes: [],
+      planFingerprint: fingerprint,
+      metadata: { pathKind: 'road' },
+    })).resolves.toEqual({ asset_id: 'asset-v2', status: 'planned' });
+
+    expect(rpc).toHaveBeenCalledWith('create_map_asset_plan_v2', expect.objectContaining({
+      p_kind: 'path',
+      p_plan_fingerprint: fingerprint,
+      p_generation_id: '10000000-0000-4000-8000-000000000002',
+    }));
+  });
+
   it('loads the current editable Revision and assets from the newest asset-owning Revision', async () => {
     const plan = makeValidMapPlan();
     const scene = makeValidMapScene();
@@ -110,6 +188,29 @@ describe('Create Map browser service', () => {
     expect(loaded.scene).toEqual(scene);
     expect(loaded.assetRevisionId).toBe('revision-assets');
     expect(loaded.assets).toEqual([asset]);
+  });
+
+  it('parses V2 Plan and Scene responses and preserves a null source Document', async () => {
+    const plan = makeValidMapPlanV2();
+    const scene = makeEmptyMapSceneV2();
+    const from = createV2SavedMapLoadMock({ plan, scene });
+
+    await expect(createMapService({ from } as never).loadSavedMapV2('map-v2')).resolves.toEqual({
+      identity: { mapId: 'map-v2', revisionId: 'revision-v2', revisionNumber: 1, saveVersion: 0 },
+      plan,
+      scene,
+      projectId: 'project-1',
+      sourceDocumentId: null,
+      assetRevisionId: null,
+      assets: [],
+    });
+  });
+
+  it('rejects V1 payloads returned through the V2 saved-map contract', async () => {
+    const from = createV2SavedMapLoadMock({ plan: makeValidMapPlan(), scene: makeValidMapScene() });
+
+    await expect(createMapService({ from } as never).loadSavedMapV2('map-v2'))
+      .rejects.toMatchObject({ code: 'invalid_saved_map' });
   });
 
   it('rejects malformed persisted Plan or Scene before returning a workspace', async () => {
@@ -150,6 +251,26 @@ function createCurrentDraftLoadMock(plan: unknown, scene: unknown) {
       return { select: () => ({ eq: () => ({ single: async () => ({
         data: { plan, scene, save_version: 0, revision_number: 1 }, error: null,
       }) }) }) };
+    }
+    throw new Error(`Unexpected table: ${table}`);
+  });
+}
+
+function createV2SavedMapLoadMock(input: { plan: unknown; scene: unknown }) {
+  return jest.fn((table: string) => {
+    if (table === 'map_projects') {
+      return { select: () => ({ eq: () => ({ single: async () => ({
+        data: { project_id: 'project-1', current_revision_id: 'revision-v2' }, error: null,
+      }) }) }) };
+    }
+    if (table === 'map_revisions') {
+      return { select: () => ({ eq: () => ({ eq: () => ({ single: async () => ({
+        data: {
+          id: 'revision-v2', revision_number: 1, save_version: 0,
+          source_document_id: null, schema_version: 2, plan: input.plan, scene: input.scene,
+        },
+        error: null,
+      }) }) }) }) };
     }
     throw new Error(`Unexpected table: ${table}`);
   });

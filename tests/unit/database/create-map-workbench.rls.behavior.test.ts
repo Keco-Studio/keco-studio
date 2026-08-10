@@ -14,6 +14,8 @@ const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 const sourceTime = '2026-08-08T08:00:00.000Z';
 const plan = { schemaVersion: 1, name: 'Live map plan' };
 const scene = { schemaVersion: 1, layers: [] };
+const planV2 = { schemaVersion: 2, name: 'Description-only V2 map' };
+const sceneV2 = { schemaVersion: 2, background: null, layers: [], obstacleEntities: [] };
 
 type CreatedMap = { map_id: string; draft_revision_id: string; revision_number: number; save_version: number };
 
@@ -91,6 +93,55 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
       name: 'direct write',
       created_by: fx.owner.id,
     })).error).not.toBeNull();
+  });
+
+  it('allows an all-null V2 source tuple and rejects V1 payloads at V2 RPCs', async () => {
+    const createdV2 = await fx.owner.client.rpc('create_map_project_v2', {
+      p_project_id: fx.projectId,
+      p_name: planV2.name,
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: planV2,
+      p_scene: sceneV2,
+    });
+    expect(createdV2.error).toBeNull();
+    const createdRow = (createdV2.data as CreatedMap[])[0];
+
+    const revision = await fx.svc.from('map_revisions')
+      .select('schema_version,source_document_id,source_document_updated_at,source_epoch,source_revision')
+      .eq('id', createdRow.draft_revision_id)
+      .single();
+    expect(revision.error).toBeNull();
+    expect(revision.data).toEqual({
+      schema_version: 2,
+      source_document_id: null,
+      source_document_updated_at: null,
+      source_epoch: null,
+      source_revision: null,
+    });
+
+    const invalidPayload = await fx.owner.client.rpc('save_map_draft_v2', {
+      p_map_id: createdRow.map_id,
+      p_revision_id: createdRow.draft_revision_id,
+      p_expected_save_version: 0,
+      p_plan: plan,
+      p_scene: scene,
+    });
+    expect(invalidPayload.error?.code).toBe('22023');
+
+    const viewerCreate = await fx.viewer.client.rpc('create_map_project_v2', {
+      p_project_id: fx.projectId,
+      p_name: 'Denied V2 map',
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: planV2,
+      p_scene: sceneV2,
+    });
+    expect(viewerCreate.error?.code).toBe('42501');
   });
 
   it('exposes saved-map list and current Revision reads only to Project members', async () => {
