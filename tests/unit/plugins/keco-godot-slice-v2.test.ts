@@ -345,7 +345,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
       writeFileSync(unsafeRun, JSON.stringify({
         version: 2,
         runId: 'run',
-        mode: 'manual-v2',
+        mode: 'implicit-v2',
         kecoProjectId: 'project',
         godotProjectPath: '/game',
         sliceId: 'slice',
@@ -444,7 +444,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     const baseRun = {
       version: 2,
       runId: 'run-01',
-      mode: 'manual-v2',
+      mode: 'implicit-v2',
       kecoProjectId: 'project',
       godotProjectPath: '/game',
       sliceId: 'slice',
@@ -470,6 +470,95 @@ describe('Keco Godot Slice V2 skill contract', () => {
       const invalid = spawnSync('python3', [validator, invalidPath], { encoding: 'utf8' });
       expect(invalid.status).toBe(1);
       expect(invalid.stderr).toMatch(/runId/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['implicit-v2', 'explicit-v2'])('accepts the documented Codex run mode %s', (mode) => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-mode-'));
+    try {
+      const runPath = path.join(tempRoot, 'run.json');
+      writeFileSync(runPath, JSON.stringify({
+        version: 2,
+        runId: 'run-01',
+        mode,
+        kecoProjectId: 'project',
+        godotProjectPath: '/game',
+        sliceId: 'slice',
+        allowedFiles: ['scripts/game.gd'],
+        iteration: 0,
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_run_context.py'), runPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects the undocumented manual-v2 Codex run mode', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-mode-invalid-'));
+    try {
+      const runPath = path.join(tempRoot, 'run.json');
+      writeFileSync(runPath, JSON.stringify({
+        version: 2,
+        runId: 'run-01',
+        mode: 'manual-v2',
+        kecoProjectId: 'project',
+        godotProjectPath: '/game',
+        sliceId: 'slice',
+        allowedFiles: ['scripts/game.gd'],
+        iteration: 0,
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_run_context.py'), runPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/mode must be one of/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts documented required and optional Codex plan reviews', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-review-'));
+    try {
+      const planPath = path.join(tempRoot, 'plan.json');
+      writeFileSync(planPath, JSON.stringify({
+        tasks: [
+          {
+            id: 'task-01',
+            files: ['scripts/game.gd'],
+            dependsOn: [],
+            servesEvaluations: ['eval-01'],
+            red: { command: 'pytest tests/red.py', expected: 'fails' },
+            green: { command: 'pytest tests/green.py', expected: 'passes' },
+            review: { spec: 'required', quality: 'required' },
+          },
+          {
+            id: 'task-02',
+            files: ['scenes/game.tscn'],
+            dependsOn: ['task-01'],
+            servesEvaluations: ['eval-02'],
+            red: { command: 'pytest tests/scene_red.py', expected: 'fails' },
+            green: { command: 'pytest tests/scene_green.py', expected: 'passes' },
+            review: { spec: 'required', quality: 'optional' },
+          },
+        ],
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_plan.py'), planPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/"ok": true/);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
