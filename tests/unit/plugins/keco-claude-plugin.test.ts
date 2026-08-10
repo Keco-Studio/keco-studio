@@ -1,57 +1,77 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import os from 'node:os';
-import path from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import os from "node:os";
+import path from "node:path";
 
 const repositoryRoot = process.cwd();
-const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-claude');
-const skillsRoot = path.join(pluginRoot, 'skills');
-const scriptsRoot = path.join(pluginRoot, 'scripts');
-const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
+const pluginRoot = path.join(repositoryRoot, "plugins", "keco-claude");
+const skillsRoot = path.join(pluginRoot, "skills");
+const scriptsRoot = path.join(pluginRoot, "scripts");
+const interactionContractPath = path.join(
+  pluginRoot,
+  "references",
+  "interaction-contract.md",
+);
 const codexInteractionContractPath = path.join(
   repositoryRoot,
-  'plugins',
-  'keco-codex',
-  'references',
-  'interaction-contract.md',
+  "plugins",
+  "keco-codex",
+  "references",
+  "interaction-contract.md",
 );
 
 const SKILLS = [
-  'keco-build-tables-from-document',
-  'keco-develop-godot-slice',
-  'keco-develop-godot-slice-v2',
-  'pixellab-map-assets',
+  "keco-build-tables-from-document",
+  "keco-develop-godot-slice",
+  "keco-develop-godot-slice-v2",
+  "pixellab-map-assets",
 ];
 
 const SCRIPTS = [
-  'build_spriteframes_resource.py',
-  'export_keco_snapshot.py',
-  'validate_eval_report.py',
-  'validate_generated_asset_package.py',
-  'validate_plan.py',
-  'validate_run_context.py',
-  'validate_slice_documents.py',
-  'validate_snapshot.py',
+  "build_spriteframes_resource.py",
+  "export_keco_snapshot.py",
+  "validate_eval_report.py",
+  "validate_generated_asset_package.py",
+  "validate_plan.py",
+  "validate_run_context.py",
+  "validate_slice_documents.py",
+  "validate_snapshot.py",
 ];
 
 function readJson<T>(relativePath: string): T {
-  return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
+  return JSON.parse(
+    readFileSync(path.join(repositoryRoot, relativePath), "utf8"),
+  ) as T;
 }
 
 function markdownFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(root, entry.name);
     if (entry.isDirectory()) return markdownFiles(entryPath);
-    return entry.name.endsWith('.md') ? [entryPath] : [];
+    return entry.name.endsWith(".md") ? [entryPath] : [];
   });
 }
 
 function runScript(name: string, args: string[]) {
-  return spawnSync('python3', [path.join(scriptsRoot, name), ...args], { encoding: 'utf8' });
+  return spawnSync("python3", [path.join(scriptsRoot, name), ...args], {
+    encoding: "utf8",
+  });
 }
 
-function writeTempJson(directory: string, name: string, value: unknown): string {
+function writeTempJson(
+  directory: string,
+  name: string,
+  value: unknown,
+): string {
   const filePath = path.join(directory, name);
   writeFileSync(filePath, JSON.stringify(value));
   return filePath;
@@ -61,14 +81,14 @@ function writePngHeader(filePath: string, width: number, height: number): void {
   const header = Buffer.alloc(24);
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header, 0);
   header.writeUInt32BE(13, 8);
-  header.write('IHDR', 12, 'ascii');
+  header.write("IHDR", 12, "ascii");
   header.writeUInt32BE(width, 16);
   header.writeUInt32BE(height, 20);
   writeFileSync(filePath, header);
 }
 
 function sha256(filePath: string): string {
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
 function task(id: string, overrides: Record<string, unknown> = {}) {
@@ -76,16 +96,16 @@ function task(id: string, overrides: Record<string, unknown> = {}) {
     id,
     files: [`game/scripts/${id}.gd`],
     dependsOn: [],
-    servesEvaluations: ['eval-1'],
-    red: { command: 'python3 tests/check.py', expected: 'fails' },
-    green: { command: 'python3 tests/check.py', expected: 'passes' },
+    servesEvaluations: ["eval-1"],
+    red: { command: "python3 tests/check.py", expected: "fails" },
+    green: { command: "python3 tests/check.py", expected: "passes" },
     review: { spec: true, quality: true },
     ...overrides,
   };
 }
 
-describe('Keco Claude plugin packaging', () => {
-  it('ships a byte-identical shared interaction contract in both plugins', () => {
+describe("Keco Claude plugin packaging", () => {
+  it("ships a byte-identical shared interaction contract in both plugins", () => {
     const contractExists = existsSync(interactionContractPath);
     const codexContractExists = existsSync(codexInteractionContractPath);
 
@@ -95,88 +115,116 @@ describe('Keco Claude plugin packaging', () => {
     });
     if (!contractExists || !codexContractExists) return;
 
-    expect(readFileSync(interactionContractPath)).toEqual(readFileSync(codexInteractionContractPath));
+    expect(readFileSync(interactionContractPath)).toEqual(
+      readFileSync(codexInteractionContractPath),
+    );
   });
 
-  it('links every entry Skill to the shared interaction contract', () => {
+  it("links every entry Skill to the shared interaction contract", () => {
     for (const skill of SKILLS) {
-      const source = readFileSync(path.join(skillsRoot, skill, 'SKILL.md'), 'utf8');
+      const source = readFileSync(
+        path.join(skillsRoot, skill, "SKILL.md"),
+        "utf8",
+      );
       expect(source).toContain(
-        '[shared interaction contract](../../references/interaction-contract.md)',
+        "[shared interaction contract](../../references/interaction-contract.md)",
       );
     }
   });
 
-  it('defines the shared language, intent, blocker, resume, and host boundaries', () => {
+  it("defines the shared language, intent, blocker, resume, and host boundaries", () => {
     expect(existsSync(interactionContractPath)).toBe(true);
     if (!existsSync(interactionContractPath)) return;
 
-    const contract = readFileSync(interactionContractPath, 'utf8');
+    const contract = readFileSync(interactionContractPath, "utf8");
     expect(contract).toMatch(/latest substantive user request/i);
-    expect(contract).toMatch(/user-visible headings, summaries, questions, progress, blockers, and final results/i);
-    expect(contract).toMatch(/preserve[\s\S]*tool names[\s\S]*field labels[\s\S]*IDs[\s\S]*code[\s\S]*enum values[\s\S]*error codes[\s\S]*verbatim source quotations/i);
-    for (const field of ['Goal', 'Source', 'Scope', 'Success', 'Next']) {
+    expect(contract).toMatch(
+      /user-visible headings, summaries, questions, progress, blockers, and final results/i,
+    );
+    expect(contract).toMatch(
+      /preserve[\s\S]*tool names[\s\S]*field labels[\s\S]*IDs[\s\S]*code[\s\S]*enum values[\s\S]*error codes[\s\S]*verbatim source quotations/i,
+    );
+    for (const field of ["Goal", "Source", "Scope", "Success", "Next"]) {
       expect(contract).toContain(`- ${field}:`);
     }
     for (const field of [
-      'Status',
-      'Blocked at',
-      'Completed',
-      'Writes performed',
-      'Why',
-      'User action',
-      'Resume from',
-      'Checkpoint',
-      'Revalidation',
+      "Status",
+      "Blocked at",
+      "Completed",
+      "Writes performed",
+      "Why",
+      "User action",
+      "Resume from",
+      "Checkpoint",
+      "Revalidation",
     ]) {
       expect(contract).toContain(`- ${field}:`);
     }
-    expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
-    expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+    expect(contract).toContain(
+      "running -> paused_with_checkpoint -> user_action -> revalidate -> resume",
+    );
+    expect(contract).toMatch(
+      /`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i,
+    );
   });
 
-  it('declares an installable marketplace entry and plugin manifest', () => {
+  it("declares an installable marketplace entry and plugin manifest", () => {
     const marketplace = readJson<{
       name: string;
       owner: { name: string };
       plugins: Array<{ name: string; source: string; version: string }>;
-    }>('.claude-plugin/marketplace.json');
+    }>(".claude-plugin/marketplace.json");
     const plugin = readJson<{
       name: string;
       version: string;
       skills: string;
       mcpServers: string;
-    }>('plugins/keco-claude/.claude-plugin/plugin.json');
+    }>("plugins/keco-claude/.claude-plugin/plugin.json");
 
-    expect(marketplace.name).toBe('keco-studio');
+    expect(marketplace.name).toBe("keco-studio");
     expect(marketplace.owner.name).toBeTruthy();
     expect(marketplace.plugins).toHaveLength(1);
-    expect(marketplace.plugins[0]).toMatchObject({ name: 'keco', source: './plugins/keco-claude' });
+    expect(marketplace.plugins[0]).toMatchObject({
+      name: "keco",
+      source: "./plugins/keco-claude",
+    });
     // The Claude manifest carries a clean semver, never a build-metadata cachebuster.
     expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(marketplace.plugins[0].version).toBe(plugin.version);
-    expect(plugin).toMatchObject({ name: 'keco', skills: './skills/', mcpServers: './.mcp.json' });
+    expect(plugin).toMatchObject({
+      name: "keco",
+      skills: "./skills/",
+      mcpServers: "./.mcp.json",
+    });
     expect(existsSync(path.join(pluginRoot, plugin.mcpServers))).toBe(true);
     expect(existsSync(path.join(pluginRoot, plugin.skills))).toBe(true);
   });
 
-  it('connects only the remote Keco MCP server', () => {
-    const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco-claude/.mcp.json');
-    expect(Object.keys(mcp.mcpServers)).toEqual(['keco']);
+  it("connects only the remote Keco MCP server", () => {
+    const mcp = readJson<{ mcpServers: Record<string, unknown> }>(
+      "plugins/keco-claude/.mcp.json",
+    );
+    expect(Object.keys(mcp.mcpServers)).toEqual(["keco"]);
     expect(mcp.mcpServers.keco).toEqual({
-      type: 'http',
-      url: 'https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp',
+      type: "http",
+      url: "https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp",
     });
   });
 
-  it('ships every skill with valid frontmatter whose name matches its directory', () => {
+  it("ships every skill with valid frontmatter whose name matches its directory", () => {
     expect(readdirSync(skillsRoot).sort()).toEqual([...SKILLS].sort());
     for (const skill of SKILLS) {
-      const source = readFileSync(path.join(skillsRoot, skill, 'SKILL.md'), 'utf8');
+      const source = readFileSync(
+        path.join(skillsRoot, skill, "SKILL.md"),
+        "utf8",
+      );
       const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(source);
       expect(frontmatter).not.toBeNull();
       const fields = Object.fromEntries(
-        [...frontmatter![1].matchAll(/^(\w[\w-]*):\s*(.*)$/gm)].map((match) => [match[1], match[2]]),
+        [...frontmatter![1].matchAll(/^(\w[\w-]*):\s*(.*)$/gm)].map((match) => [
+          match[1],
+          match[2],
+        ]),
       );
       expect(fields.name).toBe(skill);
       expect(fields.description.length).toBeGreaterThan(40);
@@ -184,62 +232,83 @@ describe('Keco Claude plugin packaging', () => {
     }
   });
 
-  it('keeps every shipped text file ASCII-only', () => {
+  it("keeps every shipped text file ASCII-only", () => {
     // The Codex suite only rejected CJK, so curly quotes shipped unnoticed.
     const offenders = markdownFiles(pluginRoot)
-      .filter((filePath) => /[^\x00-\x7F]/.test(readFileSync(filePath, 'utf8')))
+      .filter((filePath) => /[^\x00-\x7F]/.test(readFileSync(filePath, "utf8")))
       .map((filePath) => path.relative(repositoryRoot, filePath));
     expect(offenders).toEqual([]);
   });
 
-  it('stores one shared copy of every script and brand asset', () => {
-    expect(readdirSync(scriptsRoot).filter((name) => name.endsWith('.py')).sort()).toEqual(SCRIPTS);
+  it("stores one shared copy of every script and brand asset", () => {
+    expect(
+      readdirSync(scriptsRoot)
+        .filter((name) => name.endsWith(".py"))
+        .sort(),
+    ).toEqual(SCRIPTS);
     // No per-skill scripts/ or assets/ directories: duplication is the defect.
     for (const skill of SKILLS) {
-      expect(existsSync(path.join(skillsRoot, skill, 'scripts'))).toBe(false);
-      expect(existsSync(path.join(skillsRoot, skill, 'assets'))).toBe(false);
+      expect(existsSync(path.join(skillsRoot, skill, "scripts"))).toBe(false);
+      expect(existsSync(path.join(skillsRoot, skill, "assets"))).toBe(false);
     }
-    expect(readdirSync(path.join(pluginRoot, 'assets')).sort()).toEqual(['icon.png', 'logo.png']);
+    expect(readdirSync(path.join(pluginRoot, "assets")).sort()).toEqual([
+      "icon.png",
+      "logo.png",
+    ]);
   });
 
-  it('resolves every relative Markdown link and plugin-root script reference', () => {
+  it("resolves every relative Markdown link and plugin-root script reference", () => {
     const broken: string[] = [];
     for (const filePath of markdownFiles(pluginRoot)) {
-      const source = readFileSync(filePath, 'utf8');
+      const source = readFileSync(filePath, "utf8");
       for (const match of source.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
         const target = match[1];
         if (/^(?:https?:|#|mailto:)/.test(target)) continue;
         if (!existsSync(path.resolve(path.dirname(filePath), target))) {
-          broken.push(`${path.relative(repositoryRoot, filePath)} -> ${target}`);
+          broken.push(
+            `${path.relative(repositoryRoot, filePath)} -> ${target}`,
+          );
         }
       }
-      for (const match of source.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.py)/g)) {
+      for (const match of source.matchAll(
+        /\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.py)/g,
+      )) {
         if (!existsSync(path.join(pluginRoot, match[1]))) {
-          broken.push(`${path.relative(repositoryRoot, filePath)} -> ${match[0]}`);
+          broken.push(
+            `${path.relative(repositoryRoot, filePath)} -> ${match[0]}`,
+          );
         }
       }
     }
     expect(broken).toEqual([]);
   });
 
-  it('reaches every bundled reference and script from a SKILL.md', () => {
+  it("reaches every bundled reference and script from a SKILL.md", () => {
     // Regression guard: orchestration-contract.md, slice-decision.md,
     // build_spriteframes_resource.py and validate_generated_asset_package.py
     // were all unreachable from any skill entry point.
     const corpus = markdownFiles(pluginRoot)
-      .map((filePath) => readFileSync(filePath, 'utf8'))
-      .join('\n');
+      .map((filePath) => readFileSync(filePath, "utf8"))
+      .join("\n");
     const orphans: string[] = [];
     for (const skill of SKILLS) {
-      const referencesDir = path.join(skillsRoot, skill, 'references');
+      const referencesDir = path.join(skillsRoot, skill, "references");
       if (!existsSync(referencesDir)) continue;
       for (const reference of readdirSync(referencesDir)) {
-        const skillSource = readFileSync(path.join(skillsRoot, skill, 'SKILL.md'), 'utf8');
+        const skillSource = readFileSync(
+          path.join(skillsRoot, skill, "SKILL.md"),
+          "utf8",
+        );
         const linkedFromSkill = skillSource.includes(`references/${reference}`);
         const linkedFromSibling = readdirSync(referencesDir)
           .filter((name) => name !== reference)
-          .some((name) => readFileSync(path.join(referencesDir, name), 'utf8').includes(reference));
-        if (!linkedFromSkill && !linkedFromSibling) orphans.push(`${skill}/references/${reference}`);
+          .some((name) =>
+            readFileSync(path.join(referencesDir, name), "utf8").includes(
+              reference,
+            ),
+          );
+        if (!linkedFromSkill && !linkedFromSibling)
+          orphans.push(`${skill}/references/${reference}`);
       }
     }
     for (const script of SCRIPTS) {
@@ -249,110 +318,221 @@ describe('Keco Claude plugin packaging', () => {
   });
 });
 
-describe('Keco Claude plugin skill contracts', () => {
-  it('routes V2 implicitly and records that routing consistently', () => {
-    const skill = readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'SKILL.md'), 'utf8');
+describe("Keco Claude plugin skill contracts", () => {
+  it("routes V2 implicitly and records that routing consistently", () => {
+    const skill = readFileSync(
+      path.join(skillsRoot, "keco-develop-godot-slice-v2", "SKILL.md"),
+      "utf8",
+    );
     const abMatrix = readFileSync(
-      path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', 'ab-matrix.md'),
-      'utf8',
+      path.join(
+        skillsRoot,
+        "keco-develop-godot-slice-v2",
+        "references",
+        "ab-matrix.md",
+      ),
+      "utf8",
     );
     expect(skill).toMatch(/The user does not need to name this Skill/i);
     expect(skill).toMatch(/V2 is the canonical creation workflow/i);
     // The A/B matrix used to claim V2 was explicit-invocation only.
-    expect(abMatrix).not.toMatch(/explicit `?\$?keco-develop-godot-slice-v2`? only/i);
+    expect(abMatrix).not.toMatch(
+      /explicit `?\$?keco-develop-godot-slice-v2`? only/i,
+    );
     expect(abMatrix).toMatch(/implicit, document-driven routing/i);
   });
 
-  it('links the orchestration and slice-decision contracts from the V2 entry point', () => {
-    const skill = readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'SKILL.md'), 'utf8');
-    expect(skill).toContain('references/orchestration-contract.md');
-    expect(skill).toContain('references/slice-decision.md');
-    expect(skill).toMatch(/RunContext[\s\S]{0,200}writeToken[\s\S]{0,200}sliceDecision/i);
+  it("links the orchestration and slice-decision contracts from the V2 entry point", () => {
+    const skill = readFileSync(
+      path.join(skillsRoot, "keco-develop-godot-slice-v2", "SKILL.md"),
+      "utf8",
+    );
+    const orchestration = readFileSync(
+      path.join(
+        skillsRoot,
+        "keco-develop-godot-slice-v2",
+        "references",
+        "orchestration-contract.md",
+      ),
+      "utf8",
+    );
+    const sliceDocuments = readFileSync(
+      path.join(
+        skillsRoot,
+        "keco-develop-godot-slice-v2",
+        "references",
+        "slice-document-contract.md",
+      ),
+      "utf8",
+    );
+    expect(skill).toContain("references/orchestration-contract.md");
+    expect(skill).toContain("references/slice-decision.md");
+    expect(skill).toMatch(
+      /RunContext[\s\S]{0,200}writeToken[\s\S]{0,200}sliceDecision/i,
+    );
+    expect(orchestration).toMatch(
+      /SlicePlan[\s\S]{0,200}approved static scope/i,
+    );
+    expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
+    expect(sliceDocuments).toMatch(
+      /plan\.md[\s\S]{0,200}does not own task progress/i,
+    );
+    expect(sliceDocuments).toMatch(
+      /TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i,
+    );
   });
 
-  it('never hard-codes a PixelLab tool the registry records as unavailable', () => {
-    const registry = readFileSync(path.join(pluginRoot, 'references', 'pixellab-capability-registry.md'), 'utf8');
-    const unavailable = [...registry.matchAll(/^\| `([\w-]+)` \|.*\| (none|[`\w]+) \| `unavailable` \|$/gm)]
-      .map((match) => match[1]);
-    expect(unavailable).toContain('s-xl-image-pro');
-    expect(unavailable).toContain('top-down-tileset');
+  it("never hard-codes a PixelLab tool the registry records as unavailable", () => {
+    const registry = readFileSync(
+      path.join(pluginRoot, "references", "pixellab-capability-registry.md"),
+      "utf8",
+    );
+    const unavailable = [
+      ...registry.matchAll(
+        /^\| `([\w-]+)` \|.*\| (none|[`\w]+) \| `unavailable` \|$/gm,
+      ),
+    ].map((match) => match[1]);
+    expect(unavailable).toContain("s-xl-image-pro");
+    expect(unavailable).toContain("top-down-tileset");
 
     // Tool names that never existed on the live MCP must not be callable
     // instructions. Only files a model loads as instructions are policed; the
     // plugin README documents these names as defects that were removed.
     const inventedToolNames = [
-      'create_s_xl_image_pro',
-      'create_topdown_tileset',
-      'create_path_tiles',
-      'create_building_kit',
-      'create_map_object',
+      "create_s_xl_image_pro",
+      "create_topdown_tileset",
+      "create_path_tiles",
+      "create_building_kit",
+      "create_map_object",
     ];
     const instructionFiles = [
       ...markdownFiles(skillsRoot),
-      ...markdownFiles(path.join(pluginRoot, 'references')),
+      ...markdownFiles(path.join(pluginRoot, "references")),
     ];
     const offenders: string[] = [];
     for (const filePath of instructionFiles) {
-      const source = readFileSync(filePath, 'utf8');
+      const source = readFileSync(filePath, "utf8");
       for (const name of inventedToolNames) {
         if (!source.includes(name)) continue;
         // Allowed only where the text explicitly says not to call it.
-        const warned = /not\s+live MCP tool names|are \*\*not\*\* live MCP tool names|never call a remembered tool name/i.test(source);
-        if (!warned) offenders.push(`${path.relative(repositoryRoot, filePath)}: ${name}`);
+        const warned =
+          /not\s+live MCP tool names|are \*\*not\*\* live MCP tool names|never call a remembered tool name/i.test(
+            source,
+          );
+        if (!warned)
+          offenders.push(`${path.relative(repositoryRoot, filePath)}: ${name}`);
       }
     }
     expect(offenders).toEqual([]);
   });
 
-  it('shares one assetKind vocabulary between the registry and the validator', () => {
-    const registry = readFileSync(path.join(pluginRoot, 'references', 'pixellab-capability-registry.md'), 'utf8');
-    const declared = /```text\n([\s\S]*?)\n```/.exec(registry.slice(registry.indexOf('## Canonical `assetKind` values')));
-    const registryKinds = declared![1].split(/[,\s]+/).filter(Boolean).sort();
-    const validator = readFileSync(path.join(scriptsRoot, 'validate_generated_asset_package.py'), 'utf8');
-    const validatorKinds = [...(/ASSET_KINDS = \{([\s\S]*?)\}/.exec(validator)![1]).matchAll(/"([\w-]+)"/g)]
+  it("shares one assetKind vocabulary between the registry and the validator", () => {
+    const registry = readFileSync(
+      path.join(pluginRoot, "references", "pixellab-capability-registry.md"),
+      "utf8",
+    );
+    const declared = /```text\n([\s\S]*?)\n```/.exec(
+      registry.slice(registry.indexOf("## Canonical `assetKind` values")),
+    );
+    const registryKinds = declared![1]
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .sort();
+    const validator = readFileSync(
+      path.join(scriptsRoot, "validate_generated_asset_package.py"),
+      "utf8",
+    );
+    const validatorKinds = [
+      .../ASSET_KINDS = \{([\s\S]*?)\}/
+        .exec(validator)![1]
+        .matchAll(/"([\w-]+)"/g),
+    ]
       .map((match) => match[1])
       .sort();
     expect(validatorKinds).toEqual(registryKinds);
-    expect(registryKinds).toContain('character-rotation');
-    expect(registryKinds).not.toContain('rotation');
+    expect(registryKinds).toContain("character-rotation");
+    expect(registryKinds).not.toContain("rotation");
   });
 
-  it('gives pixellab-map-assets a Keco-first, registry-driven contract', () => {
-    const skill = readFileSync(path.join(skillsRoot, 'pixellab-map-assets', 'SKILL.md'), 'utf8');
-    const operations = readFileSync(
-      path.join(skillsRoot, 'pixellab-map-assets', 'references', 'pixellab-operations.md'),
-      'utf8',
+  it("gives pixellab-map-assets a Keco-first, registry-driven contract", () => {
+    const skill = readFileSync(
+      path.join(skillsRoot, "pixellab-map-assets", "SKILL.md"),
+      "utf8",
     );
-    expect(skill).toContain('../../references/pixellab-capability-registry.md');
+    const operations = readFileSync(
+      path.join(
+        skillsRoot,
+        "pixellab-map-assets",
+        "references",
+        "pixellab-operations.md",
+      ),
+      "utf8",
+    );
+    expect(skill).toContain("../../references/pixellab-capability-registry.md");
     expect(skill).toMatch(/compatibility: exact\|fallback\|unavailable/);
-    expect(skill).toMatch(/planned` (?:asset )?row[\s\S]*read (?:it )?back|write and read back the Keco `planned`/i);
+    expect(skill).toMatch(
+      /planned` (?:asset )?row[\s\S]*read (?:it )?back|write and read back the Keco `planned`/i,
+    );
     expect(skill).toMatch(/collision and walkability in Godot-owned files/i);
     expect(operations).toMatch(/Capability key/);
     expect(operations).toMatch(/not\*\* live MCP tool names/i);
   });
 
-  it('keeps V1 bounded and pointed at V2 for newer contracts', () => {
-    const skill = readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice', 'SKILL.md'), 'utf8');
+  it("keeps V1 bounded and pointed at V2 for newer contracts", () => {
+    const skill = readFileSync(
+      path.join(skillsRoot, "keco-develop-godot-slice", "SKILL.md"),
+      "utf8",
+    );
     expect(skill).toMatch(/one bounded slice/i);
     expect(skill).toMatch(/keco-develop-godot-slice-v2/);
     expect(skill).not.toMatch(/\$keco-/);
     expect(skill).toMatch(/compatibility: exact\|fallback\|unavailable/);
   });
 
-  it('requires read-plan-confirm-execute-verify for table building', () => {
-    const skill = readFileSync(path.join(skillsRoot, 'keco-build-tables-from-document', 'SKILL.md'), 'utf8');
+  it("requires read-plan-confirm-execute-verify for table building", () => {
+    const skill = readFileSync(
+      path.join(skillsRoot, "keco-build-tables-from-document", "SKILL.md"),
+      "utf8",
+    );
+    const schemaDesign = readFileSync(
+      path.join(
+        skillsRoot,
+        "keco-build-tables-from-document",
+        "references",
+        "schema-design.md",
+      ),
+      "utf8",
+    );
+    const executionPolicy = readFileSync(
+      path.join(
+        skillsRoot,
+        "keco-build-tables-from-document",
+        "references",
+        "execution-policy.md",
+      ),
+      "utf8",
+    );
     expect(skill).toMatch(/explicit user confirmation/i);
     expect(skill).toMatch(/Never delete project data/);
     expect(skill).toMatch(/Stop on the first failed write/i);
     expect(skill).not.toMatch(/\$keco-/);
+    expect(schemaDesign).toMatch(
+      /BuildPlan[\s\S]{0,160}approved static scope/i,
+    );
+    expect(schemaDesign).toMatch(
+      /must not contain[\s\S]{0,240}(?:execution status|write tokens|checkpoints)[\s\S]{0,240}(?:evidence|read-back)/i,
+    );
+    expect(executionPolicy).toMatch(
+      /ExecutionCheckpoint[\s\S]{0,240}VerificationReport/i,
+    );
   });
 });
 
-describe('Keco Claude plugin validators', () => {
+describe("Keco Claude plugin validators", () => {
   let tempRoot: string;
 
   beforeEach(() => {
-    tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-claude-'));
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "keco-claude-"));
   });
 
   afterEach(() => {
@@ -361,235 +541,487 @@ describe('Keco Claude plugin validators', () => {
 
   const runContext = (overrides: Record<string, unknown> = {}) => ({
     version: 2,
-    runId: 'run-1',
-    mode: 'implicit-v2',
-    kecoProjectId: 'project-uuid',
-    godotProjectPath: '/games/village',
-    sliceId: 'slice-001',
-    allowedFiles: ['game/scripts/village.gd'],
+    runId: "run-1",
+    mode: "implicit-v2",
+    kecoProjectId: "project-uuid",
+    godotProjectPath: "/games/village",
+    sliceId: "slice-001",
+    allowedFiles: ["game/scripts/village.gd"],
     iteration: 0,
     ...overrides,
   });
 
   // The Codex suite only ever asserted a rejection here, which is why the
   // validator could demand a mode no contract defines.
-  it.each(['implicit-v2', 'explicit-v2'])('accepts the documented run-context mode %s', (mode) => {
-    const result = runScript('validate_run_context.py', [writeTempJson(tempRoot, 'run.json', runContext({ mode }))]);
-    expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, mode });
-  });
+  it.each(["implicit-v2", "explicit-v2"])(
+    "accepts the documented run-context mode %s",
+    (mode) => {
+      const result = runScript("validate_run_context.py", [
+        writeTempJson(tempRoot, "run.json", runContext({ mode })),
+      ]);
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, mode });
+    },
+  );
 
   it.each([
-    ['an undocumented mode', runContext({ mode: 'manual-v2' }), /mode must be one of/],
-    ['a parent-traversal allowed file', runContext({ allowedFiles: ['../outside.gd'] }), /parent traversal/],
-    ['an absolute allowed file', runContext({ allowedFiles: ['/etc/passwd'] }), /parent traversal/],
-    ['a repair iteration past the limit', runContext({ iteration: 4 }), /iteration must be an integer/],
-    ['a non-string write token', runContext({ writeToken: 7 }), /writeToken/],
-  ])('rejects %s', (_label, value, expected) => {
-    const result = runScript('validate_run_context.py', [writeTempJson(tempRoot, 'run.json', value)]);
+    [
+      "an undocumented mode",
+      runContext({ mode: "manual-v2" }),
+      /mode must be one of/,
+    ],
+    [
+      "a parent-traversal allowed file",
+      runContext({ allowedFiles: ["../outside.gd"] }),
+      /parent traversal/,
+    ],
+    [
+      "an absolute allowed file",
+      runContext({ allowedFiles: ["/etc/passwd"] }),
+      /parent traversal/,
+    ],
+    [
+      "a repair iteration past the limit",
+      runContext({ iteration: 4 }),
+      /iteration must be an integer/,
+    ],
+    ["a non-string write token", runContext({ writeToken: 7 }), /writeToken/],
+  ])("rejects %s", (_label, value, expected) => {
+    const result = runScript("validate_run_context.py", [
+      writeTempJson(tempRoot, "run.json", value),
+    ]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(expected);
   });
 
   it.each([
-    ['the documented required/required strings', 'required', 'required'],
-    ['boolean true/true', true, true],
-  ])('accepts a plan whose review uses %s', (_label, spec, quality) => {
-    const plan = { tasks: [task('task-01', { review: { spec, quality } })] };
-    const result = runScript('validate_plan.py', [writeTempJson(tempRoot, 'plan.json', plan)]);
+    ["the documented required/required strings", "required", "required"],
+    ["boolean true/true", true, true],
+  ])("accepts a plan whose review uses %s", (_label, spec, quality) => {
+    const plan = { tasks: [task("task-01", { review: { spec, quality } })] };
+    const result = runScript("validate_plan.py", [
+      writeTempJson(tempRoot, "plan.json", plan),
+    ]);
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, taskCount: 1 });
   });
 
-  it('lets a small task relax the quality review while keeping one in the plan', () => {
-    const plan = {
+  it("rejects runtime and evidence state in a plan or task", () => {
+    const runtimePlan = {
+      runId: "run-01",
+      writeToken: "must-not-live-in-plan",
       tasks: [
-        task('task-01', { review: { spec: 'required', quality: 'required' } }),
-        task('task-02', { dependsOn: ['task-01'], review: { spec: 'required', quality: 'optional' } }),
+        task("task-01", {
+          status: "in_progress",
+          commandOutput: "runtime output",
+        }),
       ],
     };
-    const result = runScript('validate_plan.py', [writeTempJson(tempRoot, 'plan.json', plan)]);
+    const result = runScript("validate_plan.py", [
+      writeTempJson(tempRoot, "runtime-plan.json", runtimePlan),
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/plan contains runtime or evidence state/i);
+  });
+
+  it("lets a small task relax the quality review while keeping one in the plan", () => {
+    const plan = {
+      tasks: [
+        task("task-01", { review: { spec: "required", quality: "required" } }),
+        task("task-02", {
+          dependsOn: ["task-01"],
+          review: { spec: "required", quality: "optional" },
+        }),
+      ],
+    };
+    const result = runScript("validate_plan.py", [
+      writeTempJson(tempRoot, "plan.json", plan),
+    ]);
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ qualityReviews: 1, taskCount: 2 });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      qualityReviews: 1,
+      taskCount: 2,
+    });
   });
 
   it.each([
-    ['no quality review anywhere', [task('task-01', { review: { spec: true, quality: false } })], /at least one task must carry a quality review/],
-    ['a dropped spec review', [task('task-01', { review: { spec: false, quality: true } })], /spec review is required/],
-    ['an unknown dependency', [task('task-01', { dependsOn: ['task-99'] })], /unknown task/],
-    ['a blank command', [task('task-01', { red: { command: '  ' } })], /red\/green commands/],
-    ['a placeholder', [task('task-01', { green: { command: 'TODO decide' } })], /placeholder/],
-  ])('rejects a plan with %s', (_label, tasks, expected) => {
-    const result = runScript('validate_plan.py', [writeTempJson(tempRoot, 'plan.json', { tasks })]);
+    [
+      "no quality review anywhere",
+      [task("task-01", { review: { spec: true, quality: false } })],
+      /at least one task must carry a quality review/,
+    ],
+    [
+      "a dropped spec review",
+      [task("task-01", { review: { spec: false, quality: true } })],
+      /spec review is required/,
+    ],
+    [
+      "an unknown dependency",
+      [task("task-01", { dependsOn: ["task-99"] })],
+      /unknown task/,
+    ],
+    [
+      "a blank command",
+      [task("task-01", { red: { command: "  " } })],
+      /red\/green commands/,
+    ],
+    [
+      "a placeholder",
+      [task("task-01", { green: { command: "TODO decide" } })],
+      /placeholder/,
+    ],
+  ])("rejects a plan with %s", (_label, tasks, expected) => {
+    const result = runScript("validate_plan.py", [
+      writeTempJson(tempRoot, "plan.json", { tasks }),
+    ]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(expected);
   });
 
-  it('does not mistake a path containing a placeholder word for an unfinished plan', () => {
-    const plan = { tasks: [task('task-01', { files: ['res://scripts/todo_list.gd'] })] };
-    expect(runScript('validate_plan.py', [writeTempJson(tempRoot, 'plan.json', plan)]).status).toBe(0);
+  it("does not mistake a path containing a placeholder word for an unfinished plan", () => {
+    const plan = {
+      tasks: [task("task-01", { files: ["res://scripts/todo_list.gd"] })],
+    };
+    expect(
+      runScript("validate_plan.py", [
+        writeTempJson(tempRoot, "plan.json", plan),
+      ]).status,
+    ).toBe(0);
   });
 
   const report = (overrides: Record<string, unknown> = {}) => ({
     version: 2,
-    runId: 'run-1',
-    sliceId: 'slice-001',
-    status: 'passed',
-    snapshotHash: 'sha256:abc',
-    evaluations: [{ evalId: 'eval-1', status: 'passed', evidence: ['KECO_EVAL'] }],
-    changedFiles: ['game/scripts/village.gd'],
+    runId: "run-1",
+    sliceId: "slice-001",
+    status: "passed",
+    snapshotHash: "sha256:abc",
+    evaluations: [
+      { evalId: "eval-1", status: "passed", evidence: ["KECO_EVAL"] },
+    ],
+    changedFiles: ["game/scripts/village.gd"],
     manualRequirements: [],
     ...overrides,
   });
 
-  it('accepts a fully evidenced passing evaluation report', () => {
-    const result = runScript('validate_eval_report.py', [writeTempJson(tempRoot, 'report.json', report())]);
+  it("accepts a fully evidenced passing evaluation report", () => {
+    const result = runScript("validate_eval_report.py", [
+      writeTempJson(tempRoot, "report.json", report()),
+    ]);
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, status: 'passed' });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      status: "passed",
+    });
   });
 
   it.each([
-    ['a passing report without a snapshot hash', report({ snapshotHash: null }), /snapshot hash/],
-    ['a passing report with an unproven evaluation', report({ evaluations: [{ evalId: 'e', status: 'passed', evidence: [] }] }), /evidence/],
-    ['a passing report with a failed evaluation', report({ evaluations: [{ evalId: 'e', status: 'failed', evidence: ['x'] }] }), /all passed/],
-    ['a malformed evaluations array', report({ evaluations: 'none' }), /non-empty array/],
-    ['an unknown evaluation status', report({ evaluations: [{ evalId: 'e', status: 'ok', evidence: ['x'] }] }), /invalid evaluation status/],
-  ])('rejects %s without crashing', (_label, value, expected) => {
-    const result = runScript('validate_eval_report.py', [writeTempJson(tempRoot, 'report.json', value)]);
+    [
+      "a passing report without a snapshot hash",
+      report({ snapshotHash: null }),
+      /snapshot hash/,
+    ],
+    [
+      "a passing report with an unproven evaluation",
+      report({
+        evaluations: [{ evalId: "e", status: "passed", evidence: [] }],
+      }),
+      /evidence/,
+    ],
+    [
+      "a passing report with a failed evaluation",
+      report({
+        evaluations: [{ evalId: "e", status: "failed", evidence: ["x"] }],
+      }),
+      /all passed/,
+    ],
+    [
+      "a malformed evaluations array",
+      report({ evaluations: "none" }),
+      /non-empty array/,
+    ],
+    [
+      "an unknown evaluation status",
+      report({ evaluations: [{ evalId: "e", status: "ok", evidence: ["x"] }] }),
+      /invalid evaluation status/,
+    ],
+  ])("rejects %s without crashing", (_label, value, expected) => {
+    const result = runScript("validate_eval_report.py", [
+      writeTempJson(tempRoot, "report.json", value),
+    ]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(expected);
     expect(result.stderr).not.toMatch(/Traceback/);
   });
 
-  it('allows a blocked report to omit the snapshot hash', () => {
-    const value = report({ status: 'blocked_before_write', snapshotHash: null });
-    expect(runScript('validate_eval_report.py', [writeTempJson(tempRoot, 'report.json', value)]).status).toBe(0);
+  it("allows a blocked report to omit the snapshot hash", () => {
+    const value = report({
+      status: "blocked_before_write",
+      snapshotHash: null,
+    });
+    expect(
+      runScript("validate_eval_report.py", [
+        writeTempJson(tempRoot, "report.json", value),
+      ]).status,
+    ).toBe(0);
   });
 
-  it('emits one texture per spritesheet when animations share a sheet', () => {
-    const sheet = path.join(tempRoot, 'hero.png');
+  it("emits one texture per spritesheet when animations share a sheet", () => {
+    const sheet = path.join(tempRoot, "hero.png");
     writePngHeader(sheet, 256, 32);
-    const manifest = writeTempJson(tempRoot, 'animations.json', {
+    const manifest = writeTempJson(tempRoot, "animations.json", {
       version: 1,
-      resourcePath: 'res://generated/hero_frames.tres',
+      resourcePath: "res://generated/hero_frames.tres",
       animations: [
-        { name: 'idle', sheetPath: 'res://generated/hero.png', sheetFile: sheet, frameWidth: 32, frameHeight: 32, frameCount: 8, fps: 8, loop: true },
-        { name: 'walk', sheetPath: 'res://generated/hero.png', sheetFile: sheet, frameWidth: 32, frameHeight: 32, frameCount: 8, fps: 12, loop: true },
+        {
+          name: "idle",
+          sheetPath: "res://generated/hero.png",
+          sheetFile: sheet,
+          frameWidth: 32,
+          frameHeight: 32,
+          frameCount: 8,
+          fps: 8,
+          loop: true,
+        },
+        {
+          name: "walk",
+          sheetPath: "res://generated/hero.png",
+          sheetFile: sheet,
+          frameWidth: 32,
+          frameHeight: 32,
+          frameCount: 8,
+          fps: 12,
+          loop: true,
+        },
       ],
     });
-    const output = path.join(tempRoot, 'hero_frames.tres');
-    const result = runScript('build_spriteframes_resource.py', ['--manifest', manifest, '--output', output]);
+    const output = path.join(tempRoot, "hero_frames.tres");
+    const result = runScript("build_spriteframes_resource.py", [
+      "--manifest",
+      manifest,
+      "--output",
+      output,
+    ]);
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, animationCount: 2, sheetCount: 1 });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      animationCount: 2,
+      sheetCount: 1,
+    });
 
-    const resource = readFileSync(output, 'utf8');
+    const resource = readFileSync(output, "utf8");
     expect(resource.match(/ext_resource/g)).toHaveLength(1);
     expect(resource.match(/type="AtlasTexture"/g)).toHaveLength(16);
     // load_steps counts distinct textures + atlas sub-resources + the resource.
-    expect(resource).toContain('load_steps=18');
-    expect(resource).toContain('region = Rect2(224, 0, 32, 32)');
+    expect(resource).toContain("load_steps=18");
+    expect(resource).toContain("region = Rect2(224, 0, 32, 32)");
   });
 
   it.each([
-    ['frame geometry that contradicts the PNG', { frameCount: 9 }, {}, /frame geometry/],
-    ['a non-boolean loop flag', { loop: 'yes' }, {}, /loop must be a boolean/],
-  ])('rejects %s', (_label, animationOverrides, manifestOverrides, expected) => {
-    const sheet = path.join(tempRoot, 'hero.png');
-    writePngHeader(sheet, 256, 32);
-    const manifest = writeTempJson(tempRoot, 'animations.json', {
-      version: 1,
-      resourcePath: 'res://generated/hero_frames.tres',
-      animations: [{
-        name: 'idle', sheetPath: 'res://generated/hero.png', sheetFile: sheet,
-        frameWidth: 32, frameHeight: 32, frameCount: 8, fps: 8, loop: true, ...animationOverrides,
-      }],
-      ...manifestOverrides,
-    });
-    const result = runScript('build_spriteframes_resource.py', ['--manifest', manifest, '--output', path.join(tempRoot, 'hero_frames.tres')]);
-    expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(expected);
-  });
+    [
+      "frame geometry that contradicts the PNG",
+      { frameCount: 9 },
+      {},
+      /frame geometry/,
+    ],
+    ["a non-boolean loop flag", { loop: "yes" }, {}, /loop must be a boolean/],
+  ])(
+    "rejects %s",
+    (_label, animationOverrides, manifestOverrides, expected) => {
+      const sheet = path.join(tempRoot, "hero.png");
+      writePngHeader(sheet, 256, 32);
+      const manifest = writeTempJson(tempRoot, "animations.json", {
+        version: 1,
+        resourcePath: "res://generated/hero_frames.tres",
+        animations: [
+          {
+            name: "idle",
+            sheetPath: "res://generated/hero.png",
+            sheetFile: sheet,
+            frameWidth: 32,
+            frameHeight: 32,
+            frameCount: 8,
+            fps: 8,
+            loop: true,
+            ...animationOverrides,
+          },
+        ],
+        ...manifestOverrides,
+      });
+      const result = runScript("build_spriteframes_resource.py", [
+        "--manifest",
+        manifest,
+        "--output",
+        path.join(tempRoot, "hero_frames.tres"),
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(expected);
+    },
+  );
 
-  it('binds the built resource name to the manifest resourcePath', () => {
-    const sheet = path.join(tempRoot, 'hero.png');
+  it("binds the built resource name to the manifest resourcePath", () => {
+    const sheet = path.join(tempRoot, "hero.png");
     writePngHeader(sheet, 64, 32);
-    const manifest = writeTempJson(tempRoot, 'animations.json', {
+    const manifest = writeTempJson(tempRoot, "animations.json", {
       version: 1,
-      resourcePath: 'res://generated/hero_frames.tres',
-      animations: [{ name: 'idle', sheetPath: 'res://generated/hero.png', sheetFile: sheet, frameWidth: 32, frameHeight: 32, frameCount: 2, fps: 8, loop: true }],
+      resourcePath: "res://generated/hero_frames.tres",
+      animations: [
+        {
+          name: "idle",
+          sheetPath: "res://generated/hero.png",
+          sheetFile: sheet,
+          frameWidth: 32,
+          frameHeight: 32,
+          frameCount: 2,
+          fps: 8,
+          loop: true,
+        },
+      ],
     });
-    const result = runScript('build_spriteframes_resource.py', ['--manifest', manifest, '--output', path.join(tempRoot, 'other_name.tres')]);
+    const result = runScript("build_spriteframes_resource.py", [
+      "--manifest",
+      manifest,
+      "--output",
+      path.join(tempRoot, "other_name.tres"),
+    ]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/must be named hero_frames\.tres/);
   });
 
-  it('validates a ui asset package against the shared vocabulary', () => {
-    const assetDir = path.join(tempRoot, 'assets');
+  it("validates a ui asset package against the shared vocabulary", () => {
+    const assetDir = path.join(tempRoot, "assets");
     mkdirSync(assetDir, { recursive: true });
-    const panel = path.join(assetDir, 'panel.png');
+    const panel = path.join(assetDir, "panel.png");
     writePngHeader(panel, 64, 64);
-    const packagePath = writeTempJson(tempRoot, 'package.json', {
+    const packagePath = writeTempJson(tempRoot, "package.json", {
       version: 1,
       projectRoot: tempRoot,
-      assets: [{
-        assetKey: 'inventory-panel',
-        assetKind: 'ui',
-        provider: { capability: 'ui-elements-pro', transportTool: null, assetId: 'provider-panel' },
-        status: 'ready',
-        files: [{ fileKey: 'panel', sourceFile: 'assets/panel.png', targetPath: 'res://ui/panel.png', sha256: sha256(panel), width: 64, height: 64 }],
-      }],
+      assets: [
+        {
+          assetKey: "inventory-panel",
+          assetKind: "ui",
+          provider: {
+            capability: "ui-elements-pro",
+            transportTool: null,
+            assetId: "provider-panel",
+          },
+          status: "ready",
+          files: [
+            {
+              fileKey: "panel",
+              sourceFile: "assets/panel.png",
+              targetPath: "res://ui/panel.png",
+              sha256: sha256(panel),
+              width: 64,
+              height: 64,
+            },
+          ],
+        },
+      ],
     });
-    const result = runScript('validate_generated_asset_package.py', [packagePath]);
+    const result = runScript("validate_generated_asset_package.py", [
+      packagePath,
+    ]);
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, assetCount: 1, fileCount: 1 });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      assetCount: 1,
+      fileCount: 1,
+    });
   });
 
-  it('accepts slice documents whose frontmatter contains blank lines and comments', () => {
-    const sliceDir = path.join(tempRoot, 'hero-animation');
+  it("accepts slice documents whose frontmatter contains blank lines and comments", () => {
+    const sliceDir = path.join(tempRoot, "hero-animation");
     mkdirSync(sliceDir, { recursive: true });
     const frontmatter = (documentType: string) =>
       `---\nsliceId: hero-animation\n\n# authored by the roadmap stage\ndocumentType: ${documentType}\ncreatedDate: 2026-08-06\nupdatedDate: 2026-08-06\nstatus: in_progress\nlatest: true\n---\n`;
-    writeFileSync(path.join(sliceDir, 'spec.md'), `${frontmatter('spec')}\n# Hero animation\n`);
-    writeFileSync(path.join(sliceDir, 'plan.md'), `${frontmatter('plan')}\n# Plan\n`);
-    writeTempJson(sliceDir, 'status.json', {
+    writeFileSync(
+      path.join(sliceDir, "spec.md"),
+      `${frontmatter("spec")}\n# Hero animation\n`,
+    );
+    writeFileSync(
+      path.join(sliceDir, "plan.md"),
+      `${frontmatter("plan")}\n# Plan\n`,
+    );
+    writeTempJson(sliceDir, "status.json", {
       version: 1,
-      sliceId: 'hero-animation',
-      createdDate: '2026-08-06',
-      updatedDate: '2026-08-06',
-      status: 'in_progress',
+      sliceId: "hero-animation",
+      createdDate: "2026-08-06",
+      updatedDate: "2026-08-06",
+      status: "in_progress",
       latest: true,
       completed: false,
       supersedes: [],
-      tasks: [{ id: 'task-01', status: 'pending' }],
+      tasks: [{ id: "task-01", status: "pending" }],
     });
-    const result = runScript('validate_slice_documents.py', ['--slice-dir', sliceDir]);
+    const result = runScript("validate_slice_documents.py", [
+      "--slice-dir",
+      sliceDir,
+    ]);
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, sliceId: 'hero-animation' });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      sliceId: "hero-animation",
+    });
   });
 
-  it('refuses to replace a directory that is not a previous snapshot', () => {
-    const victim = path.join(tempRoot, 'not-a-snapshot');
+  it("refuses to replace a directory that is not a previous snapshot", () => {
+    const victim = path.join(tempRoot, "not-a-snapshot");
     mkdirSync(victim, { recursive: true });
-    writeFileSync(path.join(victim, 'important.txt'), 'user data');
-    const input = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-snapshot-input.json');
+    writeFileSync(path.join(victim, "important.txt"), "user data");
+    const input = path.join(
+      repositoryRoot,
+      "tests",
+      "fixtures",
+      "plugins",
+      "keco-godot-snapshot-input.json",
+    );
 
-    const result = runScript('export_keco_snapshot.py', ['--input', input, '--output-dir', victim]);
+    const result = runScript("export_keco_snapshot.py", [
+      "--input",
+      input,
+      "--output-dir",
+      victim,
+    ]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/not a snapshot/);
-    expect(existsSync(path.join(victim, 'important.txt'))).toBe(true);
+    expect(existsSync(path.join(victim, "important.txt"))).toBe(true);
   });
 
-  it('exports, re-exports, and validates a deterministic snapshot', () => {
-    const input = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-snapshot-input.json');
-    const output = path.join(tempRoot, 'snapshot');
+  it("exports, re-exports, and validates a deterministic snapshot", () => {
+    const input = path.join(
+      repositoryRoot,
+      "tests",
+      "fixtures",
+      "plugins",
+      "keco-godot-snapshot-input.json",
+    );
+    const output = path.join(tempRoot, "snapshot");
 
-    const first = runScript('export_keco_snapshot.py', ['--input', input, '--output-dir', output]);
+    const first = runScript("export_keco_snapshot.py", [
+      "--input",
+      input,
+      "--output-dir",
+      output,
+    ]);
     expect(first.status).toBe(0);
-    const second = runScript('export_keco_snapshot.py', ['--input', input, '--output-dir', output]);
+    const second = runScript("export_keco_snapshot.py", [
+      "--input",
+      input,
+      "--output-dir",
+      output,
+    ]);
     expect(second.status).toBe(0);
-    expect(JSON.parse(second.stdout).aggregateSha256).toBe(JSON.parse(first.stdout).aggregateSha256);
+    expect(JSON.parse(second.stdout).aggregateSha256).toBe(
+      JSON.parse(first.stdout).aggregateSha256,
+    );
 
-    const validated = runScript('validate_snapshot.py', ['--snapshot-dir', output, '--source-input', input]);
+    const validated = runScript("validate_snapshot.py", [
+      "--snapshot-dir",
+      output,
+      "--source-input",
+      input,
+    ]);
     expect(validated.status).toBe(0);
     expect(JSON.parse(validated.stdout)).toMatchObject({ ok: true });
   });

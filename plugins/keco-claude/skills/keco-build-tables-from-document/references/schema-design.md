@@ -21,8 +21,17 @@ type BuildPlan = {
     fields: Array<{
       key: string;
       label: string;
-      dataType: 'string' | 'string_array' | 'int' | 'int_array' |
-        'float' | 'float_array' | 'boolean' | 'enum' | 'date' | 'reference';
+      dataType:
+        | "string"
+        | "string_array"
+        | "int"
+        | "int_array"
+        | "float"
+        | "float_array"
+        | "boolean"
+        | "enum"
+        | "date"
+        | "reference";
       required?: boolean;
       enumOptions?: string[];
       targetTableKey?: string;
@@ -41,6 +50,12 @@ type BuildPlan = {
 };
 ```
 
+## Ownership Boundary
+
+`BuildPlan` is the approved static scope. After confirmation, a changed table, row, relationship, assumption, or acceptance rule requires a new plan revision. The plan must not contain current execution status, returned MCP IDs, write tokens, checkpoints, command output, verification evidence, or read-back results.
+
+Keep returned IDs and mutable progress in the separate `ExecutionCheckpoint` defined by `execution-policy.md`. Keep mutation responses and verified read-back in its `VerificationReport`.
+
 `key` values are plan-local stable identifiers. They are not Keco UUIDs. Keep Keco table, field, and row IDs returned by MCP in a separate execution map keyed by these values.
 
 Use plan-local field keys as the keys in `scalarValues`. Use a source reference field's plan-local key as each `references` key; its string values are target row keys in that field's planned `targetTableKey`. During execution, map field keys to semantic field labels for field definitions and row `values`, and map `targetTableKey` plus target row keys to returned table, row, and display-field UUIDs for reference cells. Never send raw plan-local keys or source reference-field IDs to MCP.
@@ -57,18 +72,18 @@ Use plan-local field keys as the keys in `scalarValues`. Use a source reference 
 
 Use only MCP-supported P0 field types:
 
-| Source value | `dataType` |
-|---|---|
-| short or long text, identifier | `string` |
-| repeated text values | `string_array` |
-| whole number | `int` |
-| repeated whole numbers | `int_array` |
-| decimal number | `float` |
-| repeated decimal numbers | `float_array` |
-| true/false | `boolean` |
-| one value from a closed vocabulary | `enum` |
-| calendar date | `date` |
-| relationship to another planned table | `reference` |
+| Source value                          | `dataType`     |
+| ------------------------------------- | -------------- |
+| short or long text, identifier        | `string`       |
+| repeated text values                  | `string_array` |
+| whole number                          | `int`          |
+| repeated whole numbers                | `int_array`    |
+| decimal number                        | `float`        |
+| repeated decimal numbers              | `float_array`  |
+| true/false                            | `boolean`      |
+| one value from a closed vocabulary    | `enum`         |
+| calendar date                         | `date`         |
+| relationship to another planned table | `reference`    |
 
 Provide `enumOptions` only for `enum`. Normalize whitespace and case, preserve user-facing spelling, and list each distinct option once. Provide `targetTableKey` only for `reference`; convert it to `referenceTableIds` after the target table exists.
 

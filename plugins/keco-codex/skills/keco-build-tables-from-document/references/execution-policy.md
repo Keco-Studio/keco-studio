@@ -64,6 +64,12 @@ After all writes succeed:
 3. Compare row counts, match values, representative scalar values, and every planned reference.
 4. Report a verification mismatch as partial completion, not success.
 
+## Execution State And Evidence
+
+Keep mutable state in an `ExecutionCheckpoint` separate from the confirmed `BuildPlan`. It owns the plan revision, current stage, returned table/field/row IDs, completed writes, blocked boundary, and resume point.
+
+Keep tool responses and read-back evidence in a `VerificationReport` separate from both the plan and checkpoint. It owns attempted operations, exact failures, verified schemas, stable keys, row counts, reference results, and incomplete work.
+
 ## Safe Resume
 
 Keep the confirmed BuildPlan and returned execution IDs in the conversation result. On retry:

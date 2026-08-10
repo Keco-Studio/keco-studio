@@ -8,6 +8,21 @@ import sys
 
 PLACEHOLDERS = ("TBD", "TODO", "implement later", "fill in details", "add appropriate")
 REQUIRED = ("id", "files", "dependsOn", "servesEvaluations", "red", "green", "review")
+FORBIDDEN_RUNTIME_KEYS = {
+    "blockedAt",
+    "changedFiles",
+    "checkpoint",
+    "commandOutput",
+    "currentTask",
+    "evidence",
+    "readBack",
+    "resumeFrom",
+    "retryCount",
+    "runId",
+    "runtimeLogs",
+    "status",
+    "writeToken",
+}
 
 
 def main() -> int:
@@ -22,6 +37,12 @@ def main() -> int:
     tasks = plan.get("tasks") if isinstance(plan, dict) else None
     if not isinstance(tasks, list) or not tasks:
         print("plan must contain a non-empty tasks array", file=sys.stderr)
+        return 1
+    if FORBIDDEN_RUNTIME_KEYS.intersection(plan) or any(
+        isinstance(task, dict) and FORBIDDEN_RUNTIME_KEYS.intersection(task)
+        for task in tasks
+    ):
+        print("plan contains runtime or evidence state", file=sys.stderr)
         return 1
     text = json.dumps(plan, ensure_ascii=False).lower()
     if any(item.lower() in text for item in PLACEHOLDERS):

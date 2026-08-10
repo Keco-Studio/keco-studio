@@ -27,6 +27,12 @@ After every ledger stage, update the Keco status document with `update_document`
 
 After every create/update, read the complete document back and verify the project ID, folder ID, document ID, revision, content hash, `runId`, and `sliceId`. A write response without read-back is not success.
 
+## Plan And Status Ownership
+
+`plan.md` is the approved static scope and does not own task progress. Its lifecycle frontmatter remains for legacy document compatibility, but task state is read from `status.json`. A changed scope or acceptance rule creates a new plan revision instead of writing runtime details into the accepted plan.
+
+`TaskResult` records per-task execution evidence. `EvalReport` records final verification evidence. Command output, read-back values, hashes, screenshots, and repair history belong there or in `status.json`, never in `plan.md`.
+
 ## Local Mirror
 
 Only after Keco read-back succeeds, materialize the accepted content into:
