@@ -1,4 +1,5 @@
 import {
+  AimOutlined,
   BorderOutlined,
   DragOutlined,
   HighlightOutlined,
@@ -14,7 +15,16 @@ import {
 } from '@ant-design/icons';
 import styles from '../CreateMapWorkbench.module.css';
 
-export type MapTool = 'select' | 'hand' | 'region' | 'path' | 'placement' | 'rectangle' | 'circle' | 'polygon' | 'mask';
+export type MapTool =
+  | 'select'
+  | 'hand'
+  | 'region'
+  | 'path'
+  | 'placement'
+  | 'generate-obstacle'
+  | 'collision-rectangle'
+  | 'collision-circle'
+  | 'collision-polygon';
 
 type ToolButtonProps = {
   label: string;
@@ -49,6 +59,7 @@ type MapToolbarProps = {
   canUndo: boolean;
   canRedo: boolean;
   snapToGrid: boolean;
+  hasEntitySelection?: boolean;
   onToolChange: (tool: MapTool) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -65,6 +76,7 @@ export function MapToolbar({
   canUndo,
   canRedo,
   snapToGrid,
+  hasEntitySelection = false,
   onToolChange,
   onUndo,
   onRedo,
@@ -73,7 +85,7 @@ export function MapToolbar({
   onToggleLeft,
   onToggleRight,
 }: MapToolbarProps) {
-  const tools: Array<{ id: MapTool; label: string; icon: React.ReactNode }> = mode === 'plan-review'
+  const tools: Array<{ id: MapTool; label: string; icon: React.ReactNode; disabled?: boolean }> = mode === 'plan-review'
     ? [
         { id: 'select', label: 'Select structure', icon: <SelectOutlined /> },
         { id: 'hand', label: 'Hand tool', icon: <DragOutlined /> },
@@ -82,12 +94,12 @@ export function MapToolbar({
         { id: 'placement', label: 'Move planned obstacles', icon: <BorderOutlined /> },
       ]
     : [
-        { id: 'select', label: 'Select', icon: <SelectOutlined /> },
+        { id: 'select', label: 'Select obstacle', icon: <SelectOutlined /> },
         { id: 'hand', label: 'Hand tool', icon: <DragOutlined /> },
-        { id: 'rectangle', label: 'Rectangle obstacle', icon: <BorderOutlined /> },
-        { id: 'circle', label: 'Circle obstacle', icon: <RadiusSettingOutlined /> },
-        { id: 'polygon', label: 'Polygon obstacle', icon: <ShareAltOutlined /> },
-        { id: 'mask', label: 'Inpaint mask', icon: <HighlightOutlined /> },
+        { id: 'generate-obstacle', label: 'Generate obstacle in region', icon: <AimOutlined /> },
+        { id: 'collision-rectangle', label: 'Rectangle collision', icon: <BorderOutlined />, disabled: !hasEntitySelection },
+        { id: 'collision-circle', label: 'Circle collision', icon: <RadiusSettingOutlined />, disabled: !hasEntitySelection },
+        { id: 'collision-polygon', label: 'Polygon collision', icon: <ShareAltOutlined />, disabled: !hasEntitySelection },
       ];
 
   return (
@@ -95,7 +107,15 @@ export function MapToolbar({
       <div className={styles.toolbarGroup}>
         <span className={styles.mobileOnly}><ToolButton label="Toggle source panel" onClick={onToggleLeft}><MenuUnfoldOutlined /></ToolButton></span>
         {tools.map((item) => (
-          <ToolButton key={item.id} label={item.label} active={tool === item.id} onClick={() => onToolChange(item.id)}>{item.icon}</ToolButton>
+          <ToolButton
+            key={item.id}
+            label={item.label}
+            active={tool === item.id}
+            disabled={item.disabled}
+            onClick={() => onToolChange(item.id)}
+          >
+            {item.icon}
+          </ToolButton>
         ))}
       </div>
       <div className={styles.toolbarGroup}>

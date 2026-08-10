@@ -31,6 +31,8 @@ export type MapGenerationAsset = MapAssetPlanRowV2 & {
   errorCode: string | null;
   storagePath: string | null;
   sha256: string | null;
+  width: number | null;
+  height: number | null;
   signedUrl: string | null;
 };
 
@@ -101,6 +103,8 @@ function previewAsset(row: MapAssetPlanRowV2): MapGenerationAsset {
     errorCode: null,
     storagePath: null,
     sha256: null,
+    width: null,
+    height: null,
     signedUrl: null,
   };
 }
@@ -128,6 +132,8 @@ function verifiedAsset(
     errorCode: record.last_error_code,
     storagePath: record.storage_path,
     sha256: record.sha256,
+    width: record.width,
+    height: record.height,
     signedUrl: null,
   };
 }

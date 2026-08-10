@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Obstacle, Point } from '../model/mapPlanSchema';
-import type { MapScene } from '../model/mapSceneSchema';
-import type { EditorCommand, EditorSelection } from '../model/mapSceneReducer';
-import { screenToMap, snapPoint, type MapViewport } from '../model/coordinates';
+import type { Point } from '../model/mapPlanSchema';
+import type { MapSceneV2, ObstacleEntity } from '../model/mapSceneSchema';
+import type { EditorSelection, MapSceneV2Command } from '../model/mapSceneReducer';
+import { screenToMap, type MapViewport } from '../model/coordinates';
+import { transformLocalCollision } from '../model/obstacleCollision';
 import {
   commandForInteraction,
+  mapPointToEntityLocal,
   previewInteraction,
   type MapInteraction,
 } from '../model/mapInteraction';
@@ -15,198 +17,167 @@ import styles from '../CreateMapWorkbench.module.css';
 
 export type MapRenderAsset = {
   assetKey: string;
-  kind: 'terrain' | 'road' | 'object';
-  underlayAssetKey?: string;
+  kind: 'background' | 'obstacle';
   image?: CanvasImageSource;
-  color?: string;
-  width?: number;
-  height?: number;
+  width: number;
+  height: number;
 };
 
-export type MapRenderViewport = MapViewport & {
-  devicePixelRatio: number;
-};
-
+export type MapRenderViewport = MapViewport & { devicePixelRatio: number };
 export type MapRenderSelection = EditorSelection;
 
-const FALLBACK_COLORS = {
-  terrain: '#88a96b',
-  road: '#b99d72',
-  object: '#466c50',
-} as const;
-
-function drawAssetRect(
-  context: CanvasRenderingContext2D,
-  asset: MapRenderAsset | undefined,
-  kind: MapRenderAsset['kind'],
-  x: number,
-  y: number,
-  width: number,
-  height: number
-) {
-  if (asset?.image) {
-    if ((kind === 'terrain' || kind === 'road') && 'naturalWidth' in asset.image && asset.image.naturalWidth >= width && asset.image.naturalHeight >= height) {
-      context.drawImage(asset.image, 0, 0, width, height, x, y, width, height);
-    } else {
-      context.drawImage(asset.image, x, y, width, height);
-    }
-    return;
-  }
-  context.fillStyle = asset?.color ?? FALLBACK_COLORS[kind];
-  context.fillRect(x, y, width, height);
+function entityLocalToMap(entity: ObstacleEntity, point: Point): Point {
+  const radians = (entity.rotation * Math.PI) / 180;
+  const scaledX = point.x * entity.scale;
+  const scaledY = point.y * entity.scale;
+  return {
+    x: entity.position.x + scaledX * Math.cos(radians) - scaledY * Math.sin(radians),
+    y: entity.position.y + scaledX * Math.sin(radians) + scaledY * Math.cos(radians),
+  };
 }
 
-function drawObstacle(
+function drawCollision(
   context: CanvasRenderingContext2D,
-  obstacle: Obstacle,
-  appearance = { fill: 'rgba(221, 84, 84, 0.13)', stroke: '#d34d4d', lineWidth: 1.5 }
-) {
+  entity: ObstacleEntity,
+  selected: boolean,
+): void {
+  const collision = transformLocalCollision(entity);
   context.beginPath();
-  if (obstacle.shape === 'rectangle') {
-    context.rect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-  } else if (obstacle.shape === 'circle') {
-    context.arc(obstacle.cx, obstacle.cy, obstacle.radius, 0, Math.PI * 2);
+  if (collision.shape === 'circle') {
+    context.arc(collision.cx, collision.cy, collision.radius, 0, Math.PI * 2);
   } else {
-    obstacle.points.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y));
+    collision.points.forEach((point, index) => {
+      if (index === 0) context.moveTo(point.x, point.y);
+      else context.lineTo(point.x, point.y);
+    });
     context.closePath();
   }
-  context.fillStyle = appearance.fill;
-  context.strokeStyle = appearance.stroke;
-  context.lineWidth = appearance.lineWidth;
+  context.fillStyle = selected ? 'rgba(11, 120, 208, 0.12)' : 'rgba(211, 77, 77, 0.13)';
+  context.strokeStyle = selected ? '#0b78d0' : '#c94a4a';
+  context.lineWidth = selected ? 2.5 : 1.5;
   context.fill();
   context.stroke();
 }
 
-function pointInPolygon(point: Point, points: Point[]): boolean {
-  let inside = false;
-  for (let current = 0, previous = points.length - 1; current < points.length; previous = current++) {
-    const a = points[current];
-    const b = points[previous];
-    if (
-      (a.y > point.y) !== (b.y > point.y) &&
-      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x
-    ) {
-      inside = !inside;
-    }
+function drawEntity(
+  context: CanvasRenderingContext2D,
+  entity: ObstacleEntity,
+  asset: MapRenderAsset | undefined,
+  selected: boolean,
+): void {
+  const width = asset?.width ?? Math.max(32, entity.groundAnchor.x * 2);
+  const height = asset?.height ?? Math.max(32, entity.groundAnchor.y + 8);
+  context.save();
+  context.translate(entity.position.x, entity.position.y);
+  context.rotate((entity.rotation * Math.PI) / 180);
+  context.scale(entity.scale, entity.scale);
+  if (asset?.image) {
+    context.drawImage(asset.image, -entity.groundAnchor.x, -entity.groundAnchor.y, width, height);
+  } else {
+    context.fillStyle = '#52735b';
+    context.fillRect(-entity.groundAnchor.x, -entity.groundAnchor.y, width, height);
   }
-  return inside;
-}
-
-function obstacleContainsPoint(obstacle: Obstacle, point: Point): boolean {
-  if (obstacle.shape === 'rectangle') {
-    return point.x >= obstacle.x && point.x <= obstacle.x + obstacle.width && point.y >= obstacle.y && point.y <= obstacle.y + obstacle.height;
+  if (selected) {
+    context.strokeStyle = '#0b78d0';
+    context.lineWidth = 2 / entity.scale;
+    context.setLineDash([5 / entity.scale, 3 / entity.scale]);
+    context.strokeRect(-entity.groundAnchor.x, -entity.groundAnchor.y, width, height);
+    context.setLineDash([]);
   }
-  if (obstacle.shape === 'circle') {
-    return Math.hypot(point.x - obstacle.cx, point.y - obstacle.cy) <= obstacle.radius;
-  }
-  return pointInPolygon(point, obstacle.points);
+  context.restore();
 }
 
 export function renderMapScene(
   context: CanvasRenderingContext2D,
-  scene: MapScene,
+  scene: MapSceneV2,
   assets: ReadonlyMap<string, MapRenderAsset>,
   viewport: MapRenderViewport,
-  selection: MapRenderSelection = null
-) {
+  selection: MapRenderSelection = null,
+): void {
   const dpr = Math.max(1, viewport.devicePixelRatio || 1);
   context.save();
   context.setTransform(1, 0, 0, 1, 0, 0);
   context.clearRect(0, 0, context.canvas.width, context.canvas.height);
-  context.setTransform(dpr * viewport.zoom, 0, 0, dpr * viewport.zoom, dpr * viewport.panX, dpr * viewport.panY);
+  context.setTransform(
+    dpr * viewport.zoom,
+    0,
+    0,
+    dpr * viewport.zoom,
+    dpr * viewport.panX,
+    dpr * viewport.panY,
+  );
   context.fillStyle = '#e8ece5';
   context.fillRect(0, 0, scene.size.width, scene.size.height);
 
   const visibleLayers = new Set(scene.layers.filter((layer) => layer.visible).map((layer) => layer.id));
-  const drawTiles = (kind: 'terrain' | 'road') => {
-    scene.tiles.forEach((tile) => {
-      if (!visibleLayers.has(tile.layerId)) return;
-      const selected = assets.get(tile.terrainKey);
-      const asset = kind === 'terrain' && selected?.kind === 'road' && selected.underlayAssetKey
-        ? assets.get(selected.underlayAssetKey)
-        : selected;
-      if ((asset?.kind ?? 'terrain') !== kind) return;
-      drawAssetRect(
-        context,
-        asset,
-        kind,
-        tile.x * scene.size.tileSize,
-        tile.y * scene.size.tileSize,
-        scene.size.tileSize,
-        scene.size.tileSize
-      );
-    });
-  };
-  drawTiles('terrain');
-  drawTiles('road');
-
-  [...scene.objects]
-    .filter((object) => visibleLayers.has(object.layerId))
-    .sort((left, right) => left.zIndex - right.zIndex)
-    .forEach((object) => {
-      const asset = assets.get(object.assetKey);
-      const width = (asset?.width ?? 48) * object.scale;
-      const height = (asset?.height ?? 56) * object.scale;
-      context.save();
-      context.translate(object.position.x, object.position.y);
-      context.rotate((object.rotation * Math.PI) / 180);
-      drawAssetRect(
-        context,
-        asset,
-        'object',
-        -object.groundAnchor.x * object.scale,
-        -object.groundAnchor.y * object.scale,
-        width,
-        height
-      );
-      context.restore();
-    });
-
-  const showObstacles = scene.layers.some((layer) => layer.kind === 'overlay' && layer.visible);
-  if (showObstacles) scene.obstacles.forEach((obstacle) => drawObstacle(context, obstacle));
-
-  if (selection?.kind === 'object') {
-    const object = scene.objects.find((candidate) => candidate.id === selection.id);
-    if (object && visibleLayers.has(object.layerId)) {
-      const asset = assets.get(object.assetKey);
-      const width = (asset?.width ?? 48) * object.scale;
-      const height = (asset?.height ?? 56) * object.scale;
-      context.strokeStyle = '#0b78d0';
-      context.lineWidth = 2;
-      context.setLineDash([4, 3]);
-      context.strokeRect(
-        object.position.x - object.groundAnchor.x * object.scale,
-        object.position.y - object.groundAnchor.y * object.scale,
-        width,
-        height
-      );
-      context.setLineDash([]);
+  if (scene.background && visibleLayers.has('background')) {
+    const background = assets.get(scene.background.assetKey);
+    if (background?.image) {
+      context.drawImage(background.image, 0, 0, scene.size.width, scene.size.height);
     }
-  } else if (selection?.kind === 'obstacle') {
-    const obstacle = scene.obstacles.find((candidate) => candidate.id === selection.id);
-    if (obstacle) {
-      drawObstacle(context, obstacle, { fill: 'rgba(11, 120, 208, 0.08)', stroke: '#0b78d0', lineWidth: 3 });
+  }
+
+  if (visibleLayers.has('obstacles')) {
+    [...scene.obstacleEntities]
+      .sort((left, right) => left.zIndex - right.zIndex || left.id.localeCompare(right.id))
+      .forEach((entity) => drawEntity(
+        context,
+        entity,
+        assets.get(entity.assetKey),
+        selection?.kind === 'entity' && selection.id === entity.id,
+      ));
+  }
+
+  if (visibleLayers.has('collision')) {
+    scene.obstacleEntities.forEach((entity) => drawCollision(
+      context,
+      entity,
+      selection?.kind === 'entity' && selection.id === entity.id,
+    ));
+    const selected = selection?.kind === 'entity'
+      ? scene.obstacleEntities.find((entity) => entity.id === selection.id)
+      : undefined;
+    if (selected?.collision.shape === 'polygon') {
+      selected.collision.points.forEach((point) => {
+        const world = entityLocalToMap(selected, point);
+        context.beginPath();
+        context.arc(world.x, world.y, 5 / viewport.zoom, 0, Math.PI * 2);
+        context.fillStyle = '#ffffff';
+        context.strokeStyle = '#0b78d0';
+        context.lineWidth = 2 / viewport.zoom;
+        context.fill();
+        context.stroke();
+      });
     }
   }
   context.restore();
 }
 
+export function entityContainsMapPoint(
+  entity: ObstacleEntity,
+  asset: MapRenderAsset | undefined,
+  point: Point,
+): boolean {
+  const local = mapPointToEntityLocal(entity, point);
+  const width = asset?.width ?? Math.max(32, entity.groundAnchor.x * 2);
+  const height = asset?.height ?? Math.max(32, entity.groundAnchor.y + 8);
+  return local.x >= -entity.groundAnchor.x
+    && local.x <= width - entity.groundAnchor.x
+    && local.y >= -entity.groundAnchor.y
+    && local.y <= height - entity.groundAnchor.y;
+}
+
 type MapCanvasProps = {
-  scene: MapScene;
+  scene: MapSceneV2;
   assets: ReadonlyMap<string, MapRenderAsset>;
   tool: MapTool;
   viewport: MapViewport;
   snapToGrid: boolean;
   selection: EditorSelection;
-  onCommand: (command: EditorCommand) => void;
+  onCommand: (command: MapSceneV2Command) => void;
   onSelectionChange: (selection: EditorSelection) => void;
   onViewportChange: (viewport: MapViewport) => void;
-  onMaskPaint: (point: Point) => void;
 };
-
-function obstacleId(sequence: number) {
-  return `obstacle-${sequence}`;
-}
 
 export function MapCanvas({
   scene,
@@ -218,39 +189,42 @@ export function MapCanvas({
   onCommand,
   onSelectionChange,
   onViewportChange,
-  onMaskPaint,
 }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handStartRef = useRef<{ point: Point; viewport: MapViewport } | null>(null);
-  const obstacleSequenceRef = useRef(scene.obstacles.length + 1);
-  const [polygonPoints, setPolygonPoints] = useState<Point[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 1, height: 1 });
   const [interaction, setInteraction] = useState<MapInteraction | null>(null);
   const [interactionPoint, setInteractionPoint] = useState<Point | null>(null);
+  const [polygonPoints, setPolygonPoints] = useState<Point[]>([]);
 
-  const toRawMapPoint = useCallback((event: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>) => {
+  const selectedEntity = selection?.kind === 'entity'
+    ? scene.obstacleEntities.find((entity) => entity.id === selection.id) ?? null
+    : null;
+  const collisionVisible = scene.layers.some((layer) => layer.id === 'collision' && layer.visible);
+  const interactionGridSize = snapToGrid ? scene.size.tileSize : null;
+  const renderedScene = useMemo(
+    () => previewInteraction(scene, interaction, interactionPoint, interactionGridSize),
+    [interaction, interactionGridSize, interactionPoint, scene],
+  );
+
+  const toMapPoint = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return screenToMap({ x: event.clientX - rect.left, y: event.clientY - rect.top }, viewport);
   }, [viewport]);
 
-  const snapMapPoint = useCallback((point: Point) => {
-    if (!snapToGrid) return point;
-    return snapPoint(point, scene.size.tileSize);
-  }, [scene.size.tileSize, snapToGrid]);
-  const interactionGridSize = snapToGrid ? scene.size.tileSize : null;
-  const renderedScene = useMemo(
-    () => previewInteraction(scene, interaction, interactionPoint, interactionGridSize),
-    [interaction, interactionGridSize, interactionPoint, scene]
-  );
+  const currentInteractionPoint = useCallback((point: Point, active: MapInteraction): Point =>
+    active.kind === 'entity-drag' ? point : mapPointToEntityLocal(active.entity, point), []);
 
   const finishPolygon = useCallback(() => {
-    if (polygonPoints.length >= 3) {
-      const id = obstacleId(obstacleSequenceRef.current++);
-      onCommand({ type: 'obstacle/add', obstacle: { id, shape: 'polygon', points: polygonPoints } });
-      onSelectionChange({ kind: 'obstacle', id });
+    if (selectedEntity && polygonPoints.length >= 3) {
+      onCommand({
+        type: 'entity/collision',
+        id: selectedEntity.id,
+        collision: { shape: 'polygon', points: polygonPoints },
+      });
     }
     setPolygonPoints([]);
-  }, [onCommand, onSelectionChange, polygonPoints]);
+  }, [onCommand, polygonPoints, selectedEntity]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -272,58 +246,94 @@ export function MapCanvas({
   useEffect(() => {
     const context = canvasRef.current?.getContext('2d');
     if (!context) return;
-    renderMapScene(context, renderedScene, assets, { ...viewport, devicePixelRatio: window.devicePixelRatio || 1 }, selection);
-    if (polygonPoints.length > 0) {
+    renderMapScene(
+      context,
+      renderedScene,
+      assets,
+      { ...viewport, devicePixelRatio: window.devicePixelRatio || 1 },
+      selection,
+    );
+    if (selectedEntity && polygonPoints.length > 0) {
       const dpr = window.devicePixelRatio || 1;
       context.save();
-      context.setTransform(dpr * viewport.zoom, 0, 0, dpr * viewport.zoom, dpr * viewport.panX, dpr * viewport.panY);
+      context.setTransform(
+        dpr * viewport.zoom, 0, 0, dpr * viewport.zoom,
+        dpr * viewport.panX, dpr * viewport.panY,
+      );
       context.beginPath();
-      polygonPoints.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y));
+      polygonPoints.forEach((point, index) => {
+        const world = entityLocalToMap(selectedEntity, point);
+        if (index === 0) context.moveTo(world.x, world.y);
+        else context.lineTo(world.x, world.y);
+      });
       context.strokeStyle = '#0b78d0';
-      context.lineWidth = 2;
+      context.lineWidth = 2 / viewport.zoom;
       context.stroke();
       context.restore();
     }
-  }, [assets, canvasSize, polygonPoints, renderedScene, selection, viewport]);
+  }, [assets, canvasSize, polygonPoints, renderedScene, selectedEntity, selection, viewport]);
 
-  const startSelectionInteraction = (point: Point) => {
-    const object = [...scene.objects].reverse().find((candidate) => (
-      candidate.movable &&
-      Math.abs(candidate.position.x - point.x) <= 28 * candidate.scale &&
-      Math.abs(candidate.position.y - point.y) <= 32 * candidate.scale
-    ));
-    if (object) {
-      onSelectionChange({ kind: 'object', id: object.id });
-      setInteraction({ kind: 'object-drag', object, start: point });
-      setInteractionPoint(point);
-      return;
+  const startSelection = (point: Point) => {
+    setPolygonPoints([]);
+    clearInteraction();
+    if (collisionVisible && selectedEntity?.collision.shape === 'polygon') {
+      const vertexIndex = selectedEntity.collision.points.findIndex((vertex) => {
+        const world = entityLocalToMap(selectedEntity, vertex);
+        return Math.hypot(world.x - point.x, world.y - point.y) <= 8 / viewport.zoom;
+      });
+      if (vertexIndex >= 0) {
+        setInteraction({ kind: 'collision-vertex-drag', entity: selectedEntity, vertexIndex });
+        setInteractionPoint(mapPointToEntityLocal(selectedEntity, point));
+        return;
+      }
     }
-    const obstacle = [...scene.obstacles].reverse().find((candidate) => obstacleContainsPoint(candidate, point));
-    onSelectionChange(obstacle ? { kind: 'obstacle', id: obstacle.id } : null);
-    setInteraction(obstacle ? { kind: 'obstacle-drag', obstacle, start: point } : null);
-    setInteractionPoint(obstacle ? point : null);
+    const obstacleLayerVisible = scene.layers.some((layer) => layer.id === 'obstacles' && layer.visible);
+    const entity = obstacleLayerVisible
+      ? [...scene.obstacleEntities]
+          .sort((left, right) => right.zIndex - left.zIndex || right.id.localeCompare(left.id))
+          .find((candidate) => entityContainsMapPoint(candidate, assets.get(candidate.assetKey), point))
+      : undefined;
+    onSelectionChange(entity ? { kind: 'entity', id: entity.id } : null);
+    if (entity) {
+      setInteraction({ kind: 'entity-drag', entity, start: point });
+      setInteractionPoint(point);
+    }
+  };
+
+  const clearInteraction = () => {
+    handStartRef.current = null;
+    setInteraction(null);
+    setInteractionPoint(null);
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const rawPoint = toRawMapPoint(event);
+    const point = toMapPoint(event);
     if (tool === 'hand') {
       handStartRef.current = { point: { x: event.clientX, y: event.clientY }, viewport };
-    } else if (tool === 'select') {
-      startSelectionInteraction(rawPoint);
-    } else if (tool === 'rectangle' || tool === 'circle') {
-      const id = obstacleId(obstacleSequenceRef.current++);
-      setInteraction({ kind: tool === 'rectangle' ? 'rectangle-draw' : 'circle-draw', id, start: rawPoint });
-      setInteractionPoint(rawPoint);
-    } else if (tool === 'polygon') {
-      setPolygonPoints((current) => [...current, snapMapPoint(rawPoint)]);
-    } else if (tool === 'mask') {
-      onMaskPaint(snapMapPoint(rawPoint));
+      return;
+    }
+    if (tool === 'select') {
+      startSelection(point);
+      return;
+    }
+    if (!selectedEntity) return;
+    const local = mapPointToEntityLocal(selectedEntity, point);
+    if (tool === 'collision-rectangle' || tool === 'collision-circle') {
+      setInteraction({
+        kind: tool === 'collision-rectangle' ? 'collision-rectangle-draw' : 'collision-circle-draw',
+        entity: selectedEntity,
+        start: local,
+      });
+      setInteractionPoint(local);
+    } else if (tool === 'collision-polygon') {
+      setPolygonPoints((current) => [...current, local]);
     }
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
     if (tool === 'hand' && handStartRef.current) {
       const start = handStartRef.current;
       onViewportChange({
@@ -331,29 +341,17 @@ export function MapCanvas({
         panX: start.viewport.panX + event.clientX - start.point.x,
         panY: start.viewport.panY + event.clientY - start.point.y,
       });
-    } else if (interaction && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      setInteractionPoint(toRawMapPoint(event));
-    } else if (tool === 'mask' && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      onMaskPaint(snapMapPoint(toRawMapPoint(event)));
+    } else if (interaction) {
+      setInteractionPoint(currentInteractionPoint(toMapPoint(event), interaction));
     }
-  };
-
-  const clearInteraction = () => {
-    setInteraction(null);
-    setInteractionPoint(null);
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (interaction) {
-      const command = commandForInteraction(interaction, toRawMapPoint(event), interactionGridSize);
-      if (command) {
-        onCommand(command);
-        if (command.type === 'obstacle/add') {
-          onSelectionChange({ kind: 'obstacle', id: command.obstacle.id });
-        }
-      }
+      const point = currentInteractionPoint(toMapPoint(event), interaction);
+      const command = commandForInteraction(interaction, point, interactionGridSize);
+      if (command) onCommand(command);
     }
-    handStartRef.current = null;
     clearInteraction();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -361,7 +359,6 @@ export function MapCanvas({
   };
 
   const handlePointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    handStartRef.current = null;
     clearInteraction();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -369,23 +366,28 @@ export function MapCanvas({
   };
 
   return (
-    <div className={styles.canvasViewport}>
+    <div className={styles.canvasViewport} data-tool={tool}>
       <canvas
         ref={canvasRef}
         className={styles.canvas}
-        aria-label="Editable map canvas"
+        aria-label="Editable layered map canvas"
         tabIndex={0}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onDoubleClick={() => tool === 'polygon' && finishPolygon()}
+        onDoubleClick={() => tool === 'collision-polygon' && finishPolygon()}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' && tool === 'polygon') finishPolygon();
-          if (event.key === 'Escape') setPolygonPoints([]);
+          if (event.key === 'Enter' && tool === 'collision-polygon') finishPolygon();
+          if (event.key === 'Escape') {
+            setPolygonPoints([]);
+            clearInteraction();
+          }
         }}
       />
-      <div className={styles.canvasCoordinates} aria-live="polite">{scene.size.width} x {scene.size.height}px</div>
+      <div className={styles.canvasCoordinates} aria-live="polite">
+        {scene.size.width} x {scene.size.height}px
+      </div>
     </div>
   );
 }

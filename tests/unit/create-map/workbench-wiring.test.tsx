@@ -40,6 +40,8 @@ describe('Create Map V2 Plan Review workbench', () => {
     expect(markup).toContain('aria-label="Zoom in"');
     expect(markup).toContain('aria-label="Zoom out"');
     expect(markup).toContain('aria-label="Map plan structure canvas"');
+    expect(markup).toContain('aria-label="Map editor mode"');
+    expect(markup).toContain('role="tab"');
     expect(markup).toContain('PixelLab resources');
     expect(markup).toContain('Ready to prepare');
 
@@ -48,6 +50,22 @@ describe('Create Map V2 Plan Review workbench', () => {
     expect(markup).not.toContain('Circle obstacle');
     expect(markup).not.toContain('Polygon obstacle');
     expect(markup).not.toContain('Regenerate');
+  });
+
+  it('installs a materialized Scene into the layered editor without legacy inspectors', () => {
+    const workbench = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.tsx'),
+      'utf8'
+    );
+
+    expect(workbench).toContain('setSceneEditor(createEditorState(nextScene))');
+    expect(workbench).toContain("setMode('scene')");
+    expect(workbench).toContain('<MapCanvas');
+    expect(workbench).toContain('<MapLayerList');
+    expect(workbench).toContain('<ObstacleEntityInspector');
+    expect(workbench).not.toContain('InpaintInspector');
+    expect(workbench).not.toContain('ObjectInspector');
+    expect(workbench).not.toContain('ObstacleInspector');
   });
 
   it('requires a valid Project-backed clean draft before generation', () => {

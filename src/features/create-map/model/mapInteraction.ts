@@ -1,42 +1,39 @@
-import type { Obstacle, Point } from './mapPlanSchema';
-import type { MapScene, ObjectInstance } from './mapSceneSchema';
-import type { EditorCommand } from './mapSceneReducer';
+import type { LocalCollisionShape, Point } from './mapPlanSchema';
+import type { MapSceneV2, ObstacleEntity } from './mapSceneSchema';
+import type { MapSceneV2Command } from './mapSceneReducer';
 import { snapPoint } from './coordinates';
 
 export type MapInteraction =
-  | { kind: 'object-drag'; object: ObjectInstance; start: Point }
-  | { kind: 'obstacle-drag'; obstacle: Obstacle; start: Point }
-  | { kind: 'rectangle-draw'; id: string; start: Point }
-  | { kind: 'circle-draw'; id: string; start: Point };
+  | { kind: 'entity-drag'; entity: ObstacleEntity; start: Point }
+  | { kind: 'collision-rectangle-draw'; entity: ObstacleEntity; start: Point }
+  | { kind: 'collision-circle-draw'; entity: ObstacleEntity; start: Point }
+  | { kind: 'collision-vertex-drag'; entity: ObstacleEntity; vertexIndex: number };
 
 export function interactionDelta(start: Point, current: Point, gridSize: number | null): Point {
   const delta = { x: current.x - start.x, y: current.y - start.y };
   return gridSize === null ? delta : snapPoint(delta, gridSize);
 }
 
-function translateObstacle(obstacle: Obstacle, delta: Point): Obstacle {
-  if (obstacle.shape === 'rectangle') {
-    return { ...obstacle, x: obstacle.x + delta.x, y: obstacle.y + delta.y };
-  }
-  if (obstacle.shape === 'circle') {
-    return { ...obstacle, cx: obstacle.cx + delta.x, cy: obstacle.cy + delta.y };
-  }
+export function mapPointToEntityLocal(entity: ObstacleEntity, point: Point): Point {
+  const radians = (-entity.rotation * Math.PI) / 180;
+  const translatedX = point.x - entity.position.x;
+  const translatedY = point.y - entity.position.y;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
   return {
-    ...obstacle,
-    points: obstacle.points.map((point) => ({ x: point.x + delta.x, y: point.y + delta.y })),
+    x: (translatedX * cos - translatedY * sin) / entity.scale,
+    y: (translatedX * sin + translatedY * cos) / entity.scale,
   };
 }
 
-function createdObstacle(
-  interaction: Extract<MapInteraction, { kind: 'rectangle-draw' | 'circle-draw' }>,
+function collisionForDrag(
+  interaction: Extract<MapInteraction, { kind: 'collision-rectangle-draw' | 'collision-circle-draw' }>,
   current: Point,
-  gridSize: number | null
-): Obstacle | null {
-  const delta = interactionDelta(interaction.start, current, gridSize);
-  if (interaction.kind === 'rectangle-draw') {
+): LocalCollisionShape | null {
+  const delta = interactionDelta(interaction.start, current, null);
+  if (interaction.kind === 'collision-rectangle-draw') {
     if (delta.x === 0 || delta.y === 0) return null;
     return {
-      id: interaction.id,
       shape: 'rectangle',
       x: interaction.start.x + Math.min(0, delta.x),
       y: interaction.start.y + Math.min(0, delta.y),
@@ -46,7 +43,6 @@ function createdObstacle(
   }
   if (delta.x === 0 && delta.y === 0) return null;
   return {
-    id: interaction.id,
     shape: 'circle',
     cx: interaction.start.x,
     cy: interaction.start.y,
@@ -57,55 +53,51 @@ function createdObstacle(
 export function commandForInteraction(
   interaction: MapInteraction,
   current: Point,
-  gridSize: number | null
-): EditorCommand | null {
-  const delta = interactionDelta(interaction.start, current, gridSize);
-  if (interaction.kind === 'object-drag') {
+  gridSize: number | null,
+): MapSceneV2Command | null {
+  if (interaction.kind === 'entity-drag') {
+    const delta = interactionDelta(interaction.start, current, gridSize);
     if (delta.x === 0 && delta.y === 0) return null;
     return {
-      type: 'object/move',
-      id: interaction.object.id,
+      type: 'entity/move',
+      id: interaction.entity.id,
       position: {
-        x: interaction.object.position.x + delta.x,
-        y: interaction.object.position.y + delta.y,
+        x: interaction.entity.position.x + delta.x,
+        y: interaction.entity.position.y + delta.y,
       },
     };
   }
-  if (interaction.kind === 'obstacle-drag') {
-    if (delta.x === 0 && delta.y === 0) return null;
-    return { type: 'obstacle/update', obstacle: translateObstacle(interaction.obstacle, delta) };
+  if (interaction.kind === 'collision-vertex-drag') {
+    if (interaction.entity.collision.shape !== 'polygon') return null;
+    const points = interaction.entity.collision.points.map((point, index) =>
+      index === interaction.vertexIndex ? { ...current } : { ...point }
+    );
+    return {
+      type: 'entity/collision',
+      id: interaction.entity.id,
+      collision: { shape: 'polygon', points },
+    };
   }
-  const obstacle = createdObstacle(interaction, current, gridSize);
-  return obstacle ? { type: 'obstacle/add', obstacle } : null;
+  const collision = collisionForDrag(interaction, current);
+  return collision ? { type: 'entity/collision', id: interaction.entity.id, collision } : null;
 }
 
 export function previewInteraction(
-  scene: MapScene,
+  scene: MapSceneV2,
   interaction: MapInteraction | null,
   current: Point | null,
-  gridSize: number | null
-): MapScene {
+  gridSize: number | null,
+): MapSceneV2 {
   if (!interaction || !current) return scene;
   const command = commandForInteraction(interaction, current, gridSize);
-  if (!command) return scene;
-  if (command.type === 'object/move') {
-    return {
-      ...scene,
-      objects: scene.objects.map((object) => object.id === command.id
-        ? { ...object, position: command.position }
-        : object),
-    };
-  }
-  if (command.type === 'obstacle/update') {
-    return {
-      ...scene,
-      obstacles: scene.obstacles.map((obstacle) => obstacle.id === command.obstacle.id
-        ? command.obstacle
-        : obstacle),
-    };
-  }
-  if (command.type === 'obstacle/add') {
-    return { ...scene, obstacles: [...scene.obstacles, command.obstacle] };
-  }
-  return scene;
+  if (!command || (command.type !== 'entity/move' && command.type !== 'entity/collision')) return scene;
+  return {
+    ...scene,
+    obstacleEntities: scene.obstacleEntities.map((entity) => {
+      if (entity.id !== command.id) return entity;
+      return command.type === 'entity/move'
+        ? { ...entity, position: command.position }
+        : { ...entity, collision: command.collision };
+    }),
+  };
 }

@@ -1,10 +1,13 @@
 'use client';
 
 import { CloseOutlined } from '@ant-design/icons';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { AssetGenerationPanel } from './components/AssetGenerationPanel';
+import { MapCanvas, type MapRenderAsset } from './components/MapCanvas';
+import { MapLayerList } from './components/MapLayerList';
 import { MapPlanInspector } from './components/MapPlanInspector';
+import { ObstacleEntityInspector } from './components/ObstacleEntityInspector';
 import { PlanReviewCanvas, type MapPlanSelection } from './components/PlanReviewCanvas';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { MapToolbar, type MapTool } from './components/MapToolbar';
@@ -20,10 +23,20 @@ import {
 } from './model/mapPlanReducer';
 import { validateMapPlanV2, type MapPlanV2 } from './model/mapPlanSchema';
 import type { MapSceneV2 } from './model/mapSceneSchema';
+import {
+  createEditorState,
+  reduceEditorCommand,
+  redo,
+  undo,
+  type EditorSelection,
+  type MapSceneV2Command,
+} from './model/mapSceneReducer';
 import { createMapService, type MapSourceToken } from './services/createMapService';
 import styles from './CreateMapWorkbench.module.css';
 
 export type CreateMapWorkbenchMode = 'plan-review' | 'scene';
+
+type LoadedAssetImage = { url: string; image: HTMLImageElement };
 
 export type PlanReviewActionState = {
   projectId: string;
@@ -179,16 +192,18 @@ function PlanStructure({ plan, selection, onSelectionChange }: PlanStructureProp
 export function CreateMapWorkbench() {
   const supabase = useSupabase();
   const service = useMemo(() => createMapService(supabase), [supabase]);
-  const [mode] = useState<CreateMapWorkbenchMode>('plan-review');
+  const [mode, setMode] = useState<CreateMapWorkbenchMode>('plan-review');
   const [planReview, setPlanReview] = useState(() => createMapPlanEditorState(INITIAL_PLAN_V2));
-  const [selection, setSelection] = useState<MapPlanSelection>(null);
+  const [planSelection, setPlanSelection] = useState<MapPlanSelection>(null);
+  const [sceneSelection, setSceneSelection] = useState<EditorSelection>(null);
   const [description, setDescription] = useState(
     'A compact top-down village market with grass, an earth road, and movable trees.'
   );
   const [projectId, setProjectId] = useState('');
   const [documentId, setDocumentId] = useState('');
   const [sourceToken, setSourceToken] = useState<MapSourceToken | null>(null);
-  const [scene, setScene] = useState(() => createEmptySceneV2(INITIAL_PLAN_V2));
+  const [sceneEditor, setSceneEditor] = useState(() => createEditorState(createEmptySceneV2(INITIAL_PLAN_V2)));
+  const [loadedImages, setLoadedImages] = useState<ReadonlyMap<string, LoadedAssetImage>>(() => new Map());
   const [operation, setOperation] = useState<'idle' | 'planning'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [tool, setTool] = useState<MapTool>('select');
@@ -198,8 +213,16 @@ export function CreateMapWorkbench() {
   const [rightOpen, setRightOpen] = useState(false);
 
   const sources = useMapSources(projectId);
+  const scene = sceneEditor.present;
   const draft = useMapDraft(planReview.present, scene);
-  const installMaterializedScene = useCallback((nextScene: MapSceneV2) => setScene(nextScene), []);
+  const installMaterializedScene = useCallback((nextScene: MapSceneV2) => {
+    setSceneEditor(createEditorState(nextScene));
+    setViewport({ zoom: nextScene.canvas.zoom, panX: nextScene.canvas.panX, panY: nextScene.canvas.panY });
+    setSnapToGrid(nextScene.canvas.snapToGrid);
+    setSceneSelection(null);
+    setTool('select');
+    setMode('scene');
+  }, []);
   const generation = useMapGeneration({
     projectId,
     plan: planReview.present,
@@ -220,9 +243,73 @@ export function CreateMapWorkbench() {
     busy,
   });
   const canPrepareGeneration = canGenerate && (generation.phase === 'idle' || generation.phase === 'failed');
+  const selectedEntity = sceneSelection?.kind === 'entity'
+    ? scene.obstacleEntities.find((entity) => entity.id === sceneSelection.id) ?? null
+    : null;
+
+  const signedImageKey = generation.assets
+    .map((asset) => `${asset.assetKey}:${asset.signedUrl ?? ''}`)
+    .join('|');
+
+  useEffect(() => {
+    let active = true;
+    const ready = generation.assets.filter((asset) => asset.signedUrl);
+    setLoadedImages(new Map());
+    ready.forEach((asset) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = () => {
+        if (!active || !asset.signedUrl) return;
+        setLoadedImages((current) => {
+          const next = new Map(current);
+          next.set(asset.assetKey, { url: asset.signedUrl as string, image });
+          return next;
+        });
+      };
+      image.src = asset.signedUrl as string;
+    });
+    return () => { active = false; };
+  }, [generation.assets, signedImageKey]);
+
+  const renderAssets = useMemo(() => {
+    const next = new Map<string, MapRenderAsset>();
+    generation.assets.forEach((asset) => {
+      if (asset.kind !== 'background' && asset.kind !== 'obstacle') return;
+      const loaded = loadedImages.get(asset.assetKey);
+      const definition = planReview.present.obstacleAssets.find((candidate) => candidate.assetKey === asset.assetKey);
+      next.set(asset.assetKey, {
+        assetKey: asset.assetKey,
+        kind: asset.kind,
+        image: loaded?.url === asset.signedUrl ? loaded.image : undefined,
+        width: asset.width ?? definition?.size.width ?? scene.size.width,
+        height: asset.height ?? definition?.size.height ?? scene.size.height,
+      });
+    });
+    return next;
+  }, [generation.assets, loadedImages, planReview.present.obstacleAssets, scene.size.height, scene.size.width]);
 
   const dispatchPlan = (command: MapPlanCommand) => {
     setPlanReview((current) => reduceMapPlanCommand(current, command));
+  };
+
+  const dispatchScene = (command: MapSceneV2Command) => {
+    setSceneEditor((current) => reduceEditorCommand(current, command));
+    if (command.type === 'entity/delete' && sceneSelection?.kind === 'entity' && sceneSelection.id === command.id) {
+      setSceneSelection(null);
+    }
+  };
+
+  const changeMode = (nextMode: CreateMapWorkbenchMode) => {
+    if (nextMode === 'scene' && !scene.background) return;
+    setMode(nextMode);
+    setTool('select');
+  };
+
+  const changeTool = (nextTool: MapTool) => {
+    setTool(nextTool);
+    if (nextTool.startsWith('collision-')) {
+      dispatchScene({ type: 'layer/visibility', layerId: 'collision', visible: true });
+    }
   };
 
   const handleProjectChange = (nextProjectId: string) => {
@@ -232,6 +319,8 @@ export function CreateMapWorkbench() {
     setSourceToken(null);
     draft.reset();
     generation.reset();
+    setMode('plan-review');
+    setSceneSelection(null);
     setError(null);
   };
 
@@ -247,13 +336,15 @@ export function CreateMapWorkbench() {
         documentId || undefined
       );
       setPlanReview(createMapPlanEditorState(created.plan));
-      setSelection(null);
+      setPlanSelection(null);
+      setSceneSelection(null);
       setSourceToken(created.sourceToken);
       const nextScene = createEmptySceneV2(created.plan);
-      setScene(nextScene);
+      setSceneEditor(createEditorState(nextScene));
       draft.reset();
       generation.reset();
       setTool('select');
+      setMode('plan-review');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create map plan');
     } finally {
@@ -330,43 +421,102 @@ export function CreateMapWorkbench() {
           busy={busy}
           error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
         />
-        <PlanStructure plan={planReview.present} selection={selection} onSelectionChange={setSelection} />
+        {mode === 'plan-review' ? (
+          <PlanStructure
+            plan={planReview.present}
+            selection={planSelection}
+            onSelectionChange={setPlanSelection}
+          />
+        ) : (
+          <MapLayerList
+            scene={scene}
+            selection={sceneSelection}
+            onSelect={setSceneSelection}
+            onVisibilityChange={(layerId, visible) => dispatchScene({
+              type: 'layer/visibility',
+              layerId,
+              visible,
+            })}
+          />
+        )}
       </aside>
 
       <section className={styles.canvasPanel} aria-label="Map canvas">
         <header className={styles.canvasHeader}>
           <div>
-            <span className={styles.eyebrow}>Plan Review</span>
+            <span className={styles.eyebrow}>{mode === 'plan-review' ? 'Plan Review' : 'Scene Editor'}</span>
             <h2>{planReview.present.name}</h2>
           </div>
-          <div className={styles.saveIndicator} data-status={saveStatus.status}>
-            <span aria-hidden />
-            {saveStatus.label}
+          <div className={styles.headerActions}>
+            <div className={styles.modeSwitch} role="tablist" aria-label="Map editor mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'plan-review'}
+                onClick={() => changeMode('plan-review')}
+              >
+                Plan
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'scene'}
+                disabled={!scene.background}
+                onClick={() => changeMode('scene')}
+              >
+                Scene
+              </button>
+            </div>
+            <div className={styles.saveIndicator} data-status={saveStatus.status}>
+              <span aria-hidden />
+              {saveStatus.label}
+            </div>
           </div>
         </header>
         <MapToolbar
           mode={mode}
           tool={tool}
           zoom={viewport.zoom}
-          canUndo={planReview.past.length > 0}
-          canRedo={planReview.future.length > 0}
+          canUndo={mode === 'plan-review' ? planReview.past.length > 0 : sceneEditor.past.length > 0}
+          canRedo={mode === 'plan-review' ? planReview.future.length > 0 : sceneEditor.future.length > 0}
           snapToGrid={snapToGrid}
-          onToolChange={setTool}
-          onUndo={() => setPlanReview((current) => undoMapPlan(current))}
-          onRedo={() => setPlanReview((current) => redoMapPlan(current))}
+          hasEntitySelection={selectedEntity !== null}
+          onToolChange={changeTool}
+          onUndo={() => {
+            if (mode === 'plan-review') setPlanReview((current) => undoMapPlan(current));
+            else setSceneEditor((current) => undo(current));
+          }}
+          onRedo={() => {
+            if (mode === 'plan-review') setPlanReview((current) => redoMapPlan(current));
+            else setSceneEditor((current) => redo(current));
+          }}
           onZoomChange={(zoom) => setViewport((current) => ({ ...current, zoom }))}
           onSnapChange={setSnapToGrid}
           onToggleLeft={() => setLeftOpen((open) => !open)}
           onToggleRight={() => setRightOpen((open) => !open)}
         />
-        <PlanReviewCanvas
-          plan={planReview.present}
-          selection={selection}
-          issues={issues}
-          viewport={viewport}
-          onCommand={dispatchPlan}
-          onSelectionChange={setSelection}
-        />
+        {mode === 'plan-review' ? (
+          <PlanReviewCanvas
+            plan={planReview.present}
+            selection={planSelection}
+            issues={issues}
+            viewport={viewport}
+            onCommand={dispatchPlan}
+            onSelectionChange={setPlanSelection}
+          />
+        ) : (
+          <MapCanvas
+            scene={scene}
+            assets={renderAssets}
+            tool={tool}
+            viewport={viewport}
+            snapToGrid={snapToGrid}
+            selection={sceneSelection}
+            onCommand={dispatchScene}
+            onSelectionChange={setSceneSelection}
+            onViewportChange={setViewport}
+          />
+        )}
       </section>
 
       <aside className={`${styles.rightPanel} ${rightOpen ? styles.drawerOpen : ''}`} aria-label="Map plan and inspector">
@@ -378,12 +528,44 @@ export function CreateMapWorkbench() {
         >
           <CloseOutlined />
         </button>
-        <MapPlanInspector
-          plan={planReview.present}
-          selection={selection}
-          issues={issues}
-          onCommand={dispatchPlan}
-        />
+        {mode === 'plan-review' ? (
+          <MapPlanInspector
+            plan={planReview.present}
+            selection={planSelection}
+            issues={issues}
+            onCommand={dispatchPlan}
+          />
+        ) : selectedEntity ? (
+          <ObstacleEntityInspector
+            entity={selectedEntity}
+            onMove={(position) => dispatchScene({ type: 'entity/move', id: selectedEntity.id, position })}
+            onTransform={(scale, rotation) => dispatchScene({
+              type: 'entity/transform', id: selectedEntity.id, scale, rotation,
+            })}
+            onZIndexChange={(zIndex) => dispatchScene({
+              type: 'entity/z-order', id: selectedEntity.id, zIndex,
+            })}
+            onCollisionChange={(collision) => dispatchScene({
+              type: 'entity/collision', id: selectedEntity.id, collision,
+            })}
+            onDuplicate={() => {
+              const newId = `${selectedEntity.id}-copy-${crypto.randomUUID().slice(0, 8)}`;
+              dispatchScene({
+                type: 'entity/duplicate',
+                id: selectedEntity.id,
+                newId,
+                offset: { x: scene.size.tileSize, y: scene.size.tileSize },
+              });
+              setSceneSelection({ kind: 'entity', id: newId });
+            }}
+            onDelete={() => dispatchScene({ type: 'entity/delete', id: selectedEntity.id })}
+          />
+        ) : (
+          <section className={styles.inspectorSection} aria-labelledby="scene-inspector-heading">
+            <h2 id="scene-inspector-heading" className={styles.sectionTitleSmall}>Scene inspector</h2>
+            <p className={styles.emptyState}>Select an obstacle to edit its transform and collision.</p>
+          </section>
+        )}
         <AssetGenerationPanel
           assets={generation.assets}
           phase={generation.phase}

@@ -127,6 +127,45 @@
   white-space: nowrap;
 }
 
+.headerActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.modeSwitch {
+  display: grid;
+  grid-template-columns: repeat(2, 58px);
+  padding: 2px;
+  border: 1px solid #d4dade;
+  border-radius: 7px;
+  background: #f0f2f3;
+}
+
+.modeSwitch button {
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  color: #69747d;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modeSwitch button[aria-selected='true'] {
+  color: #25313a;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(24, 32, 38, 0.1);
+}
+
+.modeSwitch button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
 .draftBadge,
 .shapeBadge,
 .maskStatus,
@@ -501,6 +540,44 @@
   background: #49685b;
 }
 
+.layerSwatch[data-kind='background'] {
+  background: #8aa278;
+}
+
+.layerSwatch[data-kind='obstacles'] {
+  background: #52735b;
+}
+
+.layerSwatch[data-kind='collision'] {
+  background: #cf7668;
+}
+
+.lockIcon {
+  color: #78838c;
+  font-size: 11px;
+}
+
+.subsectionHeading {
+  margin-top: 16px;
+  padding-top: 13px;
+  border-top: 1px solid var(--create-map-line);
+}
+
+.subsectionHeading h3 {
+  margin: 0;
+  color: #59636d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.emptyState {
+  margin: 10px 0 0;
+  color: #7a858e;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .rowActions {
   display: flex;
   flex: 0 0 auto;
@@ -873,6 +950,18 @@
   cursor: crosshair;
 }
 
+.canvasViewport[data-tool='select'] .canvas {
+  cursor: default;
+}
+
+.canvasViewport[data-tool='hand'] .canvas {
+  cursor: grab;
+}
+
+.canvasViewport[data-tool='hand'] .canvas:active {
+  cursor: grabbing;
+}
+
 .canvas:focus-visible {
   box-shadow: inset 0 0 0 2px var(--create-map-blue);
 }
@@ -1000,6 +1089,52 @@
 .anchorReadout strong {
   color: #3c454d;
   font-variant-numeric: tabular-nums;
+}
+
+.vertexList {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.vertexRow {
+  display: grid;
+  grid-template-columns: minmax(54px, 1fr) 72px 72px;
+  align-items: center;
+  gap: 6px;
+}
+
+.vertexRow span {
+  color: #6a757e;
+  font-size: 10px;
+}
+
+.vertexRow .input {
+  height: 30px;
+}
+
+.dangerButtonInline {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 34px;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #e3bcbc;
+  border-radius: var(--create-map-control-radius);
+  color: #a13939;
+  background: #fffafa;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.secondaryButton svg,
+.dangerButtonInline svg {
+  flex: 0 0 auto;
 }
 
 .issueList {
