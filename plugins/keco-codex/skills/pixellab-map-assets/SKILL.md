@@ -7,6 +7,8 @@ description: Generate and integrate game art resources for Godot projects throug
 
 Read and follow the [shared interaction contract](../../references/interaction-contract.md) for every user-visible exchange, checkpoint, and resume.
 
+Before expensive or mutating work, summarize Goal, Source, Scope, Success, and Next. Use the user's language for that summary and for progress limited to Completed, Current, Next, and Blocker. Keep IDs, hashes, write tokens, raw MCP arguments, and evidence in machine artifacts or an on-request detail view.
+
 Use PixelLab as an art-resource generator, Keco as the provenance authority when the request is Keco-driven, and Godot as the authority for layout, collision, walkability, and gameplay logic.
 
 ## Scope And Routing

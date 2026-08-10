@@ -15,6 +15,8 @@ Perform zero writes while resolving scope, reading, planning, or preflighting.
 
 ## Required Preview
 
+Treat the names below as semantic section labels. Translate them into the user's language for the rendered preview while preserving technical field labels and identifiers. The default preview excludes raw MCP payloads, full row values, UUID maps, hashes, write tokens, and execution evidence; provide those only in an on-request detail view.
+
 Show all of these sections in this order:
 
 ```text
