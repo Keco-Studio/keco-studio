@@ -39,7 +39,6 @@ evolution:
   discoveryEvidence: []
   noCompatibleTarget: false
 ```
-
 The write token is null until the semantic source decision, roadmap read-back, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and state tokens are execution state, not guesses.
 
 ## Artifact Ledger

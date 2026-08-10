@@ -5,7 +5,7 @@
 ```yaml
 version: 2
 runId: stable-run-id
-mode: implicit-v2|explicit-v2 # scripts/validate_run_context.py accepts exactly these
+mode: implicit-v2|explicit-v2   # scripts/validate_run_context.py accepts exactly these
 kecoProjectId: uuid
 godotProjectPath: absolute-canonical-path
 godotGitCommit: full-sha
@@ -39,7 +39,6 @@ evolution:
   discoveryEvidence: []
   noCompatibleTarget: false
 ```
-
 The write token is null until the semantic source decision, roadmap read-back, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and state tokens are execution state, not guesses.
 
 ## Artifact Ledger
@@ -68,8 +67,8 @@ green:
   command: exact command or MCP sequence
   expected: passing with zero relevant errors
 review:
-  spec: required # or true; every task carries a spec review
-  quality: required # or optional/false for small, low-risk tasks
+  spec: required        # or true; every task carries a spec review
+  quality: required     # or optional/false for small, low-risk tasks
 ```
 
 `scripts/validate_plan.py` accepts `true`/`required` and `false`/`optional` for both

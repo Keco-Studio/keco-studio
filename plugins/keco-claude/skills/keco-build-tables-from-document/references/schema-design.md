@@ -21,17 +21,8 @@ type BuildPlan = {
     fields: Array<{
       key: string;
       label: string;
-      dataType:
-        | "string"
-        | "string_array"
-        | "int"
-        | "int_array"
-        | "float"
-        | "float_array"
-        | "boolean"
-        | "enum"
-        | "date"
-        | "reference";
+      dataType: 'string' | 'string_array' | 'int' | 'int_array' |
+        'float' | 'float_array' | 'boolean' | 'enum' | 'date' | 'reference';
       required?: boolean;
       enumOptions?: string[];
       targetTableKey?: string;
@@ -72,18 +63,18 @@ Use plan-local field keys as the keys in `scalarValues`. Use a source reference 
 
 Use only MCP-supported P0 field types:
 
-| Source value                          | `dataType`     |
-| ------------------------------------- | -------------- |
-| short or long text, identifier        | `string`       |
-| repeated text values                  | `string_array` |
-| whole number                          | `int`          |
-| repeated whole numbers                | `int_array`    |
-| decimal number                        | `float`        |
-| repeated decimal numbers              | `float_array`  |
-| true/false                            | `boolean`      |
-| one value from a closed vocabulary    | `enum`         |
-| calendar date                         | `date`         |
-| relationship to another planned table | `reference`    |
+| Source value | `dataType` |
+|---|---|
+| short or long text, identifier | `string` |
+| repeated text values | `string_array` |
+| whole number | `int` |
+| repeated whole numbers | `int_array` |
+| decimal number | `float` |
+| repeated decimal numbers | `float_array` |
+| true/false | `boolean` |
+| one value from a closed vocabulary | `enum` |
+| calendar date | `date` |
+| relationship to another planned table | `reference` |
 
 Provide `enumOptions` only for `enum`. Normalize whitespace and case, preserve user-facing spelling, and list each distinct option once. Provide `targetTableKey` only for `reference`; convert it to `referenceTableIds` after the target table exists.
 
