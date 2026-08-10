@@ -1,9 +1,17 @@
 import React from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { SavedMapsPanel } from '@/features/create-map/components/SavedMapsPanel';
+import {
+  savedMapOpenIsCurrent,
+  savedMapSwitchBlocked,
+} from '@/features/create-map/hooks/useSavedMaps';
 import type { SavedMapSummary } from '@/features/create-map/services/createMapService';
 
+jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
+jest.mock('@/lib/contexts/AuthContext', () => ({ useAuth: () => ({ userProfile: null }) }));
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
   __esModule: true,
   default: new Proxy({}, { get: (_target, property) => String(property) }),
@@ -78,5 +86,40 @@ describe('SavedMapsPanel', () => {
     expect(errorMarkup).toContain('role="alert"');
     expect(errorMarkup).toContain('aria-label="Retry saved maps"');
     expect(emptyMarkup).toContain('No saved maps');
+  });
+
+  it('blocks dirty, saving, and conflicted drafts but permits clean saved workspaces', () => {
+    expect(savedMapSwitchBlocked({ isDirty: true, status: 'saved' })).toBe(true);
+    expect(savedMapSwitchBlocked({ isDirty: false, status: 'saving' })).toBe(true);
+    expect(savedMapSwitchBlocked({ isDirty: false, status: 'conflict' })).toBe(true);
+    expect(savedMapSwitchBlocked({ isDirty: false, status: 'saved' })).toBe(false);
+  });
+
+  it('uses the V2-only saved-map service and invalidates older open requests', () => {
+    const hook = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/hooks/useSavedMaps.ts'),
+      'utf8',
+    );
+    expect(hook).toContain("['create-map', 'saved-maps', 'v2'");
+    expect(hook).toContain('service.listSavedMapsV2()');
+    expect(hook).not.toContain('service.listSavedMaps()');
+    expect(savedMapOpenIsCurrent(7, 7)).toBe(true);
+    expect(savedMapOpenIsCurrent(8, 7)).toBe(false);
+  });
+
+  it('marks only the pending row as busy', () => {
+    const markup = renderToStaticMarkup(<SavedMapsPanel
+      maps={[summary]}
+      isLoading={false}
+      error={null}
+      activeMapId={null}
+      openingMapId="map-1"
+      disabled={false}
+      onOpen={() => undefined}
+      onRetry={() => undefined}
+    />);
+
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup).toContain('Opening...');
   });
 });

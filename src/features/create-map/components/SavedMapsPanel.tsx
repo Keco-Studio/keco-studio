@@ -56,6 +56,7 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
                   type="button"
                   className={active ? styles.savedMapButtonActive : styles.savedMapButton}
                   aria-current={active || undefined}
+                  aria-busy={opening || undefined}
                   disabled={props.disabled || opening}
                   onClick={() => props.onOpen(map)}
                 >

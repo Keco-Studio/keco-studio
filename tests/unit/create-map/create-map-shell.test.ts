@@ -18,6 +18,8 @@ jest.mock('@/features/create-map/hooks/useMapSources', () => ({
   useMapSources: () => ({ projects: [], documents: [], isLoading: false, error: null }),
 }));
 jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
+  savedMapOpenIsCurrent: (current: number, expected: number) => current === expected,
+  savedMapSwitchBlocked: () => false,
   useSavedMaps: () => ({ maps: [], isLoading: false, error: null, refetch: jest.fn() }),
 }));
 jest.mock('@/features/create-map/hooks/useMapDraft', () => ({

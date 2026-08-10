@@ -17,6 +17,11 @@ jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 jest.mock('@/features/create-map/hooks/useMapSources', () => ({
   useMapSources: () => ({ projects: [], documents: [], isLoading: false, error: null }),
 }));
+jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
+  savedMapOpenIsCurrent: (current: number, expected: number) => current === expected,
+  savedMapSwitchBlocked: () => false,
+  useSavedMaps: () => ({ maps: [], isLoading: false, error: null, refetch: jest.fn() }),
+}));
 
 describe('Create Map V2 Plan Review workbench', () => {
   it('renders description-first local Plan Review without legacy scene controls', () => {
@@ -64,7 +69,11 @@ describe('Create Map V2 Plan Review workbench', () => {
     expect(workbench).toContain('<MapLayerList');
     expect(workbench).toContain('<ObstacleEntityInspector');
     expect(workbench).toContain('<RegionGenerationPanel');
+    expect(workbench).toContain('<SavedMapsPanel');
     expect(workbench).toContain('onRegionSelectionChange={changeRegionSelection}');
+    expect(workbench).toContain('savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)');
+    expect(workbench).toContain('generation.installRestore(preparedGeneration)');
+    expect(workbench).toContain('imageLoadMatches(');
     expect(workbench).not.toContain('InpaintInspector');
     expect(workbench).not.toContain('ObjectInspector');
     expect(workbench).not.toContain('ObstacleInspector');

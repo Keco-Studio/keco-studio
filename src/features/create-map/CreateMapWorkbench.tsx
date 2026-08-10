@@ -1,7 +1,7 @@
 'use client';
 
 import { CloseOutlined } from '@ant-design/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { AssetGenerationPanel } from './components/AssetGenerationPanel';
 import { MapCanvas, type MapRenderAsset } from './components/MapCanvas';
@@ -9,12 +9,22 @@ import { MapLayerList } from './components/MapLayerList';
 import { MapPlanInspector } from './components/MapPlanInspector';
 import { ObstacleEntityInspector } from './components/ObstacleEntityInspector';
 import { RegionGenerationPanel } from './components/RegionGenerationPanel';
+import { SavedMapsPanel } from './components/SavedMapsPanel';
 import { PlanReviewCanvas, type MapPlanSelection } from './components/PlanReviewCanvas';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { MapToolbar, type MapTool } from './components/MapToolbar';
 import { useMapSources } from './hooks/useMapSources';
 import { useMapDraft } from './hooks/useMapDraft';
-import { useMapGeneration, type MapGenerationAsset } from './hooks/useMapGeneration';
+import {
+  imageLoadMatches,
+  useMapGeneration,
+  type MapGenerationAsset,
+} from './hooks/useMapGeneration';
+import {
+  savedMapOpenIsCurrent,
+  savedMapSwitchBlocked,
+  useSavedMaps,
+} from './hooks/useSavedMaps';
 import {
   createMapPlanEditorState,
   reduceMapPlanCommand,
@@ -32,13 +42,21 @@ import {
   type EditorSelection,
   type MapSceneV2Command,
 } from './model/mapSceneReducer';
-import { createMapService, type MapSourceToken } from './services/createMapService';
+import {
+  createMapService,
+  type MapSourceToken,
+  type SavedMapSummary,
+} from './services/createMapService';
 import { useRegionObstacleGeneration, type MapRegionSelection } from './hooks/useRegionObstacleGeneration';
 import styles from './CreateMapWorkbench.module.css';
 
 export type CreateMapWorkbenchMode = 'plan-review' | 'scene';
 
-type LoadedAssetImage = { url: string; image: HTMLImageElement };
+type LoadedAssetImage = { binding: string; image: HTMLImageElement };
+
+function imageAssetBinding(asset: MapGenerationAsset, epoch: number): string {
+  return `${epoch}:${asset.id ?? 'unplanned'}:${asset.assetKey}:${asset.sha256 ?? ''}:${asset.signedUrl ?? ''}`;
+}
 
 export type PlanReviewActionState = {
   projectId: string;
@@ -208,15 +226,22 @@ export function CreateMapWorkbench() {
   const [sceneEditor, setSceneEditor] = useState(() => createEditorState(createEmptySceneV2(INITIAL_PLAN_V2)));
   const [loadedImages, setLoadedImages] = useState<ReadonlyMap<string, LoadedAssetImage>>(() => new Map());
   const [regionAssets, setRegionAssets] = useState<ReadonlyMap<string, MapGenerationAsset>>(() => new Map());
-  const [operation, setOperation] = useState<'idle' | 'planning'>('idle');
+  const [operation, setOperation] = useState<'idle' | 'planning' | 'opening'>('idle');
+  const [openingMapId, setOpeningMapId] = useState<string | null>(null);
+  const [imageEpoch, setImageEpoch] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [tool, setTool] = useState<MapTool>('select');
   const [viewport, setViewport] = useState({ zoom: 1, panX: 24, panY: 24 });
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const openRequestEpoch = useRef(0);
+  const imageEpochRef = useRef(0);
+  const imageBindingsRef = useRef<ReadonlyMap<string, string>>(new Map());
+  const generationImageTargetRef = useRef('');
 
   const sources = useMapSources(projectId);
+  const savedMaps = useSavedMaps();
   const scene = sceneEditor.present;
   const draft = useMapDraft(planReview.present, scene);
   const installMaterializedScene = useCallback((nextScene: MapSceneV2) => {
@@ -270,6 +295,12 @@ export function CreateMapWorkbench() {
     ? scene.obstacleEntities.find((entity) => entity.id === sceneSelection.id) ?? null
     : null;
 
+  const invalidateImages = useCallback(() => {
+    imageEpochRef.current += 1;
+    setImageEpoch(imageEpochRef.current);
+    setLoadedImages(new Map());
+  }, []);
+
   const changeRegionSelection = (next: MapRegionSelection | null) => {
     if (regionGeneration.phase === 'submitting' || regionGeneration.phase === 'generating') return;
     regionGeneration.reset();
@@ -286,45 +317,69 @@ export function CreateMapWorkbench() {
     [generation.assets, regionAssets, regionGeneration.asset],
   );
   const signedImageKey = imageAssets
-    .map((asset) => `${asset.assetKey}:${asset.signedUrl ?? ''}`)
+    .map((asset) => imageAssetBinding(asset, imageEpoch))
     .join('|');
+  const imageBindings = useMemo(
+    () => new Map(imageAssets.map((asset) => [asset.assetKey, imageAssetBinding(asset, imageEpoch)])),
+    [imageAssets, imageEpoch],
+  );
+  imageBindingsRef.current = imageBindings;
 
   useEffect(() => {
     let active = true;
+    const requestEpoch = imageEpoch;
     const ready = imageAssets.filter((asset) => asset.signedUrl);
-    setLoadedImages(new Map());
+    setLoadedImages((current) => new Map(
+      [...current].filter(([assetKey, loaded]) => imageBindings.get(assetKey) === loaded.binding)
+    ));
     ready.forEach((asset) => {
+      const binding = imageBindings.get(asset.assetKey) as string;
       const image = new Image();
       image.decoding = 'async';
       image.onload = () => {
-        if (!active || !asset.signedUrl) return;
+        if (!active || !asset.signedUrl || !imageLoadMatches(
+          imageEpochRef.current,
+          requestEpoch,
+          imageBindingsRef.current.get(asset.assetKey),
+          binding,
+        )) return;
         setLoadedImages((current) => {
           const next = new Map(current);
-          next.set(asset.assetKey, { url: asset.signedUrl as string, image });
+          next.set(asset.assetKey, { binding, image });
           return next;
         });
       };
       image.src = asset.signedUrl as string;
     });
     return () => { active = false; };
-  }, [imageAssets, signedImageKey]);
+  }, [imageAssets, imageBindings, imageEpoch, signedImageKey]);
+
+  const generationImageTargetKey = generation.target
+    ? `${generation.target.mapId}:${generation.target.revisionId}:${generation.target.generationId}`
+    : '';
+  useEffect(() => {
+    if (generationImageTargetRef.current === generationImageTargetKey) return;
+    generationImageTargetRef.current = generationImageTargetKey;
+    invalidateImages();
+  }, [generationImageTargetKey, invalidateImages]);
 
   const renderAssets = useMemo(() => {
     const next = new Map<string, MapRenderAsset>();
     imageAssets.forEach((asset) => {
       if (asset.kind !== 'background' && asset.kind !== 'obstacle') return;
       const loaded = loadedImages.get(asset.assetKey);
+      const binding = imageBindings.get(asset.assetKey);
       const definition = planReview.present.obstacleAssets.find((candidate) => candidate.assetKey === asset.assetKey);
       next.set(asset.assetKey, {
         assetKey: asset.assetKey,
         kind: asset.kind,
-        image: loaded?.url === asset.signedUrl ? loaded.image : undefined,
+        image: loaded?.binding === binding ? loaded.image : undefined,
         width: asset.width ?? definition?.size.width ?? scene.size.width,
         height: asset.height ?? definition?.size.height ?? scene.size.height,
       });
     });
     return next;
-  }, [imageAssets, loadedImages, planReview.present.obstacleAssets, scene.size.height, scene.size.width]);
+  }, [imageAssets, imageBindings, loadedImages, planReview.present.obstacleAssets, scene.size.height, scene.size.width]);
 
   const dispatchPlan = (command: MapPlanCommand) => {
     setPlanReview((current) => reduceMapPlanCommand(current, command));
@@ -352,17 +407,76 @@ export function CreateMapWorkbench() {
 
   const handleProjectChange = (nextProjectId: string) => {
     if (nextProjectId === projectId) return;
+    openRequestEpoch.current += 1;
+    setOpeningMapId(null);
     setProjectId(nextProjectId);
     setDocumentId('');
     setSourceToken(null);
     draft.reset();
     generation.reset();
+    generationImageTargetRef.current = '';
     regionGeneration.reset();
     setRegionAssets(new Map());
     setRegionSelection(null);
+    invalidateImages();
     setMode('plan-review');
     setSceneSelection(null);
     setError(null);
+  };
+
+  const openSavedMap = async (map: SavedMapSummary) => {
+    if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
+    const requestEpoch = ++openRequestEpoch.current;
+    setOperation('opening');
+    setOpeningMapId(map.id);
+    setError(null);
+    try {
+      const loaded = await service.loadSavedMapV2(map.id);
+      const preparedGeneration = await generation.prepareRestore({
+        projectId: loaded.projectId,
+        mapId: loaded.identity.mapId,
+        revisionId: loaded.assetRevisionId,
+        plan: loaded.plan,
+        scene: loaded.scene,
+        records: loaded.assets,
+      });
+      if (!savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) return;
+
+      generationImageTargetRef.current = preparedGeneration.target
+        ? `${preparedGeneration.target.mapId}:${preparedGeneration.target.revisionId}:${preparedGeneration.target.generationId}`
+        : '';
+      invalidateImages();
+      regionGeneration.reset();
+      setProjectId(loaded.projectId);
+      setDocumentId(loaded.sourceDocumentId ?? '');
+      setSourceToken(null);
+      setPlanReview(createMapPlanEditorState(loaded.plan));
+      setPlanSelection(null);
+      setSceneEditor(createEditorState(loaded.scene));
+      setSceneSelection(null);
+      setRegionSelection(null);
+      setRegionAssets(new Map(preparedGeneration.sceneAssets.map((asset) => [asset.assetKey, asset])));
+      setViewport({
+        zoom: loaded.scene.canvas.zoom,
+        panX: loaded.scene.canvas.panX,
+        panY: loaded.scene.canvas.panY,
+      });
+      setSnapToGrid(loaded.scene.canvas.snapToGrid);
+      setTool('select');
+      setMode(loaded.scene.background ? 'scene' : 'plan-review');
+      draft.install(loaded);
+      generation.installRestore(preparedGeneration);
+      closeDrawers();
+    } catch (cause) {
+      if (savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) {
+        setError(cause instanceof Error ? cause.message : 'Could not open the saved map');
+      }
+    } finally {
+      if (savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) {
+        setOperation('idle');
+        setOpeningMapId(null);
+      }
+    }
   };
 
   const createPlan = async () => {
@@ -384,9 +498,11 @@ export function CreateMapWorkbench() {
       setSceneEditor(createEditorState(nextScene));
       draft.reset();
       generation.reset();
+      generationImageTargetRef.current = '';
       regionGeneration.reset();
       setRegionAssets(new Map());
       setRegionSelection(null);
+      invalidateImages();
       setTool('select');
       setMode('plan-review');
     } catch (cause) {
@@ -464,6 +580,16 @@ export function CreateMapWorkbench() {
           canGenerate={canPrepareGeneration}
           busy={busy}
           error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
+        />
+        <SavedMapsPanel
+          maps={savedMaps.maps}
+          isLoading={savedMaps.isLoading}
+          error={savedMaps.error instanceof Error ? savedMaps.error.message : null}
+          activeMapId={draft.identity?.mapId ?? null}
+          openingMapId={openingMapId}
+          disabled={savedMapSwitchBlocked(draft) || operation === 'planning'}
+          onOpen={(map) => void openSavedMap(map)}
+          onRetry={() => void savedMaps.refetch()}
         />
         {mode === 'plan-review' ? (
           <PlanStructure

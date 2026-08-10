@@ -4,6 +4,7 @@ import {
   generationRetryOperation,
   generationTargetMatches,
   generationWatchPlan,
+  imageLoadMatches,
   mapPlanFingerprint,
   materializeMapSceneV2,
   prepareGenerationRestore,
@@ -11,6 +12,7 @@ import {
   type MapGenerationAsset,
 } from '@/features/create-map/hooks/useMapGeneration';
 import { buildMapAssetPlansV2, type MapAssetPlanRowV2 } from '@/features/create-map/model/mapAssetPlan';
+import type { MapSceneV2 } from '@/features/create-map/model/mapSceneSchema';
 import type { MapAssetRecord } from '@/features/create-map/services/createMapService';
 import { makeEmptyMapSceneV2, makeValidMapPlanV2, makeValidMapSceneV2 } from './fixtures';
 
@@ -66,6 +68,14 @@ async function recordsForPlan(overrides: (row: MapAssetPlanRowV2, index: number)
   );
 }
 
+function materializedScene(): MapSceneV2 {
+  const scene = makeValidMapSceneV2();
+  return {
+    ...scene,
+    background: scene.background ? { ...scene.background, assetKey: 'background' } : null,
+  };
+}
+
 function asset(row: MapAssetPlanRowV2, status: MapGenerationAsset['status']): MapGenerationAsset {
   return {
     ...row,
@@ -85,7 +95,7 @@ describe('Create Map V2 generation restore and state', () => {
     const sign = jest.fn();
     const restored = await prepareGenerationRestore({
       projectId: 'project-1', mapId: 'map-1', revisionId: REVISION,
-      plan, records: await recordsForPlan(),
+      plan, scene: makeEmptyMapSceneV2(), records: await recordsForPlan(),
     }, sign);
 
     expect(restored.target).toEqual(await target());
@@ -100,7 +110,8 @@ describe('Create Map V2 generation restore and state', () => {
       status: 'ready', storage_path: `private/${row.assetKey}.png`, sha256: 'a'.repeat(64), attempt_count: 1,
     })).filter((record) => record.kind !== 'background');
     const restored = await prepareGenerationRestore({
-      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, records,
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION,
+      plan, scene: makeEmptyMapSceneV2(), records,
     }, async (path) => `signed://${path}`);
 
     expect(restored.phase).toBe('composing-background');
@@ -112,23 +123,29 @@ describe('Create Map V2 generation restore and state', () => {
     const records = await recordsForPlan((_row, index) => ({
       status: 'ready', storage_path: `private/${index}.png`, sha256: 'b'.repeat(64), attempt_count: 1,
     }));
+    const backgroundPath = records.find((record) => record.kind === 'background')?.storage_path;
     const restored = await prepareGenerationRestore({
-      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, records,
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION,
+      plan, scene: materializedScene(), records,
     }, async (path) => {
-      if (path === 'private/0.png') throw new Error('sign failed');
+      if (path === backgroundPath) throw new Error('sign failed');
       return `signed://${path}`;
     });
 
     expect(restored.phase).toBe('ready');
-    expect(restored.assets[0]).toMatchObject({ status: 'ready', signedUrl: null });
-    expect(restored.assets.slice(1).every((entry) => entry.signedUrl)).toBe(true);
+    expect(restored.assets.find((entry) => entry.kind === 'background'))
+      .toMatchObject({ status: 'ready', signedUrl: null });
+    expect(restored.assets.find((entry) => entry.assetKey === 'mossy-rock')?.signedUrl).toContain('signed://');
+    expect(restored.assets.filter((entry) => entry.kind === 'terrain' || entry.kind === 'path')
+      .every((entry) => entry.signedUrl === null)).toBe(true);
   });
 
   it('rejects mixed revision, generation, or fingerprint records as an idle preview', async () => {
     const plan = makeValidMapPlanV2();
     const records = await recordsForPlan((_row, index) => index === 0 ? { generation_id: 'other-generation' } : {});
     const restored = await prepareGenerationRestore({
-      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, records,
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION,
+      plan, scene: makeEmptyMapSceneV2(), records,
     }, jest.fn());
 
     expect(restored.target).toBeNull();
@@ -161,6 +178,73 @@ describe('Create Map V2 generation restore and state', () => {
     expect(generationTargetMatches(current, { ...current })).toBe(true);
     expect(generationTargetMatches(current, { ...current, generationId: 'stale-generation' })).toBe(false);
     expect(generationTargetMatches(null, current)).toBe(false);
+  });
+
+  it('restores a ready regional obstacle referenced by Scene and signs only render assets', async () => {
+    const plan = makeValidMapPlanV2();
+    const fingerprint = await mapPlanFingerprint(plan);
+    const records = await recordsForPlan((row) => ({
+      status: 'ready',
+      storage_path: `private/${row.assetKey}.png`,
+      sha256: 'c'.repeat(64),
+      attempt_count: 1,
+    }));
+    records.push({
+      ...recordFor(buildMapAssetPlansV2(plan).find((row) => row.kind === 'obstacle') as MapAssetPlanRowV2, fingerprint, 99),
+      id: 'regional-asset-1',
+      asset_key: 'region-obstacle-1',
+      prompt: 'Mossy shrine',
+      generation_params: { source: 'region-generation' },
+      metadata: { source: 'region-generation' },
+      status: 'ready',
+      storage_path: 'private/region-obstacle-1.png',
+      sha256: 'd'.repeat(64),
+      width: 64,
+      height: 96,
+      attempt_count: 1,
+    });
+    const baseScene = materializedScene();
+    const scene: MapSceneV2 = {
+      ...baseScene,
+      obstacleEntities: [...baseScene.obstacleEntities, {
+        ...baseScene.obstacleEntities[0],
+        id: 'region-entity-1',
+        assetKey: 'region-obstacle-1',
+        source: 'region-generation',
+      }],
+    };
+    const sign = jest.fn(async (path: string) => `signed://${path}`);
+
+    const restored = await prepareGenerationRestore({
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, scene, records,
+    }, sign);
+
+    expect(restored.sceneAssets).toEqual([
+      expect.objectContaining({ assetKey: 'region-obstacle-1', status: 'ready', signedUrl: 'signed://private/region-obstacle-1.png' }),
+    ]);
+    expect(sign.mock.calls.map(([path]) => path).sort()).toEqual([
+      'private/background.png',
+      'private/mossy-rock.png',
+      'private/region-obstacle-1.png',
+    ]);
+  });
+
+  it('rejects materialized workspaces whose exact Scene asset binding is missing', async () => {
+    const plan = makeValidMapPlanV2();
+    const records = (await recordsForPlan((row) => ({
+      status: 'ready', storage_path: `private/${row.assetKey}.png`, sha256: 'e'.repeat(64), attempt_count: 1,
+    }))).filter((record) => record.asset_key !== 'mossy-rock');
+
+    await expect(prepareGenerationRestore({
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION,
+      plan, scene: materializedScene(), records,
+    }, jest.fn())).rejects.toThrow('Saved map Scene asset is not ready: mossy-rock');
+  });
+
+  it('rejects stale image loads by installed epoch and exact asset binding', () => {
+    expect(imageLoadMatches(3, 3, 'asset-a:hash-a', 'asset-a:hash-a')).toBe(true);
+    expect(imageLoadMatches(4, 3, 'asset-a:hash-a', 'asset-a:hash-a')).toBe(false);
+    expect(imageLoadMatches(3, 3, 'asset-b:hash-b', 'asset-a:hash-a')).toBe(false);
   });
 
   it('materializes only ready planned obstacles and preserves existing entity transforms on background regeneration', async () => {

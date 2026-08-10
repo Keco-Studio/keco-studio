@@ -50,6 +50,7 @@ export type PreparedGenerationRestore = {
   target: GenerationTarget | null;
   plan: MapPlanV2;
   assets: MapGenerationAsset[];
+  sceneAssets: MapGenerationAsset[];
   phase: MapGenerationPhase;
 };
 
@@ -105,6 +106,29 @@ function previewAsset(row: MapAssetPlanRowV2): MapGenerationAsset {
     sha256: null,
     width: null,
     height: null,
+    signedUrl: null,
+  };
+}
+
+function sceneAsset(record: MapAssetRecord): MapGenerationAsset {
+  if (record.kind !== 'obstacle') {
+    throw new Error(`Unsupported Scene asset kind: ${record.kind}`);
+  }
+  return {
+    assetKey: record.asset_key,
+    kind: 'obstacle',
+    prompt: record.prompt,
+    requestedCapability: 'map_object',
+    generationParams: record.generation_params,
+    metadata: record.metadata,
+    id: record.id,
+    status: record.status,
+    attemptCount: record.attempt_count,
+    errorCode: record.last_error_code,
+    storagePath: record.storage_path,
+    sha256: record.sha256,
+    width: record.width,
+    height: record.height,
     signedUrl: null,
   };
 }
@@ -247,12 +271,20 @@ export function useMapGenerationMonitoring({
 }
 
 export async function prepareGenerationRestore(
-  input: { projectId: string; mapId: string; revisionId: string | null; plan: MapPlanV2; records: MapAssetRecord[] },
+  input: {
+    projectId: string;
+    mapId: string;
+    revisionId: string | null;
+    plan: MapPlanV2;
+    scene: MapSceneV2;
+    records: MapAssetRecord[];
+  },
   createSignedUrl: (storagePath: string) => Promise<string>,
 ): Promise<PreparedGenerationRestore> {
   const rows = buildMapAssetPlansV2(input.plan);
   if (!input.revisionId || input.records.length === 0) {
-    return { target: null, plan: input.plan, assets: rows.map(previewAsset), phase: 'idle' };
+    if (input.scene.background) throw new Error('Saved map background assets are missing.');
+    return { target: null, plan: input.plan, assets: rows.map(previewAsset), sceneAssets: [], phase: 'idle' };
   }
   const generationIds = new Set(input.records.flatMap((record) => record.generation_id ? [record.generation_id] : []));
   const planFingerprint = await mapPlanFingerprint(input.plan);
@@ -262,7 +294,8 @@ export async function prepareGenerationRestore(
       record.map_revision_id !== input.revisionId || record.plan_fingerprint !== planFingerprint
     )
   ) {
-    return { target: null, plan: input.plan, assets: rows.map(previewAsset), phase: 'idle' };
+    if (input.scene.background) throw new Error('Saved map generation identity is invalid.');
+    return { target: null, plan: input.plan, assets: rows.map(previewAsset), sceneAssets: [], phase: 'idle' };
   }
   const target: GenerationTarget = {
     projectId: input.projectId,
@@ -279,17 +312,43 @@ export async function prepareGenerationRestore(
       return record ? verifiedAsset(row, record, target) : previewAsset(row);
     });
   } catch {
-    return { target: null, plan: input.plan, assets: rows.map(previewAsset), phase: 'idle' };
+    if (input.scene.background) throw new Error('Saved map asset plans do not match the current Plan.');
+    return { target: null, plan: input.plan, assets: rows.map(previewAsset), sceneAssets: [], phase: 'idle' };
   }
-  assets = await Promise.all(assets.map(async (asset) => {
-    if (asset.status !== 'ready' || !asset.storagePath) return asset;
+  const referencedKeys = new Set([
+    ...(input.scene.background ? [input.scene.background.assetKey] : []),
+    ...input.scene.obstacleEntities.map((entity) => entity.assetKey),
+  ]);
+  const plannedKeys = new Set(rows.map((row) => row.assetKey));
+  const referencedRecords = [...referencedKeys].map((assetKey) => {
+    const record = byKey.get(assetKey);
+    if (!record || record.status !== 'ready') {
+      throw new Error(`Saved map Scene asset is not ready: ${assetKey}`);
+    }
+    if (assetKey === input.scene.background?.assetKey && record.kind !== 'background') {
+      throw new Error('Saved map background binding is invalid.');
+    }
+    if (assetKey !== input.scene.background?.assetKey && record.kind !== 'obstacle') {
+      throw new Error(`Saved map obstacle binding is invalid: ${assetKey}`);
+    }
+    return record;
+  });
+  let sceneAssets = referencedRecords
+    .filter((record) => !plannedKeys.has(record.asset_key))
+    .map(sceneAsset);
+  const sign = async (asset: MapGenerationAsset): Promise<MapGenerationAsset> => {
+    if (!referencedKeys.has(asset.assetKey) || asset.status !== 'ready' || !asset.storagePath) return asset;
     try {
       return { ...asset, signedUrl: await createSignedUrl(asset.storagePath) };
     } catch {
       return asset;
     }
+  };
+  assets = await Promise.all(assets.map(async (asset) => {
+    return sign(asset);
   }));
-  return { target, plan: input.plan, assets, phase: generationPhaseFor(assets) };
+  sceneAssets = await Promise.all(sceneAssets.map(sign));
+  return { target, plan: input.plan, assets, sceneAssets, phase: generationPhaseFor(assets) };
 }
 
 export function materializeMapSceneV2(
@@ -346,6 +405,15 @@ export function generationTargetMatches(left: GenerationTarget | null, right: Ge
     && left.mapId === right.mapId
     && left.revisionId === right.revisionId
     && left.generationId === right.generationId);
+}
+
+export function imageLoadMatches(
+  currentEpoch: number,
+  expectedEpoch: number,
+  currentBinding: string | undefined,
+  expectedBinding: string,
+): boolean {
+  return currentEpoch === expectedEpoch && currentBinding === expectedBinding;
 }
 
 export function generationRetryOperation(
