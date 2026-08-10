@@ -1,7 +1,7 @@
 # Create Map V2 Layered Generation Design
 
 **Date:** 2026-08-10
-**Status:** Approved for written specification review
+**Status:** Approved for implementation
 **Supersedes:** `2026-08-08-create-map-workbench-design.md` for the Create Map editor and generation workflow
 
 ## Objective
@@ -244,7 +244,7 @@ type MapPlanV2 = {
 
 `TerrainRegion` contains a stable ID, a valid terrain asset key, and at least three non-collinear map-space polygon points.
 
-`BackgroundPath` contains a stable ID, kind (`road` or `river`), path asset key, supporting terrain key, positive width, z-order, and at least two map-space centerline points.
+`BackgroundPath` contains a stable ID, editable non-empty name and prompt, kind (`road` or `river`), path asset key, supporting terrain key, positive width, z-order, and at least two map-space centerline points.
 
 `PlannedObstacleEntity` contains a stable ID, obstacle asset key, map-space position, positive scale, finite rotation, integer z-index, and an initial local collision shape.
 
@@ -276,12 +276,14 @@ type MapSceneV2 = {
     width: number;
     height: number;
     locked: true;
-  };
+  } | null;
   layers: SceneLayerV2[];
   obstacleEntities: ObstacleEntity[];
   canvas: CanvasState;
 };
 ```
+
+Before materialization, a newly planned Scene has `background: null`, an empty `obstacleEntities` array, and only the fixed layer definitions needed by the editor. After successful background composition and Scene materialization, `background` is required and remains locked. `validateMapSceneV2` accepts `background: null` only for this empty pre-generation Scene; generated or obstacle-bearing Scenes require the complete locked background binding.
 
 `ObstacleEntity` contains:
 
@@ -365,6 +367,10 @@ Composition never runs in the browser and never treats a signed URL as source au
 ## Persistence And Revision Semantics
 
 - Existing schema version 1 rows remain stored but are not listed or opened by V2.
+- The revision schema-version constraint accepts only versions 1 and 2.
+- Existing V1 revisions retain a complete source tuple: `source_document_id`, `source_document_updated_at`, `source_epoch`, and `source_revision` are all non-null.
+- A V2 revision may omit Document context. Its source tuple is either entirely null or entirely populated; partial source tuples are invalid.
+- The durable database asset-kind constraint keeps legacy `road`, `object`, and `inpaint` rows valid alongside `terrain`, `path`, `obstacle`, and `background`. V2 RPCs accept only `terrain`, `path`, `obstacle`, and `background`.
 - V2 uses explicit V2 RPCs so old callers cannot accidentally write V2 payloads with V1 contracts.
 - `create_map_project_v2` creates a V2 draft.
 - `save_map_draft_v2` validates current revision identity and expected save version.
