@@ -5,6 +5,8 @@ description: Generate and integrate game art resources for Godot projects throug
 
 # PixelLab Map Assets
 
+Read and follow the [shared interaction contract](../../references/interaction-contract.md) for every user-visible exchange, checkpoint, and resume.
+
 Use PixelLab as an art-resource generator, Keco as the provenance authority when the request is Keco-driven, and Godot as the authority for layout, collision, walkability, and gameplay logic.
 
 ## Scope And Routing

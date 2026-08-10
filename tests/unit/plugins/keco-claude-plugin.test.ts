@@ -8,6 +8,14 @@ const repositoryRoot = process.cwd();
 const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-claude');
 const skillsRoot = path.join(pluginRoot, 'skills');
 const scriptsRoot = path.join(pluginRoot, 'scripts');
+const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
+const codexInteractionContractPath = path.join(
+  repositoryRoot,
+  'plugins',
+  'keco-codex',
+  'references',
+  'interaction-contract.md',
+);
 
 const SKILLS = [
   'keco-build-tables-from-document',
@@ -77,6 +85,56 @@ function task(id: string, overrides: Record<string, unknown> = {}) {
 }
 
 describe('Keco Claude plugin packaging', () => {
+  it('ships a byte-identical shared interaction contract in both plugins', () => {
+    const contractExists = existsSync(interactionContractPath);
+    const codexContractExists = existsSync(codexInteractionContractPath);
+
+    expect({ contractExists, codexContractExists }).toEqual({
+      contractExists: true,
+      codexContractExists: true,
+    });
+    if (!contractExists || !codexContractExists) return;
+
+    expect(readFileSync(interactionContractPath)).toEqual(readFileSync(codexInteractionContractPath));
+  });
+
+  it('links every entry Skill to the shared interaction contract', () => {
+    for (const skill of SKILLS) {
+      const source = readFileSync(path.join(skillsRoot, skill, 'SKILL.md'), 'utf8');
+      expect(source).toContain(
+        '[shared interaction contract](../../references/interaction-contract.md)',
+      );
+    }
+  });
+
+  it('defines the shared language, intent, blocker, resume, and host boundaries', () => {
+    expect(existsSync(interactionContractPath)).toBe(true);
+    if (!existsSync(interactionContractPath)) return;
+
+    const contract = readFileSync(interactionContractPath, 'utf8');
+    expect(contract).toMatch(/latest substantive user request/i);
+    expect(contract).toMatch(/user-visible headings, summaries, questions, progress, blockers, and final results/i);
+    expect(contract).toMatch(/preserve[\s\S]*tool names[\s\S]*field labels[\s\S]*IDs[\s\S]*code[\s\S]*enum values[\s\S]*error codes[\s\S]*verbatim source quotations/i);
+    for (const field of ['Goal', 'Source', 'Scope', 'Success', 'Next']) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    for (const field of [
+      'Status',
+      'Blocked at',
+      'Completed',
+      'Writes performed',
+      'Why',
+      'User action',
+      'Resume from',
+      'Checkpoint',
+      'Revalidation',
+    ]) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
+    expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+  });
+
   it('declares an installable marketplace entry and plugin manifest', () => {
     const marketplace = readJson<{
       name: string;

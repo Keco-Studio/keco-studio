@@ -5,6 +5,8 @@ description: Use when a user asks to create, build, generate, or populate new Ke
 
 # Build Keco Tables From A Document
 
+Read and follow the [shared interaction contract](../../references/interaction-contract.md) for every user-visible exchange, checkpoint, and resume.
+
 ## Overview
 
 Turn one existing Keco document into new, related Keco tables through a read-plan-confirm-execute-verify workflow. Use Keco MCP for every project operation; never substitute repository code or direct database access.

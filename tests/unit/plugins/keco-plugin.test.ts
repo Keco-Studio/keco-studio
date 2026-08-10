@@ -6,6 +6,21 @@ const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-codex');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
+const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
+const claudeInteractionContractPath = path.join(
+  repositoryRoot,
+  'plugins',
+  'keco-claude',
+  'references',
+  'interaction-contract.md',
+);
+
+const ENTRY_SKILLS = [
+  'keco-build-tables-from-document',
+  'keco-develop-godot-slice',
+  'keco-develop-godot-slice-v2',
+  'pixellab-map-assets',
+];
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
@@ -45,6 +60,56 @@ function skillTextFiles(root: string): string[] {
 }
 
 describe('Keco Codex plugin contract', () => {
+  it('ships a byte-identical shared interaction contract in both plugins', () => {
+    const contractExists = existsSync(interactionContractPath);
+    const claudeContractExists = existsSync(claudeInteractionContractPath);
+
+    expect({ contractExists, claudeContractExists }).toEqual({
+      contractExists: true,
+      claudeContractExists: true,
+    });
+    if (!contractExists || !claudeContractExists) return;
+
+    expect(readFileSync(interactionContractPath)).toEqual(readFileSync(claudeInteractionContractPath));
+  });
+
+  it('links every entry Skill to the shared interaction contract', () => {
+    for (const skill of ENTRY_SKILLS) {
+      const source = readFileSync(path.join(pluginRoot, 'skills', skill, 'SKILL.md'), 'utf8');
+      expect(source).toContain(
+        '[shared interaction contract](../../references/interaction-contract.md)',
+      );
+    }
+  });
+
+  it('defines the shared language, intent, blocker, resume, and host boundaries', () => {
+    expect(existsSync(interactionContractPath)).toBe(true);
+    if (!existsSync(interactionContractPath)) return;
+
+    const contract = readFileSync(interactionContractPath, 'utf8');
+    expect(contract).toMatch(/latest substantive user request/i);
+    expect(contract).toMatch(/user-visible headings, summaries, questions, progress, blockers, and final results/i);
+    expect(contract).toMatch(/preserve[\s\S]*tool names[\s\S]*field labels[\s\S]*IDs[\s\S]*code[\s\S]*enum values[\s\S]*error codes[\s\S]*verbatim source quotations/i);
+    for (const field of ['Goal', 'Source', 'Scope', 'Success', 'Next']) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    for (const field of [
+      'Status',
+      'Blocked at',
+      'Completed',
+      'Writes performed',
+      'Why',
+      'User action',
+      'Resume from',
+      'Checkpoint',
+      'Revalidation',
+    ]) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
+    expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+  });
+
   it('keeps all Skill Markdown and YAML files ASCII-only', () => {
     const cjk = /[\u4e00-\u9fff]/u;
     const skillFiles = skillTextFiles(path.join(pluginRoot, 'skills'));
