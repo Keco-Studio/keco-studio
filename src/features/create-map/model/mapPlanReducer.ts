@@ -9,6 +9,7 @@ import type {
 export const MAX_MAP_PLAN_HISTORY = 100;
 
 export type MapPlanCommand =
+  | { type: 'plan/update'; plan: MapPlanV2 }
   | { type: 'region/add'; region: TerrainRegion }
   | { type: 'region/update'; region: TerrainRegion }
   | { type: 'region/delete'; id: string }
@@ -63,6 +64,8 @@ function movePlacement(placement: PlannedObstacleEntity, id: string, position: P
 
 function applyMapPlanCommand(plan: MapPlanV2, command: MapPlanCommand): MapPlanV2 {
   switch (command.type) {
+    case 'plan/update':
+      return command.plan === plan ? plan : command.plan;
     case 'region/add':
       if (plan.background.regions.some((region) => region.id === command.region.id)) return plan;
       return {

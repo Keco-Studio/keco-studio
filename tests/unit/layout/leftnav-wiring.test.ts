@@ -1,8 +1,38 @@
+import React from 'react';
 import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { renderToStaticMarkup } from 'react-dom/server';
+import {
+  getProductNavigationDestination,
+  getProductNavigationState,
+} from '@/lib/create-map/productNavigation';
 
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
+
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/create-map',
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
+jest.mock('next/image', () => ({
+  __esModule: true,
+  default: (props: Record<string, unknown>) => React.createElement('img', props),
+}));
+
+jest.mock('@/assets/images/simulator/align-center.svg', () => 'align-center');
+jest.mock('@/assets/images/simulator/align-center-active.svg', () => 'align-center-active');
+jest.mock('@/assets/images/simulator/archive.svg', () => 'archive');
+jest.mock('@/assets/images/simulator/archive-active.svg', () => 'archive-active');
+jest.mock('@/assets/images/simulator/ilightning.svg', () => 'lightning');
+jest.mock('@/assets/images/simulator/lightning-active.svg', () => 'lightning-active');
+
+jest.mock('@/components/layout/LeftNav.module.css', () => ({
+  __esModule: true,
+  default: new Proxy({}, { get: (_target, property) => String(property) }),
+}));
+
+import { LeftNav } from '@/components/layout/LeftNav';
 
 describe('native simulation route', () => {
   it('mounts the native workbench providers without an iframe', () => {
@@ -37,12 +67,40 @@ describe('leftNavStorage', () => {
 });
 
 describe('LeftNav wiring', () => {
-  it('exports product navigation and collapse behavior', () => {
+  it('marks only the fourth product slot active for Create Map', () => {
+    expect(getProductNavigationState('/create-map')).toEqual({
+      studio: false,
+      simulation: false,
+      script: false,
+      createMap: true,
+    });
+  });
+
+  it('routes the fourth product slot to Create Map and returns Studio to projects', () => {
+    expect(getProductNavigationDestination('/projects', 'createMap')).toBe('/create-map');
+    expect(getProductNavigationDestination('/create-map', 'createMap')).toBeNull();
+    expect(getProductNavigationDestination('/create-map', 'studio')).toBe('/projects');
+  });
+
+  it('renders Create Map as the fourth product control with the active page state', () => {
+    const markup = renderToStaticMarkup(React.createElement(LeftNav));
+    const controls = [...markup.matchAll(/aria-label="([^"]+)"/g)].map((match) => match[1]);
+
+    expect(controls.slice(1, 6)).toEqual([
+      'Studio',
+      'Simulation',
+      'Script',
+      'Create Map',
+      'Coming soon',
+    ]);
+    expect(markup).toContain('aria-label="Create Map" aria-current="page"');
+  });
+
+  it('keeps simulation navigation and collapse behavior', () => {
     const source = read('src/components/layout/LeftNav.tsx');
     expect(source).toContain('export function LeftNav');
-    expect(source).toContain('/simulation-system');
-    expect(source).toContain('/projects');
     expect(source).toContain('readLeftNavCollapsed');
+    expect(getProductNavigationDestination('/projects', 'simulation')).toBe('/simulation-system');
   });
 
   it('keeps the shared TopBar while simulation hides Studio resource chrome', () => {

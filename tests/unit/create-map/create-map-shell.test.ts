@@ -116,7 +116,7 @@ it('renders the Create Map workbench semantic regions', () => {
   const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
   expect(markup).toContain('data-testid="create-map-workbench"');
-  expect(markup).toContain('aria-label="Map source and layers"');
+  expect(markup).toContain('aria-label="Map source and structure"');
   expect(markup).toContain('aria-label="Map canvas"');
   expect(markup).toContain('aria-label="Map plan and inspector"');
 });

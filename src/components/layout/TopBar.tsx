@@ -39,6 +39,7 @@ import {
 } from '@/lib/realtime/cell-replacement-broadcast';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';
 import { ScriptTopBarActions } from '@/components/script-system/ScriptTopBarActions';
 import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import {
@@ -61,6 +62,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const pathname = usePathname();
   const onSimulationSystem = pathname?.startsWith('/simulation-system') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
+  const onCreateMap = isCreateMapPath(pathname);
   const {
     breadcrumbs,
     currentAssetId,
@@ -1436,7 +1438,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   return (
-    <header className={`${styles.header} ${onSimulationSystem ? styles.headerSimulation : ''}`}>
+    <header className={`${styles.header} ${onSimulationSystem ? styles.headerSimulation : ''} ${onCreateMap ? styles.headerCreateMap : ''}`}>
       <div className={styles.left}>
         {showCreateProjectBreadcrumb ? (
           <div className={styles.createProjectBreadcrumb}>

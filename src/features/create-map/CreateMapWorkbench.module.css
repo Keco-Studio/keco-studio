@@ -220,6 +220,24 @@
   grid-template-columns: 1fr auto;
 }
 
+.optionalLabel {
+  color: var(--create-map-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.resourceInspector {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--create-map-line);
+}
+
+.resourceInspector h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
 .rangeLabel input {
   grid-column: 1 / -1;
   accent-color: var(--create-map-blue);
@@ -266,7 +284,9 @@
   box-shadow: 0 0 0 2px rgba(11, 120, 208, 0.12);
 }
 
-.select:disabled {
+.select:disabled,
+.input:disabled,
+.textarea:disabled {
   color: #9ba3aa;
   background: #f4f5f6;
 }
@@ -313,9 +333,22 @@
   cursor: not-allowed;
 }
 
+.primaryButton:active:not(:disabled),
+.secondaryButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .inlineActions {
   gap: 8px;
   margin-top: 8px;
+}
+
+.inlineActions .primaryButton,
+.inlineActions .secondaryButton {
+  min-width: 0;
+  flex: 1 1 0;
+  margin-top: 0;
+  white-space: nowrap;
 }
 
 .stageList,
@@ -454,6 +487,18 @@
 
 .layerSwatch[data-kind='overlay'] {
   background: #d78372;
+}
+
+.layerSwatch[data-kind='region'] {
+  background: #8fa97b;
+}
+
+.layerSwatch[data-kind='path'] {
+  background: #a27f58;
+}
+
+.layerSwatch[data-kind='placement'] {
+  background: #49685b;
 }
 
 .rowActions {
@@ -772,6 +817,54 @@
   background-color: #dde1e3;
 }
 
+.planCanvasViewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #dfe4e5;
+}
+
+.planCanvas {
+  display: block;
+  width: calc(100% - 48px);
+  height: calc(100% - 48px);
+  margin: 24px;
+  overflow: visible;
+  background: #fff;
+  box-shadow: 0 1px 5px rgb(31 42 48 / 18%);
+  touch-action: none;
+  transform-origin: center;
+}
+
+.planCanvas polygon,
+.planCanvas polyline,
+.planCanvas rect {
+  cursor: move;
+  vector-effect: non-scaling-stroke;
+}
+
+.planHandle {
+  fill: #fff;
+  stroke: #0874c9;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.planHandle:active {
+  cursor: grabbing;
+}
+
+.dragIndicator {
+  fill: #0874c9;
+  stroke: #fff;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 .canvas {
   display: block;
   width: 100%;
@@ -849,6 +942,18 @@
   background: #c58a36;
 }
 
+.saveIndicator[data-status='local'] span {
+  background: #7e8992;
+}
+
+.saveIndicator[data-status='dirty'] span {
+  background: #c58a36;
+}
+
+.saveIndicator[data-status='error'] span {
+  background: #b7443c;
+}
+
 .twoColumnFields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -903,6 +1008,19 @@
   color: #a64141;
   font-size: 10px;
   line-height: 1.35;
+}
+
+.fieldError {
+  color: #a43d35;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.input[aria-invalid='true'],
+.select[aria-invalid='true'],
+.textarea[aria-invalid='true'] {
+  border-color: #c95a52;
 }
 
 .drawerClose,

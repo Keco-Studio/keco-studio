@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { listDocuments } from '@/lib/services/documentService';
 import { listProjects } from '@/lib/services/projectService';
-import { MapPlanSchema, MapPlanV2Schema, type MapPlan, type MapPlanV2 } from '../model/mapPlanSchema';
+import { MapPlanSchema, MapPlanV2Schema, validateMapPlanV2, type MapPlan, type MapPlanV2 } from '../model/mapPlanSchema';
 import {
   MapSceneSchema,
   MapSceneV2Schema,
@@ -116,6 +116,26 @@ function firstRow<T>(data: unknown): T {
   const row = Array.isArray(data) ? data[0] : data;
   if (!row || typeof row !== 'object') throw new CreateMapServiceError('invalid_response');
   return row as T;
+}
+
+function parseMapSourceToken(value: unknown): MapSourceToken | null {
+  if (value == null) return null;
+  if (!value || typeof value !== 'object') throw new CreateMapServiceError('invalid_response');
+  const token = value as Record<string, unknown>;
+  if (
+    typeof token.documentId !== 'string' ||
+    typeof token.documentUpdatedAt !== 'string' ||
+    !Number.isInteger(token.epoch) ||
+    !Number.isInteger(token.revision)
+  ) {
+    throw new CreateMapServiceError('invalid_response');
+  }
+  return {
+    documentId: token.documentId,
+    documentUpdatedAt: token.documentUpdatedAt,
+    epoch: token.epoch as number,
+    revision: token.revision as number,
+  };
 }
 
 function projectName(value: unknown): string {
@@ -326,6 +346,25 @@ export function createMapService(supabase: SupabaseClient) {
         body: JSON.stringify({ projectId, documentId }),
       }));
       return payload as unknown as { plan: MapPlan; sourceToken: MapSourceToken };
+    },
+
+    async createPlanV2(
+      description: string,
+      projectId?: string,
+      documentId?: string
+    ): Promise<{ plan: MapPlanV2; sourceToken: MapSourceToken | null }> {
+      const payload = await responseJson(await fetch('/api/create-map/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description,
+          ...(projectId ? { projectId } : {}),
+          ...(documentId ? { documentId } : {}),
+        }),
+      }));
+      const parsed = validateMapPlanV2(payload.plan);
+      if (parsed.success === false) throw new CreateMapServiceError('invalid_response', 'Planner returned an invalid MapPlan V2');
+      return { plan: parsed.data, sourceToken: parseMapSourceToken(payload.sourceToken) };
     },
 
     async createProject(projectId: string, plan: MapPlan, scene: MapScene, source: MapSourceToken): Promise<MapDraftIdentity> {

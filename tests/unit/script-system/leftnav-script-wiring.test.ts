@@ -1,6 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { getCreateMapDashboardChrome } from '@/lib/create-map/dashboardChrome';
+import { getProductNavigationState } from '@/lib/create-map/productNavigation';
 
 const read = (file: string) =>
   readFileSync(path.join(process.cwd(), file), 'utf8');
@@ -29,8 +31,12 @@ describe('Keco Script LeftNav wiring', () => {
   });
 
   it('Studio active excludes script-system paths', () => {
-    const source = read('src/components/layout/LeftNav.tsx');
-    expect(source).toMatch(/!onSimulation\s*&&\s*!onScript|!onScript\s*&&\s*!onSimulation/);
+    expect(getProductNavigationState('/script-system')).toEqual({
+      studio: false,
+      simulation: false,
+      script: true,
+      createMap: false,
+    });
   });
 
   it('DashboardLayout mounts product sidebars beside the shared TopBar', () => {
@@ -43,8 +49,7 @@ describe('Keco Script LeftNav wiring', () => {
     expect(source).toContain('<TopBar');
     expect(source).not.toContain('hideTopBar');
     expect(source).toMatch(/showScriptSidebar\s*=\s*onScriptSystem/);
-    expect(source).toMatch(/hideChatPanel\s*=\s*hideSidebarForSimulation\s*;/);
-    expect(source).not.toMatch(/hideChatPanel\s*=\s*hideSidebarForSimulation\s*\|\|\s*onScriptSystem/);
+    expect(getCreateMapDashboardChrome('/script-system').showChatPanel).toBe(true);
   });
 
   it('ScriptSidebar collapses on TopBar sidebar-toggle', () => {

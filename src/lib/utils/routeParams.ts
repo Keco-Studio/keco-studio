@@ -16,6 +16,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'economy-simulator',
   'simulation-system',
   'script-system',
+  'create-map',
   'design-upload',
   'mcp',
 ] as const;
@@ -38,6 +39,19 @@ export function parseRouteParams(
 
   // Root-level special pages have no project context.
   if (parts.length === 1 && SPECIAL_ROUTE_SEGMENTS.includes(parts[0] as (typeof SPECIAL_ROUTE_SEGMENTS)[number])) {
+    return {
+      projectId: null,
+      libraryId: null,
+      folderId: null,
+      assetId: null,
+      documentId: null,
+      isPredefinePage: false,
+      isLibraryPage: false,
+    };
+  }
+
+  // Create Map is a product workspace, never a Studio project route.
+  if (parts[0] === 'create-map') {
     return {
       projectId: null,
       libraryId: null,

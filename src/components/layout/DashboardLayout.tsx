@@ -9,6 +9,7 @@ import AuthForm from '@/components/authform/AuthForm';
 import { ChatPanel } from '@/components/agent/ChatPanel';
 import { AgentImportBridge } from '@/components/agent/AgentImportBridge';
 import { ScriptSidebar } from '@/components/script-system/ScriptSidebar';
+import { getCreateMapDashboardChrome } from '@/lib/create-map/dashboardChrome';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
@@ -26,11 +27,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
-  // Simulation hides the Studio resource sidebar and Agent Chat. Script keeps TopBar and Agent Chat,
+  const createMapChrome = getCreateMapDashboardChrome(pathname);
+  const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
+  // Simulation and Create Map hide the Studio resource sidebar and Agent Chat. Script keeps both,
   // and mounts ScriptSidebar as a left sibling of TopBar/main.
-  const showStudioSidebar = !hideSidebarForSimulation && !onScriptSystem;
+  const showStudioSidebar = !hideSidebarForSimulation && !onScriptSystem && !hideSidebarForCreateMap;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
-  const hideChatPanel = hideSidebarForSimulation;
+  const hideChatPanel = hideSidebarForSimulation || !createMapChrome.showChatPanel;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
@@ -79,7 +82,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className={styles.dashboard}>
-      <LeftNav />
+      {createMapChrome.showLeftNav ? <LeftNav /> : null}
       {showStudioSidebar ? (
         <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
           <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
@@ -94,7 +97,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className={styles.simulationSidebarSlot} data-simulation-sidebar-slot data-simulation-root />
       ) : null}
       <div className={styles.main}>
-        <TopBar />
+        {createMapChrome.showTopBar ? <TopBar /> : null}
         <div className={styles.workspace}>
           <div className={styles.content}>
             {children}

@@ -33,6 +33,29 @@ describe('Create Map browser service', () => {
     expect(init?.body).not.toContain('Village design markdown');
   });
 
+  it('requests and validates a description-only V2 Plan without Project fields', async () => {
+    const plan = makeValidMapPlanV2();
+    global.fetch = jest.fn(async () => Response.json({ plan, sourceToken: null })) as typeof fetch;
+    const service = createMapService({} as never);
+
+    await expect(service.createPlanV2('A riverside market')).resolves.toEqual({ plan, sourceToken: null });
+    const init = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][1];
+    expect(init?.body).toBe(JSON.stringify({ description: 'A riverside market' }));
+  });
+
+  it('rejects a malformed V2 planner source token', async () => {
+    global.fetch = jest.fn(async () => Response.json({
+      plan: makeValidMapPlanV2(),
+      sourceToken: { documentId: 'document-1' },
+    })) as typeof fetch;
+
+    await expect(createMapService({} as never).createPlanV2(
+      'Use the village document',
+      'project-1',
+      'document-1'
+    )).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
   it('maps compare-and-swap conflicts to a stable service error', async () => {
     const rpc = jest.fn(async () => ({ data: [{ status: 'conflict', save_version: null }], error: null }));
     const service = createMapService({ rpc } as never);
