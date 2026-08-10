@@ -34,7 +34,8 @@
 }
 
 /* Tooltips portal into the editor root; keep them above the sticky title
-   (z-index: 1) and sticky toolbar (z-index: 2). */
+   (z-index: 1) and sticky toolbar (z-index: 2). Stay below TopBar (z-index: 10)
+   so upward tooltips do not paint through the header breadcrumb. */
 .editor :global([class*='tooltipContent']) {
   z-index: 8 !important;
 }

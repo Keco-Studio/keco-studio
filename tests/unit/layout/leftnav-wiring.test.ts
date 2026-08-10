@@ -78,6 +78,9 @@ describe('LeftNav wiring', () => {
     expect(simulationCss).toContain('var(--simulation-topbar-workflow-button-size');
     expect(simulationCss).toContain('var(--simulation-topbar-workflow-active-color');
     expect(topBarCss).toMatch(/\.headerSimulation\s+\.right[\s\S]*?gap:\s*12px/);
+    // Opaque header: avoid frosted blur of editor tooltips over the breadcrumb.
+    expect(topBarCss).toMatch(/\.header\s*\{[\s\S]*?background-color:\s*#ffffff/);
+    expect(topBarCss).not.toMatch(/\.header\s*\{[\s\S]*?backdrop-filter:/);
   });
 
   it('scopes simulation global search to the remembered simulation project', () => {

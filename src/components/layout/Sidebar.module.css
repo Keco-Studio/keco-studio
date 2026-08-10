@@ -592,6 +592,169 @@
 
 .projectsSection {
   margin-top: 0;
+  position: relative;
+  z-index: 4;
+  flex-shrink: 0;
+}
+
+.projectSelectorTrigger {
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #30343a;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.projectSelectorTrigger:hover {
+  background: #eeeeee;
+}
+
+.projectSelectorTrigger:focus-visible {
+  outline: 2px solid #8ecfff;
+  outline-offset: 2px;
+}
+
+.projectSelectorTriggerText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectSelectorChevron {
+  flex-shrink: 0;
+  color: #3f444a;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.projectSelectorChevronOpen {
+  transform: rotate(180deg);
+}
+
+.projectSelectorMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  padding: 4px;
+  border: 1px solid #e2e5e9;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
+  box-sizing: border-box;
+}
+
+.projectSelectorOptions {
+  max-height: 108px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.projectSelectorOption {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #22262b;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.25;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.projectSelectorOption:hover,
+.projectSelectorOption:focus-visible {
+  background: #f4f6f8;
+  outline: none;
+}
+
+.projectSelectorOptionSelected,
+.projectSelectorOptionSelected:hover,
+.projectSelectorOptionSelected:focus-visible {
+  background: #e8f5fd;
+}
+
+.projectSelectorOptionText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectSelectorInfo,
+.projectSelectorCheck {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.projectSelectorInfo {
+  cursor: help;
+}
+
+.projectSelectorCheck {
+  color: #1f2328;
+  font-size: 12px;
+}
+
+.projectSelectorRenameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid #8ecfff;
+  border-radius: 4px;
+  outline: none;
+  background: #ffffff;
+  color: #22262b;
+  font: inherit;
+}
+
+.projectSelectorCreate {
+  width: 100%;
+  height: 36px;
+  margin-top: 4px;
+  padding: 0 8px;
+  border: none;
+  border-top: 1px solid #eceef0;
+  background: #ffffff;
+  color: #22262b;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+}
+
+.projectSelectorCreate:hover {
+  background: #f4f6f8;
+}
+
+.projectSelectorCreate:focus-visible {
+  outline: 2px solid #8ecfff;
+  outline-offset: -2px;
 }
 
 /* Projects section: max 3 rows visible; Edge-style scrollbar when more than 3 */

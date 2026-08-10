@@ -1,13 +1,10 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
+import { CheckOutlined, DownOutlined } from '@ant-design/icons';
 import type { Project } from '@/lib/services/projectService';
-import { truncateText } from '@/lib/utils/truncateText';
-import projectIcon from '@/assets/images/projectIcon.svg';
-import addProjectIcon from '@/assets/images/addProjectIcon.svg';
-import createProjectIcon from '@/assets/images/createProjectIcon.svg';
 import projectRightIcon from '@/assets/images/ProjectDescIcon.svg';
 import styles from '../Sidebar.module.css';
 
@@ -25,14 +22,12 @@ export type SidebarProjectsListProps = {
 };
 
 /**
- * Renders the Projects section (title, list, create button) in the Sidebar.
+ * Renders the compact project selector in the Sidebar.
  */
 export function SidebarProjectsList({
   projects,
   loadingProjects,
   currentProjectId,
-  currentLibraryId,
-  currentFolderId,
   userRole,
   onOpenNewProject,
   onProjectClick,
@@ -42,17 +37,30 @@ export function SidebarProjectsList({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement>(null);
+  const pendingProjectSelectionRef = useRef<number | null>(null);
+
+  const currentProject = useMemo(
+    () => projects.find((project) => project.id === currentProjectId),
+    [currentProjectId, projects]
+  );
+
+  const cancelPendingProjectSelection = useCallback(() => {
+    if (pendingProjectSelectionRef.current === null) return;
+    window.clearTimeout(pendingProjectSelectionRef.current);
+    pendingProjectSelectionRef.current = null;
+  }, []);
 
   const startRename = useCallback(
     (project: Project) => {
       if (userRole !== 'admin') return;
+      cancelPendingProjectSelection();
       setEditingProjectId(project.id);
       setEditingValue(project.name);
     },
-    [userRole]
+    [cancelPendingProjectSelection, userRole]
   );
-
-  const isProjectsScrollable = projects.length > 3;
 
   const saveRename = useCallback(
     async (projectId: string) => {
@@ -73,140 +81,181 @@ export function SidebarProjectsList({
     [editingValue, isSaving, onSaveRename]
   );
 
+  useEffect(() => {
+    if (!isSelectorOpen) return;
+
+    const closeFromOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !selectorRef.current?.contains(event.target)) {
+        cancelPendingProjectSelection();
+        setEditingProjectId(null);
+        setIsSelectorOpen(false);
+      }
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        cancelPendingProjectSelection();
+        setEditingProjectId(null);
+        setIsSelectorOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeFromOutside);
+    window.addEventListener('keydown', closeFromKeyboard);
+    return () => {
+      cancelPendingProjectSelection();
+      document.removeEventListener('pointerdown', closeFromOutside);
+      window.removeEventListener('keydown', closeFromKeyboard);
+    };
+  }, [cancelPendingProjectSelection, isSelectorOpen]);
+
+  const selectProject = useCallback(
+    (projectId: string) => {
+      onProjectClick(projectId);
+      setIsSelectorOpen(false);
+    },
+    [onProjectClick]
+  );
+
+  const queueProjectSelection = useCallback(
+    (projectId: string) => {
+      if (userRole !== 'admin') {
+        selectProject(projectId);
+        return;
+      }
+
+      cancelPendingProjectSelection();
+      pendingProjectSelectionRef.current = window.setTimeout(() => {
+        pendingProjectSelectionRef.current = null;
+        selectProject(projectId);
+      }, 220);
+    },
+    [cancelPendingProjectSelection, selectProject, userRole]
+  );
+
   return (
-    <div className={styles.projectsSection}>
-      <div className={styles.sectionTitle}>
-        <span>Projects</span>
-        <button
-          className={styles.addButton}
-          onClick={onOpenNewProject}
-          title="New Project"
-        >
-          <Image
-            src={addProjectIcon}
-            alt="Add project"
-            width={16}
-            height={16}
-            className="icon-16"
-          />
-        </button>
-      </div>
-      <div
-        className={`${styles.projectsListContainer} ${isProjectsScrollable ? styles.projectsListContainerScrollable : ''
-          }`}
+    <div className={styles.projectsSection} ref={selectorRef}>
+      <button
+        type="button"
+        className={styles.projectSelectorTrigger}
+        aria-label="Select project"
+        aria-haspopup="menu"
+        aria-expanded={isSelectorOpen}
+        onClick={() => {
+          cancelPendingProjectSelection();
+          setIsSelectorOpen((open) => !open);
+        }}
       >
-        {projects.map((project) => {
-          const isEditing = editingProjectId === project.id;
-          const isCurrentProject = currentProjectId === project.id;
-          // Project is "active" (blue highlight) only when on project page without folder/library
-          const isActive = isCurrentProject && !currentLibraryId && !currentFolderId;
-          // Project has "secondary" highlight (gray) when viewing folder/library under this project
-          const isSecondaryActive = isCurrentProject && (currentLibraryId || currentFolderId);
-          return (
-            <div
-              key={project.id}
-              className={`${styles.item} ${isActive
-                ? styles.itemActive
-                : isSecondaryActive
-                  ? styles.itemSecondaryActive
-                  : styles.itemInactive
-                }`}
-              onClick={() => {
-                if (isEditing) return;
-                onProjectClick(project.id);
-              }}
-              onContextMenu={(e) => {
-                if (isEditing) {
-                  e.preventDefault();
-                  return;
-                }
-                onContextMenu(e, 'project', project.id);
-              }}
-            >
-              <Image
-                src={projectIcon}
-                alt="Project"
-                width={24}
-                height={24}
-                className={`icon-24 ${styles.itemIcon}`}
-              />
-              {isEditing ? (
-                <input
-                  className={styles.renameInput}
-                  value={editingValue}
-                  autoFocus
-                  disabled={isSaving}
-                  onChange={(e) => setEditingValue(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onBlur={() => {
-                    void saveRename(project.id);
+        <span className={styles.projectSelectorTriggerText}>
+          {currentProject?.name ?? (loadingProjects ? 'Loading projects...' : 'Select project')}
+        </span>
+        <DownOutlined
+          aria-hidden="true"
+          className={`${styles.projectSelectorChevron} ${isSelectorOpen ? styles.projectSelectorChevronOpen : ''}`}
+        />
+      </button>
+
+      {isSelectorOpen && (
+        <div className={styles.projectSelectorMenu} role="menu" aria-label="Projects">
+          <div className={styles.projectSelectorOptions}>
+            {projects.map((project) => {
+              const isEditing = editingProjectId === project.id;
+              const isCurrentProject = currentProjectId === project.id;
+              return (
+                <div
+                  key={project.id}
+                  className={`${styles.projectSelectorOption} ${isCurrentProject ? styles.projectSelectorOptionSelected : ''}`}
+                  role="menuitemradio"
+                  aria-checked={isCurrentProject}
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!isEditing) queueProjectSelection(project.id);
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void saveRename(project.id);
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setEditingProjectId(null);
+                  onKeyDown={(event) => {
+                    if (isEditing || event.target instanceof HTMLInputElement) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      selectProject(project.id);
                     }
                   }}
-                />
-              ) : (
-                <span
-                  className={styles.itemText}
-                  title={project.name}
-                  onDoubleClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    startRename(project);
+                  onContextMenu={(e) => {
+                    if (isEditing) {
+                      e.preventDefault();
+                      return;
+                    }
+                    onContextMenu(e, 'project', project.id);
                   }}
                 >
-                  {truncateText(project.name, 20)}
-                </span>
-              )}
-              <span className={styles.itemActions}>
-                {!isEditing && project.description && (
-                  <Tooltip
-                    title={project.description}
-                    placement="top"
-                    styles={{ root: { maxWidth: '300px' } }}
-                  >
-                    <div
-                      className={styles.infoIconWrapper}
+                  {isEditing ? (
+                    <input
+                      className={styles.projectSelectorRenameInput}
+                      value={editingValue}
+                      autoFocus
+                      disabled={isSaving}
+                      onChange={(e) => setEditingValue(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
+                      onBlur={() => {
+                        void saveRename(project.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void saveRename(project.id);
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingProjectId(null);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className={styles.projectSelectorOptionText}
+                      title={project.name}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        startRename(project);
+                      }}
                     >
-                      <Image
-                        src={projectRightIcon}
-                        alt="Info"
-                        width={24}
-                        height={24}
-                        className="icon-24"
-                      />
-                    </div>
-                  </Tooltip>
-                )}
-              </span>
-            </div>
-          );
-        })}
-        {!loadingProjects && projects.length === 0 && (
+                      {project.name}
+                    </span>
+                  )}
+                  {!isEditing && project.description && (
+                    <Tooltip
+                      title={project.description}
+                      placement="top"
+                      styles={{ root: { maxWidth: '300px' } }}
+                    >
+                      <span
+                        className={styles.projectSelectorInfo}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Image src={projectRightIcon} alt="Info" width={18} height={18} />
+                      </span>
+                    </Tooltip>
+                  )}
+                  <span className={styles.projectSelectorCheck} aria-hidden="true">
+                    {isCurrentProject && !isEditing && <CheckOutlined />}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
           <button
-            className={styles.createProjectButton}
-            onClick={onOpenNewProject}
+            type="button"
+            role="menuitem"
+            className={styles.projectSelectorCreate}
+            onClick={() => {
+              cancelPendingProjectSelection();
+              setIsSelectorOpen(false);
+              onOpenNewProject();
+            }}
           >
-            <Image
-              src={createProjectIcon}
-              alt="Project"
-              width={24}
-              height={24}
-              className={`icon-24 ${styles.itemIcon}`}
-            />
-            <span className={styles.itemText}>Create Project</span>
+            Create new
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

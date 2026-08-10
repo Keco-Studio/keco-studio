@@ -7,9 +7,10 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #e2e8f0;
-  background-color: rgba(255, 255, 255, 0.8);
+  /* Solid fill: frosted glass (rgba + backdrop-filter) blurred MDX toolbar
+     tooltips that open upward into this bar and smudged the breadcrumb. */
+  background-color: #ffffff;
   padding: 0 1.5rem;
-  backdrop-filter: blur(8px);
 }
 
 .headerSimulation .left {
