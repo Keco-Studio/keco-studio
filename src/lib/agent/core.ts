@@ -68,6 +68,7 @@ import {
   tokenBudgetExceededMessage,
 } from './turn-budget';
 import { createAccessVerificationCache } from '@/lib/services/authorizationService';
+import { normalizeToolCallForReplay } from './tool-call-recovery';
 
 const MAX_ITERATIONS = 50;
 
@@ -433,7 +434,7 @@ async function* continueLoop(
       role: 'assistant',
       content: assistantContent || '',
       ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
-      tool_calls: [call],
+      tool_calls: [normalizeToolCallForReplay(call)],
     };
 
     const tool = resolveTool(call.function.name);
@@ -562,7 +563,7 @@ async function* continueLoop(
           confirmationMode: tool.confirmationMode,
           suspendedState: {
             messages: [...messages],
-            pendingToolCall: call,
+            pendingToolCall: normalizeToolCallForReplay(call),
             ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
             turnId: trace?.turnId,
             nextIteration: iterations,
@@ -627,7 +628,7 @@ async function* continueLoop(
           confirmationMode: 'post_preview',
           suspendedState: {
             messages: [...messages],
-            pendingToolCall: call,
+            pendingToolCall: normalizeToolCallForReplay(call),
             ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
             toolResult: result,
             turnId: trace?.turnId,

@@ -45,6 +45,7 @@ import { renameDocument } from '@/lib/agent/tools/rename-document';
 import { moveDocumentTool } from '@/lib/agent/tools/move-document';
 import { deleteDocumentTool } from '@/lib/agent/tools/delete-document';
 import { MAX_TOOL_CONTENT_CHARS } from '@/lib/agent/tool-result-for-llm';
+import { escapeLiteralMdxBraces } from '@/lib/document-parser';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -626,6 +627,84 @@ describe('Agent document tools', () => {
       data: {
         operationType: 'replace_text',
         proposedMarkdown: 'start YY, middle YY, end YY',
+      },
+    });
+  });
+
+  it('previews a long authoritative user source without copying it into tool arguments', async () => {
+    const source = `${'长文本段落 {"value":"\\\\quoted"}\r\n'.repeat(800)}结尾\r\n`;
+    const encodedSource = escapeLiteralMdxBraces(source);
+    const params = {
+      documentId: DOCUMENT_ID,
+      operation: { type: 'append_user_source' as const },
+    };
+    const sourceContext: ToolContext = {
+      ...ctx,
+      authoritativeUserSource: { messageId: 'message-long', content: source },
+    };
+    read.mockResolvedValue(state());
+
+    const result = await proposeDocumentEdit.execute(params, sourceContext);
+
+    expect(JSON.stringify(params)).not.toContain(source);
+    expect(result.error).toBeUndefined();
+    expect(result).toMatchObject({ success: true });
+    expect(result).toMatchObject({
+      data: {
+        operationType: 'append',
+        operationSummary: `Append ${encodedSource.length} characters.`,
+        proposedMarkdown: `# Current\n\n${encodedSource}`,
+      },
+    });
+  });
+
+  it('rejects incomplete authoritative source offsets before resolving the document', async () => {
+    const sourceContext: ToolContext = {
+      ...ctx,
+      authoritativeUserSource: { messageId: 'message-long', content: '012345' },
+    };
+
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'append_user_source', sourceStart: 2 },
+        },
+        sourceContext
+      )
+    ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/invalid parameters/i) });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+  });
+
+  it('applies a signed authoritative source append without rewriting the source', async () => {
+    const source = `第一行\r\n{"json":true,"path":"C:\\\\data"}\r\n`;
+    const encodedSource = escapeLiteralMdxBraces(source);
+    const proposedMarkdown = `# Current\n\n${encodedSource}`;
+    const params = {
+      documentId: DOCUMENT_ID,
+      operation: { type: 'append_user_source' as const },
+    };
+    const sourceContext: ToolContext = {
+      ...ctx,
+      authoritativeUserSource: { messageId: 'message-source', content: source },
+    };
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state(proposedMarkdown, 5));
+
+    const result = await withoutConfirmationSecrets(async () => {
+      const preview = await proposeDocumentEdit.execute(params, sourceContext);
+      expect(preview.error).toBeUndefined();
+      return proposeDocumentEdit.executeImport!(preview, params, sourceContext);
+    });
+
+    expect(replaceDocumentAsAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ markdown: proposedMarkdown })
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        operationType: 'append',
+        operationSummary: `Append ${encodedSource.length} characters.`,
       },
     });
   });

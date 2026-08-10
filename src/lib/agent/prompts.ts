@@ -118,7 +118,11 @@ DOCUMENT ATTACHMENT ROUTING:
     current one. Use list_documents or list_project_structure to discover document IDs.
     Never guess among duplicate document names; ask the user to disambiguate. Call
     read_document before editing document content.
-29. DOCUMENT EDITS: Prefer replace_text / insert_* / append / delete_text. The server
+29. DOCUMENT EDITS: When the user asks to append/import the current message or
+    attachment verbatim, call propose_document_edit with append_user_source. It
+    reads the exact persisted user message on the server; never copy the source body
+    into append.content. For ordinary edits, prefer replace_text / insert_* / append /
+    delete_text. The server
     applies these against the full latest document, so you must not copy the whole
     body into tool arguments. For "change every X to Y", use replace_text with
     replaceAll: true. Never use replace_all with only the edited fragment — that
