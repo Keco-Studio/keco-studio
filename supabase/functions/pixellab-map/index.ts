@@ -1,4 +1,4 @@
-import { assertGenerationIdentity, authorizeAsset, authorizeProject } from "./auth.ts";
+import { assertGenerationIdentity, assertRegionObstacleBackgroundBinding, authorizeAsset, authorizeProject } from "./auth.ts";
 import { normalizeTileAtlas } from "./atlas.ts";
 import { composeAndPersistBackground } from "./background-storage.ts";
 import { bearerToken, jsonResponse, readJsonBody } from "./http.ts";
@@ -61,6 +61,21 @@ async function handle(request: Request): Promise<Response> {
   if (!assetId) throw new PixelLabMapError("pixellab_invalid_response", "Asset is required", 400);
   const authorized = await authorizeAsset(token, assetId, projectId);
   assertGenerationIdentity(authorized, body);
+  const regionMetadata = authorized.asset.metadata && typeof authorized.asset.metadata === "object"
+    ? authorized.asset.metadata as Record<string, unknown>
+    : {};
+  const isRegionObstacle = authorized.asset.kind === "obstacle" && regionMetadata.source === "region-generation";
+  if (isRegionObstacle) {
+    const referenceIds = Array.isArray(authorized.asset.reference_asset_ids)
+      ? authorized.asset.reference_asset_ids.filter((value): value is string => typeof value === "string")
+      : [];
+    const { data: background } = referenceIds.length === 1
+      ? await authorized.userClient.from("map_assets")
+        .select("id, map_revision_id, generation_id, kind, status, sha256, plan_fingerprint")
+        .eq("id", referenceIds[0]).maybeSingle()
+      : { data: null };
+    assertRegionObstacleBackgroundBinding(authorized, background as Parameters<typeof assertRegionObstacleBackgroundBinding>[1] | null);
+  }
   if (operation === "compose_background") {
     return jsonResponse(await composeAndPersistBackground(authorized));
   }

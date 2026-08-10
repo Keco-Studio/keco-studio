@@ -297,7 +297,7 @@ begin
   where revision.id = p_revision_id and revision.schema_version = 2;
   if v_project_id is null then raise exception 'V2 revision not found' using errcode = 'P0002'; end if;
   perform public.map_require_writer(v_project_id);
-  if v_revision_status not in ('generating', 'partial', 'failed') then
+  if v_revision_status not in ('generating', 'partial', 'failed', 'ready') then
     raise exception 'revision is not accepting asset plans' using errcode = '23514';
   end if;
   if p_kind not in ('terrain', 'path', 'obstacle', 'background') then

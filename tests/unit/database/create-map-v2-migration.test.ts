@@ -41,6 +41,7 @@ describe('Create Map V2 migration', () => {
     expect(assetPlan).toMatch(/p_kind not in \('terrain', 'path', 'obstacle', 'background'\)/i);
     expect(assetPlan).toMatch(/p_generation_id is null[\s\S]+generation identity is required/i);
     expect(assetPlan).toMatch(/p_plan_fingerprint !~ '\^\[a-f0-9\]\{64\}\$'/i);
+    expect(assetPlan).toMatch(/v_revision_status not in \('generating', 'partial', 'failed', 'ready'\)/i);
   });
 
   it('synchronizes summary name and timestamps and preserves nullable-source immutability', () => {

@@ -408,7 +408,7 @@ export function validateMapSceneV2(planInput: MapPlanV2, sceneInput: unknown): M
       addIssue('duplicate_id', ['obstacleEntities', index, 'id'], `Duplicate obstacle entity id: ${entity.id}`);
     }
     seenEntityIds.add(entity.id);
-    if (!obstacleAssetKeys.has(entity.assetKey)) {
+    if (entity.source === 'plan' && !obstacleAssetKeys.has(entity.assetKey)) {
       addIssue('missing_obstacle_asset', ['obstacleEntities', index, 'assetKey'], `Unknown obstacle asset: ${entity.assetKey}`);
     }
     if (entity.collision.shape === 'polygon' && collisionPolygonArea(entity.collision.points) <= Number.EPSILON) {

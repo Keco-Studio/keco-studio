@@ -8,12 +8,13 @@ import { MapCanvas, type MapRenderAsset } from './components/MapCanvas';
 import { MapLayerList } from './components/MapLayerList';
 import { MapPlanInspector } from './components/MapPlanInspector';
 import { ObstacleEntityInspector } from './components/ObstacleEntityInspector';
+import { RegionGenerationPanel } from './components/RegionGenerationPanel';
 import { PlanReviewCanvas, type MapPlanSelection } from './components/PlanReviewCanvas';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { MapToolbar, type MapTool } from './components/MapToolbar';
 import { useMapSources } from './hooks/useMapSources';
 import { useMapDraft } from './hooks/useMapDraft';
-import { useMapGeneration } from './hooks/useMapGeneration';
+import { useMapGeneration, type MapGenerationAsset } from './hooks/useMapGeneration';
 import {
   createMapPlanEditorState,
   reduceMapPlanCommand,
@@ -32,6 +33,7 @@ import {
   type MapSceneV2Command,
 } from './model/mapSceneReducer';
 import { createMapService, type MapSourceToken } from './services/createMapService';
+import { useRegionObstacleGeneration, type MapRegionSelection } from './hooks/useRegionObstacleGeneration';
 import styles from './CreateMapWorkbench.module.css';
 
 export type CreateMapWorkbenchMode = 'plan-review' | 'scene';
@@ -196,6 +198,7 @@ export function CreateMapWorkbench() {
   const [planReview, setPlanReview] = useState(() => createMapPlanEditorState(INITIAL_PLAN_V2));
   const [planSelection, setPlanSelection] = useState<MapPlanSelection>(null);
   const [sceneSelection, setSceneSelection] = useState<EditorSelection>(null);
+  const [regionSelection, setRegionSelection] = useState<MapRegionSelection | null>(null);
   const [description, setDescription] = useState(
     'A compact top-down village market with grass, an earth road, and movable trees.'
   );
@@ -204,6 +207,7 @@ export function CreateMapWorkbench() {
   const [sourceToken, setSourceToken] = useState<MapSourceToken | null>(null);
   const [sceneEditor, setSceneEditor] = useState(() => createEditorState(createEmptySceneV2(INITIAL_PLAN_V2)));
   const [loadedImages, setLoadedImages] = useState<ReadonlyMap<string, LoadedAssetImage>>(() => new Map());
+  const [regionAssets, setRegionAssets] = useState<ReadonlyMap<string, MapGenerationAsset>>(() => new Map());
   const [operation, setOperation] = useState<'idle' | 'planning'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [tool, setTool] = useState<MapTool>('select');
@@ -231,6 +235,25 @@ export function CreateMapWorkbench() {
     publishForGeneration: draft.publishForGeneration,
     onSceneMaterialized: installMaterializedScene,
   });
+  const commitRegionObstacle = useCallback((
+    entity: MapSceneV2['obstacleEntities'][number],
+    asset: MapGenerationAsset,
+  ) => {
+    setSceneEditor((current) => reduceEditorCommand(current, { type: 'entity/add', entity }));
+    setRegionAssets((current) => new Map(current).set(asset.assetKey, asset));
+    setSceneSelection({ kind: 'entity', id: entity.id });
+    setMode('scene');
+    setTool('select');
+  }, []);
+  const regionGeneration = useRegionObstacleGeneration({
+    projectId,
+    plan: planReview.present,
+    scene,
+    target: generation.target,
+    background: generation.assets.find((asset) => asset.kind === 'background') ?? null,
+    selection: regionSelection,
+    onCommit: commitRegionObstacle,
+  });
   const validation = useMemo(() => validateMapPlanV2(planReview.present), [planReview.present]);
   const issues = validation.success === false ? validation.issues : [];
   const dirty = draft.isDirty;
@@ -247,13 +270,28 @@ export function CreateMapWorkbench() {
     ? scene.obstacleEntities.find((entity) => entity.id === sceneSelection.id) ?? null
     : null;
 
-  const signedImageKey = generation.assets
+  const changeRegionSelection = (next: MapRegionSelection | null) => {
+    if (regionGeneration.phase === 'submitting' || regionGeneration.phase === 'generating') return;
+    regionGeneration.reset();
+    setRegionSelection(next);
+  };
+
+  const imageAssets = useMemo(
+    () => {
+      const merged = new Map(generation.assets.map((asset) => [asset.assetKey, asset]));
+      regionAssets.forEach((asset, key) => merged.set(key, asset));
+      if (regionGeneration.asset) merged.set(regionGeneration.asset.assetKey, regionGeneration.asset);
+      return [...merged.values()];
+    },
+    [generation.assets, regionAssets, regionGeneration.asset],
+  );
+  const signedImageKey = imageAssets
     .map((asset) => `${asset.assetKey}:${asset.signedUrl ?? ''}`)
     .join('|');
 
   useEffect(() => {
     let active = true;
-    const ready = generation.assets.filter((asset) => asset.signedUrl);
+    const ready = imageAssets.filter((asset) => asset.signedUrl);
     setLoadedImages(new Map());
     ready.forEach((asset) => {
       const image = new Image();
@@ -269,11 +307,11 @@ export function CreateMapWorkbench() {
       image.src = asset.signedUrl as string;
     });
     return () => { active = false; };
-  }, [generation.assets, signedImageKey]);
+  }, [imageAssets, signedImageKey]);
 
   const renderAssets = useMemo(() => {
     const next = new Map<string, MapRenderAsset>();
-    generation.assets.forEach((asset) => {
+    imageAssets.forEach((asset) => {
       if (asset.kind !== 'background' && asset.kind !== 'obstacle') return;
       const loaded = loadedImages.get(asset.assetKey);
       const definition = planReview.present.obstacleAssets.find((candidate) => candidate.assetKey === asset.assetKey);
@@ -286,7 +324,7 @@ export function CreateMapWorkbench() {
       });
     });
     return next;
-  }, [generation.assets, loadedImages, planReview.present.obstacleAssets, scene.size.height, scene.size.width]);
+  }, [imageAssets, loadedImages, planReview.present.obstacleAssets, scene.size.height, scene.size.width]);
 
   const dispatchPlan = (command: MapPlanCommand) => {
     setPlanReview((current) => reduceMapPlanCommand(current, command));
@@ -319,6 +357,9 @@ export function CreateMapWorkbench() {
     setSourceToken(null);
     draft.reset();
     generation.reset();
+    regionGeneration.reset();
+    setRegionAssets(new Map());
+    setRegionSelection(null);
     setMode('plan-review');
     setSceneSelection(null);
     setError(null);
@@ -343,6 +384,9 @@ export function CreateMapWorkbench() {
       setSceneEditor(createEditorState(nextScene));
       draft.reset();
       generation.reset();
+      regionGeneration.reset();
+      setRegionAssets(new Map());
+      setRegionSelection(null);
       setTool('select');
       setMode('plan-review');
     } catch (cause) {
@@ -515,6 +559,9 @@ export function CreateMapWorkbench() {
             onCommand={dispatchScene}
             onSelectionChange={setSceneSelection}
             onViewportChange={setViewport}
+            regionSelection={regionSelection}
+            regionSelectionLocked={regionGeneration.phase === 'submitting' || regionGeneration.phase === 'generating'}
+            onRegionSelectionChange={changeRegionSelection}
           />
         )}
       </section>
@@ -566,6 +613,12 @@ export function CreateMapWorkbench() {
             <p className={styles.emptyState}>Select an obstacle to edit its transform and collision.</p>
           </section>
         )}
+        {mode === 'scene' ? (
+          <RegionGenerationPanel
+            {...regionGeneration}
+            onClearSelection={() => changeRegionSelection(null)}
+          />
+        ) : null}
         <AssetGenerationPanel
           assets={generation.assets}
           phase={generation.phase}

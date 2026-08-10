@@ -2,6 +2,7 @@ import { assertEquals, assertNotStrictEquals, assertThrows } from "@std/assert";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   assertGenerationIdentity,
+  assertRegionObstacleBackgroundBinding,
   createPixelLabClients,
   type PixelLabClientFactory,
 } from "./auth.ts";
@@ -71,4 +72,43 @@ Deno.test("keeps legacy assets on their existing identity contract", () => {
     schemaVersion: 1,
     generationId: null,
   }, {});
+});
+
+Deno.test("rejects regional obstacles whose background binding is stale or mismatched", () => {
+  const authorized = {
+    revisionId: "revision-a",
+    generationId: "generation-a",
+    revisionPlan: { map: { width: 640, height: 448 } },
+    asset: {
+      kind: "obstacle",
+      metadata: {
+        source: "region-generation",
+        backgroundAssetId: "background-a",
+        backgroundSha256: "a".repeat(64),
+      },
+      plan_fingerprint: "f".repeat(64),
+      reference_asset_ids: ["background-a"],
+      reference_hashes: ["a".repeat(64)],
+      generation_params: { regionSelection: { x: 10, y: 20, width: 64, height: 48 } },
+    },
+  };
+  assertRegionObstacleBackgroundBinding(authorized, {
+    id: "background-a",
+    map_revision_id: "revision-a",
+    generation_id: "generation-a",
+    kind: "background",
+    status: "ready",
+    sha256: "a".repeat(64),
+    plan_fingerprint: "f".repeat(64),
+  });
+  const error = assertThrows(() => assertRegionObstacleBackgroundBinding(authorized, {
+    id: "background-a",
+    map_revision_id: "revision-a",
+    generation_id: "generation-b",
+    kind: "background",
+    status: "ready",
+    sha256: "a".repeat(64),
+    plan_fingerprint: "f".repeat(64),
+  }), PixelLabMapError);
+  assertEquals(error.status, 403);
 });

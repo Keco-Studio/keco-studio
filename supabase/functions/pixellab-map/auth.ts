@@ -14,6 +14,66 @@ export type AuthorizedAsset = {
   asset: Record<string, unknown>;
 };
 
+export type RegionBackgroundBinding = {
+  id: string;
+  map_revision_id: string;
+  generation_id: string | null;
+  kind: string;
+  status: string;
+  sha256: string | null;
+  plan_fingerprint?: string | null;
+};
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+export function assertRegionObstacleBackgroundBinding(
+  authorized: Pick<AuthorizedAsset, 'revisionId' | 'generationId' | 'revisionPlan' | 'asset'>,
+  background: RegionBackgroundBinding | null,
+): void {
+  const asset = authorized.asset;
+  const metadata = record(asset.metadata);
+  if (asset.kind !== 'obstacle' || metadata.source !== 'region-generation') return;
+  const references = Array.isArray(asset.reference_asset_ids) ? asset.reference_asset_ids : [];
+  const hashes = Array.isArray(asset.reference_hashes) ? asset.reference_hashes : [];
+  if (references.length !== 1 || hashes.length !== 1 || !background) {
+    throw new PixelLabMapError('pixellab_invalid_response', 'Regional obstacle background binding is missing', 403);
+  }
+  if (
+    metadata.backgroundAssetId !== references[0]
+    || metadata.backgroundSha256 !== hashes[0]
+    || references[0] !== background.id
+    || background.map_revision_id !== authorized.revisionId
+    || background.generation_id !== authorized.generationId
+    || background.kind !== "background"
+    || background.status !== "ready"
+    || background.sha256 !== hashes[0]
+    || background.plan_fingerprint !== asset.plan_fingerprint
+  ) {
+    throw new PixelLabMapError("pixellab_invalid_response", "Regional obstacle background binding mismatch", 403);
+  }
+  const params = record(asset.generation_params);
+  const selection = record(params.regionSelection);
+  const plan = record(authorized.revisionPlan);
+  const map = record(plan.map);
+  const width = Number(map.width);
+  const height = Number(map.height);
+  const x = Number(selection.x);
+  const y = Number(selection.y);
+  const selectionWidth = Number(selection.width);
+  const selectionHeight = Number(selection.height);
+  if (
+    ![width, height, x, y, selectionWidth, selectionHeight].every(Number.isFinite)
+    || selectionWidth <= 0 || selectionHeight <= 0
+    || x < 0 || y < 0 || x + selectionWidth > width || y + selectionHeight > height
+  ) {
+    throw new PixelLabMapError("pixellab_invalid_response", "Regional obstacle selection is outside the map", 403);
+  }
+}
+
 export function assertGenerationIdentity(
   authorized: Pick<AuthorizedAsset, "mapId" | "revisionId" | "schemaVersion" | "generationId">,
   request: Record<string, unknown>,

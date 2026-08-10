@@ -578,6 +578,26 @@
   line-height: 1.45;
 }
 
+.selectionReadout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 7px 4px 7px 8px;
+  border: 1px solid #c5dced;
+  border-radius: 6px;
+  color: #5d6b76;
+  background: #f3f9fd;
+  font-size: 10px;
+}
+
+.selectionReadout strong {
+  color: #2d566f;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .rowActions {
   display: flex;
   flex: 0 0 auto;

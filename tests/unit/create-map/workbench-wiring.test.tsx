@@ -63,6 +63,8 @@ describe('Create Map V2 Plan Review workbench', () => {
     expect(workbench).toContain('<MapCanvas');
     expect(workbench).toContain('<MapLayerList');
     expect(workbench).toContain('<ObstacleEntityInspector');
+    expect(workbench).toContain('<RegionGenerationPanel');
+    expect(workbench).toContain('onRegionSelectionChange={changeRegionSelection}');
     expect(workbench).not.toContain('InpaintInspector');
     expect(workbench).not.toContain('ObjectInspector');
     expect(workbench).not.toContain('ObstacleInspector');

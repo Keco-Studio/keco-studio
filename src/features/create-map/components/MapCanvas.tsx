@@ -13,6 +13,10 @@ import {
   type MapInteraction,
 } from '../model/mapInteraction';
 import type { MapTool } from './MapToolbar';
+import {
+  clampMapRegionSelection,
+  type MapRegionSelection,
+} from '../model/mapRegionSelection';
 import styles from '../CreateMapWorkbench.module.css';
 
 export type MapRenderAsset = {
@@ -177,6 +181,9 @@ type MapCanvasProps = {
   onCommand: (command: MapSceneV2Command) => void;
   onSelectionChange: (selection: EditorSelection) => void;
   onViewportChange: (viewport: MapViewport) => void;
+  regionSelection?: MapRegionSelection | null;
+  regionSelectionLocked?: boolean;
+  onRegionSelectionChange?: (selection: MapRegionSelection | null) => void;
 };
 
 export function MapCanvas({
@@ -189,6 +196,9 @@ export function MapCanvas({
   onCommand,
   onSelectionChange,
   onViewportChange,
+  regionSelection = null,
+  regionSelectionLocked = false,
+  onRegionSelectionChange,
 }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handStartRef = useRef<{ point: Point; viewport: MapViewport } | null>(null);
@@ -196,6 +206,8 @@ export function MapCanvas({
   const [interaction, setInteraction] = useState<MapInteraction | null>(null);
   const [interactionPoint, setInteractionPoint] = useState<Point | null>(null);
   const [polygonPoints, setPolygonPoints] = useState<Point[]>([]);
+  const [regionStart, setRegionStart] = useState<Point | null>(null);
+  const [regionCurrent, setRegionCurrent] = useState<Point | null>(null);
 
   const selectedEntity = selection?.kind === 'entity'
     ? scene.obstacleEntities.find((entity) => entity.id === selection.id) ?? null
@@ -206,6 +218,15 @@ export function MapCanvas({
     () => previewInteraction(scene, interaction, interactionPoint, interactionGridSize),
     [interaction, interactionGridSize, interactionPoint, scene],
   );
+  const activeRegion = useMemo(() => {
+    if (!regionStart || !regionCurrent) return regionSelection;
+    return clampMapRegionSelection({
+      x: Math.min(regionStart.x, regionCurrent.x),
+      y: Math.min(regionStart.y, regionCurrent.y),
+      width: Math.abs(regionCurrent.x - regionStart.x),
+      height: Math.abs(regionCurrent.y - regionStart.y),
+    }, { width: scene.size.width, height: scene.size.height });
+  }, [regionCurrent, regionSelection, regionStart, scene.size.height, scene.size.width]);
 
   const toMapPoint = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -271,7 +292,23 @@ export function MapCanvas({
       context.stroke();
       context.restore();
     }
-  }, [assets, canvasSize, polygonPoints, renderedScene, selectedEntity, selection, viewport]);
+    if (activeRegion) {
+      const dpr = window.devicePixelRatio || 1;
+      context.save();
+      context.setTransform(
+        dpr * viewport.zoom, 0, 0, dpr * viewport.zoom,
+        dpr * viewport.panX, dpr * viewport.panY,
+      );
+      context.fillStyle = 'rgba(11, 120, 208, 0.10)';
+      context.strokeStyle = '#0b78d0';
+      context.lineWidth = 2 / viewport.zoom;
+      context.setLineDash([6 / viewport.zoom, 4 / viewport.zoom]);
+      context.fillRect(activeRegion.x, activeRegion.y, activeRegion.width, activeRegion.height);
+      context.strokeRect(activeRegion.x, activeRegion.y, activeRegion.width, activeRegion.height);
+      context.setLineDash([]);
+      context.restore();
+    }
+  }, [activeRegion, assets, canvasSize, polygonPoints, renderedScene, selectedEntity, selection, viewport]);
 
   const startSelection = (point: Point) => {
     setPolygonPoints([]);
@@ -318,6 +355,12 @@ export function MapCanvas({
       startSelection(point);
       return;
     }
+    if (tool === 'generate-obstacle') {
+      if (regionSelectionLocked) return;
+      setRegionStart(point);
+      setRegionCurrent(point);
+      return;
+    }
     if (!selectedEntity) return;
     const local = mapPointToEntityLocal(selectedEntity, point);
     if (tool === 'collision-rectangle' || tool === 'collision-circle') {
@@ -343,6 +386,8 @@ export function MapCanvas({
       });
     } else if (interaction) {
       setInteractionPoint(currentInteractionPoint(toMapPoint(event), interaction));
+    } else if (tool === 'generate-obstacle' && regionStart && !regionSelectionLocked) {
+      setRegionCurrent(toMapPoint(event));
     }
   };
 
@@ -351,7 +396,18 @@ export function MapCanvas({
       const point = currentInteractionPoint(toMapPoint(event), interaction);
       const command = commandForInteraction(interaction, point, interactionGridSize);
       if (command) onCommand(command);
+    } else if (tool === 'generate-obstacle' && regionStart && !regionSelectionLocked) {
+      const current = toMapPoint(event);
+      const next = clampMapRegionSelection({
+        x: Math.min(regionStart.x, current.x),
+        y: Math.min(regionStart.y, current.y),
+        width: Math.abs(current.x - regionStart.x),
+        height: Math.abs(current.y - regionStart.y),
+      }, { width: scene.size.width, height: scene.size.height });
+      onRegionSelectionChange?.(next.width > 0 && next.height > 0 ? next : null);
     }
+    setRegionStart(null);
+    setRegionCurrent(null);
     clearInteraction();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -359,6 +415,8 @@ export function MapCanvas({
   };
 
   const handlePointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    setRegionStart(null);
+    setRegionCurrent(null);
     clearInteraction();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
