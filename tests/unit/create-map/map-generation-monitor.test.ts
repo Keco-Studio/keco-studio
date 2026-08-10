@@ -86,15 +86,21 @@ jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 import {
   generationWatchPlan,
   useMapGenerationMonitoring,
+  type GenerationTarget,
   type MapGenerationAsset,
 } from '@/features/create-map/hooks/useMapGeneration';
+
+const BASE_TARGET: GenerationTarget = {
+  projectId: 'project-1', mapId: 'map-1', revisionId: 'revision-assets',
+  generationId: 'generation-1', planFingerprint: 'a'.repeat(64),
+};
 
 function generationAsset(id: string, status: MapGenerationAsset['status']): MapGenerationAsset {
   return {
     assetKey: id,
     kind: 'terrain',
     prompt: id,
-    requestedCapability: 'create_topdown_tileset',
+    requestedCapability: 'topdown_tileset',
     generationParams: {},
     metadata: {},
     id,
@@ -102,6 +108,7 @@ function generationAsset(id: string, status: MapGenerationAsset['status']): MapG
     attemptCount: 0,
     errorCode: null,
     storagePath: null,
+    sha256: null,
     signedUrl: null,
   };
 }
@@ -124,17 +131,15 @@ function deferred<T>() {
 function createMonitorSetup() {
   const runtime = new HookRuntime();
   const service = { invokePixelLab: jest.fn(async (_input: unknown) => undefined) };
-  const refresh = jest.fn(async (_revisionId: string) => undefined);
+  const refresh = jest.fn(async (_target: GenerationTarget) => undefined);
   const setError = jest.fn();
   const submissionActive = { current: false };
-  const target = { mapId: 'map-1', revisionId: 'revision-assets' };
   mockHookRuntime = runtime;
 
-  const render = (assets: MapGenerationAsset[], nextTarget = target) => runtime.render(() => {
+  const render = (assets: MapGenerationAsset[], nextTarget = BASE_TARGET) => runtime.render(() => {
     useMapGenerationMonitoring({
       watch: generationWatchPlan(assets),
       target: nextTarget,
-      projectId: 'project-1',
       service,
       refresh,
       setError,
@@ -236,17 +241,21 @@ describe('map generation monitoring lifecycle', () => {
   it('does not report an old target refresh failure after replacing the workspace target', async () => {
     const setup = createMonitorSetup();
     const oldRefresh = deferred<void>();
-    setup.refresh.mockImplementation(async (revisionId: string) =>
-      revisionId === 'revision-old' ? oldRefresh.promise : undefined
+    setup.refresh.mockImplementation(async (nextTarget: GenerationTarget) =>
+      nextTarget.revisionId === 'revision-old' ? oldRefresh.promise : undefined
     );
 
-    setup.render([generationAsset('old-asset', 'generating')], { mapId: 'map-old', revisionId: 'revision-old' });
+    setup.render([generationAsset('old-asset', 'generating')], {
+      ...BASE_TARGET, mapId: 'map-old', revisionId: 'revision-old', generationId: 'generation-old',
+    });
     await flushAsync();
-    expect(setup.refresh).toHaveBeenCalledWith('revision-old');
+    expect(setup.refresh).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'revision-old' }));
 
-    setup.render([generationAsset('new-asset', 'generating')], { mapId: 'map-new', revisionId: 'revision-new' });
+    setup.render([generationAsset('new-asset', 'generating')], {
+      ...BASE_TARGET, mapId: 'map-new', revisionId: 'revision-new', generationId: 'generation-new',
+    });
     await flushAsync();
-    expect(setup.refresh).toHaveBeenCalledWith('revision-new');
+    expect(setup.refresh).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'revision-new' }));
 
     oldRefresh.reject(new Error('old target refresh failed'));
     await flushAsync();

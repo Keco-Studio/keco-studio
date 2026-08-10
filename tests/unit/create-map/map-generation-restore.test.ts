@@ -1,263 +1,185 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
+  generationPhaseFor,
+  generationRetryOperation,
+  generationTargetMatches,
   generationWatchPlan,
-  plannedAssetsForSubmission,
+  mapPlanFingerprint,
+  materializeMapSceneV2,
   prepareGenerationRestore,
+  type GenerationTarget,
   type MapGenerationAsset,
 } from '@/features/create-map/hooks/useMapGeneration';
-import { buildMapAssetPlans, type MapAssetPlanRow } from '@/features/create-map/model/mapAssetPlan';
+import { buildMapAssetPlansV2, type MapAssetPlanRowV2 } from '@/features/create-map/model/mapAssetPlan';
 import type { MapAssetRecord } from '@/features/create-map/services/createMapService';
-import { makeValidMapPlan } from './fixtures';
+import { makeEmptyMapSceneV2, makeValidMapPlanV2, makeValidMapSceneV2 } from './fixtures';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 
-function assetRecordFor(
-  row: MapAssetPlanRow,
-  overrides: Partial<MapAssetRecord> = {}
+const REVISION = '10000000-0000-4000-8000-000000000001';
+const GENERATION = '20000000-0000-4000-8000-000000000002';
+
+async function target(): Promise<GenerationTarget> {
+  return {
+    projectId: 'project-1',
+    mapId: 'map-1',
+    revisionId: REVISION,
+    generationId: GENERATION,
+    planFingerprint: await mapPlanFingerprint(makeValidMapPlanV2()),
+  };
+}
+
+function recordFor(
+  row: MapAssetPlanRowV2,
+  planFingerprint: string,
+  index: number,
+  overrides: Partial<MapAssetRecord> = {},
 ): MapAssetRecord {
   return {
-    id: 'asset-1', map_revision_id: 'revision-assets', asset_key: row.assetKey, kind: row.kind,
-    status: 'planned', requested_capability: row.requestedCapability, prompt: row.prompt,
-    generation_params: row.generationParams, metadata: row.metadata, storage_path: null, sha256: null,
-    width: null, height: null, has_transparency: null, last_error_code: null, attempt_count: 0,
+    id: `asset-${index}`,
+    map_revision_id: REVISION,
+    generation_id: GENERATION,
+    plan_fingerprint: planFingerprint,
+    asset_key: row.assetKey,
+    kind: row.kind,
+    status: 'planned',
+    requested_capability: row.requestedCapability,
+    prompt: row.prompt,
+    generation_params: row.generationParams,
+    metadata: row.metadata,
+    storage_path: null,
+    sha256: null,
+    width: null,
+    height: null,
+    has_transparency: null,
+    last_error_code: null,
+    attempt_count: 0,
     ...overrides,
   };
 }
 
-function assetRecordsFor(plan: ReturnType<typeof makeValidMapPlan>): MapAssetRecord[] {
-  return buildMapAssetPlans(plan).map((row) => assetRecordFor(row));
+async function recordsForPlan(overrides: (row: MapAssetPlanRowV2, index: number) => Partial<MapAssetRecord> = () => ({})) {
+  const plan = makeValidMapPlanV2();
+  const fingerprint = await mapPlanFingerprint(plan);
+  return buildMapAssetPlansV2(plan).map((row, index) =>
+    recordFor(row, fingerprint, index, overrides(row, index))
+  );
 }
 
-describe('prepareGenerationRestore', () => {
-  it('matches persisted assets to Plan rows and refreshes ready signed URLs', async () => {
-    const plan = makeValidMapPlan();
-    const row = buildMapAssetPlans(plan)[0];
-    const record = assetRecordFor(row, { id: 'asset-1', status: 'ready', storage_path: 'private/asset.png' });
-    const records = buildMapAssetPlans(plan).map((candidate) =>
-      candidate.assetKey === row.assetKey ? record : assetRecordFor(candidate)
-    );
-    const sign = jest.fn(async () => 'signed://asset-1');
+function asset(row: MapAssetPlanRowV2, status: MapGenerationAsset['status']): MapGenerationAsset {
+  return {
+    ...row,
+    id: `asset-${row.assetKey}`,
+    status,
+    attemptCount: status === 'planned' ? 0 : 1,
+    errorCode: null,
+    storagePath: null,
+    sha256: status === 'ready' ? 'a'.repeat(64) : null,
+    signedUrl: null,
+  };
+}
 
+describe('Create Map V2 generation restore and state', () => {
+  it('restores persisted planned resources to explicit confirmation without resubmission', async () => {
+    const plan = makeValidMapPlanV2();
+    const sign = jest.fn();
     const restored = await prepareGenerationRestore({
-      mapId: 'map-1', revisionId: 'revision-assets', plan, records,
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION,
+      plan, records: await recordsForPlan(),
     }, sign);
 
-    expect(restored.target).toEqual({ mapId: 'map-1', revisionId: 'revision-assets' });
-    expect(restored.assets.find((asset) => asset.assetKey === row.assetKey)).toMatchObject({
-      id: 'asset-1', status: 'ready', signedUrl: 'signed://asset-1',
-    });
-    expect(sign).toHaveBeenCalledWith('private/asset.png');
+    expect(restored.target).toEqual(await target());
+    expect(restored.phase).toBe('awaiting-confirmation');
+    expect(restored.assets.every((entry) => entry.status === 'planned')).toBe(true);
+    expect(sign).not.toHaveBeenCalled();
   });
 
-  it('restores no-asset maps to idle unplanned resources', async () => {
+  it('restores ready source atlases with an unplanned background into composition phase', async () => {
+    const plan = makeValidMapPlanV2();
+    const records = (await recordsForPlan((row) => row.kind === 'background' ? {} : {
+      status: 'ready', storage_path: `private/${row.assetKey}.png`, sha256: 'a'.repeat(64), attempt_count: 1,
+    })).filter((record) => record.kind !== 'background');
     const restored = await prepareGenerationRestore({
-      mapId: 'map-1', revisionId: null, plan: makeValidMapPlan(), records: [],
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, records,
+    }, async (path) => `signed://${path}`);
+
+    expect(restored.phase).toBe('composing-background');
+    expect(restored.assets.find((entry) => entry.kind === 'background')).toMatchObject({ id: null, status: 'unplanned' });
+  });
+
+  it('keeps one signed URL failure local while retaining durable ready state', async () => {
+    const plan = makeValidMapPlanV2();
+    const records = await recordsForPlan((_row, index) => ({
+      status: 'ready', storage_path: `private/${index}.png`, sha256: 'b'.repeat(64), attempt_count: 1,
+    }));
+    const restored = await prepareGenerationRestore({
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, records,
+    }, async (path) => {
+      if (path === 'private/0.png') throw new Error('sign failed');
+      return `signed://${path}`;
+    });
+
+    expect(restored.phase).toBe('ready');
+    expect(restored.assets[0]).toMatchObject({ status: 'ready', signedUrl: null });
+    expect(restored.assets.slice(1).every((entry) => entry.signedUrl)).toBe(true);
+  });
+
+  it('rejects mixed revision, generation, or fingerprint records as an idle preview', async () => {
+    const plan = makeValidMapPlanV2();
+    const records = await recordsForPlan((_row, index) => index === 0 ? { generation_id: 'other-generation' } : {});
+    const restored = await prepareGenerationRestore({
+      projectId: 'project-1', mapId: 'map-1', revisionId: REVISION, plan, records,
     }, jest.fn());
 
     expect(restored.target).toBeNull();
     expect(restored.phase).toBe('idle');
-    expect(restored.assets.every((asset) => asset.status === 'unplanned')).toBe(true);
+    expect(restored.assets.every((entry) => entry.status === 'unplanned')).toBe(true);
   });
 
-  it('restores planned assets to awaiting confirmation', async () => {
-    const plan = makeValidMapPlan();
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records: assetRecordsFor(plan) },
-      jest.fn()
-    );
+  it('classifies partial atlas failure and excludes internal background work from provider polling', () => {
+    const rows = buildMapAssetPlansV2(makeValidMapPlanV2());
+    const assets = rows.map((row) => asset(row,
+      row.kind === 'terrain' && row.assetKey === 'meadow-grass' ? 'ready'
+        : row.kind === 'path' ? 'blocked'
+          : row.kind === 'background' ? 'generating'
+            : 'queued'
+    ));
 
-    expect(restored.phase).toBe('awaiting-confirmation');
-    expect(restored.assets.every((asset) => asset.status === 'planned')).toBe(true);
+    expect(generationPhaseFor(assets)).toBe('partial');
+    const watch = generationWatchPlan(assets);
+    expect(watch.active).toBe(true);
+    expect(watch.pollAssetIds).not.toContain(`asset-${rows.find((row) => row.kind === 'background')?.assetKey}`);
   });
 
-  it('restores mixed ready and planned assets to awaiting confirmation', async () => {
-    const plan = makeValidMapPlan();
-    const records = assetRecordsFor(plan).map((record, index) =>
-      index === 0 ? { ...record, status: 'ready' as const } : record
-    );
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      jest.fn()
-    );
+  it('uses compose-only retry for backgrounds and full target matching for stale guards', async () => {
+    const rows = buildMapAssetPlansV2(makeValidMapPlanV2());
+    expect(generationRetryOperation(asset(rows.find((row) => row.kind === 'background') as MapAssetPlanRowV2, 'failed')))
+      .toBe('compose_background');
+    expect(generationRetryOperation(asset(rows[0], 'failed'))).toBe('retry');
 
-    expect(restored.phase).toBe('awaiting-confirmation');
-    expect(restored.assets.map((asset) => asset.status)).toContain('ready');
-    expect(restored.assets.map((asset) => asset.status)).toContain('planned');
+    const current = await target();
+    expect(generationTargetMatches(current, { ...current })).toBe(true);
+    expect(generationTargetMatches(current, { ...current, generationId: 'stale-generation' })).toBe(false);
+    expect(generationTargetMatches(null, current)).toBe(false);
   });
 
-  it('restores terminal and planned assets to awaiting confirmation when no work is active', async () => {
-    const plan = makeValidMapPlan();
-    const records = assetRecordsFor(plan).map((record, index) =>
-      index === 0 ? { ...record, status: 'ready' as const }
-        : index === 1 ? { ...record, status: 'failed' as const }
-          : record
-    );
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      jest.fn()
-    );
+  it('materializes only ready planned obstacles and preserves existing entity transforms on background regeneration', async () => {
+    const plan = makeValidMapPlanV2();
+    const currentTarget = await target();
+    const records = await recordsForPlan((row) => row.kind === 'background' || row.kind === 'obstacle'
+      ? { status: 'ready', storage_path: `private/${row.assetKey}.png`, sha256: 'c'.repeat(64), attempt_count: 1 }
+      : { status: 'ready', attempt_count: 1 });
+    const first = materializeMapSceneV2(plan, makeEmptyMapSceneV2(), currentTarget, records);
+    expect(first?.background).toMatchObject({ locked: true, sourceRevisionId: REVISION, assetKey: 'background' });
+    expect(first?.obstacleEntities).toHaveLength(1);
 
-    expect(restored.phase).toBe('awaiting-confirmation');
-  });
-
-  it('restores queued-only assets as active generation work', async () => {
-    const plan = makeValidMapPlan();
-    const records = assetRecordsFor(plan).map((record) => ({ ...record, status: 'queued' as const }));
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      jest.fn()
-    );
-
-    expect(restored.phase).toBe('generating');
-    expect(restored.assets.every((asset) => asset.status === 'queued')).toBe(true);
-  });
-
-  it('restores queued and planned assets as active generation work', async () => {
-    const plan = makeValidMapPlan();
-    const records = assetRecordsFor(plan).map((record, index) =>
-      index === 0 ? { ...record, status: 'queued' as const } : record
-    );
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      jest.fn()
-    );
-
-    expect(restored.phase).toBe('generating');
-    expect(restored.assets.map((asset) => asset.status)).toContain('queued');
-    expect(restored.assets.map((asset) => asset.status)).toContain('planned');
-  });
-
-  it('watches queued assets but selects only generating assets for direct polling', () => {
-    const rows = buildMapAssetPlans(makeValidMapPlan());
-    const statuses: MapGenerationAsset['status'][] = ['queued', 'generating', 'ready', 'failed'];
-    const assets = rows.map((row, index): MapGenerationAsset => ({
-      ...row,
-      id: `asset-${index}`,
-      status: statuses[index],
-      attemptCount: 0,
-      errorCode: null,
-      storagePath: null,
-      signedUrl: null,
-    }));
-
-    expect(generationWatchPlan(assets)).toMatchObject({
-      active: true,
-      pollAssetIds: ['asset-1'],
-    });
-  });
-
-  it('keeps scheduling identity stable for clones and changes it for watched status or ID changes', () => {
-    const rows = buildMapAssetPlans(makeValidMapPlan());
-    const statuses: MapGenerationAsset['status'][] = ['queued', 'generating', 'ready', 'failed'];
-    const assets = rows.map((row, index): MapGenerationAsset => ({
-      ...row,
-      id: `asset-${index}`,
-      status: statuses[index],
-      attemptCount: 0,
-      errorCode: null,
-      storagePath: null,
-      signedUrl: null,
-    }));
-    const clones = assets.map((asset) => ({ ...asset }));
-    const statusChanged = clones.map((asset) =>
-      asset.id === 'asset-0' ? { ...asset, status: 'generating' as const } : asset
-    );
-    const idChanged = clones.map((asset) =>
-      asset.id === 'asset-1' ? { ...asset, id: 'asset-next' } : asset
-    );
-
-    expect(generationWatchPlan(clones).key).toBe(generationWatchPlan(assets).key);
-    expect(generationWatchPlan(statusChanged).key).not.toBe(generationWatchPlan(assets).key);
-    expect(generationWatchPlan(idChanged).key).not.toBe(generationWatchPlan(assets).key);
-  });
-
-  it('selects only planned assets with IDs for a resumed submission', () => {
-    const rows = buildMapAssetPlans(makeValidMapPlan());
-    const statuses: MapGenerationAsset['status'][] = ['ready', 'planned', 'failed', 'planned'];
-    const assets = rows.map((row, index): MapGenerationAsset => ({
-      ...row,
-      id: index === 3 ? null : `asset-${index}`,
-      status: statuses[index],
-      attemptCount: 0,
-      errorCode: null,
-      storagePath: null,
-      signedUrl: null,
-    }));
-
-    expect(plannedAssetsForSubmission(assets).map((asset) => asset.id)).toEqual(['asset-1']);
-  });
-
-  it('keeps one unavailable signed URL local without failing the restore', async () => {
-    const plan = makeValidMapPlan();
-    const row = buildMapAssetPlans(plan)[0];
-    const record = assetRecordFor(row, { status: 'ready', storage_path: 'private/missing.png' });
-    const records = buildMapAssetPlans(plan).map((candidate) =>
-      candidate.assetKey === row.assetKey ? record : assetRecordFor(candidate)
-    );
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      async () => { throw new Error('sign failed'); }
-    );
-
-    expect(restored.target).toEqual({ mapId: 'map-1', revisionId: 'revision-assets' });
-    expect(restored.assets.find((asset) => asset.assetKey === row.assetKey)?.signedUrl).toBeNull();
-  });
-
-  it('accepts server-owned metadata fields when every planned field still matches', async () => {
-    const plan = makeValidMapPlan();
-    const records = assetRecordsFor(plan).map((record) => ({
-      ...record,
-      status: 'ready' as const,
-      storage_path: `private/${record.asset_key}.png`,
-      metadata: {
-        ...record.metadata,
-        verifiedReadBack: true,
-        schemaFingerprint: 'server-owned-fingerprint',
-      },
-    }));
-
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      async (path) => `signed://${path}`
-    );
-
-    expect(restored.target).toEqual({ mapId: 'map-1', revisionId: 'revision-assets' });
-    expect(restored.phase).toBe('ready');
-    expect(restored.assets.every((asset) => asset.status === 'ready' && asset.signedUrl)).toBe(true);
-  });
-
-  it('opens an edited current Plan with one mismatched metadata field as unplanned', async () => {
-    const plan = makeValidMapPlan();
-    const row = buildMapAssetPlans(plan).find((candidate) => candidate.kind === 'road');
-    if (!row) throw new Error('Expected a road asset plan row');
-    const records = assetRecordsFor(plan).map((record) =>
-      record.asset_key === row.assetKey
-        ? { ...record, metadata: { ...record.metadata, width: 999 } }
-        : record
-    );
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      jest.fn()
-    );
-
-    expect(restored.target).toBeNull();
-    expect(restored.phase).toBe('idle');
-    expect(restored.assets.every((asset) => asset.status === 'unplanned')).toBe(true);
-  });
-
-  it('rejects a persisted batch when any record belongs to another Revision', async () => {
-    const plan = makeValidMapPlan();
-    const records = assetRecordsFor(plan).map((record, index) =>
-      index === 0 ? { ...record, map_revision_id: 'revision-other' } : record
-    );
-
-    const restored = await prepareGenerationRestore(
-      { mapId: 'map-1', revisionId: 'revision-assets', plan, records },
-      jest.fn()
-    );
-
-    expect(restored.target).toBeNull();
-    expect(restored.phase).toBe('idle');
-    expect(restored.assets.every((asset) => asset.status === 'unplanned')).toBe(true);
+    const edited = {
+      ...makeValidMapSceneV2(),
+      obstacleEntities: makeValidMapSceneV2().obstacleEntities.map((entity) => ({
+        ...entity, position: { x: 111, y: 99 }, scale: 1.5,
+      })),
+    };
+    const regenerated = materializeMapSceneV2(plan, edited, currentTarget, records);
+    expect(regenerated?.obstacleEntities[0]).toMatchObject({ position: { x: 111, y: 99 }, scale: 1.5 });
   });
 });

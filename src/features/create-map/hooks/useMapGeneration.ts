@@ -2,49 +2,62 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { buildMapAssetPlans, type MapAssetKind, type MapAssetPlanRow } from '../model/mapAssetPlan';
-import { validateMapPlan, type MapPlan } from '../model/mapPlanSchema';
+import {
+  buildMapAssetPlansV2,
+  type MapAssetKindV2,
+  type MapAssetPlanRowV2,
+} from '../model/mapAssetPlan';
+import { validateMapPlanV2, type MapPlanV2 } from '../model/mapPlanSchema';
+import type { MapSceneV2, ObstacleEntity } from '../model/mapSceneSchema';
 import { createMapService, type MapAssetRecord } from '../services/createMapService';
-import { submitMapAssetsInBatches } from '../services/mapGenerationQueue';
+import { submitMapAssetsInBatches, waitForMapAssetBatch } from '../services/mapGenerationQueue';
 
 export type MapGenerationPhase =
   | 'idle'
   | 'preparing'
   | 'awaiting-confirmation'
-  | 'submitting'
-  | 'generating'
+  | 'generating-resources'
+  | 'composing-background'
   | 'partial'
   | 'ready'
   | 'failed';
 
 export type MapGenerationAssetStatus = MapAssetRecord['status'] | 'unplanned';
 
-export type MapGenerationAsset = MapAssetPlanRow & {
+export type MapGenerationAsset = MapAssetPlanRowV2 & {
   id: string | null;
   status: MapGenerationAssetStatus;
   attemptCount: number;
   errorCode: string | null;
   storagePath: string | null;
+  sha256: string | null;
   signedUrl: string | null;
 };
 
-type PlannedGenerationAsset = MapGenerationAsset & { id: string; status: 'planned' };
+export type GenerationTarget = {
+  projectId: string;
+  mapId: string;
+  revisionId: string;
+  generationId: string;
+  planFingerprint: string;
+};
 
 export type GenerationWatchPlan = { active: boolean; pollAssetIds: string[]; key: string };
 
-export type PublishedTarget = { mapId: string; revisionId: string };
-
 export type PreparedGenerationRestore = {
-  target: PublishedTarget | null;
+  target: GenerationTarget | null;
+  plan: MapPlanV2;
   assets: MapGenerationAsset[];
   phase: MapGenerationPhase;
 };
 
 type UseMapGenerationInput = {
   projectId: string;
-  plan: MapPlan;
+  plan: MapPlanV2;
+  scene: MapSceneV2;
   canPrepare: boolean;
   publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string }>;
+  onSceneMaterialized: (scene: MapSceneV2) => void;
 };
 
 function canonical(value: unknown): string {
@@ -55,6 +68,11 @@ function canonical(value: unknown): string {
       .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(',')}}`;
   }
   return JSON.stringify(value) ?? 'null';
+}
+
+export async function mapPlanFingerprint(plan: MapPlanV2): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(plan)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function containsPlannedValue(actual: unknown, planned: unknown): boolean {
@@ -74,12 +92,28 @@ function containsPlannedValue(actual: unknown, planned: unknown): boolean {
   return canonical(actual) === canonical(planned);
 }
 
-function previewAsset(row: MapAssetPlanRow): MapGenerationAsset {
-  return { ...row, id: null, status: 'unplanned', attemptCount: 0, errorCode: null, storagePath: null, signedUrl: null };
+function previewAsset(row: MapAssetPlanRowV2): MapGenerationAsset {
+  return {
+    ...row,
+    id: null,
+    status: 'unplanned',
+    attemptCount: 0,
+    errorCode: null,
+    storagePath: null,
+    sha256: null,
+    signedUrl: null,
+  };
 }
 
-function verifiedAsset(row: MapAssetPlanRow, record: MapAssetRecord): MapGenerationAsset {
-  const matches = record.asset_key === row.assetKey
+function verifiedAsset(
+  row: MapAssetPlanRowV2,
+  record: MapAssetRecord,
+  target: Pick<GenerationTarget, 'revisionId' | 'generationId' | 'planFingerprint'>,
+): MapGenerationAsset {
+  const matches = record.map_revision_id === target.revisionId
+    && record.generation_id === target.generationId
+    && record.plan_fingerprint === target.planFingerprint
+    && record.asset_key === row.assetKey
     && record.kind === row.kind
     && record.prompt === row.prompt
     && record.requested_capability === row.requestedCapability
@@ -93,84 +127,104 @@ function verifiedAsset(row: MapAssetPlanRow, record: MapAssetRecord): MapGenerat
     attemptCount: record.attempt_count,
     errorCode: record.last_error_code,
     storagePath: record.storage_path,
+    sha256: record.sha256,
     signedUrl: null,
   };
 }
 
-function phaseFor(assets: MapGenerationAsset[]): MapGenerationPhase {
-  if (assets.length > 0 && assets.every((asset) => asset.status === 'ready')) return 'ready';
-  const hasPlanned = assets.some((asset) => asset.status === 'planned');
-  const hasActive = assets.some((asset) => asset.status === 'queued' || asset.status === 'generating');
-  if (hasPlanned && !hasActive) return 'awaiting-confirmation';
-  const hasFailure = assets.some((asset) => asset.status === 'failed' || asset.status === 'blocked');
-  const hasReady = assets.some((asset) => asset.status === 'ready');
-  if (hasFailure && hasReady) return 'partial';
-  if (hasFailure && assets.every((asset) => ['ready', 'failed', 'blocked'].includes(asset.status))) return 'failed';
-  return 'generating';
+export function generationPhaseFor(assets: readonly MapGenerationAsset[]): MapGenerationPhase {
+  if (assets.length === 0 || assets.every((asset) => asset.status === 'unplanned')) return 'idle';
+  const sources = assets.filter((asset) => asset.kind !== 'background');
+  const atlases = sources.filter((asset) => asset.kind === 'terrain' || asset.kind === 'path');
+  const obstacles = sources.filter((asset) => asset.kind === 'obstacle');
+  const background = assets.find((asset) => asset.kind === 'background');
+  const failed = (asset: MapGenerationAsset) => asset.status === 'failed' || asset.status === 'blocked';
+  const active = (asset: MapGenerationAsset) => asset.status === 'queued' || asset.status === 'generating';
+  if (sources.some((asset) => asset.status === 'planned') && !sources.some(active)) {
+    return 'awaiting-confirmation';
+  }
+  if (atlases.some(failed)) return assets.some((asset) => asset.status === 'ready') ? 'partial' : 'failed';
+  if (atlases.some((asset) => asset.status !== 'ready')) return 'generating-resources';
+  if (!background || background.status === 'unplanned' || background.status === 'planned' || active(background)) {
+    return 'composing-background';
+  }
+  if (failed(background)) return assets.some((asset) => asset.status === 'ready') ? 'partial' : 'failed';
+  if (background.status !== 'ready') return 'composing-background';
+  if (obstacles.some(active) || obstacles.some((asset) => asset.status === 'planned')) return 'generating-resources';
+  if (obstacles.some(failed)) return 'partial';
+  return 'ready';
 }
 
-export function plannedAssetsForSubmission(assets: MapGenerationAsset[]): PlannedGenerationAsset[] {
-  return assets.filter((asset): asset is PlannedGenerationAsset => asset.status === 'planned' && asset.id !== null);
-}
-
-export function generationWatchPlan(assets: MapGenerationAsset[]): GenerationWatchPlan {
-  const watchedAssets = assets.flatMap((asset) =>
-    asset.status === 'queued' || asset.status === 'generating'
-      ? [[asset.status, asset.id] as const]
-      : []
-  ).sort(([leftStatus, leftId], [rightStatus, rightId]) =>
-    leftStatus.localeCompare(rightStatus) || (leftId ?? '').localeCompare(rightId ?? '')
-  );
+export function generationWatchPlan(assets: readonly MapGenerationAsset[]): GenerationWatchPlan {
+  const watched = assets
+    .filter((asset) => asset.status === 'queued' || asset.status === 'generating')
+    .map((asset) => [asset.status, asset.kind, asset.id] as const)
+    .sort(([leftStatus, leftKind, leftId], [rightStatus, rightKind, rightId]) =>
+      leftStatus.localeCompare(rightStatus)
+      || leftKind.localeCompare(rightKind)
+      || (leftId ?? '').localeCompare(rightId ?? '')
+    );
   return {
-    active: watchedAssets.length > 0,
-    pollAssetIds: assets.flatMap((asset) => asset.status === 'generating' && asset.id ? [asset.id] : []),
-    key: JSON.stringify(watchedAssets),
+    active: watched.length > 0,
+    pollAssetIds: assets.flatMap((asset) =>
+      asset.kind !== 'background' && asset.status === 'generating' && asset.id ? [asset.id] : []
+    ),
+    key: JSON.stringify(watched),
   };
 }
 
-type UseMapGenerationMonitoringInput = {
-  watch: GenerationWatchPlan;
-  target: PublishedTarget | null;
-  projectId: string;
-  service: {
-    invokePixelLab: (input: { operation: 'poll'; projectId: string; assetId: string }) => Promise<unknown>;
-  };
-  refresh: (revisionId: string) => Promise<void>;
-  setError: (error: string | null) => void;
-  submissionActive: { current: boolean };
+type MonitoringService = {
+  invokePixelLab: (input: {
+    operation: 'poll';
+    projectId: string;
+    mapId: string;
+    revisionId: string;
+    generationId: string;
+    assetId: string;
+  }) => Promise<unknown>;
 };
 
 export function useMapGenerationMonitoring({
   watch,
   target,
-  projectId,
   service,
   refresh,
   setError,
   submissionActive,
-}: UseMapGenerationMonitoringInput): void {
+}: {
+  watch: GenerationWatchPlan;
+  target: GenerationTarget | null;
+  service: MonitoringService;
+  refresh: (target: GenerationTarget) => Promise<void>;
+  setError: (error: string | null) => void;
+  submissionActive: { current: boolean };
+}): void {
   const pollActive = useRef<number | null>(null);
-  const monitoringCycle = useRef(0);
+  const cycleRef = useRef(0);
   const watchRef = useRef(watch);
   watchRef.current = watch;
-  const targetMapId = target?.mapId;
-  const targetRevisionId = target?.revisionId;
+  const targetKey = target ? `${target.projectId}:${target.mapId}:${target.revisionId}:${target.generationId}` : '';
 
   useEffect(() => {
-    const cycle = ++monitoringCycle.current;
-    if (!targetRevisionId || !watch.active) return;
+    const cycle = ++cycleRef.current;
+    if (!target || !watch.active) return;
     const poll = async () => {
       if (submissionActive.current || pollActive.current === cycle) return;
       pollActive.current = cycle;
       try {
-        const latestWatch = watchRef.current;
-        await Promise.allSettled(latestWatch.pollAssetIds.map((assetId) =>
-          service.invokePixelLab({ operation: 'poll', projectId, assetId })
-        ));
-        if (monitoringCycle.current !== cycle) return;
-        await refresh(targetRevisionId);
+        const latest = watchRef.current;
+        await Promise.allSettled(latest.pollAssetIds.map((assetId) => service.invokePixelLab({
+          operation: 'poll',
+          projectId: target.projectId,
+          mapId: target.mapId,
+          revisionId: target.revisionId,
+          generationId: target.generationId,
+          assetId,
+        })));
+        if (cycleRef.current !== cycle) return;
+        await refresh(target);
       } catch (cause) {
-        if (monitoringCycle.current === cycle) {
+        if (cycleRef.current === cycle) {
           setError(cause instanceof Error ? cause.message : 'Could not refresh PixelLab progress.');
         }
       } finally {
@@ -181,110 +235,192 @@ export function useMapGenerationMonitoring({
     const timer = setInterval(() => void poll(), 2500);
     return () => {
       clearInterval(timer);
-      if (monitoringCycle.current === cycle) monitoringCycle.current += 1;
+      if (cycleRef.current === cycle) cycleRef.current += 1;
     };
-  }, [projectId, refresh, service, setError, submissionActive, targetMapId, targetRevisionId, watch.active, watch.key]);
+  }, [refresh, service, setError, submissionActive, target, targetKey, watch.active, watch.key]);
 }
 
 export async function prepareGenerationRestore(
-  input: { mapId: string; revisionId: string | null; plan: MapPlan; records: MapAssetRecord[] },
-  createSignedUrl: (storagePath: string) => Promise<string>
+  input: { projectId: string; mapId: string; revisionId: string | null; plan: MapPlanV2; records: MapAssetRecord[] },
+  createSignedUrl: (storagePath: string) => Promise<string>,
 ): Promise<PreparedGenerationRestore> {
-  const rows = buildMapAssetPlans(input.plan);
+  const rows = buildMapAssetPlansV2(input.plan);
   if (!input.revisionId || input.records.length === 0) {
-    return { target: null, assets: rows.map(previewAsset), phase: 'idle' };
+    return { target: null, plan: input.plan, assets: rows.map(previewAsset), phase: 'idle' };
   }
-  if (input.records.some((record) => record.map_revision_id !== input.revisionId)) {
-    return { target: null, assets: rows.map(previewAsset), phase: 'idle' };
+  const generationIds = new Set(input.records.flatMap((record) => record.generation_id ? [record.generation_id] : []));
+  const planFingerprint = await mapPlanFingerprint(input.plan);
+  if (
+    generationIds.size !== 1
+    || input.records.some((record) =>
+      record.map_revision_id !== input.revisionId || record.plan_fingerprint !== planFingerprint
+    )
+  ) {
+    return { target: null, plan: input.plan, assets: rows.map(previewAsset), phase: 'idle' };
   }
+  const target: GenerationTarget = {
+    projectId: input.projectId,
+    mapId: input.mapId,
+    revisionId: input.revisionId,
+    generationId: [...generationIds][0],
+    planFingerprint,
+  };
   const byKey = new Map(input.records.map((record) => [record.asset_key, record]));
-  let restoredRows: MapGenerationAsset[];
+  let assets: MapGenerationAsset[];
   try {
-    restoredRows = rows.map((row) => {
+    assets = rows.map((row) => {
       const record = byKey.get(row.assetKey);
-      if (!record) throw new Error(`Missing persisted asset: ${row.assetKey}`);
-      return verifiedAsset(row, record);
+      return record ? verifiedAsset(row, record, target) : previewAsset(row);
     });
   } catch {
-    return { target: null, assets: rows.map(previewAsset), phase: 'idle' };
+    return { target: null, plan: input.plan, assets: rows.map(previewAsset), phase: 'idle' };
   }
-  const assets = await Promise.all(restoredRows.map(async (restored) => {
-    const record = byKey.get(restored.assetKey) as MapAssetRecord;
-    if (record.status !== 'ready' || !record.storage_path) return restored;
+  assets = await Promise.all(assets.map(async (asset) => {
+    if (asset.status !== 'ready' || !asset.storagePath) return asset;
     try {
-      return { ...restored, signedUrl: await createSignedUrl(record.storage_path) };
+      return { ...asset, signedUrl: await createSignedUrl(asset.storagePath) };
     } catch {
-      return restored;
+      return asset;
     }
   }));
+  return { target, plan: input.plan, assets, phase: generationPhaseFor(assets) };
+}
+
+export function materializeMapSceneV2(
+  plan: MapPlanV2,
+  current: MapSceneV2,
+  target: GenerationTarget,
+  records: readonly MapAssetRecord[],
+): MapSceneV2 | null {
+  const background = records.find((record) => record.kind === 'background' && record.status === 'ready');
+  if (!background) return null;
+  const readyObstacleKeys = new Set(records.flatMap((record) =>
+    record.kind === 'obstacle' && record.status === 'ready' ? [record.asset_key] : []
+  ));
+  const definitions = new Map(plan.obstacleAssets.map((asset) => [asset.assetKey, asset]));
+  const existing = new Map(current.obstacleEntities.map((entity) => [entity.id, entity]));
+  const plannedEntities = plan.obstaclePlacements.flatMap((placement): ObstacleEntity[] => {
+    const prior = existing.get(placement.id);
+    if (prior) return [prior];
+    const definition = definitions.get(placement.assetKey);
+    if (!definition || !readyObstacleKeys.has(placement.assetKey)) return [];
+    return [{
+      id: placement.id,
+      layerId: 'obstacles',
+      assetKey: placement.assetKey,
+      position: placement.position,
+      scale: placement.scale,
+      rotation: placement.rotation,
+      zIndex: placement.zIndex,
+      groundAnchor: definition.groundAnchor,
+      collision: placement.collision,
+      source: 'plan',
+    }];
+  });
+  const plannedIds = new Set(plan.obstaclePlacements.map((placement) => placement.id));
+  const preserved = current.obstacleEntities.filter((entity) => !plannedIds.has(entity.id));
   return {
-    target: { mapId: input.mapId, revisionId: input.revisionId },
-    assets,
-    phase: phaseFor(assets),
+    ...current,
+    size: { width: plan.map.width, height: plan.map.height, tileSize: plan.map.tileSize },
+    background: {
+      layerId: 'background',
+      assetKey: background.asset_key,
+      sourceRevisionId: target.revisionId,
+      width: plan.map.width,
+      height: plan.map.height,
+      locked: true,
+    },
+    obstacleEntities: [...preserved, ...plannedEntities],
   };
 }
 
-export function useMapGeneration({ projectId, plan, canPrepare, publishForGeneration }: UseMapGenerationInput) {
+export function generationTargetMatches(left: GenerationTarget | null, right: GenerationTarget): boolean {
+  return Boolean(left
+    && left.projectId === right.projectId
+    && left.mapId === right.mapId
+    && left.revisionId === right.revisionId
+    && left.generationId === right.generationId);
+}
+
+export function generationRetryOperation(
+  asset: Pick<MapGenerationAsset, 'kind'>,
+): 'compose_background' | 'retry' {
+  return asset.kind === 'background' ? 'compose_background' : 'retry';
+}
+
+export function useMapGeneration({
+  projectId,
+  plan,
+  scene,
+  canPrepare,
+  publishForGeneration,
+  onSceneMaterialized,
+}: UseMapGenerationInput) {
   const supabase = useSupabase();
   const service = useMemo(() => createMapService(supabase), [supabase]);
-  const planRows = useMemo(() => buildMapAssetPlans(plan), [plan]);
-  const [assets, setAssets] = useState<MapGenerationAsset[]>(() => planRows.map(previewAsset));
+  const previewRows = useMemo(() => buildMapAssetPlansV2(plan), [plan]);
+  const [generationPlan, setGenerationPlan] = useState(plan);
+  const [assets, setAssets] = useState<MapGenerationAsset[]>(() => previewRows.map(previewAsset));
   const [phase, setPhase] = useState<MapGenerationPhase>('idle');
-  const [target, setTarget] = useState<PublishedTarget | null>(null);
+  const [target, setTarget] = useState<GenerationTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const targetRef = useRef<GenerationTarget | null>(null);
+  targetRef.current = target;
   const submissionActive = useRef(false);
+  const compositionLock = useRef('');
+  const lifecycleEpoch = useRef(0);
   const watch = generationWatchPlan(assets);
 
   useEffect(() => {
-    if (phase === 'idle') setAssets(planRows.map(previewAsset));
-  }, [phase, planRows]);
-
-  const applyRecord = useCallback(async (record: MapAssetRecord) => {
-    let signedUrl: string | null = null;
-    if (record.status === 'ready' && record.storage_path) {
-      try { signedUrl = await service.createSignedAssetUrl(record.storage_path); } catch { signedUrl = null; }
+    if (phase === 'idle') {
+      setGenerationPlan(plan);
+      setAssets(previewRows.map(previewAsset));
     }
-    setAssets((current) => current.map((asset) => asset.id === record.id ? {
-      ...asset,
-      status: record.status,
-      attemptCount: record.attempt_count,
-      errorCode: record.last_error_code,
-      storagePath: record.storage_path,
-      signedUrl: signedUrl ?? asset.signedUrl,
-    } : asset));
-  }, [service]);
+  }, [phase, plan, previewRows]);
 
-  const refresh = useCallback(async (revisionId: string) => {
-    const records = await service.listAssets(revisionId);
-    await Promise.all(records.map(applyRecord));
-    setAssets((current) => {
-      const byId = new Map(records.map((record) => [record.id, record]));
-      const next = current.map((asset) => {
-        const record = asset.id ? byId.get(asset.id) : undefined;
-        return record ? { ...asset, status: record.status, attemptCount: record.attempt_count, errorCode: record.last_error_code, storagePath: record.storage_path } : asset;
-      });
-      setPhase(phaseFor(next));
-      return next;
+  const refresh = useCallback(async (expected: GenerationTarget) => {
+    const records = await service.listAssets(expected.revisionId);
+    if (!generationTargetMatches(targetRef.current, expected)) return;
+    const rows = buildMapAssetPlansV2(generationPlan);
+    const byKey = new Map(records.map((record) => [record.asset_key, record]));
+    let next = rows.map((row) => {
+      const record = byKey.get(row.assetKey);
+      return record ? verifiedAsset(row, record, expected) : previewAsset(row);
     });
-  }, [applyRecord, service]);
+    setAssets(next);
+    setPhase(generationPhaseFor(next));
+    const signed = await Promise.all(next.map(async (asset) => {
+      if (asset.status !== 'ready' || !asset.storagePath) return asset;
+      try { return { ...asset, signedUrl: await service.createSignedAssetUrl(asset.storagePath) }; }
+      catch { return asset; }
+    }));
+    if (!generationTargetMatches(targetRef.current, expected)) return;
+    next = signed;
+    setAssets(next);
+    setPhase(generationPhaseFor(next));
+  }, [generationPlan, service]);
 
   const prepareRestore = useCallback(
     (input: Parameters<typeof prepareGenerationRestore>[0]) =>
       prepareGenerationRestore(input, service.createSignedAssetUrl),
-    [service]
+    [service],
   );
 
   const installRestore = useCallback((prepared: PreparedGenerationRestore) => {
+    lifecycleEpoch.current += 1;
+    targetRef.current = prepared.target;
     setTarget(prepared.target);
+    setGenerationPlan(prepared.plan);
     setAssets(prepared.assets);
     setPhase(prepared.phase);
     setError(null);
+    compositionLock.current = '';
   }, []);
 
   const prepare = useCallback(async () => {
-    const validation = validateMapPlan(plan);
-    if (!validation.success) {
-      setError('Resolve the map plan issues before preparing PixelLab resources.');
+    const validation = validateMapPlanV2(plan);
+    if (validation.success === false) {
+      setError('Resolve the map plan issues before preparing generation.');
       return;
     }
     if (!projectId || !canPrepare) {
@@ -293,122 +429,258 @@ export function useMapGeneration({ projectId, plan, canPrepare, publishForGenera
     }
     setPhase('preparing');
     setError(null);
+    const epoch = ++lifecycleEpoch.current;
     try {
       const published = await publishForGeneration();
-      const nextTarget = { mapId: published.mapId, revisionId: published.publishedRevisionId };
-      const rows = buildMapAssetPlans(validation.data);
-      const planned = await Promise.all(rows.map(async (row) => {
-        const created = await service.createAssetPlan({
-          p_revision_id: published.publishedRevisionId,
-          p_asset_key: row.assetKey,
-          p_kind: row.kind,
-          p_prompt: row.prompt,
-          p_requested_capability: row.requestedCapability,
-          p_generation_params: row.generationParams,
-          p_reference_asset_ids: [],
-          p_reference_hashes: [],
-          p_metadata: row.metadata,
+      if (lifecycleEpoch.current !== epoch) return;
+      const generationId = crypto.randomUUID();
+      const planFingerprint = await mapPlanFingerprint(validation.data);
+      if (lifecycleEpoch.current !== epoch) return;
+      const nextTarget: GenerationTarget = {
+        projectId,
+        mapId: published.mapId,
+        revisionId: published.publishedRevisionId,
+        generationId,
+        planFingerprint,
+      };
+      const rows = buildMapAssetPlansV2(validation.data);
+      const sourceRows = rows.filter((row) => row.kind !== 'background');
+      const planned = await Promise.all(sourceRows.map(async (row) => {
+        const created = await service.createAssetPlanV2({
+          revisionId: nextTarget.revisionId,
+          generationId,
+          assetKey: row.assetKey,
+          kind: row.kind,
+          prompt: row.prompt,
+          requestedCapability: row.requestedCapability,
+          generationParams: row.generationParams,
+          referenceAssetIds: [],
+          referenceHashes: [],
+          planFingerprint,
+          metadata: row.metadata,
         });
-        const readBack = await service.readAssetPlan(created.asset_id);
-        return verifiedAsset(row, readBack);
+        const record = await service.readAssetPlan(created.asset_id);
+        return verifiedAsset(row, record, nextTarget);
       }));
+      if (lifecycleEpoch.current !== epoch) return;
+      const nextAssets = [...planned, previewAsset(rows.find((row) => row.kind === 'background') as MapAssetPlanRowV2)];
+      targetRef.current = nextTarget;
       setTarget(nextTarget);
-      setAssets(planned);
+      setGenerationPlan(validation.data);
+      setAssets(nextAssets);
       setPhase('awaiting-confirmation');
+      compositionLock.current = '';
     } catch (cause) {
+      if (lifecycleEpoch.current !== epoch) return;
       setPhase('failed');
       setError(cause instanceof Error ? cause.message : 'Could not prepare map resources.');
     }
   }, [canPrepare, plan, projectId, publishForGeneration, service]);
 
   const confirm = useCallback(async () => {
-    const plannedAssets = plannedAssetsForSubmission(assets);
-    if (!target || phase !== 'awaiting-confirmation' || plannedAssets.length === 0) return;
-    setPhase('submitting');
+    const expected = targetRef.current;
+    if (!expected || phase !== 'awaiting-confirmation') return;
+    const planned = assets.filter((asset): asset is MapGenerationAsset & { id: string } =>
+      asset.kind !== 'background' && asset.status === 'planned' && asset.id !== null
+    );
+    if (planned.length === 0) return;
+    setPhase('generating-resources');
     setError(null);
     submissionActive.current = true;
     try {
-      await submitMapAssetsInBatches(
-        plannedAssets,
+      const results = await submitMapAssetsInBatches(
+        planned,
         async (asset) => {
+          if (!generationTargetMatches(targetRef.current, expected)) {
+            throw new Error('Map asset batch cancelled.');
+          }
           await service.invokePixelLab({
             operation: 'submit',
-            projectId,
-            mapId: target.mapId,
-            revisionId: target.revisionId,
+            projectId: expected.projectId,
+            mapId: expected.mapId,
+            revisionId: expected.revisionId,
+            generationId: expected.generationId,
             assetId: asset.id,
           });
         },
         async (batch, batchResults) => {
-          const failedIds = new Set(batchResults.flatMap((result, index) =>
-            result.status === 'rejected' && batch[index].id ? [batch[index].id as string] : []
-          ));
-          const successfulIds = new Set(batchResults.flatMap((result, index) =>
-            result.status === 'fulfilled' && batch[index].id ? [batch[index].id as string] : []
-          ));
-          setAssets((current) => current.map((asset) =>
-            failedIds.has(asset.id ?? '')
-              ? { ...asset, status: 'failed', errorCode: 'submit_failed' }
-              : successfulIds.has(asset.id ?? '')
-                ? { ...asset, status: 'generating', errorCode: null }
-                : asset
-          ));
-          setPhase('generating');
-
-          for (let cycle = 0; successfulIds.size > 0 && cycle < 120; cycle += 1) {
-            await new Promise((resolve) => window.setTimeout(resolve, 2500));
-            await Promise.allSettled([...successfulIds].map((assetId) =>
-              service.invokePixelLab({ operation: 'poll', projectId, assetId })
-            ));
-            const records = await service.listAssets(target.revisionId);
-            await Promise.all(records.map(applyRecord));
-            const pendingIds = new Set(records
-              .filter((record) => successfulIds.has(record.id) && record.status === 'generating')
-              .map((record) => record.id));
-            successfulIds.forEach((assetId) => {
-              if (!pendingIds.has(assetId)) successfulIds.delete(assetId);
-            });
+          const submittedIds = batchResults.flatMap((result, index) =>
+            result.status === 'fulfilled' ? [batch[index].id] : []
+          );
+          if (submittedIds.length > 0) {
+            await waitForMapAssetBatch(
+              submittedIds,
+              (assetId) => service.invokePixelLab({
+                operation: 'poll',
+                projectId: expected.projectId,
+                mapId: expected.mapId,
+                revisionId: expected.revisionId,
+                generationId: expected.generationId,
+                assetId,
+              }).then(() => undefined),
+              async () => {
+                const records = await service.listAssets(expected.revisionId);
+                return new Map(records.map((record) => [record.id, record.status]));
+              },
+              { shouldContinue: () => generationTargetMatches(targetRef.current, expected) },
+            );
           }
-          if (successfulIds.size > 0) throw new Error('PixelLab generation batch timed out.');
+          await refresh(expected);
+          if (!generationTargetMatches(targetRef.current, expected)) {
+            throw new Error('Map asset batch cancelled.');
+          }
         },
-        4
+        4,
       );
-      await refresh(target.revisionId);
+      await refresh(expected);
+      if (results.some((result) => result.status === 'rejected') && generationTargetMatches(targetRef.current, expected)) {
+        setError('Some resources were not submitted. Confirm again to retry the remaining planned resources.');
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not generate map resources.');
-      try { await refresh(target.revisionId); } catch { setPhase('failed'); }
+      if (generationTargetMatches(targetRef.current, expected)) {
+        setError(cause instanceof Error ? cause.message : 'Could not start map resource generation.');
+        try { await refresh(expected); } catch { setPhase('failed'); }
+      }
     } finally {
       submissionActive.current = false;
     }
-  }, [applyRecord, assets, phase, projectId, refresh, service, target]);
+  }, [assets, phase, refresh, service]);
+
+  useEffect(() => {
+    const expected = target;
+    if (!expected) return;
+    const atlasAssets = assets.filter((asset) => asset.kind === 'terrain' || asset.kind === 'path');
+    const background = assets.find((asset) => asset.kind === 'background');
+    if (!background || atlasAssets.length === 0 || atlasAssets.some((asset) =>
+      asset.status !== 'ready' || !asset.id || !asset.sha256
+    )) return;
+    if (!['unplanned', 'planned'].includes(background.status)) return;
+    const lockKey = `${expected.revisionId}:${expected.generationId}`;
+    if (compositionLock.current === lockKey) return;
+    compositionLock.current = lockKey;
+    void (async () => {
+      try {
+        let backgroundAsset = background;
+        if (!background.id) {
+          const created = await service.createAssetPlanV2({
+            revisionId: expected.revisionId,
+            generationId: expected.generationId,
+            assetKey: background.assetKey,
+            kind: 'background',
+            prompt: background.prompt,
+            requestedCapability: null,
+            generationParams: background.generationParams,
+            referenceAssetIds: atlasAssets.map((asset) => asset.id as string),
+            referenceHashes: atlasAssets.map((asset) => asset.sha256 as string),
+            planFingerprint: expected.planFingerprint,
+            metadata: background.metadata,
+          });
+          const record = await service.readAssetPlan(created.asset_id);
+          backgroundAsset = verifiedAsset(background, record, expected);
+          if (!generationTargetMatches(targetRef.current, expected)) return;
+          setAssets((current) => current.map((asset) =>
+            asset.kind === 'background' ? backgroundAsset : asset
+          ));
+        }
+        if (!backgroundAsset.id || !generationTargetMatches(targetRef.current, expected)) return;
+        setPhase('composing-background');
+        await service.invokePixelLab({
+          operation: 'compose_background',
+          projectId: expected.projectId,
+          mapId: expected.mapId,
+          revisionId: expected.revisionId,
+          generationId: expected.generationId,
+          assetId: backgroundAsset.id,
+        });
+        await refresh(expected);
+      } catch (cause) {
+        if (!generationTargetMatches(targetRef.current, expected)) return;
+        setAssets((current) => current.map((asset) =>
+          asset.kind === 'background' ? { ...asset, status: 'failed', errorCode: 'background_composition_failed' } : asset
+        ));
+        setPhase('partial');
+        setError(cause instanceof Error ? cause.message : 'Could not compose the locked background.');
+      }
+    })();
+  }, [assets, refresh, service, target]);
+
+  useEffect(() => {
+    const expected = target;
+    if (!expected) return;
+    const backgroundReady = assets.some((asset) => asset.kind === 'background' && asset.status === 'ready');
+    if (!backgroundReady) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const currentFingerprint = await mapPlanFingerprint(plan);
+        if (cancelled || currentFingerprint !== expected.planFingerprint || !generationTargetMatches(targetRef.current, expected)) return;
+        const records = await service.listAssets(expected.revisionId);
+        if (cancelled || !generationTargetMatches(targetRef.current, expected)) return;
+        const next = materializeMapSceneV2(plan, scene, expected, records);
+        if (next && canonical(next) !== canonical(scene)) onSceneMaterialized(next);
+      } catch (cause) {
+        if (!cancelled && generationTargetMatches(targetRef.current, expected)) {
+          setError(cause instanceof Error ? cause.message : 'Could not materialize the generated map Scene.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [assets, onSceneMaterialized, plan, scene, service, target]);
 
   const retry = useCallback(async (assetId: string) => {
-    if (!target) return;
+    const expected = targetRef.current;
+    const asset = assets.find((candidate) => candidate.id === assetId);
+    if (!expected || !asset) return;
     setError(null);
     try {
-      await service.invokePixelLab({ operation: 'retry', projectId, assetId });
-      setAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, status: 'generating', errorCode: null } : asset));
-      setPhase('generating');
+      await service.invokePixelLab({
+        operation: generationRetryOperation(asset),
+        projectId: expected.projectId,
+        mapId: expected.mapId,
+        revisionId: expected.revisionId,
+        generationId: expected.generationId,
+        assetId,
+      });
+      await refresh(expected);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not retry this resource.');
+      if (generationTargetMatches(targetRef.current, expected)) {
+        setError(cause instanceof Error ? cause.message : 'Could not retry this resource.');
+      }
     }
-  }, [projectId, service, target]);
+  }, [assets, refresh, service]);
 
-  useMapGenerationMonitoring({ watch, target, projectId, service, refresh, setError, submissionActive });
+  useMapGenerationMonitoring({ watch, target, service, refresh, setError, submissionActive });
+
+  const reset = useCallback(() => {
+    lifecycleEpoch.current += 1;
+    targetRef.current = null;
+    setTarget(null);
+    setGenerationPlan(plan);
+    setAssets(buildMapAssetPlansV2(plan).map(previewAsset));
+    setPhase('idle');
+    setError(null);
+    compositionLock.current = '';
+  }, [plan]);
 
   const readyCount = assets.filter((asset) => asset.status === 'ready').length;
   const failedCount = assets.filter((asset) => asset.status === 'failed' || asset.status === 'blocked').length;
-  const byKind = useCallback((kind: MapAssetKind) => assets.filter((asset) => asset.kind === kind), [assets]);
-
-  const reset = useCallback(() => {
-    setTarget(null);
-    setError(null);
-    setPhase('idle');
-    setAssets(planRows.map(previewAsset));
-  }, [planRows]);
+  const byKind = useCallback((kind: MapAssetKindV2) => assets.filter((asset) => asset.kind === kind), [assets]);
 
   return {
-    assets, phase, error, readyCount, failedCount, totalCount: assets.length, canPrepare,
-    prepare, prepareRestore, installRestore, confirm, retry, byKind, reset,
+    assets,
+    phase,
+    target,
+    error,
+    readyCount,
+    failedCount,
+    totalCount: assets.length,
+    canPrepare,
+    prepare,
+    prepareRestore,
+    installRestore,
+    confirm,
+    retry,
+    byKind,
+    reset,
   };
 }

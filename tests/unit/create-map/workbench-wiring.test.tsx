@@ -40,6 +40,8 @@ describe('Create Map V2 Plan Review workbench', () => {
     expect(markup).toContain('aria-label="Zoom in"');
     expect(markup).toContain('aria-label="Zoom out"');
     expect(markup).toContain('aria-label="Map plan structure canvas"');
+    expect(markup).toContain('PixelLab resources');
+    expect(markup).toContain('Ready to prepare');
 
     expect(markup).not.toContain('Inpaint');
     expect(markup).not.toContain('Rectangle obstacle');
@@ -86,7 +88,7 @@ describe('Create Map V2 Plan Review workbench', () => {
 
     expect(projectChange).toContain("setDocumentId('')");
     expect(projectChange).toContain('setSourceToken(null)');
-    expect(projectChange).toContain('setIdentity(null)');
-    expect(projectChange).toContain('setSavedPayload(null)');
+    expect(projectChange).toContain('draft.reset()');
+    expect(projectChange).toContain('generation.reset()');
   });
 });

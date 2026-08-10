@@ -1,13 +1,16 @@
 'use client';
 
 import { CloseOutlined } from '@ant-design/icons';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { AssetGenerationPanel } from './components/AssetGenerationPanel';
 import { MapPlanInspector } from './components/MapPlanInspector';
 import { PlanReviewCanvas, type MapPlanSelection } from './components/PlanReviewCanvas';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { MapToolbar, type MapTool } from './components/MapToolbar';
 import { useMapSources } from './hooks/useMapSources';
+import { useMapDraft } from './hooks/useMapDraft';
+import { useMapGeneration } from './hooks/useMapGeneration';
 import {
   createMapPlanEditorState,
   reduceMapPlanCommand,
@@ -17,11 +20,7 @@ import {
 } from './model/mapPlanReducer';
 import { validateMapPlanV2, type MapPlanV2 } from './model/mapPlanSchema';
 import type { MapSceneV2 } from './model/mapSceneSchema';
-import {
-  createMapService,
-  type MapDraftIdentity,
-  type MapSourceToken,
-} from './services/createMapService';
+import { createMapService, type MapSourceToken } from './services/createMapService';
 import styles from './CreateMapWorkbench.module.css';
 
 export type CreateMapWorkbenchMode = 'plan-review' | 'scene';
@@ -189,9 +188,8 @@ export function CreateMapWorkbench() {
   const [projectId, setProjectId] = useState('');
   const [documentId, setDocumentId] = useState('');
   const [sourceToken, setSourceToken] = useState<MapSourceToken | null>(null);
-  const [identity, setIdentity] = useState<MapDraftIdentity | null>(null);
-  const [savedPayload, setSavedPayload] = useState<string | null>(null);
-  const [operation, setOperation] = useState<'idle' | 'planning' | 'saving'>('idle');
+  const [scene, setScene] = useState(() => createEmptySceneV2(INITIAL_PLAN_V2));
+  const [operation, setOperation] = useState<'idle' | 'planning'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [tool, setTool] = useState<MapTool>('select');
   const [viewport, setViewport] = useState({ zoom: 1, panX: 24, panY: 24 });
@@ -200,18 +198,28 @@ export function CreateMapWorkbench() {
   const [rightOpen, setRightOpen] = useState(false);
 
   const sources = useMapSources(projectId);
+  const draft = useMapDraft(planReview.present, scene);
+  const installMaterializedScene = useCallback((nextScene: MapSceneV2) => setScene(nextScene), []);
+  const generation = useMapGeneration({
+    projectId,
+    plan: planReview.present,
+    scene,
+    canPrepare: Boolean(draft.identity) && draft.status === 'saved' && !draft.isDirty,
+    publishForGeneration: draft.publishForGeneration,
+    onSceneMaterialized: installMaterializedScene,
+  });
   const validation = useMemo(() => validateMapPlanV2(planReview.present), [planReview.present]);
   const issues = validation.success === false ? validation.issues : [];
-  const payload = JSON.stringify(planReview.present);
-  const dirty = identity !== null && payload !== savedPayload;
-  const busy = operation !== 'idle';
+  const dirty = draft.isDirty;
+  const busy = operation !== 'idle' || draft.status === 'creating' || generation.phase === 'preparing';
   const { canSave, canGenerate } = getPlanReviewActions({
     projectId,
-    hasIdentity: identity !== null,
-    valid: validation.success,
+    hasIdentity: draft.identity !== null,
+    valid: validation.success && draft.isValid,
     dirty,
     busy,
   });
+  const canPrepareGeneration = canGenerate && (generation.phase === 'idle' || generation.phase === 'failed');
 
   const dispatchPlan = (command: MapPlanCommand) => {
     setPlanReview((current) => reduceMapPlanCommand(current, command));
@@ -222,8 +230,8 @@ export function CreateMapWorkbench() {
     setProjectId(nextProjectId);
     setDocumentId('');
     setSourceToken(null);
-    setIdentity(null);
-    setSavedPayload(null);
+    draft.reset();
+    generation.reset();
     setError(null);
   };
 
@@ -241,8 +249,10 @@ export function CreateMapWorkbench() {
       setPlanReview(createMapPlanEditorState(created.plan));
       setSelection(null);
       setSourceToken(created.sourceToken);
-      setIdentity(null);
-      setSavedPayload(null);
+      const nextScene = createEmptySceneV2(created.plan);
+      setScene(nextScene);
+      draft.reset();
+      generation.reset();
       setTool('select');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create map plan');
@@ -253,36 +263,33 @@ export function CreateMapWorkbench() {
 
   const saveDraft = async () => {
     if (!canSave) return;
-    setOperation('saving');
     setError(null);
     try {
-      const scene = createEmptySceneV2(planReview.present);
-      if (identity) {
-        const saveVersion = await service.saveDraftV2(identity, planReview.present, scene);
-        setIdentity({ ...identity, saveVersion });
+      if (draft.identity) {
+        await draft.saveNow();
       } else {
-        setIdentity(await service.createProjectV2(projectId, planReview.present, scene, sourceToken));
+        await draft.create(projectId, sourceToken, planReview.present, scene);
       }
-      setSavedPayload(payload);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save map draft');
-    } finally {
-      setOperation('idle');
     }
   };
 
   const requestGeneration = () => {
-    if (!canGenerate) return;
-    setError('Generation orchestration is not connected in this build yet.');
+    if (!canPrepareGeneration) return;
+    void generation.prepare();
   };
 
-  const saveStatus = operation === 'saving'
+  const actionError = error ?? draft.error ?? generation.error;
+  const saveStatus = draft.status === 'saving' || draft.status === 'creating'
     ? { label: 'Saving...', status: 'saving' }
-    : error
+    : draft.status === 'conflict'
+      ? { label: 'Save conflict', status: 'error' }
+      : actionError
       ? { label: 'Action failed', status: 'error' }
-      : identity && dirty
+      : draft.identity && dirty
         ? { label: 'Unsaved changes', status: 'dirty' }
-        : identity
+        : draft.identity
           ? { label: 'All changes saved', status: 'saved' }
           : { label: projectId ? 'Local plan, ready to save' : 'Local plan', status: 'local' };
 
@@ -319,9 +326,9 @@ export function CreateMapWorkbench() {
           onSaveDraft={() => void saveDraft()}
           onGenerate={requestGeneration}
           canSave={canSave}
-          canGenerate={canGenerate}
+          canGenerate={canPrepareGeneration}
           busy={busy}
-          error={error ?? (sources.error instanceof Error ? sources.error.message : null)}
+          error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
         />
         <PlanStructure plan={planReview.present} selection={selection} onSelectionChange={setSelection} />
       </aside>
@@ -376,6 +383,17 @@ export function CreateMapWorkbench() {
           selection={selection}
           issues={issues}
           onCommand={dispatchPlan}
+        />
+        <AssetGenerationPanel
+          assets={generation.assets}
+          phase={generation.phase}
+          error={generation.error}
+          readyCount={generation.readyCount}
+          failedCount={generation.failedCount}
+          canPrepare={canPrepareGeneration}
+          onPrepare={() => void generation.prepare()}
+          onConfirm={() => void generation.confirm()}
+          onRetry={(assetId) => void generation.retry(assetId)}
         />
       </aside>
     </main>
