@@ -10,6 +10,7 @@ export type AuthorizedAsset = {
   revisionId: string;
   schemaVersion: number;
   generationId: string | null;
+  revisionPlan: unknown;
   asset: Record<string, unknown>;
 };
 
@@ -67,10 +68,10 @@ export async function authorizeAsset(token: string, assetId: string, expectedPro
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData.user) throw new PixelLabMapError("pixellab_invalid_response", "Authentication required", 401);
   const { data: asset, error: assetError } = await userClient.from("map_assets")
-    .select("id, map_revision_id, generation_id, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, metadata")
+    .select("id, map_revision_id, generation_id, plan_fingerprint, reference_asset_ids, reference_hashes, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, metadata")
     .eq("id", assetId).single();
   if (assetError || !asset) throw new PixelLabMapError("pixellab_invalid_response", "Map asset not found", 404);
-  const { data: revision } = await userClient.from("map_revisions").select("id, map_project_id, schema_version").eq("id", asset.map_revision_id).single();
+  const { data: revision } = await userClient.from("map_revisions").select("id, map_project_id, schema_version, plan").eq("id", asset.map_revision_id).single();
   const { data: map } = revision ? await userClient.from("map_projects").select("id, project_id").eq("id", revision.map_project_id).single() : { data: null };
   if (!revision || !map || map.project_id !== expectedProjectId) throw new PixelLabMapError("pixellab_invalid_response", "Map asset does not belong to project", 403);
   const { data: project } = await userClient.from("projects").select("owner_id").eq("id", map.project_id).single();
@@ -86,6 +87,7 @@ export async function authorizeAsset(token: string, assetId: string, expectedPro
     revisionId: revision.id,
     schemaVersion: Number(revision.schema_version),
     generationId: typeof asset.generation_id === "string" ? asset.generation_id : null,
+    revisionPlan: revision.plan,
     asset: asset as Record<string, unknown>,
   };
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ValidatedPng } from "./png.ts";
+import { MAX_PNG_BYTES } from "./png.ts";
 import { PixelLabMapError } from "./types.ts";
 
 export type AssetStorageContext = {
@@ -27,6 +28,18 @@ export type ReadyAssetBinding = {
 function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
   if (left.byteLength !== right.byteLength) return false;
   return left.every((byte, index) => byte === right[index]);
+}
+
+export async function downloadPrivateAsset(serviceClient: SupabaseClient, storagePath: string): Promise<Uint8Array> {
+  const download = await serviceClient.storage.from("map-assets").download(storagePath);
+  if (download.error || !download.data || download.data.size === 0 || download.data.size > MAX_PNG_BYTES) {
+    throw new PixelLabMapError("background_source_mismatch", "Background source download failed", 409);
+  }
+  const bytes = new Uint8Array(await download.data.arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_PNG_BYTES) {
+    throw new PixelLabMapError("background_source_mismatch", "Background source size is invalid", 409);
+  }
+  return bytes;
 }
 
 async function failAsset(context: AssetStorageContext, asset: PersistableAsset, code: string): Promise<void> {

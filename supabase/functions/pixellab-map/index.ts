@@ -1,5 +1,6 @@
 import { assertGenerationIdentity, authorizeAsset, authorizeProject } from "./auth.ts";
 import { normalizeTileAtlas } from "./atlas.ts";
+import { composeAndPersistBackground } from "./background-storage.ts";
 import { bearerToken, jsonResponse, readJsonBody } from "./http.ts";
 import { PixelLabClient, providerArgumentsFor } from "./pixellab-client.ts";
 import { pngExpectationForAsset, validatePng } from "./png.ts";
@@ -60,6 +61,9 @@ async function handle(request: Request): Promise<Response> {
   if (!assetId) throw new PixelLabMapError("pixellab_invalid_response", "Asset is required", 400);
   const authorized = await authorizeAsset(token, assetId, projectId);
   assertGenerationIdentity(authorized, body);
+  if (operation === "compose_background") {
+    return jsonResponse(await composeAndPersistBackground(authorized));
+  }
   if (operation === "submit" || operation === "inpaint") {
     if (body.mapId !== authorized.mapId || body.revisionId !== authorized.revisionId) {
       throw new PixelLabMapError("pixellab_invalid_response", "Map asset identity mismatch", 403);

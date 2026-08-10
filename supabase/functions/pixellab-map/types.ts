@@ -32,7 +32,7 @@ export type NormalizedTileAtlas = {
 
 export type PixelLabMapRequest =
   | { operation: "capabilities"; projectId: string }
-  | { operation: "submit" | "poll" | "retry"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string }
+  | { operation: "submit" | "poll" | "retry" | "compose_background"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string }
   | {
       operation: "inpaint";
       projectId: string;
@@ -57,7 +57,9 @@ export class PixelLabMapError extends Error {
       | "pixellab_rate_limited"
       | "pixellab_upstream"
       | "pixellab_invalid_response"
-      | "atlas_manifest_incomplete",
+      | "atlas_manifest_incomplete"
+      | "background_source_mismatch"
+      | "background_composition_failed",
     message: string = code,
     readonly status = 502,
   ) {
