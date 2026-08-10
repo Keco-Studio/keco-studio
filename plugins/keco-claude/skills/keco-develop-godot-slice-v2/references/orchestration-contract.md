@@ -17,6 +17,19 @@ allowedFiles: []
 writeToken: null
 sourceRevisions: {}
 iteration: 0
+interaction:
+  version: 1
+  status: running|paused|resuming|completed|blocked_before_write|partial
+  blockedAt: null
+  completed: []
+  writesPerformed: []
+  userAction: null
+  resumeFrom: null
+  checkpoint:
+    runId: stable-run-id
+    planRevision: stable-plan-revision
+    sourceRevisions: {}
+  revalidate: []
 documents:
   kecoFolderId: existing-folder-uuid
   kecoFolderName: discovered-project-folder-name
@@ -40,6 +53,8 @@ evolution:
   noCompatibleTarget: false
 ```
 The write token is null until the semantic source decision, roadmap read-back, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and state tokens are execution state, not guesses.
+
+The `interaction` block is required for new runs and must pass `${CLAUDE_PLUGIN_ROOT}/scripts/validate_interaction_checkpoint.py` when paused or resumed. Legacy version 2 RunContext files without an `interaction` block remain readable and valid. When present, `interaction.checkpoint.runId` must equal the containing `RunContext.runId`.
 
 ## Artifact Ledger
 

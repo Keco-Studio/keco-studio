@@ -1,0 +1,49 @@
+{
+  "validCheckpoint": {
+    "version": 1,
+    "status": "paused",
+    "blockedAt": "pixellab-capability-check",
+    "completed": ["source-discovery", "plan-review"],
+    "writesPerformed": [],
+    "userAction": "Configure the PixelLab connection outside chat",
+    "resumeFrom": "execution-preflight",
+    "checkpoint": {
+      "runId": "run-01",
+      "planRevision": "plan-03",
+      "sourceRevisions": {
+        "gdd": "12"
+      }
+    },
+    "revalidate": ["pixellab-capability", "gdd-revision", "dirty-paths"]
+  },
+  "invalidCheckpoints": [
+    {
+      "id": "missing-resume",
+      "remove": "resumeFrom",
+      "error": "resumeFrom"
+    },
+    {
+      "id": "prewrite-with-writes",
+      "overrides": {
+        "status": "blocked_before_write",
+        "writesPerformed": ["keco:upsert_table_rows"]
+      },
+      "error": "zero development writes"
+    },
+    {
+      "id": "paused-with-writes",
+      "overrides": {
+        "status": "paused",
+        "writesPerformed": ["godot:save_scene"]
+      },
+      "error": "partial"
+    },
+    {
+      "id": "secret-field",
+      "overrides": {
+        "apiKey": "sk-live-secret-value"
+      },
+      "error": "secret"
+    }
+  ]
+}

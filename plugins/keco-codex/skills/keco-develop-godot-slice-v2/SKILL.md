@@ -25,7 +25,7 @@ Read [references/review-workflow.md](references/review-workflow.md). It contains
 
 ## Fixed Run Ledger
 
-Create and maintain these artifacts in order. Use `scripts/validate_run_context.py`, `scripts/validate_plan.py`, and `scripts/validate_eval_report.py` before advancing:
+Create and maintain these artifacts in order. Use `scripts/validate_run_context.py`, `scripts/validate_plan.py`, and `scripts/validate_eval_report.py` before advancing. Validate every paused or resumed interaction record with `scripts/validate_interaction_checkpoint.py` before presenting or consuming its checkpoint:
 
 ```text
 INTAKE -> BASELINE -> SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> ROADMAP_REVIEW

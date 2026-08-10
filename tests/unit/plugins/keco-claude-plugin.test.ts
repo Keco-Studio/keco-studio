@@ -29,6 +29,7 @@ const SCRIPTS = [
   'export_keco_snapshot.py',
   'validate_eval_report.py',
   'validate_generated_asset_package.py',
+  'validate_interaction_checkpoint.py',
   'validate_plan.py',
   'validate_run_context.py',
   'validate_slice_documents.py',
@@ -132,6 +133,9 @@ describe('Keco Claude plugin packaging', () => {
       expect(contract).toContain(`- ${field}:`);
     }
     expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
+    expect(contract).toMatch(/blocked_before_write[\s\S]{0,240}zero development writes/i);
+    expect(contract).toMatch(/planning-document writes[\s\S]{0,240}explicitly/i);
+    expect(contract).toMatch(/development mutation[\s\S]{0,160}partial/i);
     expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
   });
 
@@ -278,6 +282,8 @@ describe('Keco Claude plugin skill contracts', () => {
     expect(skill).toMatch(/RunContext[\s\S]{0,200}writeToken[\s\S]{0,200}sliceDecision/i);
     expect(orchestration).toMatch(/SlicePlan[\s\S]{0,200}approved static scope/i);
     expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
+    expect(orchestration).toMatch(/interaction:[\s\S]{0,480}blockedAt[\s\S]{0,240}resumeFrom/i);
+    expect(orchestration).toMatch(/legacy[\s\S]{0,240}without[\s\S]{0,160}interaction/i);
     expect(sliceDocuments).toMatch(/plan\.md[\s\S]{0,200}does not own task progress/i);
     expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i);
   });
@@ -368,6 +374,8 @@ describe('Keco Claude plugin skill contracts', () => {
     expect(schemaDesign).toMatch(/BuildPlan[\s\S]{0,160}approved static scope/i);
     expect(schemaDesign).toMatch(/must not contain[\s\S]{0,240}(?:execution status|write tokens|checkpoints)[\s\S]{0,240}(?:evidence|read-back)/i);
     expect(executionPolicy).toMatch(/ExecutionCheckpoint[\s\S]{0,240}VerificationReport/i);
+    expect(executionPolicy).toMatch(/Status[\s\S]{0,240}Blocked at[\s\S]{0,240}Resume from[\s\S]{0,240}Revalidation/i);
+    expect(executionPolicy).toMatch(/unchanged[\s\S]{0,240}do not repeat[\s\S]{0,160}(?:confirmation|question)/i);
   });
 });
 
@@ -394,6 +402,37 @@ describe('Keco Claude plugin validators', () => {
     ...overrides,
   });
 
+  const interactionFixture = readJson<{
+    validCheckpoint: Record<string, unknown>;
+    invalidCheckpoints: Array<{
+      id: string;
+      remove?: string;
+      overrides?: Record<string, unknown>;
+      error: string;
+    }>;
+  }>('tests/fixtures/plugins/keco-interaction-contract.json');
+
+  it('validates resumable checkpoints and rejects unsafe variants', () => {
+    const valid = runScript('validate_interaction_checkpoint.py', [
+      writeTempJson(tempRoot, 'checkpoint.json', interactionFixture.validCheckpoint),
+    ]);
+    expect(valid.status).toBe(0);
+    expect(valid.stdout).toMatch(/checkpoint valid/i);
+
+    for (const invalid of interactionFixture.invalidCheckpoints) {
+      const value = {
+        ...interactionFixture.validCheckpoint,
+        ...invalid.overrides,
+      };
+      if (invalid.remove) delete value[invalid.remove];
+      const result = runScript('validate_interaction_checkpoint.py', [
+        writeTempJson(tempRoot, `${invalid.id}.json`, value),
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(new RegExp(invalid.error, 'i'));
+    }
+  });
+
   // The Codex suite only ever asserted a rejection here, which is why the
   // validator could demand a mode no contract defines.
   it.each(['implicit-v2', 'explicit-v2'])('accepts the documented run-context mode %s', (mode) => {
@@ -408,10 +447,38 @@ describe('Keco Claude plugin validators', () => {
     ['an absolute allowed file', runContext({ allowedFiles: ['/etc/passwd'] }), /parent traversal/],
     ['a repair iteration past the limit', runContext({ iteration: 4 }), /iteration must be an integer/],
     ['a non-string write token', runContext({ writeToken: 7 }), /writeToken/],
+    ['a non-object interaction checkpoint', runContext({ interaction: [] }), /interaction/],
+    [
+      'an interaction checkpoint for another run',
+      runContext({
+        interaction: {
+          ...interactionFixture.validCheckpoint,
+          checkpoint: {
+            ...(interactionFixture.validCheckpoint.checkpoint as Record<string, unknown>),
+            runId: 'another-run',
+          },
+        },
+      }),
+      /runId/,
+    ],
   ])('rejects %s', (_label, value, expected) => {
     const result = runScript('validate_run_context.py', [writeTempJson(tempRoot, 'run.json', value)]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(expected);
+  });
+
+  it('accepts an optional interaction checkpoint for the same run', () => {
+    const interaction = {
+      ...interactionFixture.validCheckpoint,
+      checkpoint: {
+        ...(interactionFixture.validCheckpoint.checkpoint as Record<string, unknown>),
+        runId: 'run-1',
+      },
+    };
+    const result = runScript('validate_run_context.py', [
+      writeTempJson(tempRoot, 'run-with-checkpoint.json', runContext({ interaction })),
+    ]);
+    expect(result.status).toBe(0);
   });
 
   it.each([

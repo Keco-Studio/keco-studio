@@ -31,6 +31,15 @@ def main() -> int:
     if not isinstance(value["iteration"], int) or value["iteration"] < 0 or value["iteration"] > 3:
         print("iteration must be an integer from 0 through 3", file=sys.stderr)
         return 1
+    interaction = value.get("interaction")
+    if interaction is not None:
+        if not isinstance(interaction, dict):
+            print("interaction must be a checkpoint object", file=sys.stderr)
+            return 1
+        checkpoint = interaction.get("checkpoint")
+        if not isinstance(checkpoint, dict) or checkpoint.get("runId") != value["runId"]:
+            print("interaction checkpoint runId must match RunContext.runId", file=sys.stderr)
+            return 1
     print("run context valid")
     return 0
 

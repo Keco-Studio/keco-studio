@@ -36,6 +36,8 @@ When work cannot continue, report:
 - Checkpoint: stable IDs, revisions, hashes, and paths needed to resume.
 - Revalidation: the checks that must pass before work resumes.
 
+`blocked_before_write` means zero development writes. Planning-document writes may already exist when their own read-back gate passed; report those writes explicitly instead of saying that no writes of any kind occurred. Any development mutation before the blocker makes the result `partial`, not `blocked_before_write`.
+
 Never request secrets, tokens, passwords, or private keys in chat. Direct the user to the host's secure authentication or configuration path.
 
 ## Resume

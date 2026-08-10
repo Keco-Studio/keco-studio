@@ -9,5 +9,20 @@
   "allowedFiles": ["scripts/game.gd"],
   "writeToken": null,
   "sourceRevisions": {},
-  "iteration": 0
+  "iteration": 0,
+  "interaction": {
+    "version": 1,
+    "status": "paused",
+    "blockedAt": "godot-capability-check",
+    "completed": ["source-discovery", "plan-review"],
+    "writesPerformed": [],
+    "userAction": "Start the configured Godot MCP connection",
+    "resumeFrom": "execution-preflight",
+    "checkpoint": {
+      "runId": "fixture-run",
+      "planRevision": "fixture-plan-01",
+      "sourceRevisions": {}
+    },
+    "revalidate": ["godot-capability", "source-revisions", "dirty-paths"]
+  }
 }

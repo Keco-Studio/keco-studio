@@ -107,6 +107,9 @@ describe('Keco Codex plugin contract', () => {
       expect(contract).toContain(`- ${field}:`);
     }
     expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
+    expect(contract).toMatch(/blocked_before_write[\s\S]{0,240}zero development writes/i);
+    expect(contract).toMatch(/planning-document writes[\s\S]{0,240}explicitly/i);
+    expect(contract).toMatch(/development mutation[\s\S]{0,160}partial/i);
     expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
   });
 
@@ -286,6 +289,8 @@ describe('Keco Codex plugin contract', () => {
     expect(schemaDesign).toMatch(/BuildPlan[\s\S]{0,160}approved static scope/i);
     expect(schemaDesign).toMatch(/must not contain[\s\S]{0,240}(?:execution status|write tokens|checkpoints)[\s\S]{0,240}(?:evidence|read-back)/i);
     expect(executionPolicy).toMatch(/ExecutionCheckpoint[\s\S]{0,240}VerificationReport/i);
+    expect(executionPolicy).toMatch(/Status[\s\S]{0,240}Blocked at[\s\S]{0,240}Resume from[\s\S]{0,240}Revalidation/i);
+    expect(executionPolicy).toMatch(/unchanged[\s\S]{0,240}do not repeat[\s\S]{0,160}(?:confirmation|question)/i);
     expect(executionPolicy).toMatch(/required reference[\s\S]{0,400}create_table/i);
     expect(executionPolicy).toMatch(/required reference[\s\S]{0,500}block/i);
     expect(executionPolicy).toMatch(/target rows[\s\S]{0,240}(?:IDs|UUIDs)[\s\S]{0,160}before[\s\S]{0,160}dependent/i);

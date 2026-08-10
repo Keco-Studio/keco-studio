@@ -53,6 +53,15 @@ def main() -> int:
     if "writeToken" in value and value["writeToken"] is not None and not isinstance(value["writeToken"], str):
         print("writeToken must be null or a string", file=sys.stderr)
         return 1
+    interaction = value.get("interaction")
+    if interaction is not None:
+        if not isinstance(interaction, dict):
+            print("interaction must be a checkpoint object", file=sys.stderr)
+            return 1
+        checkpoint = interaction.get("checkpoint")
+        if not isinstance(checkpoint, dict) or checkpoint.get("runId") != value["runId"]:
+            print("interaction checkpoint runId must match RunContext.runId", file=sys.stderr)
+            return 1
     print(json.dumps({"ok": True, "mode": value["mode"], "sliceId": value["sliceId"], "iteration": iteration}, sort_keys=True))
     return 0
 

@@ -70,6 +70,20 @@ Keep mutable state in an `ExecutionCheckpoint` separate from the confirmed `Buil
 
 Keep tool responses and read-back evidence in a `VerificationReport` separate from both the plan and checkpoint. It owns attempted operations, exact failures, verified schemas, stable keys, row counts, reference results, and incomplete work.
 
+When execution pauses, render this checkpoint in the user's language instead of dumping its machine object:
+
+```text
+Status: execution paused
+Blocked at: failed operation or gate
+Completed: verified work retained so far
+Writes performed: none or exact partial scope
+Why: specific failure
+User action: one concrete action without a secret
+Resume from: exact operation or stage
+Checkpoint: non-secret plan, source, and returned IDs
+Revalidation: checks required before resume
+```
+
 ## Safe Resume
 
 Keep the confirmed BuildPlan and returned execution IDs in the conversation result. On retry:
@@ -78,5 +92,7 @@ Keep the confirmed BuildPlan and returned execution IDs in the conversation resu
 2. Resume only when the recorded table IDs exist and their schemas and stable keys exactly match the confirmed BuildPlan.
 3. Reuse only those exact recorded identities; a same-name table without the recorded ID is a collision.
 4. If any identity, schema, or key differs, stop and produce a new BuildPlan, preview, and confirmation.
+
+When project identity, confirmed plan revision, schema, and stable keys are unchanged, resume at the recorded operation and do not repeat the confirmation or settled questions. If one changed, ask only the decision invalidated by that change.
 
 Never infer that an existing table is safe merely because its name or fields look compatible.
