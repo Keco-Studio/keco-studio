@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { listDocuments } from '@/lib/services/documentService';
 import { listProjects } from '@/lib/services/projectService';
 import { MapPlanSchema, MapPlanV2Schema, validateMapPlanV2, type MapPlan, type MapPlanV2 } from '../model/mapPlanSchema';
+import { MapPlanV3Schema, type MapPlanV3, type MapReferenceV3 } from '../model/directMapSchema';
 import {
   MapSceneSchema,
   MapSceneV2Schema,
@@ -16,6 +17,11 @@ export type MapSourceToken = {
   documentUpdatedAt: string;
   epoch: number;
   revision: number;
+};
+
+export type DirectMapPlanSelectionInput = {
+  references: Array<Pick<MapReferenceV3, 'assetId' | 'role' | 'usage'>>;
+  styleReference: Pick<NonNullable<MapPlanV3['styleReference']>, 'assetId' | 'copy'> | null;
 };
 
 export type MapDraftIdentity = {
@@ -427,7 +433,7 @@ export function createMapService(supabase: SupabaseClient) {
       const payload = await responseJson(await fetch('/api/create-map/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, documentId }),
+        body: JSON.stringify({ schemaVersion: 2, projectId, documentId }),
       }));
       return payload as unknown as { plan: MapPlan; sourceToken: MapSourceToken };
     },
@@ -441,6 +447,7 @@ export function createMapService(supabase: SupabaseClient) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          schemaVersion: 2,
           description,
           ...(projectId ? { projectId } : {}),
           ...(documentId ? { documentId } : {}),
@@ -448,6 +455,34 @@ export function createMapService(supabase: SupabaseClient) {
       }));
       const parsed = validateMapPlanV2(payload.plan);
       if (parsed.success === false) throw new CreateMapServiceError('invalid_response', 'Planner returned an invalid MapPlan V2');
+      return { plan: parsed.data, sourceToken: parseMapSourceToken(payload.sourceToken) };
+    },
+
+    async createPlanV3(
+      description: string,
+      projectId?: string,
+      documentId?: string,
+      selection?: DirectMapPlanSelectionInput,
+    ): Promise<{ plan: MapPlanV3; sourceToken: MapSourceToken | null }> {
+      const payload = await responseJson(await fetch('/api/create-map/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schemaVersion: 3,
+          description,
+          ...(projectId ? { projectId } : {}),
+          ...(documentId ? { documentId } : {}),
+          ...(selection ? {
+            referenceIds: selection.references.map((reference) => reference.assetId),
+            styleReferenceId: selection.styleReference?.assetId ?? null,
+            referenceRoles: Object.fromEntries(selection.references.map((reference) => [reference.assetId, reference.role])),
+            referenceUsage: Object.fromEntries(selection.references.map((reference) => [reference.assetId, reference.usage])),
+            styleCopy: selection.styleReference?.copy ?? [],
+          } : {}),
+        }),
+      }));
+      const parsed = MapPlanV3Schema.safeParse(payload.plan);
+      if (!parsed.success) throw new CreateMapServiceError('invalid_response', 'Planner returned an invalid MapPlan V3');
       return { plan: parsed.data, sourceToken: parseMapSourceToken(payload.sourceToken) };
     },
 

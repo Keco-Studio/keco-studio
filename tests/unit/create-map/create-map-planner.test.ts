@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { makeValidMapPlanV2 } from './fixtures';
+import { makeValidMapPlanV2, makeValidMapPlanV3 } from './fixtures';
 
 const completeLlmNonStreaming = jest.fn();
 
@@ -12,9 +12,13 @@ import {
   CREATE_MAP_PLAN_V2_TOOL,
   CreateMapPlannerError,
   CreateMapPlannerInputError,
+  createMapPlanV3,
   createMapPlanV2,
   normalizeMapPlanV2Candidate,
 } from '@/lib/server/createMapPlanner';
+
+const REAL_REFERENCE_ID = '33333333-3333-4333-8333-333333333333';
+const INVENTED_REFERENCE_ID = '44444444-4444-4444-8444-444444444444';
 
 const source = {
   documentId: '11111111-1111-4111-8111-111111111111',
@@ -125,5 +129,58 @@ describe('Create Map V2 planner', () => {
       regions: expect.any(Object),
       paths: expect.any(Object),
     }));
+  });
+});
+
+describe('Create Map V3 planner', () => {
+  beforeEach(() => completeLlmNonStreaming.mockReset());
+
+  it('returns the final DeepSeek description unchanged and pins the Pro operation', async () => {
+    const plan = makeValidMapPlanV3({ description: 'Exact final image description.  Keep two spaces.' });
+    completeLlmNonStreaming.mockResolvedValue(JSON.stringify(plan));
+
+    await expect(createMapPlanV3('Generate a complete top-down village map')).resolves.toEqual(plan);
+
+    expect(completeLlmNonStreaming).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining('final PixelLab create_image_pro description'),
+      }),
+    ]), expect.objectContaining({ temperature: 0, thinking: 'disabled' }));
+  });
+
+  it('replaces invented references with the authorized selection exactly', async () => {
+    completeLlmNonStreaming.mockResolvedValue(JSON.stringify({
+      ...makeValidMapPlanV3(),
+      references: [{
+        assetId: INVENTED_REFERENCE_ID,
+        sha256: 'f'.repeat(64),
+        role: 'content',
+        usage: 'invented reference',
+      }],
+    }));
+    const selection = {
+      references: [{
+        assetId: REAL_REFERENCE_ID,
+        sha256: 'a'.repeat(64),
+        role: 'layout' as const,
+        usage: 'composition reference',
+      }],
+      styleReference: null,
+    };
+
+    await expect(createMapPlanV3('Village', undefined, selection)).resolves.toMatchObject(selection);
+  });
+
+  it('uses exactly one correction retry for an unsafe final description', async () => {
+    completeLlmNonStreaming
+      .mockResolvedValueOnce(JSON.stringify(makeValidMapPlanV3({ description: 'Call PixelLab create_image_pro.' })))
+      .mockResolvedValueOnce(JSON.stringify(makeValidMapPlanV3()));
+
+    await expect(createMapPlanV3('Village')).resolves.toEqual(makeValidMapPlanV3());
+
+    expect(completeLlmNonStreaming).toHaveBeenCalledTimes(2);
+    const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ role: string; content: string }>;
+    expect(retry.at(-1)?.content).toContain('unsafe_description');
   });
 });

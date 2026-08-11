@@ -2,8 +2,13 @@ import { NextRequest } from 'next/server';
 
 const readCreateMapDocumentSource = jest.fn();
 const createMapPlanV2 = jest.fn();
+const createMapPlanV3 = jest.fn();
 let authenticated = true;
-const supabase = {};
+const referenceRows = jest.fn();
+const referenceIn = jest.fn(() => referenceRows());
+const referenceEq = jest.fn(() => ({ in: referenceIn }));
+const referenceSelect = jest.fn(() => ({ eq: referenceEq }));
+const supabase = { from: jest.fn(() => ({ select: referenceSelect })) };
 
 class MockAuthorizationError extends Error {}
 class MockDocumentSourceError extends Error {
@@ -28,10 +33,11 @@ jest.mock('@/lib/server/createMapPlanner', () => ({
   CreateMapPlannerError: MockPlannerError,
   CreateMapPlannerInputError: MockPlannerInputError,
   createMapPlanV2: (...args: unknown[]) => createMapPlanV2(...args),
+  createMapPlanV3: (...args: unknown[]) => createMapPlanV3(...args),
 }));
 
 import { POST } from '@/app/api/create-map/plan/route';
-import { makeValidMapPlanV2 } from './fixtures';
+import { makeValidMapPlanV2, makeValidMapPlanV3 } from './fixtures';
 
 const projectId = '22222222-2222-4222-8222-222222222222';
 const documentId = '11111111-1111-4111-8111-111111111111';
@@ -40,6 +46,8 @@ const source = {
   documentId, projectId, documentName: 'Village', documentUpdatedAt: '2026-08-08T08:00:00.000Z',
   markdown: '# Village private markdown', token: { epoch: 2, revision: 7 },
 };
+const referenceId = '33333333-3333-4333-8333-333333333333';
+const styleReferenceId = '44444444-4444-4444-8444-444444444444';
 
 function post(body: unknown) {
   return POST(new NextRequest('https://example.test/api/create-map/plan', {
@@ -53,6 +61,8 @@ describe('POST /api/create-map/plan', () => {
     authenticated = true;
     readCreateMapDocumentSource.mockResolvedValue(source);
     createMapPlanV2.mockResolvedValue(makeValidMapPlanV2());
+    createMapPlanV3.mockResolvedValue(makeValidMapPlanV3());
+    referenceRows.mockResolvedValue({ data: [], error: null });
   });
 
   it('requires authentication and a non-empty description', async () => {
@@ -64,7 +74,7 @@ describe('POST /api/create-map/plan', () => {
   });
 
   it('creates a description-only plan without reading Document state', async () => {
-    const response = await post({ description });
+    const response = await post({ schemaVersion: 2, description });
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
@@ -74,12 +84,12 @@ describe('POST /api/create-map/plan', () => {
   });
 
   it('requires projectId with documentId', async () => {
-    expect((await post({ description, documentId })).status).toBe(400);
+    expect((await post({ schemaVersion: 2, description, documentId })).status).toBe(400);
     expect(readCreateMapDocumentSource).not.toHaveBeenCalled();
   });
 
   it('uses authorized optional Document context without echoing markdown', async () => {
-    const response = await post({ description, projectId, documentId });
+    const response = await post({ schemaVersion: 2, description, projectId, documentId });
     const payload = await response.json();
 
     expect(response.status).toBe(200);
@@ -96,10 +106,93 @@ describe('POST /api/create-map/plan', () => {
 
   it('rejects viewers and cross-project Documents before planning', async () => {
     readCreateMapDocumentSource.mockRejectedValueOnce(new MockAuthorizationError());
-    expect((await post({ description, projectId, documentId })).status).toBe(403);
+    expect((await post({ schemaVersion: 2, description, projectId, documentId })).status).toBe(403);
 
     readCreateMapDocumentSource.mockRejectedValueOnce(new MockDocumentSourceError('document_project_mismatch'));
-    expect((await post({ description, projectId, documentId })).status).toBe(403);
+    expect((await post({ schemaVersion: 2, description, projectId, documentId })).status).toBe(403);
     expect(createMapPlanV2).not.toHaveBeenCalled();
+  });
+
+  it('routes schema version 2 to the legacy planner explicitly', async () => {
+    await expect((await post({ schemaVersion: 2, description })).json()).resolves.toEqual({
+      plan: makeValidMapPlanV2(), sourceToken: null,
+    });
+
+    expect(createMapPlanV2).toHaveBeenCalledWith(description, undefined);
+    expect(createMapPlanV3).not.toHaveBeenCalled();
+  });
+
+  it('loads only authorized V3 reference records and passes their IDs and hashes to the planner', async () => {
+    referenceRows.mockResolvedValue({
+      data: [
+        { id: referenceId, project_id: projectId, sha256: 'a'.repeat(64) },
+        { id: styleReferenceId, project_id: projectId, sha256: 'b'.repeat(64) },
+      ],
+      error: null,
+    });
+    const response = await post({
+      schemaVersion: 3,
+      description,
+      projectId,
+      documentId,
+      referenceIds: [referenceId],
+      styleReferenceId,
+      referenceRoles: { [referenceId]: 'layout' },
+      referenceUsage: { [referenceId]: 'preserve the village composition' },
+      styleCopy: ['color_palette', 'outline'],
+    });
+
+    expect(response.status).toBe(200);
+    expect(readCreateMapDocumentSource).toHaveBeenCalledWith(supabase, 'user-1', projectId, documentId);
+    expect(createMapPlanV3).toHaveBeenCalledWith(description, source, {
+      references: [{
+        assetId: referenceId,
+        sha256: 'a'.repeat(64),
+        role: 'layout',
+        usage: 'preserve the village composition',
+      }],
+      styleReference: {
+        assetId: styleReferenceId,
+        sha256: 'b'.repeat(64),
+        copy: ['color_palette', 'outline'],
+      },
+    });
+    expect(referenceSelect).toHaveBeenCalledWith('id, project_id, sha256');
+    expect(referenceEq).toHaveBeenCalledWith('project_id', projectId);
+    expect(referenceIn).toHaveBeenCalledWith('id', [referenceId, styleReferenceId]);
+  });
+
+  it('rejects V3 reference selections that are not an exact project-scoped registry match', async () => {
+    referenceRows.mockResolvedValue({
+      data: [{ id: referenceId, project_id: projectId, sha256: 'a'.repeat(64) }],
+      error: null,
+    });
+
+    const response = await post({
+      schemaVersion: 3,
+      description,
+      projectId,
+      referenceIds: [referenceId],
+      styleReferenceId,
+      referenceRoles: { [referenceId]: 'content' },
+      referenceUsage: { [referenceId]: 'market layout' },
+      styleCopy: ['detail'],
+    });
+
+    expect(response.status).toBe(400);
+    expect(createMapPlanV3).not.toHaveBeenCalled();
+  });
+
+  it('rejects incompatible reference fields and missing V3 reference project IDs', async () => {
+    expect((await post({ schemaVersion: 2, description, referenceIds: [referenceId] })).status).toBe(400);
+    expect((await post({
+      schemaVersion: 3,
+      description,
+      referenceIds: [referenceId],
+      referenceRoles: { [referenceId]: 'content' },
+      referenceUsage: { [referenceId]: 'market layout' },
+    })).status).toBe(400);
+    expect(createMapPlanV2).not.toHaveBeenCalled();
+    expect(createMapPlanV3).not.toHaveBeenCalled();
   });
 });

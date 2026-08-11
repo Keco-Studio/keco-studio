@@ -3,6 +3,7 @@ import {
   makeEmptyMapSceneV2,
   makeValidMapPlan,
   makeValidMapPlanV2,
+  makeValidMapPlanV3,
   makeValidMapScene,
 } from './fixtures';
 import {
@@ -30,7 +31,7 @@ describe('Create Map browser service', () => {
 
     await expect(service.createPlan('project-1', sourceToken.documentId)).resolves.toEqual({ plan, sourceToken });
     const init = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][1];
-    expect(init?.body).toBe(JSON.stringify({ projectId: 'project-1', documentId: sourceToken.documentId }));
+    expect(init?.body).toBe(JSON.stringify({ schemaVersion: 2, projectId: 'project-1', documentId: sourceToken.documentId }));
     expect(init?.body).not.toContain('Village design markdown');
   });
 
@@ -41,7 +42,20 @@ describe('Create Map browser service', () => {
 
     await expect(service.createPlanV2('A riverside market')).resolves.toEqual({ plan, sourceToken: null });
     const init = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][1];
-    expect(init?.body).toBe(JSON.stringify({ description: 'A riverside market' }));
+    expect(init?.body).toBe(JSON.stringify({ schemaVersion: 2, description: 'A riverside market' }));
+  });
+
+  it('requests and strictly parses V3 plans without rewriting the final description', async () => {
+    const plan = makeValidMapPlanV3({ description: 'Exact final description.  Keep spacing.' });
+    global.fetch = jest.fn(async () => Response.json({ plan, sourceToken: null })) as typeof fetch;
+
+    await expect(createMapService({} as never).createPlanV3('A riverside market')).resolves.toEqual({
+      plan,
+      sourceToken: null,
+    });
+
+    const init = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][1];
+    expect(init?.body).toBe(JSON.stringify({ schemaVersion: 3, description: 'A riverside market' }));
   });
 
   it('rejects a malformed V2 planner source token', async () => {
