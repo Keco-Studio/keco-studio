@@ -17,7 +17,7 @@ function context(content?: string): ToolContext {
 
 describe('Agent import source resolver', () => {
   it('selects the exact attachment body without trimming or normalizing it', () => {
-    const body = `第一行\r\n{"quote":"\\\\value"}\r\n\r\n`;
+    const body = `\u7b2c\u4e00\u884c\r\n{"quote":"\\\\value"}\r\n\r\n`;
     const envelope = buildDesignMessage({
       fileName: 'long.md',
       documentText: body,
@@ -41,7 +41,7 @@ describe('Agent import source resolver', () => {
   });
 
   it('defaults ordinary messages to their complete persisted content', () => {
-    const content = '原文\n{"ok":true}';
+    const content = '\u539f\u6587\n{"ok":true}';
     expect(resolveVerbatimDocumentSource({}, context(content))).toMatchObject({
       content,
       start: 0,
