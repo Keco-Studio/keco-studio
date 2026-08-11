@@ -10,7 +10,7 @@ const MAP_ID = '40000000-0000-4000-8000-000000000004';
 const DRAFT_REVISION_ID = '50000000-0000-4000-8000-000000000005';
 const SLOW_MAP_ID = '80000000-0000-4000-8000-000000000008';
 const FAST_MAP_ID = '90000000-0000-4000-8000-000000000010';
-const SUPABASE_ORIGIN = 'http://127.0.0.1:54321';
+const SUPABASE_ORIGIN = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321';
 const APP_ORIGIN = process.env.KECO_CREATE_MAP_E2E_ORIGIN ?? 'http://localhost:3000';
 
 type AssetStatus = 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'blocked';
