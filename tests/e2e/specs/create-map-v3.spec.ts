@@ -181,6 +181,10 @@ class CreateMapV3MockBackend {
       body: await this.mapPng,
       headers: { 'access-control-allow-origin': '*' },
     }));
+    await page.route('**/api/projects/*/role', (route) => json(route, {
+      role: 'admin',
+      isOwner: true,
+    }));
     await page.route('**/api/create-map/references**', (route) => this.handleReferences(route));
     await page.route('**/api/create-map/plan', (route) => this.handlePlan(route));
   }

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const sql = readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/20260808020000_create_map_workbench.sql'),
+  path.join(process.cwd(), 'supabase/migrations/20260808010000_create_map_workbench.sql'),
   'utf8'
 );
 
