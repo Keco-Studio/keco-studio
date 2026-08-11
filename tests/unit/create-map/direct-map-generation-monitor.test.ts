@@ -193,4 +193,40 @@ describe('direct map generation monitoring', () => {
     )).toHaveLength(0);
     expect(state.setError).not.toHaveBeenCalled();
   });
+
+  it('refreshes durable state after validation fails', async () => {
+    const state = setup();
+    state.service.invokePixelLab.mockImplementation(async (input: { operation: string }) => {
+      if (input.operation === 'poll') return { status: 'completed' };
+      throw new Error('PNG validation failed');
+    });
+    state.render();
+    await flushAsync();
+
+    expect(state.setError).toHaveBeenCalledWith('PNG validation failed');
+    expect(state.refresh).toHaveBeenCalledWith(TARGET);
+  });
+
+  it('does not duplicate an in-flight poll when callback identity changes', async () => {
+    runtime = new HookRuntime();
+    const pending = deferred<{ status: string }>();
+    const service = { invokePixelLab: jest.fn(() => pending.promise) };
+    const setPhase = jest.fn();
+    const setError = jest.fn();
+    const render = (refresh: () => Promise<void>) => runtime?.render(() => {
+      useDirectMapGenerationMonitoring({
+        asset: generatingAsset(), target: TARGET, service,
+        refresh, setPhase, setError,
+      });
+    });
+
+    render(jest.fn(async () => undefined));
+    await flushAsync();
+    render(jest.fn(async () => undefined));
+    await flushAsync();
+    expect(service.invokePixelLab).toHaveBeenCalledTimes(1);
+
+    pending.resolve({ status: 'processing' });
+    await flushAsync();
+  });
 });

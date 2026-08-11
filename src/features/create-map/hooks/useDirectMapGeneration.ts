@@ -259,7 +259,7 @@ export function useDirectMapGenerationMonitoring({
   setError: (error: string | null) => void;
 }): void {
   const cycleRef = useRef(0);
-  const pollActive = useRef<number | null>(null);
+  const pollActive = useRef<string | null>(null);
   const currentTarget = useRef(target);
   const currentAsset = useRef(asset);
   currentTarget.current = target;
@@ -274,9 +274,10 @@ export function useDirectMapGenerationMonitoring({
     const expectedTarget = currentTarget.current;
     const expectedAsset = currentAsset.current;
     if (!expectedTarget || !expectedAsset || expectedAsset.status !== 'generating') return;
+    const requestKey = `${targetKey}:${expectedAsset.id}`;
     const poll = async () => {
-      if (pollActive.current === cycle) return;
-      pollActive.current = cycle;
+      if (pollActive.current === requestKey) return;
+      pollActive.current = requestKey;
       try {
         const body = {
           projectId: expectedTarget.projectId,
@@ -296,9 +297,14 @@ export function useDirectMapGenerationMonitoring({
       } catch (cause) {
         if (cycleRef.current === cycle) {
           setError(cause instanceof Error ? cause.message : 'Could not refresh direct map generation.');
+          try {
+            await refresh(expectedTarget);
+          } catch {
+            // Preserve the provider error when the durable state refresh also fails.
+          }
         }
       } finally {
-        if (pollActive.current === cycle) pollActive.current = null;
+        if (pollActive.current === requestKey) pollActive.current = null;
       }
     };
     void poll();
@@ -337,11 +343,20 @@ export function useDirectMapGeneration({
   const targetRef = useRef<DirectMapGenerationTarget | null>(null);
   const lifecycleEpoch = useRef(0);
   const submissionActive = useRef(false);
+  const preparationActive = useRef(false);
+  const currentInput = useRef({ projectId, planKey: canonical(plan), sceneKey: canonical(scene) });
+  currentInput.current = { projectId, planKey: canonical(plan), sceneKey: canonical(scene) };
   targetRef.current = target;
 
   const refresh = useCallback(async (expected: DirectMapGenerationTarget) => {
+    const expectedInput = {
+      projectId: expected.projectId,
+      planKey: canonical(generationPlan),
+      sceneKey: canonical(scene),
+    };
     const records = await service.listAssets(expected.revisionId);
-    if (!directMapTargetMatches(targetRef.current, expected)) return;
+    if (!directMapTargetMatches(targetRef.current, expected)
+      || canonical(currentInput.current) !== canonical(expectedInput)) return;
     const matches = records.filter((record) => record.kind === 'map_image' && record.asset_key === 'map-image');
     if (matches.length !== 1) throw new Error('Expected exactly one direct map image.');
     let next = directMapAssetFromRecord(matches[0], generationPlan, expected);
@@ -352,7 +367,8 @@ export function useDirectMapGeneration({
         // The durable ready asset remains usable after a temporary signing failure.
       }
     }
-    if (!directMapTargetMatches(targetRef.current, expected)) return;
+    if (!directMapTargetMatches(targetRef.current, expected)
+      || canonical(currentInput.current) !== canonical(expectedInput)) return;
     setAsset(next);
     setPhase(directMapPhaseFor(next));
     if (next.status === 'ready') {
@@ -362,6 +378,7 @@ export function useDirectMapGeneration({
   }, [generationPlan, onSceneMaterialized, scene, service]);
 
   const startPreparation = useCallback(async () => {
+    if (preparationActive.current) return;
     const validation = validateMapPlanV3(plan);
     if (validation.success === false) {
       setError('Resolve the direct map Plan issues before preparing generation.');
@@ -371,15 +388,19 @@ export function useDirectMapGeneration({
       setError('Wait for the current map draft to finish saving.');
       return;
     }
+    preparationActive.current = true;
+    const expectedInput = { ...currentInput.current };
     const epoch = ++lifecycleEpoch.current;
     setPhase('preparing');
     setError(null);
     try {
       const published = await publishForGeneration();
-      if (lifecycleEpoch.current !== epoch) return;
+      if (lifecycleEpoch.current !== epoch
+        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       const generationId = crypto.randomUUID();
       const planFingerprint = await directMapPlanFingerprint(validation.data);
-      if (lifecycleEpoch.current !== epoch) return;
+      if (lifecycleEpoch.current !== epoch
+        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       const nextTarget: DirectMapGenerationTarget = {
         projectId,
         mapId: published.mapId,
@@ -388,9 +409,12 @@ export function useDirectMapGeneration({
         planFingerprint,
       };
       const created = await service.createAssetPlanV3(nextTarget.revisionId, generationId, planFingerprint);
+      if (lifecycleEpoch.current !== epoch
+        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       const record = await service.readAssetPlan(created.asset_id);
       const nextAsset = directMapAssetFromRecord(record, validation.data, nextTarget);
-      if (lifecycleEpoch.current !== epoch) return;
+      if (lifecycleEpoch.current !== epoch
+        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       targetRef.current = nextTarget;
       setTarget(nextTarget);
       setGenerationPlan(validation.data);
@@ -400,6 +424,8 @@ export function useDirectMapGeneration({
       if (lifecycleEpoch.current !== epoch) return;
       setPhase('failed');
       setError(cause instanceof Error ? cause.message : 'Could not prepare direct map generation.');
+    } finally {
+      preparationActive.current = false;
     }
   }, [canPrepare, plan, projectId, publishForGeneration, service]);
 
