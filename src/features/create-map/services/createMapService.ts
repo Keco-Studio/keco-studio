@@ -46,6 +46,19 @@ export type MapAssetRecord = {
   plan_fingerprint?: string | null;
 };
 
+export type MapReferenceRecord = {
+  id: string;
+  projectId: string;
+  name: string;
+  storagePath: string;
+  sha256: string;
+  width: number;
+  height: number;
+  contentType: 'image/png';
+  byteSize: number;
+  previewUrl: string | null;
+};
+
 export type MapRevisionRowV2 = {
   id: string;
   map_project_id: string;
@@ -174,6 +187,77 @@ async function responseJson(response: Response): Promise<Record<string, unknown>
     );
   }
   return payload;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+
+function parseReferenceRecord(value: unknown): MapReferenceRecord {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new CreateMapServiceError('invalid_response');
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== 'string' || !UUID_PATTERN.test(record.id) ||
+    typeof record.projectId !== 'string' || !UUID_PATTERN.test(record.projectId) ||
+    typeof record.name !== 'string' || !record.name.trim() || record.name.length > 160 ||
+    typeof record.storagePath !== 'string' ||
+    typeof record.sha256 !== 'string' || !SHA256_PATTERN.test(record.sha256) ||
+    typeof record.width !== 'number' || !Number.isInteger(record.width) || record.width < 1 || record.width > 2048 ||
+    typeof record.height !== 'number' || !Number.isInteger(record.height) || record.height < 1 || record.height > 2048 ||
+    record.contentType !== 'image/png' ||
+    typeof record.byteSize !== 'number' || !Number.isInteger(record.byteSize) || record.byteSize < 1 || record.byteSize > 5 * 1024 * 1024 ||
+    (record.previewUrl !== null && typeof record.previewUrl !== 'string')
+  ) {
+    throw new CreateMapServiceError('invalid_response');
+  }
+  if (record.storagePath !== `references/${record.projectId}/${record.id}/${record.sha256}.png`) {
+    throw new CreateMapServiceError('invalid_response');
+  }
+  return {
+    id: record.id,
+    projectId: record.projectId,
+    name: record.name,
+    storagePath: record.storagePath,
+    sha256: record.sha256,
+    width: record.width,
+    height: record.height,
+    contentType: 'image/png',
+    byteSize: record.byteSize,
+    previewUrl: record.previewUrl as string | null,
+  };
+}
+
+function parseReferenceList(payload: Record<string, unknown>): MapReferenceRecord[] {
+  if (!Array.isArray(payload.references)) throw new CreateMapServiceError('invalid_response');
+  return payload.references.map(parseReferenceRecord);
+}
+
+async function pixelLabFunctionError(error: unknown): Promise<CreateMapServiceError> {
+  const objectMessage = error && typeof error === 'object' && 'message' in error
+    && typeof (error as { message?: unknown }).message === 'string'
+    ? (error as { message: string }).message
+    : null;
+  const fallbackMessage = error instanceof Error ? error.message : objectMessage ?? 'PixelLab function request failed';
+  const context = error && typeof error === 'object'
+    ? (error as { context?: unknown }).context
+    : null;
+  if (context && typeof context === 'object' && 'json' in context && typeof context.json === 'function') {
+    const payload = await (context.json as () => Promise<unknown>)().catch(() => null);
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      const record = payload as Record<string, unknown>;
+      const code = typeof record.code === 'string' && /^[a-z0-9_]{1,80}$/.test(record.code)
+        ? record.code
+        : 'pixellab_function_error';
+      const message = typeof record.error === 'string'
+        && record.error.length <= 240
+        && !/https?:\/\/|bearer\s|token|secret|api.?key/i.test(record.error)
+        ? record.error
+        : fallbackMessage;
+      return new CreateMapServiceError(code, message);
+    }
+  }
+  return new CreateMapServiceError('pixellab_function_error', fallbackMessage);
 }
 
 export function createSceneFromPlan(plan: MapPlan): MapScene {
@@ -365,6 +449,19 @@ export function createMapService(supabase: SupabaseClient) {
       const parsed = validateMapPlanV2(payload.plan);
       if (parsed.success === false) throw new CreateMapServiceError('invalid_response', 'Planner returned an invalid MapPlan V2');
       return { plan: parsed.data, sourceToken: parseMapSourceToken(payload.sourceToken) };
+    },
+
+    async listReferences(projectId: string): Promise<MapReferenceRecord[]> {
+      return responseJson(await fetch(`/api/create-map/references?projectId=${encodeURIComponent(projectId)}`))
+        .then(parseReferenceList);
+    },
+
+    async uploadReference(projectId: string, file: File): Promise<MapReferenceRecord> {
+      const body = new FormData();
+      body.set('projectId', projectId);
+      body.set('file', file);
+      const payload = await responseJson(await fetch('/api/create-map/references', { method: 'POST', body }));
+      return parseReferenceRecord(payload.reference);
     },
 
     async createProject(projectId: string, plan: MapPlan, scene: MapScene, source: MapSourceToken): Promise<MapDraftIdentity> {

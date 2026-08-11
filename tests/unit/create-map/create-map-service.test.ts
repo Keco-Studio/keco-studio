@@ -9,6 +9,7 @@ import {
   CreateMapServiceError,
   createMapService,
   createSceneFromPlan,
+  type MapReferenceRecord,
   type MapAssetRecord,
 } from '@/features/create-map/services/createMapService';
 
@@ -54,6 +55,44 @@ describe('Create Map browser service', () => {
       'project-1',
       'document-1'
     )).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('uploads a project reference as FormData and returns the parsed response record', async () => {
+    const reference = makeMapReferenceRecord();
+    global.fetch = jest.fn(async () => Response.json({ reference })) as typeof fetch;
+    const file = new File(['png'], 'layout.png', { type: 'image/png' });
+
+    await expect(createMapService({} as never).uploadReference(reference.projectId, file)).resolves.toEqual(reference);
+
+    const [url, init] = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0];
+    expect(url).toBe('/api/create-map/references');
+    expect(init).toMatchObject({ method: 'POST' });
+    expect(init?.body).toBeInstanceOf(FormData);
+    expect((init?.body as FormData).get('projectId')).toBe(reference.projectId);
+    expect((init?.body as FormData).get('file')).toBe(file);
+  });
+
+  it('lists only requested-project reference records and rejects malformed reference payloads', async () => {
+    const reference = makeMapReferenceRecord({ previewUrl: 'https://storage.example.test/signed' });
+    global.fetch = jest.fn(async () => Response.json({ references: [reference] })) as typeof fetch;
+
+    await expect(createMapService({} as never).listReferences(reference.projectId)).resolves.toEqual([reference]);
+    expect((global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0][0])
+      .toBe(`/api/create-map/references?projectId=${encodeURIComponent(reference.projectId)}`);
+
+    global.fetch = jest.fn(async () => Response.json({ reference: { ...reference, id: 'not-a-uuid' } })) as typeof fetch;
+    await expect(createMapService({} as never).uploadReference(reference.projectId, validReferenceFile()))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+
+    global.fetch = jest.fn(async () => Response.json({ references: [{ ...reference, sha256: 'invalid', width: 0 }] })) as typeof fetch;
+    await expect(createMapService({} as never).listReferences(reference.projectId))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+
+    global.fetch = jest.fn(async () => Response.json({
+      reference: { ...reference, storagePath: `references/${reference.projectId}/${reference.id}/unexpected.png` },
+    })) as typeof fetch;
+    await expect(createMapService({} as never).uploadReference(reference.projectId, validReferenceFile()))
+      .rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('maps compare-and-swap conflicts to a stable service error', async () => {
@@ -305,6 +344,28 @@ function makeMapAssetRecord(overrides: Partial<MapAssetRecord> = {}): MapAssetRe
     status: 'ready', requested_capability: 'create_topdown_tileset', prompt: 'Saved terrain',
     generation_params: {}, metadata: {}, storage_path: null, sha256: null, width: 128, height: 128,
     has_transparency: false, last_error_code: null, attempt_count: 1, ...overrides,
+  };
+}
+
+function validReferenceFile() {
+  return new File(['png'], 'layout.png', { type: 'image/png' });
+}
+
+function makeMapReferenceRecord(overrides: Partial<MapReferenceRecord> = {}): MapReferenceRecord {
+  const projectId = '22222222-2222-4222-8222-222222222222';
+  const id = '33333333-3333-4333-8333-333333333333';
+  return {
+    id,
+    projectId,
+    name: 'layout.png',
+    storagePath: `references/${projectId}/${id}/${'a'.repeat(64)}.png`,
+    sha256: 'a'.repeat(64),
+    width: 640,
+    height: 480,
+    contentType: 'image/png',
+    byteSize: 1024,
+    previewUrl: null,
+    ...overrides,
   };
 }
 
