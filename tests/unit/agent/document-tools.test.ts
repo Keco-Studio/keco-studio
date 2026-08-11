@@ -632,7 +632,7 @@ describe('Agent document tools', () => {
   });
 
   it('previews a long authoritative user source without copying it into tool arguments', async () => {
-    const source = `${'\u957f\u6587\u672c\u6bb5\u843d {"value":"\\\\quoted"}\r\n'.repeat(800)}\u7ed3\u5c3e\r\n`;
+    const source = `${'Long text paragraph {"value":"\\\\quoted"}\r\n'.repeat(800)}end\r\n`;
     const encodedSource = escapeLiteralMdxBraces(source);
     const params = {
       documentId: DOCUMENT_ID,
@@ -677,7 +677,7 @@ describe('Agent document tools', () => {
   });
 
   it('applies a signed authoritative source append without rewriting the source', async () => {
-    const source = `\u7b2c\u4e00\u884c\r\n{"json":true,"path":"C:\\\\data"}\r\n`;
+    const source = `first line\r\n{"json":true,"path":"C:\\\\data"}\r\n`;
     const encodedSource = escapeLiteralMdxBraces(source);
     const proposedMarkdown = `# Current\n\n${encodedSource}`;
     const params = {
