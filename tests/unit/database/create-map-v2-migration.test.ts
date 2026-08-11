@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 
-const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260810020500_create_map_v2.sql');
+const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260810020000_create_map_v2.sql');
 const sql = fs.readFileSync(migrationPath, 'utf8');
 
 describe('Create Map V2 migration', () => {
