@@ -155,7 +155,7 @@ export default function DesignUploadPage() {
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={() => router.push(`/${projectId}`)}
+            onClick={() => router.push(`/${projectId}/recent`)}
             disabled={submitting}
           >
             Cancel
