@@ -276,3 +276,16 @@ Run one paid `create_image_pro` generation using an approved V3 revision. Confir
 ## Delivery Boundary
 
 This design is complete when new maps use the direct-image V3 path, the old resource decomposition is no longer invoked for V3, a technically verified image is displayed and restorable, and one live paid PixelLab generation passes. Semantic vision-model review and automatic gameplay-overlay extraction remain separate future work.
+
+## Verification Record (2026-08-11)
+
+Task 10 added mocked browser coverage and live acceptance tooling without issuing a paid request.
+
+- RED: the initial one-test Playwright scaffold failed because the Project source query intercept did not yet match the V3 browser request, so the required Project option never appeared. This established that the workflow depended on the new V3 mock wiring.
+- Mocked browser GREEN: `8 passed` in Chromium. The suite covers description-only planning, optional Document and uploaded references, exact prompt persistence, one `map_image`, paid confirmation, `submit -> poll -> validate`, validation failure/retry, immutable regeneration, refresh/restore, stale-open rejection, V2 read-only routing, and desktop/mobile layout evidence.
+- Focused Jest GREEN: `37` suites and `245` tests passed through `npm run test:create-map-v3`.
+- Static GREEN: focused ESLint completed with zero errors, `npm run typecheck` completed with zero errors, and `git diff --check` completed with zero errors.
+- Mocked output: exactly one opaque `512x512` `map_image` using `create_image_pro`; the mock verifies a 64-character SHA-256 value and private storage-shaped binding. This is not live provider evidence.
+- Screenshots: `test-results/e2e-specs-create-map-v3-Cr-a1999--desktop-and-mobile-layouts-chromium/create-map-v3-1440x900.png` and `test-results/e2e-specs-create-map-v3-Cr-a1999--desktop-and-mobile-layouts-chromium/create-map-v3-390x844.png`.
+- Live capability discovery: blocked with `pixellab_not_configured`; no live schema fingerprints are available.
+- Paid/browser acceptance: not run. Live dimensions, hash prefix, private read-back, and restored-browser screenshot remain blocked on an explicit authenticated editor, authoritative V3 map/revision IDs, PixelLab credentials, and `KECO_ACCEPTANCE_CONFIRM_PAID=YES`.
