@@ -212,23 +212,32 @@ async function openReferenceModalOnCell(
   await refCell.scrollIntoViewIfNeeded();
   // ReferenceField only opens the picker when the cell is already selected.
   await refCell.click();
-  await page.waitForTimeout(400);
-  await refCell.click();
-  await page.waitForTimeout(200);
+  await expect(refCell).toHaveClass(/cellSelected/, { timeout: 5000 });
 
   const refField = refCell.locator('[class*="referenceFieldWrapper"]').first();
   await expect(refField).toBeVisible({ timeout: 15000 });
 
-  const refOpenTarget = refField
-    .locator('[class*="referenceArrowTile"], [data-reference-background="true"]')
-    .first();
-  await expect(refOpenTarget).toBeVisible({ timeout: 15000 });
-  await refOpenTarget.click({ force: true });
+  // Prefer the arrow tile. Pills use data-reference-background and open the hover
+  // card (stopPropagation) — clicking .first() on a combined locator never opens the modal.
+  const arrow = refField.locator('[class*="referenceArrowTile"]').last();
+  await expect(arrow).toBeVisible({ timeout: 15000 });
+  await arrow.click({ force: true });
 
   const modal = page
     .locator('[class*="modalContainer"], [class*="dropdown"]')
     .filter({ hasText: 'APPLY REFERENCE' })
     .first();
+  if (!(await modal.isVisible().catch(() => false))) {
+    // Ensure selection stuck, then click the list container (bubbles to handleClick).
+    await refCell.click();
+    await expect(refCell).toHaveClass(/cellSelected/, { timeout: 5000 });
+    const valueList = refField.locator('[class*="referenceValueList"]').first();
+    if ((await valueList.count()) > 0) {
+      await valueList.click({ position: { x: 4, y: 4 }, force: true });
+    } else {
+      await arrow.click({ force: true });
+    }
+  }
   await expect(modal).toBeVisible({ timeout: 15000 });
   return modal;
 }

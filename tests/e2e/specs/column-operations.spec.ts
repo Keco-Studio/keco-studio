@@ -312,16 +312,14 @@ test.describe('Column operations and double-click rename', () => {
     await expect(projectRenameInput).toBeVisible({ timeout: 10000 });
     await projectRenameInput.fill(newProjectName);
     await projectRenameInput.press('Enter');
+    // Trigger label is the user-visible rename confirmation; avoid toggle race on the menu.
     await expect(projectTrigger).toContainText(newProjectName, { timeout: 15000 });
-    // Menu may still be open after inline rename; only reopen if needed.
-    const renamedOption = page
-      .getByRole('menuitemradio')
-      .filter({ hasText: newProjectName })
-      .first();
-    if (!(await renamedOption.isVisible().catch(() => false))) {
-      await projectTrigger.click();
-    }
-    await expect(renamedOption).toBeVisible({ timeout: 15000 });
+    await page.keyboard.press('Escape').catch(() => {});
+    await expect(projectTrigger).toBeVisible();
+    await projectTrigger.click();
+    await expect(
+      page.getByRole('menuitemradio').filter({ hasText: newProjectName }).first()
+    ).toBeVisible({ timeout: 20000 });
     await page.keyboard.press('Escape').catch(() => {});
 
     // Library rename by double click.
