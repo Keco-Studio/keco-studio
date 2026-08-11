@@ -278,7 +278,7 @@ test.describe('Data Isolation & Access Control', () => {
       });
       await ownerProjects.expectProjectCreated(projectName);
 
-      const projectId = new URL(ownerPage.url()).pathname.slice(1);
+      const projectId = new URL(ownerPage.url()).pathname.split('/').filter(Boolean)[0] ?? '';
       expect(projectId).toMatch(/^[0-9a-f-]{36}$/i);
 
       const outsiderPage = await outsiderContext.newPage();

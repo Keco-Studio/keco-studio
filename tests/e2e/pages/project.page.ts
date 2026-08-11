@@ -68,7 +68,10 @@ export class ProjectPage {
     await this.page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     // /projects may auto-redirect into the first project's Recent page when projects exist.
     await expect(
-      this.page.getByTestId('project-selector-trigger').or(this.createProjectButton.first())
+      this.page
+        .getByTestId('project-selector-trigger')
+        .or(this.createProjectButton.first())
+        .first()
     ).toBeVisible({ timeout: 20000 });
     await this.page.waitForTimeout(1000);
   }
@@ -417,7 +420,10 @@ export class ProjectPage {
    */
   async waitForPageLoad(): Promise<void> {
     await expect(
-      this.page.getByTestId('project-selector-trigger').or(this.createProjectButton.first())
+      this.page
+        .getByTestId('project-selector-trigger')
+        .or(this.createProjectButton.first())
+        .first()
     ).toBeVisible({ timeout: 15000 });
     await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
   }

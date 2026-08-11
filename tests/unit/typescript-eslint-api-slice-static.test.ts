@@ -25,7 +25,11 @@ describe('TypeScript strictness API slice guard', () => {
 
     expect(tsconfig.compilerOptions?.noImplicitAny).toBe(true);
     expect(tsconfig.compilerOptions?.strictNullChecks).toBe(true);
-    expect(tsconfig.include).toEqual(['src/app/api/**/*.ts', 'src/app/api/**/*.tsx']);
+    expect(tsconfig.include).toEqual([
+      'src/app/api/**/*.ts',
+      'src/app/api/**/*.tsx',
+      'types/**/*.d.ts',
+    ]);
   });
 
   it('does not keep a duplicate explicit-any scanner script', () => {

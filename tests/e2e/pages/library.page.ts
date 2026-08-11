@@ -715,8 +715,15 @@ export class LibraryPage {
       await treeNode.hover();
       await treeNode.getByRole('button', { name: 'Folder actions' }).click();
 
-      const folderMenu = this.page.locator('[class*="AddLibraryMenu_menu"], [class*="menu"]').filter({ has: this.page.getByRole('button', { name: /^delete$/i }) }).last();
-      await expect(folderMenu.getByRole('button', { name: /^delete$/i })).toBeVisible({ timeout: 5000 });
+      const folderMenu = this.page
+        .locator('[class*="AddLibraryMenu_menu"], [class*="menu"][role="menu"]')
+        .filter({
+          has: this.page.getByRole('menuitem', { name: /^delete$/i }),
+        })
+        .last();
+      await expect(folderMenu.getByRole('menuitem', { name: /^delete$/i })).toBeVisible({
+        timeout: 5000,
+      });
 
       // Backward compatibility for any native confirm flow
       this.page.once('dialog', async dialog => {
@@ -724,7 +731,8 @@ export class LibraryPage {
       });
 
       const deleteButton = folderMenu
-        .getByRole('button', { name: /^delete$/i })
+        .getByRole('menuitem', { name: /^delete$/i })
+        .or(folderMenu.getByRole('button', { name: /^delete$/i }))
         .or(folderMenu.locator('button[class*="deleteItem"]'));
       await expect(deleteButton).toBeVisible({ timeout: 5000 });
       await deleteButton.click();

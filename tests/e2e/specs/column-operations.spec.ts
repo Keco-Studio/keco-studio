@@ -292,27 +292,32 @@ test.describe('Column operations and double-click rename', () => {
     await libraryPage.createFolderUnderProject(folder);
     await libraryPage.expectFolderCreated();
 
-    // Project rename by double click.
+    // Project rename by double click in the compact project selector.
     const newProjectName = `${project.name} edited`;
+    const projectTrigger = page.getByTestId('project-selector-trigger');
+    await expect(projectTrigger).toBeVisible({ timeout: 15000 });
+    await projectTrigger.click();
     const projectTitle = page
-      .locator('aside [class*="projectsListContainer"]')
+      .getByRole('menuitemradio')
       .locator(`[title="${project.name}"]`)
       .first();
     await expect(projectTitle).toBeVisible({ timeout: 15000 });
     await projectTitle.dblclick({ force: true });
 
     const projectRenameInput = page
-      .locator('aside [class*="projectsListContainer"] input[class*="renameInput"]')
+      .locator(
+        'aside input[class*="projectSelectorRenameInput"], aside input[class*="renameInput"]'
+      )
       .first();
     await expect(projectRenameInput).toBeVisible({ timeout: 10000 });
     await projectRenameInput.fill(newProjectName);
     await projectRenameInput.press('Enter');
+    await expect(projectTrigger).toContainText(newProjectName, { timeout: 15000 });
+    await projectTrigger.click();
     await expect(
-      page
-        .locator('aside [class*="projectsListContainer"]')
-        .locator(`[title="${newProjectName}"]`)
-        .first(),
+      page.getByRole('menuitemradio').locator(`[title="${newProjectName}"]`).first()
     ).toBeVisible({ timeout: 15000 });
+    await page.keyboard.press('Escape').catch(() => {});
 
     // Library rename by double click.
     const newLibraryName = `${library.name} edited`;

@@ -7,7 +7,29 @@
  */
 
 import TurndownService from 'turndown';
-import { gfm } from '@joplin/turndown-plugin-gfm';
+import * as joplinGfm from '@joplin/turndown-plugin-gfm';
+
+function resolveJoplinGfmPlugin(): (service: TurndownService) => void {
+  const namespace = joplinGfm as {
+    gfm?: unknown;
+    default?: { gfm?: unknown } | ((service: TurndownService) => void);
+  };
+  const fromNamed = namespace.gfm;
+  const fromDefaultObject =
+    namespace.default && typeof namespace.default === 'object'
+      ? namespace.default.gfm
+      : undefined;
+  const fromDefaultFn =
+    typeof namespace.default === 'function' ? namespace.default : undefined;
+  const plugin = [fromNamed, fromDefaultObject, fromDefaultFn].find(
+    (candidate): candidate is (service: TurndownService) => void =>
+      typeof candidate === 'function'
+  );
+  if (!plugin) {
+    throw new Error('Failed to resolve @joplin/turndown-plugin-gfm plugin function');
+  }
+  return plugin;
+}
 
 export const MAX_DESIGN_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -143,7 +165,7 @@ export function convertDocumentHtmlToMarkdown(html: string): string {
     headingStyle: 'atx',
     strongDelimiter: '**',
   });
-  service.use(gfm);
+  service.use(resolveJoplinGfmPlugin());
   service.remove(['script', 'style', 'iframe', 'object', 'embed', 'form']);
   service.addRule('safeImportedLink', {
     filter: 'a',

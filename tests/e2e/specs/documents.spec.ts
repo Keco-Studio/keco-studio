@@ -48,7 +48,7 @@ test.describe('Document authoring', () => {
       await expect(addButton).toBeVisible({ timeout: 20000 });
       await addButton.click();
 
-      await page.getByRole('button', { name: /create new document/i }).click();
+      await page.getByRole('menuitem', { name: /create new document/i }).click();
 
       const nameInput = page.locator('input:visible').last();
       await nameInput.fill(documentName);
@@ -184,7 +184,7 @@ test.describe('Document authoring', () => {
       await sidebar.locator(
         'button[title="Add new folder, library, or document"]'
       ).click();
-      await page.getByRole('button', { name: /create new folder/i }).click();
+      await page.getByRole('menuitem', { name: /create new folder/i }).click();
       const input = page.getByPlaceholder('Enter folder name');
       await input.fill(folderName);
       await input.locator('xpath=ancestor::div[contains(@class,"modal")][1]')
@@ -197,7 +197,7 @@ test.describe('Document authoring', () => {
       const folderRow = sidebar.locator(`[title="${folderName}"]`).locator('xpath=ancestor::div[contains(@class,"ant-tree-treenode")][1]');
       await folderRow.hover();
       await folderRow.getByRole('button', { name: 'Folder actions' }).click();
-      await page.getByRole('button', { name: /create new document/i }).click();
+      await page.getByRole('menuitem', { name: /create new document/i }).click();
       const input = page.getByPlaceholder('Enter document name');
       await input.fill(documentName);
       await input.locator('xpath=ancestor::div[contains(@class,"modal")][1]')
