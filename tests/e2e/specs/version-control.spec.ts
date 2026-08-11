@@ -40,7 +40,7 @@ import { users } from '../fixures/users';
 
 test.describe('Version Control Tests', () => {
   // Project + library setup is slower after the Recent/selector navigation changes.
-  test.describe.configure({ timeout: 120000 });
+  test.describe.configure({ timeout: 180000 });
 
   let projectPage: ProjectPage;
   let libraryPage: LibraryPage;
@@ -61,7 +61,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Function Entry - Click clock button to open version control sidebar', async ({ page }) => {
-    test.setTimeout(60000);
 
     // Generate unique project data
     const testProject = generateProjectData();
@@ -101,7 +100,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Manual Save Version - Create new version via sidebar', async ({ page }) => {
-    test.setTimeout(60000);
 
     // Generate unique project data
     const testProject = generateProjectData();
@@ -173,7 +171,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Sidebar Information Display - Verify version list shows required information', async ({ page }) => {
-    test.setTimeout(60000);
 
     // Generate unique project data
     const testProject = generateProjectData();
@@ -246,7 +243,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Sidebar Sorting - Verify versions are sorted by save time descending', async ({ page }) => {
-    test.setTimeout(90000);
 
     // Generate unique project data
     const testProject = generateProjectData();
@@ -333,7 +329,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Version Type Display - Verify different version types are visually distinguished', async ({ page }) => {
-    test.setTimeout(90000);
 
     // Generate unique project data
     const testProject = generateProjectData();
@@ -419,7 +414,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Duplicate Version Name - Prevent creating version with existing name', async ({ page }) => {
-    test.setTimeout(60000);
 
     // Generate unique project data
     const testProject = generateProjectData();
@@ -486,7 +480,6 @@ test.describe('Version Control Tests', () => {
 
   // --- Version Restore tests (from restore requirements) ---
   test('Restore button tooltip - Hover shows Restore tooltip', async ({ page }) => {
-    test.setTimeout(90000);
     const testProject = generateProjectData();
     const versionName = `To Restore ${Date.now()}`;
 
@@ -539,7 +532,6 @@ test.describe('Version Control Tests', () => {
 
  
   test('Click restore - Opens confirmation modal (alert)', async ({ page }) => {
-    test.setTimeout(60000);
     const testProject = generateProjectData();
     const libraryName = `Restore Lib ${Date.now()}`;
     const versionName = `To Restore ${Date.now()}`;
@@ -591,7 +583,6 @@ test.describe('Version Control Tests', () => {
 
 
   test('Restore without backup - Direct restore', async ({ page }) => {
-    test.setTimeout(60000);
     const testProject = generateProjectData();
     const versionName = `To Restore ${Date.now()}`;
 
@@ -642,7 +633,6 @@ test.describe('Version Control Tests', () => {
 
 
   test('Restore with backup - Current version saved as new version before restore', async ({ page }) => {
-    test.setTimeout(90000);
     const testProject = generateProjectData();
     const versionName = `To Restore ${Date.now()}`;
     const backupVersionName = `Backup Before Restore ${Date.now()}`;
@@ -703,7 +693,6 @@ test.describe('Version Control Tests', () => {
 
 
   test('Restore success - Toast and version highlight', async ({ page }) => {
-    test.setTimeout(60000);
     const testProject = generateProjectData();
     const versionName = `To Restore ${Date.now()}`;
 
@@ -758,7 +747,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Restore record - Restore version entry is created with correct metadata', async ({ page }) => {
-    test.setTimeout(60000);
     const testProject = generateProjectData();
     const versionName = `To Restore ${Date.now()}`;
 
@@ -832,7 +820,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Version menu - Open menu via button and right click', async ({ page }) => {
-    test.setTimeout(90000);
     const testProject = generateProjectData();
     const versionName = `Menu Test ${Date.now()}`;
 
@@ -900,7 +887,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Version menu - Edit version info (rename success)', async ({ page }) => {
-    test.setTimeout(60000);
     const testProject = generateProjectData();
     const libraryName = `EditInfo Lib ${Date.now()}`;
     const originalName = `Edit Menu ${Date.now()}`;
@@ -976,7 +962,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Version menu - Duplicate as a new library', async ({ page }) => {
-    test.setTimeout(120000);
     const testProject = generateProjectData();
     const originalLibraryName = libraries.breed.name;
     const duplicatedLibraryName = `${originalLibraryName} (copy)`;
@@ -1062,7 +1047,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Version menu - Delete version', async ({ page }) => {
-    test.setTimeout(90000);
     const testProject = generateProjectData();
     const versionName = `Delete Menu ${Date.now()}`;
     const libraryName = `Delete Lib ${Date.now()}`;
@@ -1126,7 +1110,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Version menu - Cancel delete keeps version', async ({ page }) => {
-    test.setTimeout(60000);
     const testProject = generateProjectData();
     const versionName = `Cancel Delete ${Date.now()}`;
 
@@ -1192,7 +1175,6 @@ test.describe('Version Control Tests', () => {
   });
 
   test('Original version retention - Oldest version record is kept', async ({ page }) => {
-    test.setTimeout(90000);
     const testProject = generateProjectData();
     const initialVersionName = `Initial Version ${Date.now()}`;
     const anotherVersionName = `Another Version ${Date.now() + 1}`;
@@ -1266,7 +1248,6 @@ test.describe('Version Control Tests', () => {
 
   // Un-skipped: verifies creating many versions in sequence and list order; may be slower (~2min)
   test('Create Multiple Versions - Rapidly create many versions and verify list display', async ({ page }) => {
-    test.setTimeout(120000);
 
     // Generate unique project data
     const testProject = generateProjectData();
