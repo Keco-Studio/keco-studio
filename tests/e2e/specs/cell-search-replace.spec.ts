@@ -210,35 +210,19 @@ async function openReferenceModalOnCell(
 
   const refCell = await getTableCellForRowAndColumn(page, rowLabel, refColumnName);
   await refCell.scrollIntoViewIfNeeded();
-  // ReferenceField opens only when selectedCells has this cell. Clicking also
-  // calls onCellFocus, so presence may paint cellEditing and hide cellSelected —
-  // do not assert on CSS class.
-  await refCell.click({ position: { x: 8, y: 8 } });
 
-  const refField = refCell.locator('[class*="referenceFieldWrapper"]').first();
-  await expect(refField).toBeVisible({ timeout: 15000 });
+  // Use the dedicated open control — never click value pills (they open hover cards).
+  const openControl = refCell.getByTestId('reference-cell-open');
+  await expect(openControl).toBeVisible({ timeout: 15000 });
+  await openControl.click();
 
-  // Prefer the arrow tile. Pills use data-reference-background and open the hover
-  // card (stopPropagation) — clicking .first() on a combined locator never opens the modal.
-  const arrow = refField.locator('[class*="referenceArrowTile"]').last();
-  await expect(arrow).toBeVisible({ timeout: 15000 });
-  await arrow.click({ force: true });
-
-  const modal = page
-    .locator('[class*="modalContainer"], [class*="dropdown"]')
-    .filter({ hasText: 'APPLY REFERENCE' })
-    .first();
+  const modal = page.getByTestId('apply-reference-modal');
   if (!(await modal.isVisible().catch(() => false))) {
     await page.keyboard.press('Escape').catch(() => {});
-    await refCell.click({ position: { x: 8, y: 8 } });
-    const valueList = refField.locator('[class*="referenceValueList"]').first();
-    if ((await valueList.count()) > 0) {
-      await valueList.click({ position: { x: 4, y: 4 }, force: true });
-    } else {
-      await arrow.click({ force: true });
-    }
+    await openControl.click({ force: true });
   }
   await expect(modal).toBeVisible({ timeout: 15000 });
+  await expect(modal.getByText('APPLY REFERENCE', { exact: true })).toBeVisible();
   return modal;
 }
 

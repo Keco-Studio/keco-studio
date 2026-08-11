@@ -81,22 +81,45 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
     [avatarRefs]
   );
 
-  const handleClick = (e: React.MouseEvent) => {
+  // Explicit open control (+ / arrow): always open the picker. Do not require
+  // prior cell selection — that gate made filled cells flaky (pills steal clicks,
+  // presence hides selected styling, and arrow had no own handler).
+  const handleOpenClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onFocus?.();
+    onOpenReferenceModal(property, currentValue ?? null, rowId);
+  };
+
+  const handleOpenMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  const handleOpenDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  // Padding / list chrome: keep selection-gated open so casual clicks don't pop the modal.
+  const handleListClick = (e: React.MouseEvent) => {
     if (isCellSelected) {
       e.stopPropagation();
       e.preventDefault();
-      // Call onFocus when opening reference modal
       onFocus?.();
       onOpenReferenceModal(property, currentValue ?? null, rowId);
     }
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleListMouseDown = (e: React.MouseEvent) => {
     if (isCellSelected) e.stopPropagation();
   };
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openControlProps = {
+    'data-testid': 'reference-cell-open' as const,
+    role: 'button' as const,
+    'aria-label': 'Open reference picker',
+    onClick: handleOpenClick,
+    onMouseDown: handleOpenMouseDown,
+    onDoubleClick: handleOpenDoubleClick,
   };
 
   return (
@@ -106,9 +129,9 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
       {hasValues ? (
         <div
           className={styles.referenceValueList}
-          onClick={handleClick}
-          onMouseDown={handleMouseDown}
-          onDoubleClick={handleDoubleClick}
+          onClick={handleListClick}
+          onMouseDown={handleListMouseDown}
+          onDoubleClick={handleOpenDoubleClick}
         >
           {visibleSelections.map((selection, idx) => {
             const id = selection.assetId;
@@ -143,7 +166,10 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
               </div>
             );
           })}
-          <div className={`${styles.referenceIconTile} ${styles.referenceArrowTile}`}>
+          <div
+            className={`${styles.referenceIconTile} ${styles.referenceArrowTile}`}
+            {...openControlProps}
+          >
             <Image
               src={referenceAddIcon}
               alt=""
@@ -156,9 +182,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
       ) : (
         <div
           className={`${styles.referenceIconTile} ${styles.referenceArrowTile} ${styles.referenceSingleIcon}${inTableForm ? ` ${styles.referenceSingleIconNoRadius}` : ''}`}
-          onClick={handleClick}
-          onMouseDown={handleMouseDown}
-          onDoubleClick={handleDoubleClick}
+          {...openControlProps}
         >
           <Image
             src={referenceAddIcon}

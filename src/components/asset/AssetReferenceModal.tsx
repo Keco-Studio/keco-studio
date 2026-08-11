@@ -321,7 +321,7 @@ export function AssetReferenceModal({
   if (!open) return null;
 
   return createPortal(
-    <div className={styles.backdrop}>
+    <div className={styles.backdrop} data-testid="apply-reference-modal">
       <div className={styles.modalContainer}>
         <div ref={modalRef} className={styles.modal}>
           <div className={styles.header}>

@@ -84,6 +84,7 @@ export default function ProjectsPage() {
                 src={projectEmptyIcon}
                 alt="Project icon"
                 fill
+                sizes="237px"
                 className={styles.emptyIconImage}
               />
             </div>

@@ -65,6 +65,7 @@ export function LibraryCard({
             width={573} 
             height={104}
             className={styles.thumbnail}
+            priority
           />
         </div>
         <div className={styles.cardFooter}>

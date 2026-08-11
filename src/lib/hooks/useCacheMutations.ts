@@ -450,8 +450,11 @@ export function useUpdateCollaboratorRole() {
       if (context.previousCollaborators) {
         queryClient.setQueryData(context.collabKey, context.previousCollaborators);
       }
-      
-      console.error('Failed to update collaborator role:', err);
+
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/last admin/i.test(message)) {
+        console.error('Failed to update collaborator role:', err);
+      }
     },
     
     onSuccess: async (data, variables, context) => {
@@ -539,8 +542,11 @@ export function useRemoveCollaborator() {
       if (context.previousCollaborators) {
         queryClient.setQueryData(context.collabKey, context.previousCollaborators);
       }
-      
-      console.error('Failed to remove collaborator:', err);
+
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/last admin/i.test(message)) {
+        console.error('Failed to remove collaborator:', err);
+      }
     },
     
     onSuccess: async (data, variables, context) => {
