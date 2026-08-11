@@ -417,7 +417,11 @@ test.describe.serial('Document-derived library lifecycle', () => {
       folderId: fixture.sourceFolder.id,
     });
     scriptLibrary = { id: scriptId, name: scriptName };
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    // Prefer a fresh navigation over reload so auth/hydration races after hard
+    // reload do not leave the TopBar without document actions.
+    await page.goto(`/${fixture.projectId}/doc/${fixture.folderDocument.id}`, {
+      waitUntil: 'domcontentloaded',
+    });
     await expect(page.getByTestId('document-export')).toBeVisible({ timeout: 45_000 });
     await expandTreeNode(page, fixture.sourceFolder.name);
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
@@ -553,20 +557,30 @@ test.describe.serial('Document-derived library lifecycle', () => {
       }
     );
     await page.route('**/api/import-script', async (route) => {
-      rootTableId = await createDerivedLibrary(admin, fixture, {
-        name: rootTableName,
-        sourceDocumentId: fixture.rootDocument.id,
-        exportType: 'table',
-        folderId: null,
-      });
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/x-ndjson; charset=utf-8',
-        body: `${JSON.stringify({
-          type: 'result',
-          result: { libraryId: rootTableId, rowCount: 2, fieldCount: 3 },
-        })}\n`,
-      });
+      try {
+        rootTableId = await createDerivedLibrary(admin, fixture, {
+          name: rootTableName,
+          sourceDocumentId: fixture.rootDocument.id,
+          exportType: 'table',
+          folderId: null,
+        });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/x-ndjson; charset=utf-8',
+          body: `${JSON.stringify({
+            type: 'result',
+            result: { libraryId: rootTableId, rowCount: 2, fieldCount: 3 },
+          })}\n`,
+        });
+      } catch (error) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        });
+      }
     });
 
     await openDocument(page, fixture.owner, fixture, fixture.rootDocument.id);
@@ -583,6 +597,8 @@ test.describe.serial('Document-derived library lifecycle', () => {
     expect(importRequestBody).toContain(fixture.rootDocument.id);
     expect(importRequestBody).toContain('test-snapshot-token');
     expect(importRequestBody).toContain('table');
+
+    await expect.poll(() => rootTableId, { timeout: 30_000 }).not.toBe('');
 
     const { data: library, error } = await admin
       .from('libraries')

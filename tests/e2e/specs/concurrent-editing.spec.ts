@@ -29,7 +29,9 @@ async function editCell(page: Page, assetId: string, fieldId: string, value: str
   await cell.dblclick();
   const editor = cell.locator('[contenteditable="true"]');
   await expect(editor).toBeVisible();
-  await editor.fill(value);
+  await editor.click();
+  await editor.fill('');
+  await editor.pressSequentially(value, { delay: 15 });
   await editor.press('Enter');
   await expect(editor).toHaveCount(0);
 }
@@ -152,10 +154,11 @@ test.describe('Concurrent library editing', () => {
       });
 
       await test.step('preserves concurrent edits to different cells', async () => {
-        await Promise.all([
-          editCell(pageA, fixture.assetId, fixture.leftFieldId, 'Owner left'),
-          editCell(pageB, fixture.assetId, fixture.rightFieldId, 'Editor right'),
-        ]);
+        // Stagger starts so both contenteditables are not fighting focus races.
+        const ownerEdit = editCell(pageA, fixture.assetId, fixture.leftFieldId, 'Owner left');
+        await pageA.waitForTimeout(150);
+        const editorEdit = editCell(pageB, fixture.assetId, fixture.rightFieldId, 'Editor right');
+        await Promise.all([ownerEdit, editorEdit]);
         await expect.poll(async () => {
           const { data } = await admin
             .from('library_asset_values')

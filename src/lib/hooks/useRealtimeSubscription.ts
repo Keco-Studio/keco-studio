@@ -6,6 +6,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { CellUpdateEvent, OptimisticUpdate } from '@/lib/types/collaboration';
+import { sendLibraryBroadcast } from '@/lib/realtime/sendLibraryBroadcast';
 import { useLibraryChannel } from './realtime/useLibraryChannel';
 import { useLibraryBroadcasts } from './realtime/useLibraryBroadcasts';
 import type {
@@ -59,11 +60,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     if (!channelRef.current || queuedUpdatesRef.current.length === 0) return;
     const queued = queuedUpdatesRef.current;
     for (const event of queued) {
-      await channelRef.current.send({
-        type: 'broadcast',
-        event: 'cell:update',
-        payload: event,
-      });
+      await sendLibraryBroadcast(channelRef.current, 'cell:update', event);
     }
     queuedUpdatesRef.current = [];
     setQueuedUpdates([]);
