@@ -140,6 +140,7 @@ export function SidebarProjectsList({
         aria-label="Select project"
         aria-haspopup="menu"
         aria-expanded={isSelectorOpen}
+        data-testid="project-selector-trigger"
         onClick={() => {
           cancelPendingProjectSelection();
           setIsSelectorOpen((open) => !open);
@@ -246,6 +247,7 @@ export function SidebarProjectsList({
             type="button"
             role="menuitem"
             className={styles.projectSelectorCreate}
+            data-testid="project-selector-create"
             onClick={() => {
               cancelPendingProjectSelection();
               setIsSelectorOpen(false);

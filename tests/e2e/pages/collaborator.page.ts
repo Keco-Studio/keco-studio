@@ -5,9 +5,15 @@ export class CollaboratorPage {
 
   async goto(projectId: string): Promise<void> {
     await this.page.goto(`/${projectId}/admin/collaborators`);
-    await expect(this.page.getByRole('heading', { name: 'Collaborators' })).toBeVisible({
+    await expect(this.page.getByTestId('admin-collaborators-page')).toBeVisible({
       timeout: 30000,
     });
+    // Loading state has no heading; wait until the page finishes settling.
+    await expect(
+      this.page
+        .getByRole('heading', { name: 'Collaborators' })
+        .or(this.page.getByText('Only project admins can manage collaborators.'))
+    ).toBeVisible({ timeout: 30000 });
   }
 
   async openInvite(): Promise<void> {
@@ -49,7 +55,10 @@ export class CollaboratorPage {
 
   async remove(email: string): Promise<void> {
     const row = this.collaboratorRow(email);
-    await row.getByTestId('collaborator-remove-button').click();
+    await row.hover();
+    const removeButton = row.getByTestId('collaborator-remove-button');
+    await expect(removeButton).toBeVisible({ timeout: 5000 });
+    await removeButton.click();
     await this.page.getByRole('button', { name: 'Remove', exact: true }).click();
   }
 

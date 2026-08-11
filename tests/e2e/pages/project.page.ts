@@ -35,11 +35,15 @@ export class ProjectPage {
     this.projectsHeading = page.getByRole('heading', { name: /projects/i });
     // Button text/accessible name varies:
     // - Empty state (main): "Create first project"
-    // - Sidebar when empty: "Create Project" (span text)
-    // - Sidebar when has projects: icon button title="New Project", accessible name from img alt="Add project"
-    this.createProjectButton = page.getByRole('button', { 
-      name: /^(new project|create project|create first project|add project)$/i 
-    });
+    // - Sidebar project selector: "Create new"
+    // - Legacy: "New Project" / "Add project" / "Create Project"
+    this.createProjectButton = page
+      .getByTestId('project-selector-create')
+      .or(
+        page.getByRole('button', {
+          name: /^(new project|create project|create first project|add project|create new)$/i,
+        })
+      );
     this.projectList = page.locator('[role="list"], [data-testid="project-list"]');
 
     // Project form inputs - using getByLabel for accessibility
@@ -62,9 +66,28 @@ export class ProjectPage {
   async goto(): Promise<void> {
     await this.page.goto('/projects', { waitUntil: 'domcontentloaded', timeout: 60000 });
     await this.page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-    // Projects page has no "Projects" heading; wait for create button (may show "Loading projects..." first)
-    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 20000 });
+    // /projects may auto-redirect into the first project's Recent page when projects exist.
+    await expect(
+      this.page.getByTestId('project-selector-trigger').or(this.createProjectButton.first())
+    ).toBeVisible({ timeout: 20000 });
     await this.page.waitForTimeout(1000);
+  }
+
+  private async openCreateProjectModal(): Promise<void> {
+    const selectorTrigger = this.page.getByTestId('project-selector-trigger');
+    const selectorCreate = this.page.getByTestId('project-selector-create');
+
+    // Prefer the compact project selector (available after /projects auto-redirects to Recent).
+    if (await selectorTrigger.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await selectorTrigger.click();
+      await expect(selectorCreate).toBeVisible({ timeout: 10000 });
+      await selectorCreate.click();
+      return;
+    }
+
+    // Empty-state /projects page still exposes a dedicated create button.
+    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 25000 });
+    await this.createProjectButton.first().click();
   }
 
   /**
@@ -76,24 +99,29 @@ export class ProjectPage {
     // This prevents 401 errors in CI environments
     await waitForSupabaseAuthStorage(this.page, 15000);
 
-    // Always navigate to /projects page to ensure we're in the right place
-    // After login, user might be redirected to a project detail page, so we need to go to projects list
+    // Ensure sidebar/app shell is loaded. /projects redirects to /{id}/recent when projects exist.
     const currentUrl = this.page.url();
-    if (!currentUrl.includes('/projects')) {
+    if (!this.isProjectDetailPath(new URL(currentUrl).pathname) && !currentUrl.includes('/projects')) {
       await this.page.goto('/projects', { waitUntil: 'domcontentloaded', timeout: 60000 });
       await this.page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
     } else {
       await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     }
 
-    // Ensure we're on /projects (wait for URL in case of redirect)
-    await this.page.waitForURL(/\/projects/, { timeout: 15000 }).catch(() => {});
-    // Projects page: wait for create button (may show "Loading projects..." first; sidebar uses "Add project" when has projects)
-    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 25000 });
-    await this.page.waitForTimeout(1000);
+    // Wait until either we stay on /projects (empty) or land in a project shell with the selector.
+    await expect
+      .poll(
+        async () => {
+          const pathname = new URL(this.page.url()).pathname;
+          if (this.isProjectDetailPath(pathname)) return true;
+          if (pathname.includes('/projects')) return true;
+          return false;
+        },
+        { timeout: 20000, intervals: [300, 500, 1000] }
+      )
+      .toBe(true);
 
-    // Click the first visible create project button
-    await this.createProjectButton.first().click();
+    await this.openCreateProjectModal();
 
     // Wait for modal to appear
     await expect(this.projectNameInput).toBeVisible({ timeout: 5000 });
@@ -155,46 +183,26 @@ export class ProjectPage {
   }
 
   /**
-   * Open an existing project by name.
-   * Polls the sidebar until the project row appears (list refresh can lag in CI).
+   * Open an existing project by name via the sidebar project selector.
    */
   async openProject(projectName: string, timeoutMs?: number): Promise<void> {
     const timeout = timeoutMs ?? (process.env.CI === 'true' ? 45000 : 20000);
-    const sidebar = this.page.locator('aside');
-    const projectByTitle = sidebar.locator(`[title="${projectName}"]`).first();
 
-    // Ensure projects list is reachable when creation bounced back to /projects.
     if (!this.isProjectDetailPath(new URL(this.page.url()).pathname)) {
       await this.page.goto('/projects', { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     }
 
-    let foundInSidebar = false;
-    try {
-      await expect
-        .poll(
-          async () => {
-            if ((await projectByTitle.count()) === 0) return false;
-            await projectByTitle.scrollIntoViewIfNeeded().catch(() => {});
-            return projectByTitle.isVisible().catch(() => false);
-          },
-          { timeout, intervals: [500, 1000, 2000] }
-        )
-        .toBe(true);
-      foundInSidebar = true;
-    } catch {
-      foundInSidebar = false;
-    }
+    const trigger = this.page.getByTestId('project-selector-trigger');
+    await expect(trigger).toBeVisible({ timeout });
+    await trigger.click();
 
-    if (foundInSidebar) {
-      await projectByTitle.click();
-    } else {
-      const projectCard = this.page
-        .getByRole('button', { name: projectName })
-        .or(this.page.getByRole('link', { name: projectName }))
-        .or(this.page.getByText(projectName, { exact: true }).first());
-      await expect(projectCard).toBeVisible({ timeout: Math.min(timeout, 15000) });
-      await projectCard.click();
-    }
+    const option = this.page
+      .getByRole('menuitemradio')
+      .filter({ hasText: projectName })
+      .first();
+    await expect(option).toBeVisible({ timeout });
+    await option.click();
 
     await expect
       .poll(() => this.isProjectDetailPath(new URL(this.page.url()).pathname), {
@@ -211,20 +219,42 @@ export class ProjectPage {
    * @param projectName - Name of the project to verify
    */
   async expectProjectExists(projectName: string): Promise<void> {
-    // Use title attribute for reliable matching (handles truncated names)
-    const sidebar = this.page.locator('aside');
-    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
-    await expect(projectByTitle).toBeVisible();
+    const trigger = this.page.getByTestId('project-selector-trigger');
+    await expect(trigger).toBeVisible({ timeout: 15000 });
+    await trigger.click();
+    const option = this.page.getByRole('menuitemradio').filter({ hasText: projectName }).first();
+    await expect(option).toBeVisible({ timeout: 15000 });
+    // Close menu without changing selection.
+    await this.page.keyboard.press('Escape').catch(() => {});
   }
 
   private isProjectDetailPath(pathname: string): boolean {
-    return pathname !== '/projects' && /^\/[^\/]+$/.test(pathname);
+    if (!pathname || pathname === '/') return false;
+    const blockedPrefixes = [
+      '/projects',
+      '/script-system',
+      '/simulation-system',
+      '/accept-invitation',
+      '/mcp',
+      '/login',
+      '/signup',
+    ];
+    if (blockedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+      return false;
+    }
+    // /{projectId} and nested studio routes such as /{projectId}/recent
+    return /^\/[^/]+(\/.*)?$/.test(pathname);
   }
 
-  /** Right-click a project row in the sidebar to open the context menu. */
+  /** Right-click a project row in the sidebar selector to open the context menu. */
   async rightClickSidebarProject(projectName: string): Promise<void> {
-    const sidebar = this.page.locator('aside');
-    const projectItem = sidebar.locator(`[title="${projectName}"]`).first();
+    const trigger = this.page.getByTestId('project-selector-trigger');
+    await expect(trigger).toBeVisible({ timeout: 15000 });
+    await trigger.click();
+    const projectItem = this.page
+      .getByRole('menuitemradio')
+      .filter({ hasText: projectName })
+      .first();
     await expect(projectItem).toBeVisible({ timeout: 15000 });
     await projectItem.scrollIntoViewIfNeeded();
     await this.page.waitForTimeout(300);
@@ -240,8 +270,8 @@ export class ProjectPage {
     const deadline = Date.now() + timeout;
     const remainingMs = () => Math.max(1000, deadline - Date.now());
 
-    // Project creation should navigate to /{projectId}. In CI, client routing can lag or bounce
-    // back to /projects while auth/collaborator rows settle.
+    // Project creation should navigate to /{projectId}/recent (or /{projectId}).
+    // In CI, client routing can lag or bounce back to /projects while auth/collaborator rows settle.
     try {
       await this.page.waitForURL(
         (url) => this.isProjectDetailPath(url.pathname),
@@ -282,9 +312,7 @@ export class ProjectPage {
    * @param projectName - Name of the project
    */
   getProjectByName(projectName: string): Locator {
-    // Use title attribute for reliable matching (handles truncated names)
-    const sidebar = this.page.locator('aside');
-    return sidebar.locator(`[title="${projectName}"]`).first();
+    return this.page.getByRole('menuitemradio').filter({ hasText: projectName }).first();
   }
 
   /**
@@ -306,17 +334,22 @@ export class ProjectPage {
     projectName: string,
     options?: { deleteAllMatching?: boolean }
   ): Promise<void> {
-    const sidebar = this.page.locator('aside');
-    await expect(sidebar).toBeVisible({ timeout: 15000 });
+    const trigger = this.page.getByTestId('project-selector-trigger');
+    await expect(trigger).toBeVisible({ timeout: 15000 });
     await this.page.waitForTimeout(1000);
 
     const deleteAllMatching = options?.deleteAllMatching ?? false;
-    const getVisibleProjectItems = () => sidebar.locator(`[title="${projectName}"]:visible`);
+    const getVisibleProjectItems = () =>
+      this.page.getByRole('menuitemradio').filter({ hasText: projectName });
 
     while (true) {
+      await trigger.click();
       const projectItem = getVisibleProjectItems().first();
       const visibleCount = await getVisibleProjectItems().count();
-      if (visibleCount === 0) break;
+      if (visibleCount === 0) {
+        await this.page.keyboard.press('Escape').catch(() => {});
+        break;
+      }
 
       await expect(projectItem).toBeVisible({ timeout: 15000 });
       await projectItem.click({ button: 'right' });
@@ -345,7 +378,11 @@ export class ProjectPage {
       }
 
       await expect
-        .poll(async () => await getVisibleProjectItems().count(), { timeout: 30000 })
+        .poll(async () => {
+          const open = await this.page.getByTestId('project-selector-create').isVisible().catch(() => false);
+          if (!open) await trigger.click().catch(() => {});
+          return getVisibleProjectItems().count();
+        }, { timeout: 30000 })
         .toBeLessThan(visibleCount);
 
       await this.page.waitForLoadState('networkidle').catch(() => {});
@@ -360,20 +397,28 @@ export class ProjectPage {
    * @param projectName - Name of the project to verify deletion
    */
   async expectProjectDeleted(projectName: string): Promise<void> {
-    const sidebar = this.page.locator('aside');
-    const getVisibleProjectItems = () => sidebar.locator(`[title="${projectName}"]:visible`);
-
+    const trigger = this.page.getByTestId('project-selector-trigger');
     await expect
-      .poll(async () => await getVisibleProjectItems().count(), { timeout: 30000 })
+      .poll(async () => {
+        if (!(await trigger.isVisible().catch(() => false))) return 0;
+        await trigger.click().catch(() => {});
+        const count = await this.page
+          .getByRole('menuitemradio')
+          .filter({ hasText: projectName })
+          .count();
+        await this.page.keyboard.press('Escape').catch(() => {});
+        return count;
+      }, { timeout: 30000 })
       .toBe(0);
   }
 
   /**
-   * Wait for projects page to be fully loaded
+   * Wait for projects page / project shell to be fully loaded
    */
   async waitForPageLoad(): Promise<void> {
-    await this.page.waitForURL(/\/projects/, { timeout: 10000 });
-    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 15000 });
+    await expect(
+      this.page.getByTestId('project-selector-trigger').or(this.createProjectButton.first())
+    ).toBeVisible({ timeout: 15000 });
     await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
   }
 }
