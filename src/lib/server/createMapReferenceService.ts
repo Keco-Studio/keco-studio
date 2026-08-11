@@ -8,6 +8,8 @@ import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 const MAX_REFERENCE_BYTES = 5 * 1024 * 1024;
 const MAX_REFERENCE_DIMENSION = 2048;
 const REFERENCE_LIST_LIMIT = 100;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 export type MapReferenceRecord = {
   id: string;
@@ -61,6 +63,13 @@ function referenceRecord(row: MapReferenceImageRow, previewUrl: string | null): 
     byteSize: row.byte_size,
     previewUrl,
   };
+}
+
+function hasExpectedReferencePath(row: MapReferenceImageRow, projectId: string): boolean {
+  return row.project_id === projectId &&
+    UUID_PATTERN.test(row.id) &&
+    SHA256_PATTERN.test(row.sha256) &&
+    row.storage_path === `references/${projectId}/${row.id}/${row.sha256}.png`;
 }
 
 function referenceName(file: File): string {
@@ -154,7 +163,12 @@ export async function listCreateMapReferences(projectId: string): Promise<MapRef
     .limit(REFERENCE_LIST_LIMIT);
   if (error) throw new CreateMapReferenceError('reference_list_failed', 502);
 
-  return Promise.all((data as MapReferenceImageRow[] ?? []).map(async (row) => {
+  const rows = (data as MapReferenceImageRow[] ?? []);
+  if (rows.some((row) => !hasExpectedReferencePath(row, projectId))) {
+    throw new CreateMapReferenceError('reference_preview_failed', 502);
+  }
+
+  return Promise.all(rows.map(async (row) => {
     const { data: signed, error: signedError } = await admin.storage
       .from('map-assets')
       .createSignedUrl(row.storage_path, 300);
