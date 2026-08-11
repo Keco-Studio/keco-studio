@@ -16,6 +16,22 @@ const plan = { schemaVersion: 1, name: 'Live map plan' };
 const scene = { schemaVersion: 1, layers: [] };
 const planV2 = { schemaVersion: 2, name: 'Description-only V2 map' };
 const sceneV2 = { schemaVersion: 2, background: null, layers: [], obstacleEntities: [] };
+const planV3 = {
+  schemaVersion: 3,
+  name: 'Direct-image V3 map',
+  summary: 'A compact village map generated as one image.',
+  map: { width: 512, height: 512 },
+  description: 'Top-down orthographic pixel-art village with clear roads, fields, trees, and a central square.',
+  references: [],
+  styleReference: null,
+  generation: { provider: 'pixellab', operation: 'create_image_pro', noBackground: false, seed: null },
+};
+const sceneV3 = {
+  schemaVersion: 3,
+  size: { width: 512, height: 512 },
+  mapImage: null,
+  canvas: { zoom: 1, panX: 24, panY: 24 },
+};
 
 type CreatedMap = { map_id: string; draft_revision_id: string; revision_number: number; save_version: number };
 
@@ -142,6 +158,69 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
       p_scene: sceneV2,
     });
     expect(viewerCreate.error?.code).toBe('42501');
+  });
+
+  it('allows V3 owner/editor mutations, rejects non-writers, and rejects V2 payloads', async () => {
+    const createV3 = (client: SupabaseClient, name: string, nextPlan: object = planV3, nextScene: object = sceneV3) => client.rpc('create_map_project_v3', {
+      p_project_id: fx.projectId,
+      p_name: name,
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: nextPlan,
+      p_scene: nextScene,
+    });
+
+    const ownerCreate = await createV3(fx.owner.client, 'Owner V3 map');
+    expect(ownerCreate.error).toBeNull();
+    expect((await createV3(fx.editor.client, 'Editor V3 map')).error).toBeNull();
+
+    for (const client of [fx.viewer.client, fx.outsider.client, pending.client, anonClient()]) {
+      expect((await createV3(client, 'Denied V3 map')).error?.code).toBe('42501');
+    }
+
+    expect((await createV3(fx.owner.client, 'Invalid V3 map', planV2, sceneV2)).error?.code).toBe('22023');
+
+    const ownerMap = (ownerCreate.data as CreatedMap[])[0];
+    const invalidSave = await fx.owner.client.rpc('save_map_draft_v3', {
+      p_map_id: ownerMap.map_id,
+      p_revision_id: ownerMap.draft_revision_id,
+      p_expected_save_version: 0,
+      p_plan: planV2,
+      p_scene: sceneV2,
+    });
+    expect(invalidSave.error?.code).toBe('22023');
+  });
+
+  it('exposes V3 reference registry rows only to accepted Project members', async () => {
+    const reference = await fx.svc.from('map_reference_images').insert({
+      project_id: fx.projectId,
+      name: 'Village layout',
+      storage_path: `${fx.projectId}/references/${fx.suffix}.png`,
+      sha256: 'd'.repeat(64),
+      width: 512,
+      height: 512,
+      content_type: 'image/png',
+      byte_size: 1024,
+      created_by: fx.owner.id,
+    }).select('id').single();
+    expect(reference.error).toBeNull();
+    const referenceId = reference.data!.id as string;
+
+    for (const client of [fx.owner.client, fx.admin.client, fx.editor.client, fx.viewer.client]) {
+      const visible = await client.from('map_reference_images').select('id').eq('id', referenceId);
+      expect(visible.error).toBeNull();
+      expect(visible.data).toEqual([{ id: referenceId }]);
+    }
+    for (const client of [fx.outsider.client, pending.client]) {
+      const hidden = await client.from('map_reference_images').select('id').eq('id', referenceId);
+      expect(hidden.error).toBeNull();
+      expect(hidden.data).toEqual([]);
+    }
+
+    const anonymous = await anonClient().from('map_reference_images').select('id').eq('id', referenceId);
+    expect(anonymous.error).not.toBeNull();
   });
 
   it('exposes saved-map list and current Revision reads only to Project members', async () => {
