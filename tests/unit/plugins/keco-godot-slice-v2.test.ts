@@ -166,6 +166,12 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(orchestration).toMatch(/specPath[\s\S]*planPath[\s\S]*statusPath/i);
     expect(orchestration).toMatch(/kecoFolderId[\s\S]*kecoDocumentIds[\s\S]*localMirrorRoot/i);
     expect(orchestration).toMatch(/evolution[\s\S]*reuse_exact[\s\S]*create_new/i);
+    expect(orchestration).toMatch(/SlicePlan[\s\S]{0,200}approved static scope/i);
+    expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
+    expect(orchestration).toMatch(/interaction:[\s\S]{0,480}blockedAt[\s\S]{0,240}resumeFrom/i);
+    expect(orchestration).toMatch(/legacy[\s\S]{0,240}without[\s\S]{0,160}interaction/i);
+    expect(sliceDocuments).toMatch(/plan\.md[\s\S]{0,200}does not own task progress/i);
+    expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i);
   });
 
   it('ships the multi-Slice roadmap and recovery contract', () => {
@@ -339,7 +345,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
       writeFileSync(unsafeRun, JSON.stringify({
         version: 2,
         runId: 'run',
-        mode: 'manual-v2',
+        mode: 'implicit-v2',
         kecoProjectId: 'project',
         godotProjectPath: '/game',
         sliceId: 'slice',
@@ -351,6 +357,208 @@ describe('Keco Godot Slice V2 skill contract', () => {
       const incompletePlan = path.join(tempRoot, 'plan.json');
       writeFileSync(incompletePlan, JSON.stringify({ tasks: [{ id: 'task-01', files: [], dependsOn: [], servesEvaluations: [] }] }));
       expect(() => execFileSync('python3', [path.join(skillRoot, 'scripts', 'validate_plan.py'), incompletePlan])).toThrow();
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects runtime and evidence state in a reviewed plan', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-plan-boundary-'));
+    try {
+      const runtimePlan = path.join(tempRoot, 'runtime-plan.json');
+      writeFileSync(runtimePlan, JSON.stringify({
+        runId: 'run-01',
+        writeToken: 'must-not-live-in-plan',
+        tasks: [{
+          id: 'task-01',
+          files: ['scripts/game.gd'],
+          dependsOn: [],
+          servesEvaluations: ['eval-01'],
+          red: { command: 'pytest tests/red.py', expected: 'fails' },
+          green: { command: 'pytest tests/green.py', expected: 'passes' },
+          review: { spec: true, quality: true },
+          status: 'in_progress',
+          commandOutput: 'runtime output',
+        }],
+      }));
+
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_plan.py'), runtimePlan],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/plan contains runtime or evidence state/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('validates resumable checkpoints and rejects unsafe variants', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-checkpoint-'));
+    const fixture = JSON.parse(
+      readFileSync(
+        path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-interaction-contract.json'),
+        'utf8',
+      ),
+    ) as {
+      validCheckpoint: Record<string, unknown>;
+      invalidCheckpoints: Array<{
+        id: string;
+        remove?: string;
+        overrides?: Record<string, unknown>;
+        error: string;
+      }>;
+    };
+    const validator = path.join(skillRoot, 'scripts', 'validate_interaction_checkpoint.py');
+    try {
+      const validPath = path.join(tempRoot, 'checkpoint.json');
+      writeFileSync(validPath, JSON.stringify(fixture.validCheckpoint));
+      const valid = spawnSync('python3', [validator, validPath], { encoding: 'utf8' });
+      expect(valid.status).toBe(0);
+      expect(valid.stdout).toMatch(/checkpoint valid/i);
+
+      for (const invalid of fixture.invalidCheckpoints) {
+        const value = { ...fixture.validCheckpoint, ...invalid.overrides };
+        if (invalid.remove) delete value[invalid.remove];
+        const invalidPath = path.join(tempRoot, `${invalid.id}.json`);
+        writeFileSync(invalidPath, JSON.stringify(value));
+        const result = spawnSync('python3', [validator, invalidPath], { encoding: 'utf8' });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(new RegExp(invalid.error, 'i'));
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('binds an optional interaction checkpoint to the active run context', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-run-checkpoint-'));
+    const validator = path.join(skillRoot, 'scripts', 'validate_run_context.py');
+    const checkpointFixture = JSON.parse(
+      readFileSync(
+        path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-interaction-contract.json'),
+        'utf8',
+      ),
+    ).validCheckpoint as Record<string, unknown>;
+    const baseRun = {
+      version: 2,
+      runId: 'run-01',
+      mode: 'implicit-v2',
+      kecoProjectId: 'project',
+      godotProjectPath: '/game',
+      sliceId: 'slice',
+      allowedFiles: ['scripts/game.gd'],
+      iteration: 0,
+    };
+    try {
+      const validPath = path.join(tempRoot, 'valid.json');
+      writeFileSync(validPath, JSON.stringify({ ...baseRun, interaction: checkpointFixture }));
+      expect(spawnSync('python3', [validator, validPath], { encoding: 'utf8' }).status).toBe(0);
+
+      const invalidPath = path.join(tempRoot, 'invalid.json');
+      writeFileSync(invalidPath, JSON.stringify({
+        ...baseRun,
+        interaction: {
+          ...checkpointFixture,
+          checkpoint: {
+            ...(checkpointFixture.checkpoint as Record<string, unknown>),
+            runId: 'another-run',
+          },
+        },
+      }));
+      const invalid = spawnSync('python3', [validator, invalidPath], { encoding: 'utf8' });
+      expect(invalid.status).toBe(1);
+      expect(invalid.stderr).toMatch(/runId/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['implicit-v2', 'explicit-v2'])('accepts the documented Codex run mode %s', (mode) => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-mode-'));
+    try {
+      const runPath = path.join(tempRoot, 'run.json');
+      writeFileSync(runPath, JSON.stringify({
+        version: 2,
+        runId: 'run-01',
+        mode,
+        kecoProjectId: 'project',
+        godotProjectPath: '/game',
+        sliceId: 'slice',
+        allowedFiles: ['scripts/game.gd'],
+        iteration: 0,
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_run_context.py'), runPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects the undocumented manual-v2 Codex run mode', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-mode-invalid-'));
+    try {
+      const runPath = path.join(tempRoot, 'run.json');
+      writeFileSync(runPath, JSON.stringify({
+        version: 2,
+        runId: 'run-01',
+        mode: 'manual-v2',
+        kecoProjectId: 'project',
+        godotProjectPath: '/game',
+        sliceId: 'slice',
+        allowedFiles: ['scripts/game.gd'],
+        iteration: 0,
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_run_context.py'), runPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/mode must be one of/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts documented required and optional Codex plan reviews', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-review-'));
+    try {
+      const planPath = path.join(tempRoot, 'plan.json');
+      writeFileSync(planPath, JSON.stringify({
+        tasks: [
+          {
+            id: 'task-01',
+            files: ['scripts/game.gd'],
+            dependsOn: [],
+            servesEvaluations: ['eval-01'],
+            red: { command: 'pytest tests/red.py', expected: 'fails' },
+            green: { command: 'pytest tests/green.py', expected: 'passes' },
+            review: { spec: 'required', quality: 'required' },
+          },
+          {
+            id: 'task-02',
+            files: ['scenes/game.tscn'],
+            dependsOn: ['task-01'],
+            servesEvaluations: ['eval-02'],
+            red: { command: 'pytest tests/scene_red.py', expected: 'fails' },
+            green: { command: 'pytest tests/scene_green.py', expected: 'passes' },
+            review: { spec: 'required', quality: 'optional' },
+          },
+        ],
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_plan.py'), planPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/"ok": true/);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

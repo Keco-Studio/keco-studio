@@ -62,8 +62,13 @@ test.describe('Edit Info Feature Tests', () => {
 
     // Right-click project and open Project Info modal
     await test.step('Right-click project and open Project Info modal', async () => {
-      const sidebar = page.locator('aside');
-      const projectItem = sidebar.locator(`[title="${testProject.name}"]`);
+      const trigger = page.getByTestId('project-selector-trigger');
+      await expect(trigger).toBeVisible({ timeout: 15000 });
+      await trigger.click();
+      const projectItem = page
+        .getByRole('menuitemradio')
+        .filter({ has: page.locator(`[title="${testProject.name}"]`) })
+        .first();
 
       await expect(projectItem).toBeVisible({ timeout: 15000 });
 
@@ -127,10 +132,13 @@ test.describe('Edit Info Feature Tests', () => {
       // Wait for modal to close
       await expect(projectNameInput).not.toBeVisible({ timeout: 10000 });
 
-      // Verify project name is updated (in sidebar)
-      const sidebar = page.locator('aside');
-      const updatedProjectItem = sidebar.locator(`[title="${newName}"]`);
+      // Verify project name is updated (in project selector)
+      const trigger = page.getByTestId('project-selector-trigger');
+      await expect(trigger).toContainText(newName, { timeout: 10000 });
+      await trigger.click();
+      const updatedProjectItem = page.locator(`[title="${newName}"]`);
       await expect(updatedProjectItem).toBeVisible({ timeout: 10000 });
+      await page.keyboard.press('Escape').catch(() => {});
     });
   });
 
@@ -261,8 +269,13 @@ test.describe('Edit Info Feature Tests', () => {
 
     // Test Project Info modal loading time
     await test.step('Test Project Info modal loading time', async () => {
-      const sidebar = page.locator('aside');
-      const projectItem = sidebar.locator(`[title="${testProject.name}"]`);
+      const trigger = page.getByTestId('project-selector-trigger');
+      await expect(trigger).toBeVisible({ timeout: 15000 });
+      await trigger.click();
+      const projectItem = page
+        .getByRole('menuitemradio')
+        .filter({ has: page.locator(`[title="${testProject.name}"]`) })
+        .first();
       await expect(projectItem).toBeVisible({ timeout: 15000 });
 
       await projectItem.click({ button: 'right' });

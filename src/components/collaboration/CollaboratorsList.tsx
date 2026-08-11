@@ -223,9 +223,9 @@ export default function CollaboratorsList({
       {/* Column Headers */}
       <div className={styles.tableHeader}>
         <div className={styles.headerName}>MEMBER NAME</div>
-        <div className={styles.headerEmail}>EMAIL</div>
-        <div className={styles.headerRoleType}>ROLE TYPE</div>
-        {isAdmin && <div className={styles.headerActions}></div>}
+        <div className={styles.headerEmail}></div>
+        <div className={styles.headerRoleType}>ADMIN</div>
+        <div className={styles.headerActions}></div>
       </div>
       
       {/* Collaborators list */}
@@ -322,27 +322,23 @@ export default function CollaboratorsList({
               </div>
               
               {/* Delete button for admin (at the end) */}
-              {canManage ? (
-                !isSelf ? (
-                  <div className={styles.itemActions}>
-                    <button
-                      className={styles.deleteButton}
-                      onClick={() => handleDeleteClick(collab.id)}
-                      disabled={isLoading}
-                      title="Remove collaborator"
-                      aria-label={`Remove ${displayName}`}
-                      data-testid="collaborator-remove-button"
-                    >
-                      <Image src={collaborationDeleteIcon}
-                        alt="Delete"
-                        width={20} height={20} className="icon-20"
-                      />
-                    </button>
-                  </div>
-                ) : (
-                  <div className={styles.itemActions}></div>
-                )
-              ) : null}
+              <div className={styles.itemActions}>
+                {canManage && !isSelf ? (
+                  <button
+                    className={styles.deleteButton}
+                    onClick={() => handleDeleteClick(collab.id)}
+                    disabled={isLoading}
+                    title="Remove collaborator"
+                    aria-label={`Remove ${displayName}`}
+                    data-testid="collaborator-remove-button"
+                  >
+                    <Image src={collaborationDeleteIcon}
+                      alt="Delete"
+                      width={20} height={20} className="icon-20"
+                    />
+                  </button>
+                ) : null}
+              </div>
             </div>
           );
         })}

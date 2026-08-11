@@ -12,6 +12,9 @@ import styles from './LibraryToolbar.module.css';
 type LibraryToolbarProps = {
   onCreateFolder?: () => void;
   onCreateLibrary?: () => void;
+  onCreateDocument?: () => void;
+  onImportTable?: () => void;
+  onImportDocument?: () => void;
   onSearchChange?: (value: string) => void;
   viewMode?: 'list' | 'grid';
   onViewModeChange?: (mode: 'list' | 'grid') => void;
@@ -19,8 +22,10 @@ type LibraryToolbarProps = {
    * Mode of the toolbar:
    * - 'project': Show "Create" button with menu for both folder and library
    * - 'folder': Show "Create Library" button that directly opens library modal
+   * - 'recent': Show create + view toggles
+   * - 'admin': Show create only
    */
-  mode?: 'project' | 'folder';
+  mode?: 'project' | 'folder' | 'recent' | 'admin';
   /**
    * Title to display on the left side of the toolbar
    * - For project page: project name
@@ -41,6 +46,9 @@ type LibraryToolbarProps = {
 export function LibraryToolbar({
   onCreateFolder,
   onCreateLibrary,
+  onCreateDocument,
+  onImportTable,
+  onImportDocument,
   onSearchChange,
   viewMode = 'grid',
   onViewModeChange,
@@ -81,27 +89,24 @@ export function LibraryToolbar({
         onCreateLibrary();
       }
     } else {
-      // In project mode, show menu to choose between folder and library
+      // In project/recent/admin modes, show the same menu as Libraries "+"
       setShowAddMenu(!showAddMenu);
     }
   };
 
-  const handleCreateFolder = () => {
-    setShowAddMenu(false);
-    if (onCreateFolder) {
-      onCreateFolder();
-    }
+  const wrapMenuAction = (action?: () => void) => {
+    if (!action) return undefined;
+    return () => {
+      setShowAddMenu(false);
+      action();
+    };
   };
 
-  const handleCreateLibrary = () => {
-    setShowAddMenu(false);
-    if (onCreateLibrary) {
-      onCreateLibrary();
-    }
-  };
-
-  // Only admin can create folders and libraries
-  const canCreate = userRole === 'admin';
+  // Match Libraries "+" visibility: admin/editor can open the menu
+  const canCreate = userRole === 'admin' || userRole === 'editor';
+  const showShare = mode === 'project' || mode === 'folder';
+  const showViewToggle = mode !== 'admin';
+  const showCreateMenu = mode === 'project' || mode === 'recent' || mode === 'admin';
 
   return (
     <div className={styles.toolbar}>
@@ -128,47 +133,62 @@ export function LibraryToolbar({
       )}
       
       {/* Share Button */}
-      <div className={styles.shareSection}>
-        <button
-          className={styles.shareButton}
-          onClick={() => setShowInviteModal(true)}
-        >
-          Share
-        </button>
-      </div>
+      {showShare ? (
+        <div className={styles.shareSection}>
+          <button
+            className={styles.shareButton}
+            onClick={() => setShowInviteModal(true)}
+          >
+            Share
+          </button>
+        </div>
+      ) : null}
 
-      <div className={styles.viewToggle}>
-        <button
-          className={`${styles.viewButton} ${viewMode === 'list' ? styles.viewButtonActive : ''}`}
-          onClick={handleListViewClick}
-          aria-label="List view"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.viewIcon}>
-            <path d="M7.5 5.00569H21M3 5.01734L3.01125 5.00439M3 12.0109L3.01125 11.9979M3 19.0044L3.01125 18.9915M7.5 11.9992H21M7.5 18.9927H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        <button
-          className={`${styles.viewButton} ${viewMode === 'grid' ? styles.viewButtonActive : ''}`}
-          onClick={handleGridViewClick}
-          aria-label="Grid view"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.viewIcon}>
-            <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M21 14H14V21H21V14Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      </div>
+      {showViewToggle ? (
+        <div className={styles.viewToggle}>
+          <button
+            className={`${styles.viewButton} ${viewMode === 'list' ? styles.viewButtonActive : ''}`}
+            onClick={handleListViewClick}
+            aria-label="List view"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.viewIcon}>
+              <path d="M7.5 5.00569H21M3 5.01734L3.01125 5.00439M3 12.0109L3.01125 11.9979M3 19.0044L3.01125 18.9915M7.5 11.9992H21M7.5 18.9927H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            className={`${styles.viewButton} ${viewMode === 'grid' ? styles.viewButtonActive : ''}`}
+            onClick={handleGridViewClick}
+            aria-label="Grid view"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.viewIcon}>
+              <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M21 14H14V21H21V14Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      ) : null}
 
-      {/* Only show menu in project mode */}
-      {mode === 'project' && (
+      {/* Same menu content as Libraries "+" */}
+      {showCreateMenu && (
         <AddLibraryMenu
           open={showAddMenu}
           anchorElement={createButtonRef}
           onClose={() => setShowAddMenu(false)}
-          onCreateFolder={handleCreateFolder}
-          onCreateTable={handleCreateLibrary}
+          onCreateFolder={userRole === 'admin' ? wrapMenuAction(onCreateFolder) : undefined}
+          onCreateTable={userRole === 'admin' ? wrapMenuAction(onCreateLibrary) : undefined}
+          onCreateDocument={
+            userRole === 'admin' || userRole === 'editor'
+              ? wrapMenuAction(onCreateDocument)
+              : undefined
+          }
+          onImportTable={userRole === 'admin' ? wrapMenuAction(onImportTable) : undefined}
+          onImportDocument={
+            userRole === 'admin' || userRole === 'editor'
+              ? wrapMenuAction(onImportDocument)
+              : undefined
+          }
         />
       )}
 
@@ -190,4 +210,3 @@ export function LibraryToolbar({
     </div>
   );
 }
-

@@ -209,8 +209,7 @@ export function ChatInput({
       setParsing(true);
       try {
         const { text, images } = await parseDocument(file);
-        const documentText = text.trim();
-        if (!documentText) {
+        if (!text.trim()) {
           setFileError('No text could be extracted from this file.');
           return;
         }
@@ -225,7 +224,7 @@ export function ChatInput({
         }
         const message = buildDesignMessage({
           fileName: file.name,
-          documentText,
+          documentText: text,
           intent: 'analyze',
           additionalInstructions: trimmed || undefined,
         });

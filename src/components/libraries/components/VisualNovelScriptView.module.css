@@ -10,6 +10,17 @@
   outline: none;
 }
 
+.branchName {
+  margin: 0 0 1rem;
+  color: #2c2c2b;
+  opacity: 0.6;
+  font-family: Inter, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 100%;
+  letter-spacing: 0;
+}
+
 .container:focus-visible {
   box-shadow: inset 0 0 0 2px #0B99FF;
 }

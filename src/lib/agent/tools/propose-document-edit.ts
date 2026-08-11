@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { escapeLiteralMdxBraces } from '@/lib/document-parser';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
 import {
@@ -9,6 +10,7 @@ import {
   type DocumentEditOperation,
 } from '../document-edit-operations';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
+import { resolveVerbatimDocumentSource } from '../source-resolver';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const MAX_DOCUMENT_CHARS = 500_000;
@@ -43,6 +45,11 @@ const OperationSchema = z.discriminatedUnion('type', [
     content: z.string().min(1).max(MAX_DOCUMENT_CHARS),
   }).strict(),
   z.object({
+    type: z.literal('append_user_source'),
+    sourceStart: z.number().int().nonnegative().optional(),
+    sourceEnd: z.number().int().positive().optional(),
+  }).strict(),
+  z.object({
     type: z.literal('delete_text'),
     target: z.string().min(1).max(MAX_DOCUMENT_CHARS),
   }).strict(),
@@ -67,6 +74,17 @@ const ParamsSchema = z
         path: ['folderName'],
         message: 'folderName requires documentName or documentId.',
       });
+    }
+    if (params.operation.type === 'append_user_source') {
+      const hasStart = params.operation.sourceStart !== undefined;
+      const hasEnd = params.operation.sourceEnd !== undefined;
+      if (hasStart !== hasEnd) {
+        refinement.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['operation'],
+          message: 'sourceStart and sourceEnd must be provided together.',
+        });
+      }
     }
   });
 
@@ -93,6 +111,8 @@ const PreviewSchema = z.object({
   baseUpdateIds: z.array(z.string().uuid()).max(100_000),
   proposedHash: z.string().length(64),
   proposedMarkdown: z.string().max(MAX_DOCUMENT_CHARS),
+  sourceHash: z.string().length(64).optional(),
+  sourceLength: z.number().int().positive().optional(),
   approvalSignature: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
@@ -115,6 +135,8 @@ function canonicalOperation(operation: ParsedParams['operation']): readonly unkn
       return [operation.type, operation.anchor, operation.content];
     case 'append':
       return [operation.type, operation.content];
+    case 'append_user_source':
+      return [operation.type, operation.sourceStart ?? null, operation.sourceEnd ?? null];
     case 'delete_text':
       return [operation.type, operation.target];
   }
@@ -145,6 +167,8 @@ function canonicalApprovalPayload(
     preview.baseHash,
     preview.baseUpdateIds,
     preview.proposedHash,
+    preview.sourceHash ?? null,
+    preview.sourceLength ?? null,
   ]);
 }
 
@@ -173,6 +197,24 @@ async function hasValidApprovalSignature(
 
 function proposalMatchesOperation(params: ParsedParams, preview: PreviewData): boolean {
   try {
+    if (params.operation.type === 'append_user_source') {
+      const sourceLength = preview.sourceLength;
+      if (
+        preview.operationType !== 'append' ||
+        !preview.sourceHash ||
+        !sourceLength ||
+        preview.proposedMarkdown.length < sourceLength
+      ) {
+        return false;
+      }
+      const source = preview.proposedMarkdown.slice(-sourceLength);
+      return (
+        contentHash(source) === preview.sourceHash &&
+        appendVerbatim(preview.baseMarkdown, source) === preview.proposedMarkdown &&
+        summarizeDocumentEditOperation({ type: 'append', content: source }) ===
+          preview.operationSummary
+      );
+    }
     const operation = params.operation as DocumentEditOperation;
     const proposedMarkdown = applyDocumentEditOperation(preview.baseMarkdown, operation);
     return (
@@ -184,6 +226,14 @@ function proposalMatchesOperation(params: ParsedParams, preview: PreviewData): b
   } catch {
     return false;
   }
+}
+
+function appendVerbatim(markdown: string, content: string): string {
+  if (markdown.length === 0) return content;
+  const trailingNewlines = markdown.length - markdown.replace(/\n+$/, '').length;
+  const leadingNewlines = content.length - content.replace(/^\n+/, '').length;
+  const missingNewlines = Math.max(0, 2 - trailingNewlines - leadingNewlines);
+  return `${markdown}${'\n'.repeat(missingNewlines)}${content}`;
 }
 
 function sameToken(left: DocumentStateToken, right: DocumentStateToken): boolean {
@@ -229,8 +279,23 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       return { success: false, error: 'Document not found in this project.' };
     }
 
-    const operation = parsed.data.operation as DocumentEditOperation;
-    const proposedMarkdown = applyDocumentEditOperation(state.markdown, operation);
+    const requestedOperation = parsed.data.operation;
+    let operation: DocumentEditOperation;
+    let proposedMarkdown: string;
+    let sourceMetadata: Pick<UnsignedPreviewData, 'sourceHash' | 'sourceLength'> = {};
+    if (requestedOperation.type === 'append_user_source') {
+      const source = resolveVerbatimDocumentSource(requestedOperation, ctx);
+      const encodedSource = escapeLiteralMdxBraces(source.content);
+      operation = { type: 'append', content: encodedSource };
+      proposedMarkdown = appendVerbatim(state.markdown, encodedSource);
+      sourceMetadata = {
+        sourceHash: contentHash(encodedSource),
+        sourceLength: encodedSource.length,
+      };
+    } else {
+      operation = requestedOperation as DocumentEditOperation;
+      proposedMarkdown = applyDocumentEditOperation(state.markdown, operation);
+    }
     if (proposedMarkdown.length > MAX_DOCUMENT_CHARS) {
       return {
         success: false,
@@ -260,6 +325,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       baseUpdateIds: state.updateTail.map((update) => update.id),
       proposedHash: contentHash(proposedMarkdown),
       proposedMarkdown,
+      ...sourceMetadata,
     };
     return {
       success: true,
@@ -404,6 +470,28 @@ const operationVariants = [
   {
     type: 'object',
     properties: {
+      type: { type: 'string', enum: ['append_user_source'] },
+      sourceStart: {
+        type: 'integer',
+        minimum: 0,
+        description: 'Optional inclusive offset in the exact persisted user message.',
+      },
+      sourceEnd: {
+        type: 'integer',
+        minimum: 1,
+        description: 'Optional exclusive offset; provide together with sourceStart.',
+      },
+    },
+    required: ['type'],
+    additionalProperties: false,
+    oneOf: [
+      { not: { anyOf: [{ required: ['sourceStart'] }, { required: ['sourceEnd'] }] } },
+      { required: ['sourceStart', 'sourceEnd'] },
+    ],
+  },
+  {
+    type: 'object',
+    properties: {
       type: { type: 'string', enum: ['replace_text'] },
       target: { type: 'string', minLength: 1, maxLength: MAX_DOCUMENT_CHARS },
       replacement: { type: 'string', maxLength: MAX_DOCUMENT_CHARS },
@@ -458,7 +546,7 @@ const operationVariants = [
 export const proposeDocumentEdit: AgentTool = {
   name: 'propose_document_edit',
   description:
-    'Preview a validated Markdown/MDX edit against the latest document state. Prefer replace_text / insert_* / append / delete_text for ordinary edits — the server applies them to the full latest document, so you do not need the entire body in tool arguments. Use replace_text with replaceAll: true to change every occurrence. Use replace_all only when providing the complete intended document body; never pass just the edited fragment. Destructive shrinks of long documents to a tiny body require allowDestructive: true. Do NOT use this tool to insert Table/Document resource references — call insert_resource_reference instead (toolbar Insert reference chips). Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate. Call read_document before editing document content. Exact targets and anchors must occur exactly once unless replaceAll is true. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
+    'Preview a validated Markdown/MDX edit against the latest document state. For verbatim import of the current user message or attached document, use append_user_source so the server copies the exact persisted source; never copy that source body into append.content. Prefer replace_text / insert_* / append / delete_text for ordinary edits — the server applies them to the full latest document, so you do not need the entire body in tool arguments. Use replace_text with replaceAll: true to change every occurrence. Use replace_all only when providing the complete intended document body; never pass just the edited fragment. Destructive shrinks of long documents to a tiny body require allowDestructive: true. Do NOT use this tool to insert Table/Document resource references — call insert_resource_reference instead (toolbar Insert reference chips). Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate. Call read_document before editing document content. Exact targets and anchors must occur exactly once unless replaceAll is true. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'mode',

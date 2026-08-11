@@ -30,7 +30,9 @@ type NavigationContextType = {
   currentLibraryId: string | null;
   currentLibraryName: string | null;
   currentAssetId: string | null;
+  currentAssetName: string | null;
   currentDocumentId: string | null;
+  currentDocumentName: string | null;
   currentFolderId: string | null;
   currentFolderName: string | null;
   isPredefinePage: boolean;
@@ -577,6 +579,22 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    if (currentProjectId && pathname?.startsWith(`/${currentProjectId}/admin`)) {
+      nextBreadcrumbs.push({
+        label: 'Settings',
+        path: `/${currentProjectId}/admin`,
+      });
+      return nextBreadcrumbs;
+    }
+
+    if (currentProjectId && pathname?.startsWith(`/${currentProjectId}/recent`)) {
+      nextBreadcrumbs.push({
+        label: 'Recent',
+        path: `/${currentProjectId}/recent`,
+      });
+      return nextBreadcrumbs;
+    }
+
     // Add the complete folder ancestry to breadcrumbs when available.
     if (currentFolderId && currentProjectId) {
       const path = folderPath.length > 0
@@ -637,7 +655,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentLibraryId,
     currentLibraryName: libraryName,
     currentAssetId,
+    currentAssetName: assetName,
     currentDocumentId,
+    currentDocumentName: documentName,
     currentFolderId,
     currentFolderName: folderName,
     isPredefinePage: routeParams.isPredefinePage,
@@ -645,12 +665,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     showCreateProjectBreadcrumb,
     setShowCreateProjectBreadcrumb,
   }), [
+    assetName,
     breadcrumbs,
     currentAssetId,
     currentDocumentId,
     currentFolderId,
     currentLibraryId,
     currentProjectId,
+    documentName,
     folderName,
     libraryName,
     projectName,

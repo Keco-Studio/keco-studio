@@ -30,7 +30,7 @@ type FilePreview = {
 
 const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
 const TABLE_ACCEPT = '.csv,.xlsx,.xls';
-const TABLE_FORMATS_HINT = 'Supported formats: .csv, .xlsx, .xls';
+const TABLE_FORMATS_HINT = 'Supported formats: .csv, xlsx, xls';
 
 function previewImportFile(file: File): Promise<FilePreview> {
   return previewWorkbookFile(file).then(({ sheetCount, columnCount, rowCount }) => {

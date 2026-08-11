@@ -1,6 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import { useRef, useState } from 'react';
+import assetFileIcon from '@/assets/images/assetFileIcon.svg';
+import assetFileUploadIcon from '@/assets/images/assetFileUploadIcon.svg';
 import styles from './DocumentDropZone.module.css';
 
 type DocumentDropZoneProps = {
@@ -59,6 +62,7 @@ export function DocumentDropZone({
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
   const isEmpty = !selectedFile;
+  const dragHint = `Drag a file here, or click to choose ${formatsHint}`;
 
   const openPicker = () => {
     if (disabled) return;
@@ -75,14 +79,139 @@ export function DocumentDropZone({
     setDragOver(false);
   };
 
+  const dragHandlers = {
+    onDragEnter: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (disabled) return;
+      dragDepthRef.current += 1;
+      setDragOver(true);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (!disabled) setDragOver(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (disabled) return;
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setDragOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      clearDragState();
+      if (!disabled) handleFiles(e.dataTransfer.files);
+    },
+  };
+
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      data-testid={fileInputTestId}
+      accept={accept}
+      className={styles.input}
+      disabled={disabled}
+      onChange={(e) => {
+        handleFiles(e.target.files);
+        e.target.value = '';
+      }}
+    />
+  );
+
+  if (compact) {
+    return (
+      <div className={styles.compactRoot}>
+        <div
+          className={[
+            styles.zoneCompact,
+            dragOver ? styles.dragOver : '',
+            disabled ? styles.disabled : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          data-testid={dropZoneTestId}
+          data-drag-over={dragOver ? 'true' : undefined}
+          aria-label={isEmpty ? dragHint : undefined}
+          onClick={openPicker}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openPicker();
+            }
+          }}
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          {...dragHandlers}
+        >
+          {fileInput}
+          {selectedFile ? (
+            <div className={styles.selected} data-testid={selectedFileTestId}>
+              <Image
+                src={assetFileIcon}
+                alt=""
+                width={16}
+                height={16}
+                className={styles.fileTypeIcon}
+              />
+              <span className={styles.fileName}>{selectedFile.name}</span>
+              <button
+                type="button"
+                className={styles.clearButton}
+                data-testid={clearButtonTestId}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClear();
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <div className={styles.compactEmptyRow}>
+              <Image
+                src={assetFileIcon}
+                alt=""
+                width={16}
+                height={16}
+                className={styles.fileTypeIcon}
+              />
+              <span className={styles.clickToUpload}>click to upload</span>
+              <button
+                type="button"
+                className={styles.uploadButton}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPicker();
+                }}
+                disabled={disabled}
+              >
+                <Image
+                  src={assetFileUploadIcon}
+                  alt=""
+                  width={16}
+                  height={16}
+                  className={styles.uploadButtonIcon}
+                />
+                <span>Upload</span>
+              </button>
+            </div>
+          )}
+        </div>
+        {isEmpty ? <p className={styles.formatsHintBelow}>{dragHint}</p> : null}
+      </div>
+    );
+  }
+
   return (
     <div
       className={[
-        compact ? styles.zoneCompact : styles.zone,
+        styles.zone,
         isEmpty ? styles.emptyDrop : '',
         dragOver ? styles.dragOver : '',
         disabled ? styles.disabled : '',
-      ].filter(Boolean).join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-testid={dropZoneTestId}
       data-drag-over={dragOver ? 'true' : undefined}
       aria-label={isEmpty ? `Choose a file. ${formatsHint}` : undefined}
@@ -93,42 +222,11 @@ export function DocumentDropZone({
           openPicker();
         }
       }}
-      onDragEnter={(e) => {
-        e.preventDefault();
-        if (disabled) return;
-        dragDepthRef.current += 1;
-        setDragOver(true);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (!disabled) setDragOver(true);
-      }}
-      onDragLeave={(e) => {
-        e.preventDefault();
-        if (disabled) return;
-        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-        if (dragDepthRef.current === 0) setDragOver(false);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        clearDragState();
-        if (!disabled) handleFiles(e.dataTransfer.files);
-      }}
       role="button"
       tabIndex={disabled ? -1 : 0}
+      {...dragHandlers}
     >
-      <input
-        ref={inputRef}
-        type="file"
-        data-testid={fileInputTestId}
-        accept={accept}
-        className={styles.input}
-        disabled={disabled}
-        onChange={(e) => {
-          handleFiles(e.target.files);
-          e.target.value = '';
-        }}
-      />
+      {fileInput}
 
       {selectedFile ? (
         <div className={styles.selected} data-testid={selectedFileTestId}>

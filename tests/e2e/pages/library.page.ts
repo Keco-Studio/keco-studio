@@ -119,20 +119,17 @@ export class LibraryPage {
       .first();
 
     // Sidebar add button (for creating library/folder directly under project)
-    this.sidebarAddButton = page.locator('button[title="Add new folder or library"]')
+    this.sidebarAddButton = page
+      .locator('button[title="Add new folder, library, or document"]')
+      .or(page.locator('button[title="Add new folder or library"]'))
       .or(page.getByRole('button', { name: /add/i }).filter({ has: page.locator('img[alt="Add library"]') }));
 
-    // AddLibraryMenu button (appears after clicking sidebar add button)
-    // Note: AddLibraryMenu is rendered via createPortal to document.body
-    // Use more flexible selectors that work with the portal
+    // AddLibraryMenu items use role="menuitem" (portal to document.body).
     // Label reads "Create new table" (still creates a library record under the hood).
-    this.addLibraryMenuButton = page.getByRole('button', { name: /create new table/i })
-      .filter({ hasNotText: /resources folder/i }) // Exclude sidebar buttons
-      .last(); // Use last() to get the portal menu button
+    this.addLibraryMenuButton = page.getByRole('menuitem', { name: /create new table/i }).last();
 
-    // AddLibraryMenu "Create new folder" button
-    this.addFolderMenuButton = page.getByRole('button', { name: /create new folder/i })
-      .last(); // Use last() to get the portal menu button if there are duplicates
+    // AddLibraryMenu "Create new folder" item
+    this.addFolderMenuButton = page.getByRole('menuitem', { name: /create new folder/i }).last();
 
     // Folder form inputs
     // Note: NewFolderModal uses a plain input with placeholder, not a labeled input
@@ -718,8 +715,15 @@ export class LibraryPage {
       await treeNode.hover();
       await treeNode.getByRole('button', { name: 'Folder actions' }).click();
 
-      const folderMenu = this.page.locator('[class*="AddLibraryMenu_menu"], [class*="menu"]').filter({ has: this.page.getByRole('button', { name: /^delete$/i }) }).last();
-      await expect(folderMenu.getByRole('button', { name: /^delete$/i })).toBeVisible({ timeout: 5000 });
+      const folderMenu = this.page
+        .locator('[class*="AddLibraryMenu_menu"], [class*="menu"][role="menu"]')
+        .filter({
+          has: this.page.getByRole('menuitem', { name: /^delete$/i }),
+        })
+        .last();
+      await expect(folderMenu.getByRole('menuitem', { name: /^delete$/i })).toBeVisible({
+        timeout: 5000,
+      });
 
       // Backward compatibility for any native confirm flow
       this.page.once('dialog', async dialog => {
@@ -727,7 +731,8 @@ export class LibraryPage {
       });
 
       const deleteButton = folderMenu
-        .getByRole('button', { name: /^delete$/i })
+        .getByRole('menuitem', { name: /^delete$/i })
+        .or(folderMenu.getByRole('button', { name: /^delete$/i }))
         .or(folderMenu.locator('button[class*="deleteItem"]'));
       await expect(deleteButton).toBeVisible({ timeout: 5000 });
       await deleteButton.click();

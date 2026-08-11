@@ -5,6 +5,10 @@ description: Use when a user explicitly asks to implement or continue one Godot 
 
 # Develop A Godot Slice From Keco
 
+Read and follow the [shared interaction contract](../../references/interaction-contract.md) for every user-visible exchange, checkpoint, and resume.
+
+Before expensive or mutating work, summarize Goal, Source, Scope, Success, and Next. Use the user's language for that summary and for progress limited to Completed, Current, Next, and Blocker. Keep IDs, hashes, write tokens, raw MCP arguments, and evidence in machine artifacts or an on-request detail view.
+
 ## Overview
 
 Turn Keco design sources into one bounded, evaluated Godot gameplay slice. Keep Keco authoritative, define evaluations before implementation, and use Godot MCP runtime evidence instead of ad hoc tool calls or visual guesses.

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { Library } from '@/lib/services/libraryService';
-import libraryCardIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
+import tableIcon from "@/assets/images/table.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import tableThumbnail from "@/assets/images/tableThumbnail.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
@@ -65,12 +65,13 @@ export function LibraryCard({
             width={573} 
             height={104}
             className={styles.thumbnail}
+            priority
           />
         </div>
         <div className={styles.cardFooter}>
           <div className={styles.libraryInfo}>
             <div className={styles.libraryIconContainer}>
-              <Image src={libraryCardIcon}
+              <Image src={tableIcon}
                 alt="Library"
                 width={24} height={24} className="icon-24"
               />

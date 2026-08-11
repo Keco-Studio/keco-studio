@@ -8,6 +8,14 @@ const repositoryRoot = process.cwd();
 const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-claude');
 const skillsRoot = path.join(pluginRoot, 'skills');
 const scriptsRoot = path.join(pluginRoot, 'scripts');
+const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
+const codexInteractionContractPath = path.join(
+  repositoryRoot,
+  'plugins',
+  'keco-codex',
+  'references',
+  'interaction-contract.md',
+);
 
 const SKILLS = [
   'keco-build-tables-from-document',
@@ -21,6 +29,7 @@ const SCRIPTS = [
   'export_keco_snapshot.py',
   'validate_eval_report.py',
   'validate_generated_asset_package.py',
+  'validate_interaction_checkpoint.py',
   'validate_plan.py',
   'validate_run_context.py',
   'validate_slice_documents.py',
@@ -77,6 +86,62 @@ function task(id: string, overrides: Record<string, unknown> = {}) {
 }
 
 describe('Keco Claude plugin packaging', () => {
+  it('ships a byte-identical shared interaction contract in both plugins', () => {
+    const contractExists = existsSync(interactionContractPath);
+    const codexContractExists = existsSync(codexInteractionContractPath);
+
+    expect({ contractExists, codexContractExists }).toEqual({
+      contractExists: true,
+      codexContractExists: true,
+    });
+    if (!contractExists || !codexContractExists) return;
+
+    expect(readFileSync(interactionContractPath)).toEqual(readFileSync(codexInteractionContractPath));
+  });
+
+  it('links every entry Skill to the shared interaction contract', () => {
+    for (const skill of SKILLS) {
+      const source = readFileSync(path.join(skillsRoot, skill, 'SKILL.md'), 'utf8');
+      expect(source).toContain(
+        '[shared interaction contract](../../references/interaction-contract.md)',
+      );
+      expect(source).toMatch(/Before expensive or mutating work[\s\S]{0,240}Goal[\s\S]{0,120}Source[\s\S]{0,120}Scope[\s\S]{0,120}Success[\s\S]{0,120}Next/i);
+      expect(source).toMatch(/user's language[\s\S]{0,240}Completed[\s\S]{0,120}Current[\s\S]{0,120}Next[\s\S]{0,120}Blocker/i);
+      expect(source).toMatch(/IDs[\s\S]{0,120}hashes[\s\S]{0,120}write tokens[\s\S]{0,160}raw MCP arguments[\s\S]{0,160}evidence/i);
+    }
+  });
+
+  it('defines the shared language, intent, blocker, resume, and host boundaries', () => {
+    expect(existsSync(interactionContractPath)).toBe(true);
+    if (!existsSync(interactionContractPath)) return;
+
+    const contract = readFileSync(interactionContractPath, 'utf8');
+    expect(contract).toMatch(/latest substantive user request/i);
+    expect(contract).toMatch(/user-visible headings, summaries, questions, progress, blockers, and final results/i);
+    expect(contract).toMatch(/preserve[\s\S]*tool names[\s\S]*field labels[\s\S]*IDs[\s\S]*code[\s\S]*enum values[\s\S]*error codes[\s\S]*verbatim source quotations/i);
+    for (const field of ['Goal', 'Source', 'Scope', 'Success', 'Next']) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    for (const field of [
+      'Status',
+      'Blocked at',
+      'Completed',
+      'Writes performed',
+      'Why',
+      'User action',
+      'Resume from',
+      'Checkpoint',
+      'Revalidation',
+    ]) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
+    expect(contract).toMatch(/blocked_before_write[\s\S]{0,240}zero development writes/i);
+    expect(contract).toMatch(/planning-document writes[\s\S]{0,240}explicitly/i);
+    expect(contract).toMatch(/development mutation[\s\S]{0,160}partial/i);
+    expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+  });
+
   it('declares an installable marketplace entry and plugin manifest', () => {
     const marketplace = readJson<{
       name: string;
@@ -207,9 +272,23 @@ describe('Keco Claude plugin skill contracts', () => {
 
   it('links the orchestration and slice-decision contracts from the V2 entry point', () => {
     const skill = readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'SKILL.md'), 'utf8');
+    const orchestration = readFileSync(
+      path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', 'orchestration-contract.md'),
+      'utf8',
+    );
+    const sliceDocuments = readFileSync(
+      path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', 'slice-document-contract.md'),
+      'utf8',
+    );
     expect(skill).toContain('references/orchestration-contract.md');
     expect(skill).toContain('references/slice-decision.md');
     expect(skill).toMatch(/RunContext[\s\S]{0,200}writeToken[\s\S]{0,200}sliceDecision/i);
+    expect(orchestration).toMatch(/SlicePlan[\s\S]{0,200}approved static scope/i);
+    expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
+    expect(orchestration).toMatch(/interaction:[\s\S]{0,480}blockedAt[\s\S]{0,240}resumeFrom/i);
+    expect(orchestration).toMatch(/legacy[\s\S]{0,240}without[\s\S]{0,160}interaction/i);
+    expect(sliceDocuments).toMatch(/plan\.md[\s\S]{0,200}does not own task progress/i);
+    expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i);
   });
 
   it('never hard-codes a PixelLab tool the registry records as unavailable', () => {
@@ -283,10 +362,25 @@ describe('Keco Claude plugin skill contracts', () => {
 
   it('requires read-plan-confirm-execute-verify for table building', () => {
     const skill = readFileSync(path.join(skillsRoot, 'keco-build-tables-from-document', 'SKILL.md'), 'utf8');
+    const schemaDesign = readFileSync(
+      path.join(skillsRoot, 'keco-build-tables-from-document', 'references', 'schema-design.md'),
+      'utf8',
+    );
+    const executionPolicy = readFileSync(
+      path.join(skillsRoot, 'keco-build-tables-from-document', 'references', 'execution-policy.md'),
+      'utf8',
+    );
     expect(skill).toMatch(/explicit user confirmation/i);
     expect(skill).toMatch(/Never delete project data/);
     expect(skill).toMatch(/Stop on the first failed write/i);
     expect(skill).not.toMatch(/\$keco-/);
+    expect(schemaDesign).toMatch(/BuildPlan[\s\S]{0,160}approved static scope/i);
+    expect(schemaDesign).toMatch(/must not contain[\s\S]{0,240}(?:execution status|write tokens|checkpoints)[\s\S]{0,240}(?:evidence|read-back)/i);
+    expect(executionPolicy).toMatch(/ExecutionCheckpoint[\s\S]{0,240}VerificationReport/i);
+    expect(executionPolicy).toMatch(/Status[\s\S]{0,240}Blocked at[\s\S]{0,240}Resume from[\s\S]{0,240}Revalidation/i);
+    expect(executionPolicy).toMatch(/unchanged[\s\S]{0,240}do not repeat[\s\S]{0,160}(?:confirmation|question)/i);
+    expect(executionPolicy).toMatch(/semantic section labels[\s\S]{0,240}translate[\s\S]{0,240}user's language/i);
+    expect(executionPolicy).toMatch(/default preview[\s\S]{0,240}raw MCP payloads[\s\S]{0,200}UUID maps/i);
   });
 });
 
@@ -313,6 +407,37 @@ describe('Keco Claude plugin validators', () => {
     ...overrides,
   });
 
+  const interactionFixture = readJson<{
+    validCheckpoint: Record<string, unknown>;
+    invalidCheckpoints: Array<{
+      id: string;
+      remove?: string;
+      overrides?: Record<string, unknown>;
+      error: string;
+    }>;
+  }>('tests/fixtures/plugins/keco-interaction-contract.json');
+
+  it('validates resumable checkpoints and rejects unsafe variants', () => {
+    const valid = runScript('validate_interaction_checkpoint.py', [
+      writeTempJson(tempRoot, 'checkpoint.json', interactionFixture.validCheckpoint),
+    ]);
+    expect(valid.status).toBe(0);
+    expect(valid.stdout).toMatch(/checkpoint valid/i);
+
+    for (const invalid of interactionFixture.invalidCheckpoints) {
+      const value = {
+        ...interactionFixture.validCheckpoint,
+        ...invalid.overrides,
+      };
+      if (invalid.remove) delete value[invalid.remove];
+      const result = runScript('validate_interaction_checkpoint.py', [
+        writeTempJson(tempRoot, `${invalid.id}.json`, value),
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(new RegExp(invalid.error, 'i'));
+    }
+  });
+
   // The Codex suite only ever asserted a rejection here, which is why the
   // validator could demand a mode no contract defines.
   it.each(['implicit-v2', 'explicit-v2'])('accepts the documented run-context mode %s', (mode) => {
@@ -327,10 +452,38 @@ describe('Keco Claude plugin validators', () => {
     ['an absolute allowed file', runContext({ allowedFiles: ['/etc/passwd'] }), /parent traversal/],
     ['a repair iteration past the limit', runContext({ iteration: 4 }), /iteration must be an integer/],
     ['a non-string write token', runContext({ writeToken: 7 }), /writeToken/],
+    ['a non-object interaction checkpoint', runContext({ interaction: [] }), /interaction/],
+    [
+      'an interaction checkpoint for another run',
+      runContext({
+        interaction: {
+          ...interactionFixture.validCheckpoint,
+          checkpoint: {
+            ...(interactionFixture.validCheckpoint.checkpoint as Record<string, unknown>),
+            runId: 'another-run',
+          },
+        },
+      }),
+      /runId/,
+    ],
   ])('rejects %s', (_label, value, expected) => {
     const result = runScript('validate_run_context.py', [writeTempJson(tempRoot, 'run.json', value)]);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(expected);
+  });
+
+  it('accepts an optional interaction checkpoint for the same run', () => {
+    const interaction = {
+      ...interactionFixture.validCheckpoint,
+      checkpoint: {
+        ...(interactionFixture.validCheckpoint.checkpoint as Record<string, unknown>),
+        runId: 'run-1',
+      },
+    };
+    const result = runScript('validate_run_context.py', [
+      writeTempJson(tempRoot, 'run-with-checkpoint.json', runContext({ interaction })),
+    ]);
+    expect(result.status).toBe(0);
   });
 
   it.each([
@@ -341,6 +494,20 @@ describe('Keco Claude plugin validators', () => {
     const result = runScript('validate_plan.py', [writeTempJson(tempRoot, 'plan.json', plan)]);
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, taskCount: 1 });
+  });
+
+  it('rejects runtime and evidence state in a plan or task', () => {
+    const runtimePlan = {
+      runId: 'run-01',
+      writeToken: 'must-not-live-in-plan',
+      tasks: [task('task-01', { status: 'in_progress', commandOutput: 'runtime output' })],
+    };
+    const result = runScript('validate_plan.py', [
+      writeTempJson(tempRoot, 'runtime-plan.json', runtimePlan),
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/plan contains runtime or evidence state/i);
   });
 
   it('lets a small task relax the quality review while keeping one in the plan', () => {

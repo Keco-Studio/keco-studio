@@ -28,6 +28,8 @@ interface VisualNovelScriptViewProps {
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   mode?: 'player' | 'plot-node';
+  /** Active flow-chart branch label shown at the top of plot-node conversation. */
+  branchName?: string;
   onSelectOptionTarget?: (targetLabel: string) => void;
 }
 
@@ -139,6 +141,7 @@ export function VisualNovelScriptView({
   rows,
   scriptColumns,
   mode = 'player',
+  branchName,
   onSelectOptionTarget,
 }: VisualNovelScriptViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -288,6 +291,11 @@ export function VisualNovelScriptView({
       ref={rootRef}
       className={styles.container}
     >
+      {mode === 'plot-node' && branchName ? (
+        <div className={styles.branchName} data-testid="script-branch-name">
+          {branchName}
+        </div>
+      ) : null}
       {mode === 'player' ? (
         <div className={styles.playerToolbar}>
           <button type="button" className={styles.restartButton} onClick={restart}>

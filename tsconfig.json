@@ -33,11 +33,15 @@
       ],
       "@keco/battle-engine": [
         "./packages/keco-battle-engine/src/index.ts"
+      ],
+      "@joplin/turndown-plugin-gfm": [
+        "./types/joplin-turndown-plugin-gfm.d.ts"
       ]
     }
   },
   "include": [
     "next-env.d.ts",
+    "types/**/*.d.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",

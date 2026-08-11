@@ -1,4 +1,5 @@
 import type { ToolContext } from './types';
+import { isDesignDocumentMessage, stripDesignDocumentPrefix } from './chunking';
 
 export interface AgentImportSourceParams {
   sourceText?: unknown;
@@ -53,6 +54,32 @@ export function resolveAgentImportSource(
     content: params.sourceText,
     start: 0,
     end: params.sourceText.length,
+  };
+}
+
+export function resolveVerbatimDocumentSource(
+  params: Pick<AgentImportSourceParams, 'sourceStart' | 'sourceEnd'>,
+  ctx: ToolContext
+): ResolvedAgentImportSource {
+  const authoritative = ctx.authoritativeUserSource;
+  if (!authoritative) {
+    throw new Error('No authoritative user source is available for this document append');
+  }
+
+  const hasExplicitRange = params.sourceStart !== undefined || params.sourceEnd !== undefined;
+  const resolved = resolveAgentImportSource(params, ctx);
+  if (hasExplicitRange || !isDesignDocumentMessage(authoritative.content)) {
+    return resolved;
+  }
+
+  const content = stripDesignDocumentPrefix(authoritative.content);
+  const start = authoritative.content.length - content.length;
+  return {
+    sourceId: `agent-message:${authoritative.messageId}:${start}-${authoritative.content.length}`,
+    content,
+    messageId: authoritative.messageId,
+    start,
+    end: authoritative.content.length,
   };
 }
 

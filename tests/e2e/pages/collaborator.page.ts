@@ -4,14 +4,23 @@ export class CollaboratorPage {
   constructor(readonly page: Page) {}
 
   async goto(projectId: string): Promise<void> {
-    await this.page.goto(`/${projectId}/collaborators`);
-    await expect(this.page.getByRole('heading', { name: 'Collaborators' })).toBeVisible({
+    await this.page.goto(`/${projectId}/admin/collaborators`);
+    await expect(this.page.getByTestId('admin-collaborators-page')).toBeVisible({
       timeout: 30000,
     });
+    // Settled page: invite UI for roles that can invite, or a permission message otherwise.
+    await expect(
+      this.page
+        .getByRole('heading', { name: 'Collaborators' })
+        .or(this.page.getByText(/do not have permission to invite collaborators/i))
+        .or(this.page.getByText('Only project admins can manage collaborators.'))
+    ).toBeVisible({ timeout: 30000 });
   }
 
   async openInvite(): Promise<void> {
-    await this.page.getByTestId('collaborators-invite-button').click();
+    const inviteButton = this.page.getByTestId('collaborators-invite-button');
+    await expect(inviteButton).toBeVisible({ timeout: 15000 });
+    await inviteButton.click();
     await expect(this.page.getByTestId('invite-collaborator-modal')).toBeVisible();
   }
 
@@ -49,7 +58,10 @@ export class CollaboratorPage {
 
   async remove(email: string): Promise<void> {
     const row = this.collaboratorRow(email);
-    await row.getByTestId('collaborator-remove-button').click();
+    await row.hover();
+    const removeButton = row.getByTestId('collaborator-remove-button');
+    await expect(removeButton).toBeVisible({ timeout: 5000 });
+    await removeButton.click();
     await this.page.getByRole('button', { name: 'Remove', exact: true }).click();
   }
 

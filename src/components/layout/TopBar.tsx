@@ -911,8 +911,19 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const isDocumentDetail = !!currentDocumentId;
   const shareProjectName =
     projects.find((p) => p.id === currentProjectId)?.name?.trim() || 'Project';
+  const onRecentPage =
+    !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/recent`);
+  const onAdminPage =
+    !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/admin`);
   const isProjectRootPage =
-    !!currentProjectId && !currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
+    !!currentProjectId &&
+    !currentFolderId &&
+    !currentLibraryId &&
+    !currentAssetId &&
+    !isPredefine &&
+    !onRecentPage &&
+    !onAdminPage &&
+    !isDocumentDetail;
   const isFolderPage =
     !!currentProjectId && !!currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
   const isLibraryTopLevelPage =
@@ -925,11 +936,18 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         mode?: 'list' | 'grid';
         projectId?: string;
         folderId?: string | null;
+        surface?: string;
       }>;
 
-      const { mode, projectId, folderId } = custom.detail || {};
+      const { mode, projectId, folderId, surface } = custom.detail || {};
       if (!mode) return;
       if (!currentProjectId || projectId !== currentProjectId) return;
+
+      if (surface === 'recent') {
+        if (!onRecentPage) return;
+        setLibraryViewMode(mode);
+        return;
+      }
 
       const currentFolderOrNull = currentFolderId ?? null;
       const detailFolderOrNull = folderId ?? null;
@@ -948,7 +966,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         window.removeEventListener('library-page-view-mode-change', handler as EventListener);
       }
     };
-  }, [currentProjectId, currentFolderId]);
+  }, [currentProjectId, currentFolderId, onRecentPage]);
 
   // Sync version control open state from LibraryPage to TopBar
   useEffect(() => {
@@ -1081,6 +1099,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             mode,
             projectId: currentProjectId,
             folderId: isFolderPage ? currentFolderId ?? null : null,
+            surface: onRecentPage ? 'recent' : undefined,
           },
         })
       );
@@ -1103,6 +1122,42 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     if (typeof window !== 'undefined' && currentProjectId) {
       window.dispatchEvent(
         new CustomEvent('library-toolbar-create-library', {
+          detail: {
+            projectId: currentProjectId,
+            folderId: isFolderPage ? currentFolderId ?? null : null,
+          },
+        })
+      );
+    }
+  };
+
+  const handleTopbarCreateDocument = () => {
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-create-document', {
+          detail: { projectId: currentProjectId },
+        })
+      );
+    }
+  };
+
+  const handleTopbarImportTable = () => {
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-import-table', {
+          detail: {
+            projectId: currentProjectId,
+            folderId: isFolderPage ? currentFolderId ?? null : null,
+          },
+        })
+      );
+    }
+  };
+
+  const handleTopbarImportDocument = () => {
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-import-document', {
           detail: {
             projectId: currentProjectId,
             folderId: isFolderPage ? currentFolderId ?? null : null,
@@ -1371,6 +1426,40 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       );
     }
 
+    if (onRecentPage && currentProjectId) {
+      return (
+        <LibraryToolbar
+          mode="recent"
+          title="Recent"
+          onCreateFolder={handleTopbarCreateFolder}
+          onCreateLibrary={handleTopbarCreateLibrary}
+          onCreateDocument={handleTopbarCreateDocument}
+          onImportTable={handleTopbarImportTable}
+          onImportDocument={handleTopbarImportDocument}
+          viewMode={libraryViewMode}
+          onViewModeChange={handleTopbarViewModeChange}
+          userRole={userRole as CollaboratorRole | null}
+          projectId={currentProjectId}
+        />
+      );
+    }
+
+    if (onAdminPage && currentProjectId) {
+      return (
+        <LibraryToolbar
+          mode="admin"
+          title="Settings"
+          onCreateFolder={handleTopbarCreateFolder}
+          onCreateLibrary={handleTopbarCreateLibrary}
+          onCreateDocument={handleTopbarCreateDocument}
+          onImportTable={handleTopbarImportTable}
+          onImportDocument={handleTopbarImportDocument}
+          userRole={userRole as CollaboratorRole | null}
+          projectId={currentProjectId}
+        />
+      );
+    }
+
     if ((isProjectRootPage || isFolderPage) && currentProjectId) {
       const lastBreadcrumb = displayBreadcrumbs[displayBreadcrumbs.length - 1];
       const title = lastBreadcrumb?.label;
@@ -1381,6 +1470,9 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           title={title}
           onCreateFolder={isProjectRootPage ? handleTopbarCreateFolder : undefined}
           onCreateLibrary={handleTopbarCreateLibrary}
+          onCreateDocument={isProjectRootPage ? handleTopbarCreateDocument : undefined}
+          onImportTable={isProjectRootPage ? handleTopbarImportTable : undefined}
+          onImportDocument={isProjectRootPage ? handleTopbarImportDocument : undefined}
           viewMode={libraryViewMode}
           onViewModeChange={handleTopbarViewModeChange}
           userRole={userRole as CollaboratorRole | null}

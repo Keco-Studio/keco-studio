@@ -9,6 +9,7 @@ import type {
   RowOrderChangeEvent,
   RowOrderChangePayload,
 } from '@/lib/types/collaboration';
+import { sendLibraryBroadcast } from '@/lib/realtime/sendLibraryBroadcast';
 import type { LibraryBroadcastRuntime, RealtimeSubscriptionConfig } from './types';
 
 export function useLibraryBroadcasts(
@@ -56,18 +57,18 @@ export function useLibraryBroadcasts(
     const delay = isComplexObject ? 0 : 500;
     const timer = setTimeout(async () => {
       try {
-        if (runtime.connectionStatus !== 'connected' || !runtime.channelRef.current) {
+        const channel = runtime.channelRef.current;
+        if (!channel) {
           runtime.queueUpdate(event);
           return;
         }
-        await runtime.channelRef.current.send({
-          type: 'broadcast',
-          event: 'cell:update',
-          payload: event,
-        });
+        // httpSend works without a joined socket; do not queue solely on
+        // connectionStatus or optimistic updates can block later remotes.
+        await sendLibraryBroadcast(channel, 'cell:update', event);
         setTimeout(() => runtime.removeOptimisticUpdate(assetId, propertyKey), 100);
       } catch (error) {
         console.error('Failed to broadcast cell update:', error);
+        runtime.queueUpdate(event);
       } finally {
         runtime.broadcastDebounceRef.current.delete(cellKey);
       }
@@ -85,6 +86,8 @@ export function useLibraryBroadcasts(
       targetCreatedAt?: string;
     }
   ) => {
+    const channel = runtime.channelRef.current;
+    if (!channel) return;
     const event: AssetCreateEvent = {
       type: 'asset:create',
       userId: currentUserId,
@@ -95,12 +98,12 @@ export function useLibraryBroadcasts(
       timestamp: Date.now(),
       ...options,
     };
-    await runtime.channelRef.current?.send({
-      type: 'broadcast', event: 'asset:create', payload: event,
-    });
+    await sendLibraryBroadcast(channel, 'asset:create', event);
   }, [currentUserId, currentUserName, runtime.channelRef]);
 
   const broadcastAssetDelete = useCallback(async (assetId: string, assetName: string) => {
+    const channel = runtime.channelRef.current;
+    if (!channel) return;
     const event: AssetDeleteEvent = {
       type: 'asset:delete',
       userId: currentUserId,
@@ -109,15 +112,15 @@ export function useLibraryBroadcasts(
       assetName,
       timestamp: Date.now(),
     };
-    await runtime.channelRef.current?.send({
-      type: 'broadcast', event: 'asset:delete', payload: event,
-    });
+    await sendLibraryBroadcast(channel, 'asset:delete', event);
   }, [currentUserId, currentUserName, runtime.channelRef]);
 
   const broadcastCellsBatchUpdate = useCallback(async (
     cells: CellsBatchUpdateEvent['cells']
   ) => {
     if (cells.length === 0) return;
+    const channel = runtime.channelRef.current;
+    if (!channel) return;
     const event: CellsBatchUpdateEvent = {
       type: 'cells:batch-update',
       userId: currentUserId,
@@ -125,12 +128,12 @@ export function useLibraryBroadcasts(
       timestamp: Date.now(),
       cells,
     };
-    await runtime.channelRef.current?.send({
-      type: 'broadcast', event: 'cells:batch-update', payload: event,
-    });
+    await sendLibraryBroadcast(channel, 'cells:batch-update', event);
   }, [currentUserId, currentUserName, runtime.channelRef]);
 
   const broadcastRowOrderChange = useCallback(async (changes: RowOrderChangePayload) => {
+    const channel = runtime.channelRef.current;
+    if (!channel) return;
     const event: RowOrderChangeEvent = {
       type: 'roworder:change',
       userId: currentUserId,
@@ -138,9 +141,7 @@ export function useLibraryBroadcasts(
       timestamp: Date.now(),
       ...changes,
     };
-    await runtime.channelRef.current?.send({
-      type: 'broadcast', event: 'roworder:change', payload: event,
-    });
+    await sendLibraryBroadcast(channel, 'roworder:change', event);
   }, [currentUserId, currentUserName, runtime.channelRef]);
 
   return {

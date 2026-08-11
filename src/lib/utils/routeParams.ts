@@ -9,6 +9,8 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'folder',
   'doc',
   'collaborators',
+  'admin',
+  'recent',
   'settings',
   'members',
   'projects',

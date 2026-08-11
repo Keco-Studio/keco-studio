@@ -58,6 +58,7 @@ import { useSidebarModals } from "./hooks/useSidebarModals";
 import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
 import { SidebarTreeView } from "./components/SidebarTreeView";
 import { SidebarProjectsList } from "./components/SidebarProjectsList";
+import { SidebarProjectQuickNav } from "./components/SidebarProjectQuickNav";
 import { SidebarLibrariesSection } from "./components/SidebarLibrariesSection";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -93,9 +94,9 @@ const ImportDocumentModal = dynamic(
   { ssr: false }
 );
 
-const MIN_SIDEBAR_WIDTH = 267;
-const MAX_SIDEBAR_WIDTH = 400;
-const DEFAULT_SIDEBAR_WIDTH = 267; // 16.6875rem
+const MIN_SIDEBAR_WIDTH = 218;
+const MAX_SIDEBAR_WIDTH = 360;
+const DEFAULT_SIDEBAR_WIDTH = 218;
 
 const ImportLibraryModal = dynamic(
   () => import("@/components/libraries/ImportLibraryModal").then((mod) => mod.ImportLibraryModal),
@@ -429,7 +430,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     router,
   });
 
-  // Auto-navigate to first project on login if user has projects
+  // Auto-navigate to first project's Recent page on login if user has projects
   useEffect(() => {
     // Only auto-navigate if:
     // 1. User is on /projects page (pathname === '/projects')
@@ -438,7 +439,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userId) {
       const firstProject = projects[0];
       if (firstProject?.id) {
-        router.push(`/${firstProject.id}`);
+        router.push(`/${firstProject.id}/recent`);
       }
     }
   }, [pathname, projects, loadingProjects, userId, router]);
@@ -539,7 +540,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   // actions
   const handleProjectClick = async (projectId: string) => {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    await navigateWithFlush(`/${projectId}`);
+    await navigateWithFlush(`/${projectId}/recent`);
   };
 
   const handleLibraryClick = async (projectId: string, libraryId: string) => {
@@ -1172,9 +1173,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       refetchActiveProjects: true,
     });
 
-    // Always navigate to the newly created project
+    // Always navigate to the newly created project's Recent page
     if (projectId) {
-      router.push(`/${projectId}`);
+      router.push(`/${projectId}/recent`);
       // React Query will automatically fetch folders and libraries when currentIds.projectId changes
       // No need to manually call fetchFoldersAndLibraries
     }
@@ -1278,6 +1279,73 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setShowImportDocumentModal(true);
   };
 
+  // TopBar Create menu reuses the same create/import flows as Libraries "+"
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const matchesProject = (detail?: { projectId?: string }) =>
+      Boolean(detail?.projectId && detail.projectId === currentIds.projectId);
+
+    const handleToolbarCreateFolder = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string }>;
+      if (!matchesProject(custom.detail) || userRole !== 'admin') return;
+      setSelectedFolderId(null);
+      openNewFolder();
+    };
+
+    const handleToolbarCreateLibrary = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
+      if (!matchesProject(custom.detail) || userRole !== 'admin') return;
+      setSelectedFolderId(custom.detail?.folderId ?? null);
+      openNewLibrary();
+    };
+
+    const handleToolbarCreateDocument = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string }>;
+      if (!matchesProject(custom.detail)) return;
+      if (userRole !== 'admin' && userRole !== 'editor') return;
+      setSelectedFolderId(null);
+      openNewDocument();
+    };
+
+    const handleToolbarImportTable = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
+      if (!matchesProject(custom.detail) || userRole !== 'admin') return;
+      const folderId = custom.detail?.folderId ?? null;
+      setSelectedFolderId(folderId);
+      openImportLibrary(folderId);
+    };
+
+    const handleToolbarImportDocument = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
+      if (!matchesProject(custom.detail)) return;
+      if (userRole !== 'admin' && userRole !== 'editor') return;
+      setSelectedFolderId(custom.detail?.folderId ?? null);
+      setShowImportDocumentModal(true);
+    };
+
+    window.addEventListener('library-toolbar-create-folder', handleToolbarCreateFolder);
+    window.addEventListener('library-toolbar-create-library', handleToolbarCreateLibrary);
+    window.addEventListener('library-toolbar-create-document', handleToolbarCreateDocument);
+    window.addEventListener('library-toolbar-import-table', handleToolbarImportTable);
+    window.addEventListener('library-toolbar-import-document', handleToolbarImportDocument);
+
+    return () => {
+      window.removeEventListener('library-toolbar-create-folder', handleToolbarCreateFolder);
+      window.removeEventListener('library-toolbar-create-library', handleToolbarCreateLibrary);
+      window.removeEventListener('library-toolbar-create-document', handleToolbarCreateDocument);
+      window.removeEventListener('library-toolbar-import-table', handleToolbarImportTable);
+      window.removeEventListener('library-toolbar-import-document', handleToolbarImportDocument);
+    };
+  }, [
+    currentIds.projectId,
+    userRole,
+    openNewFolder,
+    openNewLibrary,
+    openNewDocument,
+    openImportLibrary,
+  ]);
+
   return (
     <aside
       className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''} ${isResizing ? styles.sidebarResizing : ''}`}
@@ -1321,6 +1389,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onSaveRename={handleSaveRename}
           onContextMenu={handleContextMenu}
         />
+
+        <SidebarProjectQuickNav projectId={currentIds.projectId} />
 
         {/* Show the libraries section for whatever project the user is viewing.
             Gate ONLY on currentIds.projectId — its folders/libraries come from

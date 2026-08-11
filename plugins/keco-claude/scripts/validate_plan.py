@@ -12,6 +12,21 @@ import sys
 PLACEHOLDERS = ("tbd", "todo", "implement later", "fill in details", "add appropriate")
 PLACEHOLDER_RE = re.compile(r"(?<![a-z0-9_-])(?:" + "|".join(re.escape(item) for item in PLACEHOLDERS) + r")(?![a-z0-9_-])")
 REQUIRED = ("id", "files", "dependsOn", "servesEvaluations", "red", "green", "review")
+FORBIDDEN_RUNTIME_KEYS = {
+    "blockedAt",
+    "changedFiles",
+    "checkpoint",
+    "commandOutput",
+    "currentTask",
+    "evidence",
+    "readBack",
+    "resumeFrom",
+    "retryCount",
+    "runId",
+    "runtimeLogs",
+    "status",
+    "writeToken",
+}
 # `required`/`true` and `optional`/`false` are both accepted so a plan authored
 # straight from references/orchestration-contract.md validates as written.
 REVIEW_REQUIRED = (True, "required")
@@ -38,6 +53,12 @@ def main() -> int:
     tasks = plan.get("tasks") if isinstance(plan, dict) else None
     if not isinstance(tasks, list) or not tasks:
         print("plan must contain a non-empty tasks array", file=sys.stderr)
+        return 1
+    if FORBIDDEN_RUNTIME_KEYS.intersection(plan) or any(
+        isinstance(task, dict) and FORBIDDEN_RUNTIME_KEYS.intersection(task)
+        for task in tasks
+    ):
+        print("plan contains runtime or evidence state", file=sys.stderr)
         return 1
     if PLACEHOLDER_RE.search(json.dumps(plan, ensure_ascii=False).lower()):
         print("plan contains a placeholder", file=sys.stderr)

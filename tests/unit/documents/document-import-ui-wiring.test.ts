@@ -8,7 +8,7 @@ describe('document import UI wiring', () => {
   it('exposes a distinct Import document command in the sidebar add menu', () => {
     const menu = read('src/components/libraries/AddLibraryMenu.tsx');
     expect(menu).toContain('onImportDocument?: () => void');
-    expect(menu).toMatch(/onImportDocument[\s\S]*Import document/);
+    expect(menu).toMatch(/onImportDocument[\s\S]*Import new document/);
   });
 
   it('allows only editors and admins to open the document import modal', () => {
@@ -44,24 +44,29 @@ describe('document import UI wiring', () => {
     expect(tableModal).toContain('<ImportResourceModal');
     expect(tableModal).toContain('resourceLabel="Table"');
     expect(tableModal).toContain('DocumentDropZone');
-    expect(tableModal).toContain('Supported formats: .csv, .xlsx, .xls');
+    expect(tableModal).toContain('Supported formats: .csv, xlsx, xls');
     expect(sharedModal.indexOf('{resourceLabel} Name')).toBeLessThan(sharedModal.indexOf('>File<'));
-    expect(sharedModal.indexOf('>File<')).toBeLessThan(sharedModal.indexOf('>Notes<'));
-    expect(sharedModal).toContain('buttonFixed');
-    expect(sharedModal).toContain('dialog.primary');
+    expect(sharedModal.indexOf('>File<')).toBeLessThan(sharedModal.indexOf('>Add notes<'));
+    expect(sharedModal).toContain('placeholder="Type..."');
+    expect(sharedModal).toContain('Import {resourceKey}');
+    expect(sharedModal).toContain('importFieldLabel');
+    expect(sharedModal).toContain('importNotesLabelText');
+    expect(sharedModal).toContain('importSubmit');
   });
 
-  it('shows a tall gray File drop target with a light plus by default', () => {
+  it('shows a compact File row with Upload button for import dialogs', () => {
     const dropZone = read('src/components/design-upload/DocumentDropZone.tsx');
     const css = read('src/components/design-upload/DocumentDropZone.module.css');
-    expect(dropZone).toContain('emptyDrop');
+    expect(dropZone).toContain('click to upload');
+    expect(dropZone).toContain('Upload');
+    expect(dropZone).toContain('formatsHintBelow');
+    expect(dropZone).toContain('Drag a file here, or click to choose');
+    expect(dropZone).toContain('compactEmptyRow');
+    expect(dropZone).toContain('uploadButton');
     expect(dropZone).toContain('DropPlusIcon');
-    expect(dropZone).toContain('emptyHint');
-    expect(dropZone).not.toContain('className={styles.dropPlus}');
-    expect(dropZone).not.toContain('Drag a file here, or click to choose');
-    expect(css).toMatch(/\.zoneCompact\.emptyDrop\s*\{[^}]*min-height:\s*6\.5rem/);
+    expect(css).toMatch(/\.zoneCompact\s*\{[^}]*min-height:\s*36px/);
+    expect(css).toMatch(/\.uploadButton\s*\{[^}]*#0b99ff/);
     expect(css).toMatch(/\.emptyDrop\s*\{[^}]*background:\s*#f1f5f9/);
-    expect(css).not.toMatch(/\.dropPlus\s*\{/);
     expect(css).toMatch(/\.dropPlusIcon\s*\{[^}]*#94a3b8/);
   });
 });

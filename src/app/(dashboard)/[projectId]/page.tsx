@@ -331,22 +331,9 @@ export default function ProjectPage() {
     );
   }, [viewMode, projectId]);
 
-  // Let the TopBar LibraryToolbar control creation and view switching on this page.
+  // Let the TopBar LibraryToolbar control view switching on this page.
+  // Create/import actions are handled by Sidebar (same flows as Libraries "+").
   useEffect(() => {
-    const handleTopbarCreateFolder = (event: Event) => {
-      const custom = event as CustomEvent<{ projectId?: string }>;
-      if (custom.detail?.projectId === projectId) {
-        handleCreateFolder();
-      }
-    };
-
-    const handleTopbarCreateLibrary = (event: Event) => {
-      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
-      if (custom.detail?.projectId === projectId && !custom.detail?.folderId) {
-        handleCreateLibrary();
-      }
-    };
-
     const handleTopbarViewModeChange = (event: Event) => {
       const custom = event as CustomEvent<{
         mode?: 'list' | 'grid';
@@ -361,19 +348,15 @@ export default function ProjectPage() {
     };
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('library-toolbar-create-folder', handleTopbarCreateFolder as EventListener);
-      window.addEventListener('library-toolbar-create-library', handleTopbarCreateLibrary as EventListener);
       window.addEventListener('library-toolbar-view-mode-change', handleTopbarViewModeChange as EventListener);
     }
 
     return () => {
       if (typeof window !== 'undefined') {
-        window.removeEventListener('library-toolbar-create-folder', handleTopbarCreateFolder as EventListener);
-        window.removeEventListener('library-toolbar-create-library', handleTopbarCreateLibrary as EventListener);
         window.removeEventListener('library-toolbar-view-mode-change', handleTopbarViewModeChange as EventListener);
       }
     };
-  }, [projectId, handleCreateFolder, handleCreateLibrary, setViewMode]);
+  }, [projectId, setViewMode]);
 
   const handleFolderCreated = () => {
     setShowFolderModal(false);

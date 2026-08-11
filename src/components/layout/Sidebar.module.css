@@ -1,15 +1,15 @@
 .sidebar {
-  min-width: 180px;
-  max-width: 400px;
+  min-width: 218px;
+  max-width: 360px;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.25rem;
   flex-shrink: 0;
   border-right: 1px solid #e2e8f0;
   background-color: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
-  padding: 1rem 16px 24px;
+  padding: 12px;
   transition: transform 0.3s ease, width 0.3s ease;
   transform: translateX(0);
   position: relative;
@@ -165,13 +165,13 @@
 }
 
 .title {
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 600;
   color: #0f172a;
 }
 
 .subtitle {
-  font-size: 0.75rem;
+  font-size: 1rem;
   color: #64748b;
 }
 
@@ -592,6 +592,225 @@
 
 .projectsSection {
   margin-top: 0;
+  position: relative;
+  z-index: 4;
+  flex-shrink: 0;
+}
+
+.projectQuickNav {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  border: none;
+  flex-shrink: 0;
+}
+
+.projectQuickNavItem {
+  width: 100%;
+  height: 48px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #1a1a1a;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 100%;
+  letter-spacing: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.projectQuickNavItem:hover {
+  background: #f4f6f8;
+}
+
+.projectQuickNavItemActive,
+.projectQuickNavItemActive:hover {
+  background: #e6f4ff;
+  color: #1a1a1a;
+}
+
+.projectQuickNavIcon {
+  font-size: 14px;
+  color: inherit;
+}
+
+.projectSelectorTrigger {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: rgba(221, 225, 230, 0.29);
+  color: #7d7d7d;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: 0;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.projectSelectorTrigger:hover {
+  background: rgba(221, 225, 230, 0.45);
+}
+
+.projectSelectorTrigger:focus-visible {
+  outline: 2px solid #8ecfff;
+  outline-offset: 2px;
+}
+
+.projectSelectorTriggerText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7d7d7d;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 150%;
+  letter-spacing: 0;
+}
+
+.projectSelectorChevron {
+  flex-shrink: 0;
+  color: #3f444a;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.projectSelectorChevronOpen {
+  transform: rotate(180deg);
+}
+
+.projectSelectorMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  padding: 4px;
+  border: 1px solid #e2e5e9;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
+  box-sizing: border-box;
+}
+
+.projectSelectorOptions {
+  max-height: 108px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.projectSelectorOption {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #22262b;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.25;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.projectSelectorOption:hover,
+.projectSelectorOption:focus-visible {
+  background: #f4f6f8;
+  outline: none;
+}
+
+.projectSelectorOptionSelected,
+.projectSelectorOptionSelected:hover,
+.projectSelectorOptionSelected:focus-visible {
+  background: #e8f5fd;
+}
+
+.projectSelectorOptionText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectSelectorInfo,
+.projectSelectorCheck {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.projectSelectorInfo {
+  cursor: help;
+}
+
+.projectSelectorCheck {
+  color: #1f2328;
+  font-size: 12px;
+}
+
+.projectSelectorRenameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid #8ecfff;
+  border-radius: 4px;
+  outline: none;
+  background: #ffffff;
+  color: #22262b;
+  font: inherit;
+}
+
+.projectSelectorCreate {
+  width: 100%;
+  height: 36px;
+  margin-top: 4px;
+  padding: 0 8px;
+  border: none;
+  border-top: 1px solid #eceef0;
+  background: #ffffff;
+  color: #22262b;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+}
+
+.projectSelectorCreate:hover {
+  background: #f4f6f8;
+}
+
+.projectSelectorCreate:focus-visible {
+  outline: 2px solid #8ecfff;
+  outline-offset: -2px;
 }
 
 /* Projects section: max 3 rows visible; Edge-style scrollbar when more than 3 */
@@ -793,7 +1012,7 @@
 }
 
 .tree :global(.ant-tree-node-content-wrapper) .itemText {
-  font-size: 1rem;
+  font-size: 16px;
   font-family: var(--font-roboto), sans-serif;
   font-weight: 500;
   padding-right: 2rem;
@@ -803,7 +1022,7 @@
 
 .tree :global(.ant-tree-node-content-wrapper) .treeNodeInput,
 .treeNodeInput {
-  font-size: 1rem;
+  font-size: 16px;
   font-family: var(--font-roboto), sans-serif;
   font-weight: 500;
   padding-right: 2rem;
@@ -974,7 +1193,7 @@
   gap: 0.5rem;
   border-radius: 0.5rem;
   padding: 0.75rem 8px;
-  font-size: 1rem;
+  font-size: 16px;
   cursor: pointer;
   transition: background-color 0.2s;
   position: relative;
@@ -1021,7 +1240,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 500;
   padding-right: 2rem;
   /* Reserve space for delete button to avoid text overlap */
@@ -1033,7 +1252,7 @@
   min-width: 0;
   height: 1.5rem;
   line-height: 1.5rem;
-  font-size: 1rem;
+  font-size: 16px;
   font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.88);
@@ -1243,7 +1462,7 @@
 }
 
 .itemAddText {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: #9ca3af;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1300,13 +1519,13 @@
 
 /* Root-level library: same font as folder when not selected */
 .rootLibraryRow .itemText {
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 500;
   color: #000010;
 }
 
 .tree :global(.ant-tree-treenode-selected) .rootLibraryRow .itemText {
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 500;
 }
 

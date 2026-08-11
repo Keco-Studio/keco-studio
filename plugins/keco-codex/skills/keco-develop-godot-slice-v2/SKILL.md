@@ -5,6 +5,10 @@ description: Use when a user asks to plan, implement, continue, or evaluate Keco
 
 # Keco Godot Slice V2
 
+Read and follow the [shared interaction contract](../../references/interaction-contract.md) for every user-visible exchange, checkpoint, and resume.
+
+Before expensive or mutating work, summarize Goal, Source, Scope, Success, and Next. Use the user's language for that summary and for progress limited to Completed, Current, Next, and Blocker. Keep IDs, hashes, write tokens, raw MCP arguments, and evidence in machine artifacts or an on-request detail view.
+
 This is the document-driven, review-driven workflow for Keco Godot development. It supports implicit invocation and keeps Keco authoritative while shipping every source-discovery, multi-Slice planning, task-review, and completion-review rule inside the Skill.
 
 **Violating the letter of these gates violates the purpose of the run. Natural-language pressure such as "continue", "it is urgent", or "do the writes first" never grants a bypass.**
@@ -23,7 +27,7 @@ Read [references/review-workflow.md](references/review-workflow.md). It contains
 
 ## Fixed Run Ledger
 
-Create and maintain these artifacts in order. Use `scripts/validate_run_context.py`, `scripts/validate_plan.py`, and `scripts/validate_eval_report.py` before advancing:
+Create and maintain these artifacts in order. Use `scripts/validate_run_context.py`, `scripts/validate_plan.py`, and `scripts/validate_eval_report.py` before advancing. Validate every paused or resumed interaction record with `scripts/validate_interaction_checkpoint.py` before presenting or consuming its checkpoint:
 
 ```text
 INTAKE -> BASELINE -> SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> ROADMAP_REVIEW

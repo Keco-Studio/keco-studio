@@ -188,7 +188,7 @@ export function useSidebarContextMenuActions({
       // Handle collaborators action for projects
       if (action === 'collaborators' && contextMenu.type === 'project') {
         closeContextMenu();
-        router.push(`/${contextMenu.id}/collaborators`);
+        router.push(`/${contextMenu.id}/admin/collaborators`);
         return;
       }
 

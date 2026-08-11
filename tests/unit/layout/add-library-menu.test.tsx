@@ -2,6 +2,16 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 
+jest.mock('next/image', () => ({
+  __esModule: true,
+  default: ({ alt = '' }: { alt?: string }) =>
+    React.createElement('img', { alt }),
+}));
+jest.mock('@/assets/images/folderIcon.svg', () => 'folderIcon.svg', { virtual: true });
+jest.mock('@/assets/images/table.svg', () => 'table.svg', { virtual: true });
+jest.mock('@/assets/images/LibraryBookIcon.svg', () => 'LibraryBookIcon.svg', {
+  virtual: true,
+});
 jest.mock('@/components/libraries/AddLibraryMenu.module.css', () =>
   new Proxy({}, { get: () => 'class' })
 );
@@ -23,8 +33,8 @@ describe('AddLibraryMenu', () => {
     expect(html).toContain('Create new folder');
     expect(html).toContain('Create new table');
     expect(html).toContain('Create new document');
-    expect(html).toContain('Import document');
-    expect(html).toContain('Import table');
+    expect(html).toContain('Import new document');
+    expect(html).toContain('Import new table');
     expect(html).not.toContain('Create new library');
     expect(html).not.toContain('Generate tables from document');
   });

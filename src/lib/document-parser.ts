@@ -7,7 +7,14 @@
  */
 
 import TurndownService from 'turndown';
-import { gfm } from '@joplin/turndown-plugin-gfm';
+import { gfm } from '@/lib/vendor/joplinTurndownPluginGfm';
+
+function applyJoplinGfm(service: TurndownService): void {
+  if (typeof gfm !== 'function') {
+    throw new Error('Joplin GFM plugin failed to load');
+  }
+  service.use(gfm);
+}
 
 export const MAX_DESIGN_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -143,7 +150,7 @@ export function convertDocumentHtmlToMarkdown(html: string): string {
     headingStyle: 'atx',
     strongDelimiter: '**',
   });
-  service.use(gfm);
+  applyJoplinGfm(service);
   service.remove(['script', 'style', 'iframe', 'object', 'embed', 'form']);
   service.addRule('safeImportedLink', {
     filter: 'a',

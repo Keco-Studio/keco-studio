@@ -28,17 +28,17 @@ const getHandler = async (
     
     return NextResponse.json(result);
   } catch (error) {
-    console.error('[GET /api/projects/[projectId]/role] Error:', error);
-
     if (error instanceof AuthorizationError) {
       const message = error.message.toLowerCase();
       // Project missing can lag briefly after create — clients may retry.
+      // Expected in e2e teardown/races; avoid Error-level noise in CI logs.
       if (message.includes('not found')) {
         return NextResponse.json(
           { role: null, isOwner: false },
           { status: 404 }
         );
       }
+      console.error('[GET /api/projects/[projectId]/role] Error:', error);
       // Definitive denial (not a collaborator) — do not retry.
       return NextResponse.json(
         { role: null, isOwner: false },
@@ -46,6 +46,7 @@ const getHandler = async (
       );
     }
 
+    console.error('[GET /api/projects/[projectId]/role] Error:', error);
     return NextResponse.json(
       { role: null, isOwner: false },
       { status: 500 }

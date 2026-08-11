@@ -63,6 +63,7 @@ describe('ScriptSplitView plot selection', () => {
     expect(markup.match(/role="button"/g)).toHaveLength(2);
     expect(markup).toContain('Plot background');
     expect(markup).toContain('Opening dialogue');
+    expect(markup).toContain('data-testid="script-branch-name"');
     expect(markup).not.toContain('choicePanel');
     expect(markup).not.toContain('Restart');
   });

@@ -132,8 +132,9 @@ export function InviteCollaboratorModal({
         setError(result.error || 'Failed to send invitation');
       }
     } catch (validationError) {
-      // Form validation failed - Ant Design will show field errors
-      console.error('[InviteCollaboratorModal] Validation error:', validationError);
+      // Form validation failed - Ant Design will show field errors.
+      // Intentionally quiet: collaboration e2e exercises empty/invalid email paths.
+      void validationError;
     } finally {
       setLoading(false);
     }

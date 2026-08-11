@@ -36,6 +36,38 @@
   border-color: #B0B0B8;
 }
 
+.imageUploadPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.imageUploadIcon {
+  display: block;
+  /* Recolor the default cloud glyph to a muted gray. */
+  filter: brightness(0) saturate(100%) invert(62%) sepia(6%) saturate(220%) hue-rotate(169deg) brightness(92%) contrast(88%);
+  transition: filter 0.15s ease;
+}
+
+.imageUploadPlaceholder:hover:not(:disabled) .imageUploadIcon,
+.imageUploadPlaceholder:focus-visible:not(:disabled) .imageUploadIcon {
+  /* Bright blue active/hover state matching the design. */
+  filter: brightness(0) saturate(100%) invert(48%) sepia(98%) saturate(1846%) hue-rotate(180deg) brightness(101%) contrast(101%);
+}
+
+.imageUploadPlaceholder:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .uploadButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;

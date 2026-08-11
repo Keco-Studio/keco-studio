@@ -6,6 +6,21 @@ const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-codex');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
+const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
+const claudeInteractionContractPath = path.join(
+  repositoryRoot,
+  'plugins',
+  'keco-claude',
+  'references',
+  'interaction-contract.md',
+);
+
+const ENTRY_SKILLS = [
+  'keco-build-tables-from-document',
+  'keco-develop-godot-slice',
+  'keco-develop-godot-slice-v2',
+  'pixellab-map-assets',
+];
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
@@ -45,6 +60,62 @@ function skillTextFiles(root: string): string[] {
 }
 
 describe('Keco Codex plugin contract', () => {
+  it('ships a byte-identical shared interaction contract in both plugins', () => {
+    const contractExists = existsSync(interactionContractPath);
+    const claudeContractExists = existsSync(claudeInteractionContractPath);
+
+    expect({ contractExists, claudeContractExists }).toEqual({
+      contractExists: true,
+      claudeContractExists: true,
+    });
+    if (!contractExists || !claudeContractExists) return;
+
+    expect(readFileSync(interactionContractPath)).toEqual(readFileSync(claudeInteractionContractPath));
+  });
+
+  it('links every entry Skill to the shared interaction contract', () => {
+    for (const skill of ENTRY_SKILLS) {
+      const source = readFileSync(path.join(pluginRoot, 'skills', skill, 'SKILL.md'), 'utf8');
+      expect(source).toContain(
+        '[shared interaction contract](../../references/interaction-contract.md)',
+      );
+      expect(source).toMatch(/Before expensive or mutating work[\s\S]{0,240}Goal[\s\S]{0,120}Source[\s\S]{0,120}Scope[\s\S]{0,120}Success[\s\S]{0,120}Next/i);
+      expect(source).toMatch(/user's language[\s\S]{0,240}Completed[\s\S]{0,120}Current[\s\S]{0,120}Next[\s\S]{0,120}Blocker/i);
+      expect(source).toMatch(/IDs[\s\S]{0,120}hashes[\s\S]{0,120}write tokens[\s\S]{0,160}raw MCP arguments[\s\S]{0,160}evidence/i);
+    }
+  });
+
+  it('defines the shared language, intent, blocker, resume, and host boundaries', () => {
+    expect(existsSync(interactionContractPath)).toBe(true);
+    if (!existsSync(interactionContractPath)) return;
+
+    const contract = readFileSync(interactionContractPath, 'utf8');
+    expect(contract).toMatch(/latest substantive user request/i);
+    expect(contract).toMatch(/user-visible headings, summaries, questions, progress, blockers, and final results/i);
+    expect(contract).toMatch(/preserve[\s\S]*tool names[\s\S]*field labels[\s\S]*IDs[\s\S]*code[\s\S]*enum values[\s\S]*error codes[\s\S]*verbatim source quotations/i);
+    for (const field of ['Goal', 'Source', 'Scope', 'Success', 'Next']) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    for (const field of [
+      'Status',
+      'Blocked at',
+      'Completed',
+      'Writes performed',
+      'Why',
+      'User action',
+      'Resume from',
+      'Checkpoint',
+      'Revalidation',
+    ]) {
+      expect(contract).toContain(`- ${field}:`);
+    }
+    expect(contract).toContain('running -> paused_with_checkpoint -> user_action -> revalidate -> resume');
+    expect(contract).toMatch(/blocked_before_write[\s\S]{0,240}zero development writes/i);
+    expect(contract).toMatch(/planning-document writes[\s\S]{0,240}explicitly/i);
+    expect(contract).toMatch(/development mutation[\s\S]{0,160}partial/i);
+    expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+  });
+
   it('keeps all Skill Markdown and YAML files ASCII-only', () => {
     const cjk = /[\u4e00-\u9fff]/u;
     const skillFiles = skillTextFiles(path.join(pluginRoot, 'skills'));
@@ -218,6 +289,13 @@ describe('Keco Codex plugin contract', () => {
     expect(schemaDesign).toMatch(/references[\s\S]{0,160}target row keys[\s\S]{0,160}targetTableKey/i);
     expect(schemaDesign).toMatch(/never send raw plan-local keys[\s\S]{0,240}MCP/i);
     expect(schemaDesign).toMatch(/required reference[\s\S]{0,320}(?:create_table|blocker)/i);
+    expect(schemaDesign).toMatch(/BuildPlan[\s\S]{0,160}approved static scope/i);
+    expect(schemaDesign).toMatch(/must not contain[\s\S]{0,240}(?:execution status|write tokens|checkpoints)[\s\S]{0,240}(?:evidence|read-back)/i);
+    expect(executionPolicy).toMatch(/ExecutionCheckpoint[\s\S]{0,240}VerificationReport/i);
+    expect(executionPolicy).toMatch(/Status[\s\S]{0,240}Blocked at[\s\S]{0,240}Resume from[\s\S]{0,240}Revalidation/i);
+    expect(executionPolicy).toMatch(/unchanged[\s\S]{0,240}do not repeat[\s\S]{0,160}(?:confirmation|question)/i);
+    expect(executionPolicy).toMatch(/semantic section labels[\s\S]{0,240}translate[\s\S]{0,240}user's language/i);
+    expect(executionPolicy).toMatch(/default preview[\s\S]{0,240}raw MCP payloads[\s\S]{0,200}UUID maps/i);
     expect(executionPolicy).toMatch(/required reference[\s\S]{0,400}create_table/i);
     expect(executionPolicy).toMatch(/required reference[\s\S]{0,500}block/i);
     expect(executionPolicy).toMatch(/target rows[\s\S]{0,240}(?:IDs|UUIDs)[\s\S]{0,160}before[\s\S]{0,160}dependent/i);

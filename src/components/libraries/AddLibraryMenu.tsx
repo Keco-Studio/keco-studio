@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
+import folderIcon from '@/assets/images/folderIcon.svg';
+import tableIcon from '@/assets/images/table.svg';
+import LibraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
 import styles from './AddLibraryMenu.module.css';
 
 type AddLibraryMenuProps = {
@@ -13,11 +17,36 @@ type AddLibraryMenuProps = {
   onCreateDocument?: () => void;
   onImportDocument?: () => void;
   onImportTable?: () => void;
-  // Folder-only optional destructive actions, wired up in a later task.
   onDelete?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
 };
+
+function ImportIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden className={styles.menuIconSvg}>
+      <path
+        d="M2.5 10.5V12.5C2.5 13.0523 2.94772 13.5 3.5 13.5H12.5C13.0523 13.5 13.5 13.0523 13.5 12.5V10.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8 2.5V10"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 7.5L8 10.5L11 7.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export function AddLibraryMenu({
   open,
@@ -65,8 +94,16 @@ export function AddLibraryMenu({
 
     const gap = 4;
     menuElement.style.position = 'fixed';
-    menuElement.style.left = `${anchorRect.right + gap}px`;
-    menuElement.style.top = `${anchorRect.top}px`;
+
+    // Prefer opening below for topbar-style anchors; fall back to side placement.
+    const preferBelow = anchorRect.bottom + menuElement.offsetHeight + gap < window.innerHeight;
+    if (preferBelow && anchorRect.top < 80) {
+      menuElement.style.top = `${anchorRect.bottom + gap}px`;
+      menuElement.style.left = `${Math.max(8, anchorRect.right - menuElement.offsetWidth)}px`;
+    } else {
+      menuElement.style.left = `${anchorRect.right + gap}px`;
+      menuElement.style.top = `${anchorRect.top}px`;
+    }
 
     const menuRect = menuElement.getBoundingClientRect();
     if (menuRect.right > window.innerWidth) {
@@ -82,53 +119,56 @@ export function AddLibraryMenu({
   const hasDestructiveActions = Boolean(onRename || onDuplicate || onDelete);
 
   const menuContent = (
-    <div ref={menuRef} className={styles.menu}>
+    <div ref={menuRef} className={styles.menu} role="menu">
       {onCreateFolder && (
-        <button className={styles.menuItem} onClick={onCreateFolder}>
-          Create new folder
+        <button type="button" className={styles.menuItem} onClick={onCreateFolder} role="menuitem">
+          <Image src={folderIcon} alt="" width={16} height={16} className={styles.menuIcon} />
+          <span>Create new folder</span>
         </button>
       )}
       {onCreateTable && (
-        <button className={styles.menuItem} onClick={onCreateTable}>
-          Create new table
+        <button type="button" className={styles.menuItem} onClick={onCreateTable} role="menuitem">
+          <Image src={tableIcon} alt="" width={16} height={16} className={styles.menuIcon} />
+          <span>Create new table</span>
         </button>
       )}
       {onCreateDocument && (
-        <button className={styles.menuItem} onClick={onCreateDocument}>
-          Create new document
-        </button>
-      )}
-      {onImportDocument && (
-        <button className={styles.menuItem} onClick={onImportDocument}>
-          Import document
+        <button type="button" className={styles.menuItem} onClick={onCreateDocument} role="menuitem">
+          <Image src={LibraryBookIcon} alt="" width={16} height={16} className={styles.menuIcon} />
+          <span>Create new document</span>
         </button>
       )}
       {onImportTable && (
-        <button className={styles.menuItem} onClick={onImportTable}>
-          Import table
+        <button type="button" className={styles.menuItem} onClick={onImportTable} role="menuitem">
+          <ImportIcon />
+          <span>Import new table</span>
+        </button>
+      )}
+      {onImportDocument && (
+        <button type="button" className={styles.menuItem} onClick={onImportDocument} role="menuitem">
+          <ImportIcon />
+          <span>Import new document</span>
         </button>
       )}
       {hasDestructiveActions && <div className={styles.divider} />}
       {onRename && (
-        <button className={styles.menuItem} onClick={onRename}>
+        <button type="button" className={styles.menuItem} onClick={onRename} role="menuitem">
           Rename
         </button>
       )}
       {onDuplicate && (
-        <button className={styles.menuItem} onClick={onDuplicate}>
+        <button type="button" className={styles.menuItem} onClick={onDuplicate} role="menuitem">
           Duplicate
         </button>
       )}
       {onDelete && (
-        <button className={`${styles.menuItem} ${styles.deleteItem}`} onClick={onDelete}>
+        <button type="button" className={`${styles.menuItem} ${styles.deleteItem}`} onClick={onDelete} role="menuitem">
           Delete
         </button>
       )}
     </div>
   );
 
-  // Portals require `document`, which is unavailable during server rendering.
-  // Fall back to rendering the menu inline until mounted client-side.
   if (!mounted || typeof document === 'undefined') return menuContent;
 
   return createPortal(menuContent, document.body);

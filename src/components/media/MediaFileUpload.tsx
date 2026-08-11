@@ -309,7 +309,26 @@ export function MediaFileUpload({
         onBlur={onBlur}
       />
 
-      {!value && (
+      {!value && fieldType === 'image' && (
+        <button
+          type="button"
+          onClick={handleChooseFile}
+          disabled={disabled || uploading}
+          className={styles.imageUploadPlaceholder}
+          aria-label={uploading ? uploadProgress : 'Upload image'}
+          title={uploading ? uploadProgress : 'Upload image'}
+        >
+          <Image
+            src={assetFileUploadIcon}
+            alt=""
+            width={20}
+            height={20}
+            className={`${styles.imageUploadIcon} icon-20`}
+          />
+        </button>
+      )}
+
+      {!value && fieldType !== 'image' && (
         <button
           type="button"
           onClick={handleChooseFile}

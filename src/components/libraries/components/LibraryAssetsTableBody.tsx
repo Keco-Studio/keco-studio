@@ -437,34 +437,28 @@ export function LibraryAssetsTableBody({
                     width={16}
                     height={16}
                     className={styles.referenceDetailIcon}
-                    onMouseEnter={(event) => {
-                      if (firstAssetId) {
-                        event.stopPropagation();
-                        const selectionsForAsset = selections
-                          .filter((selection) => selection.assetId === firstAssetId)
-                          .map((selection) => ({
-                            fieldLabel: selection.fieldLabel,
-                            displayValue: selection.displayValue,
-                          }));
-                        onAvatarMouseEnter(
-                          firstAssetId,
-                          event.currentTarget,
-                          selectionsForAsset.length > 0
-                            ? selectionsForAsset
-                            : firstSelection
-                              ? [{
-                                fieldLabel: firstSelection.fieldLabel,
-                                displayValue: firstSelection.displayValue,
-                              }]
-                              : undefined
-                        );
-                      }
-                    }}
-                    onMouseLeave={(event) => {
-                      if (firstAssetId) {
-                        event.stopPropagation();
-                        onAvatarMouseLeave();
-                      }
+                    onClick={(event) => {
+                      if (!firstAssetId) return;
+                      event.stopPropagation();
+                      event.preventDefault();
+                      const selectionsForAsset = selections
+                        .filter((selection) => selection.assetId === firstAssetId)
+                        .map((selection) => ({
+                          fieldLabel: selection.fieldLabel,
+                          displayValue: selection.displayValue,
+                        }));
+                      onAvatarMouseEnter(
+                        firstAssetId,
+                        event.currentTarget,
+                        selectionsForAsset.length > 0
+                          ? selectionsForAsset
+                          : firstSelection
+                            ? [{
+                              fieldLabel: firstSelection.fieldLabel,
+                              displayValue: firstSelection.displayValue,
+                            }]
+                            : undefined
+                      );
                     }}
                   />
                 ) : null;
@@ -498,32 +492,7 @@ export function LibraryAssetsTableBody({
                     }}
                     onContextMenu={(event) => onCellContextMenu(event, row.id, property.key)}
                     onMouseDown={(event) => onCellFillDragStart(row.id, property.key, event)}
-                    onMouseEnter={(event) => {
-                      if (firstAssetId && !isCellSelected) {
-                        const selectionsForAsset = selections
-                          .filter((selection) => selection.assetId === firstAssetId)
-                          .map((selection) => ({
-                            fieldLabel: selection.fieldLabel,
-                            displayValue: selection.displayValue,
-                          }));
-                        onAvatarMouseEnter(
-                          firstAssetId,
-                          event.currentTarget,
-                          selectionsForAsset.length > 0
-                            ? selectionsForAsset
-                            : firstSelection
-                              ? [{
-                                fieldLabel: firstSelection.fieldLabel,
-                                displayValue: firstSelection.displayValue,
-                              }]
-                              : undefined
-                        );
-                      }
-                    }}
                     onMouseLeave={() => {
-                      if (firstAssetId && !isCellSelected) {
-                        onAvatarMouseLeave();
-                      }
                       if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
                         setHoveredCellForExpand(null);
                       }

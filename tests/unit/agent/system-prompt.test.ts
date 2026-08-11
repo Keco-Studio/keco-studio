@@ -89,6 +89,14 @@ describe('buildSystemPrompt design-document table rules', () => {
     expect(prompt).toContain('living project documents');
   });
 
+  it('routes verbatim document imports through authoritative source references', () => {
+    const prompt = buildSystemPrompt({ projectId: 'project-1', userRole: 'editor' });
+
+    expect(prompt).toContain('append_user_source');
+    expect(prompt).toMatch(/never copy[\s\S]*source body[\s\S]*append\.content/i);
+    expect(prompt).toMatch(/verbatim|exact persisted user message/i);
+  });
+
   it('separates table extraction from prose generation and blocks low-quality tables', () => {
     const prompt = buildSystemPrompt({
       projectId: 'project-1',
