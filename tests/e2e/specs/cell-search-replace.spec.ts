@@ -210,8 +210,11 @@ async function openReferenceModalOnCell(
 
   const refCell = await getTableCellForRowAndColumn(page, rowLabel, refColumnName);
   await refCell.scrollIntoViewIfNeeded();
+  // ReferenceField only opens the picker when the cell is already selected.
   await refCell.click();
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(400);
+  await refCell.click();
+  await page.waitForTimeout(200);
 
   const refField = refCell.locator('[class*="referenceFieldWrapper"]').first();
   await expect(refField).toBeVisible({ timeout: 15000 });
@@ -220,9 +223,12 @@ async function openReferenceModalOnCell(
     .locator('[class*="referenceArrowTile"], [data-reference-background="true"]')
     .first();
   await expect(refOpenTarget).toBeVisible({ timeout: 15000 });
-  await refOpenTarget.click();
+  await refOpenTarget.click({ force: true });
 
-  const modal = page.locator('[class*="modalContainer"]').filter({ hasText: 'APPLY REFERENCE' });
+  const modal = page
+    .locator('[class*="modalContainer"], [class*="dropdown"]')
+    .filter({ hasText: 'APPLY REFERENCE' })
+    .first();
   await expect(modal).toBeVisible({ timeout: 15000 });
   return modal;
 }

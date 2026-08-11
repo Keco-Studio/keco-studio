@@ -7,20 +7,13 @@
  */
 
 import TurndownService from 'turndown';
-import {
-  highlightedCodeBlock,
-  strikethrough,
-  tables,
-  taskListItems,
-} from '@joplin/turndown-plugin-gfm';
+import { gfm } from '@/lib/vendor/joplinTurndownPluginGfm';
 
 function applyJoplinGfm(service: TurndownService): void {
-  const plugins = [highlightedCodeBlock, strikethrough, tables, taskListItems].filter(
-    (plugin): plugin is (turndown: TurndownService) => void => typeof plugin === 'function'
-  );
-  if (plugins.length > 0) {
-    service.use(plugins);
+  if (typeof gfm !== 'function') {
+    throw new Error('Joplin GFM plugin failed to load');
   }
+  service.use(gfm);
 }
 
 export const MAX_DESIGN_FILE_SIZE = 10 * 1024 * 1024; // 10MB
