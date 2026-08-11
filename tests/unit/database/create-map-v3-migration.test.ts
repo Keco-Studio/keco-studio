@@ -39,6 +39,7 @@ describe('Create Map V3 direct-image migration', () => {
   it('keeps the V3 validator private and enforces the direct-image payload contract', () => {
     const validator = sql.slice(sql.indexOf('create function public.map_validate_v3_payload'));
     expect(validator).toMatch(/jsonb_typeof\(p_plan\) <> 'object'[\s\S]+jsonb_typeof\(p_scene\) <> 'object'/i);
+    expect(validator).toMatch(/jsonb_typeof\(p_plan -> 'schemaVersion'\) is distinct from 'number'[\s\S]+jsonb_typeof\(p_scene -> 'schemaVersion'\) is distinct from 'number'/i);
     expect(validator).toMatch(/p_plan ->> 'schemaVersion' <> '3'[\s\S]+p_scene ->> 'schemaVersion' <> '3'/i);
     expect(validator).toMatch(/\(512, 512\)[\s\S]+\(688, 384\)[\s\S]+\(384, 688\)/i);
     expect(validator).toMatch(/char_length\(p_plan ->> 'description'\) between 1 and 2000/i);
@@ -68,6 +69,13 @@ describe('Create Map V3 direct-image migration', () => {
     expect(publish).toMatch(/set status = 'generating'/i);
     expect(publish).toMatch(/v_draft\.source_revision, 3,[\s\S]+v_draft\.plan, v_draft\.scene, 'draft'/i);
     expect(publish).toMatch(/set current_revision_id = v_next_revision_id/i);
+  });
+
+  it('locks map projects before locking or updating V3 revisions', () => {
+    const save = functionBlock('save_map_draft_v3', 'publish_map_revision_v3');
+    const publish = functionBlock('publish_map_revision_v3', 'create_map_asset_plan_v3');
+    expect(save).toMatch(/select \* into v_map from public\.map_projects where id = p_map_id for update;[\s\S]+update public\.map_revisions as revision/i);
+    expect(publish).toMatch(/select \* into v_map from public\.map_projects where id = p_map_id for update;[\s\S]+from public\.map_revisions[\s\S]+for update;/i);
   });
 
   it('derives one immutable direct-image asset plan and verifies ordered registry references', () => {

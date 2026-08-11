@@ -181,6 +181,8 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     }
 
     expect((await createV3(fx.owner.client, 'Invalid V3 map', planV2, sceneV2)).error?.code).toBe('22023');
+    expect((await createV3(fx.owner.client, 'String Plan schema version', { ...planV3, schemaVersion: '3' }, sceneV3)).error?.code).toBe('22023');
+    expect((await createV3(fx.owner.client, 'String Scene schema version', planV3, { ...sceneV3, schemaVersion: '3' })).error?.code).toBe('22023');
 
     const ownerMap = (ownerCreate.data as CreatedMap[])[0];
     const invalidSave = await fx.owner.client.rpc('save_map_draft_v3', {

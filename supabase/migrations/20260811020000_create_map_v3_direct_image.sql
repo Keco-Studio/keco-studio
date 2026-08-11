@@ -88,6 +88,8 @@ begin
     or p_scene is null
     or jsonb_typeof(p_plan) <> 'object'
     or jsonb_typeof(p_scene) <> 'object'
+    or jsonb_typeof(p_plan -> 'schemaVersion') is distinct from 'number'
+    or jsonb_typeof(p_scene -> 'schemaVersion') is distinct from 'number'
     or p_plan ->> 'schemaVersion' <> '3'
     or p_scene ->> 'schemaVersion' <> '3' then
     raise exception 'V3 plan and scene payloads are required' using errcode = '22023';
@@ -261,12 +263,12 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_project_id uuid;
+  v_map public.map_projects%rowtype;
   v_save_version bigint;
 begin
-  select project_id into v_project_id from public.map_projects where id = p_map_id;
-  if v_project_id is null then raise exception 'map not found' using errcode = 'P0002'; end if;
-  perform public.map_require_writer(v_project_id);
+  select * into v_map from public.map_projects where id = p_map_id for update;
+  if not found then raise exception 'map not found' using errcode = 'P0002'; end if;
+  perform public.map_require_writer(v_map.project_id);
   perform public.map_validate_v3_payload(p_plan, p_scene);
 
   update public.map_revisions as revision
