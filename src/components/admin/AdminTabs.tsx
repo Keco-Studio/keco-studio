@@ -5,7 +5,7 @@ import styles from './AdminPage.module.css';
 
 type AdminTabsProps = {
   projectId: string;
-  /** When false, Collaborator tab is hidden (non-admin users). */
+  /** When false, Collaborator tab is hidden (users who cannot invite). */
   canManageCollaborators?: boolean;
 };
 

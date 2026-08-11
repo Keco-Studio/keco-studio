@@ -8,16 +8,19 @@ export class CollaboratorPage {
     await expect(this.page.getByTestId('admin-collaborators-page')).toBeVisible({
       timeout: 30000,
     });
-    // Loading state has no heading; wait until the page finishes settling.
+    // Settled page: invite UI for roles that can invite, or a permission message otherwise.
     await expect(
       this.page
         .getByRole('heading', { name: 'Collaborators' })
+        .or(this.page.getByText(/do not have permission to invite collaborators/i))
         .or(this.page.getByText('Only project admins can manage collaborators.'))
     ).toBeVisible({ timeout: 30000 });
   }
 
   async openInvite(): Promise<void> {
-    await this.page.getByTestId('collaborators-invite-button').click();
+    const inviteButton = this.page.getByTestId('collaborators-invite-button');
+    await expect(inviteButton).toBeVisible({ timeout: 15000 });
+    await inviteButton.click();
     await expect(this.page.getByTestId('invite-collaborator-modal')).toBeVisible();
   }
 

@@ -152,7 +152,7 @@ async function importDocumentThroughSidebar(
   await page
     .getByTitle('Add new folder, library, or document')
     .click();
-  await page.getByRole('button', { name: 'Import new document' }).click();
+  await page.getByRole('menuitem', { name: 'Import new document' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Import document', { exact: true })).toBeVisible();
   await dialog.locator('input[type="file"]').setInputFiles(file);

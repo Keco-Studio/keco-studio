@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useProjectCollaboratorsQuery } from '@/lib/hooks/useProjectCollaborators';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { ROLE_PERMISSIONS } from '@/lib/types/collaboration';
 import { showSuccessToast } from '@/lib/utils/toast';
 import collaborationAdminNumIcon from '@/assets/images/collaborationAdminNumIcon.svg';
 import collaborationEditNumIcon from '@/assets/images/collaborationEditNumIcon.svg';
@@ -45,6 +46,7 @@ export function AdminCollaboratorsPage({ projectId }: AdminCollaboratorsPageProp
   const collaborators = collaboratorsQuery.data ?? [];
   const userRole = roleQuery.data?.role ?? null;
   const currentUserId = userProfile?.id ?? '';
+  const canInvite = userRole ? ROLE_PERMISSIONS[userRole].canInvite : false;
   const acceptedCollaborators = useMemo(
     () => collaborators.filter((collaborator) => collaborator.acceptedAt !== null),
     [collaborators]
@@ -61,17 +63,20 @@ export function AdminCollaboratorsPage({ projectId }: AdminCollaboratorsPageProp
   if (authLoading || collaboratorsQuery.isLoading || roleQuery.isLoading || projectQuery.isLoading) {
     return (
       <div className={styles.pageWide} data-testid="admin-collaborators-page">
-        <AdminTabs projectId={projectId} canManageCollaborators={userRole === 'admin' || userRole === null} />
+        <AdminTabs
+          projectId={projectId}
+          canManageCollaborators={userRole ? ROLE_PERMISSIONS[userRole].canInvite : true}
+        />
         <div className={styles.loading}>Loading collaborators...</div>
       </div>
     );
   }
 
-  if (userRole && userRole !== 'admin') {
+  if (userRole && !canInvite) {
     return (
       <div className={styles.pageWide} data-testid="admin-collaborators-page">
         <AdminTabs projectId={projectId} canManageCollaborators={false} />
-        <div className={styles.empty}>Only project admins can manage collaborators.</div>
+        <div className={styles.empty}>You do not have permission to invite collaborators.</div>
       </div>
     );
   }

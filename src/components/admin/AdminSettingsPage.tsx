@@ -8,6 +8,7 @@ import { EditProjectModal } from '@/components/projects/EditProjectModal';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { ROLE_PERMISSIONS } from '@/lib/types/collaboration';
 import {
   readBillingPrefs,
   readNotificationPrefs,
@@ -36,6 +37,7 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
   const roleQuery = useProjectRoleQuery(projectId, userProfile?.id);
   const userRole = roleQuery.data?.role ?? null;
   const canEditProfile = userRole === 'admin';
+  const canAccessCollaborators = userRole ? ROLE_PERMISSIONS[userRole].canInvite : false;
   const userId = userProfile?.id ?? '';
 
   const projectQuery = useQuery({
@@ -135,7 +137,7 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
       <div className={styles.page} data-testid="admin-settings-page">
         <AdminTabs
           projectId={projectId}
-          canManageCollaborators={userRole === 'admin'}
+          canManageCollaborators={canAccessCollaborators}
         />
         <div className={styles.loading}>Loading settings...</div>
       </div>
@@ -146,7 +148,7 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     <div className={styles.page} data-testid="admin-settings-page">
       <AdminTabs
         projectId={projectId}
-        canManageCollaborators={userRole === 'admin'}
+        canManageCollaborators={canAccessCollaborators}
       />
 
       <section className={styles.section}>
