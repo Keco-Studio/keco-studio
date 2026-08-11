@@ -210,9 +210,10 @@ async function openReferenceModalOnCell(
 
   const refCell = await getTableCellForRowAndColumn(page, rowLabel, refColumnName);
   await refCell.scrollIntoViewIfNeeded();
-  // ReferenceField only opens the picker when the cell is already selected.
-  await refCell.click();
-  await expect(refCell).toHaveClass(/cellSelected/, { timeout: 5000 });
+  // ReferenceField opens only when selectedCells has this cell. Clicking also
+  // calls onCellFocus, so presence may paint cellEditing and hide cellSelected —
+  // do not assert on CSS class.
+  await refCell.click({ position: { x: 8, y: 8 } });
 
   const refField = refCell.locator('[class*="referenceFieldWrapper"]').first();
   await expect(refField).toBeVisible({ timeout: 15000 });
@@ -228,9 +229,8 @@ async function openReferenceModalOnCell(
     .filter({ hasText: 'APPLY REFERENCE' })
     .first();
   if (!(await modal.isVisible().catch(() => false))) {
-    // Ensure selection stuck, then click the list container (bubbles to handleClick).
-    await refCell.click();
-    await expect(refCell).toHaveClass(/cellSelected/, { timeout: 5000 });
+    await page.keyboard.press('Escape').catch(() => {});
+    await refCell.click({ position: { x: 8, y: 8 } });
     const valueList = refField.locator('[class*="referenceValueList"]').first();
     if ((await valueList.count()) > 0) {
       await valueList.click({ position: { x: 4, y: 4 }, force: true });
