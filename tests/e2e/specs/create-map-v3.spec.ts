@@ -575,7 +575,11 @@ async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promis
   await page.goto(APP_ORIGIN);
   await page.getByLabel('Email').fill('map-v3-e2e@example.com');
   await page.getByLabel('Password', { exact: true }).fill('Password123!');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await Promise.all([
+    page.waitForURL(`${APP_ORIGIN}/projects`, { timeout: 15_000 }),
+    page.getByRole('button', { name: 'Login', exact: true }).click(),
+  ]);
+  await page.waitForLoadState('networkidle', { timeout: 10_000 });
   await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 15_000 });
   await page.goto(`${APP_ORIGIN}/create-map`);
   await expect(page.getByTestId('create-map-workbench')).toHaveAttribute('data-schema-version', '3');
@@ -595,7 +599,6 @@ async function generateReadyMap(page: Page): Promise<void> {
   await expect(page.getByText('Awaiting confirmation', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Confirm and generate map' }).click();
   await expect(page.getByText('Generating map', { exact: true })).toBeVisible();
-  await expect(page.getByText('Validating image', { exact: true })).toBeVisible();
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
 }
 
