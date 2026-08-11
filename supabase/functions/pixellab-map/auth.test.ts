@@ -74,6 +74,19 @@ Deno.test("keeps legacy assets on their existing identity contract", () => {
   }, {});
 });
 
+Deno.test("requires the exact generation identity for schema 3", () => {
+  const authorized = { mapId: "map-v3", revisionId: "revision-v3", schemaVersion: 3, generationId: "generation-v3" };
+  assertGenerationIdentity(authorized, { mapId: "map-v3", revisionId: "revision-v3", generationId: "generation-v3" });
+  for (const request of [
+    { mapId: "stale", revisionId: "revision-v3", generationId: "generation-v3" },
+    { mapId: "map-v3", revisionId: "stale", generationId: "generation-v3" },
+    { mapId: "map-v3", revisionId: "revision-v3", generationId: null },
+  ]) {
+    const error = assertThrows(() => assertGenerationIdentity(authorized, request), PixelLabMapError);
+    assertEquals(error.status, 403);
+  }
+});
+
 Deno.test("rejects regional obstacles whose background binding is stale or mismatched", () => {
   const authorized = {
     revisionId: "revision-a",

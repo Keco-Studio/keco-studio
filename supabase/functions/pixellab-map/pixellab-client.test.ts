@@ -124,6 +124,66 @@ Deno.test("polls path tiles through get_tiles_pro with a tile id", async () => {
   });
 });
 
+Deno.test("polls Pro obstacle images through get_image with a job id", async () => {
+  const calls: string[] = [];
+  const client = new PixelLabClient("private-token", async (_url, init) => {
+    calls.push(String(init?.body));
+    return new Response(`event: message\ndata: ${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: [{ type: "text", text: "status: processing" }], isError: false },
+    })}\n\n`);
+  });
+
+  await client.pollJob({
+    semantic: "map_object",
+    transport: "mcp",
+    operation: "create_image_pro",
+    schemaFingerprint: "fingerprint",
+    inputSchema: {},
+  }, "pro-job-id");
+
+  assertEquals(JSON.parse(calls[0]).params, {
+    name: "get_image",
+    arguments: { job_id: "pro-job-id" },
+  });
+});
+
+Deno.test("discovers only create_image_pro for direct maps and records get_image polling", async () => {
+  const client = new PixelLabClient("private-token", async () => mcpResponse([
+    {
+      name: "create_image_pro",
+      inputSchema: {
+        type: "object",
+        properties: {
+          description: { type: "string" }, width: { type: "integer" }, height: { type: "integer" },
+          no_background: { type: "boolean" },
+        },
+        required: ["description", "width", "height", "no_background"],
+        additionalProperties: false,
+      },
+    },
+    { name: "get_image", inputSchema: { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] } },
+  ]));
+  const capability = await client.discover("direct_map_image");
+  assertEquals(capability.operation, "create_image_pro");
+  assertEquals(capability.pollOperation, "get_image");
+  assertEquals(capability.pollInputSchema, { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] });
+});
+
+Deno.test("rejects a direct map when get_image is missing or lacks job_id", async () => {
+  const missing = new PixelLabClient("private-token", async () => mcpResponse([{ name: "create_image_pro", inputSchema: {} }]));
+  const missingError = await assertRejects(() => missing.discover("direct_map_image"), PixelLabMapError);
+  assertEquals(missingError.code, "pixellab_capability_missing");
+
+  const incompatible = new PixelLabClient("private-token", async () => mcpResponse([
+    { name: "create_image_pro", inputSchema: { type: "object", properties: { description: {}, width: {}, height: {}, no_background: {} } } },
+    { name: "get_image", inputSchema: { type: "object", properties: { image_id: { type: "string" } }, required: ["image_id"] } },
+  ]));
+  const incompatibleError = await assertRejects(() => incompatible.discover("direct_map_image"), PixelLabMapError);
+  assertEquals(incompatibleError.code, "pixellab_capability_missing");
+});
+
 Deno.test("maps provider-independent V2 fields through the discovered live schema", () => {
   const arguments_ = providerArgumentsFor({
     semantic: "topdown_tileset",

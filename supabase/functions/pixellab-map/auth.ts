@@ -78,7 +78,7 @@ export function assertGenerationIdentity(
   authorized: Pick<AuthorizedAsset, "mapId" | "revisionId" | "schemaVersion" | "generationId">,
   request: Record<string, unknown>,
 ): void {
-  if (authorized.schemaVersion !== 2) return;
+  if (authorized.schemaVersion === 1) return;
   if (
     !authorized.generationId ||
     request.mapId !== authorized.mapId ||

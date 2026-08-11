@@ -35,6 +35,10 @@ const CAPABILITIES: Record<SemanticCapability, {
     requiredTerms: ["inpaint", "mask", "region"],
     restFallback: "/inpaint-v3",
   },
+  direct_map_image: {
+    preferred: "create_image_pro",
+    requiredTerms: ["create", "image", "pro"],
+  },
 };
 
 function stableJson(value: unknown): string {
@@ -139,6 +143,19 @@ function schemaProperties(capability: DiscoveredCapability): Record<string, Reco
     : {};
 }
 
+function compatibleSchema(
+  schema: Record<string, unknown> | undefined,
+  fields: Record<string, string>,
+): boolean {
+  if (!schema || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) return false;
+  const properties = schema.properties as Record<string, unknown>;
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  return Object.entries(fields).every(([name, type]) => {
+    const property = properties[name];
+    return Boolean(property && typeof property === "object" && (property as Record<string, unknown>).type === type && required.includes(name));
+  });
+}
+
 export function providerArgumentsFor(
   capability: DiscoveredCapability,
   prompt: string,
@@ -227,6 +244,27 @@ export class PixelLabClient {
   async discover(semantic: SemanticCapability): Promise<DiscoveredCapability> {
     const spec = CAPABILITIES[semantic];
     const tools = await this.listTools();
+    if (semantic === "direct_map_image") {
+      const create = tools.find((tool) => tool.name === "create_image_pro");
+      const poll = tools.find((tool) => tool.name === "get_image");
+      if (!compatibleSchema(create?.inputSchema, {
+        description: "string", width: "integer", height: "integer", no_background: "boolean",
+      }) || !compatibleSchema(poll?.inputSchema, { job_id: "string" })) {
+        throw new PixelLabMapError("pixellab_capability_missing", undefined, 409);
+      }
+      const inputSchema = create!.inputSchema!;
+      const pollInputSchema = poll!.inputSchema!;
+      return {
+        semantic,
+        transport: "mcp",
+        operation: create!.name,
+        schemaFingerprint: await fingerprint(inputSchema),
+        inputSchema,
+        pollOperation: poll!.name,
+        pollSchemaFingerprint: await fingerprint(pollInputSchema),
+        pollInputSchema,
+      };
+    }
     const exact = tools.find((tool) => tool.name === spec.preferred);
     const semanticMatch = exact ?? tools.find((tool) => {
       const haystack = `${tool.name} ${tool.description ?? ""}`.toLowerCase();
@@ -277,12 +315,20 @@ export class PixelLabClient {
 
   async pollJob(capability: DiscoveredCapability, jobId: string): Promise<Record<string, unknown>> {
     if (capability.transport === "mcp") {
-      const operation = capability.semantic === "topdown_tileset" ? "get_topdown_tileset"
+      const operation = capability.semantic === "direct_map_image"
+        ? capability.pollOperation
+        : capability.semantic === "topdown_tileset" ? "get_topdown_tileset"
         : capability.semantic === "path_tiles" ? "get_tiles_pro"
-        : capability.semantic === "map_object" ? "get_map_object" : "get_image";
-      const key = capability.semantic === "topdown_tileset" ? "tileset_id"
+        : capability.semantic === "map_object"
+          ? capability.operation === "create_image_pro" ? "get_image" : "get_map_object"
+          : "get_image";
+      if (!operation) throw new PixelLabMapError("pixellab_capability_missing", undefined, 409);
+      const key = capability.semantic === "direct_map_image" ? "job_id"
+        : capability.semantic === "topdown_tileset" ? "tileset_id"
         : capability.semantic === "path_tiles" ? "tile_id"
-        : capability.semantic === "map_object" ? "object_id" : "job_id";
+        : capability.semantic === "map_object"
+          ? capability.operation === "create_image_pro" ? "job_id" : "object_id"
+          : "job_id";
       const payload = await this.mcp("tools/call", { name: operation, arguments: { [key]: jobId } });
       if (!payload.result || typeof payload.result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return payload.result as Record<string, unknown>;

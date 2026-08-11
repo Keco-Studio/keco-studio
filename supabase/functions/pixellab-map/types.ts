@@ -2,7 +2,8 @@ export type SemanticCapability =
   | "topdown_tileset"
   | "path_tiles"
   | "map_object"
-  | "inpaint";
+  | "inpaint"
+  | "direct_map_image";
 
 export type ProviderTransport = "mcp" | "rest";
 
@@ -12,6 +13,9 @@ export type DiscoveredCapability = {
   operation: string;
   schemaFingerprint: string;
   inputSchema: Record<string, unknown>;
+  pollOperation?: string;
+  pollSchemaFingerprint?: string;
+  pollInputSchema?: Record<string, unknown>;
 };
 
 export type NormalizedTileAtlas = {
