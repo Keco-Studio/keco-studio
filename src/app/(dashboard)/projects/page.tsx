@@ -58,11 +58,11 @@ export default function ProjectsPage() {
   const handleCreated = async (projectId: string) => {
     await queryClient.invalidateQueries({ queryKey: ['projects'] });
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    router.push(`/${projectId}`);
+    router.push(`/${projectId}/recent`);
   };
 
   const goToProject = (id: string) => {
-    router.push(`/${id}`);
+    router.push(`/${id}/recent`);
   };
 
   const showEmpty = !loading && !projectsError && projects.length === 0;

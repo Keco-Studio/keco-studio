@@ -37,7 +37,7 @@ export function AcceptInvitationContent({
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
       
       const timer = setTimeout(() => {
-        router.push(`/${projectId}/collaborators`);
+        router.push(`/${projectId}/admin/collaborators`);
       }, 2000);
       
       return () => clearTimeout(timer);

@@ -39,7 +39,7 @@ describe('realtime channel consolidation (issue #216)', () => {
       'src/components/layout/hooks/useSidebarRealtime.ts'
     );
     const collaboratorsPage = read(
-      'src/app/(dashboard)/[projectId]/collaborators/page.tsx'
+      'src/components/admin/AdminCollaboratorsPage.tsx'
     );
 
     expect(projectLayout).toContain('useProjectCollaboratorsRealtime');

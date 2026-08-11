@@ -4,7 +4,7 @@ export class CollaboratorPage {
   constructor(readonly page: Page) {}
 
   async goto(projectId: string): Promise<void> {
-    await this.page.goto(`/${projectId}/collaborators`);
+    await this.page.goto(`/${projectId}/admin/collaborators`);
     await expect(this.page.getByRole('heading', { name: 'Collaborators' })).toBeVisible({
       timeout: 30000,
     });

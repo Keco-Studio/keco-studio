@@ -1969,8 +1969,8 @@ td.cellCopy.copyBorderRight:hover {
 /* Asset Card Panel styles - for hovering over reference avatar */
 .assetCardBridge {
   position: fixed;
-  width: 2.5rem;
-  height: 1.5rem;
+  width: 28px;
+  height: 64px;
   background: transparent;
   pointer-events: auto;
   z-index: 2002;
@@ -1978,27 +1978,30 @@ td.cellCopy.copyBorderRight:hover {
 
 .assetCardPanel {
   position: fixed;
-  background: white;
-  border-radius: 0.5rem;
-  width: 320px;
+  background: #ffffff;
+  border-radius: 14px;
+  width: max-content;
+  min-width: 160px;
+  max-width: 220px;
+  min-height: auto;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(11, 153, 255, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border: 1px solid #e7e7e7;
   z-index: 2001;
   pointer-events: auto;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .assetCardHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.25rem;
+  padding: 0.625rem 0.875rem;
   background: rgba(11, 153, 255, 0.08);
-  border-bottom: 1px solid #e2e8f0;
-  border-radius: calc(0.5rem - 1px) calc(0.5rem - 1px) 0 0;
+  border-bottom: 1px solid #e7e7e7;
 }
 
 .assetCardTitle {
@@ -2051,7 +2054,96 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .assetCardDetailsSection {
-  padding: 1.25rem;
+  position: relative;
+  padding: 0.75rem 0.875rem 0.875rem;
+}
+
+.assetCardInlineClose {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  line-height: 1;
+  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assetCardInlineClose:hover {
+  color: #4b5563;
+  background: #f3f4f6;
+}
+
+.assetCardKvList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assetCardKvRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 20px;
+  width: 100%;
+}
+
+.assetCardKvLabel {
+  flex-shrink: 0;
+  color: #7d7d7d;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.25;
+  min-width: 4.5rem;
+}
+
+.assetCardKvValue {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #0a0a0a;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetCardFromLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #0b99ff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  cursor: pointer;
+  text-align: left;
+}
+
+.assetCardFromLink:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.assetCardFromLink span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assetCardDetailsLabel {

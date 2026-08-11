@@ -9,6 +9,7 @@ import AuthForm from '@/components/authform/AuthForm';
 import { ChatPanel } from '@/components/agent/ChatPanel';
 import { AgentImportBridge } from '@/components/agent/AgentImportBridge';
 import { ScriptSidebar } from '@/components/script-system/ScriptSidebar';
+import { RecentVisitTracker } from '@/components/layout/RecentVisitTracker';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
@@ -103,6 +104,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </div>
       <AgentImportBridge />
+      <RecentVisitTracker />
     </div>
   );
 }

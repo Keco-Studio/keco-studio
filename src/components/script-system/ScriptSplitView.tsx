@@ -94,6 +94,11 @@ export function ScriptSplitView({
       .filter((row): row is AssetRow => Boolean(row)) ?? [];
   }, [graph.nodes, rows, selectedPlotNodeId]);
 
+  const selectedBranchName = useMemo(() => {
+    const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
+    return selected?.label?.trim() || '';
+  }, [graph.nodes, selectedPlotNodeId]);
+
   useEffect(() => {
     ratioRef.current = ratio;
   }, [ratio]);
@@ -198,6 +203,7 @@ export function ScriptSplitView({
                 rows={selectedRows}
                 scriptColumns={scriptColumns}
                 mode="plot-node"
+                branchName={selectedBranchName || undefined}
                 onSelectOptionTarget={selectOptionTarget}
               />
           </div>

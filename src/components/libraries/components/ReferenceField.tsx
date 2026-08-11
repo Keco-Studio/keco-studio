@@ -118,8 +118,10 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
                 key={`${id}-${selection.fieldId || 'legacy'}-${idx}`}
                 ref={setAvatarRef(id)}
                 data-reference-background="true"
-                onMouseEnter={(e) => {
+                onClick={(e) => {
                   e.stopPropagation();
+                  e.preventDefault();
+                  onFocus?.();
                   onAvatarMouseEnter(
                     id,
                     e.currentTarget,
@@ -130,9 +132,6 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
                       },
                     ]
                   );
-                }}
-                onMouseLeave={(e) => {
-                  e.stopPropagation();
                 }}
                 className={styles.referenceValuePill}
                 title={label}

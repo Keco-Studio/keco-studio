@@ -41,7 +41,14 @@
 }
 
 .importModal {
+  width: 616px;
+  max-width: calc(100vw - 2.5rem);
+  height: auto;
   max-height: calc(100dvh - 2.5rem);
+  border-radius: 14px;
+  background: #ffffff;
+  border: none;
+  gap: 1.25rem;
 }
 
 .importBody {
@@ -142,6 +149,36 @@
   box-shadow: inset 0 0 0 0.125rem #a5b4fc;
 }
 
+.importNameInput::placeholder,
+.importTextarea::placeholder {
+  color: rgba(0, 0, 0, 0.24);
+}
+
+/* Table Name / File / Add notes — Text-sm/Medium */
+.importFieldLabel,
+.importNotesLabelText {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0;
+  color: #000000;
+}
+
+.importNotesLabel {
+  font-size: 14px;
+  line-height: 20px;
+  gap: 0;
+  align-items: baseline;
+}
+
+.importNotesLabelLimit {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  letter-spacing: 0;
+  color: rgba(0, 0, 0, 0.24);
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -240,11 +277,24 @@
 
 /* Must follow .textareaWrapper / .textarea so these win on Import dialogs. */
 .importTextareaWrapper {
-  height: 5rem;
+  height: 140px;
+  padding: 12px;
 }
 
 .importTextarea {
-  height: 3.75rem;
+  height: 100%;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: #1a1a1a;
+}
+
+.importNameInput {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #1a1a1a;
 }
 
 .footer {
@@ -291,6 +341,45 @@
 .secondary {
   background: #f1f5f9;
   color: #475569;
+}
+
+.importCancel {
+  background: #fff;
+  color: #0f172a;
+  border: 0.0625rem solid #e2e8f0;
+  height: 32px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  gap: 4px;
+}
+
+.importSubmit {
+  width: auto;
+  min-width: 72px;
+  height: 32px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #0b99ff;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  gap: 4px;
+  border: none;
+}
+
+.importSubmit:hover {
+  background: #0b99ff;
+}
+
+.importSubmit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #0b99ff14;
+  color: #0b99ff;
 }
 
 .primary {

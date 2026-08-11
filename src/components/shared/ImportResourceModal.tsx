@@ -60,7 +60,7 @@ export function ImportResourceModal({
       >
         <div className={dialog.header}>
           <div id={`import-${resourceKey}-title`} className={dialog.title}>
-            Import {resourceLabel}
+            Import {resourceKey}
           </div>
           <button
             type="button"
@@ -73,33 +73,37 @@ export function ImportResourceModal({
           </button>
         </div>
 
-        <div className={dialog.divider} />
-
         <div className={dialog.importBody}>
           <div className={dialog.field}>
-            <label htmlFor={`import-${resourceKey}-name`} className={dialog.nameLabel}>
+            <label
+              htmlFor={`import-${resourceKey}-name`}
+              className={`${dialog.nameLabel} ${dialog.importFieldLabel}`}
+            >
               {resourceLabel} Name
             </label>
             <input
               id={`import-${resourceKey}-name`}
               data-testid={`import-${resourceKey}-name`}
-              className={dialog.nameInput}
+              className={`${dialog.nameInput} ${dialog.importNameInput}`}
               value={name}
               onChange={(event) => onNameChange(event.target.value)}
-              placeholder={`Enter ${resourceKey} name`}
+              placeholder="Type..."
               disabled={submitting}
             />
           </div>
 
           <div className={dialog.field}>
-            <span className={dialog.nameLabel}>File</span>
+            <span className={`${dialog.nameLabel} ${dialog.importFieldLabel}`}>File</span>
             {fileControl}
           </div>
 
           <div className={`${dialog.notesContainer} ${dialog.importNotesContainer}`}>
-            <label htmlFor={`import-${resourceKey}-notes`} className={dialog.notesLabel}>
-              <span className={dialog.notesLabelText}>Notes</span>
-              <span className={dialog.notesLabelLimit}> (250 characters limit)</span>
+            <label
+              htmlFor={`import-${resourceKey}-notes`}
+              className={`${dialog.notesLabel} ${dialog.importNotesLabel}`}
+            >
+              <span className={dialog.importNotesLabelText}>Add notes</span>
+              <span className={dialog.importNotesLabelLimit}> (250 characters limit)</span>
             </label>
             <div className={`${dialog.textareaWrapper} ${dialog.importTextareaWrapper}`}>
               <textarea
@@ -110,6 +114,7 @@ export function ImportResourceModal({
                 onChange={(event) => onNotesChange(event.target.value)}
                 maxLength={250}
                 disabled={submitting}
+                placeholder="Type..."
               />
             </div>
           </div>
@@ -119,7 +124,7 @@ export function ImportResourceModal({
           {error && <div className={dialog.error} role="alert">{error}</div>}
           <button
             type="button"
-            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.secondary}`}
+            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.secondary} ${dialog.importCancel}`}
             onClick={onClose}
             disabled={submitting}
           >
@@ -127,7 +132,7 @@ export function ImportResourceModal({
           </button>
           <button
             type="button"
-            className={`${dialog.button} ${dialog.buttonFixed} ${dialog.primary}`}
+            className={`${dialog.button} ${dialog.importSubmit}`}
             data-testid={`import-${resourceKey}-submit`}
             onClick={onSubmit}
             disabled={submitDisabled || submitting}

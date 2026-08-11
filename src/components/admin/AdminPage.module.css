@@ -1,0 +1,344 @@
+.page {
+  width: 100%;
+  max-width: 56rem;
+  padding: 1.25rem 1.5rem 2.5rem;
+}
+
+.pageWide {
+  width: 100%;
+  max-width: none;
+  padding: 1.25rem 1.5rem 2.5rem;
+  box-sizing: border-box;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.tab {
+  height: 2rem;
+  padding: 0 0.875rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #334155;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: #f4f6f8;
+}
+
+.tabActive {
+  background: #e8f5fd;
+  color: #0b99ff;
+}
+
+.section {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 1rem 1.25rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid #eceef0;
+}
+
+.section:first-of-type {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+.sectionLabel {
+  margin: 0;
+  color: rgba(0, 0, 0, 0.9);
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 24px;
+  letter-spacing: -0.03px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 0.625rem;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.row:hover {
+  background: #f8fafc;
+}
+
+.row:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.row:disabled:hover {
+  background: transparent;
+}
+
+.rowText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.rowTitle {
+  color: #111827;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.rowSubtitle {
+  color: #6b7280;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowAction {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: #9aa3af;
+}
+
+.manageButton {
+  height: 2rem;
+  padding: 0 0.875rem;
+  border: 1px solid #d7dbe0;
+  border-radius: 0.625rem;
+  background: #ffffff;
+  color: #111827;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.manageButton:hover {
+  background: #f8fafc;
+}
+
+.toggle {
+  position: relative;
+  width: 2.5rem;
+  height: 1.4rem;
+  border: none;
+  border-radius: 999px;
+  background: #d1d5db;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.toggleOn {
+  background: #0b99ff;
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.toggleOn .toggleThumb {
+  transform: translateX(1.1rem);
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal {
+  width: min(28rem, 100%);
+  background: #ffffff;
+  border-radius: 0.875rem;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  padding: 1.25rem;
+}
+
+.modalTitle {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.fieldInput,
+.fieldTextarea {
+  width: 100%;
+  border: 1px solid #d7dbe0;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  color: #111827;
+  box-sizing: border-box;
+}
+
+.fieldTextarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #111827;
+  font-size: 0.875rem;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.modalSecondary,
+.modalPrimary {
+  height: 2rem;
+  padding: 0 0.9rem;
+  border-radius: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.modalSecondary {
+  border: 1px solid #d7dbe0;
+  background: #ffffff;
+  color: #111827;
+}
+
+.modalPrimary {
+  border: none;
+  background: #0b99ff;
+  color: #ffffff;
+}
+
+.loading,
+.empty {
+  color: #6b7280;
+  font-size: 0.9375rem;
+  padding: 1rem 0;
+}
+
+/* Collaborators tab header inside Admin shell */
+.collabHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.collabTitle {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.roleStats {
+  display: flex;
+  gap: 0.625rem;
+  align-items: center;
+  margin-left: auto;
+}
+
+.roleStatItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.roleStatCount {
+  font-size: 1rem;
+}
+
+.adminCount {
+  color: rgba(154, 26, 255, 1);
+}
+
+.editorCount {
+  color: rgba(6, 147, 249, 1);
+}
+
+.viewerCount {
+  color: rgba(26, 26, 26, 1);
+}
+
+.inviteButton {
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #0b99ff;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.inviteButton:hover {
+  filter: brightness(0.96);
+}
+
+.errorBanner {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
