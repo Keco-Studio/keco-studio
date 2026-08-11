@@ -76,3 +76,19 @@ Deno.test("requires road overlays and objects to be transparent while terrain st
     alpha: "required",
   });
 });
+
+Deno.test("requires an exact fully opaque direct map image", async () => {
+  assertEquals(pngExpectationForAsset("map_image", { width: 512, height: 512 }), {
+    width: 512,
+    height: 512,
+    alpha: "forbidden",
+  });
+  const opaque = rgbaPng(512, 512, false);
+  const validated = await validatePng(opaque, pngExpectationForAsset("map_image", { width: 512, height: 512 }));
+  assertEquals(validated.hasTransparency, false);
+  await assertRejects(
+    () => validatePng(rgbaPng(512, 512), pngExpectationForAsset("map_image", { width: 512, height: 512 })),
+    PixelLabMapError,
+    "fully opaque",
+  );
+});

@@ -24,9 +24,16 @@ export type ValidatedPng = {
 };
 
 export function pngExpectationForAsset(
-  kind: "terrain" | "road" | "object" | "inpaint" | "path" | "obstacle" | "background",
+  kind: "terrain" | "road" | "object" | "inpaint" | "path" | "obstacle" | "background" | "map_image",
   params: Record<string, unknown>,
 ): PngExpectation {
+  if (kind === "map_image") {
+    return {
+      width: typeof params.width === "number" ? params.width : undefined,
+      height: typeof params.height === "number" ? params.height : undefined,
+      alpha: "forbidden",
+    };
+  }
   const tileSize = typeof params.tile_size === "number"
     ? params.tile_size
     : params.tile_size && typeof params.tile_size === "object" &&

@@ -11,7 +11,7 @@ const IDs = {
   assetId: "44444444-4444-4444-8444-444444444444",
 };
 
-function fixtureClient(bytes: Uint8Array, failReadBack = false) {
+function fixtureClient(bytes: Uint8Array, failReadBack = false, readyTransitionStatus = "ready") {
   const calls: Array<{ name: string; args: unknown }> = [];
   let downloadCount = 0;
   const bucket = {
@@ -32,7 +32,8 @@ function fixtureClient(bytes: Uint8Array, failReadBack = false) {
     storage: { from(name: string) { calls.push({ name: "bucket", args: name }); return bucket; } },
     async rpc(name: string, args: unknown) {
       calls.push({ name, args });
-      return { data: [{ status: "ready" }], error: null };
+      const next = (args as Record<string, unknown>).p_next_status;
+      return { data: [{ status: next === "ready" ? readyTransitionStatus : next }], error: null };
     },
   } as unknown as SupabaseClient;
   return { client, calls, getDownloadCount: () => downloadCount };
@@ -82,4 +83,17 @@ Deno.test("read-back failure never binds a path and marks storage_failed", async
   assertEquals((transitions[0].args as Record<string, unknown>).p_next_status, "failed");
   assertEquals((transitions[0].args as Record<string, unknown>).p_last_error_code, "storage_failed");
   assertEquals((transitions[0].args as Record<string, unknown>).p_storage_path, null);
+});
+
+Deno.test("a stale ready transition conflict never returns a binding", async () => {
+  const { client, calls } = fixtureClient(png.bytes, false, "conflict");
+  await assertRejects(() => persistValidatedAsset(
+    { serviceClient: client, projectId: IDs.projectId, mapId: IDs.mapId, revisionId: IDs.revisionId },
+    { id: IDs.assetId, assetKey: "oak-tree" }, png,
+  ), PixelLabMapError);
+  const transitions = calls.filter((call) => call.name === "transition_map_asset");
+  assertEquals(transitions.length, 2);
+  assertEquals((transitions[0].args as Record<string, unknown>).p_next_status, "ready");
+  assertEquals((transitions[1].args as Record<string, unknown>).p_next_status, "failed");
+  assertEquals((transitions[1].args as Record<string, unknown>).p_storage_path, null);
 });

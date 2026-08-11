@@ -30,6 +30,14 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
   return left.every((byte, index) => byte === right[index]);
 }
 
+export function mapAssetTransitionStatus(data: unknown): string | null {
+  const value = Array.isArray(data) ? data[0] : data;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return typeof (value as Record<string, unknown>).status === "string"
+    ? String((value as Record<string, unknown>).status)
+    : null;
+}
+
 export async function downloadPrivateAsset(serviceClient: SupabaseClient, storagePath: string): Promise<Uint8Array> {
   const download = await serviceClient.storage.from("map-assets").download(storagePath);
   if (download.error || !download.data || download.data.size === 0 || download.data.size > MAX_PNG_BYTES) {
@@ -87,10 +95,14 @@ export async function persistValidatedAsset(
         opaqueFillRatio: png.opaqueFillRatio,
       },
     });
-    if (error || !data) throw new Error("ready transition failed");
+    if (error) throw new Error("ready transition failed");
+    if (mapAssetTransitionStatus(data) !== "ready") {
+      throw new PixelLabMapError("pixellab_invalid_response", "Map asset state changed before storage completed", 409);
+    }
     return { assetId: asset.id, storagePath, sha256: png.sha256, width: png.width, height: png.height, hasTransparency: png.hasTransparency };
-  } catch {
+  } catch (error) {
     await failAsset(context, asset, "storage_failed");
+    if (error instanceof PixelLabMapError) throw error;
     throw new PixelLabMapError("pixellab_upstream", "Validated asset storage failed");
   }
 }

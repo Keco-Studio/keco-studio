@@ -1,17 +1,18 @@
 import { assertGenerationIdentity, assertRegionObstacleBackgroundBinding, authorizeAsset, authorizeProject } from "./auth.ts";
 import { normalizeTileAtlas } from "./atlas.ts";
 import { composeAndPersistBackground } from "./background-storage.ts";
+import { runDirectMapLifecycle } from "./direct-map-lifecycle.ts";
 import { bearerToken, jsonResponse, readJsonBody } from "./http.ts";
 import { PixelLabClient, providerArgumentsFor } from "./pixellab-client.ts";
 import { pngExpectationForAsset, validatePng } from "./png.ts";
-import { providerJobId, providerStatus } from "./provider-response.ts";
-import { persistValidatedAsset } from "./storage.ts";
+import { providerContentQualityIssue, providerJobId, providerStatus } from "./provider-response.ts";
+import { mapAssetTransitionStatus, persistValidatedAsset } from "./storage.ts";
 import { PixelLabMapError, type SemanticCapability } from "./types.ts";
 
 type EdgeAssetKind = Parameters<typeof pngExpectationForAsset>[0];
 
 function edgeAssetKind(value: unknown): EdgeAssetKind {
-  if (["terrain", "road", "object", "inpaint", "path", "obstacle", "background"].includes(String(value))) {
+  if (["terrain", "road", "object", "inpaint", "path", "obstacle", "background", "map_image"].includes(String(value))) {
     return value as EdgeAssetKind;
   }
   throw new PixelLabMapError("pixellab_capability_missing", "Unsupported map asset kind", 409);
@@ -22,11 +23,12 @@ function capabilityFor(kind: EdgeAssetKind): SemanticCapability {
   if (kind === "road" || kind === "path") return "path_tiles";
   if (kind === "object" || kind === "obstacle") return "map_object";
   if (kind === "inpaint") return "inpaint";
+  if (kind === "map_image") return "direct_map_image";
   throw new PixelLabMapError("pixellab_capability_missing", "Unsupported map asset kind", 409);
 }
 
 async function transition(serviceClient: ReturnType<typeof authorizeAsset> extends Promise<infer T> ? T extends { serviceClient: infer C } ? C : never : never, assetId: string, from: string, to: string, details: Record<string, unknown> = {}) {
-  const { error } = await serviceClient.rpc("transition_map_asset", {
+  const { data, error } = await serviceClient.rpc("transition_map_asset", {
     p_asset_id: assetId, p_expected_status: from, p_next_status: to,
     p_provider_operation: details.operation ?? null, p_provider_transport: details.transport ?? null,
     p_provider_job_id: details.jobId ?? null, p_last_error_code: details.errorCode ?? null,
@@ -34,6 +36,9 @@ async function transition(serviceClient: ReturnType<typeof authorizeAsset> exten
     p_has_transparency: null, p_metadata: details.metadata ?? {},
   });
   if (error) throw new PixelLabMapError("pixellab_upstream", "Could not persist provider state");
+  if (mapAssetTransitionStatus(data) !== to) {
+    throw new PixelLabMapError("pixellab_invalid_response", "Map asset state changed", 409);
+  }
 }
 
 async function handle(request: Request): Promise<Response> {
@@ -46,7 +51,7 @@ async function handle(request: Request): Promise<Response> {
     await authorizeProject(token, projectId);
     const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
     const capabilities = await Promise.all(([
-      "topdown_tileset", "path_tiles", "map_object", "inpaint",
+      "topdown_tileset", "path_tiles", "map_object", "inpaint", "direct_map_image",
     ] as SemanticCapability[]).map(async (semantic) => {
       try { return await client.discover(semantic); } catch (error) {
         if (error instanceof PixelLabMapError && error.code === "pixellab_capability_missing") return null;
@@ -61,6 +66,19 @@ async function handle(request: Request): Promise<Response> {
   if (!assetId) throw new PixelLabMapError("pixellab_invalid_response", "Asset is required", 400);
   const authorized = await authorizeAsset(token, assetId, projectId);
   assertGenerationIdentity(authorized, body);
+  const kind = edgeAssetKind(authorized.asset.kind);
+  if (kind === "map_image") {
+    if (!["submit", "retry", "poll", "validate"].includes(operation)) {
+      throw new PixelLabMapError("pixellab_invalid_response", "Unsupported direct map operation", 400);
+    }
+    const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
+    return jsonResponse(await runDirectMapLifecycle({
+      operation: operation as "submit" | "retry" | "poll" | "validate",
+      authorized,
+      client,
+      transitionAsset: transition,
+    }));
+  }
   const regionMetadata = authorized.asset.metadata && typeof authorized.asset.metadata === "object"
     ? authorized.asset.metadata as Record<string, unknown>
     : {};
@@ -94,7 +112,6 @@ async function handle(request: Request): Promise<Response> {
     }
   }
   const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
-  const kind = edgeAssetKind(authorized.asset.kind);
   const semantic = capabilityFor(kind);
   const capability = await client.discover(semantic);
   if (operation === "submit" || operation === "retry" || operation === "inpaint") {

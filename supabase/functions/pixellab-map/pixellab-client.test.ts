@@ -77,6 +77,38 @@ Deno.test("downloads an image URL embedded in a real MCP text result", async () 
   assertEquals(bytes, new Uint8Array([137, 80, 78, 71]));
 });
 
+Deno.test("downloads the first provider candidate deterministically", async () => {
+  const urls: string[] = [];
+  const client = new PixelLabClient("private-token", async (url) => {
+    urls.push(String(url));
+    return new Response(new Uint8Array([137, 80, 78, 71]));
+  });
+
+  await client.downloadResult({
+    images: [
+      { image_url: "https://cdn.example/first.png" },
+      { image_url: "https://cdn.example/second.png" },
+    ],
+  });
+
+  assertEquals(urls, ["https://cdn.example/first.png"]);
+});
+
+Deno.test("decodes an inline provider PNG without a network request", async () => {
+  const expected = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+  let fetchCount = 0;
+  const client = new PixelLabClient("private-token", async () => {
+    fetchCount += 1;
+    return new Response();
+  });
+  const encoded = btoa(String.fromCharCode(...expected));
+
+  const bytes = await client.downloadResult({ image_base64: `data:image/png;base64,${encoded}` });
+
+  assertEquals(bytes, expected);
+  assertEquals(fetchCount, 0);
+});
+
 Deno.test("rejects insecure or oversized provider image downloads", async () => {
   let fetchCount = 0;
   const client = new PixelLabClient("private-token", async () => {
