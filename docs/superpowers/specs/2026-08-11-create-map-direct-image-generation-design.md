@@ -279,13 +279,14 @@ This design is complete when new maps use the direct-image V3 path, the old reso
 
 ## Verification Record (2026-08-11)
 
-Task 10 added mocked browser coverage and live acceptance tooling without issuing a paid request.
+Tasks 10 and 11 added mocked browser coverage, live acceptance tooling, and fresh automated delivery evidence.
 
-- RED: the initial one-test Playwright scaffold failed because the Project source query intercept did not yet match the V3 browser request, so the required Project option never appeared. This established that the workflow depended on the new V3 mock wiring.
-- Mocked browser GREEN: `8 passed` in Chromium. The suite covers description-only planning, optional Document and uploaded references, exact prompt persistence, one `map_image`, paid confirmation, `submit -> poll -> validate`, validation failure/retry, immutable regeneration, refresh/restore, stale-open rejection, V2 read-only routing, and desktop/mobile layout evidence.
-- Focused Jest GREEN: `37` suites and `245` tests passed through `npm run test:create-map-v3`.
-- Static GREEN: focused ESLint completed with zero errors, `npm run typecheck` completed with zero errors, and `git diff --check` completed with zero errors.
+- Browser RED/GREEN: the ready-map mobile test reproduced a closed inspector overlapping the canvas. Runtime evidence traced this to programmatic horizontal scrolling of the `overflow: hidden` workbench after a focused desktop control moved offscreen. The responsive workbench now binds `.directCanvasPanel` to column 1 and uses `overflow: clip`; the focused test and full suite pass.
+- Mocked browser GREEN: `8 passed` in Chromium. The suite covers description-only planning, optional Document and uploaded references, exact prompt persistence, one `map_image`, paid confirmation, `submit -> poll -> validate`, validation failure/retry, immutable regeneration, refresh/restore, stale-open rejection, V2 read-only routing, ready-map desktop/mobile screenshots, and document/script/fetch request plus HTTP error monitoring.
+- Focused Jest GREEN: `38` suites and `250` tests passed through `npm run test:create-map-v3`.
+- Edge GREEN: `86` Deno tests passed with zero failures across authorization, direct lifecycle, live schema mapping, PNG validation, storage, and legacy V2 behavior.
+- Static/build GREEN: focused ESLint, `npm run typecheck`, `npm run typecheck:api`, `git diff --check`, and `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=e2e-anon npm run build` completed with zero errors. The original build command without public Supabase environment values correctly failed during `/auth/callback` prerender.
 - Mocked output: exactly one opaque `512x512` `map_image` using `create_image_pro`; the mock verifies a 64-character SHA-256 value and private storage-shaped binding. This is not live provider evidence.
 - Screenshots: `test-results/e2e-specs-create-map-v3-Cr-a1999--desktop-and-mobile-layouts-chromium/create-map-v3-1440x900.png` and `test-results/e2e-specs-create-map-v3-Cr-a1999--desktop-and-mobile-layouts-chromium/create-map-v3-390x844.png`.
-- Live capability discovery: blocked with `pixellab_not_configured`; no live schema fingerprints are available.
-- Paid/browser acceptance: not run. Live dimensions, hash prefix, private read-back, and restored-browser screenshot remain blocked on an explicit authenticated editor, authoritative V3 map/revision IDs, PixelLab credentials, and `KECO_ACCEPTANCE_CONFIRM_PAID=YES`.
+- Live capability discovery GREEN with generation disabled: `create_image_pro` fingerprint `e51af7af88bd081e7c406cbf7a39c6fe5d5493f057ae91a0eedcd6c783274113`; `get_image` fingerprint `10272a45d40bc050c7a76df09232247ee091a34221b653d34a1bee70bbc47030`.
+- Paid acceptance BLOCKED by the provider: authenticated owner `seed-project` created authoritative V3 map `852ea11e-a80d-47a3-b999-62824415c26f` and revision `e9a25ff5-39fd-466d-beb7-ffadb596200e` through public RPCs, then called the standalone Edge function with the user's access token and explicit paid confirmation. PixelLab returned `pixellab_rate_limited` on submit and interval retries. The single asset remains `blocked` with no provider job, no stored image, and attempt count `0`; live dimensions, hash prefix, private read-back, and restored-browser screenshot therefore remain unverified.

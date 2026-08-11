@@ -70,11 +70,21 @@ async function main(): Promise<void> {
   const page = await context.newPage();
   const pageErrors: string[] = [];
   const requestFailures: string[] = [];
+  const responseFailures: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('requestfailed', (request) => {
     const resourceType = request.resourceType();
     if (resourceType === 'document' || resourceType === 'script' || resourceType === 'fetch') {
       requestFailures.push(`${resourceType}:${request.failure()?.errorText ?? 'unknown'}:${request.url()}`);
+    }
+  });
+  page.on('response', (response) => {
+    const resourceType = response.request().resourceType();
+    if (
+      response.status() >= 400
+      && (resourceType === 'document' || resourceType === 'script' || resourceType === 'fetch')
+    ) {
+      responseFailures.push(`${resourceType}:${response.status()}:${response.url()}`);
     }
   });
 
@@ -106,6 +116,7 @@ async function main(): Promise<void> {
       if (channelDeviation.every((value) => value < 5)) throw new Error('browser_screenshot_is_visually_blank');
       if (pageErrors.length > 0) throw new Error(`browser_page_errors:${pageErrors.join(',')}`);
       if (requestFailures.length > 0) throw new Error(`browser_request_failures:${requestFailures.join(',')}`);
+      if (responseFailures.length > 0) throw new Error(`browser_response_failures:${responseFailures.join(',')}`);
 
       process.stdout.write(`${JSON.stringify({
         authenticated: true,
@@ -129,6 +140,7 @@ async function main(): Promise<void> {
         pathname: new URL(page.url()).pathname,
         pageErrors,
         requestFailures: requestFailures.slice(0, 5),
+        responseFailures: responseFailures.slice(0, 5),
         screenshot: FAILURE_SCREENSHOT,
       }));
     }

@@ -1596,9 +1596,11 @@
   .workbench {
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);
+    overflow: clip;
   }
 
-  .canvasPanel {
+  .canvasPanel,
+  .directCanvasPanel {
     grid-column: 1;
   }
 

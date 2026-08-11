@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import sharp from 'sharp';
 import {
+  createEmptyMapSceneV3,
   validateMapPlanV3,
   validateMapSceneV3,
   type MapPlanV3,
@@ -14,14 +15,25 @@ dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 const EMAIL = process.env.KECO_ACCEPTANCE_EMAIL ?? '';
 const PASSWORD = process.env.KECO_ACCEPTANCE_PASSWORD ?? '';
-const MAP_ID = process.env.KECO_ACCEPTANCE_V3_MAP_ID ?? '';
-const APPROVED_REVISION_ID = process.env.KECO_ACCEPTANCE_V3_REVISION_ID ?? '';
+const REQUESTED_MAP_ID = process.env.KECO_ACCEPTANCE_V3_MAP_ID ?? '';
+const REQUESTED_REVISION_ID = process.env.KECO_ACCEPTANCE_V3_REVISION_ID ?? '';
+const CREATE_V3 = process.env.KECO_ACCEPTANCE_CREATE_V3 === 'YES';
+const PROJECT_ID = process.env.KECO_ACCEPTANCE_PROJECT_ID ?? '';
+const EDGE_URL = (process.env.KECO_ACCEPTANCE_EDGE_URL ?? '').trim();
 const POLL_INTERVAL_MS = Number(process.env.KECO_ACCEPTANCE_POLL_MS ?? 5_000);
 const MAX_POLL_CYCLES = Number(process.env.KECO_ACCEPTANCE_MAX_POLLS ?? 180);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
 
 type JsonRecord = Record<string, unknown>;
+
+type MapRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  current_revision_id: string;
+  projects: { owner_id: string };
+};
 
 type RevisionRow = {
   id: string;
@@ -109,7 +121,40 @@ function assertDurableJsonSafe(value: unknown): void {
   visit(value);
 }
 
-async function invokePixelLab(supabase: SupabaseClient, body: JsonRecord): Promise<JsonRecord> {
+async function invokePixelLab(
+  supabase: SupabaseClient,
+  body: JsonRecord,
+  accessToken: string,
+  anonKey: string,
+): Promise<JsonRecord> {
+  if (EDGE_URL) {
+    let endpoint: URL;
+    try {
+      endpoint = new URL(EDGE_URL);
+    } catch {
+      throw new AcceptanceError('acceptance_edge_url_invalid');
+    }
+    if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
+      throw new AcceptanceError('acceptance_edge_url_invalid');
+    }
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        apikey: anonKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => null) as JsonRecord | null;
+    if (!response.ok) {
+      throw new AcceptanceError(
+        typeof payload?.code === 'string' ? payload.code : 'pixellab_function_error',
+        typeof payload?.error === 'string' ? payload.error : `Edge function returned HTTP ${response.status}`,
+      );
+    }
+    return payload ?? {};
+  }
   const { data, error } = await supabase.functions.invoke('pixellab-map', { body });
   if (!error) return (data ?? {}) as JsonRecord;
   const context = error && typeof error === 'object' ? (error as { context?: unknown }).context : null;
@@ -163,7 +208,7 @@ async function main(): Promise<void> {
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
   const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
   if (!supabaseUrl || !anonKey) throw new AcceptanceError('supabase_not_configured');
-  if (!UUID.test(MAP_ID) || !UUID.test(APPROVED_REVISION_ID)) {
+  if (Boolean(REQUESTED_MAP_ID) !== Boolean(REQUESTED_REVISION_ID)) {
     throw new AcceptanceError('authoritative_v3_map_and_revision_required');
   }
 
@@ -172,17 +217,73 @@ async function main(): Promise<void> {
   if (authError || !auth.session || !auth.user) throw new AcceptanceError('authentication_failed');
   log('authenticated', { email: EMAIL, userId: auth.user.id });
 
-  const { data: map, error: mapError } = await supabase.from('map_projects')
-    .select('id,project_id,name,current_revision_id').eq('id', MAP_ID).single();
-  if (mapError || !map) throw new AcceptanceError(mapError?.code ?? 'approved_map_not_found');
+  let mapId = REQUESTED_MAP_ID;
+  let approvedRevisionId = REQUESTED_REVISION_ID;
+  let createdDedicatedDraft = false;
+  if (!mapId && !approvedRevisionId) {
+    if (!CREATE_V3 || !UUID.test(PROJECT_ID)) {
+      throw new AcceptanceError('authoritative_v3_map_and_revision_required');
+    }
+    const candidatePlan: MapPlanV3 = {
+      schemaVersion: 3,
+      name: 'PixelLab direct map acceptance',
+      summary: 'A dedicated V3 map used to verify the paid direct-image workflow.',
+      map: { width: 512, height: 512 },
+      description: 'An opaque top-down pixel art acceptance map with a river crossing, clear roads, compact buildings, varied green terrain, visible landmarks, natural lighting, and no interface text.',
+      references: [],
+      styleReference: null,
+      generation: {
+        provider: 'pixellab',
+        operation: 'create_image_pro',
+        noBackground: false,
+        seed: 20260811,
+      },
+    };
+    const parsedCandidate = validateMapPlanV3(candidatePlan);
+    if (parsedCandidate.success === false) throw new AcceptanceError('acceptance_plan_invalid');
+    const candidateScene = createEmptyMapSceneV3(parsedCandidate.data);
+    const { data: createdData, error: createdError } = await supabase.rpc('create_map_project_v3', {
+      p_project_id: PROJECT_ID,
+      p_name: parsedCandidate.data.name,
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: parsedCandidate.data,
+      p_scene: candidateScene,
+    });
+    if (createdError) throw new AcceptanceError(createdError.code ?? 'acceptance_map_create_failed', createdError.message);
+    const created = firstRow<{ map_id: string; draft_revision_id: string }>(
+      createdData,
+      'acceptance_map_create_invalid_response',
+    );
+    if (!UUID.test(created.map_id) || !UUID.test(created.draft_revision_id)) {
+      throw new AcceptanceError('acceptance_map_create_invalid_response');
+    }
+    mapId = created.map_id;
+    approvedRevisionId = created.draft_revision_id;
+    createdDedicatedDraft = true;
+    log('authoritative_v3_draft_created', { mapId, approvedRevisionId, projectId: PROJECT_ID });
+  }
+  if (!UUID.test(mapId) || !UUID.test(approvedRevisionId)) {
+    throw new AcceptanceError('authoritative_v3_map_and_revision_required');
+  }
+
+  const { data: mapData, error: mapError } = await supabase.from('map_projects')
+    .select('id,project_id,name,current_revision_id,projects(owner_id)').eq('id', mapId).single();
+  if (mapError || !mapData) throw new AcceptanceError(mapError?.code ?? 'approved_map_not_found');
+  const map = mapData as unknown as MapRow;
   const { data: membership, error: membershipError } = await supabase.from('project_collaborators')
-    .select('role,accepted_at').eq('project_id', map.project_id).eq('user_id', auth.user.id).single();
-  if (membershipError || !membership || !['admin', 'editor'].includes(String(membership.role)) || !membership.accepted_at) {
+    .select('role,accepted_at').eq('project_id', map.project_id).eq('user_id', auth.user.id).maybeSingle();
+  const ownerAuthorized = map.projects.owner_id === auth.user.id;
+  const editorAuthorized = !membershipError && Boolean(membership?.accepted_at)
+    && ['admin', 'editor'].includes(String(membership?.role));
+  if (!ownerAuthorized && !editorAuthorized) {
     throw new AcceptanceError('authenticated_editor_required');
   }
 
-  let revision = await readRevision(supabase, APPROVED_REVISION_ID);
-  if (revision.map_project_id !== MAP_ID) throw new AcceptanceError('approved_revision_map_mismatch');
+  let revision = await readRevision(supabase, approvedRevisionId);
+  if (revision.map_project_id !== mapId) throw new AcceptanceError('approved_revision_map_mismatch');
   const parsedPlan = validateMapPlanV3(revision.plan);
   if (parsedPlan.success === false) throw new AcceptanceError('approved_plan_invalid');
   const plan = parsedPlan.data;
@@ -195,7 +296,7 @@ async function main(): Promise<void> {
     if (map.current_revision_id !== revision.id) throw new AcceptanceError('approved_draft_is_not_current');
     if (assets.length !== 0) throw new AcceptanceError('approved_draft_has_assets');
     const { data, error } = await supabase.rpc('publish_map_revision_v3', {
-      p_map_id: MAP_ID,
+      p_map_id: mapId,
       p_draft_revision_id: revision.id,
       p_expected_save_version: revision.save_version,
     });
@@ -219,7 +320,7 @@ async function main(): Promise<void> {
     const created = firstRow<{ asset_id: string }>(createdData, 'asset_plan_invalid_response');
     assets = await listAssets(supabase, generationRevisionId);
     if (assets.length !== 1 || assets[0].id !== created.asset_id) throw new AcceptanceError('single_map_image_not_created');
-    log('generation_revision_created', { mapId: MAP_ID, generationRevisionId, nextDraftRevisionId, generationId });
+    log('generation_revision_created', { mapId, generationRevisionId, nextDraftRevisionId, generationId });
   }
 
   if (assets.length !== 1) throw new AcceptanceError('expected_exactly_one_map_image');
@@ -234,20 +335,31 @@ async function main(): Promise<void> {
     throw new AcceptanceError('map_image_identity_invalid');
   }
   const identity = {
-    projectId: String(map.project_id),
-    mapId: MAP_ID,
+    projectId: map.project_id,
+    mapId,
     revisionId: generationRevisionId,
     generationId: asset.generation_id as string,
     assetId: asset.id,
   };
 
   let paidRequestSubmitted = false;
-  if (asset.status === 'planned') {
+  if (['planned', 'blocked', 'failed'].includes(asset.status)) {
     if (process.env.KECO_ACCEPTANCE_CONFIRM_PAID !== 'YES') {
       throw new AcceptanceError('explicit_paid_confirmation_required');
     }
-    log('paid_request_confirmed', { operation: 'create_image_pro', mapId: MAP_ID, revisionId: generationRevisionId });
-    await invokePixelLab(supabase, { operation: 'submit', ...identity });
+    const lifecycleOperation = asset.status === 'planned' ? 'submit' : 'retry';
+    log('paid_request_confirmed', {
+      operation: 'create_image_pro',
+      lifecycleOperation,
+      mapId,
+      revisionId: generationRevisionId,
+    });
+    await invokePixelLab(
+      supabase,
+      { operation: lifecycleOperation, ...identity },
+      auth.session.access_token,
+      anonKey,
+    );
     paidRequestSubmitted = true;
     assets = await listAssets(supabase, generationRevisionId);
     asset = assets[0];
@@ -257,9 +369,19 @@ async function main(): Promise<void> {
   }
 
   for (let cycle = 0; asset.status === 'generating' && cycle < MAX_POLL_CYCLES; cycle += 1) {
-    const polled = await invokePixelLab(supabase, { operation: 'poll', ...identity });
+    const polled = await invokePixelLab(
+      supabase,
+      { operation: 'poll', ...identity },
+      auth.session.access_token,
+      anonKey,
+    );
     if (polled.status === 'completed') {
-      await invokePixelLab(supabase, { operation: 'validate', ...identity });
+      await invokePixelLab(
+        supabase,
+        { operation: 'validate', ...identity },
+        auth.session.access_token,
+        anonKey,
+      );
     } else {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     }
@@ -274,7 +396,7 @@ async function main(): Promise<void> {
   assertDurableJsonSafe(asset.generation_params);
   assertDurableJsonSafe(asset.reference_asset_ids);
   assertDurableJsonSafe(asset.reference_hashes);
-  const expectedStoragePath = `${map.project_id}/${MAP_ID}/${generationRevisionId}/map-image/${asset.sha256}.png`;
+  const expectedStoragePath = `${map.project_id}/${mapId}/${generationRevisionId}/map-image/${asset.sha256}.png`;
   if (
     asset.provider_operation !== 'create_image_pro' || !asset.provider_job_id
     || asset.width !== plan.map.width || asset.height !== plan.map.height
@@ -321,7 +443,7 @@ async function main(): Promise<void> {
   const sceneValidation = validateMapSceneV3(plan, nextScene);
   if (sceneValidation.success === false) throw new AcceptanceError('materialized_scene_invalid');
   const { data: saveData, error: saveError } = await supabase.rpc('save_map_draft_v3', {
-    p_map_id: MAP_ID,
+    p_map_id: mapId,
     p_revision_id: nextDraftRevisionId,
     p_expected_save_version: draft.save_version,
     p_plan: plan,
@@ -332,9 +454,9 @@ async function main(): Promise<void> {
   if (saved.status !== 'saved') throw new AcceptanceError('scene_save_conflict');
 
   log('acceptance_complete', {
-    mapId: MAP_ID,
+    mapId,
     mapName: map.name,
-    approvedRevisionId: APPROVED_REVISION_ID,
+    approvedRevisionId,
     generationRevisionId,
     currentDraftRevisionId: nextDraftRevisionId,
     operation: asset.provider_operation,
@@ -344,6 +466,7 @@ async function main(): Promise<void> {
     transparency: asset.has_transparency,
     privateReadbackVerified: true,
     durableMetadataSensitiveValues: false,
+    createdDedicatedDraft,
   });
   await supabase.auth.signOut();
 }

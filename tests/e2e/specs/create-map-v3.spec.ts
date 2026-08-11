@@ -88,6 +88,12 @@ type ReferenceRecord = {
   previewUrl: string | null;
 };
 
+type BrowserFailures = {
+  pageErrors: string[];
+  requestFailures: string[];
+  responseFailures: string[];
+};
+
 function uuid(sequence: number): string {
   return `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`;
 }
@@ -574,9 +580,28 @@ class CreateMapV3MockBackend {
   }
 }
 
-async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promise<string[]> {
-  const pageErrors: string[] = [];
-  page.on('pageerror', (error) => pageErrors.push(error.message));
+function observeBrowserFailures(page: Page): BrowserFailures {
+  const failures: BrowserFailures = { pageErrors: [], requestFailures: [], responseFailures: [] };
+  page.on('pageerror', (error) => failures.pageErrors.push(error.message));
+  page.on('requestfailed', (request) => {
+    const resourceType = request.resourceType();
+    if (resourceType === 'document' || resourceType === 'script' || resourceType === 'fetch') {
+      failures.requestFailures.push(`${resourceType}:${request.failure()?.errorText ?? 'unknown'}:${request.url()}`);
+    }
+  });
+  page.on('response', (response) => {
+    const resourceType = response.request().resourceType();
+    if (
+      response.status() >= 400
+      && (resourceType === 'document' || resourceType === 'script' || resourceType === 'fetch')
+    ) {
+      failures.responseFailures.push(`${resourceType}:${response.status()}:${response.url()}`);
+    }
+  });
+  return failures;
+}
+
+async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promise<BrowserFailures> {
   await backend.install(page);
   await page.goto(APP_ORIGIN);
   await page.getByLabel('Email').fill('map-v3-e2e@example.com');
@@ -585,7 +610,7 @@ async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promis
   await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 15_000 });
   await page.goto(`${APP_ORIGIN}/create-map`);
   await expect(page.getByTestId('create-map-workbench')).toHaveAttribute('data-schema-version', '3');
-  return pageErrors;
+  return observeBrowserFailures(page);
 }
 
 async function createSavedMap(page: Page): Promise<void> {
@@ -659,7 +684,7 @@ test.describe('Create Map V3 mocked workflow', () => {
 
   test('edits the exact prompt, saves, confirms, polls, validates, and renders one map image', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
-    const pageErrors = await loginAndOpen(page, backend);
+    const browserFailures = await loginAndOpen(page, backend);
     await page.getByLabel('Project Optional').selectOption(PROJECT_ID);
     await page.getByRole('button', { name: 'Create map plan' }).click();
     const exactDescription = 'Exact final opaque top-down pixel art map.  Keep this spacing and punctuation.';
@@ -691,7 +716,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(image).toBeVisible();
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
       .toEqual([512, 512]);
-    expect(pageErrors).toEqual([]);
+    expect(browserFailures).toEqual({ pageErrors: [], requestFailures: [], responseFailures: [] });
   });
 
   test('surfaces technical validation failure and retries the same immutable asset', async ({ page }) => {
@@ -763,24 +788,52 @@ test.describe('Create Map V3 mocked workflow', () => {
 
   test('captures nonblank, error-free desktop and mobile layouts', async ({ page }, testInfo) => {
     const backend = new CreateMapV3MockBackend();
-    const pageErrors = await loginAndOpen(page, backend);
+    const browserFailures = await loginAndOpen(page, backend);
+    await createSavedMap(page);
+    await generateReadyMap(page);
+    await expect(page.getByRole('img', { name: 'Mosslight Crossing' })).toBeVisible();
     const viewports = [{ width: 1440, height: 900 }, { width: 390, height: 844 }];
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
       const workbench = page.getByTestId('create-map-workbench');
+      const canvas = page.getByLabel('Map canvas');
       await expect(workbench).toBeVisible();
-      await expectWithin(page.locator('[data-status="local"]'), workbench);
+      await expectWithin(page.locator('[data-status="saved"]'), workbench);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
       if (viewport.width === 390) {
+        const inspector = page.getByLabel('Map plan and generation');
+        const [workbenchBox, canvasBox] = await Promise.all([
+          workbench.boundingBox(),
+          canvas.boundingBox(),
+        ]);
+        expect(workbenchBox).not.toBeNull();
+        expect(canvasBox).not.toBeNull();
+        expect(canvasBox?.width).toBeGreaterThanOrEqual((workbenchBox?.width ?? 0) - 1);
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
+        );
         await page.getByRole('button', { name: 'Open source panel' }).click();
-        await expect(page.getByLabel('Map source and references')).toBeVisible();
+        const sourcePanel = page.getByLabel('Map source and references');
+        await expect(sourcePanel).toBeVisible();
+        expect((await sourcePanel.boundingBox())?.width).toBeGreaterThanOrEqual(280);
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
+        );
+        await page.getByRole('button', { name: 'Close source panel' }).click();
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
+          (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
+        );
+        await expect.poll(async () => {
+          const sourceBox = await sourcePanel.boundingBox();
+          return sourceBox ? sourceBox.x + sourceBox.width : Number.POSITIVE_INFINITY;
+        }).toBeLessThanOrEqual((workbenchBox?.x ?? 0) + 1);
+        expect(await workbench.evaluate((element) => element.scrollLeft)).toBe(0);
       }
       const path = testInfo.outputPath(`create-map-v3-${viewport.width}x${viewport.height}.png`);
       await page.screenshot({ path, fullPage: true });
       const stats = await sharp(path).stats();
       expect(stats.channels.slice(0, 3).some((channel) => channel.stdev >= 5)).toBe(true);
-      if (viewport.width === 390) await page.getByRole('button', { name: 'Close source panel' }).click();
     }
-    expect(pageErrors).toEqual([]);
+    expect(browserFailures).toEqual({ pageErrors: [], requestFailures: [], responseFailures: [] });
   });
 });
