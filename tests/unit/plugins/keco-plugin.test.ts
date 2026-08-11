@@ -6,6 +6,7 @@ const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-codex');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
+const pixelLabMapSkillRoot = path.join(pluginRoot, 'skills', 'pixellab-map-assets');
 const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
 const claudeInteractionContractPath = path.join(
   repositoryRoot,
@@ -57,6 +58,13 @@ function skillTextFiles(root: string): string[] {
     if (entry.isDirectory()) return skillTextFiles(entryPath);
     return /\.(?:md|ya?ml)$/i.test(entry.name) ? [entryPath] : [];
   });
+}
+
+function readSkillDescription(root: string): string {
+  const skill = readFileSync(path.join(root, 'SKILL.md'), 'utf8');
+  const match = skill.match(/^description: ([^\n]+)$/m);
+  if (!match) throw new Error(`Missing single-line skill description in ${root}`);
+  return match[1];
 }
 
 describe('Keco Codex plugin contract', () => {
@@ -124,6 +132,31 @@ describe('Keco Codex plugin contract', () => {
       .map((filePath) => path.relative(repositoryRoot, filePath));
 
     expect(violations).toEqual([]);
+  });
+
+  it('keeps Godot skill discovery descriptions mutually exclusive', () => {
+    const mapAssets = readSkillDescription(pixelLabMapSkillRoot);
+    const godotV1 = readSkillDescription(godotSkillRoot);
+    const godotV2 = readSkillDescription(godotV2SkillRoot);
+
+    for (const description of [mapAssets, godotV1, godotV2]) {
+      expect(description).toMatch(/^Use when /);
+      expect(description.length).toBeLessThan(500);
+    }
+
+    expect(mapAssets).toMatch(/top-down map-art resources for Godot/i);
+    expect(mapAssets).toMatch(/Not for complete playable maps[\s\S]*gameplay logic[\s\S]*characters[\s\S]*UI assets/i);
+    expect(mapAssets).toMatch(/broader Keco-driven Godot slices/i);
+    expect(mapAssets).not.toMatch(/Use automatically|Trigger on|Keco-first registration|authoritative export/i);
+
+    expect(godotV2).toMatch(/Godot development driven by Keco project documents/i);
+    expect(godotV2).toMatch(/multiple slices[\s\S]*persistent Keco planning documents[\s\S]*resource evolution/i);
+    expect(godotV2).toMatch(/Not for user-selected legacy V1 runs/i);
+    expect(godotV2).not.toMatch(/supports implicit routing|without requiring the Skill name/i);
+
+    expect(godotV1).toMatch(/explicitly selects the legacy keco-develop-godot-slice workflow/i);
+    expect(godotV1).toMatch(/one bounded Keco-driven Godot gameplay slice/i);
+    expect(godotV1).toMatch(/Not for implicit routing/i);
   });
 
   it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {

@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import {
+  getProductNavigationDestination,
+  getProductNavigationState,
+} from '@/lib/create-map/productNavigation';
 import { readScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import {
   readLeftNavCollapsed,
@@ -17,10 +20,6 @@ import archiveActiveIcon from '@/assets/images/simulator/archive-active.svg';
 import lightningIcon from '@/assets/images/simulator/ilightning.svg';
 import lightningActiveIcon from '@/assets/images/simulator/lightning-active.svg';
 import styles from './LeftNav.module.css';
-
-function isSimulationPath(pathname: string | null): boolean {
-  return (pathname ?? '').startsWith('/simulation-system');
-}
 
 function IconGrid({ active }: { active: boolean }) {
   const stroke = active ? 'currentColor' : '#111';
@@ -119,9 +118,17 @@ export function LeftNav() {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
-  const onSimulation = isSimulationPath(pathname);
-  const onScript = isScriptSystemPath(pathname);
-  const onStudio = !onSimulation && !onScript;
+  const navigationState = getProductNavigationState(pathname);
+  const { studio: onStudio, simulation: onSimulation, script: onScript, createMap: onCreateMap } = navigationState;
+
+  const navigate = (item: 'studio' | 'simulation' | 'script' | 'createMap') => {
+    const destination = getProductNavigationDestination(pathname, item, {
+      scriptProjectId: onScript || item === 'script' ? readScriptProjectPreference()?.projectId : undefined,
+      simulationProjectId: onSimulation ? readSimulationProjectPreference()?.projectId : undefined,
+    });
+
+    if (destination) router.push(destination);
+  };
 
   useEffect(() => {
     setCollapsed(readLeftNavCollapsed());
@@ -157,19 +164,7 @@ export function LeftNav() {
           className={`${styles.item} ${onStudio ? styles.itemActive : ''}`}
           aria-label="Studio"
           aria-current={onStudio ? 'page' : undefined}
-          onClick={() => {
-            if (onStudio) return;
-            if (onScript) {
-              const pref = readScriptProjectPreference()?.projectId;
-              router.push(pref ? `/${pref}` : '/projects');
-              return;
-            }
-            if (onSimulation) {
-              const preferred = readSimulationProjectPreference()?.projectId;
-              // Only deep-link when leaving Simulation; /projects still opens the first project.
-              router.push(preferred ? `/${preferred}` : '/projects');
-            }
-          }}
+          onClick={() => navigate('studio')}
         >
           <IconGrid active={onStudio} />
         </button>
@@ -178,9 +173,7 @@ export function LeftNav() {
           className={`${styles.item} ${onSimulation ? styles.itemActive : ''}`}
           aria-label="Simulation"
           aria-current={onSimulation ? 'page' : undefined}
-          onClick={() => {
-            if (!onSimulation) router.push('/simulation-system');
-          }}
+          onClick={() => navigate('simulation')}
         >
           <IconBolt active={onSimulation} />
         </button>
@@ -189,22 +182,18 @@ export function LeftNav() {
           className={`${styles.item} ${onScript ? styles.itemActive : ''}`}
           aria-label="Script"
           aria-current={onScript ? 'page' : undefined}
-          onClick={() => {
-            if (onScript) return;
-            const pref = readScriptProjectPreference()?.projectId;
-            router.push(pref ? `/script-system/${pref}` : '/script-system');
-          }}
+          onClick={() => navigate('script')}
         >
           <IconSpeechBubble active={onScript} />
         </button>
         <button
           type="button"
-          className={`${styles.item} ${styles.itemDisabled}`}
-          aria-label="Coming soon"
-          aria-disabled="true"
-          tabIndex={-1}
+          className={`${styles.item} ${onCreateMap ? styles.itemActive : ''}`}
+          aria-label="Create Map"
+          aria-current={onCreateMap ? 'page' : undefined}
+          onClick={() => navigate('createMap')}
         >
-          <IconAlign active={false} />
+          <IconAlign active={onCreateMap} />
         </button>
         <button
           type="button"
