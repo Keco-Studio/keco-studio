@@ -152,9 +152,9 @@ async function importDocumentThroughSidebar(
   await page
     .getByTitle('Add new folder, library, or document')
     .click();
-  await page.getByRole('button', { name: 'Import document' }).click();
+  await page.getByRole('button', { name: 'Import new document' }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText('Import Document', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Import document', { exact: true })).toBeVisible();
   await dialog.locator('input[type="file"]').setInputFiles(file);
   await dialog.getByRole('button', { name: 'Import', exact: true }).click();
   const alert = dialog.getByRole('alert');

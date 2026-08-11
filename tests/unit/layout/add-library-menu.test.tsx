@@ -23,8 +23,8 @@ describe('AddLibraryMenu', () => {
     expect(html).toContain('Create new folder');
     expect(html).toContain('Create new table');
     expect(html).toContain('Create new document');
-    expect(html).toContain('Import document');
-    expect(html).toContain('Import table');
+    expect(html).toContain('Import new document');
+    expect(html).toContain('Import new table');
     expect(html).not.toContain('Create new library');
     expect(html).not.toContain('Generate tables from document');
   });
