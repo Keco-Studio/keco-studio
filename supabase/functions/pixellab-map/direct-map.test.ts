@@ -71,6 +71,8 @@ const row = { id, project_id: "project-a", storage_path: `references/project-a/$
 Deno.test("resolves authorized references in memory and does not mutate the asset", async () => {
   const { serviceClient, calls } = referenceClient([row]);
   const asset = {
+    reference_asset_ids: [id],
+    reference_hashes: ["a".repeat(64)],
     generation_params: {
       references: [{ assetId: id, sha256: "a".repeat(64), role: "layout", usage: "layout reference" }],
       styleReference: null,
@@ -80,6 +82,65 @@ Deno.test("resolves authorized references in memory and does not mutate the asse
   assertEquals(resolved.references, [{ url: "https://signed.example/reference.png", usage: "layout reference" }]);
   assertEquals((asset.generation_params.references[0] as Record<string, unknown>).url, undefined);
   assertEquals(calls, ["map_reference_images", `map-assets:${row.storage_path}:300`]);
+});
+
+Deno.test("rejects references that do not exactly match the durable asset bindings", async () => {
+  for (const asset of [
+    {
+      reference_asset_ids: [],
+      reference_hashes: [],
+      generation_params: { references: [{ assetId: id, sha256: "a".repeat(64), role: "content", usage: "content" }] },
+    },
+    {
+      reference_asset_ids: [id],
+      reference_hashes: ["b".repeat(64)],
+      generation_params: { references: [{ assetId: id, sha256: "a".repeat(64), role: "content", usage: "content" }] },
+    },
+  ]) {
+    const { serviceClient, calls } = referenceClient([row]);
+    await assertRejects(
+      () => resolveDirectMapReferences({ projectId: "project-a", serviceClient, asset } as never),
+      PixelLabMapError,
+    );
+    assertEquals(calls, []);
+  }
+});
+
+Deno.test("rejects duplicate style-copy values", async () => {
+  const { serviceClient, calls } = referenceClient([row]);
+  await assertRejects(() => resolveDirectMapReferences({
+    projectId: "project-a",
+    serviceClient,
+    asset: {
+      reference_asset_ids: [id],
+      reference_hashes: ["a".repeat(64)],
+      generation_params: {
+        references: [],
+        styleReference: { assetId: id, sha256: "a".repeat(64), copy: ["shading", "shading"] },
+      },
+    },
+  } as never), PixelLabMapError);
+  assertEquals(calls, []);
+});
+
+Deno.test("rejects a live style-copy schema with incompatible item values", () => {
+  const capability = {
+    ...CAPABILITY,
+    inputSchema: {
+      ...PRO_SCHEMA,
+      properties: {
+        ...PRO_SCHEMA.properties,
+        style_copy: { type: "array", items: { type: "string", enum: ["outline"] } },
+      },
+    },
+  };
+  assertThrows(() => directMapProviderArguments(capability, {
+    prompt: "prompt",
+    generationParams: { width: 512, height: 512, noBackground: false },
+  }, {
+    references: [],
+    style: { url: "https://signed.example/style.png", copy: ["shading"] },
+  }), PixelLabMapError);
 });
 
 for (const [name, badRow] of [
@@ -92,9 +153,11 @@ for (const [name, badRow] of [
   Deno.test(`rejects ${name}`, async () => {
     const { serviceClient } = referenceClient(badRow ? [badRow] : []);
     const error = await assertRejects(() => resolveDirectMapReferences({
-      projectId: "project-a", serviceClient, asset: { generation_params: {
-        references: [{ assetId: id, sha256: "a".repeat(64), role: "content", usage: "content" }], styleReference: null,
-      } },
+      projectId: "project-a", serviceClient, asset: {
+        reference_asset_ids: [id], reference_hashes: ["a".repeat(64)], generation_params: {
+          references: [{ assetId: id, sha256: "a".repeat(64), role: "content", usage: "content" }], styleReference: null,
+        },
+      },
     } as never), PixelLabMapError);
     assertEquals(error.code, "pixellab_invalid_response");
   });
@@ -104,10 +167,15 @@ Deno.test("rejects duplicate and excessive content references", async () => {
   const duplicate = { generation_params: { references: [
     { assetId: id, sha256: "a".repeat(64), role: "content", usage: "one" },
     { assetId: id, sha256: "a".repeat(64), role: "layout", usage: "two" },
-  ] } };
+  ] }, reference_asset_ids: [id, id], reference_hashes: ["a".repeat(64), "a".repeat(64)] };
   const { serviceClient } = referenceClient([row]);
   await assertRejects(() => resolveDirectMapReferences({ projectId: "project-a", serviceClient, asset: duplicate } as never), PixelLabMapError);
-  const excessive = { generation_params: { references: Array.from({ length: 5 }, (_, index) => ({ assetId: `${index}${id.slice(1)}`, sha256: "a".repeat(64), role: "content", usage: "content" })) } };
+  const excessiveReferences = Array.from({ length: 5 }, (_, index) => ({ assetId: `${index}${id.slice(1)}`, sha256: "a".repeat(64), role: "content", usage: "content" }));
+  const excessive = {
+    generation_params: { references: excessiveReferences },
+    reference_asset_ids: excessiveReferences.map((entry) => entry.assetId),
+    reference_hashes: excessiveReferences.map((entry) => entry.sha256),
+  };
   await assertRejects(() => resolveDirectMapReferences({ projectId: "project-a", serviceClient, asset: excessive } as never), PixelLabMapError);
 });
 

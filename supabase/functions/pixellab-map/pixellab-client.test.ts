@@ -171,6 +171,34 @@ Deno.test("discovers only create_image_pro for direct maps and records get_image
   assertEquals(capability.pollInputSchema, { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] });
 });
 
+Deno.test("polls direct maps through the discovered operation with a job id", async () => {
+  const calls: string[] = [];
+  const client = new PixelLabClient("private-token", async (_url, init) => {
+    calls.push(String(init?.body));
+    return new Response(`event: message\ndata: ${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: [{ type: "text", text: "status: processing" }], isError: false },
+    })}\n\n`);
+  });
+
+  await client.pollJob({
+    semantic: "direct_map_image",
+    transport: "mcp",
+    operation: "create_image_pro",
+    schemaFingerprint: "create-fingerprint",
+    inputSchema: {},
+    pollOperation: "discovered_get_image",
+    pollSchemaFingerprint: "poll-fingerprint",
+    pollInputSchema: { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] },
+  }, "direct-job-id");
+
+  assertEquals(JSON.parse(calls[0]).params, {
+    name: "discovered_get_image",
+    arguments: { job_id: "direct-job-id" },
+  });
+});
+
 Deno.test("rejects a direct map when get_image is missing or lacks job_id", async () => {
   const missing = new PixelLabClient("private-token", async () => mcpResponse([{ name: "create_image_pro", inputSchema: {} }]));
   const missingError = await assertRejects(() => missing.discover("direct_map_image"), PixelLabMapError);

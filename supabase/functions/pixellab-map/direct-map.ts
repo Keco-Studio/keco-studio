@@ -45,6 +45,25 @@ function supports(capability: DiscoveredCapability, name: string, type: string):
   return propertiesOf(capability)[name]?.type === type;
 }
 
+function supportsStyleCopy(capability: DiscoveredCapability, values: string[]): boolean {
+  const property = propertiesOf(capability).style_copy;
+  const items = record(property?.items);
+  if (property?.type !== "array" || items.type !== "string") return false;
+  if (items.enum === undefined) return true;
+  const allowed = items.enum;
+  return Array.isArray(allowed) && values.every((value) => allowed.includes(value));
+}
+
+function exactStringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? value as string[]
+    : null;
+}
+
+function sameStrings(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export function directMapProviderArguments(
   capability: DiscoveredCapability,
   asset: DirectMapProviderAsset,
@@ -77,7 +96,7 @@ export function directMapProviderArguments(
     output.reference_images = JSON.stringify(references.references);
   }
   if (references.style) {
-    if (!supports(capability, "style_image_url", "string") || !supports(capability, "style_copy", "array")) capabilityMissing("Direct map style fields are missing from the live schema");
+    if (!supports(capability, "style_image_url", "string") || !supportsStyleCopy(capability, references.style.copy)) capabilityMissing("Direct map style fields are incompatible with the live schema");
     output.style_image_url = references.style.url;
     output.style_copy = references.style.copy;
   }
@@ -103,11 +122,18 @@ export async function resolveDirectMapReferences(authorized: AuthorizedAsset): P
     if (typeof style.assetId !== "string" || !UUID_PATTERN.test(style.assetId)
       || typeof style.sha256 !== "string" || !SHA256_PATTERN.test(style.sha256)
       || !Array.isArray(style.copy) || style.copy.length < 1 || style.copy.length > 4
-      || style.copy.some((entry) => typeof entry !== "string" || !STYLE_COPY.has(entry))) invalid("Invalid direct map style reference");
+      || style.copy.some((entry) => typeof entry !== "string" || !STYLE_COPY.has(entry))
+      || new Set(style.copy).size !== style.copy.length) invalid("Invalid direct map style reference");
     styleInput = { id: style.assetId, sha256: style.sha256, copy: style.copy as string[] };
   }
   const all = [...parsedContent.map((entry) => entry.id), ...(styleInput ? [styleInput.id] : [])];
+  const hashes = [...parsedContent.map((entry) => entry.sha256), ...(styleInput ? [styleInput.sha256] : [])];
   if (new Set(all).size !== all.length) invalid("Duplicate direct map references");
+  const durableIds = exactStringArray(authorized.asset.reference_asset_ids);
+  const durableHashes = exactStringArray(authorized.asset.reference_hashes);
+  if (!durableIds || !durableHashes || !sameStrings(durableIds, all) || !sameStrings(durableHashes, hashes)) {
+    invalid("Direct map reference bindings do not match the immutable asset plan");
+  }
   if (all.length === 0) return { references: [], style: null };
 
   const { data, error } = await (authorized.serviceClient as unknown as {
