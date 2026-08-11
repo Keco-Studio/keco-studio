@@ -128,7 +128,7 @@ export async function authorizeAsset(token: string, assetId: string, expectedPro
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData.user) throw new PixelLabMapError("pixellab_invalid_response", "Authentication required", 401);
   const { data: asset, error: assetError } = await userClient.from("map_assets")
-    .select("id, map_revision_id, generation_id, plan_fingerprint, reference_asset_ids, reference_hashes, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, metadata")
+    .select("id, map_revision_id, generation_id, plan_fingerprint, reference_asset_ids, reference_hashes, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, last_error_code, metadata, updated_at")
     .eq("id", assetId).single();
   if (assetError || !asset) throw new PixelLabMapError("pixellab_invalid_response", "Map asset not found", 404);
   const { data: revision } = await userClient.from("map_revisions").select("id, map_project_id, schema_version, plan").eq("id", asset.map_revision_id).single();

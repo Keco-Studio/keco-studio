@@ -101,7 +101,11 @@ jest.mock('@/features/create-map/services/createMapService', () => ({
   createMapService: () => mockService,
 }));
 
-import { useDirectMapGeneration } from '@/features/create-map/hooks/useDirectMapGeneration';
+import {
+  directMapPlanFingerprint,
+  useDirectMapGeneration,
+  type DirectMapGenerationAsset,
+} from '@/features/create-map/hooks/useDirectMapGeneration';
 
 type HookResult = ReturnType<typeof useDirectMapGeneration>;
 
@@ -228,5 +232,58 @@ describe('useDirectMapGeneration preparation guards', () => {
     state.render(changedPlan);
 
     expect(state.latest.error).toBeNull();
+  });
+
+  it('starts a new revision for an unknown submission only after explicit acknowledgement', async () => {
+    const publishedRevisionId = '10000000-0000-4000-8000-000000000030';
+    const mapId = '10000000-0000-4000-8000-000000000029';
+    const publish = jest.fn(async () => ({ mapId, publishedRevisionId }));
+    const state = setup(publish);
+    const plan = makeValidMapPlanV3();
+    const planFingerprint = await directMapPlanFingerprint(plan);
+    const queuedAsset: DirectMapGenerationAsset = {
+      id: '10000000-0000-4000-8000-000000000031',
+      status: 'queued',
+      lastErrorCode: null,
+      providerOperation: null,
+      providerJobId: null,
+      generationId: '10000000-0000-4000-8000-000000000032',
+      planFingerprint,
+      storagePath: null,
+      sha256: null,
+      width: null,
+      height: null,
+      hasTransparency: null,
+      signedUrl: null,
+    };
+    state.render(plan);
+    state.latest.installRestore({
+      target: {
+        projectId: 'project-1',
+        mapId,
+        revisionId: publishedRevisionId,
+        generationId: queuedAsset.generationId,
+        planFingerprint,
+      },
+      plan,
+      generationPlan: plan,
+      scene: makeEmptyMapSceneV3(),
+      asset: queuedAsset,
+      phase: 'blocked',
+      boundImage: null,
+    });
+    state.render(plan);
+
+    await state.latest.resolveUnknownAndRestart(false);
+    expect(mockService.invokePixelLab).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+
+    await state.latest.resolveUnknownAndRestart(true);
+    expect(mockService.invokePixelLab).toHaveBeenCalledWith(expect.objectContaining({
+      operation: 'resolve_unknown',
+      acknowledgeDuplicateBilling: true,
+      assetId: queuedAsset.id,
+    }));
+    expect(publish).toHaveBeenCalledTimes(1);
   });
 });

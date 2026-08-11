@@ -331,10 +331,12 @@ export function DirectMapWorkbench({ onOpenLegacyMap }: DirectMapWorkbenchProps)
           error={generation.error}
           canPrepare={canGenerate}
           canRetry={generation.canRetry}
+          canResolveUnknown={generation.canResolveUnknown}
           onPrepare={() => void generation.prepare()}
           onConfirm={() => void generation.confirm()}
           onRetry={() => void generation.retry()}
           onRegenerate={() => void generation.regenerate()}
+          onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
         />
       </aside>
     </main>

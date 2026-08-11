@@ -68,15 +68,16 @@ async function handle(request: Request): Promise<Response> {
   assertGenerationIdentity(authorized, body);
   const kind = edgeAssetKind(authorized.asset.kind);
   if (kind === "map_image") {
-    if (!["submit", "retry", "poll", "validate"].includes(operation)) {
+    if (!["submit", "retry", "poll", "validate", "resolve_unknown"].includes(operation)) {
       throw new PixelLabMapError("pixellab_invalid_response", "Unsupported direct map operation", 400);
     }
     const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
     return jsonResponse(await runDirectMapLifecycle({
-      operation: operation as "submit" | "retry" | "poll" | "validate",
+      operation: operation as "submit" | "retry" | "poll" | "validate" | "resolve_unknown",
       authorized,
       client,
       transitionAsset: transition,
+      acknowledgeDuplicateBilling: body.acknowledgeDuplicateBilling === true,
     }));
   }
   const regionMetadata = authorized.asset.metadata && typeof authorized.asset.metadata === "object"

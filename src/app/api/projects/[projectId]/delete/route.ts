@@ -5,10 +5,13 @@
  * Uses service role to bypass RLS and allow admin collaborators to delete.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/route-auth';
 import { AuthorizationError } from '@/lib/services/authorizationService';
-import { deleteProjectWithServerBoundary } from '@/lib/server/projectDeletion';
+import {
+  deleteProjectWithServerBoundary,
+  processProjectStorageCleanupJob,
+} from '@/lib/server/projectDeletion';
 
 /**
  * DELETE /api/projects/[projectId]/delete
@@ -24,11 +27,20 @@ const deleteHandler = async (
     const { projectId } = await params;
 
     try {
-      await deleteProjectWithServerBoundary({
+      const deletion = await deleteProjectWithServerBoundary({
         authClient: userSupabase,
         projectId,
         userId: user.id,
       });
+      if (deletion.cleanupJobId) {
+        after(async () => {
+          try {
+            await processProjectStorageCleanupJob({ cleanupJobId: deletion.cleanupJobId! });
+          } catch (cleanupError) {
+            console.error('[API /projects/delete] Deferred storage cleanup failed:', cleanupError);
+          }
+        });
+      }
     } catch (error) {
       if (error instanceof AuthorizationError) {
         const status = error.message === 'Project not found' ? 404 : 403;

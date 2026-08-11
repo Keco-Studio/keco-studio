@@ -184,7 +184,7 @@ describe('direct map generation monitoring', () => {
     await jest.advanceTimersByTimeAsync(DIRECT_MAP_POLL_DEADLINE_MS + 15_000);
 
     expect(state.setPhase).toHaveBeenCalledWith('blocked');
-    expect(state.setError).toHaveBeenCalledWith('Direct map monitoring timed out. Reopen the map to resume.');
+    expect(state.setError).toHaveBeenCalledWith('Direct map monitoring timed out. Reload this page to resume.');
     expect(jest.getTimerCount()).toBe(0);
   });
 

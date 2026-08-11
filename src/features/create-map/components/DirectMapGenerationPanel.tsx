@@ -11,10 +11,12 @@ type DirectMapGenerationPanelProps = {
   error: string | null;
   canPrepare: boolean;
   canRetry: boolean;
+  canResolveUnknown: boolean;
   onPrepare: () => void;
   onConfirm: () => void;
   onRetry: () => void;
   onRegenerate: () => void;
+  onResolveUnknown: (acknowledgeDuplicateBilling: boolean) => void;
 };
 
 const PHASE_LABELS: Record<DirectMapGenerationPhase, string> = {
@@ -31,6 +33,8 @@ const PHASE_LABELS: Record<DirectMapGenerationPhase, string> = {
 
 export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
   const busy = ['preparing', 'submitting', 'generating', 'validating'].includes(props.phase);
+  const unknownSubmission = props.asset?.status === 'queued'
+    || (props.asset?.status === 'blocked' && props.asset.lastErrorCode === 'pixellab_submit_outcome_unknown');
   return (
     <section className={styles.inspectorSection} aria-labelledby="direct-generation-heading">
       <div className={styles.sectionHeadingRow}>
@@ -53,6 +57,33 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
 
       {props.error ? <p className={styles.inlineError} role="alert">{props.error}</p> : null}
       {props.asset?.lastErrorCode ? <code className={styles.errorCode}>{props.asset.lastErrorCode}</code> : null}
+
+      {unknownSubmission ? (
+        <form className={styles.unknownSubmissionResolution} onSubmit={(event) => event.preventDefault()}>
+          <p>The previous paid submission has no confirmed provider job ID. It may still complete outside Keco.</p>
+          <label>
+            <input
+              type="checkbox"
+              name="acknowledgeDuplicateBilling"
+              disabled={!props.canResolveUnknown || busy}
+              onChange={(event) => {
+                const button = event.currentTarget.form?.elements.namedItem('restartUnknown');
+                if (button instanceof HTMLButtonElement) button.disabled = !event.currentTarget.checked;
+              }}
+            />
+            <span>I understand the previous request may still be billed.</span>
+          </label>
+          <button
+            type="button"
+            name="restartUnknown"
+            className={styles.secondaryButtonFull}
+            disabled
+            onClick={() => props.onResolveUnknown(true)}
+          >
+            <ReloadOutlined /> Start a new paid attempt
+          </button>
+        </form>
+      ) : null}
 
       {props.phase === 'idle' || props.phase === 'failed' ? (
         <button type="button" className={styles.primaryButton} disabled={!props.canPrepare || busy} onClick={props.onPrepare}>

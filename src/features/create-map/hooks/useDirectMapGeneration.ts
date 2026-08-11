@@ -174,6 +174,13 @@ export function canRetryDirectMap(asset: DirectMapGenerationAsset | null): boole
     && RETRYABLE_DIRECT_MAP_BLOCKS.has(asset.lastErrorCode);
 }
 
+export function canResolveUnknownDirectMap(asset: DirectMapGenerationAsset | null): boolean {
+  return Boolean(asset && (
+    asset.status === 'queued'
+    || (asset.status === 'blocked' && asset.lastErrorCode === 'pixellab_submit_outcome_unknown')
+  ));
+}
+
 export function directMapTargetMatches(
   left: DirectMapGenerationTarget | null,
   right: DirectMapGenerationTarget,
@@ -376,7 +383,7 @@ export function useDirectMapGenerationMonitoring({
       if (stopped || cycleRef.current !== cycle) return;
       stopped = true;
       setPhase('blocked');
-      setError('Direct map monitoring timed out. Reopen the map to resume.');
+      setError('Direct map monitoring timed out. Reload this page to resume.');
     };
     const schedule = () => {
       if (stopped || cycleRef.current !== cycle) return;
@@ -618,6 +625,40 @@ export function useDirectMapGeneration({
     }
   }, [asset, refresh, service]);
 
+  const resolveUnknownAndRestart = useCallback(async (acknowledgeDuplicateBilling: boolean) => {
+    const expected = targetRef.current;
+    if (
+      acknowledgeDuplicateBilling !== true
+      || !expected
+      || !asset
+      || !canResolveUnknownDirectMap(asset)
+      || !canPrepare
+      || submissionActive.current
+    ) return;
+    submissionActive.current = true;
+    setPhase('submitting');
+    setError(null);
+    try {
+      if (asset.status === 'queued') {
+        await service.invokePixelLab({
+          operation: 'resolve_unknown',
+          projectId: expected.projectId,
+          mapId: expected.mapId,
+          revisionId: expected.revisionId,
+          generationId: expected.generationId,
+          assetId: asset.id,
+          acknowledgeDuplicateBilling: true,
+        });
+      }
+      await startPreparation();
+    } catch (cause) {
+      setPhase(directMapPhaseFor(asset));
+      setError(cause instanceof Error ? cause.message : 'Could not resolve the unknown submission.');
+    } finally {
+      submissionActive.current = false;
+    }
+  }, [asset, canPrepare, service, startPreparation]);
+
   const prepareRestore = useCallback(
     (workspace: SavedMapWorkspaceV3) => prepareDirectMapRestore(workspace, service.createSignedAssetUrl),
     [service],
@@ -655,9 +696,11 @@ export function useDirectMapGeneration({
     error,
     canPrepare,
     canRetry: canRetryDirectMap(asset),
+    canResolveUnknown: canResolveUnknownDirectMap(asset) && canPrepare,
     prepare: startPreparation,
     confirm,
     retry,
+    resolveUnknownAndRestart,
     regenerate: startPreparation,
     prepareRestore,
     installRestore,

@@ -12,7 +12,7 @@ import { providerJobId, providerStatus } from "./provider-response.ts";
 import { persistValidatedAsset, type PersistableAsset } from "./storage.ts";
 import { PixelLabMapError, type DiscoveredCapability } from "./types.ts";
 
-type DirectMapOperation = "submit" | "retry" | "poll" | "validate";
+type DirectMapOperation = "submit" | "retry" | "poll" | "validate" | "resolve_unknown";
 type DirectMapClient = Pick<PixelLabClient, "discover" | "submitAsset" | "pollJob" | "downloadResult">;
 type TransitionAsset = (
   serviceClient: SupabaseClient,
@@ -27,6 +27,7 @@ const SAFE_SUBMISSION_REJECTION_CODES = new Set([
   "pixellab_quota_exceeded",
 ]);
 const UNKNOWN_SUBMISSION_OUTCOME = "pixellab_submit_outcome_unknown";
+const UNKNOWN_SUBMISSION_SAFETY_WINDOW_MS = 2 * 60 * 1000;
 
 export type DirectMapLifecycleOptions = {
   operation: DirectMapOperation;
@@ -35,6 +36,8 @@ export type DirectMapLifecycleOptions = {
   transitionAsset: TransitionAsset;
   persistAsset?: PersistAsset;
   resolveReferences?: (authorized: AuthorizedAsset) => Promise<ResolvedDirectMapReferences>;
+  acknowledgeDuplicateBilling?: boolean;
+  now?: () => number;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -164,6 +167,39 @@ async function submitDirectMap(
   return { assetId, status: "generating" };
 }
 
+async function resolveUnknownSubmission(
+  options: DirectMapLifecycleOptions,
+  asset: Record<string, unknown>,
+  assetId: string,
+): Promise<Record<string, unknown>> {
+  if (options.acknowledgeDuplicateBilling !== true) {
+    throw new PixelLabMapError(
+      "pixellab_invalid_response",
+      "Duplicate billing acknowledgement is required",
+      400,
+    );
+  }
+  if (asset.status === "blocked" && asset.last_error_code === UNKNOWN_SUBMISSION_OUTCOME) {
+    return { assetId, status: "blocked" };
+  }
+  if (asset.status !== "queued") {
+    throw new PixelLabMapError("pixellab_invalid_response", "Direct map submission is not unresolved", 409);
+  }
+  const updatedAt = typeof asset.updated_at === "string" ? Date.parse(asset.updated_at) : Number.NaN;
+  const now = (options.now ?? Date.now)();
+  if (!Number.isFinite(updatedAt) || now - updatedAt < UNKNOWN_SUBMISSION_SAFETY_WINDOW_MS) {
+    throw new PixelLabMapError(
+      "pixellab_invalid_response",
+      "Wait two minutes before resolving an unknown paid submission",
+      409,
+    );
+  }
+  await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "blocked", {
+    errorCode: UNKNOWN_SUBMISSION_OUTCOME,
+  });
+  return { assetId, status: "blocked" };
+}
+
 async function pollDirectMap(
   options: DirectMapLifecycleOptions,
   asset: Record<string, unknown>,
@@ -240,6 +276,9 @@ async function validateDirectMap(
 export async function runDirectMapLifecycle(options: DirectMapLifecycleOptions): Promise<Record<string, unknown>> {
   const asset = directAsset(options.authorized);
   const assetId = String(asset.id);
+  if (options.operation === "resolve_unknown") {
+    return resolveUnknownSubmission(options, asset, assetId);
+  }
   if (options.operation === "submit" || options.operation === "retry") {
     return submitDirectMap(options, asset, assetId);
   }

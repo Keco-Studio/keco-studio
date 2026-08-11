@@ -76,6 +76,7 @@ function harness(options: {
   submitError?: Error;
   submitResult?: Record<string, unknown>;
   lastErrorCode?: string | null;
+  updatedAt?: string;
 } = {}) {
   const authorizedAsset = authorized(options.status ?? "generating", options.metadata ?? {
     schemaFingerprint: CAPABILITY.schemaFingerprint,
@@ -109,6 +110,7 @@ function harness(options: {
       asset: {
         ...authorizedAsset.asset,
         last_error_code: options.lastErrorCode ?? null,
+        updated_at: options.updatedAt ?? "2026-08-11T00:00:00.000Z",
       },
     },
     client,
@@ -126,6 +128,58 @@ function harness(options: {
     },
   };
 }
+
+Deno.test("requires explicit duplicate-billing acknowledgement before resolving a stale queued submission", async () => {
+  const state = harness({ status: "queued", updatedAt: "2026-08-11T00:00:00.000Z" });
+
+  const error = await assertRejects(
+    () => runDirectMapLifecycle({
+      operation: "resolve_unknown",
+      acknowledgeDuplicateBilling: false,
+      now: () => Date.parse("2026-08-11T00:03:00.000Z"),
+      ...state,
+    } as never),
+    PixelLabMapError,
+  );
+
+  assertEquals(error.status, 400);
+  assertEquals(state.transitions, []);
+  assertEquals(state.submissions, []);
+});
+
+Deno.test("durably blocks a stale queued submission after explicit acknowledgement", async () => {
+  const state = harness({ status: "queued", updatedAt: "2026-08-11T00:00:00.000Z" });
+
+  const result = await runDirectMapLifecycle({
+    operation: "resolve_unknown",
+    acknowledgeDuplicateBilling: true,
+    now: () => Date.parse("2026-08-11T00:03:00.000Z"),
+    ...state,
+  } as never);
+
+  assertEquals(result, { assetId: IDS.assetId, status: "blocked" });
+  assertEquals(state.transitions, [
+    { from: "queued", to: "blocked", details: { errorCode: "pixellab_submit_outcome_unknown" } },
+  ]);
+  assertEquals(state.submissions, []);
+});
+
+Deno.test("does not resolve a queued submission before the safety window elapses", async () => {
+  const state = harness({ status: "queued", updatedAt: "2026-08-11T00:00:00.000Z" });
+
+  const error = await assertRejects(
+    () => runDirectMapLifecycle({
+      operation: "resolve_unknown",
+      acknowledgeDuplicateBilling: true,
+      now: () => Date.parse("2026-08-11T00:01:59.999Z"),
+      ...state,
+    } as never),
+    PixelLabMapError,
+  );
+
+  assertEquals(error.status, 409);
+  assertEquals(state.transitions, []);
+});
 
 Deno.test("submits the exact description and stores only sanitized capability identity", async () => {
   const state = harness({ status: "planned", metadata: {} });

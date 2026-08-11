@@ -34,7 +34,9 @@ describe('DirectMapGenerationPanel', () => {
     const tree = DirectMapGenerationPanel({
       phase: 'awaiting-confirmation', asset: plannedAsset, error: null,
       canPrepare: false, canRetry: false,
+      canResolveUnknown: false,
       onPrepare: jest.fn(), onConfirm: confirm, onRetry: jest.fn(), onRegenerate: jest.fn(),
+      onResolveUnknown: jest.fn(),
     });
     findButton(tree, 'Confirm and generate map')?.props.onClick?.();
     const markup = renderToStaticMarkup(tree);
@@ -48,16 +50,44 @@ describe('DirectMapGenerationPanel', () => {
     const validating = renderToStaticMarkup(React.createElement(DirectMapGenerationPanel, {
       phase: 'validating', asset: { ...plannedAsset, status: 'generating' }, error: null,
       canPrepare: false, canRetry: false,
+      canResolveUnknown: false,
       onPrepare: jest.fn(), onConfirm: jest.fn(), onRetry: jest.fn(), onRegenerate: jest.fn(),
+      onResolveUnknown: jest.fn(),
     }));
     const ready = renderToStaticMarkup(React.createElement(DirectMapGenerationPanel, {
       phase: 'ready', asset: { ...plannedAsset, status: 'ready' }, error: null,
       canPrepare: true, canRetry: false,
+      canResolveUnknown: false,
       onPrepare: jest.fn(), onConfirm: jest.fn(), onRetry: jest.fn(), onRegenerate: jest.fn(),
+      onResolveUnknown: jest.fn(),
     }));
 
     expect(validating).toContain('Validating image');
     expect(ready).toContain('Map ready');
     expect(ready).toContain('Regenerate map');
+  });
+
+  it('requires explicit duplicate-billing acknowledgement for an unknown submission', () => {
+    const resolveUnknown = jest.fn();
+    const tree = DirectMapGenerationPanel({
+      phase: 'blocked',
+      asset: { ...plannedAsset, status: 'queued' },
+      error: null,
+      canPrepare: true,
+      canRetry: false,
+      canResolveUnknown: true,
+      onPrepare: jest.fn(),
+      onConfirm: jest.fn(),
+      onRetry: jest.fn(),
+      onRegenerate: jest.fn(),
+      onResolveUnknown: resolveUnknown,
+    });
+    const markup = renderToStaticMarkup(tree);
+
+    expect(markup).toContain('previous request may still be billed');
+    expect(markup).toContain('type="checkbox"');
+    expect(markup).toContain('Start a new paid attempt');
+    expect(markup).toContain('disabled=""');
+    expect(resolveUnknown).not.toHaveBeenCalled();
   });
 });
