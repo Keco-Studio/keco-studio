@@ -1,12 +1,13 @@
 import { decode, encode } from "fast-png";
 import { MAX_PNG_BYTES } from "./png.ts";
-import { providerTextBlocks, providerTileReferences } from "./provider-response.ts";
+import { providerAtlasReferences, providerTextBlocks, providerTileReferences } from "./provider-response.ts";
 import type { DiscoveredCapability, NormalizedTileAtlas } from "./types.ts";
 import { PixelLabMapError } from "./types.ts";
 
 export type AtlasTileSource = {
   key: string;
   connectivityMask: number;
+  rotationQuarterTurns?: number;
   url?: string;
   base64?: string;
   sourceX?: number;
@@ -29,6 +30,7 @@ type DecodedImage = {
 type ImageFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const MAX_BASE64_LENGTH = Math.ceil(MAX_PNG_BYTES / 3) * 4 + 4;
+const MAX_METADATA_BYTES = 2 * 1024 * 1024;
 
 function incomplete(message: string): never {
   throw new PixelLabMapError("atlas_manifest_incomplete", message, 422);
@@ -138,19 +140,26 @@ function walk(value: unknown, visit: (record: Record<string, unknown>) => void):
 
 function tileFromRecord(record: Record<string, unknown>): AtlasTileSource | null {
   const key = stringField(record, ["key", "tile_key", "tileKey", "name", "id"]);
-  const connectivityMask = numberField(record, ["connectivityMask", "connectivity_mask", "mask", "wangIndex", "wang_index"]);
+  const wangName = key?.match(/^wang[_-](\d{1,2})$/i);
+  const directMask = numberField(record, ["connectivityMask", "connectivity_mask", "mask", "wangIndex", "wang_index"]);
+  const connectivityMask = directMask ?? (wangName ? Number(wangName[1]) : undefined);
   if (!key || connectivityMask == null) return null;
   const url = stringField(record, ["url", "image_url", "imageUrl", "download", "storage_url", "png_url"]);
   const base64 = stringField(record, ["base64", "data"]);
+  const bounds = asRecord(record.bounding_box) ?? asRecord(record.boundingBox);
+  const sourceX = numberField(record, ["sourceX", "source_x", "x"]) ?? (bounds ? numberField(bounds, ["x"]) : undefined);
+  const sourceY = numberField(record, ["sourceY", "source_y", "y"]) ?? (bounds ? numberField(bounds, ["y"]) : undefined);
+  const sourceWidth = numberField(record, ["sourceWidth", "source_width", "width"]) ?? (bounds ? numberField(bounds, ["width"]) : undefined);
+  const sourceHeight = numberField(record, ["sourceHeight", "source_height", "height"]) ?? (bounds ? numberField(bounds, ["height"]) : undefined);
   return {
     key,
     connectivityMask,
     ...(url ? { url } : {}),
     ...(base64 ? { base64 } : {}),
-    ...(numberField(record, ["sourceX", "source_x", "x"]) != null ? { sourceX: numberField(record, ["sourceX", "source_x", "x"]) } : {}),
-    ...(numberField(record, ["sourceY", "source_y", "y"]) != null ? { sourceY: numberField(record, ["sourceY", "source_y", "y"]) } : {}),
-    ...(numberField(record, ["sourceWidth", "source_width", "width"]) != null ? { sourceWidth: numberField(record, ["sourceWidth", "source_width", "width"]) } : {}),
-    ...(numberField(record, ["sourceHeight", "source_height", "height"]) != null ? { sourceHeight: numberField(record, ["sourceHeight", "source_height", "height"]) } : {}),
+    ...(sourceX != null ? { sourceX } : {}),
+    ...(sourceY != null ? { sourceY } : {}),
+    ...(sourceWidth != null ? { sourceWidth } : {}),
+    ...(sourceHeight != null ? { sourceHeight } : {}),
   };
 }
 
@@ -161,7 +170,7 @@ function extractTileSources(result: Record<string, unknown>): { tiles: AtlasTile
   walk(result, (record) => {
     const tile = tileFromRecord(record);
     if (tile) tiles.push(tile);
-    const candidateUrl = stringField(record, ["atlas_url", "atlasUrl", "atlas_download", "spritesheet_url"]);
+    const candidateUrl = stringField(record, ["atlas_url", "atlasUrl", "atlas_download", "spritesheet_url", "tileset_image"]);
     if (candidateUrl) atlasUrl = candidateUrl;
     const candidateBase64 = stringField(record, ["atlas_base64", "atlasBase64"]);
     if (candidateBase64) atlasBase64 = candidateBase64;
@@ -183,6 +192,63 @@ function extractTileSources(result: Record<string, unknown>): { tiles: AtlasTile
   }
 
   return { tiles, ...(atlasUrl ? { atlasUrl } : {}), ...(atlasBase64 ? { atlasBase64 } : {}) };
+}
+
+async function readExternalMetadata(url: string, fetcher: ImageFetcher): Promise<Record<string, unknown>> {
+  const response = await fetcher(secureProviderUrl(url));
+  if (!response.ok) incomplete("Provider atlas metadata could not be downloaded");
+  const declaredValue = response.headers.get("content-length");
+  if (declaredValue != null) {
+    const declared = Number(declaredValue);
+    if (!Number.isFinite(declared) || declared < 0 || declared > MAX_METADATA_BYTES) {
+      incomplete("Provider atlas metadata size is invalid");
+    }
+  }
+  if (!response.body) incomplete("Provider atlas metadata is empty");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_METADATA_BYTES) {
+      await reader.cancel();
+      incomplete("Provider atlas metadata size is invalid");
+    }
+    chunks.push(value);
+  }
+  if (size === 0) incomplete("Provider atlas metadata is empty");
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const value = JSON.parse(new TextDecoder().decode(bytes));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
+    return value as Record<string, unknown>;
+  } catch {
+    incomplete("Provider atlas metadata is invalid JSON");
+  }
+}
+
+async function completeProviderResult(
+  result: Record<string, unknown>,
+  fetcher: ImageFetcher,
+): Promise<Record<string, unknown>> {
+  const references = providerAtlasReferences(result);
+  if (!references.metadataUrl) return result;
+  const metadata = await readExternalMetadata(references.metadataUrl, fetcher);
+  const canonicalMetadata = asRecord(metadata.tileset_data)
+    ? { tileset_data: metadata.tileset_data }
+    : metadata;
+  return {
+    providerResult: result,
+    providerMetadata: canonicalMetadata,
+    ...(references.imageUrl ? { atlas_url: references.imageUrl } : {}),
+  };
 }
 
 function rgbaImage(image: ReturnType<typeof decode>): DecodedImage {
@@ -219,19 +285,107 @@ async function fetchImage(source: AtlasTileSource, fetcher: ImageFetcher): Promi
   try { return rgbaImage(decode(bytes)); } catch { incomplete(`Atlas tile ${source.key} is not a valid PNG`); }
 }
 
-function assertMaskRequirements(tiles: AtlasTileSource[], requiredMasks: number[]): void {
+function rotateConnectivityMask(mask: number, quarterTurns: number): number {
+  const turns = ((quarterTurns % 4) + 4) % 4;
+  return ((mask << turns) | (mask >> (4 - turns))) & 15;
+}
+
+function selectMaskVariations(
+  tiles: AtlasTileSource[],
+  requiredMasks: number[],
+  synthesizeRotations: boolean,
+): AtlasTileSource[] {
   const masks = new Set(tiles.map((tile) => tile.connectivityMask));
   const invalidMask = tiles.find((tile) => !Number.isInteger(tile.connectivityMask) || tile.connectivityMask < 0 || tile.connectivityMask > 15);
   if (invalidMask) incomplete(`Invalid connectivity mask for ${invalidMask.key}`);
-  const duplicateMask = [...masks].find((mask) => tiles.filter((tile) => tile.connectivityMask === mask).length > 1);
-  if (duplicateMask != null) incomplete(`Duplicate connectivity mask: ${duplicateMask}`);
-  const keys = new Set(tiles.map((tile) => tile.key));
-  const duplicateKey = [...keys].find((key) => tiles.filter((tile) => tile.key === key).length > 1);
-  if (duplicateKey != null) incomplete(`Duplicate atlas tile key: ${duplicateKey}`);
   const invalidRequiredMask = requiredMasks.find((mask) => !Number.isInteger(mask) || mask < 0 || mask > 15);
   if (invalidRequiredMask != null) incomplete(`Invalid required connectivity mask: ${invalidRequiredMask}`);
+  const selected = [...masks]
+    .sort((left, right) => left - right)
+    .map((mask) => [...tiles]
+      .filter((tile) => tile.connectivityMask === mask)
+      .sort((left, right) => left.key.localeCompare(right.key))[0]);
+  const providerSelected = [...selected];
   const missing = requiredMasks.filter((mask) => !masks.has(mask));
-  if (missing.length) incomplete(`Missing connectivity masks: ${missing.join(",")}`);
+  if (synthesizeRotations) {
+    for (const mask of missing) {
+      const rotated = providerSelected
+        .flatMap((tile) => [1, 2, 3].map((quarterTurns) => ({ tile, quarterTurns })))
+        .filter(({ tile, quarterTurns }) => rotateConnectivityMask(tile.connectivityMask, quarterTurns) === mask)
+        .sort((left, right) => left.quarterTurns - right.quarterTurns || left.tile.key.localeCompare(right.tile.key))[0];
+      if (!rotated) continue;
+      selected.push({
+        ...rotated.tile,
+        key: `${rotated.tile.key}-rot${rotated.quarterTurns}-${mask}`,
+        connectivityMask: mask,
+        rotationQuarterTurns: rotated.quarterTurns,
+      });
+      masks.add(mask);
+    }
+  }
+  const unresolved = requiredMasks.filter((mask) => !masks.has(mask));
+  if (unresolved.length) incomplete(`Missing connectivity masks: ${unresolved.join(",")}`);
+  return selected;
+}
+
+function cropImage(
+  image: DecodedImage,
+  sourceX: number,
+  sourceY: number,
+  width: number,
+  height: number,
+): DecodedImage {
+  const rgba = new Uint8Array(width * height * 4);
+  for (let row = 0; row < height; row += 1) {
+    const sourceStart = ((sourceY + row) * image.width + sourceX) * 4;
+    rgba.set(image.rgba.slice(sourceStart, sourceStart + width * 4), row * width * 4);
+  }
+  return { width, height, rgba };
+}
+
+function rotateImage(image: DecodedImage, quarterTurns = 0): DecodedImage {
+  let current = image;
+  const turns = ((quarterTurns % 4) + 4) % 4;
+  for (let turn = 0; turn < turns; turn += 1) {
+    const width = current.height;
+    const height = current.width;
+    const rgba = new Uint8Array(width * height * 4);
+    for (let y = 0; y < current.height; y += 1) {
+      for (let x = 0; x < current.width; x += 1) {
+        const targetX = current.height - 1 - y;
+        const targetY = x;
+        const sourceOffset = (y * current.width + x) * 4;
+        const targetOffset = (targetY * width + targetX) * 4;
+        rgba.set(current.rgba.slice(sourceOffset, sourceOffset + 4), targetOffset);
+      }
+    }
+    current = { width, height, rgba };
+  }
+  return current;
+}
+
+function packImages(tiles: AtlasTileSource[], images: DecodedImage[]): NormalizedAtlas {
+  const tileWidth = images[0].width;
+  const tileHeight = images[0].height;
+  if (tileWidth <= 0 || tileHeight <= 0 || images.some((image) => image.width !== tileWidth || image.height !== tileHeight)) {
+    incomplete("Atlas tiles do not share dimensions");
+  }
+  const ordered = [...tiles].sort((left, right) => left.connectivityMask - right.connectivityMask || left.key.localeCompare(right.key));
+  const imageByKey = new Map(tiles.map((tile, index) => [`${tile.key}:${tile.connectivityMask}`, images[index]]));
+  const rgba = new Uint8Array(ordered.length * tileWidth * tileHeight * 4);
+  ordered.forEach((tile, tileIndex) => {
+    const image = imageByKey.get(`${tile.key}:${tile.connectivityMask}`);
+    if (!image) incomplete(`Missing decoded image for ${tile.key}`);
+    for (let row = 0; row < tileHeight; row += 1) {
+      const sourceStart = row * tileWidth * 4;
+      const targetStart = (row * ordered.length * tileWidth + tileIndex * tileWidth) * 4;
+      rgba.set(image.rgba.slice(sourceStart, sourceStart + tileWidth * 4), targetStart);
+    }
+  });
+  const manifest = atlasManifest(ordered, tileWidth, tileHeight);
+  const bytes = encode({ width: ordered.length * tileWidth, height: tileHeight, data: rgba, channels: 4, depth: 8 });
+  if (bytes.byteLength > MAX_PNG_BYTES) incomplete("Normalized atlas size is invalid");
+  return { bytes, manifest };
 }
 
 function atlasManifest(tiles: AtlasTileSource[], tileWidth: number, tileHeight: number): NormalizedTileAtlas {
@@ -262,14 +416,19 @@ export async function normalizeTileAtlas(
   if (capability.semantic !== "topdown_tileset" && capability.semantic !== "path_tiles") {
     incomplete("Only terrain and path capabilities can produce a tile atlas");
   }
-  const extracted = extractTileSources(result);
+  const completeResult = await completeProviderResult(result, fetcher);
+  const extracted = extractTileSources(completeResult);
   if (extracted.tiles.length === 0) incomplete("Provider result contains no tile manifest");
-  assertMaskRequirements(extracted.tiles, requiredMasks);
+  const selectedTiles = selectMaskVariations(
+    extracted.tiles,
+    requiredMasks,
+    capability.semantic === "path_tiles",
+  );
 
-  const hasRectangles = extracted.tiles.every((tile) =>
+  const hasRectangles = selectedTiles.every((tile) =>
     tile.sourceX != null && tile.sourceY != null && tile.sourceWidth != null && tile.sourceHeight != null
   );
-  const hasIndividualImages = extracted.tiles.every((tile) => Boolean(tile.url || tile.base64));
+  const hasIndividualImages = selectedTiles.every((tile) => Boolean(tile.url || tile.base64));
   if ((extracted.atlasUrl || extracted.atlasBase64) && !hasIndividualImages) {
     if (!hasRectangles) incomplete("Atlas image is missing source rectangles");
     let atlasBytes: Uint8Array;
@@ -282,7 +441,7 @@ export async function normalizeTileAtlas(
     }
     let decoded: DecodedImage;
     try { decoded = rgbaImage(decode(atlasBytes)); } catch { incomplete("Provider atlas is not a valid PNG"); }
-    const manifestTiles = extracted.tiles.map((tile) => ({ ...tile }));
+    const manifestTiles = selectedTiles.map((tile) => ({ ...tile }));
     const first = manifestTiles[0];
     const tileWidth = first.sourceWidth as number;
     const tileHeight = first.sourceHeight as number;
@@ -309,11 +468,26 @@ export async function normalizeTileAtlas(
       ) {
         incomplete(`Atlas source rectangle is invalid for ${tile.key}`);
       }
-      if (occupied.some((other) => x < other.x + other.width && x + width > other.x && y < other.y + other.height && y + height > other.y)) {
+      const duplicateRotationSource = (tile.rotationQuarterTurns ?? 0) > 0 && occupied.some((other) =>
+        x === other.x && y === other.y && width === other.width && height === other.height
+      );
+      if (!duplicateRotationSource && occupied.some((other) =>
+        x < other.x + other.width && x + width > other.x && y < other.y + other.height && y + height > other.y
+      )) {
         incomplete(`Atlas source rectangles overlap for ${tile.key}`);
       }
       occupied.push({ x, y, width, height });
     });
+    if (manifestTiles.some((tile) => (tile.rotationQuarterTurns ?? 0) > 0)) {
+      const images = manifestTiles.map((tile) => rotateImage(cropImage(
+        decoded,
+        tile.sourceX as number,
+        tile.sourceY as number,
+        tile.sourceWidth as number,
+        tile.sourceHeight as number,
+      ), tile.rotationQuarterTurns));
+      return packImages(manifestTiles, images);
+    }
     const manifest = {
       ...atlasManifest(manifestTiles, tileWidth, tileHeight),
       tiles: [...manifestTiles].sort((left, right) => left.connectivityMask - right.connectivityMask || left.key.localeCompare(right.key)).map((tile) => ({
@@ -330,26 +504,8 @@ export async function normalizeTileAtlas(
     return { bytes: atlasBytes, manifest };
   }
 
-  const images = await Promise.all(extracted.tiles.map((tile) => fetchImage(tile, fetcher)));
-  const tileWidth = images[0].width;
-  const tileHeight = images[0].height;
-  if (tileWidth <= 0 || tileHeight <= 0 || images.some((image) => image.width !== tileWidth || image.height !== tileHeight)) {
-    incomplete("Atlas tiles do not share dimensions");
-  }
-  const ordered = [...extracted.tiles].sort((left, right) => left.connectivityMask - right.connectivityMask || left.key.localeCompare(right.key));
-  const imageByKey = new Map(extracted.tiles.map((tile, index) => [`${tile.key}:${tile.connectivityMask}`, images[index]]));
-  const rgba = new Uint8Array(ordered.length * tileWidth * tileHeight * 4);
-  ordered.forEach((tile, tileIndex) => {
-    const image = imageByKey.get(`${tile.key}:${tile.connectivityMask}`);
-    if (!image) incomplete(`Missing decoded image for ${tile.key}`);
-    for (let row = 0; row < tileHeight; row += 1) {
-      const sourceStart = row * tileWidth * 4;
-      const targetStart = (row * ordered.length * tileWidth + tileIndex * tileWidth) * 4;
-      rgba.set(image.rgba.slice(sourceStart, sourceStart + tileWidth * 4), targetStart);
-    }
-  });
-  const manifest = atlasManifest(ordered, tileWidth, tileHeight);
-  const bytes = encode({ width: ordered.length * tileWidth, height: tileHeight, data: rgba, channels: 4, depth: 8 });
-  if (bytes.byteLength > MAX_PNG_BYTES) incomplete("Normalized atlas size is invalid");
-  return { bytes, manifest };
+  const images = await Promise.all(selectedTiles.map(async (tile) =>
+    rotateImage(await fetchImage(tile, fetcher), tile.rotationQuarterTurns)
+  ));
+  return packImages(selectedTiles, images);
 }

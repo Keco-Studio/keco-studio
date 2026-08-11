@@ -60,8 +60,7 @@ Deno.test("composes exact pixels for a 2x2 turning-mask fixture deterministicall
     cells: masks.map((connectivityMask, index) => ({
       x: index % 2,
       y: Math.floor(index / 2),
-      assetKey: "road",
-      connectivityMask,
+      layers: [{ assetKey: "road", connectivityMask }],
     })),
     atlases: { road: { png: source, manifest: manifest(masks) } },
   };
@@ -90,7 +89,7 @@ Deno.test("uses nearest-neighbor sampling when source and map tile sizes differ"
     width: 4,
     height: 4,
     tileSize: 4,
-    cells: [{ x: 0, y: 0, assetKey: "ground", connectivityMask: 0 }],
+    cells: [{ x: 0, y: 0, layers: [{ assetKey: "ground", connectivityMask: 0 }] }],
     atlases: { ground: { png: source, manifest: manifest([0], 2, 2) } },
   });
 
@@ -106,7 +105,7 @@ Deno.test("rejects a missing connectivity mask and malformed atlas grid", async 
     width: 2,
     height: 2,
     tileSize: 2,
-    cells: [{ x: 0, y: 0, assetKey: "ground", connectivityMask: 12 }],
+    cells: [{ x: 0, y: 0, layers: [{ assetKey: "ground", connectivityMask: 12 }] }],
   };
   const missing = await assertRejects(() => composeBackground({
     ...base,
@@ -118,7 +117,53 @@ Deno.test("rejects a missing connectivity mask and malformed atlas grid", async 
   malformed.columns = 1;
   await assertRejects(() => composeBackground({
     ...base,
-    cells: [{ ...base.cells[0], connectivityMask: 1 }],
+    cells: [{ x: 0, y: 0, layers: [{ assetKey: "ground", connectivityMask: 1 }] }],
     atlases: { ground: { png: source, manifest: malformed } },
   }), PixelLabMapError);
+});
+
+Deno.test("alpha-composites a transparent path over opaque terrain", async () => {
+  const terrain = await validatePng(encode({
+    width: 2,
+    height: 2,
+    data: new Uint8Array([
+      20, 40, 60, 255, 21, 41, 61, 255,
+      22, 42, 62, 255, 23, 43, 63, 255,
+    ]),
+    channels: 4,
+    depth: 8,
+  }), { alpha: "forbidden" });
+  const pathData = new Uint8Array([
+    200, 100, 20, 255, 0, 0, 0, 0,
+    0, 0, 0, 0, 201, 101, 21, 255,
+  ]);
+  const path = await validatePng(encode({
+    width: 2,
+    height: 2,
+    data: pathData,
+    channels: 4,
+    depth: 8,
+  }), { alpha: "required" });
+
+  const result = await composeBackground({
+    width: 2,
+    height: 2,
+    tileSize: 2,
+    cells: [{
+      x: 0,
+      y: 0,
+      layers: [
+        { assetKey: "terrain", connectivityMask: 15 },
+        { assetKey: "path", connectivityMask: 15 },
+      ],
+    }],
+    atlases: {
+      terrain: { png: terrain, manifest: manifest([15]) },
+      path: { png: path, manifest: manifest([15]) },
+    },
+  });
+
+  assertEquals(result.hasTransparency, false);
+  assertEquals(pixel(result.bytes, 0, 0), [200, 100, 20, 255]);
+  assertEquals(pixel(result.bytes, 1, 0), [21, 41, 61, 255]);
 });

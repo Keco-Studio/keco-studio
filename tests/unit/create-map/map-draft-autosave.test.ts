@@ -1,13 +1,11 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
   SerializedMapDraftWriter,
-  validateMapDraftPayloadV2,
   validateMapDraftPayloadV3,
-  type MapDraftPayloadV2,
   type MapDraftPayloadV3,
 } from '@/features/create-map/hooks/useMapDraft';
 import { CreateMapServiceError, type MapDraftIdentity } from '@/features/create-map/services/createMapService';
-import { makeEmptyMapSceneV3, makeValidMapPlanV2, makeValidMapPlanV3, makeValidMapSceneV2 } from './fixtures';
+import { makeEmptyMapSceneV3, makeValidMapPlanV3 } from './fixtures';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 
@@ -15,10 +13,10 @@ function identity(mapId: string, revisionId: string, saveVersion = 0): MapDraftI
   return { mapId, revisionId, revisionNumber: 1, saveVersion };
 }
 
-function payload(name: string): MapDraftPayloadV2 {
+function payload(name: string): MapDraftPayloadV3 {
   return {
-    plan: { ...makeValidMapPlanV2(), name },
-    scene: makeValidMapSceneV2(),
+    plan: { ...makeValidMapPlanV3(), name },
+    scene: makeEmptyMapSceneV3(),
   };
 }
 
@@ -37,7 +35,7 @@ describe('SerializedMapDraftWriter', () => {
     const first = deferred<number>();
     const calls: Array<{ identity: MapDraftIdentity; name: string }> = [];
     const saved: string[] = [];
-    const writer = new SerializedMapDraftWriter(async (target, nextPayload) => {
+    const writer = new SerializedMapDraftWriter<MapDraftPayloadV3>(async (target, nextPayload) => {
       calls.push({ identity: { ...target }, name: nextPayload.plan.name });
       return calls.length === 1 ? first.promise : 2;
     }, { onSaved: (_target, nextPayload) => saved.push(nextPayload.plan.name) });
@@ -59,7 +57,7 @@ describe('SerializedMapDraftWriter', () => {
   it('discards an old completion and saves the replacement map with its own identity', async () => {
     const oldSave = deferred<number>();
     const saved: Array<[string, string]> = [];
-    const writer = new SerializedMapDraftWriter(async (target, nextPayload) => {
+    const writer = new SerializedMapDraftWriter<MapDraftPayloadV3>(async (target, nextPayload) => {
       if (target.mapId === 'map-old') return oldSave.promise;
       expect(nextPayload.plan.name).toBe('New map edit');
       return 8;
@@ -81,7 +79,7 @@ describe('SerializedMapDraftWriter', () => {
       throw new CreateMapServiceError('save_conflict');
     });
     const onConflict = jest.fn();
-    const writer = new SerializedMapDraftWriter(save, { onConflict });
+    const writer = new SerializedMapDraftWriter<MapDraftPayloadV3>(save, { onConflict });
     writer.install(identity('map-a', 'revision-a'));
 
     await writer.enqueue(payload('Conflicting edit'));
@@ -96,11 +94,12 @@ describe('SerializedMapDraftWriter', () => {
 
   it('rejects an invalid local payload before it can enter the writer', async () => {
     const save = jest.fn(async () => 1);
-    const writer = new SerializedMapDraftWriter(save);
+    const writer = new SerializedMapDraftWriter<MapDraftPayloadV3>(save);
     writer.install(identity('map-a', 'revision-a'));
-    const plan = { ...makeValidMapPlanV2(), map: { ...makeValidMapPlanV2().map, width: 65 } };
+    const validPlan = makeValidMapPlanV3();
+    const plan = { ...validPlan, map: { ...validPlan.map, width: 65 } };
 
-    const validation = validateMapDraftPayloadV2(plan, makeValidMapSceneV2());
+    const validation = validateMapDraftPayloadV3(plan, makeEmptyMapSceneV3());
     if (validation.success) await writer.enqueue(validation.payload);
 
     expect(validation.success).toBe(false);

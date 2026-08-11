@@ -6,6 +6,11 @@ export type ProviderTileReference = {
   url: string;
 };
 
+export type ProviderAtlasReferences = {
+  imageUrl: string | null;
+  metadataUrl: string | null;
+};
+
 export function providerTextBlocks(value: unknown): string[] {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -17,6 +22,34 @@ export function providerTextBlocks(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(providerTextBlocks);
   if (!value || typeof value !== "object") return [];
   return Object.values(value as Record<string, unknown>).flatMap(providerTextBlocks);
+}
+
+/** Returns a bounded semantic warning when the provider labels an output as a character. */
+export function providerContentQualityIssue(value: unknown): string | null {
+  const inspect = (entry: unknown, key = ""): string | null => {
+    if (typeof entry === "string") {
+      if (!/(description|caption|label|tag|content|text|title|warning|subject)/i.test(key)) return null;
+      const positive = /\b(person|people|character|npc|human|man|woman|boy|girl|portrait)\b|小人|人物|角色|NPC/i.test(entry);
+      const explicitlyExcluded = /\b(no|without|exclude|excluding)\s+(people|person|characters?|npc|humans?)\b/i.test(entry)
+        || /不要(人物|角色|小人)|无(人物|角色|小人)/i.test(entry);
+      return positive && !explicitlyExcluded ? "obstacle_output_contains_character_content" : null;
+    }
+    if (Array.isArray(entry)) {
+      for (const child of entry) {
+        const issue = inspect(child, key);
+        if (issue) return issue;
+      }
+      return null;
+    }
+    if (entry && typeof entry === "object") {
+      for (const [childKey, child] of Object.entries(entry as Record<string, unknown>)) {
+        const issue = inspect(child, childKey);
+        if (issue) return issue;
+      }
+    }
+    return null;
+  };
+  return inspect(value);
 }
 
 export function providerTileReferences(value: unknown): ProviderTileReference[] {
@@ -36,6 +69,24 @@ export function providerTileReferences(value: unknown): ProviderTileReference[] 
     }
   }
   return references;
+}
+
+export function providerAtlasReferences(value: unknown): ProviderAtlasReferences {
+  let imageUrl: string | null = null;
+  let inlineImageUrl: string | null = null;
+  let metadataUrl: string | null = null;
+  for (const block of providerTextBlocks(value)) {
+    for (const line of block.split(/\r?\n/)) {
+      const match = line.match(/^\s*([\w.-]+)\s*:\s*(https:\/\/\S+)\s*(?:\([^)]*\))?\s*$/i);
+      if (!match) continue;
+      const key = match[1].toLowerCase();
+      const url = match[2];
+      if (key === "download_metadata" || key === "metadata_url") metadataUrl ??= url;
+      if (["download_png", "atlas", "atlas_url", "spritesheet_url"].includes(key)) imageUrl ??= url;
+      if (["download_png_inline", "atlas_inline_url"].includes(key)) inlineImageUrl ??= url;
+    }
+  }
+  return { imageUrl: inlineImageUrl ?? imageUrl, metadataUrl };
 }
 
 export function providerImageReference(value: unknown): string | null {

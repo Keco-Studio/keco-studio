@@ -128,6 +128,7 @@
     "probe:mcp-performance": "tsx scripts/probe-mcp-performance.ts",
     "probe:mcp-capabilities": "tsx scripts/probe-mcp-capabilities.ts",
     "probe:mcp-load": "tsx scripts/load-mcp-phase-2.ts",
+    "probe:pixellab-map": "tsx scripts/probe-pixellab-map.ts",
     "scan:mcp-evidence": "tsx scripts/scan-mcp-evidence.ts"
   }
 }

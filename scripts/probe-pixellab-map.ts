@@ -13,13 +13,6 @@ const REQUIRED_V3 = [
   { semantic: 'direct_map_image', operation: 'create_image_pro', pollOperation: 'get_image' },
 ] as const;
 
-const V2_INFORMATIONAL = [
-  { semantic: 'topdown_tileset', operation: 'create_topdown_tileset', pollOperation: 'get_topdown_tileset' },
-  { semantic: 'path_tiles', operation: 'create_path_tiles', pollOperation: 'get_tiles_pro' },
-  { semantic: 'map_object', operation: 'create_image_pro', pollOperation: 'get_image' },
-  { semantic: 'inpaint', operation: 'inpaint_image', pollOperation: 'get_image' },
-] as const;
-
 type JsonRecord = Record<string, unknown>;
 
 type ProviderTool = {
@@ -90,10 +83,7 @@ function parseMcpPayload(text: string): JsonRecord {
   }
 }
 
-async function discoverCapabilities(token: string): Promise<{
-  requiredV3: CapabilityEvidence[];
-  v2Informational: Array<CapabilityEvidence | { semantic: string; status: 'missing' }>;
-}> {
+async function discoverCapabilities(token: string): Promise<CapabilityEvidence[]> {
   let response: Response;
   try {
     response = await fetch(MCP_URL, {
@@ -130,13 +120,7 @@ async function discoverCapabilities(token: string): Promise<{
       pollSchemaFingerprint: schemaFingerprint(pollTool.inputSchema ?? {}),
     };
   };
-  const requiredV3 = REQUIRED_V3.map(evidenceFor);
-  const v2Informational = V2_INFORMATIONAL.map((expected) => {
-    const tool = tools.find((candidate) => candidate.name === expected.operation);
-    const pollTool = tools.find((candidate) => candidate.name === expected.pollOperation);
-    return tool && pollTool ? evidenceFor(expected) : { semantic: expected.semantic, status: 'missing' as const };
-  });
-  return { requiredV3, v2Informational };
+  return REQUIRED_V3.map(evidenceFor);
 }
 
 function configuredSupabaseUrl(): string | null {
@@ -296,7 +280,7 @@ async function main(): Promise<void> {
   print({ configured: true, capabilities, generationEvidence: {
     status: 'verified',
     revisionId,
-    artifacts: generationEvidence(evidence, capabilities.requiredV3),
+    artifacts: generationEvidence(evidence, capabilities),
     durableMetadataSensitiveValues: false,
   } });
 }

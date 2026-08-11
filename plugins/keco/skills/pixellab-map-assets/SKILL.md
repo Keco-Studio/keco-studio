@@ -1,6 +1,6 @@
 ---
 name: pixellab-map-assets
-description: Generate and integrate game art resources for Godot projects through the configured PixelLab MCP and Keco provenance workflow. Use automatically when the user asks to create or extend a village, map, terrain, road, building, house, tree, rock, chest, gathering point, character, NPC, item, icon, inventory/UI image, scene background, Godot resource, or a style-matched asset, including requests like building the mayor's house or adding a gathering point to the village, even without naming PixelLab. Trigger on Godot, scene, tscn, project.godot, TileMap, gameplay, collision, game project, res://, or equivalent game-development terms in any language. Pure non-game illustration and visual exploration may use the temporary standalone path; development intent must use Keco-first registration and authoritative export.
+description: Use when a user asks to create or integrate top-down map-art resources for Godot, such as terrain tilesets, roads or paths, building kits, or map props, including style-matched extensions to an existing map. Not for complete playable maps, gameplay logic, collision-only work, characters, portraits, UI assets, scene backgrounds, or broader Keco-driven Godot slices.
 ---
 
 # PixelLab Map Assets

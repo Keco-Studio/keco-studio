@@ -197,41 +197,34 @@ describe('Create Map browser service', () => {
     }));
   });
 
-  it('lists the 50 most recently updated accessible maps with Project labels', async () => {
+  it('lists only V3 maps even when a mixed-version response reaches the browser', async () => {
     const limit = jest.fn(async () => ({
-      data: [{
-        id: 'map-1', project_id: 'project-1', name: 'River Town',
-        current_revision_id: 'revision-2', updated_at: '2026-08-10T01:00:00.000Z',
-        current_revision: { schema_version: 3 },
-        projects: { name: 'Adventure' },
-      }],
+      data: [
+        {
+          id: 'map-1', project_id: 'project-1', name: 'River Town',
+          current_revision_id: 'revision-2', updated_at: '2026-08-10T01:00:00.000Z',
+          current_revision: { schema_version: 3 },
+          projects: { name: 'Adventure' },
+        },
+        {
+          id: 'map-v2', project_id: 'project-1', name: 'Legacy Town',
+          current_revision_id: 'revision-v2', updated_at: '2026-08-09T01:00:00.000Z',
+          current_revision: { schema_version: 2 },
+          projects: { name: 'Adventure' },
+        },
+      ],
       error: null,
     }));
     const order = jest.fn(() => ({ limit }));
-    const inFilter = jest.fn(() => ({ order }));
-    const select = jest.fn(() => ({ in: inFilter }));
+    const eq = jest.fn(() => ({ order }));
+    const select = jest.fn(() => ({ eq }));
     const from = jest.fn(() => ({ select }));
 
     await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([{
       id: 'map-1', projectId: 'project-1', projectName: 'Adventure', name: 'River Town',
       currentRevisionId: 'revision-2', updatedAt: '2026-08-10T01:00:00.000Z', schemaVersion: 3,
     }]);
-    expect(inFilter).toHaveBeenCalledWith('current_revision.schema_version', [2, 3]);
-    expect(order).toHaveBeenCalledWith('updated_at', { ascending: false });
-    expect(limit).toHaveBeenCalledWith(50);
-  });
-
-  it('lists only maps whose current revision is schema V2', async () => {
-    const limit = jest.fn(async () => ({ data: [], error: null }));
-    const order = jest.fn(() => ({ limit }));
-    const eq = jest.fn(() => ({ order }));
-    const select = jest.fn(() => ({ eq }));
-    const from = jest.fn(() => ({ select }));
-
-    await expect(createMapService({ from } as never).listSavedMapsV2()).resolves.toEqual([]);
-
-    expect(select.mock.calls[0][0]).toContain('!inner(schema_version)');
-    expect(eq).toHaveBeenCalledWith('current_revision.schema_version', 2);
+    expect(eq).toHaveBeenCalledWith('current_revision.schema_version', 3);
     expect(order).toHaveBeenCalledWith('updated_at', { ascending: false });
     expect(limit).toHaveBeenCalledWith(50);
   });
@@ -270,6 +263,50 @@ describe('Create Map browser service', () => {
       .resolves.toEqual({ asset_id: 'asset-v3', status: 'planned' });
     expect(rpc).toHaveBeenCalledWith('create_map_asset_plan_v3', {
       p_revision_id: 'revision-v3', p_generation_id: generationId, p_plan_fingerprint: fingerprint,
+    });
+  });
+
+  it('preserves a sanitized PixelLab Edge error code and message', async () => {
+    const invoke = jest.fn(async () => ({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: {
+          json: async () => ({
+            code: 'pixellab_rate_limited',
+            error: 'PixelLab is temporarily rate limited. Retry this resource.',
+          }),
+        },
+      },
+    }));
+
+    await expect(createMapService({ functions: { invoke } } as never).invokePixelLab({
+      operation: 'submit', assetId: 'asset-1',
+    })).rejects.toMatchObject({
+      code: 'pixellab_rate_limited',
+      message: 'PixelLab is temporarily rate limited. Retry this resource.',
+    });
+  });
+
+  it('does not expose unsafe PixelLab Edge error text', async () => {
+    const invoke = jest.fn(async () => ({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: {
+          json: async () => ({
+            code: 'pixellab_upstream',
+            error: 'download https://provider.example/private?token=secret',
+          }),
+        },
+      },
+    }));
+
+    await expect(createMapService({ functions: { invoke } } as never).invokePixelLab({
+      operation: 'submit', assetId: 'asset-1',
+    })).rejects.toMatchObject({
+      code: 'pixellab_upstream',
+      message: 'Edge Function returned a non-2xx status code',
     });
   });
 

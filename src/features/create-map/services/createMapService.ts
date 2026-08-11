@@ -101,7 +101,7 @@ export type SavedMapSummary = {
   name: string;
   currentRevisionId: string;
   updatedAt: string;
-  schemaVersion: 2 | 3;
+  schemaVersion: 3;
 };
 
 export type SavedMapWorkspace = {
@@ -192,11 +192,11 @@ function projectName(value: unknown): string {
     : 'Unknown project';
 }
 
-function relationSchemaVersion(value: unknown): 2 | 3 | null {
+function relationSchemaVersion(value: unknown): 3 | null {
   const relation = Array.isArray(value) ? value[0] : value;
   if (!relation || typeof relation !== 'object') return null;
   const version = Number((relation as { schema_version?: unknown }).schema_version);
-  return version === 2 || version === 3 ? version : null;
+  return version === 3 ? version : null;
 }
 
 function parseMapV2(planInput: unknown, sceneInput: unknown): { plan: MapPlanV2; scene: MapSceneV2 } {
@@ -373,7 +373,7 @@ export function createMapService(supabase: SupabaseClient) {
       const { data, error } = await supabase
         .from('map_projects')
         .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name)')
-        .in('current_revision.schema_version', [2, 3])
+        .eq('current_revision.schema_version', 3)
         .order('updated_at', { ascending: false })
         .limit(50);
       if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
@@ -384,24 +384,6 @@ export function createMapService(supabase: SupabaseClient) {
           id: String(row.id), projectId: String(row.project_id), projectName: projectName(row.projects),
           name: String(row.name), currentRevisionId: String(row.current_revision_id),
           updatedAt: String(row.updated_at), schemaVersion,
-        }];
-      });
-    },
-
-    async listSavedMapsV2(): Promise<SavedMapSummary[]> {
-      const { data, error } = await supabase
-        .from('map_projects')
-        .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name)')
-        .eq('current_revision.schema_version', 2)
-        .order('updated_at', { ascending: false })
-        .limit(50);
-      if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
-      return (data ?? []).flatMap((row) => {
-        if (!row.current_revision_id) return [];
-        return [{
-          id: String(row.id), projectId: String(row.project_id), projectName: projectName(row.projects),
-          name: String(row.name), currentRevisionId: String(row.current_revision_id),
-          updatedAt: String(row.updated_at), schemaVersion: 2,
         }];
       });
     },
@@ -940,7 +922,7 @@ export function createMapService(supabase: SupabaseClient) {
 
     async invokePixelLab(body: Record<string, unknown>) {
       const { data, error } = await supabase.functions.invoke('pixellab-map', { body });
-      if (error) throw new CreateMapServiceError('pixellab_function_error', error.message);
+      if (error) throw await pixelLabFunctionError(error);
       return data;
     },
   };

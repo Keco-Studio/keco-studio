@@ -63,22 +63,48 @@ function pointInPolygon(point: Point, polygon: Point[]): boolean {
   return inside;
 }
 
-function distanceToSegment(point: Point, start: Point, end: Point): number {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  if (dx === 0 && dy === 0) return Math.hypot(point.x - start.x, point.y - start.y);
-  const ratio = Math.max(0, Math.min(1,
-    ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy),
-  ));
-  return Math.hypot(point.x - (start.x + ratio * dx), point.y - (start.y + ratio * dy));
+function rasterizeConnectedPath(
+  points: Point[],
+  columns: number,
+  rows: number,
+  tileSize: number,
+): boolean[][] {
+  const grid = Array.from({ length: rows }, () => Array.from({ length: columns }, () => false));
+  const cell = (point: Point) => ({
+    x: Math.max(0, Math.min(columns - 1, Math.floor(point.x / tileSize))),
+    y: Math.max(0, Math.min(rows - 1, Math.floor(point.y / tileSize))),
+  });
+  const mark = (x: number, y: number) => { grid[y][x] = true; };
+  for (let index = 1; index < points.length; index += 1) {
+    const start = cell(points[index - 1]);
+    const end = cell(points[index]);
+    let x = start.x;
+    let y = start.y;
+    const dx = Math.abs(end.x - x);
+    const dy = Math.abs(end.y - y);
+    const stepX = x < end.x ? 1 : -1;
+    const stepY = y < end.y ? 1 : -1;
+    let error = dx - dy;
+    mark(x, y);
+    while (x !== end.x || y !== end.y) {
+      const doubled = error * 2;
+      if (doubled > -dy && x !== end.x) {
+        error -= dy;
+        x += stepX;
+        mark(x, y);
+      }
+      if (doubled < dx && y !== end.y) {
+        error += dx;
+        y += stepY;
+        mark(x, y);
+      }
+    }
+  }
+  return grid;
 }
 
-function pathDistance(point: Point, path: Point[]): number {
-  let distance = Number.POSITIVE_INFINITY;
-  for (let index = 1; index < path.length; index += 1) {
-    distance = Math.min(distance, distanceToSegment(point, path[index - 1], path[index]));
-  }
-  return distance;
+function isBridgePath(path: Record<string, unknown>): boolean {
+  return /\bbridge\b/i.test(`${path.assetKey ?? ""} ${path.name ?? ""} ${path.prompt ?? ""}`);
 }
 
 function connectivityMask(grid: string[][], x: number, y: number, key: string): number {
@@ -124,7 +150,7 @@ export function compositionPlanFromMapPlan(value: unknown): CompositionPlan {
     }
   }
 
-  background.paths
+  const pathGrids = background.paths
     .map((value, index) => ({ value: asRecord(value), index }))
     .sort((left, right) => {
       const leftZ = Number(left.value.zIndex);
@@ -132,24 +158,39 @@ export function compositionPlanFromMapPlan(value: unknown): CompositionPlan {
       if (!Number.isFinite(leftZ) || !Number.isFinite(rightZ)) mismatch("Map Plan path z-index is invalid");
       return leftZ - rightZ || left.index - right.index;
     })
-    .forEach(({ value: path }) => {
+    .map(({ value: path }) => {
       if (typeof path.assetKey !== "string" || !path.assetKey || typeof path.width !== "number" || path.width <= 0) {
         mismatch("Map Plan path is invalid");
       }
       const centerline = points(path.points, 2);
-      for (let y = 0; y < rows; y += 1) {
-        for (let x = 0; x < columns; x += 1) {
-          const center = { x: (x + 0.5) * Number(tileSize), y: (y + 0.5) * Number(tileSize) };
-          if (pathDistance(center, centerline) <= path.width / 2) grid[y][x] = path.assetKey;
-        }
-      }
+      const pathGrid = rasterizeConnectedPath(centerline, columns, rows, Number(tileSize));
+      return {
+        path,
+        assetKey: path.assetKey,
+        grid: pathGrid,
+        assetGrid: pathGrid.map((row) => row.map((active) => active ? path.assetKey as string : "")),
+      };
     });
 
   const cells: CompositionPlan["cells"] = [];
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const assetKey = grid[y][x];
-      cells.push({ x, y, assetKey, connectivityMask: connectivityMask(grid, x, y, assetKey) });
+      cells.push({
+        x,
+        y,
+        layers: [
+          { assetKey, connectivityMask: 15 },
+          ...pathGrids.flatMap((path) => path.grid[y][x] ? [{
+            assetKey: path.assetKey,
+            // Bridges use PixelLab's complete deck tile at every cell; this
+            // keeps a diagonal bridge visually continuous across provider variants.
+            connectivityMask: isBridgePath(path.path)
+              ? 15
+              : connectivityMask(path.assetGrid, x, y, path.assetKey),
+          }] : []),
+        ],
+      });
     }
   }
   return { width: Number(width), height: Number(height), tileSize: Number(tileSize), cells };
@@ -276,7 +317,7 @@ export async function composeAndPersistBackground(authorized: AuthorizedAsset) {
   }
   const sources = await sourceRows(authorized);
   const sourceByKey = new Map(sources.map((source) => [source.asset_key, source]));
-  for (const key of new Set(plan.cells.map((cell) => cell.assetKey))) {
+  for (const key of new Set(plan.cells.flatMap((cell) => cell.layers.map((layer) => layer.assetKey)))) {
     if (!sourceByKey.has(key)) mismatch(`Background source is missing for ${key}`);
   }
 

@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { encode } from "fast-png";
+import { decode, encode } from "fast-png";
 import { normalizeTileAtlas } from "./atlas.ts";
 import type { DiscoveredCapability } from "./types.ts";
 import { PixelLabMapError } from "./types.ts";
@@ -113,25 +113,123 @@ Deno.test("normalizes a captured-shaped terrain atlas JSON text result", async (
   });
 });
 
-Deno.test("blocks duplicate or missing masks instead of selecting a generic tile", async () => {
+Deno.test("normalizes the live external PixelLab terrain metadata contract", async () => {
+  const atlasData = new Uint8Array(4 * 2 * 4);
+  for (let index = 0; index < atlasData.length; index += 4) {
+    atlasData.set(index < atlasData.length / 2 ? [20, 90, 35, 255] : [70, 120, 55, 255], index);
+  }
+  const atlas = encode({ width: 4, height: 2, data: atlasData, channels: 4, depth: 8 });
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "download_png_inline: https://api.pixellab.ai/terrain/download",
+      "download_metadata: https://api.pixellab.ai/terrain/metadata",
+    ].join("\n") }],
+    isError: false,
+  };
+  const metadata = {
+    tileset_data: {
+      spritesheet_url: "https://api.pixellab.ai/terrain/download",
+      spritesheet_grid: { cols: 2, rows: 1 },
+      tiles: [
+        { name: "wang_0", bounding_box: { x: 0, y: 0, width: 2, height: 2 } },
+        { name: "wang_15", bounding_box: { x: 2, y: 0, width: 2, height: 2 } },
+      ],
+    },
+  };
+  const normalized = await normalizeTileAtlas(result, terrainCapability, async (input) => {
+    if (String(input).endsWith("/metadata")) {
+      return new Response(JSON.stringify(metadata), { headers: { "content-type": "application/json" } });
+    }
+    const body = new Uint8Array(atlas.byteLength);
+    body.set(atlas);
+    return new Response(body.buffer);
+  }, [0, 15]);
+
+  assertEquals(normalized.manifest, {
+    schemaVersion: 1,
+    tileWidth: 2,
+    tileHeight: 2,
+    columns: 2,
+    rows: 1,
+    tiles: [
+      { key: "wang_0", connectivityMask: 0, sourceX: 0, sourceY: 0, sourceWidth: 2, sourceHeight: 2 },
+      { key: "wang_15", connectivityMask: 15, sourceX: 2, sourceY: 0, sourceWidth: 2, sourceHeight: 2 },
+    ],
+  });
+  assertEquals(normalized.bytes, atlas);
+});
+
+Deno.test("selects one deterministic provider variation and rotates path masks that are missing", async () => {
   const result = { tiles: [
     { key: "a", mask: 1, base64: `data:image/png;base64,${btoa(String.fromCharCode(...tilePng([1, 2, 3, 255])))}` },
     { key: "b", mask: 1, base64: `data:image/png;base64,${btoa(String.fromCharCode(...tilePng([4, 5, 6, 255])))}` },
   ] };
-  await assertRejects(() => normalizeTileAtlas(result, capability, fetcherFor({}), [1, 2]), PixelLabMapError);
+  const normalized = await normalizeTileAtlas(result, capability, fetcherFor({}), [1, 2, 4, 8]);
+
+  assertEquals(normalized.manifest.tiles.map((tile) => [tile.key, tile.connectivityMask]), [
+    ["a", 1],
+    ["a-rot1-2", 2],
+    ["a-rot2-4", 4],
+    ["a-rot3-8", 8],
+  ]);
 });
 
-Deno.test("blocks exact duplicate manifest entries instead of deduplicating them", async () => {
+Deno.test("rotates path pixels clockwise to match the synthesized connectivity mask", async () => {
+  const source = encode({
+    width: 2,
+    height: 2,
+    data: new Uint8Array([
+      255, 0, 0, 255, 0, 255, 0, 255,
+      0, 0, 255, 255, 255, 255, 0, 255,
+    ]),
+    channels: 4,
+    depth: 8,
+  });
+  const normalized = await normalizeTileAtlas({
+    tiles: [{ key: "north", mask: 1, base64: `data:image/png;base64,${btoa(String.fromCharCode(...source))}` }],
+  }, capability, fetcherFor({}), [2]);
+  const image = decode(normalized.bytes);
+
+  assertEquals(normalized.manifest.tiles.map((tile) => tile.connectivityMask), [1, 2]);
+  assertEquals(Array.from(image.data.slice(2 * 4, 4 * 4)), [0, 0, 255, 255, 255, 0, 0, 255]);
+  assertEquals(Array.from(image.data.slice(6 * 4, 8 * 4)), [255, 255, 0, 255, 0, 255, 0, 255]);
+});
+
+Deno.test("repacks a shared path atlas when a required mask needs rotation", async () => {
+  const atlas = tilePng([20, 40, 60, 255]);
+  const normalized = await normalizeTileAtlas({
+    atlas_base64: `data:image/png;base64,${btoa(String.fromCharCode(...atlas))}`,
+    tiles: [{ key: "north", mask: 1, x: 0, y: 0, width: 2, height: 2 }],
+  }, capability, fetcherFor({}), [2]);
+
+  assertEquals(normalized.manifest.tiles.map((tile) => tile.connectivityMask), [1, 2]);
+  assertEquals(normalized.manifest.columns, 2);
+  assertEquals(normalized.manifest.rows, 1);
+  assertEquals(decode(normalized.bytes).width, 4);
+});
+
+Deno.test("still blocks a terrain atlas when an exact required mask is missing", async () => {
+  const result = { tiles: [
+    { key: "north", mask: 1, base64: `data:image/png;base64,${btoa(String.fromCharCode(...tilePng([1, 2, 3, 255])))}` },
+  ] };
+  const error = await assertRejects(
+    () => normalizeTileAtlas(result, terrainCapability, fetcherFor({}), [1, 2]),
+    PixelLabMapError,
+  );
+  assertEquals(error.message, "Missing connectivity masks: 2");
+});
+
+Deno.test("deduplicates repeated provider manifest blocks deterministically", async () => {
   const image = `data:image/png;base64,${btoa(String.fromCharCode(...tilePng([1, 2, 3, 255])))}`;
-  const error = await assertRejects(() => normalizeTileAtlas({
+  const normalized = await normalizeTileAtlas({
     tiles: [
       { key: "north", mask: 1, base64: image },
       { key: "north", mask: 1, base64: image },
     ],
-  }, capability, fetcherFor({}), [1]), PixelLabMapError);
+  }, capability, fetcherFor({}), [1]);
 
-  assertEquals(error.code, "atlas_manifest_incomplete");
-  assertEquals(error.message, "Duplicate connectivity mask: 1");
+  assertEquals(normalized.manifest.tiles.map((tile) => [tile.key, tile.connectivityMask]), [["north", 1]]);
 });
 
 Deno.test("rejects insecure atlas URLs before fetching", async () => {

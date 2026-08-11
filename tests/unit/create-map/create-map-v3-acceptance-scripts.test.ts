@@ -9,6 +9,10 @@ const browserScript = fs.readFileSync(
   path.join(process.cwd(), 'scripts/accept-create-map-v3-browser.ts'),
   'utf8',
 );
+const probeScript = fs.readFileSync(
+  path.join(process.cwd(), 'scripts/probe-pixellab-map.ts'),
+  'utf8',
+);
 
 describe('Create Map V3 acceptance tooling', () => {
   it('creates a dedicated V3 draft only behind explicit acceptance configuration', () => {
@@ -42,5 +46,11 @@ describe('Create Map V3 acceptance tooling', () => {
     expect(browserScript).toContain("page.on('response'");
     expect(browserScript).toContain('response.status() >= 400');
     expect(browserScript).toContain('responseFailures');
+  });
+
+  it('probes only the V3 direct image capability', () => {
+    expect(probeScript).toContain("semantic: 'direct_map_image'");
+    expect(probeScript).not.toContain('V2_INFORMATIONAL');
+    expect(probeScript).not.toContain('v2Informational');
   });
 });

@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 
 const readCreateMapDocumentSource = jest.fn();
-const createMapPlanV2 = jest.fn();
 const createMapPlanV3 = jest.fn();
 let authenticated = true;
 const referenceRows = jest.fn();
@@ -32,12 +31,11 @@ jest.mock('@/lib/server/createMapDocumentSource', () => ({
 jest.mock('@/lib/server/createMapPlanner', () => ({
   CreateMapPlannerError: MockPlannerError,
   CreateMapPlannerInputError: MockPlannerInputError,
-  createMapPlanV2: (...args: unknown[]) => createMapPlanV2(...args),
   createMapPlanV3: (...args: unknown[]) => createMapPlanV3(...args),
 }));
 
 import { POST } from '@/app/api/create-map/plan/route';
-import { makeValidMapPlanV2, makeValidMapPlanV3 } from './fixtures';
+import { makeValidMapPlanV3 } from './fixtures';
 
 const projectId = '22222222-2222-4222-8222-222222222222';
 const documentId = '11111111-1111-4111-8111-111111111111';
@@ -60,7 +58,6 @@ describe('POST /api/create-map/plan', () => {
     jest.clearAllMocks();
     authenticated = true;
     readCreateMapDocumentSource.mockResolvedValue(source);
-    createMapPlanV2.mockResolvedValue(makeValidMapPlanV2());
     createMapPlanV3.mockResolvedValue(makeValidMapPlanV3());
     referenceRows.mockResolvedValue({ data: [], error: null });
   });
@@ -70,31 +67,31 @@ describe('POST /api/create-map/plan', () => {
     expect((await post({ description })).status).toBe(401);
     authenticated = true;
     expect((await post({ description: '   ' })).status).toBe(400);
-    expect(createMapPlanV2).not.toHaveBeenCalled();
+    expect(createMapPlanV3).not.toHaveBeenCalled();
   });
 
   it('creates a description-only plan without reading Document state', async () => {
-    const response = await post({ schemaVersion: 2, description });
+    const response = await post({ description });
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
-    await expect(response.json()).resolves.toEqual({ plan: makeValidMapPlanV2(), sourceToken: null });
+    await expect(response.json()).resolves.toEqual({ plan: makeValidMapPlanV3(), sourceToken: null });
     expect(readCreateMapDocumentSource).not.toHaveBeenCalled();
-    expect(createMapPlanV2).toHaveBeenCalledWith(description, undefined);
+    expect(createMapPlanV3).toHaveBeenCalledWith(description, undefined, { references: [], styleReference: null });
   });
 
   it('requires projectId with documentId', async () => {
-    expect((await post({ schemaVersion: 2, description, documentId })).status).toBe(400);
+    expect((await post({ schemaVersion: 3, description, documentId })).status).toBe(400);
     expect(readCreateMapDocumentSource).not.toHaveBeenCalled();
   });
 
   it('uses authorized optional Document context without echoing markdown', async () => {
-    const response = await post({ schemaVersion: 2, description, projectId, documentId });
+    const response = await post({ schemaVersion: 3, description, projectId, documentId });
     const payload = await response.json();
 
     expect(response.status).toBe(200);
     expect(readCreateMapDocumentSource).toHaveBeenCalledWith(supabase, 'user-1', projectId, documentId);
-    expect(createMapPlanV2).toHaveBeenCalledWith(description, source);
+    expect(createMapPlanV3).toHaveBeenCalledWith(description, source, { references: [], styleReference: null });
     expect(payload.sourceToken).toEqual({
       documentId,
       documentUpdatedAt: source.documentUpdatedAt,
@@ -106,19 +103,22 @@ describe('POST /api/create-map/plan', () => {
 
   it('rejects viewers and cross-project Documents before planning', async () => {
     readCreateMapDocumentSource.mockRejectedValueOnce(new MockAuthorizationError());
-    expect((await post({ schemaVersion: 2, description, projectId, documentId })).status).toBe(403);
+    expect((await post({ schemaVersion: 3, description, projectId, documentId })).status).toBe(403);
 
     readCreateMapDocumentSource.mockRejectedValueOnce(new MockDocumentSourceError('document_project_mismatch'));
-    expect((await post({ schemaVersion: 2, description, projectId, documentId })).status).toBe(403);
-    expect(createMapPlanV2).not.toHaveBeenCalled();
+    expect((await post({ schemaVersion: 3, description, projectId, documentId })).status).toBe(403);
+    expect(createMapPlanV3).not.toHaveBeenCalled();
   });
 
-  it('routes schema version 2 to the legacy planner explicitly', async () => {
-    await expect((await post({ schemaVersion: 2, description })).json()).resolves.toEqual({
-      plan: makeValidMapPlanV2(), sourceToken: null,
-    });
-
-    expect(createMapPlanV2).toHaveBeenCalledWith(description, undefined);
+  it.each([
+    ['V1 schema', { schemaVersion: 1, description }],
+    ['V2 schema', { schemaVersion: 2, description }],
+    ['string V2 schema', { schemaVersion: '2', description }],
+    ['string V3 schema', { schemaVersion: '3', description }],
+    ['legacy document-only request', { schemaVersion: 1, projectId, documentId }],
+    ['legacy request fields', { schemaVersion: 2, description, generationMode: 'layered' }],
+  ])('rejects %s before planning', async (_label, body) => {
+    expect((await post(body)).status).toBe(400);
     expect(createMapPlanV3).not.toHaveBeenCalled();
   });
 
@@ -184,7 +184,6 @@ describe('POST /api/create-map/plan', () => {
   });
 
   it('rejects incompatible reference fields and missing V3 reference project IDs', async () => {
-    expect((await post({ schemaVersion: 2, description, referenceIds: [referenceId] })).status).toBe(400);
     expect((await post({
       schemaVersion: 3,
       description,
@@ -192,7 +191,6 @@ describe('POST /api/create-map/plan', () => {
       referenceRoles: { [referenceId]: 'content' },
       referenceUsage: { [referenceId]: 'market layout' },
     })).status).toBe(400);
-    expect(createMapPlanV2).not.toHaveBeenCalled();
     expect(createMapPlanV3).not.toHaveBeenCalled();
   });
 });

@@ -24,7 +24,7 @@ export function useSavedMaps() {
   const { userProfile } = useAuth();
   const service = useMemo(() => createMapService(supabase), [supabase]);
   const query = useQuery({
-    queryKey: ['create-map', 'saved-maps', 'v2-v3', userProfile?.id],
+    queryKey: ['create-map', 'saved-maps', 'v3', userProfile?.id],
     queryFn: () => service.listSavedMaps(),
     enabled: Boolean(userProfile?.id),
     staleTime: 30_000,

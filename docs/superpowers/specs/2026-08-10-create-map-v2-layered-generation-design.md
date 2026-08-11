@@ -1,7 +1,7 @@
 # Create Map V2 Layered Generation Design
 
 **Date:** 2026-08-10
-**Status:** Approved for implementation
+**Status:** Implemented; automated verification passed; live PixelLab output evidence pending
 **Supersedes:** `2026-08-08-create-map-workbench-design.md` for the Create Map editor and generation workflow
 
 ## Objective
@@ -510,6 +510,13 @@ Development does not use TDD. Verification is still a completion requirement and
 ### Real PixelLab Verification
 
 Before declaring completion, run a live capability probe and one minimal terrain, path, and obstacle generation using the configured development account. Confirm the actual MCP schemas, normalized atlas manifest, background output, transparent obstacle output, and absence of credentials or signed URLs in durable metadata.
+
+Verification record on 2026-08-10:
+
+- Live MCP discovery passed for `create_topdown_tileset`, `create_path_tiles`, `create_map_object`, and `inpaint_image`, with sanitized stable schema fingerprints.
+- The Create Map Jest gate passed 26 suites and 148 tests; the PixelLab Edge gate passed 42 Deno tests; TypeScript, API TypeScript, ESLint, production build, diff checks, and five Playwright workflows exited successfully.
+- Desktop, tablet, mobile, generated Scene, partial failure, and mobile drawer screenshots were inspected for text fit, overlap, framing, and state visibility.
+- Live generated-output evidence remains blocked because no authoritative `PIXELLAB_PROBE_REVISION_ID` was configured for a Keco V2 generation. This verification run did not select an arbitrary revision through the service role and did not bypass Keco provenance by generating directly against PixelLab.
 
 ## Acceptance Criteria
 

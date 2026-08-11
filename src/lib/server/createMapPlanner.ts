@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { completeLlmNonStreaming } from '@/lib/agent/llm-client';
+import { completeLlmNonStreaming, type StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import {
   validateMapPlanV2,
@@ -82,7 +82,7 @@ export const CREATE_MAP_PLAN_V2_TOOL: OpenAITool = {
       properties: {
         schemaVersion: { type: 'integer', const: 2 },
         name: { type: 'string' },
-        visualBrief: { type: 'string' },
+        visualBrief: { type: 'string', description: 'Concise English art direction for downstream generators.' },
         map: {
           type: 'object',
           properties: {
@@ -96,7 +96,7 @@ export const CREATE_MAP_PLAN_V2_TOOL: OpenAITool = {
         background: {
           type: 'object',
           properties: {
-            stylePrompt: { type: 'string' },
+            stylePrompt: { type: 'string', description: 'Concise English visual style only; do not list map contents.' },
             palette: { type: 'array', items: { type: 'string' }, minItems: 1 },
             baseTerrainKey: { type: 'string' },
             regions: {
@@ -115,7 +115,7 @@ export const CREATE_MAP_PLAN_V2_TOOL: OpenAITool = {
               items: {
                 type: 'object',
                 properties: {
-                  id: { type: 'string' }, name: { type: 'string' }, prompt: { type: 'string' },
+                  id: { type: 'string' }, name: { type: 'string' }, prompt: { type: 'string', description: 'English PixelLab prompt describing only this path material.' },
                   kind: { enum: ['road', 'river'] }, assetKey: { type: 'string' },
                   terrainKey: { type: 'string' }, width: { type: 'number' }, zIndex: { type: 'integer' },
                   points: { type: 'array', items: point, minItems: 2 },
@@ -131,7 +131,7 @@ export const CREATE_MAP_PLAN_V2_TOOL: OpenAITool = {
           type: 'array', minItems: 1,
           items: {
             type: 'object',
-            properties: { assetKey: { type: 'string' }, name: { type: 'string' }, prompt: { type: 'string' } },
+            properties: { assetKey: { type: 'string' }, name: { type: 'string' }, prompt: { type: 'string', description: 'English PixelLab prompt describing only this terrain surface.' } },
             required: ['assetKey', 'name', 'prompt'], additionalProperties: false,
           },
         },
@@ -140,9 +140,12 @@ export const CREATE_MAP_PLAN_V2_TOOL: OpenAITool = {
           items: {
             type: 'object',
             properties: {
-              assetKey: { type: 'string' }, name: { type: 'string' }, prompt: { type: 'string' },
+              assetKey: { type: 'string' }, name: { type: 'string' }, prompt: { type: 'string', description: 'English PixelLab prompt describing only this static prop.' },
               size: {
-                type: 'object', properties: { width: { type: 'number' }, height: { type: 'number' } },
+                type: 'object', properties: {
+                  width: { type: 'number', minimum: 32, maximum: 400 },
+                  height: { type: 'number', minimum: 32, maximum: 400 },
+                },
                 required: ['width', 'height'], additionalProperties: false,
               },
               groundAnchor: point,
@@ -410,6 +413,30 @@ function normalizePoint(value: unknown): unknown {
   return normalizeRecord(value, ['x', 'y']);
 }
 
+function normalizeOrthogonalPathPoints(values: unknown[]): unknown[] {
+  const points = values.map(normalizePoint);
+  const output: unknown[] = [];
+  for (const point of points) {
+    const previous = output.at(-1);
+    if (
+      previous && point && typeof previous === 'object' && !Array.isArray(previous) &&
+      typeof point === 'object' && !Array.isArray(point)
+    ) {
+      const start = previous as Record<string, unknown>;
+      const end = point as Record<string, unknown>;
+      if (
+        typeof start.x === 'number' && typeof start.y === 'number' &&
+        typeof end.x === 'number' && typeof end.y === 'number' &&
+        start.x !== end.x && start.y !== end.y
+      ) {
+        output.push({ x: end.x, y: start.y });
+      }
+    }
+    output.push(point);
+  }
+  return output;
+}
+
 function normalizeCollision(value: unknown): unknown {
   const collision = normalizeRecord(value, ['x', 'y', 'width', 'height', 'cx', 'cy', 'radius']);
   if (!collision) return collision;
@@ -445,7 +472,7 @@ export function normalizeMapPlanV2Candidate(input: unknown, grid: GridDimensions
       background.paths = background.paths.map((value) => {
         const path = normalizeRecord(value, ['width', 'zIndex']);
         if (path && Array.isArray(path.points)) {
-          path.points = path.points.map(normalizePoint);
+          path.points = normalizeOrthogonalPathPoints(path.points);
         }
         return path;
       });
@@ -491,6 +518,11 @@ export async function createMapPlanV2(
         'Width and height must divide evenly by tileSize. Keep every terrain polygon and path point inside map bounds.',
         'Every region and path must reference declared terrain or path asset keys.',
         'PixelLab creates resource images only; Keco owns layout and local collision geometry.',
+        'Write visualBrief, background.stylePrompt, and every terrain/path/obstacle prompt in concise English even when the user writes another language.',
+        'Each resource prompt must describe only that material or prop; never copy the complete scene contents into an individual asset prompt.',
+        'Terrain regions are applied in array order. For a shoreline, define a larger outer bank region first and a smaller inner water region second; never reuse the same polygon for both.',
+        'A path terrainKey is the supporting ground beneath it (for example grass below a road or water below a bridge). Never duplicate a road, river, or bridge material in terrains.',
+        'PixelLab path tiles use cardinal connectivity. Build every generated path from explicit horizontal and vertical segments; add orthogonal turn points instead of diagonal segments.',
         'Use stable unique kebab-case asset keys and stable IDs.',
         `Call ${TOOL_NAME} with the complete plan.`,
       ].join(' '),
@@ -508,6 +540,7 @@ export async function createMapPlanV2(
     let raw: string;
     try {
       raw = await completeLlmNonStreaming(messages, {
+        ...getCreateMapPlannerLlmOptions(),
         temperature: 0,
         thinking: 'disabled',
         maxTokens: 8_000,
@@ -532,10 +565,13 @@ export async function createMapPlanV2(
     }
     const normalized = normalizeMapPlanV2Candidate(parsed, grid);
     const result = validateMapPlanV2(normalized);
-    if (result.success) return result.data;
+    const issues: MapPlanV2Issue[] = 'issues' in result
+      ? result.issues
+      : providerPromptIssues(result.data);
+    if (result.success && issues.length === 0) return result.data;
     if (attempt < MAX_ATTEMPTS - 1) {
       messages.push({ role: 'assistant', content: JSON.stringify(normalized) });
-      messages.push(correctionMessage(result.success === false ? result.issues : []));
+      messages.push(correctionMessage(issues));
     }
   }
   throw new CreateMapPlannerError();

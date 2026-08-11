@@ -69,13 +69,12 @@ async function fixture(downloadedSource?: Uint8Array) {
     metadata: {
       normalizedTileAtlas: {
         schemaVersion: 1,
-        tileWidth: 2,
+        tileWidth: 4,
         tileHeight: 2,
-        columns: 2,
+        columns: 1,
         rows: 1,
         tiles: [
-          { key: "east", connectivityMask: 2, sourceX: 0, sourceY: 0, sourceWidth: 2, sourceHeight: 2 },
-          { key: "west", connectivityMask: 8, sourceX: 2, sourceY: 0, sourceWidth: 2, sourceHeight: 2 },
+          { key: "fill", connectivityMask: 15, sourceX: 0, sourceY: 0, sourceWidth: 4, sourceHeight: 2 },
         ],
       },
     },
@@ -142,9 +141,74 @@ Deno.test("rasterizes the immutable V2 Plan with turning connectivity", () => {
   assertEquals(composition.cells.find((cell) => cell.x === 1 && cell.y === 0), {
     x: 1,
     y: 0,
-    assetKey: "road",
-    connectivityMask: 12,
+    layers: [
+      { assetKey: "ground", connectivityMask: 15 },
+      { assetKey: "road", connectivityMask: 12 },
+    ],
   });
+});
+
+Deno.test("rasterizes diagonal paths as a one-tile four-connected centerline", () => {
+  const plan = {
+    schemaVersion: 2,
+    map: { width: 8, height: 8, tileSize: 2 },
+    background: {
+      baseTerrainKey: "ground",
+      regions: [],
+      paths: [{
+        assetKey: "road",
+        width: 6,
+        zIndex: 1,
+        points: [{ x: 1, y: 1 }, { x: 7, y: 7 }],
+      }],
+    },
+  };
+
+  const composition = compositionPlanFromMapPlan(plan);
+  const pathCells = composition.cells.filter((cell) => cell.layers.length > 1);
+  const keys = new Set(pathCells.map((cell) => `${cell.x}:${cell.y}`));
+  const pending = [pathCells[0]];
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const cell = pending.pop();
+    if (!cell) continue;
+    const key = `${cell.x}:${cell.y}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+      const neighbor = `${cell.x + dx}:${cell.y + dy}`;
+      if (!visited.has(neighbor)) {
+        const next = pathCells.find((candidate) => `${candidate.x}:${candidate.y}` === neighbor);
+        if (next) pending.push(next);
+      }
+    }
+  }
+
+  assertEquals(visited.size, pathCells.length);
+  assertEquals(pathCells.length, 7);
+});
+
+Deno.test("repeats the complete bridge deck mask across a diagonal bridge", () => {
+  const plan = {
+    schemaVersion: 2,
+    map: { width: 8, height: 8, tileSize: 2 },
+    background: {
+      baseTerrainKey: "ground",
+      regions: [],
+      paths: [{
+        assetKey: "bridge",
+        name: "Wooden bridge",
+        prompt: "Wooden bridge deck over water",
+        width: 6,
+        zIndex: 1,
+        points: [{ x: 1, y: 1 }, { x: 7, y: 7 }],
+      }],
+    },
+  };
+  const composition = compositionPlanFromMapPlan(plan);
+  const bridgeCells = composition.cells.filter((cell) => cell.layers.length > 1);
+  assertEquals(bridgeCells.length > 0, true);
+  assertEquals(bridgeCells.every((cell) => cell.layers.at(-1)?.connectivityMask === 15), true);
 });
 
 Deno.test("canonical Plan fingerprints ignore object key insertion order", async () => {

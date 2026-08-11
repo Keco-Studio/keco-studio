@@ -36,6 +36,19 @@ Deno.test("uses only the documented REST fallback when a semantic tool is absent
   assertEquals(capability.operation, "/map-objects");
 });
 
+Deno.test("prefers create_image_pro for map objects and keeps create_map_object as live fallback", async () => {
+  const pro = new PixelLabClient("private-token", async () => mcpResponse([
+    { name: "create_map_object", inputSchema: { type: "object" } },
+    { name: "create_image_pro", description: "Best quality image generation", inputSchema: { type: "object" } },
+  ]));
+  assertEquals((await pro.discover("map_object")).operation, "create_image_pro");
+
+  const fallback = new PixelLabClient("private-token", async () => mcpResponse([
+    { name: "create_map_object", inputSchema: { type: "object" } },
+  ]));
+  assertEquals((await fallback.discover("map_object")).operation, "create_map_object");
+});
+
 Deno.test("does not replace a missing road kit with a generic image generator", async () => {
   const client = new PixelLabClient("private-token", async () => mcpResponse([{
     name: "create_image_pixen",
@@ -52,6 +65,38 @@ Deno.test("classifies rate limits without exposing provider bodies or credential
     new Response("upstream body contains private-token", { status: 429 }));
   const error = await assertRejects(() => client.listTools(), PixelLabMapError);
   assertEquals(error.code, "pixellab_rate_limited");
+  assertEquals(error.message.includes("private-token"), false);
+});
+
+Deno.test("classifies MCP result errors instead of treating them as missing jobs", async () => {
+  const client = new PixelLabClient("private-token", async () => new Response(`event: message\ndata: ${JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [{ type: "text", text: "Too many concurrent generations; try again later" }],
+      isError: true,
+    },
+  })}\n\n`));
+
+  const error = await assertRejects(() => client.listTools(), PixelLabMapError);
+  assertEquals(error.code, "pixellab_rate_limited");
+  assertEquals(error.message, "PixelLab is temporarily rate limited. Retry this resource.");
+  assertEquals(error.message.includes("private-token"), false);
+});
+
+Deno.test("classifies an unflagged zero-credit MCP result as quota exhausted", async () => {
+  const client = new PixelLabClient("private-token", async () => new Response(`event: message\ndata: ${JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [{ type: "text", text: "credits: 0\ngenerations_remaining: 0\ntry again later" }],
+      isError: false,
+    },
+  })}\n\n`));
+
+  const error = await assertRejects(() => client.listTools(), PixelLabMapError);
+  assertEquals(error.code, "pixellab_quota_exceeded");
+  assertEquals(error.message, "PixelLab account credits or quota are unavailable.");
   assertEquals(error.message.includes("private-token"), false);
 });
 
@@ -274,6 +319,51 @@ Deno.test("maps provider-independent V2 fields through the discovered live schem
   });
 });
 
+Deno.test("maps isolated terrain material controls without copying a scene brief", () => {
+  const arguments_ = providerArgumentsFor({
+    semantic: "topdown_tileset",
+    transport: "mcp",
+    operation: "create_topdown_tileset",
+    schemaFingerprint: "fingerprint",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lower_description: { type: "string" },
+        upper_description: { type: "string" },
+        transition_size: { type: "number" },
+        tile_size: { type: "object" },
+        mode: { type: "string" },
+        outline: { type: "string" },
+        shading: { type: "string" },
+        detail: { type: "string" },
+        tile_strength: { type: "number" },
+      },
+    },
+  }, "provider fallback prompt", {
+    tileSize: 32,
+    lowerDescription: "seamless dark green grass",
+    upperDescription: "seamless dark green grass",
+    transitionSize: 0,
+    mode: "standard",
+    outline: "lineless",
+    shading: "basic shading",
+    detail: "medium detail",
+    tileStrength: 1.5,
+  });
+
+  assertEquals(arguments_, {
+    lower_description: "seamless dark green grass",
+    upper_description: "seamless dark green grass",
+    tile_size: { width: 32, height: 32 },
+    transition_size: 0,
+    mode: "standard",
+    outline: "lineless",
+    shading: "basic shading",
+    detail: "medium detail",
+    tile_strength: 1.5,
+  });
+});
+
 Deno.test("does not invent arguments when a discovered schema declares no properties", () => {
   const arguments_ = providerArgumentsFor({
     semantic: "map_object",
@@ -313,5 +403,94 @@ Deno.test("maps required masks only when the discovered schema supports them", (
   assertEquals(arguments_, {
     prompt: "Stone road",
     connectivity_masks: [1, 2, 5, 12],
+  });
+});
+
+Deno.test("maps V2 paths to the live square-topdown enum and provider tile size", () => {
+  const arguments_ = providerArgumentsFor({
+    semantic: "path_tiles",
+    transport: "mcp",
+    operation: "create_path_tiles",
+    schemaFingerprint: "fingerprint",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: { type: "string" },
+        tile_type: { type: "string", enum: ["square_topdown", "isometric"] },
+        tile_size: { type: "integer", minimum: 32, maximum: 96 },
+      },
+    },
+  }, "Muddy forest road", {
+    tileSize: 64,
+    pathKind: "road",
+    projection: "top-down",
+  });
+
+  assertEquals(arguments_, {
+    description: "Muddy forest road",
+    tile_size: 32,
+    tile_type: "square_topdown",
+  });
+});
+
+Deno.test("clamps small V2 map objects to the live provider canvas bounds", () => {
+  const arguments_ = providerArgumentsFor({
+    semantic: "map_object",
+    transport: "mcp",
+    operation: "create_map_object",
+    schemaFingerprint: "fingerprint",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: { type: "string" },
+        width: { type: "integer", minimum: 32, maximum: 400 },
+        height: { type: "integer", minimum: 32, maximum: 400 },
+        view: { type: "string" },
+      },
+    },
+  }, "Small forest bush", {
+    width: 24,
+    height: 28,
+    projection: "top-down",
+    transparency: true,
+  });
+
+  assertEquals(arguments_, {
+    description: "Small forest bush",
+    width: 32,
+    height: 32,
+    view: "high top-down",
+  });
+});
+
+Deno.test("maps transparent Pro obstacles and an ephemeral style reference to the live schema", () => {
+  const arguments_ = providerArgumentsFor({
+    semantic: "map_object",
+    transport: "mcp",
+    operation: "create_image_pro",
+    schemaFingerprint: "fingerprint",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: { type: "string" },
+        width: { type: "integer" },
+        height: { type: "integer" },
+        no_background: { type: "boolean" },
+        style_image_url: { type: "string" },
+      },
+    },
+  }, "One mossy rock", {
+    width: 96,
+    height: 80,
+    transparency: true,
+    styleImageUrl: "https://storage.example/background.png?temporary=1",
+  });
+
+  assertEquals(arguments_, {
+    description: "One mossy rock",
+    width: 96,
+    height: 80,
+    no_background: true,
+    style_image_url: "https://storage.example/background.png?temporary=1",
   });
 });

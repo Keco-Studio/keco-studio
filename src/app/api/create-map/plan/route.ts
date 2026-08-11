@@ -10,7 +10,6 @@ import {
 import {
   CreateMapPlannerError,
   CreateMapPlannerInputError,
-  createMapPlanV2,
   createMapPlanV3,
   type DirectMapReferenceSelection,
 } from '@/lib/server/createMapPlanner';
@@ -24,7 +23,7 @@ const Body = z.object({
   description: z.string().trim().min(1).max(4_000),
   projectId: z.string().uuid().optional(),
   documentId: z.string().uuid().optional(),
-  schemaVersion: z.union([z.literal(2), z.literal(3)]).default(3),
+  schemaVersion: z.literal(3).default(3),
   referenceIds: z.array(ReferenceId).max(4).default([]),
   styleReferenceId: ReferenceId.nullable().default(null),
   referenceRoles: z.record(ReferenceId, z.enum(['content', 'layout'])).default({}),
@@ -59,14 +58,8 @@ const Body = z.object({
   } else if (value.styleCopy.length !== 0) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Style copy requires a style reference', path: ['styleCopy'] });
   }
-  if (value.schemaVersion === 3 && (value.referenceIds.length > 0 || value.styleReferenceId !== null) && !value.projectId) {
+  if ((value.referenceIds.length > 0 || value.styleReferenceId !== null) && !value.projectId) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'projectId is required with references', path: ['projectId'] });
-  }
-  if (value.schemaVersion === 2 && (
-    value.referenceIds.length > 0 || value.styleReferenceId !== null ||
-    Object.keys(value.referenceRoles).length > 0 || Object.keys(value.referenceUsage).length > 0 || value.styleCopy.length > 0
-  )) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'References are only supported by MapPlan V3', path: ['schemaVersion'] });
   }
 });
 
@@ -124,21 +117,19 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
     const source = body.data.documentId
       ? await readCreateMapDocumentSource(supabase, user.id, body.data.projectId!, body.data.documentId)
       : undefined;
-    const plan = body.data.schemaVersion === 2
-      ? await createMapPlanV2(body.data.description, source)
-      : await createMapPlanV3(
-        body.data.description,
-        source,
-        await loadAuthorizedReferences(
-          supabase,
-          body.data.projectId ?? '',
-          body.data.referenceIds,
-          body.data.styleReferenceId,
-          body.data.referenceRoles,
-          body.data.referenceUsage,
-          body.data.styleCopy,
-        ),
-      );
+    const plan = await createMapPlanV3(
+      body.data.description,
+      source,
+      await loadAuthorizedReferences(
+        supabase,
+        body.data.projectId ?? '',
+        body.data.referenceIds,
+        body.data.styleReferenceId,
+        body.data.referenceRoles,
+        body.data.referenceUsage,
+        body.data.styleCopy,
+      ),
+    );
     return NextResponse.json({
       sourceToken: source ? {
         documentId: source.documentId,

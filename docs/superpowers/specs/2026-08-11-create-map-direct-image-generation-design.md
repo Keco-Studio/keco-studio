@@ -2,9 +2,9 @@
 
 **Date:** 2026-08-11
 
-**Status:** Approved for implementation planning
+**Status:** Implemented as the only Create Map product flow
 
-**Supersedes:** `2026-08-10-create-map-v2-layered-generation-design.md` for newly created maps and new generation jobs
+**Supersedes:** `2026-08-10-create-map-v2-layered-generation-design.md` for the Create Map product flow
 
 ## Summary
 
@@ -216,13 +216,13 @@ Once ready, the central canvas displays the exact privately stored image through
 
 The initial V3 result view displays only the locked map image. Keco-owned gameplay overlays such as collision regions and markers are not PixelLab inputs or independently generated visual assets; displaying or editing them on V3 maps is separate future work.
 
-## V2 Compatibility
+## V3-Only Boundary
 
-- Existing V2 revisions and assets are not rewritten or deleted.
-- Newly created maps use V3 direct-image generation.
-- A schema-version router keeps existing V2 maps readable through their current scene renderer in read-only compatibility mode.
-- V2 maps cannot continue a V2 resource generation from the V3 generation panel.
-- Converting a V2 map to V3 requires an explicit future action that creates a new V3 Plan and revision; there is no automatic migration.
+- Create Map lists, opens, plans, saves, and generates schema V3 maps only.
+- The Plan API rejects schema V1 and V2 requests instead of routing them to legacy planners.
+- Existing V1/V2 revisions and assets remain stored; this change does not rewrite or delete historical database rows.
+- Historical migrations and shared PixelLab resource operations remain available for database evolution and non-Create-Map consumers.
+- There is no V1/V2 read-only workbench or automatic conversion path.
 
 ## Errors
 
@@ -267,7 +267,7 @@ The initial V3 result view displays only the locked map image. Keco-owned gamepl
 - verified map rendering on desktop and mobile;
 - save, refresh, and restore;
 - stale open, poll, and signed-image protection;
-- V2 compatibility routing.
+- rejection of V1/V2 planning and exclusion of legacy maps from saved-map discovery.
 
 ### Live Acceptance
 
@@ -282,8 +282,8 @@ This design is complete when new maps use the direct-image V3 path, the old reso
 Tasks 10 and 11 added mocked browser coverage, live acceptance tooling, and fresh automated delivery evidence.
 
 - Browser RED/GREEN: the ready-map mobile test reproduced a closed inspector overlapping the canvas. Runtime evidence traced this to programmatic horizontal scrolling of the `overflow: hidden` workbench after a focused desktop control moved offscreen. The responsive workbench now binds `.directCanvasPanel` to column 1 and uses `overflow: clip`; the focused test and full suite pass.
-- Mocked browser GREEN: `8 passed` in Chromium. The suite covers description-only planning, optional Document and uploaded references, exact prompt persistence, one `map_image`, paid confirmation, `submit -> poll -> validate`, validation failure/retry, immutable regeneration, refresh/restore, stale-open rejection, V2 read-only routing, ready-map desktop/mobile screenshots, and document/script/fetch request plus HTTP error monitoring.
-- Focused Jest GREEN: `38` suites and `264` tests passed through `npm run test:create-map-v3`; the project-deletion/outbox boundary adds `2` suites and `6` passing tests.
+- Mocked browser GREEN: `7 passed` in Chromium. Coverage exercises description-only planning, optional Document and uploaded references, exact prompt persistence, one `map_image`, paid confirmation, `submit -> poll -> validate`, validation failure/retry, immutable regeneration, refresh/restore, stale-open rejection, ready-map desktop/mobile screenshots, and document/script/fetch request plus HTTP error monitoring.
+- Focused Jest GREEN: `30` suites and `223` tests passed through `npm run test:create-map-v3`; the project-deletion/outbox boundary adds `2` suites and `6` passing tests.
 - Edge GREEN: `95` Deno tests passed with zero failures across authorization, direct lifecycle, unknown-submission reconciliation, live schema mapping, PNG validation, storage, and legacy V2 behavior.
 - Static/build GREEN: focused ESLint, `npm run typecheck`, `npm run typecheck:api`, `git diff --check`, and `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=e2e-anon npm run build` completed with zero errors. The original build command without public Supabase environment values correctly failed during `/auth/callback` prerender.
 - Live local database GREEN: the V3 RLS suite passed `9/9`. A rollback-only PostgreSQL exercise verified that project deletion atomically captures both reference and generated-map storage paths in a private outbox before the project cascade, while deferred Storage failures remain retryable without leaving live rows pointing at deleted bytes.

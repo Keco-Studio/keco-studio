@@ -552,7 +552,7 @@ begin
       provider_transport = coalesce(p_provider_transport, map_assets.provider_transport),
       provider_job_id = coalesce(p_provider_job_id, map_assets.provider_job_id),
       attempt_count = map_assets.attempt_count + case when p_next_status = 'queued' then 1 else 0 end,
-      last_error_code = case when p_next_status = 'failed' then p_last_error_code else null end,
+      last_error_code = case when p_next_status in ('failed', 'blocked') then p_last_error_code else null end,
       storage_path = case when p_next_status = 'ready' then p_storage_path else map_assets.storage_path end,
       sha256 = case when p_next_status = 'ready' then p_sha256 else map_assets.sha256 end,
       width = case when p_next_status = 'ready' then p_width else map_assets.width end,

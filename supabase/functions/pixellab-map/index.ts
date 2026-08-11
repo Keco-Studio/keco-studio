@@ -41,6 +41,37 @@ async function transition(serviceClient: ReturnType<typeof authorizeAsset> exten
   }
 }
 
+async function styleReferenceUrl(
+  authorized: Awaited<ReturnType<typeof authorizeAsset>>,
+  capability: Awaited<ReturnType<PixelLabClient["discover"]>>,
+): Promise<string | null> {
+  if (capability.semantic !== "map_object") return null;
+  const references = Array.isArray(authorized.asset.reference_asset_ids)
+    ? authorized.asset.reference_asset_ids.filter((value): value is string => typeof value === "string")
+    : [];
+  const hashes = Array.isArray(authorized.asset.reference_hashes)
+    ? authorized.asset.reference_hashes.filter((value): value is string => typeof value === "string")
+    : [];
+  if (references.length !== 1 || hashes.length !== 1) return null;
+  const { data: background } = await authorized.serviceClient.from("map_assets")
+    .select("id, map_revision_id, generation_id, kind, status, storage_path, sha256, plan_fingerprint")
+    .eq("id", references[0]).maybeSingle();
+  if (!background || background.kind !== "background" || background.status !== "ready"
+    || background.map_revision_id !== authorized.revisionId || background.generation_id !== authorized.generationId
+    || background.sha256 !== hashes[0] || typeof background.storage_path !== "string") {
+    throw new PixelLabMapError("pixellab_invalid_response", "Obstacle style background binding is invalid", 403);
+  }
+  const schema = capability.inputSchema.properties;
+  const supportsStyle = !schema || typeof schema !== "object" || Object.keys(schema as object).length === 0
+    || Object.prototype.hasOwnProperty.call(schema, "style_image_url");
+  if (!supportsStyle) return null;
+  const signed = await authorized.serviceClient.storage.from("map-assets").createSignedUrl(background.storage_path, 300);
+  if (signed.error || !signed.data?.signedUrl) {
+    throw new PixelLabMapError("pixellab_upstream", "Could not prepare the obstacle style reference", 502);
+  }
+  return signed.data.signedUrl;
+}
+
 async function handle(request: Request): Promise<Response> {
   const token = bearerToken(request);
   const body = await readJsonBody(request);
@@ -124,10 +155,12 @@ async function handle(request: Request): Promise<Response> {
       ? authorized.asset.generation_params as Record<string, unknown> : {};
     let result: Record<string, unknown>;
     try {
+      const styleImageUrl = await styleReferenceUrl(authorized, capability);
+      const providerParams = styleImageUrl ? { ...generationParams, styleImageUrl } : generationParams;
       const providerArguments = providerArgumentsFor(
         capability,
         String(authorized.asset.prompt),
-        generationParams,
+        providerParams,
       );
       result = await client.submitAsset(capability, providerArguments);
     } catch (error) {
@@ -167,15 +200,30 @@ async function handle(request: Request): Promise<Response> {
       if (semantic === "topdown_tileset" || semantic === "path_tiles") {
         normalizedAtlas = await normalizeTileAtlas(result, capability, fetch, requiredMasks);
       }
+      const styleImageUrl = await styleReferenceUrl(authorized, capability);
+      const providerParams = styleImageUrl ? { ...params, styleImageUrl } : params;
+      const qualityIssue = providerContentQualityIssue(result);
+      if (qualityIssue) {
+        await transition(authorized.serviceClient, assetId, "generating", "failed", { errorCode: "pixellab_content_quality", metadata: { qualityIssue } });
+        throw new PixelLabMapError("pixellab_content_quality", "PixelLab returned character content for a static obstacle", 422);
+      }
+      const providerParamsForValidation = providerArgumentsFor(
+        capability,
+        String(authorized.asset.prompt),
+        providerParams,
+      );
       png = await validatePng(
         normalizedAtlas ? normalizedAtlas.bytes : await client.downloadResult(result),
-        pngExpectationForAsset(kind, params),
+        pngExpectationForAsset(kind, providerParamsForValidation),
       );
     } catch (error) {
       const blocked = error instanceof PixelLabMapError && error.code === "atlas_manifest_incomplete";
-      await transition(authorized.serviceClient, assetId, "generating", blocked ? "blocked" : "failed", {
-        errorCode: blocked ? "atlas_manifest_incomplete" : "validation_failed",
-      });
+      const alreadyFailed = error instanceof PixelLabMapError && error.code === "pixellab_content_quality";
+      if (!alreadyFailed) {
+        await transition(authorized.serviceClient, assetId, "generating", blocked ? "blocked" : "failed", {
+          errorCode: blocked ? "atlas_manifest_incomplete" : "validation_failed",
+        });
+      }
       throw error;
     }
     const ready = await persistValidatedAsset(

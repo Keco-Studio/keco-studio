@@ -60,8 +60,10 @@ export class PixelLabMapError extends Error {
       | "pixellab_not_configured"
       | "pixellab_capability_missing"
       | "pixellab_rate_limited"
+      | "pixellab_quota_exceeded"
       | "pixellab_upstream"
       | "pixellab_invalid_response"
+      | "pixellab_content_quality"
       | "atlas_manifest_incomplete"
       | "background_source_mismatch"
       | "background_composition_failed",

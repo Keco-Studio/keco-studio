@@ -1,36 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSupabase } from '@/lib/SupabaseContext';
 import { validateMapPlanV3, validateMapSceneV3, type MapPlanV3, type MapSceneV3 } from '../model/directMapSchema';
-import { validateMapPlanV2, type MapPlanV2 } from '../model/mapPlanSchema';
-import { validateMapSceneV2, type MapSceneV2 } from '../model/mapSceneSchema';
 import {
   CreateMapServiceError,
   createMapService,
   type MapDraftIdentity,
   type MapSourceToken,
-  type SavedMapWorkspaceV2,
   type SavedMapWorkspaceV3,
 } from '../services/createMapService';
 
 export type MapSaveStatus = 'idle' | 'creating' | 'saved' | 'saving' | 'conflict' | 'error';
 
-export type MapDraftPayloadV2 = { plan: MapPlanV2; scene: MapSceneV2 };
 export type MapDraftPayloadV3 = { plan: MapPlanV3; scene: MapSceneV3 };
 export type MapDraftPayload<P, S> = { plan: P; scene: S };
-
-export function validateMapDraftPayloadV2(
-  plan: MapPlanV2,
-  scene: MapSceneV2,
-): { success: true; payload: MapDraftPayloadV2 } | { success: false } {
-  const planValidation = validateMapPlanV2(plan);
-  if (planValidation.success === false) return { success: false };
-  const sceneValidation = validateMapSceneV2(planValidation.data, scene);
-  return sceneValidation.success
-    ? { success: true, payload: { plan: planValidation.data, scene: sceneValidation.data } }
-    : { success: false };
-}
 
 export function validateMapDraftPayloadV3(
   plan: MapPlanV3,
@@ -60,7 +43,7 @@ function sameIdentity(left: MapDraftIdentity, right: MapDraftIdentity): boolean 
   return left.mapId === right.mapId && left.revisionId === right.revisionId;
 }
 
-export class SerializedMapDraftWriter<TPayload = MapDraftPayloadV2> {
+export class SerializedMapDraftWriter<TPayload = MapDraftPayloadV3> {
   private epoch = 0;
   private identity: MapDraftIdentity | null = null;
   private pending: PendingSave<TPayload> | null = null;
@@ -153,22 +136,6 @@ export type MapDraftAdapter<P, S, W extends DraftWorkspace<P, S>> = {
 
 type MapService = ReturnType<typeof createMapService>;
 
-export function createMapDraftAdapterV2(service: MapService): MapDraftAdapter<MapPlanV2, MapSceneV2, SavedMapWorkspaceV2> {
-  return {
-    validate: (plan, scene) => validateMapDraftPayloadV2(plan, scene).success,
-    create: (projectId, source, plan, scene) => service.createProjectV2(projectId, plan, scene, source),
-    save: (identity, plan, scene) => service.saveDraftV2(identity, plan, scene),
-    publish: async (identity) => {
-      const result = await service.publishV2(identity);
-      return {
-        publishedRevisionId: result.published_revision_id,
-        nextDraftRevisionId: result.next_draft_revision_id,
-      };
-    },
-    load: (mapId) => service.loadSavedMapV2(mapId),
-  };
-}
-
 export function createMapDraftAdapterV3(service: MapService): MapDraftAdapter<MapPlanV3, MapSceneV3, SavedMapWorkspaceV3> {
   return {
     validate: (plan, scene) => validateMapDraftPayloadV3(plan, scene).success,
@@ -186,22 +153,16 @@ export function createMapDraftAdapterV3(service: MapService): MapDraftAdapter<Ma
 }
 
 export function useMapDraft<
-  P = MapPlanV2,
-  S = MapSceneV2,
-  W extends DraftWorkspace<P, S> = DraftWorkspace<P, S>,
->(plan: P, scene: S, adapter?: MapDraftAdapter<P, S, W>) {
-  const supabase = useSupabase();
-  const service = useMemo(() => createMapService(supabase), [supabase]);
-  const selectedAdapter = useMemo(
-    () => adapter ?? createMapDraftAdapterV2(service) as unknown as MapDraftAdapter<P, S, W>,
-    [adapter, service],
-  );
+  P,
+  S,
+  W extends DraftWorkspace<P, S>,
+>(plan: P, scene: S, adapter: MapDraftAdapter<P, S, W>) {
   const [identity, setIdentity] = useState<MapDraftIdentity | null>(null);
   const [status, setStatus] = useState<MapSaveStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState('');
   const writer = useMemo(() => new SerializedMapDraftWriter<MapDraftPayload<P, S>>(
-    (target, payload) => selectedAdapter.save(target, payload.plan, payload.scene),
+    (target, payload) => adapter.save(target, payload.plan, payload.scene),
     {
       onSaving: () => setStatus('saving'),
       onSaved: (nextIdentity, payload) => {
@@ -219,11 +180,11 @@ export function useMapDraft<
         setError(cause instanceof Error ? cause.message : 'Autosave failed');
       },
     },
-  ), [selectedAdapter]);
+  ), [adapter]);
   const currentPayload = useMemo(() => ({ plan, scene }), [plan, scene]);
   const currentPayloadKey = payloadKey(currentPayload);
   const isDirty = Boolean(identity) && currentPayloadKey !== lastSaved;
-  const currentValidation = useMemo(() => selectedAdapter.validate(plan, scene), [plan, scene, selectedAdapter]);
+  const currentValidation = useMemo(() => adapter.validate(plan, scene), [adapter, plan, scene]);
   const localValidationError = identity && isDirty && !currentValidation
     ? 'Resolve the current Plan or Scene validation issues before saving.'
     : null;
@@ -247,14 +208,14 @@ export function useMapDraft<
     nextPlan: P = plan,
     nextScene: S = scene,
   ) => {
-    if (!selectedAdapter.validate(nextPlan, nextScene)) {
+    if (!adapter.validate(nextPlan, nextScene)) {
       throw new CreateMapServiceError('invalid_map', 'Resolve the Plan or Scene validation issues before saving.');
     }
     setStatus('creating');
     setError(null);
     const requestEpoch = writer.currentEpoch();
     try {
-      const next = await selectedAdapter.create(projectId, source, nextPlan, nextScene);
+      const next = await adapter.create(projectId, source, nextPlan, nextScene);
       if (writer.currentEpoch() !== requestEpoch) return next;
       writer.install(next);
       setLastSaved(payloadKey({ plan: nextPlan, scene: nextScene }));
@@ -266,7 +227,7 @@ export function useMapDraft<
       setError(cause instanceof Error ? cause.message : 'Could not create map draft');
       throw cause;
     }
-  }, [plan, scene, selectedAdapter, writer]);
+  }, [adapter, plan, scene, writer]);
 
   const install = useCallback((loaded: DraftWorkspace<P, S>) => {
     writer.install(loaded.identity);
@@ -280,11 +241,11 @@ export function useMapDraft<
     const target = writer.currentIdentity();
     if (!target) return null;
     const requestEpoch = writer.currentEpoch();
-    const loaded = await selectedAdapter.load(target.mapId);
+    const loaded = await adapter.load(target.mapId);
     if (writer.currentEpoch() !== requestEpoch) return null;
     install(loaded);
     return loaded;
-  }, [install, selectedAdapter, writer]);
+  }, [adapter, install, writer]);
 
   const reset = useCallback(() => {
     writer.install(null);
@@ -296,13 +257,13 @@ export function useMapDraft<
 
   const saveNow = useCallback(async () => {
     if (!writer.currentIdentity()) return;
-    if (!selectedAdapter.validate(plan, scene)) {
+    if (!adapter.validate(plan, scene)) {
       setStatus('error');
       setError('Resolve the current Plan or Scene validation issues before saving.');
       return;
     }
     await writer.enqueue({ plan, scene });
-  }, [plan, scene, selectedAdapter, writer]);
+  }, [adapter, plan, scene, writer]);
 
   const publishForGeneration = useCallback(async () => {
     const target = writer.currentIdentity();
@@ -311,8 +272,8 @@ export function useMapDraft<
       throw new CreateMapServiceError('draft_not_saved', 'Wait for the current map draft to finish saving.');
     }
     const requestEpoch = writer.currentEpoch();
-    const published = await selectedAdapter.publish(target);
-    const nextDraft = await selectedAdapter.load(target.mapId);
+    const published = await adapter.publish(target);
+    const nextDraft = await adapter.load(target.mapId);
     if (writer.currentEpoch() !== requestEpoch) {
       return {
         mapId: target.mapId,
@@ -326,7 +287,7 @@ export function useMapDraft<
       publishedRevisionId: published.publishedRevisionId,
       nextDraft,
     };
-  }, [currentPayloadKey, install, lastSaved, selectedAdapter, status, writer]);
+  }, [adapter, currentPayloadKey, install, lastSaved, status, writer]);
 
   return {
     identity,

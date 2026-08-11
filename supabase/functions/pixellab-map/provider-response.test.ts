@@ -1,9 +1,21 @@
 import { assertEquals } from "@std/assert";
-import { providerJobId, providerStatus, providerTileReferences } from "./provider-response.ts";
+import {
+  providerAtlasReferences,
+  providerContentQualityIssue,
+  providerJobId,
+  providerStatus,
+  providerTileReferences,
+} from "./provider-response.ts";
 
 const textResult = (text: string): Record<string, unknown> => ({
   content: [{ type: "text", text }],
   isError: false,
+});
+
+Deno.test("flags provider-labelled character content without rejecting explicit exclusions", () => {
+  assertEquals(providerContentQualityIssue({ labels: ["pixel art character", "forest"] }), "obstacle_output_contains_character_content");
+  assertEquals(providerContentQualityIssue({ description: "Single rock, no characters or NPCs" }), null);
+  assertEquals(providerContentQualityIssue({ image_url: "https://cdn.example/character.png" }), null);
 });
 
 Deno.test("extracts a provider job id from a real MCP text result", () => {
@@ -54,4 +66,16 @@ Deno.test("preserves repeated provider tile references for manifest validation",
     { type: "text", text: block },
     { type: "text", text: block },
   ] }).length, 2);
+});
+
+Deno.test("extracts external atlas PNG and metadata references from a completed terrain result", () => {
+  assertEquals(providerAtlasReferences(textResult([
+    "status: completed",
+    "download_png: https://backblaze.example/terrain.png",
+    "download_png_inline: https://api.pixellab.ai/terrain/download",
+    "download_metadata: https://api.pixellab.ai/terrain/metadata",
+  ].join("\n"))), {
+    imageUrl: "https://api.pixellab.ai/terrain/download",
+    metadataUrl: "https://api.pixellab.ai/terrain/metadata",
+  });
 });

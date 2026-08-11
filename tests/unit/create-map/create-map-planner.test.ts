@@ -51,6 +51,22 @@ describe('Create Map V2 planner', () => {
     expect(messages[1].content).toContain('"document":null');
   });
 
+  it('pins planner requests to the dedicated DeepSeek V4 Flash configuration', async () => {
+    completeLlmNonStreaming.mockResolvedValue(JSON.stringify(makeValidMapPlanV2()));
+
+    await createMapPlanV2('A compact market');
+
+    const [, options] = completeLlmNonStreaming.mock.calls[0] as [
+      Array<{ role: string; content: string }>,
+      Record<string, unknown>,
+    ];
+    expect(options).toEqual(expect.objectContaining({
+      model: 'deepseek-v4-flash',
+      baseUrl: 'https://api.deepseek.com',
+    }));
+    expect(JSON.stringify(options)).not.toContain('sk-');
+  });
+
   it('treats optional Document markdown as supporting context', async () => {
     completeLlmNonStreaming.mockResolvedValue(JSON.stringify(makeValidMapPlanV2()));
 
@@ -59,6 +75,71 @@ describe('Create Map V2 planner', () => {
     const messages = completeLlmNonStreaming.mock.calls[0][0] as Array<{ content: string }>;
     expect(messages[0].content).toMatch(/description is authoritative/i);
     expect(messages[1].content).toContain(source.markdown);
+  });
+
+  it('retries generation-facing prompts that are not concise English', async () => {
+    const localized = makeValidMapPlanV2();
+    localized.visualBrief = '潮湿森林地图';
+    localized.background.stylePrompt = '俯视像素风格';
+    completeLlmNonStreaming
+      .mockResolvedValueOnce(JSON.stringify(localized))
+      .mockResolvedValueOnce(JSON.stringify(makeValidMapPlanV2()));
+
+    await expect(createMapPlanV2('生成一张森林地图')).resolves.toEqual(makeValidMapPlanV2());
+
+    const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ content: string }>;
+    expect(retry.at(-1)?.content).toContain('must be concise English');
+  });
+
+  it('retries terrain regions with duplicate raster coverage', async () => {
+    const duplicate = makeValidMapPlanV2();
+    duplicate.background.regions.push({
+      ...duplicate.background.regions[0],
+      id: 'duplicate-region',
+      terrainKey: duplicate.terrains[0].assetKey,
+      points: [...duplicate.background.regions[0].points].reverse(),
+    });
+    completeLlmNonStreaming
+      .mockResolvedValueOnce(JSON.stringify(duplicate))
+      .mockResolvedValueOnce(JSON.stringify(makeValidMapPlanV2()));
+
+    await expect(createMapPlanV2('A pond with a narrow mud bank')).resolves.toEqual(makeValidMapPlanV2());
+
+    const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ content: string }>;
+    expect(retry.at(-1)?.content).toContain('duplicates the raster coverage');
+  });
+
+  it('retries when a path references a duplicate copy of its own material as terrain', async () => {
+    const duplicatePathTerrain = makeValidMapPlanV2();
+    const path = duplicatePathTerrain.background.paths[0];
+    const supportingTerrain = duplicatePathTerrain.terrains.find(
+      (terrain) => terrain.assetKey === path.terrainKey,
+    );
+    if (!supportingTerrain) throw new Error('fixture supporting terrain is missing');
+    supportingTerrain.prompt = `  ${path.prompt.toUpperCase()}  `;
+    completeLlmNonStreaming
+      .mockResolvedValueOnce(JSON.stringify(duplicatePathTerrain))
+      .mockResolvedValueOnce(JSON.stringify(makeValidMapPlanV2()));
+
+    await expect(createMapPlanV2('A road crossing a grassy clearing')).resolves.toEqual(makeValidMapPlanV2());
+
+    const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ content: string }>;
+    expect(retry.at(-1)?.content).toContain('supporting ground below the path');
+  });
+
+  it('normalizes generated diagonal centerlines into explicit cardinal segments', async () => {
+    const diagonal = makeValidMapPlanV2();
+    diagonal.background.paths[0].points = [{ x: 16, y: 16 }, { x: 112, y: 80 }];
+    completeLlmNonStreaming.mockResolvedValue(JSON.stringify(diagonal));
+
+    const plan = await createMapPlanV2('A cardinal tile road with one turn');
+
+    expect(plan.background.paths[0].points).toEqual([
+      { x: 16, y: 16 },
+      { x: 112, y: 16 },
+      { x: 112, y: 80 },
+    ]);
+    expect(completeLlmNonStreaming).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an empty description without calling the LLM', async () => {
@@ -85,17 +166,20 @@ describe('Create Map V2 planner', () => {
 
     expect(completeLlmNonStreaming).toHaveBeenCalledTimes(2);
     const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ role: string; content: string }>;
-    expect(retry.at(-2)).toEqual({ role: 'assistant', content: JSON.stringify(invalid) });
+    expect(retry.at(-2)).toEqual({
+      role: 'assistant',
+      content: JSON.stringify(normalizeMapPlanV2Candidate(invalid)),
+    });
     expect(retry.at(-1)?.content).toContain('outside_map');
     expect(retry.at(-1)?.content).toContain('background');
     expect(retry.at(-1)?.content).toContain('paths');
   });
 
-  it('returns a stable error after the correction attempt is exhausted', async () => {
+  it('returns a stable error after all correction attempts are exhausted', async () => {
     completeLlmNonStreaming.mockResolvedValue('{not-json');
 
     await expect(createMapPlanV2('A compact market')).rejects.toMatchObject(new CreateMapPlannerError());
-    expect(completeLlmNonStreaming).toHaveBeenCalledTimes(2);
+    expect(completeLlmNonStreaming).toHaveBeenCalledTimes(3);
   });
 
   it('retries once when the required structured tool call is missing', async () => {
@@ -111,7 +195,7 @@ describe('Create Map V2 planner', () => {
     completeLlmNonStreaming.mockRejectedValue(new Error('LLM did not call required tool submit_map_plan_v2.'));
 
     await expect(createMapPlanV2('A compact market')).rejects.toMatchObject(new CreateMapPlannerError());
-    expect(completeLlmNonStreaming).toHaveBeenCalledTimes(2);
+    expect(completeLlmNonStreaming).toHaveBeenCalledTimes(3);
   });
 
   it('declares exact V2 layered fields and pixel units in the tool contract', () => {

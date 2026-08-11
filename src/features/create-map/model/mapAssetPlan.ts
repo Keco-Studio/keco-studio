@@ -1,4 +1,4 @@
-import { rasterizeBackgroundLayout } from './backgroundGeometry';
+import { rasterizeBackgroundLayers } from './backgroundGeometry';
 import type {
   MapPlan,
   MapPlanV2,
@@ -114,12 +114,47 @@ function v2StylePrompt(plan: MapPlanV2): string {
   return `${plan.background.stylePrompt} Palette: ${plan.background.palette.join(', ')}.`;
 }
 
+function terrainSurfacePrompt(plan: MapPlanV2, prompt: string): string {
+  return [
+    prompt.trim(),
+    `visual style: ${plan.background.stylePrompt.trim()}`,
+    `palette reference: ${plan.background.palette.join(', ')}`,
+    'seamless natural top-down pixel-art ground surface',
+    'muted natural colors, avoid neon or fluorescent saturation',
+    'subtle organic edge-to-edge texture without visible seams, periodic patterns, or large flat color fields',
+    'no roads, no paths, no bridges, no buildings, no props, no borders, no grid lines, no text',
+  ].join(', ');
+}
+
+function pathTilesPrompt(pathPrompt: string, terrainPrompt: string): string {
+  const isBridge = /\bbridge\b/i.test(pathPrompt);
+  return [
+    `Top-down pixel-art ground: ${terrainPrompt.trim()}.`,
+    `Connected path overlay: ${pathPrompt.trim()}.`,
+    'One consistent natural surface and one clearly readable path.',
+    isBridge ? 'Keep the bridge deck coherent and traversable.' : 'Flat ground-level path, no curbs, no walls, no rails, no raised borders.',
+    'No buildings, no characters, no props, no text, no UI, no decorative tile borders.',
+  ].join(' ');
+}
+
+export function buildStaticObstaclePrompt(plan: MapPlanV2, subject: string): string {
+  return [
+    'Single static environmental map prop, isolated sprite, high-quality top-down pixel art.',
+    `Subject: ${subject.trim()}.`,
+    `Style: ${plan.background.stylePrompt}. Palette: ${plan.background.palette.join(', ')}.`,
+    'Transparent background, clean ground contact and readable silhouette.',
+    'No people, no characters, no NPCs, no animals, no creatures, no portraits, no text, no UI.',
+  ].join(' ');
+}
+
 function requiredMasksByAsset(plan: MapPlanV2): Map<string, number[]> {
   const masks = new Map<string, Set<number>>();
-  rasterizeBackgroundLayout(plan).forEach((cell) => {
-    const values = masks.get(cell.assetKey) ?? new Set<number>();
-    values.add(cell.connectivityMask);
-    masks.set(cell.assetKey, values);
+  rasterizeBackgroundLayers(plan).forEach((cell) => {
+    cell.layers.forEach((layer) => {
+      const values = masks.get(layer.assetKey) ?? new Set<number>();
+      values.add(layer.connectivityMask);
+      masks.set(layer.assetKey, values);
+    });
   });
   return new Map(
     [...masks].map(([assetKey, values]) => [assetKey, [...values].sort((left, right) => left - right)])
@@ -129,18 +164,26 @@ function requiredMasksByAsset(plan: MapPlanV2): Map<string, number[]> {
 function terrainRowV2(
   plan: MapPlanV2,
   terrain: TerrainAssetPlan,
-  requiredConnectivityMasks: number[]
 ): MapAssetPlanRowV2 {
+  const surfacePrompt = terrainSurfacePrompt(plan, terrain.prompt);
   return {
     assetKey: terrain.assetKey,
     kind: 'terrain',
-    prompt: `${terrain.prompt} ${v2StylePrompt(plan)}`,
+    prompt: surfacePrompt,
     requestedCapability: 'topdown_tileset',
     generationParams: {
       tileSize: plan.map.tileSize,
-      requiredConnectivityMasks,
+      requiredConnectivityMasks: [15],
       palette: plan.background.palette,
       projection: plan.map.projection,
+      lowerDescription: surfacePrompt,
+      upperDescription: surfacePrompt,
+      transitionSize: 0,
+      mode: plan.map.tileSize === 64 ? 'pro' : 'standard',
+      outline: 'lineless',
+      shading: 'basic shading',
+      detail: 'medium detail',
+      tileStrength: 0.5,
     },
     metadata: {
       sourceAssetKey: terrain.assetKey,
@@ -155,10 +198,11 @@ function pathRowV2(
   path: MapPlanV2['background']['paths'][number],
   requiredConnectivityMasks: number[]
 ): MapAssetPlanRowV2 {
+  const terrain = plan.terrains.find((candidate) => candidate.assetKey === path.terrainKey);
   return {
     assetKey: path.assetKey,
     kind: 'path',
-    prompt: `${path.prompt} Supporting terrain: ${path.terrainKey}. ${v2StylePrompt(plan)}`,
+    prompt: pathTilesPrompt(path.prompt, terrain?.prompt ?? path.terrainKey),
     requestedCapability: 'path_tiles',
     generationParams: {
       tileSize: plan.map.tileSize,
@@ -166,6 +210,7 @@ function pathRowV2(
       pathKind: path.kind,
       palette: plan.background.palette,
       projection: plan.map.projection,
+      outlineMode: 'segmentation',
     },
     metadata: {
       sourcePathId: path.id,
@@ -179,14 +224,16 @@ function pathRowV2(
 }
 
 function obstacleRowV2(plan: MapPlanV2, obstacle: ObstacleAssetPlan): MapAssetPlanRowV2 {
+  const providerWidth = Math.max(32, Math.min(400, Math.round(obstacle.size.width)));
+  const providerHeight = Math.max(32, Math.min(400, Math.round(obstacle.size.height)));
   return {
     assetKey: obstacle.assetKey,
     kind: 'obstacle',
-    prompt: `${obstacle.prompt} ${v2StylePrompt(plan)} Transparent background with a clear ground contact.`,
+    prompt: buildStaticObstaclePrompt(plan, obstacle.prompt),
     requestedCapability: 'map_object',
     generationParams: {
-      width: Math.round(obstacle.size.width),
-      height: Math.round(obstacle.size.height),
+      width: providerWidth,
+      height: providerHeight,
       transparency: true,
       projection: plan.map.projection,
       palette: plan.background.palette,
@@ -203,7 +250,7 @@ function obstacleRowV2(plan: MapPlanV2, obstacle: ObstacleAssetPlan): MapAssetPl
 export function buildMapAssetPlansV2(plan: MapPlanV2): MapAssetPlanRowV2[] {
   const masks = requiredMasksByAsset(plan);
   return [
-    ...plan.terrains.map((terrain) => terrainRowV2(plan, terrain, masks.get(terrain.assetKey) ?? [])),
+    ...plan.terrains.map((terrain) => terrainRowV2(plan, terrain)),
     ...plan.background.paths.map((path) => pathRowV2(plan, path, masks.get(path.assetKey) ?? [])),
     ...plan.obstacleAssets.map((obstacle) => obstacleRowV2(plan, obstacle)),
     {

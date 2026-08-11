@@ -3,10 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
-import {
-  CreateMapWorkbench,
-  getPlanReviewActions,
-} from '@/features/create-map/CreateMapWorkbench';
+import { CreateMapWorkbench } from '@/features/create-map/CreateMapWorkbench';
 
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
   __esModule: true,
@@ -48,45 +45,33 @@ describe('Create Map V3 direct workbench', () => {
     expect(markup).not.toContain('Regenerate');
   });
 
-  it('routes V3 directly and preserves V2 in an explicit read-only workbench', () => {
+  it('routes only V3 without loading a legacy workbench', () => {
     const router = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.tsx'),
       'utf8'
     );
     const direct = readFileSync(path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'), 'utf8');
-    const legacy = readFileSync(path.join(process.cwd(), 'src/features/create-map/LegacyCreateMapV2Workbench.tsx'), 'utf8');
 
     expect(router).toContain('<DirectMapWorkbench');
-    expect(router).toContain('<LegacyCreateMapV2Workbench');
-    expect(router).toContain('readOnly');
+    expect(router).not.toContain('LegacyCreateMapV2Workbench');
+    expect(router).not.toContain('useState');
     expect(direct).toContain('service.createPlanV3(');
     expect(direct).toContain('service.loadSavedMapV3(');
     expect(direct).toContain('generation.installRestore(prepared)');
     expect(direct).toContain('<DirectMapCanvas');
-    expect(legacy).toContain('<MapCanvas');
-    expect(legacy).toContain('<MapLayerList');
-    expect(legacy).toContain('<ObstacleEntityInspector');
-    expect(legacy).toContain('data-read-only="true"');
-    expect(legacy).toContain('disabled={readOnly}');
-    expect(legacy).toContain('maps={savedMaps.maps.filter((map) => map.schemaVersion === 2)}');
+    expect(direct).not.toContain('onOpenLegacyMap');
+    expect(direct).not.toContain('map.schemaVersion === 2');
   });
 
-  it('requires a valid Project-backed clean draft before generation', () => {
-    expect(getPlanReviewActions({
-      projectId: '', hasIdentity: false, valid: true, dirty: false, busy: false,
-    })).toEqual({ canSave: false, canGenerate: false });
-    expect(getPlanReviewActions({
-      projectId: 'project-1', hasIdentity: false, valid: true, dirty: false, busy: false,
-    })).toEqual({ canSave: true, canGenerate: false });
-    expect(getPlanReviewActions({
-      projectId: 'project-1', hasIdentity: true, valid: true, dirty: false, busy: false,
-    })).toEqual({ canSave: false, canGenerate: true });
-    expect(getPlanReviewActions({
-      projectId: 'project-1', hasIdentity: true, valid: true, dirty: true, busy: false,
-    })).toEqual({ canSave: true, canGenerate: false });
-    expect(getPlanReviewActions({
-      projectId: 'project-1', hasIdentity: true, valid: false, dirty: true, busy: false,
-    })).toEqual({ canSave: false, canGenerate: false });
+  it('requires every draft consumer to provide an explicit versioned adapter', () => {
+    const source = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/hooks/useMapDraft.ts'),
+      'utf8'
+    );
+
+    expect(source).not.toContain('createMapDraftAdapterV2');
+    expect(source).not.toMatch(/adapter\?\s*:/);
+    expect(source).not.toMatch(/adapter\s*\?\?/);
   });
 
   it('scopes compact mobile TopBar behavior to Create Map', () => {
@@ -106,7 +91,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(source).toContain("errorText === 'net::ERR_ABORTED'");
   });
 
-  it('invalidates persisted V2 identity when the selected Project changes', () => {
+  it('invalidates persisted V3 identity when the selected Project changes', () => {
     const workbench = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
       'utf8'

@@ -46,11 +46,7 @@ const INITIAL_DIRECT_PLAN: MapPlanV3 = {
   },
 };
 
-export type DirectMapWorkbenchProps = {
-  onOpenLegacyMap: (mapId: string) => void;
-};
-
-export function DirectMapWorkbench({ onOpenLegacyMap }: DirectMapWorkbenchProps) {
+export function DirectMapWorkbench() {
   const supabase = useSupabase();
   const service = useMemo(() => createMapService(supabase), [supabase]);
   const adapter = useMemo(() => createMapDraftAdapterV3(service), [service]);
@@ -177,10 +173,6 @@ export function DirectMapWorkbench({ onOpenLegacyMap }: DirectMapWorkbenchProps)
   };
 
   const openSavedMap = async (map: SavedMapSummary) => {
-    if (map.schemaVersion === 2) {
-      onOpenLegacyMap(map.id);
-      return;
-    }
     if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
     const requestEpoch = ++openRequestEpoch.current;
     setOperation('opening');

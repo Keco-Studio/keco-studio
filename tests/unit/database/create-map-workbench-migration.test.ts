@@ -48,6 +48,7 @@ describe('Create Map workbench migration', () => {
     expect(transition).not.toMatch(/set[\s\S]{0,120}asset_key\s*=/i);
     expect(transition).toMatch(/status = 'failed' and p_next_status in \('queued', 'blocked'\)/i);
     expect(transition).toMatch(/bool_or\(asset\.status in \('failed', 'blocked'\)\)/i);
+    expect(transition).toMatch(/last_error_code = case when p_next_status in \('failed', 'blocked'\) then p_last_error_code else null end/i);
     expect(transition).toMatch(/select asset\.\*[\s\S]+into v_asset/i);
     expect(transition).toMatch(/where revision\.id = v_asset\.map_revision_id\s+for update of revision/i);
     expect(sql).toMatch(/v_asset\.requested_capability is distinct from p_requested_capability/i);

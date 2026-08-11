@@ -9,7 +9,11 @@ export type BackgroundComposeInput = {
   width: number;
   height: number;
   tileSize: number;
-  cells: Array<{ x: number; y: number; assetKey: string; connectivityMask: number }>;
+  cells: Array<{
+    x: number;
+    y: number;
+    layers: Array<{ assetKey: string; connectivityMask: number }>;
+  }>;
   atlases: Record<string, { png: ValidatedPng; manifest: NormalizedTileAtlas }>;
 };
 
@@ -67,8 +71,10 @@ function validateInput(input: BackgroundComposeInput): { columns: number; rows: 
     if (
       !Number.isInteger(cell.x) || !Number.isInteger(cell.y) ||
       cell.x < 0 || cell.y < 0 || cell.x >= columns || cell.y >= rows ||
-      typeof cell.assetKey !== "string" || !cell.assetKey ||
-      !Number.isInteger(cell.connectivityMask) || cell.connectivityMask < 0 || cell.connectivityMask > 15
+      !Array.isArray(cell.layers) || cell.layers.length === 0 || cell.layers.some((layer) =>
+        typeof layer.assetKey !== "string" || !layer.assetKey ||
+        !Number.isInteger(layer.connectivityMask) || layer.connectivityMask < 0 || layer.connectivityMask > 15
+      )
     ) {
       invalid("Background contains an invalid cell");
     }
@@ -114,36 +120,48 @@ export async function composeBackground(input: BackgroundComposeInput): Promise<
   const output = new Uint8Array(input.width * input.height * 4);
 
   for (const cell of input.cells) {
-    const atlas = input.atlases[cell.assetKey];
-    if (!atlas) invalid(`Background atlas is missing for ${cell.assetKey}`);
-    let image = decoded.get(cell.assetKey);
-    if (!image) {
-      image = decodeRgba(atlas.png);
-      validateAtlas(cell.assetKey, image, atlas.manifest);
-      decoded.set(cell.assetKey, image);
-    }
-    const tile = atlas.manifest.tiles.find((candidate) =>
-      candidate.connectivityMask === cell.connectivityMask
-    );
-    if (!tile) invalid(`Background atlas ${cell.assetKey} is missing mask ${cell.connectivityMask}`);
-    if (
-      !Number.isInteger(tile.sourceX) || !Number.isInteger(tile.sourceY) ||
-      !Number.isInteger(tile.sourceWidth) || !Number.isInteger(tile.sourceHeight) ||
-      tile.sourceX < 0 || tile.sourceY < 0 || tile.sourceWidth <= 0 || tile.sourceHeight <= 0 ||
-      tile.sourceX + tile.sourceWidth > image.width || tile.sourceY + tile.sourceHeight > image.height
-    ) {
-      invalid(`Background atlas rectangle is invalid for ${cell.assetKey}`);
-    }
+    for (const layer of cell.layers) {
+      const atlas = input.atlases[layer.assetKey];
+      if (!atlas) invalid(`Background atlas is missing for ${layer.assetKey}`);
+      let image = decoded.get(layer.assetKey);
+      if (!image) {
+        image = decodeRgba(atlas.png);
+        validateAtlas(layer.assetKey, image, atlas.manifest);
+        decoded.set(layer.assetKey, image);
+      }
+      const tile = atlas.manifest.tiles.find((candidate) =>
+        candidate.connectivityMask === layer.connectivityMask
+      );
+      if (!tile) invalid(`Background atlas ${layer.assetKey} is missing mask ${layer.connectivityMask}`);
+      if (
+        !Number.isInteger(tile.sourceX) || !Number.isInteger(tile.sourceY) ||
+        !Number.isInteger(tile.sourceWidth) || !Number.isInteger(tile.sourceHeight) ||
+        tile.sourceX < 0 || tile.sourceY < 0 || tile.sourceWidth <= 0 || tile.sourceHeight <= 0 ||
+        tile.sourceX + tile.sourceWidth > image.width || tile.sourceY + tile.sourceHeight > image.height
+      ) {
+        invalid(`Background atlas rectangle is invalid for ${layer.assetKey}`);
+      }
 
-    for (let targetY = 0; targetY < input.tileSize; targetY += 1) {
-      const sourceY = tile.sourceY + Math.floor(targetY * tile.sourceHeight / input.tileSize);
-      const outputY = cell.y * input.tileSize + targetY;
-      for (let targetX = 0; targetX < input.tileSize; targetX += 1) {
-        const sourceX = tile.sourceX + Math.floor(targetX * tile.sourceWidth / input.tileSize);
-        const sourceOffset = (sourceY * image.width + sourceX) * 4;
-        const outputX = cell.x * input.tileSize + targetX;
-        const outputOffset = (outputY * input.width + outputX) * 4;
-        output.set(image.data.subarray(sourceOffset, sourceOffset + 4), outputOffset);
+      for (let targetY = 0; targetY < input.tileSize; targetY += 1) {
+        const sourceY = tile.sourceY + Math.floor(targetY * tile.sourceHeight / input.tileSize);
+        const outputY = cell.y * input.tileSize + targetY;
+        for (let targetX = 0; targetX < input.tileSize; targetX += 1) {
+          const sourceX = tile.sourceX + Math.floor(targetX * tile.sourceWidth / input.tileSize);
+          const sourceOffset = (sourceY * image.width + sourceX) * 4;
+          const outputX = cell.x * input.tileSize + targetX;
+          const outputOffset = (outputY * input.width + outputX) * 4;
+          const sourceAlpha = image.data[sourceOffset + 3] / 255;
+          if (sourceAlpha === 0) continue;
+          const targetAlpha = output[outputOffset + 3] / 255;
+          const outputAlpha = sourceAlpha + targetAlpha * (1 - sourceAlpha);
+          for (let channel = 0; channel < 3; channel += 1) {
+            output[outputOffset + channel] = Math.round(
+              (image.data[sourceOffset + channel] * sourceAlpha +
+                output[outputOffset + channel] * targetAlpha * (1 - sourceAlpha)) / outputAlpha,
+            );
+          }
+          output[outputOffset + 3] = Math.round(outputAlpha * 255);
+        }
       }
     }
   }
@@ -155,5 +173,5 @@ export async function composeBackground(input: BackgroundComposeInput): Promise<
     channels: 4,
     depth: 8,
   });
-  return validatePng(bytes, { width: input.width, height: input.height, alpha: "optional" });
+  return validatePng(bytes, { width: input.width, height: input.height, alpha: "forbidden" });
 }

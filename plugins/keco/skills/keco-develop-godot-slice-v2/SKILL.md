@@ -1,6 +1,6 @@
 ---
 name: keco-develop-godot-slice-v2
-description: Use when a user asks to plan, implement, continue, or evaluate Keco-driven Godot development from project documents, GDDs, feedback, tables, or development ideas, especially when the request may contain multiple Slices, persistent plans, asset provenance, resource evolution, or runtime evidence; supports implicit routing without requiring the Skill name. Not for Keco-only tables, standalone assets, analysis-only work, or Godot-only debugging.
+description: Use when a user asks to plan, implement, continue, or evaluate Godot development driven by Keco project documents, GDDs, feedback, tables, or development ideas, including work that needs document decomposition, multiple slices, persistent Keco planning documents, typed asset provenance, resource evolution, TileMap integration, or runtime evaluation. Not for user-selected legacy V1 runs, Keco-only table creation, standalone asset generation, analysis-only work, or Godot-only debugging.
 ---
 
 # Keco Godot Slice V2

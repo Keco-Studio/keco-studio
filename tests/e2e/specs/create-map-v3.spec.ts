@@ -2,9 +2,6 @@ import { expect, test, type Locator, type Page, type Route } from '@playwright/t
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import type { MapPlanV3, MapSceneV3 } from '../../../src/features/create-map/model/directMapSchema';
-import type { MapPlanV2 } from '../../../src/features/create-map/model/mapPlanSchema';
-import type { MapSceneV2 } from '../../../src/features/create-map/model/mapSceneSchema';
-import { makeEmptyMapSceneV2, makeValidMapPlanV2 } from '../../unit/create-map/fixtures';
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
 const PROJECT_ID = '20000000-0000-4000-8000-000000000002';
@@ -13,7 +10,6 @@ const MAP_ID = '40000000-0000-4000-8000-000000000004';
 const DRAFT_REVISION_ID = '50000000-0000-4000-8000-000000000005';
 const SLOW_MAP_ID = '80000000-0000-4000-8000-000000000008';
 const FAST_MAP_ID = '90000000-0000-4000-8000-000000000010';
-const LEGACY_MAP_ID = 'a0000000-0000-4000-8000-000000000012';
 const SUPABASE_ORIGIN = 'http://127.0.0.1:54321';
 const APP_ORIGIN = process.env.KECO_CREATE_MAP_E2E_ORIGIN ?? 'http://localhost:3000';
 
@@ -54,17 +50,7 @@ type RevisionV3 = {
   scene: MapSceneV3;
 };
 
-type RevisionV2 = {
-  id: string;
-  revision_number: number;
-  save_version: number;
-  source_document_id: string | null;
-  schema_version: 2;
-  plan: MapPlanV2;
-  scene: MapSceneV2;
-};
-
-type Revision = RevisionV2 | RevisionV3;
+type Revision = RevisionV3;
 
 type MockMap = {
   id: string;
@@ -236,26 +222,6 @@ class CreateMapV3MockBackend {
     });
   }
 
-  seedLegacyMap(): void {
-    const plan = makeValidMapPlanV2();
-    const revisionId = uuid(++this.sequence);
-    this.maps.set(LEGACY_MAP_ID, {
-      id: LEGACY_MAP_ID,
-      name: 'Legacy Riverside V2',
-      currentRevisionId: revisionId,
-      updatedAt: '2026-08-11T01:00:00.000Z',
-      revisions: new Map([[revisionId, {
-        id: revisionId,
-        revision_number: 1,
-        save_version: 0,
-        source_document_id: null,
-        schema_version: 2,
-        plan,
-        scene: makeEmptyMapSceneV2(),
-      }]]),
-    });
-  }
-
   readyAssets(): AssetRecord[] {
     return [...this.assets.values()].filter((asset) => asset.status === 'ready');
   }
@@ -263,7 +229,7 @@ class CreateMapV3MockBackend {
   private assetRecord(mapId: string, revisionId: string, generationId: string, planFingerprint: string): AssetRecord {
     const map = this.maps.get(mapId);
     const revision = map?.revisions.get(revisionId);
-    const plan = revision?.schema_version === 3 ? revision.plan : planFixture();
+    const plan = revision?.plan ?? planFixture();
     return {
       id: uuid(++this.sequence),
       map_revision_id: revisionId,
@@ -776,17 +742,6 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.waitForTimeout(800);
     await expect(page.getByRole('heading', { name: 'Fast Harbor' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Slow Marsh' })).not.toBeVisible();
-  });
-
-  test('opens a V2 saved map in explicit read-only compatibility mode', async ({ page }) => {
-    const backend = new CreateMapV3MockBackend();
-    backend.seedLegacyMap();
-    await loginAndOpen(page, backend);
-    await page.getByRole('button', { name: /Legacy Riverside V2/ }).click();
-    const workbench = page.getByTestId('create-map-workbench');
-    await expect(workbench).toHaveAttribute('data-schema-version', '2');
-    await expect(workbench).toHaveAttribute('data-read-only', 'true');
-    await expect(page.getByRole('button', { name: 'Generate map' })).toBeDisabled();
   });
 
   test('captures nonblank, error-free desktop and mobile layouts', async ({ page }, testInfo) => {

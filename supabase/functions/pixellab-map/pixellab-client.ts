@@ -4,7 +4,7 @@ import {
   PixelLabMapError,
   type SemanticCapability,
 } from "./types.ts";
-import { providerImageReference } from "./provider-response.ts";
+import { providerImageReference, providerTextBlocks } from "./provider-response.ts";
 import { MAX_PNG_BYTES } from "./png.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
@@ -13,6 +13,7 @@ const MAX_BASE64_LENGTH = Math.ceil(MAX_PNG_BYTES / 3) * 4 + 4;
 
 const CAPABILITIES: Record<SemanticCapability, {
   preferred: string;
+  alternatives?: string[];
   requiredTerms: string[];
   restFallback?: string;
 }> = {
@@ -26,8 +27,9 @@ const CAPABILITIES: Record<SemanticCapability, {
     requiredTerms: ["path", "road", "tile"],
   },
   map_object: {
-    preferred: "create_map_object",
-    requiredTerms: ["map", "object", "transparent"],
+    preferred: "create_image_pro",
+    alternatives: ["create_map_object"],
+    requiredTerms: ["image", "pro"],
     restFallback: "/map-objects",
   },
   inpaint: {
@@ -58,8 +60,11 @@ async function fingerprint(schema: Record<string, unknown>): Promise<string> {
 }
 
 function parseMcpPayload(text: string): Record<string, unknown> {
-  const dataLine = text.split(/\r?\n/).find((line) => line.startsWith("data: "));
-  const raw = dataLine ? dataLine.slice(6) : text;
+  const dataLines = text.split(/\r?\n/)
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => line.slice(6))
+    .filter((line) => line !== "[DONE]");
+  const raw = dataLines.at(-1) ?? text;
   try {
     const value = JSON.parse(raw);
     if (!value || typeof value !== "object") throw new Error();
@@ -67,6 +72,38 @@ function parseMcpPayload(text: string): Record<string, unknown> {
   } catch {
     throw new PixelLabMapError("pixellab_invalid_response");
   }
+}
+
+function mcpResultError(result: Record<string, unknown>): PixelLabMapError | null {
+  const summary = providerTextBlocks(result).join(" ").toLowerCase();
+  const zeroBalance = /(?:credits?|balance|quota|generations?_remaining)\s*[:=]\s*0(?:\D|$)/.test(summary);
+  if (zeroBalance || (result.isError === true && /credit|balance|quota|billing|payment/.test(summary))) {
+    return new PixelLabMapError(
+      "pixellab_quota_exceeded",
+      "PixelLab account credits or quota are unavailable.",
+      402,
+    );
+  }
+  if (/rate.?limit|too many|concurren|capacity|try again|temporar/.test(summary)) {
+    return new PixelLabMapError(
+      "pixellab_rate_limited",
+      "PixelLab is temporarily rate limited. Retry this resource.",
+      429,
+    );
+  }
+  if (result.isError !== true) return null;
+  if (/invalid|validation|required|must be|greater than|less than|enum/.test(summary)) {
+    return new PixelLabMapError(
+      "pixellab_invalid_response",
+      "PixelLab rejected the generated asset parameters.",
+      422,
+    );
+  }
+  return new PixelLabMapError(
+    "pixellab_upstream",
+    "PixelLab rejected the generation request.",
+    502,
+  );
 }
 
 function responseError(status: number): PixelLabMapError {
@@ -178,8 +215,10 @@ export function providerArgumentsFor(
   const tileSize = typeof params.tileSize === "number" ? params.tileSize : undefined;
 
   if (capability.semantic === "topdown_tileset") {
-    if (!hasDiscoveredSchema || supports("lower_description")) output.lower_description = prompt;
-    if (!hasDiscoveredSchema || supports("upper_description")) output.upper_description = prompt;
+    const lowerDescription = typeof params.lowerDescription === "string" ? params.lowerDescription : prompt;
+    const upperDescription = typeof params.upperDescription === "string" ? params.upperDescription : prompt;
+    if (!hasDiscoveredSchema || supports("lower_description")) output.lower_description = lowerDescription;
+    if (!hasDiscoveredSchema || supports("upper_description")) output.upper_description = upperDescription;
     if (hasSchemaProperties) setFirst(["description", "prompt"], prompt);
   } else {
     setFirst(["description", "prompt"], prompt);
@@ -187,17 +226,40 @@ export function providerArgumentsFor(
   if (tileSize != null) {
     const tileSchema = properties.tile_size;
     if (!hasDiscoveredSchema || supports("tile_size")) {
+      const providerTileSize = capability.semantic === "path_tiles" ? 32 : tileSize;
       output.tile_size = tileSchema?.type === "object"
-        ? { width: tileSize, height: tileSize }
-        : tileSize;
+        ? { width: providerTileSize, height: providerTileSize }
+        : providerTileSize;
     }
   }
-  setFirst(["width"], params.width);
-  setFirst(["height"], params.height);
+  const boundedObjectDimension = (value: unknown) => capability.semantic === "map_object" && typeof value === "number"
+    ? Math.max(32, Math.min(400, Math.round(value)))
+    : value;
+  setFirst(["width"], boundedObjectDimension(params.width));
+  setFirst(["height"], boundedObjectDimension(params.height));
   setFirst(["view", "projection"], params.projection === "top-down" ? "high top-down" : params.projection);
-  if (params.transparency === true) setFirst(["transparent_background", "transparency"], true);
+  if (params.transparency === true) {
+    setFirst(capability.operation === "create_image_pro"
+      ? ["no_background", "transparent_background", "transparency"]
+      : ["transparent_background", "transparency"], true);
+  }
+  if (typeof params.styleImageUrl === "string" && params.styleImageUrl.startsWith("https://")) {
+    setFirst(["style_image_url", "style_image", "reference_image_url"], params.styleImageUrl);
+  }
   if (Array.isArray(params.palette)) setFirst(["palette", "colors"], params.palette);
-  if (typeof params.pathKind === "string") setFirst(["path_type", "tile_type"], params.pathKind);
+  if (capability.semantic === "path_tiles") {
+    setFirst(["tile_type"], params.projection === "isometric" ? "isometric" : "square_topdown");
+    setFirst(["outline_mode"], params.outlineMode);
+  }
+  if (capability.semantic === "topdown_tileset") {
+    setFirst(["transition_size"], params.transitionSize);
+    setFirst(["transition_description"], params.transitionDescription);
+    setFirst(["mode"], params.mode);
+    setFirst(["outline"], params.outline);
+    setFirst(["shading"], params.shading);
+    setFirst(["detail"], params.detail);
+    setFirst(["tile_strength"], params.tileStrength);
+  }
   if (Array.isArray(params.requiredConnectivityMasks)) {
     setFirst(["required_connectivity_masks", "connectivity_masks", "required_masks"], params.requiredConnectivityMasks);
   }
@@ -230,6 +292,11 @@ export class PixelLabClient {
     if (!response.ok) throw responseError(response.status);
     const payload = parseMcpPayload(await response.text());
     if (payload.error) throw new PixelLabMapError("pixellab_upstream");
+    const result = payload.result;
+    if (result && typeof result === "object" && !Array.isArray(result)) {
+      const resultError = mcpResultError(result as Record<string, unknown>);
+      if (resultError) throw resultError;
+    }
     return payload;
   }
 
@@ -265,7 +332,8 @@ export class PixelLabClient {
         pollInputSchema,
       };
     }
-    const exact = tools.find((tool) => tool.name === spec.preferred);
+    const exact = tools.find((tool) => tool.name === spec.preferred)
+      ?? tools.find((tool) => spec.alternatives?.includes(tool.name));
     const semanticMatch = exact ?? tools.find((tool) => {
       const haystack = `${tool.name} ${tool.description ?? ""}`.toLowerCase();
       return spec.requiredTerms.every((term) => haystack.includes(term));
