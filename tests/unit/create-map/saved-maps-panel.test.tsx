@@ -24,6 +24,7 @@ const summary: SavedMapSummary = {
   name: 'River Town',
   currentRevisionId: 'revision-2',
   updatedAt: '2026-08-10T01:00:00.000Z',
+  schemaVersion: 2,
 };
 
 describe('SavedMapsPanel', () => {
@@ -95,14 +96,13 @@ describe('SavedMapsPanel', () => {
     expect(savedMapSwitchBlocked({ isDirty: false, status: 'saved' })).toBe(false);
   });
 
-  it('uses the V2-only saved-map service and invalidates older open requests', () => {
+  it('uses the V2/V3 saved-map service and invalidates older open requests', () => {
     const hook = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/hooks/useSavedMaps.ts'),
       'utf8',
     );
-    expect(hook).toContain("['create-map', 'saved-maps', 'v2'");
-    expect(hook).toContain('service.listSavedMapsV2()');
-    expect(hook).not.toContain('service.listSavedMaps()');
+    expect(hook).toContain("['create-map', 'saved-maps', 'v2-v3'");
+    expect(hook).toContain('service.listSavedMaps()');
     expect(savedMapOpenIsCurrent(7, 7)).toBe(true);
     expect(savedMapOpenIsCurrent(8, 7)).toBe(false);
   });

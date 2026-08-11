@@ -176,7 +176,11 @@ begin
         select 1
         from jsonb_array_elements_text(p_plan #> '{styleReference,copy}') as copied(value)
         where copied.value not in ('color_palette', 'outline', 'detail', 'shading')
-      ) then
+      )
+      or (
+        select count(distinct copied.value)
+        from jsonb_array_elements_text(p_plan #> '{styleReference,copy}') as copied(value)
+      ) <> jsonb_array_length(p_plan #> '{styleReference,copy}') then
       raise exception 'invalid V3 style reference' using errcode = '22023';
     end if;
   end if;

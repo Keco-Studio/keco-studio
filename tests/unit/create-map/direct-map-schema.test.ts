@@ -89,6 +89,24 @@ describe('direct map V3 schemas', () => {
     }
   });
 
+  it('rejects duplicate style-copy directives before persistence', () => {
+    const result = validateMapPlanV3(makeValidMapPlanV3({
+      styleReference: {
+        assetId: '00000000-0000-4000-8000-000000000002',
+        sha256: 'b'.repeat(64),
+        copy: ['shading', 'shading'],
+      },
+    }));
+
+    expect(result).toMatchObject({ success: false });
+    if (result.success === false) {
+      expect(result.issues).toContainEqual(expect.objectContaining({
+        code: 'duplicate_reference',
+        path: ['styleReference', 'copy', 1],
+      }));
+    }
+  });
+
   it('requires an exact locked map-image binding only after generation', () => {
     const plan = makeValidMapPlanV3();
     const empty = createEmptyMapSceneV3(plan);

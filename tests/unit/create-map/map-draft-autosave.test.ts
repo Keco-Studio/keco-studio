@@ -2,10 +2,12 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   SerializedMapDraftWriter,
   validateMapDraftPayloadV2,
+  validateMapDraftPayloadV3,
   type MapDraftPayloadV2,
+  type MapDraftPayloadV3,
 } from '@/features/create-map/hooks/useMapDraft';
 import { CreateMapServiceError, type MapDraftIdentity } from '@/features/create-map/services/createMapService';
-import { makeValidMapPlanV2, makeValidMapSceneV2 } from './fixtures';
+import { makeEmptyMapSceneV3, makeValidMapPlanV2, makeValidMapPlanV3, makeValidMapSceneV2 } from './fixtures';
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 
@@ -103,5 +105,22 @@ describe('SerializedMapDraftWriter', () => {
 
     expect(validation.success).toBe(false);
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('serializes a V3 payload without merging it into the V2 schema', async () => {
+    const saved: MapDraftPayloadV3[] = [];
+    const writer = new SerializedMapDraftWriter<MapDraftPayloadV3>(async (_target, nextPayload) => {
+      saved.push(nextPayload);
+      return 1;
+    });
+    writer.install(identity('map-v3', 'revision-v3'));
+    const plan = makeValidMapPlanV3();
+    const scene = makeEmptyMapSceneV3();
+    const validation = validateMapDraftPayloadV3(plan, scene);
+    if (validation.success) await writer.enqueue(validation.payload);
+
+    expect(validation.success).toBe(true);
+    expect(saved).toEqual([{ plan, scene }]);
+    expect((saved[0].plan as { visualBrief?: unknown }).visualBrief).toBeUndefined();
   });
 });

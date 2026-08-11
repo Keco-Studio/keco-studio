@@ -130,6 +130,15 @@ export function validateMapPlanV3(input: unknown): MapPlanV3ValidationResult {
   if (plan.styleReference !== null && referenceIds.has(plan.styleReference.assetId)) {
     addIssue('duplicate_reference', ['styleReference', 'assetId'], 'Reference asset IDs must be unique');
   }
+  if (plan.styleReference !== null) {
+    const copyValues = new Set<string>();
+    plan.styleReference.copy.forEach((value, index) => {
+      if (copyValues.has(value)) {
+        addIssue('duplicate_reference', ['styleReference', 'copy', index], 'Style copy directives must be unique');
+      }
+      copyValues.add(value);
+    });
+  }
 
   return issues.length > 0 ? { success: false, issues } : { success: true, data: plan };
 }

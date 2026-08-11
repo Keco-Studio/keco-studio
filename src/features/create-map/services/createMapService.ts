@@ -2,7 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { listDocuments } from '@/lib/services/documentService';
 import { listProjects } from '@/lib/services/projectService';
 import { MapPlanSchema, MapPlanV2Schema, validateMapPlanV2, type MapPlan, type MapPlanV2 } from '../model/mapPlanSchema';
-import { MapPlanV3Schema, type MapPlanV3, type MapReferenceV3 } from '../model/directMapSchema';
+import {
+  MapPlanV3Schema,
+  validateMapPlanV3,
+  validateMapSceneV3,
+  type MapPlanV3,
+  type MapReferenceV3,
+  type MapSceneV3,
+} from '../model/directMapSchema';
 import {
   MapSceneSchema,
   MapSceneV2Schema,
@@ -35,7 +42,7 @@ export type MapAssetRecord = {
   id: string;
   map_revision_id: string;
   asset_key: string;
-  kind: 'terrain' | 'road' | 'object' | 'inpaint' | 'path' | 'obstacle' | 'background';
+  kind: 'terrain' | 'road' | 'object' | 'inpaint' | 'path' | 'obstacle' | 'background' | 'map_image';
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'blocked';
   requested_capability: string | null;
   prompt: string;
@@ -50,6 +57,8 @@ export type MapAssetRecord = {
   attempt_count: number;
   generation_id?: string | null;
   plan_fingerprint?: string | null;
+  provider_operation?: string | null;
+  provider_job_id?: string | null;
 };
 
 export type MapReferenceRecord = {
@@ -81,6 +90,10 @@ export type MapRevisionRowV2 = {
   status: 'draft' | 'generating' | 'partial' | 'ready' | 'failed';
 };
 
+export type MapRevisionRowV3 = Omit<MapRevisionRowV2, 'schema_version'> & {
+  schema_version: 3;
+};
+
 export type SavedMapSummary = {
   id: string;
   projectId: string;
@@ -88,6 +101,7 @@ export type SavedMapSummary = {
   name: string;
   currentRevisionId: string;
   updatedAt: string;
+  schemaVersion: 2 | 3;
 };
 
 export type SavedMapWorkspace = {
@@ -108,6 +122,17 @@ export type SavedMapWorkspaceV2 = {
   sourceDocumentId: string | null;
   assetRevisionId: string | null;
   assets: MapAssetRecord[];
+};
+
+export type SavedMapWorkspaceV3 = {
+  identity: MapDraftIdentity;
+  plan: MapPlanV3;
+  scene: MapSceneV3;
+  projectId: string;
+  sourceDocumentId: string | null;
+  assetRevisionId: string | null;
+  imageAsset: MapAssetRecord | null;
+  imageUrl: string | null;
 };
 
 export type CreateMapAssetPlanV2Input = {
@@ -164,6 +189,13 @@ function projectName(value: unknown): string {
     : 'Unknown project';
 }
 
+function relationSchemaVersion(value: unknown): 2 | 3 | null {
+  const relation = Array.isArray(value) ? value[0] : value;
+  if (!relation || typeof relation !== 'object') return null;
+  const version = Number((relation as { schema_version?: unknown }).schema_version);
+  return version === 2 || version === 3 ? version : null;
+}
+
 function parseMapV2(planInput: unknown, sceneInput: unknown): { plan: MapPlanV2; scene: MapSceneV2 } {
   const plan = MapPlanV2Schema.safeParse(planInput);
   const scene = MapSceneV2Schema.safeParse(sceneInput);
@@ -175,6 +207,18 @@ function parseMapV2(planInput: unknown, sceneInput: unknown): { plan: MapPlanV2;
     throw new CreateMapServiceError('invalid_saved_map', validation.issues.map((issue) => issue.message).join('; '));
   }
   return { plan: plan.data, scene: validation.data };
+}
+
+function parseMapV3(planInput: unknown, sceneInput: unknown): { plan: MapPlanV3; scene: MapSceneV3 } {
+  const plan = validateMapPlanV3(planInput);
+  if (plan.success === false) {
+    throw new CreateMapServiceError('invalid_saved_map', plan.issues.map((issue) => issue.message).join('; '));
+  }
+  const scene = validateMapSceneV3(plan.data, sceneInput);
+  if (scene.success === false) {
+    throw new CreateMapServiceError('invalid_saved_map', scene.issues.map((issue) => issue.message).join('; '));
+  }
+  return { plan: plan.data, scene: scene.data };
 }
 
 async function listMapAssets(supabase: SupabaseClient, revisionId: string): Promise<MapAssetRecord[]> {
@@ -325,16 +369,18 @@ export function createMapService(supabase: SupabaseClient) {
     async listSavedMaps(): Promise<SavedMapSummary[]> {
       const { data, error } = await supabase
         .from('map_projects')
-        .select('id, project_id, name, current_revision_id, updated_at, projects!map_projects_project_id_fkey(name)')
+        .select('id, project_id, name, current_revision_id, updated_at, current_revision:map_revisions!map_projects_current_revision_fk!inner(schema_version), projects!map_projects_project_id_fkey(name)')
+        .in('current_revision.schema_version', [2, 3])
         .order('updated_at', { ascending: false })
         .limit(50);
       if (error) throw new CreateMapServiceError(error.code ?? 'map_list_failed', error.message);
       return (data ?? []).flatMap((row) => {
-        if (!row.current_revision_id) return [];
+        const schemaVersion = relationSchemaVersion(row.current_revision);
+        if (!row.current_revision_id || !schemaVersion) return [];
         return [{
           id: String(row.id), projectId: String(row.project_id), projectName: projectName(row.projects),
           name: String(row.name), currentRevisionId: String(row.current_revision_id),
-          updatedAt: String(row.updated_at),
+          updatedAt: String(row.updated_at), schemaVersion,
         }];
       });
     },
@@ -352,7 +398,7 @@ export function createMapService(supabase: SupabaseClient) {
         return [{
           id: String(row.id), projectId: String(row.project_id), projectName: projectName(row.projects),
           name: String(row.name), currentRevisionId: String(row.current_revision_id),
-          updatedAt: String(row.updated_at),
+          updatedAt: String(row.updated_at), schemaVersion: 2,
         }];
       });
     },
@@ -426,6 +472,84 @@ export function createMapService(supabase: SupabaseClient) {
         sourceDocumentId: revision.source_document_id == null ? null : String(revision.source_document_id),
         assetRevisionId,
         assets,
+      };
+    },
+
+    async loadSavedMapV3(mapId: string): Promise<SavedMapWorkspaceV3> {
+      const { data: map, error: mapError } = await supabase
+        .from('map_projects').select('project_id, current_revision_id').eq('id', mapId).single();
+      if (mapError || !map?.current_revision_id) {
+        throw new CreateMapServiceError(mapError?.code ?? 'map_load_failed', mapError?.message ?? 'Map has no current revision');
+      }
+      const { data: revision, error: revisionError } = await supabase
+        .from('map_revisions')
+        .select('id, revision_number, save_version, source_document_id, schema_version, plan, scene')
+        .eq('id', map.current_revision_id)
+        .eq('schema_version', 3)
+        .single();
+      if (revisionError || !revision) {
+        throw new CreateMapServiceError(revisionError?.code ?? 'map_load_failed', revisionError?.message);
+      }
+      const parsed = parseMapV3(revision.plan, revision.scene);
+      const base = {
+        identity: {
+          mapId,
+          revisionId: String(revision.id),
+          revisionNumber: Number(revision.revision_number),
+          saveVersion: Number(revision.save_version),
+        },
+        plan: parsed.plan,
+        scene: parsed.scene,
+        projectId: String(map.project_id),
+        sourceDocumentId: revision.source_document_id == null ? null : String(revision.source_document_id),
+      };
+      const binding = parsed.scene.mapImage;
+      if (!binding) {
+        return { ...base, assetRevisionId: null, imageAsset: null, imageUrl: null };
+      }
+      const { data: assets, error: assetError } = await supabase.from('map_assets')
+        .select('*')
+        .eq('map_revision_id', binding.sourceRevisionId)
+        .eq('asset_key', 'map-image')
+        .eq('kind', 'map_image')
+        .limit(2);
+      if (assetError) throw new CreateMapServiceError(assetError.code ?? 'asset_load_failed', assetError.message);
+      if (!Array.isArray(assets) || assets.length !== 1) {
+        throw new CreateMapServiceError('invalid_saved_map', 'Bound map image is missing or ambiguous');
+      }
+      const imageAsset = assets[0] as unknown as MapAssetRecord;
+      const expectedStoragePath = `${map.project_id}/${mapId}/${binding.sourceRevisionId}/map-image/${imageAsset.sha256}.png`;
+      if (
+        imageAsset.map_revision_id !== binding.sourceRevisionId
+        || imageAsset.asset_key !== 'map-image'
+        || imageAsset.kind !== 'map_image'
+        || imageAsset.status !== 'ready'
+        || imageAsset.requested_capability !== 'direct_map_image'
+        || imageAsset.provider_operation !== 'create_image_pro'
+        || typeof imageAsset.provider_job_id !== 'string'
+        || imageAsset.provider_job_id.length === 0
+        || typeof imageAsset.generation_id !== 'string'
+        || !UUID_PATTERN.test(imageAsset.generation_id)
+        || typeof imageAsset.plan_fingerprint !== 'string'
+        || !SHA256_PATTERN.test(imageAsset.plan_fingerprint)
+        || imageAsset.width !== parsed.plan.map.width
+        || imageAsset.height !== parsed.plan.map.height
+        || imageAsset.has_transparency !== false
+        || typeof imageAsset.storage_path !== 'string'
+        || typeof imageAsset.sha256 !== 'string'
+        || !SHA256_PATTERN.test(imageAsset.sha256)
+        || imageAsset.storage_path !== expectedStoragePath
+      ) {
+        throw new CreateMapServiceError('invalid_saved_map', 'Bound map image does not match the V3 Scene');
+      }
+      const { data: signed, error: signedError } = await supabase.storage.from('map-assets')
+        .createSignedUrl(imageAsset.storage_path, 300);
+      const imageUrl = !signedError && typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
+      return {
+        ...base,
+        assetRevisionId: binding.sourceRevisionId,
+        imageAsset,
+        imageUrl,
       };
     },
 
@@ -537,6 +661,28 @@ export function createMapService(supabase: SupabaseClient) {
       return { mapId: row.map_id, revisionId: row.draft_revision_id, revisionNumber: row.revision_number, saveVersion: row.save_version };
     },
 
+    async createProjectV3(
+      projectId: string,
+      planInput: MapPlanV3,
+      sceneInput: MapSceneV3,
+      source: MapSourceToken | null,
+    ): Promise<MapDraftIdentity> {
+      const { plan, scene } = parseMapV3(planInput, sceneInput);
+      const { data, error } = await supabase.rpc('create_map_project_v3', {
+        p_project_id: projectId,
+        p_name: plan.name,
+        p_source_document_id: source?.documentId ?? null,
+        p_source_document_updated_at: source?.documentUpdatedAt ?? null,
+        p_source_epoch: source?.epoch ?? null,
+        p_source_revision: source?.revision ?? null,
+        p_plan: plan,
+        p_scene: scene,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'create_failed', error.message);
+      const row = firstRow<{ map_id: string; draft_revision_id: string; revision_number: number; save_version: number }>(data);
+      return { mapId: row.map_id, revisionId: row.draft_revision_id, revisionNumber: row.revision_number, saveVersion: row.save_version };
+    },
+
     async saveDraft(identity: MapDraftIdentity, plan: MapPlan, scene: MapScene): Promise<number> {
       const { data, error } = await supabase.rpc('save_map_draft', {
         p_map_id: identity.mapId,
@@ -555,6 +701,22 @@ export function createMapService(supabase: SupabaseClient) {
     async saveDraftV2(identity: MapDraftIdentity, planInput: MapPlanV2, sceneInput: MapSceneV2): Promise<number> {
       const { plan, scene } = parseMapV2(planInput, sceneInput);
       const { data, error } = await supabase.rpc('save_map_draft_v2', {
+        p_map_id: identity.mapId,
+        p_revision_id: identity.revisionId,
+        p_expected_save_version: identity.saveVersion,
+        p_plan: plan,
+        p_scene: scene,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'save_failed', error.message);
+      const row = firstRow<{ status: string; save_version: number | null }>(data);
+      if (row.status === 'conflict') throw new CreateMapServiceError('save_conflict');
+      if (row.status !== 'saved' || row.save_version == null) throw new CreateMapServiceError('invalid_response');
+      return row.save_version;
+    },
+
+    async saveDraftV3(identity: MapDraftIdentity, planInput: MapPlanV3, sceneInput: MapSceneV3): Promise<number> {
+      const { plan, scene } = parseMapV3(planInput, sceneInput);
+      const { data, error } = await supabase.rpc('save_map_draft_v3', {
         p_map_id: identity.mapId,
         p_revision_id: identity.revisionId,
         p_expected_save_version: identity.saveVersion,
@@ -654,6 +816,21 @@ export function createMapService(supabase: SupabaseClient) {
       return row as { status: 'published'; published_revision_id: string; next_draft_revision_id: string };
     },
 
+    async publishV3(identity: MapDraftIdentity) {
+      const { data, error } = await supabase.rpc('publish_map_revision_v3', {
+        p_map_id: identity.mapId,
+        p_draft_revision_id: identity.revisionId,
+        p_expected_save_version: identity.saveVersion,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'publish_failed', error.message);
+      const row = firstRow<{ status: string; published_revision_id: string | null; next_draft_revision_id: string | null }>(data);
+      if (row.status === 'conflict') throw new CreateMapServiceError('save_conflict');
+      if (row.status !== 'published' || !row.published_revision_id || !row.next_draft_revision_id) {
+        throw new CreateMapServiceError('invalid_response');
+      }
+      return row as { status: 'published'; published_revision_id: string; next_draft_revision_id: string };
+    },
+
     async readAssetPlan(assetId: string): Promise<MapAssetRecord> {
       const { data, error } = await supabase.from('map_assets').select('*').eq('id', assetId).single();
       if (error || !data) throw new CreateMapServiceError(error?.code ?? 'asset_load_failed', error?.message);
@@ -689,6 +866,16 @@ export function createMapService(supabase: SupabaseClient) {
         p_reference_hashes: input.referenceHashes,
         p_plan_fingerprint: input.planFingerprint,
         p_metadata: input.metadata,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'asset_plan_failed', error.message);
+      return firstRow<{ asset_id: string; status: string }>(data);
+    },
+
+    async createAssetPlanV3(revisionId: string, generationId: string, planFingerprint: string) {
+      const { data, error } = await supabase.rpc('create_map_asset_plan_v3', {
+        p_revision_id: revisionId,
+        p_generation_id: generationId,
+        p_plan_fingerprint: planFingerprint,
       });
       if (error) throw new CreateMapServiceError(error.code ?? 'asset_plan_failed', error.message);
       return firstRow<{ asset_id: string; status: string }>(data);

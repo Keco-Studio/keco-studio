@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import {
   makeEmptyMapSceneV2,
+  makeEmptyMapSceneV3,
   makeValidMapPlan,
   makeValidMapPlanV2,
   makeValidMapPlanV3,
@@ -140,6 +141,21 @@ describe('Create Map browser service', () => {
     }));
   });
 
+  it('creates a V3 Project with an exact direct map Plan and Scene', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [{ map_id: 'map-v3', draft_revision_id: 'revision-v3', revision_number: 1, save_version: 0 }],
+      error: null,
+    }));
+    const plan = makeValidMapPlanV3();
+    const scene = makeEmptyMapSceneV3();
+
+    await expect(createMapService({ rpc } as never).createProjectV3('project-1', plan, scene, null))
+      .resolves.toEqual({ mapId: 'map-v3', revisionId: 'revision-v3', revisionNumber: 1, saveVersion: 0 });
+    expect(rpc).toHaveBeenCalledWith('create_map_project_v3', expect.objectContaining({
+      p_project_id: 'project-1', p_plan: plan, p_scene: scene, p_source_document_id: null,
+    }));
+  });
+
   it('maps V2 compare-and-swap conflicts to the same stable service error', async () => {
     const rpc = jest.fn(async () => ({ data: [{ status: 'conflict', save_version: null }], error: null }));
     const identity = { mapId: 'map-v2', revisionId: 'revision-v2', revisionNumber: 1, saveVersion: 3 };
@@ -186,18 +202,21 @@ describe('Create Map browser service', () => {
       data: [{
         id: 'map-1', project_id: 'project-1', name: 'River Town',
         current_revision_id: 'revision-2', updated_at: '2026-08-10T01:00:00.000Z',
+        current_revision: { schema_version: 3 },
         projects: { name: 'Adventure' },
       }],
       error: null,
     }));
     const order = jest.fn(() => ({ limit }));
-    const select = jest.fn(() => ({ order }));
+    const inFilter = jest.fn(() => ({ order }));
+    const select = jest.fn(() => ({ in: inFilter }));
     const from = jest.fn(() => ({ select }));
 
     await expect(createMapService({ from } as never).listSavedMaps()).resolves.toEqual([{
       id: 'map-1', projectId: 'project-1', projectName: 'Adventure', name: 'River Town',
-      currentRevisionId: 'revision-2', updatedAt: '2026-08-10T01:00:00.000Z',
+      currentRevisionId: 'revision-2', updatedAt: '2026-08-10T01:00:00.000Z', schemaVersion: 3,
     }]);
+    expect(inFilter).toHaveBeenCalledWith('current_revision.schema_version', [2, 3]);
     expect(order).toHaveBeenCalledWith('updated_at', { ascending: false });
     expect(limit).toHaveBeenCalledWith(50);
   });
@@ -240,6 +259,18 @@ describe('Create Map browser service', () => {
       p_plan_fingerprint: fingerprint,
       p_generation_id: '10000000-0000-4000-8000-000000000002',
     }));
+  });
+
+  it('creates the single V3 map image plan with generation identity', async () => {
+    const rpc = jest.fn(async () => ({ data: [{ asset_id: 'asset-v3', status: 'planned' }], error: null }));
+    const generationId = '10000000-0000-4000-8000-000000000003';
+    const fingerprint = 'b'.repeat(64);
+
+    await expect(createMapService({ rpc } as never).createAssetPlanV3('revision-v3', generationId, fingerprint))
+      .resolves.toEqual({ asset_id: 'asset-v3', status: 'planned' });
+    expect(rpc).toHaveBeenCalledWith('create_map_asset_plan_v3', {
+      p_revision_id: 'revision-v3', p_generation_id: generationId, p_plan_fingerprint: fingerprint,
+    });
   });
 
   it('loads the current editable Revision and assets from the newest asset-owning Revision', async () => {

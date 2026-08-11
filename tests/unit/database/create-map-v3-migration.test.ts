@@ -52,6 +52,7 @@ describe('Create Map V3 direct-image migration', () => {
     expect(validator).toMatch(/p_plan #> '\{generation,noBackground\}' <> 'false'::jsonb/i);
     expect(validator).toMatch(/jsonb_array_length\(p_plan -> 'references'\) > 4/i);
     expect(validator).toMatch(/jsonb_typeof\(p_plan #> '\{styleReference,copy\}'\) is distinct from 'array' then[\s\S]+raise exception 'invalid V3 style reference'[\s\S]+end if;[\s\S]+jsonb_array_length\(p_plan #> '\{styleReference,copy\}'\)/i);
+    expect(validator).toMatch(/count\(distinct copied\.value\)[\s\S]+jsonb_array_length\(p_plan #> '\{styleReference,copy\}'\)/i);
     expect(validator).toMatch(/p_scene #>> '\{size,width\}'[\s\S]+p_plan #>> '\{map,width\}'/i);
     expect(sql).toMatch(/revoke all on function public\.map_validate_v3_payload\(jsonb, jsonb\) from public, anon, authenticated/i);
     expect(sql).not.toMatch(/grant execute on function public\.map_validate_v3_payload/i);
