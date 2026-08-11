@@ -43,6 +43,7 @@ describe('SavedMapsPanel', () => {
     expect(markup).toContain('Saved Maps');
     expect(markup).toContain('River Town');
     expect(markup).toContain('Adventure');
+    expect(markup).toContain('V2');
     expect(markup).toContain('dateTime="2026-08-10T01:00:00.000Z"');
     expect(markup).toContain('aria-current="true"');
   });

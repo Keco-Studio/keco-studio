@@ -23,10 +23,11 @@ jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
   useSavedMaps: () => ({ maps: [], isLoading: false, error: null, refetch: jest.fn() }),
 }));
 jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
+  createMapDraftAdapterV3: () => ({}),
   useMapDraft: () => ({
-    identity: null, status: 'idle', error: null, isDirty: false,
+    identity: null, status: 'idle', error: null, isDirty: false, isValid: true,
     create: jest.fn(), reload: jest.fn(), saveAsNewRevision: jest.fn(), install: jest.fn(),
-    publishForGeneration: jest.fn(),
+    publishForGeneration: jest.fn(), reset: jest.fn(), saveNow: jest.fn(),
   }),
 }));
 
@@ -118,9 +119,9 @@ it('renders the Create Map workbench semantic regions', () => {
   const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
   expect(markup).toContain('data-testid="create-map-workbench"');
-  expect(markup).toContain('aria-label="Map source and structure"');
+  expect(markup).toContain('aria-label="Map source and references"');
   expect(markup).toContain('aria-label="Map canvas"');
-  expect(markup).toContain('aria-label="Map plan and inspector"');
+  expect(markup).toContain('aria-label="Map plan and generation"');
 });
 
 it('stacks the workbench regions into one column below 900px', () => {

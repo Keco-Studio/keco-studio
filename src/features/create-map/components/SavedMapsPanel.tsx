@@ -61,7 +61,10 @@ export function SavedMapsPanel(props: SavedMapsPanelProps) {
                   onClick={() => props.onOpen(map)}
                 >
                   <span className={styles.savedMapCopy}>
-                    <strong>{map.name}</strong>
+                    <span className={styles.savedMapTitleRow}>
+                      <strong>{map.name}</strong>
+                      <span className={styles.versionTag}>V{map.schemaVersion}</span>
+                    </span>
                     <small>{map.projectName}</small>
                   </span>
                   {opening ? (

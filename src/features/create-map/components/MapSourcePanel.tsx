@@ -3,6 +3,8 @@ import styles from '../CreateMapWorkbench.module.css';
 export type MapSourceOption = { id: string; name: string };
 
 type MapSourcePanelProps = {
+  versionLabel?: 'V2' | 'V3';
+  readOnly?: boolean;
   projects: MapSourceOption[];
   documents: MapSourceOption[];
   description: string;
@@ -21,6 +23,8 @@ type MapSourcePanelProps = {
 };
 
 export function MapSourcePanel({
+  versionLabel = 'V3',
+  readOnly = false,
   projects,
   documents,
   description,
@@ -44,7 +48,7 @@ export function MapSourcePanel({
           <span className={styles.eyebrow}>Source</span>
           <h1 id="map-source-heading" className={styles.sectionTitle}>Create map</h1>
         </div>
-        <span className={styles.draftBadge}>V2</span>
+        <span className={styles.draftBadge}>{versionLabel}</span>
       </div>
 
       <label className={styles.fieldLabel}>
@@ -54,7 +58,7 @@ export function MapSourcePanel({
           value={description}
           maxLength={4000}
           rows={5}
-          disabled={busy}
+          disabled={busy || readOnly}
           onChange={(event) => onDescriptionChange(event.target.value)}
         />
       </label>
@@ -64,7 +68,7 @@ export function MapSourcePanel({
         <select
           className={styles.select}
           value={projectId}
-          disabled={busy}
+          disabled={busy || readOnly}
           onChange={(event) => onProjectChange(event.target.value)}
         >
           <option value="">No project</option>
@@ -77,7 +81,7 @@ export function MapSourcePanel({
         <select
           className={styles.select}
           value={documentId}
-          disabled={!projectId || busy}
+          disabled={!projectId || busy || readOnly}
           onChange={(event) => onDocumentChange(event.target.value)}
         >
           <option value="">No document</option>
@@ -85,12 +89,12 @@ export function MapSourcePanel({
         </select>
       </label>
 
-      <button type="button" className={styles.primaryButton} disabled={!description.trim() || busy} onClick={onCreatePlan}>
+      <button type="button" className={styles.primaryButton} disabled={!description.trim() || busy || readOnly} onClick={onCreatePlan}>
         {busy ? 'Working...' : 'Create map plan'}
       </button>
       <div className={styles.inlineActions}>
-        <button type="button" className={styles.secondaryButton} disabled={!canSave || busy} onClick={onSaveDraft}>Save draft</button>
-        <button type="button" className={styles.primaryButton} disabled={!canGenerate || busy} onClick={onGenerate}>Generate map</button>
+        <button type="button" className={styles.secondaryButton} disabled={!canSave || busy || readOnly} onClick={onSaveDraft}>Save draft</button>
+        <button type="button" className={styles.primaryButton} disabled={!canGenerate || busy || readOnly} onClick={onGenerate}>Generate map</button>
       </div>
       {error ? <p className={styles.inlineError} role="alert">{error}</p> : null}
     </section>

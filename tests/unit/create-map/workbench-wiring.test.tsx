@@ -23,32 +23,23 @@ jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
   useSavedMaps: () => ({ maps: [], isLoading: false, error: null, refetch: jest.fn() }),
 }));
 
-describe('Create Map V2 Plan Review workbench', () => {
-  it('renders description-first local Plan Review without legacy scene controls', () => {
+describe('Create Map V3 direct workbench', () => {
+  it('renders description-first direct map planning without composition controls', () => {
     const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
     expect(markup).toContain('data-testid="create-map-workbench"');
-    expect(markup).toContain('data-mode="plan-review"');
+    expect(markup).toContain('data-mode="direct"');
+    expect(markup).toContain('data-schema-version="3"');
     expect(markup).toContain('Description');
     expect(markup).toContain('No project');
     expect(markup).toContain('No document');
     expect(markup).toContain('Create map plan');
     expect(markup).toContain('Local plan');
-    expect(markup).toContain('Plan structure');
-    expect(markup).toContain('aria-label="Map plan structure"');
-    expect(markup).toContain('aria-label="Select structure"');
-    expect(markup).toContain('aria-label="Edit terrain regions"');
-    expect(markup).toContain('aria-label="Edit paths"');
-    expect(markup).toContain('aria-label="Move planned obstacles"');
-    expect(markup).toContain('aria-label="Undo"');
-    expect(markup).toContain('aria-label="Redo"');
-    expect(markup).toContain('aria-label="Zoom in"');
-    expect(markup).toContain('aria-label="Zoom out"');
-    expect(markup).toContain('aria-label="Map plan structure canvas"');
-    expect(markup).toContain('aria-label="Map editor mode"');
-    expect(markup).toContain('role="tab"');
-    expect(markup).toContain('PixelLab resources');
-    expect(markup).toContain('Ready to prepare');
+    expect(markup).toContain('PixelLab description');
+    expect(markup).toContain('Output profile');
+    expect(markup).toContain('References');
+    expect(markup).toContain('Complete map PNG');
+    expect(markup).toContain('Map preview');
 
     expect(markup).not.toContain('Inpaint');
     expect(markup).not.toContain('Rectangle obstacle');
@@ -57,26 +48,27 @@ describe('Create Map V2 Plan Review workbench', () => {
     expect(markup).not.toContain('Regenerate');
   });
 
-  it('installs a materialized Scene into the layered editor without legacy inspectors', () => {
-    const workbench = readFileSync(
+  it('routes V3 directly and preserves V2 in an explicit read-only workbench', () => {
+    const router = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.tsx'),
       'utf8'
     );
+    const direct = readFileSync(path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'), 'utf8');
+    const legacy = readFileSync(path.join(process.cwd(), 'src/features/create-map/LegacyCreateMapV2Workbench.tsx'), 'utf8');
 
-    expect(workbench).toContain('setSceneEditor(createEditorState(nextScene))');
-    expect(workbench).toContain("setMode('scene')");
-    expect(workbench).toContain('<MapCanvas');
-    expect(workbench).toContain('<MapLayerList');
-    expect(workbench).toContain('<ObstacleEntityInspector');
-    expect(workbench).toContain('<RegionGenerationPanel');
-    expect(workbench).toContain('<SavedMapsPanel');
-    expect(workbench).toContain('onRegionSelectionChange={changeRegionSelection}');
-    expect(workbench).toContain('savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)');
-    expect(workbench).toContain('generation.installRestore(preparedGeneration)');
-    expect(workbench).toContain('imageLoadMatches(');
-    expect(workbench).not.toContain('InpaintInspector');
-    expect(workbench).not.toContain('ObjectInspector');
-    expect(workbench).not.toContain('ObstacleInspector');
+    expect(router).toContain('<DirectMapWorkbench');
+    expect(router).toContain('<LegacyCreateMapV2Workbench');
+    expect(router).toContain('readOnly');
+    expect(direct).toContain('service.createPlanV3(');
+    expect(direct).toContain('service.loadSavedMapV3(');
+    expect(direct).toContain('generation.installRestore(prepared)');
+    expect(direct).toContain('<DirectMapCanvas');
+    expect(legacy).toContain('<MapCanvas');
+    expect(legacy).toContain('<MapLayerList');
+    expect(legacy).toContain('<ObstacleEntityInspector');
+    expect(legacy).toContain('data-read-only="true"');
+    expect(legacy).toContain('disabled={readOnly}');
+    expect(legacy).toContain('maps={savedMaps.maps.filter((map) => map.schemaVersion === 2)}');
   });
 
   it('requires a valid Project-backed clean draft before generation', () => {
@@ -108,7 +100,7 @@ describe('Create Map V2 Plan Review workbench', () => {
 
   it('invalidates persisted V2 identity when the selected Project changes', () => {
     const workbench = readFileSync(
-      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.tsx'),
+      path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
       'utf8'
     );
     const projectChangeStart = workbench.indexOf('const handleProjectChange');
