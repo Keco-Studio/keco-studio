@@ -1,5 +1,6 @@
 import type { MapPlan, MapPlanV2 } from '@/features/create-map/model/mapPlanSchema';
 import type { MapScene, MapSceneV2 } from '@/features/create-map/model/mapSceneSchema';
+import type { MapPlanV3, MapSceneV3 } from '@/features/create-map/model/directMapSchema';
 
 export function makeValidMapPlan(): MapPlan {
   return {
@@ -238,5 +239,35 @@ export function makeValidMapSceneV2(): MapSceneV2 {
         source: 'plan',
       },
     ],
+  };
+}
+
+export function makeValidMapPlanV3(overrides: Partial<MapPlanV3> = {}): MapPlanV3 {
+  return {
+    schemaVersion: 3,
+    name: 'Riverside Market V3',
+    summary: 'A direct full-map image for a compact riverside market.',
+    map: { width: 512, height: 512 },
+    description: 'An opaque top-down pixel art market map with a curved path and a riverside plaza.',
+    references: [],
+    styleReference: null,
+    generation: {
+      provider: 'pixellab',
+      operation: 'create_image_pro',
+      noBackground: false,
+      seed: null,
+    },
+    ...overrides,
+  };
+}
+
+export function makeEmptyMapSceneV3(overrides: Partial<MapPlanV3> = {}): MapSceneV3 {
+  const plan = makeValidMapPlanV3(overrides);
+
+  return {
+    schemaVersion: 3,
+    size: { ...plan.map },
+    mapImage: null,
+    canvas: { zoom: 1, panX: 24, panY: 24 },
   };
 }
