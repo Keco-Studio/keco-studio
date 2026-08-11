@@ -79,10 +79,11 @@ const UNSAFE_DESCRIPTION_PATTERNS = [
   /https:\/\//i,
   /http:\/\//i,
   /www\./i,
-  /data:image\//i,
+  /\bdata:/i,
   /\b(?:api\s+key|authorization|bearer|password|token)\b\s*[:=]/i,
-  /\b(?:create_image_pro|get_image|pixellab|mcp\s+api)\b/i,
-  /\b(?:current|live|active|selected|visible)\s+(?:keco\s+)?(?:button|label|ui|user\s+interface|screen|panel|menu|control)\b/i,
+  /\b(?:create_image_pro|get_image|pixellab|mcp|api)\b/i,
+  /\b(?:current|live|active|selected|visible)\s+(?:keco\s+)?(?:button|label|ui|user\s+interface|screen|panel|menu|control|dialog|header|title|status|text|copy)\b/i,
+  /\b(?:button|label|ui|user\s+interface|screen|panel|menu|control|dialog|header|title|status|text|copy)\b.{0,48}\b(?:current|live|active|selected|visible)\s+(?:keco\b)?/i,
 ];
 
 function hasSupportedProfile(width: number, height: number): boolean {
