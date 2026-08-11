@@ -159,7 +159,8 @@ function directMapAssetFromRecord(
 export function directMapPhaseFor(asset: DirectMapGenerationAsset | null): DirectMapGenerationPhase {
   if (!asset) return 'idle';
   if (asset.status === 'planned') return 'awaiting-confirmation';
-  if (asset.status === 'queued' || asset.status === 'generating') return 'generating';
+  if (asset.status === 'queued') return 'blocked';
+  if (asset.status === 'generating') return 'generating';
   if (asset.status === 'ready') return 'ready';
   if (asset.status === 'blocked') return 'blocked';
   return 'failed';

@@ -88,7 +88,7 @@ function record(overrides: Partial<MapAssetRecord> = {}): MapAssetRecord {
 describe('direct map generation lifecycle', () => {
   it.each([
     ['planned', 'awaiting-confirmation'],
-    ['queued', 'generating'],
+    ['queued', 'blocked'],
     ['generating', 'generating'],
     ['ready', 'ready'],
     ['failed', 'failed'],
