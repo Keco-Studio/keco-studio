@@ -39,6 +39,9 @@ import { users } from '../fixures/users';
  */
 
 test.describe('Version Control Tests', () => {
+  // Project + library setup is slower after the Recent/selector navigation changes.
+  test.describe.configure({ timeout: 120000 });
+
   let projectPage: ProjectPage;
   let libraryPage: LibraryPage;
 

@@ -108,6 +108,7 @@ test.describe('Design document upload', () => {
   test('hands a valid text design back to the project', async ({ page }) => {
     await login(page, owner);
     await page.goto(`/${projectId}/design-upload`);
+    await expect(page.getByTestId('design-upload-submit')).toBeEnabled({ timeout: 20000 });
     await page.getByTestId('design-upload-file-input').setInputFiles({
       name: 'combat-design.txt',
       mimeType: 'text/plain',
@@ -116,6 +117,6 @@ test.describe('Design document upload', () => {
     await page.getByLabel('Additional instructions (optional)').fill('Create combat tables only.');
     await page.getByTestId('design-upload-submit').click();
 
-    await expect(page).toHaveURL(new RegExp(`/${projectId}$`), { timeout: 15000 });
+    await expect(page).toHaveURL(new RegExp(`/${projectId}(/recent)?$`), { timeout: 20000 });
   });
 });

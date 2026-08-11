@@ -90,7 +90,7 @@ export default function DesignUploadPage() {
       window.dispatchEvent(
         new CustomEvent(DESIGN_UPLOAD_EVENT, { detail: { projectId } })
       );
-      router.push(`/${projectId}`);
+      router.push(`/${projectId}/recent`);
     } catch (e) {
       showErrorToast((e as Error).message || 'Failed to parse the document.');
     } finally {

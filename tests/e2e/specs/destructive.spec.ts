@@ -98,10 +98,10 @@ test.describe('Destructive Tests - Delete Operations', () => {
       await libraryPage.page.waitForLoadState('load', { timeout: 10000 });
       await libraryPage.page.waitForTimeout(1000);
       
-      // Wait for the Projects section in sidebar to be visible
-      // This ensures the sidebar has fully rendered and projects list is loaded
-      const projectsHeading = libraryPage.page.locator('aside').getByText('Projects');
-      await expect(projectsHeading).toBeVisible({ timeout: 10000 });
+      // Wait for the compact project selector (replaces the old "Projects" heading).
+      await expect(libraryPage.page.getByTestId('project-selector-trigger')).toBeVisible({
+        timeout: 10000,
+      });
       
       // Additional wait to ensure projects list is populated
       await libraryPage.page.waitForTimeout(1000);
