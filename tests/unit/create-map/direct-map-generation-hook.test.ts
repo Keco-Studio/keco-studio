@@ -80,8 +80,9 @@ class HookRuntime {
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((nextResolve) => { resolve = nextResolve; });
-  return { promise, resolve };
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => { resolve = nextResolve; reject = nextReject; });
+  return { promise, reject, resolve };
 }
 
 let runtime: HookRuntime;
@@ -171,7 +172,7 @@ describe('useDirectMapGeneration preparation guards', () => {
     expect(mockService.createAssetPlanV3).toHaveBeenCalledTimes(1);
   });
 
-  it('does not create or install an asset after the Plan changes during publish', async () => {
+  it('creates the immutable asset but does not install it after the Plan changes during publish', async () => {
     const pending = deferred<{ mapId: string; publishedRevisionId: string }>();
     const publish = jest.fn(() => pending.promise);
     const state = setup(publish);
@@ -186,7 +187,46 @@ describe('useDirectMapGeneration preparation guards', () => {
     await preparation;
     state.render(makeValidMapPlanV3({ description: 'A different approved opaque full-map description.' }));
 
-    expect(mockService.createAssetPlanV3).not.toHaveBeenCalled();
+    expect(mockService.createAssetPlanV3).toHaveBeenCalledTimes(1);
     expect(state.latest.target).toBeNull();
+  });
+
+  it('does not report an old publish failure after the Plan changes', async () => {
+    const pending = deferred<{ mapId: string; publishedRevisionId: string }>();
+    const state = setup(jest.fn(() => pending.promise));
+    state.render();
+    const preparation = state.latest.prepare();
+
+    const changedPlan = makeValidMapPlanV3({ description: 'A replacement opaque full-map description.' });
+    state.render(changedPlan);
+    pending.reject(new Error('old publish failed'));
+    await preparation;
+    state.render(changedPlan);
+
+    expect(state.latest.error).toBeNull();
+    expect(state.latest.target).toBeNull();
+  });
+
+  it('does not report an old submit failure after the Plan changes', async () => {
+    const publish = jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+    }));
+    const state = setup(publish);
+    const originalPlan = makeValidMapPlanV3();
+    state.render(originalPlan);
+    await state.latest.prepare();
+    state.render(originalPlan);
+
+    const pending = deferred<unknown>();
+    mockService.invokePixelLab.mockImplementation(() => pending.promise);
+    const confirmation = state.latest.confirm();
+    const changedPlan = makeValidMapPlanV3({ description: 'A newer opaque full-map description.' });
+    state.render(changedPlan);
+    pending.reject(new Error('old submit failed'));
+    await confirmation;
+    state.render(changedPlan);
+
+    expect(state.latest.error).toBeNull();
   });
 });

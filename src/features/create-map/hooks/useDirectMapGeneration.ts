@@ -75,6 +75,18 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
+type DirectMapInputSnapshot = {
+  projectId: string;
+  planKey: string;
+  sceneKey: string;
+};
+
+function sameInputSnapshot(left: DirectMapInputSnapshot, right: DirectMapInputSnapshot): boolean {
+  return left.projectId === right.projectId
+    && left.planKey === right.planKey
+    && left.sceneKey === right.sceneKey;
+}
+
 export async function directMapPlanFingerprint(plan: MapPlanV3): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(plan)));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -344,19 +356,13 @@ export function useDirectMapGeneration({
   const lifecycleEpoch = useRef(0);
   const submissionActive = useRef(false);
   const preparationActive = useRef(false);
-  const currentInput = useRef({ projectId, planKey: canonical(plan), sceneKey: canonical(scene) });
-  currentInput.current = { projectId, planKey: canonical(plan), sceneKey: canonical(scene) };
+  const currentInput = useRef({ projectId, planKey: canonical(plan), sceneKey: canonical(scene), scene });
+  currentInput.current = { projectId, planKey: canonical(plan), sceneKey: canonical(scene), scene };
   targetRef.current = target;
 
   const refresh = useCallback(async (expected: DirectMapGenerationTarget) => {
-    const expectedInput = {
-      projectId: expected.projectId,
-      planKey: canonical(generationPlan),
-      sceneKey: canonical(scene),
-    };
     const records = await service.listAssets(expected.revisionId);
-    if (!directMapTargetMatches(targetRef.current, expected)
-      || canonical(currentInput.current) !== canonical(expectedInput)) return;
+    if (!directMapTargetMatches(targetRef.current, expected)) return;
     const matches = records.filter((record) => record.kind === 'map_image' && record.asset_key === 'map-image');
     if (matches.length !== 1) throw new Error('Expected exactly one direct map image.');
     let next = directMapAssetFromRecord(matches[0], generationPlan, expected);
@@ -367,15 +373,16 @@ export function useDirectMapGeneration({
         // The durable ready asset remains usable after a temporary signing failure.
       }
     }
-    if (!directMapTargetMatches(targetRef.current, expected)
-      || canonical(currentInput.current) !== canonical(expectedInput)) return;
+    if (!directMapTargetMatches(targetRef.current, expected)) return;
     setAsset(next);
     setPhase(directMapPhaseFor(next));
     if (next.status === 'ready') {
-      const materialized = materializeDirectMapScene(generationPlan, scene, expected, next);
-      if (materialized && canonical(materialized) !== canonical(scene)) onSceneMaterialized(materialized);
+      const latest = currentInput.current;
+      if (latest.projectId !== expected.projectId || latest.planKey !== canonical(generationPlan)) return;
+      const materialized = materializeDirectMapScene(generationPlan, latest.scene, expected, next);
+      if (materialized && canonical(materialized) !== latest.sceneKey) onSceneMaterialized(materialized);
     }
-  }, [generationPlan, onSceneMaterialized, scene, service]);
+  }, [generationPlan, onSceneMaterialized, service]);
 
   const startPreparation = useCallback(async () => {
     if (preparationActive.current) return;
@@ -389,18 +396,14 @@ export function useDirectMapGeneration({
       return;
     }
     preparationActive.current = true;
-    const expectedInput = { ...currentInput.current };
+    const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
     const epoch = ++lifecycleEpoch.current;
     setPhase('preparing');
     setError(null);
     try {
       const published = await publishForGeneration();
-      if (lifecycleEpoch.current !== epoch
-        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       const generationId = crypto.randomUUID();
       const planFingerprint = await directMapPlanFingerprint(validation.data);
-      if (lifecycleEpoch.current !== epoch
-        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       const nextTarget: DirectMapGenerationTarget = {
         projectId,
         mapId: published.mapId,
@@ -409,12 +412,13 @@ export function useDirectMapGeneration({
         planFingerprint,
       };
       const created = await service.createAssetPlanV3(nextTarget.revisionId, generationId, planFingerprint);
-      if (lifecycleEpoch.current !== epoch
-        || canonical(currentInput.current) !== canonical(expectedInput)) return;
       const record = await service.readAssetPlan(created.asset_id);
       const nextAsset = directMapAssetFromRecord(record, validation.data, nextTarget);
       if (lifecycleEpoch.current !== epoch
-        || canonical(currentInput.current) !== canonical(expectedInput)) return;
+        || !sameInputSnapshot(currentInput.current, expectedInput)) {
+        if (lifecycleEpoch.current === epoch && !targetRef.current) setPhase('idle');
+        return;
+      }
       targetRef.current = nextTarget;
       setTarget(nextTarget);
       setGenerationPlan(validation.data);
@@ -422,8 +426,12 @@ export function useDirectMapGeneration({
       setPhase(directMapPhaseFor(nextAsset));
     } catch (cause) {
       if (lifecycleEpoch.current !== epoch) return;
-      setPhase('failed');
-      setError(cause instanceof Error ? cause.message : 'Could not prepare direct map generation.');
+      if (sameInputSnapshot(currentInput.current, expectedInput)) {
+        setPhase('failed');
+        setError(cause instanceof Error ? cause.message : 'Could not prepare direct map generation.');
+      } else if (!targetRef.current) {
+        setPhase('idle');
+      }
     } finally {
       preparationActive.current = false;
     }
@@ -432,6 +440,7 @@ export function useDirectMapGeneration({
   const confirm = useCallback(async () => {
     const expected = targetRef.current;
     if (!expected || !asset || asset.status !== 'planned' || submissionActive.current) return;
+    const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
     submissionActive.current = true;
     setPhase('submitting');
     setError(null);
@@ -446,9 +455,13 @@ export function useDirectMapGeneration({
       });
       await refresh(expected);
     } catch (cause) {
-      if (directMapTargetMatches(targetRef.current, expected)) {
+      if (directMapTargetMatches(targetRef.current, expected)
+        && sameInputSnapshot(currentInput.current, expectedInput)) {
         setError(cause instanceof Error ? cause.message : 'Could not submit direct map generation.');
-        try { await refresh(expected); } catch { setPhase('failed'); }
+      }
+      try { await refresh(expected); } catch {
+        if (directMapTargetMatches(targetRef.current, expected)
+          && sameInputSnapshot(currentInput.current, expectedInput)) setPhase('failed');
       }
     } finally {
       submissionActive.current = false;
@@ -458,6 +471,7 @@ export function useDirectMapGeneration({
   const retry = useCallback(async () => {
     const expected = targetRef.current;
     if (!expected || !canRetryDirectMap(asset) || submissionActive.current || !asset) return;
+    const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
     submissionActive.current = true;
     setPhase('submitting');
     setError(null);
@@ -472,9 +486,13 @@ export function useDirectMapGeneration({
       });
       await refresh(expected);
     } catch (cause) {
-      if (directMapTargetMatches(targetRef.current, expected)) {
+      if (directMapTargetMatches(targetRef.current, expected)
+        && sameInputSnapshot(currentInput.current, expectedInput)) {
         setError(cause instanceof Error ? cause.message : 'Could not retry direct map generation.');
-        try { await refresh(expected); } catch { setPhase(directMapPhaseFor(asset)); }
+      }
+      try { await refresh(expected); } catch {
+        if (directMapTargetMatches(targetRef.current, expected)
+          && sameInputSnapshot(currentInput.current, expectedInput)) setPhase(directMapPhaseFor(asset));
       }
     } finally {
       submissionActive.current = false;
