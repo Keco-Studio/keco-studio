@@ -150,7 +150,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       return NextResponse.json({ error: 'Could not create a valid map plan', code: error.code }, { status: 502 });
     }
     if (error instanceof CreateMapPlannerInputError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+      return NextResponse.json({ error: 'Map description is required', code: error.code }, { status: 400 });
     }
     if (error instanceof CreateMapDocumentSourceError && error.code === 'document_empty') {
       return NextResponse.json({ error: 'Document is empty', code: error.code }, { status: 400 });
