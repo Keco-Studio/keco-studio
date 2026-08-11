@@ -29,9 +29,12 @@ describe('Create Map V3 acceptance tooling', () => {
     expect(paidScript).toMatch(/authorization:\s*`Bearer \$\{accessToken\}`/i);
   });
 
-  it('resumes a blocked or failed authoritative asset through retry', () => {
-    expect(paidScript).toContain("['planned', 'blocked', 'failed'].includes(asset.status)");
+  it('retries only failed assets and explicitly rejected blocked submissions', () => {
+    expect(paidScript).toContain("['pixellab_rate_limited', 'pixellab_quota_exceeded'].includes(asset.last_error_code ?? '')");
+    expect(paidScript).toContain("asset.status === 'failed' && Boolean(asset.provider_job_id)");
+    expect(paidScript).toContain("asset.status === 'planned' || retryableFailed || retryableBlocked");
     expect(paidScript).toContain("asset.status === 'planned' ? 'submit' : 'retry'");
+    expect(paidScript).toContain('generation_not_safe_to_retry');
   });
 
   it('rejects failed and HTTP-error browser resources', () => {

@@ -63,6 +63,7 @@ jest.mock('react', () => ({
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
 
 import {
+  DIRECT_MAP_POLL_DEADLINE_MS,
   useDirectMapGenerationMonitoring,
   type DirectMapGenerationAsset,
   type DirectMapGenerationTarget,
@@ -158,6 +159,33 @@ describe('direct map generation monitoring', () => {
 
     await jest.advanceTimersByTimeAsync(2500);
     expect(state.service.invokePixelLab).toHaveBeenCalledTimes(2);
+  });
+
+  it('backs off repeated provider polling instead of using a fixed interval', async () => {
+    const state = setup();
+    state.service.invokePixelLab.mockResolvedValue({ status: 'processing' });
+    state.render();
+    await flushAsync();
+
+    await jest.advanceTimersByTimeAsync(2500);
+    expect(state.service.invokePixelLab).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(4999);
+    expect(state.service.invokePixelLab).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(state.service.invokePixelLab).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops polling at the local deadline while leaving the durable job resumable', async () => {
+    const state = setup();
+    state.service.invokePixelLab.mockResolvedValue({ status: 'processing' });
+    state.render();
+    await flushAsync();
+
+    await jest.advanceTimersByTimeAsync(DIRECT_MAP_POLL_DEADLINE_MS + 15_000);
+
+    expect(state.setPhase).toHaveBeenCalledWith('blocked');
+    expect(state.setError).toHaveBeenCalledWith('Direct map monitoring timed out. Reopen the map to resume.');
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('resumes polling after remount', async () => {

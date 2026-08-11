@@ -9,6 +9,7 @@ export type PngExpectation = {
   height?: number;
   tileSize?: number;
   alpha?: "required" | "forbidden" | "optional";
+  minColorVariationRatio?: number;
 };
 
 export type ValidatedPng = {
@@ -32,6 +33,7 @@ export function pngExpectationForAsset(
       width: typeof params.width === "number" ? params.width : undefined,
       height: typeof params.height === "number" ? params.height : undefined,
       alpha: "forbidden",
+      minColorVariationRatio: 0.001,
     };
   }
   const tileSize = typeof params.tile_size === "number"
@@ -83,7 +85,7 @@ export async function validatePng(bytes: Uint8Array, expectation: PngExpectation
   let minY = image.height;
   let maxX = -1;
   let maxY = -1;
-  const visibleColors = new Set<string>();
+  const visibleColors = new Map<string, number>();
   for (let offset = 0; offset < image.data.length; offset += channels) {
     const alpha = alphaIndex >= 0 ? Number(image.data[offset + alphaIndex]) : max;
     const pixelIndex = offset / channels;
@@ -99,11 +101,19 @@ export async function validatePng(bytes: Uint8Array, expectation: PngExpectation
       maxX = Math.max(maxX, x);
       maxY = Math.max(maxY, y);
       const sample = Array.from(image.data.slice(offset, offset + channels)).join(",");
-      visibleColors.add(sample);
+      visibleColors.set(sample, (visibleColors.get(sample) ?? 0) + 1);
     }
   }
   if (!hasVisiblePixel) invalid("PNG has no visible pixels");
   if (visibleColors.size < 2) invalid("PNG contains only a blank flat color");
+  if (expectation.minColorVariationRatio != null) {
+    let dominantPixelCount = 0;
+    for (const count of visibleColors.values()) dominantPixelCount = Math.max(dominantPixelCount, count);
+    const variationRatio = (visiblePixelCount - dominantPixelCount) / visiblePixelCount;
+    if (variationRatio < expectation.minColorVariationRatio) {
+      invalid("PNG does not contain enough color variation");
+    }
+  }
   if (expectation.alpha === "required" && !hasTransparentPixel) invalid("PNG requires transparent background pixels");
   if (expectation.alpha === "forbidden" && hasTransparentPixel) invalid("PNG must be fully opaque");
 

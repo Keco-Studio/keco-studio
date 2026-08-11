@@ -98,6 +98,14 @@ describe('Create Map V3 direct workbench', () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*680px\)[\s\S]*?\.headerCreateMap \.searchContainer\s*\{[\s\S]*?display:\s*none/);
   });
 
+  it('installs V3 browser failure observers before the first navigation', () => {
+    const source = readFileSync(path.join(process.cwd(), 'tests/e2e/specs/create-map-v3.spec.ts'), 'utf8');
+    const helper = source.slice(source.indexOf('async function loginAndOpen'), source.indexOf('async function createSavedMap'));
+
+    expect(helper.indexOf('observeBrowserFailures(page)')).toBeLessThan(helper.indexOf('page.goto(APP_ORIGIN)'));
+    expect(source).toContain("errorText === 'net::ERR_ABORTED'");
+  });
+
   it('invalidates persisted V2 identity when the selected Project changes', () => {
     const workbench = readFileSync(
       path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),

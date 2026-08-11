@@ -82,6 +82,7 @@ Deno.test("requires an exact fully opaque direct map image", async () => {
     width: 512,
     height: 512,
     alpha: "forbidden",
+    minColorVariationRatio: 0.001,
   });
   const opaque = rgbaPng(512, 512, false);
   const validated = await validatePng(opaque, pngExpectationForAsset("map_image", { width: 512, height: 512 }));
@@ -90,5 +91,19 @@ Deno.test("requires an exact fully opaque direct map image", async () => {
     () => validatePng(rgbaPng(512, 512), pngExpectationForAsset("map_image", { width: 512, height: 512 })),
     PixelLabMapError,
     "fully opaque",
+  );
+});
+
+Deno.test("rejects an almost-flat direct map with only one anomalous pixel", async () => {
+  const data = new Uint8Array(512 * 512 * 4);
+  for (let index = 0; index < 512 * 512; index += 1) {
+    data.set(index === 0 ? [31, 31, 31, 255] : [32, 32, 32, 255], index * 4);
+  }
+  const bytes = encode({ width: 512, height: 512, data, channels: 4, depth: 8 });
+
+  await assertRejects(
+    () => validatePng(bytes, pngExpectationForAsset("map_image", { width: 512, height: 512 })),
+    PixelLabMapError,
+    "enough color variation",
   );
 });

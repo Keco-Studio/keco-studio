@@ -585,8 +585,10 @@ function observeBrowserFailures(page: Page): BrowserFailures {
   page.on('pageerror', (error) => failures.pageErrors.push(error.message));
   page.on('requestfailed', (request) => {
     const resourceType = request.resourceType();
+    const errorText = request.failure()?.errorText ?? 'unknown';
+    if (errorText === 'net::ERR_ABORTED') return;
     if (resourceType === 'document' || resourceType === 'script' || resourceType === 'fetch') {
-      failures.requestFailures.push(`${resourceType}:${request.failure()?.errorText ?? 'unknown'}:${request.url()}`);
+      failures.requestFailures.push(`${resourceType}:${errorText}:${request.url()}`);
     }
   });
   page.on('response', (response) => {
@@ -602,6 +604,7 @@ function observeBrowserFailures(page: Page): BrowserFailures {
 }
 
 async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promise<BrowserFailures> {
+  const failures = observeBrowserFailures(page);
   await backend.install(page);
   await page.goto(APP_ORIGIN);
   await page.getByLabel('Email').fill('map-v3-e2e@example.com');
@@ -610,7 +613,7 @@ async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promis
   await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 15_000 });
   await page.goto(`${APP_ORIGIN}/create-map`);
   await expect(page.getByTestId('create-map-workbench')).toHaveAttribute('data-schema-version', '3');
-  return observeBrowserFailures(page);
+  return failures;
 }
 
 async function createSavedMap(page: Page): Promise<void> {

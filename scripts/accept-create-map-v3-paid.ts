@@ -343,7 +343,13 @@ async function main(): Promise<void> {
   };
 
   let paidRequestSubmitted = false;
-  if (['planned', 'blocked', 'failed'].includes(asset.status)) {
+  const retryableBlocked = asset.status === 'blocked'
+    && ['pixellab_rate_limited', 'pixellab_quota_exceeded'].includes(asset.last_error_code ?? '');
+  const retryableFailed = asset.status === 'failed' && Boolean(asset.provider_job_id);
+  if ((asset.status === 'blocked' || asset.status === 'failed') && !retryableBlocked && !retryableFailed) {
+    throw new AcceptanceError('generation_not_safe_to_retry');
+  }
+  if (asset.status === 'planned' || retryableFailed || retryableBlocked) {
     if (process.env.KECO_ACCEPTANCE_CONFIRM_PAID !== 'YES') {
       throw new AcceptanceError('explicit_paid_confirmation_required');
     }

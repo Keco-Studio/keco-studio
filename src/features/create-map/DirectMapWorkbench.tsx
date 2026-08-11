@@ -193,8 +193,8 @@ export function DirectMapWorkbench({ onOpenLegacyMap }: DirectMapWorkbenchProps)
       setProjectId(loaded.projectId);
       setDocumentId(loaded.sourceDocumentId ?? '');
       setSourceToken(null);
-      setPlan(loaded.plan);
-      setScene(loaded.scene);
+      setPlan(prepared.plan);
+      setScene(prepared.scene);
       draft.install(loaded);
       generation.installRestore(prepared);
       closeDrawers();
@@ -226,17 +226,16 @@ export function DirectMapWorkbench({ onOpenLegacyMap }: DirectMapWorkbenchProps)
 
   const image = useMemo((): DirectMapCanvasImage | null => {
     const binding = scene.mapImage;
-    const asset = generation.asset;
-    const target = generation.target;
-    if (!binding || !target || !asset?.signedUrl || !asset.sha256 || asset.status !== 'ready') return null;
+    const boundImage = generation.boundImage;
+    if (!binding || !boundImage?.signedUrl || binding.sourceRevisionId !== boundImage.sourceRevisionId) return null;
     return {
-      sourceRevisionId: target.revisionId,
-      sha256: asset.sha256,
-      signedUrl: asset.signedUrl,
-      width: asset.width ?? 0,
-      height: asset.height ?? 0,
+      sourceRevisionId: boundImage.sourceRevisionId,
+      sha256: boundImage.sha256,
+      signedUrl: boundImage.signedUrl,
+      width: boundImage.width,
+      height: boundImage.height,
     };
-  }, [generation.asset, generation.target, scene.mapImage]);
+  }, [generation.boundImage, scene.mapImage]);
 
   const actionError = error ?? draft.error ?? generation.error;
   const saveStatus = draft.status === 'saving' || draft.status === 'creating'

@@ -98,10 +98,12 @@ describe('direct map generation lifecycle', () => {
   });
 
   it('allows retry only for failed assets and bounded retryable blocked codes', () => {
-    expect(canRetryDirectMap(asset('failed'))).toBe(true);
+    expect(canRetryDirectMap(asset('failed'))).toBe(false);
+    expect(canRetryDirectMap(asset('failed', { providerJobId: 'job-failed' }))).toBe(true);
     expect(canRetryDirectMap(asset('blocked', { lastErrorCode: 'pixellab_rate_limited' }))).toBe(true);
     expect(canRetryDirectMap(asset('blocked', { lastErrorCode: 'pixellab_quota_exceeded' }))).toBe(true);
-    expect(canRetryDirectMap(asset('blocked', { lastErrorCode: 'pixellab_upstream' }))).toBe(true);
+    expect(canRetryDirectMap(asset('blocked', { lastErrorCode: 'pixellab_upstream' }))).toBe(false);
+    expect(canRetryDirectMap(asset('blocked', { lastErrorCode: 'pixellab_submit_outcome_unknown' }))).toBe(false);
     expect(canRetryDirectMap(asset('blocked', { lastErrorCode: 'pixellab_capability_missing' }))).toBe(false);
     expect(canRetryDirectMap(asset('ready'))).toBe(false);
   });
@@ -153,9 +155,12 @@ describe('direct map generation lifecycle', () => {
       scene,
       projectId: TARGET.projectId,
       sourceDocumentId: null,
+      generationPlan: plan,
       assetRevisionId: expectedTarget.revisionId,
       imageAsset: record({ plan_fingerprint: planFingerprint }),
       imageUrl: null,
+      boundImageAsset: record({ plan_fingerprint: planFingerprint }),
+      boundImageUrl: null,
     } satisfies SavedMapWorkspaceV3;
     const sign = jest.fn(async () => { throw new Error('temporary signing failure'); });
 
@@ -163,6 +168,7 @@ describe('direct map generation lifecycle', () => {
       target: expectedTarget,
       phase: 'ready',
       asset: { status: 'ready', signedUrl: null },
+      boundImage: { sourceRevisionId: expectedTarget.revisionId, signedUrl: null },
     });
     expect(sign).toHaveBeenCalledWith('private/map.png');
   });
@@ -175,9 +181,12 @@ describe('direct map generation lifecycle', () => {
       scene: makeEmptyMapSceneV3(),
       projectId: TARGET.projectId,
       sourceDocumentId: null,
+      generationPlan: plan,
       assetRevisionId: TARGET.revisionId,
       imageAsset: record({ generation_id: '10000000-0000-4000-8000-000000000099' }),
       imageUrl: null,
+      boundImageAsset: null,
+      boundImageUrl: null,
     } satisfies SavedMapWorkspaceV3;
 
     await expect(prepareDirectMapRestore(workspace, jest.fn())).rejects.toThrow('generation identity');
@@ -193,12 +202,96 @@ describe('direct map generation lifecycle', () => {
       scene: makeEmptyMapSceneV3(),
       projectId: TARGET.projectId,
       sourceDocumentId: null,
+      generationPlan: plan,
       assetRevisionId: TARGET.revisionId,
       imageAsset: record({ plan_fingerprint: planFingerprint, provider_operation: 'create_map_object' }),
       imageUrl: null,
+      boundImageAsset: null,
+      boundImageUrl: null,
     } satisfies SavedMapWorkspaceV3;
 
     await expect(prepareDirectMapRestore(workspace, sign)).rejects.toThrow('provider identity');
     expect(sign).not.toHaveBeenCalled();
+  });
+
+  it('restores a failed regeneration while preserving the previously bound image', async () => {
+    const plan = makeValidMapPlanV3();
+    const planFingerprint = await directMapPlanFingerprint(plan);
+    const oldRevisionId = '10000000-0000-4000-8000-000000000020';
+    const scene = {
+      ...makeEmptyMapSceneV3(),
+      mapImage: {
+        assetKey: 'map-image' as const,
+        sourceRevisionId: oldRevisionId,
+        width: 512,
+        height: 512,
+        locked: true as const,
+      },
+    };
+    const oldImage = record({
+      id: '10000000-0000-4000-8000-000000000021',
+      map_revision_id: oldRevisionId,
+      storage_path: 'private/old-map.png',
+      sha256: 'd'.repeat(64),
+    });
+    const failed = record({
+      status: 'failed',
+      plan_fingerprint: planFingerprint,
+      storage_path: null,
+      sha256: null,
+      width: null,
+      height: null,
+      has_transparency: null,
+    });
+    const workspace = {
+      identity: { mapId: TARGET.mapId, revisionId: IDS.revisionId, revisionNumber: 3, saveVersion: 0 },
+      plan,
+      scene,
+      projectId: TARGET.projectId,
+      sourceDocumentId: null,
+      generationPlan: plan,
+      assetRevisionId: TARGET.revisionId,
+      imageAsset: failed,
+      imageUrl: null,
+      boundImageAsset: oldImage,
+      boundImageUrl: 'https://signed.example/old-map.png',
+    } satisfies SavedMapWorkspaceV3;
+
+    await expect(prepareDirectMapRestore(workspace, jest.fn())).resolves.toMatchObject({
+      phase: 'failed',
+      asset: { id: failed.id, status: 'failed' },
+      boundImage: {
+        sourceRevisionId: oldRevisionId,
+        sha256: 'd'.repeat(64),
+        signedUrl: 'https://signed.example/old-map.png',
+      },
+    });
+  });
+
+  it('validates an active generation against its immutable parent Plan after the draft changes', async () => {
+    const generationPlan = makeValidMapPlanV3();
+    const currentPlan = { ...generationPlan, name: 'Edited while generating' };
+    const planFingerprint = await directMapPlanFingerprint(generationPlan);
+    const generating = record({ status: 'generating', plan_fingerprint: planFingerprint });
+    const workspace = {
+      identity: { mapId: TARGET.mapId, revisionId: IDS.revisionId, revisionNumber: 3, saveVersion: 1 },
+      plan: currentPlan,
+      scene: makeEmptyMapSceneV3(currentPlan),
+      projectId: TARGET.projectId,
+      sourceDocumentId: null,
+      generationPlan,
+      assetRevisionId: TARGET.revisionId,
+      imageAsset: generating,
+      imageUrl: null,
+      boundImageAsset: null,
+      boundImageUrl: null,
+    } satisfies SavedMapWorkspaceV3;
+
+    await expect(prepareDirectMapRestore(workspace, jest.fn())).resolves.toMatchObject({
+      plan: currentPlan,
+      generationPlan,
+      phase: 'generating',
+      asset: { status: 'generating', planFingerprint },
+    });
   });
 });

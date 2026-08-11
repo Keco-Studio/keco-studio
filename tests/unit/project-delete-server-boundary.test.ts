@@ -16,6 +16,7 @@ type QueryBuilder = {
   single: () => SingleResult;
   maybeSingle: () => MaybeSingleResult;
   delete: () => QueryBuilder;
+  range: (from: number, to: number) => Promise<QueryResult>;
 };
 
 function createAuthClient(role: 'admin' | 'viewer'): SupabaseClient {
@@ -24,6 +25,7 @@ function createAuthClient(role: 'admin' | 'viewer'): SupabaseClient {
       select: () => builder,
       eq: () => builder,
       delete: () => builder,
+      range: async () => ({ data: [], error: null }),
       single: async () => {
         if (table === 'projects') {
           return { data: { owner_id: 'owner-user' }, error: null };
@@ -45,9 +47,17 @@ function createAuthClient(role: 'admin' | 'viewer'): SupabaseClient {
   } as unknown as SupabaseClient;
 }
 
-function createServiceClient(calls: string[]): SupabaseClient {
+function createServiceClient(
+  calls: string[],
+  references: Array<{ storage_path: string }> = [],
+  removeError: QueryError | null = null,
+): SupabaseClient {
+  let activeTable = '';
   const builder: QueryBuilder = {
-    select: () => builder,
+    select: () => {
+      calls.push('select');
+      return builder;
+    },
     eq: (column, value) => {
       calls.push(`${column}:${value}`);
       return builder;
@@ -56,14 +66,30 @@ function createServiceClient(calls: string[]): SupabaseClient {
       calls.push('delete');
       return builder;
     },
+    range: async (from, to) => {
+      calls.push(`range:${from}:${to}`);
+      return { data: activeTable === 'map_reference_images' ? references.slice(from, to + 1) : [], error: null };
+    },
     single: async () => ({ data: null, error: null }),
     maybeSingle: async () => ({ data: null, error: null }),
   };
 
   return {
     from: (table: string) => {
+      activeTable = table;
       calls.push(`from:${table}`);
       return builder;
+    },
+    storage: {
+      from: (bucket: string) => {
+        calls.push(`storage:${bucket}`);
+        return {
+          remove: async (paths: string[]) => {
+            calls.push(`remove:${paths.join(',')}`);
+            return { data: null, error: removeError };
+          },
+        };
+      },
     },
   } as unknown as SupabaseClient;
 }
@@ -79,7 +105,10 @@ describe('deleteProjectWithServerBoundary', () => {
       userId: 'admin-user',
     });
 
-    expect(calls).toEqual(['from:projects', 'delete', 'id:project-1']);
+    expect(calls).toEqual([
+      'from:map_reference_images', 'select', 'project_id:project-1', 'range:0:999',
+      'from:projects', 'delete', 'id:project-1',
+    ]);
   });
 
   it('rejects non-admin collaborators before service-role deletion', async () => {
@@ -95,5 +124,41 @@ describe('deleteProjectWithServerBoundary', () => {
     ).rejects.toThrow('Only admin users can delete projects');
 
     expect(calls).toEqual([]);
+  });
+
+  it('removes private reference objects before deleting the project row', async () => {
+    const calls: string[] = [];
+    const references = [
+      { storage_path: 'references/project-1/ref-1/a.png' },
+      { storage_path: 'references/project-1/ref-2/b.png' },
+    ];
+
+    await deleteProjectWithServerBoundary({
+      authClient: createAuthClient('admin'),
+      serviceClient: createServiceClient(calls, references),
+      projectId: 'project-1',
+      userId: 'admin-user',
+    });
+
+    const removal = 'remove:references/project-1/ref-1/a.png,references/project-1/ref-2/b.png';
+    expect(calls).toContain(removal);
+    expect(calls.indexOf(removal)).toBeLessThan(calls.indexOf('delete'));
+  });
+
+  it('does not delete the project when reference storage cleanup fails', async () => {
+    const calls: string[] = [];
+    const serviceClient = createServiceClient(
+      calls,
+      [{ storage_path: 'references/project-1/ref-1/a.png' }],
+      { message: 'storage unavailable' },
+    );
+
+    await expect(deleteProjectWithServerBoundary({
+      authClient: createAuthClient('admin'),
+      serviceClient,
+      projectId: 'project-1',
+      userId: 'admin-user',
+    })).rejects.toThrow('storage unavailable');
+    expect(calls).not.toContain('delete');
   });
 });

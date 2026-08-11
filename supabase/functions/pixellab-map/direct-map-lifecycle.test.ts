@@ -68,7 +68,20 @@ function authorized(status: string, metadata: Record<string, unknown> = {}) {
   };
 }
 
-function harness(options: { status?: string; providerStatus?: string; bytes?: Uint8Array; metadata?: Record<string, unknown> } = {}) {
+function harness(options: {
+  status?: string;
+  providerStatus?: string;
+  bytes?: Uint8Array;
+  metadata?: Record<string, unknown>;
+  submitError?: Error;
+  submitResult?: Record<string, unknown>;
+  lastErrorCode?: string | null;
+} = {}) {
+  const authorizedAsset = authorized(options.status ?? "generating", options.metadata ?? {
+    schemaFingerprint: CAPABILITY.schemaFingerprint,
+    pollOperation: CAPABILITY.pollOperation,
+    pollSchemaFingerprint: CAPABILITY.pollSchemaFingerprint,
+  });
   const transitions: Array<{ from: string; to: string; details: Record<string, unknown> }> = [];
   const submissions: Record<string, unknown>[] = [];
   const polls: string[] = [];
@@ -78,7 +91,8 @@ function harness(options: { status?: string; providerStatus?: string; bytes?: Ui
     discover: async () => CAPABILITY,
     submitAsset: async (_capability: DiscoveredCapability, args: Record<string, unknown>) => {
       submissions.push(args);
-      return { job_id: "job-1" };
+      if (options.submitError) throw options.submitError;
+      return options.submitResult ?? { job_id: "job-1" };
     },
     pollJob: async (_capability: DiscoveredCapability, jobId: string) => {
       polls.push(jobId);
@@ -90,11 +104,13 @@ function harness(options: { status?: string; providerStatus?: string; bytes?: Ui
     },
   };
   return {
-    authorized: authorized(options.status ?? "generating", options.metadata ?? {
-      schemaFingerprint: CAPABILITY.schemaFingerprint,
-      pollOperation: CAPABILITY.pollOperation,
-      pollSchemaFingerprint: CAPABILITY.pollSchemaFingerprint,
-    }),
+    authorized: {
+      ...authorizedAsset,
+      asset: {
+        ...authorizedAsset.asset,
+        last_error_code: options.lastErrorCode ?? null,
+      },
+    },
     client,
     transitions,
     submissions,
@@ -128,6 +144,80 @@ Deno.test("submits the exact description and stores only sanitized capability id
         pollSchemaFingerprint: CAPABILITY.pollSchemaFingerprint,
       },
     } },
+  ]);
+});
+
+Deno.test("blocks an ambiguous paid submission outcome without making it retryable", async () => {
+  const state = harness({
+    status: "planned",
+    metadata: {},
+    submitError: new PixelLabMapError("pixellab_upstream"),
+  });
+
+  await assertRejects(
+    () => runDirectMapLifecycle({ operation: "submit", ...state } as never),
+    PixelLabMapError,
+  );
+  assertEquals(state.submissions.length, 1);
+  assertEquals(state.transitions, [
+    { from: "planned", to: "queued", details: {} },
+    { from: "queued", to: "blocked", details: { errorCode: "pixellab_submit_outcome_unknown" } },
+  ]);
+});
+
+Deno.test("rejects retry for a blocked asset whose paid submission outcome is unknown", async () => {
+  const state = harness({
+    status: "blocked",
+    lastErrorCode: "pixellab_submit_outcome_unknown",
+  });
+
+  const error = await assertRejects(
+    () => runDirectMapLifecycle({ operation: "retry", ...state } as never),
+    PixelLabMapError,
+  );
+  assertEquals(error.status, 409);
+  assertEquals(state.submissions, []);
+  assertEquals(state.transitions, []);
+});
+
+Deno.test("rejects retry for a legacy failed submission without a provider job id", async () => {
+  const state = harness({ status: "failed", lastErrorCode: "pixellab_upstream" });
+
+  const error = await assertRejects(
+    () => runDirectMapLifecycle({ operation: "retry", ...state } as never),
+    PixelLabMapError,
+  );
+  assertEquals(error.status, 409);
+  assertEquals(state.submissions, []);
+});
+
+Deno.test("keeps an explicit provider rate-limit rejection safely retryable", async () => {
+  const state = harness({
+    status: "planned",
+    metadata: {},
+    submitError: new PixelLabMapError("pixellab_rate_limited", undefined, 429),
+  });
+
+  await assertRejects(
+    () => runDirectMapLifecycle({ operation: "submit", ...state } as never),
+    PixelLabMapError,
+  );
+  assertEquals(state.transitions, [
+    { from: "planned", to: "queued", details: {} },
+    { from: "queued", to: "blocked", details: { errorCode: "pixellab_rate_limited" } },
+  ]);
+});
+
+Deno.test("blocks a successful-looking submission that omits the provider job id", async () => {
+  const state = harness({ status: "planned", metadata: {}, submitResult: { status: "accepted" } });
+
+  await assertRejects(
+    () => runDirectMapLifecycle({ operation: "submit", ...state } as never),
+    PixelLabMapError,
+  );
+  assertEquals(state.transitions, [
+    { from: "planned", to: "queued", details: {} },
+    { from: "queued", to: "blocked", details: { errorCode: "pixellab_submit_outcome_unknown" } },
   ]);
 });
 

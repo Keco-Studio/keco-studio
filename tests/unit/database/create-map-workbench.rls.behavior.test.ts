@@ -183,6 +183,23 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect((await createV3(fx.owner.client, 'Invalid V3 map', planV2, sceneV2)).error?.code).toBe('22023');
     expect((await createV3(fx.owner.client, 'String Plan schema version', { ...planV3, schemaVersion: '3' }, sceneV3)).error?.code).toBe('22023');
     expect((await createV3(fx.owner.client, 'String Scene schema version', planV3, { ...sceneV3, schemaVersion: '3' })).error?.code).toBe('22023');
+    const invalidShapes: Array<[string, object, object]> = [
+      ['Extra Plan credential', { ...planV3, apiToken: 'must-not-persist' }, sceneV3],
+      ['Extra generation field', { ...planV3, generation: { ...planV3.generation, callbackUrl: 'https://example.test' } }, sceneV3],
+      ['Extra reference field', { ...planV3, references: [{
+        assetId: '10000000-0000-4000-8000-000000000001', sha256: 'a'.repeat(64),
+        role: 'layout', usage: 'Layout guide', signedUrl: 'https://example.test/reference.png',
+      }] }, sceneV3],
+      ['Extra Scene field', planV3, { ...sceneV3, providerResponse: { secret: true } }],
+      ['Malformed canvas', planV3, { ...sceneV3, canvas: { zoom: 0, panX: 24, panY: 24 } }],
+      ['Malformed map image', planV3, { ...sceneV3, mapImage: {
+        assetKey: 'map-image', sourceRevisionId: 'not-a-uuid', width: 512, height: 512, locked: true,
+      } }],
+    ];
+    for (const [name, nextPlan, nextScene] of invalidShapes) {
+      const rejected = await createV3(fx.owner.client, name, nextPlan, nextScene);
+      expect([name, rejected.error?.code]).toEqual([name, '22023']);
+    }
 
     const ownerMap = (ownerCreate.data as CreatedMap[])[0];
     const invalidSave = await fx.owner.client.rpc('save_map_draft_v3', {

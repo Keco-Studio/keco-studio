@@ -49,19 +49,31 @@ export type DirectMapGenerationTarget = {
   planFingerprint: string;
 };
 
+export type DirectMapBoundImage = {
+  sourceRevisionId: string;
+  sha256: string;
+  signedUrl: string | null;
+  width: number;
+  height: number;
+};
+
 export type PreparedDirectMapRestore = {
   target: DirectMapGenerationTarget | null;
   plan: MapPlanV3;
+  generationPlan: MapPlanV3 | null;
   scene: MapSceneV3;
   asset: DirectMapGenerationAsset | null;
   phase: DirectMapGenerationPhase;
+  boundImage: DirectMapBoundImage | null;
 };
 
 export const RETRYABLE_DIRECT_MAP_BLOCKS = new Set([
   'pixellab_rate_limited',
   'pixellab_quota_exceeded',
-  'pixellab_upstream',
 ]);
+export const DIRECT_MAP_POLL_DEADLINE_MS = 5 * 60 * 1000;
+const DIRECT_MAP_INITIAL_POLL_DELAY_MS = 2500;
+const DIRECT_MAP_MAX_POLL_DELAY_MS = 15_000;
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
@@ -155,7 +167,7 @@ export function directMapPhaseFor(asset: DirectMapGenerationAsset | null): Direc
 
 export function canRetryDirectMap(asset: DirectMapGenerationAsset | null): boolean {
   if (!asset) return false;
-  if (asset.status === 'failed') return true;
+  if (asset.status === 'failed') return Boolean(asset.providerJobId);
   return asset.status === 'blocked'
     && asset.lastErrorCode !== null
     && RETRYABLE_DIRECT_MAP_BLOCKS.has(asset.lastErrorCode);
@@ -212,12 +224,49 @@ export async function prepareDirectMapRestore(
   workspace: SavedMapWorkspaceV3,
   createSignedUrl: (storagePath: string) => Promise<string>,
 ): Promise<PreparedDirectMapRestore> {
-  if (!workspace.imageAsset || !workspace.assetRevisionId) {
-    if (workspace.scene.mapImage) throw new Error('Saved direct map image is missing.');
-    return { target: null, plan: workspace.plan, scene: workspace.scene, asset: null, phase: 'idle' };
+  const binding = workspace.scene.mapImage;
+  const boundRecord = workspace.boundImageAsset;
+  if (Boolean(binding) !== Boolean(boundRecord)) throw new Error('Saved direct map image is missing.');
+  let boundImage: DirectMapBoundImage | null = null;
+  if (binding && boundRecord) {
+    if (
+      boundRecord.map_revision_id !== binding.sourceRevisionId
+      || boundRecord.asset_key !== 'map-image'
+      || boundRecord.kind !== 'map_image'
+      || boundRecord.status !== 'ready'
+      || boundRecord.requested_capability !== 'direct_map_image'
+      || boundRecord.provider_operation !== 'create_image_pro'
+      || !boundRecord.provider_job_id
+      || !boundRecord.storage_path
+      || !boundRecord.sha256
+      || !SHA256_PATTERN.test(boundRecord.sha256)
+      || boundRecord.width !== binding.width
+      || boundRecord.height !== binding.height
+      || boundRecord.has_transparency !== false
+    ) throw new Error('Saved direct map image binding is invalid.');
+    boundImage = {
+      sourceRevisionId: binding.sourceRevisionId,
+      sha256: boundRecord.sha256,
+      signedUrl: workspace.boundImageUrl,
+      width: binding.width,
+      height: binding.height,
+    };
   }
+  if (!workspace.imageAsset || !workspace.assetRevisionId) {
+    return {
+      target: null,
+      plan: workspace.plan,
+      generationPlan: null,
+      scene: workspace.scene,
+      asset: null,
+      phase: 'idle',
+      boundImage,
+    };
+  }
+  if (!workspace.generationPlan) throw new Error('Saved direct map generation Plan is missing.');
+  const generationPlan = workspace.generationPlan;
   const generationId = workspace.imageAsset.generation_id;
-  const planFingerprint = await directMapPlanFingerprint(workspace.plan);
+  const planFingerprint = await directMapPlanFingerprint(generationPlan);
   if (
     !generationId
     || workspace.imageAsset.plan_fingerprint !== planFingerprint
@@ -232,7 +281,7 @@ export async function prepareDirectMapRestore(
     generationId,
     planFingerprint,
   };
-  const durableAsset = directMapAssetFromRecord(workspace.imageAsset, workspace.plan, target);
+  const durableAsset = directMapAssetFromRecord(workspace.imageAsset, generationPlan, target);
   let signedUrl = workspace.imageUrl;
   if (!signedUrl && durableAsset.status === 'ready' && durableAsset.storagePath) {
     try {
@@ -242,7 +291,38 @@ export async function prepareDirectMapRestore(
     }
   }
   const asset = { ...durableAsset, signedUrl };
-  return { target, plan: workspace.plan, scene: workspace.scene, asset, phase: directMapPhaseFor(asset) };
+  if (boundImage?.signedUrl == null && boundRecord?.id === workspace.imageAsset.id) {
+    boundImage = { ...boundImage, signedUrl };
+  } else if (boundImage?.signedUrl == null && boundRecord?.storage_path) {
+    try {
+      boundImage = { ...boundImage, signedUrl: await createSignedUrl(boundRecord.storage_path) };
+    } catch {
+      // The durable bound image remains valid after a temporary signing failure.
+    }
+  }
+  let restoredScene = workspace.scene;
+  if (asset.status === 'ready' && canonical(generationPlan) === canonical(workspace.plan)) {
+    const materialized = materializeDirectMapScene(workspace.plan, workspace.scene, target, asset);
+    if (materialized) {
+      restoredScene = materialized;
+      boundImage = {
+        sourceRevisionId: target.revisionId,
+        sha256: asset.sha256!,
+        signedUrl: asset.signedUrl,
+        width: asset.width!,
+        height: asset.height!,
+      };
+    }
+  }
+  return {
+    target,
+    plan: workspace.plan,
+    generationPlan,
+    scene: restoredScene,
+    asset,
+    phase: directMapPhaseFor(asset),
+    boundImage,
+  };
 }
 
 type DirectMapMonitoringService = {
@@ -287,9 +367,35 @@ export function useDirectMapGenerationMonitoring({
     const expectedAsset = currentAsset.current;
     if (!expectedTarget || !expectedAsset || expectedAsset.status !== 'generating') return;
     const requestKey = `${targetKey}:${expectedAsset.id}`;
+    const startedAt = Date.now();
+    let nextDelay = DIRECT_MAP_INITIAL_POLL_DELAY_MS;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const stopAtDeadline = () => {
+      if (stopped || cycleRef.current !== cycle) return;
+      stopped = true;
+      setPhase('blocked');
+      setError('Direct map monitoring timed out. Reopen the map to resume.');
+    };
+    const schedule = () => {
+      if (stopped || cycleRef.current !== cycle) return;
+      const remaining = DIRECT_MAP_POLL_DEADLINE_MS - (Date.now() - startedAt);
+      if (remaining <= 0) {
+        stopAtDeadline();
+        return;
+      }
+      const delay = Math.min(nextDelay, remaining);
+      nextDelay = Math.min(nextDelay * 2, DIRECT_MAP_MAX_POLL_DELAY_MS);
+      timer = setTimeout(() => void poll(), delay);
+    };
     const poll = async () => {
-      if (pollActive.current === requestKey) return;
+      if (stopped || cycleRef.current !== cycle || pollActive.current === requestKey) return;
+      if (Date.now() - startedAt >= DIRECT_MAP_POLL_DEADLINE_MS) {
+        stopAtDeadline();
+        return;
+      }
       pollActive.current = requestKey;
+      let completed = false;
       try {
         const body = {
           projectId: expectedTarget.projectId,
@@ -301,6 +407,7 @@ export function useDirectMapGenerationMonitoring({
         const result = await service.invokePixelLab({ operation: 'poll', ...body });
         if (cycleRef.current !== cycle) return;
         if (responseStatus(result) === 'completed') {
+          completed = true;
           setPhase('validating');
           await service.invokePixelLab({ operation: 'validate', ...body });
           if (cycleRef.current !== cycle) return;
@@ -317,12 +424,13 @@ export function useDirectMapGenerationMonitoring({
         }
       } finally {
         if (pollActive.current === requestKey) pollActive.current = null;
+        if (!completed) schedule();
       }
     };
     void poll();
-    const timer = setInterval(() => void poll(), 2500);
     return () => {
-      clearInterval(timer);
+      stopped = true;
+      if (timer) clearTimeout(timer);
       if (cycleRef.current === cycle) cycleRef.current += 1;
     };
   }, [assetKey, refresh, service, setError, setPhase, targetKey]);
@@ -351,6 +459,7 @@ export function useDirectMapGeneration({
   const [asset, setAsset] = useState<DirectMapGenerationAsset | null>(null);
   const [phase, setPhase] = useState<DirectMapGenerationPhase>('idle');
   const [target, setTarget] = useState<DirectMapGenerationTarget | null>(null);
+  const [boundImage, setBoundImage] = useState<DirectMapBoundImage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const targetRef = useRef<DirectMapGenerationTarget | null>(null);
   const lifecycleEpoch = useRef(0);
@@ -380,7 +489,16 @@ export function useDirectMapGeneration({
       const latest = currentInput.current;
       if (latest.projectId !== expected.projectId || latest.planKey !== canonical(generationPlan)) return;
       const materialized = materializeDirectMapScene(generationPlan, latest.scene, expected, next);
-      if (materialized && canonical(materialized) !== latest.sceneKey) onSceneMaterialized(materialized);
+      if (materialized) {
+        setBoundImage({
+          sourceRevisionId: expected.revisionId,
+          sha256: next.sha256!,
+          signedUrl: next.signedUrl,
+          width: next.width!,
+          height: next.height!,
+        });
+        if (canonical(materialized) !== latest.sceneKey) onSceneMaterialized(materialized);
+      }
     }
   }, [generationPlan, onSceneMaterialized, service]);
 
@@ -508,9 +626,10 @@ export function useDirectMapGeneration({
     lifecycleEpoch.current += 1;
     targetRef.current = prepared.target;
     setTarget(prepared.target);
-    setGenerationPlan(prepared.plan);
+    setGenerationPlan(prepared.generationPlan ?? prepared.plan);
     setAsset(prepared.asset);
     setPhase(prepared.phase);
+    setBoundImage(prepared.boundImage);
     setError(null);
   }, []);
 
@@ -522,12 +641,14 @@ export function useDirectMapGeneration({
     setTarget(null);
     setGenerationPlan(plan);
     setAsset(null);
+    setBoundImage(null);
     setPhase('idle');
     setError(null);
   }, [plan]);
 
   return {
     asset,
+    boundImage,
     phase,
     target,
     error,

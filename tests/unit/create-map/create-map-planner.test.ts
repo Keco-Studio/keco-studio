@@ -183,4 +183,13 @@ describe('Create Map V3 planner', () => {
     const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ role: string; content: string }>;
     expect(retry.at(-1)?.content).toContain('unsafe_description');
   });
+
+  it('reports MapPlan V3 when direct-map structured output never becomes valid', async () => {
+    completeLlmNonStreaming.mockRejectedValue(new Error('LLM did not call required tool submit_direct_map_plan_v3.'));
+
+    await expect(createMapPlanV3('Village')).rejects.toMatchObject({
+      code: 'map_plan_invalid_response',
+      message: 'The model did not return a valid MapPlan V3',
+    });
+  });
 });

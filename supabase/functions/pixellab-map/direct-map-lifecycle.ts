@@ -22,6 +22,11 @@ type TransitionAsset = (
   details?: Record<string, unknown>,
 ) => Promise<void>;
 type PersistAsset = typeof persistValidatedAsset;
+const SAFE_SUBMISSION_REJECTION_CODES = new Set([
+  "pixellab_rate_limited",
+  "pixellab_quota_exceeded",
+]);
+const UNKNOWN_SUBMISSION_OUTCOME = "pixellab_submit_outcome_unknown";
 
 export type DirectMapLifecycleOptions = {
   operation: DirectMapOperation;
@@ -90,6 +95,19 @@ async function submitDirectMap(
   assetId: string,
 ): Promise<Record<string, unknown>> {
   const status = String(asset.status);
+  if (
+    options.operation === "retry"
+    && (
+      (status === "blocked" && !SAFE_SUBMISSION_REJECTION_CODES.has(String(asset.last_error_code)))
+      || (status === "failed" && !asset.provider_job_id)
+    )
+  ) {
+    throw new PixelLabMapError(
+      "pixellab_invalid_response",
+      "Direct map submission outcome is not safe to retry",
+      409,
+    );
+  }
   const expected = options.operation === "retry"
     ? status === "blocked" ? "blocked" : "failed"
     : "planned";
@@ -120,15 +138,16 @@ async function submitDirectMap(
   try {
     result = await options.client.submitAsset(capability, providerArguments);
   } catch (error) {
-    await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "failed", {
-      errorCode: errorCode(error),
+    const code = errorCode(error);
+    await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "blocked", {
+      errorCode: SAFE_SUBMISSION_REJECTION_CODES.has(code) ? code : UNKNOWN_SUBMISSION_OUTCOME,
     });
     throw error;
   }
   const jobId = providerJobId(result);
   if (!jobId) {
-    await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "failed", {
-      errorCode: "missing_provider_job",
+    await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "blocked", {
+      errorCode: UNKNOWN_SUBMISSION_OUTCOME,
     });
     throw new PixelLabMapError("pixellab_invalid_response", "Provider did not return a job id");
   }

@@ -130,9 +130,12 @@ export type SavedMapWorkspaceV3 = {
   scene: MapSceneV3;
   projectId: string;
   sourceDocumentId: string | null;
+  generationPlan: MapPlanV3 | null;
   assetRevisionId: string | null;
   imageAsset: MapAssetRecord | null;
   imageUrl: string | null;
+  boundImageAsset: MapAssetRecord | null;
+  boundImageUrl: string | null;
 };
 
 export type CreateMapAssetPlanV2Input = {
@@ -483,7 +486,7 @@ export function createMapService(supabase: SupabaseClient) {
       }
       const { data: revision, error: revisionError } = await supabase
         .from('map_revisions')
-        .select('id, revision_number, save_version, source_document_id, schema_version, plan, scene')
+        .select('id, revision_number, save_version, parent_revision_id, source_document_id, schema_version, plan, scene')
         .eq('id', map.current_revision_id)
         .eq('schema_version', 3)
         .single();
@@ -504,52 +507,106 @@ export function createMapService(supabase: SupabaseClient) {
         sourceDocumentId: revision.source_document_id == null ? null : String(revision.source_document_id),
       };
       const binding = parsed.scene.mapImage;
-      if (!binding) {
-        return { ...base, assetRevisionId: null, imageAsset: null, imageUrl: null };
+      const parentRevisionId = typeof revision.parent_revision_id === 'string' ? revision.parent_revision_id : null;
+      const generationRevisionId = parentRevisionId ?? binding?.sourceRevisionId ?? null;
+      let generationPlan: MapPlanV3 | null = generationRevisionId ? parsed.plan : null;
+      if (parentRevisionId) {
+        const { data: generationRevision, error: generationRevisionError } = await supabase
+          .from('map_revisions')
+          .select('schema_version, plan')
+          .eq('id', parentRevisionId)
+          .eq('schema_version', 3)
+          .single();
+        const validatedGenerationPlan = validateMapPlanV3(generationRevision?.plan);
+        if (generationRevisionError || validatedGenerationPlan.success === false) {
+          throw new CreateMapServiceError(
+            generationRevisionError?.code ?? 'invalid_saved_map',
+            generationRevisionError?.message ?? 'Generation Plan is invalid',
+          );
+        }
+        generationPlan = validatedGenerationPlan.data;
       }
-      const { data: assets, error: assetError } = await supabase.from('map_assets')
-        .select('*')
-        .eq('map_revision_id', binding.sourceRevisionId)
-        .eq('asset_key', 'map-image')
-        .eq('kind', 'map_image')
-        .limit(2);
-      if (assetError) throw new CreateMapServiceError(assetError.code ?? 'asset_load_failed', assetError.message);
-      if (!Array.isArray(assets) || assets.length !== 1) {
-        throw new CreateMapServiceError('invalid_saved_map', 'Bound map image is missing or ambiguous');
+      const assetCache = new Map<string, MapAssetRecord | null>();
+      const loadDirectAsset = async (revisionId: string): Promise<MapAssetRecord | null> => {
+        if (assetCache.has(revisionId)) return assetCache.get(revisionId) ?? null;
+        const { data: assets, error: assetError } = await supabase.from('map_assets')
+          .select('*')
+          .eq('map_revision_id', revisionId)
+          .eq('asset_key', 'map-image')
+          .eq('kind', 'map_image')
+          .limit(2);
+        if (assetError) throw new CreateMapServiceError(assetError.code ?? 'asset_load_failed', assetError.message);
+        if (!Array.isArray(assets) || assets.length > 1) {
+          throw new CreateMapServiceError('invalid_saved_map', 'Direct map image is ambiguous');
+        }
+        const found = assets.length === 1 ? assets[0] as unknown as MapAssetRecord : null;
+        assetCache.set(revisionId, found);
+        return found;
+      };
+      const validateDirectAsset = (
+        imageAsset: MapAssetRecord,
+        revisionId: string,
+        expectedMap: MapPlanV3['map'],
+      ) => {
+        if (
+          imageAsset.map_revision_id !== revisionId
+          || imageAsset.asset_key !== 'map-image'
+          || imageAsset.kind !== 'map_image'
+          || imageAsset.requested_capability !== 'direct_map_image'
+          || typeof imageAsset.generation_id !== 'string'
+          || !UUID_PATTERN.test(imageAsset.generation_id)
+          || typeof imageAsset.plan_fingerprint !== 'string'
+          || !SHA256_PATTERN.test(imageAsset.plan_fingerprint)
+          || ((imageAsset.status === 'generating' || imageAsset.status === 'ready')
+            && (imageAsset.provider_operation !== 'create_image_pro'
+              || typeof imageAsset.provider_job_id !== 'string'
+              || imageAsset.provider_job_id.length === 0))
+        ) {
+          throw new CreateMapServiceError('invalid_saved_map', 'Direct map generation identity is invalid');
+        }
+        if (imageAsset.status !== 'ready') return;
+        const expectedStoragePath = `${map.project_id}/${mapId}/${revisionId}/map-image/${imageAsset.sha256}.png`;
+        if (
+          imageAsset.width !== expectedMap.width
+          || imageAsset.height !== expectedMap.height
+          || imageAsset.has_transparency !== false
+          || typeof imageAsset.storage_path !== 'string'
+          || typeof imageAsset.sha256 !== 'string'
+          || !SHA256_PATTERN.test(imageAsset.sha256)
+          || imageAsset.storage_path !== expectedStoragePath
+        ) {
+          throw new CreateMapServiceError('invalid_saved_map', 'Ready map image does not match the V3 Scene');
+        }
+      };
+      const generationAsset = generationRevisionId ? await loadDirectAsset(generationRevisionId) : null;
+      if (generationAsset && generationPlan) {
+        validateDirectAsset(generationAsset, generationRevisionId!, generationPlan.map);
       }
-      const imageAsset = assets[0] as unknown as MapAssetRecord;
-      const expectedStoragePath = `${map.project_id}/${mapId}/${binding.sourceRevisionId}/map-image/${imageAsset.sha256}.png`;
-      if (
-        imageAsset.map_revision_id !== binding.sourceRevisionId
-        || imageAsset.asset_key !== 'map-image'
-        || imageAsset.kind !== 'map_image'
-        || imageAsset.status !== 'ready'
-        || imageAsset.requested_capability !== 'direct_map_image'
-        || imageAsset.provider_operation !== 'create_image_pro'
-        || typeof imageAsset.provider_job_id !== 'string'
-        || imageAsset.provider_job_id.length === 0
-        || typeof imageAsset.generation_id !== 'string'
-        || !UUID_PATTERN.test(imageAsset.generation_id)
-        || typeof imageAsset.plan_fingerprint !== 'string'
-        || !SHA256_PATTERN.test(imageAsset.plan_fingerprint)
-        || imageAsset.width !== parsed.plan.map.width
-        || imageAsset.height !== parsed.plan.map.height
-        || imageAsset.has_transparency !== false
-        || typeof imageAsset.storage_path !== 'string'
-        || typeof imageAsset.sha256 !== 'string'
-        || !SHA256_PATTERN.test(imageAsset.sha256)
-        || imageAsset.storage_path !== expectedStoragePath
-      ) {
-        throw new CreateMapServiceError('invalid_saved_map', 'Bound map image does not match the V3 Scene');
+      const boundImageAsset = binding ? await loadDirectAsset(binding.sourceRevisionId) : null;
+      if (binding && (!boundImageAsset || boundImageAsset.status !== 'ready')) {
+        throw new CreateMapServiceError('invalid_saved_map', 'Bound map image is missing or not ready');
       }
-      const { data: signed, error: signedError } = await supabase.storage.from('map-assets')
-        .createSignedUrl(imageAsset.storage_path, 300);
-      const imageUrl = !signedError && typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
+      if (boundImageAsset) validateDirectAsset(boundImageAsset, binding!.sourceRevisionId, parsed.plan.map);
+      const signedUrls = new Map<string, string | null>();
+      const signReadyAsset = async (imageAsset: MapAssetRecord | null): Promise<string | null> => {
+        if (!imageAsset || imageAsset.status !== 'ready' || !imageAsset.storage_path) return null;
+        if (signedUrls.has(imageAsset.id)) return signedUrls.get(imageAsset.id) ?? null;
+        const { data: signed, error: signedError } = await supabase.storage.from('map-assets')
+          .createSignedUrl(imageAsset.storage_path, 300);
+        const url = !signedError && typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
+        signedUrls.set(imageAsset.id, url);
+        return url;
+      };
+      const imageUrl = await signReadyAsset(generationAsset);
+      const boundImageUrl = await signReadyAsset(boundImageAsset);
       return {
         ...base,
-        assetRevisionId: binding.sourceRevisionId,
-        imageAsset,
+        generationPlan,
+        assetRevisionId: generationRevisionId,
+        imageAsset: generationAsset,
         imageUrl,
+        boundImageAsset,
+        boundImageUrl,
       };
     },
 

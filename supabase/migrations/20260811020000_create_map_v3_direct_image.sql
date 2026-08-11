@@ -91,7 +91,11 @@ begin
     or jsonb_typeof(p_plan -> 'schemaVersion') is distinct from 'number'
     or jsonb_typeof(p_scene -> 'schemaVersion') is distinct from 'number'
     or p_plan ->> 'schemaVersion' <> '3'
-    or p_scene ->> 'schemaVersion' <> '3' then
+    or p_scene ->> 'schemaVersion' <> '3'
+    or not ((p_plan) ?& array['schemaVersion', 'name', 'summary', 'map', 'description', 'references', 'styleReference', 'generation'])
+    or (p_plan) - array['schemaVersion', 'name', 'summary', 'map', 'description', 'references', 'styleReference', 'generation'] <> '{}'::jsonb
+    or not ((p_scene) ?& array['schemaVersion', 'size', 'mapImage', 'canvas'])
+    or (p_scene) - array['schemaVersion', 'size', 'mapImage', 'canvas'] <> '{}'::jsonb then
     raise exception 'V3 plan and scene payloads are required' using errcode = '22023';
   end if;
 
@@ -103,6 +107,8 @@ begin
   end if;
 
   if jsonb_typeof(p_plan -> 'map') is distinct from 'object'
+    or not ((p_plan -> 'map') ?& array['width', 'height'])
+    or (p_plan -> 'map') - array['width', 'height'] <> '{}'::jsonb
     or jsonb_typeof(p_plan #> '{map,width}') is distinct from 'number'
     or jsonb_typeof(p_plan #> '{map,height}') is distinct from 'number' then
     raise exception 'V3 map dimensions are required' using errcode = '22023';
@@ -129,6 +135,8 @@ begin
   end if;
 
   if jsonb_typeof(p_plan -> 'generation') is distinct from 'object'
+    or not ((p_plan -> 'generation') ?& array['provider', 'operation', 'noBackground', 'seed'])
+    or (p_plan -> 'generation') - array['provider', 'operation', 'noBackground', 'seed'] <> '{}'::jsonb
     or p_plan #>> '{generation,provider}' <> 'pixellab'
     or p_plan #>> '{generation,operation}' <> 'create_image_pro'
     or p_plan #> '{generation,noBackground}' is null
@@ -153,6 +161,8 @@ begin
     select 1
     from jsonb_array_elements(p_plan -> 'references') as reference(value)
     where jsonb_typeof(reference.value) <> 'object'
+      or not (reference.value ?& array['assetId', 'sha256', 'role', 'usage'])
+      or reference.value - array['assetId', 'sha256', 'role', 'usage'] <> '{}'::jsonb
       or coalesce(reference.value ->> 'assetId', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or coalesce(reference.value ->> 'sha256', '') !~ '^[a-f0-9]{64}$'
       or coalesce(reference.value ->> 'role', '') not in ('content', 'layout')
@@ -166,7 +176,9 @@ begin
     raise exception 'invalid V3 style reference' using errcode = '22023';
   end if;
   if jsonb_typeof(p_plan -> 'styleReference') = 'object' then
-    if coalesce(p_plan #>> '{styleReference,assetId}', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    if not ((p_plan -> 'styleReference') ?& array['assetId', 'sha256', 'copy'])
+      or (p_plan -> 'styleReference') - array['assetId', 'sha256', 'copy'] <> '{}'::jsonb
+      or coalesce(p_plan #>> '{styleReference,assetId}', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or coalesce(p_plan #>> '{styleReference,sha256}', '') !~ '^[a-f0-9]{64}$'
       or jsonb_typeof(p_plan #> '{styleReference,copy}') is distinct from 'array' then
       raise exception 'invalid V3 style reference' using errcode = '22023';
@@ -186,6 +198,8 @@ begin
   end if;
 
   if jsonb_typeof(p_scene -> 'size') is distinct from 'object'
+    or not ((p_scene -> 'size') ?& array['width', 'height'])
+    or (p_scene -> 'size') - array['width', 'height'] <> '{}'::jsonb
     or jsonb_typeof(p_scene #> '{size,width}') is distinct from 'number'
     or jsonb_typeof(p_scene #> '{size,height}') is distinct from 'number' then
     raise exception 'V3 scene dimensions are required' using errcode = '22023';
@@ -193,6 +207,34 @@ begin
   if (p_scene #>> '{size,width}')::numeric <> (p_plan #>> '{map,width}')::numeric
     or (p_scene #>> '{size,height}')::numeric <> (p_plan #>> '{map,height}')::numeric then
     raise exception 'V3 scene dimensions must match the plan' using errcode = '22023';
+  end if;
+
+  if jsonb_typeof(p_scene -> 'canvas') is distinct from 'object'
+    or not ((p_scene -> 'canvas') ?& array['zoom', 'panX', 'panY'])
+    or (p_scene -> 'canvas') - array['zoom', 'panX', 'panY'] <> '{}'::jsonb
+    or jsonb_typeof(p_scene #> '{canvas,zoom}') is distinct from 'number'
+    or jsonb_typeof(p_scene #> '{canvas,panX}') is distinct from 'number'
+    or jsonb_typeof(p_scene #> '{canvas,panY}') is distinct from 'number'
+    or (p_scene #>> '{canvas,zoom}')::numeric <= 0 then
+    raise exception 'invalid V3 scene canvas' using errcode = '22023';
+  end if;
+
+  if jsonb_typeof(p_scene -> 'mapImage') not in ('null', 'object')
+    or p_scene -> 'mapImage' is null then
+    raise exception 'invalid V3 map image binding' using errcode = '22023';
+  end if;
+  if jsonb_typeof(p_scene -> 'mapImage') = 'object' then
+    if not ((p_scene -> 'mapImage') ?& array['assetKey', 'sourceRevisionId', 'width', 'height', 'locked'])
+      or (p_scene -> 'mapImage') - array['assetKey', 'sourceRevisionId', 'width', 'height', 'locked'] <> '{}'::jsonb
+      or p_scene #>> '{mapImage,assetKey}' <> 'map-image'
+      or coalesce(p_scene #>> '{mapImage,sourceRevisionId}', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      or jsonb_typeof(p_scene #> '{mapImage,width}') is distinct from 'number'
+      or jsonb_typeof(p_scene #> '{mapImage,height}') is distinct from 'number'
+      or (p_scene #>> '{mapImage,width}')::numeric <> (p_plan #>> '{map,width}')::numeric
+      or (p_scene #>> '{mapImage,height}')::numeric <> (p_plan #>> '{map,height}')::numeric
+      or p_scene #> '{mapImage,locked}' <> 'true'::jsonb then
+      raise exception 'invalid V3 map image binding' using errcode = '22023';
+    end if;
   end if;
 end;
 $$;

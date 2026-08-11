@@ -249,8 +249,8 @@ export type DirectMapReferenceSelection = Pick<MapPlanV3, 'references' | 'styleR
 
 export class CreateMapPlannerError extends Error {
   readonly code = 'map_plan_invalid_response' as const;
-  constructor() {
-    super('The model did not return a valid MapPlan V2');
+  constructor(schemaVersion: 2 | 3 = 2) {
+    super(`The model did not return a valid MapPlan V${schemaVersion}`);
     this.name = 'CreateMapPlannerError';
   }
 }
@@ -586,7 +586,7 @@ export async function createMapPlanV3(
       const invalidOutput = message.includes('required tool') || message.includes('valid JSON') ||
         message.includes('did not contain a completion');
       if (!invalidOutput) throw error;
-      if (attempt === DIRECT_MAP_MAX_ATTEMPTS - 1) throw new CreateMapPlannerError();
+      if (attempt === DIRECT_MAP_MAX_ATTEMPTS - 1) throw new CreateMapPlannerError(3);
       messages.push(directMapCorrectionMessage([
         { code: 'invalid_schema', path: [], message: 'Model did not submit structured output' },
       ]));
@@ -607,5 +607,5 @@ export async function createMapPlanV3(
       messages.push(directMapCorrectionMessage(result.issues));
     }
   }
-  throw new CreateMapPlannerError();
+  throw new CreateMapPlannerError(3);
 }
