@@ -3,7 +3,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 jest.mock('server-only', () => ({}));
 
-import { deleteProjectWithServerBoundary } from '@/lib/server/projectDeletion';
+import {
+  deleteProjectWithServerBoundary,
+  processProjectStorageCleanupJob,
+} from '@/lib/server/projectDeletion';
 
 type QueryError = { message: string };
 type QueryResult = { data: unknown; error: QueryError | null };
@@ -16,6 +19,9 @@ type QueryBuilder = {
   single: () => SingleResult;
   maybeSingle: () => MaybeSingleResult;
   delete: () => QueryBuilder;
+  update: (values: Record<string, unknown>) => QueryBuilder;
+  range: (from: number, to: number) => Promise<QueryResult>;
+  then: PromiseLike<QueryResult>['then'];
 };
 
 function createAuthClient(role: 'admin' | 'viewer'): SupabaseClient {
@@ -24,6 +30,9 @@ function createAuthClient(role: 'admin' | 'viewer'): SupabaseClient {
       select: () => builder,
       eq: () => builder,
       delete: () => builder,
+      update: () => builder,
+      range: async () => ({ data: [], error: null }),
+      then: (onfulfilled, onrejected) => Promise.resolve({ data: null, error: null }).then(onfulfilled, onrejected),
       single: async () => {
         if (table === 'projects') {
           return { data: { owner_id: 'owner-user' }, error: null };
@@ -45,9 +54,17 @@ function createAuthClient(role: 'admin' | 'viewer'): SupabaseClient {
   } as unknown as SupabaseClient;
 }
 
-function createServiceClient(calls: string[]): SupabaseClient {
+function createServiceClient(
+  calls: string[],
+  references: Array<{ storage_path: string }> = [],
+  removeError: QueryError | null = null,
+): SupabaseClient {
+  let activeTable = '';
   const builder: QueryBuilder = {
-    select: () => builder,
+    select: () => {
+      calls.push('select');
+      return builder;
+    },
     eq: (column, value) => {
       calls.push(`${column}:${value}`);
       return builder;
@@ -56,14 +73,54 @@ function createServiceClient(calls: string[]): SupabaseClient {
       calls.push('delete');
       return builder;
     },
+    update: (values) => {
+      calls.push(`update:${String(values.status)}`);
+      return builder;
+    },
+    range: async (from, to) => {
+      calls.push(`range:${from}:${to}`);
+      return { data: activeTable === 'map_reference_images' ? references.slice(from, to + 1) : [], error: null };
+    },
     single: async () => ({ data: null, error: null }),
-    maybeSingle: async () => ({ data: null, error: null }),
+    maybeSingle: async () => activeTable === 'project_storage_cleanup_jobs'
+      ? {
+          data: {
+            id: 'cleanup-1',
+            project_id: 'project-1',
+            bucket_id: 'map-assets',
+            storage_paths: references.map((row) => row.storage_path),
+          },
+          error: null,
+        }
+      : ({ data: null, error: null }),
+    then: (onfulfilled, onrejected) => Promise.resolve({ data: null, error: null }).then(onfulfilled, onrejected),
   };
 
   return {
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      calls.push(`rpc:${name}:${String(args.p_project_id)}`);
+      return {
+        data: references.length > 0
+          ? [{ cleanup_job_id: 'cleanup-1', storage_paths: references.map((row) => row.storage_path) }]
+          : [{ cleanup_job_id: null, storage_paths: [] }],
+        error: null,
+      };
+    },
     from: (table: string) => {
+      activeTable = table;
       calls.push(`from:${table}`);
       return builder;
+    },
+    storage: {
+      from: (bucket: string) => {
+        calls.push(`storage:${bucket}`);
+        return {
+          remove: async (paths: string[]) => {
+            calls.push(`remove:${paths.join(',')}`);
+            return { data: null, error: removeError };
+          },
+        };
+      },
     },
   } as unknown as SupabaseClient;
 }
@@ -79,7 +136,7 @@ describe('deleteProjectWithServerBoundary', () => {
       userId: 'admin-user',
     });
 
-    expect(calls).toEqual(['from:projects', 'delete', 'id:project-1']);
+    expect(calls).toEqual(['rpc:delete_project_and_enqueue_storage_cleanup:project-1']);
   });
 
   it('rejects non-admin collaborators before service-role deletion', async () => {
@@ -95,5 +152,47 @@ describe('deleteProjectWithServerBoundary', () => {
     ).rejects.toThrow('Only admin users can delete projects');
 
     expect(calls).toEqual([]);
+  });
+
+  it('atomically deletes the project before its queued reference cleanup runs', async () => {
+    const calls: string[] = [];
+    const references = [
+      { storage_path: 'references/project-1/ref-1/a.png' },
+      { storage_path: 'references/project-1/ref-2/b.png' },
+    ];
+
+    const result = await deleteProjectWithServerBoundary({
+      authClient: createAuthClient('admin'),
+      serviceClient: createServiceClient(calls, references),
+      projectId: 'project-1',
+      userId: 'admin-user',
+    });
+
+    expect(result).toEqual({ cleanupJobId: 'cleanup-1' });
+    expect(calls).toEqual(['rpc:delete_project_and_enqueue_storage_cleanup:project-1']);
+  });
+
+  it('keeps a failed cleanup job retryable after the project is already deleted', async () => {
+    const calls: string[] = [];
+    const serviceClient = createServiceClient(
+      calls,
+      [{ storage_path: 'references/project-1/ref-1/a.png' }],
+      { message: 'storage unavailable' },
+    );
+
+    const result = await deleteProjectWithServerBoundary({
+      authClient: createAuthClient('admin'),
+      serviceClient,
+      projectId: 'project-1',
+      userId: 'admin-user',
+    });
+    await expect(processProjectStorageCleanupJob({
+      serviceClient,
+      cleanupJobId: result.cleanupJobId!,
+    })).rejects.toThrow('storage unavailable');
+
+    expect(calls[0]).toBe('rpc:delete_project_and_enqueue_storage_cleanup:project-1');
+    expect(calls).toContain('update:failed');
+    expect(calls).not.toContain('delete');
   });
 });

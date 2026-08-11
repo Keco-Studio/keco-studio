@@ -16,6 +16,7 @@ const nextConfig = {
     'react-hook-form',
   ],
   turbopack: {
+    root: rootDir,
     resolveAlias: {
       '@keco/battle-core': './packages/keco-battle-core/src/index.ts',
       '@keco/battle-engine': './packages/keco-battle-engine/src/index.ts',
