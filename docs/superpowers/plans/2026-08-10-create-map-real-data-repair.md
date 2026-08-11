@@ -116,7 +116,7 @@ Run the Deno auth test, then invoke `operation: capabilities` on the local funct
 
 **Files:**
 - Modify: `tests/unit/database/create-map-workbench-migration.test.ts`
-- Modify: `supabase/migrations/20260808010000_create_map_workbench.sql`
+- Modify: `supabase/migrations/20260808020000_create_map_workbench.sql`
 
 **Interfaces:**
 - Consumes: `transition_map_asset(...)` RPC contract.
@@ -253,7 +253,7 @@ Expected: all suites PASS with no type-check errors.
 
 - [ ] **Step 2: Verify the real planner through the browser**
 
-Use Playwright against `http://localhost:3000`: sign in with the retained seeded account, select `Livestock Management Project` and `Create Map 真实数据实测 - 青禾牧场 GDD`, click `Create map plan`, and require HTTP 200 plus `All changes saved`.
+Use Playwright against `http://localhost:3000`: sign in with the retained seeded account, select `Livestock Management Project` and `Create Map Live Data Validation - Greenfield Ranch GDD`, click `Create map plan`, and require HTTP 200 plus `All changes saved`.
 
 - [ ] **Step 3: Resume retained asset generation through the Edge Function**
 

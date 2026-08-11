@@ -58,7 +58,7 @@
 
 ### Supabase And PixelLab
 
-- `supabase/migrations/20260810020000_create_map_v2.sql`: V2 asset kinds, generation identity, V2 RPCs, summary maintenance, and grants.
+- `supabase/migrations/20260810020500_create_map_v2.sql`: V2 asset kinds, generation identity, V2 RPCs, summary maintenance, and grants.
 - `supabase/functions/pixellab-map/types.ts`: V2 Edge request and normalized atlas contracts.
 - `supabase/functions/pixellab-map/atlas.ts`: provider result normalization and atlas manifest validation.
 - `supabase/functions/pixellab-map/background-compositor.ts`: deterministic RGBA composition.
@@ -216,8 +216,8 @@ git commit -m "feat: define create map v2 domain"
 ### Task 2: Add V2 Persistence And Browser Service Contracts
 
 **Files:**
-- Create: `supabase/migrations/20260808010000_create_map_workbench.sql` (track the existing V1 foundation unchanged except for reviewed dependency fixes)
-- Create: `supabase/migrations/20260810020000_create_map_v2.sql`
+- Create: `supabase/migrations/20260808020000_create_map_workbench.sql` (track the existing V1 foundation unchanged except for reviewed dependency fixes)
+- Create: `supabase/migrations/20260810020500_create_map_v2.sql`
 - Modify: `src/features/create-map/services/createMapService.ts`
 - Modify: `tests/unit/database/create-map-workbench-migration.test.ts`
 - Create: `tests/unit/database/create-map-v2-migration.test.ts`
@@ -286,8 +286,8 @@ Expected: all named suites pass; the optional RLS behavior suite is run when loc
 - [ ] **Step 5: Commit persistence**
 
 ```bash
-git add supabase/migrations/20260808010000_create_map_workbench.sql \
-  supabase/migrations/20260810020000_create_map_v2.sql \
+git add supabase/migrations/20260808020000_create_map_workbench.sql \
+  supabase/migrations/20260810020500_create_map_v2.sql \
   src/features/create-map/services/createMapService.ts \
   tests/unit/database/create-map-workbench-migration.test.ts \
   tests/unit/database/create-map-v2-migration.test.ts \

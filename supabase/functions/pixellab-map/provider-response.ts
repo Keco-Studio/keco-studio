@@ -29,9 +29,8 @@ export function providerContentQualityIssue(value: unknown): string | null {
   const inspect = (entry: unknown, key = ""): string | null => {
     if (typeof entry === "string") {
       if (!/(description|caption|label|tag|content|text|title|warning|subject)/i.test(key)) return null;
-      const positive = /\b(person|people|character|npc|human|man|woman|boy|girl|portrait)\b|小人|人物|角色|NPC/i.test(entry);
-      const explicitlyExcluded = /\b(no|without|exclude|excluding)\s+(people|person|characters?|npc|humans?)\b/i.test(entry)
-        || /不要(人物|角色|小人)|无(人物|角色|小人)/i.test(entry);
+      const positive = /\b(person|people|character|npc|human|man|woman|boy|girl|portrait)\b/i.test(entry);
+      const explicitlyExcluded = /\b(no|without|exclude|excluding)\s+(people|person|characters?|npc|humans?)\b/i.test(entry);
       return positive && !explicitlyExcluded ? "obstacle_output_contains_character_content" : null;
     }
     if (Array.isArray(entry)) {

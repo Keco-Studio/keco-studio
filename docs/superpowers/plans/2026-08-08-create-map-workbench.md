@@ -59,7 +59,7 @@
 
 ### Persistence And Provider
 
-- `supabase/migrations/20260808010000_create_map_workbench.sql`: maps, revisions, assets, private bucket, RLS, and atomic RPCs.
+- `supabase/migrations/20260808020000_create_map_workbench.sql`: maps, revisions, assets, private bucket, RLS, and atomic RPCs.
 - `supabase/functions/pixellab-map/index.ts`: Edge entry point.
 - `supabase/functions/pixellab-map/http.ts`: bounded authenticated request handler.
 - `supabase/functions/pixellab-map/auth.ts`: user/project/asset authorization.
@@ -405,7 +405,7 @@ git commit -m "feat: build create map editing workbench"
 ### Task 5: Add Map Persistence, RLS, Revisions, Assets, And Private Storage
 
 **Files:**
-- Create: `supabase/migrations/20260808010000_create_map_workbench.sql`
+- Create: `supabase/migrations/20260808020000_create_map_workbench.sql`
 - Create: `tests/unit/database/create-map-workbench-migration.test.ts`
 - Create: `tests/unit/database/create-map-workbench.rls.behavior.test.ts`
 
@@ -469,7 +469,7 @@ Expected: static tests PASS; live tests PASS when configured or report skipped u
 - [ ] **Step 8: Commit persistence**
 
 ```bash
-git add supabase/migrations/20260808010000_create_map_workbench.sql tests/unit/database/create-map-workbench*
+git add supabase/migrations/20260808020000_create_map_workbench.sql tests/unit/database/create-map-workbench*
 git commit -m "feat: persist versioned create map projects"
 ```
 

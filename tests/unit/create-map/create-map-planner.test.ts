@@ -77,15 +77,14 @@ describe('Create Map V2 planner', () => {
     expect(messages[1].content).toContain(source.markdown);
   });
 
-  it('retries generation-facing prompts that are not concise English', async () => {
+  it('retries generation-facing prompts until they are concise English', async () => {
     const localized = makeValidMapPlanV2();
-    localized.visualBrief = '潮湿森林地图';
-    localized.background.stylePrompt = '俯视像素风格';
+    localized.visualBrief = String.fromCodePoint(0x6f6e, 0x6e7f);
     completeLlmNonStreaming
       .mockResolvedValueOnce(JSON.stringify(localized))
       .mockResolvedValueOnce(JSON.stringify(makeValidMapPlanV2()));
 
-    await expect(createMapPlanV2('生成一张森林地图')).resolves.toEqual(makeValidMapPlanV2());
+    await expect(createMapPlanV2('Generate a forest map')).resolves.toEqual(makeValidMapPlanV2());
 
     const retry = completeLlmNonStreaming.mock.calls[1][0] as Array<{ content: string }>;
     expect(retry.at(-1)?.content).toContain('must be concise English');

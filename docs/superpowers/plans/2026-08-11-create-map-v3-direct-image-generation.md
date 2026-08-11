@@ -467,7 +467,7 @@ git commit -m "feat: add private map references"
 it('returns DeepSeek description unchanged and pins the Pro operation', async () => {
   const plan = makeValidMapPlanV3({ description: 'Exact final PixelLab prompt.  Keep two spaces.' });
   completeLlmNonStreaming.mockResolvedValue(JSON.stringify(plan));
-  await expect(createMapPlanV3('生成完整俯视村庄地图')).resolves.toEqual(plan);
+  await expect(createMapPlanV3('Generate a complete top-down village map')).resolves.toEqual(plan);
   expect(completeLlmNonStreaming).toHaveBeenCalledWith(expect.arrayContaining([
     expect.objectContaining({ role: 'system', content: expect.stringContaining('final PixelLab create_image_pro description') }),
   ]), expect.objectContaining({ temperature: 0, thinking: 'disabled' }));
