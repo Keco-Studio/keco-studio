@@ -121,10 +121,13 @@ GENRE_ITEMS = {
 
 
 def specialized_metrics(genre: str) -> list[dict[str, Any]]:
-    return [
+    result = [
         metric(f"specialized.{genre}", key, name, 4, ["target-player evidence", "playtest event"])
         for key, name in GENRE_ITEMS[genre]
     ]
+    for item in result:
+        item["groupId"] = "specialized"
+    return result
 
 
 def load_json(path: pathlib.Path) -> Any:

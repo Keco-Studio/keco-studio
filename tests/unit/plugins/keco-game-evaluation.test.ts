@@ -12,6 +12,7 @@ const skillRoot = path.join(
   'keco-evaluate-game',
 );
 const profileScript = path.join(skillRoot, 'scripts', 'create_evaluation_profile.py');
+const scoreScript = path.join(skillRoot, 'scripts', 'score_game_evaluation.py');
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
@@ -178,6 +179,214 @@ describe('Keco EDD game evaluation Skill', () => {
         'Strategy',
         'Platformer',
       ]) expect(rubric).toContain(`### ${genre}`);
+    });
+  });
+
+  describe('score and decision', () => {
+    let tempRoot: string;
+    let profilePath: string;
+    let baseEvidence: Record<string, any>;
+
+    beforeEach(() => {
+      tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-game-score-'));
+      profilePath = path.join(tempRoot, 'profile.json');
+      const profile = spawnSync('python3', [
+        profileScript,
+        '--game-id', 'village-rpg',
+        '--stage', 'beta',
+        '--genre', 'rpg',
+        '--gdd-revision', 'sha256:gdd123',
+        '--build-hash', 'sha256:build123',
+        '--locked-at', '2026-08-12T12:00:00Z',
+        '--output', profilePath,
+      ], { encoding: 'utf8' });
+      expect(profile.status).toBe(0);
+      baseEvidence = readJson<Record<string, any>>(
+        'tests/fixtures/plugins/keco-game-evaluation-evidence.json',
+      );
+    });
+
+    afterEach(() => {
+      rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    function score(evidence: Record<string, any> = baseEvidence) {
+      const evidencePath = path.join(tempRoot, 'evidence.json');
+      const reportPath = path.join(tempRoot, 'report.json');
+      writeFileSync(evidencePath, JSON.stringify(evidence));
+      const result = spawnSync('python3', [
+        scoreScript,
+        '--profile', profilePath,
+        '--evidence', evidencePath,
+        '--output', reportPath,
+      ], { encoding: 'utf8' });
+      const report = existsSync(reportPath)
+        ? JSON.parse(readFileSync(reportPath, 'utf8')) as Record<string, any>
+        : null;
+      return { result, report };
+    }
+
+    function replaceItem(metricId: string, value: Record<string, any>) {
+      return {
+        ...baseEvidence,
+        itemResults: baseEvidence.itemResults.map((item: Record<string, any>) =>
+          item.metricId === metricId ? { ...item, ...value } : item),
+      };
+    }
+
+    it('scores complete evidence and passes the Beta gate', () => {
+      const { result, report } = score();
+      expect(result.status).toBe(0);
+      expect(report.score).toMatchObject({ total: 80, generalWeight: 80, specializedWeight: 20 });
+      expect(report.coverage).toBe(1);
+      expect(report.decision).toMatchObject({ status: 'passed', stage: 'beta' });
+      expect(report.severityCounts).toEqual({ P0: 0, P1: 0, P2: 0, P3: 0 });
+    });
+
+    it('uses the group subjective rating for exactly twenty percent', () => {
+      const evidence = {
+        ...baseEvidence,
+        subjectiveResults: baseEvidence.subjectiveResults.map((item: Record<string, any>) =>
+          item.groupId === 'general.core' ? { ...item, ratings: [3, 3, 3, 3, 3] } : item),
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.score.total).toBeCloseTo(78.2, 2);
+      expect(report.score.groups['general.core'].structuredRate).toBe(0.8);
+      expect(report.score.groups['general.core'].subjectiveRate).toBe(0.3);
+      expect(report.score.groups['general.core'].score).toBeCloseTo(12.6, 2);
+    });
+
+    it('normalizes not applicable metrics without reducing coverage', () => {
+      const evidence = replaceItem('general.pacing.reward-spacing', {
+        status: 'not_applicable', rating: undefined, evidence: [],
+      });
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.coverage).toBe(1);
+      expect(report.score.total).toBe(80);
+    });
+
+    it('keeps not evaluated metrics in the denominator and lowers coverage', () => {
+      const evidence = replaceItem('general.core.core-loop', {
+        status: 'not_evaluated', rating: undefined, evidence: [],
+      });
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.coverage).toBeCloseTo(0.96, 4);
+      expect(report.score.groups['general.core'].coverage).toBeLessThan(1);
+    });
+
+    it('flags low confidence and high disagreement', () => {
+      const evidence = {
+        ...baseEvidence,
+        subjectiveResults: baseEvidence.subjectiveResults.map((item: Record<string, any>) =>
+          item.groupId === 'general.core' ? { ...item, ratings: [5, 9] } : item),
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.subjective['general.core']).toMatchObject({
+        count: 2, lowConfidence: true, highDisagreement: true, min: 5, max: 9,
+      });
+    });
+
+    it('returns partial without a formal pass below seventy percent coverage', () => {
+      const evidence = {
+        ...baseEvidence,
+        itemResults: baseEvidence.itemResults.map((item: Record<string, any>, index: number) =>
+          index < 15 ? item : { ...item, status: 'not_evaluated', rating: undefined, evidence: [] }),
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.coverage).toBeLessThan(0.7);
+      expect(report.decision.status).toBe('partial');
+      expect(report.score.formalTotal).toBeNull();
+    });
+
+    it('fails on a P0 finding', () => {
+      const evidence = {
+        ...baseEvidence,
+        findings: [{
+          issueId: 'ISSUE-P0', severity: 'P0', primaryMetricId: 'general.stability.crash-block',
+          linkedMetricIds: [], evidence: ['crash log'],
+        }],
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.decision.status).toBe('failed');
+      expect(report.decision.reasons).toEqual(expect.arrayContaining([expect.stringMatching(/P0/i)]));
+    });
+
+    it('makes a managed Beta P1 conditional', () => {
+      const evidence = {
+        ...baseEvidence,
+        findings: [{
+          issueId: 'ISSUE-P1', severity: 'P1', primaryMetricId: 'general.clarity.next-action',
+          linkedMetricIds: [], evidence: ['session:s2'], owner: 'designer',
+          targetVersion: 'beta-2', fixedAcceptanceRule: '4 of 5 players progress in 15 seconds',
+        }],
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.decision.status).toBe('conditional');
+    });
+
+    it('fails RC when a P1 remains open', () => {
+      profilePath = path.join(tempRoot, 'rc-profile.json');
+      const profile = spawnSync('python3', [
+        profileScript, '--game-id', 'village-rpg', '--stage', 'rc', '--genre', 'rpg',
+        '--gdd-revision', 'sha256:gdd123', '--build-hash', 'sha256:build123',
+        '--locked-at', '2026-08-12T12:00:00Z', '--output', profilePath,
+      ], { encoding: 'utf8' });
+      expect(profile.status).toBe(0);
+      const evidence = {
+        ...baseEvidence,
+        profileId: 'village-rpg-rc-v1',
+        findings: [{
+          issueId: 'ISSUE-P1', severity: 'P1', primaryMetricId: 'general.clarity.next-action',
+          linkedMetricIds: [], evidence: ['session:s2'], owner: 'designer',
+          targetVersion: 'rc-2', fixedAcceptanceRule: '4 of 5 players progress in 15 seconds',
+        }],
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.decision.status).toBe('failed');
+    });
+
+    it('fails when a mandatory evaluation fails', () => {
+      const evidence = {
+        ...baseEvidence,
+        mandatoryEvaluations: [{ evalId: 'core-flow', status: 'failed', evidence: ['KECO_EVAL:failed'] }],
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.decision.status).toBe('failed');
+      expect(report.decision.reasons).toEqual(expect.arrayContaining([expect.stringMatching(/mandatory/i)]));
+    });
+
+    it('fails when a critical group minimum is missed', () => {
+      const evidence = {
+        ...baseEvidence,
+        itemResults: baseEvidence.itemResults.map((item: Record<string, any>) =>
+          item.metricId.startsWith('general.core.') ? { ...item, rating: 2 } : item),
+        subjectiveResults: baseEvidence.subjectiveResults.map((item: Record<string, any>) =>
+          item.groupId === 'general.core' ? { ...item, ratings: [4, 4, 4, 4, 4] } : item),
+      };
+      const { result, report } = score(evidence);
+      expect(result.status).toBe(0);
+      expect(report.decision.status).toBe('failed');
+      expect(report.decision.reasons).toEqual(expect.arrayContaining([expect.stringMatching(/core/i)]));
+    });
+
+    it('rejects duplicate issue IDs instead of double counting them', () => {
+      const finding = {
+        issueId: 'ISSUE-DUP', severity: 'P2', primaryMetricId: 'general.core.core-loop',
+        linkedMetricIds: [], evidence: ['session:s1'],
+      };
+      const { result } = score({ ...baseEvidence, findings: [finding, finding] });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/duplicate issue ID/i);
+      expect(result.stderr).not.toMatch(/Traceback/);
     });
   });
 });
