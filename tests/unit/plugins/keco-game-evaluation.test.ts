@@ -514,4 +514,20 @@ describe('Keco EDD game evaluation Skill', () => {
     expect(skill).toMatch(/KECO_EVAL[\s\S]*manual_required[\s\S]*improvement[\s\S]*retest/i);
     expect(skill).toMatch(/validate_game_evaluation_report\.py[\s\S]*before claiming/i);
   });
+
+  it('routes full EDD scoring away from Slice implementation', () => {
+    const v2Skill = readFileSync(
+      path.join(
+        repositoryRoot,
+        'plugins',
+        'keco-codex',
+        'skills',
+        'keco-develop-godot-slice-v2',
+        'SKILL.md',
+      ),
+      'utf8',
+    );
+    expect(v2Skill).toMatch(/full[\s\S]{0,160}100-point[\s\S]{0,160}keco-evaluate-game/i);
+    expect(v2Skill).toMatch(/milestone[\s\S]{0,160}Alpha[\s\S]{0,160}Beta[\s\S]{0,160}Release/i);
+  });
 });
