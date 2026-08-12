@@ -99,6 +99,14 @@ def main() -> int:
     if any(dep not in ids for task in tasks for dep in task["dependsOn"]):
         print("task dependency references an unknown task", file=sys.stderr)
         return 1
+    positions = {task["id"]: index for index, task in enumerate(tasks)}
+    if any(
+        positions[dep] >= positions[task["id"]]
+        for task in tasks
+        for dep in task["dependsOn"]
+    ):
+        print("each dependency must appear before dependent task", file=sys.stderr)
+        return 1
     if not quality_reviews:
         print("at least one task must carry a quality review", file=sys.stderr)
         return 1

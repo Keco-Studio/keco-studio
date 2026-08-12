@@ -281,6 +281,17 @@ describe('visual novel player wiring', () => {
   it('keeps content on the Start-labelled story node visible', () => {
     expect(viewSource).toContain("label.toLowerCase() === 'start' && !lineContent && !action");
   });
+
+  it('resets plot scrolling only when the selected branch changes', () => {
+    expect(viewSource).toContain('[branchKey, mode]');
+    expect(viewSource).not.toContain('[filteredRows, mode]');
+  });
+
+  it('interpolates editable plot-node dialogue placeholders in view mode', () => {
+    expect(viewSource).toContain('displayPlotNodeEditableText(block.dialogue');
+    expect(viewSource).toContain('displayPlotNodeEditableText(block.action');
+  });
+
 });
 
 describe('compiled story fixture playback', () => {

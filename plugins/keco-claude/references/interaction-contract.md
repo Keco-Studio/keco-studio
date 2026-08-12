@@ -22,6 +22,8 @@ Ask one focused question only when a material ambiguity would change scope, auth
 
 Keep progress concise and outcome-focused: state what completed, what is current, what comes next, and any blocker. Do not show a raw machine dump by default; include exact identifiers or diagnostic excerpts only when they help the user decide or verify.
 
+For an ordered task plan, plan order is the expected execution order. Put every known dependency before its dependent task and execute from top to bottom. Do not silently skip an unfinished task or mark a later task complete first. Keep small prerequisite work inside the current task when it does not need an independently reviewed result. If a discovery changes scope, acceptance, allowed files, or the dependency graph, revise, revalidate, and reorder the plan before continuing. Use a temporary jump only for an execution-time prerequisite that cannot stay inside the current task, already exists later in the approved plan, changes no plan boundary, and has all of its own dependencies complete. First report the paused task, the reason, the temporary task or tasks, and the task to return to. Record the same transition in runtime state, then return to the paused task before continuing beyond it.
+
 ## Blockers
 
 When work cannot continue, report:

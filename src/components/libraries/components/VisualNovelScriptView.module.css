@@ -3,7 +3,7 @@
 .container {
   container-type: inline-size;
   container-name: dialogue-panel;
-  padding: 2rem 3rem 3rem;
+  padding: 2rem 10px 3rem;
   background: #ffffff;
   min-height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -107,7 +107,7 @@
 
 @media (max-width: 640px) {
   .container {
-    padding: 1rem 1rem 2rem;
+    padding: 1rem 10px 2rem;
   }
 
   .choicePanel {
@@ -222,7 +222,7 @@
 /* Speaker header area */
 .speakerHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   min-width: 0;
@@ -274,6 +274,14 @@
 
 .avatar.orange {
   background: #f97316;
+}
+
+.avatar.purple {
+  background: #8b5cf6;
+}
+
+.avatar.teal {
+  background: #14b8a6;
 }
 
 /* Speaker name */
@@ -381,6 +389,391 @@
 
 .dialogBubble.orange {
   background: #fff7ed;
+}
+
+.dialogBubble.purple {
+  background: #f3e8ff;
+}
+
+.dialogBubble.teal {
+  background: #ccfbf1;
+}
+
+/* ── Script dialogue editing chrome ── */
+
+.historyToolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.historyButton {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #374151;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.historyButton:hover:not(:disabled),
+.historyButton:focus-visible:not(:disabled) {
+  border-color: #0B99FF;
+  color: #0B99FF;
+  outline: none;
+}
+
+.historyButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.editableDialogRow {
+  position: relative;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: stretch !important;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 1.25rem;
+  padding: 1.375rem 0.75rem;
+  border-radius: 0;
+  transition: background-color 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+}
+
+/* Cancel left/right chat inset (25%) so the blue frame is equal on both sides. */
+.dialogRow.editableDialogRow.left,
+.dialogRow.editableDialogRow.right {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.editableDialogRow.left > .editableDialogInner,
+.editableDialogRow.right > .editableDialogInner {
+  max-width: none;
+  width: 100%;
+}
+
+.editableDialogRow[data-dragging='true'] {
+  z-index: 6;
+  opacity: 0.72;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+}
+
+.dialogRowHot,
+.dialogRowEditing {
+  background: rgba(11, 153, 255, 0.07);
+  border-radius: 0;
+}
+
+.editableDialogInner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.editControls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding-top: 0;
+  box-sizing: border-box;
+  width: calc(4rem + 5px);
+  min-width: calc(4rem + 5px);
+  height: 2rem;
+}
+
+.editControls > * {
+  display: inline-flex;
+}
+
+.dragHandle,
+.deleteThreadButton {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.dragHandle {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #6b7280;
+  cursor: grab;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:disabled,
+.deleteThreadButton:disabled,
+.addThreadButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.deleteThreadButton {
+  background: #ef4444;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.editableDialogBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.editableDialogRow .speakerHeader {
+  gap: 5px;
+}
+
+.editEntryButton {
+  border: none;
+  font-family: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.editEntryButton:focus-visible {
+  outline: 2px solid #0B99FF;
+  outline-offset: 2px;
+}
+
+.avatar.editEntryButton {
+  padding: 0;
+}
+
+.actionChip.editEntryButton,
+.dialogBubble.editEntryButton {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.editableDialogRow.left .editableDialogBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.editableDialogRow.right .editableDialogBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.actionInput {
+  box-sizing: border-box;
+  min-width: 10rem;
+  width: min(22rem, 50cqi);
+  max-width: 100%;
+  flex: 1;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: #ececec;
+  color: #4b5563;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.actionInput::placeholder {
+  color: #9ca3af;
+}
+
+.actionInput:focus {
+  outline: 2px solid #0B99FF;
+  outline-offset: 1px;
+}
+
+.dialogueInput {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: min(36rem, 50%);
+  max-width: min(36rem, 50cqi);
+  margin-top: 0.25rem;
+  margin-left: calc(4rem + 5px + 5px + 2rem + 5px);
+  padding: 0.875rem 1.125rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #1a1a1a;
+  resize: vertical;
+  font-family: inherit;
+  overflow-wrap: anywhere;
+}
+
+.editableDialogRow .dialogBubble {
+  max-width: min(36rem, 50%);
+  max-width: min(36rem, 50cqi);
+}
+
+.editableDialogRow.left .dialogBubble {
+  margin-left: calc(4rem + 5px + 5px + 2rem + 5px);
+}
+
+.editableDialogRow.right .dialogBubble,
+.editableDialogRow.right .dialogueInput {
+  margin-left: 0;
+  margin-right: calc(4rem + 5px + 5px + 2rem + 5px);
+}
+
+.dialogueInput:focus {
+  outline: 2px solid #0B99FF;
+  outline-offset: 1px;
+}
+
+.dialogueInput::placeholder {
+  color: #9ca3af;
+}
+
+.addThreadWrap {
+  position: absolute;
+  left: 50%;
+  bottom: -0.85rem;
+  transform: translateX(-50%);
+  display: block !important;
+  width: 2rem;
+  max-width: none !important;
+  z-index: 2;
+}
+
+.addThreadButton {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 999px;
+  background: #0B99FF;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(11, 153, 255, 0.35);
+}
+
+.addThreadButton:hover,
+.addThreadButton:focus-visible {
+  background: #0284c7;
+  outline: none;
+}
+
+.characterPicker {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(16rem, calc(100cqi - 1.5rem));
+  max-width: min(16rem, calc(100cqi - 1.5rem));
+  padding: 0.25rem;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.26);
+  box-shadow: 0 9px 28px rgba(0, 0, 0, 0.05);
+  z-index: 5;
+}
+
+.characterPickerTitle {
+  padding: 0.25rem 0.625rem 0.5rem;
+  color: #9ca3af;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.characterPickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.characterPickerItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.625rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: #111827;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.characterPickerEmpty {
+  padding: 0.5rem 0.875rem;
+  color: #9ca3af;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.characterPickerItem:hover,
+.characterPickerItem:focus-visible {
+  background: rgba(11, 153, 255, 0.07);
+  outline: none;
+}
+
+.characterPickerItem .avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.6875rem;
+}
+
+@container dialogue-panel (max-width: 34rem) {
+  .editableDialogRow {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .editableDialogRow.left,
+  .editableDialogRow.right {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .editableDialogInner {
+    gap: 0.375rem;
+  }
+
+  .editableDialogRow.left .dialogueInput,
+  .editableDialogRow.right .dialogueInput {
+    width: 100%;
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .speakerHeader {
+    flex-wrap: wrap;
+  }
 }
 
 /* Type 4 / Name 4: centered plain text without a bubble */

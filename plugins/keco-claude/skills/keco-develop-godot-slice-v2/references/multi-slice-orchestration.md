@@ -93,7 +93,7 @@ Every Slice owns `spec`, `plan`, `status`, and `eval-report`. Its authoritative 
   - GREEN: the scene test and runtime `KECO_EVAL` pass with the current snapshot hash
   - Review: required
 
-Change each task to `- [x]` only after its RED/GREEN evidence, review, and Keco document read-back succeed. A free-form paragraph is not a substitute for a task checklist.
+Record task completion in local `status.json` only after its RED/GREEN evidence and review succeed. Keep the accepted `plan` checklist ordered and immutable during execution; render checked state from `status.json` in user progress instead of rewriting the plan for every task. Coalesce ordinary task progress into the next durable Keco status checkpoint. A free-form paragraph is not a substitute for a task checklist.
 
 ## Repair Exhaustion
 

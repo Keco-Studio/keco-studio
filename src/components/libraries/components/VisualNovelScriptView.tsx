@@ -1,8 +1,30 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { UndoOutlined, RedoOutlined } from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import type { AssetRow } from '@/lib/types/libraryAssets';
-import { interpolateVariables } from '@/lib/story-ir/commands';
+import { displayPlotNodeEditableText, interpolateVariables } from '@/lib/story-ir/commands';
+import type {
+  ScriptDialogueBlock,
+  ScriptDialogueCharacter,
+} from '@/lib/script-system/scriptDialogueBlocks';
+import { ScriptEditableDialogBlock } from '@/components/script-system/ScriptEditableDialogBlock';
+import { resolveDialogueReorder } from '@/lib/script-system/scriptDialogueDnd';
 import {
   createScriptPlayerState,
   nextPosition,
@@ -24,13 +46,34 @@ export interface ScriptColumns extends ScriptPlayerColumns {
   contentKey?: string;
 }
 
+export type ScriptDialogueEditingProps = {
+  characters: ScriptDialogueCharacter[];
+  blocks: ScriptDialogueBlock[];
+  editingBlockId: string | null;
+  setEditingBlockId: (blockId: string | null) => void;
+  finishEditingBlock: (blockId: string) => void;
+  isBusy: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => Promise<boolean>;
+  onRedo: () => Promise<boolean>;
+  onInsertAfterBlock: (blockId: string, speaker: string) => Promise<boolean>;
+  onSaveBlockField: (blockId: string, field: 'action' | 'dialogue', value: string) => Promise<boolean>;
+  onDeleteBlock: (blockId: string) => Promise<boolean>;
+  onReorderBlock: (fromIndex: number, toIndex: number) => Promise<boolean>;
+};
+
 interface VisualNovelScriptViewProps {
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   mode?: 'player' | 'plot-node';
   /** Active flow-chart branch label shown at the top of plot-node conversation. */
   branchName?: string;
+  /** Stable selected branch identity; row refreshes must not reset scroll. */
+  branchKey?: string;
   onSelectOptionTarget?: (targetLabel: string) => void;
+  /** When set in plot-node mode, enables hover-add / inline edit chrome. */
+  editing?: ScriptDialogueEditingProps;
 }
 
 export type RevealedScriptRow = {
@@ -142,9 +185,15 @@ export function VisualNovelScriptView({
   scriptColumns,
   mode = 'player',
   branchName,
+  branchKey,
   onSelectOptionTarget,
+  editing,
 }: VisualNovelScriptViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const {
     labelKey,
     typeKey,
@@ -224,7 +273,7 @@ export function VisualNovelScriptView({
 
   useEffect(() => {
     if (mode === 'plot-node') resetNearestScrollContainer(rootRef.current);
-  }, [filteredRows, mode]);
+  }, [branchKey, mode]);
 
   const restart = useCallback(() => {
     setPlayerState(createInitialPlayerState());
@@ -241,6 +290,31 @@ export function VisualNovelScriptView({
       : [],
     [mode, playerColumns, rows],
   );
+
+  const blockByRowId = useMemo(() => {
+    const map = new Map<string, ScriptDialogueBlock>();
+    if (!editing) return map;
+    for (const block of editing.blocks) {
+      if (block.actionRowId) map.set(block.actionRowId, block);
+      if (block.speechRowId) map.set(block.speechRowId, block);
+      map.set(block.id, block);
+    }
+    return map;
+  }, [editing]);
+  const editableBlockIds = useMemo(
+    () => editing?.blocks.map((block) => block.id) ?? [],
+    [editing?.blocks],
+  );
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    if (!editing) return;
+    const move = resolveDialogueReorder(
+      editableBlockIds,
+      event.active.id,
+      event.over?.id ?? null,
+    );
+    if (!move) return;
+    void editing.onReorderBlock(move.fromIndex, move.toIndex);
+  }, [editableBlockIds, editing]);
 
   if (!filteredRows.length && plotNodeOptions.length === 0) {
     return <div className={styles.emptyState}>No script data</div>;
@@ -276,7 +350,6 @@ export function VisualNovelScriptView({
     if (
       isNamedActionType(current.typeVal)
       && hasNamedSpeaker(current.nameVal)
-      && current.content
       && isSpeechDialogueType(next.typeVal)
       && hasNamedSpeaker(next.nameVal)
       && resolveSpeakerName(current.nameVal) === resolveSpeakerName(next.nameVal)
@@ -286,11 +359,73 @@ export function VisualNovelScriptView({
     }
   }
 
+  const renderEditableOrStaticLine = (
+    rowId: string,
+    typeVal: string | number | undefined | null,
+    nameVal: string | undefined | null,
+    content: string,
+    action?: string,
+  ) => {
+    if (editing && mode === 'plot-node') {
+      const block = blockByRowId.get(rowId);
+      if (block) {
+        return (
+          <ScriptEditableDialogBlock
+            key={block.id}
+            block={{
+              ...block,
+              action: displayPlotNodeEditableText(block.action, editing.editingBlockId === block.id),
+              dialogue: displayPlotNodeEditableText(block.dialogue, editing.editingBlockId === block.id),
+            }}
+            characters={editing.characters}
+            isEditing={editing.editingBlockId === block.id}
+            onBeginEdit={() => editing.setEditingBlockId(block.id)}
+            onFinishEdit={() => editing.finishEditingBlock(block.id)}
+            onInsertCharacter={(speaker) => editing.onInsertAfterBlock(block.id, speaker)}
+            onSaveAction={(value) => editing.onSaveBlockField(block.id, 'action', value)}
+            onSaveDialogue={(value) => editing.onSaveBlockField(block.id, 'dialogue', value)}
+            onDelete={() => editing.onDeleteBlock(block.id)}
+          />
+        );
+      }
+    }
+    return renderScriptLine(rowId, typeVal, nameVal, content, action);
+  };
+
   return (
     <div
       ref={rootRef}
-      className={styles.container}
+      className={[
+        styles.container,
+        editing ? styles.containerEditable : '',
+      ].filter(Boolean).join(' ')}
     >
+      {mode === 'plot-node' && editing ? (
+        <div className={styles.historyToolbar} data-testid="script-dialogue-history">
+          <Tooltip title="Undo">
+            <button
+              type="button"
+              className={styles.historyButton}
+              aria-label="Undo"
+              disabled={!editing.canUndo}
+              onClick={() => { void editing.onUndo(); }}
+            >
+              <UndoOutlined aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip title="Redo">
+            <button
+              type="button"
+              className={styles.historyButton}
+              aria-label="Redo"
+              disabled={!editing.canRedo}
+              onClick={() => { void editing.onRedo(); }}
+            >
+              <RedoOutlined aria-hidden />
+            </button>
+          </Tooltip>
+        </div>
+      ) : null}
       {mode === 'plot-node' && branchName ? (
         <div className={styles.branchName} data-testid="script-branch-name">
           {branchName}
@@ -303,6 +438,12 @@ export function VisualNovelScriptView({
           </button>
         </div>
       ) : null}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={editableBlockIds} strategy={verticalListSortingStrategy}>
       {preparedRows.map((prepared, index) => {
         if (mergedIntoPrevious.has(index)) return null;
 
@@ -310,6 +451,7 @@ export function VisualNovelScriptView({
         let { typeVal, nameVal } = prepared;
         let lineContent = content;
         let action: string | undefined;
+        let dialogRowId = row.id;
 
         const mergedSpeech = mergedSpeechByActionIndex.get(index);
         if (mergedSpeech) {
@@ -317,7 +459,8 @@ export function VisualNovelScriptView({
           lineContent = mergedSpeech.content;
           typeVal = mergedSpeech.typeVal;
           nameVal = mergedSpeech.nameVal;
-        } else if (isNamedActionType(typeVal) && hasNamedSpeaker(nameVal) && content) {
+          dialogRowId = mergedSpeech.row.id;
+        } else if (isNamedActionType(typeVal) && hasNamedSpeaker(nameVal)) {
           action = content;
           lineContent = '';
         }
@@ -330,7 +473,7 @@ export function VisualNovelScriptView({
           return (
             <React.Fragment key={row.id}>
               {renderPartTitle(`${row.id}-title`, label)}
-              {renderScriptLine(row.id, typeVal, nameVal, lineContent, action)}
+              {renderEditableOrStaticLine(dialogRowId, typeVal, nameVal, lineContent, action)}
             </React.Fragment>
           );
         }
@@ -349,7 +492,7 @@ export function VisualNovelScriptView({
           return (
             <React.Fragment key={row.id}>
               {renderPartTitle(`${row.id}-title`, label)}
-              {renderScriptLine(row.id, typeVal, nameVal, lineContent, action)}
+              {renderEditableOrStaticLine(dialogRowId, typeVal, nameVal, lineContent, action)}
             </React.Fragment>
           );
         }
@@ -362,10 +505,17 @@ export function VisualNovelScriptView({
           return renderSceneTitle(row.id, label, lineContent);
         }
 
-        if (!lineContent && !label && !action) return null;
+        if (!lineContent && !label && !action) {
+          if (editing && mode === 'plot-node' && blockByRowId.has(dialogRowId)) {
+            return renderEditableOrStaticLine(dialogRowId, typeVal, nameVal, lineContent, action);
+          }
+          return null;
+        }
 
-        return renderScriptLine(row.id, typeVal, nameVal, lineContent, action);
+        return renderEditableOrStaticLine(dialogRowId, typeVal, nameVal, lineContent, action);
       })}
+        </SortableContext>
+      </DndContext>
       {((mode === 'player' && playerState.atChoice) || plotNodeOptions.length > 0) && (
         <div className={styles.choicePanel}>
           {(mode === 'plot-node' ? plotNodeOptions : playerState.options).map((option, position) => (

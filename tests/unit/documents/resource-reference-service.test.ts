@@ -63,6 +63,9 @@ function applyFilters(
       if (operation === 'neq') return row[column] !== value;
       if (operation === 'in') return (value as readonly unknown[]).includes(row[column]);
       if (operation !== 'or') return true;
+      if (value === 'document_export_type.is.null,document_export_type.neq.script') {
+        return row.document_export_type == null || row.document_export_type !== 'script';
+      }
       const pairs = Array.from(
         String(value).matchAll(
           /and\(asset_id\.eq\.([^,]+),field_id\.eq\.([^)]+)\)/g
@@ -612,13 +615,38 @@ describe('resource reference picker loaders', () => {
 
   it('lists current-project table sources', async () => {
     const { client, calls } = makeClient({
-      libraries: [{ id: LIBRARY_ID, project_id: PROJECT_ID, name: 'Characters' }],
+      libraries: [
+        {
+          id: LIBRARY_ID,
+          project_id: PROJECT_ID,
+          name: 'Characters',
+          document_export_type: null,
+        },
+        {
+          id: DOCUMENT_ID,
+          project_id: PROJECT_ID,
+          name: 'Characters Table',
+          document_export_type: 'table',
+        },
+        {
+          id: OTHER_LIBRARY_ID,
+          project_id: PROJECT_ID,
+          name: 'Characters Conversation',
+          document_export_type: 'script',
+        },
+      ],
     });
 
     await expect(listTableReferenceSources(client, PROJECT_ID)).resolves.toEqual([
       { id: LIBRARY_ID, projectId: PROJECT_ID, name: 'Characters' },
+      { id: DOCUMENT_ID, projectId: PROJECT_ID, name: 'Characters Table' },
     ]);
     expect(calls).toContainEqual(['libraries', 'eq:project_id', PROJECT_ID]);
+    expect(calls).toContainEqual([
+      'libraries',
+      'or',
+      'document_export_type.is.null,document_export_type.neq.script',
+    ]);
   });
 
   it('returns table and document picker sources beyond the default page cap', async () => {

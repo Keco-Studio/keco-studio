@@ -66,6 +66,32 @@ Every resource or table change records one `evolution.strategy`. `reuse_exact` a
 
 `SlicePlan` is the approved static scope. It owns tasks, files, dependencies, evaluation IDs, RED/GREEN commands, and review requirements; a scope or acceptance change creates a new plan revision. Current task completion comes from `status.json`, while `RunContext` owns the active stage, write lease, repair iteration, and recovery state. `TaskResult`, `TaskReview`, and `EvalReport` own command output, changed files, read-back, hashes, screenshots, and runtime evidence.
 
+Order `SlicePlan.tasks` topologically so every dependency appears before its dependent task. That order is also the default execution order. Execute one visible task at a time from top to bottom; do not silently complete a later task while an earlier task is `pending` or `in_progress`.
+
+Apply prerequisite discoveries in this order:
+
+1. Keep the work as an internal RED/GREEN step of the current task when it needs no independently reviewable result.
+2. Revise, revalidate, and topologically reorder the plan when scope, acceptance, `allowedFiles`, task identity, or dependencies change.
+3. Use `taskTransition` only when the prerequisite was discovered during execution, cannot be kept inside the current task, already exists later in the approved plan, changes none of those plan boundaries, and every dependency of each temporary task is already complete.
+
+Record this transition in `status.json` before the jump:
+
+```yaml
+taskTransition:
+  pausedTaskId: task-02
+  reason: concrete newly discovered dependency
+  temporaryTaskIds: [task-03, task-04]
+  returnToTaskId: task-02
+  discoveredDuring: execution
+  canInline: false
+  planImpact:
+    scopeChanged: false
+    acceptanceChanged: false
+    allowedFilesChanged: false
+```
+
+The paused task must be `in_progress` or `blocked`. Complete only the listed temporary tasks, then return to `returnToTaskId` before advancing to any later task. Keep `taskTransition` while that return task remains unfinished so the out-of-order state stays explained; clear it immediately when the return task completes.
+
 ## Task Contract
 
 Each task must contain:

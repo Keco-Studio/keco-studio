@@ -6,8 +6,28 @@ jest.mock('./ScriptSplitView.module.css', () => ({}));
 jest.mock('../libraries/components/VisualNovelScriptView.module.css', () => ({
   choicePanel: 'choicePanel',
 }));
+jest.mock('./useScriptDialogueEditor', () => ({
+  useScriptDialogueEditor: () => ({
+    enabled: false,
+    characters: [],
+    blocks: [],
+    editingBlockId: null,
+    setEditingBlockId: () => {},
+    finishEditingBlock: () => {},
+    isBusy: false,
+    canUndo: false,
+    canRedo: false,
+    insertAfterBlock: async () => {},
+    saveBlockField: async () => {},
+    deleteBlock: async () => {},
+    reorderBlock: async () => {},
+    undo: async () => {},
+    redo: async () => {},
+  }),
+}));
 
 import {
+  resolveSelectedPlotNodeId,
   resolveOptionTargetPlotNodeId,
   ScriptSplitView,
 } from './ScriptSplitView';
@@ -20,6 +40,32 @@ const rows: AssetRow[] = [
 ];
 
 describe('ScriptSplitView plot selection', () => {
+  it('keeps the same branch when row insertion rebuilds graph node ids', () => {
+    const graph = {
+      nodes: [
+        { id: 'rebuilt-first', label: 'First', rowIndex: 0, rowIndexes: [0, 1] },
+        { id: 'rebuilt-branch', label: 'Branch', rowIndex: 2, rowIndexes: [2, 3, 4] },
+      ],
+      edges: [],
+    };
+    const currentRows: AssetRow[] = [
+      { id: 'first', libraryId: 'lib', name: 'first', propertyValues: {} },
+      { id: 'first-line', libraryId: 'lib', name: 'first-line', propertyValues: {} },
+      { id: 'branch-anchor', libraryId: 'lib', name: 'branch-anchor', propertyValues: {} },
+      { id: 'new-action', libraryId: 'lib', name: 'new-action', propertyValues: {} },
+      { id: 'new-speech', libraryId: 'lib', name: 'new-speech', propertyValues: {} },
+    ];
+
+    expect(resolveSelectedPlotNodeId({
+      libraryId: 'lib',
+      selectedLibraryId: 'lib',
+      selectedNodeId: 'old-branch-id',
+      anchorRowId: 'branch-anchor',
+      rows: currentRows,
+      graph,
+    })).toBe('rebuilt-branch');
+  });
+
   it('resolves option targets against full rows and the owning graph node', () => {
     const graph = {
       nodes: [

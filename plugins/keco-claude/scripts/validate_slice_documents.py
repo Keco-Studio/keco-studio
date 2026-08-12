@@ -12,6 +12,12 @@ from pathlib import Path
 
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+PLAN_TASK_RE = re.compile(r"^- \[[ xX]\]\s+([A-Za-z0-9][A-Za-z0-9_-]*):", re.MULTILINE)
+PLAN_TASK_BLOCK_RE = re.compile(
+    r"^- \[[ xX]\]\s+([A-Za-z0-9][A-Za-z0-9_-]*):[^\n]*(.*?)(?=^- \[[ xX]\]\s+[A-Za-z0-9][A-Za-z0-9_-]*:|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+PLAN_DEPENDS_RE = re.compile(r"^\s+- Depends on:\s*(.+?)\s*$", re.MULTILINE)
 STATUSES = {"planned", "in_progress", "blocked", "completed", "superseded"}
 TASK_STATUSES = {"pending", "in_progress", "blocked", "completed"}
 
@@ -88,6 +94,10 @@ def validate(slice_dir: Path) -> dict:
         fail("supersedes must be a list of other slice IDs")
     if not isinstance(status["tasks"], list) or not status["tasks"]:
         fail("tasks must be a non-empty list")
+    plan_text = plan_path.read_text(encoding="utf-8")
+    plan_task_ids = PLAN_TASK_RE.findall(plan_text)
+    if not plan_task_ids:
+        fail("plan.md must contain an ordered task checklist")
     task_ids: set[str] = set()
     for task in status["tasks"]:
         if not isinstance(task, dict) or not isinstance(task.get("id"), str) or not task["id"] or task["id"] in task_ids:
@@ -95,14 +105,95 @@ def validate(slice_dir: Path) -> dict:
         if task.get("status") not in TASK_STATUSES:
             fail(f"invalid task status: {task.get('status')}")
         task_ids.add(task["id"])
+    status_task_ids = [task["id"] for task in status["tasks"]]
+    if status_task_ids != plan_task_ids:
+        fail("status task order must match the accepted plan")
+    task_statuses = {task["id"]: task["status"] for task in status["tasks"]}
+    task_positions = {task_id: index for index, task_id in enumerate(plan_task_ids)}
+    task_dependencies: dict[str, list[str]] = {}
+    for task_id, body in PLAN_TASK_BLOCK_RE.findall(plan_text):
+        depends_match = PLAN_DEPENDS_RE.search(body)
+        raw_dependencies = depends_match.group(1).strip() if depends_match else "none"
+        task_dependencies[task_id] = (
+            []
+            if raw_dependencies.lower() == "none"
+            else [item.strip() for item in raw_dependencies.split(",") if item.strip()]
+        )
+    transition = status.get("taskTransition")
+    if transition is not None:
+        if not isinstance(transition, dict):
+            fail("taskTransition must be an object")
+        required_transition = {
+            "pausedTaskId",
+            "reason",
+            "temporaryTaskIds",
+            "returnToTaskId",
+            "discoveredDuring",
+            "canInline",
+            "planImpact",
+        }
+        if not required_transition.issubset(transition):
+            fail("task transition must identify the paused task, reason, temporary tasks, and return task")
+        paused_id = transition["pausedTaskId"]
+        temporary_ids = transition["temporaryTaskIds"]
+        if task_statuses.get(transition["returnToTaskId"]) == "completed":
+            fail("task transition must be cleared after the return task completes")
+        if (
+            transition["returnToTaskId"] != paused_id
+            or paused_id not in task_statuses
+            or task_statuses[paused_id] not in {"in_progress", "blocked"}
+            or not isinstance(transition["reason"], str)
+            or not transition["reason"].strip()
+            or not isinstance(temporary_ids, list)
+            or not temporary_ids
+            or len(set(temporary_ids)) != len(temporary_ids)
+            or any(task_id not in task_statuses or task_id == paused_id for task_id in temporary_ids)
+        ):
+            fail("task transition must identify the paused task, reason, temporary tasks, and return task")
+        if transition["canInline"] is not False:
+            fail("keep inlineable prerequisite work inside the paused task")
+        plan_impact = transition["planImpact"]
+        if (
+            transition["discoveredDuring"] != "execution"
+            or not isinstance(plan_impact, dict)
+            or set(plan_impact) != {"scopeChanged", "acceptanceChanged", "allowedFilesChanged"}
+            or any(value is not False for value in plan_impact.values())
+        ):
+            fail("the dependency changes the plan; revise and revalidate the plan")
+        if any(task_positions[task_id] <= task_positions[paused_id] for task_id in temporary_ids):
+            fail("temporary tasks must appear after the paused task")
+        if any(
+            task_statuses.get(dependency) != "completed"
+            for task_id in temporary_ids
+            for dependency in task_dependencies.get(task_id, [])
+        ):
+            fail("temporary task dependencies must already be completed")
+    first_open = next(
+        (index for index, task in enumerate(status["tasks"]) if task["status"] != "completed"),
+        None,
+    )
+    completed_after_open = (
+        []
+        if first_open is None
+        else [task["id"] for task in status["tasks"][first_open + 1 :] if task["status"] == "completed"]
+    )
+    if completed_after_open:
+        paused_task = status["tasks"][first_open]
+        if transition is None:
+            fail("out-of-order task completion requires an explicit task transition")
+        if (
+            transition.get("pausedTaskId") != paused_task["id"]
+            or any(task_id not in transition["temporaryTaskIds"] for task_id in completed_after_open)
+        ):
+            fail("task transition must identify the paused task, reason, temporary tasks, and return task")
     if status["completed"] and any(task["status"] != "completed" for task in status["tasks"]):
         fail("completed slice must have all tasks completed")
     for path, expected_type in ((spec_path, "spec"), (plan_path, "plan")):
         frontmatter = parse_frontmatter(path, expected_type)
-        if frontmatter["sliceId"] != slice_id or frontmatter["createdDate"] != status["createdDate"] or frontmatter["updatedDate"] != status["updatedDate"]:
-            fail(f"{path.name} metadata is stale relative to status.json")
-        if frontmatter["status"] != status["status"] or frontmatter["latest"] != str(status["latest"]).lower():
-            fail(f"{path.name} status/latest metadata is stale")
+        if frontmatter["sliceId"] != slice_id or frontmatter["createdDate"] != status["createdDate"]:
+            fail(f"{path.name} identity metadata is stale relative to status.json")
+        if frontmatter["latest"] != str(status["latest"]).lower():
+            fail(f"{path.name} latest metadata is stale")
         date_value(frontmatter["createdDate"], f"{path.name}.createdDate")
         date_value(frontmatter["updatedDate"], f"{path.name}.updatedDate")
     report_path = slice_dir / "eval-report.json"

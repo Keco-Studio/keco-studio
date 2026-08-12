@@ -3,6 +3,7 @@ import type { StoryCommand } from './schema';
 import {
   applyStoryCommands,
   interpolateVariables,
+  displayPlotNodeEditableText,
   parseNumericCommand,
   parseSingleNumericCommandFromText,
 } from './commands';
@@ -42,6 +43,13 @@ describe('Story numeric commands', () => {
   it('interpolates known and missing variables', () => {
     expect(interpolateVariables('Trust: [trust], New: [newValue]', { trust: 2 }))
       .toBe('Trust: 2, New: 0');
+  });
+
+  it('keeps plot-node placeholders while editing and interpolates them in view', () => {
+    expect(displayPlotNodeEditableText('Inside courage: [courage]', true))
+      .toBe('Inside courage: [courage]');
+    expect(displayPlotNodeEditableText('Inside courage: [courage]', false))
+      .toBe('Inside courage: 0');
   });
 
   it('rejects malformed and non-finite commands', () => {

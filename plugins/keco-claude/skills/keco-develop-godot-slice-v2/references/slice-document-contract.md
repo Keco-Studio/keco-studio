@@ -23,13 +23,13 @@ Create the roadmap first with `create_document(projectId, folderId, name, markdo
 
 The `spec` and `plan` Markdown start with frontmatter containing `sliceId`, `documentType`, `createdDate`, `updatedDate`, `status`, and `latest`. Dates use `YYYY-MM-DD`, and `updatedDate` changes whenever content changes. The status and evaluation documents contain the same stable JSON payload required by the local validator, represented as Markdown when required by the Keco document API.
 
-After every ledger stage, update the Keco status document with `update_document` and its latest state token. Update spec or plan the same way when an accepted revision changes. After every Slice transition, update and read back the roadmap. A completed Slice has all tasks completed and a read-back `eval-report` document. A new revision references the superseded Slice documents and marks older documents `latest: false`.
+Persist status at durable checkpoints instead of after every in-memory ledger stage. Update the Keco status document with `update_document` and its latest state token at plan confirmation, immediately before development writes, whenever `taskTransition` is created, changed, or cleared after the return task, on `blocked_before_write` or `partial`, and on Slice completion. Coalesce ordinary task progress since the previous checkpoint into one update. Update spec or plan only when its accepted content revision changes. Update and read back the roadmap only when Slice selection, dependency state, pause state, or completion changes. A completed Slice has all tasks completed and a read-back `eval-report` document. A new revision references the superseded Slice documents and marks older documents `latest: false`.
 
-After every create/update, read the complete document back and verify the project ID, folder ID, document ID, revision, content hash, `runId`, and `sliceId`. A write response without read-back is not success.
+After every checkpoint create/update, read the complete document back once and verify the project ID, folder ID, document ID, revision, content hash, `runId`, and `sliceId`. Reuse that verified read-back until a relevant document revision changes. A write response without read-back is not success.
 
 ## Plan And Status Ownership
 
-`plan.md` is the approved static scope and does not own task progress. Its lifecycle frontmatter remains for legacy document compatibility, but task state is read from `status.json`. A changed scope or acceptance rule creates a new plan revision instead of writing runtime details into the accepted plan.
+`plan.md` is the approved static scope and does not own task progress. Its lifecycle frontmatter remains for legacy document compatibility and describes the accepted document revision, not the mutable Slice run state. Task state and dates are read from `status.json`. A changed scope or acceptance rule creates a new plan revision instead of writing runtime details into the accepted plan.
 
 `TaskResult` records per-task execution evidence. `EvalReport` records final verification evidence. Command output, read-back values, hashes, screenshots, and repair history belong there or in `status.json`, never in `plan.md`.
 
