@@ -498,4 +498,20 @@ describe('Keco EDD game evaluation Skill', () => {
       expect(result.stderr).not.toMatch(/Traceback/);
     });
   });
+
+  it('documents the end-to-end triggers, script chain, and report boundary', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const triggerFixture = readFileSync(
+      path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-game-evaluation-skill-evals.json'),
+      'utf8',
+    );
+    expect(skill).toContain('Use $keco-evaluate-game to run a Beta EDD evaluation');
+    expect(triggerFixture).toContain('对 Keco 项目执行 Beta 阶段 EDD 游戏评价');
+    expect(triggerFixture).toContain('对刚完成的战斗玩法切片执行 EDD 快速评价');
+    expect(skill).toMatch(/create_evaluation_profile\.py[\s\S]*score_game_evaluation\.py[\s\S]*validate_game_evaluation_report\.py/);
+    expect(skill).toMatch(/GameEvaluationReport[\s\S]*Slice[\s\S]*EvalReport/);
+    expect(skill).toMatch(/docs\/keco-game-evaluations\/<evaluationId>/);
+    expect(skill).toMatch(/KECO_EVAL[\s\S]*manual_required[\s\S]*improvement[\s\S]*retest/i);
+    expect(skill).toMatch(/validate_game_evaluation_report\.py[\s\S]*before claiming/i);
+  });
 });

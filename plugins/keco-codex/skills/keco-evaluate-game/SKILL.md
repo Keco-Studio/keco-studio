@@ -43,6 +43,45 @@ INTAKE -> PROFILE -> EVIDENCE_PLAN -> RUNTIME_EVIDENCE
 7. Validate the report before claiming a score or stage decision.
 8. Create improvement records with fixed retest criteria for every failed evaluation or material low-scoring finding.
 
+## Invocation And Artifacts
+
+Explicit invocation:
+
+```text
+Use $keco-evaluate-game to run a Beta EDD evaluation for my Keco project.
+```
+
+Natural-language requests for a full EDD game score or a gameplay Slice quick evaluation also trigger this Skill. Use the user's language in all questions and results.
+
+Create one directory per run:
+
+```text
+docs/keco-game-evaluations/<evaluationId>/
+  profile.json
+  evidence.json
+  report.json
+```
+
+The existing Slice `EvalReport` owns direct Godot runtime results and raw `KECO_EVAL` evidence. `GameEvaluationReport` is the higher-level score, player evidence, coverage, risks, and stage decision. Reference the Slice report; never rewrite its runtime facts.
+
+Run the deterministic chain from this Skill directory:
+
+```bash
+python3 scripts/create_evaluation_profile.py \
+  --game-id <game-id> --stage <stage> --genre <genre> \
+  --gdd-revision <gdd-revision> --build-hash <build-hash> \
+  --locked-at <iso-timestamp> --output <run-dir>/profile.json
+
+python3 scripts/score_game_evaluation.py \
+  --profile <run-dir>/profile.json \
+  --evidence <run-dir>/evidence.json \
+  --output <run-dir>/report.json
+
+python3 scripts/validate_game_evaluation_report.py <run-dir>/report.json
+```
+
+Run `validate_game_evaluation_report.py` before claiming a score or stage decision. When the report fails or identifies material risks, preserve the original acceptance rule and create improvement and retest records; do not silently change the locked profile.
+
 ## Bundled Resources
 
 Read `references/rubric.md` before creating a profile or questionnaire. Read `references/report-contract.md` before writing evidence or report JSON.
