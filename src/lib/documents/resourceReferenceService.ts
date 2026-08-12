@@ -50,6 +50,7 @@ type LibraryRow = {
   id: string;
   project_id: string;
   name: string;
+  document_export_type?: string | null;
 };
 
 type AssetRow = {
@@ -396,8 +397,9 @@ export async function listTableReferenceSources(
   const rows = await fetchAllPaged<LibraryRow>((from, to) =>
     client
       .from('libraries')
-      .select('id, project_id, name')
+      .select('id, project_id, name, document_export_type')
       .eq('project_id', projectId)
+      .or('document_export_type.is.null,document_export_type.neq.script')
       .order('name', { ascending: true })
       .order('id', { ascending: true })
       .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
