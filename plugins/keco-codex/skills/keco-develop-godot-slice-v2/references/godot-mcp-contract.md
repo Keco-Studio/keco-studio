@@ -22,4 +22,8 @@ The project must print one line per evaluation:
 KECO_EVAL {"evalId":"...","status":"passed|failed","expected":{},"actual":{},"snapshotHash":"sha256:..."}
 ```
 
+Prefer one bounded aggregate evaluation scene for evaluations that can share a fresh process and snapshot. Run that scene through one runtime sequence and emit one `KECO_EVAL` line per evaluation. Use separate runtime sequences only when isolation, input, or lifecycle requirements make aggregation invalid, and record that reason in the EvalReport. Parse and retain the required records from one `get_debug_output` response; do not poll or repeat the same run after complete evidence is already available.
+
+When the host requires local-command authorization, describe the complete bounded verification batch before the first command. Use one stable executable and command prefix throughout the batch so the user can choose the host's persistent prefix approval. A Skill cannot suppress or pre-approve the host prompt and must not claim that permission was granted.
+
 There is no supported arbitrary GDScript execution, runtime-state query, time-step control, input injection, or screenshot tool. Do not claim those capabilities. Appearance, unsupported input, and experience evaluations remain `manual_required`; a clean launch is not a domain pass.

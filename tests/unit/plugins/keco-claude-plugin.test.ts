@@ -140,6 +140,12 @@ describe('Keco Claude plugin packaging', () => {
     expect(contract).toMatch(/planning-document writes[\s\S]{0,240}explicitly/i);
     expect(contract).toMatch(/development mutation[\s\S]{0,160}partial/i);
     expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+    expect(contract).toMatch(/plan order[\s\S]{0,240}execution order/i);
+    expect(contract).toMatch(/do not silently skip|never silently skip/i);
+    expect(contract).toMatch(/paused task[\s\S]{0,240}reason[\s\S]{0,240}return/i);
+    expect(contract).toMatch(/prerequisite work inside the current task/i);
+    expect(contract).toMatch(/changes scope[\s\S]{0,120}acceptance[\s\S]{0,120}allowed files[\s\S]{0,160}revise[\s\S]{0,80}revalidate[\s\S]{0,80}reorder/i);
+    expect(contract).toMatch(/temporary jump only[\s\S]{0,240}execution-time prerequisite[\s\S]{0,240}exists later[\s\S]{0,240}dependencies complete/i);
   });
 
   it('declares an installable marketplace entry and plugin manifest', () => {
@@ -526,6 +532,14 @@ describe('Keco Claude plugin validators', () => {
     ['no quality review anywhere', [task('task-01', { review: { spec: true, quality: false } })], /at least one task must carry a quality review/],
     ['a dropped spec review', [task('task-01', { review: { spec: false, quality: true } })], /spec review is required/],
     ['an unknown dependency', [task('task-01', { dependsOn: ['task-99'] })], /unknown task/],
+    [
+      'a dependency listed after its dependent',
+      [
+        task('task-02', { dependsOn: ['task-01'] }),
+        task('task-01'),
+      ],
+      /dependency must appear before dependent task/,
+    ],
     ['a blank command', [task('task-01', { red: { command: '  ' } })], /red\/green commands/],
     ['a placeholder', [task('task-01', { green: { command: 'TODO decide' } })], /placeholder/],
   ])('rejects a plan with %s', (_label, tasks, expected) => {
@@ -539,6 +553,87 @@ describe('Keco Claude plugin validators', () => {
     expect(runScript('validate_plan.py', [writeTempJson(tempRoot, 'plan.json', plan)]).status).toBe(0);
   });
 
+  it('rejects silent task jumps and accepts an explicit return checkpoint', () => {
+    const sliceRoot = path.join(tempRoot, 'task-order');
+    mkdirSync(sliceRoot, { recursive: true });
+    const frontmatter = (documentType: string) => `---\nsliceId: task-order\ndocumentType: ${documentType}\ncreatedDate: 2026-08-12\nupdatedDate: 2026-08-12\nstatus: in_progress\nlatest: true\n---\n`;
+    writeFileSync(path.join(sliceRoot, 'spec.md'), frontmatter('spec') + '# Task order\n');
+    writeFileSync(path.join(sliceRoot, 'plan.md'), frontmatter('plan') + '# Plan\n\n- [x] task-01: First\n- [ ] task-02: Return task\n- [ ] task-03: Temporary prerequisite\n  - Depends on: task-01\n');
+    const status = {
+      version: 1,
+      sliceId: 'task-order',
+      createdDate: '2026-08-12',
+      updatedDate: '2026-08-12',
+      status: 'in_progress',
+      latest: true,
+      completed: false,
+      supersedes: [],
+      tasks: [
+        { id: 'task-01', status: 'completed' },
+        { id: 'task-02', status: 'in_progress' },
+        { id: 'task-03', status: 'completed' },
+      ],
+    };
+    const transition = {
+      pausedTaskId: 'task-02',
+      reason: 'Task 03 is a newly discovered prerequisite for task-02',
+      temporaryTaskIds: ['task-03'],
+      returnToTaskId: 'task-02',
+      discoveredDuring: 'execution',
+      canInline: false,
+      planImpact: {
+        scopeChanged: false,
+        acceptanceChanged: false,
+        allowedFilesChanged: false,
+      },
+    };
+    writeFileSync(path.join(sliceRoot, 'status.json'), JSON.stringify({
+      ...status,
+      tasks: status.tasks.map((task) => ({
+        ...task,
+        status: task.id === 'task-01' ? 'completed' : task.id === 'task-02' ? 'in_progress' : 'pending',
+      })),
+      taskTransition: transition,
+    }));
+    expect(runScript('validate_slice_documents.py', ['--slice-dir', sliceRoot]).status).toBe(0);
+
+    writeFileSync(path.join(sliceRoot, 'status.json'), JSON.stringify(status));
+    const silentJump = runScript('validate_slice_documents.py', ['--slice-dir', sliceRoot]);
+    expect(silentJump.status).toBe(1);
+    expect(silentJump.stderr).toMatch(/out-of-order task completion requires an explicit task transition/i);
+
+    writeFileSync(path.join(sliceRoot, 'status.json'), JSON.stringify({
+      ...status,
+      taskTransition: transition,
+    }));
+    const explicitJump = runScript('validate_slice_documents.py', ['--slice-dir', sliceRoot]);
+    expect(explicitJump.status).toBe(0);
+
+    writeFileSync(path.join(sliceRoot, 'status.json'), JSON.stringify({
+      ...status,
+      tasks: status.tasks.map((task) => ({ ...task, status: 'completed' })),
+      status: 'completed',
+      completed: true,
+      taskTransition: transition,
+    }));
+    writeFileSync(path.join(sliceRoot, 'eval-report.json'), JSON.stringify({ sliceId: 'task-order', status: 'passed' }));
+    const stale = runScript('validate_slice_documents.py', ['--slice-dir', sliceRoot]);
+    expect(stale.status).toBe(1);
+    expect(stale.stderr).toMatch(/task transition must be cleared after the return task completes/i);
+
+    writeFileSync(path.join(sliceRoot, 'status.json'), JSON.stringify({
+      ...status,
+      tasks: status.tasks.map((task) => ({
+        ...task,
+        status: task.id === 'task-01' ? 'completed' : task.id === 'task-02' ? 'blocked' : 'pending',
+      })),
+      taskTransition: { ...transition, canInline: true },
+    }));
+    const inlineable = runScript('validate_slice_documents.py', ['--slice-dir', sliceRoot]);
+    expect(inlineable.status).toBe(1);
+    expect(inlineable.stderr).toMatch(/keep inlineable prerequisite work inside the paused task/i);
+  });
+
   const report = (overrides: Record<string, unknown> = {}) => ({
     version: 2,
     runId: 'run-1',
@@ -546,6 +641,12 @@ describe('Keco Claude plugin validators', () => {
     status: 'passed',
     snapshotHash: 'sha256:abc',
     evaluations: [{ evalId: 'eval-1', status: 'passed', evidence: ['KECO_EVAL'] }],
+    runtimeBatches: [{
+      batchId: 'batch-1',
+      evaluationIds: ['eval-1'],
+      runtimeSequence: ['run_project', 'get_debug_output', 'stop_project'],
+      splitReason: null,
+    }],
     changedFiles: ['game/scripts/village.gd'],
     manualRequirements: [],
     ...overrides,
@@ -563,6 +664,21 @@ describe('Keco Claude plugin validators', () => {
     ['a passing report with a failed evaluation', report({ evaluations: [{ evalId: 'e', status: 'failed', evidence: ['x'] }] }), /all passed/],
     ['a malformed evaluations array', report({ evaluations: 'none' }), /non-empty array/],
     ['an unknown evaluation status', report({ evaluations: [{ evalId: 'e', status: 'ok', evidence: ['x'] }] }), /invalid evaluation status/],
+    ['runtime batches that omit an evaluation', report({ runtimeBatches: [] }), /runtime batches must cover every evaluation exactly once/],
+    [
+      'multiple runtime batches without split reasons',
+      report({
+        evaluations: [
+          { evalId: 'eval-1', status: 'passed', evidence: ['KECO_EVAL'] },
+          { evalId: 'eval-2', status: 'passed', evidence: ['KECO_EVAL'] },
+        ],
+        runtimeBatches: [
+          { batchId: 'batch-1', evaluationIds: ['eval-1'], runtimeSequence: ['run_project', 'get_debug_output', 'stop_project'], splitReason: null },
+          { batchId: 'batch-2', evaluationIds: ['eval-2'], runtimeSequence: ['run_project', 'get_debug_output', 'stop_project'], splitReason: null },
+        ],
+      }),
+      /splitReason/,
+    ],
   ])('rejects %s without crashing', (_label, value, expected) => {
     const result = runScript('validate_eval_report.py', [writeTempJson(tempRoot, 'report.json', value)]);
     expect(result.status).toBe(1);
@@ -659,7 +775,7 @@ describe('Keco Claude plugin validators', () => {
     const frontmatter = (documentType: string) =>
       `---\nsliceId: hero-animation\n\n# authored by the roadmap stage\ndocumentType: ${documentType}\ncreatedDate: 2026-08-06\nupdatedDate: 2026-08-06\nstatus: in_progress\nlatest: true\n---\n`;
     writeFileSync(path.join(sliceDir, 'spec.md'), `${frontmatter('spec')}\n# Hero animation\n`);
-    writeFileSync(path.join(sliceDir, 'plan.md'), `${frontmatter('plan')}\n# Plan\n`);
+    writeFileSync(path.join(sliceDir, 'plan.md'), `${frontmatter('plan')}\n# Plan\n\n- [ ] task-01: Hero animation\n`);
     writeTempJson(sliceDir, 'status.json', {
       version: 1,
       sliceId: 'hero-animation',

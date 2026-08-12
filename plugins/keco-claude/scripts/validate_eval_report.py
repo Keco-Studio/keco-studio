@@ -6,7 +6,7 @@ import pathlib
 import sys
 
 
-REQUIRED = ("version", "runId", "sliceId", "status", "snapshotHash", "evaluations", "changedFiles", "manualRequirements")
+REQUIRED = ("version", "runId", "sliceId", "status", "snapshotHash", "evaluations", "runtimeBatches", "changedFiles", "manualRequirements")
 STATUSES = {"passed", "partial", "failed", "blocked_before_write"}
 EVALUATION_STATUSES = {"passed", "failed", "manual_required", "blocked"}
 
@@ -47,8 +47,6 @@ def main() -> int:
             return 1
     snapshot_hash = report["snapshotHash"]
     if report["status"] == "passed":
-        # A pass needs the fresh snapshot hash the running project reported plus
-        # direct evidence for every evaluation (SKILL.md gate 11).
         if not isinstance(snapshot_hash, str) or not snapshot_hash.startswith("sha256:"):
             print("passed report needs a sha256: snapshot hash", file=sys.stderr)
             return 1
@@ -60,6 +58,30 @@ def main() -> int:
             return 1
     elif snapshot_hash is not None and not isinstance(snapshot_hash, str):
         print("snapshotHash must be null or a string", file=sys.stderr)
+        return 1
+    batches = report["runtimeBatches"]
+    if not isinstance(batches, list):
+        print("runtimeBatches must be an array", file=sys.stderr)
+        return 1
+    covered: list[str] = []
+    expected_sequence = ["run_project", "get_debug_output", "stop_project"]
+    for batch in batches:
+        if not isinstance(batch, dict) or not {"batchId", "evaluationIds", "runtimeSequence", "splitReason"}.issubset(batch):
+            print("runtime batch lacks batchId/evaluationIds/runtimeSequence/splitReason", file=sys.stderr)
+            return 1
+        if batch["runtimeSequence"] != expected_sequence or not isinstance(batch["evaluationIds"], list) or not batch["evaluationIds"]:
+            print("runtime batch must use the bounded Godot sequence and name evaluations", file=sys.stderr)
+            return 1
+        covered.extend(batch["evaluationIds"])
+    evaluation_ids = [item["evalId"] for item in evaluations]
+    if len(covered) != len(set(covered)) or any(eval_id not in evaluation_ids for eval_id in covered):
+        print("runtime batches must cover every evaluation exactly once", file=sys.stderr)
+        return 1
+    if report["status"] == "passed" and sorted(covered) != sorted(evaluation_ids):
+        print("runtime batches must cover every evaluation exactly once", file=sys.stderr)
+        return 1
+    if len(batches) > 1 and any(not isinstance(batch["splitReason"], str) or not batch["splitReason"].strip() for batch in batches):
+        print("every separated runtime batch requires a splitReason", file=sys.stderr)
         return 1
     print(json.dumps({"ok": True, "status": report["status"], "evaluationCount": len(evaluations)}, sort_keys=True))
     return 0

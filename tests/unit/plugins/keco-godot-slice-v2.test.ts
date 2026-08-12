@@ -123,6 +123,9 @@ describe('Keco Godot Slice V2 skill contract', () => {
     const godot = readFileSync(path.join(skillRoot, 'references', 'godot-mcp-contract.md'), 'utf8');
     expect(godot).toMatch(/run_project -> get_debug_output -> stop_project/);
     expect(godot).toMatch(/KECO_EVAL/);
+    expect(godot).toMatch(/aggregate[\s\S]{0,240}evaluations[\s\S]{0,240}one runtime sequence/i);
+    expect(godot).toMatch(/stable executable[\s\S]{0,160}command prefix[\s\S]{0,240}persistent prefix approval/i);
+    expect(godot).toMatch(/cannot suppress or pre-approve the host prompt/i);
     const sourceData = readFileSync(path.join(skillRoot, 'references', 'source-data-contract.md'), 'utf8');
     expect(sourceData).toMatch(/semantic field labels[\s\S]*stable scalar match keys/i);
     expect(sourceData).toMatch(/semantic[\s\S]*clearly dominant[\s\S]*awaiting_user_confirmation/i);
@@ -159,6 +162,8 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(sliceDocuments).toMatch(/latest[\s\S]*superseded[\s\S]*completed/i);
     expect(sliceDocuments).toMatch(/Keco documents are authoritative[\s\S]*create_document\(projectId, folderId[\s\S]*read_document/i);
     expect(sliceDocuments).toMatch(/no compatible folder[\s\S]*blocked_before_write/i);
+    expect(sliceDocuments).toMatch(/checkpoint[\s\S]{0,240}plan confirmation[\s\S]{0,240}development writes[\s\S]{0,240}(?:blocked|partial)[\s\S]{0,240}completion/i);
+    expect(sliceDocuments).not.toMatch(/After every ledger stage, update the Keco status document/i);
     const sliceDecision = readFileSync(path.join(skillRoot, 'references', 'slice-decision.md'), 'utf8');
     expect(sliceDecision).toMatch(/consistent[\s\S]*without[\s\S]*confirmation/i);
     expect(sliceDecision).toMatch(/awaiting_user_confirmation[\s\S]*zero-write/i);
@@ -170,6 +175,12 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
     expect(orchestration).toMatch(/interaction:[\s\S]{0,480}blockedAt[\s\S]{0,240}resumeFrom/i);
     expect(orchestration).toMatch(/legacy[\s\S]{0,240}without[\s\S]{0,160}interaction/i);
+    expect(orchestration).toMatch(/topological|dependency order/i);
+    expect(orchestration).toMatch(/pausedTaskId[\s\S]{0,240}temporaryTaskIds[\s\S]{0,240}returnToTaskId/i);
+    expect(orchestration).toMatch(/internal RED\/GREEN step of the current task/i);
+    expect(orchestration).toMatch(/Revise, revalidate, and topologically reorder the plan/i);
+    expect(orchestration).toMatch(/Use `taskTransition` only when[\s\S]{0,400}every dependency[\s\S]{0,120}already complete/i);
+    expect(orchestration).toMatch(/discoveredDuring[\s\S]{0,120}canInline[\s\S]{0,160}planImpact/i);
     expect(sliceDocuments).toMatch(/plan\.md[\s\S]{0,200}does not own task progress/i);
     expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i);
   });
@@ -294,7 +305,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
       mkdirSync(sliceDir, { recursive: true });
       const frontmatter = (documentType: string) => `---\nsliceId: hero-animation\ndocumentType: ${documentType}\ncreatedDate: 2026-08-06\nupdatedDate: 2026-08-06\nstatus: in_progress\nlatest: true\n---\n`;
       writeFileSync(path.join(sliceDir, 'spec.md'), frontmatter('spec') + '\n# Hero animation\n');
-      writeFileSync(path.join(sliceDir, 'plan.md'), frontmatter('plan') + '\n# Plan\n');
+      writeFileSync(path.join(sliceDir, 'plan.md'), frontmatter('plan') + '\n# Plan\n\n- [ ] task-01: Hero animation\n');
       writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
         version: 1,
         sliceId: 'hero-animation',
@@ -322,11 +333,151 @@ describe('Keco Godot Slice V2 skill contract', () => {
         supersedes: [],
         tasks: [{ id: 'task-01', status: 'completed' }],
       }));
-      writeFileSync(path.join(sliceDir, 'spec.md'), frontmatter('spec').replace(/status: in_progress/, 'status: completed') + '# Hero animation\n');
-      writeFileSync(path.join(sliceDir, 'plan.md'), frontmatter('plan').replace(/status: in_progress/, 'status: completed') + '# Plan\n');
       const invalid = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
       expect(invalid.status).not.toBe(0);
       expect(invalid.stderr).toMatch(/eval-report/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects silent task jumps and accepts an explicit return checkpoint', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-task-order-'));
+    try {
+      const sliceDir = path.join(tempRoot, 'task-order');
+      mkdirSync(sliceDir, { recursive: true });
+      const frontmatter = (documentType: string) => `---\nsliceId: task-order\ndocumentType: ${documentType}\ncreatedDate: 2026-08-12\nupdatedDate: 2026-08-12\nstatus: in_progress\nlatest: true\n---\n`;
+      writeFileSync(path.join(sliceDir, 'spec.md'), frontmatter('spec') + '# Task order\n');
+      writeFileSync(path.join(sliceDir, 'plan.md'), frontmatter('plan') + '# Plan\n\n' + [
+        '- [x] task-01: First',
+        '- [ ] task-02: Return task',
+        '- [ ] task-03: Temporary prerequisite A',
+        '  - Depends on: task-01',
+        '- [ ] task-04: Temporary prerequisite B',
+        '  - Depends on: task-01',
+        '- [ ] task-05: Last',
+      ].join('\n') + '\n');
+      const status = {
+        version: 1,
+        sliceId: 'task-order',
+        createdDate: '2026-08-12',
+        updatedDate: '2026-08-12',
+        status: 'in_progress',
+        latest: true,
+        completed: false,
+        supersedes: [],
+        tasks: [
+          { id: 'task-01', status: 'completed' },
+          { id: 'task-02', status: 'in_progress' },
+          { id: 'task-03', status: 'completed' },
+          { id: 'task-04', status: 'completed' },
+          { id: 'task-05', status: 'pending' },
+        ],
+      };
+      const validator = path.join(skillRoot, 'scripts', 'validate_slice_documents.py');
+      const transition = {
+        pausedTaskId: 'task-02',
+        reason: 'Tasks 03 and 04 are newly discovered prerequisites for task-02',
+        temporaryTaskIds: ['task-03', 'task-04'],
+        returnToTaskId: 'task-02',
+        discoveredDuring: 'execution',
+        canInline: false,
+        planImpact: {
+          scopeChanged: false,
+          acceptanceChanged: false,
+          allowedFilesChanged: false,
+        },
+      };
+
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        ...status,
+        tasks: status.tasks.map((task) => ({
+          ...task,
+          status: task.id === 'task-01' ? 'completed' : task.id === 'task-02' ? 'in_progress' : 'pending',
+        })),
+        taskTransition: transition,
+      }));
+      const beforeTemporaryWork = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(beforeTemporaryWork.status).toBe(0);
+
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        ...status,
+        tasks: status.tasks.map((task) => ({
+          ...task,
+          status: task.id === 'task-01' ? 'completed' : task.id === 'task-02' ? 'blocked' : task.id === 'task-03' ? 'in_progress' : 'pending',
+        })),
+        taskTransition: transition,
+      }));
+      const duringTemporaryWork = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(duringTemporaryWork.status).toBe(0);
+
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify(status));
+      const silentJump = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(silentJump.status).toBe(1);
+      expect(silentJump.stderr).toMatch(/out-of-order task completion requires an explicit task transition/i);
+
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        ...status,
+        taskTransition: transition,
+      }));
+      const explicitJump = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(explicitJump.status).toBe(0);
+
+      const staleTransition = {
+        ...status,
+        tasks: status.tasks.map((task) => ({ ...task, status: task.id === 'task-05' ? 'pending' : 'completed' })),
+        taskTransition: transition,
+      };
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify(staleTransition));
+      const stale = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(stale.status).toBe(1);
+      expect(stale.stderr).toMatch(/task transition must be cleared after the return task completes/i);
+
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        ...status,
+        tasks: [status.tasks[0], status.tasks[2], status.tasks[3], status.tasks[1], status.tasks[4]],
+      }));
+      const reordered = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(reordered.status).toBe(1);
+      expect(reordered.stderr).toMatch(/status task order must match the accepted plan/i);
+
+      for (const [label, invalidTransition, expected] of [
+        ['inlineable prerequisite', { ...transition, canInline: true }, /keep inlineable prerequisite work inside the paused task/i],
+        ['pre-execution discovery', { ...transition, discoveredDuring: 'planning' }, /revise and revalidate the plan/i],
+        [
+          'scope change',
+          { ...transition, planImpact: { ...transition.planImpact, scopeChanged: true } },
+          /revise and revalidate the plan/i,
+        ],
+        ['earlier temporary task', { ...transition, temporaryTaskIds: ['task-01'] }, /temporary tasks must appear after the paused task/i],
+      ] as const) {
+        writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+          ...status,
+          tasks: status.tasks.map((task) => ({
+            ...task,
+            status: task.id === 'task-01' ? 'completed' : task.id === 'task-02' ? 'blocked' : 'pending',
+          })),
+          taskTransition: invalidTransition,
+        }));
+        const result = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+        expect({ label, status: result.status }).toEqual({ label, status: 1 });
+        expect(result.stderr).toMatch(expected);
+      }
+
+      const planWithBlockedDependency = readFileSync(path.join(sliceDir, 'plan.md'), 'utf8')
+        .replace('  - Depends on: task-01\n- [ ] task-04', '  - Depends on: task-02\n- [ ] task-04');
+      writeFileSync(path.join(sliceDir, 'plan.md'), planWithBlockedDependency);
+      writeFileSync(path.join(sliceDir, 'status.json'), JSON.stringify({
+        ...status,
+        tasks: status.tasks.map((task) => ({
+          ...task,
+          status: task.id === 'task-01' ? 'completed' : task.id === 'task-02' ? 'blocked' : 'pending',
+        })),
+        taskTransition: transition,
+      }));
+      const blockedDependency = spawnSync('python3', [validator, '--slice-dir', sliceDir], { encoding: 'utf8' });
+      expect(blockedDependency.status).toBe(1);
+      expect(blockedDependency.stderr).toMatch(/temporary task dependencies must already be completed/i);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -559,6 +710,34 @@ describe('Keco Godot Slice V2 skill contract', () => {
       );
       expect(result.status).toBe(0);
       expect(result.stdout).toMatch(/"ok": true/);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a plan whose dependency appears after its dependent task', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-plan-order-'));
+    try {
+      const planPath = path.join(tempRoot, 'plan.json');
+      const makeTask = (id: string, dependsOn: string[]) => ({
+        id,
+        files: [`scripts/${id}.gd`],
+        dependsOn,
+        servesEvaluations: ['eval-01'],
+        red: { command: 'pytest tests/red.py', expected: 'fails' },
+        green: { command: 'pytest tests/green.py', expected: 'passes' },
+        review: { spec: 'required', quality: 'required' },
+      });
+      writeFileSync(planPath, JSON.stringify({
+        tasks: [makeTask('task-02', ['task-01']), makeTask('task-01', [])],
+      }));
+      const result = spawnSync(
+        'python3',
+        [path.join(skillRoot, 'scripts', 'validate_plan.py'), planPath],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/dependency must appear before dependent task/i);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

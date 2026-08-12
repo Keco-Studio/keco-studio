@@ -114,6 +114,12 @@ describe('Keco Codex plugin contract', () => {
     expect(contract).toMatch(/planning-document writes[\s\S]{0,240}explicitly/i);
     expect(contract).toMatch(/development mutation[\s\S]{0,160}partial/i);
     expect(contract).toMatch(/`Calling`, `Called`, `Explored`, and `Updated Plan` are host CLI rendering/i);
+    expect(contract).toMatch(/plan order[\s\S]{0,240}execution order/i);
+    expect(contract).toMatch(/do not silently skip|never silently skip/i);
+    expect(contract).toMatch(/paused task[\s\S]{0,240}reason[\s\S]{0,240}return/i);
+    expect(contract).toMatch(/prerequisite work inside the current task/i);
+    expect(contract).toMatch(/changes scope[\s\S]{0,120}acceptance[\s\S]{0,120}allowed files[\s\S]{0,160}revise[\s\S]{0,80}revalidate[\s\S]{0,80}reorder/i);
+    expect(contract).toMatch(/temporary jump only[\s\S]{0,240}execution-time prerequisite[\s\S]{0,240}exists later[\s\S]{0,240}dependencies complete/i);
   });
 
   it('keeps all Skill Markdown and YAML files ASCII-only', () => {
