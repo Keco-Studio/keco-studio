@@ -22,10 +22,14 @@ function imageContext(
     createdAt: "2026-07-30T08:00:00.000Z",
   },
   content: Uint8Array = pngBytes(),
+  options: { failPreparationFor?: string; missingPaths?: string[] } = {},
 ): ProjectMcpRequestContext {
   const bucket = {
     async createSignedUploadUrl(...args: unknown[]) {
       storageCalls.push({ name: "createSignedUploadUrl", arguments: args });
+      if (String(args[0]).endsWith(`-${options.failPreparationFor}`)) {
+        return { data: null, error: { message: "provider detail" } };
+      }
       return {
         data: {
           signedUrl: "https://storage.example/upload?token=signed",
@@ -37,6 +41,9 @@ function imageContext(
     },
     async info(...args: unknown[]) {
       storageCalls.push({ name: "info", arguments: args });
+      if (options.missingPaths?.includes(String(args[0]))) {
+        return { data: null, error: { message: "provider detail" } };
+      }
       return { data: info, error: null };
     },
     async download(...args: unknown[]) {
@@ -323,4 +330,204 @@ Deno.test("complete_image_upload removes content that is not really an image", a
     "from",
     "remove",
   ]);
+});
+
+Deno.test("prepare_image_uploads preserves order and scopes runtime failures to items", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), {
+      failPreparationFor: "bad.png",
+    }),
+    "prepare_image_uploads",
+    {
+      files: [
+        { fileName: "first.png", fileType: "image/png", fileSize: 68 },
+        { fileName: "bad.png", fileType: "image/png", fileSize: 68 },
+        { fileName: "last.png", fileType: "image/png", fileSize: 68 },
+      ],
+    },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const structured = message.result?.structuredContent as {
+    ok: boolean;
+    preparedCount: number;
+    failedCount: number;
+    items: Array<Record<string, unknown>>;
+  };
+  assertEquals(structured.ok, true);
+  assertEquals(structured.preparedCount, 2);
+  assertEquals(structured.failedCount, 1);
+  assertEquals(structured.items.map((item) => item.index), [0, 1, 2]);
+  assertEquals(structured.items.map((item) => item.ok), [true, false, true]);
+  assertMatch(
+    JSON.stringify(structured.items[1]),
+    /IMAGE_UPLOAD_PREPARATION_FAILED/,
+  );
+  assertEquals(JSON.stringify(structured).includes("provider detail"), false);
+});
+
+Deno.test("prepare_image_uploads rejects invalid batch metadata before storage work", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(imageContext(calls), "prepare_image_uploads", {
+    files: [{ fileName: "wrong.jpg", fileType: "image/png", fileSize: 68 }],
+  });
+
+  assertEquals(message.result?.isError, true);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("batch image schemas enforce the 1-20 item bounds before storage work", async () => {
+  for (
+    const files of [
+      [],
+      Array.from({ length: 21 }, (_, index) => ({
+        fileName: `image-${index}.png`,
+        fileType: "image/png",
+        fileSize: 68,
+      })),
+    ]
+  ) {
+    const calls: StorageCall[] = [];
+    const message = await callTool(
+      imageContext(calls),
+      "prepare_image_uploads",
+      {
+        files,
+      },
+    );
+    assertEquals(message.result?.isError, true);
+    assertEquals(calls.length, 0);
+  }
+});
+
+Deno.test("complete_image_uploads preserves order and returns partial missing-object failures", async () => {
+  const calls: StorageCall[] = [];
+  const missing = UPLOAD_PATH.replace("hero.png", "missing.png");
+  const second = UPLOAD_PATH.replace("hero.png", "second.png");
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), { missingPaths: [missing] }),
+    "complete_image_uploads",
+    { paths: [UPLOAD_PATH, missing, second] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const structured = message.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+    items: Array<Record<string, unknown>>;
+  };
+  assertEquals(structured.completedCount, 2);
+  assertEquals(structured.failedCount, 1);
+  assertEquals(structured.items.map((item) => item.index), [0, 1, 2]);
+  assertEquals(structured.items.map((item) => item.ok), [true, false, true]);
+  assertMatch(JSON.stringify(structured.items[1]), /IMAGE_UPLOAD_NOT_FOUND/);
+});
+
+Deno.test("complete_image_uploads rejects duplicate paths as a whole request", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_image_uploads",
+    {
+      paths: [UPLOAD_PATH, UPLOAD_PATH],
+    },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("complete_image_uploads reports rejected stored images with the batch domain code", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, {
+      size: 5 * 1024 * 1024 + 1,
+      contentType: "image/png",
+      createdAt: "2026-07-30T08:00:00.000Z",
+    }),
+    "complete_image_uploads",
+    { paths: [UPLOAD_PATH] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const structured = message.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+    items: Array<Record<string, unknown>>;
+  };
+  assertEquals(structured.completedCount, 0);
+  assertEquals(structured.failedCount, 1);
+  assertMatch(JSON.stringify(structured.items[0]), /FIELD_VALIDATION_FAILED/);
+  assertEquals(calls.some((call) => call.name === "remove"), true);
+});
+
+Deno.test("completion path errors explain image.path provenance", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(imageContext(calls), "complete_image_upload", {
+    path: "/tmp/hero.png",
+  });
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(
+    JSON.stringify(message.result),
+    /image\.path returned by create_image_upload or prepare_image_uploads/,
+  );
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("Unicode file names survive preparation and completion metadata", async () => {
+  const calls: StorageCall[] = [];
+  const fileName = "苹果.png";
+  const preparedMessage = await callTool(
+    imageContext(calls),
+    "create_image_upload",
+    { fileName, fileType: "image/png", fileSize: 68 },
+  );
+  const prepared = preparedMessage.result?.structuredContent as {
+    image: { path: string; fileName: string };
+  };
+  assertEquals(prepared.image.fileName, fileName);
+  assertMatch(prepared.image.path, /~h[0-9a-f]+$/i);
+
+  const completedMessage = await callTool(
+    imageContext(calls),
+    "complete_image_upload",
+    { path: prepared.image.path },
+  );
+  assertEquals(
+    (completedMessage.result?.structuredContent as {
+      image: { fileName: string };
+    }).image.fileName,
+    fileName,
+  );
+});
+
+Deno.test("maximum-length Unicode file names remain completable", async () => {
+  const fileName = "\u754c".repeat(196) + ".png";
+  const calls: StorageCall[] = [];
+  const prepared = await callTool(imageContext(calls), "create_image_upload", {
+    fileName,
+    fileType: "image/png",
+    fileSize: 68,
+  });
+  const path = (prepared.result?.structuredContent as {
+    image: { path: string };
+  }).image.path;
+
+  assertEquals(path.length <= 2048, true);
+
+  calls.length = 0;
+  const completed = await callTool(
+    imageContext(calls),
+    "complete_image_upload",
+    { path },
+  );
+  assertEquals(completed.result?.isError, undefined);
+  assertEquals(
+    (completed.result?.structuredContent as {
+      image: { fileName: string };
+    }).image.fileName,
+    fileName,
+  );
 });

@@ -29,6 +29,9 @@ const PROJECT_WRITE_TOOL_NAMES = [
   "update_document",
   "create_image_upload",
   "complete_image_upload",
+  "prepare_image_uploads",
+  "complete_image_uploads",
+  "create_folder",
 ];
 
 const context = {
@@ -139,7 +142,9 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
   assertEquals(message.error, undefined);
   const tools = message.result?.tools as Array<{
     name: string;
+    description: string;
     inputSchema: { properties?: Record<string, unknown> };
+    annotations?: Record<string, boolean>;
   }>;
   const names = tools.map((tool) => tool.name);
   assertEquals(names, [
@@ -155,6 +160,39 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "limit",
     "cursor",
   ]);
+  const createUpload = tools.find((tool) =>
+    tool.name === "create_image_upload"
+  )!;
+  assertMatch(
+    createUpload.description,
+    /exact local file bytes[\s\S]*upload\.method[\s\S]*upload\.headers[\s\S]*image\.path[\s\S]*local path/i,
+  );
+  const completeUpload = tools.find((tool) =>
+    tool.name === "complete_image_upload"
+  )!;
+  assertMatch(
+    completeUpload.description,
+    /complete verified image object[\s\S]*do not reduce it to a URL or path/i,
+  );
+  assertMatch(
+    JSON.stringify(completeUpload.inputSchema),
+    /image\.path[\s\S]*file: URI[\s\S]*signed upload URL/i,
+  );
+  for (
+    const name of [
+      "prepare_image_uploads",
+      "complete_image_uploads",
+      "create_folder",
+    ]
+  ) {
+    const tool = tools.find((candidate) => candidate.name === name)!;
+    assertEquals(tool.annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    });
+  }
   for (
     const name of [
       "delete_table_field",

@@ -21,6 +21,7 @@ const SKILLS = [
   'keco-build-tables-from-document',
   'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
+  'keco-import-local-assets',
   'pixellab-map-assets',
 ];
 
@@ -257,6 +258,36 @@ describe('Keco Claude plugin packaging', () => {
 });
 
 describe('Keco Claude plugin skill contracts', () => {
+  it('ships the synchronized local image import routing and workflow contract', () => {
+    const claudeSkill = readFileSync(path.join(skillsRoot, 'keco-import-local-assets', 'SKILL.md'));
+    const codexSkill = readFileSync(
+      path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-import-local-assets', 'SKILL.md'),
+    );
+    const skillText = claudeSkill.toString('utf8');
+    const evaluations = readJson<{
+      cases: Array<{ id: string; expectedSkill: string }>;
+      requiredSequence: string[];
+      prohibitedBindings: string[];
+    }>('tests/fixtures/plugins/keco-local-image-import-skill-evals.json');
+
+    expect(claudeSkill).toEqual(codexSkill);
+    expect(skillText).toMatch(/^---\nname: keco-import-local-assets\n/);
+    expect(skillText).toMatch(/Inventory the requested files[\s\S]*Resolve exactly one Keco project[\s\S]*Preview the complete plan[\s\S]*explicit confirmation[\s\S]*Create only a confirmed missing folder[\s\S]*Prepare metadata-only batches[\s\S]*Send the exact local bytes[\s\S]*Complete only successful PUT items[\s\S]*Upsert rows[\s\S]*Paginate authoritative reads[\s\S]*Report each item/i);
+    expect(skillText).toMatch(/prepare_image_uploads\.items\[\]\.image\.path[\s\S]{0,200}Never pass a local path[\s\S]{0,120}signed upload URL/i);
+    expect(skillText).toMatch(/complete verified `image` object[\s\S]{0,160}never reduce it to a path or URL/i);
+    expect(skillText).toMatch(/Row write failed[\s\S]{0,160}do not upload again/i);
+    expect(skillText).toMatch(/Never persist or print signed URLs[\s\S]{0,160}authorization headers/i);
+    expect(evaluations.requiredSequence).toHaveLength(12);
+    expect(evaluations.prohibitedBindings).toContain('signed-credentials-in-checkpoint');
+    expect(evaluations.cases.find((item) => item.id === 'apple-and-pear-directory')).toMatchObject({
+      expectedSkill: 'keco-import-local-assets',
+    });
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'none').map((item) => item.id)).toEqual([
+      'unsupported-attachment',
+      'analysis-only',
+    ]);
+  });
+
   it('routes V2 implicitly and records that routing consistently', () => {
     const skill = readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'SKILL.md'), 'utf8');
     const abMatrix = readFileSync(

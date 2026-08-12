@@ -5,8 +5,18 @@ const migrationPath = path.resolve(
   __dirname,
   '../../../supabase/migrations/20260730120000_allow_local_mcp_image_urls.sql'
 );
+const unicodePatchPath = path.resolve(
+  __dirname,
+  '../../../supabase/migrations/20260813000000_mcp_unicode_image_path_validator.sql'
+);
 
 describe('MCP image row value migration', () => {
+  it('patches deployed validators to match bounded Unicode storage keys', () => {
+    const sql = fs.readFileSync(unicodePatchPath, 'utf8');
+    expect(sql).toMatch(/pg_get_functiondef\(v_signature::regprocedure\)/i);
+    expect(sql).toMatch(/'~h'.*encode\(convert_to\(v_image_file_name, ''UTF8''\), ''hex''\)/i);
+  });
+
   it('allows verified project-scoped image metadata while retaining unsupported-type guards', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
 

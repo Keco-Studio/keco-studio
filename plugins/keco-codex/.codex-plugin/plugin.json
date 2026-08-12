@@ -1,15 +1,15 @@
 {
   "name": "keco",
-  "version": "0.3.0+codex.20260807141030",
-  "description": "Build Keco project data and evaluated Godot gameplay slices with guided Codex workflows.",
+  "version": "0.3.0+codex.20260812161204",
+  "description": "Build Keco project data, import local images, and develop evaluated Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Keco",
-    "shortDescription": "Build Keco tables and evaluated Godot gameplay slices.",
-    "longDescription": "Connect Codex to Keco and use guided workflows to build verified project tables or implement and evaluate bounded Godot gameplay slices from Keco designs.",
+    "shortDescription": "Build Keco tables, import images, and develop Godot slices.",
+    "longDescription": "Connect Codex to Keco and use guided workflows to build verified project tables, import local image assets, or implement and evaluate bounded Godot gameplay slices from Keco designs.",
     "developerName": "Keco Studio",
     "category": "Productivity",
     "capabilities": [
@@ -20,6 +20,7 @@
       "Build Keco tables from a project design document.",
       "Turn my combat specification into related Keco tables.",
       "Preview a Keco table plan from an existing project document.",
+      "Import my local image directory into a verified Keco asset table.",
       "Implement the next Godot gameplay slice from my Keco project and evaluate it.",
       "Read a Keco project document, plan its development ideas as ordered Godot slices, and execute them.",
       "Generate a top-down PixelLab tileset and map-object pack for my Godot scene."
