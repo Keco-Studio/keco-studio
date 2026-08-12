@@ -38,14 +38,14 @@ describe('insertDialogueThreadAfter rollback', () => {
         libraryId: 'library',
         name: 'anchor',
         rowIndex: 0,
-        propertyValues: { type: '2', name: '甲', content: 'anchor' },
+        propertyValues: { type: '2', name: 'Alpha', content: 'anchor' },
       },
       {
         id: 'next',
         libraryId: 'library',
         name: 'next',
         rowIndex: 1,
-        propertyValues: { type: '2', name: '乙', content: 'next' },
+        propertyValues: { type: '2', name: 'Beta', content: 'next' },
       },
     ];
 
@@ -55,7 +55,7 @@ describe('insertDialogueThreadAfter rollback', () => {
       rows,
       fields: { typeKey: 'type', nameKey: 'name', contentKey: 'content' },
       afterRowId: 'anchor',
-      speaker: '乙',
+      speaker: 'Beta',
     });
 
     expect(normalizeRowIndices).toHaveBeenCalledWith({}, 'library', rows);
@@ -74,14 +74,14 @@ describe('insertDialogueThreadAfter rollback', () => {
         libraryId: 'library',
         name: 'before',
         rowIndex: 1,
-        propertyValues: { type: '2', name: '甲', content: 'before' },
+        propertyValues: { type: '2', name: 'Alpha', content: 'before' },
       },
       {
         id: 'after',
         libraryId: 'library',
         name: 'after',
         rowIndex: 2,
-        propertyValues: { type: '2', name: '乙', content: 'after' },
+        propertyValues: { type: '2', name: 'Beta', content: 'after' },
       },
     ];
 
@@ -91,7 +91,7 @@ describe('insertDialogueThreadAfter rollback', () => {
       rows,
       fields: { typeKey: 'type', nameKey: 'name', contentKey: 'content' },
       afterRowId: 'before',
-      speaker: '乙',
+      speaker: 'Beta',
     })).rejects.toThrow('speech failed');
 
     expect(deleteAssets).toHaveBeenCalledWith({}, ['new-action']);
@@ -109,16 +109,16 @@ describe('deleteDialogueBlock', () => {
       {
         id: 'action',
         libraryId: 'library',
-        name: '勇者',
+        name: 'Hero',
         rowIndex: 1,
-        propertyValues: { type: '3', name: '勇者', content: '举剑' },
+        propertyValues: { type: '3', name: 'Hero', content: 'Raises sword' },
       },
       {
         id: 'speech',
         libraryId: 'library',
-        name: '勇者',
+        name: 'Hero',
         rowIndex: 2,
-        propertyValues: { type: '2', name: '勇者', content: '向前' },
+        propertyValues: { type: '2', name: 'Hero', content: 'Forward' },
       },
     ];
 
@@ -130,9 +130,9 @@ describe('deleteDialogueBlock', () => {
         actionRowId: 'action',
         speechRowId: 'speech',
         rowIndexes: [0, 1],
-        speaker: '勇者',
-        action: '举剑',
-        dialogue: '向前',
+        speaker: 'Hero',
+        action: 'Raises sword',
+        dialogue: 'Forward',
         speechType: '2',
         accent: 'green',
         alignment: 'left',

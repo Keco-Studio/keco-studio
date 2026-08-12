@@ -61,8 +61,6 @@ const ENVIRONMENT_SPEAKER_KEYS = new Set([
   '',
   'speaker',
   'narrator',
-  '旁白',
-  '环境',
   'environment',
 ]);
 

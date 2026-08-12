@@ -38,9 +38,9 @@ const block: ScriptDialogueBlock = {
   actionRowId: 'action',
   speechRowId: 'speech',
   rowIndexes: [1, 2],
-  speaker: '勇者',
-  action: '举起长剑',
-  dialogue: '向前。',
+  speaker: 'Hero',
+  action: 'Raises the longsword',
+  dialogue: 'Forward.',
   speechType: '2',
   accent: 'green',
   alignment: 'left',
@@ -83,7 +83,7 @@ describe('ScriptEditableDialogBlock', () => {
     const markup = render(false);
 
     expect(markup.match(/aria-label="Edit [^"]+"/g)).toHaveLength(3);
-    expect(markup).toContain('aria-label="Edit 勇者 avatar"');
+    expect(markup).toContain('aria-label="Edit Hero avatar"');
     expect(markup).toContain('aria-label="Edit action"');
     expect(markup).toContain('aria-label="Edit dialogue"');
   });
