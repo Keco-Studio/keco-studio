@@ -217,6 +217,9 @@ export function materializeDirectMapScene(
   const next: MapSceneV3 = {
     ...current,
     size: { ...plan.map },
+    collisionGrid: current.collisionGrid?.imageSha256 === asset.sha256
+      ? current.collisionGrid
+      : null,
     mapImage: {
       assetKey: 'map-image',
       sourceRevisionId: target.revisionId,

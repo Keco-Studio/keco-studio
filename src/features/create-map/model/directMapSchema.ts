@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DirectMapCollisionGridSchema } from './directMapCollisionGrid';
 
 export const DIRECT_MAP_PROFILES = [
   { width: 512, height: 512 },
@@ -37,7 +38,7 @@ export const MapPlanV3Schema = z.object({
   }).strict(),
 }).strict();
 
-export const MapSceneV3Schema = z.object({
+const MapSceneV3ObjectSchema = z.object({
   schemaVersion: z.literal(3),
   size: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).strict(),
   mapImage: z.object({
@@ -47,8 +48,14 @@ export const MapSceneV3Schema = z.object({
     height: z.number().int().positive(),
     locked: z.literal(true),
   }).strict().nullable(),
+  collisionGrid: DirectMapCollisionGridSchema.nullable(),
   canvas: z.object({ zoom: z.number().positive(), panX: z.number(), panY: z.number() }).strict(),
 }).strict();
+
+export const MapSceneV3Schema = z.preprocess((input) => {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || 'collisionGrid' in input) return input;
+  return { ...input, collisionGrid: null };
+}, MapSceneV3ObjectSchema);
 
 export type MapPlanV3 = z.infer<typeof MapPlanV3Schema>;
 export type MapSceneV3 = z.infer<typeof MapSceneV3Schema>;
@@ -148,6 +155,7 @@ export function createEmptyMapSceneV3(plan: MapPlanV3): MapSceneV3 {
     schemaVersion: 3,
     size: { ...plan.map },
     mapImage: null,
+    collisionGrid: null,
     canvas: { zoom: 1, panX: 24, panY: 24 },
   };
 }
@@ -185,6 +193,12 @@ export function validateMapSceneV3(planInput: MapPlanV3, sceneInput: unknown): M
     scene.mapImage.width !== plan.map.width || scene.mapImage.height !== plan.map.height
   )) {
     addIssue(['mapImage'], 'Map image dimensions must match Plan dimensions');
+  }
+  if (scene.collisionGrid !== null && (
+    scene.collisionGrid.columns * scene.collisionGrid.cellSize !== plan.map.width
+    || scene.collisionGrid.rows * scene.collisionGrid.cellSize !== plan.map.height
+  )) {
+    addIssue(['collisionGrid'], 'Collision grid dimensions must match Plan dimensions');
   }
 
   return issues.length > 0 ? { success: false, issues } : { success: true, data: scene };

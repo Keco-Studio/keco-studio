@@ -4,8 +4,25 @@ import { describe, expect, it } from '@jest/globals';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260811020000_create_map_v3_direct_image.sql');
 const sql = fs.readFileSync(migrationPath, 'utf8');
+const collisionMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260812010000_create_map_v3_collision_grid.sql');
+const collisionSql = fs.readFileSync(collisionMigrationPath, 'utf8');
 
 describe('Create Map V3 direct-image migration', () => {
+  it('adds a strict optional 8px collision grid without modifying the original validator', () => {
+    expect(collisionSql).toMatch(/rename to map_validate_v3_payload_without_collision_grid/i);
+    expect(collisionSql).toMatch(/p_scene - 'collisionGrid'/i);
+    expect(collisionSql).toMatch(/not \(p_scene \? 'collisionGrid'\)[\s\S]+collisionGrid' = 'null'::jsonb/i);
+    expect(collisionSql).toMatch(/array\['version', 'cellSize', 'columns', 'rows', 'cells', 'imageSha256'\]/i);
+    expect(collisionSql).toMatch(/v_grid ->> 'cellSize' <> '8'/i);
+    expect(collisionSql).toMatch(/\(64, 64\)[\s\S]+\(86, 48\)[\s\S]+\(48, 86\)/i);
+    expect(collisionSql).toMatch(/jsonb_array_length\(v_grid -> 'cells'\) <> v_columns \* v_rows/i);
+    expect(collisionSql).toMatch(/cell\.value not in \('0'::jsonb, '1'::jsonb\)/i);
+    expect(collisionSql).toMatch(/imageSha256'[\s\S]+\^\[a-f0-9\]\{64\}\$/i);
+    for (const rpc of ['create_map_project_v3', 'save_map_draft_v3', 'publish_map_revision_v3', 'create_map_asset_plan_v3']) {
+      expect(collisionSql).toMatch(new RegExp(`alter function public\\.${rpc}\\(`, 'i'));
+    }
+  });
+
   it('adds schema 3 and the map_image kind without dropping legacy values', () => {
     expect(sql).toMatch(/schema_version in \(1, 2, 3\)/i);
     expect(sql).toMatch(/schema_version in \(2, 3\)[\s\S]+source_document_id is null[\s\S]+source_revision is null/i);

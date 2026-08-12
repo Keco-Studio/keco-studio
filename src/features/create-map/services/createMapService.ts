@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { DirectMapCollisionGridSchema, type DirectMapCollisionGrid } from '../model/directMapCollisionGrid';
 import { listDocuments } from '@/lib/services/documentService';
 import { listProjects } from '@/lib/services/projectService';
 import { MapPlanSchema, MapPlanV2Schema, validateMapPlanV2, type MapPlan, type MapPlanV2 } from '../model/mapPlanSchema';
@@ -660,6 +661,21 @@ export function createMapService(supabase: SupabaseClient) {
       body.set('file', file);
       const payload = await responseJson(await fetch('/api/create-map/references', { method: 'POST', body }));
       return parseReferenceRecord(payload.reference);
+    },
+
+    async analyzeCollisionGrid(
+      projectId: string,
+      mapId: string,
+      revisionId: string,
+    ): Promise<DirectMapCollisionGrid> {
+      const payload = await responseJson(await fetch('/api/create-map/collision-grid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, mapId, revisionId }),
+      }));
+      const parsed = DirectMapCollisionGridSchema.safeParse(payload.collisionGrid);
+      if (!parsed.success) throw new CreateMapServiceError('invalid_response', 'Vision returned an invalid collision grid');
+      return parsed.data;
     },
 
     async createProject(projectId: string, plan: MapPlan, scene: MapScene, source: MapSourceToken): Promise<MapDraftIdentity> {

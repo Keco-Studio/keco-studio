@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectMapCanvas';
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
+import { DirectMapCollisionPanel } from './components/DirectMapCollisionPanel';
 import { DirectMapPlanInspector } from './components/DirectMapPlanInspector';
 import { MapReferencePanel } from './components/MapReferencePanel';
 import { MapSourcePanel } from './components/MapSourcePanel';
@@ -14,6 +15,7 @@ import {
   useMapDraft,
 } from './hooks/useMapDraft';
 import { useDirectMapGeneration } from './hooks/useDirectMapGeneration';
+import { useDirectMapCollisionGrid } from './hooks/useDirectMapCollisionGrid';
 import { useMapSources } from './hooks/useMapSources';
 import { savedMapOpenIsCurrent, savedMapSwitchBlocked, useSavedMaps } from './hooks/useSavedMaps';
 import {
@@ -228,6 +230,15 @@ export function DirectMapWorkbench() {
       height: boundImage.height,
     };
   }, [generation.boundImage, scene.mapImage]);
+  const collision = useDirectMapCollisionGrid({
+    projectId,
+    identity: draft.identity,
+    canAnalyze: draft.status === 'saved' && !draft.isDirty,
+    scene,
+    image,
+    service,
+    setScene,
+  });
 
   const actionError = error ?? draft.error ?? generation.error;
   const saveStatus = draft.status === 'saving' || draft.status === 'creating'
@@ -309,7 +320,15 @@ export function DirectMapWorkbench() {
             </button>
           </div>
         </header>
-        <DirectMapCanvas plan={plan} scene={scene} image={image} />
+        <DirectMapCanvas
+          plan={plan}
+          scene={scene}
+          image={image}
+          collisionGrid={scene.collisionGrid}
+          collisionVisible={collision.overlayVisible}
+          paintMode={collision.paintMode}
+          onPaintCell={collision.paintCell}
+        />
       </section>
 
       <aside className={`${styles.rightPanel} ${rightOpen ? styles.drawerOpen : ''}`} aria-label="Map plan and generation">
@@ -330,6 +349,19 @@ export function DirectMapWorkbench() {
           onRegenerate={() => void generation.regenerate()}
           onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
         />
+        {image ? (
+          <DirectMapCollisionPanel
+            grid={scene.collisionGrid}
+            phase={collision.phase}
+            error={collision.error}
+            overlayVisible={collision.overlayVisible}
+            paintMode={collision.paintMode}
+            onOverlayVisibleChange={collision.setOverlayVisible}
+            onPaintModeChange={collision.setPaintMode}
+            onRetry={() => void collision.retry()}
+            onClear={collision.clearGrid}
+          />
+        ) : null}
       </aside>
     </main>
   );

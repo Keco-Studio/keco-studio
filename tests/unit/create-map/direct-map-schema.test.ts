@@ -4,9 +4,31 @@ import {
   validateMapPlanV3,
   validateMapSceneV3,
 } from '@/features/create-map/model/directMapSchema';
-import { makeValidMapPlanV3 } from './fixtures';
+import { createEmptyCollisionGrid } from '@/features/create-map/model/directMapCollisionGrid';
+import { makeEmptyMapSceneV3, makeValidMapPlanV3 } from './fixtures';
 
 describe('direct map V3 schemas', () => {
+  it('normalizes legacy scenes without collisionGrid to null', () => {
+    const plan = makeValidMapPlanV3();
+    const legacy = { ...makeEmptyMapSceneV3() } as Record<string, unknown>;
+    delete legacy.collisionGrid;
+    const result = validateMapSceneV3(plan, legacy);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.collisionGrid).toBeNull();
+  });
+
+  it('validates collision grid dimensions against the Plan', () => {
+    const plan = makeValidMapPlanV3();
+    expect(validateMapSceneV3(plan, {
+      ...makeEmptyMapSceneV3(),
+      collisionGrid: createEmptyCollisionGrid(512, 512, 'a'.repeat(64)),
+    }).success).toBe(true);
+    expect(validateMapSceneV3(plan, {
+      ...makeEmptyMapSceneV3(),
+      collisionGrid: createEmptyCollisionGrid(688, 384, 'b'.repeat(64)),
+    }).success).toBe(false);
+  });
+
   it('accepts a direct Pro map plan without rewriting description', () => {
     const plan = makeValidMapPlanV3();
 

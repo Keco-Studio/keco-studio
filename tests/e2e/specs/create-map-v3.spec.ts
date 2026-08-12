@@ -117,6 +117,7 @@ function emptyScene(plan: MapPlanV3): MapSceneV3 {
     schemaVersion: 3,
     size: { ...plan.map },
     mapImage: null,
+    collisionGrid: null,
     canvas: { zoom: 1, panX: 24, panY: 24 },
   };
 }
@@ -183,6 +184,7 @@ class CreateMapV3MockBackend {
     }));
     await page.route('**/api/create-map/references**', (route) => this.handleReferences(route));
     await page.route('**/api/create-map/plan', (route) => this.handlePlan(route));
+    await page.route('**/api/create-map/collision-grid', (route) => this.handleCollisionGrid(route));
   }
 
   seedReadyV3Map(id: string, name: string, delayMs = 0): void {
@@ -323,6 +325,31 @@ class CreateMapV3MockBackend {
         epoch: 2,
         revision: 3,
       } : null,
+    });
+  }
+
+  private async handleCollisionGrid(route: Route): Promise<void> {
+    const request = route.request().postDataJSON() as Record<string, unknown>;
+    const map = this.maps.get(String(request.mapId));
+    const revision = map?.revisions.get(String(request.revisionId));
+    const binding = revision?.scene.mapImage;
+    const asset = binding
+      ? [...this.assets.values()].find((candidate) => candidate.map_revision_id === binding.sourceRevisionId)
+      : null;
+    if (!revision || !binding || !asset?.sha256) {
+      return json(route, { error: 'Ready map image is unavailable', code: 'image_not_ready' }, 409);
+    }
+    const cells = Array.from({ length: 64 * 64 }, () => 0 as 0 | 1);
+    cells[10 * 64 + 10] = 1;
+    return json(route, {
+      collisionGrid: {
+        version: 1,
+        cellSize: 8,
+        columns: 64,
+        rows: 64,
+        cells,
+        imageSha256: asset.sha256,
+      },
     });
   }
 
@@ -706,6 +733,35 @@ test.describe('Create Map V3 mocked workflow', () => {
       'submit', 'poll', 'validate', 'retry', 'poll', 'validate',
     ]);
     expect(backend.assets.size).toBe(1);
+  });
+
+  test('analyzes, paints, saves, and restores the 8px collision grid', async ({ page }) => {
+    const backend = new CreateMapV3MockBackend();
+    await loginAndOpen(page, backend);
+    await createSavedMap(page);
+    await generateReadyMap(page);
+    await expect(page.getByText('Grid ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
+
+    const overlay = page.getByLabel('Editable collision grid');
+    const bounds = await overlay.boundingBox();
+    if (!bounds) throw new Error('Collision overlay is not visible');
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await expect(page.getByText('2 blocked', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Walkable', exact: true }).click();
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+
+    const map = backend.maps.get(MAP_ID);
+    const savedGrid = map?.revisions.get(map.currentRevisionId)?.scene.collisionGrid;
+    expect(savedGrid?.cells[32 * 64 + 32]).toBe(0);
+
+    await page.reload();
+    await page.getByRole('button', { name: /Mosslight Crossing/ }).click();
+    await expect(page.getByText('Grid ready', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('1 blocked', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Editable collision grid')).toBeVisible();
   });
 
   test('regenerates into a new revision while preserving the prior ready result', async ({ page }) => {

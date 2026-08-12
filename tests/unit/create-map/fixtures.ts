@@ -268,6 +268,7 @@ export function makeEmptyMapSceneV3(overrides: Partial<MapPlanV3> = {}): MapScen
     schemaVersion: 3,
     size: { ...plan.map },
     mapImage: null,
+    collisionGrid: null,
     canvas: { zoom: 1, panX: 24, panY: 24 },
   };
 }
