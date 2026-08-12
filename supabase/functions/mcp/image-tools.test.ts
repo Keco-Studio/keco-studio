@@ -478,7 +478,7 @@ Deno.test("completion path errors explain image.path provenance", async () => {
 
 Deno.test("Unicode file names survive preparation and completion metadata", async () => {
   const calls: StorageCall[] = [];
-  const fileName = "苹果.png";
+  const fileName = "\u82f9\u679c.png";
   const preparedMessage = await callTool(
     imageContext(calls),
     "create_image_upload",

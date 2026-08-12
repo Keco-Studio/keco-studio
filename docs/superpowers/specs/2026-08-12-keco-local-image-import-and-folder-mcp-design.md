@@ -4,7 +4,7 @@
 
 ## Problem
 
-The execution record `苹果和梨_KecoStudio_执行记录.md` shows that an Agent can import local images into Keco, but only after discovering the protocol through repeated calls. The current MCP tools declare Zod input schemas, so the defect is not missing parameters. The defect is that the callable contract and installed Skills do not make the multi-step workflow discoverable enough:
+The referenced KecoStudio execution record shows that an Agent can import local images into Keco, but only after discovering the protocol through repeated calls. The current MCP tools declare Zod input schemas, so the defect is not missing parameters. The defect is that the callable contract and installed Skills do not make the multi-step workflow discoverable enough:
 
 1. `create_image_upload` prepares a signed target but does not fully explain how its returned fields feed the required HTTP request and completion call.
 2. `complete_image_upload.path` does not clearly distinguish the returned Keco object path from a local path or URL.
