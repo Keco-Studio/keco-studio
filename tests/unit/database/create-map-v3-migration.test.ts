@@ -4,7 +4,7 @@ import { describe, expect, it } from '@jest/globals';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260811020000_create_map_v3_direct_image.sql');
 const sql = fs.readFileSync(migrationPath, 'utf8');
-const collisionMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260812010000_create_map_v3_collision_grid.sql');
+const collisionMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260812010000_map_v3_collision_grid.sql');
 const collisionSql = fs.readFileSync(collisionMigrationPath, 'utf8');
 
 describe('Create Map V3 direct-image migration', () => {
