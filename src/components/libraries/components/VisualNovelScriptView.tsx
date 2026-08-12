@@ -18,7 +18,7 @@ import {
 import { UndoOutlined, RedoOutlined } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import type { AssetRow } from '@/lib/types/libraryAssets';
-import { interpolateVariables } from '@/lib/story-ir/commands';
+import { displayPlotNodeEditableText, interpolateVariables } from '@/lib/story-ir/commands';
 import type {
   ScriptDialogueBlock,
   ScriptDialogueCharacter,
@@ -372,7 +372,11 @@ export function VisualNovelScriptView({
         return (
           <ScriptEditableDialogBlock
             key={block.id}
-            block={block}
+            block={{
+              ...block,
+              action: displayPlotNodeEditableText(block.action, editing.editingBlockId === block.id),
+              dialogue: displayPlotNodeEditableText(block.dialogue, editing.editingBlockId === block.id),
+            }}
             characters={editing.characters}
             isEditing={editing.editingBlockId === block.id}
             onBeginEdit={() => editing.setEditingBlockId(block.id)}

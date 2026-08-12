@@ -82,3 +82,8 @@ export function interpolateVariables(content: string, variables: VariableState):
     return String(variables[variable] ?? 0);
   });
 }
+
+/** Plot-node view interpolates missing vars to 0; edit mode keeps source placeholders. */
+export function displayPlotNodeEditableText(value: string, isEditing: boolean): string {
+  return isEditing ? value : interpolateVariables(value, {});
+}

@@ -287,6 +287,11 @@ describe('visual novel player wiring', () => {
     expect(viewSource).not.toContain('[filteredRows, mode]');
   });
 
+  it('interpolates editable plot-node dialogue placeholders in view mode', () => {
+    expect(viewSource).toContain('displayPlotNodeEditableText(block.dialogue');
+    expect(viewSource).toContain('displayPlotNodeEditableText(block.action');
+  });
+
 });
 
 describe('compiled story fixture playback', () => {
