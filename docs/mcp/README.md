@@ -135,26 +135,106 @@ editors, and admins.
 
 ## Image Uploads
 
-The MCP image write flow stores raster images in the existing public
-`library-media-files` bucket without putting binary data inside the bounded MCP
-JSON request:
+The MCP image tools exchange metadata and object paths only. Raw bytes are sent
+directly to the returned signed target, outside the bounded MCP JSON request.
+PNG, JPEG, GIF, WebP, and safe static SVG files up to 5 MiB are supported.
+Include `projectId` from `list_projects` on the account endpoint and omit it on
+a legacy project endpoint.
 
-1. Ensure the target table has an image field, either in `create_table.fields`
-   or with `add_table_field`.
-2. Call `create_image_upload` with `projectId` on the account endpoint (omit it
-   on a legacy project endpoint), plus `fileName`, `fileType`, and `fileSize`.
-3. Send the raw image bytes with HTTP `PUT` to the returned `upload.url`, using
-   the returned headers. The signed target expires after two hours.
-4. Call `complete_image_upload` with the returned image `path`. Use the verified
-   `image` object from this response as the value passed to
-   `update_table_row` for an image field.
+### Single Image
 
-Uploads are isolated under the current user and project, limited to 5 MiB, and
-accept PNG, JPEG, GIF, WebP, and static SVG. SVG completion rejects scripts,
-event handlers, embedded HTML, styles, and external references before returning
-metadata. Completion verifies the stored size, media type, file signature,
-extension, and project path; invalid objects are removed before an error is
-returned. Both tools recheck write access on every account-scoped call.
+1. Ensure the target table has an `image` field, either in
+   `create_table.fields` or with `add_table_field`.
+2. Call `create_image_upload` with `fileName`, `fileType`, and `fileSize`. This
+   sends file metadata only; do not include raw bytes or Base64.
+3. Before the target expires, send the exact local file bytes to the returned
+   `upload.url` using the returned `upload.method` and every returned
+   `upload.headers` entry.
+4. After the PUT succeeds, call `complete_image_upload`. Its `path` must be only
+   the `image.path` from that same `create_image_upload` response. A Windows or
+   POSIX local path, `file:` URI, public image URL, or signed upload URL is
+   invalid.
+5. Store the complete verified `image` object returned by completion as the
+   image field value in `create_table_row`, `update_table_row`, or an applicable
+   bulk row Tool. Do not reduce the object to its URL or path.
+
+### Batch Images
+
+Batch calls preserve input order and return the zero-based input `index` on
+each result. The canonical sequence is:
+
+1. Split validated metadata into batches of 1-20 items and call
+   `prepare_image_uploads`. Each `files` item contains only `fileName`,
+   `fileType`, and `fileSize`.
+2. For every item with `ok: true`, match it to its local source using `index`
+   and file metadata. Send the exact local bytes outside MCP using that item's
+   `upload.method`, `upload.url`, and all `upload.headers`. Use bounded
+   concurrency. Do not PUT an item whose preparation failed.
+3. Collect only paths whose PUT succeeded. Call `complete_image_uploads` in
+   batches of 1-20 unique paths, passing each successful preparation item's
+   `image.path`; never pass a local path or any URL.
+4. Match completion results by `index` and store each successful item's complete
+   verified `image` object in the corresponding Keco row.
+5. Read the table rows back with pagination and verify the expected file-name
+   keys and complete image objects before reporting success.
+
+The top-level `ok: true` from a batch means item processing ran, not that every
+item succeeded. Use `preparedCount` or `completedCount`, `failedCount`, and each
+item's discriminated `ok` result to report total or partial completion. Schema
+violations reject the whole call; runtime preparation and completion failures
+are item-scoped. Retrying preparation creates a new signed target. Retry
+completion for an unchanged prepared path only when its earlier result is
+unknown or the error permits it; if completion removed an invalid object,
+prepare and PUT only that item again.
+
+Signed upload URLs and headers are credentials. Use them only for the PUT and
+never persist, print, log, or place them in checkpoints, table rows, or error
+reports. The same boundary applies to access tokens and authorization headers.
+Checkpoints may retain nonsensitive file metadata, Keco object paths, and
+verified image objects.
+
+Completion verifies project isolation, stored size, media type, extension, file
+signature, and SVG safety. Static SVG validation rejects scripts, event
+handlers, embedded HTML, styles, and external references. Invalid stored
+objects are removed before the corresponding error is returned. Every upload
+Tool rechecks current project write access.
+
+## Folder Creation
+
+`create_folder` creates one root or nested folder. Only a project owner or an
+accepted `admin` collaborator can use it; editors and viewers receive
+`PROJECT_WRITE_FORBIDDEN`. Folder creation is non-idempotent, so inspect
+`list_project_structure`, preview the intended parent and name, and obtain any
+required user confirmation before calling it.
+
+Account endpoint example:
+
+```json
+{
+  "projectId": "from list_projects",
+  "name": "Reference Images",
+  "description": "Imported visual references",
+  "parentFolderId": null
+}
+```
+
+For a nested folder, set `parentFolderId` to a folder ID from
+`list_project_structure`. On a legacy endpoint, use the same arguments without
+`projectId`:
+
+```json
+{
+  "name": "Characters",
+  "parentFolderId": "parent folder ID from list_project_structure"
+}
+```
+
+After `create_folder` succeeds, call `list_project_structure` again and match
+the returned folder's ID, project ID, parent folder ID, and name. Use the folder
+as a later table or document target only after that read-back succeeds. Do not
+retry a lost mutation response until the read-back proves that the intended
+folder was not created. The Tool never overwrites, moves, renames, or deletes an
+existing folder.
 
 ## Server Configuration
 

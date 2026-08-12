@@ -1,0 +1,89 @@
+{
+  "cases": [
+    {
+      "id": "apple-and-pear-directory",
+      "kind": "positive",
+      "prompt": "Import the apple and pear images from my local fruit directory into an Images table in my Keco Orchard project.",
+      "expectedSkill": "keco-import-local-assets",
+      "requiredBehaviors": [
+        "inventory-supported-images",
+        "resolve-one-project",
+        "read-project-structure",
+        "preview-and-confirm",
+        "batch-prepare-put-complete",
+        "normalized-file-name-match",
+        "verified-image-object",
+        "paginated-read-back"
+      ]
+    },
+    {
+      "id": "local-visual-assets",
+      "kind": "positive",
+      "prompt": "Upload these local PNG and WebP visual assets into the existing compatible Keco asset table.",
+      "expectedSkill": "keco-import-local-assets",
+      "requiredBehaviors": [
+        "inventory-supported-images",
+        "reuse-only-confirmed-target",
+        "preview-and-confirm",
+        "authoritative-read-back"
+      ]
+    },
+    {
+      "id": "pixellab-generation",
+      "kind": "negative",
+      "prompt": "Generate matching top-down village props with PixelLab and register them in Keco.",
+      "expectedSkill": "pixellab-map-assets",
+      "requiredBehaviors": ["do-not-route-local-import"]
+    },
+    {
+      "id": "godot-resource-integration",
+      "kind": "negative",
+      "prompt": "Turn the Keco character art into Godot resources for the next gameplay slice.",
+      "expectedSkill": "keco-develop-godot-slice-v2",
+      "requiredBehaviors": ["do-not-route-local-import"]
+    },
+    {
+      "id": "document-to-table",
+      "kind": "negative",
+      "prompt": "Build Keco tables from the Combat System document stored in my project.",
+      "expectedSkill": "keco-build-tables-from-document",
+      "requiredBehaviors": ["do-not-route-local-import"]
+    },
+    {
+      "id": "unsupported-attachment",
+      "kind": "negative",
+      "prompt": "Upload this local PDF and ZIP archive into Keco.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["identify-unsupported", "do-not-route-local-import"]
+    },
+    {
+      "id": "analysis-only",
+      "kind": "negative",
+      "prompt": "Analyze why the repository image importer is slow without changing Keco.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["do-not-route-local-import"]
+    }
+  ],
+  "requiredSequence": [
+    "inventory",
+    "resolve-project",
+    "read-structure",
+    "preview",
+    "confirm",
+    "create-confirmed-structure",
+    "prepare",
+    "put",
+    "complete",
+    "upsert",
+    "read-back",
+    "report"
+  ],
+  "prohibitedBindings": [
+    "raw-bytes-in-mcp",
+    "base64-in-mcp",
+    "local-path-to-completion",
+    "signed-url-to-completion",
+    "path-only-image-field",
+    "signed-credentials-in-checkpoint"
+  ]
+}

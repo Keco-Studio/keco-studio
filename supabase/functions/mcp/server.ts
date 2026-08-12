@@ -38,6 +38,9 @@ const WRITE_TOOLS = new Set([
   "update_document",
   "create_image_upload",
   "complete_image_upload",
+  "prepare_image_uploads",
+  "complete_image_uploads",
+  "create_folder",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",

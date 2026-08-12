@@ -3,8 +3,9 @@ import { createMcpRpcClient, MCP_PROTOCOL_VERSION, structuredToolResult, type Mc
 
 const READ_TOOLS = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document',
   'read_story_graph', 'semantic_search'];
-const WRITE_TOOLS = ['add_table_field', 'complete_image_upload', 'create_document', 'create_image_upload',
-  'create_table', 'create_table_row', 'update_document', 'update_table_row', 'edit_table_field',
+const WRITE_TOOLS = ['add_table_field', 'complete_image_upload', 'complete_image_uploads', 'create_document',
+  'create_folder', 'create_image_upload', 'create_table', 'create_table_row', 'prepare_image_uploads',
+  'update_document', 'update_table_row', 'edit_table_field',
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
   'bulk_update_table_rows', 'upsert_table_rows'];
 const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS].sort();
