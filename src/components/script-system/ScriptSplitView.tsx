@@ -8,6 +8,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import type { ScriptColumns } from '@/components/libraries/components/VisualNovelScriptView';
 import { VisualNovelScriptView } from '@/components/libraries/components/VisualNovelScriptView';
@@ -30,6 +31,7 @@ import {
   buildScriptFlowGraph,
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
+import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
 import styles from './ScriptSplitView.module.css';
 
@@ -39,6 +41,7 @@ export type ScriptSplitViewProps = {
   scriptColumns: ScriptColumns;
   flowRows: Array<Record<string, string>>;
   persistedGraph?: FlowGraph;
+  supabase?: SupabaseClient;
 };
 
 const MIN_PANE_PX = 240;
@@ -60,12 +63,43 @@ export function resolveOptionTargetPlotNodeId(
   return graph.nodes.find((node) => node.rowIndexes.includes(targetRowIndex))?.id;
 }
 
+export function resolveSelectedPlotNodeId(params: {
+  libraryId: string;
+  selectedLibraryId: string;
+  selectedNodeId: string;
+  anchorRowId: string | null;
+  rows: AssetRow[];
+  graph: FlowGraph;
+}): string {
+  const {
+    libraryId,
+    selectedLibraryId,
+    selectedNodeId,
+    anchorRowId,
+    rows,
+    graph,
+  } = params;
+  if (
+    selectedLibraryId === libraryId
+    && graph.nodes.some((node) => node.id === selectedNodeId)
+  ) {
+    return selectedNodeId;
+  }
+  if (selectedLibraryId === libraryId && anchorRowId) {
+    const anchorIndex = rows.findIndex((row) => row.id === anchorRowId);
+    const anchoredNode = graph.nodes.find((node) => node.rowIndexes.includes(anchorIndex));
+    if (anchoredNode) return anchoredNode.id;
+  }
+  return graph.nodes[0]?.id ?? '';
+}
+
 export function ScriptSplitView({
   libraryId,
   rows,
   scriptColumns,
   flowRows,
   persistedGraph,
+  supabase,
 }: ScriptSplitViewProps) {
   const graph = useMemo(
     () => persistedGraph ?? buildScriptFlowGraph(flowRows),
@@ -76,11 +110,18 @@ export function ScriptSplitView({
   const [plotSelection, setPlotSelection] = useState(() => ({
     libraryId,
     nodeId: graph.nodes[0]?.id ?? '',
+    anchorRowId: graph.nodes[0]?.rowIndexes
+      .map((index) => rows[index]?.id)
+      .find(Boolean) ?? null,
   }));
-  const selectedPlotNodeId = plotSelection.libraryId === libraryId
-    && graph.nodes.some((node) => node.id === plotSelection.nodeId)
-    ? plotSelection.nodeId
-    : graph.nodes[0]?.id ?? '';
+  const selectedPlotNodeId = resolveSelectedPlotNodeId({
+    libraryId,
+    selectedLibraryId: plotSelection.libraryId,
+    selectedNodeId: plotSelection.nodeId,
+    anchorRowId: plotSelection.anchorRowId,
+    rows,
+    graph,
+  });
   const [ratio, setRatio] = useState(() => readSplitRatio());
   const [collapsed, setCollapsed] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -98,6 +139,52 @@ export function ScriptSplitView({
     const selected = graph.nodes.find((node) => node.id === selectedPlotNodeId);
     return selected?.label?.trim() || '';
   }, [graph.nodes, selectedPlotNodeId]);
+
+  const dialogueFields = useMemo(() => {
+    if (!scriptColumns.typeKey || !scriptColumns.nameKey || !scriptColumns.contentKey) {
+      return null;
+    }
+    return {
+      typeKey: scriptColumns.typeKey,
+      nameKey: scriptColumns.nameKey,
+      contentKey: scriptColumns.contentKey,
+    };
+  }, [scriptColumns.contentKey, scriptColumns.nameKey, scriptColumns.typeKey]);
+
+  const dialogueEditor = useScriptDialogueEditor({
+    supabase: supabase ?? null,
+    libraryId,
+    rows,
+    selectedRows,
+    fields: dialogueFields,
+  });
+
+  const editingProps = dialogueEditor.enabled
+    ? {
+        characters: dialogueEditor.characters,
+        blocks: dialogueEditor.blocks,
+        editingBlockId: dialogueEditor.editingBlockId,
+        setEditingBlockId: dialogueEditor.setEditingBlockId,
+        finishEditingBlock: dialogueEditor.finishEditingBlock,
+        isBusy: dialogueEditor.isBusy,
+        canUndo: dialogueEditor.canUndo,
+        canRedo: dialogueEditor.canRedo,
+        onUndo: () => dialogueEditor.undo(),
+        onRedo: () => dialogueEditor.redo(),
+        onInsertAfterBlock: (blockId: string, speaker: string) => (
+          dialogueEditor.insertAfterBlock(blockId, speaker)
+        ),
+        onSaveBlockField: (
+          blockId: string,
+          field: 'action' | 'dialogue',
+          value: string,
+        ) => dialogueEditor.saveBlockField(blockId, field, value),
+        onDeleteBlock: (blockId: string) => dialogueEditor.deleteBlock(blockId),
+        onReorderBlock: (fromIndex: number, toIndex: number) => (
+          dialogueEditor.reorderBlock(fromIndex, toIndex)
+        ),
+      }
+    : undefined;
 
   useEffect(() => {
     ratioRef.current = ratio;
@@ -181,7 +268,14 @@ export function ScriptSplitView({
       scriptColumns.labelKey,
       graph,
     );
-    if (nodeId) setPlotSelection({ libraryId, nodeId });
+    if (nodeId) {
+      const node = graph.nodes.find((item) => item.id === nodeId);
+      setPlotSelection({
+        libraryId,
+        nodeId,
+        anchorRowId: node?.rowIndexes.map((index) => rows[index]?.id).find(Boolean) ?? null,
+      });
+    }
   }, [graph, libraryId, rows, scriptColumns.labelKey]);
 
   return (
@@ -204,7 +298,9 @@ export function ScriptSplitView({
                 scriptColumns={scriptColumns}
                 mode="plot-node"
                 branchName={selectedBranchName || undefined}
+                branchKey={plotSelection.anchorRowId ?? selectedPlotNodeId}
                 onSelectOptionTarget={selectOptionTarget}
+                editing={editingProps}
               />
           </div>
         </div>
@@ -226,7 +322,16 @@ export function ScriptSplitView({
                 graph={displayedGraph}
                 selectedPlotNodeId={selectedPlotNodeId}
                 previewNodeIds={graphPreview?.graph.createdNodeIds}
-                onSelectPlotNode={(nodeId) => setPlotSelection({ libraryId, nodeId })}
+                onSelectPlotNode={(nodeId) => {
+                  const node = graph.nodes.find((item) => item.id === nodeId);
+                  setPlotSelection({
+                    libraryId,
+                    nodeId,
+                    anchorRowId: node?.rowIndexes
+                      .map((index) => rows[index]?.id)
+                      .find(Boolean) ?? null,
+                  });
+                }}
                 onClose={() => setCollapsed(true)}
               />
             </div>

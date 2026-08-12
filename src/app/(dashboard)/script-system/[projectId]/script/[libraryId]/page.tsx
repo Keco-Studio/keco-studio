@@ -173,6 +173,7 @@ export default function ScriptLibraryPage() {
       scriptColumns={scriptColumns}
       flowRows={flowRows}
       persistedGraph={persistedGraph}
+      supabase={supabase}
     />
   );
 }
