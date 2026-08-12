@@ -55,11 +55,11 @@ The fixture contains these routing expectations:
 ```json
 {
   "cases": [
-    {"id":"full-beta","expectedSkill":"keco-evaluate-game","prompt":"对 Keco 项目执行 Beta 阶段 EDD 游戏评价并给出 100 分报告。"},
-    {"id":"slice-quick","expectedSkill":"keco-evaluate-game","prompt":"对刚完成的战斗玩法切片执行 EDD 快速评价。"},
+    {"id":"full-beta","expectedSkill":"keco-evaluate-game","prompt":"Run a Beta-stage EDD game evaluation for the Keco project and produce a 100-point report."},
+    {"id":"slice-quick","expectedSkill":"keco-evaluate-game","prompt":"Run a quick EDD evaluation for the combat gameplay slice that was just completed."},
     {"id":"explicit","expectedSkill":"keco-evaluate-game","prompt":"Use $keco-evaluate-game to score this Godot game for Release."},
-    {"id":"implementation","expectedSkill":"keco-develop-godot-slice-v2","prompt":"根据 GDD 实现下一个 Godot 玩法切片。"},
-    {"id":"analysis-only","expectedSkill":"none","prompt":"解释 EDD 论文的主要观点，不要评价游戏。"}
+    {"id":"implementation","expectedSkill":"keco-develop-godot-slice-v2","prompt":"Implement the next Godot gameplay slice from the GDD."},
+    {"id":"analysis-only","expectedSkill":"none","prompt":"Explain the main arguments of the EDD paper; do not evaluate a game."}
   ]
 }
 ```
@@ -364,8 +364,8 @@ Require `SKILL.md` to document the exact user triggers and script chain:
 
 ```text
 Use $keco-evaluate-game to run a Beta EDD evaluation for <Keco project>.
-对 Keco 项目《项目名》执行 Beta 阶段 EDD 游戏评价。
-对刚完成的“战斗系统”玩法切片执行 EDD 快速评价。
+Run a Beta-stage EDD game evaluation for the Keco project <project name>.
+Run a quick EDD evaluation for the combat-system gameplay slice that was just completed.
 ```
 
 Require the workflow to create a profile before collecting scores, preserve
