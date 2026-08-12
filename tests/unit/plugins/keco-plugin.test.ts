@@ -6,6 +6,7 @@ const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-codex');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
+const gameEvaluationSkillRoot = path.join(pluginRoot, 'skills', 'keco-evaluate-game');
 const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
 const claudeInteractionContractPath = path.join(
   repositoryRoot,
@@ -19,6 +20,7 @@ const ENTRY_SKILLS = [
   'keco-build-tables-from-document',
   'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
+  'keco-evaluate-game',
   'pixellab-map-assets',
 ];
 
@@ -145,6 +147,22 @@ describe('Keco Codex plugin contract', () => {
     expect(v2Skill).toMatch(/V2 takes precedence[\s\S]*bounded simple Slice/i);
     expect(v2Metadata).toMatch(/allow_implicit_invocation: true/);
     expect(v1Skill).toMatch(/one (?:bounded |gameplay )?slice/i);
+  });
+
+  it('advertises full EDD game evaluation separately from Slice development', () => {
+    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco-codex/.codex-plugin/plugin.json');
+    const evaluationSkill = readFileSync(path.join(gameEvaluationSkillRoot, 'SKILL.md'), 'utf8');
+    const evaluationMetadata = readFileSync(
+      path.join(gameEvaluationSkillRoot, 'agents', 'openai.yaml'),
+      'utf8',
+    );
+
+    expect(manifest.interface.defaultPrompt).toEqual(expect.arrayContaining([
+      expect.stringMatching(/EDD[\s\S]*game[\s\S]*evaluation/i),
+    ]));
+    expect(evaluationSkill).toMatch(/full[\s\S]*milestone[\s\S]*evaluation/i);
+    expect(evaluationSkill).toMatch(/does not implement|not for implementing/i);
+    expect(evaluationMetadata).toMatch(/allow_implicit_invocation: true/);
   });
 
   it('defines isolated trigger cases for Keco-to-Godot development', () => {

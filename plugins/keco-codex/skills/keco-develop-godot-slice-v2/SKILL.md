@@ -23,6 +23,7 @@ Read [references/review-workflow.md](references/review-workflow.md). It contains
 - V2 takes precedence over `keco-develop-godot-slice` for document-driven decomposition, multi-Slice execution, Keco Project Folder planning, typed assets, TileMap work, or reviewed runtime evidence. V2 is the canonical creation workflow for Keco-driven Godot development; do not route document-driven Godot creation to V1. Keep V1 available for a bounded simple Slice that does not need these contracts.
 - Keep the original `keco-develop-godot-slice` available for A/B comparison.
 - Route Keco-only new tables to `keco-build-tables-from-document`; route standalone assets and Godot-only work elsewhere.
+- Route a full 100-point EDD score or milestone evaluation to `keco-evaluate-game`, including Alpha, Beta, Release Candidate, and Release acceptance. Keep per-Slice runtime evaluation required by this development workflow inside V2.
 - If the user explicitly selected another applicable Skill, do not silently override that selection.
 
 ## Fixed Run Ledger
