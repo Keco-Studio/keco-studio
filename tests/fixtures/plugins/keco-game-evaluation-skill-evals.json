@@ -5,14 +5,14 @@
     {
       "id": "full-beta",
       "kind": "positive",
-      "prompt": "对 Keco 项目执行 Beta 阶段 EDD 游戏评价并给出 100 分报告。",
+      "prompt": "Run a Beta-stage EDD game evaluation for the Keco project and produce a 100-point report.",
       "expectedSkill": "keco-evaluate-game",
       "requiredBehaviors": ["locked-profile", "80-plus-20", "stage-decision"]
     },
     {
       "id": "slice-quick",
       "kind": "positive",
-      "prompt": "对刚完成的战斗玩法切片执行 EDD 快速评价。",
+      "prompt": "Run a quick EDD evaluation for the combat gameplay slice that was just completed.",
       "expectedSkill": "keco-evaluate-game",
       "requiredBehaviors": ["affected-metrics-only", "adjacent-regressions", "no-full-score"]
     },
@@ -33,14 +33,14 @@
     {
       "id": "implementation",
       "kind": "negative",
-      "prompt": "根据 GDD 实现下一个 Godot 玩法切片。",
+      "prompt": "Implement the next Godot gameplay slice from the GDD.",
       "expectedSkill": "keco-develop-godot-slice-v2",
       "requiredBehaviors": ["do-not-trigger-game-evaluation"]
     },
     {
       "id": "analysis-only",
       "kind": "negative",
-      "prompt": "解释 EDD 论文的主要观点，不要评价游戏。",
+      "prompt": "Explain the main arguments of the EDD paper; do not evaluate a game.",
       "expectedSkill": "none",
       "requiredBehaviors": ["do-not-trigger"]
     }

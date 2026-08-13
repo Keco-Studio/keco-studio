@@ -506,8 +506,12 @@ describe('Keco EDD game evaluation Skill', () => {
       'utf8',
     );
     expect(skill).toContain('Use $keco-evaluate-game to run a Beta EDD evaluation');
-    expect(triggerFixture).toContain('对 Keco 项目执行 Beta 阶段 EDD 游戏评价');
-    expect(triggerFixture).toContain('对刚完成的战斗玩法切片执行 EDD 快速评价');
+    expect(triggerFixture).toContain(
+      'Run a Beta-stage EDD game evaluation for the Keco project and produce a 100-point report.',
+    );
+    expect(triggerFixture).toContain(
+      'Run a quick EDD evaluation for the combat gameplay slice that was just completed.',
+    );
     expect(skill).toMatch(/create_evaluation_profile\.py[\s\S]*score_game_evaluation\.py[\s\S]*validate_game_evaluation_report\.py/);
     expect(skill).toMatch(/GameEvaluationReport[\s\S]*Slice[\s\S]*EvalReport/);
     expect(skill).toMatch(/docs\/keco-game-evaluations\/<evaluationId>/);
