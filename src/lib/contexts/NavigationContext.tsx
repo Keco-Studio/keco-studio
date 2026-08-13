@@ -16,6 +16,7 @@ import {
 } from '@/lib/services/authorizationService';
 import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';
 import { buildFolderBreadcrumbPath, type FolderBreadcrumb } from '@/lib/navigation/folderBreadcrumbs';
 
 type BreadcrumbItem = {
@@ -84,6 +85,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Script workspace breadcrumbs follow the Script sidebar tree (project / doc /
   // script), not Studio folder paths — ignore library.folder_id there.
   const onScriptSystem = isScriptSystemPath(pathname);
+  const onCreateMap = isCreateMapPath(pathname);
   const currentFolderId = useMemo(() => {
     if (onScriptSystem) return currentFolderIdFromUrl;
     return currentFolderIdFromUrl || libraryFolderId || documentFolderId;
@@ -99,6 +101,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // Detect user switch and redirect if needed
   useEffect(() => {
+    if (onCreateMap) return;
     console.log('[NavigationContext] User check:', {
       isAuthenticated,
       hasUserProfile: !!userId,
@@ -144,9 +147,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
 
     currentUserIdRef.current = newUserId;
-  }, [isAuthenticated, userId, currentProjectId, currentLibraryId, currentAssetId, router]);
+  }, [isAuthenticated, onCreateMap, userId, currentProjectId, currentLibraryId, currentAssetId, router]);
 
   useEffect(() => {
+    if (onCreateMap) return;
     let mounted = true;
     const fetchNames = async () => {
       // Don't fetch if user is not authenticated or userProfile is not loaded
@@ -529,7 +533,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [currentProjectId, currentLibraryId, currentAssetId, currentDocumentId, currentFolderId, pathname, supabase, isAuthenticated, userId, router, queryClient]);
+  }, [currentProjectId, currentLibraryId, currentAssetId, currentDocumentId, currentFolderId, onCreateMap, pathname, supabase, isAuthenticated, userId, router, queryClient]);
 
   const breadcrumbs = useMemo<BreadcrumbItem[]>(() => {
     const nextBreadcrumbs: BreadcrumbItem[] = [];

@@ -165,8 +165,13 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
     const code = message.includes('LLM_API_KEY') ? 'llm_not_configured'
       : message.includes('LLM request failed') ? 'llm_upstream_error'
         : 'map_plan_error';
+    const publicError = code === 'llm_not_configured'
+      ? 'Create Map AI is not configured. Set CREATE_MAP_LLM_API_KEY in Vercel Production and redeploy.'
+      : code === 'llm_upstream_error'
+        ? 'Create Map AI request failed. Verify the Vercel Production API key, URL, and model, then redeploy.'
+        : 'Create Map planning failed. Retry once; if it continues, check the Vercel function logs.';
     console.error(`[POST /api/create-map/plan] failed code=${code} name=${error instanceof Error ? error.name : 'UnknownError'}`);
-    return NextResponse.json({ error: 'Failed to create map plan', code }, { status: 502 });
+    return NextResponse.json({ error: publicError, code }, { status: 502 });
   }
 }, {
   unauthorizedResponse: () => NextResponse.json({ error: 'Authentication required' }, { status: 401 }),

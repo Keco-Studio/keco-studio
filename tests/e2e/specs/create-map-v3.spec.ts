@@ -696,6 +696,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
     await generateReadyMap(page);
 
+    await expect(page).toHaveURL(`${APP_ORIGIN}/create-map`);
+
     const createAssetRpc = backend.createAssetRpc;
     expect(createAssetRpc).toEqual({
       name: 'create_map_asset_plan_v3',

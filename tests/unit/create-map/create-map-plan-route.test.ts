@@ -80,6 +80,26 @@ describe('POST /api/create-map/plan', () => {
     expect(createMapPlanV3).toHaveBeenCalledWith(description, undefined, { references: [], styleReference: null });
   });
 
+  it.each([
+    [
+      new Error('LLM_API_KEY is not configured.'),
+      'llm_not_configured',
+      'Create Map AI is not configured. Set CREATE_MAP_LLM_API_KEY in Vercel Production and redeploy.',
+    ],
+    [
+      new Error('LLM request failed (401): invalid key'),
+      'llm_upstream_error',
+      'Create Map AI request failed. Verify the Vercel Production API key, URL, and model, then redeploy.',
+    ],
+  ])('returns an actionable sanitized planner configuration error', async (cause, code, error) => {
+    createMapPlanV3.mockRejectedValueOnce(cause);
+
+    const response = await post({ description });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ code, error });
+  });
+
   it('requires projectId with documentId', async () => {
     expect((await post({ schemaVersion: 3, description, documentId })).status).toBe(400);
     expect(readCreateMapDocumentSource).not.toHaveBeenCalled();
