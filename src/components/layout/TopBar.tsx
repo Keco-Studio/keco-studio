@@ -1114,6 +1114,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         new CustomEvent('library-toolbar-create-folder', {
           detail: {
             projectId: currentProjectId,
+            folderId: isFolderPage ? currentFolderId ?? null : null,
           },
         })
       );
@@ -1137,7 +1138,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     if (typeof window !== 'undefined' && currentProjectId) {
       window.dispatchEvent(
         new CustomEvent('library-toolbar-create-document', {
-          detail: { projectId: currentProjectId },
+          detail: {
+            projectId: currentProjectId,
+            folderId: isFolderPage ? currentFolderId ?? null : null,
+          },
         })
       );
     }
@@ -1470,11 +1474,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         <LibraryToolbar
           mode={isFolderPage ? 'folder' : 'project'}
           title={title}
-          onCreateFolder={isProjectRootPage ? handleTopbarCreateFolder : undefined}
+          onCreateFolder={handleTopbarCreateFolder}
           onCreateLibrary={handleTopbarCreateLibrary}
-          onCreateDocument={isProjectRootPage ? handleTopbarCreateDocument : undefined}
-          onImportTable={isProjectRootPage ? handleTopbarImportTable : undefined}
-          onImportDocument={isProjectRootPage ? handleTopbarImportDocument : undefined}
+          onCreateDocument={handleTopbarCreateDocument}
+          onImportTable={handleTopbarImportTable}
+          onImportDocument={handleTopbarImportDocument}
           viewMode={libraryViewMode}
           onViewModeChange={handleTopbarViewModeChange}
           userRole={userRole as CollaboratorRole | null}

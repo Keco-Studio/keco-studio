@@ -5,7 +5,7 @@ Status: Approved design
 
 ## Summary
 
-Add an `Open script` action to the Studio document context menu. The action switches to Script immediately, imports the selected Studio document into the Script workspace, opens the newest existing conversation when one exists, or generates one for an admin or editor when needed. A viewer can import and open the Script document but cannot generate a conversation.
+Add an `Open script` action to the Studio document context menu. The action switches to Script immediately and renders the selected Studio document in the Script content area while the document is imported and the newest existing conversation is located or generated. Once a script is ready, the document view is replaced by the existing script editor and dialogue tree. A viewer can import and open the Script document but cannot generate a conversation.
 
 The final conversation route reuses the current Script dialogue editor and Flow chart. This feature does not create a second script renderer, graph model, or generation pipeline.
 
@@ -18,7 +18,7 @@ The final conversation route reuses the current Script dialogue editor and Flow 
 - When no script exists, automatically generate and open one for admins and editors.
 - When no script exists, let viewers open the imported Script document without generating.
 - Keep the Script sidebar's existing `Generate conversation` permission consistent: admins and editors may generate; viewers may not.
-- Present deterministic loading, permission, and error states instead of a blank transition page.
+- Present the source document during opening/generation instead of a blank transition page, with deterministic permission and error states.
 
 ## Non-Goals
 
@@ -32,10 +32,10 @@ The final conversation route reuses the current Script dialogue editor and Flow 
 ## User Flow
 
 1. A member opens a Studio document's context menu and selects `Open script`.
-2. Studio immediately navigates to `/script-system/{projectId}/open/{documentId}`.
-3. The transition route adds the document to `script_workspace_documents` using the existing idempotent workspace API.
+2. Studio immediately navigates to `/script-system/{projectId}/open/{documentId}`. The Script shell is visible and the selected source document is rendered in the main content area.
+3. The route adds the document to `script_workspace_documents` using the existing idempotent workspace API while the document remains visible.
 4. The route queries script libraries whose `source_document_id` is the selected document and whose `document_export_type` is `script`.
-5. If one or more scripts exist, the route selects the row with the newest `created_at` and replaces the URL with `/script-system/{projectId}/script/{libraryId}`.
+5. If one or more scripts exist, the route selects the row with the newest `created_at` and replaces the URL with `/script-system/{projectId}/script/{libraryId}`; the document view is then replaced by the existing script editor and Flow chart.
 6. If no script exists:
    - an admin or editor generates a conversation through the existing document-derived import pipeline and opens the new script route;
    - a viewer replaces the URL with `/script-system/{projectId}/doc/{documentId}` and can view the imported source document in Script.
@@ -98,15 +98,15 @@ This permission adjustment is limited to the conversation-generation path. It do
 
 ## Interface States
 
-The transition view is a quiet, unframed Script workspace status surface rather than a new decorative card. It uses the existing Script typography, colors, spacing, and progress conventions.
+The transition view keeps the selected source Document visible in the existing `DocumentEditor` while orchestration runs. It does not render a separate full-page generation screen, card, or status overlay. Conversation generation reuses the existing shared blue `Generating…` progress toast emitted by `runDocumentDerivedImport`.
 
-- `Opening script`: importing workspace membership and looking for existing scripts.
-- `Generating conversation`: running the existing generation pipeline for an admin or editor.
-- Error: an actionable message with `Retry` and `Back to Studio document` commands.
+- Opening/import lookup: the source document is visible with no additional status overlay.
+- Conversation generation: the source document remains visible and the existing blue `Generating…` toast is shown.
+- Error: use the existing toast behavior rather than adding a second status surface.
 
 A viewer with no existing script is routed directly to the Script document after membership succeeds, so permission limitations do not block document import or leave the viewer on the transition page.
 
-Controls have stable dimensions, visible keyboard focus, and disabled/busy states. Status text uses `aria-live` so asynchronous progress is announced without stealing focus.
+The shared progress toast retains its existing accessibility and timing behavior.
 
 ## Error Handling
 
@@ -122,7 +122,7 @@ Controls have stable dimensions, visible keyboard focus, and disabled/busy state
 Focused unit and component tests cover:
 
 - The Studio document menu renders `Open script` for admin, editor, and viewer roles and emits the new action.
-- The Studio action navigates immediately to the Script transition route.
+- The Studio action navigates immediately to the Script transition route and the route renders the source `DocumentEditor` before orchestration completes.
 - Workspace membership creation is idempotent.
 - One existing script opens without generation.
 - Multiple scripts open the newest `created_at` row deterministically.
@@ -132,16 +132,16 @@ Focused unit and component tests cover:
 - Repeated effects/clicks do not produce overlapping generation calls.
 - The Script document menu exposes `Generate conversation` to admins and editors but not viewers.
 - The workspace API and RLS migration permit accepted viewers to add membership while rejecting non-members and cross-project documents.
-- The existing script route continues to render `ScriptSplitView` with the Flow chart.
+- The existing script route continues to render `ScriptSplitView` with the Flow chart after replacing the opening document view.
 
 Verification includes focused Jest tests, migration/static policy tests, TypeScript checking, ESLint for touched files, and the relevant Script workspace/document-derived Playwright flow when the authenticated local test environment is available.
 
 ## Acceptance Criteria
 
 - Every project member sees `Open script` on a Studio document.
-- Selecting it immediately switches to the Script layout.
+- Selecting it immediately switches to the Script layout and shows the source document while work runs.
 - Existing scripts open directly, choosing the newest created script when several exist.
 - Admins and editors automatically generate and open a script only when none exists.
 - Viewers successfully import and open the Script document but never generate.
-- The final script screen uses the existing dialogue editor and Flow chart.
+- The final script screen replaces the source document with the existing dialogue editor and Flow chart.
 - Failures are recoverable and do not intentionally create duplicate scripts.

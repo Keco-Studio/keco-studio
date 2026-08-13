@@ -267,8 +267,25 @@
   pointer-events: none;
 }
 .sidebarBrand { padding: 0 6px 2px; }
-.brandText { display: block; color: var(--simulation-ink-850); font-size: 20px; font-weight: 700; line-height: 1.1; }
-.sidebarBrand p { margin: 4px 0 0; color: var(--simulation-ink-450); font-size: 11px; line-height: 1.35; }
+.brandText {
+  display: block;
+  width: 185.5px;
+  height: 22px;
+  color: #16325D;
+  font-family: Archivo, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 100%;
+  letter-spacing: 0;
+  text-transform: capitalize;
+}
+.sidebarBrand p {
+  margin: 4px 0 0;
+  color: var(--branding-theme-secondary-text, #5B74A7);
+  font-size: 11px;
+  line-height: 1.35;
+}
 .projectWrap { position: relative; margin: 12px 0 8px; }
 .projectButton {
   display: flex;

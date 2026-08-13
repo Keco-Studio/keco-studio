@@ -1,20 +1,19 @@
 'use client';
 
-import { useState } from 'react';
 import Image from 'next/image';
 import moreOptionsIcon from '@/assets/images/moreOptionsIcon.svg';
 import paperIcon from '@/assets/images/paper.svg';
+import { requestDocumentContextMenu } from '@/components/documents/documentContextMenuRequest';
 import styles from './DocumentRecentCard.module.css';
 
 type DocumentRecentCardProps = {
+  documentId: string;
   name: string;
   description?: string | null;
   onClick?: () => void;
 };
 
-export function DocumentRecentCard({ name, description, onClick }: DocumentRecentCardProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
+export function DocumentRecentCard({ documentId, name, description, onClick }: DocumentRecentCardProps) {
   return (
     <div className={styles.card} onClick={onClick} role="button" tabIndex={0}
       onKeyDown={(event) => {
@@ -45,11 +44,11 @@ export function DocumentRecentCard({ name, description, onClick }: DocumentRecen
         </div>
         <button
           type="button"
-          className={`${styles.actionButton} ${menuOpen ? styles.actionButtonActive : ''}`}
+          className={styles.actionButton}
           aria-label="More options"
           onClick={(event) => {
             event.stopPropagation();
-            setMenuOpen((open) => !open);
+            requestDocumentContextMenu(documentId, event.currentTarget);
           }}
         >
           <Image src={moreOptionsIcon} alt="" width={20} height={20} className="icon-20" />

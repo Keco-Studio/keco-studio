@@ -56,6 +56,13 @@ export default function ProjectPage() {
     });
   }, []);
   const projectId = params.projectId as string;
+  const onProjectRoot = pathname === `/${projectId}`;
+
+  useEffect(() => {
+    if (onProjectRoot) {
+      router.replace(`/${projectId}/recent`);
+    }
+  }, [onProjectRoot, projectId, router]);
     
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
@@ -375,6 +382,8 @@ export default function ProjectPage() {
       refetchActiveFoldersLibraries: true,
     });
   };
+
+  if (onProjectRoot) return null;
 
   if (loading) {
     return (

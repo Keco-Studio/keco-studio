@@ -7,6 +7,7 @@ import styles from './ContextMenu.module.css';
 export type ContextMenuAction = 
   | 'import'
   | 'import-script'
+  | 'open-script'
   | 'new-document'
   | 'version-history'
   | 'star'
@@ -403,6 +404,13 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
       // Document: Generate (admin), Version history, Library info, Move to..., Delete
       return (
         <>
+          <button
+            type="button"
+            className={styles.menuItem}
+            onClick={() => handleAction('open-script')}
+          >
+            Open script
+          </button>
           {userRole === 'admin' && (
             <button
               className={styles.menuItem}

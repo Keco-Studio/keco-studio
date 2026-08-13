@@ -85,6 +85,10 @@ import {
 } from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
 import { primeLibraryNavigationCache } from './libraryNavigationCache';
+import {
+  DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
+  type DocumentContextMenuRequestDetail,
+} from '@/components/documents/documentContextMenuRequest';
 
 const ImportDocumentModal = dynamic(
   () =>
@@ -244,6 +248,25 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     []
   );
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
+
+  useEffect(() => {
+    const handleDocumentContextMenuRequest = (event: Event) => {
+      const detail = (event as CustomEvent<DocumentContextMenuRequestDetail>).detail;
+      if (!detail?.documentId) return;
+      openContextMenu(detail.x, detail.y, 'document', detail.documentId, detail.elementRef);
+    };
+
+    window.addEventListener(
+      DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
+      handleDocumentContextMenuRequest as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
+        handleDocumentContextMenuRequest as EventListener
+      );
+    };
+  }, [openContextMenu]);
   const updateName = useUpdateEntityName();
 
   const handleSaveRename = useCallback(
@@ -1287,9 +1310,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       Boolean(detail?.projectId && detail.projectId === currentIds.projectId);
 
     const handleToolbarCreateFolder = (event: Event) => {
-      const custom = event as CustomEvent<{ projectId?: string }>;
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
       if (!matchesProject(custom.detail) || userRole !== 'admin') return;
-      setSelectedFolderId(null);
+      setSelectedFolderId(custom.detail?.folderId ?? null);
       openNewFolder();
     };
 
@@ -1301,10 +1324,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     };
 
     const handleToolbarCreateDocument = (event: Event) => {
-      const custom = event as CustomEvent<{ projectId?: string }>;
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
       if (!matchesProject(custom.detail)) return;
       if (userRole !== 'admin' && userRole !== 'editor') return;
-      setSelectedFolderId(null);
+      setSelectedFolderId(custom.detail?.folderId ?? null);
       openNewDocument();
     };
 

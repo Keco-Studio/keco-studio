@@ -29,7 +29,7 @@
 .tableContainer {
   flex: 1;
   min-width: 0;
-  padding: 0 1.5rem;
+  padding: 0;
 }
 
 .assetDetailSlot:empty {

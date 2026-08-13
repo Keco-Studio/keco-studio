@@ -19,6 +19,7 @@ export type ScriptEditableDialogBlockProps = {
   onBeginEdit: () => void;
   onFinishEdit: () => void;
   onInsertCharacter: (speaker: string) => Promise<boolean>;
+  onChangeSpeaker: (speaker: string) => Promise<boolean>;
   onSaveAction: (value: string) => Promise<boolean>;
   onSaveDialogue: (value: string) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
@@ -39,6 +40,14 @@ type DialogueDraftState = {
   action: string;
   dialogue: string;
 };
+
+type DialogueEditTarget = 'action' | 'dialogue';
+
+export function isDialogueDraftEmpty(
+  drafts: Pick<DialogueDraftState, 'action' | 'dialogue'>,
+): boolean {
+  return !drafts.action.trim() && !drafts.dialogue.trim();
+}
 
 export function reconcileDialogueDrafts(
   current: DialogueDraftState,
@@ -96,13 +105,16 @@ export function ScriptEditableDialogBlock({
   onBeginEdit,
   onFinishEdit,
   onInsertCharacter,
+  onChangeSpeaker,
   onSaveAction,
   onSaveDialogue,
   onDelete,
 }: ScriptEditableDialogBlockProps) {
   const [hovered, setHovered] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [speakerPickerOpen, setSpeakerPickerOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [editTarget, setEditTarget] = useState<DialogueEditTarget>('action');
   const [drafts, setDrafts] = useState<DialogueDraftState>(() => ({
     blockId: block.id,
     sourceAction: block.action,
@@ -116,6 +128,7 @@ export function ScriptEditableDialogBlock({
   const pickerRef = useRef<HTMLDivElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const actionInputRef = useRef<HTMLInputElement>(null);
+  const dialogueInputRef = useRef<HTMLTextAreaElement>(null);
   const commitRef = useRef<Promise<boolean> | null>(null);
   const {
     attributes,
@@ -151,52 +164,74 @@ export function ScriptEditableDialogBlock({
   }, [onSaveAction, onSaveDialogue, reconciledDrafts]);
 
   useEffect(() => {
-    if (isEditing) actionInputRef.current?.focus();
-  }, [block.id, isEditing]);
+    if (!isEditing) return;
+    if (editTarget === 'dialogue') {
+      dialogueInputRef.current?.focus();
+      return;
+    }
+    actionInputRef.current?.focus();
+  }, [block.id, editTarget, isEditing]);
+
+  const beginEditAt = useCallback((target: DialogueEditTarget) => {
+    setEditTarget(target);
+    onBeginEdit();
+  }, [onBeginEdit]);
+
+  const finishEditing = useCallback(async (): Promise<boolean> => {
+    if (isDialogueDraftEmpty(reconciledDrafts)) {
+      const deleted = await deleteDialogueBlockAndHide(onDelete, () => setHidden(true));
+      if (deleted) onFinishEdit();
+      return deleted;
+    }
+    const saved = await commitDrafts();
+    if (saved) onFinishEdit();
+    return saved;
+  }, [commitDrafts, onDelete, onFinishEdit, reconciledDrafts]);
 
   useEffect(() => {
-    if (!pickerOpen) return;
+    if (!pickerOpen && !speakerPickerOpen) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (pickerRef.current?.contains(target)) return;
       if (rootRef.current?.contains(target)) return;
+      setSpeakerPickerOpen(false);
       setPickerOpen(false);
     };
     window.addEventListener('mousedown', onPointerDown);
     return () => window.removeEventListener('mousedown', onPointerDown);
-  }, [pickerOpen]);
+  }, [pickerOpen, speakerPickerOpen]);
 
   useEffect(() => {
     if (!isEditing) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (!isDialogueEditorOutsidePointer(rootRef.current, target)) return;
-      void commitDrafts().then((saved) => {
-        if (saved) onFinishEdit();
-      });
+      void finishEditing();
     };
     window.addEventListener('mousedown', onPointerDown);
     return () => window.removeEventListener('mousedown', onPointerDown);
-  }, [commitDrafts, isEditing, onFinishEdit]);
+  }, [finishEditing, isEditing]);
 
   useEffect(() => {
-    if (!pickerOpen) return;
+    if (!pickerOpen && !speakerPickerOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       setPickerOpen(false);
+      setSpeakerPickerOpen(false);
       setHovered(false);
       addButtonRef.current?.focus();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pickerOpen]);
+  }, [pickerOpen, speakerPickerOpen]);
 
-  const showChrome = hovered || isEditing || pickerOpen;
+  const showChrome = hovered || isEditing || pickerOpen || speakerPickerOpen;
   const avatarClass = `${styles.avatar} ${accentClass(block.accent)}`;
   const bubbleClass = `${styles.dialogBubble} ${accentClass(block.accent)}`;
 
   if (hidden) return null;
+  if (!isEditing && isDialogueDraftEmpty(reconciledDrafts)) return null;
 
   return (
     <div
@@ -225,7 +260,7 @@ export function ScriptEditableDialogBlock({
         >
           <div className={styles.speakerHeader}>
             <div className={styles.editControls} data-edit-controls="">
-              {isEditing ? (
+              {showChrome ? (
                 <>
                   <Tooltip title="Drag to reorder">
                     <button
@@ -261,14 +296,52 @@ export function ScriptEditableDialogBlock({
                 </>
               ) : null}
             </div>
-            <button
-              type="button"
-              className={`${avatarClass} ${styles.editEntryButton}`}
-              aria-label={`Edit ${block.speaker} avatar`}
-              onClick={onBeginEdit}
-            >
-              {block.speaker.charAt(0) || '?'}
-            </button>
+            <div className={styles.speakerPickerWrap}>
+              <button
+                type="button"
+                className={`${avatarClass} ${styles.editEntryButton}`}
+                aria-label={`Switch ${block.speaker} character`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSpeakerPickerOpen((open) => !open);
+                }}
+              >
+                {block.speaker.charAt(0) || '?'}
+              </button>
+              {speakerPickerOpen ? (
+                <div
+                  className={styles.characterPicker}
+                  role="menu"
+                  aria-label="SWITCH CHARACTER"
+                >
+                <div className={styles.characterPickerTitle}>SWITCH CHARACTER</div>
+                <ul className={styles.characterPickerList}>
+                  {characters.length === 0 ? (
+                    <li className={styles.characterPickerEmpty}>No characters available</li>
+                  ) : characters.map((character) => (
+                    <li key={character.name}>
+                      <button
+                        type="button"
+                        className={styles.characterPickerItem}
+                        role="menuitem"
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          setSpeakerPickerOpen(false);
+                          setHovered(false);
+                          await onChangeSpeaker(character.name);
+                        }}
+                      >
+                        <span className={`${styles.avatar} ${accentClass(character.color)}`}>
+                          {character.letter}
+                        </span>
+                        <span>{character.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                </div>
+              ) : null}
+            </div>
             <span className={styles.speakerName}>{block.speaker}</span>
             {isEditing ? (
               <input
@@ -281,12 +354,12 @@ export function ScriptEditableDialogBlock({
                   ...current,
                   action: event.target.value,
                 }))}
-                onBlur={() => { void commitDrafts(); }}
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
-                    void commitDrafts();
+                    setEditTarget('dialogue');
+                    dialogueInputRef.current?.focus();
                   }
                 }}
               />
@@ -295,7 +368,7 @@ export function ScriptEditableDialogBlock({
                 type="button"
                 className={`${styles.actionChip} ${styles.editEntryButton}`}
                 aria-label="Edit action"
-                onClick={onBeginEdit}
+                onClick={() => beginEditAt('action')}
               >
                 {block.action}
               </button>
@@ -304,6 +377,7 @@ export function ScriptEditableDialogBlock({
 
           {isEditing ? (
             <textarea
+              ref={dialogueInputRef}
               className={`${styles.dialogueInput} ${accentClass(block.accent)}`}
               value={reconciledDrafts.dialogue}
               placeholder="add your thread text here"
@@ -313,14 +387,11 @@ export function ScriptEditableDialogBlock({
                 ...current,
                 dialogue: event.target.value,
               }))}
-              onBlur={() => { void commitDrafts(); }}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
                 if (!isDialogueSubmitShortcut(event)) return;
                 event.preventDefault();
-                void commitDrafts().then((saved) => {
-                  if (saved) onFinishEdit();
-                });
+                void finishEditing();
               }}
             />
           ) : block.dialogue ? (
@@ -328,7 +399,7 @@ export function ScriptEditableDialogBlock({
               type="button"
               className={`${bubbleClass} ${styles.editEntryButton}`}
               aria-label="Edit dialogue"
-              onClick={onBeginEdit}
+              onClick={() => beginEditAt('dialogue')}
             >
               {block.dialogue}
             </button>

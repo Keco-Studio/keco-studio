@@ -13,6 +13,7 @@ import { getLibrariesAssetCounts, type Library } from '@/lib/services/librarySer
 import { filterStudioLibraries } from '@/lib/studioLibraryIsolation';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { readRecentVisits, type RecentVisit } from '@/lib/recentVisits/storage';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import tableIcon from '@/assets/images/table.svg';
 import paperIcon from '@/assets/images/paper.svg';
 import moreOptionsIcon from '@/assets/images/moreOptionsIcon.svg';
@@ -151,7 +152,7 @@ export function RecentPage({ projectId }: RecentPageProps) {
   });
 
   const documentsQuery = useQuery({
-    queryKey: ['recent-documents', projectId, documentIds.join(',')],
+    queryKey: [...queryKeys.documents(projectId), 'recent', documentIds.join(',')],
     queryFn: async () => {
       if (documentIds.length === 0) return [] as DocumentRow[];
       const { data, error } = await supabase
@@ -236,6 +237,7 @@ export function RecentPage({ projectId }: RecentPageProps) {
             ) : (
               <DocumentRecentCard
                 key={`document:${item.document.id}`}
+                documentId={item.document.id}
                 name={item.document.name}
                 description={item.document.description}
                 onClick={() => router.push(`/${projectId}/doc/${item.document.id}`)}

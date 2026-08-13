@@ -89,6 +89,7 @@ export function ScriptContextMenu({
   };
 
   const canRenameDocument = userRole === 'admin' || userRole === 'editor';
+  const canGenerateConversation = userRole === 'admin' || userRole === 'editor';
   const canDeleteDocument = userRole === 'admin' || userRole === 'editor';
   const canRenameScript = userRole === 'admin';
   const canDeleteScript = userRole === 'admin';
@@ -97,7 +98,7 @@ export function ScriptContextMenu({
     if (type === 'document') {
       return (
         <>
-          {userRole === 'admin' && (
+          {canGenerateConversation && (
             <button
               type="button"
               className={styles.menuItem}

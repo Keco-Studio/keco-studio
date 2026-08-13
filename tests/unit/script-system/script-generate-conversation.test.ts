@@ -141,7 +141,8 @@ describe('Script generate conversation', () => {
 
     expect(mockFetchDocumentExportSource).toHaveBeenCalledWith(
       'doc-1',
-      'token-abc'
+      'token-abc',
+      'script'
     );
     expect(mockRunDocumentDerivedImport).toHaveBeenCalledWith({
       source,
@@ -169,14 +170,17 @@ describe('Script generate conversation', () => {
     );
   });
 
-  it('does not run pipeline for non-admin', async () => {
+  it('runs the pipeline for an editor', async () => {
     const handleAction = getHandleAction({ userRole: 'editor' });
     handleAction('generate-conversation');
     await new Promise((r) => setImmediate(r));
-    expect(mockFetchDocumentExportSource).not.toHaveBeenCalled();
+    expect(mockRunDocumentDerivedImport).toHaveBeenCalled();
+  });
+
+  it('does not run pipeline for a viewer', async () => {
+    const handleAction = getHandleAction({ userRole: 'viewer' });
+    handleAction('generate-conversation');
+    await new Promise((r) => setImmediate(r));
     expect(mockRunDocumentDerivedImport).not.toHaveBeenCalled();
-    expect(mockPush).not.toHaveBeenCalledWith(
-      expect.stringContaining('/script/')
-    );
   });
 });

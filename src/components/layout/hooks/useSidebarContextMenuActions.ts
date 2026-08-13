@@ -200,6 +200,16 @@ export function useSidebarContextMenuActions({
         return;
       }
 
+      if (action === 'open-script' && contextMenu.type === 'document') {
+        const projectId = currentIds.projectId;
+        const documentId = contextMenu.id;
+        closeContextMenu();
+        if (projectId) {
+          router.push(`/script-system/${projectId}/open/${documentId}`);
+        }
+        return;
+      }
+
       // Handle rename action (Project info / Library info / Folder rename)
       if (action === 'rename') {
         if (contextMenu.type === 'project') {

@@ -63,13 +63,19 @@ describe('getDocumentExportSource', () => {
     expect(getUserProjectRole).toHaveBeenCalledWith(supabase, PROJECT_ID, 'admin-id');
   });
 
-  it('rejects editors before loading export metadata', async () => {
+  it('allows editors to load export metadata', async () => {
     getUserProjectRole.mockResolvedValue({ role: 'editor', isOwner: false });
     const supabase = makeSupabase();
 
-    await expect(
-      getDocumentExportSource(supabase, 'editor-id', DOCUMENT_ID)
-    ).rejects.toThrow('Only admin users can export project content');
+    await expect(getDocumentExportSource(supabase, 'editor-id', DOCUMENT_ID, 'script'))
+      .resolves.toMatchObject({ documentId: DOCUMENT_ID });
+  });
+
+  it('rejects viewers before loading export metadata', async () => {
+    getUserProjectRole.mockResolvedValue({ role: 'viewer', isOwner: false });
+    const supabase = makeSupabase();
+    await expect(getDocumentExportSource(supabase, 'viewer-id', DOCUMENT_ID))
+      .rejects.toThrow('Only admin and editor users can generate conversations');
     expect(supabase.from).not.toHaveBeenCalled();
   });
 

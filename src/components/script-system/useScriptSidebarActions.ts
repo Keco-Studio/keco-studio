@@ -57,7 +57,7 @@ export function useScriptSidebarActions({
       if (!target) return;
 
       if (action === 'generate-conversation' && target.type === 'document') {
-        if (userRole !== 'admin') return;
+        if (userRole !== 'admin' && userRole !== 'editor') return;
         const documentId = target.id;
         const startedAt = Date.now();
         notifyDocumentDerivedImportProgress({
@@ -80,7 +80,8 @@ export function useScriptSidebarActions({
             }
             const source = await fetchDocumentExportSource(
               documentId,
-              session.access_token
+              session.access_token,
+              'script'
             );
             const result = await runDocumentDerivedImport({
               source,

@@ -8,6 +8,8 @@ export type ProductNavigationState = Record<ProductNavigationItem, boolean>;
 type ProductNavigationPreferences = {
   scriptProjectId?: string;
   simulationProjectId?: string;
+  studioProjectId?: string;
+  studioFileHref?: string | null;
 };
 
 function isSimulationPath(pathname: string | null): boolean {
@@ -37,9 +39,18 @@ export function getProductNavigationDestination(
   if (state[item]) return null;
 
   if (item === 'studio') {
-    if (state.script) return preferences.scriptProjectId ? `/${preferences.scriptProjectId}` : '/projects';
-    if (state.simulation) {
-      return preferences.simulationProjectId ? `/${preferences.simulationProjectId}` : '/projects';
+    if (preferences.studioProjectId) {
+      const projectPrefix = `/${preferences.studioProjectId}/`;
+      if (preferences.studioFileHref?.startsWith(projectPrefix)) {
+        return preferences.studioFileHref;
+      }
+      return `/${preferences.studioProjectId}/recent`;
+    }
+    if (state.script && preferences.scriptProjectId) {
+      return `/${preferences.scriptProjectId}/recent`;
+    }
+    if (state.simulation && preferences.simulationProjectId) {
+      return `/${preferences.simulationProjectId}/recent`;
     }
     return '/projects';
   }

@@ -9,6 +9,7 @@ import { buildDeterministicStoryPlotPlan } from '@/lib/story-plot/deterministicB
 
 jest.mock('@/lib/services/authorizationService', () => ({
   verifyLibraryCreationPermission: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  verifyDerivedConversationCreationPermission: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }));
 
 type InsertCall = {

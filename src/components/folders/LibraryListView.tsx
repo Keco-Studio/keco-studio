@@ -4,11 +4,13 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Library } from '@/lib/services/libraryService';
 import { Folder } from '@/lib/services/folderService';
+import { type DocumentSummary } from '@/lib/services/documentService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import projectPreviewListLibraryIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
 import projectPreviewListLibraryActiveIcon from "@/assets/images/projectPreviewListLibraryActiveIcon.svg";
 import folderIcon from "@/assets/images/projectPreviewListFolderIcon.svg";
+import paperIcon from "@/assets/images/paper.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryListView.module.css';
@@ -26,15 +28,21 @@ type LibraryItem = LibraryWithAssetCount & {
   type: 'library';
 };
 
-type ListItem = FolderItem | LibraryItem;
+type DocumentItem = DocumentSummary & {
+  type: 'document';
+};
+
+type ListItem = FolderItem | LibraryItem | DocumentItem;
 
 type LibraryListViewProps = {
   libraries?: LibraryWithAssetCount[];
+  documents?: DocumentSummary[];
   folders?: Folder[];
   projectId: string;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
   isProjectOwner?: boolean;
   onLibraryClick?: (libraryId: string) => void;
+  onDocumentClick?: (documentId: string) => void;
   onFolderClick?: (folderId: string) => void;
   onLibraryAction?: (libraryId: string, action: ContextMenuAction) => void;
   onFolderAction?: (folderId: string, action: ContextMenuAction) => void;
@@ -42,11 +50,13 @@ type LibraryListViewProps = {
 
 export function LibraryListView({
   libraries = [],
+  documents = [],
   folders = [],
   projectId,
   userRole,
   isProjectOwner,
   onLibraryClick,
+  onDocumentClick,
   onFolderClick,
   onLibraryAction,
   onFolderAction,
@@ -61,10 +71,11 @@ export function LibraryListView({
     id: string;
   } | null>(null);
 
-  // Combine folders and libraries into a single list with type discriminators
+  // Combine the folder's resources into a single list with type discriminators.
   const items: ListItem[] = [
     ...folders.map(folder => ({ ...folder, type: 'folder' as const })),
     ...libraries.map(library => ({ ...library, type: 'library' as const })),
+    ...documents.map(document => ({ ...document, type: 'document' as const })),
   ];
 
   const formatDate = (dateString: string): string => {
@@ -82,6 +93,8 @@ export function LibraryListView({
       onFolderClick(item.id);
     } else if (item.type === 'library' && onLibraryClick) {
       onLibraryClick(item.id);
+    } else if (item.type === 'document' && onDocumentClick) {
+      onDocumentClick(item.id);
     }
   };
 
@@ -148,7 +161,10 @@ export function LibraryListView({
             {items.map((item) => {
               const isHovered = hoveredItemId === item.id;
               const isLibrary = item.type === 'library';
-              const iconSrc = isLibrary 
+              const isDocument = item.type === 'document';
+              const iconSrc = isDocument
+                ? paperIcon
+                : isLibrary
                 ? (isHovered ? projectPreviewListLibraryActiveIcon : projectPreviewListLibraryIcon)
                 : folderIcon;
               
@@ -157,7 +173,9 @@ export function LibraryListView({
                 key={item.id}
                 className={`${styles.tableRow} ${selectedItemId === item.id ? styles.tableRowSelected : ''}`}
                 onClick={() => handleRowClick(item)}
-                onContextMenu={(e) => handleRowContextMenu(item.id, item.type, e)}
+                onContextMenu={item.type === 'document'
+                  ? undefined
+                  : (e) => handleRowContextMenu(item.id, item.type, e)}
                 onMouseEnter={() => setHoveredItemId(item.id)}
                 onMouseLeave={() => setHoveredItemId(null)}
               >
@@ -166,17 +184,17 @@ export function LibraryListView({
                     <span className={styles.libraryIconSlot}>
                       <Image
                         src={iconSrc}
-                        alt={item.type === 'folder' ? 'Folder' : 'Library'}
-                        width={36}
-                        height={36}
-                        className={`icon-36 ${styles.libraryIcon}`}
+                        alt={item.type === 'folder' ? 'Folder' : isDocument ? 'Document' : 'Library'}
+                        width={isDocument ? 20 : 36}
+                        height={isDocument ? 20 : 36}
+                        className={`${isDocument ? 'icon-20' : 'icon-36'} ${styles.libraryIcon}`}
                       />
                     </span>
                     <span className={styles.libraryName}>{item.name}</span>
                   </div>
                 </td>
                 <td className={styles.cell}>
-                  {item.data_updater ? (
+                  {item.type !== 'document' && item.data_updater ? (
                     <div className={styles.avatarCell}>
                       <div 
                         className={styles.avatar}
@@ -196,25 +214,31 @@ export function LibraryListView({
                   <span className={styles.assetsText}>
                     {item.type === 'folder' 
                       ? `${item.libraryCount ?? 0} ${item.libraryCount === 1 ? 'library' : 'libraries'}`
+                      : item.type === 'document'
+                        ? 'Document'
                       : `${item.assetCount ?? 0} ${item.assetCount === 1 ? 'asset' : 'assets'}`
                     }
                   </span>
                 </td>
                 <td className={styles.cell}>
-                  <span className={styles.dateText}>{formatDate(item.last_data_updated_at || item.updated_at)}</span>
+                  <span className={styles.dateText}>
+                    {formatDate(item.type === 'document' ? item.updated_at : item.last_data_updated_at || item.updated_at)}
+                  </span>
                 </td>
                 <td className={styles.cell}>
                   <div className={styles.actionButtons}>
-                    <button
-                      className={`${styles.actionButton} ${contextMenu?.id === item.id ? styles.actionButtonActive : ''}`}
-                      onClick={(e) => handleMoreClick(item.id, item.type, e)}
-                      aria-label="More options"
-                    >
-                      <Image src={moreOptionsIcon}
-                        alt="More"
-                        width={20} height={20} className="icon-20"
-                      />
-                    </button>
+                    {item.type !== 'document' && (
+                      <button
+                        className={`${styles.actionButton} ${contextMenu?.id === item.id ? styles.actionButtonActive : ''}`}
+                        onClick={(e) => handleMoreClick(item.id, item.type, e)}
+                        aria-label="More options"
+                      >
+                        <Image src={moreOptionsIcon}
+                          alt="More"
+                          width={20} height={20} className="icon-20"
+                        />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -237,4 +261,3 @@ export function LibraryListView({
     </>
   );
 }
-

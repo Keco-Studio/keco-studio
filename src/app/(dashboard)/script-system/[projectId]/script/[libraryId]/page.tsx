@@ -75,12 +75,33 @@ export default function ScriptLibraryPage() {
     enabled: Boolean(libraryId),
   });
 
+  const sourceDocumentId = library?.source_document_id ?? null;
+
+  const { data: sourceState } = useQuery({
+    queryKey: sourceDocumentId ? queryKeys.documentState(sourceDocumentId) : ['script-source-state', libraryId],
+    queryFn: async () => {
+      if (!sourceDocumentId) return null;
+      const { data, error } = await supabase
+        .from('documents')
+        .select('collab_epoch, collab_revision')
+        .eq('id', sourceDocumentId)
+        .single();
+      if (error || !data) throw new Error('Failed to load source document state');
+      return {
+        token: {
+          epoch: Number(data.collab_epoch),
+          revision: Number(data.collab_revision),
+        },
+      };
+    },
+    enabled: Boolean(sourceDocumentId),
+  });
+
   // First-load ready: keep rendering during background refetch once we have data.
   const membershipReady = isFetched && !isLoading;
   // Settled: only treat non-membership as final after refetch completes.
   const membershipSettled = membershipReady && !isFetching;
   const assetsSchemaSettled = schemaFetched && assetsFetched;
-  const sourceDocumentId = library?.source_document_id ?? null;
   const isScriptLibrary = library?.document_export_type === 'script';
   const inWorkspace =
     Boolean(sourceDocumentId) && isMember(sourceDocumentId as string);
@@ -95,6 +116,7 @@ export default function ScriptLibraryPage() {
     !assetsError &&
     Boolean(library) &&
     isScriptLibrary &&
+    Boolean(sourceState) &&
     inWorkspace;
 
   useEffect(() => {
@@ -174,6 +196,9 @@ export default function ScriptLibraryPage() {
       flowRows={flowRows}
       persistedGraph={persistedGraph}
       supabase={supabase}
+      projectId={projectId}
+      sourceDocumentId={sourceDocumentId}
+      sourceToken={sourceState?.token ?? null}
     />
   );
 }

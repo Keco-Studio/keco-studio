@@ -8,9 +8,12 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { getFolder, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
+import { listDocuments, type DocumentSummary } from '@/lib/services/documentService';
+import { filterStudioLibraries } from '@/lib/studioLibraryIsolation';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
+import { DocumentRecentCard } from '@/components/admin/DocumentRecentCard';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
 import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
@@ -62,11 +65,20 @@ export default function FolderPage() {
 
   const { data: libraries = [], isLoading: librariesLoading } = useQuery({
     queryKey: queryKeys.folderLibraries(folderId),
-    queryFn: () => listLibraries(supabase, projectId, folderId),
+    queryFn: async () => filterStudioLibraries(await listLibraries(supabase, projectId, folderId)),
     enabled: !!projectId && !!folderId,
   });
 
-  const loading = folderLoading || librariesLoading;
+  const { data: documents = [], isLoading: documentsLoading } = useQuery<DocumentSummary[]>({
+    queryKey: [...queryKeys.documents(projectId), 'folder', folderId],
+    queryFn: async () => {
+      const projectDocuments = await listDocuments(supabase, projectId);
+      return projectDocuments.filter((document) => document.folder_id === folderId);
+    },
+    enabled: !!projectId && !!folderId,
+  });
+
+  const loading = folderLoading || librariesLoading || documentsLoading;
   const error = folderError ? (folderError as any)?.message || 'Failed to load folder' : null;
 
   // Fetch user role in current project
@@ -103,6 +115,10 @@ export default function FolderPage() {
 
   const handleLibraryClick = (libraryId: string) => {
     router.push(`/${projectId}/${libraryId}`);
+  };
+
+  const handleDocumentClick = (documentId: string) => {
+    router.push(`/${projectId}/doc/${documentId}`);
   };
 
   const handleLibraryMoreClick = (libraryId: string, e: React.MouseEvent) => {
@@ -271,7 +287,7 @@ export default function FolderPage() {
         userRole={userRole}
         projectId={projectId}
       /> */}
-      {libraries.length === 0 ? (
+      {libraries.length === 0 && documents.length === 0 ? (
         <div className={styles.emptyStateWrapper}>
           <div className={styles.emptyStateContainer}>
             <div className={styles.emptyIcon}>
@@ -324,6 +340,15 @@ export default function FolderPage() {
               onAction={handleLibraryAction}
             />
           ))}
+          {documents.map((document) => (
+            <DocumentRecentCard
+              key={document.id}
+              documentId={document.id}
+              name={document.name}
+              description={document.description}
+              onClick={() => handleDocumentClick(document.id)}
+            />
+          ))}
         </div>
       ) : (
         <LibraryListView
@@ -331,10 +356,12 @@ export default function FolderPage() {
             ...lib,
             assetCount: assetCounts[lib.id] || 0
           }))}
+          documents={documents}
           projectId={projectId}
           userRole={userRole}
           onLibraryClick={handleLibraryClick}
           onLibraryAction={handleLibraryAction}
+          onDocumentClick={handleDocumentClick}
         />
       )}
       <NewLibraryModal

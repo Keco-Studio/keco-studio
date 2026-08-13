@@ -5,11 +5,11 @@
 }
 
 .tableShell {
-  margin-top: 1.5rem;
+  margin-top: 0;
   margin-bottom: 260px;
   /* Ensure context menu has enough bottom space */
-  border-radius: 0.5rem;
-  border: 1px solid #0000003D;
+  border-radius: 0;
+  border: none;
   background: #ffffff;
   box-shadow: none;
   overflow: visible;
@@ -24,21 +24,6 @@
   background: transparent;
 }
 
-.tableShellScript .tableTopBar {
-  border-bottom: 1px solid #e2e8f0;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  background: transparent;
-}
-
-.tableShellScript .tableTopBarSpacer,
-.tableShellScript .tableTopBarFindWrap,
-.tableShellScript .viewToggleGroup {
-  background: transparent;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
 .tableShellScript .tableContainer {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
@@ -51,80 +36,6 @@
   min-height: calc(100vh - 160px);
 }
 
-.tableTopBar {
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
-  min-height: 2.75rem;
-  border-top-left-radius: 0.5rem;
-  border-top-right-radius: 0.5rem;
-}
-
-.tableTopBarSpacer {
-  flex: 1;
-  min-width: 0;
-  background: #ffffff;
-  border-top-left-radius: 0.5rem;
-}
-
-.tableTopBarFindWrap {
-  flex-shrink: 0;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  background: #ffffff;
-  border-top-right-radius: 0.5rem;
-}
-
-/* View toggle: Table / Script buttons */
-.viewToggleGroup {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex-shrink: 0;
-  align-self: stretch;
-  border-left: 1px solid #e2e8f0;
-  border-right: 1px solid #e2e8f0;
-  background: #ffffff;
-}
-
-.viewToggleBtn {
-  font-family: 'Roboto', sans-serif;
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #7D7D7D;
-  background: none;
-  border: none;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.2s ease;
-  white-space: nowrap;
-}
-
-.viewToggleBtn:hover {
-  color: #475569;
-}
-
-.viewToggleBtnActive {
-  color: #0B99FF;
-}
-
-.viewToggleBtnActive::after {
-  content: '';
-  position: absolute;
-  left: 1rem;
-  right: 1rem;
-  bottom: 0;
-  height: 2px;
-  background: #0B99FF;
-  border-radius: 1px 1px 0 0;
-}
-
 .scriptViewContainer {
   overflow-y: auto;
   overflow-x: hidden;
@@ -134,10 +45,12 @@
 
 .tableContainer {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
+  max-height: calc(100vh - 5rem);
+  min-height: 0;
   background: #ffffff;
-  border-bottom-left-radius: 0.5rem;
-  border-bottom-right-radius: 0.5rem;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .addColumnButton {

@@ -82,6 +82,20 @@ describe('LeftNav wiring', () => {
     expect(getProductNavigationDestination('/create-map', 'studio')).toBe('/projects');
   });
 
+  it('returns to the last Studio file and defaults a known project to Recent', () => {
+    expect(
+      getProductNavigationDestination('/script-system/project-1', 'studio', {
+        scriptProjectId: 'project-1',
+      })
+    ).toBe('/project-1/recent');
+    expect(
+      getProductNavigationDestination('/simulation-system', 'studio', {
+        studioProjectId: 'project-1',
+        studioFileHref: '/project-1/doc/document-1',
+      })
+    ).toBe('/project-1/doc/document-1');
+  });
+
   it('renders Create Map as the fourth product control with the active page state', () => {
     const markup = renderToStaticMarkup(React.createElement(LeftNav));
     const controls = [...markup.matchAll(/aria-label="([^"]+)"/g)].map((match) => match[1]);
@@ -101,6 +115,19 @@ describe('LeftNav wiring', () => {
     expect(source).toContain('export function LeftNav');
     expect(source).toContain('readLeftNavCollapsed');
     expect(getProductNavigationDestination('/projects', 'simulation')).toBe('/simulation-system');
+    expect(source).toContain('readStudioNavigationPreference');
+  });
+
+  it('only records Studio navigation while Studio is active', () => {
+    const source = read('src/components/layout/RecentVisitTracker.tsx');
+    expect(source).toContain('getProductNavigationState(pathname).studio');
+    expect(source).toContain('if (!onStudio) return;');
+  });
+
+  it('redirects the bare project route to Recent instead of rendering folder cards', () => {
+    const source = read('src/app/(dashboard)/[projectId]/page.tsx');
+    expect(source).toContain('router.replace(`/${projectId}/recent`)');
+    expect(source).toContain('if (onProjectRoot) return null;');
   });
 
   it('keeps the shared TopBar while simulation hides Studio resource chrome', () => {

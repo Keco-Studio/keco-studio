@@ -45,7 +45,6 @@ import { TableHeader } from './components/TableHeader';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
 import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { VisualNovelScriptView } from './components/VisualNovelScriptView';
-import { LibraryTableTopBar } from './components/LibraryTableTopBar';
 import { ViewerBanner } from './components/ViewerBanner';
 import { buildTableIndexes } from './utils/tableIndexes';
 import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
@@ -496,9 +495,6 @@ export function LibraryAssetsTable({
   const {
     searchHighlightedCellKeys,
     scrollTargetCell,
-    handleTableFindHighlightCells,
-    handleTableFindClearHighlight,
-    handleTableFindScrollToCell,
   } = useLibraryTableFindReplaceWiring({
     libraryId: library?.id,
     focusAssetIdFromQuery,
@@ -922,20 +918,6 @@ export function LibraryAssetsTable({
           scriptViewMode === 'script' && hasScriptColumns ? ` ${styles.tableShellScript}` : ''
         }`}
       >
-        <LibraryTableTopBar
-          hasScriptColumns={hasScriptColumns}
-          scriptViewMode={scriptViewMode}
-          showScriptViewToggle={false}
-          libraryId={library?.id}
-          rows={resolvedRows}
-          properties={orderedProperties}
-          canReplace={userRole === 'admin' || userRole === 'editor'}
-          supabase={supabase}
-          onChangeScriptViewMode={() => undefined}
-          onHighlightCells={handleTableFindHighlightCells}
-          onClearHighlight={handleTableFindClearHighlight}
-          scrollToCell={handleTableFindScrollToCell}
-        />
         <div
           className={`${styles.tableContainer} ${isResizingColumn || isResizingRow ? styles.tableResizing : ''}`}
           ref={tableContainerRef}

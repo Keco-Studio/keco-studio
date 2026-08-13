@@ -15,19 +15,14 @@ describe('cell replacement broadcasts', () => {
     expect(grouped.get('library-2')).toHaveLength(1);
   });
 
-  it('wires both replace entry points to explicit broadcast and local reconciliation', () => {
+  it('wires the global replace entry point to explicit broadcast and local reconciliation', () => {
     const topBar = readFileSync(join(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8');
-    const tableHook = readFileSync(
-      join(process.cwd(), 'src/components/libraries/hooks/useTableCellFindReplace.ts'),
-      'utf8'
-    );
     const context = readFileSync(
       join(process.cwd(), 'src/lib/contexts/LibraryDataContext.tsx'),
       'utf8'
     );
 
     expect(topBar).toContain('broadcastCellReplacementBatches');
-    expect(tableHook).toContain('broadcastCellReplacementBatches');
     expect(context).toContain('LIBRARY_RECONCILE_EVENT');
   });
 

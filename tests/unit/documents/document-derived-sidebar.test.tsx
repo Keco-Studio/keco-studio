@@ -281,24 +281,27 @@ describe('document-derived sidebar tree', () => {
     }
   });
 
-  it('keeps Generate table but removes Generate conversation from Studio documents', () => {
+  it('shows Open script to every role while keeping Studio generation isolated', () => {
     const originalDocument = globalThis.document;
     Object.assign(globalThis, {
       document: { querySelector: () => null },
     });
 
     try {
-      const markup = renderToStaticMarkup(
-        React.createElement(ContextMenu, {
-          x: 10,
-          y: 10,
-          type: 'document',
-          userRole: 'admin',
-          onClose: jest.fn(),
-        })
-      );
-      expect(markup).toContain('Generate table');
-      expect(markup).not.toContain('Generate conversation');
+      for (const userRole of ['admin', 'editor', 'viewer'] as const) {
+        const markup = renderToStaticMarkup(
+          React.createElement(ContextMenu, {
+            x: 10,
+            y: 10,
+            type: 'document',
+            userRole,
+            onClose: jest.fn(),
+          })
+        );
+        expect(markup).toContain('Open script');
+        expect(markup).not.toContain('Generate conversation');
+        if (userRole === 'admin') expect(markup).toContain('Generate table');
+      }
     } finally {
       if (originalDocument === undefined) {
         delete (globalThis as { document?: unknown }).document;
@@ -306,6 +309,34 @@ describe('document-derived sidebar tree', () => {
         globalThis.document = originalDocument;
       }
     }
+  });
+
+  it('routes a Studio document to the Script opening transition', () => {
+    const closeContextMenu = jest.fn();
+    const router = { push: jest.fn() };
+    let handleAction: ((action: any) => void) | undefined;
+
+    function Harness() {
+      handleAction = useSidebarContextMenuActions({
+        contextMenu: { x: 0, y: 0, type: 'document', id: 'doc', elementRef: null },
+        closeContextMenu,
+        router: router as any,
+        openEditProject: jest.fn(), openEditLibrary: jest.fn(), openDuplicateLibrary: jest.fn(),
+        openImportLibrary: jest.fn(), openImportScript: jest.fn(), openEditFolder: jest.fn(), openEditAsset: jest.fn(),
+        supabase: {} as any, queryClient: {} as any,
+        currentIds: { projectId: 'project', libraryId: null, folderId: null, assetId: null, documentId: null },
+        libraries: [], setError: jest.fn(), assets: {}, fetchAssets: jest.fn(), onProjectDeleteViaAPI: jest.fn(),
+        openMoveLibrary: jest.fn(), openMoveDocument: jest.fn(), openNewDocumentInFolder: jest.fn(),
+        startInlineRename: jest.fn(), startDocumentDerivedImport: jest.fn(), userRole: 'viewer', requestDeleteConfirm: jest.fn(),
+      }).handleContextMenuAction;
+      return null;
+    }
+
+    renderToStaticMarkup(React.createElement(Harness));
+    handleAction?.('open-script');
+
+    expect(closeContextMenu).toHaveBeenCalled();
+    expect(router.push).toHaveBeenCalledWith('/script-system/project/open/doc');
   });
 
   it('guards stale derived-library move actions and executes document delete cascades', async () => {

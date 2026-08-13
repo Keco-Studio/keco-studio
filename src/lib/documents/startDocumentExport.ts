@@ -21,9 +21,10 @@ function isDocumentExportSource(value: unknown): value is DocumentExportSource {
 
 export async function fetchDocumentExportSource(
   documentId: string,
-  accessToken: string
+  accessToken: string,
+  exportType: 'table' | 'script' = 'table'
 ): Promise<DocumentExportSource> {
-  const response = await fetch(`/api/documents/${documentId}/export-source`, {
+  const response = await fetch(`/api/documents/${documentId}/export-source?exportType=${exportType}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) throw new Error('Document export source failed');

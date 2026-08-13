@@ -21,7 +21,7 @@ type LibraryToolbarProps = {
   /**
    * Mode of the toolbar:
    * - 'project': Show "Create" button with menu for both folder and library
-   * - 'folder': Show "Create Library" button that directly opens library modal
+   * - 'folder': Show the same "Create" menu as Recent, scoped to the current folder
    * - 'recent': Show create + view toggles
    * - 'admin': Show create only
    */
@@ -83,15 +83,7 @@ export function LibraryToolbar({
   };
 
   const handleCreateButtonClick = () => {
-    if (mode === 'folder') {
-      // In folder mode, directly create library
-      if (onCreateLibrary) {
-        onCreateLibrary();
-      }
-    } else {
-      // In project/recent/admin modes, show the same menu as Libraries "+"
-      setShowAddMenu(!showAddMenu);
-    }
+    setShowAddMenu((open) => !open);
   };
 
   const wrapMenuAction = (action?: () => void) => {
@@ -106,7 +98,7 @@ export function LibraryToolbar({
   const canCreate = userRole === 'admin' || userRole === 'editor';
   const showShare = mode === 'project' || mode === 'folder';
   const showViewToggle = mode !== 'admin';
-  const showCreateMenu = mode === 'project' || mode === 'recent' || mode === 'admin';
+  const showCreateMenu = mode === 'project' || mode === 'folder' || mode === 'recent' || mode === 'admin';
 
   return (
     <div className={styles.toolbar}>
@@ -118,7 +110,7 @@ export function LibraryToolbar({
           ref={setCreateButtonRef}
           className={styles.createButton}
           onClick={handleCreateButtonClick}
-          aria-label={mode === 'folder' ? 'Create Library' : 'Create Folder/Library'}
+          aria-label="Create"
         >
           <span className={styles.plusIcon}>
             <Image src={projectPreviewCreateBtnIcon}
@@ -127,7 +119,7 @@ export function LibraryToolbar({
             />
           </span>
           <span className={styles.createButtonText}>
-            {mode === 'folder' ? 'Create Library' : 'Create'}
+            Create
           </span>
         </button>
       )}

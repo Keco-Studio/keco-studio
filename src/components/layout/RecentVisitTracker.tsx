@@ -1,16 +1,24 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { writeRecentVisit } from '@/lib/recentVisits/storage';
+import {
+  writeStudioFilePreference,
+  writeStudioProjectPreference,
+} from '@/lib/studio/navigationPreference';
+import { getProductNavigationState } from '@/lib/create-map/productNavigation';
 
 /**
  * Records recently opened tables and documents (not script libraries / assets).
  */
 export function RecentVisitTracker() {
   const supabase = useSupabase();
+  const pathname = usePathname();
+  const onStudio = getProductNavigationState(pathname).studio;
   const { userProfile } = useAuth();
   const {
     currentProjectId,
@@ -24,14 +32,19 @@ export function RecentVisitTracker() {
   useEffect(() => {
     const userId = userProfile?.id;
     if (!userId || !currentProjectId) return;
+    if (!onStudio) return;
+
+    writeStudioProjectPreference(userId, currentProjectId);
 
     if (currentDocumentId && currentDocumentName) {
+      const href = `/${currentProjectId}/doc/${currentDocumentId}`;
+      writeStudioFilePreference(userId, currentProjectId, href);
       writeRecentVisit(userId, {
         kind: 'document',
         id: currentDocumentId,
         projectId: currentProjectId,
         name: currentDocumentName,
-        href: `/${currentProjectId}/doc/${currentDocumentId}`,
+        href,
       });
       return;
     }
@@ -49,14 +62,16 @@ export function RecentVisitTracker() {
         if (cancelled) return;
         if (data?.document_export_type === 'script') return;
 
+        const href = currentAssetId
+          ? `/${currentProjectId}/${currentLibraryId}?asset=${currentAssetId}`
+          : `/${currentProjectId}/${currentLibraryId}`;
+        writeStudioFilePreference(userId, currentProjectId, href);
         writeRecentVisit(userId, {
           kind: 'table',
           id: currentLibraryId,
           projectId: currentProjectId,
           name: currentLibraryName,
-          href: currentAssetId
-            ? `/${currentProjectId}/${currentLibraryId}?asset=${currentAssetId}`
-            : `/${currentProjectId}/${currentLibraryId}`,
+          href,
         });
       })();
 
@@ -71,6 +86,7 @@ export function RecentVisitTracker() {
     currentLibraryId,
     currentLibraryName,
     currentProjectId,
+    onStudio,
     supabase,
     userProfile?.id,
   ]);

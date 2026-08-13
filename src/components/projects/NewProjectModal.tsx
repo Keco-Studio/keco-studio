@@ -75,7 +75,7 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
   return createPortal(
     <div className={dialog.backdrop}>
-      <div className={`${dialog.modal} ${dialog.modalTall}`}>
+      <div className={`${dialog.modal} ${dialog.projectModal}`}>
         <div className={dialog.header}>
           <div className={dialog.title}>Create Project</div>
           <button className={dialog.close} onClick={onClose} aria-label="Close">
@@ -136,4 +136,3 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
     </div>
   , document.body);
 }
-
