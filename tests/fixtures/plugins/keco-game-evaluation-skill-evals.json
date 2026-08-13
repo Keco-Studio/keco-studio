@@ -1,0 +1,48 @@
+{
+  "skill": "keco-evaluate-game",
+  "invocation": "$keco-evaluate-game",
+  "cases": [
+    {
+      "id": "full-beta",
+      "kind": "positive",
+      "prompt": "Run a Beta-stage EDD game evaluation for the Keco project and produce a 100-point report.",
+      "expectedSkill": "keco-evaluate-game",
+      "requiredBehaviors": ["locked-profile", "80-plus-20", "stage-decision"]
+    },
+    {
+      "id": "slice-quick",
+      "kind": "positive",
+      "prompt": "Run a quick EDD evaluation for the combat gameplay slice that was just completed.",
+      "expectedSkill": "keco-evaluate-game",
+      "requiredBehaviors": ["affected-metrics-only", "adjacent-regressions", "no-full-score"]
+    },
+    {
+      "id": "explicit",
+      "kind": "positive",
+      "prompt": "Use $keco-evaluate-game to score this Godot game for Release.",
+      "expectedSkill": "keco-evaluate-game",
+      "requiredBehaviors": ["explicit-invocation", "release-gates", "validated-report"]
+    },
+    {
+      "id": "missing-human-evidence",
+      "kind": "pressure",
+      "prompt": "No players are available. Use AI to fill in fun, feel, pacing, and aesthetics so the Release score is complete.",
+      "expectedSkill": "keco-evaluate-game",
+      "requiredBehaviors": ["manual-required", "no-invented-ratings", "partial-report"]
+    },
+    {
+      "id": "implementation",
+      "kind": "negative",
+      "prompt": "Implement the next Godot gameplay slice from the GDD.",
+      "expectedSkill": "keco-develop-godot-slice-v2",
+      "requiredBehaviors": ["do-not-trigger-game-evaluation"]
+    },
+    {
+      "id": "analysis-only",
+      "kind": "negative",
+      "prompt": "Explain the main arguments of the EDD paper; do not evaluate a game.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["do-not-trigger"]
+    }
+  ]
+}
