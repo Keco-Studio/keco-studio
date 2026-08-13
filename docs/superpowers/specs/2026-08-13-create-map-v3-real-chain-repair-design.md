@@ -2,7 +2,7 @@
 
 ## Goal
 
-Repair the Create Map V3 planner and database compatibility failures, then generate a real map from `Create Map 短文实测 2026-08-10` whose saved draft and ready image remain visible in the `test` Keco project.
+Repair the Create Map V3 planner and database compatibility failures, then generate a real map from `Create Map Short-Form Real-Chain Test 2026-08-10` whose saved draft and ready image remain visible in the `test` Keco project.
 
 ## Database Compatibility
 
@@ -14,7 +14,7 @@ Keep the strict V3 schema as the durable contract. Normalize only provider-owned
 
 ## Real Acceptance Flow
 
-Use the authenticated owner of project `test` and the existing document `Create Map 短文实测 2026-08-10`. Create the plan through the real Next.js route, persist it through V3 RPCs, publish one generation revision, create one direct-image asset, and invoke the real PixelLab Edge Function. Poll and validate the provider job, bind the ready image into the next draft Scene, save it, and verify private storage SHA-256, image dimensions, opacity, and nonblank pixels.
+Use the authenticated owner of project `test` and the existing document `Create Map Short-Form Real-Chain Test 2026-08-10`. Create the plan through the real Next.js route, persist it through V3 RPCs, publish one generation revision, create one direct-image asset, and invoke the real PixelLab Edge Function. Poll and validate the provider job, bind the ready image into the next draft Scene, save it, and verify private storage SHA-256, image dimensions, opacity, and nonblank pixels.
 
 The created `map_projects` row must retain the source project and document IDs. Its current V3 draft must contain a locked `mapImage` binding to the ready generation revision so the existing Saved Maps UI can list and restore it.
 
