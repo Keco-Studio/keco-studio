@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
 import type { ScriptColumns } from '@/components/libraries/components/VisualNovelScriptView';
 import { VisualNovelScriptView } from '@/components/libraries/components/VisualNovelScriptView';
 import {
@@ -36,12 +37,15 @@ import { FlowChartPanel } from './FlowChartPanel';
 import styles from './ScriptSplitView.module.css';
 
 export type ScriptSplitViewProps = {
+  projectId?: string;
   libraryId: string;
   rows: AssetRow[];
   scriptColumns: ScriptColumns;
   flowRows: Array<Record<string, string>>;
   persistedGraph?: FlowGraph;
   supabase?: SupabaseClient;
+  sourceDocumentId?: string | null;
+  sourceToken?: DocumentStateToken | null;
 };
 
 const MIN_PANE_PX = 240;
@@ -95,11 +99,14 @@ export function resolveSelectedPlotNodeId(params: {
 
 export function ScriptSplitView({
   libraryId,
+  projectId,
   rows,
   scriptColumns,
   flowRows,
   persistedGraph,
   supabase,
+  sourceDocumentId,
+  sourceToken,
 }: ScriptSplitViewProps) {
   const graph = useMemo(
     () => persistedGraph ?? buildScriptFlowGraph(flowRows),
@@ -157,6 +164,9 @@ export function ScriptSplitView({
     rows,
     selectedRows,
     fields: dialogueFields,
+    projectId,
+    sourceDocumentId,
+    sourceToken,
   });
 
   const editingProps = dialogueEditor.enabled
@@ -173,6 +183,9 @@ export function ScriptSplitView({
         onRedo: () => dialogueEditor.redo(),
         onInsertAfterBlock: (blockId: string, speaker: string) => (
           dialogueEditor.insertAfterBlock(blockId, speaker)
+        ),
+        onChangeBlockSpeaker: (blockId: string, speaker: string) => (
+          dialogueEditor.changeBlockSpeaker(blockId, speaker)
         ),
         onSaveBlockField: (
           blockId: string,

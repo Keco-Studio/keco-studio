@@ -52,7 +52,7 @@ describe('ScriptContextMenu', () => {
     });
   });
 
-  it('Script document menu hides Generate conversation for non-admin', () => {
+  it('Script document menu shows Generate conversation to editors', () => {
     withDocumentStub(() => {
       const html = renderToStaticMarkup(
         React.createElement(ScriptContextMenu, {
@@ -64,9 +64,21 @@ describe('ScriptContextMenu', () => {
           onAction: () => {},
         })
       );
-      expect(html).not.toContain('Generate conversation');
+      expect(html).toContain('Generate conversation');
       expect(html).toContain('Rename');
       expect(html).toContain('Delete');
+    });
+  });
+
+  it('Script document menu hides Generate conversation from viewers', () => {
+    withDocumentStub(() => {
+      const html = renderToStaticMarkup(
+        React.createElement(ScriptContextMenu, {
+          x: 10, y: 20, type: 'document', userRole: 'viewer',
+          onClose: () => {}, onAction: () => {},
+        })
+      );
+      expect(html).not.toContain('Generate conversation');
     });
   });
 

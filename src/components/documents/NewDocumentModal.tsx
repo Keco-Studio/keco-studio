@@ -66,9 +66,14 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
 
   return createPortal(
     <div className={dialog.backdrop}>
-      <div className={`${dialog.modal} ${dialog.modalTall}`}>
+      <div
+        className={`${dialog.modal} ${dialog.modalTall}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-document-dialog-title"
+      >
         <div className={dialog.header}>
-          <div className={dialog.title}>Create Document</div>
+          <div id="new-document-dialog-title" className={dialog.title}>Create Document</div>
           <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>

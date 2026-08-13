@@ -81,7 +81,7 @@ export const POST = withAuth(async function POST(
   let verifiedSource: DocumentExportSnapshot | undefined;
   if (sourceDocumentId) {
     try {
-      const source = await getDocumentExportSource(supabase, user.id, sourceDocumentId);
+      const source = await getDocumentExportSource(supabase, user.id, sourceDocumentId, documentExportType);
       if (source.projectId !== projectId) {
         return NextResponse.json(
           { error: 'Source document not found in this project' },
@@ -221,11 +221,11 @@ export const POST = withAuth(async function POST(
 function documentSourceErrorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : '';
   if (
-    message === 'Only admin users can export project content'
+    message === 'Only admin and editor users can generate conversations'
     || (error instanceof Error && error.name === 'AuthorizationError')
   ) {
     return NextResponse.json(
-      { error: 'Only admin users can export project content' },
+      { error: 'Only admin and editor users can generate conversations' },
       { status: 403 }
     );
   }

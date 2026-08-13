@@ -8,6 +8,7 @@ import {
   getProductNavigationState,
 } from '@/lib/create-map/productNavigation';
 import { readScriptProjectPreference } from '@/lib/script-system/projectPreference';
+import { readStudioNavigationPreference } from '@/lib/studio/navigationPreference';
 import {
   readLeftNavCollapsed,
   writeLeftNavCollapsed,
@@ -113,7 +114,7 @@ function IconExpand() {
   );
 }
 
-export function LeftNav() {
+export function LeftNav({ userId }: { userId?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -122,9 +123,12 @@ export function LeftNav() {
   const { studio: onStudio, simulation: onSimulation, script: onScript, createMap: onCreateMap } = navigationState;
 
   const navigate = (item: 'studio' | 'simulation' | 'script' | 'createMap') => {
+    const studioPreference = readStudioNavigationPreference(userId);
     const destination = getProductNavigationDestination(pathname, item, {
       scriptProjectId: onScript || item === 'script' ? readScriptProjectPreference()?.projectId : undefined,
       simulationProjectId: onSimulation ? readSimulationProjectPreference()?.projectId : undefined,
+      studioProjectId: studioPreference?.projectId,
+      studioFileHref: studioPreference?.fileHref,
     });
 
     if (destination) router.push(destination);

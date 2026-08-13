@@ -169,7 +169,8 @@ describe('POST /api/import-script streaming protocol', () => {
     expect(mockedGetDocumentExportSource).toHaveBeenCalledWith(
       expect.anything(),
       'user-1',
-      documentId
+      documentId,
+      'script'
     );
     expect(mockedGetDocumentExportSource.mock.invocationCallOrder[0]).toBeLessThan(
       mockedResolve.mock.invocationCallOrder[0]
@@ -278,7 +279,7 @@ describe('POST /api/import-script streaming protocol', () => {
 
   it('rejects non-admin document exports before conversion or writing', async () => {
     mockedGetDocumentExportSource.mockRejectedValue(
-      new Error('Only admin users can export project content')
+      new Error('Only admin and editor users can generate conversations')
     );
 
     const response = await POST(request({ folderId: null, sourceDocumentId: documentId }));
@@ -300,7 +301,7 @@ describe('POST /api/import-script streaming protocol', () => {
 
     expect(response.status).toBe(403);
     const payload = await response.json();
-    expect(payload).toEqual({ error: 'Only admin users can export project content' });
+    expect(payload).toEqual({ error: 'Only admin and editor users can generate conversations' });
     expect(JSON.stringify(payload)).not.toContain(internalMessage);
     expect(mockedResolve).not.toHaveBeenCalled();
     expect(mockedImport).not.toHaveBeenCalled();

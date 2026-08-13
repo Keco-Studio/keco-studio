@@ -27,6 +27,7 @@ jest.mock('@dnd-kit/utilities', () => ({
 
 import {
   deleteDialogueBlockAndHide,
+  isDialogueDraftEmpty,
   isDialogueEditorOutsidePointer,
   isDialogueSubmitShortcut,
   reconcileDialogueDrafts,
@@ -55,6 +56,7 @@ function render(isEditing: boolean) {
       onBeginEdit={jest.fn()}
       onFinishEdit={jest.fn()}
       onInsertCharacter={jest.fn(async () => true)}
+      onChangeSpeaker={jest.fn(async () => true)}
       onSaveAction={jest.fn(async () => true)}
       onSaveDialogue={jest.fn(async () => true)}
       onDelete={jest.fn(async () => true)}
@@ -71,6 +73,7 @@ function renderBlock(overrides: Partial<ScriptDialogueBlock>, isEditing = false)
       onBeginEdit={jest.fn()}
       onFinishEdit={jest.fn()}
       onInsertCharacter={jest.fn(async () => true)}
+      onChangeSpeaker={jest.fn(async () => true)}
       onSaveAction={jest.fn(async () => true)}
       onSaveDialogue={jest.fn(async () => true)}
       onDelete={jest.fn(async () => true)}
@@ -82,8 +85,8 @@ describe('ScriptEditableDialogBlock', () => {
   it('uses only the avatar, action, and dialogue as edit entry controls', () => {
     const markup = render(false);
 
-    expect(markup.match(/aria-label="Edit [^"]+"/g)).toHaveLength(3);
-    expect(markup).toContain('aria-label="Edit Hero avatar"');
+    expect(markup.match(/aria-label="(?:Edit|Switch) [^"]+"/g)).toHaveLength(3);
+    expect(markup).toContain('aria-label="Switch Hero character"');
     expect(markup).toContain('aria-label="Edit action"');
     expect(markup).toContain('aria-label="Edit dialogue"');
   });
@@ -113,6 +116,7 @@ describe('ScriptEditableDialogBlock', () => {
         onBeginEdit={jest.fn()}
         onFinishEdit={jest.fn()}
         onInsertCharacter={jest.fn(async () => true)}
+        onChangeSpeaker={jest.fn(async () => true)}
         onSaveAction={jest.fn(async () => true)}
         onSaveDialogue={jest.fn(async () => true)}
         onDelete={onDelete}
@@ -148,6 +152,7 @@ describe('ScriptEditableDialogBlock', () => {
 
     expect(markup).not.toContain('Add action');
     expect(markup).not.toContain('Add dialogue');
+    expect(markup).not.toContain('Switch Hero character');
   });
 
   it('keeps edit, delete, and input controls enabled', () => {
@@ -165,6 +170,12 @@ describe('ScriptEditableDialogBlock', () => {
     expect(isDialogueSubmitShortcut({ key: 'Enter', ctrlKey: false, metaKey: true })).toBe(true);
     expect(isDialogueSubmitShortcut({ key: 'Enter', ctrlKey: false, metaKey: false })).toBe(false);
     expect(isDialogueSubmitShortcut({ key: 'a', ctrlKey: true, metaKey: false })).toBe(false);
+  });
+
+  it('treats whitespace-only action and dialogue as an empty block', () => {
+    expect(isDialogueDraftEmpty({ action: '  ', dialogue: '\n' })).toBe(true);
+    expect(isDialogueDraftEmpty({ action: 'moves', dialogue: '' })).toBe(false);
+    expect(isDialogueDraftEmpty({ action: '', dialogue: 'hello' })).toBe(false);
   });
 
   it('accepts server updates without overwriting a dirty local draft', () => {

@@ -12,16 +12,21 @@ const normalizeRowIndices = jest.fn<(
 const shiftRowIndices = jest.fn<(...args: unknown[]) => Promise<void>>(
   async () => undefined,
 );
+const updateAsset = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
 
 jest.mock('@/lib/services/libraryAssetsService', () => ({
   createAsset,
   deleteAssets,
   normalizeRowIndices,
   shiftRowIndices,
-  updateAsset: jest.fn(),
+  updateAsset,
 }));
 
-import { deleteDialogueBlock, insertDialogueThreadAfter } from './scriptDialogueMutations';
+import {
+  deleteDialogueBlock,
+  insertDialogueThreadAfter,
+  updateDialogueBlockSpeaker,
+} from './scriptDialogueMutations';
 
 describe('insertDialogueThreadAfter rollback', () => {
   beforeEach(() => {
@@ -141,5 +146,59 @@ describe('deleteDialogueBlock', () => {
 
     expect(deleteAssets).toHaveBeenCalledWith({}, ['action', 'speech']);
     expect(snapshot.rows.map((row) => row.id)).toEqual(['action', 'speech']);
+  });
+});
+
+describe('updateDialogueBlockSpeaker', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('updates the action and speech rows to the selected character', async () => {
+    const rows = [
+      {
+        id: 'action',
+        libraryId: 'library',
+        name: 'Hero',
+        propertyValues: { type: '3', name: 'Hero', content: 'Raises sword' },
+      },
+      {
+        id: 'speech',
+        libraryId: 'library',
+        name: 'Hero',
+        propertyValues: { type: '2', name: 'Hero', content: 'Forward' },
+      },
+    ];
+
+    await updateDialogueBlockSpeaker({
+      supabase: {} as never,
+      rows,
+      fields: { typeKey: 'type', nameKey: 'name', contentKey: 'content' },
+      block: {
+        id: 'speech',
+        actionRowId: 'action',
+        speechRowId: 'speech',
+        rowIndexes: [0, 1],
+        speaker: 'Hero',
+        action: 'Raises sword',
+        dialogue: 'Forward',
+        speechType: '2',
+        accent: 'green',
+        alignment: 'left',
+      },
+      speaker: 'I',
+      speechType: '1',
+    });
+
+    expect(updateAsset).toHaveBeenNthCalledWith(1, {}, 'action', 'I', {
+      type: '3',
+      name: 'I',
+      content: 'Raises sword',
+    });
+    expect(updateAsset).toHaveBeenNthCalledWith(2, {}, 'speech', 'I', {
+      type: '1',
+      name: 'I',
+      content: 'Forward',
+    });
   });
 });

@@ -7,6 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyLibraryCreationPermission,
+  verifyDerivedConversationCreationPermission,
 } from '@/lib/services/authorizationService';
 import {
   resolveDerivedLibraryPlacement,
@@ -100,7 +101,11 @@ async function importCompiledScript(
     throw new Error('Invalid folder ID');
   }
 
-  await verifyLibraryCreationPermission(supabase, projectId, userId);
+  if (documentSource?.exportType === 'script') {
+    await verifyDerivedConversationCreationPermission(supabase, projectId, userId);
+  } else {
+    await verifyLibraryCreationPermission(supabase, projectId, userId);
+  }
 
   if (!documentSource && folderId !== null) {
     const { data: folder, error: folderError } = await supabase

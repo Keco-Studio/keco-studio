@@ -36,6 +36,12 @@
   height: 24.125rem;
 }
 
+.projectModal {
+  width: 616px;
+  height: 370px;
+  border-radius: 14px;
+}
+
 .modalCompact {
   height: auto;
 }
@@ -212,7 +218,7 @@
 }
 
 .notesLabelLimit {
-  color: #cbd5e1;
+  color: var(--text-disabled, #0000003D);
   font-weight: 400;
 }
 

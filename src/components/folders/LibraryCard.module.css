@@ -69,8 +69,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 24px;
+  height: 24px;
+  gap: 10px;
+  border-radius: 5px;
+  background: #EEEEEE;
 }
 
 .libraryNameContainer {
@@ -143,4 +146,3 @@
 .actionButtonActive img {
   filter: brightness(0) invert(1); /* Turn icon white */
 }
-

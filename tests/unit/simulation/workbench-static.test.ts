@@ -23,7 +23,7 @@ describe('native simulation workbench presentation', () => {
 
   it('uses accessible button navigation in the sidebar', () => {
     const source = read('SimulationSidebar.tsx');
-    expect(source).toContain('Keco Siumlator');
+    expect(source).toContain('Keco Simulator');
     expect(source).toContain('Battle &amp; numbers sandbox · for game designers');
     expect(source).toContain('projectButton');
     expect(source).toContain('projectWrap');

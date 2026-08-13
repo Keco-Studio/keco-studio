@@ -10,7 +10,7 @@ function errorMessage(error: unknown): string | undefined {
 }
 
 export const GET = withAuth(async function GET(
-  _request,
+  request,
   { params }: Params,
   { supabase, user }
 ) {
@@ -20,7 +20,8 @@ export const GET = withAuth(async function GET(
   }
 
   try {
-    const source = await getDocumentExportSource(supabase, user.id, documentId);
+    const exportType = new URL(request.url).searchParams.get('exportType') === 'script' ? 'script' : 'table';
+    const source = await getDocumentExportSource(supabase, user.id, documentId, exportType);
     return NextResponse.json(
       { source },
       { headers: { 'Cache-Control': 'private, no-store' } }
@@ -28,11 +29,11 @@ export const GET = withAuth(async function GET(
   } catch (error) {
     const message = errorMessage(error);
     if (
-      message === 'Only admin users can export project content' ||
+      (message === 'Only admin users can export project content' || message === 'Only admin and editor users can generate conversations') ||
       (error instanceof Error && error.name === 'AuthorizationError')
     ) {
       return NextResponse.json(
-        { error: 'Only admin users can export project content' },
+        { error: message ?? 'Only admin users can export project content' },
         { status: 403 }
       );
     }

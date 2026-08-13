@@ -8,12 +8,13 @@ import { createDocumentExportSnapshotToken } from './documentExportSnapshotSigni
 export async function getDocumentExportSource(
   supabase: SupabaseClient,
   userId: string,
-  documentId: string
+  documentId: string,
+  exportType: 'table' | 'script' = 'table'
 ): Promise<DocumentExportSource> {
   const state = await documentStateGateway.read(supabase, documentId);
   const { role } = await getUserProjectRole(supabase, state.projectId, userId);
-  if (role !== 'admin') {
-    throw new Error('Only admin users can export project content');
+  if (role !== 'admin' && (exportType !== 'script' || role !== 'editor')) {
+    throw new Error('Only admin and editor users can generate conversations');
   }
 
   const { data, error } = await supabase

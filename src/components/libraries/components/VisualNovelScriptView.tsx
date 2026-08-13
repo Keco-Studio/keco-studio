@@ -15,7 +15,6 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { UndoOutlined, RedoOutlined } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import { displayPlotNodeEditableText, interpolateVariables } from '@/lib/story-ir/commands';
@@ -58,6 +57,7 @@ export type ScriptDialogueEditingProps = {
   onUndo: () => Promise<boolean>;
   onRedo: () => Promise<boolean>;
   onInsertAfterBlock: (blockId: string, speaker: string) => Promise<boolean>;
+  onChangeBlockSpeaker: (blockId: string, speaker: string) => Promise<boolean>;
   onSaveBlockField: (blockId: string, field: 'action' | 'dialogue', value: string) => Promise<boolean>;
   onDeleteBlock: (blockId: string) => Promise<boolean>;
   onReorderBlock: (fromIndex: number, toIndex: number) => Promise<boolean>;
@@ -88,6 +88,22 @@ type ScrollContainerNode = {
   scrollTop: number;
   scrollTo?: (options: ScrollToOptions) => void;
 };
+
+function HistoryIcon({ direction }: { direction: 'undo' | 'redo' }) {
+  return (
+    <svg
+      className={styles.historyIcon}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <g transform={direction === 'redo' ? 'translate(24 0) scale(-1 1)' : undefined}>
+        <path d="M9 5 4 10l5 5" />
+        <path d="M4 10h10a5 5 0 0 1 0 10H9" />
+      </g>
+    </svg>
+  );
+}
 
 /* ───────── helpers ───────── */
 
@@ -382,6 +398,7 @@ export function VisualNovelScriptView({
             onBeginEdit={() => editing.setEditingBlockId(block.id)}
             onFinishEdit={() => editing.finishEditingBlock(block.id)}
             onInsertCharacter={(speaker) => editing.onInsertAfterBlock(block.id, speaker)}
+            onChangeSpeaker={(speaker) => editing.onChangeBlockSpeaker(block.id, speaker)}
             onSaveAction={(value) => editing.onSaveBlockField(block.id, 'action', value)}
             onSaveDialogue={(value) => editing.onSaveBlockField(block.id, 'dialogue', value)}
             onDelete={() => editing.onDeleteBlock(block.id)}
@@ -410,7 +427,7 @@ export function VisualNovelScriptView({
               disabled={!editing.canUndo}
               onClick={() => { void editing.onUndo(); }}
             >
-              <UndoOutlined aria-hidden />
+                  <HistoryIcon direction="undo" />
             </button>
           </Tooltip>
           <Tooltip title="Redo">
@@ -421,7 +438,7 @@ export function VisualNovelScriptView({
               disabled={!editing.canRedo}
               onClick={() => { void editing.onRedo(); }}
             >
-              <RedoOutlined aria-hidden />
+                  <HistoryIcon direction="redo" />
             </button>
           </Tooltip>
         </div>

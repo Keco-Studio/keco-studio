@@ -150,6 +150,51 @@ export async function updateDialogueRowContent(params: {
   return { oldContent };
 }
 
+export type DialogueSpeakerUpdate = {
+  rowId: string;
+  oldName: string;
+  newName: string;
+  oldPropertyValues: Record<string, unknown>;
+  newPropertyValues: Record<string, unknown>;
+};
+
+export async function updateDialogueBlockSpeaker(params: {
+  supabase: SupabaseClient;
+  rows: AssetRow[];
+  fields: ScriptDialogueFieldKeys;
+  block: ScriptDialogueBlock;
+  speaker: string;
+  speechType: '1' | '2';
+}): Promise<DialogueSpeakerUpdate[]> {
+  const { supabase, rows, fields, block, speaker, speechType } = params;
+  const rowIds = [block.actionRowId, block.speechRowId].filter(
+    (id): id is string => Boolean(id),
+  );
+  const updates = rowIds.flatMap((rowId) => {
+    const row = rows.find((item) => item.id === rowId);
+    if (!row) return [];
+    return [{
+      rowId,
+      oldName: row.name,
+      newName: speaker,
+      oldPropertyValues: { ...row.propertyValues },
+      newPropertyValues: {
+        ...row.propertyValues,
+        [fields.typeKey]: rowId === block.actionRowId ? '3' : speechType,
+        [fields.nameKey]: speaker,
+      },
+    }];
+  });
+
+  await Promise.all(updates.map((update) => updateAsset(
+    supabase,
+    update.rowId,
+    update.newName,
+    update.newPropertyValues,
+  )));
+  return updates;
+}
+
 export async function ensureActionRowForBlock(params: {
   supabase: SupabaseClient;
   libraryId: string;
@@ -211,8 +256,20 @@ export async function deleteDialogueBlock(params: {
   rows: AssetRow[];
   block: ScriptDialogueBlock;
 }): Promise<DeletedDialogueSnapshot> {
-  const ordered = sortAssetsForUiRow(params.rows);
-  const ids = [params.block.actionRowId, params.block.speechRowId].filter(
+  const snapshot = createDeletedDialogueSnapshot(params.rows, params.block);
+  await deleteAssets(
+    params.supabase,
+    snapshot.rows.map((row) => row.id),
+  );
+  return snapshot;
+}
+
+export function createDeletedDialogueSnapshot(
+  rows: AssetRow[],
+  block: ScriptDialogueBlock,
+): DeletedDialogueSnapshot {
+  const ordered = sortAssetsForUiRow(rows);
+  const ids = [block.actionRowId, block.speechRowId].filter(
     (id): id is string => Boolean(id),
   );
   const snapshotRows = ids.flatMap((id) => {
@@ -226,7 +283,6 @@ export async function deleteDialogueBlock(params: {
     }];
   });
   const previousOrderIds = ordered.map((row) => row.id);
-  await deleteAssets(params.supabase, ids);
   return { rows: snapshotRows, previousOrderIds };
 }
 

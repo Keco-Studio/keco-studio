@@ -62,7 +62,8 @@ describe('document export source route', () => {
     expect(getDocumentExportSource).toHaveBeenCalledWith(
       authedSupabase,
       'user-id',
-      DOCUMENT_ID
+      DOCUMENT_ID,
+      'table'
     );
   });
 

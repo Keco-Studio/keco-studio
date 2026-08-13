@@ -410,11 +410,14 @@
 .historyButton {
   width: 2rem;
   height: 2rem;
-  border: 1px solid #e5e7eb;
+  box-sizing: border-box;
+  padding: 6px;
+  gap: 4px;
+  border: 1px solid #e7e7e7;
   border-radius: 0.5rem;
   background: #ffffff;
   color: #374151;
-  font-size: 0.875rem;
+  font-size: 1.125rem;
   line-height: 1;
   cursor: pointer;
   display: inline-flex;
@@ -427,6 +430,17 @@
   border-color: #0B99FF;
   color: #0B99FF;
   outline: none;
+}
+
+.historyIcon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .historyButton:disabled {
@@ -493,6 +507,10 @@
   height: 2rem;
 }
 
+.editableDialogRow.right .editControls {
+  flex-direction: row-reverse;
+}
+
 .editControls > * {
   display: inline-flex;
 }
@@ -543,6 +561,12 @@
 
 .editableDialogRow .speakerHeader {
   gap: 5px;
+}
+
+.speakerPickerWrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
 }
 
 .editEntryButton {

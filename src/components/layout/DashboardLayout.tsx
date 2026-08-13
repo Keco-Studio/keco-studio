@@ -83,7 +83,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className={styles.dashboard}>
-      {createMapChrome.showLeftNav ? <LeftNav /> : null}
+      {createMapChrome.showLeftNav ? <LeftNav userId={userProfile?.id} /> : null}
       {showStudioSidebar ? (
         <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
           <Sidebar userProfile={userProfile} onAuthRequest={signOut} />

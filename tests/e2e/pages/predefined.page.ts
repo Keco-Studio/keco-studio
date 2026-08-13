@@ -67,8 +67,9 @@ export class PredefinedPage {
     this.saveConfigurationButton = page.getByRole('button', { name: /save config|confirm/i });
 
     // Form action buttons
-    this.submitButton = page.getByRole('button', { name: /^(create|submit)$/i });
-    this.cancelButton = page.getByRole('button', { name: /cancel/i });
+    // Scope to the open form dialog so other Create triggers are excluded.
+    this.submitButton = page.getByRole('dialog').getByRole('button', { name: /^(create|submit)$/i });
+    this.cancelButton = page.getByRole('dialog').getByRole('button', { name: /cancel/i });
     this.saveButton = page.getByRole('button', { name: /save/i });
 
     // Feedback

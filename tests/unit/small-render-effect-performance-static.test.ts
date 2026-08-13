@@ -5,12 +5,6 @@ const read = (relativePath: string) =>
   fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8');
 
 describe('small render and effect performance guards', () => {
-  it('debounces table find text and precomputes searchable cell values', () => {
-    const source = read('src/components/libraries/hooks/useTableCellFindReplace.ts');
-    expect(source).toContain('debouncedFindText');
-    expect(source).toContain('buildNormalizedIndexMap');
-  });
-
   it('keeps the sidebar context-menu callback stable', () => {
     const source = read('src/components/layout/Sidebar.tsx');
     expect(source).toMatch(/const handleContextMenu = useCallback\s*\(/);

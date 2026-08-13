@@ -529,6 +529,20 @@ export async function verifyLibraryCreationPermission(
   }
 }
 
+export async function verifyDerivedConversationCreationPermission(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
+  if (role !== 'admin' && role !== 'editor') {
+    throw new AuthorizationError(
+      'Only admin and editor users can generate conversations'
+    );
+  }
+}
+
 /**
  * Verify that the user has admin permission to create a folder
  * Only owner or admin collaborators can create folders

@@ -361,7 +361,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     const scriptName = `Derived script ${crypto.randomUUID().slice(0, 6)}`;
 
     await page.route(
-      `**/api/documents/${fixture.folderDocument.id}/export-source`,
+      (url) => url.pathname === `/api/documents/${fixture.folderDocument.id}/export-source`,
       async (route) => {
         await route.fulfill({
           status: 200,
@@ -537,7 +537,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     let rootTableId = '';
 
     await page.route(
-      `**/api/documents/${fixture.rootDocument.id}/export-source`,
+      (url) => url.pathname === `/api/documents/${fixture.rootDocument.id}/export-source`,
       async (route) => {
         await route.fulfill({
           status: 200,

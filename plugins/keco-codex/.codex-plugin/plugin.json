@@ -1,6 +1,6 @@
 {
   "name": "keco",
-  "version": "0.3.0+codex.20260812161204",
+  "version": "0.3.0+codex.20260813062608",
   "description": "Build Keco project data, import local images, and develop evaluated Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"
