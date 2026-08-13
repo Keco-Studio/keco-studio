@@ -8,6 +8,7 @@ import {
   type MapPlanV2Issue,
 } from '@/features/create-map/model/mapPlanSchema';
 import {
+  DIRECT_MAP_PROFILES,
   validateMapPlanV3,
   type MapPlanV3,
   type MapPlanV3Issue,
@@ -292,13 +293,36 @@ function readNullableSeed(candidate: unknown): number | null {
   return typeof seed === 'number' && Number.isInteger(seed) && seed >= 0 ? seed : null;
 }
 
-function installAuthorizedReferences(
+function limitModelText(value: unknown, maxLength: number): unknown {
+  if (typeof value !== 'string' || value.length <= maxLength) return value;
+  const clipped = value.slice(0, maxLength + 1);
+  const boundary = clipped.lastIndexOf(' ');
+  return clipped.slice(0, boundary > 0 ? boundary : maxLength).trimEnd();
+}
+
+export function normalizeDirectMapPlanCandidate(
   candidate: unknown,
   selection: DirectMapReferenceSelection,
 ): unknown {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+  const record = candidate as Record<string, unknown>;
+  const candidateMap = record.map && typeof record.map === 'object' && !Array.isArray(record.map)
+    ? record.map as Record<string, unknown>
+    : {};
+  const width = typeof candidateMap.width === 'number' ? candidateMap.width : 512;
+  const height = typeof candidateMap.height === 'number' ? candidateMap.height : 512;
+  const profile = DIRECT_MAP_PROFILES.reduce((closest, current) => {
+    const closestDistance = (closest.width - width) ** 2 + (closest.height - height) ** 2;
+    const currentDistance = (current.width - width) ** 2 + (current.height - height) ** 2;
+    return currentDistance < closestDistance ? current : closest;
+  });
   return {
-    ...(candidate as Record<string, unknown>),
+    ...record,
+    schemaVersion: 3,
+    name: limitModelText(record.name, 160),
+    summary: limitModelText(record.summary, 500),
+    map: { ...profile },
+    description: limitModelText(record.description, 2_000),
     references: selection.references,
     styleReference: selection.styleReference,
     generation: {
@@ -635,7 +659,7 @@ export async function createMapPlanV3(
     } catch {
       parsed = raw;
     }
-    const finalized = installAuthorizedReferences(parsed, selection);
+    const finalized = normalizeDirectMapPlanCandidate(parsed, selection);
     const result = validateMapPlanV3(finalized);
     if (result.success === true) return result.data;
     if (attempt < DIRECT_MAP_MAX_ATTEMPTS - 1) {

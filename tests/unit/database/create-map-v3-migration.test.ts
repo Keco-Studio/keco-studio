@@ -6,8 +6,20 @@ const migrationPath = path.join(process.cwd(), 'supabase/migrations/202608110200
 const sql = fs.readFileSync(migrationPath, 'utf8');
 const collisionMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260812010000_map_v3_collision_grid.sql');
 const collisionSql = fs.readFileSync(collisionMigrationPath, 'utf8');
+const repairMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260813010000_repair_create_map_v3_payload_validator.sql');
+const repairSql = fs.readFileSync(repairMigrationPath, 'utf8');
 
 describe('Create Map V3 direct-image migration', () => {
+  it('repairs both legacy and already wrapped V3 validators without replacing retained data', () => {
+    expect(repairSql).toMatch(/to_regprocedure\('public\.map_validate_v3_payload_without_collision_grid\(jsonb,jsonb\)'\)/i);
+    expect(repairSql).toMatch(/alter function public\.map_validate_v3_payload\(jsonb, jsonb\)[\s\S]+rename to map_validate_v3_payload_without_collision_grid/i);
+    expect(repairSql).toMatch(/create or replace function public\.map_validate_v3_payload\(p_plan jsonb, p_scene jsonb\)/i);
+    expect(repairSql).toMatch(/p_scene - 'collisionGrid'/i);
+    expect(repairSql).toMatch(/alter function public\.create_map_project_v3\(/i);
+    expect(repairSql).toMatch(/notify pgrst, 'reload schema'/i);
+    expect(repairSql).not.toMatch(/drop table|truncate|delete from public\.map_/i);
+  });
+
   it('adds a strict optional 8px collision grid without modifying the original validator', () => {
     expect(collisionSql).toMatch(/rename to map_validate_v3_payload_without_collision_grid/i);
     expect(collisionSql).toMatch(/p_scene - 'collisionGrid'/i);

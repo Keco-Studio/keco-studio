@@ -138,8 +138,8 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       const message = error.code === 'vision_not_configured'
         ? 'Map collision vision is not configured'
         : error.code === 'collision_grid_invalid_response'
-          ? 'Vision returned an invalid collision grid'
-          : 'Map collision vision request failed';
+          ? 'Collision analysis returned an invalid grid. Retry or edit manually.'
+          : 'Collision analysis model is unavailable. Retry or edit manually.';
       return json({ error: message, code: error.code }, status);
     }
     console.error(`[POST /api/create-map/collision-grid] failed name=${error instanceof Error ? error.name : 'UnknownError'}`);

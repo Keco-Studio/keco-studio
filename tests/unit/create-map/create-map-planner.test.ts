@@ -14,6 +14,7 @@ import {
   CreateMapPlannerInputError,
   createMapPlanV3,
   createMapPlanV2,
+  normalizeDirectMapPlanCandidate,
   normalizeMapPlanV2Candidate,
 } from '@/lib/server/createMapPlanner';
 
@@ -217,6 +218,68 @@ describe('Create Map V2 planner', () => {
 
 describe('Create Map V3 planner', () => {
   beforeEach(() => completeLlmNonStreaming.mockReset());
+
+  it('normalizes provider-owned fields and an unsupported profile pair before validation', () => {
+    const candidate = {
+      ...makeValidMapPlanV3(),
+      schemaVersion: 2,
+      map: { width: 512, height: 384 },
+      references: [{ assetId: INVENTED_REFERENCE_ID }],
+      styleReference: { assetId: INVENTED_REFERENCE_ID },
+      generation: {
+        provider: 'invented',
+        operation: 'invented',
+        noBackground: true,
+        seed: -1,
+      },
+    };
+    const selection = {
+      references: [{
+        assetId: REAL_REFERENCE_ID,
+        sha256: 'a'.repeat(64),
+        role: 'layout' as const,
+        usage: 'composition reference',
+      }],
+      styleReference: null,
+    };
+
+    expect(normalizeDirectMapPlanCandidate(candidate, selection)).toEqual({
+      ...candidate,
+      schemaVersion: 3,
+      map: { width: 512, height: 512 },
+      references: selection.references,
+      styleReference: null,
+      generation: {
+        provider: 'pixellab',
+        operation: 'create_image_pro',
+        noBackground: false,
+        seed: null,
+      },
+    });
+  });
+
+  it('clips overlong model text at word boundaries without rewriting valid text', () => {
+    const candidate = makeValidMapPlanV3({
+      name: `${'Forest '.repeat(30)}map`,
+      summary: `${'Quiet forest '.repeat(60)}summary`,
+      description: `${'Top-down damp fantasy forest. '.repeat(100)}ending`,
+    });
+
+    const normalized = normalizeDirectMapPlanCandidate(candidate, {
+      references: [],
+      styleReference: null,
+    }) as typeof candidate;
+
+    expect(normalized.name.length).toBeLessThanOrEqual(160);
+    expect(normalized.summary.length).toBeLessThanOrEqual(500);
+    expect(normalized.description.length).toBeLessThanOrEqual(2_000);
+    expect(normalized.name.endsWith(' ')).toBe(false);
+    expect(normalized.summary.endsWith(' ')).toBe(false);
+    expect(normalized.description.endsWith(' ')).toBe(false);
+    expect(normalizeDirectMapPlanCandidate(makeValidMapPlanV3(), {
+      references: [], styleReference: null,
+    })).toEqual(makeValidMapPlanV3());
+  });
 
   it('returns the final DeepSeek description unchanged and pins the Pro operation', async () => {
     const plan = makeValidMapPlanV3({ description: 'Exact final image description.  Keep two spaces.' });
