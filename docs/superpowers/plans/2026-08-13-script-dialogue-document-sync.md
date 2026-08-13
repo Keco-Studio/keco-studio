@@ -39,7 +39,7 @@ Cover replacing one paragraph without changing headings, inserting between two m
 expect(moveDialogueBlocks(markdown, {
   movingBlockIds: [B],
   target: { blockId: A, edge: 'before' },
-})).toContainInOrder([anchor(B), 'B：二', anchor(A), 'A：一', '旁白']);
+})).toContainInOrder([anchor(B), 'B: Two', anchor(A), 'A: One', 'Narration']);
 ```
 
 - [ ] **Step 2: Run the tests and confirm the missing-module failure**
