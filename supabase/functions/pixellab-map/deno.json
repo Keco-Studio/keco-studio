@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window"]
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1.0.14",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.87.1",
+    "fast-png": "npm:fast-png@6.4.0"
+  }
+}

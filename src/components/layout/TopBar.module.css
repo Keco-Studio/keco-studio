@@ -91,6 +91,35 @@
   }
 }
 
+@media (max-width: 680px) {
+  .headerCreateMap {
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .headerCreateMap .left,
+  .headerCreateMap .breadcrumb {
+    min-width: 0;
+  }
+
+  .headerCreateMap .breadcrumb {
+    overflow: hidden;
+  }
+
+  .headerCreateMap .searchContainer {
+    display: none;
+  }
+
+  .headerCreateMap .right {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .headerCreateMap .right > :not(.userContainer) {
+    display: none;
+  }
+}
+
 .searchLabel {
   position: relative;
   display: flex;

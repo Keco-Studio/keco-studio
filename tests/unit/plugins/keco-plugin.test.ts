@@ -7,6 +7,8 @@ const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-docume
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
 const gameEvaluationSkillRoot = path.join(pluginRoot, 'skills', 'keco-evaluate-game');
+const pixelLabMapSkillRoot = path.join(pluginRoot, 'skills', 'pixellab-map-assets');
+const localImportSkillRoot = path.join(pluginRoot, 'skills', 'keco-import-local-assets');
 const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
 const claudeInteractionContractPath = path.join(
   repositoryRoot,
@@ -21,6 +23,7 @@ const ENTRY_SKILLS = [
   'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
   'keco-evaluate-game',
+  'keco-import-local-assets',
   'pixellab-map-assets',
 ];
 
@@ -59,6 +62,13 @@ function skillTextFiles(root: string): string[] {
     if (entry.isDirectory()) return skillTextFiles(entryPath);
     return /\.(?:md|ya?ml)$/i.test(entry.name) ? [entryPath] : [];
   });
+}
+
+function readSkillDescription(root: string): string {
+  const skill = readFileSync(path.join(root, 'SKILL.md'), 'utf8');
+  const match = skill.match(/^description: ([^\n]+)$/m);
+  if (!match) throw new Error(`Missing single-line skill description in ${root}`);
+  return match[1];
 }
 
 describe('Keco Codex plugin contract', () => {
@@ -132,6 +142,31 @@ describe('Keco Codex plugin contract', () => {
       .map((filePath) => path.relative(repositoryRoot, filePath));
 
     expect(violations).toEqual([]);
+  });
+
+  it('keeps Godot skill discovery descriptions mutually exclusive', () => {
+    const mapAssets = readSkillDescription(pixelLabMapSkillRoot);
+    const godotV1 = readSkillDescription(godotSkillRoot);
+    const godotV2 = readSkillDescription(godotV2SkillRoot);
+
+    for (const description of [mapAssets, godotV1, godotV2]) {
+      expect(description).toMatch(/^Use when /);
+      expect(description.length).toBeLessThan(500);
+    }
+
+    expect(mapAssets).toMatch(/top-down map-art resources for Godot/i);
+    expect(mapAssets).toMatch(/Not for complete playable maps[\s\S]*gameplay logic[\s\S]*characters[\s\S]*UI assets/i);
+    expect(mapAssets).toMatch(/broader Keco-driven Godot slices/i);
+    expect(mapAssets).not.toMatch(/Use automatically|Trigger on|Keco-first registration|authoritative export/i);
+
+    expect(godotV2).toMatch(/Godot development driven by Keco project documents/i);
+    expect(godotV2).toMatch(/multiple slices[\s\S]*persistent Keco planning documents[\s\S]*resource evolution/i);
+    expect(godotV2).toMatch(/Not for user-selected legacy V1 runs/i);
+    expect(godotV2).not.toMatch(/supports implicit routing|without requiring the Skill name/i);
+
+    expect(godotV1).toMatch(/explicitly selects the legacy keco-develop-godot-slice workflow/i);
+    expect(godotV1).toMatch(/one bounded Keco-driven Godot gameplay slice/i);
+    expect(godotV1).toMatch(/Not for implicit routing/i);
   });
 
   it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {
@@ -229,6 +264,86 @@ describe('Keco Codex plugin contract', () => {
         requiredBehaviors: ['do-not-trigger'],
       },
     ]);
+  });
+
+  it('routes local image imports through the bounded import contract', () => {
+    const evaluations = readJson<{
+      cases: Array<{
+        id: string;
+        kind: string;
+        prompt: string;
+        expectedSkill: string;
+        requiredBehaviors: string[];
+      }>;
+      requiredSequence: string[];
+      prohibitedBindings: string[];
+    }>('tests/fixtures/plugins/keco-local-image-import-skill-evals.json');
+    const skill = readFileSync(path.join(localImportSkillRoot, 'SKILL.md'), 'utf8');
+    const metadata = readFileSync(path.join(localImportSkillRoot, 'agents', 'openai.yaml'), 'utf8');
+    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>(
+      'plugins/keco-codex/.codex-plugin/plugin.json',
+    );
+
+    expect(evaluations.cases).toHaveLength(7);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-import-local-assets')).toHaveLength(2);
+    expect(evaluations.cases.find((item) => item.id === 'apple-and-pear-directory')).toMatchObject({
+      kind: 'positive',
+      expectedSkill: 'keco-import-local-assets',
+      requiredBehaviors: expect.arrayContaining([
+        'inventory-supported-images',
+        'preview-and-confirm',
+        'batch-prepare-put-complete',
+        'normalized-file-name-match',
+        'verified-image-object',
+        'paginated-read-back',
+      ]),
+    });
+    expect(evaluations.requiredSequence).toEqual([
+      'inventory',
+      'resolve-project',
+      'read-structure',
+      'preview',
+      'confirm',
+      'create-confirmed-structure',
+      'prepare',
+      'put',
+      'complete',
+      'upsert',
+      'read-back',
+      'report',
+    ]);
+    expect(evaluations.prohibitedBindings).toEqual(expect.arrayContaining([
+      'raw-bytes-in-mcp',
+      'local-path-to-completion',
+      'signed-url-to-completion',
+      'path-only-image-field',
+      'signed-credentials-in-checkpoint',
+    ]));
+
+    expect(skill).toMatch(/^---\nname: keco-import-local-assets\n/);
+    expect(skill).toMatch(/^description: Use when[^\n]*local images[^\n]*local image directory[^\n]*not for generated assets[^\n]*Godot[^\n]*Keco documents[^\n]*non-image attachments[^\n]*analysis-only/m);
+    expect(skill).toMatch(/Inventory the requested files[\s\S]*Resolve exactly one Keco project[\s\S]*Preview the complete plan[\s\S]*explicit confirmation[\s\S]*Create only a confirmed missing folder[\s\S]*Prepare metadata-only batches[\s\S]*Send the exact local bytes[\s\S]*Complete only successful PUT items[\s\S]*Upsert rows[\s\S]*Paginate authoritative reads[\s\S]*Report each item/i);
+    expect(skill).toMatch(/live schemas[\s\S]{0,160}prepare_image_uploads[\s\S]{0,160}complete_image_uploads/i);
+    expect(skill).toMatch(/prepare_image_uploads\.items\[\]\.image\.path[\s\S]{0,200}Never pass a local path[\s\S]{0,120}signed upload URL/i);
+    expect(skill).toMatch(/complete verified `image` object[\s\S]{0,160}never reduce it to a path or URL/i);
+    expect(skill).toMatch(/Row write failed[\s\S]{0,160}do not upload again/i);
+    expect(skill).toMatch(/Never persist or print signed URLs[\s\S]{0,160}authorization headers/i);
+    expect(metadata).toMatch(/default_prompt: "Use \$keco-import-local-assets/);
+    expect(metadata).toMatch(/allow_implicit_invocation: true/);
+    expect(manifest.interface.defaultPrompt).toEqual(expect.arrayContaining([
+      expect.stringMatching(/local image directory[\s\S]*Keco asset table/i),
+    ]));
+  });
+
+  it('keeps local image import routing isolated from adjacent skills', () => {
+    const evaluations = readJson<{
+      cases: Array<{ id: string; expectedSkill: string }>;
+    }>('tests/fixtures/plugins/keco-local-image-import-skill-evals.json');
+
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'pixellab-map-assets').map((item) => item.id)).toEqual(['pixellab-generation']);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice-v2').map((item) => item.id)).toEqual(['godot-resource-integration']);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-build-tables-from-document').map((item) => item.id)).toEqual(['document-to-table']);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'none').map((item) => item.id)).toEqual(['unsupported-attachment', 'analysis-only']);
   });
 
   it('declares the marketplace, plugin, and MCP connection contracts', () => {

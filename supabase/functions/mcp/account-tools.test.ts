@@ -23,6 +23,9 @@ const ACCOUNT_WRITE_TOOL_NAMES = [
   "update_document",
   "create_image_upload",
   "complete_image_upload",
+  "prepare_image_uploads",
+  "complete_image_uploads",
+  "create_folder",
 ];
 
 type RpcCall = { name: string; parameters: Record<string, unknown> };
@@ -153,7 +156,11 @@ function accountContext(
           };
         }
         if (name === "mcp_read_story_graph_snapshot") {
-          const field = (suffix: number, label: string, orderIndex: number) => ({
+          const field = (
+            suffix: number,
+            label: string,
+            orderIndex: number,
+          ) => ({
             id: `50000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`,
             label,
             dataType: "string",
@@ -210,6 +217,20 @@ function accountContext(
         }
         if (name === "mcp_create_table") {
           return { data: [{ table_id: "new-table" }], error: null };
+        }
+        if (name === "mcp_create_folder") {
+          return {
+            data: [{
+              id: "44444444-4444-4444-8444-444444444444",
+              project_id: parameters.p_project_id,
+              parent_folder_id: parameters.p_parent_folder_id,
+              name: parameters.p_name,
+              description: parameters.p_description,
+              created_at: "2026-08-12T01:00:00.000Z",
+              updated_at: "2026-08-12T01:00:00.000Z",
+            }],
+            error: null,
+          };
         }
         if (name === "mcp_add_table_field") {
           return { data: [{ field_id: parameters.p_field_id }], error: null };
@@ -319,13 +340,17 @@ Deno.test("account story graph read resolves live access before its snapshot", a
     JSON.stringify(message.result),
   );
   assertEquals(
-    calls.filter((call) => [
-      "mcp_resolve_project_role",
-      "mcp_read_story_graph_snapshot",
-    ].includes(call.name)).map((call) => call.name),
+    calls.filter((call) =>
+      [
+        "mcp_resolve_project_role",
+        "mcp_read_story_graph_snapshot",
+      ].includes(call.name)
+    ).map((call) => call.name),
     ["mcp_resolve_project_role", "mcp_read_story_graph_snapshot"],
   );
-  const admission = calls.find((call) => call.name === "mcp_begin_account_operation")!;
+  const admission = calls.find((call) =>
+    call.name === "mcp_begin_account_operation"
+  )!;
   assertEquals(admission.parameters.p_operation, "read_story_graph");
   assertEquals(admission.parameters.p_operation_class, "read");
 });
@@ -478,6 +503,39 @@ Deno.test("viewer target writes fail even when write tools are advertised", asyn
   assertEquals(message.result?.isError, true);
   assertMatch(JSON.stringify(message.result), /PROJECT_WRITE_FORBIDDEN/);
   assertEquals(calls.some((call) => call.name === "mcp_create_table"), false);
+});
+
+Deno.test("account create_folder allows admin and rejects editor after live resolution", async () => {
+  const adminCalls: RpcCall[] = [];
+  const admin = await rpc(
+    accountContext(adminCalls, { resolvedRole: "admin" }),
+    "tools/call",
+    {
+      name: "create_folder",
+      arguments: { projectId: WRITABLE_PROJECT_ID, name: "Art" },
+    },
+  );
+  assertEquals(admin.result?.isError, undefined);
+  assertEquals(
+    adminCalls.filter((call) => call.name === "mcp_create_folder").length,
+    1,
+  );
+
+  const editorCalls: RpcCall[] = [];
+  const editor = await rpc(
+    accountContext(editorCalls, { resolvedRole: "editor" }),
+    "tools/call",
+    {
+      name: "create_folder",
+      arguments: { projectId: WRITABLE_PROJECT_ID, name: "Art" },
+    },
+  );
+  assertEquals(editor.result?.isError, true);
+  assertMatch(JSON.stringify(editor.result), /PROJECT_WRITE_FORBIDDEN/);
+  assertEquals(
+    editorCalls.some((call) => call.name === "mcp_create_folder"),
+    false,
+  );
 });
 
 Deno.test("account image upload phases resolve live write access independently", async () => {

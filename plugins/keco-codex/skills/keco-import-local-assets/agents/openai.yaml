@@ -1,0 +1,13 @@
+interface:
+  display_name: "Import Local Keco Images"
+  short_description: "Import local image files into a Keco project"
+  default_prompt: "Use $keco-import-local-assets to preview and import my local images into a verified Keco asset table."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "keco"
+      description: "Keco Streamable HTTP MCP server"
+      transport: "streamable_http"
+      url: "https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp"
+policy:
+  allow_implicit_invocation: true

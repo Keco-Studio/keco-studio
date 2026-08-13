@@ -1,6 +1,6 @@
 ---
 name: keco-develop-godot-slice
-description: Use when a user explicitly asks to implement or continue one Godot gameplay slice from Keco project GDDs, feedback, or tables and evaluate the running result, including slice-owned UI image generation; not for Keco-only table creation, analysis-only requests, standalone asset generation, running existing tests only, or Godot work unrelated to Keco design sources.
+description: Use when a user explicitly selects the legacy keco-develop-godot-slice workflow to implement or continue one bounded Keco-driven Godot gameplay slice from a Keco project GDD, feedback, or table. Not for implicit routing, multi-slice orchestration, persistent Keco planning documents, resource evolution, TileMap work, reviewed runtime evidence, Keco-only table creation, standalone assets, analysis-only work, test-only requests, or Godot work unrelated to Keco design sources.
 ---
 
 # Develop A Godot Slice From Keco

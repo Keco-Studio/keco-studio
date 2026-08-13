@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create Map Wireframe</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      --ink: #20262d;
+      --muted: #6b7785;
+      --line: #d9dee5;
+      --line-soft: #edf0f3;
+      --surface: #f7f8fa;
+      --blue: #1687d9;
+      --blue-soft: #e8f4fc;
+      --water: #eef6fa;
+    }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      overflow: hidden;
+      background: white;
+      color: var(--ink);
+      font: 13px/1.4 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, select, input, textarea { font: inherit; color: inherit; }
+    button { cursor: default; }
+    .app { display: flex; width: 100vw; height: 100vh; min-width: 1100px; }
+    .rail {
+      width: 60px;
+      flex: 0 0 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 0;
+      border-right: 1px solid var(--line);
+      background: #fafafa;
+    }
+    .brand {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 8px;
+      color: var(--blue);
+      font-size: 21px;
+      font-weight: 750;
+    }
+    .rail-items { display: grid; gap: 4px; }
+    .rail-button {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+    }
+    .rail-button.active { color: var(--blue); background: var(--blue-soft); }
+    .rail-button.muted { color: #929ba5; }
+    .rail-footer { margin-top: auto; }
+    .icon-grid, .icon-map {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 3px;
+    }
+    .icon-grid i { border: 1.5px solid currentColor; border-radius: 2px; }
+    .icon-map { gap: 0; transform: skewY(-8deg); }
+    .icon-map i { border: 1.5px solid currentColor; border-right: 0; }
+    .icon-map i:nth-child(2), .icon-map i:nth-child(4) { border-right: 1.5px solid currentColor; }
+    .icon-bolt { font-size: 20px; line-height: 1; }
+    .icon-chat { width: 18px; height: 14px; border: 1.5px solid currentColor; border-radius: 4px; position: relative; }
+    .icon-chat::after { content: ""; position: absolute; left: 3px; bottom: -4px; width: 5px; height: 5px; border-left: 1.5px solid currentColor; transform: skewY(-40deg); background: inherit; }
+    .shell { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+    .topbar {
+      height: 56px;
+      flex: 0 0 56px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .crumb { color: var(--muted); }
+    .top-title { font-weight: 650; }
+    .save-state { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .avatar { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); }
+    .workbench { min-height: 0; flex: 1; display: grid; grid-template-columns: 260px minmax(480px, 1fr) 320px; }
+    .panel { min-height: 0; overflow: hidden; background: white; }
+    .left-panel { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+    .right-panel { border-left: 1px solid var(--line); overflow-y: auto; }
+    .panel-head { padding: 17px 16px 14px; border-bottom: 1px solid var(--line-soft); }
+    .panel-title { margin: 0; font-size: 14px; font-weight: 650; }
+    .panel-subtitle { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .form-block { padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+    .field { display: grid; gap: 6px; margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label, .section-label { font-size: 11px; font-weight: 650; color: #596573; }
+    select, input, textarea {
+      width: 100%;
+      border: 1px solid #cfd5dc;
+      border-radius: 6px;
+      background: white;
+      outline: none;
+    }
+    select, input { height: 34px; padding: 0 9px; }
+    textarea { min-height: 62px; resize: none; padding: 8px 9px; }
+    .stages { display: grid; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+    .stage { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 8px; min-height: 28px; color: var(--muted); }
+    .stage-dot { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid #bfc6ce; border-radius: 50%; font-size: 10px; }
+    .stage.done .stage-dot { background: #f1f7fb; color: var(--blue); border-color: #a8d1eb; }
+    .stage.active { color: var(--ink); font-weight: 620; }
+    .stage.active .stage-dot { color: white; background: var(--blue); border-color: var(--blue); }
+    .stage-tag { color: var(--blue); font-size: 10px; font-weight: 620; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--line-soft); }
+    .tab { min-height: 38px; border: 0; border-bottom: 2px solid transparent; background: white; font-size: 12px; color: var(--muted); }
+    .tab.active { border-color: var(--blue); color: var(--ink); font-weight: 650; }
+    .layers { overflow-y: auto; }
+    .layer-row { min-height: 40px; display: grid; grid-template-columns: 20px 1fr 24px; align-items: center; gap: 8px; padding: 0 14px 0 16px; border-bottom: 1px solid var(--line-soft); }
+    .swatch { width: 14px; height: 14px; border: 1px solid #aeb7c1; border-radius: 3px; background: #f2f4f6; }
+    .swatch.water { background: var(--water); }
+    .swatch.object { background: #eff3ee; }
+    .swatch.obstacle { background: var(--blue-soft); border-color: #8fc4e6; }
+    .eye { color: #7e8995; text-align: center; }
+    .canvas-area { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #f2f4f6; }
+    .canvas-toolbar {
+      height: 48px;
+      flex: 0 0 48px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .tool-button {
+      width: 30px;
+      height: 30px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: white;
+      color: #52606d;
+      font-size: 14px;
+    }
+    .tool-button.active { color: var(--blue); border-color: #acd4ec; background: var(--blue-soft); }
+    .separator { width: 1px; height: 20px; margin: 0 3px; background: var(--line); }
+    .zoom { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .canvas-wrap { min-width: 0; min-height: 0; flex: 1; display: grid; place-items: center; padding: 26px; overflow: hidden; }
+    .map {
+      position: relative;
+      width: min(92%, 850px);
+      aspect-ratio: 16 / 10;
+      overflow: hidden;
+      border: 1px solid #bcc4cd;
+      background-color: #f9faf8;
+      background-image: linear-gradient(#e9ece8 1px, transparent 1px), linear-gradient(90deg, #e9ece8 1px, transparent 1px);
+      background-size: 24px 24px;
+      box-shadow: 0 2px 8px rgba(30, 41, 52, 0.08);
+    }
+    .water-shape { position: absolute; right: -5%; top: 8%; width: 31%; height: 86%; border-left: 2px solid #b9d6e5; background: var(--water); border-radius: 52% 0 0 42%; }
+    .road { position: absolute; background: #e8e6df; border: 1px solid #d1cec3; }
+    .road.main { left: -2%; top: 48%; width: 87%; height: 48px; transform: rotate(-5deg); }
+    .road.branch { left: 43%; top: 15%; width: 38px; height: 68%; transform: rotate(8deg); }
+    .house { position: absolute; width: 74px; height: 58px; border: 2px solid #8e979e; background: #f5f3ef; }
+    .house::before { content: ""; position: absolute; left: -8px; top: -17px; width: 86px; height: 22px; border: 2px solid #8e979e; background: #e9e7e2; transform: skewX(-24deg); }
+    .h1 { left: 15%; top: 18%; }
+    .h2 { left: 59%; top: 19%; transform: scale(.86); }
+    .h3 { left: 24%; top: 70%; transform: scale(.76); }
+    .tree { position: absolute; width: 26px; height: 26px; border: 2px solid #849384; border-radius: 50%; background: #eef3ed; }
+    .tree::after { content: ""; position: absolute; left: 11px; top: 23px; width: 3px; height: 11px; background: #9a948a; }
+    .t1 { left: 7%; top: 60%; } .t2 { left: 13%; top: 67%; } .t3 { left: 71%; top: 64%; } .t4 { left: 80%; top: 29%; }
+    .rock { position: absolute; width: 30px; height: 20px; border: 2px solid #969da3; border-radius: 45% 55% 35% 40%; background: #eceff1; }
+    .r1 { left: 54%; top: 72%; } .r2 { left: 68%; top: 76%; transform: scale(.75); }
+    .map .obstacle { position: absolute; border: 2px solid var(--blue); background: rgba(22, 135, 217, .06); }
+    .map .obstacle.rect { left: 13.5%; top: 14%; width: 86px; height: 82px; }
+    .map .obstacle.circle { left: 68.8%; top: 60%; width: 42px; height: 42px; border-radius: 50%; }
+    .map .obstacle.poly { left: 50%; top: 68%; width: 90px; height: 62px; clip-path: polygon(5% 30%, 70% 0, 100% 63%, 62% 100%, 0 75%); }
+    .handle { position: absolute; width: 7px; height: 7px; border: 1px solid var(--blue); background: white; }
+    .handle.nw { left: -5px; top: -5px; } .handle.ne { right: -5px; top: -5px; } .handle.sw { left: -5px; bottom: -5px; } .handle.se { right: -5px; bottom: -5px; }
+    .canvas-status { position: absolute; left: 10px; bottom: 10px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.94); color: var(--muted); font-size: 11px; }
+    .right-section { padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+    .section-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; border-bottom: 1px solid var(--line-soft); }
+    .section-row:last-child { border-bottom: 0; }
+    .count { color: var(--muted); font-size: 11px; }
+    .plan-summary { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+    .primary, .secondary {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 6px;
+      font-weight: 620;
+    }
+    .primary { width: 100%; border: 1px solid #0d78c4; color: white; background: var(--blue); }
+    .secondary { width: 100%; border: 1px solid #bdc6cf; color: var(--ink); background: white; }
+    .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin: 10px 0 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+    .mode-toggle button { height: 28px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; }
+    .mode-toggle button.active { background: white; color: var(--ink); box-shadow: 0 1px 2px rgba(30,41,52,.12); }
+    .selection-chip { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; padding: 0 9px; margin: 9px 0; border: 1px solid #acd4ec; border-radius: 6px; background: var(--blue-soft); color: #2a5f82; font-size: 12px; }
+    @media (max-width: 1220px) {
+      .workbench { grid-template-columns: 232px minmax(420px, 1fr) 286px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <nav class="rail" aria-label="Product navigation">
+      <div class="brand">K</div>
+      <div class="rail-items">
+        <button class="rail-button" title="Studio" aria-label="Studio"><span class="icon-grid"><i></i><i></i><i></i><i></i></span></button>
+        <button class="rail-button" title="Simulation" aria-label="Simulation"><span class="icon-bolt">&#9889;</span></button>
+        <button class="rail-button" title="Script" aria-label="Script"><span class="icon-chat"></span></button>
+        <button class="rail-button active" title="Create Map" aria-label="Create Map"><span class="icon-map"><i></i><i></i><i></i><i></i></span></button>
+        <button class="rail-button muted" title="Coming soon" aria-label="Coming soon">&#9633;</button>
+      </div>
+      <button class="rail-button rail-footer" title="Collapse navigation" aria-label="Collapse navigation">&lt;&lt;</button>
+    </nav>
+
+    <div class="shell">
+      <header class="topbar">
+        <span class="crumb">Create Map</span>
+        <span>/</span>
+        <span class="top-title">Spring Village</span>
+        <span class="save-state">Saved just now</span>
+        <span class="avatar" aria-hidden="true"></span>
+      </header>
+
+      <main class="workbench">
+        <aside class="panel left-panel">
+          <div class="panel-head">
+            <h1 class="panel-title">Map source</h1>
+            <p class="panel-subtitle">Generate from a project document</p>
+          </div>
+          <div class="form-block">
+            <div class="field">
+              <label for="project">PROJECT</label>
+              <select id="project"><option>Forest RPG</option></select>
+            </div>
+            <div class="field">
+              <label for="document">DOCUMENT</label>
+              <select id="document"><option>Spring Village GDD</option></select>
+            </div>
+          </div>
+          <div class="stages">
+            <div class="stage done"><span class="stage-dot">1</span><span>Select document</span><span></span></div>
+            <div class="stage active"><span class="stage-dot">2</span><span>Review map plan</span><span class="stage-tag">CURRENT</span></div>
+            <div class="stage"><span class="stage-dot">3</span><span>Generate map</span><span></span></div>
+            <div class="stage"><span class="stage-dot">4</span><span>Edit and save</span><span></span></div>
+          </div>
+          <div class="tabs">
+            <button class="tab active">Layers</button>
+            <button class="tab">Objects</button>
+          </div>
+          <div class="layers">
+            <div class="layer-row"><span class="swatch"></span><span>Terrain</span><span class="eye">o</span></div>
+            <div class="layer-row"><span class="swatch water"></span><span>Roads and water</span><span class="eye">o</span></div>
+            <div class="layer-row"><span class="swatch object"></span><span>Map objects</span><span class="eye">o</span></div>
+            <div class="layer-row"><span class="swatch obstacle"></span><span>Obstacles</span><span class="eye">o</span></div>
+            <div class="layer-row"><span class="swatch obstacle"></span><span>Inpaint</span><span class="eye">o</span></div>
+          </div>
+        </aside>
+
+        <section class="canvas-area" aria-label="Map canvas">
+          <div class="canvas-toolbar">
+            <button class="tool-button" title="Undo">&#8630;</button>
+            <button class="tool-button" title="Redo">&#8631;</button>
+            <span class="separator"></span>
+            <button class="tool-button active" title="Select">&#8598;</button>
+            <button class="tool-button" title="Pan">+</button>
+            <span class="separator"></span>
+            <button class="tool-button" title="Zoom out">-</button>
+            <button class="tool-button" title="Zoom in">+</button>
+            <button class="tool-button" title="Fit map">[]</button>
+            <span class="zoom">72%</span>
+          </div>
+          <div class="canvas-wrap">
+            <div class="map">
+              <div class="water-shape"></div>
+              <div class="road main"></div>
+              <div class="road branch"></div>
+              <div class="house h1"></div><div class="house h2"></div><div class="house h3"></div>
+              <div class="tree t1"></div><div class="tree t2"></div><div class="tree t3"></div><div class="tree t4"></div>
+              <div class="rock r1"></div><div class="rock r2"></div>
+              <div class="obstacle rect"><i class="handle nw"></i><i class="handle ne"></i><i class="handle sw"></i><i class="handle se"></i></div>
+              <div class="obstacle circle"></div>
+              <div class="obstacle poly"></div>
+              <div class="canvas-status">Obstacle layer visible - 3 shapes</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel right-panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Map plan</h2>
+            <p class="panel-subtitle">Extracted from Spring Village GDD</p>
+          </div>
+          <div class="right-section">
+            <p class="plan-summary">Top-down village map with a river edge, central road and three building zones.</p>
+            <div class="section-row"><strong>Terrain</strong><span class="count">3 types</span></div>
+            <div class="section-row"><strong>Roads</strong><span class="count">2 paths</span></div>
+            <div class="section-row"><strong>Buildings</strong><span class="count">3 objects</span></div>
+            <div class="section-row"><strong>Obstacles</strong><span class="count">7 regions</span></div>
+          </div>
+          <div class="right-section">
+            <span class="section-label">GENERATION MODE</span>
+            <div class="mode-toggle"><button class="active">New map</button><button>Regenerate</button></div>
+            <button class="primary">Generate map</button>
+          </div>
+          <div class="right-section">
+            <h3 class="panel-title">Inpaint</h3>
+            <p class="panel-subtitle">Edit only the selected canvas region</p>
+            <div class="selection-chip"><span>Selection 128 x 96</span><span>x</span></div>
+            <div class="field">
+              <label for="prompt">PROMPT</label>
+              <textarea id="prompt">Add a small wooden market stall</textarea>
+            </div>
+            <button class="secondary">Generate selection</button>
+          </div>
+        </aside>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

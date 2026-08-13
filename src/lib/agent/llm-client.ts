@@ -29,7 +29,17 @@ export interface LlmResponseMetadata {
   requestId?: string;
 }
 
-interface StreamLlmOptions {
+/**
+ * Request-scoped options for OpenAI-compatible completions.
+ *
+ * The model, endpoint, and key default to the process-wide assistant config,
+ * but callers such as the Create Map planner can provide an isolated config
+ * without mutating global environment state or affecting other requests.
+ */
+export interface StreamLlmOptions {
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
   temperature?: number;
   maxTokens?: number;
   maxCompletionTokens?: number;
@@ -42,6 +52,20 @@ interface StreamLlmOptions {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+interface ResolvedLlmConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+function resolveLlmConfig(options: StreamLlmOptions): ResolvedLlmConfig {
+  return {
+    baseUrl: (options.baseUrl ?? LLM_BASE).replace(/\/+$/, ''),
+    apiKey: options.apiKey ?? LLM_API_KEY,
+    model: options.model ?? LLM_MODEL,
+  };
+}
+
 export function isRetriableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
@@ -50,9 +74,10 @@ function buildRequestBody(
   messages: ChatMessage[],
   options: StreamLlmOptions,
   stream: boolean,
+  config: ResolvedLlmConfig = resolveLlmConfig(options),
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
-    model: LLM_MODEL,
+    model: config.model,
     messages,
     temperature: options.temperature ?? 0.3,
     stream,
@@ -87,17 +112,18 @@ async function requestStream(
   messages: ChatMessage[],
   options: StreamLlmOptions
 ): Promise<Response> {
-  if (!LLM_API_KEY) {
+  const config = resolveLlmConfig(options);
+  if (!config.apiKey) {
     throw new LlmError('LLM_API_KEY is not configured.');
   }
 
-  const response = await outboundFetch(`${LLM_BASE}/v1/chat/completions`, {
+  const response = await outboundFetch(`${config.baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${LLM_API_KEY}`,
+      Authorization: `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify(buildRequestBody(messages, options, true)),
+    body: JSON.stringify(buildRequestBody(messages, options, true, config)),
     signal: options.signal,
   });
   reportResponseMetadata(response as unknown as Response, options);
@@ -254,19 +280,20 @@ export async function completeLlmNonStreaming(
   messages: ChatMessage[],
   options: StreamLlmOptions = {},
 ): Promise<string> {
-  if (!LLM_API_KEY) throw new LlmError('LLM_API_KEY is not configured.');
+  const config = resolveLlmConfig(options);
+  if (!config.apiKey) throw new LlmError('LLM_API_KEY is not configured.');
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     let response: Awaited<ReturnType<typeof outboundFetch>>;
     try {
-      response = await outboundFetch(`${LLM_BASE}/v1/chat/completions`, {
+      response = await outboundFetch(`${config.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${LLM_API_KEY}`,
+          Authorization: `Bearer ${config.apiKey}`,
         },
-        body: JSON.stringify(buildRequestBody(messages, options, false)),
+        body: JSON.stringify(buildRequestBody(messages, options, false, config)),
         signal: options.signal,
       });
     } catch (error) {
