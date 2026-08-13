@@ -85,6 +85,7 @@ jest.mock('@/components/layout/DashboardLayout.module.css', () => ({
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
+const navigationContext = read('src/lib/contexts/NavigationContext.tsx');
 
 it('matches only the Create Map workspace', () => {
   expect(isCreateMapPath('/create-map')).toBe(true);
@@ -141,4 +142,9 @@ it('renders Create Map dashboard chrome without Studio Sidebar or ChatPanel', ()
   expect(markup).toContain('data-top-bar="true"');
   expect(markup).not.toContain('data-studio-sidebar="true"');
   expect(markup).not.toContain('data-chat-panel="true"');
+});
+
+it('does not let global navigation effects redirect or resolve stale project state on Create Map', () => {
+  expect(navigationContext).toContain("import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';");
+  expect(navigationContext.match(/useEffect\(\(\) => \{\s*if \(onCreateMap\) return;/g)).toHaveLength(2);
 });
