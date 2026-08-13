@@ -186,13 +186,15 @@ function schemaProperties(capability: DiscoveredCapability): Record<string, Reco
 function compatibleSchema(
   schema: Record<string, unknown> | undefined,
   fields: Record<string, string>,
+  requiredFields: string[] = Object.keys(fields),
 ): boolean {
   if (!schema || schema.type !== "object" || !schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties)) return false;
   const properties = schema.properties as Record<string, unknown>;
   const required = Array.isArray(schema.required) ? schema.required : [];
   return Object.entries(fields).every(([name, type]) => {
     const property = properties[name];
-    return Boolean(property && typeof property === "object" && (property as Record<string, unknown>).type === type && required.includes(name));
+    return Boolean(property && typeof property === "object" && (property as Record<string, unknown>).type === type
+      && (!requiredFields.includes(name) || required.includes(name)));
   });
 }
 
@@ -319,7 +321,7 @@ export class PixelLabClient {
       const poll = tools.find((tool) => tool.name === "get_image");
       if (!compatibleSchema(create?.inputSchema, {
         description: "string", width: "integer", height: "integer", no_background: "boolean",
-      }) || !compatibleSchema(poll?.inputSchema, { job_id: "string" })) {
+      }, ["description"]) || !compatibleSchema(poll?.inputSchema, { job_id: "string" })) {
         throw new PixelLabMapError("pixellab_capability_missing", undefined, 409);
       }
       const inputSchema = create!.inputSchema!;
