@@ -84,7 +84,10 @@ function mcpResultError(result: Record<string, unknown>): PixelLabMapError | nul
       402,
     );
   }
-  if (/rate.?limit|too many|concurren|capacity|try again|temporar/.test(summary)) {
+  // Provider success payloads often include retry guidance (for example while
+  // describing a queued job). Only an explicitly failed MCP result is a
+  // provider-level rate-limit rejection; HTTP 429 is handled separately.
+  if (result.isError === true && /rate.?limit|too many|concurren|capacity|try again|temporar/.test(summary)) {
     return new PixelLabMapError(
       "pixellab_rate_limited",
       "PixelLab is temporarily rate limited. Retry this resource.",

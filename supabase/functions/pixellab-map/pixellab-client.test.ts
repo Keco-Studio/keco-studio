@@ -84,6 +84,20 @@ Deno.test("classifies MCP result errors instead of treating them as missing jobs
   assertEquals(error.message.includes("private-token"), false);
 });
 
+Deno.test("does not classify retry guidance in a successful MCP result as rate limiting", async () => {
+  const client = new PixelLabClient("private-token", async () => new Response(`event: message\ndata: ${JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [{ type: "text", text: "Image queued. Try again later to check the result." }],
+      isError: false,
+      tools: [],
+    },
+  })}\n\n`));
+
+  await client.listTools();
+});
+
 Deno.test("classifies an unflagged zero-credit MCP result as quota exhausted", async () => {
   const client = new PixelLabClient("private-token", async () => new Response(`event: message\ndata: ${JSON.stringify({
     jsonrpc: "2.0",
