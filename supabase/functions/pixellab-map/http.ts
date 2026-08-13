@@ -4,7 +4,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 
 export function corsHeaders(): Headers {
   return new Headers({
-    "access-control-allow-headers": "authorization, content-type",
+    "access-control-allow-headers": "authorization, apikey, content-type, x-client-info",
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-allow-origin": "*",
     "content-type": "application/json",
@@ -13,7 +13,7 @@ export function corsHeaders(): Headers {
 
 export function jsonResponse(body: unknown, status = 200): Response {
   const headers = corsHeaders();
-  return new Response(JSON.stringify(body), { status, headers });
+  return new Response(status === 204 ? null : JSON.stringify(body), { status, headers });
 }
 
 export async function readJsonBody(request: Request): Promise<Record<string, unknown>> {

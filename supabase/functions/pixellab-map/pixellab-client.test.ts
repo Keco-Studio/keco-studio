@@ -262,6 +262,26 @@ Deno.test("discovers only create_image_pro for direct maps and records get_image
   assertEquals(capability.pollInputSchema, { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] });
 });
 
+Deno.test("discovers the live direct-map schema when generation fields have provider defaults", async () => {
+  const client = new PixelLabClient("private-token", async () => mcpResponse([
+    {
+      name: "create_image_pro",
+      inputSchema: {
+        type: "object",
+        properties: {
+          description: { type: "string" }, width: { type: "integer" }, height: { type: "integer" },
+          no_background: { type: "boolean" },
+        },
+        required: ["description"],
+        additionalProperties: false,
+      },
+    },
+    { name: "get_image", inputSchema: { type: "object", properties: { job_id: { type: "string" } }, required: ["job_id"] } },
+  ]));
+
+  assertEquals((await client.discover("direct_map_image")).operation, "create_image_pro");
+});
+
 Deno.test("polls direct maps through the discovered operation with a job id", async () => {
   const calls: string[] = [];
   const client = new PixelLabClient("private-token", async (_url, init) => {

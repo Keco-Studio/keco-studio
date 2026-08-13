@@ -35,20 +35,30 @@ function propertiesOf(capability: DiscoveredCapability): Record<string, Record<s
     : {};
 }
 
+function supports(capability: DiscoveredCapability, name: string, type: string): boolean {
+  const property = propertiesOf(capability)[name];
+  if (!property) return false;
+  if (property.type === type) return true;
+  const variants = property.anyOf;
+  return Array.isArray(variants)
+    && variants.some((variant) => variant && typeof variant === "object" && (variant as Record<string, unknown>).type === type);
+}
+
 function requires(capability: DiscoveredCapability, name: string, type: string): boolean {
   const properties = propertiesOf(capability);
   const required = Array.isArray(capability.inputSchema.required) ? capability.inputSchema.required : [];
-  return properties[name]?.type === type && required.includes(name);
-}
-
-function supports(capability: DiscoveredCapability, name: string, type: string): boolean {
-  return propertiesOf(capability)[name]?.type === type;
+  return required.includes(name) && supports(capability, name, type);
 }
 
 function supportsStyleCopy(capability: DiscoveredCapability, values: string[]): boolean {
   const property = propertiesOf(capability).style_copy;
-  const items = record(property?.items);
-  if (property?.type !== "array" || items.type !== "string") return false;
+  const arrayProperty = property?.type === "array"
+    ? property
+    : Array.isArray(property?.anyOf)
+      ? property.anyOf.find((variant) => variant && typeof variant === "object" && (variant as Record<string, unknown>).type === "array") as Record<string, unknown> | undefined
+      : undefined;
+  const items = record(arrayProperty?.items);
+  if (arrayProperty?.type !== "array" || items.type !== "string") return false;
   if (items.enum === undefined) return true;
   const allowed = items.enum;
   return Array.isArray(allowed) && values.every((value) => allowed.includes(value));
@@ -71,8 +81,11 @@ export function directMapProviderArguments(
 ): Record<string, unknown> {
   if (capability.semantic !== "direct_map_image" || capability.transport !== "mcp" || capability.operation !== "create_image_pro") capabilityMissing();
   if (!capability.pollOperation || !capability.pollSchemaFingerprint || !capability.pollInputSchema) capabilityMissing();
-  if (!requires(capability, "description", "string") || !requires(capability, "width", "integer")
-    || !requires(capability, "height", "integer") || !requires(capability, "no_background", "boolean")) capabilityMissing();
+  // PixelLab marks width/height/no_background as optional because it supplies
+  // defaults. We provide them explicitly for direct-map profiles, so they must
+  // be supported with the right type but do not need to be provider-required.
+  if (!requires(capability, "description", "string") || !supports(capability, "width", "integer")
+    || !supports(capability, "height", "integer") || !supports(capability, "no_background", "boolean")) capabilityMissing();
 
   const params = asset.generationParams;
   const width = params.width;
