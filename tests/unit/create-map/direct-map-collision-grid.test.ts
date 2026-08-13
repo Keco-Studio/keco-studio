@@ -6,6 +6,7 @@ import {
   createEmptyCollisionGrid,
   setCollisionCell,
 } from '@/features/create-map/model/directMapCollisionGrid';
+import { resolveDirectMapCollisionPhase } from '@/features/create-map/hooks/useDirectMapCollisionGrid';
 
 describe('Direct Map collision grid', () => {
   it.each([
@@ -41,5 +42,12 @@ describe('Direct Map collision grid', () => {
     expect(collisionGridMatchesImage(grid, { width: 688, height: 384, sha256: 'd'.repeat(64) })).toBe(true);
     expect(collisionGridMatchesImage(grid, { width: 688, height: 384, sha256: 'e'.repeat(64) })).toBe(false);
     expect(collisionGridMatchesImage(grid, { width: 512, height: 512, sha256: 'd'.repeat(64) })).toBe(false);
+  });
+
+  it('keeps explicit analysis states visible when an older matching grid exists', () => {
+    expect(resolveDirectMapCollisionPhase(true, 'analyzing')).toBe('analyzing');
+    expect(resolveDirectMapCollisionPhase(true, 'failed')).toBe('failed');
+    expect(resolveDirectMapCollisionPhase(true, 'idle')).toBe('ready');
+    expect(resolveDirectMapCollisionPhase(false, 'failed')).toBe('failed');
   });
 });

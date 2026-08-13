@@ -1,5 +1,6 @@
 import 'server-only';
 
+import sharp from 'sharp';
 import { completeLlmNonStreaming } from '@/lib/agent/llm-client';
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import {
@@ -10,6 +11,7 @@ import {
 
 const TOOL_NAME = 'submit_collision_grid_v1';
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const MAX_REGION_CELLS = 32;
 
 export type CreateMapCollisionAnalyzerErrorCode =
   | 'vision_not_configured'
@@ -43,6 +45,34 @@ export const CREATE_MAP_COLLISION_GRID_TOOL: OpenAITool = {
   },
 };
 
+function createCollisionGridTool(columns: number, rows: number): OpenAITool {
+  return {
+    type: 'function',
+    function: {
+      ...CREATE_MAP_COLLISION_GRID_TOOL.function,
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['rows'],
+        properties: {
+          rows: {
+            type: 'array',
+            description: `Exactly ${rows} top-to-bottom grid rows.`,
+            minItems: rows,
+            maxItems: rows,
+            items: {
+              type: 'string',
+              pattern: '^[01]+$',
+              minLength: columns,
+              maxLength: columns,
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 type AnalyzerInput = {
   pngBytes: Uint8Array;
   imageSha256: string;
@@ -53,17 +83,39 @@ type AnalyzerInput = {
 function resolveVisionConfig(): { baseUrl: string; apiKey: string; model: string } {
   const baseUrl = (
     process.env.CREATE_MAP_VISION_API_URL?.trim()
-    || process.env.LLM_API_URL?.trim()
-    || ''
+    || process.env.EMBEDDING_API_URL?.trim()
+    || 'https://api.minimax.io'
   ).replace(/\/+$/, '');
   const apiKey = process.env.CREATE_MAP_VISION_API_KEY?.trim()
-    || process.env.LLM_API_KEY?.trim()
+    || process.env.MINIMAX_API_KEY?.trim()
+    || process.env.EMBEDDING_API_KEY?.trim()
     || '';
   const model = process.env.CREATE_MAP_VISION_MODEL?.trim()
-    || process.env.LLM_MODEL?.trim()
-    || '';
+    || 'MiniMax-M3';
   if (!baseUrl || !apiKey || !model) throw new CreateMapCollisionAnalyzerError('vision_not_configured');
   return { baseUrl, apiKey, model };
+}
+
+type CollisionRegion = {
+  column: number;
+  row: number;
+  columns: number;
+  rows: number;
+};
+
+function createRegions(columns: number, rows: number): CollisionRegion[] {
+  const regions: CollisionRegion[] = [];
+  for (let row = 0; row < rows; row += MAX_REGION_CELLS) {
+    for (let column = 0; column < columns; column += MAX_REGION_CELLS) {
+      regions.push({
+        column,
+        row,
+        columns: Math.min(MAX_REGION_CELLS, columns - column),
+        rows: Math.min(MAX_REGION_CELLS, rows - row),
+      });
+    }
+  }
+  return regions;
 }
 
 function parseRows(
@@ -115,37 +167,47 @@ export async function analyzeCreateMapCollisionGrid(
     throw new CreateMapCollisionAnalyzerError('collision_grid_invalid_response');
   }
 
-  const messages: ChatMessage[] = [
-    {
-      role: 'system',
-      content: 'Classify walkability in a complete top-down game map. Call the required tool and do not omit any cells.',
-    },
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: [
-            `Analyze this exact ${input.width}x${input.height} PNG as a ${columns}-column by ${rows}-row grid.`,
-            `Every cell represents ${DIRECT_MAP_COLLISION_CELL_SIZE}x${DIRECT_MAP_COLLISION_CELL_SIZE} pixels.`,
-            'Use 0 for walkable ground, roads, bridges, doors, and intentional entrances.',
-            'Use 1 for buildings, walls, cliffs, dense tree footprints, deep water, rocks, and sealed boundaries.',
-            'For an ambiguous cell, compare the confidence of walkable versus blocked and choose the higher-confidence class. Never return an uncertain state.',
-            'Return rows from top to bottom and cells from left to right.',
-          ].join(' '),
-        },
-        {
-          type: 'image_url',
-          image_url: {
-            url: `data:image/png;base64,${Buffer.from(input.pngBytes).toString('base64')}`,
-            detail: 'high',
+  const analyzeRegion = async (region: CollisionRegion): Promise<Array<0 | 1>> => {
+    const regionBytes = await sharp(input.pngBytes)
+      .extract({
+        left: region.column * DIRECT_MAP_COLLISION_CELL_SIZE,
+        top: region.row * DIRECT_MAP_COLLISION_CELL_SIZE,
+        width: region.columns * DIRECT_MAP_COLLISION_CELL_SIZE,
+        height: region.rows * DIRECT_MAP_COLLISION_CELL_SIZE,
+      })
+      .png()
+      .toBuffer();
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content: 'Classify walkability in this cropped region of a top-down game map. Call the required tool immediately and do not omit any cells.',
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: [
+              `Analyze this crop as exactly ${region.columns} columns by ${region.rows} rows.`,
+              `Every cell represents ${DIRECT_MAP_COLLISION_CELL_SIZE}x${DIRECT_MAP_COLLISION_CELL_SIZE} pixels.`,
+              'Use 0 for walkable ground, roads, bridges, doors, and intentional entrances.',
+              'Use 1 for buildings, walls, cliffs, dense tree footprints, deep water, rocks, and sealed boundaries.',
+              'Return rows from top to bottom and cells from left to right.',
+            ].join(' '),
           },
-        },
-      ],
-    },
-  ];
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:image/png;base64,${regionBytes.toString('base64')}`,
+              detail: 'high',
+            },
+          },
+        ],
+      },
+    ];
+    const collisionGridTool = createCollisionGridTool(region.columns, region.rows);
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
     let raw: string;
     try {
       raw = await completeLlmNonStreaming(messages, {
@@ -153,8 +215,9 @@ export async function analyzeCreateMapCollisionGrid(
         apiKey: config.apiKey,
         model: config.model,
         temperature: 0,
+        thinking: 'disabled',
         maxCompletionTokens: 8_000,
-        tools: [CREATE_MAP_COLLISION_GRID_TOOL],
+        tools: [collisionGridTool],
         toolName: TOOL_NAME,
       });
     } catch (error) {
@@ -167,22 +230,42 @@ export async function analyzeCreateMapCollisionGrid(
       }
       throw new CreateMapCollisionAnalyzerError('vision_upstream_error');
     }
-    const parsed = parseRows(raw, columns, rows);
+      const parsed = parseRows(raw, region.columns, region.rows);
     if ('cells' in parsed) {
-      return DirectMapCollisionGridSchema.parse({
-        version: 1,
-        cellSize: DIRECT_MAP_COLLISION_CELL_SIZE,
-        columns,
-        rows,
-        cells: parsed.cells,
-        imageSha256: input.imageSha256,
-      });
+        return parsed.cells;
     }
     if (attempt === 0) {
       messages.push({ role: 'assistant', content: raw });
       messages.push({ role: 'user', content: `Correct the tool output. ${parsed.issue}` });
     }
-  }
+    }
+    throw new CreateMapCollisionAnalyzerError('collision_grid_invalid_response');
+  };
 
-  throw new CreateMapCollisionAnalyzerError('collision_grid_invalid_response');
+  let analyzedRegions: Array<{ region: CollisionRegion; cells: Array<0 | 1> }>;
+  try {
+    analyzedRegions = await Promise.all(createRegions(columns, rows).map(async (region) => ({
+      region,
+      cells: await analyzeRegion(region),
+    })));
+  } catch (error) {
+    if (error instanceof CreateMapCollisionAnalyzerError) throw error;
+    throw new CreateMapCollisionAnalyzerError('vision_upstream_error');
+  }
+  const cells = Array.from({ length: columns * rows }, () => 0 as 0 | 1);
+  for (const analyzed of analyzedRegions) {
+    analyzed.cells.forEach((cell, index) => {
+      const localRow = Math.floor(index / analyzed.region.columns);
+      const localColumn = index % analyzed.region.columns;
+      cells[(analyzed.region.row + localRow) * columns + analyzed.region.column + localColumn] = cell;
+    });
+  }
+  return DirectMapCollisionGridSchema.parse({
+    version: 1,
+    cellSize: DIRECT_MAP_COLLISION_CELL_SIZE,
+    columns,
+    rows,
+    cells,
+    imageSha256: input.imageSha256,
+  });
 }

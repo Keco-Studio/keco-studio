@@ -1,4 +1,4 @@
-import { DeleteOutlined, EyeInvisibleOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, EyeInvisibleOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { countCollisionCells, type DirectMapCollisionCell, type DirectMapCollisionGrid } from '../model/directMapCollisionGrid';
 import type { DirectMapCollisionPhase } from '../hooks/useDirectMapCollisionGrid';
 import styles from '../CreateMapWorkbench.module.css';
@@ -71,15 +71,23 @@ export function DirectMapCollisionPanel({
             </button>
             <button type="button" title="Clear all collision cells" onClick={onClear}><DeleteOutlined /> Clear</button>
           </div>
+          <button type="button" className={styles.secondaryButtonFull} onClick={onRetry}>
+            <ReloadOutlined /> Re-analyze with AI
+          </button>
         </>
       ) : null}
 
       {phase === 'analyzing' ? <div className={styles.generationProgress} aria-label="Analyzing map collision"><span /></div> : null}
       {error ? <p className={styles.inlineError} role="alert">{error}</p> : null}
       {phase === 'failed' ? (
-        <button type="button" className={styles.secondaryButtonFull} onClick={onRetry}>
-          <ReloadOutlined /> Retry analysis
-        </button>
+        <div className={styles.collisionActions}>
+          <button type="button" onClick={onRetry}>
+            <ReloadOutlined /> Retry analysis
+          </button>
+          <button type="button" onClick={onClear}>
+            <EditOutlined /> Edit manually
+          </button>
+        </div>
       ) : null}
     </section>
   );

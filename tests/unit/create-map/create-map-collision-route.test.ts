@@ -174,4 +174,28 @@ describe('POST /api/create-map/collision-grid', () => {
     await expect(response.json()).resolves.toMatchObject({ code: 'image_hash_mismatch' });
     expect(analyzeCreateMapCollisionGrid).not.toHaveBeenCalled();
   });
+
+  it('returns an actionable message when the vision provider is unavailable', async () => {
+    analyzeCreateMapCollisionGrid.mockRejectedValue(new MockAnalyzerError('vision_upstream_error'));
+
+    const response = await post();
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      code: 'vision_upstream_error',
+      error: 'Collision analysis model is unavailable. Retry or edit manually.',
+    });
+  });
+
+  it('offers manual editing when vision returns an invalid grid', async () => {
+    analyzeCreateMapCollisionGrid.mockRejectedValue(new MockAnalyzerError('collision_grid_invalid_response'));
+
+    const response = await post();
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      code: 'collision_grid_invalid_response',
+      error: 'Collision analysis returned an invalid grid. Retry or edit manually.',
+    });
+  });
 });

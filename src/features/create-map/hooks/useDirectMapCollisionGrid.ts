@@ -17,6 +17,14 @@ type CollisionService = {
 
 export type DirectMapCollisionPhase = 'idle' | 'analyzing' | 'ready' | 'failed';
 
+export function resolveDirectMapCollisionPhase(
+  matches: boolean,
+  phase: DirectMapCollisionPhase,
+): DirectMapCollisionPhase {
+  if (phase === 'analyzing' || phase === 'failed') return phase;
+  return matches ? 'ready' : phase;
+}
+
 export function useDirectMapCollisionGrid({
   projectId,
   identity,
@@ -105,12 +113,14 @@ export function useDirectMapCollisionGrid({
       ...current,
       collisionGrid: createEmptyCollisionGrid(image.width, image.height, image.sha256),
     }));
+    setOverlayVisible(true);
+    setError(null);
     setPhase('ready');
   }, [image, setScene]);
 
   return {
-    phase: !analysisKey ? 'idle' as const : matches ? 'ready' as const : phase,
-    error: matches ? null : error,
+    phase: !analysisKey ? 'idle' as const : resolveDirectMapCollisionPhase(matches, phase),
+    error: phase === 'failed' ? error : null,
     overlayVisible,
     paintMode,
     setOverlayVisible,
