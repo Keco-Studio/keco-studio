@@ -75,9 +75,14 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
   return createPortal(
     <div className={dialog.backdrop}>
-      <div className={`${dialog.modal} ${dialog.projectModal}`}>
+      <div
+        className={`${dialog.modal} ${dialog.projectModal}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-project-dialog-title"
+      >
         <div className={dialog.header}>
-          <div className={dialog.title}>Create Project</div>
+          <div id="new-project-dialog-title" className={dialog.title}>Create Project</div>
           <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>

@@ -52,7 +52,7 @@ test.describe('Document authoring', () => {
 
       const nameInput = page.locator('input:visible').last();
       await nameInput.fill(documentName);
-      await page.getByRole('button', { name: /^create$/i }).click();
+      await page.getByRole('dialog').getByRole('button', { name: /^create$/i }).click();
 
       await page.waitForURL(/\/doc\//, { timeout: 20000 });
     });

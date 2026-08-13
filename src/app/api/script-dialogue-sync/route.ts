@@ -35,6 +35,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
     return NextResponse.json({ state }, { status: 200 });
   } catch (error) {
     const mapped = mapScriptDialogueSyncError(error);
-    return NextResponse.json({ code: mapped.code, error: mapped.message }, { status: mapped.status });
+    const { code, status, message: publicError } = mapped;
+    return NextResponse.json({ code, error: publicError }, { status });
   }
 });

@@ -61,9 +61,14 @@ export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolde
 
   return createPortal(
     <div className={dialog.backdrop}>
-      <div className={`${dialog.modal} ${dialog.modalCompact}`}>
+      <div
+        className={`${dialog.modal} ${dialog.modalCompact}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-folder-dialog-title"
+      >
         <div className={dialog.header}>
-          <div className={dialog.title}>New Folder</div>
+          <div id="new-folder-dialog-title" className={dialog.title}>New Folder</div>
           <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>

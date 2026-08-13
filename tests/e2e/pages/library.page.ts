@@ -147,8 +147,9 @@ export class LibraryPage {
       .or(page.getByLabel(/library description/i));
 
     // Form action buttons
-    this.submitButton = page.getByRole('button', { name: /^(create|submit)$/i });
-    this.cancelButton = page.getByRole('button', { name: /cancel/i });
+    // Scope to the open form dialog so the toolbar "Create" menu trigger is excluded.
+    this.submitButton = page.getByRole('dialog').getByRole('button', { name: /^(create|submit)$/i });
+    this.cancelButton = page.getByRole('dialog').getByRole('button', { name: /cancel/i });
 
     // Feedback messages
     this.successMessage = page.locator('[class*="success"], [role="alert"]').filter({ hasText: /success/i });
