@@ -36,6 +36,39 @@ Deno.test("maps the approved prompt and private references exactly", () => {
   });
 });
 
+Deno.test("accepts the live create_image_pro schema with optional generation fields", () => {
+  const liveCapability: DiscoveredCapability = {
+    ...CAPABILITY,
+    inputSchema: {
+      ...PRO_SCHEMA,
+      properties: {
+        ...PRO_SCHEMA.properties,
+        seed: { anyOf: [{ type: "integer" }, { type: "null" }] },
+        reference_images: { anyOf: [{ type: "string" }, { type: "null" }] },
+        style_image_url: { anyOf: [{ type: "string" }, { type: "null" }] },
+        style_copy: { anyOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] },
+      },
+      required: ["description"],
+    },
+  };
+
+  const args = directMapProviderArguments(liveCapability, {
+    prompt: "Top-down pixel art map.",
+    generationParams: { width: 512, height: 512, noBackground: false, seed: 7 },
+  }, {
+    references: [{ url: "https://signed.example/layout.png", usage: "layout reference" }],
+    style: { url: "https://signed.example/style.png", copy: ["color_palette"] },
+  });
+
+  assertEquals(args.width, 512);
+  assertEquals(args.height, 512);
+  assertEquals(args.no_background, false);
+  assertEquals(args.seed, 7);
+  assertEquals(args.reference_images, JSON.stringify([{ url: "https://signed.example/layout.png", usage: "layout reference" }]));
+  assertEquals(args.style_image_url, "https://signed.example/style.png");
+  assertEquals(args.style_copy, ["color_palette"]);
+});
+
 Deno.test("rejects unsupported dimensions and incomplete live schemas", () => {
   const asset = { prompt: "prompt", generationParams: { width: 640, height: 480, noBackground: false } };
   const error = assertThrows(() => directMapProviderArguments(CAPABILITY, asset, { references: [], style: null }), PixelLabMapError);
