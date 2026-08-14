@@ -56,6 +56,44 @@ type AssetMode = 'view' | 'edit';
 const CELL_SEARCH_PAGE_SIZE = 10;
 type DocumentExportItem = { key: string; label: string };
 
+function CellContentIcon({
+  size = 30,
+  withBackground = true,
+}: {
+  size?: number;
+  withBackground?: boolean;
+}) {
+  const stroke = withBackground ? '#0B99FF' : 'currentColor';
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={withBackground ? '0 0 30 30' : '8 7.5 14 14.5'}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      {withBackground ? (
+        <rect width="30" height="30" rx="15" fill="#0B99FF" fillOpacity="0.08" />
+      ) : null}
+      <path
+        d="M9.25 8.5H13.4C14.1 8.5 14.78 8.78 15.25 9.25C15.72 9.72 16 10.4 16 11.1V21.25C16 20.72 15.79 20.21 15.41 19.84C15.04 19.47 14.53 19.25 14 19.25H9.25V8.5Z"
+        stroke={stroke}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20.75 8.5H16.6C15.9 8.5 15.22 8.78 14.75 9.25C14.28 9.72 14 10.4 14 11.1V21.25C14 20.72 14.21 20.21 14.59 19.84C14.96 19.47 15.47 19.25 16 19.25H20.75V8.5Z"
+        stroke={stroke}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -221,13 +259,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     assetUpdatedAt?: string | null;
   };
 
-  type CellSearchLibraryGroup = {
-    libraryId: string;
-    libraryName: string;
-    projectId: string;
-    hits: CellSearchHit[];
-  };
-
   const [cellSearchLoading, setCellSearchLoading] = useState(false);
   const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
   const [cellSearchPage, setCellSearchPage] = useState(1);
@@ -259,44 +290,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     const start = (cellSearchPage - 1) * CELL_SEARCH_PAGE_SIZE;
     return cellSearchHits.slice(start, start + CELL_SEARCH_PAGE_SIZE);
   }, [cellSearchHits, cellSearchPage]);
-
-  const cellSearchGroups = useMemo<CellSearchLibraryGroup[]>(() => {
-    const map = new Map<string, CellSearchLibraryGroup>();
-    for (const hit of pagedCellSearchHits) {
-      const key = hit.libraryId;
-      const group = map.get(key);
-      if (group) {
-        group.hits.push(hit);
-      } else {
-        map.set(key, {
-          libraryId: hit.libraryId,
-          libraryName: hit.libraryName,
-          projectId: hit.projectId,
-          hits: [hit],
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [pagedCellSearchHits]);
-
-  const cellSearchLibraryHierarchyMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const lib of libraries) {
-      const projectName = projects.find((p) => p.id === lib.project_id)?.name?.trim() || '';
-      const folderName = lib.folder_id
-        ? folders.find((f) => f.id === lib.folder_id)?.name?.trim() || ''
-        : '';
-
-      if (projectName && folderName) {
-        map.set(lib.id, `${projectName} / ${folderName}`);
-      } else if (projectName) {
-        map.set(lib.id, projectName);
-      } else if (folderName) {
-        map.set(lib.id, folderName);
-      }
-    }
-    return map;
-  }, [libraries, projects, folders]);
 
   useEffect(() => {
     setCellSearchPage(1);
@@ -522,7 +515,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return `${year}-${month}-${day}`;
   };
 
-  const highlightMatch = (text: string | null | undefined, query: string) => {
+  const highlightMatch = (
+    text: string | null | undefined,
+    query: string,
+    highlightClassName = styles.searchResultHighlight,
+  ) => {
     if (!text) return null;
     const q = query.trim();
     if (!q) return text;
@@ -545,7 +542,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return (
       <>
         {before}
-        <span className={styles.searchResultHighlight}>{match}</span>
+        <span className={highlightClassName}>{match}</span>
         {after}
       </>
     );
@@ -553,19 +550,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   // Same normalized match as project/folder/library + highlightMatch (strip spaces/underscores).
   const highlightCellValue = (text: string | null | undefined, query: string) =>
-    highlightMatch(text, query);
-
-  const getCellAvatarText = (hit: CellSearchHit) => {
-    const snippet = (hit.valueSnippet || '').trim();
-    const snippetNoQuotes = snippet.replace(/^["'\s]+|["'\s]+$/g, '');
-    const fromSnippet = snippetNoQuotes.charAt(0);
-    if (fromSnippet) return fromSnippet;
-
-    const fromAssetName = (hit.assetName || '').trim().charAt(0);
-    if (fromAssetName) return fromAssetName;
-
-    return '?';
-  };
+    highlightMatch(text, query, styles.cellSearchHighlight);
 
   const getCellValuePreview = (text: string | null | undefined, maxLength = 88) => {
     if (text === null || text === undefined) return '';
@@ -1636,7 +1621,9 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         </label>
         {isSearchDropdownOpen && (
           <div className={styles.searchDropdown}>
-            <div className={styles.searchTabs}>
+            <div
+              className={`${styles.searchTabs} ${searchFilter === 'cell' ? styles.searchTabsCell : ''}`}
+            >
               {searchFilter === 'cell' ? (
                 <div className={styles.searchTabsRow}>
                   <button
@@ -1644,22 +1631,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                     className={`${styles.searchTab} ${styles.searchTabCellActive}`}
                     onClick={() => setSearchFilter('all')}
                   >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 14 14"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      style={{ marginRight: '0.35rem', flexShrink: 0 }}
-                    >
-                      <path
-                        d="M2 2.5H12M2 7H12M2 11.5H12"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    Only search cell content
+                    <span className={styles.cellSearchTabIcon}>
+                      <CellContentIcon size={16} withBackground={false} />
+                    </span>
+                    Find or replace cell content
                   </button>
                 </div>
               ) : (
@@ -1670,22 +1645,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                       className={`${styles.searchTab} ${styles.searchTabCell}`}
                       onClick={() => setSearchFilter('cell')}
                     >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 14 14"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        style={{ marginRight: '0.35rem', flexShrink: 0 }}
-                      >
-                        <path
-                          d="M2 2.5H12M2 7H12M2 11.5H12"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      Only search cell content
+                      <span className={styles.cellSearchTabIcon}>
+                        <CellContentIcon size={16} withBackground={false} />
+                      </span>
+                      Find or replace cell content
                     </button>
                   </div>
                   <div className={styles.searchTabsRow}>
@@ -1718,7 +1681,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                   <input
                     type="text"
                     className={styles.cellReplaceInput}
-                    placeholder="Replacement text"
+                    placeholder="replacement text"
                     value={cellReplaceText}
                     onChange={(e) => setCellReplaceText(e.target.value)}
                     onClick={(e) => e.stopPropagation()}
@@ -1727,93 +1690,73 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                 </label>
               </div>
             )}
-            <div className={styles.searchResultSectionLabel}>RESULT</div>
-            <div className={styles.searchDropdownInner}>
+            <div
+              className={
+                searchFilter === 'cell'
+                  ? styles.cellSearchResultsLabel
+                  : styles.searchResultSectionLabel
+              }
+            >
+              {searchFilter === 'cell' ? 'Results' : 'RESULT'}
+            </div>
+            <div
+              className={`${styles.searchDropdownInner} ${
+                searchFilter === 'cell' ? styles.searchDropdownInnerCell : ''
+              }`}
+            >
               {searchFilter === 'cell' ? (
                 cellSearchLoading ? (
                   <div className={styles.cellSearchLoading}>Searching...</div>
-                ) : cellSearchGroups.length > 0 ? (
-                  cellSearchGroups.map((group) => (
-                    <div key={group.libraryId} className={styles.cellSearchGroup}>
-                      <div className={styles.cellSearchGroupTitle}>
-                        {group.libraryName}
-                        {cellSearchLibraryHierarchyMap.get(group.libraryId) ? (
-                          <div className={styles.cellSearchGroupPath}>
-                            {cellSearchLibraryHierarchyMap.get(group.libraryId)}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className={styles.cellSearchHitGrid}>
-                        {group.hits.map((hit) => (
-                          <div
-                            key={`${hit.assetId}-${hit.fieldId}-${hit.valueSnippet}`}
-                            className={styles.cellSearchHitCard}
-                          >
-                            <button
-                              type="button"
-                              className={styles.cellSearchHitMain}
-                              onClick={() => {
-                                setIsSearchDropdownOpen(false);
-                                setIsSearchFocused(false);
-                                navigateToCellHit(hit);
-                              }}
+                ) : pagedCellSearchHits.length > 0 ? (
+                  <div className={styles.cellSearchHitGrid}>
+                    {pagedCellSearchHits.map((hit, index) => (
+                      <div
+                        key={`${hit.assetId}-${hit.fieldId}-${hit.valueSnippet}-${index}`}
+                        className={styles.cellSearchHitCard}
+                      >
+                        <button
+                          type="button"
+                          className={styles.cellSearchHitMain}
+                          onClick={() => {
+                            setIsSearchDropdownOpen(false);
+                            setIsSearchFocused(false);
+                            navigateToCellHit(hit);
+                          }}
+                        >
+                          <span className={styles.cellSearchHitIcon}>
+                            <CellContentIcon size={30} />
+                          </span>
+                          <div className={styles.cellSearchHitMeta}>
+                            <div
+                              className={styles.cellSearchHitFieldLabel}
+                              title={hit.fieldLabel}
                             >
-                              <div className={styles.cellSearchHitBody}>
-                                <Avatar
-                                  size={56}
-                                  style={{
-                                    flexShrink: 0,
-                                    backgroundColor: getUserAvatarColor(
-                                      hit.assetId || hit.assetName || hit.fieldId
-                                    ),
-                                    borderRadius: '16px',
-                                    color: '#ffffff',
-                                    fontSize: '1.8rem',
-                                    fontWeight: 500,
-                                    textTransform: 'uppercase',
-                                  }}
-                                >
-                                  {getCellAvatarText(hit)}
-                                </Avatar>
-                                <div className={styles.cellSearchHitMeta}>
-                                  <span
-                                    className={`${styles.searchResultType} ${styles.cellSearchHitTime}`}
-                                  >
-                                    {formatUpdatedAtLabel(hit.assetUpdatedAt)}
-                                  </span>
-                                  <div
-                                    className={styles.cellSearchHitFieldLabel}
-                                    title={hit.fieldLabel}
-                                  >
-                                    {hit.fieldLabel}
-                                  </div>
-                                  <div className={styles.cellSearchHitValue}>
-                                    &quot;
-                                    {highlightCellValue(
-                                      getCellValuePreview(hit.valueSnippet),
-                                      searchQuery
-                                    )}
-                                    &quot;
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.cellReplaceOneButton}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                openCellReplaceConfirm('single', hit);
-                              }}
-                            >
-                              Replace
-                            </button>
+                              {hit.fieldLabel}
+                            </div>
+                            <div className={styles.cellSearchHitValue}>
+                              &quot;
+                              {highlightCellValue(
+                                getCellValuePreview(hit.valueSnippet),
+                                searchQuery
+                              )}
+                              &quot;
+                            </div>
                           </div>
-                        ))}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.cellReplaceOneButton}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openCellReplaceConfirm('single', hit);
+                          }}
+                        >
+                          Replace
+                        </button>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 ) : (
                   <div className={styles.cellSearchEmpty}>No matches.</div>
                 )
@@ -1863,18 +1806,18 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                 <div className={styles.cellSearchPagination}>
                   <button
                     type="button"
-                    className={styles.searchTab}
+                    className={styles.cellSearchPaginationButton}
                     onClick={() => setCellSearchPage((p) => Math.max(1, p - 1))}
                     disabled={cellSearchPage <= 1}
                   >
                     Prev
                   </button>
                   <span className={styles.cellSearchPaginationLabel}>
-                    {cellSearchPage} / {cellSearchTotalPages}
+                    {cellSearchPage}/{cellSearchTotalPages}
                   </span>
                   <button
                     type="button"
-                    className={styles.searchTab}
+                    className={styles.cellSearchPaginationButton}
                     onClick={() => setCellSearchPage((p) => Math.min(cellSearchTotalPages, p + 1))}
                     disabled={cellSearchPage >= cellSearchTotalPages}
                   >
