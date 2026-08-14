@@ -162,24 +162,24 @@ test.describe('Game Design System real workflow', () => {
 
     await page.goto('/game-design-systems');
     await expect(page.getByRole('heading', { name: 'Game Design System', exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: /官方预设/ }).click();
+    await page.getByRole('tab', { name: /Official Presets/ }).click();
     await expect(page.getByRole('button', { name: /Tactical Systems/ })).toBeVisible();
 
     const title = `E2E Tactical Rules ${Date.now()}`;
-    await page.getByRole('button', { name: /创建体系/ }).click();
-    await page.getByLabel('体系名称').fill(title);
+    await page.getByRole('button', { name: /Create system/ }).click();
+    await page.getByLabel('System name').fill(title);
     await page.getByRole('button', { name: 'RPG', exact: true }).click();
     await page.getByRole('button', { name: 'Meaningful Decisions', exact: true }).click();
-    await page.getByLabel('自然语言描述').fill('Create compact tactical rules with readable costs, reversible onboarding, and explicit counterplay.');
-    await page.getByLabel('来源项目').selectOption(projectId);
+    await page.getByLabel('Natural language description').fill('Create compact tactical rules with readable costs, reversible onboarding, and explicit counterplay.');
+    await page.getByLabel('Source project').selectOption(projectId);
     await page.getByRole('checkbox', { name: new RegExp(documentName) }).check();
     await page.getByRole('checkbox', { name: new RegExp(libraryName) }).check();
-    await page.getByRole('button', { name: /生成体系/ }).first().click();
+    await page.getByRole('button', { name: /Generate system/ }).first().click();
 
-    await expect(page.getByRole('heading', { name: /正在生成|生成未完成/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Generating|Generation incomplete/ })).toBeVisible();
     await Promise.race([
       page.waitForURL(/\/game-design-systems\?systemId=/, { timeout: 240_000 }),
-      page.getByRole('heading', { name: '生成未完成' }).waitFor({ state: 'visible', timeout: 240_000 }).then(async () => {
+      page.getByRole('heading', { name: 'Generation incomplete' }).waitFor({ state: 'visible', timeout: 240_000 }).then(async () => {
         throw new Error(`Generation failed: ${await page.locator('main').innerText()}`);
       }),
     ]);
@@ -188,7 +188,7 @@ test.describe('Game Design System real workflow', () => {
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
     await expect(page.getByText(documentName, { exact: true })).toBeVisible();
     await expect(page.getByText(libraryName, { exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: /版本 1/ })).toBeAttached();
+    await expect(page.getByRole('option', { name: /Version 1/ })).toBeAttached();
 
     const { data: firstSystem, error: firstSystemError } = await admin.from('game_design_systems')
       .select('current_version_id').eq('id', systemId!).single();
@@ -202,19 +202,19 @@ test.describe('Game Design System real workflow', () => {
     expect(snapshots.find((snapshot) => snapshot.kind === 'table')?.excerpt).toContain(TABLE_ROW_VALUE);
     expect(snapshots.every((snapshot) => /^[a-f0-9]{64}$/.test(snapshot.contentHash))).toBe(true);
 
-    await page.getByRole('button', { name: '编辑规则' }).click();
-    const rulesEditor = page.getByLabel('规则 JSON');
+    await page.getByRole('button', { name: 'Edit rules' }).click();
+    const rulesEditor = page.getByLabel('Rules JSON');
     const editedRules = JSON.parse(await rulesEditor.inputValue()) as GameDesignRuleSet;
     editedRules.rules[0].statement = `${editedRules.rules[0].statement} Preserve the original cost signal.`;
     await rulesEditor.fill(JSON.stringify(editedRules, null, 2));
-    await page.getByRole('button', { name: '创建新版本' }).click();
-    await expect(page.getByText('版本 2 已创建。', { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole('option', { name: /版本 2/ })).toBeAttached();
+    await page.getByRole('button', { name: 'Create version' }).click();
+    await expect(page.getByText('Version 2 created.', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('option', { name: /Version 2/ })).toBeAttached();
 
-    const projectSelect = page.getByLabel('选择项目');
+    const projectSelect = page.getByLabel('Select project');
     await projectSelect.selectOption(projectId);
-    await page.getByRole('button', { name: '使用版本 2', exact: true }).click();
-    await expect(page.getByText('已将版本 2 应用到项目。', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Use version 2', exact: true }).click();
+    await expect(page.getByText('Version 2 applied to project.', { exact: true })).toBeVisible();
 
     const { data: binding, error: bindingError } = await admin.from('project_game_design_systems')
       .select('design_system_id,version_id').eq('project_id', projectId).single();
@@ -242,12 +242,12 @@ test.describe('Game Design System real workflow', () => {
     expect(boundSystemMessage.content).not.toContain(DOCUMENT_CONSTRAINT);
     expect(boundSystemMessage.content).not.toContain(TABLE_ROW_VALUE);
 
-    await page.getByRole('button', { name: '编辑规则' }).click();
+    await page.getByRole('button', { name: 'Edit rules' }).click();
     const versionThreeRules = JSON.parse(await rulesEditor.inputValue()) as GameDesignRuleSet;
     versionThreeRules.rules[0].statement = `${versionThreeRules.rules[0].statement} ${VERSION_THREE_ONLY}`;
     await rulesEditor.fill(JSON.stringify(versionThreeRules, null, 2));
-    await page.getByRole('button', { name: '创建新版本' }).click();
-    await expect(page.getByText('版本 3 已创建。', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'Create version' }).click();
+    await expect(page.getByText('Version 3 created.', { exact: true })).toBeVisible({ timeout: 30_000 });
 
     const { data: pinnedBinding, error: pinnedBindingError } = await admin.from('project_game_design_systems')
       .select('version_id').eq('project_id', projectId).single();
@@ -342,13 +342,13 @@ test.describe('Game Design System real workflow', () => {
     });
 
     await page.goto('/game-design-systems/create');
-    await page.getByLabel('体系名称').fill('Retry state rules');
+    await page.getByLabel('System name').fill('Retry state rules');
     await page.getByRole('button', { name: 'RPG', exact: true }).click();
-    await page.getByRole('button', { name: /生成体系/ }).first().click();
-    await expect(page.getByRole('heading', { name: '生成未完成' })).toBeVisible();
+    await page.getByRole('button', { name: /Generate system/ }).first().click();
+    await expect(page.getByRole('heading', { name: 'Generation incomplete' })).toBeVisible();
     await expect(page.getByText('DeepSeek temporarily unavailable.')).toBeVisible();
-    await page.getByRole('button', { name: /重试任务/ }).click();
-    await expect(page.getByRole('heading', { name: '正在生成 Game Design System' })).toBeVisible();
-    await expect(page.getByText(/第 1 \/ 3 次尝试.*后重试/)).toBeVisible();
+    await page.getByRole('button', { name: /Retry job/ }).click();
+    await expect(page.getByRole('heading', { name: 'Generating Game Design System' })).toBeVisible();
+    await expect(page.getByText(/Attempt 1 \/ 3.*retrying at/)).toBeVisible();
   });
 });

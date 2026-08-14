@@ -57,7 +57,7 @@ async function main() {
         where snapshot ->> 'kind' = 'legacy_markdown'
           and coalesce(snapshot ->> 'excerpt', '') <> ''
       )
-      and version.content_hash = encode(digest(convert_to(version.rules::text, 'UTF8'), 'sha256'), 'hex');
+      and version.content_hash = encode(extensions.digest(convert_to(version.rules::text, 'UTF8'), 'sha256'), 'hex');
   `));
   assert(convertedOfficialCount >= 3, 'Official legacy systems were not converted to canonical version 1 rules.');
 

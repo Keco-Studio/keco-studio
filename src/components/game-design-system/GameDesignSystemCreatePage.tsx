@@ -24,17 +24,17 @@ type ProjectOption = { id: string; name: string };
 type GameDraft = { name: string; reference: string; avoid: string };
 
 const phaseLabels: Record<string, string> = {
-  collecting: '读取并固定来源快照',
-  generating: '生成结构化规则',
-  validating: '验证规则契约',
-  saving: '保存不可变版本',
-  completed: '已完成',
-  failed: '生成失败',
+  collecting: 'Read and snapshot sources',
+  generating: 'Generate structured rules',
+  validating: 'Validate rule contract',
+  saving: 'Save immutable version',
+  completed: 'Completed',
+  failed: 'Generation failed',
 };
 
 async function fetchProjects(): Promise<ProjectOption[]> {
   const response = await fetch('/api/projects', { cache: 'no-store' });
-  if (!response.ok) throw new Error('项目列表加载失败。');
+  if (!response.ok) throw new Error('Failed to load projects.');
   return (await response.json()) as ProjectOption[];
 }
 
@@ -86,7 +86,7 @@ export function GameDesignSystemCreatePage() {
           router.push(`/game-design-systems?systemId=${encodeURIComponent(fresh.design_system_id)}`);
         }
       } catch (pollError) {
-        setError(pollError instanceof Error ? pollError.message : '无法读取生成进度。');
+        setError(pollError instanceof Error ? pollError.message : 'Failed to read generation progress.');
       }
     }, 900);
     return () => window.clearInterval(timer);
@@ -105,9 +105,9 @@ export function GameDesignSystemCreatePage() {
 
   async function submit() {
     setError(null);
-    if (!title.trim()) return setError('请填写体系名称。');
+    if (!title.trim()) return setError('Enter a system name.');
     if (genres.length === 0 && philosophies.length === 0 && !description.trim() && !pastedMarkdown.trim() && references.length === 0 && referenceGames.length === 0 && !baseSystemId) {
-      return setError('至少添加一种类型、设计理念或参考资料。');
+      return setError('Add at least one genre, design philosophy, or reference.');
     }
     const input: GameDesignGenerationRequest = {
       title: title.trim(),
@@ -125,7 +125,7 @@ export function GameDesignSystemCreatePage() {
     try {
       setJob(await startGameDesignSystemGeneration(input, submitKey.current));
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '生成启动失败。');
+      setError(submitError instanceof Error ? submitError.message : 'Failed to start generation.');
     }
   }
 
@@ -135,7 +135,7 @@ export function GameDesignSystemCreatePage() {
     try {
       setJob(await retryGameDesignSystemGeneration(job.id, retryKey.current));
     } catch (retryError) {
-      setError(retryError instanceof Error ? retryError.message : '重试启动失败。');
+      setError(retryError instanceof Error ? retryError.message : 'Failed to start retry.');
     }
   }
 
@@ -158,8 +158,8 @@ export function GameDesignSystemCreatePage() {
     return (
       <main className={styles.page}>
         <section className={styles.progress} aria-live="polite">
-          <h2>{job.status === 'failed' ? '生成未完成' : '正在生成 Game Design System'}</h2>
-          <p>{job.status === 'failed' ? job.error || 'DeepSeek 没有返回可用的结构化规则。' : `第 ${Math.max(job.attempt_count, 1)} / ${job.max_attempts} 次尝试${retryAt ? `，将在 ${retryAt} 后重试` : ''}`}</p>
+          <h2>{job.status === 'failed' ? 'Generation incomplete' : 'Generating Game Design System'}</h2>
+          <p>{job.status === 'failed' ? job.error || 'DeepSeek did not return usable structured rules.' : `Attempt ${Math.max(job.attempt_count, 1)} / ${job.max_attempts}${retryAt ? `, retrying at ${retryAt}` : ''}`}</p>
           <div className={styles.progressList}>
             {phases.map((phase, index) => {
               const done = job.status === 'completed' || index < currentIndex;
@@ -168,7 +168,7 @@ export function GameDesignSystemCreatePage() {
             })}
           </div>
           {error ? <div className={styles.error} role="alert">{error}</div> : null}
-          {job.status === 'failed' ? <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={returnToForm}><ArrowLeftOutlined /> 返回修改参考</button><button className={styles.primaryButton} type="button" onClick={() => void retry()}><ReloadOutlined /> 重试任务</button></div> : null}
+          {job.status === 'failed' ? <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={returnToForm}><ArrowLeftOutlined /> Back to references</button><button className={styles.primaryButton} type="button" onClick={() => void retry()}><ReloadOutlined /> Retry job</button></div> : null}
         </section>
       </main>
     );
@@ -177,40 +177,40 @@ export function GameDesignSystemCreatePage() {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <div><button className={styles.secondaryButton} type="button" onClick={() => router.push('/game-design-systems')}><ArrowLeftOutlined /> 返回体系</button><h1 className={styles.title} style={{ marginTop: 18 }}>创建 Game Design System</h1><p className={styles.subtitle}>添加参考，由 DeepSeek 生成可验证的结构化规则并保存为不可变版本。</p></div>
-        <button className={styles.primaryButton} type="button" disabled={submitting} onClick={() => void submit()}><ThunderboltOutlined /> 生成体系</button>
+        <div><button className={styles.secondaryButton} type="button" onClick={() => router.push('/game-design-systems')}><ArrowLeftOutlined /> Back to systems</button><h1 className={styles.title} style={{ marginTop: 18 }}>Create Game Design System</h1><p className={styles.subtitle}>Add references and let DeepSeek generate verifiable structured rules as an immutable version.</p></div>
+        <button className={styles.primaryButton} type="button" disabled={submitting} onClick={() => void submit()}><ThunderboltOutlined /> Generate system</button>
       </header>
 
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
       <section className={styles.form}>
         <div className={styles.formGrid}>
-          <div className={styles.field}><label htmlFor="gds-title">体系名称</label><input id="gds-title" className={styles.input} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：Tactical Deckbuilder" /></div>
-          <div className={styles.field}><label htmlFor="gds-suitable">适用场景</label><input id="gds-suitable" className={styles.input} value={suitableFor} onChange={(event) => setSuitableFor(event.target.value)} placeholder="例如：单人、Run-based" /></div>
-          <div className={styles.field}><label>游戏类型</label><div className={styles.checks}>{GENRES.map((genre) => <button type="button" key={genre} className={`${styles.check} ${genres.includes(genre) ? styles.checkActive : ''}`} aria-pressed={genres.includes(genre)} onClick={() => toggle(genres, genre, setGenres)}>{genre}</button>)}</div></div>
-          <div className={styles.field}><label>设计理念</label><div className={styles.checks}>{PHILOSOPHIES.map((philosophy) => <button type="button" key={philosophy} className={`${styles.check} ${philosophies.includes(philosophy) ? styles.checkActive : ''}`} aria-pressed={philosophies.includes(philosophy)} onClick={() => toggle(philosophies, philosophy, setPhilosophies)}>{philosophy}</button>)}</div></div>
-          <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="gds-description">自然语言描述</label><textarea id="gds-description" className={styles.textarea} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="描述玩家体验、决策结构和需要坚持的设计取舍" /></div>
-          <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="gds-base">已有体系作为基础</label><select id="gds-base" className={styles.select} value={baseSystemId} onChange={(event) => setBaseSystemId(event.target.value)}><option value="">不指定基础体系</option>{(systemsQuery.data ?? []).map((system) => <option key={system.id} value={system.id}>{system.title} ({system.source === 'official' ? '官方' : '我的体系'})</option>)}</select>{systemsQuery.isError ? <button type="button" className={styles.secondaryButton} onClick={() => systemsQuery.refetch()}><ReloadOutlined /> 重试体系列表</button> : null}</div>
-          <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="gds-markdown">粘贴已有 GAME_DESIGN_SYSTEM.md</label><textarea id="gds-markdown" className={styles.editor} style={{ minHeight: 180 }} value={pastedMarkdown} onChange={(event) => setPastedMarkdown(event.target.value)} placeholder="旧 Markdown 会被解析为兼容来源，再生成结构化规则" /></div>
+          <div className={styles.field}><label htmlFor="gds-title">System name</label><input id="gds-title" className={styles.input} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="For example: Tactical Deckbuilder" /></div>
+          <div className={styles.field}><label htmlFor="gds-suitable">Suitable for</label><input id="gds-suitable" className={styles.input} value={suitableFor} onChange={(event) => setSuitableFor(event.target.value)} placeholder="For example: Single-player, run-based" /></div>
+          <div className={styles.field}><label>Game genres</label><div className={styles.checks}>{GENRES.map((genre) => <button type="button" key={genre} className={`${styles.check} ${genres.includes(genre) ? styles.checkActive : ''}`} aria-pressed={genres.includes(genre)} onClick={() => toggle(genres, genre, setGenres)}>{genre}</button>)}</div></div>
+          <div className={styles.field}><label>Design philosophies</label><div className={styles.checks}>{PHILOSOPHIES.map((philosophy) => <button type="button" key={philosophy} className={`${styles.check} ${philosophies.includes(philosophy) ? styles.checkActive : ''}`} aria-pressed={philosophies.includes(philosophy)} onClick={() => toggle(philosophies, philosophy, setPhilosophies)}>{philosophy}</button>)}</div></div>
+          <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="gds-description">Natural language description</label><textarea id="gds-description" className={styles.textarea} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the player experience, decision structure, and design tradeoffs to preserve" /></div>
+          <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="gds-base">Base system</label><select id="gds-base" className={styles.select} value={baseSystemId} onChange={(event) => setBaseSystemId(event.target.value)}><option value="">No base system</option>{(systemsQuery.data ?? []).map((system) => <option key={system.id} value={system.id}>{system.title} ({system.source === 'official' ? 'Official' : 'My system'})</option>)}</select>{systemsQuery.isError ? <button type="button" className={styles.secondaryButton} onClick={() => systemsQuery.refetch()}><ReloadOutlined /> Retry systems</button> : null}</div>
+          <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="gds-markdown">Paste an existing GAME_DESIGN_SYSTEM.md</label><textarea id="gds-markdown" className={styles.editor} style={{ minHeight: 180 }} value={pastedMarkdown} onChange={(event) => setPastedMarkdown(event.target.value)} placeholder="Legacy Markdown is parsed as a compatibility source before structured rules are generated" /></div>
 
           <div className={`${styles.field} ${styles.fieldWide}`}>
-            <label htmlFor="gds-source-project">来源项目</label>
+            <label htmlFor="gds-source-project">Source project</label>
             <select id="gds-source-project" className={styles.select} value={sourceProjectId} onChange={(event) => setSourceProjectId(event.target.value)}>
-              <option value="">选择包含参考资料的项目</option>
+              <option value="">Select a project containing source material</option>
               {(projectsQuery.data ?? []).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
-            {projectsQuery.isError ? <div className={styles.inlineError}>项目列表加载失败。<button type="button" className={styles.secondaryButton} onClick={() => projectsQuery.refetch()}><ReloadOutlined /> 重试</button></div> : null}
-            {sourceProjectId && referenceOptionsQuery.isLoading ? <div className={styles.resourceState}>正在读取项目资源...</div> : null}
-            {sourceProjectId && referenceOptionsQuery.isError ? <div className={styles.inlineError}>项目资源加载失败。<button type="button" className={styles.secondaryButton} onClick={() => referenceOptionsQuery.refetch()}><ReloadOutlined /> 重试</button></div> : null}
-            {sourceProjectId && referenceOptionsQuery.data?.length === 0 ? <div className={styles.resourceState}>这个项目中还没有可引用的文档或表格。</div> : null}
+            {projectsQuery.isError ? <div className={styles.inlineError}>Failed to load projects.<button type="button" className={styles.secondaryButton} onClick={() => projectsQuery.refetch()}><ReloadOutlined /> Retry</button></div> : null}
+            {sourceProjectId && referenceOptionsQuery.isLoading ? <div className={styles.resourceState}>Loading project resources...</div> : null}
+            {sourceProjectId && referenceOptionsQuery.isError ? <div className={styles.inlineError}>Failed to load project resources.<button type="button" className={styles.secondaryButton} onClick={() => referenceOptionsQuery.refetch()}><ReloadOutlined /> Retry</button></div> : null}
+            {sourceProjectId && referenceOptionsQuery.data?.length === 0 ? <div className={styles.resourceState}>This project has no referenceable documents or tables.</div> : null}
             {(referenceOptionsQuery.data?.length ?? 0) > 0 ? <div className={styles.resourcePicker}>{referenceOptionsQuery.data!.map((option) => {
               const key = `${option.kind}:${option.resourceId}`;
-              return <label className={styles.resourceOption} key={key}><input type="checkbox" checked={selectedReferenceIds.has(key)} onChange={() => toggleReference({ kind: option.kind, projectId: option.projectId, resourceId: option.resourceId })} /><span><strong>{option.label}</strong><small>{option.kind === 'document' ? '文档' : 'Keco 表格'} · 更新于 {new Date(option.updatedAt).toLocaleDateString()}</small></span></label>;
+              return <label className={styles.resourceOption} key={key}><input type="checkbox" checked={selectedReferenceIds.has(key)} onChange={() => toggleReference({ kind: option.kind, projectId: option.projectId, resourceId: option.resourceId })} /><span><strong>{option.label}</strong><small>{option.kind === 'document' ? 'Document' : 'Keco table'} · Updated {new Date(option.updatedAt).toLocaleDateString()}</small></span></label>;
             })}</div> : null}
           </div>
 
-          <div className={`${styles.field} ${styles.fieldWide}`}><label>参考游戏（说明参考什么、不参考什么）</label>{referenceGames.map((game, index) => <div className={styles.referenceRow} key={index}><input className={styles.input} aria-label={`参考游戏 ${index + 1}`} value={game.name} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder="游戏名称" /><input className={styles.input} value={game.reference} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, reference: event.target.value } : item))} placeholder="参考什么" /><input className={styles.input} value={game.avoid} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, avoid: event.target.value } : item))} placeholder="不参考什么" /><button className={styles.remove} type="button" aria-label="移除参考游戏" onClick={() => setReferenceGames((current) => current.filter((_, itemIndex) => itemIndex !== index))}><DeleteOutlined /></button></div>)}<button type="button" className={styles.secondaryButton} onClick={addGame}><PlusOutlined /> 添加参考游戏</button></div>
+          <div className={`${styles.field} ${styles.fieldWide}`}><label>Reference games (what to reference and what to avoid)</label>{referenceGames.map((game, index) => <div className={styles.referenceRow} key={index}><input className={styles.input} aria-label={`Reference game ${index + 1}`} value={game.name} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder="Game name" /><input className={styles.input} value={game.reference} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, reference: event.target.value } : item))} placeholder="What to reference" /><input className={styles.input} value={game.avoid} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, avoid: event.target.value } : item))} placeholder="What to avoid" /><button className={styles.remove} type="button" aria-label="Remove reference game" onClick={() => setReferenceGames((current) => current.filter((_, itemIndex) => itemIndex !== index))}><DeleteOutlined /></button></div>)}<button type="button" className={styles.secondaryButton} onClick={addGame}><PlusOutlined /> Add reference game</button></div>
         </div>
-        <div className={styles.formActions}><span>至少选择一种类型或理念，或提供描述、来源、已有体系或参考游戏。</span><button className={styles.primaryButton} type="button" disabled={submitting} onClick={() => void submit()}><ThunderboltOutlined /> 生成体系</button></div>
+        <div className={styles.formActions}><span>Select a genre or philosophy, or provide a description, source, base system, or reference game.</span><button className={styles.primaryButton} type="button" disabled={submitting} onClick={() => void submit()}><ThunderboltOutlined /> Generate system</button></div>
       </section>
     </main>
   );

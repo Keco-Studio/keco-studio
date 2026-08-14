@@ -221,7 +221,7 @@ set rules = migrated.rules,
       )
       from jsonb_array_elements(version.source_snapshots) as snapshot
     ),
-    content_hash = encode(digest(convert_to(migrated.rules::text, 'UTF8'), 'sha256'), 'hex')
+    content_hash = encode(extensions.digest(convert_to(migrated.rules::text, 'UTF8'), 'sha256'), 'hex')
 from migrated
 where version.id = migrated.id
   and migrated.rules is not null;

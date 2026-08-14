@@ -175,7 +175,7 @@ different payload returns `409`.
 
 ## UI Contract
 
-- Manager retains `我的体系`, `官方预设`, search, list/detail, copy and create.
+- Manager retains `My Systems`, `Official Presets`, search, list/detail, copy and create.
 - Detail shows metadata, grouped rules, current version, parent, diff, conflicts,
   source snapshots, and deterministic Markdown.
 - Personal metadata is editable. Rule edits create a new version and are schema

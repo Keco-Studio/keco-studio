@@ -21,12 +21,12 @@ Game Design System entry and browse systems without opening a game project.
    the left rail, then the dedicated manager opens and the left rail marks the
    entry active.
 2. Given systems from multiple sources, when the manager loads, then it groups
-   them into `我的体系` and `官方预设` sections and shows title, summary, genre,
+   them into `My Systems` and `Official Presets` sections and shows title, summary, genre,
    philosophy, and source badges.
 3. Given a search term, when the user enters it, then results are filtered by
    title, summary, genre, philosophy, and Markdown body.
 4. Given no systems in a scope, then the manager shows an actionable empty state
-   with `创建 Game Design System`.
+   with `Create Game Design System`.
 
 ### User Story 2 - Inspect and Apply a System (Priority: P1)
 
@@ -42,11 +42,11 @@ to a selected project; a subsequent project read returns that system as active.
    name, summary, genre tags, philosophy tags, source, core principles,
    anti-patterns, recommended Keco tables, and the full
    `GAME_DESIGN_SYSTEM.md`.
-2. Given an official system, then `使用此体系` is available, while edit and
+2. Given an official system, then `Use This System` is available, while edit and
    delete controls are absent.
-3. Given a user system, then `编辑`, `复制并修改`, and `删除` are available to
+3. Given a user system, then `Edit`, `Copy and Edit`, and `Delete` are available to
    its owner.
-4. Given a project choice, when the user clicks `使用此体系`, then exactly one
+4. Given a project choice, when the user clicks `Use This System`, then exactly one
    active system is stored for that project and the UI confirms the binding.
 5. Given an existing project binding, when the user applies another system,
    then the previous binding is replaced atomically.
@@ -65,11 +65,11 @@ open the resulting editable system.
 1. Given the creation form, then the user can select multiple genres and
    philosophies, add a natural-language description, choose a base system,
    paste an existing `GAME_DESIGN_SYSTEM.md`, add project GDD/doc/table
-   references, and add reference games with explicit “参考什么 / 不参考什么”.
+   references, and add reference games with explicit "what to reference / what to avoid" guidance.
 2. Given no genre, philosophy, or reference material, when the user submits,
    then validation prevents generation and identifies the missing input.
 3. Given valid input, when the user starts generation, then the UI shows ordered
-   phases: `整理参考`, `生成系统`, `检查结构`, `保存体系`.
+   phases: `Snapshot Sources`, `Generate Rules`, `Validate Contract`, `Save Version`.
 4. Given a successful generation, then the result contains all eleven required
    Markdown sections and is saved as a personal draft.
 5. Given a generation failure, then the UI preserves the input, shows a concise
@@ -84,7 +84,7 @@ content so that I can evolve a project-specific design language.
 
 1. Given a personal draft, when the user edits metadata or Markdown and saves,
    then the latest values appear in the list and detail view.
-2. Given any system, when the user selects `复制并修改`, then a new personal
+2. Given any system, when the user selects `Copy and Edit`, then a new personal
    draft is created with copied content and provenance pointing to the source.
 3. Given an official system, no mutation request can change the official row,
    even if a client manually calls the API.
@@ -93,7 +93,7 @@ content so that I can evolve a project-specific design language.
 
 - **FR-001**: The left product rail MUST replace the unused final button with a
   Game Design System entry and route to `/game-design-systems`.
-- **FR-002**: The manager MUST support `我的体系`, `官方预设`, search, and
+- **FR-002**: The manager MUST support `My Systems`, `Official Presets`, search, and
   create actions; team systems remain a reserved source value but are not
   required in this MVP.
 - **FR-003**: A system MUST store title, summary, genres, philosophies,
@@ -187,10 +187,10 @@ partial system is persisted.
 ## UI Flow
 
 1. Left rail Game Design System icon → `/game-design-systems`.
-2. Manager header: title, search, `创建 Game Design System`.
-3. Scope tabs: `我的体系`, `官方预设`.
+2. Manager header: title, search, `Create Game Design System`.
+3. Scope tabs: `My Systems`, `Official Presets`.
 4. Two-column body: system list on the left; selected detail on the right.
-5. Detail actions: `使用此体系`, `复制并修改`, and owner-only `编辑` / `删除`.
+5. Detail actions: `Use This System`, `Copy and Edit`, and owner-only `Edit` / `Delete`.
 6. Create page: reference form, submit action, progress view, result detail.
 7. Apply action: project selector → atomic binding → success state.
 

@@ -86,13 +86,13 @@ select
   jsonb_build_array(jsonb_build_object(
     'kind', 'legacy_markdown',
     'label', system.title,
-    'contentHash', encode(digest(convert_to(system.body, 'UTF8'), 'sha256'), 'hex'),
+    'contentHash', encode(extensions.digest(convert_to(system.body, 'UTF8'), 'sha256'), 'hex'),
     'byteCount', pg_catalog.octet_length(system.body),
     'truncated', false
   )),
   '{"added":["legacy-design-intent","legacy-review-required"],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
   '[]'::jsonb,
-  encode(digest(convert_to(
+  encode(extensions.digest(convert_to(
     jsonb_build_object(
       'schemaVersion', 1,
       'genres', to_jsonb(system.genres),

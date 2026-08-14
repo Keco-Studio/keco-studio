@@ -54,14 +54,14 @@ describe('GameDesignSystemsPage', () => {
     const user = userEvent.setup();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
     expect(await screen.findByText('readable-state')).toBeTruthy();
-    expect(screen.getByRole('option', { name: /版本 1/ })).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: '编辑信息' }));
-    const summary = screen.getByLabelText('体系简介');
+    expect(screen.getByRole('option', { name: /Version 1/ })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Edit details' }));
+    const summary = screen.getByLabelText('System summary');
     await user.clear(summary);
     await user.type(summary, 'New summary');
-    await user.click(screen.getByRole('button', { name: '保存信息' }));
+    await user.click(screen.getByRole('button', { name: 'Save details' }));
     await waitFor(() => expect(updateMetadata).toHaveBeenCalledWith('system-1', expect.objectContaining({ summary: 'New summary' })));
-    expect(screen.queryByLabelText('编辑 GAME_DESIGN_SYSTEM.md')).toBeNull();
+    expect(screen.queryByLabelText('Edit GAME_DESIGN_SYSTEM.md')).toBeNull();
   });
 
   it('binds the explicitly selected version to a project', async () => {
@@ -70,15 +70,15 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
     await screen.findByText('readable-state');
     await screen.findByRole('option', { name: 'Project A' });
-    await user.selectOptions(screen.getByLabelText('选择项目'), 'project-1');
-    await user.click(screen.getByRole('button', { name: '使用版本 1' }));
+    await user.selectOptions(screen.getByLabelText('Select project'), 'project-1');
+    await user.click(screen.getByRole('button', { name: 'Use version 1' }));
     await waitFor(() => expect(applyVersion).toHaveBeenCalledWith('project-1', 'system-1', 'version-1'));
   });
 
   it('does not classify another user\'s readable system as mine', async () => {
     fetchSystems.mockResolvedValue([{ ...system, id: 'foreign-system', owner_id: 'user-2', title: 'Foreign Rules' }]);
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
-    expect(await screen.findByText('当前没有匹配的体系。')).toBeTruthy();
+    expect(await screen.findByText('No systems match the current filters.')).toBeTruthy();
     expect(screen.queryByText('Foreign Rules')).toBeNull();
   });
 
@@ -94,8 +94,8 @@ describe('GameDesignSystemsPage', () => {
     };
     fetchDetail.mockResolvedValue({ ...system, current_version_id: 'version-2', current_version: current, versions: [current, parent] });
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
-    expect(await screen.findByText('基于版本 1')).toBeTruthy();
-    expect(screen.getByText('修改: readable-state')).toBeTruthy();
+    expect(await screen.findByText('Based on version 1')).toBeTruthy();
+    expect(screen.getByText('Changed: readable-state')).toBeTruthy();
     expect(screen.getByText('readable-state: Rule kind changed from principle to constraint.')).toBeTruthy();
   });
 });

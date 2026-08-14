@@ -125,6 +125,13 @@ describe('Game Design Rule System migration contract', () => {
     expect(atomicVersionSql).toMatch(/suitable_for\s*=\s*p_rules\s*->>\s*'suitableFor'/i);
   });
 
+  it('qualifies pgcrypto hashing for Supabase extension schemas', () => {
+    for (const migration of [sql, legacyRepairSql]) {
+      expect(migration).toContain('extensions.digest(');
+      expect(migration).not.toMatch(/(?<![.\w])digest\(/i);
+    }
+  });
+
   it('repairs version projection without rewriting user content', () => {
     expect(atomicRepairSql).toContain('> Version: __KECO_ATOMIC_VERSION_LINE__');
     expect(atomicRepairSql).toMatch(/regexp_replace\([\s\S]*\^> Version: __KECO_ATOMIC_VERSION_LINE__\$[\s\S]*v_version_number/i);

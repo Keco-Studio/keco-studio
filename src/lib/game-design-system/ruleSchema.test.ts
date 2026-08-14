@@ -151,7 +151,7 @@ describe('Game Design Rule Set contract', () => {
 
   it('creates valid fallback IDs for non-Latin legacy anti-patterns', () => {
     const legacy = buildLegacyRuleSet({
-      body: '# 旧体系\n\n## 10. Anti-patterns\n- 不要隐藏关键规则。',
+      body: '# Staraia sistema\n\n## 10. Anti-patterns\n- Не скрывать ключевые правила.',
     });
     expect(legacy.rules[0].id).toBe('legacy-anti-pattern-1');
     expect(() => parseRuleSet(legacy)).not.toThrow();
