@@ -74,6 +74,7 @@ describe('LeftNav wiring', () => {
       script: false,
       createMap: true,
       gameDesignSystem: false,
+      keco101: false,
     });
   });
 
@@ -101,7 +102,8 @@ describe('LeftNav wiring', () => {
     const markup = renderToStaticMarkup(React.createElement(LeftNav));
     const controls = [...markup.matchAll(/aria-label="([^"]+)"/g)].map((match) => match[1]);
 
-    expect(controls.slice(1, 6)).toEqual([
+    expect(controls.slice(1, 7)).toEqual([
+      'Keco 101',
       'Studio',
       'Simulation',
       'Script',

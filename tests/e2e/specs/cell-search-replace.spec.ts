@@ -39,7 +39,7 @@ async function openCellSearch(page: Page): Promise<{ input: Locator; dropdown: L
 
   const placeholder = (await input.getAttribute('placeholder')) ?? '';
   if (!/find in cell values/i.test(placeholder)) {
-    const tableCellsTab = dropdown.getByRole('button', { name: /only search cell content/i });
+    const tableCellsTab = dropdown.getByRole('button', { name: /find or replace cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
     await expect(input).toHaveAttribute('placeholder', /find in cell values/i, { timeout: 5000 });
@@ -67,7 +67,7 @@ async function runCellSearch(page: Page, keyword: string): Promise<void> {
 }
 
 async function setReplaceText(page: Page, text: string): Promise<void> {
-  const replaceInput = searchDropdown(page).getByPlaceholder('Replacement text');
+  const replaceInput = searchDropdown(page).getByPlaceholder('replacement text');
   await expect(replaceInput).toBeVisible({ timeout: 5000 });
   await replaceInput.fill(text);
 }

@@ -65,7 +65,7 @@ async function createSearchFixture(
 }
 
 function searchInput(page: Page): Locator {
-  // TopBar switches placeholder when "Only search cell content" tab is active.
+  // TopBar switches placeholder when "Find or replace cell content" tab is active.
   return page.getByPlaceholder(/Search for\.\.\.|Find in cell values\.\.\./);
 }
 
@@ -163,8 +163,8 @@ test.describe('Table Cells search', () => {
     await input.click();
     await expect(searchDropdown(page)).toBeVisible({ timeout: 5000 });
 
-    // Click "Only search cell content" tab
-    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /only search cell content/i });
+    // Click "Find or replace cell content" tab
+    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /find or replace cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
 
@@ -246,8 +246,8 @@ test.describe('Table Cells search', () => {
     await input.click();
     await expect(searchDropdown(page)).toBeVisible({ timeout: 5000 });
 
-    // Select "Only search cell content" tab
-    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /only search cell content/i });
+    // Select "Find or replace cell content" tab
+    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /find or replace cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
 
@@ -258,7 +258,7 @@ test.describe('Table Cells search', () => {
     // Check if pagination controls are visible (indicating more than 10 results)
     const prevButton = page.getByRole('button', { name: /^prev$/i });
     const nextButton = page.getByRole('button', { name: /^next$/i });
-    const pageIndicator = searchDropdown(page).locator('span').filter({ hasText: /\d+ \/ \d+/ });
+    const pageIndicator = searchDropdown(page).locator('span').filter({ hasText: /\d+\s*\/\s*\d+/ });
 
     // Verify pagination is present if there are enough results
     const hasPagination = await pageIndicator.isVisible({ timeout: 3000 }).catch(() => false);
@@ -266,7 +266,7 @@ test.describe('Table Cells search', () => {
     if (hasPagination) {
       // Get current page indicator
       const indicatorText = await pageIndicator.textContent();
-      expect(indicatorText).toMatch(/\d+ \/ \d+/);
+      expect(indicatorText).toMatch(/\d+\s*\/\s*\d+/);
 
       // Click Next button if not on last page
       const nextDisabled = await nextButton.getAttribute('disabled');
@@ -357,8 +357,8 @@ test.describe('Table Cells search', () => {
     await input.click();
     await expect(searchDropdown(page)).toBeVisible({ timeout: 5000 });
 
-    // Select "Only search cell content" tab
-    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /only search cell content/i });
+    // Select "Find or replace cell content" tab
+    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /find or replace cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
 

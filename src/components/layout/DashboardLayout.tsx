@@ -12,6 +12,7 @@ import { ScriptSidebar } from '@/components/script-system/ScriptSidebar';
 import { RecentVisitTracker } from '@/components/layout/RecentVisitTracker';
 import { getCreateMapDashboardChrome } from '@/lib/create-map/dashboardChrome';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { isKeco101Path } from '@/lib/keco-101/isKeco101Path';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -31,11 +32,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const onScriptSystem = isScriptSystemPath(pathname);
   const createMapChrome = getCreateMapDashboardChrome(pathname);
   const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
-  // Simulation and Create Map hide the Studio resource sidebar and Agent Chat. Script keeps both,
-  // and mounts ScriptSidebar as a left sibling of TopBar/main.
-  const showStudioSidebar = !hideSidebarForSimulation && !hideSidebarForGameDesignSystems && !onScriptSystem && !hideSidebarForCreateMap;
+  const onKeco101 = isKeco101Path(pathname);
+  // Simulation, Game Design Systems, Create Map, and Keco 101 hide Studio resource chrome.
+  // Script mounts ScriptSidebar as a left sibling of TopBar/main.
+  const showStudioSidebar =
+    !hideSidebarForSimulation &&
+    !hideSidebarForGameDesignSystems &&
+    !onScriptSystem &&
+    !hideSidebarForCreateMap &&
+    !onKeco101;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
-  const hideChatPanel = hideSidebarForSimulation || hideSidebarForGameDesignSystems || !createMapChrome.showChatPanel;
+  const hideChatPanel =
+    hideSidebarForSimulation ||
+    hideSidebarForGameDesignSystems ||
+    !createMapChrome.showChatPanel ||
+    onKeco101;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
@@ -99,7 +110,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className={styles.simulationSidebarSlot} data-simulation-sidebar-slot data-simulation-root />
       ) : null}
       <div className={styles.main}>
-        {createMapChrome.showTopBar ? <TopBar /> : null}
+        {createMapChrome.showTopBar && !onKeco101 ? <TopBar /> : null}
         <div className={styles.workspace}>
           <div className={styles.content}>
             {children}

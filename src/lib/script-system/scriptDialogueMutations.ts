@@ -150,6 +150,28 @@ export async function updateDialogueRowContent(params: {
   return { oldContent };
 }
 
+export type DialogueRowContentUpdate = {
+  row: AssetRow;
+  oldContent: string;
+  newContent: string;
+};
+
+export async function updateDialogueRowsContent(params: {
+  supabase: SupabaseClient;
+  contentKey: string;
+  updates: Array<{ row: AssetRow; content: string }>;
+}): Promise<DialogueRowContentUpdate[]> {
+  return Promise.all(params.updates.map(async ({ row, content }) => {
+    const { oldContent } = await updateDialogueRowContent({
+      supabase: params.supabase,
+      row,
+      contentKey: params.contentKey,
+      content,
+    });
+    return { row, oldContent, newContent: content };
+  }));
+}
+
 export type DialogueSpeakerUpdate = {
   rowId: string;
   oldName: string;

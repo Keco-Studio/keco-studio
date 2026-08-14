@@ -84,6 +84,29 @@ function IconArchive({ active }: { active: boolean }) {
   );
 }
 
+function IconBook({ active }: { active: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <path
+        d="M9 5.2C7.7 4.1 6 3.5 4.2 3.5H2.5v9.8h1.7c1.8 0 3.5.6 4.8 1.7"
+        fill={active ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 5.2c1.3-1.1 3-1.7 4.8-1.7h1.7v9.8h-1.7c-1.8 0-3.5.6-4.8 1.7V5.2z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconCollapse() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
@@ -126,9 +149,12 @@ export function LeftNav({ userId }: { userId?: string }) {
     script: onScript,
     createMap: onCreateMap,
     gameDesignSystem: onGameDesignSystem,
+    keco101: onKeco101,
   } = navigationState;
 
-  const navigate = (item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem') => {
+  const navigate = (
+    item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem' | 'keco101',
+  ) => {
     const studioPreference = readStudioNavigationPreference(userId);
     const destination = getProductNavigationDestination(pathname, item, {
       scriptProjectId: onScript || item === 'script' ? readScriptProjectPreference()?.projectId : undefined,
@@ -169,6 +195,15 @@ export function LeftNav({ userId }: { userId?: string }) {
         K
       </div>
       <div className={styles.items}>
+        <button
+          type="button"
+          className={`${styles.item} ${onKeco101 ? styles.itemActive : ''}`}
+          aria-label="Keco 101"
+          aria-current={onKeco101 ? 'page' : undefined}
+          onClick={() => navigate('keco101')}
+        >
+          <IconBook active={onKeco101} />
+        </button>
         <button
           type="button"
           className={`${styles.item} ${onStudio ? styles.itemActive : ''}`}

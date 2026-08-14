@@ -26,4 +26,7 @@ __pycache__/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# tsx local compile cache
+.tmp-tsx/
 .md

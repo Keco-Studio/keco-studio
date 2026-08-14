@@ -26,6 +26,7 @@ jest.mock('@dnd-kit/utilities', () => ({
 }));
 
 import {
+  commitDialogueDrafts,
   deleteDialogueBlockAndHide,
   isDialogueDraftEmpty,
   isDialogueEditorOutsidePointer,
@@ -57,8 +58,7 @@ function render(isEditing: boolean) {
       onFinishEdit={jest.fn()}
       onInsertCharacter={jest.fn(async () => true)}
       onChangeSpeaker={jest.fn(async () => true)}
-      onSaveAction={jest.fn(async () => true)}
-      onSaveDialogue={jest.fn(async () => true)}
+      onSaveBlock={jest.fn(async () => true)}
       onDelete={jest.fn(async () => true)}
     />,
   );
@@ -74,14 +74,45 @@ function renderBlock(overrides: Partial<ScriptDialogueBlock>, isEditing = false)
       onFinishEdit={jest.fn()}
       onInsertCharacter={jest.fn(async () => true)}
       onChangeSpeaker={jest.fn(async () => true)}
-      onSaveAction={jest.fn(async () => true)}
-      onSaveDialogue={jest.fn(async () => true)}
+      onSaveBlock={jest.fn(async () => true)}
       onDelete={jest.fn(async () => true)}
     />,
   );
 }
 
 describe('ScriptEditableDialogBlock', () => {
+  it('commits changed action and dialogue drafts through one block save', async () => {
+    const saveBlock = jest.fn(async (_values: { action: string; dialogue: string }) => true);
+
+    await expect(commitDialogueDrafts({
+      blockId: 'speech',
+      sourceAction: 'old action',
+      sourceDialogue: 'old dialogue',
+      action: 'new action',
+      dialogue: 'new dialogue',
+    }, saveBlock)).resolves.toBe(true);
+
+    expect(saveBlock).toHaveBeenCalledTimes(1);
+    expect(saveBlock).toHaveBeenCalledWith({
+      action: 'new action',
+      dialogue: 'new dialogue',
+    });
+  });
+
+  it('does not save an unchanged dialogue draft', async () => {
+    const saveBlock = jest.fn(async (_values: { action: string; dialogue: string }) => true);
+
+    await expect(commitDialogueDrafts({
+      blockId: 'speech',
+      sourceAction: 'same action',
+      sourceDialogue: 'same dialogue',
+      action: 'same action',
+      dialogue: 'same dialogue',
+    }, saveBlock)).resolves.toBe(true);
+
+    expect(saveBlock).not.toHaveBeenCalled();
+  });
+
   it('uses only the avatar, action, and dialogue as edit entry controls', () => {
     const markup = render(false);
 
@@ -117,8 +148,7 @@ describe('ScriptEditableDialogBlock', () => {
         onFinishEdit={jest.fn()}
         onInsertCharacter={jest.fn(async () => true)}
         onChangeSpeaker={jest.fn(async () => true)}
-        onSaveAction={jest.fn(async () => true)}
-        onSaveDialogue={jest.fn(async () => true)}
+        onSaveBlock={jest.fn(async () => true)}
         onDelete={onDelete}
       />,
     );

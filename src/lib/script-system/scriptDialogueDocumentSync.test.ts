@@ -135,19 +135,16 @@ describe('script dialogue document sync', () => {
     expect(result.markdown.indexOf(inserted)).toBeLessThan(result.markdown.indexOf(C));
   });
 
-  it('uses the table position when generated neighbor text is absent from the source', () => {
+  it('rejects an unsafe table-position fallback when source neighbors do not match', () => {
     const inserted = '66666666-6666-4666-8666-666666666666';
-    const result = applyScriptDialogueCommand(source, {
+    expect(() => applyScriptDialogueCommand(source, {
       type: 'insert',
       blockId: inserted,
       text: 'Ben（looks outside）：',
       afterText: 'Generated previous row',
       beforeText: 'Generated next row',
       position: 2,
-    });
-
-    expect(result.markdown.indexOf(inserted)).toBeLessThan(result.markdown.indexOf(C));
-    expect(result.markdown).toContain('Ben（looks outside）：');
+    })).toThrow('SOURCE_MAPPING_AMBIGUOUS');
   });
 
   it('fills speech into an action-only speaker line', () => {
@@ -162,6 +159,43 @@ describe('script dialogue document sync', () => {
     });
 
     expect(result.markdown).toContain('Ada（smiles）：Hello');
+  });
+
+  it('combines a stable plain action block with the final dialogue draft', () => {
+    const actionOnly = source.replace('Ada：Hello', 'smiles');
+    const result = applyScriptDialogueCommand(actionOnly, {
+      type: 'edit',
+      blockId: A,
+      role: 'action',
+      previousText: 'smiles',
+      nextText: 'waves',
+      speaker: 'Ada',
+      dialogue: 'Hello',
+    });
+
+    expect(result.markdown).toContain(`<BlockAnchor id="${A}" />Ada（waves）：Hello`);
+    expect(result.changedBlockIds).toEqual([A]);
+  });
+
+  it('uses the previous dialogue to locate one line among the same speaker', () => {
+    const repeatedSpeaker = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${B}" />Ada：Other line`,
+    ].join('\n\n');
+    const result = applyScriptDialogueCommand(repeatedSpeaker, {
+      type: 'edit',
+      blockId: '66666666-6666-4666-8666-666666666666',
+      role: 'action',
+      previousText: '',
+      previousDialogue: 'Hello',
+      nextText: 'waves',
+      speaker: 'Ada',
+      dialogue: 'Changed',
+    });
+
+    expect(result.markdown).toContain(`<BlockAnchor id="${A}" />Ada（waves）：Changed`);
+    expect(result.markdown).toContain(`<BlockAnchor id="${B}" />Ada：Other line`);
+    expect(result.changedBlockIds).toEqual([A]);
   });
 
   it('merges repeated inserts for the same table row anchor', () => {
@@ -204,5 +238,80 @@ describe('script dialogue document sync', () => {
     expect(result.markdown).toContain(A);
     expect(result.markdown).not.toContain(secondAction);
     expect(result.markdown).not.toContain(secondSpeech);
+  });
+
+  it('edits the stable source block when visible text is duplicated', () => {
+    const duplicate = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${B}" />Ada：Hello`,
+    ].join('\n\n');
+
+    const result = applyScriptDialogueCommand(duplicate, {
+      type: 'edit',
+      blockId: B,
+      role: 'speech',
+      previousText: 'Ada：Hello',
+      nextText: 'Ada：Changed',
+    });
+
+    expect(result.changedBlockIds).toEqual([B]);
+    expect(result.markdown).toContain(`<BlockAnchor id="${A}" />Ada：Hello`);
+    expect(result.markdown).toContain(`<BlockAnchor id="${B}" />Ada：Changed`);
+  });
+
+  it('deletes the stable source block when visible text is duplicated', () => {
+    const duplicate = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${B}" />Ada：Hello`,
+    ].join('\n\n');
+
+    const result = applyScriptDialogueCommand(duplicate, {
+      type: 'delete',
+      blockId: B,
+      previousTexts: ['Ada：Hello'],
+    });
+
+    expect(result.changedBlockIds).toEqual([B]);
+    expect(result.markdown).toContain(A);
+    expect(result.markdown).not.toContain(B);
+  });
+
+  it('repairs duplicate empty cue blocks created by legacy split saves', () => {
+    const broken = [
+      `<BlockAnchor id="${A}" />Ada：One`,
+      `<BlockAnchor id="${B}" />Ada（old cue）：`,
+      `<BlockAnchor id="${C}" />Ada（old cue）：`,
+    ].join('\n\n');
+
+    const result = applyScriptDialogueCommand(broken, {
+      type: 'edit',
+      blockId: '66666666-6666-4666-8666-666666666666',
+      role: 'action',
+      previousText: 'old cue',
+      nextText: 'new cue',
+      speaker: 'Ada',
+      dialogue: 'One',
+    });
+
+    expect(result.markdown).toContain('Ada（new cue）：One');
+    expect(result.markdown).not.toContain('old cue');
+    expect(result.changedBlockIds).toEqual([A, B, C]);
+  });
+
+  it('deletes the contiguous legacy split-save cluster', () => {
+    const broken = [
+      `<BlockAnchor id="${A}" />Ada：One`,
+      `<BlockAnchor id="${B}" />Ada（old cue）：`,
+      `<BlockAnchor id="${C}" />Ada（old cue）：`,
+    ].join('\n\n');
+
+    const result = applyScriptDialogueCommand(broken, {
+      type: 'delete',
+      blockId: '66666666-6666-4666-8666-666666666666',
+      previousTexts: ['old cue', 'Ada：One'],
+    });
+
+    expect(result.changedBlockIds).toEqual([A, B, C]);
+    expect(result.markdown.trim()).toBe('');
   });
 });

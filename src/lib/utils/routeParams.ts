@@ -20,6 +20,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'script-system',
   'create-map',
   'game-design-systems',
+  'keco-101',
   'design-upload',
   'mcp',
 ] as const;
@@ -53,8 +54,8 @@ export function parseRouteParams(
     };
   }
 
-  // Product workspaces never inherit Studio project-route semantics.
-  if (parts[0] === 'create-map' || parts[0] === 'game-design-systems') {
+  // Product workspaces are never Studio project routes.
+  if (parts[0] === 'create-map' || parts[0] === 'game-design-systems' || parts[0] === 'keco-101') {
     return {
       projectId: null,
       libraryId: null,
