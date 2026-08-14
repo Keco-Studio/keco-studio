@@ -742,7 +742,8 @@ export function ImportScreen({
     }
     const columnId = activeMappings[source.fieldId];
     if (!columnId) return source.fieldId;
-    return `${columnById.get(columnId)?.name ?? columnId} → ${source.fieldId}`;
+    const field = activeDefinitions.find((item) => item.id === source.fieldId);
+    return `${columnById.get(columnId)?.name ?? columnId} → ${field?.label ?? source.fieldId}`;
   }
 
   const activeLibraryName = activeLibraryId
@@ -1060,16 +1061,32 @@ export function ImportScreen({
                           <span style={{
                             flex: 1,
                             minWidth: 0,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: isError ? 'var(--simulation-danger)' : 'var(--simulation-ink-800)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
+                            color: isError ? 'var(--simulation-danger)' : 'var(--simulation-ink-800)',
                           }}
                           >
-                            {col?.name ?? slot.columnId}
-                            <span style={{ marginLeft: 6, fontWeight: 600 }}>→ {slot.fieldId}</span>
+                            <span style={{
+                              minWidth: 0,
+                              fontSize: 13,
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            >
+                              {col?.name ?? slot.columnId}
+                            </span>
+                            <span style={{
+                              flexShrink: 0,
+                              marginLeft: 6,
+                              fontSize: 13,
+                              fontWeight: 600,
+                            }}
+                            >
+                              → {field.label}
+                            </span>
                           </span>
                           <StatusIcon ok={!isError} message={errorMessage} />
                         </button>
@@ -1184,9 +1201,6 @@ export function ImportScreen({
           >
             {activeDefinitions.map((field) => {
                 const mappedCol = activeMappings[field.id];
-                const mappedLabel = mappedCol
-                  ? activeFields.find((col) => col.key === mappedCol)?.name
-                  : null;
                 const missingRequired = Boolean(
                   activeLibSelected
                   && field.required
@@ -1202,32 +1216,16 @@ export function ImportScreen({
                     <span style={{
                       flex: 1,
                       minWidth: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 2,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: missingRequired ? 'var(--simulation-danger)' : 'var(--simulation-ink-800)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                     >
-                      <span style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: missingRequired ? 'var(--simulation-danger)' : 'var(--simulation-ink-800)',
-                      }}
-                      >
-                        {field.label}
-                        {field.required ? <span aria-hidden="true"> *</span> : null}
-                      </span>
-                      {mappedLabel ? (
-                        <span style={{
-                          fontSize: 12,
-                          color: 'var(--simulation-ink-400)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        >
-                          {mappedLabel}
-                        </span>
-                      ) : null}
+                      {field.label}
+                      {field.required ? <span aria-hidden="true"> *</span> : null}
                     </span>
                     <span
                       role={mappedCol ? 'button' : undefined}

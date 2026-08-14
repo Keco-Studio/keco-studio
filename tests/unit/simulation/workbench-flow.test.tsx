@@ -75,8 +75,11 @@ describe('simulation workbench flow', () => {
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('formatFieldImportErrors');
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('fieldMatchesImportError');
     expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('message={errorMessage}');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('→');
+    expect(source.slice(sourceRowsStart, sourceRowsEnd)).toContain('{field.label}');
     expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('AI mapping...');
     expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('mappingErrorTooltip');
+    expect(source.slice(targetRowsStart, targetRowsEnd)).not.toContain('mappedLabel');
   });
 
   it('keeps import field errors visible above the status icon', () => {
