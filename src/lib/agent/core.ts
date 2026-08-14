@@ -69,6 +69,8 @@ import {
 } from './turn-budget';
 import { createAccessVerificationCache } from '@/lib/services/authorizationService';
 import { normalizeToolCallForReplay } from './tool-call-recovery';
+import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
+import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 
 const MAX_ITERATIONS = 50;
 
@@ -135,13 +137,18 @@ function parseArgs(raw: string): ParsedArgs {
   return { args: parsed as Record<string, unknown> };
 }
 
-async function buildSystemMessage(
+export async function buildAgentSystemMessage(
   ctx: ToolContext,
   retrievedContextBlock?: string
 ): Promise<ChatMessage> {
   let projectName: string | undefined;
   let currentLibraryName = ctx.currentLibraryName;
   let currentFolderName = ctx.currentFolderName;
+  let gameDesignSystem: {
+    version: number;
+    policyText: string;
+    appliedRuleIds: string[];
+  } | undefined;
 
   try {
     const { data: project } = await ctx.supabase
@@ -180,6 +187,27 @@ async function buildSystemMessage(
     }
   }
 
+  try {
+    const { data: binding } = await ctx.supabase
+      .from('project_game_design_systems')
+      .select('game_design_systems(migration_status), game_design_system_versions(version_number, rules)')
+      .eq('project_id', ctx.projectId)
+      .maybeSingle();
+    const row = binding as { game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
+    const rawSystem = Array.isArray(row?.game_design_systems) ? row?.game_design_systems[0] : row?.game_design_systems;
+    const rawVersion = Array.isArray(row?.game_design_system_versions) ? row?.game_design_system_versions[0] : row?.game_design_system_versions;
+    if (rawSystem && typeof rawSystem === 'object' && rawVersion && typeof rawVersion === 'object') {
+      const system = rawSystem as Record<string, unknown>;
+      const version = rawVersion as Record<string, unknown>;
+      if (system.migration_status === 'ready' && typeof version.version_number === 'number') {
+        const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
+        gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
+      }
+    }
+  } catch {
+    // A missing binding must never block the normal agent turn.
+  }
+
   const basePrompt = buildSystemPrompt({
       projectName,
       projectId: ctx.projectId,
@@ -190,6 +218,7 @@ async function buildSystemMessage(
       currentLibraryId: ctx.currentLibraryId,
       currentLibraryName,
       userRole: ctx.userRole,
+      gameDesignSystem,
     });
 
   const content = retrievedContextBlock
@@ -753,7 +782,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       conversationId,
       input.userMessage
     );
-    const systemMessage = await buildSystemMessage(toolContext, retrievedContextBlock);
+    const systemMessage = await buildAgentSystemMessage(toolContext, retrievedContextBlock);
 
     const history = await loadConversationHistory(toolContext.supabase, conversationId);
     const compactedHistory = compactLargeUserContentInMessages(history);
@@ -844,7 +873,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     const conversation = await getConversation(turnContext.supabase, conversationId);
     const meta = conversation?.meta ?? input.conversationMeta;
 
-    const systemMessage = await buildSystemMessage(turnContext);
+    const systemMessage = await buildAgentSystemMessage(turnContext);
     const {
       messages: suspendedMessages,
       pendingToolCall,

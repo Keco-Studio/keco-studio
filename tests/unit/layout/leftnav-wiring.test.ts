@@ -73,6 +73,7 @@ describe('LeftNav wiring', () => {
       simulation: false,
       script: false,
       createMap: true,
+      gameDesignSystem: false,
     });
   });
 
@@ -105,7 +106,7 @@ describe('LeftNav wiring', () => {
       'Simulation',
       'Script',
       'Create Map',
-      'Coming soon',
+      'Game Design System',
     ]);
     expect(markup).toContain('aria-label="Create Map" aria-current="page"');
   });

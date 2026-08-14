@@ -1,7 +1,7 @@
 import { isCreateMapPath } from './isCreateMapPath';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 
-export type ProductNavigationItem = 'studio' | 'simulation' | 'script' | 'createMap';
+export type ProductNavigationItem = 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem';
 
 export type ProductNavigationState = Record<ProductNavigationItem, boolean>;
 
@@ -16,16 +16,22 @@ function isSimulationPath(pathname: string | null): boolean {
   return (pathname ?? '').startsWith('/simulation-system');
 }
 
+function isGameDesignSystemPath(pathname: string | null): boolean {
+  return (pathname ?? '').startsWith('/game-design-systems');
+}
+
 export function getProductNavigationState(pathname: string | null): ProductNavigationState {
   const simulation = isSimulationPath(pathname);
   const script = isScriptSystemPath(pathname);
   const createMap = isCreateMapPath(pathname);
+  const gameDesignSystem = isGameDesignSystemPath(pathname);
 
   return {
-    studio: !simulation && !script && !createMap,
+    studio: !simulation && !script && !createMap && !gameDesignSystem,
     simulation,
     script,
     createMap,
+    gameDesignSystem,
   };
 }
 
@@ -59,5 +65,6 @@ export function getProductNavigationDestination(
   if (item === 'script') {
     return preferences.scriptProjectId ? `/script-system/${preferences.scriptProjectId}` : '/script-system';
   }
+  if (item === 'gameDesignSystem') return '/game-design-systems';
   return '/create-map';
 }

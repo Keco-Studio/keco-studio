@@ -120,9 +120,15 @@ export function LeftNav({ userId }: { userId?: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
   const navigationState = getProductNavigationState(pathname);
-  const { studio: onStudio, simulation: onSimulation, script: onScript, createMap: onCreateMap } = navigationState;
+  const {
+    studio: onStudio,
+    simulation: onSimulation,
+    script: onScript,
+    createMap: onCreateMap,
+    gameDesignSystem: onGameDesignSystem,
+  } = navigationState;
 
-  const navigate = (item: 'studio' | 'simulation' | 'script' | 'createMap') => {
+  const navigate = (item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem') => {
     const studioPreference = readStudioNavigationPreference(userId);
     const destination = getProductNavigationDestination(pathname, item, {
       scriptProjectId: onScript || item === 'script' ? readScriptProjectPreference()?.projectId : undefined,
@@ -201,12 +207,12 @@ export function LeftNav({ userId }: { userId?: string }) {
         </button>
         <button
           type="button"
-          className={`${styles.item} ${styles.itemDisabled}`}
-          aria-label="Coming soon"
-          aria-disabled="true"
-          tabIndex={-1}
+          className={`${styles.item} ${onGameDesignSystem ? styles.itemActive : ''}`}
+          aria-label="Game Design System"
+          aria-current={onGameDesignSystem ? 'page' : undefined}
+          onClick={() => navigate('gameDesignSystem')}
         >
-          <IconArchive active={false} />
+          <IconArchive active={onGameDesignSystem} />
         </button>
       </div>
       <div className={styles.footer}>

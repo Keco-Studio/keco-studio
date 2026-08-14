@@ -27,14 +27,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
+  const hideSidebarForGameDesignSystems = pathname?.startsWith('/game-design-systems') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
   const createMapChrome = getCreateMapDashboardChrome(pathname);
   const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
   // Simulation and Create Map hide the Studio resource sidebar and Agent Chat. Script keeps both,
   // and mounts ScriptSidebar as a left sibling of TopBar/main.
-  const showStudioSidebar = !hideSidebarForSimulation && !onScriptSystem && !hideSidebarForCreateMap;
+  const showStudioSidebar = !hideSidebarForSimulation && !hideSidebarForGameDesignSystems && !onScriptSystem && !hideSidebarForCreateMap;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
-  const hideChatPanel = hideSidebarForSimulation || !createMapChrome.showChatPanel;
+  const hideChatPanel = hideSidebarForSimulation || hideSidebarForGameDesignSystems || !createMapChrome.showChatPanel;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {

@@ -18,16 +18,16 @@ describe('Keco Script LeftNav wiring', () => {
     expect(isScriptSystemPath('/proj/doc/x')).toBe(false);
   });
 
-  it('LeftNav includes Script control between Simulation and coming-soon', () => {
+  it('LeftNav includes Script control between Simulation and Game Design System', () => {
     const source = read('src/components/layout/LeftNav.tsx');
     expect(source).toContain("aria-label=\"Script\"");
     expect(source).toContain('/script-system');
     const sim = source.indexOf("aria-label=\"Simulation\"");
     const script = source.indexOf("aria-label=\"Script\"");
-    const soon = source.indexOf("aria-label=\"Coming soon\"");
+    const gameDesignSystem = source.indexOf("aria-label=\"Game Design System\"");
     expect(sim).toBeGreaterThan(-1);
     expect(script).toBeGreaterThan(sim);
-    expect(soon).toBeGreaterThan(script);
+    expect(gameDesignSystem).toBeGreaterThan(script);
   });
 
   it('Studio active excludes script-system paths', () => {
@@ -36,6 +36,7 @@ describe('Keco Script LeftNav wiring', () => {
       simulation: false,
       script: true,
       createMap: false,
+      gameDesignSystem: false,
     });
   });
 

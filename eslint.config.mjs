@@ -8,6 +8,7 @@ export default [
       'node_modules/**',
       '.worktrees/**',
       '.next/**',
+      '.next-playwright/**',
       'dist/**',
       'build/**',
       'coverage/**',

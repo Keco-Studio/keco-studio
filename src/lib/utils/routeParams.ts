@@ -19,6 +19,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'simulation-system',
   'script-system',
   'create-map',
+  'game-design-systems',
   'design-upload',
   'mcp',
 ] as const;
@@ -52,8 +53,8 @@ export function parseRouteParams(
     };
   }
 
-  // Create Map is a product workspace, never a Studio project route.
-  if (parts[0] === 'create-map') {
+  // Product workspaces never inherit Studio project-route semantics.
+  if (parts[0] === 'create-map' || parts[0] === 'game-design-systems') {
     return {
       projectId: null,
       libraryId: null,
