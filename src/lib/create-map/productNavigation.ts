@@ -1,7 +1,8 @@
 import { isCreateMapPath } from './isCreateMapPath';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
+import { isKeco101Path } from '@/lib/keco-101/isKeco101Path';
 
-export type ProductNavigationItem = 'studio' | 'simulation' | 'script' | 'createMap';
+export type ProductNavigationItem = 'studio' | 'simulation' | 'script' | 'createMap' | 'keco101';
 
 export type ProductNavigationState = Record<ProductNavigationItem, boolean>;
 
@@ -20,12 +21,14 @@ export function getProductNavigationState(pathname: string | null): ProductNavig
   const simulation = isSimulationPath(pathname);
   const script = isScriptSystemPath(pathname);
   const createMap = isCreateMapPath(pathname);
+  const keco101 = isKeco101Path(pathname);
 
   return {
-    studio: !simulation && !script && !createMap,
+    studio: !simulation && !script && !createMap && !keco101,
     simulation,
     script,
     createMap,
+    keco101,
   };
 }
 
@@ -59,5 +62,6 @@ export function getProductNavigationDestination(
   if (item === 'script') {
     return preferences.scriptProjectId ? `/script-system/${preferences.scriptProjectId}` : '/script-system';
   }
+  if (item === 'keco101') return '/keco-101';
   return '/create-map';
 }

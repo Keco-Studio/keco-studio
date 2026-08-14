@@ -19,6 +19,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'simulation-system',
   'script-system',
   'create-map',
+  'keco-101',
   'design-upload',
   'mcp',
 ] as const;
@@ -52,8 +53,8 @@ export function parseRouteParams(
     };
   }
 
-  // Create Map is a product workspace, never a Studio project route.
-  if (parts[0] === 'create-map') {
+  // Product workspaces are never Studio project routes.
+  if (parts[0] === 'create-map' || parts[0] === 'keco-101') {
     return {
       projectId: null,
       libraryId: null,
