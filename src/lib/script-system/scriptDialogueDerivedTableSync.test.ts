@@ -24,10 +24,10 @@ function row(
 }
 
 const rows = [
-  row('previous', '2', '林溪', '前一句', 1),
-  row('action', '3', '陆扬', '低声说', 2),
-  row('speech', '2', '陆扬', '原对白', 3),
-  row('next', '2', '林溪', '后一句', 4),
+  row('previous', '2', 'Lin', 'previous line', 1),
+  row('action', '3', 'Lu', 'whispers', 2),
+  row('speech', '2', 'Lu', 'original line', 3),
+  row('next', '2', 'Lin', 'next line', 4),
 ];
 
 describe('planDerivedDialogueCommand', () => {
@@ -35,17 +35,17 @@ describe('planDerivedDialogueCommand', () => {
     const plan = planDerivedDialogueCommand(rows, fields, {
       type: 'edit',
       role: 'action',
-      previousText: '低声说',
-      previousDialogue: '原对白',
-      nextText: '笑着说',
-      speaker: '陆扬',
-      dialogue: '新对白',
+      previousText: 'whispers',
+      previousDialogue: 'original line',
+      nextText: 'smiles',
+      speaker: 'Lu',
+      dialogue: 'new line',
     });
 
     expect(plan).toMatchObject({
       type: 'edit',
       block: { actionRowId: 'action', speechRowId: 'speech' },
-      values: { speaker: '陆扬', action: '笑着说', dialogue: '新对白' },
+      values: { speaker: 'Lu', action: 'smiles', dialogue: 'new line' },
     });
   });
 
@@ -53,15 +53,15 @@ describe('planDerivedDialogueCommand', () => {
     const plan = planDerivedDialogueCommand(rows, fields, {
       type: 'insert',
       blockId: 'source-block',
-      text: '林溪（轻轻点头）：新增对白',
-      afterText: '陆扬：原对白',
-      beforeText: '林溪：后一句',
+      text: 'Lin（nods）：added line',
+      afterText: 'Lu：original line',
+      beforeText: 'Lin：next line',
     });
 
     expect(plan).toEqual({
       type: 'insert',
       afterRowId: 'speech',
-      values: { speaker: '林溪', action: '轻轻点头', dialogue: '新增对白' },
+      values: { speaker: 'Lin', action: 'nods', dialogue: 'added line' },
     });
   });
 
@@ -69,22 +69,22 @@ describe('planDerivedDialogueCommand', () => {
     const plan = planDerivedDialogueCommand(rows, fields, {
       type: 'insert',
       blockId: 'source-block',
-      text: '林溪：开场对白',
-      beforeText: '林溪：前一句',
+      text: 'Lin：opening line',
+      beforeText: 'Lin：previous line',
     });
 
     expect(plan).toEqual({
       type: 'insert',
       afterRowId: null,
       insertAtStart: true,
-      values: { speaker: '林溪', action: '', dialogue: '开场对白' },
+      values: { speaker: 'Lin', action: '', dialogue: 'opening line' },
     });
   });
 
   it('deletes only a block matching both its action and speech text', () => {
     const plan = planDerivedDialogueCommand(rows, fields, {
       type: 'delete',
-      previousTexts: ['低声说', '陆扬：原对白'],
+      previousTexts: ['whispers', 'Lu：original line'],
     });
 
     expect(plan).toMatchObject({
@@ -101,11 +101,11 @@ describe('planDerivedDialogueCommand', () => {
       {
         type: 'edit',
         role: 'action',
-        previousText: '低声说',
-        previousDialogue: '原对白',
-        nextText: '笑着说',
-        speaker: '陆扬',
-        dialogue: '新对白',
+        previousText: 'whispers',
+        previousDialogue: 'original line',
+        nextText: 'smiles',
+        speaker: 'Lu',
+        dialogue: 'new line',
       },
     );
 
@@ -117,9 +117,9 @@ describe('planDerivedDialogueCommand', () => {
       contentFieldId: 'content',
       actionRowId: 'action',
       speechRowId: 'speech',
-      speaker: '陆扬',
-      action: '笑着说',
-      dialogue: '新对白',
+      speaker: 'Lu',
+      action: 'smiles',
+      dialogue: 'new line',
       speechType: '2',
     });
   });
