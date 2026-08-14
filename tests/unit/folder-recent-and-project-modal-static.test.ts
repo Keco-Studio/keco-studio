@@ -5,10 +5,16 @@ import path from 'node:path';
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
 
 describe('folder/recent cards and project modal visual contracts', () => {
-  it('keeps the table scrollbars inside the viewport-sized table region', () => {
+  it('uses the page for vertical scrolling and keeps a sticky horizontal scrollbar', () => {
     const source = read('src/components/libraries/LibraryAssetsTable.module.css');
-    expect(source).toMatch(/\.tableContainer\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*auto;/s);
-    expect(source).toMatch(/\.tableContainer\s*\{[^}]*max-height:\s*calc\(100vh\s*-/s);
+    const table = read('src/components/libraries/LibraryAssetsTable.tsx');
+
+    expect(source).toMatch(/\.tableContainer\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s);
+    expect(source).not.toMatch(/\.tableContainer\s*\{[^}]*max-height:/s);
+    expect(source).toMatch(
+      /\.stickyHorizontalScrollbar\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s,
+    );
+    expect(table).toContain('<StickyHorizontalScrollbar scrollContainerRef={tableContainerRef} />');
   });
 
   it('loads and renders folder documents alongside libraries', () => {

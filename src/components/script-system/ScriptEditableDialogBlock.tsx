@@ -20,8 +20,7 @@ export type ScriptEditableDialogBlockProps = {
   onFinishEdit: () => void;
   onInsertCharacter: (speaker: string) => Promise<boolean>;
   onChangeSpeaker: (speaker: string) => Promise<boolean>;
-  onSaveAction: (value: string) => Promise<boolean>;
-  onSaveDialogue: (value: string) => Promise<boolean>;
+  onSaveBlock: (values: { action: string; dialogue: string }) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
 };
 
@@ -40,6 +39,17 @@ type DialogueDraftState = {
   action: string;
   dialogue: string;
 };
+
+export async function commitDialogueDrafts(
+  drafts: DialogueDraftState,
+  saveBlock: (values: { action: string; dialogue: string }) => Promise<boolean>,
+): Promise<boolean> {
+  if (
+    drafts.action === drafts.sourceAction
+    && drafts.dialogue === drafts.sourceDialogue
+  ) return true;
+  return saveBlock({ action: drafts.action, dialogue: drafts.dialogue });
+}
 
 type DialogueEditTarget = 'action' | 'dialogue';
 
@@ -106,8 +116,7 @@ export function ScriptEditableDialogBlock({
   onFinishEdit,
   onInsertCharacter,
   onChangeSpeaker,
-  onSaveAction,
-  onSaveDialogue,
+  onSaveBlock,
   onDelete,
 }: ScriptEditableDialogBlockProps) {
   const [hovered, setHovered] = useState(false);
@@ -145,23 +154,12 @@ export function ScriptEditableDialogBlock({
 
   const commitDrafts = useCallback((): Promise<boolean> => {
     if (commitRef.current) return commitRef.current;
-    const commit = async () => {
-      if (
-        reconciledDrafts.action !== reconciledDrafts.sourceAction
-        && !await onSaveAction(reconciledDrafts.action)
-      ) return false;
-      if (
-        reconciledDrafts.dialogue !== reconciledDrafts.sourceDialogue
-        && !await onSaveDialogue(reconciledDrafts.dialogue)
-      ) return false;
-      return true;
-    };
-    const pending = commit().finally(() => {
+    const pending = commitDialogueDrafts(reconciledDrafts, onSaveBlock).finally(() => {
       if (commitRef.current === pending) commitRef.current = null;
     });
     commitRef.current = pending;
     return pending;
-  }, [onSaveAction, onSaveDialogue, reconciledDrafts]);
+  }, [onSaveBlock, reconciledDrafts]);
 
   useEffect(() => {
     if (!isEditing) return;

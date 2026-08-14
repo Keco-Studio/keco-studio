@@ -26,11 +26,64 @@ import {
   deleteDialogueBlock,
   insertDialogueThreadAfter,
   updateDialogueBlockSpeaker,
+  updateDialogueRowsContent,
 } from './scriptDialogueMutations';
+
+describe('updateDialogueRowsContent', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    updateAsset.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('starts independent action and speech updates concurrently', async () => {
+    let releaseAction!: () => void;
+    let releaseSpeech!: () => void;
+    updateAsset
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        releaseAction = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        releaseSpeech = resolve;
+      }));
+    const rows = [
+      {
+        id: 'action',
+        libraryId: 'library',
+        name: 'Hero',
+        propertyValues: { content: 'old action' },
+      },
+      {
+        id: 'speech',
+        libraryId: 'library',
+        name: 'Hero',
+        propertyValues: { content: 'old dialogue' },
+      },
+    ];
+
+    const pending = updateDialogueRowsContent({
+      supabase: {} as never,
+      contentKey: 'content',
+      updates: [
+        { row: rows[0], content: 'new action' },
+        { row: rows[1], content: 'new dialogue' },
+      ],
+    });
+    await Promise.resolve();
+
+    expect(updateAsset).toHaveBeenCalledTimes(2);
+    releaseAction();
+    releaseSpeech();
+    await expect(pending).resolves.toEqual([
+      { row: rows[0], oldContent: 'old action', newContent: 'new action' },
+      { row: rows[1], oldContent: 'old dialogue', newContent: 'new dialogue' },
+    ]);
+  });
+});
 
 describe('insertDialogueThreadAfter rollback', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    updateAsset.mockReset().mockResolvedValue(undefined);
   });
 
   it('normalizes zero-based imported rows before inserting below the anchor', async () => {
@@ -107,6 +160,7 @@ describe('insertDialogueThreadAfter rollback', () => {
 describe('deleteDialogueBlock', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    updateAsset.mockReset().mockResolvedValue(undefined);
   });
 
   it('deletes both rows that render the avatar, action, and dialogue block', async () => {
@@ -152,6 +206,7 @@ describe('deleteDialogueBlock', () => {
 describe('updateDialogueBlockSpeaker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    updateAsset.mockReset().mockResolvedValue(undefined);
   });
 
   it('updates the action and speech rows to the selected character', async () => {

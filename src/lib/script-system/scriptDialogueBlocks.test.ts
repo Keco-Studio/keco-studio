@@ -3,6 +3,7 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 import {
   buildScriptDialogueBlocks,
   listScriptDialogueCharacters,
+  sourceTextForDialogueBlock,
 } from './scriptDialogueBlocks';
 
 const columns = {
@@ -124,5 +125,13 @@ describe('scriptDialogueBlocks', () => {
         dialogue: 'Forward.',
       }),
     ]);
+  });
+
+  it('uses raw narration text as a source-document insertion neighbor', () => {
+    const [environment] = buildScriptDialogueBlocks([
+      row('env', { type: '3', name: '', content: 'Rain is still falling.' }),
+    ], columns);
+
+    expect(sourceTextForDialogueBlock(environment, 'last')).toBe('Rain is still falling.');
   });
 });

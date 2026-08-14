@@ -10,6 +10,7 @@ import {
   type DocumentStateToken,
 } from '@/lib/documents/documentStateTypes';
 import { isUuid } from '@/lib/utils/uuid';
+import type { DerivedDialogueTableOperation } from '@/lib/script-system/scriptDialogueDerivedTableSync';
 import { getSupabaseServiceRoleClient } from './supabaseServiceRole';
 
 export type ReplaceDocumentAsAgentInput = {
@@ -19,6 +20,11 @@ export type ReplaceDocumentAsAgentInput = {
   expected: DocumentStateToken;
   expectedUpdateIds: readonly string[];
   markdown: string;
+  derivedTableOperations?: readonly DerivedDialogueTableOperation[];
+};
+
+export type ReplaceDocumentAsAgentOptions = {
+  current?: AuthoritativeDocumentState;
 };
 
 type ReplacementRpcRow = {
@@ -38,7 +44,8 @@ function firstRow(data: unknown): ReplacementRpcRow {
 }
 
 export async function replaceDocumentAsAgent(
-  input: ReplaceDocumentAsAgentInput
+  input: ReplaceDocumentAsAgentInput,
+  options: ReplaceDocumentAsAgentOptions = {},
 ): Promise<AuthoritativeDocumentState> {
   if (!isUuid(input.actorUserId) || !isUuid(input.projectId) || !isUuid(input.documentId)) {
     throw new Error('Invalid Agent document replacement scope');
@@ -46,7 +53,8 @@ export async function replaceDocumentAsAgent(
   documentContentCodec.validate(input.markdown);
 
   const admin = getSupabaseServiceRoleClient();
-  const current = await documentStateGateway.read(admin, input.documentId);
+  const current = options.current
+    ?? await documentStateGateway.read(admin, input.documentId);
   if (current.projectId !== input.projectId) {
     throw new DocumentAccessError('Document project does not match the Agent scope');
   }
@@ -71,9 +79,14 @@ export async function replaceDocumentAsAgent(
     current.yjsStateBase64,
     current.updateTail.map((update) => update.updateBase64)
   );
-  const currentMarkdown = await documentContentCodec.yjsStateToMarkdown(merged, []);
+  const currentMarkdown = options.current
+    ? current.markdown
+    : await documentContentCodec.yjsStateToMarkdown(merged, []);
   const replacementYjsState = await documentContentCodec.markdownToYjsState(input.markdown);
-  const { data, error } = await admin.rpc('replace_document_with_markdown', {
+  const rpcName = input.derivedTableOperations
+    ? 'replace_document_with_markdown_and_sync_tables'
+    : 'replace_document_with_markdown';
+  const rpcInput = {
     p_document_id: input.documentId,
     p_actor_user_id: input.actorUserId,
     p_backup_version_id: globalThis.crypto.randomUUID(),
@@ -84,7 +97,11 @@ export async function replaceDocumentAsAgent(
     p_current_markdown: currentMarkdown,
     p_replacement_yjs_state: replacementYjsState,
     p_replacement_markdown: input.markdown,
-  });
+    ...(input.derivedTableOperations
+      ? { p_derived_table_operations: input.derivedTableOperations }
+      : {}),
+  };
+  const { data, error } = await admin.rpc(rpcName, rpcInput);
 
   if (error) {
     if (error.code === 'PT409') throw new DocumentStateConflictError(error.message, current.token);

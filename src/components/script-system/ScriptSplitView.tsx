@@ -187,11 +187,10 @@ export function ScriptSplitView({
         onChangeBlockSpeaker: (blockId: string, speaker: string) => (
           dialogueEditor.changeBlockSpeaker(blockId, speaker)
         ),
-        onSaveBlockField: (
+        onSaveBlock: (
           blockId: string,
-          field: 'action' | 'dialogue',
-          value: string,
-        ) => dialogueEditor.saveBlockField(blockId, field, value),
+          values: { action: string; dialogue: string },
+        ) => dialogueEditor.saveBlock(blockId, values),
         onDeleteBlock: (blockId: string) => dialogueEditor.deleteBlock(blockId),
         onReorderBlock: (fromIndex: number, toIndex: number) => (
           dialogueEditor.reorderBlock(fromIndex, toIndex)

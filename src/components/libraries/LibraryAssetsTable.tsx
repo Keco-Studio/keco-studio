@@ -46,6 +46,7 @@ import { AddColumnModal, type AddColumnFormPayload } from './components/AddColum
 import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { VisualNovelScriptView } from './components/VisualNovelScriptView';
 import { ViewerBanner } from './components/ViewerBanner';
+import { StickyHorizontalScrollbar } from './components/StickyHorizontalScrollbar';
 import { buildTableIndexes } from './utils/tableIndexes';
 import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
 import { LibraryAssetDetailDrawerWiring } from './components/LibraryAssetDetailDrawerWiring';
@@ -1040,6 +1041,9 @@ export function LibraryAssetsTable({
             </table>
           )}
         </div>
+        {scriptViewMode !== 'script' && (
+          <StickyHorizontalScrollbar scrollContainerRef={tableContainerRef} />
+        )}
       </div>
 
       <LibraryAssetDetailDrawerWiring

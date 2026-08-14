@@ -9,6 +9,8 @@ import { showErrorToast } from '@/lib/utils/toast';
 import {
   buildScriptDialogueBlocks,
   listScriptDialogueCharacters,
+  resolveSpeechTypeForSpeaker,
+  sourceTextForDialogueBlock,
   type ScriptDialogueBlock,
   type ScriptDialogueCharacter,
 } from '@/lib/script-system/scriptDialogueBlocks';
@@ -20,8 +22,8 @@ import {
   insertDialogueThreadAfter,
   reorderDialogueBlock,
   restoreDeletedDialogueBlock,
-  updateDialogueRowContent,
   updateDialogueBlockSpeaker,
+  updateDialogueRowsContent,
   type DialogueSpeakerUpdate,
   type DeletedDialogueSnapshot,
   type ScriptDialogueFieldKeys,
@@ -33,7 +35,6 @@ import {
   isMissingScriptDialogueRpcError,
   removeDeletedDialogueRows,
 } from '@/lib/script-system/scriptDialogueRpc';
-import { resolveSpeechTypeForSpeaker } from '@/lib/script-system/scriptDialogueBlocks';
 import { deleteAssets } from '@/lib/services/libraryAssetsService';
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
 import { syncScriptDialogueDocumentWithConflictRetry } from '@/lib/script-system/scriptDialogueDocumentSyncClient';
@@ -92,6 +93,17 @@ export function resolveEditingBlockAfterFinish(
   finishedBlockId: string,
 ): string | null {
   return currentBlockId === finishedBlockId ? null : currentBlockId;
+}
+
+export function applySavedDialogueContent(
+  rows: AssetRow[],
+  rowId: string,
+  contentKey: string,
+  content: string,
+): AssetRow[] {
+  return rows.map((row) => row.id === rowId
+    ? { ...row, propertyValues: { ...row.propertyValues, [contentKey]: content } }
+    : row);
 }
 
 export type UseScriptDialogueEditorArgs = {
@@ -176,11 +188,6 @@ export function useScriptDialogueEditor({
     setHistoryFuture([]);
   }, []);
 
-  const findRow = useCallback(
-    (rowId: string) => rows.find((row) => row.id === rowId),
-    [rows],
-  );
-
   const isDerivedScript = Boolean(projectId && sourceDocumentId && sourceToken);
 
   const syncSource = useCallback(async (command: Parameters<typeof syncScriptDialogueDocumentWithConflictRetry>[0]['command']) => {
@@ -208,57 +215,50 @@ export function useScriptDialogueEditor({
     void queryClient.invalidateQueries({ queryKey: queryKeys.documentState(sourceDocumentId) });
   }, [isDerivedScript, projectId, queryClient, sourceDocumentId, sourceToken, supabase]);
 
-  const sourceTextForBlock = useCallback((candidate: ScriptDialogueBlock, edge: 'first' | 'last') => {
-    const action = candidate.action.trim();
-    const speech = candidate.dialogue.trim()
-      ? `${candidate.speaker}：${candidate.dialogue}`
-      : '';
-    return edge === 'first' ? (action || speech) : (speech || action);
-  }, []);
-
-  const insertSourceTextForEmptyField = useCallback(async (
+  const insertSourceTextForDraft = useCallback(async (
     block: ScriptDialogueBlock,
-    field: 'action' | 'dialogue',
-    text: string,
+    values: { action: string; dialogue: string },
   ) => {
     const index = allDialogueBlocks.findIndex((candidate) => candidate.id === block.id);
-    const ownAction = field === 'dialogue' && block.action.trim() ? block.action : '';
-    const previousText = ownAction || (index > 0 ? sourceTextForBlock(allDialogueBlocks[index - 1], 'last') : '');
-    const nextText = index >= 0 && index < allDialogueBlocks.length - 1
-      ? sourceTextForBlock(allDialogueBlocks[index + 1], 'first')
+    if (index < 0 && allDialogueBlocks.length > 0) {
+      throw new Error('Dialogue block is not available for source insertion');
+    }
+    const previousText = index > 0
+      ? sourceTextForDialogueBlock(allDialogueBlocks[index - 1], 'last')
       : '';
-    const commandText = field === 'action'
-      ? `${block.speaker.trim()}（${text.trim()}）：${block.dialogue.trim()}`
-      : `${block.speaker}：${text}`;
-    const position = index < 0 ? undefined : index;
+    const nextText = index >= 0 && index < allDialogueBlocks.length - 1
+      ? sourceTextForDialogueBlock(allDialogueBlocks[index + 1], 'first')
+      : '';
+    const action = values.action.trim();
+    const dialogue = values.dialogue.trim();
+    const commandText = action
+      ? `${block.speaker.trim()}（${action}）：${dialogue}`
+      : `${block.speaker.trim()}：${dialogue}`;
     if (previousText) {
       await syncSource({
         type: 'insert',
-        blockId: globalThis.crypto.randomUUID(),
+        blockId: block.id,
         text: commandText,
         afterText: previousText,
         ...(nextText ? { beforeText: nextText } : {}),
-        ...(position === undefined ? {} : { position }),
       });
       return;
     }
     if (nextText) {
       await syncSource({
         type: 'insert',
-        blockId: globalThis.crypto.randomUUID(),
+        blockId: block.id,
         text: commandText,
         beforeText: nextText,
-        ...(position === undefined ? {} : { position }),
       });
       return;
     }
     await syncSource({
       type: 'insert',
-      blockId: globalThis.crypto.randomUUID(),
+      blockId: block.id,
       text: commandText,
-      ...(position === undefined ? {} : { position }),
     });
-  }, [allDialogueBlocks, sourceTextForBlock, syncSource]);
+  }, [allDialogueBlocks, syncSource]);
 
   const insertAfterBlock = useCallback(async (blockId: string | null, speaker: string) => {
     if (!supabase || !fields || busyRef.current) return false;
@@ -318,148 +318,134 @@ export function useScriptDialogueEditor({
     }
   }, [allDialogueBlocks, fields, libraryId, pushHistory, queryClient, refresh, rows, selectedRows, supabase]);
 
-  const saveBlockField = useCallback(async (
+  const saveBlock = useCallback(async (
     blockId: string,
-    field: 'action' | 'dialogue',
-    value: string,
+    values: { action: string; dialogue: string },
   ) => {
     if (!supabase || !fields || busyRef.current) return false;
     const block = blocks.find((item) => item.id === blockId);
     if (!block) return false;
-
-    const trimmed = value;
-    if (field === 'action' && trimmed === block.action) return true;
-    if (field === 'dialogue' && trimmed === block.dialogue) return true;
+    const actionChanged = values.action !== block.action;
+    const dialogueChanged = values.dialogue !== block.dialogue;
+    if (!actionChanged && !dialogueChanged) return true;
 
     busyRef.current = true;
     try {
-      if (field === 'action') {
-        let actionRowId = block.actionRowId;
-        if (!actionRowId) {
-          const ensured = await ensureActionRowForBlock({
-            supabase,
-            libraryId,
-            rows,
-            fields,
-            block,
-          });
-          actionRowId = ensured.actionRowId;
-          await refresh();
-        }
-        const row = findRow(actionRowId) ?? rows.find((item) => item.id === actionRowId);
-        // After ensure+refresh, row may not be in current closure; re-read from query cache.
-        const cached = queryClient.getQueryData<AssetRow[]>(queryKeys.libraryAssets(libraryId));
-        const liveRow = cached?.find((item) => item.id === actionRowId) ?? row;
-        if (!liveRow) throw new Error('Action row missing after ensure');
-        if (isDerivedScript) {
-          if (block.action.trim()) {
-            await syncSource({
+      let workingRows = queryClient.getQueryData<AssetRow[]>(
+        queryKeys.libraryAssets(libraryId),
+      ) ?? rows;
+      let actionRowId = block.actionRowId;
+      let speechRowId = block.speechRowId;
+      if (actionChanged && values.action.trim() && !actionRowId) {
+        const ensured = await ensureActionRowForBlock({
+          supabase,
+          libraryId,
+          rows: workingRows,
+          fields,
+          block,
+        });
+        actionRowId = ensured.actionRowId;
+        await refresh();
+        workingRows = queryClient.getQueryData<AssetRow[]>(
+          queryKeys.libraryAssets(libraryId),
+        ) ?? workingRows;
+      }
+      if (dialogueChanged && values.dialogue.trim() && !speechRowId) {
+        const ensured = await ensureSpeechRowForBlock({
+          supabase,
+          libraryId,
+          rows: workingRows,
+          fields,
+          block: { ...block, actionRowId },
+        });
+        speechRowId = ensured.speechRowId;
+        await refresh();
+        workingRows = queryClient.getQueryData<AssetRow[]>(
+          queryKeys.libraryAssets(libraryId),
+        ) ?? workingRows;
+      }
+
+      const actionRow = actionRowId
+        ? workingRows.find((row) => row.id === actionRowId)
+        : undefined;
+      const speechRow = speechRowId
+        ? workingRows.find((row) => row.id === speechRowId)
+        : undefined;
+      if (actionChanged && actionRowId && !actionRow) {
+        throw new Error('Action row missing after ensure');
+      }
+      if (dialogueChanged && speechRowId && !speechRow) {
+        throw new Error('Speech row missing after ensure');
+      }
+
+      const rowUpdates = [
+        ...(actionChanged && actionRow
+          ? [{ row: actionRow, content: values.action }]
+          : []),
+        ...(dialogueChanged && speechRow
+          ? [{ row: speechRow, content: values.dialogue }]
+          : []),
+      ];
+      const sourceWrite = isDerivedScript
+        ? block.action.trim() || block.dialogue.trim()
+          ? syncSource({
               type: 'edit',
+              blockId: block.id,
               role: 'action',
               previousText: block.action,
-              nextText: trimmed,
+              previousDialogue: block.dialogue,
+              nextText: values.action,
               speaker: block.speaker,
-              dialogue: block.dialogue,
-            });
-          } else if (trimmed.trim()) {
-            if (block.dialogue.trim()) {
-              // An empty action belongs to the existing speaker line. Updating that
-              // line keeps the source order stable and writes `Speaker（action）：text`.
-              await syncSource({
-                type: 'edit',
-                role: 'action',
-                previousText: '',
-                nextText: trimmed,
-                speaker: block.speaker,
-                dialogue: block.dialogue,
-              });
-            } else {
-              await insertSourceTextForEmptyField(block, 'action', trimmed);
-            }
-          }
-        }
-        const { oldContent } = await updateDialogueRowContent({
+              dialogue: values.dialogue,
+            })
+          : values.action.trim() || values.dialogue.trim()
+            ? insertSourceTextForDraft(block, values)
+            : Promise.resolve()
+        : Promise.resolve();
+      const [, completedUpdates] = await Promise.all([
+        sourceWrite,
+        updateDialogueRowsContent({
           supabase,
-          row: liveRow,
           contentKey: fields.contentKey,
-          content: trimmed,
-        });
+          updates: rowUpdates,
+        }),
+      ]);
+
+      queryClient.setQueryData<AssetRow[]>(
+        queryKeys.libraryAssets(libraryId),
+        (current = workingRows) => completedUpdates.reduce(
+          (nextRows, update) => applySavedDialogueContent(
+            nextRows,
+            update.row.id,
+            fields.contentKey,
+            update.newContent,
+          ),
+          current,
+        ),
+      );
+      for (const update of completedUpdates) {
         pushHistory({
           type: 'update',
-          rowId: liveRow.id,
+          rowId: update.row.id,
           contentKey: fields.contentKey,
-          oldContent,
-          newContent: trimmed,
-          rowName: liveRow.name,
-          propertyValues: { ...liveRow.propertyValues },
+          oldContent: update.oldContent,
+          newContent: update.newContent,
+          rowName: update.row.name,
+          propertyValues: { ...update.row.propertyValues },
         });
-      } else {
-        let speechRowId = block.speechRowId;
-        if (!speechRowId) {
-          const ensured = await ensureSpeechRowForBlock({
-            supabase,
-            libraryId,
-            rows,
-            fields,
-            block,
-          });
-          speechRowId = ensured.speechRowId;
-          await refresh();
-        }
-        const cached = queryClient.getQueryData<AssetRow[]>(queryKeys.libraryAssets(libraryId));
-        const liveRow = cached?.find((item) => item.id === speechRowId)
-          ?? findRow(speechRowId);
-        if (!liveRow) throw new Error('Speech row missing after ensure');
-        if (isDerivedScript) {
-          if (block.dialogue.trim()) {
-            await syncSource({
-              type: 'edit',
-              role: 'speech',
-              previousText: `${block.speaker}：${block.dialogue}`,
-              nextText: `${block.speaker}：${trimmed}`,
-            });
-          } else if (trimmed.trim()) {
-            if (block.action.trim()) {
-              await syncSource({
-                type: 'edit',
-                role: 'action',
-                previousText: block.action,
-                nextText: block.action,
-                speaker: block.speaker,
-                dialogue: trimmed,
-              });
-            } else {
-              await insertSourceTextForEmptyField(block, 'dialogue', trimmed);
-            }
-          }
-        }
-        const { oldContent } = await updateDialogueRowContent({
-          supabase,
-          row: liveRow,
-          contentKey: fields.contentKey,
-          content: trimmed,
-        });
-        pushHistory({
-          type: 'update',
-          rowId: liveRow.id,
-          contentKey: fields.contentKey,
-          oldContent,
-          newContent: trimmed,
-          rowName: liveRow.name,
-          propertyValues: { ...liveRow.propertyValues },
-        });
-        if (speechRowId !== blockId) setEditingBlockId(speechRowId);
       }
-      await refresh();
+      if (speechRowId && speechRowId !== blockId) setEditingBlockId(speechRowId);
+      void refresh();
       return true;
     } catch (error) {
       console.error(error);
       showErrorToast('Failed to save dialogue');
+      await refresh();
       return false;
     } finally {
       busyRef.current = false;
     }
-  }, [blocks, fields, findRow, insertSourceTextForEmptyField, isDerivedScript, libraryId, pushHistory, queryClient, refresh, rows, supabase, syncSource]);
+  }, [blocks, fields, insertSourceTextForDraft, isDerivedScript, libraryId, pushHistory, queryClient, refresh, rows, supabase, syncSource]);
 
   const deleteBlock = useCallback(async (blockId: string) => {
     if (!supabase || !fields || busyRef.current) return false;
@@ -473,7 +459,9 @@ export function useScriptDialogueEditor({
       const snapshot = createDeletedDialogueSnapshot(currentRows, block);
       if (isDerivedScript) {
         const previousTexts = [block.action, block.dialogue && `${block.speaker}：${block.dialogue}`].filter(Boolean);
-        if (previousTexts.length > 0) await syncSource({ type: 'delete', previousTexts });
+        if (previousTexts.length > 0) {
+          await syncSource({ type: 'delete', blockId: block.id, previousTexts });
+        }
       }
       let deletedIds: string[];
       let usedLegacyMutation = false;
@@ -521,6 +509,7 @@ export function useScriptDialogueEditor({
       if (isDerivedScript && block.dialogue) {
         await syncSource({
           type: 'edit',
+          blockId: block.id,
           role: 'speech',
           previousText: `${block.speaker}：${block.dialogue}`,
           nextText: `${speaker}：${block.dialogue}`,
@@ -719,11 +708,11 @@ export function useScriptDialogueEditor({
     ),
     [enqueueCommand, insertAfterBlock],
   );
-  const queuedSaveBlockField = useCallback(
-    (blockId: string, field: 'action' | 'dialogue', value: string) => enqueueCommand(
-      () => saveBlockField(blockId, field, value),
+  const queuedSaveBlock = useCallback(
+    (blockId: string, values: { action: string; dialogue: string }) => enqueueCommand(
+      () => saveBlock(blockId, values),
     ),
-    [enqueueCommand, saveBlockField],
+    [enqueueCommand, saveBlock],
   );
   const queuedDeleteBlock = useCallback(
     (blockId: string) => enqueueCommand(() => deleteBlock(blockId)),
@@ -766,7 +755,7 @@ export function useScriptDialogueEditor({
     canRedo: !isBusy && historyFuture.length > 0,
     insertAfterBlock: queuedInsertAfterBlock,
     changeBlockSpeaker: queuedChangeBlockSpeaker,
-    saveBlockField: queuedSaveBlockField,
+    saveBlock: queuedSaveBlock,
     deleteBlock: queuedDeleteBlock,
     reorderBlock: queuedReorderBlock,
     undo: queuedUndo,

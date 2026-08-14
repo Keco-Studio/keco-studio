@@ -18,7 +18,7 @@ jest.mock('./useScriptDialogueEditor', () => ({
     canUndo: false,
     canRedo: false,
     insertAfterBlock: async () => {},
-    saveBlockField: async () => {},
+    saveBlock: async () => {},
     deleteBlock: async () => {},
     reorderBlock: async () => {},
     undo: async () => {},
