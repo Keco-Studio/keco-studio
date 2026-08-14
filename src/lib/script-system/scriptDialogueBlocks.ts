@@ -40,6 +40,17 @@ export type ScriptDialogueBlock = {
   alignment: 'left' | 'right';
 };
 
+export function sourceTextForDialogueBlock(
+  block: ScriptDialogueBlock,
+  edge: 'first' | 'last',
+): string {
+  const action = block.action.trim();
+  const dialogue = block.dialogue.trim();
+  if (block.speechType === '3') return dialogue || action;
+  const speech = dialogue ? `${block.speaker}：${dialogue}` : '';
+  return edge === 'first' ? (action || speech) : (speech || action);
+}
+
 const ACCENTS: ScriptDialogueAccent[] = [
   'pink',
   'blue',

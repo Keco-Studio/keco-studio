@@ -93,4 +93,49 @@ describe('document Agent edit server command', () => {
     })).rejects.toBeInstanceOf(DocumentStateConflictError);
     expect(rpc).not.toHaveBeenCalled();
   });
+
+  it('reuses a previously authorized document read for Script synchronization', async () => {
+    const current = await read();
+    read.mockClear();
+
+    await replaceDocumentAsAgent({
+      actorUserId: USER_ID,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      expectedUpdateIds: [UPDATE_ID],
+      markdown: '# Proposed',
+    }, { current });
+
+    expect(read).not.toHaveBeenCalled();
+    expect(yjsStateToMarkdown).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the atomic replacement RPC when derived table operations are supplied', async () => {
+    const derivedTableOperations = [{
+      type: 'delete',
+      libraryId: '55555555-5555-4555-8555-555555555555',
+      actionRowId: '66666666-6666-4666-8666-666666666666',
+      speechRowId: '77777777-7777-4777-8777-777777777777',
+    }];
+
+    await replaceDocumentAsAgent({
+      actorUserId: USER_ID,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      expectedUpdateIds: [UPDATE_ID],
+      markdown: '# Proposed',
+      derivedTableOperations,
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'replace_document_with_markdown_and_sync_tables',
+      expect.objectContaining({
+        p_document_id: DOCUMENT_ID,
+        p_derived_table_operations: derivedTableOperations,
+      }),
+    );
+  });
 });

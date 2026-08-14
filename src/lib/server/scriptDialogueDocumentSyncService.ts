@@ -9,6 +9,7 @@ import {
 import { replaceDocumentAsAgent } from './documentAgentEditService';
 import { applyScriptDialogueCommand, type ScriptDialogueDocumentCommand } from '@/lib/script-system/scriptDialogueDocumentSync';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { prepareScriptDialogueDerivedTableOperations } from './scriptDialogueDerivedTableSyncService';
 
 export async function syncScriptDialogueDocument(input: {
   supabase: SupabaseClient;
@@ -24,14 +25,22 @@ export async function syncScriptDialogueDocument(input: {
     throw new DocumentStateConflictError('Document state changed', current.token);
   }
   const transformed = applyScriptDialogueCommand(current.markdown, input.command);
-  return replaceDocumentAsAgent({
+  const derivedTableOperations = await prepareScriptDialogueDerivedTableOperations({
+    supabase: input.supabase,
+    projectId: input.projectId,
+    documentId: input.documentId,
+    command: input.command,
+  });
+  const state = await replaceDocumentAsAgent({
     actorUserId: input.actorUserId,
     projectId: input.projectId,
     documentId: input.documentId,
     expected: current.token,
     expectedUpdateIds: current.updateTail.map((update) => update.id),
     markdown: transformed.markdown,
-  });
+    derivedTableOperations,
+  }, { current });
+  return state;
 }
 
 export function mapScriptDialogueSyncError(error: unknown): { code: string; status: number; message: string } {
@@ -43,6 +52,9 @@ export function mapScriptDialogueSyncError(error: unknown): { code: string; stat
   }
   if (error instanceof Error && /SOURCE_MAPPING_AMBIGUOUS/.test(error.message)) {
     return { code: 'MAPPING_AMBIGUOUS', status: 409, message: 'Unable to determine the original document position. Regenerate the conversation and try again.' };
+  }
+  if (error instanceof Error && /DERIVED_TABLE_MAPPING_AMBIGUOUS/.test(error.message)) {
+    return { code: 'TABLE_MAPPING_AMBIGUOUS', status: 409, message: 'Unable to determine the matching table row. Regenerate the table and try again.' };
   }
   return { code: 'SYNC_FAILED', status: 500, message: 'Failed to synchronize the source document.' };
 }
