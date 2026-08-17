@@ -1,479 +1,531 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 
-const mockUser = { id: 'user-1' };
-const mockSupabase = {
-  from: jest.fn(),
-  rpc: jest.fn(),
-};
-const mockGetServiceRoleClient = jest.fn(() => mockSupabase);
-const mockResolveGameDesignSourceSnapshots = jest.fn();
-
-jest.mock('@/lib/auth/route-auth', () => ({
-  withAuth: (handler: (...args: any[]) => Promise<Response>) =>
-    (request: NextRequest, context: unknown) => handler(request, context, { supabase: mockSupabase, user: mockUser }),
-}));
-
 jest.mock('server-only', () => ({}));
-jest.mock('@/lib/server/supabaseServiceRole', () => ({ getSupabaseServiceRoleClient: mockGetServiceRoleClient }));
-jest.mock('@/lib/game-design-system/worker', () => ({ processNextGameDesignSystemJob: jest.fn() }));
-jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({
-  ...jest.requireActual('@/lib/game-design-system/sourceSnapshots'),
-  resolveGameDesignSourceSnapshots: (...args: unknown[]) => mockResolveGameDesignSourceSnapshots(...args),
-}));
 
-import { PATCH as updateMetadata } from '@/app/api/game-design-systems/[id]/route';
+import { DELETE as deleteSystem, PATCH as updateMetadata } from '@/app/api/game-design-systems/[id]/route';
 import { POST as copySystem } from '@/app/api/game-design-systems/[id]/copy/route';
 import { POST as createVersion } from '@/app/api/game-design-systems/[id]/versions/route';
 import { POST as startGeneration } from '@/app/api/game-design-systems/generation-jobs/route';
 import { PUT as applyProject } from '@/app/api/projects/[projectId]/game-design-system/route';
-import { SourceSnapshotInputError } from '@/lib/game-design-system/sourceSnapshots';
+import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
+import {
+  RLS_DB_TESTS_ENABLED,
+  TEST_PASSWORD,
+  anonClient,
+  buildProjectFixture,
+  teardownProjectFixture,
+  type ProjectFixture,
+  type RlsUser,
+} from './database/helpers/rlsTestClient';
 
-const rules = {
-  schemaVersion: 1 as const,
-  genres: ['Strategy'],
-  philosophies: ['Readable Systems'],
-  suitableFor: 'Tactical games',
-  rules: [{
-    id: 'readable-state',
-    kind: 'principle' as const,
-    title: 'Readable state',
-    statement: 'Show all decision inputs.',
-    appliesWhen: 'Presenting a choice.',
-    severity: 'required' as const,
-  }],
-  tableGuidance: [],
+const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
+
+const retainedRule = {
+  id: 'retained-rule',
+  kind: 'principle',
+  title: 'Retained rule',
+  statement: 'Keep decisions readable.',
+  appliesWhen: 'Presenting a decision.',
+  severity: 'required',
 };
 
-const system = {
-  id: '11111111-1111-4111-8111-111111111111',
-  owner_id: 'user-1',
-  source: 'user',
-  title: 'Tactical Rules',
-  summary: 'Summary',
-  genres: ['Strategy'],
-  philosophies: ['Readable Systems'],
-  suitable_for: 'Tactical games',
-  body: '# Tactical Rules',
-  provenance: {},
-  status: 'draft',
-  current_version_id: '22222222-2222-4222-8222-222222222222',
-  migration_status: 'ready',
-  generation_job_id: null,
-  created_at: '2026-08-14T00:00:00.000Z',
-  updated_at: '2026-08-14T00:00:00.000Z',
+const deletedRule = {
+  ...retainedRule,
+  id: 'deleted-rule',
+  title: 'Deleted rule',
 };
 
-function query(result: { data: unknown; error: unknown } = { data: null, error: null }) {
-  const builder: Record<string, jest.Mock> = {};
-  for (const method of ['select', 'eq', 'order', 'limit', 'in', 'update', 'insert', 'delete']) {
-    builder[method] = jest.fn(() => builder);
+function ruleSet(ruleIds: Array<'retained' | 'deleted'> = ['retained']) {
+  return {
+    schemaVersion: 1,
+    genres: ['Strategy'],
+    philosophies: ['Readable Systems'],
+    suitableFor: 'Tactical games',
+    rules: ruleIds.map((id) => id === 'retained' ? retainedRule : deletedRule),
+    tableGuidance: [],
+  };
+}
+
+const designDocument = {
+  designIntent: 'Make every tactical choice legible before commitment.',
+  playerFantasy: 'Lead a compact squad through risky decisions.',
+  coreLoop: 'Scout, commit, resolve consequences, and adapt.',
+  decisionStructure: 'Trade immediate safety for positional advantage.',
+  systemBoundaries: 'Uncertainty may hide outcomes but never action costs.',
+  progressionEconomy: 'New tools widen options without invalidating old ones.',
+  contentModel: 'Combine objectives, terrain pressure, and enemy roles.',
+  difficultyBalance: 'Increase decision pressure instead of inflating stats.',
+  experiencePresentation: 'Show intent, costs, and state changes at the point of action.',
+};
+
+function request(url: string, token?: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  return new NextRequest(`https://keco.test${url}`, { ...init, headers });
+}
+
+function jsonRequest(url: string, token: string, method: string, body: unknown, extraHeaders?: HeadersInit) {
+  return request(url, token, {
+    method,
+    headers: { 'content-type': 'application/json', ...Object.fromEntries(new Headers(extraHeaders)) },
+    body: JSON.stringify(body),
+  });
+}
+
+describeDb('Game Design System route authentication boundary (live Auth)', () => {
+  it.each([
+    ['metadata update', () => updateMetadata(request('/api/game-design-systems/system-1', undefined, { method: 'PATCH' }), { params: Promise.resolve({ id: 'system-1' }) })],
+    ['version creation', () => createVersion(request('/api/game-design-systems/system-1/versions', undefined, { method: 'POST' }), { params: Promise.resolve({ id: 'system-1' }) })],
+    ['generation enqueue', () => startGeneration(request('/api/game-design-systems/generation-jobs', undefined, { method: 'POST' }), {})],
+    ['project binding', () => applyProject(request('/api/projects/project-1/game-design-system', undefined, { method: 'PUT' }), { params: Promise.resolve({ projectId: 'project-1' }) })],
+  ])('rejects unauthenticated %s requests before protected state', async (_label, invoke) => {
+    const response = await invoke();
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: 'Please sign in to continue' });
+  });
+});
+
+type SeededVersion = {
+  id: string;
+  systemId: string;
+  versionNumber: number;
+};
+
+type SeededSystem = {
+  id: string;
+  versions: SeededVersion[];
+};
+
+describeDb('Game Design System route contracts (live Auth, RLS, and database)', () => {
+  let fixture: ProjectFixture;
+  let ownerToken = '';
+  let editorToken = '';
+  let ownerSystem: SeededSystem;
+  let foreignSystem: SeededSystem;
+  let officialSystem: SeededSystem;
+  const systemIds: string[] = [];
+
+  async function tokenFor(user: RlsUser): Promise<string> {
+    const auth = anonClient();
+    const { data, error } = await auth.auth.signInWithPassword({ email: user.email, password: TEST_PASSWORD });
+    if (error || !data.session) throw new Error(`route sign-in failed: ${error?.message ?? 'no session'}`);
+    return data.session.access_token;
   }
-  builder.single = jest.fn(async () => result);
-  builder.maybeSingle = jest.fn(async () => result);
-  builder.then = jest.fn((resolve, reject) => Promise.resolve(result).then(resolve, reject));
-  return builder;
-}
 
-function request(url: string, init?: RequestInit) {
-  return new NextRequest(`https://keco.test${url}`, init);
-}
+  async function seedSystem(input: {
+    ownerId: string | null;
+    source?: 'official' | 'user';
+    title: string;
+    versions?: Array<{
+      rules: ReturnType<typeof ruleSet>;
+      parentVersionId?: string | null;
+      sourceSnapshots?: Array<Record<string, unknown>>;
+    }>;
+  }): Promise<SeededSystem> {
+    const system = await fixture.svc.from('game_design_systems').insert({
+      owner_id: input.ownerId,
+      source: input.source ?? 'user',
+      title: `${input.title}-${fixture.suffix}-${randomUUID().slice(0, 8)}`,
+      summary: 'Route contract fixture',
+      genres: ['Strategy'],
+      philosophies: ['Readable Systems'],
+      suitable_for: 'Tactical games',
+      body: '# Route contract fixture',
+      status: 'draft',
+    }).select('id').single();
+    if (system.error || !system.data) throw new Error(`seed system failed: ${system.error?.message}`);
+    const systemId = String(system.data.id);
+    systemIds.push(systemId);
 
-describe('Game Design System route contracts', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockSupabase.from.mockReset();
-    mockSupabase.rpc.mockReset();
-    mockResolveGameDesignSourceSnapshots.mockResolvedValue([]);
+    const versions: SeededVersion[] = [];
+    for (const [index, spec] of (input.versions ?? [{ rules: ruleSet() }]).entries()) {
+      const versionNumber = index + 1;
+      const inserted = await fixture.svc.from('game_design_system_versions').insert({
+        system_id: systemId,
+        version_number: versionNumber,
+        parent_version_id: spec.parentVersionId ?? versions.at(-1)?.id ?? null,
+        rules: spec.rules,
+        rendered_markdown: `# ${input.title} version ${versionNumber}`,
+        source_snapshots: spec.sourceSnapshots ?? [],
+        diff: { added: spec.rules.rules.map((rule) => rule.id), removed: [], changed: [], conflicts: [] },
+        conflicts: [],
+        content_hash: createHash('sha256').update(`${systemId}:${versionNumber}:${randomUUID()}`).digest('hex'),
+        created_by: input.ownerId,
+      }).select('id').single();
+      if (inserted.error || !inserted.data) throw new Error(`seed version failed: ${inserted.error?.message}`);
+      versions.push({ id: String(inserted.data.id), systemId, versionNumber });
+    }
+
+    const current = await fixture.svc.from('game_design_systems')
+      .update({ current_version_id: versions.at(-1)!.id })
+      .eq('id', systemId);
+    if (current.error) throw new Error(`set current version failed: ${current.error.message}`);
+    return { id: systemId, versions };
+  }
+
+  async function bind(system: SeededSystem, actorId = fixture.owner.id) {
+    const result = await fixture.svc.from('project_game_design_systems').upsert({
+      project_id: fixture.projectId,
+      design_system_id: system.id,
+      version_id: system.versions.at(-1)!.id,
+      applied_by: actorId,
+    }, { onConflict: 'project_id' });
+    if (result.error) throw new Error(`seed binding failed: ${result.error.message}`);
+  }
+
+  beforeAll(async () => {
+    fixture = await buildProjectFixture();
+    [ownerToken, editorToken] = await Promise.all([
+      tokenFor(fixture.owner),
+      tokenFor(fixture.editor),
+    ]);
+    ownerSystem = await seedSystem({ ownerId: fixture.owner.id, title: 'owner-system' });
+    foreignSystem = await seedSystem({ ownerId: fixture.outsider.id, title: 'foreign-system' });
+    officialSystem = await seedSystem({ ownerId: null, source: 'official', title: 'official-system' });
+  }, 120_000);
+
+  beforeEach(async () => {
+    const cleared = await fixture.svc.from('project_game_design_systems').delete().eq('project_id', fixture.projectId);
+    if (cleared.error) throw new Error(`clear binding failed: ${cleared.error.message}`);
   });
 
-  it('requires an idempotency key and reports payload conflicts', async () => {
-    const missing = await startGeneration(request('/api/game-design-systems/generation-jobs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Rules', genres: ['RPG'], references: [], referenceGames: [] }),
-    }), {});
+  afterAll(async () => {
+    if (!fixture) return;
+    await fixture.svc.from('project_game_design_systems').delete().eq('project_id', fixture.projectId);
+    await fixture.svc.from('game_design_system_generation_jobs').delete().in('owner_id', [fixture.owner.id, fixture.outsider.id]);
+    if (systemIds.length > 0) await fixture.svc.from('game_design_systems').delete().in('id', systemIds);
+    await teardownProjectFixture(fixture);
+  }, 60_000);
+
+  it('requires an idempotency key and maps a real stored payload conflict to 409', async () => {
+    const payload = { title: 'Rules', genres: ['RPG'], references: [], referenceGames: [] };
+    const missing = await startGeneration(jsonRequest(
+      '/api/game-design-systems/generation-jobs', ownerToken, 'POST', payload,
+    ), {});
     expect(missing.status).toBe(400);
 
-    const jobs = query({ data: { id: 'job-1', input_hash: 'different-payload' }, error: null });
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'game_design_system_generation_jobs') return jobs;
-      throw new Error(`Unexpected table ${table}`);
+    const key = `route-conflict-${fixture.suffix}`;
+    const seeded = await fixture.svc.from('game_design_system_generation_jobs').insert({
+      owner_id: fixture.owner.id,
+      input: { seeded: true },
+      status: 'queued',
+      phase: 'collecting',
+      idempotency_key: key,
+      input_hash: 'different-payload',
     });
-    const conflict = await startGeneration(request('/api/game-design-systems/generation-jobs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': 'stable-key-123' },
-      body: JSON.stringify({ title: 'Rules', genres: ['RPG'], references: [], referenceGames: [] }),
-    }), {});
+    if (seeded.error) throw new Error(`seed conflict job failed: ${seeded.error.message}`);
+
+    const conflict = await startGeneration(jsonRequest(
+      '/api/game-design-systems/generation-jobs', ownerToken, 'POST', payload,
+      { 'idempotency-key': key },
+    ), {});
     expect(conflict.status).toBe(409);
     await expect(conflict.json()).resolves.toEqual({
       error: 'Idempotency key was already used with a different payload.',
     });
-    expect(mockGetServiceRoleClient).toHaveBeenCalled();
+  });
+
+  it('accepts a reference-game-only request through a stored idempotent job', async () => {
+    const key = `reference-game-${fixture.suffix}`;
+    const referenceGames = [{
+      name: 'Into the Breach',
+      reference: 'Readable intent',
+      avoid: 'Direct copying',
+    }];
+    const input: ResolvedGameDesignGenerationInput = {
+      title: 'Reference game rules',
+      genres: [],
+      philosophies: [],
+      sourceSnapshots: [],
+      referenceGames,
+    };
+    const seeded = await fixture.svc.from('game_design_system_generation_jobs').insert({
+      owner_id: fixture.owner.id,
+      input,
+      status: 'completed',
+      phase: 'completed',
+      idempotency_key: key,
+      input_hash: hashResolvedGenerationInput(input),
+      completed_at: new Date().toISOString(),
+    }).select('id').single();
+    if (seeded.error || !seeded.data) throw new Error(`seed completed job failed: ${seeded.error?.message}`);
+
+    const response = await startGeneration(jsonRequest(
+      '/api/game-design-systems/generation-jobs', ownerToken, 'POST',
+      { title: input.title, genres: [], philosophies: [], references: [], referenceGames },
+      { 'idempotency-key': key },
+    ), {});
+
+    expect(response.status).toBe(202);
+    const body = await response.json() as { job: { id: string; status: string } };
+    expect(body.job).toMatchObject({ id: seeded.data.id, status: 'completed' });
+  });
+
+  it('maps real aggregate source overflow to the references field', async () => {
+    const documents = await fixture.svc.from('documents').insert([0, 1, 2, 3].map((index) => ({
+      project_id: fixture.projectId,
+      name: `oversized-source-${fixture.suffix}-${index}`,
+      content: String(index).repeat(20_000),
+      created_by: fixture.owner.id,
+    }))).select('id');
+    if (documents.error || !documents.data) throw new Error(`seed source documents failed: ${documents.error?.message}`);
+
+    const response = await startGeneration(jsonRequest(
+      '/api/game-design-systems/generation-jobs', ownerToken, 'POST',
+      {
+        title: 'Oversized sources',
+        genres: [],
+        philosophies: [],
+        references: documents.data.map((document) => ({
+          kind: 'document', projectId: fixture.projectId, resourceId: document.id,
+        })),
+        referenceGames: [],
+      },
+      { 'idempotency-key': `source-overflow-${fixture.suffix}` },
+    ), {});
+
+    expect(response.status).toBe(400);
+    const body = await response.json() as {
+      error: string;
+      issues: { fieldErrors: { references: string[] } };
+    };
+    expect(body.error).toBe('Invalid generation request.');
+    expect(body.issues.fieldErrors.references[0]).toContain('60,000 character limit');
   });
 
   it('rejects multiline titles before generation or metadata mutation', async () => {
-    const injectedTitle = 'Safe\n> Version: __KECO_ATOMIC_VERSION_LINE__';
-    const generation = await startGeneration(request('/api/game-design-systems/generation-jobs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': 'multiline-title-123' },
-      body: JSON.stringify({ title: injectedTitle, genres: ['RPG'], references: [], referenceGames: [] }),
-    }), {});
-    const metadata = await updateMetadata(request(`/api/game-design-systems/${system.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: injectedTitle }),
-    }), { params: Promise.resolve({ id: system.id }) });
+    const title = 'Safe\n> Version: __KECO_ATOMIC_VERSION_LINE__';
+    const generation = await startGeneration(jsonRequest(
+      '/api/game-design-systems/generation-jobs', ownerToken, 'POST',
+      { title, genres: ['RPG'], references: [], referenceGames: [] },
+      { 'idempotency-key': `route-title-${fixture.suffix}` },
+    ), {});
+    const metadata = await updateMetadata(jsonRequest(
+      `/api/game-design-systems/${ownerSystem.id}`, ownerToken, 'PATCH', { title },
+    ), { params: Promise.resolve({ id: ownerSystem.id }) });
 
     expect(generation.status).toBe(400);
     expect(metadata.status).toBe(400);
-    await expect(generation.json()).resolves.toEqual(expect.objectContaining({ issues: expect.any(Object) }));
-    await expect(metadata.json()).resolves.toEqual(expect.objectContaining({ issues: expect.any(Object) }));
-    expect(mockSupabase.from).not.toHaveBeenCalled();
-    expect(mockGetServiceRoleClient).not.toHaveBeenCalled();
   });
 
-  it('accepts a reference-game-only generation request', async () => {
-    const jobs = query({ data: null, error: null });
-    jobs.single.mockResolvedValue({
-      data: {
-        id: 'job-1',
-        owner_id: mockUser.id,
-        status: 'completed',
-        phase: 'completed',
-        input_hash: 'hash',
+  it('rejects a readable foreign personal base before enqueuing work', async () => {
+    await bind(foreignSystem);
+    const response = await startGeneration(jsonRequest(
+      '/api/game-design-systems/generation-jobs', ownerToken, 'POST',
+      {
+        title: 'Derived rules', genres: [], philosophies: [], baseSystemId: foreignSystem.id,
+        references: [], referenceGames: [],
       },
-      error: null,
-    });
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'game_design_system_generation_jobs') return jobs;
-      throw new Error(`Unexpected table ${table}`);
-    });
-
-    const response = await startGeneration(request('/api/game-design-systems/generation-jobs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': 'reference-game-only' },
-      body: JSON.stringify({
-        title: 'Rules',
-        genres: [],
-        philosophies: [],
-        references: [],
-        referenceGames: [{ name: 'Into the Breach', reference: 'Readable intent', avoid: 'Direct copying' }],
-      }),
-    }), {});
-
-    expect(response.status).toBe(202);
-    expect(jobs.insert).toHaveBeenCalledWith(expect.objectContaining({
-      input: expect.objectContaining({
-        referenceGames: [{ name: 'Into the Breach', reference: 'Readable intent', avoid: 'Direct copying' }],
-      }),
-    }));
-  });
-
-  it('reports aggregate source overflow against the references field', async () => {
-    mockResolveGameDesignSourceSnapshots.mockRejectedValue(new SourceSnapshotInputError(
-      'references',
-      'Selected source excerpts exceed the 60,000 character limit.',
-    ));
-
-    const response = await startGeneration(request('/api/game-design-systems/generation-jobs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': 'overflow-source-key' },
-      body: JSON.stringify({
-        title: 'Rules',
-        genres: [],
-        philosophies: [],
-        references: [{
-          kind: 'document',
-          projectId: '11111111-1111-4111-8111-111111111111',
-          resourceId: '22222222-2222-4222-8222-222222222222',
-        }],
-        referenceGames: [],
-      }),
-    }), {});
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: 'Invalid generation request.',
-      issues: {
-        formErrors: [],
-        fieldErrors: {
-          references: ['Selected source excerpts exceed the 60,000 character limit.'],
-        },
-      },
-    });
-  });
-
-  it('rejects a foreign private base system before enqueuing work', async () => {
-    const privateBase = {
-      ...system,
-      id: '55555555-5555-4555-8555-555555555555',
-      owner_id: 'user-2',
-      current_version_id: '66666666-6666-4666-8666-666666666666',
-    };
-    const baseVersion = {
-      id: privateBase.current_version_id,
-      system_id: privateBase.id,
-      version_number: 1,
-      parent_version_id: null,
-      rules,
-      rendered_markdown: '# Private base',
-      source_snapshots: [],
-      diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] },
-      conflicts: [],
-      content_hash: 'a'.repeat(64),
-      created_by: 'user-2',
-      created_at: '2026-08-14T00:00:00.000Z',
-    };
-    const systems = query({ data: privateBase, error: null });
-    const versions = query({ data: [baseVersion], error: null });
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'game_design_systems') return systems;
-      if (table === 'game_design_system_versions') return versions;
-      throw new Error(`Unexpected table ${table}`);
-    });
-
-    const response = await startGeneration(request('/api/game-design-systems/generation-jobs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': 'foreign-private-base' },
-      body: JSON.stringify({
-        title: 'Derived rules',
-        genres: [],
-        philosophies: [],
-        baseSystemId: privateBase.id,
-        references: [],
-        referenceGames: [],
-      }),
-    }), {});
+      { 'idempotency-key': `foreign-base-${fixture.suffix}` },
+    ), {});
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error: 'Only official or owned Game Design Systems can be used as a base.',
     });
-    expect(systems.insert).not.toHaveBeenCalled();
   });
 
-  it('rejects body edits and permits metadata-only PATCH', async () => {
-    const systems = query({ data: { ...system, summary: 'Updated summary' }, error: null });
-    mockSupabase.from.mockReturnValue(systems);
-    const params = { params: Promise.resolve({ id: system.id }) };
-
-    const bodyEdit = await updateMetadata(request(`/api/game-design-systems/${system.id}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: '# edited' }),
-    }), params);
+  it('enforces the PATCH whitelist and persists allowed metadata', async () => {
+    const bodyEdit = await updateMetadata(jsonRequest(
+      `/api/game-design-systems/${ownerSystem.id}`, ownerToken, 'PATCH', { body: '# edited' },
+    ), { params: Promise.resolve({ id: ownerSystem.id }) });
     expect(bodyEdit.status).toBe(400);
-    expect(systems.update).not.toHaveBeenCalled();
 
-    const metadataEdit = await updateMetadata(request(`/api/game-design-systems/${system.id}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ summary: 'Updated summary' }),
-    }), params);
+    const summary = `Updated ${fixture.suffix}`;
+    const metadataEdit = await updateMetadata(jsonRequest(
+      `/api/game-design-systems/${ownerSystem.id}`, ownerToken, 'PATCH', { summary },
+    ), { params: Promise.resolve({ id: ownerSystem.id }) });
     expect(metadataEdit.status).toBe(200);
-    expect(systems.update).toHaveBeenCalledWith({ summary: 'Updated summary' });
+
+    const stored = await fixture.svc.from('game_design_systems').select('summary').eq('id', ownerSystem.id).single();
+    expect(stored.error).toBeNull();
+    expect(stored.data?.summary).toBe(summary);
   });
 
-  it('does not copy a readable personal system owned by another user', async () => {
-    const systems = query({ data: { ...system, owner_id: 'user-2' }, error: null });
-    mockSupabase.from.mockReturnValue(systems);
-
-    const response = await copySystem(request(`/api/game-design-systems/${system.id}/copy`, {
-      method: 'POST',
-    }), { params: Promise.resolve({ id: system.id }) });
+  it('does not copy a personal system that is only readable through a project binding', async () => {
+    await bind(foreignSystem);
+    const response = await copySystem(request(
+      `/api/game-design-systems/${foreignSystem.id}/copy`, ownerToken, { method: 'POST' },
+    ), { params: Promise.resolve({ id: foreignSystem.id }) });
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error: 'Only the owner can copy this Game Design System.',
     });
-    expect(systems.insert).not.toHaveBeenCalled();
   });
 
   it('creates an immutable structured version for the owning user', async () => {
-    const systems = query({ data: system, error: null });
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'game_design_systems') return systems;
-      throw new Error(`Unexpected table ${table}`);
-    });
-    mockSupabase.rpc.mockResolvedValue({
-      data: [{
-        id: '33333333-3333-4333-8333-333333333333', system_id: system.id, version_number: 2,
-        parent_version_id: null, rules, rendered_markdown: '# Tactical Rules', source_snapshots: [],
-        diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] }, conflicts: [],
-        content_hash: 'a'.repeat(64), created_by: 'user-1', created_at: '2026-08-14T00:00:00.000Z',
-      }],
-      error: null,
-    });
-    const response = await createVersion(request(`/api/game-design-systems/${system.id}/versions`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules }),
-    }), { params: Promise.resolve({ id: system.id }) });
+    const system = await seedSystem({ ownerId: fixture.owner.id, title: 'version-create' });
+    const response = await createVersion(jsonRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST', {
+        document: designDocument,
+        rules: ruleSet(['retained', 'deleted']),
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+
     expect(response.status).toBe(201);
-    expect(mockGetServiceRoleClient).toHaveBeenCalled();
-    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
-      p_system_id: system.id,
-      p_parent_version_id: null,
-      p_rules: rules,
-    }));
+    const body = await response.json() as { version: { system_id: string; version_number: number; document: unknown } };
+    expect(body.version).toMatchObject({ system_id: system.id, version_number: 2, document: designDocument });
+  });
+
+  it('redacts inaccessible source excerpts from a created-version response', async () => {
+    const inaccessibleProjectId = randomUUID();
+    const secretExcerpt = `revoked-source-${fixture.suffix}`;
+    const sourceSnapshots = [{
+      kind: 'document',
+      projectId: inaccessibleProjectId,
+      resourceId: randomUUID(),
+      label: 'Revoked source',
+      contentHash: createHash('sha256').update(secretExcerpt).digest('hex'),
+      excerpt: secretExcerpt,
+      byteCount: secretExcerpt.length,
+      truncated: false,
+    }];
+    const system = await seedSystem({
+      ownerId: fixture.owner.id,
+      title: 'version-source-redaction',
+      versions: [{ rules: ruleSet(), sourceSnapshots }],
+    });
+
+    const response = await createVersion(jsonRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST', {
+        parentVersionId: system.versions[0].id,
+        document: designDocument,
+        rules: ruleSet(),
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+
+    expect(response.status).toBe(201);
+    const body = await response.json() as { version: { id: string; source_snapshots: Array<{ excerpt?: string; contentHash: string }> } };
+    expect(body.version.source_snapshots).toEqual([
+      expect.objectContaining({ contentHash: sourceSnapshots[0].contentHash }),
+    ]);
+    expect(body.version.source_snapshots[0].excerpt).toBeUndefined();
+
+    const stored = await fixture.svc.from('game_design_system_versions')
+      .select('source_snapshots')
+      .eq('id', body.version.id)
+      .single();
+    expect(stored.error).toBeNull();
+    expect((stored.data?.source_snapshots as Array<{ excerpt?: string }>)[0].excerpt).toBe(secretExcerpt);
+  });
+
+  it('rejects an invalid design document before creating a version', async () => {
+    const system = await seedSystem({ ownerId: fixture.owner.id, title: 'invalid-document' });
+    const response = await createVersion(jsonRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST', {
+        document: { ...designDocument, coreLoop: '' },
+        rules: ruleSet(),
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid design document.' });
   });
 
   it('rejects a rule ID reintroduced after deletion in the selected parent lineage', async () => {
-    const retainedRule = {
-      ...rules.rules[0],
-      id: 'retained-rule',
-      title: 'Retained rule',
-    };
-    const deletedRule = {
-      ...rules.rules[0],
-      id: 'deleted-rule',
-      title: 'Deleted rule',
-    };
-    const versionOne = {
-      id: '33333333-3333-4333-8333-333333333333',
-      system_id: system.id,
-      version_number: 1,
-      parent_version_id: null,
-      rules: { ...rules, rules: [retainedRule, deletedRule] },
-      rendered_markdown: '# Version 1',
-      source_snapshots: [],
-      diff: { added: ['deleted-rule', 'retained-rule'], removed: [], changed: [], conflicts: [] },
-      conflicts: [],
-      content_hash: 'a'.repeat(64),
-      created_by: mockUser.id,
-      created_at: '2026-08-14T00:00:00.000Z',
-    };
-    const versionTwo = {
-      ...versionOne,
-      id: '44444444-4444-4444-8444-444444444444',
-      version_number: 2,
-      parent_version_id: versionOne.id,
-      rules: { ...rules, rules: [retainedRule] },
-      rendered_markdown: '# Version 2',
-      diff: { added: [], removed: ['deleted-rule'], changed: [], conflicts: [] },
-    };
-    const systems = query({ data: system, error: null });
-    const parent = query({ data: versionTwo, error: null });
-    const ancestor = query({ data: versionOne, error: null });
-    let versionQueryCount = 0;
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'game_design_systems') return systems;
-      if (table === 'game_design_system_versions') {
-        versionQueryCount += 1;
-        return versionQueryCount === 1 ? parent : ancestor;
-      }
-      throw new Error(`Unexpected table ${table}`);
+    const system = await seedSystem({
+      ownerId: fixture.owner.id,
+      title: 'lineage',
+      versions: [
+        { rules: ruleSet(['retained', 'deleted']) },
+        { rules: ruleSet(['retained']) },
+      ],
     });
-
-    const response = await createVersion(request(`/api/game-design-systems/${system.id}/versions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        parentVersionId: versionTwo.id,
-        rules: { ...rules, rules: [retainedRule, deletedRule] },
-      }),
-    }), { params: Promise.resolve({ id: system.id }) });
+    const parentVersionId = system.versions.at(-1)!.id;
+    const response = await createVersion(jsonRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST',
+      { parentVersionId, rules: ruleSet(['retained', 'deleted']) },
+    ), { params: Promise.resolve({ id: system.id }) });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: 'Rule IDs cannot be reintroduced after deletion.',
       ruleIds: ['deleted-rule'],
     });
-    expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 
   it('checks delete-then-readd ambiguity across an external parent lineage', async () => {
-    const retainedRule = { ...rules.rules[0], id: 'retained-rule', title: 'Retained rule' };
-    const deletedRule = { ...rules.rules[0], id: 'external-deleted-rule', title: 'External deleted rule' };
-    const externalVersion = {
-      id: '77777777-7777-4777-8777-777777777777',
-      system_id: '88888888-8888-4888-8888-888888888888',
-      version_number: 7,
-      parent_version_id: null,
-      rules: { ...rules, rules: [retainedRule, deletedRule] },
-      rendered_markdown: '# External version',
-      source_snapshots: [],
-      diff: { added: ['external-deleted-rule', 'retained-rule'], removed: [], changed: [], conflicts: [] },
-      conflicts: [],
-      content_hash: 'b'.repeat(64),
-      created_by: null,
-      created_at: '2026-08-14T00:00:00.000Z',
-    };
-    const childParent = {
-      ...externalVersion,
-      id: '99999999-9999-4999-8999-999999999999',
-      system_id: system.id,
-      version_number: 1,
-      parent_version_id: externalVersion.id,
-      rules: { ...rules, rules: [retainedRule] },
-      rendered_markdown: '# Child version',
-      diff: { added: [], removed: ['external-deleted-rule'], changed: [], conflicts: [] },
-      created_by: mockUser.id,
-    };
-    const systems = query({ data: system, error: null });
-    const parent = query({ data: childParent, error: null });
-    const externalOrChildList = query({ data: externalVersion, error: null });
-    externalOrChildList.then.mockImplementation((resolve, reject) =>
-      Promise.resolve({ data: [childParent], error: null }).then(resolve, reject));
-    let versionQueryCount = 0;
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'game_design_systems') return systems;
-      if (table === 'game_design_system_versions') {
-        versionQueryCount += 1;
-        return versionQueryCount === 1 ? parent : externalOrChildList;
-      }
-      throw new Error(`Unexpected table ${table}`);
+    const external = await seedSystem({
+      ownerId: fixture.outsider.id,
+      title: 'external-parent',
+      versions: [{ rules: ruleSet(['retained', 'deleted']) }],
     });
-
-    const response = await createVersion(request(`/api/game-design-systems/${system.id}/versions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        parentVersionId: childParent.id,
-        rules: { ...rules, rules: [retainedRule, deletedRule] },
-      }),
-    }), { params: Promise.resolve({ id: system.id }) });
+    const child = await seedSystem({
+      ownerId: fixture.owner.id,
+      title: 'external-child',
+      versions: [{ rules: ruleSet(['retained']), parentVersionId: external.versions[0].id }],
+    });
+    const response = await createVersion(jsonRequest(
+      `/api/game-design-systems/${child.id}/versions`, ownerToken, 'POST',
+      { parentVersionId: child.versions[0].id, rules: ruleSet(['retained', 'deleted']) },
+    ), { params: Promise.resolve({ id: child.id }) });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: 'Rule IDs cannot be reintroduced after deletion.',
-      ruleIds: ['external-deleted-rule'],
+      ruleIds: ['deleted-rule'],
     });
-    expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 
-  it('returns 403 for editor binding attempts', async () => {
-    const projects = query({ data: { owner_id: 'owner-2' }, error: null });
-    const collaborators = query({ data: { role: 'editor', accepted_at: '2026-08-14T00:00:00.000Z' }, error: null });
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'projects') return projects;
-      if (table === 'project_collaborators') return collaborators;
-      throw new Error(`Unexpected table ${table}`);
+  it('denies editor binding and lets the owner bind the explicit version', async () => {
+    const route = `/api/projects/${fixture.projectId}/game-design-system`;
+    const payload = { designSystemId: ownerSystem.id, versionId: ownerSystem.versions[0].id };
+    const editor = await applyProject(jsonRequest(route, editorToken, 'PUT', payload), {
+      params: Promise.resolve({ projectId: fixture.projectId }),
     });
-    const response = await applyProject(request('/api/projects/project-1/game-design-system', {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ designSystemId: system.id, versionId: system.current_version_id }),
-    }), { params: Promise.resolve({ projectId: 'project-1' }) });
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
+    expect(editor.status).toBe(403);
+    await expect(editor.json()).resolves.toEqual({
       error: 'Only project owners and admins can change the Game Design System.',
     });
+
+    const owner = await applyProject(jsonRequest(route, ownerToken, 'PUT', payload), {
+      params: Promise.resolve({ projectId: fixture.projectId }),
+    });
+    expect(owner.status).toBe(200);
+    const stored = await fixture.svc.from('project_game_design_systems')
+      .select('design_system_id,version_id,applied_by')
+      .eq('project_id', fixture.projectId)
+      .single();
+    expect(stored.data).toEqual({
+      design_system_id: ownerSystem.id,
+      version_id: ownerSystem.versions[0].id,
+      applied_by: fixture.owner.id,
+    });
   });
 
-  it('binds an owner project to the explicit conflict-free version', async () => {
-    const projects = query({ data: { owner_id: 'user-1' }, error: null });
-    const collaborators = query({ data: null, error: null });
-    const versions = query({ data: { id: system.current_version_id, system_id: system.id, conflicts: [] }, error: null });
-    const bindings = query({ data: null, error: null });
-    bindings.upsert = jest.fn(async () => ({ data: null, error: null }));
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'projects') return projects;
-      if (table === 'project_collaborators') return collaborators;
-      if (table === 'game_design_system_versions') return versions;
-      if (table === 'project_game_design_systems') return bindings;
-      throw new Error(`Unexpected table ${table}`);
-    });
-    const response = await applyProject(request('/api/projects/project-1/game-design-system', {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ designSystemId: system.id, versionId: system.current_version_id }),
-    }), { params: Promise.resolve({ projectId: 'project-1' }) });
-    expect(response.status).toBe(200);
-    expect(bindings.upsert).toHaveBeenCalledWith({
-      project_id: 'project-1', design_system_id: system.id, version_id: system.current_version_id, applied_by: 'user-1',
-    }, { onConflict: 'project_id' });
+  it('maps real delete outcomes to 404, 403, 409, and 200', async () => {
+    const missingId = randomUUID();
+    const missing = await deleteSystem(request(
+      `/api/game-design-systems/${missingId}`, ownerToken, { method: 'DELETE' },
+    ), { params: Promise.resolve({ id: missingId }) });
+    expect(missing.status).toBe(404);
+
+    const foreign = await deleteSystem(request(
+      `/api/game-design-systems/${foreignSystem.id}`, ownerToken, { method: 'DELETE' },
+    ), { params: Promise.resolve({ id: foreignSystem.id }) });
+    expect(foreign.status).toBe(403);
+
+    const official = await deleteSystem(request(
+      `/api/game-design-systems/${officialSystem.id}`, ownerToken, { method: 'DELETE' },
+    ), { params: Promise.resolve({ id: officialSystem.id }) });
+    expect(official.status).toBe(403);
+
+    await bind(ownerSystem);
+    const bound = await deleteSystem(request(
+      `/api/game-design-systems/${ownerSystem.id}`, ownerToken, { method: 'DELETE' },
+    ), { params: Promise.resolve({ id: ownerSystem.id }) });
+    expect(bound.status).toBe(409);
+
+    await fixture.svc.from('project_game_design_systems').delete().eq('project_id', fixture.projectId);
+    const disposable = await seedSystem({ ownerId: fixture.owner.id, title: 'delete-success' });
+    const deleted = await deleteSystem(request(
+      `/api/game-design-systems/${disposable.id}`, ownerToken, { method: 'DELETE' },
+    ), { params: Promise.resolve({ id: disposable.id }) });
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toEqual({ ok: true });
+    const remaining = await fixture.svc.from('game_design_systems').select('id').eq('id', disposable.id);
+    expect(remaining.data).toEqual([]);
   });
 });

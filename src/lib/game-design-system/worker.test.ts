@@ -13,6 +13,20 @@ const rules = {
   tableGuidance: [],
 };
 
+const document = {
+  designIntent: 'Make tactical choices legible.',
+  playerFantasy: 'Lead a squad through uncertain encounters.',
+  coreLoop: 'Scout, commit, resolve, and adapt.',
+  decisionStructure: 'Compare visible costs and risks.',
+  systemBoundaries: 'Never conceal action costs.',
+  progressionEconomy: 'Expand options without replacing judgment.',
+  contentModel: 'Use reusable skills and encounters.',
+  difficultyBalance: 'Increase situational complexity.',
+  experiencePresentation: 'Preview and explain state changes.',
+};
+
+const generated = { document, rules };
+
 const job = {
   id: 'job-1', owner_id: 'user-1', status: 'running', phase: 'collecting', attempt_count: 1,
   input: { title: 'Rules', genres: [], philosophies: [], sourceSnapshots: [], referenceGames: [] },
@@ -22,16 +36,20 @@ describe('leased Game Design System worker', () => {
   it('heartbeats phases and completes only with the claimed lease', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const complete = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _output: unknown) => undefined);
+    const createSystem = jest.fn(async (_client: unknown, _ownerId: string, _input: unknown) => (
+      { id: 'system-1', current_version_id: 'version-1' } as never
+    ));
     const result = await processClaimedGameDesignSystemJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat,
-      generate: jest.fn(async () => rules),
-      createSystem: jest.fn(async () => ({ id: 'system-1', current_version_id: 'version-1' } as never)),
+      generate: jest.fn(async () => generated),
+      createSystem,
       complete,
       retry: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string, _delay: number) => 'queued' as const),
       fail: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string) => undefined),
     } as never);
     expect(result).toBe('completed');
     expect(heartbeat.mock.calls.map((call) => call[3])).toEqual(['generating', 'validating', 'saving']);
+    expect(createSystem).toHaveBeenCalledWith(expect.anything(), 'user-1', expect.objectContaining({ document, rules }));
     expect(complete).toHaveBeenCalledWith(expect.anything(), job, 'worker-1', { systemId: 'system-1', versionId: 'version-1' });
   });
 
@@ -39,8 +57,8 @@ describe('leased Game Design System worker', () => {
     jest.useFakeTimers();
     try {
       const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
-      let resolveGeneration: ((value: typeof rules) => void) | undefined;
-      const generate = jest.fn(() => new Promise<typeof rules>((resolve) => { resolveGeneration = resolve; }));
+      let resolveGeneration: ((value: typeof generated) => void) | undefined;
+      const generate = jest.fn(() => new Promise<typeof generated>((resolve) => { resolveGeneration = resolve; }));
       const processing = processClaimedGameDesignSystemJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
         heartbeat,
         generate,
@@ -52,7 +70,7 @@ describe('leased Game Design System worker', () => {
 
       await jest.advanceTimersByTimeAsync(30_000);
       expect(heartbeat.mock.calls.filter((call) => call[3] === 'generating')).toHaveLength(2);
-      resolveGeneration?.(rules);
+      resolveGeneration?.(generated);
       await processing;
     } finally {
       jest.useRealTimers();
@@ -95,7 +113,7 @@ describe('leased Game Design System worker', () => {
     const retry = jest.fn(async () => 'queued' as const);
     const result = await processClaimedGameDesignSystemJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async () => undefined),
-      generate: jest.fn(async () => rules),
+      generate: jest.fn(async () => generated),
       createSystem: jest.fn(async () => { throw authorizationError; }),
       complete: jest.fn(async () => undefined),
       retry,

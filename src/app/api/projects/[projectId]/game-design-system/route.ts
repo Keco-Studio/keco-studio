@@ -22,7 +22,7 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
   const { projectId } = await params;
   try {
     await verifyProjectAccess(supabase, projectId);
-    const system = await getProjectGameDesignSystem(supabase, projectId, { versionClient: getSupabaseServiceRoleClient() });
+    const system = await getProjectGameDesignSystem(supabase, projectId, { snapshotClient: getSupabaseServiceRoleClient() });
     return NextResponse.json({
       system: system ? await redactGameDesignSystemDetailForViewer(supabase, system, user.id) : null,
     });
@@ -48,7 +48,7 @@ export const PUT = withAuth(async function PUT(request, { params }: Params, { su
     if (versionError || !version || version.system_id !== designSystemId) return NextResponse.json({ error: 'Game Design System version not found.' }, { status: 404 });
     if (Array.isArray(version.conflicts) && version.conflicts.length > 0) return NextResponse.json({ error: 'Resolve version conflicts before applying it.' }, { status: 409 });
     await setProjectGameDesignSystem(supabase, projectId, designSystemId, versionId, user.id);
-    const system = await getProjectGameDesignSystem(supabase, projectId, { versionClient: getSupabaseServiceRoleClient() });
+    const system = await getProjectGameDesignSystem(supabase, projectId, { snapshotClient: getSupabaseServiceRoleClient() });
     return NextResponse.json({
       system: system ? await redactGameDesignSystemDetailForViewer(supabase, system, user.id) : null,
     });

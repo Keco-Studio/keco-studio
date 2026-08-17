@@ -29,6 +29,8 @@ async function main() {
   const targetSystemId = randomUUID();
   const privateParentSystemId = randomUUID();
   const privateParentVersionId = randomUUID();
+  const officialSystemId = randomUUID();
+  const officialVersionId = randomUUID();
   const rlsProjectId = randomUUID();
   const rlsJobId = randomUUID();
   const forbiddenJobId = randomUUID();
@@ -45,23 +47,38 @@ async function main() {
     );
   `));
   assert(claimable === 0, `Refusing to run while ${claimable} unrelated job(s) are claimable.`);
-  const convertedOfficialCount = Number(await sql(`
-    select count(*)
-    from public.game_design_systems as system
-    join public.game_design_system_versions as version on version.id = system.current_version_id
-    where system.source = 'official'
-      and system.migration_status = 'ready'
-      and jsonb_array_length(version.rules -> 'rules') >= 3
-      and exists (
-        select 1 from jsonb_array_elements(version.source_snapshots) as snapshot
-        where snapshot ->> 'kind' = 'legacy_markdown'
-          and coalesce(snapshot ->> 'excerpt', '') <> ''
-      )
-      and version.content_hash = encode(extensions.digest(convert_to(version.rules::text, 'UTF8'), 'sha256'), 'hex');
+  const legacyOfficialCount = Number(await sql(`
+    select count(*) from public.game_design_systems
+    where id in (
+      'f0c1d9d4-8f9b-4f4b-9c20-8a11a8e00001',
+      'f0c1d9d4-8f9b-4f4b-9c20-8a11a8e00002',
+      'f0c1d9d4-8f9b-4f4b-9c20-8a11a8e00003'
+    );
   `));
-  assert(convertedOfficialCount >= 3, 'Official legacy systems were not converted to canonical version 1 rules.');
+  assert(legacyOfficialCount === 0, 'Legacy official presets were not removed.');
 
   try {
+    await sql(`
+      insert into public.game_design_systems (id, source, title, summary, body, status)
+      values (
+        '${officialSystemId}', 'official', 'Verifier official system',
+        'Ephemeral official fixture', '# Verifier official system', 'published'
+      );
+      insert into public.game_design_system_versions (
+        id, system_id, version_number, rules, rendered_markdown, source_snapshots,
+        diff, conflicts, content_hash
+      ) values (
+        '${officialVersionId}', '${officialSystemId}', 1,
+        '{"schemaVersion":1,"genres":["Strategy"],"philosophies":["Readable Systems"],"suitableFor":"Tactical games","rules":[{"id":"readable-state","kind":"principle","title":"Readable state","statement":"Expose decision inputs.","appliesWhen":"Presenting choices.","severity":"required"}],"tableGuidance":[]}'::jsonb,
+        '# Verifier official version', '[]'::jsonb,
+        '{"added":["readable-state"],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
+        '[]'::jsonb, repeat('1', 64)
+      );
+      update public.game_design_systems
+      set current_version_id = '${officialVersionId}'
+      where id = '${officialSystemId}';
+    `);
+
     await sql(`
       insert into public.game_design_system_generation_jobs (
         id, owner_id, status, phase, input, idempotency_key, input_hash, created_at, available_at
@@ -124,11 +141,6 @@ async function main() {
       $verify$;
     `);
 
-    const officialVersionId = await sql(`
-      select current_version_id::text from public.game_design_systems
-      where source = 'official' and current_version_id is not null order by id limit 1;
-    `);
-    assert(officialVersionId, 'No official version is available for inheritance verification.');
     await sql(`
       begin;
       insert into public.game_design_systems (id, owner_id, source, title, body)
@@ -145,7 +157,7 @@ async function main() {
       from public.game_design_system_versions where id = '${officialVersionId}';
       select set_config('request.jwt.claim.role', 'service_role', true);
       select (public.create_game_design_system_version(
-        '${targetSystemId}', '${officialVersionId}', rules, '# Derived', '[]'::jsonb,
+        '${targetSystemId}', '${officialVersionId}', null, rules, '# Derived', '[]'::jsonb,
         '{"added":[],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
         '[]'::jsonb, repeat('c', 64), '${ownerId}', null
       )).id
@@ -155,7 +167,7 @@ async function main() {
       begin
         select rules into inherited_rules from public.game_design_system_versions where id = '${officialVersionId}';
         perform public.create_game_design_system_version(
-          '${targetSystemId}', '${privateParentVersionId}', inherited_rules, '# Forbidden', '[]'::jsonb,
+          '${targetSystemId}', '${privateParentVersionId}', null, inherited_rules, '# Forbidden', '[]'::jsonb,
           '{"added":[],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
           '[]'::jsonb, repeat('d', 64), '${ownerId}', null
         );
@@ -176,7 +188,7 @@ async function main() {
         first_version public.game_design_system_versions;
         repeated_version public.game_design_system_versions;
         output_count integer;
-        system_metadata_matches boolean;
+        system_metadata_redacted boolean;
       begin
         select rules into source_rules
         from public.game_design_system_versions where id = '${officialVersionId}';
@@ -190,13 +202,13 @@ async function main() {
           to_jsonb('Keep literal __KECO_ATOMIC_VERSION_LINE__ and legacy __GDS_VERSION__ content.'::text)
         );
         first_version := public.create_game_design_system_version(
-          '${outputSystemId}', null, source_rules,
+          '${outputSystemId}', null, null, source_rules,
           E'# Verifier output\\n\\n> Version: __KECO_ATOMIC_VERSION_LINE__\\n> Suitable For: Examples containing __KECO_ATOMIC_VERSION_LINE__\\n\\nKeep literal __KECO_ATOMIC_VERSION_LINE__ and legacy __GDS_VERSION__ content.', '[]'::jsonb,
           '{"added":[],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
           '[]'::jsonb, repeat('7', 64), '${ownerId}', '${jobId}'
         );
         repeated_version := public.create_game_design_system_version(
-          '${outputSystemId}', null, source_rules,
+          '${outputSystemId}', null, null, source_rules,
           E'# Verifier output\\n\\n> Version: __KECO_ATOMIC_VERSION_LINE__\\n> Suitable For: Examples containing __KECO_ATOMIC_VERSION_LINE__\\n\\nKeep literal __KECO_ATOMIC_VERSION_LINE__ and legacy __GDS_VERSION__ content.', '[]'::jsonb,
           '{"added":[],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
           '[]'::jsonb, repeat('7', 64), '${ownerId}', '${jobId}'
@@ -215,12 +227,13 @@ async function main() {
           or first_version.rendered_markdown not like '%Keep literal __KECO_ATOMIC_VERSION_LINE__ and legacy __GDS_VERSION__ content.%' then
           raise exception 'marker-like user content was rewritten';
         end if;
-        select system.genres = array(select jsonb_array_elements_text(source_rules -> 'genres'))
-          and system.philosophies = array(select jsonb_array_elements_text(source_rules -> 'philosophies'))
-          and system.suitable_for = source_rules ->> 'suitableFor'
-        into system_metadata_matches
+        select system.body = ''
+          and system.genres = '{}'::text[]
+          and system.philosophies = '{}'::text[]
+          and system.suitable_for is null
+        into system_metadata_redacted
         from public.game_design_systems system where system.id = '${outputSystemId}';
-        if not system_metadata_matches then raise exception 'current system metadata was not synchronized'; end if;
+        if not system_metadata_redacted then raise exception 'private version metadata leaked onto the system row'; end if;
         begin
           delete from public.game_design_system_generation_jobs where id = '${jobId}';
           raise exception 'referenced generation job deletion was not restricted';
@@ -235,7 +248,6 @@ async function main() {
       commit;
     `).then((result) => assert(result.includes('atomic-version-ok'), 'Atomic version verification did not complete.'));
 
-    const officialSystemId = await sql(`select system_id::text from public.game_design_system_versions where id = '${officialVersionId}';`);
     await sql(`
       begin;
       insert into public.projects (id, owner_id, name, description)
@@ -290,7 +302,7 @@ async function main() {
       begin
         select rules into inherited_rules from public.game_design_system_versions where id = '${officialVersionId}';
         perform public.create_game_design_system_version(
-          '${rlsOwnedSystemId}', null, inherited_rules, '# Forged RPC', '[]'::jsonb,
+          '${rlsOwnedSystemId}', null, null, inherited_rules, '# Forged RPC', '[]'::jsonb,
           '{"added":[],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
           '[]'::jsonb, repeat('f', 64), '${ownerId}', null
         );
@@ -405,11 +417,11 @@ async function main() {
       '- retry lease cleanup: passed',
       '- final-attempt crash recovery: passed',
       '- generation output idempotency: passed',
-      '- atomic version numbering and metadata synchronization: passed',
+      '- atomic version numbering and private metadata redaction: passed',
       '- marker-like projection content preservation: passed',
       '- immutable generation provenance deletion restriction: passed',
       '- external inheritance authorization: passed',
-      '- legacy compatibility conversion and hash: passed',
+      '- legacy official preset removal: passed',
       '- needs_migration binding: denied',
       '- owner/admin/editor binding RLS: passed',
       '- authenticated direct job/version/RPC writes: denied',
@@ -420,7 +432,10 @@ async function main() {
       '',
     ].join('\n'));
   } finally {
-    await sql(`delete from public.game_design_systems where id = '${outputSystemId}'; delete from public.game_design_system_generation_jobs where id = '${jobId}';`);
+    await sql(`
+      delete from public.game_design_systems where id in ('${outputSystemId}', '${officialSystemId}');
+      delete from public.game_design_system_generation_jobs where id = '${jobId}';
+    `);
   }
 }
 

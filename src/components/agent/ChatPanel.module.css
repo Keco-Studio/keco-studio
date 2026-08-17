@@ -518,6 +518,20 @@ button.assistantStatusRow:hover .assistantStatusChevron {
 .statusSuccess { background: #10b981; }
 .statusFailure { background: #ef4444; }
 
+.ruleEvidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  color: #5f6673;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ruleEvidence[data-tone='warning'] {
+  color: #b54708;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

@@ -1,4 +1,4 @@
-import type { GameDesignRuleSet } from './ruleSchema';
+import type { GameDesignDocument, GameDesignRuleSet } from './ruleSchema';
 
 const headings: Record<GameDesignRuleSet['rules'][number]['kind'], string> = {
   principle: 'Principles',
@@ -12,7 +12,11 @@ export const GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER = '__KECO_ATOMIC_VERSION_LIN
 
 export function renderRuleSetMarkdown(
   ruleSet: GameDesignRuleSet,
-  metadata: { title: string; version: number | typeof GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER },
+  metadata: {
+    title: string;
+    version: number | typeof GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER;
+    document?: GameDesignDocument | null;
+  },
 ): string {
   const title = metadata.title
     .trim()
@@ -26,6 +30,50 @@ export function renderRuleSetMarkdown(
     `> Design Philosophy: ${ruleSet.philosophies.join(', ') || 'Unspecified'}`,
     `> Suitable For: ${ruleSet.suitableFor}`,
   ];
+
+  if (metadata.document) {
+    const document = metadata.document;
+    lines.push(
+      '',
+      '## Design Intent & Player Fantasy',
+      '',
+      '### Design Intent',
+      '',
+      document.designIntent,
+      '',
+      '### Player Fantasy',
+      '',
+      document.playerFantasy,
+      '',
+      '## Core Loop',
+      '',
+      document.coreLoop,
+      '',
+      '## Decision Structure',
+      '',
+      document.decisionStructure,
+      '',
+      '## Rules & System Boundaries',
+      '',
+      document.systemBoundaries,
+      '',
+      '## Progression & Economy',
+      '',
+      document.progressionEconomy,
+      '',
+      '## Content Model',
+      '',
+      document.contentModel,
+      '',
+      '## Difficulty & Balance',
+      '',
+      document.difficultyBalance,
+      '',
+      '## Experience & Presentation',
+      '',
+      document.experiencePresentation,
+    );
+  }
 
   (Object.keys(headings) as Array<keyof typeof headings>).forEach((kind) => {
     const rules = ruleSet.rules.filter((rule) => rule.kind === kind);

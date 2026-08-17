@@ -1,12 +1,16 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, jest } from '@jest/globals';
 import {
   createGameDesignSystemVersion,
   createGameDesignSystemGenerationJob,
   IdempotencyConflictError,
   claimGameDesignSystemGenerationJob,
+  getGameDesignSystemDetail,
+  getProjectGameDesignSystem,
+  listGameDesignSystems,
   type GameDesignSystemVersion,
 } from './gameDesignSystemService';
-import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
+import { parseGameDesignDocument, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 
 const ruleSet = parseRuleSet({
   schemaVersion: 1,
@@ -22,6 +26,18 @@ const ruleSet = parseRuleSet({
     severity: 'required',
   }],
   tableGuidance: [],
+});
+
+const document = parseGameDesignDocument({
+  designIntent: 'Make every tactical choice legible before the player commits.',
+  playerFantasy: 'Lead a compact squad through risky, recoverable decisions.',
+  coreLoop: 'Scout, commit, resolve consequences, then adapt the squad plan.',
+  decisionStructure: 'Players trade immediate safety for positional advantage.',
+  systemBoundaries: 'Hidden information may create uncertainty but never hide costs.',
+  progressionEconomy: 'New tools widen options without invalidating early equipment.',
+  contentModel: 'Encounters combine objectives, terrain pressure, and enemy roles.',
+  difficultyBalance: 'Difficulty increases through decision pressure rather than stat inflation.',
+  experiencePresentation: 'Show intent, costs, and state changes at the point of action.',
 });
 
 describe('gameDesignSystemService version and job behavior', () => {
@@ -44,19 +60,27 @@ describe('gameDesignSystemService version and job behavior', () => {
       systemId: 'system-1',
       title: 'Tactical Rules',
       createdBy: 'user-1',
+      document,
       rules: { ...ruleSet, rules: [...ruleSet.rules, { ...ruleSet.rules[0], id: 'visible-costs' }] },
       parentVersion: { ...parent, id: 'version-1' },
       sourceSnapshots: [],
     });
 
     expect(created.id).toBe('version-4');
+    expect(created.document).toEqual(document);
     expect(created.rendered_markdown).toContain('> Version: 4');
+    expect(created.rendered_markdown).toContain('## Design Intent & Player Fantasy');
+    expect(created.rendered_markdown).toContain(document.designIntent);
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_system_id: 'system-1',
       p_parent_version_id: 'version-1',
       p_diff: expect.objectContaining({ added: ['visible-costs'], conflicts: [] }),
       p_created_by: 'user-1',
       p_generation_job_id: null,
+      p_document: document,
+      p_content_hash: createHash('sha256')
+        .update(JSON.stringify({ document, rules: { ...ruleSet, rules: [...ruleSet.rules, { ...ruleSet.rules[0], id: 'visible-costs' }] } }))
+        .digest('hex'),
       p_rendered_markdown: expect.stringContaining('> Version: __KECO_ATOMIC_VERSION_LINE__'),
     }));
   });
@@ -147,6 +171,126 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(rpc).toHaveBeenCalledWith('claim_game_design_system_generation_job', {
       p_worker_id: 'worker-1',
       p_lease_seconds: 90,
+    });
+  });
+
+  it('returns only the pinned version and hydrates snapshots only for RLS-authorized version IDs', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Private system',
+      current_version_id: 'version-3', migration_status: 'ready', body: '# Secret version 3',
+    };
+    const versions = [
+      { id: 'version-3', system_id: 'system-1', version_number: 3, rules: ruleSet, rendered_markdown: '# Secret version 3' },
+      { id: 'version-2', system_id: 'system-1', version_number: 2, rules: ruleSet, rendered_markdown: '# Pinned version 2' },
+    ];
+    const projectClient = {
+      from: jest.fn((table: string) => {
+        if (table === 'project_game_design_systems') {
+          return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { design_system_id: 'system-1', version_id: 'version-2' }, error: null }) }) }) };
+        }
+        if (table === 'game_design_systems') {
+          return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) };
+        }
+        return { select: () => ({ eq: () => ({ order: async () => ({ data: [versions[1]], error: null }) }) }) };
+      }),
+    };
+    const snapshotIn = jest.fn(async (_column: string, _ids: string[]) => ({
+      data: [
+        { id: 'version-3', source_snapshots: [{ label: 'secret-v3' }] },
+        { id: 'version-2', source_snapshots: [{ label: 'pinned-v2' }] },
+      ],
+      error: null,
+    }));
+    const snapshotClient = {
+      from: jest.fn(() => ({ select: () => ({ in: snapshotIn }) })),
+    };
+
+    const detail = await getProjectGameDesignSystem(projectClient as never, 'project-1', { snapshotClient: snapshotClient as never });
+
+    expect(detail?.current_version?.id).toBe('version-2');
+    expect(detail?.versions.map((version) => version.id)).toEqual(['version-2']);
+    expect(detail?.current_version?.source_snapshots).toEqual([{ label: 'pinned-v2' }]);
+    expect(snapshotIn).toHaveBeenCalledWith('id', ['version-2']);
+    expect(detail?.body).toBe('# Pinned version 2');
+    expect(detail?.body).not.toContain('Secret version 3');
+  });
+
+  it('uses the newest readable pinned version when the owner current version is not visible', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Private system',
+      current_version_id: 'version-3', migration_status: 'ready', body: '# Secret version 3',
+    };
+    const readableVersions = [
+      { id: 'version-2', system_id: 'system-1', version_number: 2, rules: ruleSet, rendered_markdown: '# Pinned version 2' },
+    ];
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ order: async () => ({ data: readableVersions, error: null }) }) }) }),
+    };
+
+    const detail = await getGameDesignSystemDetail(supabase as never, 'system-1');
+
+    expect(detail?.current_version?.id).toBe('version-2');
+    expect(detail?.body).toBe('# Pinned version 2');
+  });
+
+  it('hydrates a compatibility document for a legacy version without one', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Legacy tactics', summary: 'A readable tactics system.',
+      current_version_id: 'version-1', body: '# Legacy version', genres: [], philosophies: [], suitable_for: null,
+    };
+    const legacyVersion = {
+      id: 'version-1', system_id: 'system-1', version_number: 1, document: null,
+      rules: ruleSet, rendered_markdown: '# Legacy version',
+    };
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ order: async () => ({ data: [legacyVersion], error: null }) }) }) }),
+    };
+
+    const detail = await getGameDesignSystemDetail(supabase as never, 'system-1');
+
+    expect(detail?.current_version?.document.designIntent).toContain('A readable tactics system.');
+    expect(detail?.current_version?.document.designIntent).toContain('compatibility summary');
+    expect(detail?.current_version?.document.coreLoop).toContain('did not store');
+  });
+
+  it('projects list metadata from the newest RLS-readable version instead of the system cache', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Private system',
+      current_version_id: 'version-3', body: '', genres: [], philosophies: [], suitable_for: null,
+    };
+    const visibleRules = {
+      ...ruleSet,
+      genres: ['Pinned Genre'],
+      philosophies: ['Pinned Philosophy'],
+      suitableFor: 'Pinned audience',
+    };
+    const systemsOrder2 = jest.fn(async () => ({ data: [system], error: null }));
+    const systemsOrder1 = jest.fn(() => ({ order: systemsOrder2 }));
+    const versionOrder = jest.fn(async () => ({
+      data: [{
+        id: 'version-2', system_id: 'system-1', version_number: 2,
+        rules: visibleRules, rendered_markdown: '# Pinned version 2',
+      }],
+      error: null,
+    }));
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ order: systemsOrder1 }) }
+        : { select: () => ({ in: () => ({ order: versionOrder }) }) }),
+    };
+
+    const listed = await listGameDesignSystems(supabase as never);
+
+    expect(listed[0]).toMatchObject({
+      current_version_id: 'version-2',
+      body: '# Pinned version 2',
+      genres: ['Pinned Genre'],
+      philosophies: ['Pinned Philosophy'],
+      suitable_for: 'Pinned audience',
     });
   });
 });

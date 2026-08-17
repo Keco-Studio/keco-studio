@@ -1,4 +1,4 @@
-import type { GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
+import type { GameDesignDocument, GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
 import type { GameDesignReferenceOption, GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
 import type { GameDesignSystemReferenceGame } from '@/lib/gameDesignSystem';
 import type {
@@ -44,8 +44,13 @@ export async function updateGameDesignSystemDraft(id: string, input: { title?: s
   return (await readJson<{ system: GameDesignSystem }>(response)).system;
 }
 
-export async function createGameDesignSystemVersion(id: string, rules: GameDesignRuleSet, parentVersionId?: string): Promise<GameDesignSystemVersion> {
-  const response = await fetch(`/api/game-design-systems/${encodeURIComponent(id)}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules, parentVersionId }) });
+export async function createGameDesignSystemVersion(
+  id: string,
+  rules: GameDesignRuleSet,
+  parentVersionId?: string,
+  document?: GameDesignDocument,
+): Promise<GameDesignSystemVersion> {
+  const response = await fetch(`/api/game-design-systems/${encodeURIComponent(id)}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document, rules, parentVersionId }) });
   return (await readJson<{ version: GameDesignSystemVersion }>(response)).version;
 }
 

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   parseStoredContent,
   loadConversationHistory,
+  saveMessage,
 } from '../../../src/lib/agent/conversation-store';
 import type { ChatContentPart } from '../../../src/lib/agent/types';
 
@@ -77,5 +78,35 @@ describe('loadConversationHistory with content parts', () => {
       role: 'assistant',
       reasoning_content: 'Inspect the current story graph first.',
     });
+  });
+});
+
+describe('saveMessage Game Design System evidence', () => {
+  it('persists server-validated rule declaration evidence in the assistant message JSONB', async () => {
+    const insert = jest.fn(() => ({
+      select: () => ({
+        single: async () => ({ data: { id: 'message-1', created_at: '2026-08-16T00:00:00Z' }, error: null }),
+      }),
+    }));
+    const supabase = {
+      from: (table: string) => table === 'agent_messages'
+        ? { insert }
+        : { update: () => ({ eq: async () => ({ error: null }) }) },
+    } as unknown as SupabaseClient;
+    const evidence = {
+      systemId: 'system-1', versionId: 'version-2', version: 2,
+      includedRuleIds: ['required-a'], omittedRuleIds: ['warning-b'],
+      declaredRuleIds: ['required-a'], invalidRuleIds: [], declarationStatus: 'declared' as const,
+    };
+
+    await saveMessage(supabase, 'conversation-1', {
+      role: 'assistant',
+      content: 'Applied rules: required-a',
+      game_design_evidence: evidence,
+    });
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.objectContaining({ game_design_evidence: evidence }),
+    }));
   });
 });

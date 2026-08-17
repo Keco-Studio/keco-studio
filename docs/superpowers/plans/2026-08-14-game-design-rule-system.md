@@ -111,11 +111,11 @@
 - Modify: `tests/unit/agent/system-prompt.test.ts`
 
 **Interfaces:**
-- Produces: `buildAgentRulePolicy(ruleSet): { text: string; appliedRuleIds: string[] }`.
+- Produces: `buildAgentRulePolicy(ruleSet): { text: string; appliedRuleIds: string[]; omittedRuleIds: string[] }` and persisted model-declared rule evidence.
 
 - [x] Write failing tests proving raw Markdown, rationale, provenance, control characters, fake system instructions, and text after 12,000 characters are excluded.
 - [x] Implement normalized allow-listed serialization and explicit untrusted-data boundaries.
-- [x] Load the pinned version in Agent context and require compact applied-rule evidence for relevant design tasks.
+- [x] Load the pinned version in Agent context, budget required rules first, record omissions, and parse/validate/persist/stream compact applied-rule evidence for relevant design tasks.
 - [x] Run prompt and policy tests.
 
 ### Task 7: Versioned API surface
@@ -151,7 +151,7 @@
 - Consumes the versioned browser client and reference-options API.
 
 - [x] Add a jsdom testing setup if needed and write rendered interaction tests for project/resource selection, validation, progress/retry, metadata editing, version diff, and concrete-version binding.
-- [x] Implement the real resource picker and structured rule/version detail.
+- [x] Implement the real resource picker, restrict generation bases to official/owned systems, and render structured rule/version detail.
 - [x] Remove manual project-ID inputs and raw Markdown editing.
 - [x] Run component tests at desktop and mobile-relevant states.
 
@@ -164,7 +164,7 @@
 **Interfaces:**
 - Verifies all acceptance criteria against local Supabase and real DeepSeek.
 
-- [x] Add a database verification script that creates two workers, proves one claim, expires a lease, proves recovery, and cleans its rows.
+- [x] Add database verification for worker claim/recovery and a regular Jest RLS behavior test proving non-owners can read only a project-pinned personal-system version.
 - [x] Update Playwright to create real Document/Table source content, select both through UI, generate, inspect snapshot/version/diff, bind, read Agent policy, and clean up.
 - [x] Run focused Jest, database verifier, Playwright, lint, typecheck, and production build.
 - [x] Confirm no test systems, bindings, or leased jobs remain.

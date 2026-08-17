@@ -65,7 +65,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       resourceId: reference.resourceId!,
     })));
     const base = body.baseSystemId
-      ? await getGameDesignSystemDetail(supabase, body.baseSystemId, { versionClient: getSupabaseServiceRoleClient() })
+      ? await getGameDesignSystemDetail(supabase, body.baseSystemId, { snapshotClient: getSupabaseServiceRoleClient() })
       : null;
     if (body.baseSystemId && !base?.current_version) {
       return NextResponse.json({ error: 'Base Game Design System has no usable version.' }, { status: 404 });
@@ -85,6 +85,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       referenceGames: body.referenceGames.map((game) => ({ name: game.name!, reference: game.reference!, avoid: game.avoid! })),
       baseSystemId: base?.id,
       baseVersionId: base?.current_version?.id,
+      baseDocument: base?.current_version?.document,
       baseRules: base?.current_version?.rules,
       pastedMarkdown: body.pastedMarkdown,
     };

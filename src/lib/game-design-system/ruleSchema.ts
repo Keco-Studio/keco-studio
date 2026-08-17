@@ -49,17 +49,82 @@ export const gameDesignRuleSetSchema = z.object({
   });
 });
 
+export const gameDesignDocumentSchema = z.object({
+  designIntent: boundedString(4000),
+  playerFantasy: boundedString(4000),
+  coreLoop: boundedString(4000),
+  decisionStructure: boundedString(4000),
+  systemBoundaries: boundedString(4000),
+  progressionEconomy: boundedString(4000),
+  contentModel: boundedString(4000),
+  difficultyBalance: boundedString(4000),
+  experiencePresentation: boundedString(4000),
+}).strict();
+
+export const generatedGameDesignSystemSchema = z.object({
+  document: gameDesignDocumentSchema,
+  rules: gameDesignRuleSetSchema,
+}).strict();
+
 export type GameDesignRule = z.infer<typeof gameDesignRuleSchema>;
 export type GameDesignRuleSet = z.infer<typeof gameDesignRuleSetSchema>;
+export type GameDesignDocument = z.infer<typeof gameDesignDocumentSchema>;
+export type GeneratedGameDesignSystem = z.infer<typeof generatedGameDesignSystemSchema>;
 export type TableGuidance = z.infer<typeof tableGuidanceSchema>;
 
-export function parseRuleSet(value: unknown): GameDesignRuleSet {
-  const parsed = gameDesignRuleSetSchema.parse(value);
-  const bytes = new TextEncoder().encode(JSON.stringify(parsed)).byteLength;
+function enforceSize<T>(value: T, label: string): T {
+  const bytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;
   if (bytes > RULE_SET_MAX_BYTES) {
-    throw new Error(`Game Design Rule Set exceeds the 64 KiB limit (${bytes} bytes).`);
+    throw new Error(`${label} exceeds the 64 KiB limit (${bytes} bytes).`);
   }
-  return parsed;
+  return value;
+}
+
+export function parseRuleSet(value: unknown): GameDesignRuleSet {
+  return enforceSize(gameDesignRuleSetSchema.parse(value), 'Game Design Rule Set');
+}
+
+export function parseGameDesignDocument(value: unknown): GameDesignDocument {
+  return gameDesignDocumentSchema.parse(value);
+}
+
+export function parseGeneratedGameDesignSystem(value: unknown): GeneratedGameDesignSystem {
+  return enforceSize(generatedGameDesignSystemSchema.parse(value), 'Generated Game Design System');
+}
+
+function summarizeRules(ruleSet: GameDesignRuleSet, kinds: GameDesignRule['kind'][]): string {
+  return ruleSet.rules
+    .filter((rule) => kinds.includes(rule.kind))
+    .slice(0, 4)
+    .map((rule) => rule.statement)
+    .join(' ');
+}
+
+export function buildCompatibilityGameDesignDocument(
+  ruleSet: GameDesignRuleSet,
+  metadata: { title?: string; summary?: string | null } = {},
+): GameDesignDocument {
+  const title = metadata.title?.trim() || 'this Game Design System';
+  const summary = metadata.summary?.trim();
+  const principles = summarizeRules(ruleSet, ['principle', 'pattern']);
+  const boundaries = summarizeRules(ruleSet, ['constraint', 'anti_pattern', 'check']);
+  const guidance = ruleSet.tableGuidance
+    .slice(0, 4)
+    .map((item) => `${item.table}: ${item.purpose}`)
+    .join(' ');
+  const compatibilityNote = `This section is a compatibility summary derived from the structured rules in ${title}.`;
+
+  return parseGameDesignDocument({
+    designIntent: [summary, principles, compatibilityNote].filter(Boolean).join(' '),
+    playerFantasy: `Use ${title} to create experiences suitable for ${ruleSet.suitableFor}. ${compatibilityNote}`,
+    coreLoop: `The original version did not store a dedicated core-loop narrative. ${compatibilityNote}`,
+    decisionStructure: principles || compatibilityNote,
+    systemBoundaries: boundaries || principles || compatibilityNote,
+    progressionEconomy: `The original version did not store dedicated progression and economy prose. ${compatibilityNote}`,
+    contentModel: guidance || `No dedicated content model was stored. ${compatibilityNote}`,
+    difficultyBalance: `Apply the required and warning rules when reviewing difficulty and balance. ${compatibilityNote}`,
+    experiencePresentation: `Apply the readable-state and presentation-related rules when communicating game state. ${compatibilityNote}`,
+  });
 }
 
 function plainText(node: SanctionedMdxAstNode): string {

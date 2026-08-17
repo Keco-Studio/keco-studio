@@ -150,6 +150,68 @@ describe('resumeAgentTurn confirmation integrity', () => {
     });
   });
 
+  it('persists and streams validated rule evidence after a confirmed resume', async () => {
+    const policySupabase = {
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => table === 'projects'
+            ? { single: async () => ({ data: { name: 'Project' }, error: null }) }
+            : { maybeSingle: async () => ({
+              data: {
+                design_system_id: 'system-1',
+                version_id: 'version-2',
+                game_design_systems: { migration_status: 'ready' },
+                game_design_system_versions: {
+                  version_number: 2,
+                  rules: {
+                    schemaVersion: 1,
+                    genres: ['Strategy'],
+                    philosophies: ['Readable Systems'],
+                    suitableFor: 'Tactical games',
+                    rules: [{
+                      id: 'required-a', kind: 'constraint', title: 'Required A',
+                      statement: 'Keep choices readable.', appliesWhen: 'Designing choices.', severity: 'required',
+                    }],
+                    tableGuidance: [],
+                  },
+                },
+              },
+              error: null,
+            }) },
+        }),
+      }),
+    } as unknown as SupabaseClient;
+    getToolsForLlmAsync.mockResolvedValue([]);
+    loadConversationHistory.mockResolvedValue([]);
+    saveMessage.mockResolvedValue({ id: 'message-1' });
+    executeImport.mockResolvedValue({ success: true, data: { type: 'document_edit' } });
+    streamLlm.mockImplementation(async function* () {
+      yield { type: 'text_delta', content: 'Done.\n\nApplied rules: required-a, forged-rule' };
+      yield { type: 'finish', reason: 'stop' };
+    });
+
+    const events: SSEEvent[] = [];
+    for await (const event of resumeAgentTurn({
+      ...resumeInput(),
+      toolContext: { ...toolContext('editor'), supabase: policySupabase },
+      conversationMeta: {},
+    })) {
+      events.push(event);
+    }
+
+    const expectedEvidence = expect.objectContaining({
+      systemId: 'system-1', versionId: 'version-2', version: 2,
+      declaredRuleIds: ['required-a'], invalidRuleIds: ['forged-rule'], declarationStatus: 'invalid',
+    });
+    expect(events).toContainEqual({ type: 'game_design_evidence', evidence: expectedEvidence });
+    expect(saveMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ role: 'assistant', game_design_evidence: expectedEvidence }),
+      expect.anything(),
+    );
+  });
+
   it('emits explicit success metadata after a confirmed edit succeeds', async () => {
     executeImport.mockResolvedValue({
       success: true,

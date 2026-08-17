@@ -91,6 +91,39 @@ test.describe('Game Design System real workflow', () => {
     if (owner) await deleteTemporaryUser(admin, owner).catch(() => undefined);
   });
 
+  test('keeps the product rail and creation flow in one responsive workspace', async ({ page }) => {
+    const login = new LoginPage(page);
+    await login.goto();
+    await login.login(owner);
+    await login.expectLoginSuccess();
+
+    await page.goto('/game-design-systems');
+    await expect(page.getByRole('button', { name: 'Game Design System', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('tab', { name: /My Systems/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Official/ }).click();
+    await expect(page.getByText('No official systems yet.', { exact: true })).toBeVisible();
+
+    const workspaceUrl = page.url();
+    await page.getByRole('button', { name: 'Create Game Design System' }).click();
+    await expect(page).toHaveURL(workspaceUrl);
+    await expect(page.getByRole('tab', { name: 'Foundation' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('System name')).toBeVisible();
+    await page.screenshot({ path: 'test-results/game-design-system-workspace-desktop.png', fullPage: true });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('button', { name: 'Game Design System', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Show system library' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show system library' }).click();
+    await expect(page.getByRole('complementary', { name: 'Game Design System library' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Game Design System', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close system library' }).click({ position: { x: 320, y: 20 } });
+    const horizontalOverflow = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(horizontalOverflow).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: 'test-results/game-design-system-workspace-mobile.png', fullPage: true });
+  });
+
   test('completes a queued job through Cron without an accepting request instance', async ({ request }) => {
     const cronSecret = process.env.CRON_SECRET;
     if (!cronSecret) throw new Error('CRON_SECRET is required for durable worker acceptance.');
@@ -162,55 +195,73 @@ test.describe('Game Design System real workflow', () => {
 
     await page.goto('/game-design-systems');
     await expect(page.getByRole('heading', { name: 'Game Design System', exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: /Official Presets/ }).click();
-    await expect(page.getByRole('button', { name: /Tactical Systems/ })).toBeVisible();
+    await page.getByRole('tab', { name: /Official/ }).click();
+    await expect(page.getByText('No official systems yet.', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: /My Systems/ }).click();
 
     const title = `E2E Tactical Rules ${Date.now()}`;
-    await page.getByRole('button', { name: /Create system/ }).click();
+    const startUrl = page.url();
+    await page.getByRole('button', { name: 'Create Game Design System' }).click();
+    await expect(page).toHaveURL(startUrl);
     await page.getByLabel('System name').fill(title);
     await page.getByRole('button', { name: 'RPG', exact: true }).click();
     await page.getByRole('button', { name: 'Meaningful Decisions', exact: true }).click();
     await page.getByLabel('Natural language description').fill('Create compact tactical rules with readable costs, reversible onboarding, and explicit counterplay.');
+    await page.getByRole('button', { name: 'Continue to sources' }).click();
     await page.getByLabel('Source project').selectOption(projectId);
     await page.getByRole('checkbox', { name: new RegExp(documentName) }).check();
     await page.getByRole('checkbox', { name: new RegExp(libraryName) }).check();
-    await page.getByRole('button', { name: /Generate system/ }).first().click();
+    await page.getByRole('button', { name: 'Review input' }).click();
+    await page.getByRole('button', { name: 'Generate system' }).click();
 
     await expect(page.getByRole('heading', { name: /Generating|Generation incomplete/ })).toBeVisible();
     await Promise.race([
-      page.waitForURL(/\/game-design-systems\?systemId=/, { timeout: 240_000 }),
+      page.getByRole('heading', { name: title, exact: true }).waitFor({ state: 'visible', timeout: 240_000 }),
       page.getByRole('heading', { name: 'Generation incomplete' }).waitFor({ state: 'visible', timeout: 240_000 }).then(async () => {
         throw new Error(`Generation failed: ${await page.locator('main').innerText()}`);
       }),
     ]);
-    systemId = new URL(page.url()).searchParams.get('systemId');
-    expect(systemId).toBeTruthy();
+    await expect(page).toHaveURL(startUrl);
+    const { data: generatedSystem, error: generatedSystemError } = await admin.from('game_design_systems')
+      .select('id').eq('owner_id', owner.id).eq('title', title).single();
+    if (generatedSystemError || !generatedSystem) throw generatedSystemError ?? new Error('Generated system was not found.');
+    systemId = generatedSystem.id;
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Design document', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: 'Sources' }).click();
     await expect(page.getByText(documentName, { exact: true })).toBeVisible();
-    await expect(page.getByText(libraryName, { exact: true })).toBeVisible();
     await expect(page.getByRole('option', { name: /Version 1/ })).toBeAttached();
 
     const { data: firstSystem, error: firstSystemError } = await admin.from('game_design_systems')
       .select('current_version_id').eq('id', systemId!).single();
     if (firstSystemError || !firstSystem?.current_version_id) throw firstSystemError ?? new Error('Generated system has no version.');
     const { data: firstVersion, error: firstVersionError } = await admin.from('game_design_system_versions')
-      .select('id,rules,source_snapshots').eq('id', firstSystem.current_version_id).single();
+      .select('id,document,rules,source_snapshots').eq('id', firstSystem.current_version_id).single();
     if (firstVersionError || !firstVersion) throw firstVersionError ?? new Error('Generated version was not found.');
     const snapshots = firstVersion.source_snapshots as Array<{ kind: string; label: string; excerpt: string; contentHash: string }>;
     expect(snapshots).toHaveLength(2);
     expect(snapshots.find((snapshot) => snapshot.kind === 'document')?.excerpt).toContain(DOCUMENT_CONSTRAINT);
     expect(snapshots.find((snapshot) => snapshot.kind === 'table')?.excerpt).toContain(TABLE_ROW_VALUE);
     expect(snapshots.every((snapshot) => /^[a-f0-9]{64}$/.test(snapshot.contentHash))).toBe(true);
+    expect(firstVersion.document).toEqual(expect.objectContaining({
+      designIntent: expect.any(String),
+      playerFantasy: expect.any(String),
+      coreLoop: expect.any(String),
+    }));
+    expect((firstVersion.document as { designIntent: string }).designIntent.length).toBeGreaterThan(0);
 
-    await page.getByRole('button', { name: 'Edit rules' }).click();
-    const rulesEditor = page.getByLabel('Rules JSON');
-    const editedRules = JSON.parse(await rulesEditor.inputValue()) as GameDesignRuleSet;
-    editedRules.rules[0].statement = `${editedRules.rules[0].statement} Preserve the original cost signal.`;
-    await rulesEditor.fill(JSON.stringify(editedRules, null, 2));
+    const editedRules = firstVersion.rules as GameDesignRuleSet;
+    await page.getByRole('tab', { name: 'Rules' }).click();
+    await page.getByRole('button', { name: 'New version' }).click();
+    const ruleStatement = page.getByLabel('Rule statement');
+    await ruleStatement.fill(`${editedRules.rules[0].statement} Preserve the original cost signal.`);
+    await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('button', { name: 'Create version' }).click();
     await expect(page.getByText('Version 2 created.', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('option', { name: /Version 2/ })).toBeAttached();
 
+    await page.getByRole('tab', { name: 'Projects' }).click();
     const projectSelect = page.getByLabel('Select project');
     await projectSelect.selectOption(projectId);
     await page.getByRole('button', { name: 'Use version 2', exact: true }).click();
@@ -239,13 +290,14 @@ test.describe('Game Design System real workflow', () => {
     });
     expect(boundSystemMessage.content).toContain('pinned to Game Design System version 2');
     expect(boundSystemMessage.content).toContain(editedRules.rules[0].id);
-    expect(boundSystemMessage.content).not.toContain(DOCUMENT_CONSTRAINT);
-    expect(boundSystemMessage.content).not.toContain(TABLE_ROW_VALUE);
+    expect(boundSystemMessage.content).not.toContain('"source_snapshots"');
+    expect(boundSystemMessage.content).not.toContain('"excerpt"');
+    for (const snapshot of snapshots) expect(boundSystemMessage.content).not.toContain(snapshot.contentHash);
 
-    await page.getByRole('button', { name: 'Edit rules' }).click();
-    const versionThreeRules = JSON.parse(await rulesEditor.inputValue()) as GameDesignRuleSet;
-    versionThreeRules.rules[0].statement = `${versionThreeRules.rules[0].statement} ${VERSION_THREE_ONLY}`;
-    await rulesEditor.fill(JSON.stringify(versionThreeRules, null, 2));
+    await page.getByRole('tab', { name: 'Rules' }).click();
+    await page.getByRole('button', { name: 'New version' }).click();
+    await ruleStatement.fill(`${await ruleStatement.inputValue()} ${VERSION_THREE_ONLY}`);
+    await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('button', { name: 'Create version' }).click();
     await expect(page.getByText('Version 3 created.', { exact: true })).toBeVisible({ timeout: 30_000 });
 
@@ -274,6 +326,7 @@ test.describe('Game Design System real workflow', () => {
 
     await page.screenshot({ path: 'test-results/game-design-system-real.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('tab', { name: 'Overview' }).click();
     await page.evaluate(() => {
       window.scrollTo(0, 0);
       document.querySelectorAll<HTMLElement>('[class*="detail"]').forEach((element) => {
@@ -281,6 +334,7 @@ test.describe('Game Design System real workflow', () => {
       });
     });
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Design document', exact: true })).toBeVisible();
     const horizontalOverflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
@@ -344,7 +398,9 @@ test.describe('Game Design System real workflow', () => {
     await page.goto('/game-design-systems/create');
     await page.getByLabel('System name').fill('Retry state rules');
     await page.getByRole('button', { name: 'RPG', exact: true }).click();
-    await page.getByRole('button', { name: /Generate system/ }).first().click();
+    await page.getByRole('button', { name: 'Continue to sources' }).click();
+    await page.getByRole('button', { name: 'Review input' }).click();
+    await page.getByRole('button', { name: 'Generate system' }).click();
     await expect(page.getByRole('heading', { name: 'Generation incomplete' })).toBeVisible();
     await expect(page.getByText('DeepSeek temporarily unavailable.')).toBeVisible();
     await page.getByRole('button', { name: /Retry job/ }).click();

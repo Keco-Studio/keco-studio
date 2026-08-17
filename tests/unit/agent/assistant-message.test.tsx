@@ -21,6 +21,50 @@ jest.mock('@/assets/images/analyze.svg', () => 'analyze.svg', { virtual: true })
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('assistant reasoning message', () => {
+  it('renders validated declarations and the concrete IDs omitted by the policy budget', () => {
+    const html = renderToStaticMarkup(
+      <ChatMessage
+        item={{
+          id: 'assistant-evidence',
+          role: 'assistant',
+          text: 'Applied rules: required-a',
+          gameDesignEvidence: {
+            systemId: 'system-1', versionId: 'version-2', version: 2,
+            includedRuleIds: ['required-a'], omittedRuleIds: ['warning-b', 'warning-c'],
+            declaredRuleIds: ['required-a'], invalidRuleIds: [], declarationStatus: 'declared',
+          },
+        }}
+        streaming={false}
+        onDecision={jest.fn()}
+      />
+    );
+
+    expect(html).toContain('Rule declaration validated for v2');
+    expect(html).toContain('Omitted by policy budget: warning-b, warning-c');
+  });
+
+  it('renders a missing declaration as neutral, non-compliance evidence', () => {
+    const html = renderToStaticMarkup(
+      <ChatMessage
+        item={{
+          id: 'assistant-no-declaration',
+          role: 'assistant',
+          text: 'Hello.',
+          gameDesignEvidence: {
+            systemId: 'system-1', versionId: 'version-2', version: 2,
+            includedRuleIds: ['required-a'], omittedRuleIds: [],
+            declaredRuleIds: [], invalidRuleIds: [], declarationStatus: 'missing',
+          },
+        }}
+        streaming={false}
+        onDecision={jest.fn()}
+      />
+    );
+
+    expect(html).toContain('No rule declaration recorded for v2');
+    expect(html).toContain('data-tone="neutral"');
+  });
+
   it('shows a live summary and thinking state on the collapsed control', () => {
     const html = renderToStaticMarkup(
       <ChatMessage

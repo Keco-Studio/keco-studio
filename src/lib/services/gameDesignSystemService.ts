@@ -5,7 +5,14 @@ import type {
   GameDesignSystemReference,
   GameDesignSystemReferenceGame,
 } from '@/lib/gameDesignSystem';
-import { buildLegacyRuleSet, parseRuleSet, type GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
+import {
+  buildCompatibilityGameDesignDocument,
+  buildLegacyRuleSet,
+  parseGameDesignDocument,
+  parseRuleSet,
+  type GameDesignDocument,
+  type GameDesignRuleSet,
+} from '@/lib/game-design-system/ruleSchema';
 import { GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER, renderRuleSetMarkdown } from '@/lib/game-design-system/ruleMarkdown';
 import { diffRuleSets, type GameDesignRuleDiff } from '@/lib/game-design-system/ruleDiff';
 
@@ -58,6 +65,7 @@ export type GameDesignSystemVersion = {
   system_id: string;
   version_number: number;
   parent_version_id: string | null;
+  document: GameDesignDocument;
   rules: GameDesignRuleSet;
   rendered_markdown: string;
   source_snapshots: GameDesignSourceSnapshot[];
@@ -71,7 +79,7 @@ export type GameDesignSystemVersion = {
 export type GameDesignSystemVersionParent = Pick<
   GameDesignSystemVersion,
   'id' | 'system_id' | 'version_number' | 'rules' | 'source_snapshots'
->;
+> & Partial<Pick<GameDesignSystemVersion, 'document'>>;
 
 export type GameDesignSystemDetail = GameDesignSystem & {
   current_version: GameDesignSystemVersion | null;
@@ -102,11 +110,23 @@ export type GameDesignSystemGenerationJob = {
 };
 
 const SYSTEM_COLUMNS = 'id,owner_id,source,title,summary,genres,philosophies,suitable_for,body,provenance,status,current_version_id,migration_status,generation_job_id,created_at,updated_at';
-const VERSION_COLUMNS = 'id,system_id,version_number,parent_version_id,rules,rendered_markdown,source_snapshots,diff,conflicts,content_hash,created_by,created_at';
+const VERSION_COLUMNS = 'id,system_id,version_number,parent_version_id,document,rules,rendered_markdown,source_snapshots,diff,conflicts,content_hash,created_by,created_at';
+const VERSION_READ_COLUMNS = 'id,system_id,version_number,parent_version_id,document,rules,rendered_markdown,diff,conflicts,content_hash,created_by,created_at';
 const JOB_COLUMNS = 'id,owner_id,status,phase,input,error,design_system_id,output_version_id,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at';
 
 function hashJson(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function hydrateVersion(
+  row: Record<string, unknown>,
+  metadata: { title?: string; summary?: string | null } = {},
+): GameDesignSystemVersion {
+  const rules = parseRuleSet(row.rules);
+  const document = row.document == null
+    ? buildCompatibilityGameDesignDocument(rules, metadata)
+    : parseGameDesignDocument(row.document);
+  return { ...(row as unknown as GameDesignSystemVersion), document, rules };
 }
 
 export class IdempotencyConflictError extends Error {
@@ -116,6 +136,21 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
+function projectSystemVersionMetadata(
+  system: GameDesignSystem,
+  version: GameDesignSystemVersion | null,
+): GameDesignSystem {
+  if (!version) return system;
+  return {
+    ...system,
+    current_version_id: version.id,
+    body: version.rendered_markdown,
+    genres: version.rules.genres,
+    philosophies: version.rules.philosophies,
+    suitable_for: version.rules.suitableFor,
+  };
+}
+
 export async function listGameDesignSystems(supabase: SupabaseClient): Promise<GameDesignSystem[]> {
   const { data, error } = await supabase
     .from('game_design_systems')
@@ -123,7 +158,32 @@ export async function listGameDesignSystems(supabase: SupabaseClient): Promise<G
     .order('source', { ascending: true })
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as GameDesignSystem[];
+  const systems = (data ?? []) as GameDesignSystem[];
+  if (systems.length === 0) return systems;
+  const versions = await supabase
+    .from('game_design_system_versions')
+    .select(VERSION_READ_COLUMNS)
+    .in('system_id', systems.map((system) => system.id))
+    .order('version_number', { ascending: false });
+  if (versions.error) throw versions.error;
+  const readableBySystem = new Map<string, GameDesignSystemVersion[]>();
+  for (const row of versions.data ?? []) {
+    const system = systems.find((candidate) => candidate.id === (row as { system_id: string }).system_id);
+    const version = {
+      ...hydrateVersion(row as Record<string, unknown>, system ?? {}),
+      source_snapshots: [],
+    };
+    const systemVersions = readableBySystem.get(version.system_id) ?? [];
+    systemVersions.push(version);
+    readableBySystem.set(version.system_id, systemVersions);
+  }
+  return systems.map((system) => {
+    const readableVersions = readableBySystem.get(system.id) ?? [];
+    const currentVersion = readableVersions.find((version) => version.id === system.current_version_id)
+      ?? readableVersions[0]
+      ?? null;
+    return projectSystemVersionMetadata(system, currentVersion);
+  });
 }
 
 export async function getGameDesignSystem(supabase: SupabaseClient, id: string): Promise<GameDesignSystem | null> {
@@ -136,14 +196,42 @@ export async function getGameDesignSystem(supabase: SupabaseClient, id: string):
   return (data as GameDesignSystem | null) ?? null;
 }
 
-export async function listGameDesignSystemVersions(supabase: SupabaseClient, systemId: string): Promise<GameDesignSystemVersion[]> {
+export async function listGameDesignSystemVersions(
+  supabase: SupabaseClient,
+  systemId: string,
+  metadata: { title?: string; summary?: string | null } = {},
+): Promise<GameDesignSystemVersion[]> {
   const { data, error } = await supabase
     .from('game_design_system_versions')
-    .select(VERSION_COLUMNS)
+    .select(VERSION_READ_COLUMNS)
     .eq('system_id', systemId)
     .order('version_number', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as unknown as GameDesignSystemVersion[];
+  return (data ?? []).map((version) => ({
+    ...hydrateVersion(version as Record<string, unknown>, metadata),
+    source_snapshots: [],
+  }));
+}
+
+async function hydrateAuthorizedVersionSnapshots(
+  versions: GameDesignSystemVersion[],
+  snapshotClient?: SupabaseClient,
+): Promise<GameDesignSystemVersion[]> {
+  if (!snapshotClient || versions.length === 0) return versions;
+  const authorizedIds = versions.map((version) => version.id);
+  const { data, error } = await snapshotClient
+    .from('game_design_system_versions')
+    .select('id,source_snapshots')
+    .in('id', authorizedIds);
+  if (error) throw error;
+  const snapshotsById = new Map((data ?? []).map((row) => [
+    row.id as string,
+    Array.isArray(row.source_snapshots) ? row.source_snapshots as GameDesignSourceSnapshot[] : [],
+  ]));
+  return versions.map((version) => ({
+    ...version,
+    source_snapshots: snapshotsById.get(version.id) ?? [],
+  }));
 }
 
 export async function getGameDesignSystemVersion(supabase: SupabaseClient, id: string): Promise<GameDesignSystemVersion | null> {
@@ -154,22 +242,24 @@ export async function getGameDesignSystemVersion(supabase: SupabaseClient, id: s
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return { ...(data as unknown as GameDesignSystemVersion), rules: parseRuleSet((data as { rules: unknown }).rules) };
+  return hydrateVersion(data as Record<string, unknown>);
 }
 
 export async function getGameDesignSystemDetail(
   supabase: SupabaseClient,
   id: string,
-  options?: { versionClient?: SupabaseClient },
+  options?: { snapshotClient?: SupabaseClient },
 ): Promise<GameDesignSystemDetail | null> {
   const system = await getGameDesignSystem(supabase, id);
   if (!system) return null;
-  const versions = await listGameDesignSystemVersions(options?.versionClient ?? supabase, id);
+  const readableVersions = await listGameDesignSystemVersions(supabase, id, system);
+  const versions = await hydrateAuthorizedVersionSnapshots(readableVersions, options?.snapshotClient);
   const parsed = versions.map((version) => ({ ...version, rules: parseRuleSet(version.rules) }));
+  const currentVersion = parsed.find((version) => version.id === system.current_version_id) ?? parsed[0] ?? null;
   return {
-    ...system,
+    ...projectSystemVersionMetadata(system, currentVersion),
     versions: parsed,
-    current_version: parsed.find((version) => version.id === system.current_version_id) ?? null,
+    current_version: currentVersion,
   };
 }
 
@@ -179,6 +269,7 @@ export async function createGameDesignSystemVersion(
     systemId: string;
     title: string;
     createdBy: string;
+    document?: GameDesignDocument | null;
     rules: unknown;
     parentVersion?: GameDesignSystemVersionParent | null;
     sourceSnapshots?: GameDesignSourceSnapshot[];
@@ -186,29 +277,36 @@ export async function createGameDesignSystemVersion(
   },
 ): Promise<GameDesignSystemVersion> {
   const rules = parseRuleSet(input.rules);
+  const document = input.document
+    ? parseGameDesignDocument(input.document)
+    : input.parentVersion?.document
+      ? parseGameDesignDocument(input.parentVersion.document)
+      : buildCompatibilityGameDesignDocument(rules, { title: input.title });
   const diff = input.parentVersion
     ? diffRuleSets(parseRuleSet(input.parentVersion.rules), rules)
     : { added: rules.rules.map((rule) => rule.id).sort(), removed: [], changed: [], conflicts: [] };
   const rendered = renderRuleSetMarkdown(rules, {
     title: input.title,
     version: GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER,
+    document,
   });
   const { data, error } = await supabase.rpc('create_game_design_system_version', {
     p_system_id: input.systemId,
     p_parent_version_id: input.parentVersion?.id ?? null,
+    p_document: document,
     p_rules: rules,
     p_rendered_markdown: rendered,
     p_source_snapshots: input.sourceSnapshots ?? [],
     p_diff: diff,
     p_conflicts: diff.conflicts,
-    p_content_hash: hashJson(rules),
+    p_content_hash: hashJson({ document, rules }),
     p_created_by: input.createdBy,
     p_generation_job_id: input.generationJobId ?? null,
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('Version creation returned no row.');
-  return { ...(row as GameDesignSystemVersion), rules };
+  return { ...(row as GameDesignSystemVersion), document, rules };
 }
 
 export async function createGameDesignSystem(
@@ -221,6 +319,7 @@ export async function createGameDesignSystem(
     philosophies: string[];
     suitableFor?: string;
     body?: string;
+    document?: GameDesignDocument | null;
     rules?: unknown;
     sourceSnapshots?: GameDesignSourceSnapshot[];
     generationJobId?: string;
@@ -232,24 +331,27 @@ export async function createGameDesignSystem(
   const rules = input.rules
     ? parseRuleSet(input.rules)
     : buildLegacyRuleSet({ genres: input.genres, philosophies: input.philosophies, suitableFor: input.suitableFor, body: input.body ?? '' });
-  const rendered = renderRuleSetMarkdown(rules, { title: input.title, version: 1 });
   if (input.generationJobId) {
     const existing = await supabase.from('game_design_systems').select(SYSTEM_COLUMNS)
       .eq('generation_job_id', input.generationJobId).maybeSingle();
     if (existing.error) throw existing.error;
     if (existing.data) {
       const system = existing.data as GameDesignSystem;
-      if (system.current_version_id) return system;
+      if (system.current_version_id) {
+        const currentVersion = await getGameDesignSystemVersion(supabase, system.current_version_id);
+        return projectSystemVersionMetadata(system, currentVersion);
+      }
       const version = await createGameDesignSystemVersion(supabase, {
         systemId: system.id,
         title: system.title,
         createdBy: ownerId,
+        document: input.document,
         rules,
         sourceSnapshots: input.sourceSnapshots,
         parentVersion: input.parentVersion,
         generationJobId: input.generationJobId,
       });
-      return { ...system, current_version_id: version.id, body: version.rendered_markdown };
+      return projectSystemVersionMetadata(system, version);
     }
   }
   const { data, error } = await supabase
@@ -259,10 +361,10 @@ export async function createGameDesignSystem(
       source: 'user',
       title: input.title,
       summary: input.summary ?? null,
-      genres: rules.genres,
-      philosophies: rules.philosophies,
-      suitable_for: rules.suitableFor,
-      body: rendered,
+      genres: [],
+      philosophies: [],
+      suitable_for: null,
+      body: '',
       provenance: input.provenance ?? {},
       status: input.status ?? 'draft',
       generation_job_id: input.generationJobId ?? null,
@@ -281,12 +383,13 @@ export async function createGameDesignSystem(
       systemId: system.id,
       title: system.title,
       createdBy: ownerId,
+      document: input.document,
       rules,
       sourceSnapshots: input.sourceSnapshots,
       parentVersion: input.parentVersion,
       generationJobId: input.generationJobId,
     });
-    return { ...system, current_version_id: version.id, body: version.rendered_markdown };
+    return projectSystemVersionMetadata(system, version);
   } catch (cause) {
     await supabase.from('game_design_systems').delete().eq('id', system.id);
     throw cause;
@@ -307,11 +410,14 @@ export async function updateGameDesignSystem(
   if (input.suitableFor !== undefined) patch.suitable_for = input.suitableFor;
   const { data, error } = await supabase.from('game_design_systems').update(patch).eq('id', id).select(SYSTEM_COLUMNS).single();
   if (error) throw error;
-  return data as GameDesignSystem;
+  const system = data as GameDesignSystem;
+  const versions = await listGameDesignSystemVersions(supabase, id);
+  const currentVersion = versions.find((version) => version.id === system.current_version_id) ?? versions[0] ?? null;
+  return projectSystemVersionMetadata(system, currentVersion);
 }
 
 export async function copyGameDesignSystem(supabase: SupabaseClient, source: GameDesignSystem, ownerId: string): Promise<GameDesignSystem> {
-  const detail = await getGameDesignSystemDetail(supabase, source.id);
+  const detail = await getGameDesignSystemDetail(supabase, source.id, { snapshotClient: supabase });
   if (!detail?.current_version) throw new Error('Source system has no readable version.');
   return createGameDesignSystem(supabase, ownerId, {
     title: `${source.title} (Copy)`,
@@ -319,6 +425,7 @@ export async function copyGameDesignSystem(supabase: SupabaseClient, source: Gam
     genres: detail.current_version.rules.genres,
     philosophies: detail.current_version.rules.philosophies,
     suitableFor: detail.current_version.rules.suitableFor,
+    document: detail.current_version.document,
     rules: detail.current_version.rules,
     sourceSnapshots: detail.current_version.source_snapshots,
     parentVersion: detail.current_version,
@@ -330,7 +437,7 @@ export async function copyGameDesignSystem(supabase: SupabaseClient, source: Gam
 export async function getProjectGameDesignSystem(
   supabase: SupabaseClient,
   projectId: string,
-  options?: { versionClient?: SupabaseClient },
+  options?: { snapshotClient?: SupabaseClient },
 ): Promise<GameDesignSystemDetail | null> {
   const { data, error } = await supabase
     .from('project_game_design_systems')
@@ -342,7 +449,12 @@ export async function getProjectGameDesignSystem(
   const detail = await getGameDesignSystemDetail(supabase, data.design_system_id as string, options);
   if (!detail) return null;
   const pinned = detail.versions.find((version) => version.id === data.version_id) ?? null;
-  return { ...detail, current_version: pinned };
+  if (!pinned) return null;
+  return {
+    ...projectSystemVersionMetadata(detail, pinned),
+    current_version: pinned,
+    versions: [pinned],
+  };
 }
 
 export async function setProjectGameDesignSystem(

@@ -17,7 +17,7 @@ const metadataSchema = z.object({
 export const GET = withAuth(async function GET(_request, { params }: Params, { supabase, user }) {
   const { id } = await params;
   try {
-    const system = await getGameDesignSystemDetail(supabase, id, { versionClient: getSupabaseServiceRoleClient() });
+    const system = await getGameDesignSystemDetail(supabase, id, { snapshotClient: getSupabaseServiceRoleClient() });
     return system
       ? NextResponse.json({ system: await redactGameDesignSystemDetailForViewer(supabase, system, user.id) })
       : NextResponse.json({ error: 'Game Design System not found.' }, { status: 404 });
@@ -39,11 +39,74 @@ export const PATCH = withAuth(async function PATCH(request, { params }: Params, 
   }
 });
 
-export const DELETE = withAuth(async function DELETE(_request, { params }: Params, { supabase }) {
+type DeleteDatabaseError = { code?: string };
+
+function deleteErrorResponse(error: DeleteDatabaseError) {
+  if (error.code === '42501') {
+    return NextResponse.json({ error: 'You are not allowed to delete this Game Design System.' }, { status: 403 });
+  }
+  if (error.code === '23503') {
+    return NextResponse.json({ error: 'Unbind this Game Design System from all projects before deleting it.' }, { status: 409 });
+  }
+  return NextResponse.json({ error: 'Failed to delete Game Design System.' }, { status: 400 });
+}
+
+async function lookupDeleteTarget(admin: ReturnType<typeof getSupabaseServiceRoleClient>, id: string) {
+  const { data, error } = await admin
+    .from('game_design_systems')
+    .select('id,source,owner_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data as { id: string; source: string; owner_id: string | null } | null;
+}
+
+async function hasProjectBinding(admin: ReturnType<typeof getSupabaseServiceRoleClient>, id: string) {
+  const { data, error } = await admin
+    .from('project_game_design_systems')
+    .select('project_id')
+    .eq('design_system_id', id)
+    .limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+export const DELETE = withAuth(async function DELETE(_request, { params }: Params, { supabase, user }) {
   const { id } = await params;
-  const { error } = await supabase.from('game_design_systems').delete().eq('id', id);
-  if (error) return NextResponse.json({ error: 'Failed to delete Game Design System.' }, { status: 400 });
-  return NextResponse.json({ ok: true });
+  const admin = getSupabaseServiceRoleClient();
+
+  try {
+    const target = await lookupDeleteTarget(admin, id);
+    if (!target) return NextResponse.json({ error: 'Game Design System not found.' }, { status: 404 });
+    if (target.source !== 'user' || target.owner_id !== user.id) {
+      return NextResponse.json({ error: 'Only the owner can delete this Game Design System.' }, { status: 403 });
+    }
+    if (await hasProjectBinding(admin, id)) {
+      return NextResponse.json({ error: 'Unbind this Game Design System from all projects before deleting it.' }, { status: 409 });
+    }
+
+    const { data: deleted, error } = await supabase
+      .from('game_design_systems')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+    if (error) return deleteErrorResponse(error);
+    if (deleted && typeof deleted === 'object' && 'id' in deleted) return NextResponse.json({ ok: true });
+
+    // RLS can turn an unauthorized delete into a successful zero-row response.
+    // Re-check the authoritative row so a concurrent delete is reported as 404,
+    // while a row that still exists is never reported as successful.
+    const remaining = await lookupDeleteTarget(admin, id);
+    if (!remaining) return NextResponse.json({ error: 'Game Design System not found.' }, { status: 404 });
+    if (await hasProjectBinding(admin, id)) {
+      return NextResponse.json({ error: 'Unbind this Game Design System from all projects before deleting it.' }, { status: 409 });
+    }
+    return NextResponse.json({ error: 'You are not allowed to delete this Game Design System.' }, { status: 403 });
+  } catch (error) {
+    console.error('[DELETE /api/game-design-systems/:id]', error);
+    return NextResponse.json({ error: 'Failed to delete Game Design System.' }, { status: 500 });
+  }
 });
 
 /** Backward-compatible copy action; new clients use /:id/copy. */

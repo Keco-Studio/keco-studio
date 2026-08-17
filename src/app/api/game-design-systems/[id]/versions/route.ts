@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
-import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
+import { buildCompatibilityGameDesignDocument, parseGameDesignDocument, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { findReintroducedRuleIds } from '@/lib/game-design-system/ruleDiff';
 import { createGameDesignSystemVersion, getGameDesignSystem, getGameDesignSystemDetail, getGameDesignSystemVersion, type GameDesignSystemVersion } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string }> };
 export const GET = withAuth(async function GET(_request, { params }: Params, { supabase, user }) {
   const { id } = await params;
   try {
-    const system = await getGameDesignSystemDetail(supabase, id, { versionClient: getSupabaseServiceRoleClient() });
+    const system = await getGameDesignSystemDetail(supabase, id, { snapshotClient: getSupabaseServiceRoleClient() });
     if (!system) return NextResponse.json({ error: 'Game Design System not found.' }, { status: 404 });
     const visible = await redactGameDesignSystemDetailForViewer(supabase, system, user.id);
     return NextResponse.json({ versions: visible.versions });
@@ -22,12 +22,20 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
 
 export const POST = withAuth(async function POST(request, { params }: Params, { supabase, user }) {
   const { id } = await params;
-  const body = await request.json().catch(() => null) as { rules?: unknown; parentVersionId?: unknown } | null;
+  const body = await request.json().catch(() => null) as { document?: unknown; rules?: unknown; parentVersionId?: unknown } | null;
   let rules;
   try {
     rules = parseRuleSet(body?.rules);
   } catch {
     return NextResponse.json({ error: 'Invalid structured rules.' }, { status: 400 });
+  }
+  let suppliedDocument;
+  if (body && Object.hasOwn(body, 'document')) {
+    try {
+      suppliedDocument = parseGameDesignDocument(body.document);
+    } catch {
+      return NextResponse.json({ error: 'Invalid design document.' }, { status: 400 });
+    }
   }
   const parentVersionId = typeof body?.parentVersionId === 'string' ? body.parentVersionId : null;
   try {
@@ -57,15 +65,25 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
         }, { status: 409 });
       }
     }
+    const document = suppliedDocument
+      ?? parent?.document
+      ?? buildCompatibilityGameDesignDocument(rules, { title: system.title, summary: system.summary });
     const version = await createGameDesignSystemVersion(versionClient, {
       systemId: id,
       title: system.title,
       createdBy: user.id,
+      document,
       rules,
       parentVersion: parent,
       sourceSnapshots: parent?.source_snapshots ?? [],
     });
-    return NextResponse.json({ version }, { status: 201 });
+    const visible = await redactGameDesignSystemDetailForViewer(supabase, {
+      ...system,
+      current_version_id: version.id,
+      current_version: version,
+      versions: [version],
+    }, user.id);
+    return NextResponse.json({ version: visible.current_version ?? visible.versions[0] }, { status: 201 });
   } catch (error) {
     console.error('[POST /api/game-design-systems/:id/versions]', error);
     return NextResponse.json({ error: 'Version could not be created.' }, { status: 400 });

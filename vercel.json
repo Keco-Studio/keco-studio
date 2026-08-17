@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/internal/game-design-system-worker",
-      "schedule": "* * * * *"
-    }
-  ]
-}
+{}

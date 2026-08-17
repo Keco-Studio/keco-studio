@@ -49,5 +49,28 @@ describe('Game Design System Agent policy boundary', () => {
     const policy = buildAgentRulePolicy(rules);
     expect(policy.text.length).toBeLessThanOrEqual(AGENT_RULE_POLICY_MAX_CHARS);
     expect(policy.appliedRuleIds.length).toBeLessThan(40);
+    expect(policy.omittedRuleIds.length).toBeGreaterThan(0);
+  });
+
+  it('keeps required rules ahead of earlier warning rules when the budget is exhausted', () => {
+    const rules = parseRuleSet({
+      schemaVersion: 1, genres: [], philosophies: [], suitableFor: 'Any project', tableGuidance: [],
+      rules: [
+        ...Array.from({ length: 20 }, (_, index) => ({
+          id: `warning-${index}`, kind: 'check' as const, title: `Warning ${index}`,
+          statement: 'w'.repeat(700), appliesWhen: 'Always', severity: 'warning' as const,
+        })),
+        {
+          id: 'required-final', kind: 'constraint', title: 'Required final rule',
+          statement: 'This rule must survive policy budgeting.', appliesWhen: 'Always', severity: 'required',
+        },
+      ],
+    });
+
+    const policy = buildAgentRulePolicy(rules);
+
+    expect(policy.appliedRuleIds).toContain('required-final');
+    expect(policy.omittedRuleIds).not.toContain('required-final');
+    expect(policy.omittedRuleIds).toContain('warning-19');
   });
 });

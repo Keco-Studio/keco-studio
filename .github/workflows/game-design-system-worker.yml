@@ -1,0 +1,28 @@
+name: Game Design System Worker
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: game-design-system-worker
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - name: Process queued generation jobs
+        env:
+          WORKER_SECRET: ${{ secrets.GAME_DESIGN_SYSTEM_WORKER_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$WORKER_SECRET"
+          curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors \
+            --connect-timeout 15 --max-time 330 \
+            --header "Authorization: Bearer $WORKER_SECRET" \
+            https://keco-studio-main.vercel.app/api/internal/game-design-system-worker

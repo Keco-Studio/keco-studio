@@ -1,5 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseRuleSet, buildLegacyRuleSet } from './ruleSchema';
+import {
+  buildCompatibilityGameDesignDocument,
+  buildLegacyRuleSet,
+  parseGameDesignDocument,
+  parseGeneratedGameDesignSystem,
+  parseRuleSet,
+} from './ruleSchema';
 import {
   GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER,
   renderRuleSetMarkdown,
@@ -28,7 +34,55 @@ const valid = {
   ],
 };
 
+const validDocument = {
+  designIntent: 'Make every tactical choice legible and consequential.',
+  playerFantasy: 'Lead a small squad through uncertain encounters.',
+  coreLoop: 'Scout, commit resources, resolve the encounter, and adapt the squad.',
+  decisionStructure: 'Players compare visible costs, risks, and future positioning.',
+  systemBoundaries: 'Hidden information may create uncertainty but never conceal action costs.',
+  progressionEconomy: 'Progression expands tactical options without replacing player judgment.',
+  contentModel: 'Skills, encounters, enemies, and rewards use reusable data definitions.',
+  difficultyBalance: 'Difficulty increases through richer situations rather than opaque stat inflation.',
+  experiencePresentation: 'The interface previews consequences and explains state changes.',
+};
+
 describe('Game Design Rule Set contract', () => {
+  it('strictly parses a complete human-readable design document', () => {
+    expect(parseGameDesignDocument(validDocument)).toEqual(validDocument);
+    expect(() => parseGameDesignDocument({ ...validDocument, coreLoop: '' })).toThrow();
+    expect(() => parseGameDesignDocument({ ...validDocument, extra: 'not allowed' })).toThrow();
+    expect(() => parseGameDesignDocument({ ...validDocument, designIntent: 'x'.repeat(4001) })).toThrow();
+  });
+
+  it('parses a bounded generated document and rules envelope', () => {
+    expect(parseGeneratedGameDesignSystem({ document: validDocument, rules: valid })).toEqual({
+      document: validDocument,
+      rules: valid,
+    });
+    expect(() => parseGeneratedGameDesignSystem({
+      document: Object.fromEntries(Object.keys(validDocument).map((key) => [key, 'x'.repeat(4000)])),
+      rules: {
+        ...valid,
+        rules: Array.from({ length: 40 }, (_, index) => ({
+          ...valid.rules[0],
+          id: `large-rule-${index}`,
+          statement: 's'.repeat(800),
+        })),
+      },
+    })).toThrow(/64 KiB/);
+  });
+
+  it('builds an honest compatibility document for rules-only versions', () => {
+    const document = buildCompatibilityGameDesignDocument(parseRuleSet(valid), {
+      title: 'Tactical Rules',
+      summary: 'A readable tactical decision framework.',
+    });
+    expect(document.designIntent).toContain('A readable tactical decision framework.');
+    expect(document.coreLoop).toContain('compatibility');
+    expect(document.systemBoundaries).toContain(valid.rules[0].statement);
+    expect(() => parseGameDesignDocument(document)).not.toThrow();
+  });
+
   it('strictly parses a valid rule set', () => {
     expect(parseRuleSet(valid)).toEqual(valid);
   });
@@ -61,13 +115,18 @@ describe('Game Design Rule Set contract', () => {
     const markdown = renderRuleSetMarkdown(parseRuleSet(valid), {
       title: 'Tactical Rules',
       version: 2,
+      document: validDocument,
     });
     expect(markdown).toContain('# Tactical Rules');
     expect(markdown).toContain('> Version: 2');
+    expect(markdown).toContain('## Design Intent & Player Fantasy');
+    expect(markdown).toContain(validDocument.designIntent);
+    expect(markdown).toContain('## Core Loop');
     expect(markdown).toContain('## Principles');
+    expect(markdown.indexOf('## Core Loop')).toBeLessThan(markdown.indexOf('## Principles'));
     expect(markdown).toContain('### readable-state - Readable state');
     expect(markdown).toContain('## Keco Table Guidance');
-    expect(renderRuleSetMarkdown(parseRuleSet(valid), { title: 'Tactical Rules', version: 2 })).toBe(markdown);
+    expect(renderRuleSetMarkdown(parseRuleSet(valid), { title: 'Tactical Rules', version: 2, document: validDocument })).toBe(markdown);
   });
 
   it('uses a dedicated atomic version-line marker without changing marker-like rule content', () => {

@@ -32,7 +32,7 @@
 - Consumes: fetchGameDesignSystems(), fetchGameDesignSystem(id), useAuth().
 - Produces: GameDesignSystemLibrary props with systems, scope, search, selectedId, onSelect, onScopeChange, and onCreate.
 
-- [ ] **Step 1: Write failing library and view-switch tests**
+- [x] **Step 1: Write failing library and view-switch tests**
 
 Add rendered-control tests that assert:
 
@@ -46,13 +46,13 @@ expect(screen.getByRole('heading', { name: 'Create Game Design System' })).toBeV
 expect(push).not.toHaveBeenCalled();
 ~~~
 
-- [ ] **Step 2: Run the focused test and verify failure**
+- [x] **Step 2: Run the focused test and verify failure**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
 Expected: FAIL because the current page routes to /create and has no workspace navigation or official empty state.
 
-- [ ] **Step 3: Implement the library and top-level modes**
+- [x] **Step 3: Implement the library and top-level modes**
 
 GameDesignSystemsPage must keep:
 
@@ -64,7 +64,7 @@ type SystemView = 'overview' | 'rules' | 'versions' | 'sources' | 'projects';
 
 The Create command sets WorkspaceMode to create. Selecting a system sets mode to system. GameDesignSystemLibrary filters My Systems by source=user and owner_id=current user, and Official by source=official.
 
-- [ ] **Step 4: Run the focused tests**
+- [x] **Step 4: Run the focused tests**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
@@ -82,7 +82,7 @@ Expected: PASS.
 - Consumes: GameDesignSystemDetail, GameDesignSystemVersion, ProjectOption[], mutation callbacks.
 - Produces: accessible Overview, Rules, Versions, Sources, and Projects tab panels.
 
-- [ ] **Step 1: Write failing view tests**
+- [x] **Step 1: Write failing view tests**
 
 Add tests that click each tab and assert real payload values:
 
@@ -97,17 +97,17 @@ await user.click(screen.getByRole('tab', { name: 'Projects' }));
 expect(await screen.findByText('Project A')).toBeVisible();
 ~~~
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
 Expected: FAIL because the stacked page does not expose the specified tab panels.
 
-- [ ] **Step 3: Implement view tabs and panels**
+- [x] **Step 3: Implement view tabs and panels**
 
 Overview derives counts from selectedVersion.rules.rules, detail.versions, and selectedVersion.source_snapshots. Versions uses real diff and conflicts. Sources uses real redacted snapshots. Projects uses /api/projects and fetchProjectGameDesignSystem(projectId), and existing apply/clear mutations.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
@@ -125,7 +125,7 @@ Expected: PASS.
 - Consumes: parent GameDesignSystemVersion and onCreateVersion(rules, parentVersionId).
 - Produces: one validated GameDesignRuleSet only after explicit review and confirmation.
 
-- [ ] **Step 1: Write failing edit-session tests**
+- [x] **Step 1: Write failing edit-session tests**
 
 ~~~tsx
 await user.click(screen.getByRole('button', { name: 'New version' }));
@@ -141,17 +141,17 @@ expect(createVersion).toHaveBeenCalledWith(
 );
 ~~~
 
-- [ ] **Step 2: Verify the test fails**
+- [x] **Step 2: Verify the test fails**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
 Expected: FAIL because the current editor is a raw JSON textarea.
 
-- [ ] **Step 3: Implement the local draft editor**
+- [x] **Step 3: Implement the local draft editor**
 
 Clone the parent rule set with structuredClone. Support rule selection, field updates, add, delete, reorder, system settings, table guidance, cancel, and review. Call parseRuleSet before opening review. Never call the version mutation during field edits.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
@@ -170,7 +170,7 @@ Expected: PASS.
 - GameDesignSystemCreatePage props: embedded?: boolean, onCancel?: () => void, onCompleted?: (systemId: string) => void.
 - Existing route remains a compatibility wrapper.
 
-- [ ] **Step 1: Write failing staged-flow tests**
+- [x] **Step 1: Write failing staged-flow tests**
 
 ~~~tsx
 expect(screen.getByRole('tab', { name: 'Foundation' })).toHaveAttribute('aria-selected', 'true');
@@ -182,17 +182,17 @@ await user.click(screen.getByRole('button', { name: 'Review input' }));
 expect(screen.getByText('Validated structured rules')).toBeVisible();
 ~~~
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemCreatePage.test.tsx
 
 Expected: FAIL because the current form renders all inputs at once.
 
-- [ ] **Step 3: Implement local stages**
+- [x] **Step 3: Implement local stages**
 
 Foundation owns design direction fields, Sources owns real resource and reference inputs, Review shows normalized real input. Submission and retry reuse the existing generation functions and polling state. Embedded completion selects the generated system without router navigation.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: npx jest --runInBand src/components/game-design-system/GameDesignSystemCreatePage.test.tsx src/components/game-design-system/GameDesignSystemsPage.test.tsx
 
@@ -208,15 +208,15 @@ Expected: PASS.
 - Consumes all components above.
 - Produces desktop and mobile workspaces without horizontal overflow or hidden commands.
 
-- [ ] **Step 1: Add browser assertions**
+- [x] **Step 1: Add browser assertions**
 
 Assert the existing product rail remains visible, tabs switch without URL changes, Official is empty, Create stays on /game-design-systems, and mobile scrollWidth minus clientWidth is at most 1.
 
-- [ ] **Step 2: Implement responsive CSS**
+- [x] **Step 2: Implement responsive CSS**
 
 At 900px the library becomes an overlay drawer, Rules becomes one column with a rule selector, inspector moves below the form, tabs scroll horizontally, and forms become one column.
 
-- [ ] **Step 3: Run complete focused verification**
+- [x] **Step 3: Run complete focused verification**
 
 Run:
 
@@ -227,7 +227,7 @@ npm run typecheck
 
 Expected: all selected suites and typecheck pass.
 
-- [ ] **Step 4: Run the browser workflow**
+- [x] **Step 4: Run the browser workflow**
 
 Run: npx playwright test tests/e2e/specs/game-design-system.spec.ts --workers=1
 

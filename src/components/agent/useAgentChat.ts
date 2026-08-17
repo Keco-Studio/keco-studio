@@ -21,9 +21,11 @@ import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
 import {
   applyAssistantDelta,
+  applyGameDesignEvidence,
   finalizeAssistantItem,
   promoteAssistantTextToReasoning,
 } from './assistantStreamItems';
+import { parseGameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
 import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
@@ -452,6 +454,14 @@ export function useAgentChat(ctx: SendContext) {
           }
           case 'cache_invalidated': {
             void invalidateCaches(parseAgentInvalidations(event));
+            break;
+          }
+          case 'game_design_evidence': {
+            const evidence = parseGameDesignRuleEvidence(event.evidence);
+            if (!evidence || !assistantId) break;
+            updateAgentChatRuntime(runtimeKey, (current) => ({
+              items: applyGameDesignEvidence(current.items, assistantId, evidence),
+            }));
             break;
           }
           case 'error': {

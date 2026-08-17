@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { generateGameDesignRuleSet, RuleSetGenerationValidationError, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
+import { generateGameDesignSystemOutput, RuleSetGenerationValidationError, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
 import {
   claimGameDesignSystemGenerationJob,
   completeGameDesignSystemGenerationJob,
@@ -16,7 +16,7 @@ import {
 
 type WorkerDependencies = {
   heartbeat: typeof heartbeatGameDesignSystemGenerationJob;
-  generate: typeof generateGameDesignRuleSet;
+  generate: typeof generateGameDesignSystemOutput;
   createSystem: typeof createGameDesignSystem;
   complete: typeof completeGameDesignSystemGenerationJob;
   retry: typeof retryGameDesignSystemGenerationJob;
@@ -25,7 +25,7 @@ type WorkerDependencies = {
 
 const defaultDependencies: WorkerDependencies = {
   heartbeat: heartbeatGameDesignSystemGenerationJob,
-  generate: generateGameDesignRuleSet,
+  generate: generateGameDesignSystemOutput,
   createSystem: createGameDesignSystem,
   complete: completeGameDesignSystemGenerationJob,
   retry: retryGameDesignSystemGenerationJob,
@@ -68,12 +68,13 @@ export async function processClaimedGameDesignSystemJob(
   try {
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'generating');
     const generationInput = job.input as unknown as ResolvedGameDesignGenerationInput;
-    const rules = await generateWithLeaseHeartbeat({
+    const generated = await generateWithLeaseHeartbeat({
       serviceClient,
       workerId,
       jobId: job.id,
       generationInput,
     }, dependencies);
+    const { document, rules } = generated;
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
     const created = await dependencies.createSystem(serviceClient, job.owner_id, {
@@ -82,6 +83,7 @@ export async function processClaimedGameDesignSystemJob(
       genres: rules.genres,
       philosophies: rules.philosophies,
       suitableFor: rules.suitableFor,
+      document,
       rules,
       sourceSnapshots: generationInput.sourceSnapshots,
       generationJobId: job.id,
@@ -89,6 +91,7 @@ export async function processClaimedGameDesignSystemJob(
         id: generationInput.baseVersionId,
         system_id: generationInput.baseSystemId,
         version_number: 0,
+        document: generationInput.baseDocument,
         rules: generationInput.baseRules,
         source_snapshots: [],
       } : null,

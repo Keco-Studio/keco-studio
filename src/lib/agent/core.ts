@@ -71,6 +71,10 @@ import { createAccessVerificationCache } from '@/lib/services/authorizationServi
 import { normalizeToolCallForReplay } from './tool-call-recovery';
 import { parseRuleSet } from '@/lib/game-design-system/ruleSchema';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
+import {
+  buildGameDesignRuleEvidence,
+  type GameDesignPolicyContext,
+} from '@/lib/game-design-system/agentEvidence';
 
 const MAX_ITERATIONS = 50;
 
@@ -137,10 +141,15 @@ function parseArgs(raw: string): ParsedArgs {
   return { args: parsed as Record<string, unknown> };
 }
 
-export async function buildAgentSystemMessage(
+interface AgentSystemContext {
+  message: ChatMessage;
+  gameDesignPolicy?: GameDesignPolicyContext;
+}
+
+export async function buildAgentSystemContext(
   ctx: ToolContext,
   retrievedContextBlock?: string
-): Promise<ChatMessage> {
+): Promise<AgentSystemContext> {
   let projectName: string | undefined;
   let currentLibraryName = ctx.currentLibraryName;
   let currentFolderName = ctx.currentFolderName;
@@ -149,6 +158,7 @@ export async function buildAgentSystemMessage(
     policyText: string;
     appliedRuleIds: string[];
   } | undefined;
+  let gameDesignPolicy: GameDesignPolicyContext | undefined;
 
   try {
     const { data: project } = await ctx.supabase
@@ -190,18 +200,30 @@ export async function buildAgentSystemMessage(
   try {
     const { data: binding } = await ctx.supabase
       .from('project_game_design_systems')
-      .select('game_design_systems(migration_status), game_design_system_versions(version_number, rules)')
+      .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules)')
       .eq('project_id', ctx.projectId)
       .maybeSingle();
-    const row = binding as { game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
+    const row = binding as { design_system_id?: unknown; version_id?: unknown; game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
     const rawSystem = Array.isArray(row?.game_design_systems) ? row?.game_design_systems[0] : row?.game_design_systems;
     const rawVersion = Array.isArray(row?.game_design_system_versions) ? row?.game_design_system_versions[0] : row?.game_design_system_versions;
     if (rawSystem && typeof rawSystem === 'object' && rawVersion && typeof rawVersion === 'object') {
       const system = rawSystem as Record<string, unknown>;
       const version = rawVersion as Record<string, unknown>;
-      if (system.migration_status === 'ready' && typeof version.version_number === 'number') {
+      if (
+        system.migration_status === 'ready'
+        && typeof version.version_number === 'number'
+        && typeof row?.design_system_id === 'string'
+        && typeof row.version_id === 'string'
+      ) {
         const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
         gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
+        gameDesignPolicy = {
+          systemId: row.design_system_id,
+          versionId: row.version_id,
+          version: version.version_number,
+          includedRuleIds: policy.appliedRuleIds,
+          omittedRuleIds: policy.omittedRuleIds,
+        };
       }
     }
   } catch {
@@ -226,9 +248,19 @@ export async function buildAgentSystemMessage(
     : basePrompt;
 
   return {
-    role: 'system',
-    content,
+    message: {
+      role: 'system',
+      content,
+    },
+    gameDesignPolicy,
   };
+}
+
+export async function buildAgentSystemMessage(
+  ctx: ToolContext,
+  retrievedContextBlock?: string
+): Promise<ChatMessage> {
+  return (await buildAgentSystemContext(ctx, retrievedContextBlock)).message;
 }
 
 async function loadRetrievedContextBlock(
@@ -356,7 +388,8 @@ async function* continueLoop(
   deadlineMs: number,
   startTokenUsageTotal = 0,
   signal?: AbortSignal,
-  trace?: TurnTraceCollector
+  trace?: TurnTraceCollector,
+  gameDesignPolicy?: GameDesignPolicyContext,
 ): AsyncGenerator<SSEEvent> {
   let iterations = startIterations;
   let usedTokenTotal = startTokenUsageTotal;
@@ -450,9 +483,18 @@ async function* continueLoop(
         role: 'assistant',
         content: assistantContent,
         ...(assistantReasoning ? { reasoning_content: assistantReasoning } : {}),
+        ...(gameDesignPolicy ? {
+          game_design_evidence: buildGameDesignRuleEvidence(assistantContent, gameDesignPolicy),
+        } : {}),
       };
       messages.push(completedAssistantMessage);
       await persistMessage(ctx, conversationId, completedAssistantMessage);
+      if (completedAssistantMessage.game_design_evidence) {
+        yield {
+          type: 'game_design_evidence',
+          evidence: completedAssistantMessage.game_design_evidence,
+        };
+      }
       yield { type: 'done' };
       return;
     }
@@ -782,7 +824,8 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       conversationId,
       input.userMessage
     );
-    const systemMessage = await buildAgentSystemMessage(toolContext, retrievedContextBlock);
+    const systemContext = await buildAgentSystemContext(toolContext, retrievedContextBlock);
+    const systemMessage = systemContext.message;
 
     const history = await loadConversationHistory(toolContext.supabase, conversationId);
     const compactedHistory = compactLargeUserContentInMessages(history);
@@ -828,7 +871,8 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       deadlineMs,
       0,
       input.signal,
-      trace
+      trace,
+      systemContext.gameDesignPolicy,
     );
   } finally {
     await flushTrace(trace, toolContext, conversationId);
@@ -873,7 +917,8 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     const conversation = await getConversation(turnContext.supabase, conversationId);
     const meta = conversation?.meta ?? input.conversationMeta;
 
-    const systemMessage = await buildAgentSystemMessage(turnContext);
+    const systemContext = await buildAgentSystemContext(turnContext);
+    const systemMessage = systemContext.message;
     const {
       messages: suspendedMessages,
       pendingToolCall,
@@ -1014,7 +1059,8 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       deadlineMs,
       resumeTokenUsageTotal,
       input.signal,
-      trace ?? undefined
+      trace ?? undefined,
+      systemContext.gameDesignPolicy,
     );
   } finally {
     await flushTrace(trace ?? undefined, turnContext, conversationId);

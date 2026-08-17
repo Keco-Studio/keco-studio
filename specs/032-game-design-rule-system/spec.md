@@ -42,7 +42,9 @@ that accepted the job.
 Editing rules creates an immutable new version. A version may inherit from one
 parent version. The UI shows added, changed, removed rules and unresolved
 conflicts. A project owner or admin explicitly binds one concrete version; later
-versions do not silently change the project constraint.
+versions do not silently change the project constraint. For a personal system,
+project members who are not the system owner can read only versions pinned by a
+project they can access. Draft versions created later remain owner-only.
 
 ### US-5 Constrain Agent output
 
@@ -50,7 +52,9 @@ The Agent reads only the bound version's validated, bounded structured rules. It
 does not inject editable Markdown or provenance text as instructions. The prompt
 states that rule text is untrusted policy data, cannot change tool permissions,
 identity, secrets, or higher-priority instructions, and is truncated at a stable
-budget. Agent responses identify which rule IDs guided relevant design work.
+budget. Required rules are budgeted before recommended and warning rules. Agent
+responses identify which rule IDs guided relevant design work, and the server
+validates and stores that model declaration with the message.
 
 ## Canonical Rule Schema
 
@@ -97,6 +101,13 @@ Limits: at most 80 rules, 20 table-guidance entries, 20 fields per entry, and
 - Duplicated IDs and delete-then-readd ambiguity are validation errors.
 - A version with unresolved conflicts cannot be bound to a project.
 - Project bindings store both `system_id` and `version_id`.
+- Project binding responses expose only the bound version in `current_version`
+  and `versions`; service-role reads must not widen the response.
+- System owners and official systems may expose complete version history. Other
+  project members may read only versions pinned by their readable projects.
+- Non-official system rows do not cache rendered rule Markdown or version-owned
+  genre/philosophy/suitable-for values; their readable projection is resolved
+  from an authorized version row so direct table access cannot bypass version RLS.
 
 ## Source Reference Contract
 
@@ -137,11 +148,16 @@ the job to queued with exponential delays of 5 and 20 seconds. Validation and
 authorization errors fail immediately. Exhausted jobs fail permanently.
 
 The create route may use Next `after()` for low-latency opportunistic processing,
-but correctness relies on a protected worker route invoked every minute by Cron.
+but correctness relies on a protected worker route invoked every five minutes by
+the Hobby-compatible GitHub Actions scheduler. The scheduler also supports a
+manual dispatch for operational recovery; overlapping runs are not cancelled.
 
 ## Agent Security Contract
 
 - Maximum injected policy block: 12,000 characters.
+- Rules are considered in stable severity order: required, recommended, then
+  warning. Original order is preserved within a severity.
+- Every rule excluded by the budget is recorded by ID; omission is not silent.
 - Only rule `id`, `kind`, `title`, `statement`, `appliesWhen`, `severity`, and
   table-guidance names/purposes are eligible. Rationale, provenance, source
   excerpts, pasted Markdown, and arbitrary metadata are never injected.
@@ -153,6 +169,14 @@ but correctness relies on a protected worker route invoked every minute by Cron.
 - Only project owners and accepted admins may bind or replace a version.
 - Relevant design answers end with compact evidence such as
   `Applied rules: readable-state, reversible-onboarding`.
+- The server parses the final declaration, rejects IDs that were not injected,
+  and persists the pinned system/version, injected IDs, omitted IDs, declared
+  IDs, invalid IDs, and declaration status in `agent_messages.content`.
+- The same validated evidence is streamed onto the just-completed assistant
+  message. The UI shows concrete omitted rule IDs; a missing declaration is
+  neutral because non-design replies do not require one.
+- This record is model-declared application evidence, not proof that the answer
+  semantically complied with each rule.
 
 ## API Contract
 
@@ -181,6 +205,9 @@ different payload returns `409`.
 - Personal metadata is editable. Rule edits create a new version and are schema
   validated before save.
 - Create uses real project/document/table selectors; project IDs are never typed.
+- A generation base selector contains official systems and systems owned by the
+  current user only. A personal system readable only through a project binding
+  is not offered as a base.
 - Progress exposes queued, claimed, generating, validating, saving, retry delay,
   failed, and completed states.
 - Applying requires a project and concrete conflict-free version.
@@ -191,7 +218,8 @@ different payload returns `409`.
   prompt budgeting, injection isolation, hashing, and source bounds.
 - Local-Supabase integration tests for RLS, owner/admin binding, editor denial,
   idempotency, atomic claim, concurrent claim exclusion, lease recovery, retries,
-  and immutable versions.
+  immutable versions, accepted-versus-pending collaborator access, and non-owner
+  pinned-version visibility.
 - Route tests may mock only network/LLM boundaries, not authorization or job state
   transitions under test.
 - React tests must interact with rendered controls and assert state. Reading
@@ -209,8 +237,8 @@ different payload returns `409`.
 
 ## Acceptance Criteria
 
-1. Killing the request instance after job creation does not prevent Cron from
-   completing or retrying the job.
+1. Killing the request instance after job creation does not prevent the scheduled
+   worker from completing or retrying the job.
 2. A selected Document sentence and Table value appear in the stored immutable
    source snapshot and generation prompt.
 3. Duplicate/empty/fake Markdown headings cannot bypass validation because JSON
@@ -218,7 +246,11 @@ different payload returns `409`.
 4. Arbitrary Markdown and provenance never enter the Agent system prompt.
 5. An editor cannot bind a system; an owner/admin can bind a conflict-free version.
 6. A project remains pinned to its selected version after newer versions exist.
-7. Tests exercise the real database and rendered UI for the critical path.
+7. A project member cannot read the personal system owner's later versions from
+   either the project binding API or the system/version APIs.
+8. Required rules are prioritized under the Agent budget, omitted IDs are
+   visible, and the validated model declaration is persisted with the reply.
+9. Tests exercise the real database and rendered UI for the critical path.
 
 ## Out of Scope
 
