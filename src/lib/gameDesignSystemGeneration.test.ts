@@ -59,6 +59,33 @@ const input = {
 };
 
 describe('structured Game Design System generation', () => {
+  it('supports an isolated provider configuration for Game Design System jobs', async () => {
+    const originalUrl = process.env.GAME_DESIGN_SYSTEM_LLM_API_URL;
+    const originalKey = process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY;
+    const originalModel = process.env.GAME_DESIGN_SYSTEM_LLM_MODEL;
+    process.env.GAME_DESIGN_SYSTEM_LLM_API_URL = 'https://game-design-llm.test';
+    process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY = 'game-design-key';
+    process.env.GAME_DESIGN_SYSTEM_LLM_MODEL = 'game-design-model';
+    try {
+      const complete = jest.fn(async (_messages: ChatMessage[], _options?: StreamLlmOptions) => (
+        JSON.stringify(validOutput)
+      ));
+      await generateGameDesignSystemOutput(input, complete);
+      expect(complete).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({
+        apiKey: 'game-design-key',
+        baseUrl: 'https://game-design-llm.test',
+        model: 'game-design-model',
+      }));
+    } finally {
+      if (originalUrl === undefined) delete process.env.GAME_DESIGN_SYSTEM_LLM_API_URL;
+      else process.env.GAME_DESIGN_SYSTEM_LLM_API_URL = originalUrl;
+      if (originalKey === undefined) delete process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY;
+      else process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY = originalKey;
+      if (originalModel === undefined) delete process.env.GAME_DESIGN_SYSTEM_LLM_MODEL;
+      else process.env.GAME_DESIGN_SYSTEM_LLM_MODEL = originalModel;
+    }
+  });
+
   it('includes actual source excerpts and requires JSON rather than Markdown', () => {
     const messages = buildStructuredGenerationMessages(input);
     expect(messages[0].content).toContain('untrusted reference data');

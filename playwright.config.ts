@@ -19,6 +19,13 @@ dotenv.config({
   override: true // Allow .env.local variables to override .env
 });
 
+process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.PLAYWRIGHT_SUPABASE_URL
+  ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.PLAYWRIGHT_SUPABASE_ANON_KEY
+  ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.PLAYWRIGHT_SUPABASE_SERVICE_ROLE_KEY
+  ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 process.env.INVITATION_SECRET ??= 'keco-playwright-invitation-secret-2026-07-10';
 process.env.SKIP_INVITATION_EMAIL = 'true';
 process.env.MCP_CONNECTION_ID_SIGNING_SECRET ??=

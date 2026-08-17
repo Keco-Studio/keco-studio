@@ -30,6 +30,18 @@ export type ResolvedGameDesignGenerationInput = {
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 
 const model = () => process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || 'deepseek-v4-flash';
+const gameDesignSystemLlmOptions = (): StreamLlmOptions => ({
+  model: process.env.GAME_DESIGN_SYSTEM_LLM_MODEL || model(),
+  ...(process.env.GAME_DESIGN_SYSTEM_LLM_API_URL
+    ? { baseUrl: process.env.GAME_DESIGN_SYSTEM_LLM_API_URL }
+    : {}),
+  ...(process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY
+    ? { apiKey: process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY }
+    : {}),
+  thinking: 'disabled',
+  temperature: 0.2,
+  maxCompletionTokens: 12_000,
+});
 const generatedSystemShapeExample = '{"document":{"designIntent":"Make every tactical choice legible and consequential.","playerFantasy":"Lead a small squad through uncertain encounters.","coreLoop":"Scout, commit resources, resolve the encounter, and adapt the squad.","decisionStructure":"Compare visible costs, risks, and future positioning.","systemBoundaries":"Never conceal action costs from the player.","progressionEconomy":"Expand tactical options without replacing player judgment.","contentModel":"Define skills, encounters, enemies, and rewards as reusable data.","difficultyBalance":"Increase difficulty through richer situations rather than opaque inflation.","experiencePresentation":"Preview consequences and explain state changes."},"rules":{"schemaVersion":1,"genres":["Strategy"],"philosophies":["Readable Systems"],"suitableFor":"Single-player tactical games","rules":[{"id":"readable-state","kind":"principle","title":"Readable state","statement":"Show decision inputs before commitment.","appliesWhen":"Presenting a player choice.","severity":"required"}],"tableGuidance":[{"table":"Skills","purpose":"Define reusable player actions.","fields":["name","cost","effect"]}]}}';
 
 export class RuleSetGenerationValidationError extends Error {
@@ -120,12 +132,7 @@ export async function generateGameDesignSystemOutput(
   complete: Completion = completeLlm,
 ): Promise<GeneratedGameDesignSystem> {
   const messages = buildStructuredGenerationMessages(input);
-  const options: StreamLlmOptions = {
-    model: model(),
-    thinking: 'disabled',
-    temperature: 0.2,
-    maxCompletionTokens: 12_000,
-  };
+  const options = gameDesignSystemLlmOptions();
   const first = await complete(messages, options);
   try {
     return parseResponse(first);
