@@ -84,16 +84,17 @@ export async function syncScriptDialogueDocument(input: {
     });
     const operation = prepared.operation;
     if (operation.type !== 'reorder') throw new Error('DERIVED_TABLE_MAPPING_AMBIGUOUS');
-    plotPlan = reconcileScriptPlotPlanRowOrder(parseStoryPlotPlan(library.plot_plan), {
+    const nextPlotPlan = reconcileScriptPlotPlanRowOrder(parseStoryPlotPlan(library.plot_plan), {
       currentRowIds: operation.expectedOrderIds,
       nextRowIds: operation.nextOrderIds,
       flowRows: prepared.flowRows,
     });
+    plotPlan = nextPlotPlan;
     scriptReorder = {
       libraryId: input.libraryId,
       expectedOrderIds: operation.expectedOrderIds,
       nextOrderIds: operation.nextOrderIds,
-      plotPlan,
+      plotPlan: nextPlotPlan,
     };
   }
   const state = await replaceDocumentAsAgent({

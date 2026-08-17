@@ -30,7 +30,7 @@ function buildLocalProjectionPlotPlan(
   const graph = buildScriptFlowGraph(flowRows);
   const graphNodes = graph.nodes.length > 0
     ? graph.nodes
-    : [{ id: 'Plot1', label: '剧情 1', rowIndex: 0, rowIndexes: rowIds.map((_, index) => index) }];
+    : [{ id: 'Plot1', label: 'Plot 1', rowIndex: 0, rowIndexes: rowIds.map((_, index) => index) }];
   const ownerByRowIndex = new Map<number, string>();
   for (const node of graphNodes) {
     node.rowIndexes.forEach((rowIndex) => ownerByRowIndex.set(rowIndex, node.id));

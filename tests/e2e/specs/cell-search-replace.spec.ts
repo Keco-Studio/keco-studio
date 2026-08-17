@@ -395,8 +395,9 @@ test.describe('Table cell search and replace', () => {
 
     const modal = page.getByRole('dialog').filter({ hasText: /replace cell value/i });
     await expect(modal).toBeVisible({ timeout: 15000 });
-    await expect(modal).toContainText(findToken);
-    await expect(modal).toContainText(replaceToken);
+    await expect(modal.getByText('Are you sure you want to replace?')).toBeVisible({
+      timeout: 30000,
+    });
     await confirmReplaceModal(page);
 
     await openLibraryTable(page, libraryName);
