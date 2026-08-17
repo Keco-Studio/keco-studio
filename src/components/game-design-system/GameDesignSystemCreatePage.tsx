@@ -11,6 +11,8 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
+import { GAME_ART_STYLE_CATALOG } from '@/lib/game-art-style/presets';
+import { gameArtStyleInputSchema, type NormalizedGameArtStyleInput } from '@/lib/game-art-style/schema';
 import {
   fetchGameDesignReferenceOptions,
   fetchGameDesignSystems,
@@ -22,15 +24,24 @@ import {
 import type { GameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { GameArtStylePreview } from './GameArtStylePreview';
 import styles from './GameDesignSystemsPage.module.css';
 
 const GENRES = ['RPG', 'Strategy', 'Deckbuilder', 'Roguelike', 'Simulation', 'Narrative', 'Action', 'Puzzle', 'Management'];
 const PHILOSOPHIES = ['Meaningful Decisions', 'Readable Systems', 'System Driven', 'Narrative First', 'Player Agency', 'Emergent Play', 'Competitive Fairness', 'Expressive Customization'];
-const stages = ['foundation', 'sources', 'review'] as const;
+const stages = ['foundation', 'art-style', 'sources', 'review'] as const;
 
 type ProjectOption = { id: string; name: string };
 type GameDraft = { name: string; reference: string; avoid: string };
+type VisualReferenceDraft = { name: string; borrow: string };
 type Stage = typeof stages[number];
+
+const stageLabels: Record<Stage, string> = {
+  foundation: 'Foundation',
+  'art-style': 'Art Style',
+  sources: 'Sources',
+  review: 'Review',
+};
 
 const phaseLabels: Record<string, string> = {
   collecting: 'Read and snapshot sources',
@@ -69,6 +80,10 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   const [philosophies, setPhilosophies] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [suitableFor, setSuitableFor] = useState('');
+  const [artDirection, setArtDirection] = useState('');
+  const [visualReferences, setVisualReferences] = useState<VisualReferenceDraft[]>([]);
+  const [artAvoid, setArtAvoid] = useState('');
+  const [visualReferenceError, setVisualReferenceError] = useState<string | null>(null);
   const [baseSystemId, setBaseSystemId] = useState('');
   const [pastedMarkdown, setPastedMarkdown] = useState('');
   const [sourceProjectId, setSourceProjectId] = useState('');
@@ -96,6 +111,18 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       .filter((game) => game.name || game.reference || game.avoid),
     [referenceGames],
   );
+  const artStyleResult = useMemo(() => gameArtStyleInputSchema.safeParse({
+    presetId: 'pixel-art',
+    presetVersion: 1,
+    customization: { direction: artDirection, referenceGames: visualReferences, avoid: artAvoid },
+  }), [artAvoid, artDirection, visualReferences]);
+  const reviewCustomization = artStyleResult.success
+    ? artStyleResult.data.customization
+    : {
+        direction: artDirection.trim(),
+        referenceGames: visualReferences.filter((reference) => reference.name.trim() || reference.borrow.trim()).map((reference) => ({ name: reference.name.trim(), borrow: reference.borrow.trim() })),
+        avoid: artAvoid.trim(),
+      };
 
   useEffect(() => {
     if (!job || !submitting) return undefined;
@@ -132,18 +159,14 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       : [...current, reference]);
   }
 
-  function generationInput(): GameDesignGenerationRequest {
+  function generationInput(artStyle: NormalizedGameArtStyleInput): GameDesignGenerationRequest {
     return {
       title: title.trim(),
       genres,
       philosophies,
       references,
       referenceGames: normalizedGames,
-      artStyle: {
-        presetId: 'pixel-art',
-        presetVersion: 1,
-        customization: { referenceGames: [] },
-      },
+      artStyle,
       ...(description.trim() ? { description: description.trim() } : {}),
       ...(suitableFor.trim() ? { suitableFor: suitableFor.trim() } : {}),
       ...(baseSystemId ? { baseSystemId } : {}),
@@ -163,8 +186,15 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       setError('Add at least one genre, design philosophy, or reference.');
       return;
     }
+    if (!artStyleResult.success) {
+      setStage('art-style');
+      setVisualReferenceError(artStyleResult.error.issues.some((issue) => issue.path.includes('referenceGames'))
+        ? 'Enter both a game name and what to borrow.'
+        : artStyleResult.error.issues[0]?.message ?? 'Review the Art Style fields.');
+      return;
+    }
     try {
-      const fresh = await startGameDesignSystemGeneration(generationInput(), submitKey.current);
+      const fresh = await startGameDesignSystemGeneration(generationInput(artStyleResult.data), submitKey.current);
       setJob(fresh);
       if (fresh.status === 'completed' && fresh.design_system_id) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystems() });
@@ -230,7 +260,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
 
       <nav className={styles.stageTabs} role="tablist" aria-label="Creation stages">
         {stages.map((item, index) => {
-          const label = item === 'foundation' ? 'Foundation' : item === 'sources' ? 'Sources' : 'Review';
+          const label = stageLabels[item];
           return <button role="tab" type="button" aria-label={label} aria-selected={stage === item} className={stage === item ? styles.stageTabActive : styles.stageTab} key={item} onClick={() => setStage(item)}><span aria-hidden="true">{index + 1}</span>{label}</button>;
         })}
       </nav>
@@ -247,13 +277,60 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
             <div className={styles.field}><label>Design philosophies</label><div className={styles.checks}>{PHILOSOPHIES.map((philosophy) => <button type="button" key={philosophy} className={philosophies.includes(philosophy) ? styles.checkActive : styles.check} aria-pressed={philosophies.includes(philosophy)} onClick={() => toggle(philosophies, philosophy, setPhilosophies)}>{philosophy}</button>)}</div></div>
             <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="gds-description">Natural language description</label><textarea id="gds-description" className={styles.textarea} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the intended player experience, decisions, and tradeoffs." /></div>
           </div>
-          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={leave}>Cancel</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('sources'); }}>Continue to sources</button></div>
+          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={leave}>Cancel</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('art-style'); }}>Continue to art style</button></div>
+        </section>
+      ) : null}
+
+      {stage === 'art-style' ? (
+        <section className={styles.createStageWide} role="tabpanel">
+          <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 2</span><h2>Art Style</h2><p>Review the fixed visual language and add project-specific direction.</p></div></div>
+          <div className={styles.artStyleWorkbench}>
+            <aside className={styles.artStyleCatalog} aria-label="Art style catalog">
+              <span className={styles.eyebrow}>Preset catalog</span>
+              <label className={styles.artStyleCatalogOption}>
+                <input type="radio" name="art-style-preset" checked disabled readOnly aria-label="Pixel Art, selected and locked" />
+                <span><strong>{GAME_ART_STYLE_CATALOG[0].title}</strong><small>Official preset / Revision {GAME_ART_STYLE_CATALOG[0].presetVersion}</small></span>
+              </label>
+              <p>Pixel Art is the fixed v1 option and cannot be switched during creation.</p>
+            </aside>
+            <div className={styles.artStyleMain}>
+              <GameArtStylePreview preset={GAME_ART_STYLE_CATALOG[0]} />
+              <div className={styles.artStyleFields}>
+                <div className={styles.field}>
+                  <label htmlFor="gds-art-direction">Custom art direction</label>
+                  <textarea id="gds-art-direction" className={styles.textarea} maxLength={2000} value={artDirection} onChange={(event) => setArtDirection(event.target.value)} placeholder="Add visual priorities specific to this system." />
+                  <small>{artDirection.length} / 2,000</small>
+                </div>
+                <div className={styles.field}>
+                  <label>Visual reference games</label>
+                  <p className={styles.fieldHint}>These references guide visual language only. Gameplay references remain on Sources.</p>
+                  <div className={styles.visualReferenceList}>
+                    {visualReferences.map((reference, index) => (
+                      <div className={styles.visualReferenceRow} key={index}>
+                        <input className={styles.input} maxLength={120} aria-label={'Visual reference game ' + (index + 1)} value={reference.name} onChange={(event) => { setVisualReferenceError(null); setVisualReferences((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item)); }} placeholder="Game name" />
+                        <input className={styles.input} maxLength={500} aria-label={'What to borrow ' + (index + 1)} value={reference.borrow} onChange={(event) => { setVisualReferenceError(null); setVisualReferences((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, borrow: event.target.value } : item)); }} placeholder="What to borrow" />
+                        <button className={styles.iconButtonDanger} type="button" aria-label={'Remove visual reference ' + (index + 1)} title="Remove visual reference" onClick={() => { setVisualReferenceError(null); setVisualReferences((current) => current.filter((_, itemIndex) => itemIndex !== index)); }}><DeleteOutlined /></button>
+                      </div>
+                    ))}
+                  </div>
+                  {visualReferenceError ? <div className={styles.fieldError}>{visualReferenceError}</div> : null}
+                  <button type="button" className={styles.secondaryButton} aria-label="Add visual reference" disabled={visualReferences.length >= 8} onClick={() => { setVisualReferenceError(null); setVisualReferences((current) => [...current, { name: '', borrow: '' }]); }}><PlusOutlined /> Add visual reference</button>
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="gds-art-avoid">Visual avoid guidance</label>
+                  <textarea id="gds-art-avoid" className={styles.textarea} maxLength={1000} value={artAvoid} onChange={(event) => setArtAvoid(event.target.value)} placeholder="Call out visual treatments this system should avoid." />
+                  <small>{artAvoid.length} / 1,000</small>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('foundation')}><ArrowLeftOutlined /> Foundation</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('sources'); }}>Continue to sources</button></div>
         </section>
       ) : null}
 
       {stage === 'sources' ? (
         <section className={styles.createStage} role="tabpanel">
-          <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 2</span><h2>Sources</h2><p>Only selected resources and entered references are sent to generation.</p></div></div>
+          <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 3</span><h2>Sources</h2><p>Only selected resources and entered references are sent to generation.</p></div></div>
           <div className={styles.formGrid}>
             <div className={styles.fieldWide + ' ' + styles.field}><label htmlFor="gds-base">Base system</label><select id="gds-base" className={styles.select} value={baseSystemId} onChange={(event) => setBaseSystemId(event.target.value)}><option value="">No base system</option>{baseSystems.map((system) => <option key={system.id} value={system.id}>{system.title} ({system.source === 'official' ? 'Official' : 'My system'})</option>)}</select>{systemsQuery.isError ? <button type="button" className={styles.secondaryButton} onClick={() => systemsQuery.refetch()}><ReloadOutlined /> Retry systems</button> : null}</div>
             <div className={styles.fieldWide + ' ' + styles.field}>
@@ -272,18 +349,19 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
             <div className={styles.fieldWide + ' ' + styles.field}>
               <label>Reference games</label>
               {referenceGames.map((game, index) => <div className={styles.referenceRow} key={index}><input className={styles.input} aria-label={'Reference game ' + (index + 1)} value={game.name} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} placeholder="Game name" /><input className={styles.input} aria-label={'Reference value ' + (index + 1)} value={game.reference} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, reference: event.target.value } : item))} placeholder="What to reference" /><input className={styles.input} aria-label={'Reference avoid ' + (index + 1)} value={game.avoid} onChange={(event) => setReferenceGames((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, avoid: event.target.value } : item))} placeholder="What to avoid" /><button className={styles.iconButtonDanger} type="button" aria-label="Remove reference game" title="Remove reference game" onClick={() => setReferenceGames((current) => current.filter((_, itemIndex) => itemIndex !== index))}><DeleteOutlined /></button></div>)}
-              <button type="button" className={styles.secondaryButton} onClick={() => setReferenceGames((current) => [...current, { name: '', reference: '', avoid: '' }])}><PlusOutlined /> Add reference game</button>
+              <button type="button" className={styles.secondaryButton} aria-label="Add reference game" onClick={() => setReferenceGames((current) => [...current, { name: '', reference: '', avoid: '' }])}><PlusOutlined /> Add reference game</button>
             </div>
           </div>
-          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('foundation')}><ArrowLeftOutlined /> Foundation</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('review'); }}>Review input</button></div>
+          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('art-style')}><ArrowLeftOutlined /> Art Style</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('review'); }}>Review input</button></div>
         </section>
       ) : null}
 
       {stage === 'review' ? (
         <section className={styles.createStage} role="tabpanel">
-          <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 3</span><h2>Review</h2><p>Confirm the exact input before starting the durable job.</p></div></div>
+          <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 4</span><h2>Review</h2><p>Confirm the exact input before starting the durable job.</p></div></div>
           <div className={styles.reviewGrid}>
             <section><span className={styles.eyebrow}>Foundation</span><h3>{title.trim() || 'System name required'}</h3><dl className={styles.breakdown}><div><dt>Genres</dt><dd>{genres.join(', ') || 'None'}</dd></div><div><dt>Philosophies</dt><dd>{philosophies.join(', ') || 'None'}</dd></div><div><dt>Suitable for</dt><dd>{suitableFor.trim() || 'Not specified'}</dd></div></dl></section>
+            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span><h3>{GAME_ART_STYLE_CATALOG[0].title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>Revision {GAME_ART_STYLE_CATALOG[0].presetVersion}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></section>
             <section><span className={styles.eyebrow}>Evidence</span><h3>{references.length + normalizedGames.length} selected references</h3><dl className={styles.breakdown}><div><dt>Project resources</dt><dd>{references.length}</dd></div><div><dt>Reference games</dt><dd>{normalizedGames.length}</dd></div><div><dt>Base system</dt><dd>{baseSystemId ? baseSystems.find((system) => system.id === baseSystemId)?.title || 'Selected' : 'None'}</dd></div></dl></section>
             <section><span className={styles.eyebrow}>Output contract</span><h3>Validated structured rules</h3><p>The job validates the canonical rule schema and saves one immutable version only after validation succeeds.</p></section>
           </div>
