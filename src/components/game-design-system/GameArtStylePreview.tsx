@@ -57,7 +57,7 @@ export function GameArtStylePreview({ preset, compact = false, imageFailures, on
             <figure className={styles.artStylePreviewItem} key={key}>
               <div className={key === 'map' ? styles.artStyleMapFrame : styles.artStyleCharacterFrame}>
                 {failed ? (
-                  <div className={styles.artStyleImageUnavailable} role="status" aria-label={asset.alt}>{label} preview unavailable.</div>
+                  <div className={styles.artStyleImageUnavailable} role="status" aria-label={`${label} preview unavailable. ${asset.alt}`}>{label} preview unavailable.</div>
                 ) : (
                   <Image
                     className={styles.artStylePixelImage}

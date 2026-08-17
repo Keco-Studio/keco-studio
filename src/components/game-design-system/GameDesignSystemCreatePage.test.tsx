@@ -78,6 +78,36 @@ describe('GameDesignSystemCreatePage', () => {
     expect(screen.getByText('Official preset / Revision 1')).toBeTruthy();
   });
 
+  it('connects tabs to panels and supports roving keyboard navigation', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const foundation = screen.getByRole('tab', { name: 'Foundation' });
+    const artStyle = screen.getByRole('tab', { name: 'Art Style' });
+    const review = screen.getByRole('tab', { name: 'Review' });
+    expect(foundation.id).toBe('gds-create-tab-foundation');
+    expect(foundation.getAttribute('aria-controls')).toBe('gds-create-panel-foundation');
+    expect(foundation.tabIndex).toBe(0);
+    expect(artStyle.tabIndex).toBe(-1);
+    expect(screen.getByRole('tabpanel').id).toBe('gds-create-panel-foundation');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(foundation.id);
+
+    foundation.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(artStyle);
+    expect(artStyle.getAttribute('aria-selected')).toBe('true');
+    expect(artStyle.tabIndex).toBe(0);
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(artStyle.id);
+
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(review);
+    expect(review.getAttribute('aria-selected')).toBe('true');
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(foundation);
+    await user.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(review);
+  });
+
   it('shows canonical copy, fixed previews, field limits, dynamic references, and independent image failures', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -100,10 +130,10 @@ describe('GameDesignSystemCreatePage', () => {
     expect(screen.queryByLabelText('Visual reference game 1')).toBeNull();
 
     fireEvent.error(map);
-    expect(screen.getByText('Map preview unavailable.')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Map preview unavailable. A bright pixel art riverside village map with branching paths, gardens, workshops, and a wooden bridge.' })).toBeTruthy();
     expect(screen.getByAltText('A full-body pixel art field cartographer with a satchel and practical exploration gear.')).toBeTruthy();
     fireEvent.error(character);
-    expect(screen.getByText('Character preview unavailable.')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Character preview unavailable. A full-body pixel art field cartographer with a satchel and practical exploration gear.' })).toBeTruthy();
   });
 
   it('returns incomplete visual reference rows to Art Style and preserves entered values', async () => {
@@ -118,7 +148,14 @@ describe('GameDesignSystemCreatePage', () => {
 
     expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
     expect((screen.getByLabelText('Visual reference game 1') as HTMLInputElement).value).toBe('Eastward');
-    expect(screen.getByText('Enter both a game name and what to borrow.')).toBeTruthy();
+    const borrowInput = screen.getByLabelText('What to borrow 1');
+    const fieldError = screen.getByRole('alert');
+    expect(fieldError.id).toBe('gds-visual-reference-error');
+    expect(fieldError.getAttribute('aria-live')).toBe('polite');
+    expect(fieldError.textContent).toBe('Enter both a game name and what to borrow.');
+    expect(borrowInput.getAttribute('aria-invalid')).toBe('true');
+    expect(borrowInput.getAttribute('aria-describedby')).toBe(fieldError.id);
+    await waitFor(() => expect(document.activeElement).toBe(borrowInput));
     expect(start).not.toHaveBeenCalled();
   });
 
