@@ -4,7 +4,11 @@ import {
   gameArtStyleSnapshotSchema,
   type GameArtStyleInput,
 } from './schema';
-import { compileGameArtStyle, normalizeGameArtStyleInput } from './compiler';
+import {
+  compileGameArtStyle,
+  GameArtStyleCompilationError,
+  normalizeGameArtStyleInput,
+} from './compiler';
 import { PIXEL_ART_V1_PRESET } from './presets';
 
 const validInput = {
@@ -21,6 +25,19 @@ const minimalInput: GameArtStyleInput = {
   presetId: 'pixel-art',
   presetVersion: 1,
   customization: { referenceGames: [] },
+};
+
+const storageBoundaryInput: GameArtStyleInput = {
+  presetId: 'pixel-art',
+  presetVersion: 1,
+  customization: {
+    direction: '\u0001'.repeat(2_000),
+    avoid: '\u0001'.repeat(1_000),
+    referenceGames: ['aa', 'bb', 'cc', 'dd'].map((name, index) => ({
+      name,
+      borrow: index < 3 ? '\u0001'.repeat(500) : `${'\u0001'.repeat(434)}x`,
+    })),
+  },
 };
 
 describe('Game Art Style compiler', () => {
@@ -108,18 +125,36 @@ describe('Game Art Style compiler', () => {
     expect(compileGameArtStyle(validInput).specification.visualIdentity).not.toBe('mutated');
   });
 
-  it('enforces the compiled limit using UTF-8 bytes', () => {
+  it('rejects a snapshot that fits compact JSON but exceeds PostgreSQL jsonb text storage', () => {
+    const compactSnapshot = gameArtStyleSnapshotSchema.parse({
+      ...PIXEL_ART_V1_PRESET,
+      customization: storageBoundaryInput.customization,
+    });
+
+    expect(new TextEncoder().encode(JSON.stringify(compactSnapshot))).toHaveLength(32_768);
+    expect(() => compileGameArtStyle(storageBoundaryInput)).toThrow(GameArtStyleCompilationError);
+    expect(() => compileGameArtStyle(storageBoundaryInput)).toThrow(/32 KiB limit \(32859 bytes\)/);
+  });
+
+  it.each([
+    ['NUL', '\u0000'],
+    ['unpaired high surrogate', '\ud800'],
+    ['unpaired low surrogate', '\udc00'],
+  ])('rejects %s text that PostgreSQL jsonb cannot safely store', (_label, direction) => {
     expect(() => compileGameArtStyle({
-      presetId: 'pixel-art',
-      presetVersion: 1,
-      customization: {
-        direction: '\u0000'.repeat(2_000),
-        avoid: '\u0000'.repeat(1_000),
-        referenceGames: Array.from({ length: 8 }, (_, index) => ({
-          name: `Game ${index}`,
-          borrow: '\u0000'.repeat(500),
-        })),
-      },
-    })).toThrow(/32 KiB/);
+      ...minimalInput,
+      customization: { direction, referenceGames: [] },
+    })).toThrow(GameArtStyleCompilationError);
+    expect(() => compileGameArtStyle({
+      ...minimalInput,
+      customization: { direction, referenceGames: [] },
+    })).toThrow(/PostgreSQL jsonb/i);
+  });
+
+  it('accepts valid non-BMP text represented by a surrogate pair', () => {
+    expect(compileGameArtStyle({
+      ...minimalInput,
+      customization: { direction: '\ud83c\udfa8', referenceGames: [] },
+    }).customization.direction).toBe('\ud83c\udfa8');
   });
 });

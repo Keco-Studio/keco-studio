@@ -1,9 +1,9 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GAME_ART_STYLE_CATALOG } from '@/lib/game-art-style/presets';
-import type { GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
+import type { GameArtStylePreviewAsset, GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 import styles from './GameDesignSystemsPage.module.css';
 
 type CatalogPreset = (typeof GAME_ART_STYLE_CATALOG)[number];
@@ -37,6 +37,65 @@ type Props = ({
   onImageFailure?: (key: PreviewKey) => void;
 };
 
+function ArtStylePreviewFrame({
+  asset,
+  failed,
+  frameClassName,
+  label,
+  onImageFailure,
+}: {
+  asset: GameArtStylePreviewAsset;
+  failed: boolean;
+  frameClassName: string;
+  label: string;
+  onImageFailure: () => void;
+}) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    const updateScale = () => {
+      const bounds = frame.getBoundingClientRect();
+      const nextScale = Math.max(1, Math.floor(Math.min(
+        bounds.width / asset.width,
+        bounds.height / asset.height,
+      )));
+      setScale((current) => current === nextScale ? current : nextScale);
+    };
+    updateScale();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateScale);
+      return () => window.removeEventListener('resize', updateScale);
+    }
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [asset.height, asset.width]);
+
+  return (
+    <div className={frameClassName} ref={frameRef}>
+      {failed ? (
+        <div className={styles.artStyleImageUnavailable} role="status" aria-label={`${label} preview unavailable. ${asset.alt}`}>{label} preview unavailable.</div>
+      ) : (
+        <Image
+          className={styles.artStylePixelImage}
+          src={asset.publicPath}
+          width={asset.width}
+          height={asset.height}
+          style={{ width: asset.width * scale, height: asset.height * scale }}
+          alt={asset.alt}
+          unoptimized
+          onError={onImageFailure}
+        />
+      )}
+    </div>
+  );
+}
+
 export function GameArtStylePreview(props: Props) {
   const { compact = false, imageFailures, onImageFailure, showCustomization = false } = props;
   const preview = props.preset ?? props.snapshot;
@@ -65,21 +124,13 @@ export function GameArtStylePreview(props: Props) {
           const failed = Boolean(imageFailures?.[key] || localFailures[key]);
           return (
             <figure className={styles.artStylePreviewItem} key={key}>
-              <div className={key === 'map' ? styles.artStyleMapFrame : styles.artStyleCharacterFrame}>
-                {failed ? (
-                  <div className={styles.artStyleImageUnavailable} role="status" aria-label={`${label} preview unavailable. ${asset.alt}`}>{label} preview unavailable.</div>
-                ) : (
-                  <Image
-                    className={styles.artStylePixelImage}
-                    src={asset.publicPath}
-                    width={asset.width}
-                    height={asset.height}
-                    alt={asset.alt}
-                    unoptimized
-                    onError={() => markFailed(key)}
-                  />
-                )}
-              </div>
+              <ArtStylePreviewFrame
+                asset={asset}
+                failed={failed}
+                frameClassName={key === 'map' ? styles.artStyleMapFrame : styles.artStyleCharacterFrame}
+                label={label}
+                onImageFailure={() => markFailed(key)}
+              />
               <figcaption>{label} study</figcaption>
             </figure>
           );

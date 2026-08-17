@@ -141,9 +141,12 @@ async function expectLoadedArtStyleImages(page: Page): Promise<void> {
         minimum = Math.min(minimum, data[index], data[index + 1], data[index + 2]);
         maximum = Math.max(maximum, data[index], data[index + 1], data[index + 2]);
       }
+      const rendered = element.getBoundingClientRect();
       return {
         naturalWidth: element.naturalWidth,
         naturalHeight: element.naturalHeight,
+        renderedWidth: rendered.width,
+        renderedHeight: rendered.height,
         imageRendering: getComputedStyle(element).imageRendering,
         opaquePixels,
         channelRange: maximum - minimum,
@@ -156,6 +159,12 @@ async function expectLoadedArtStyleImages(page: Page): Promise<void> {
     }));
     expect(pixels?.opaquePixels).toBeGreaterThan(0);
     expect(pixels?.channelRange).toBeGreaterThan(16);
+    const widthScale = pixels!.renderedWidth / preview.width;
+    const heightScale = pixels!.renderedHeight / preview.height;
+    expect(widthScale).toBeGreaterThanOrEqual(1);
+    expect(Math.abs(widthScale - Math.round(widthScale))).toBeLessThan(0.01);
+    expect(Math.abs(heightScale - Math.round(heightScale))).toBeLessThan(0.01);
+    expect(Math.abs(widthScale - heightScale)).toBeLessThan(0.01);
     const frame = await image.locator('xpath=..').boundingBox();
     expect(frame).not.toBeNull();
     expect(Math.abs(frame!.width / frame!.height - preview.ratio)).toBeLessThan(0.08);

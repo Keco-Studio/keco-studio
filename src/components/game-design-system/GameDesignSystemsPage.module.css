@@ -1020,9 +1020,7 @@
 
 .artStylePixelImage {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  max-width: none;
   image-rendering: pixelated;
 }
 

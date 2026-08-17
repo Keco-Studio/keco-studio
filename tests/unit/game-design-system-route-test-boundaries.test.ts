@@ -53,6 +53,19 @@ const VALID_ART_STYLE = {
   customization: { referenceGames: [] },
 };
 
+const STORAGE_BOUNDARY_ART_STYLE = {
+  presetId: 'pixel-art',
+  presetVersion: 1,
+  customization: {
+    direction: '\u0001'.repeat(2_000),
+    avoid: '\u0001'.repeat(1_000),
+    referenceGames: ['aa', 'bb', 'cc', 'dd'].map((name, index) => ({
+      name,
+      borrow: index < 3 ? '\u0001'.repeat(500) : `${'\u0001'.repeat(434)}x`,
+    })),
+  },
+};
+
 function postGeneration(body: Record<string, unknown>) {
   return startGeneration(new NextRequest('https://keco.test/api/game-design-systems/generation-jobs', {
     method: 'POST',
@@ -87,6 +100,22 @@ describe('POST /api/game-design-systems/generation-jobs Art Style boundary', () 
     await expect(response.json()).resolves.toMatchObject({
       error: 'Invalid generation request.',
       issues: { fieldErrors: { [field]: expect.any(Array) } },
+    });
+    expect(createGameDesignSystemGenerationJob).not.toHaveBeenCalled();
+  });
+
+  it('rejects PostgreSQL-over-limit Art Style storage before creating a job', async () => {
+    const response = await postGeneration({ artStyle: STORAGE_BOUNDARY_ART_STYLE });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Invalid generation request.',
+      issues: {
+        formErrors: [],
+        fieldErrors: {
+          artStyle: ['Game Art Style snapshot exceeds the 32 KiB limit (32859 bytes).'],
+        },
+      },
     });
     expect(createGameDesignSystemGenerationJob).not.toHaveBeenCalled();
   });
