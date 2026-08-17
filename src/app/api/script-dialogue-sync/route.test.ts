@@ -49,7 +49,7 @@ describe('script dialogue sync route', () => {
     expect(response.status).toBe(500);
     expect(errorSpy).toHaveBeenCalledWith(
       '[script-dialogue-sync] synchronization failed',
-      expect.objectContaining({ error: 'postgres detail', code: '23505' }),
+      expect.objectContaining({ message: 'postgres detail', code: '23505' }),
     );
     errorSpy.mockRestore();
   });
