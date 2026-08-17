@@ -44,7 +44,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
         : null;
       const detail = {
         ...(typeof record?.name === 'string' ? { name: record.name } : {}),
-        error: typeof record?.message === 'string' ? record.message : String(error),
+        ...(typeof record?.message === 'string' ? { message: record.message } : { message: String(error) }),
         ...(typeof record?.code === 'string' ? { code: record.code } : {}),
       };
       console.error('[script-dialogue-sync] synchronization failed', detail);
