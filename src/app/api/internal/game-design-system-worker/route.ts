@@ -2,6 +2,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker';
+import { processNextGddJob } from '@/lib/gdd-generation/worker';
 
 export const maxDuration = 300;
 
@@ -23,12 +24,20 @@ export async function GET(request: Request) {
   const results = [];
   const serviceClient = getSupabaseServiceRoleClient();
   for (let index = 0; index < 3; index += 1) {
-    const result = await processNextGameDesignSystemJob({
-      serviceClient,
-      workerId: `cron-${randomUUID()}`,
-    });
-    results.push(result);
-    if (!result.claimed) break;
+    const workerId = `cron-${randomUUID()}`;
+    const primary = index % 2 === 0 ? 'system' : 'gdd';
+    const first = primary === 'system'
+      ? await processNextGameDesignSystemJob({ serviceClient, workerId })
+      : await processNextGddJob({ serviceClient, workerId });
+    if (first.claimed) {
+      results.push({ type: primary, ...first });
+      continue;
+    }
+    const fallback = primary === 'system'
+      ? await processNextGddJob({ serviceClient, workerId })
+      : await processNextGameDesignSystemJob({ serviceClient, workerId });
+    results.push({ type: primary === 'system' ? 'gdd' : 'system', ...fallback });
+    if (!fallback.claimed) break;
   }
   return NextResponse.json({ results });
 }
