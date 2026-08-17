@@ -3,6 +3,7 @@ import {
   deleteScriptSourceBlocks,
   insertScriptSourceBlock,
   listScriptSourceBlocks,
+  moveScriptSourceBlocks,
   replaceScriptSourceBlock,
   type ScriptSourceBlock,
 } from './scriptDocumentBlocks';
@@ -12,10 +13,11 @@ export type ScriptDialogueDocumentCommand =
   | {
       type: 'edit';
       blockId?: string;
-      role?: 'action' | 'speech';
+      role?: 'action' | 'speech' | 'narration';
       previousText: string;
       nextText: string;
       speaker?: string;
+      previousSpeaker?: string;
       previousDialogue?: string;
       dialogue?: string;
     }
@@ -27,6 +29,12 @@ export type ScriptDialogueDocumentCommand =
       beforeText?: string;
       blockId: string;
       position?: number;
+    }
+  | {
+      type: 'reorder';
+      movingTexts: string[];
+      targetText: string;
+      edge: 'before' | 'after';
     };
 
 export type ParsedSourceDialogue = {
@@ -92,33 +100,67 @@ export function applyScriptDialogueCommand(
       : [];
   };
 
+  if (command.type === 'reorder') {
+    if (command.movingTexts.length === 0) throw new Error('SOURCE_MAPPING_AMBIGUOUS');
+    const movingGroups = command.movingTexts.map((text) => matching(text));
+    const targetCandidates = matching(command.targetText);
+    if (
+      movingGroups.some((candidates) => candidates.length !== 1)
+      || targetCandidates.length !== 1
+    ) {
+      throw new Error('SOURCE_MAPPING_AMBIGUOUS');
+    }
+    const movingIds = [...new Set(movingGroups.map((candidates) => candidates[0].blockId))];
+    const targetId = targetCandidates[0].blockId;
+    if (movingIds.includes(targetId)) throw new Error('SOURCE_MAPPING_AMBIGUOUS');
+    const orderedMovingIds = blocks
+      .filter((block) => movingIds.includes(block.blockId))
+      .map((block) => block.blockId);
+    return {
+      markdown: moveScriptSourceBlocks(markdown, {
+        movingBlockIds: orderedMovingIds,
+        target: { blockId: targetId, edge: command.edge },
+      }),
+      changedBlockIds: orderedMovingIds,
+    };
+  }
+
   if (command.type === 'edit') {
     const stableBlock = command.blockId
       ? blocks.find((block) => block.blockId === command.blockId)
       : undefined;
     let candidates = stableBlock
       ? [stableBlock]
-      : command.role === 'action' && command.speaker
+      : command.role === 'action' && (command.previousSpeaker ?? command.speaker)
       ? blocks.filter((block) => {
           const parsed = parseSourceDialogue(block.text);
           return Boolean(parsed)
-            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(command.speaker!)
+            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(
+              command.previousSpeaker ?? command.speaker!,
+            )
             && normalizeDialogueSourceText(parsed!.cue) === normalizeDialogueSourceText(command.previousText)
             && normalizeDialogueSourceText(parsed!.dialogue) === normalizeDialogueSourceText(
               command.previousDialogue ?? command.dialogue ?? '',
             );
         })
       : matching(command.previousText);
-    if (command.role === 'action' && command.speaker && candidates.length === 0 && command.previousText.trim()) {
+    if (
+      command.role === 'action'
+      && (command.previousSpeaker ?? command.speaker)
+      && candidates.length === 0
+      && command.previousText.trim()
+    ) {
+      const previousSpeaker = command.previousSpeaker ?? command.speaker!;
       const cueCandidates = blocks.filter((block) => {
         const parsed = parseSourceDialogue(block.text);
         return Boolean(parsed)
-          && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(command.speaker!)
+          && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(previousSpeaker)
           && normalizeDialogueSourceText(parsed!.cue) === normalizeDialogueSourceText(command.previousText);
       });
       if (cueCandidates.length === 1) candidates = cueCandidates;
     }
     if (command.role === 'action' && command.speaker && candidates.length === 0) {
+      const previousSpeaker = command.previousSpeaker ?? command.speaker;
       // Empty action rows are commonly added after the table was generated from
       // a slightly different source representation. In that case the dialogue
       // text is not a reliable identity; a unique speaker line is.
@@ -126,7 +168,7 @@ export function applyScriptDialogueCommand(
         const speakerCandidates = blocks.filter((block) => {
           const parsed = parseSourceDialogue(block.text);
           return Boolean(parsed)
-            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(command.speaker!)
+            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(previousSpeaker)
             && !parsed!.cue;
         });
         if (speakerCandidates.length === 1) {
@@ -145,7 +187,7 @@ export function applyScriptDialogueCommand(
         const speechCandidates = blocks.filter((block) => {
           const parsed = parseSourceDialogue(block.text);
           return Boolean(parsed)
-            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(command.speaker!)
+            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(previousSpeaker)
             && normalizeDialogueSourceText(parsed!.dialogue) === normalizeDialogueSourceText(
               command.previousDialogue ?? command.dialogue!,
             )
@@ -154,7 +196,7 @@ export function applyScriptDialogueCommand(
         const cueCandidates = blocks.filter((block) => {
           const parsed = parseSourceDialogue(block.text);
           return Boolean(parsed)
-            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(command.speaker!)
+            && normalizeDialogueSourceText(parsed!.speaker) === normalizeDialogueSourceText(previousSpeaker)
             && normalizeDialogueSourceText(parsed!.cue) === normalizeDialogueSourceText(command.previousText)
             && !parsed!.dialogue;
         });
@@ -181,7 +223,7 @@ export function applyScriptDialogueCommand(
         const speechBlock = blocks[actionIndex + 1];
         const speech = speechBlock ? parseSourceDialogue(speechBlock.text) : null;
         return speech
-          && normalizeDialogueSourceText(speech.speaker) === normalizeDialogueSourceText(command.speaker!)
+          && normalizeDialogueSourceText(speech.speaker) === normalizeDialogueSourceText(previousSpeaker)
           && normalizeDialogueSourceText(speech.dialogue) === normalizeDialogueSourceText(
             command.previousDialogue ?? command.dialogue ?? '',
           )
@@ -337,12 +379,37 @@ export function applyScriptDialogueCommand(
   let candidates = matching(anchorText);
   let edge: 'before' | 'after' = command.afterText ? 'after' : 'before';
   if (command.afterText && command.beforeText) {
-    const beforeIds = new Set(matching(command.beforeText).map((block) => block.blockId));
-    candidates = candidates.filter((block) => {
-      const index = blocks.findIndex((candidate) => candidate.blockId === block.blockId);
-      return Boolean(blocks[index + 1] && beforeIds.has(blocks[index + 1].blockId));
+    // Neighbors in the dialogue table are often not adjacent in the source
+    // document (narration, headings, or notes can sit between them). Keep any
+    // after/before pair that preserves document order, preferring the tightest
+    // unique window when repeated text creates multiple candidates.
+    const afterCandidates = matching(command.afterText);
+    const beforeCandidates = matching(command.beforeText);
+    const pairs = afterCandidates.flatMap((afterBlock) => {
+      const afterIndex = blocks.findIndex((block) => block.blockId === afterBlock.blockId);
+      return beforeCandidates.flatMap((beforeBlock) => {
+        const beforeIndex = blocks.findIndex((block) => block.blockId === beforeBlock.blockId);
+        return beforeIndex > afterIndex
+          ? [{ afterBlock, gap: beforeIndex - afterIndex }]
+          : [];
+      });
     });
-    edge = 'after';
+    if (pairs.length > 0) {
+      const bestGap = Math.min(...pairs.map((pair) => pair.gap));
+      const tightest = pairs.filter((pair) => pair.gap === bestGap);
+      const uniqueAfterIds = [...new Set(tightest.map((pair) => pair.afterBlock.blockId))];
+      if (uniqueAfterIds.length !== 1) throw new Error('SOURCE_MAPPING_AMBIGUOUS');
+      candidates = [tightest[0].afterBlock];
+      edge = 'after';
+    } else if (afterCandidates.length > 0 && beforeCandidates.length === 0) {
+      candidates = [afterCandidates[afterCandidates.length - 1]];
+      edge = 'after';
+    } else if (beforeCandidates.length > 0 && afterCandidates.length === 0) {
+      candidates = [beforeCandidates[0]];
+      edge = 'before';
+    } else {
+      throw new Error('SOURCE_MAPPING_AMBIGUOUS');
+    }
   }
   if (candidates.length > 1 && command.afterText && !command.beforeText) {
     // A table insertion after the selected row maps to the last matching

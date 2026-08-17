@@ -327,6 +327,18 @@ function DocumentEditorSession({
             </div>
           )}
 
+          {collaboration.scriptSync.visible && (
+            <div
+              className={styles.derivedSyncBanner}
+              data-tone={collaboration.scriptSync.tone}
+              data-testid="document-derived-sync-status"
+              role="status"
+              aria-live="polite"
+            >
+              {collaboration.scriptSync.label}
+            </div>
+          )}
+
           {viewingHistoricalVersion && (
             <div className={styles.versionPreviewBanner} role="status" aria-live="polite">
               <span>

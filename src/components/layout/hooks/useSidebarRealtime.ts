@@ -7,6 +7,7 @@ import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.
 import type { Project } from '@/lib/services/projectService';
 import {
   invalidateFolderData,
+  invalidateLibraryAssetsData,
   invalidateLibraryData,
   invalidateProjectData,
 } from '@/lib/queryInvalidation';
@@ -46,6 +47,12 @@ export async function invalidateSidebarLibraryChange(
     libraryId,
     refetchActiveFoldersLibraries: true,
   });
+  if (libraryId) {
+    await invalidateLibraryAssetsData(queryClient, {
+      libraryId,
+      refetchActiveAssets: true,
+    });
+  }
 }
 
 function stringField(row: RealtimeRow, key: string): string | null {

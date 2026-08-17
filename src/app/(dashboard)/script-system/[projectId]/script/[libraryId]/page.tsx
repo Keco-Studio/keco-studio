@@ -73,6 +73,8 @@ export default function ScriptLibraryPage() {
     queryKey: queryKeys.libraryAssets(libraryId),
     queryFn: () => getLibraryAssetsWithProperties(supabase, libraryId),
     enabled: Boolean(libraryId),
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const sourceDocumentId = library?.source_document_id ?? null;

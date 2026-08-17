@@ -38,6 +38,10 @@ import {
 import { deleteAssets } from '@/lib/services/libraryAssetsService';
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
 import { syncScriptDialogueDocumentWithConflictRetry } from '@/lib/script-system/scriptDialogueDocumentSyncClient';
+import {
+  applySynchronizedDialogueOrder,
+  planSynchronizedDialogueReorder,
+} from '@/lib/script-system/scriptDialogueReorderSync';
 
 type HistoryEntry =
   | {
@@ -104,6 +108,35 @@ export function applySavedDialogueContent(
   return rows.map((row) => row.id === rowId
     ? { ...row, propertyValues: { ...row.propertyValues, [contentKey]: content } }
     : row);
+}
+
+export async function persistSourceBeforeDialogueRows<T>(
+  syncSource: () => Promise<unknown>,
+  writeRows: () => Promise<T>,
+): Promise<T> {
+  await syncSource();
+  return writeRows();
+}
+
+export async function invalidateSynchronizedLibraryQueries(
+  queryClient: {
+    invalidateQueries: (options: {
+      queryKey: readonly unknown[];
+      refetchType: 'all';
+    }) => Promise<unknown>;
+  },
+  libraryIds: readonly string[],
+): Promise<void> {
+  await Promise.all(libraryIds.flatMap((updatedLibraryId) => [
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.library(updatedLibraryId),
+      refetchType: 'all',
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.libraryAssets(updatedLibraryId),
+      refetchType: 'all',
+    }),
+  ]));
 }
 
 export type UseScriptDialogueEditorArgs = {
@@ -208,12 +241,23 @@ export function useScriptDialogueEditor({
       return latest;
     };
     const result = await syncScriptDialogueDocumentWithConflictRetry(
-      { projectId, documentId: sourceDocumentId, expected, command },
+      { projectId, libraryId, documentId: sourceDocumentId, expected, command },
       refreshExpected,
     );
     sourceTokenRef.current = result.state.token;
+    if (result.plotPlan) {
+      queryClient.setQueryData<Record<string, unknown>>(
+        queryKeys.library(libraryId),
+        (current) => current ? { ...current, plot_plan: result.plotPlan } : current,
+      );
+    }
+    void invalidateSynchronizedLibraryQueries(
+      queryClient,
+      result.updatedLibraryIds ?? [],
+    );
     void queryClient.invalidateQueries({ queryKey: queryKeys.documentState(sourceDocumentId) });
-  }, [isDerivedScript, projectId, queryClient, sourceDocumentId, sourceToken, supabase]);
+    return result;
+  }, [isDerivedScript, libraryId, projectId, queryClient, sourceDocumentId, sourceToken, supabase]);
 
   const insertSourceTextForDraft = useCallback(async (
     block: ScriptDialogueBlock,
@@ -331,85 +375,98 @@ export function useScriptDialogueEditor({
 
     busyRef.current = true;
     try {
-      let workingRows = queryClient.getQueryData<AssetRow[]>(
-        queryKeys.libraryAssets(libraryId),
-      ) ?? rows;
-      let actionRowId = block.actionRowId;
-      let speechRowId = block.speechRowId;
-      if (actionChanged && values.action.trim() && !actionRowId) {
-        const ensured = await ensureActionRowForBlock({
-          supabase,
-          libraryId,
-          rows: workingRows,
-          fields,
-          block,
-        });
-        actionRowId = ensured.actionRowId;
-        await refresh();
-        workingRows = queryClient.getQueryData<AssetRow[]>(
-          queryKeys.libraryAssets(libraryId),
-        ) ?? workingRows;
-      }
-      if (dialogueChanged && values.dialogue.trim() && !speechRowId) {
-        const ensured = await ensureSpeechRowForBlock({
-          supabase,
-          libraryId,
-          rows: workingRows,
-          fields,
-          block: { ...block, actionRowId },
-        });
-        speechRowId = ensured.speechRowId;
-        await refresh();
-        workingRows = queryClient.getQueryData<AssetRow[]>(
-          queryKeys.libraryAssets(libraryId),
-        ) ?? workingRows;
-      }
+      const writeSource = async () => {
+        if (!isDerivedScript) return;
+        if (block.action.trim() || block.dialogue.trim()) {
+          await syncSource({
+            type: 'edit',
+            blockId: block.id,
+            role: 'action',
+            previousText: block.action,
+            previousDialogue: block.dialogue,
+            nextText: values.action,
+            speaker: block.speaker,
+            dialogue: values.dialogue,
+          });
+        } else if (values.action.trim() || values.dialogue.trim()) {
+          await insertSourceTextForDraft(block, values);
+        }
+      };
+      const {
+        workingRows,
+        actionRowId,
+        speechRowId,
+        completedUpdates,
+      } = await persistSourceBeforeDialogueRows(
+        writeSource,
+        async () => {
+          let nextRows = queryClient.getQueryData<AssetRow[]>(
+            queryKeys.libraryAssets(libraryId),
+          ) ?? rows;
+          let nextActionRowId = block.actionRowId;
+          let nextSpeechRowId = block.speechRowId;
+          if (actionChanged && values.action.trim() && !nextActionRowId) {
+            const ensured = await ensureActionRowForBlock({
+              supabase,
+              libraryId,
+              rows: nextRows,
+              fields,
+              block,
+            });
+            nextActionRowId = ensured.actionRowId;
+            await refresh();
+            nextRows = queryClient.getQueryData<AssetRow[]>(
+              queryKeys.libraryAssets(libraryId),
+            ) ?? nextRows;
+          }
+          if (dialogueChanged && values.dialogue.trim() && !nextSpeechRowId) {
+            const ensured = await ensureSpeechRowForBlock({
+              supabase,
+              libraryId,
+              rows: nextRows,
+              fields,
+              block: { ...block, actionRowId: nextActionRowId },
+            });
+            nextSpeechRowId = ensured.speechRowId;
+            await refresh();
+            nextRows = queryClient.getQueryData<AssetRow[]>(
+              queryKeys.libraryAssets(libraryId),
+            ) ?? nextRows;
+          }
 
-      const actionRow = actionRowId
-        ? workingRows.find((row) => row.id === actionRowId)
-        : undefined;
-      const speechRow = speechRowId
-        ? workingRows.find((row) => row.id === speechRowId)
-        : undefined;
-      if (actionChanged && actionRowId && !actionRow) {
-        throw new Error('Action row missing after ensure');
-      }
-      if (dialogueChanged && speechRowId && !speechRow) {
-        throw new Error('Speech row missing after ensure');
-      }
+          const actionRow = nextActionRowId
+            ? nextRows.find((row) => row.id === nextActionRowId)
+            : undefined;
+          const speechRow = nextSpeechRowId
+            ? nextRows.find((row) => row.id === nextSpeechRowId)
+            : undefined;
+          if (actionChanged && nextActionRowId && !actionRow) {
+            throw new Error('Action row missing after ensure');
+          }
+          if (dialogueChanged && nextSpeechRowId && !speechRow) {
+            throw new Error('Speech row missing after ensure');
+          }
 
-      const rowUpdates = [
-        ...(actionChanged && actionRow
-          ? [{ row: actionRow, content: values.action }]
-          : []),
-        ...(dialogueChanged && speechRow
-          ? [{ row: speechRow, content: values.dialogue }]
-          : []),
-      ];
-      const sourceWrite = isDerivedScript
-        ? block.action.trim() || block.dialogue.trim()
-          ? syncSource({
-              type: 'edit',
-              blockId: block.id,
-              role: 'action',
-              previousText: block.action,
-              previousDialogue: block.dialogue,
-              nextText: values.action,
-              speaker: block.speaker,
-              dialogue: values.dialogue,
-            })
-          : values.action.trim() || values.dialogue.trim()
-            ? insertSourceTextForDraft(block, values)
-            : Promise.resolve()
-        : Promise.resolve();
-      const [, completedUpdates] = await Promise.all([
-        sourceWrite,
-        updateDialogueRowsContent({
-          supabase,
-          contentKey: fields.contentKey,
-          updates: rowUpdates,
-        }),
-      ]);
+          const rowUpdates = [
+            ...(actionChanged && actionRow
+              ? [{ row: actionRow, content: values.action }]
+              : []),
+            ...(dialogueChanged && speechRow
+              ? [{ row: speechRow, content: values.dialogue }]
+              : []),
+          ];
+          return {
+            workingRows: nextRows,
+            actionRowId: nextActionRowId,
+            speechRowId: nextSpeechRowId,
+            completedUpdates: await updateDialogueRowsContent({
+              supabase,
+              contentKey: fields.contentKey,
+              updates: rowUpdates,
+            }),
+          };
+        },
+      );
 
       queryClient.setQueryData<AssetRow[]>(
         queryKeys.libraryAssets(libraryId),
@@ -458,7 +515,9 @@ export function useScriptDialogueEditor({
       ) ?? rows;
       const snapshot = createDeletedDialogueSnapshot(currentRows, block);
       if (isDerivedScript) {
-        const previousTexts = [block.action, block.dialogue && `${block.speaker}：${block.dialogue}`].filter(Boolean);
+        const previousTexts = block.speechType === '3'
+          ? [sourceTextForDialogueBlock(block, 'last')].filter(Boolean)
+          : [block.action, block.dialogue && `${block.speaker}：${block.dialogue}`].filter(Boolean);
         if (previousTexts.length > 0) {
           await syncSource({ type: 'delete', blockId: block.id, previousTexts });
         }
@@ -540,6 +599,31 @@ export function useScriptDialogueEditor({
     if (!supabase || !fields || busyRef.current) return false;
     busyRef.current = true;
     try {
+      const synchronizedPlan = planSynchronizedDialogueReorder({
+        blocks,
+        rows,
+        fromIndex,
+        toIndex,
+      });
+      if (!synchronizedPlan) return true;
+      if (isDerivedScript) {
+        await syncSource(synchronizedPlan.command);
+        queryClient.setQueryData<AssetRow[]>(
+          queryKeys.libraryAssets(libraryId),
+          (current = rows) => applySynchronizedDialogueOrder(
+            current,
+            synchronizedPlan.nextOrderIds,
+          ),
+        );
+        pushHistory({
+          type: 'reorder',
+          previousOrderIds: synchronizedPlan.previousOrderIds,
+          nextOrderIds: synchronizedPlan.nextOrderIds,
+        });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
+        void refresh();
+        return true;
+      }
       const blockOrderIds = blocks.map((block) => block.id);
       const blockRowIds = new Map(
         blocks.map((block) => [
@@ -573,7 +657,7 @@ export function useScriptDialogueEditor({
     } finally {
       busyRef.current = false;
     }
-  }, [blocks, fields, libraryId, pushHistory, refresh, rows, supabase]);
+  }, [blocks, fields, isDerivedScript, libraryId, pushHistory, queryClient, refresh, rows, supabase, syncSource]);
 
   const undo = useCallback(async () => {
     if (!supabase || !fields || busyRef.current || historyPast.length === 0) return false;

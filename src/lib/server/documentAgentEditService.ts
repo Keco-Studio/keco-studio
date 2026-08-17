@@ -11,6 +11,7 @@ import {
 } from '@/lib/documents/documentStateTypes';
 import { isUuid } from '@/lib/utils/uuid';
 import type { DerivedDialogueTableOperation } from '@/lib/script-system/scriptDialogueDerivedTableSync';
+import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 import { getSupabaseServiceRoleClient } from './supabaseServiceRole';
 
 export type ReplaceDocumentAsAgentInput = {
@@ -21,6 +22,12 @@ export type ReplaceDocumentAsAgentInput = {
   expectedUpdateIds: readonly string[];
   markdown: string;
   derivedTableOperations?: readonly DerivedDialogueTableOperation[];
+  scriptReorder?: {
+    libraryId: string;
+    expectedOrderIds: readonly string[];
+    nextOrderIds: readonly string[];
+    plotPlan: StoryPlotPlan;
+  };
 };
 
 export type ReplaceDocumentAsAgentOptions = {
@@ -83,9 +90,11 @@ export async function replaceDocumentAsAgent(
     ? current.markdown
     : await documentContentCodec.yjsStateToMarkdown(merged, []);
   const replacementYjsState = await documentContentCodec.markdownToYjsState(input.markdown);
-  const rpcName = input.derivedTableOperations
-    ? 'replace_document_with_markdown_and_sync_tables'
-    : 'replace_document_with_markdown';
+  const rpcName = input.scriptReorder
+    ? 'replace_document_with_markdown_and_reorder_script'
+    : input.derivedTableOperations && input.derivedTableOperations.length > 0
+      ? 'replace_document_with_markdown_and_sync_tables'
+      : 'replace_document_with_markdown';
   const rpcInput = {
     p_document_id: input.documentId,
     p_actor_user_id: input.actorUserId,
@@ -97,7 +106,13 @@ export async function replaceDocumentAsAgent(
     p_current_markdown: currentMarkdown,
     p_replacement_yjs_state: replacementYjsState,
     p_replacement_markdown: input.markdown,
-    ...(input.derivedTableOperations
+    ...(input.scriptReorder ? {
+      p_script_library_id: input.scriptReorder.libraryId,
+      p_expected_order_ids: input.scriptReorder.expectedOrderIds,
+      p_next_order_ids: input.scriptReorder.nextOrderIds,
+      p_plot_plan: input.scriptReorder.plotPlan,
+    } : {}),
+    ...(input.derivedTableOperations && input.derivedTableOperations.length > 0
       ? { p_derived_table_operations: input.derivedTableOperations }
       : {}),
   };

@@ -66,6 +66,7 @@ export type LibraryAssetsTableProps = {
     description?: string | null;
     /** script → dialogue view only; table/other → grid only. */
     documentExportType?: 'table' | 'script' | null;
+    sourceDocumentId?: string | null;
   } | null;
   properties: PropertyConfig[];
   rows: AssetRow[];

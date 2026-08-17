@@ -32,6 +32,7 @@ import {
   buildScriptFlowGraph,
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
+import { reconcileScriptFlowGraph } from '@/lib/script-system/reconcileScriptFlowGraph';
 import { useScriptDialogueEditor } from './useScriptDialogueEditor';
 import { FlowChartPanel } from './FlowChartPanel';
 import styles from './ScriptSplitView.module.css';
@@ -97,6 +98,11 @@ export function resolveSelectedPlotNodeId(params: {
   return graph.nodes[0]?.id ?? '';
 }
 
+function sameRowIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length
+    && left.every((rowId, index) => rowId === right[index]);
+}
+
 export function ScriptSplitView({
   libraryId,
   projectId,
@@ -108,10 +114,28 @@ export function ScriptSplitView({
   sourceDocumentId,
   sourceToken,
 }: ScriptSplitViewProps) {
-  const graph = useMemo(
+  const initialGraph = useMemo(
     () => persistedGraph ?? buildScriptFlowGraph(flowRows),
     [flowRows, persistedGraph]
   );
+  const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  const [graphState, setGraphState] = useState(() => ({
+    libraryId,
+    graph: initialGraph,
+    rowIds,
+  }));
+  let graph = graphState.graph;
+  if (graphState.libraryId !== libraryId) {
+    graph = initialGraph;
+    setGraphState({ libraryId, graph, rowIds });
+  } else if (!sameRowIds(graphState.rowIds, rowIds)) {
+    graph = reconcileScriptFlowGraph({
+      graph: graphState.graph,
+      previousRows: graphState.rowIds.map((id) => ({ id })),
+      rows,
+    });
+    setGraphState({ libraryId, graph, rowIds });
+  }
   const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);
   const displayedGraph = graphPreview?.graph ?? graph;
   const [plotSelection, setPlotSelection] = useState(() => ({

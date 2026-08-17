@@ -12,8 +12,9 @@ describe('Script dialogue derived table synchronization', () => {
     );
 
     expect(source).toContain('prepareScriptDialogueDerivedTableOperations');
-    expect(source).toContain('const derivedTableOperations = await');
-    expect(source).toContain('derivedTableOperations,');
+    expect(source).toContain("const derivedTableOperations = input.command.type === 'reorder'");
+    expect(source).toContain(': await prepareScriptDialogueDerivedTableOperations({');
+    expect(source).toContain('derivedTableOperations.length > 0 ? { derivedTableOperations }');
     expect(source).not.toContain('syncScriptDialogueDerivedTables');
   });
 
@@ -42,7 +43,49 @@ describe('Script dialogue derived table synchronization', () => {
     expect(source).toContain('perform public.replace_document_with_markdown(');
     expect(source).toContain('p_derived_table_operations jsonb');
     expect(source).toContain("v_operation ->> 'insertAtStart'");
+    expect(source).not.toContain('v_operation_count <> v_expected_table_count');
     expect(source).toMatch(/grant execute[\s\S]+to service_role/i);
     expect(source).not.toMatch(/grant execute[\s\S]+to authenticated/i);
+  });
+
+  it('accepts Type 3 rows when editing narration or action content', () => {
+    const migrationPath = resolve(
+      root,
+      'supabase/migrations/20260814090000_atomic_script_dialogue_document_table_sync.sql',
+    );
+    const source = readFileSync(migrationPath, 'utf8');
+
+    expect(source).toContain(
+      "v_operation_type = 'edit' and v_speech_type not in ('1', '2', '3')",
+    );
+
+    const upgradePath = resolve(
+      root,
+      'supabase/migrations/20260817183000_allow_type3_atomic_script_table_edits.sql',
+    );
+    expect(existsSync(upgradePath)).toBe(true);
+    const upgrade = existsSync(upgradePath) ? readFileSync(upgradePath, 'utf8') : '';
+    expect(upgrade).toContain('pg_get_functiondef');
+    expect(upgrade).toContain("v_speech_type not in ('1', '2', '3')");
+    expect(upgrade).toContain('v_operation_count <> v_expected_table_count');
+  });
+
+  it('allows a Table-origin transaction to include the linked Conversation', () => {
+    const migrationPath = resolve(
+      root,
+      'supabase/migrations/20260814090000_atomic_script_dialogue_document_table_sync.sql',
+    );
+    expect(readFileSync(migrationPath, 'utf8')).toContain(
+      "library.document_export_type in ('table', 'script')",
+    );
+
+    const upgradePath = resolve(
+      root,
+      'supabase/migrations/20260817190000_allow_script_conversation_atomic_table_edits.sql',
+    );
+    expect(existsSync(upgradePath)).toBe(true);
+    expect(readFileSync(upgradePath, 'utf8')).toContain(
+      "library.document_export_type in ('table', 'script')",
+    );
   });
 });

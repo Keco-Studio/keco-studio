@@ -42,6 +42,7 @@ import {
 import styles from './page.module.css';
 import addColumIcon from "@/assets/images/addColumIcon.svg";
 import { getStudioLibraryRedirectPath } from '@/lib/studioLibraryIsolation';
+import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 
 export default function LibraryPage() {
   const params = useParams();
@@ -52,7 +53,8 @@ export default function LibraryPage() {
   const libraryId = params.libraryId as string;
   
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
+  const { data: projectRole } = useProjectRoleQuery(projectId, userProfile?.id);
+  const userRole: CollaboratorRole = projectRole?.role ?? 'viewer';
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
@@ -267,46 +269,6 @@ export default function LibraryPage() {
     return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
   }, [userProfile?.id]);
 
-  // Fetch user role for this project
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      if (!projectId || !userProfile?.id) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from('project_collaborators')
-          .select('role')
-          .eq('project_id', projectId)
-          .eq('user_id', userProfile.id)
-          .maybeSingle();
-        
-        if (error) {
-          console.error('Error fetching user role:', error);
-          return;
-        }
-        
-        if (data) {
-          setUserRole(data.role as CollaboratorRole);
-        } else {
-          // Check if user is the project owner
-          const { data: projectData } = await supabase
-            .from('projects')
-            .select('owner_id')
-            .eq('id', projectId)
-            .single();
-
-          if (projectData?.owner_id === userProfile.id) {
-            setUserRole('admin');
-          }
-        }
-      } catch (e) {
-        console.error('Failed to fetch user role:', e);
-      }
-    };
-    
-    fetchUserRole();
-  }, [projectId, userProfile?.id, supabase]);
-
   const handleAddProperty = useCallback(
     async (payload: AddColumnFormPayload) => {
       await addLibraryField(supabase, libraryId, {
@@ -489,12 +451,14 @@ export default function LibraryPage() {
                       name: librarySummary.name,
                       description: librarySummary.description,
                       documentExportType: library.document_export_type,
+                      sourceDocumentId: library.source_document_id,
                     }
                   : {
                       id: library.id,
                       name: library.name,
                       description: library.description,
                       documentExportType: library.document_export_type,
+                      sourceDocumentId: library.source_document_id,
                     }
               }
               properties={tableProperties}

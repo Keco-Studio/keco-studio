@@ -609,22 +609,29 @@
   text-align: center;
 }
 
-.cellReplacePreviewList,
-.cellReplaceSkipList {
-  margin: 0.5rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.8rem;
-  color: #374151;
+.cellReplaceConfirmModal {
+  width: 400px;
+  max-width: calc(100vw - 2.5rem);
+  border-radius: 14px;
+  border: none;
+  gap: 1.25rem;
 }
 
-.cellReplaceSkipList {
-  color: #b45309;
+.cellReplaceConfirmBody {
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #0f172a;
 }
 
-.cellReplaceHint {
-  margin: 0.75rem 0 0;
-  font-size: 0.75rem;
-  color: #6b7280;
+.cellReplaceConfirmBody p {
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
 }
 
 .cellSearchEmpty,

@@ -45,7 +45,6 @@ declare
   v_distinct_index_count integer;
   v_min_index integer;
   v_max_index integer;
-  v_expected_table_count integer;
   v_operation_count integer;
   v_distinct_operation_count integer;
   v_project_id uuid;
@@ -59,23 +58,11 @@ begin
       using errcode = '22023';
   end if;
 
-  select count(*)
-    into v_expected_table_count
-    from public.libraries as library
-    where library.project_id = (
-      select document.project_id
-      from public.documents as document
-      where document.id = p_document_id
-    )
-      and library.source_document_id = p_document_id
-      and library.document_export_type = 'table';
-
   select count(*), count(distinct operation.value ->> 'libraryId')
     into v_operation_count, v_distinct_operation_count
     from jsonb_array_elements(p_derived_table_operations) as operation(value);
 
-  if v_operation_count <> v_expected_table_count
-    or v_distinct_operation_count <> v_operation_count
+  if v_distinct_operation_count <> v_operation_count
     or exists (
       select 1
       from jsonb_array_elements(p_derived_table_operations) as operation(value)
@@ -84,7 +71,7 @@ begin
         from public.libraries as library
         where library.id = nullif(operation.value ->> 'libraryId', '')::uuid
           and library.source_document_id = p_document_id
-          and library.document_export_type = 'table'
+          and library.document_export_type in ('table', 'script')
       )
     )
   then
@@ -157,7 +144,10 @@ begin
     if v_operation_type in ('edit', 'insert') then
       v_speaker := btrim(coalesce(v_operation ->> 'speaker', ''));
       v_speech_type := v_operation ->> 'speechType';
-      if v_speaker = '' or v_speech_type not in ('1', '2') then
+      if v_speaker = ''
+        or (v_operation_type = 'insert' and v_speech_type not in ('1', '2'))
+        or (v_operation_type = 'edit' and v_speech_type not in ('1', '2', '3'))
+      then
         raise exception 'DERIVED_TABLE_MAPPING_AMBIGUOUS: dialogue values are invalid'
           using errcode = '22023';
       end if;
