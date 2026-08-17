@@ -7,6 +7,13 @@ import {
 } from './schema';
 import { PIXEL_ART_V1_PRESET } from './presets';
 
+export class GameArtStyleCompilationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GameArtStyleCompilationError';
+  }
+}
+
 export function normalizeGameArtStyleInput(value: unknown): NormalizedGameArtStyleInput {
   return gameArtStyleInputSchema.parse(value);
 }
@@ -26,7 +33,7 @@ export function compileGameArtStyle(value: unknown): GameArtStyleSnapshot {
   });
   const bytes = new TextEncoder().encode(JSON.stringify(snapshot)).byteLength;
   if (bytes > GAME_ART_STYLE_MAX_BYTES) {
-    throw new Error(`Game Art Style snapshot exceeds the 32 KiB limit (${bytes} bytes).`);
+    throw new GameArtStyleCompilationError(`Game Art Style snapshot exceeds the 32 KiB limit (${bytes} bytes).`);
   }
   return snapshot;
 }

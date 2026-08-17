@@ -139,6 +139,11 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       philosophies,
       references,
       referenceGames: normalizedGames,
+      artStyle: {
+        presetId: 'pixel-art',
+        presetVersion: 1,
+        customization: { referenceGames: [] },
+      },
       ...(description.trim() ? { description: description.trim() } : {}),
       ...(suitableFor.trim() ? { suitableFor: suitableFor.trim() } : {}),
       ...(baseSystemId ? { baseSystemId } : {}),
