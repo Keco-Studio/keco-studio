@@ -193,6 +193,13 @@ describe('GameDesignSystemsPage', () => {
     expect(screen.getByRole('heading', { name: 'Visual DNA' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Art style sections' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Craft' }).getAttribute('href')).toBe('#art-style-browse-craft');
+    expect(screen.getByRole('button', { name: 'Visual identity' }).getAttribute('aria-expanded')).toBe('true');
+    for (const group of ['Craft', 'World', 'Production']) {
+      const toggle = screen.getByRole('button', { name: new RegExp(`^${group}`) });
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      await user.click(toggle);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    }
     expect(screen.getByText('Revision 1')).toBeTruthy();
     for (const value of Object.values(artStyleSnapshot.specification)) expect(screen.getByText(value)).toBeTruthy();
     expect(screen.getByText(artStyleSnapshot.customization.direction)).toBeTruthy();

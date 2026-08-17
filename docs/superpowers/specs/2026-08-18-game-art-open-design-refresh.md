@@ -1,7 +1,7 @@
 # Game Art Open Design Refresh
 
-**Date:** 2026-08-18  
-**Status:** Approved for implementation  
+**Date:** 2026-08-18
+**Status:** Approved for implementation
 **Scope:** Rework the Game Art creation stage and read-only Art Style workspace view so the visual language is presented with an Open Design-style overview-first hierarchy, without changing persistence, generation, or API contracts.
 
 ## Product Goal

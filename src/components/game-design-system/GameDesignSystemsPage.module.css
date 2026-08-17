@@ -1857,6 +1857,24 @@
   .artStyleCustomization > dl {
     grid-template-columns: 1fr;
   }
+
+  .artStyleWorkbench,
+  .artStyleMain {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .artStyleCatalog {
+    border-right: 0;
+    border-bottom: 1px solid #e1e6eb;
+    padding: 0 0 18px;
+  }
+
+  .artStyleFields {
+    border-top: 1px solid #dfe5eb;
+    border-left: 0;
+    padding: 22px 0 0;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1921,30 +1939,8 @@
     width: calc(100% - 32px);
   }
 
-  .artStyleWorkbench {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-  }
-
-  .artStyleMain {
-    grid-template-columns: 1fr;
-    gap: 22px;
-  }
-
-  .artStyleCatalog {
-    border-right: 0;
-    border-bottom: 1px solid #e1e6eb;
-    padding: 0 0 18px;
-  }
-
   .artStyleSpecification {
     grid-template-columns: 1fr;
-  }
-
-  .artStyleFields {
-    border-top: 1px solid #dfe5eb;
-    border-left: 0;
-    padding: 22px 0 0;
   }
 
   .artStyleDnaGrid {

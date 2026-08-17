@@ -126,9 +126,7 @@ export function GameArtStylePreview(props: Props) {
   const { compact = false, mode = 'browse', imageFailures, onImageFailure, showCustomization = false } = props;
   const preview = props.preset ?? props.snapshot;
   const [localFailures, setLocalFailures] = useState<Partial<Record<PreviewKey, boolean>>>({});
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(
-    specificationGroups.map((group) => [group.id, mode === 'browse' || group.id === 'visual']),
-  ));
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ visual: true });
   const previews = [
     { key: 'map' as const, label: 'Map', asset: preview.previewAssetSet.map },
     { key: 'character' as const, label: 'Character', asset: preview.previewAssetSet.character },

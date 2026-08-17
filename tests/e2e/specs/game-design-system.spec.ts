@@ -506,6 +506,19 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await expectNoDocumentOverflow(page);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'create-art-style-1440x1000.png'), fullPage: true });
 
+    await page.setViewportSize({ width: 768, height: 900 });
+    await resetViewportScroll(page);
+    const tabletCatalog = await page.getByLabel('Art style catalog').boundingBox();
+    const tabletPreview = await page.getByRole('region', { name: 'Pixel Art preview' }).boundingBox();
+    const tabletDirection = await page.getByLabel('Custom art direction').boundingBox();
+    expect(tabletCatalog).not.toBeNull();
+    expect(tabletPreview).not.toBeNull();
+    expect(tabletDirection).not.toBeNull();
+    expect(tabletCatalog!.y + tabletCatalog!.height).toBeLessThanOrEqual(tabletPreview!.y);
+    expect(tabletPreview!.y + tabletPreview!.height).toBeLessThanOrEqual(tabletDirection!.y);
+    await expectNoVisibleTextOverflow(page.getByRole('region', { name: 'Pixel Art preview' }));
+    await expectNoDocumentOverflow(page);
+
     await page.setViewportSize({ width: 390, height: 844 });
     await resetViewportScroll(page);
     await expectLoadedArtStyleImages(page);
