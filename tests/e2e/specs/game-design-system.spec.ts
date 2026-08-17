@@ -38,7 +38,9 @@ const MOCK_LEGACY_SYSTEM_ID = '40000000-0000-4000-8000-000000000064';
 const MOCK_CURRENT_VERSION_ID = '50000000-0000-4000-8000-000000000065';
 const MOCK_HISTORICAL_VERSION_ID = '60000000-0000-4000-8000-000000000066';
 const MOCK_LEGACY_VERSION_ID = '70000000-0000-4000-8000-000000000067';
-const MOCK_JOB_ID = '80000000-0000-4000-8000-000000000068';
+const MOCK_INITIAL_JOB_ID = '80000000-0000-4000-8000-000000000068';
+const MOCK_FAILED_JOB_ID = '81000000-0000-4000-8000-000000000069';
+const MOCK_RETRY_JOB_ID = '82000000-0000-4000-8000-000000000070';
 
 const LEGACY_RULES: GameDesignRuleSet = {
   schemaVersion: 1,
@@ -83,6 +85,35 @@ async function resetViewportScroll(page: Page): Promise<void> {
       if (element.scrollLeft > 0) element.scrollLeft = 0;
     });
   });
+}
+
+async function expectScrollableSingleLineTabRail(tablist: Locator): Promise<void> {
+  const metrics = await tablist.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    overflowX: getComputedStyle(element).overflowX,
+    lineCounts: Array.from(element.querySelectorAll<HTMLElement>('[role="tab"]')).map((tab) => {
+      const range = document.createRange();
+      range.selectNodeContents(tab);
+      return new Set(Array.from(range.getClientRects())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .map((rect) => Math.round(rect.top))).size;
+    }),
+  }));
+  expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+  expect(metrics.overflowX).toBe('auto');
+  expect(metrics.lineCounts).toEqual([1, 1, 1, 1, 1, 1]);
+
+  await tablist.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  const trailingTab = tablist.getByRole('tab', { name: 'Projects' });
+  await expect(trailingTab).toBeInViewport();
+  const [tablistBox, trailingTabBox] = await Promise.all([tablist.boundingBox(), trailingTab.boundingBox()]);
+  expect(tablistBox).not.toBeNull();
+  expect(trailingTabBox).not.toBeNull();
+  expect(trailingTabBox!.x).toBeGreaterThanOrEqual(tablistBox!.x - 1);
+  expect(trailingTabBox!.x + trailingTabBox!.width).toBeLessThanOrEqual(tablistBox!.x + tablistBox!.width + 1);
 }
 
 async function expectLoadedArtStyleImages(page: Page): Promise<void> {
@@ -210,7 +241,7 @@ function mockSystem(input: {
     status: 'draft',
     current_version_id: input.currentVersionId,
     migration_status: 'ready',
-    generation_job_id: MOCK_JOB_ID,
+    generation_job_id: MOCK_RETRY_JOB_ID,
     created_at: '2026-08-17T00:00:00.000Z',
     updated_at: '2026-08-17T03:00:00.000Z',
   };
@@ -232,8 +263,9 @@ function fulfillJson(route: Route, body: unknown, status = 200) {
 
 class GameArtStyleMockBackend {
   readonly generationBodies: Array<Record<string, unknown>> = [];
+  readonly issuedJobIds: string[] = [];
+  readonly polledJobIds: string[] = [];
   retryCalls = 0;
-  private retried = false;
   readonly currentArtStyle = mockArtStyle({
     direction: ART_DIRECTION,
     referenceGames: [{ name: VISUAL_REFERENCE_NAME, borrow: VISUAL_REFERENCE_BORROW }],
@@ -284,10 +316,10 @@ class GameArtStyleMockBackend {
     await page.route('**/api/game-design-systems**', (route) => this.handleGameDesignSystem(route));
   }
 
-  private job(status: GameDesignSystemGenerationJob['status'], phase: GameDesignSystemGenerationJob['phase']): GameDesignSystemGenerationJob {
+  private job(id: string, status: GameDesignSystemGenerationJob['status'], phase: GameDesignSystemGenerationJob['phase']): GameDesignSystemGenerationJob {
     const completed = status === 'completed';
     return {
-      id: MOCK_JOB_ID,
+      id,
       owner_id: MOCK_USER_ID,
       status,
       phase,
@@ -340,15 +372,28 @@ class GameArtStyleMockBackend {
     }
     if (path === '/api/game-design-systems/generation-jobs' && request.method() === 'POST') {
       this.generationBodies.push(request.postDataJSON() as Record<string, unknown>);
-      return fulfillJson(route, { job: this.job('failed', 'failed') }, 202);
+      const jobId = this.generationBodies.length === 1 ? MOCK_INITIAL_JOB_ID : MOCK_FAILED_JOB_ID;
+      const job = this.job(jobId, 'failed', 'failed');
+      this.issuedJobIds.push(job.id);
+      return fulfillJson(route, { job }, 202);
     }
-    if (path === `/api/game-design-systems/generation-jobs/${MOCK_JOB_ID}/retry` && request.method() === 'POST') {
+    if (path === `/api/game-design-systems/generation-jobs/${MOCK_FAILED_JOB_ID}/retry` && request.method() === 'POST') {
       this.retryCalls += 1;
-      this.retried = true;
-      return fulfillJson(route, { job: this.job('queued', 'collecting') }, 202);
+      const job = this.job(MOCK_RETRY_JOB_ID, 'queued', 'collecting');
+      this.issuedJobIds.push(job.id);
+      return fulfillJson(route, { job }, 202);
     }
-    if (path === `/api/game-design-systems/generation-jobs/${MOCK_JOB_ID}` && request.method() === 'GET') {
-      return fulfillJson(route, { job: this.retried ? this.job('completed', 'completed') : this.job('failed', 'failed') });
+    if (path === `/api/game-design-systems/generation-jobs/${MOCK_INITIAL_JOB_ID}` && request.method() === 'GET') {
+      this.polledJobIds.push(MOCK_INITIAL_JOB_ID);
+      return fulfillJson(route, { job: this.job(MOCK_INITIAL_JOB_ID, 'failed', 'failed') });
+    }
+    if (path === `/api/game-design-systems/generation-jobs/${MOCK_FAILED_JOB_ID}` && request.method() === 'GET') {
+      this.polledJobIds.push(MOCK_FAILED_JOB_ID);
+      return fulfillJson(route, { job: this.job(MOCK_FAILED_JOB_ID, 'failed', 'failed') });
+    }
+    if (path === `/api/game-design-systems/generation-jobs/${MOCK_RETRY_JOB_ID}` && request.method() === 'GET') {
+      this.polledJobIds.push(MOCK_RETRY_JOB_ID);
+      return fulfillJson(route, { job: this.job(MOCK_RETRY_JOB_ID, 'completed', 'completed') });
     }
     const detail = this.detail(path.split('/').at(-1) ?? '');
     if (detail && request.method() === 'GET') return fulfillJson(route, { system: detail });
@@ -512,6 +557,13 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
       expect(body.artStyle).not.toHaveProperty('previewAssetSet');
     }
     expect(backend.retryCalls).toBe(1);
+    expect(backend.issuedJobIds).toEqual([
+      MOCK_INITIAL_JOB_ID,
+      MOCK_FAILED_JOB_ID,
+      MOCK_RETRY_JOB_ID,
+    ]);
+    expect(backend.polledJobIds).toContain(MOCK_RETRY_JOB_ID);
+    expect(backend.polledJobIds).not.toContain(MOCK_FAILED_JOB_ID);
     expect(pixelLabRequests).toEqual([]);
 
     await page.getByRole('tab', { name: 'Art Style' }).click();
@@ -546,13 +598,7 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     ]);
     await expectNoVisibleTextOverflow(page.getByRole('region', { name: 'Pixel Art preview' }));
     await expectNoDocumentOverflow(page);
-    const tabMetrics = await workspaceTabs.evaluate((element) => ({
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-      overflowX: getComputedStyle(element).overflowX,
-    }));
-    expect(tabMetrics.scrollWidth).toBeGreaterThanOrEqual(tabMetrics.clientWidth);
-    expect(tabMetrics.overflowX).toBe('auto');
+    await expectScrollableSingleLineTabRail(workspaceTabs);
     await resetViewportScroll(page);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'workspace-art-style-390x844.png'), fullPage: true });
 
@@ -995,13 +1041,7 @@ test.describe('Game Design System real workflow', () => {
     await expectLoadedArtStyleImages(page);
     await expectNoVisibleTextOverflow(page.getByRole('region', { name: 'Pixel Art preview' }));
     await expectNoDocumentOverflow(page);
-    const tabMetrics = await workspaceTabs.evaluate((element) => ({
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-      overflowX: getComputedStyle(element).overflowX,
-    }));
-    expect(tabMetrics.scrollWidth).toBeGreaterThanOrEqual(tabMetrics.clientWidth);
-    expect(tabMetrics.overflowX).toBe('auto');
+    await expectScrollableSingleLineTabRail(workspaceTabs);
     await resetViewportScroll(page);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'workspace-art-style-390x844.png'), fullPage: true });
 
