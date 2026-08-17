@@ -26,14 +26,16 @@ import {
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { GameDesignSystemRuleEditor } from './GameDesignSystemRuleEditor';
 import { GameDesignSystemDocumentEditor } from './GameDesignSystemDocumentEditor';
+import { GameArtStylePreview } from './GameArtStylePreview';
 import styles from './GameDesignSystemsPage.module.css';
 
-export type GameDesignSystemView = 'overview' | 'rules' | 'versions' | 'sources' | 'projects';
+export type GameDesignSystemView = 'overview' | 'art-style' | 'rules' | 'versions' | 'sources' | 'projects';
 export type ProjectOption = { id: string; name: string };
 type Feedback = { tone: 'success' | 'error'; text: string };
 
 const views: Array<{ id: GameDesignSystemView; label: string }> = [
   { id: 'overview', label: 'Overview' },
+  { id: 'art-style', label: 'Art Style' },
   { id: 'rules', label: 'Rules' },
   { id: 'versions', label: 'Versions' },
   { id: 'sources', label: 'Sources' },
@@ -138,6 +140,16 @@ function OverviewView(props: {
         </section>
       ))}</div>
       <footer className={styles.documentMeta}>Version {props.version.version_number} / {props.detail.versions.length} saved versions / {props.version.rules.rules.length} structured rules</footer>
+    </section>
+  );
+}
+
+function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) {
+  return (
+    <section className={styles.artStyleView} role="tabpanel">
+      {!version?.artStyle
+        ? <div className={styles.inlineEmpty}>No art style specified</div>
+        : <GameArtStylePreview snapshot={version.artStyle} showCustomization />}
     </section>
   );
 }
@@ -445,6 +457,7 @@ export function GameDesignSystemWorkspace(props: Props) {
 
       {feedback ? <div className={feedback.tone === 'error' ? styles.error : styles.notice} role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.text}</div> : null}
       {view === 'overview' ? <OverviewView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} editing={editingDocument} pending={versionMutation.isPending} onDirtyChange={setDocumentDirty} onCancelEditing={() => setEditingDocument(false)} onCreateVersion={async (document) => { await versionMutation.mutateAsync({ rules: selectedVersion!.rules, document }); setEditingDocument(false); }} /> : null}
+      {view === 'art-style' ? <ArtStyleView key={selectedVersion?.id ?? 'no-version'} version={selectedVersion} /> : null}
       {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} owned={owned} pending={versionMutation.isPending} onDirtyChange={setRulesDirty} onCreateVersion={(rules) => versionMutation.mutate({ rules })} /> : null}
       {view === 'versions' ? <VersionsView detail={detail} selectedVersionId={selectedVersion?.id ?? ''} onSelect={changeVersion} /> : null}
       {view === 'sources' ? <SourcesView version={selectedVersion} /> : null}
