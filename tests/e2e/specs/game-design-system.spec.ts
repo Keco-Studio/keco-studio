@@ -124,6 +124,18 @@ async function expectLoadedArtStyleImages(page: Page): Promise<void> {
   for (const preview of previews) {
     const image = page.getByRole('img', { name: preview.alt });
     await expect(image).toBeVisible();
+    await expect.poll(
+      () => image.evaluate((element: HTMLImageElement) => ({
+        complete: element.complete,
+        naturalWidth: element.naturalWidth,
+        naturalHeight: element.naturalHeight,
+      })),
+      { timeout: 30_000 },
+    ).toMatchObject({
+      complete: true,
+      naturalWidth: preview.width,
+      naturalHeight: preview.height,
+    });
     const pixels = await image.evaluate((element: HTMLImageElement) => {
       const canvas = document.createElement('canvas');
       canvas.width = 32;
@@ -609,8 +621,9 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'workspace-art-style-failed-image-1440x1000.png'), fullPage: true });
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByLabel('Version').selectOption(MOCK_HISTORICAL_VERSION_ID);
-    await expect(page.getByLabel('Version').locator('option:checked')).toHaveText('Version 1');
+    const versionSelect = page.getByRole('combobox', { name: 'Version' });
+    await versionSelect.selectOption(MOCK_HISTORICAL_VERSION_ID);
+    await expect(versionSelect.locator('option:checked')).toHaveText('Version 1');
     await expect(page.getByText('Historical amber route markers and compact landmark clusters.', { exact: true })).toBeVisible();
     await expect(page.getByText('Chrono Trigger', { exact: true })).toBeVisible();
     await expectLoadedArtStyleImages(page);
@@ -1044,7 +1057,8 @@ test.describe('Game Design System real workflow', () => {
     if (viewerBindingError) throw viewerBindingError;
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByLabel('Version').selectOption(firstVersion.id);
+    const versionSelect = page.getByRole('combobox', { name: 'Version' });
+    await versionSelect.selectOption(firstVersion.id);
     await page.getByRole('tab', { name: 'Art Style' }).click();
     await page.evaluate(() => {
       window.scrollTo(0, 0);
@@ -1053,8 +1067,8 @@ test.describe('Game Design System real workflow', () => {
       });
     });
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
-    await expect(page.getByLabel('Version')).toHaveValue(firstVersion.id);
-    await expect(page.getByLabel('Version').locator('option:checked')).toHaveText('Version 1');
+    await expect(versionSelect).toHaveValue(firstVersion.id);
+    await expect(versionSelect.locator('option:checked')).toHaveText('Version 1');
     const workspaceTabs = page.getByRole('tablist', { name: 'Game Design System views' });
     expect(await workspaceTabs.getByRole('tab').allTextContents()).toEqual([
       'Overview', 'Art Style', 'Rules', 'Versions', 'Sources', 'Projects',
