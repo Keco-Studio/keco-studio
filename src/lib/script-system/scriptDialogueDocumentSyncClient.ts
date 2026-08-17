@@ -1,8 +1,10 @@
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
 import type { ScriptDialogueDocumentCommand } from './scriptDialogueDocumentSync';
+import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 
 export type ScriptDialogueDocumentSyncInput = {
   projectId: string;
+  libraryId: string;
   documentId: string;
   expected: DocumentStateToken;
   command: ScriptDialogueDocumentCommand;
@@ -10,6 +12,8 @@ export type ScriptDialogueDocumentSyncInput = {
 
 export type ScriptDialogueDocumentSyncResult = {
   state: { markdown: string; token: DocumentStateToken };
+  plotPlan?: StoryPlotPlan;
+  updatedLibraryIds?: string[];
 };
 
 export type ScriptDialogueDocumentSyncError = Error & {

@@ -86,7 +86,10 @@ export type DocumentCollaborationSessionOptions = {
   compactionJitterRatio?: number;
   reconnectBackoffMs?: number;
   reconnectJitterRatio?: number;
-  onCompacted?: (state: AuthoritativeDocumentState) => void | Promise<void>;
+  onCompacted?: (
+    state: AuthoritativeDocumentState,
+    previousMarkdown: string,
+  ) => void | Promise<void>;
   onStateReplaced?: (state: AuthoritativeDocumentState) => void | Promise<void>;
 };
 
@@ -167,7 +170,8 @@ export class DocumentCollaborationSession implements Provider {
   private readonly reconnectBackoffMs: number;
   private readonly reconnectJitterRatio: number;
   private readonly onCompacted?: (
-    state: AuthoritativeDocumentState
+    state: AuthoritativeDocumentState,
+    previousMarkdown: string,
   ) => void | Promise<void>;
   private readonly onStateReplaced?: (
     state: AuthoritativeDocumentState
@@ -197,6 +201,7 @@ export class DocumentCollaborationSession implements Provider {
   private reloadQueued = false;
   private reloadMinimumToken: DocumentStateToken | null = null;
   private compactAttempts = 0;
+  private lastCompactedMarkdown = '';
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectPromise: Promise<void> | null = null;
   private hydrationPromise: Promise<void> | null = null;
@@ -451,6 +456,7 @@ export class DocumentCollaborationSession implements Provider {
     }
 
     this.pendingState = state;
+    this.lastCompactedMarkdown = state.markdown;
     this.currentToken = state.token;
     this.durableTailCount = state.updateTail.length;
     this.durableTailBytes = state.updateTail.reduce(
@@ -1151,6 +1157,7 @@ export class DocumentCollaborationSession implements Provider {
     if (this.compactPromise) return this.compactPromise;
     this.compactPromise = (async () => {
       try {
+        const previousMarkdown = this.lastCompactedMarkdown;
         const state = await this.gateway.compact(this.supabase, {
           documentId: this.documentId,
           expected: this.currentToken,
@@ -1163,7 +1170,9 @@ export class DocumentCollaborationSession implements Provider {
         );
         this.compactAttempts = 0;
         this.clearCompactionTimers();
-        await this.onCompacted?.(state);
+        this.pendingState = state;
+        this.lastCompactedMarkdown = state.markdown;
+        await this.onCompacted?.(state, previousMarkdown);
       } catch (error) {
         if (error instanceof DocumentStateConflictError) {
           const winner = await this.gateway.readTransport(
@@ -1437,6 +1446,7 @@ export class DocumentCollaborationSession implements Provider {
     this.docListenerInstalled = false;
     this.awarenessListenerInstalled = false;
     this.pendingState = state;
+    this.lastCompactedMarkdown = '';
     this.currentToken = state.token;
     this.durableTailCount = state.updateTail.length;
     this.durableTailBytes = state.updateTail.reduce(

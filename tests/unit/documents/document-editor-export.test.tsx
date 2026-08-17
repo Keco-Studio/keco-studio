@@ -102,6 +102,7 @@ jest.mock('@/components/documents/useDocumentCollaboration', () => ({
     label: 'Live',
     canRetry: false,
     cursorColor: '#000000',
+    scriptSync: { visible: false, label: '', tone: 'neutral' },
     retry: jest.fn(),
   }),
 }));

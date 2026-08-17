@@ -30,6 +30,7 @@
 }
 
 .documentSectionFlush .connectionBanner,
+.documentSectionFlush .derivedSyncBanner,
 .documentSectionFlush .versionPreviewBanner {
   margin-left: 24px;
   margin-right: 24px;
@@ -170,6 +171,22 @@
   border: 1px solid var(--ant-color-warning-border, #ffe58f);
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
   font-size: 13px;
+}
+
+.derivedSyncBanner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--ant-color-warning-border, #ffe58f);
+  border-radius: 8px;
+  background: var(--ant-color-warning-bg, #fffbe6);
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.derivedSyncBanner[data-tone='error'] {
+  border-color: var(--ant-color-error-border, #ffccc7);
+  background: var(--ant-color-error-bg, #fff2f0);
 }
 
 .versionPreviewBanner {

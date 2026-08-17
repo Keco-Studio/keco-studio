@@ -23,4 +23,17 @@ describe('Document card context menu wiring', () => {
     expect(folder).toContain('documentId={document.id}');
     expect(recent).toContain("queryKey: [...queryKeys.documents(projectId), 'recent'");
   });
+
+  it('opens document and library menus from Recent list ellipsis', () => {
+    const recent = read('src/components/admin/RecentPage.tsx');
+    const card = read('src/components/folders/LibraryCard.tsx');
+    const sidebar = read('src/components/layout/Sidebar.tsx');
+
+    expect(recent).toContain('requestDocumentContextMenu');
+    expect(recent).toContain('requestLibraryContextMenu');
+    expect(recent).toContain('aria-label="More options"');
+    expect(card).toContain('requestLibraryContextMenu');
+    expect(sidebar).toContain('LIBRARY_CONTEXT_MENU_REQUEST_EVENT');
+    expect(sidebar).toContain("openContextMenu(detail.x, detail.y, 'library', detail.libraryId");
+  });
 });

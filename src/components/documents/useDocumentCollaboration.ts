@@ -13,6 +13,7 @@ import { colorForUserId } from '@/lib/documents/cursorColor';
 import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
 import { queryKeys } from '@/lib/utils/queryKeys';
+import { requestScriptDocumentReconciliation } from '@/lib/script-system/scriptDocumentReconciliationClient';
 
 const AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS = 5000;
 const AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS = 2;
@@ -99,6 +100,48 @@ type CollaborationPresentation = {
   isLegacyView: boolean;
   tone: 'neutral' | 'live' | 'warning' | 'error';
 };
+
+export type ScriptDocumentSyncStatus =
+  | 'idle'
+  | 'syncing'
+  | 'synced'
+  | 'not-linked'
+  | 'regenerate-required'
+  | 'conflict'
+  | 'error';
+
+type ScriptDocumentSyncPresentation = {
+  visible: boolean;
+  label: string;
+  tone: 'neutral' | 'warning' | 'error';
+};
+
+export function getScriptDocumentSyncPresentation(
+  status: ScriptDocumentSyncStatus
+): ScriptDocumentSyncPresentation {
+  switch (status) {
+    case 'regenerate-required':
+      return {
+        visible: true,
+        label: 'Document saved. Regenerate the conversation to update its table and conversion.',
+        tone: 'warning',
+      };
+    case 'conflict':
+      return {
+        visible: true,
+        label: 'Document saved, but a newer document edit prevented its table and conversion from syncing. Regenerate the conversation before editing derived data.',
+        tone: 'warning',
+      };
+    case 'error':
+      return {
+        visible: true,
+        label: 'Document saved, but its table and conversion could not sync. Check your connection, then regenerate the conversation if the warning remains.',
+        tone: 'error',
+      };
+    default:
+      return { visible: false, label: '', tone: 'neutral' };
+  }
+}
 
 type DocumentCollaborator = {
   id: string;
@@ -226,6 +269,9 @@ export function useDocumentCollaboration({
   userName,
 }: UseDocumentCollaborationOptions) {
   const [generation, setGeneration] = useState(0);
+  const [scriptSyncStatus, setScriptSyncStatus] =
+    useState<ScriptDocumentSyncStatus>('idle');
+  const scriptSyncRequestRef = useRef(0);
   const reindexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDocumentReindexRef = useRef<PendingDocumentReindex | null>(null);
   const accessTokenRef = useRef(accessToken);
@@ -244,6 +290,10 @@ export function useDocumentCollaboration({
     loadFailure?.requestKey === requestKey ? loadFailure : null;
   const status = currentLoadFailure ? 'error' : current?.view.status ?? 'idle';
   const presentation = getDocumentCollaborationPresentation(status, role);
+  const scriptSync = useMemo(
+    () => getScriptDocumentSyncPresentation(scriptSyncStatus),
+    [scriptSyncStatus]
+  );
   const flushScheduledDocumentReindex = useCallback(() => {
     if (reindexTimerRef.current) {
       clearTimeout(reindexTimerRef.current);
@@ -271,6 +321,11 @@ export function useDocumentCollaboration({
   }, [documentId, flushScheduledDocumentReindex, projectId, role]);
 
   useEffect(() => {
+    scriptSyncRequestRef.current += 1;
+    setScriptSyncStatus('idle');
+  }, [documentId, projectId]);
+
+  useEffect(() => {
     let mounted = true;
     let nextSession: DocumentCollaborationSession | null = null;
     let unsubscribeView = () => undefined;
@@ -283,9 +338,56 @@ export function useDocumentCollaboration({
       .then(([{ DocumentCollaborationSession }, { documentStateGateway }]) => {
         if (!mounted) return;
         const onDurableStateChanged = async (
-          state: { updatedAt: string }
+          state: {
+            updatedAt: string;
+            markdown?: string;
+            token?: { epoch: number; revision: number };
+          },
+          previousMarkdown?: string,
         ) => {
           scheduleDocumentReindex();
+          if (
+            Boolean(previousMarkdown)
+            && typeof state.markdown === 'string'
+            && state.token
+            && previousMarkdown !== state.markdown
+          ) {
+            scriptSyncRequestRef.current += 1;
+            const requestId = scriptSyncRequestRef.current;
+            setScriptSyncStatus('syncing');
+            void requestScriptDocumentReconciliation({
+              accessToken: accessTokenRef.current,
+              projectId,
+              documentId,
+              expected: state.token,
+              previousMarkdown,
+              markdown: state.markdown,
+            })
+              .then((result) => {
+                if (result.status === 'synced') {
+                  for (const libraryId of result.updatedLibraryIds) {
+                    void queryClient.invalidateQueries({
+                      queryKey: queryKeys.library(libraryId),
+                      refetchType: 'all',
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: queryKeys.libraryAssets(libraryId),
+                      refetchType: 'all',
+                    });
+                  }
+                }
+                if (requestId !== scriptSyncRequestRef.current) return;
+                setScriptSyncStatus(result.status);
+              })
+              .catch((error: unknown) => {
+                if (requestId !== scriptSyncRequestRef.current) return;
+                setScriptSyncStatus('error');
+                console.warn('script.document_reconciliation_failed', {
+                  documentId,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              });
+          }
           await queryClient.invalidateQueries({
             queryKey: queryKeys.documentVersions(documentId),
           });
@@ -448,6 +550,7 @@ export function useDocumentCollaboration({
       error: currentLoadFailure?.error ?? current?.view.error ?? null,
       cursorColor,
       collaborators,
+      scriptSync,
       retry,
     }),
     [
@@ -457,6 +560,7 @@ export function useDocumentCollaboration({
       collaborators,
       presentation,
       retry,
+      scriptSync,
       session,
       status,
       token,

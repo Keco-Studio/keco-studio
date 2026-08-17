@@ -89,6 +89,10 @@ import {
   DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
   type DocumentContextMenuRequestDetail,
 } from '@/components/documents/documentContextMenuRequest';
+import {
+  LIBRARY_CONTEXT_MENU_REQUEST_EVENT,
+  type LibraryContextMenuRequestDetail,
+} from '@/components/libraries/libraryContextMenuRequest';
 
 const ImportDocumentModal = dynamic(
   () =>
@@ -256,14 +260,28 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       openContextMenu(detail.x, detail.y, 'document', detail.documentId, detail.elementRef);
     };
 
+    const handleLibraryContextMenuRequest = (event: Event) => {
+      const detail = (event as CustomEvent<LibraryContextMenuRequestDetail>).detail;
+      if (!detail?.libraryId) return;
+      openContextMenu(detail.x, detail.y, 'library', detail.libraryId, detail.elementRef);
+    };
+
     window.addEventListener(
       DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
       handleDocumentContextMenuRequest as EventListener
+    );
+    window.addEventListener(
+      LIBRARY_CONTEXT_MENU_REQUEST_EVENT,
+      handleLibraryContextMenuRequest as EventListener
     );
     return () => {
       window.removeEventListener(
         DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
         handleDocumentContextMenuRequest as EventListener
+      );
+      window.removeEventListener(
+        LIBRARY_CONTEXT_MENU_REQUEST_EVENT,
+        handleLibraryContextMenuRequest as EventListener
       );
     };
   }, [openContextMenu]);

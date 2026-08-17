@@ -22,6 +22,7 @@ const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const UPDATE_ID = '44444444-4444-4444-8444-444444444444';
+const LIBRARY_ID = '55555555-5555-4555-8555-555555555555';
 
 describe('document Agent edit server command', () => {
   const rpc = jest.fn();
@@ -135,6 +136,71 @@ describe('document Agent edit server command', () => {
       expect.objectContaining({
         p_document_id: DOCUMENT_ID,
         p_derived_table_operations: derivedTableOperations,
+      }),
+    );
+  });
+
+  it('keeps the plain replacement RPC when derived table operations are empty', async () => {
+    await replaceDocumentAsAgent({
+      actorUserId: USER_ID,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      expectedUpdateIds: [UPDATE_ID],
+      markdown: '# Proposed',
+      derivedTableOperations: [],
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'replace_document_with_markdown',
+      expect.not.objectContaining({
+        p_derived_table_operations: expect.anything(),
+      }),
+    );
+  });
+
+  it('uses the three-way RPC for a Script reorder and plot-plan update', async () => {
+    const plotPlan = {
+      version: 2 as const,
+      entryPlotNodeId: 'Opening',
+      storyNodeOrder: ['LineB', 'LineA'],
+      nodes: [{ id: 'Opening', title: 'Opening', storyNodeIds: ['LineB', 'LineA'] }],
+      edges: [],
+    };
+    await replaceDocumentAsAgent({
+      actorUserId: USER_ID,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      expectedUpdateIds: [UPDATE_ID],
+      markdown: '# Proposed',
+      scriptReorder: {
+        libraryId: LIBRARY_ID,
+        expectedOrderIds: [
+          '66666666-6666-4666-8666-666666666666',
+          '77777777-7777-4777-8777-777777777777',
+        ],
+        nextOrderIds: [
+          '77777777-7777-4777-8777-777777777777',
+          '66666666-6666-4666-8666-666666666666',
+        ],
+        plotPlan,
+      },
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      'replace_document_with_markdown_and_reorder_script',
+      expect.objectContaining({
+        p_script_library_id: LIBRARY_ID,
+        p_expected_order_ids: [
+          '66666666-6666-4666-8666-666666666666',
+          '77777777-7777-4777-8777-777777777777',
+        ],
+        p_next_order_ids: [
+          '77777777-7777-4777-8777-777777777777',
+          '66666666-6666-4666-8666-666666666666',
+        ],
+        p_plot_plan: plotPlan,
       }),
     );
   });

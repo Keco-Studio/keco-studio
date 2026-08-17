@@ -55,6 +55,43 @@ describe('script dialogue document sync', () => {
     expect(result.markdown).toContain('Ada（waves）：Hello');
   });
 
+  it('locates a source line with the previous speaker before renaming it', () => {
+    const document = source.replace('Ada：Hello', 'Ada（smiles）：Hello');
+    const result = applyScriptDialogueCommand(document, {
+      type: 'edit',
+      role: 'action',
+      previousText: 'smiles',
+      previousDialogue: 'Hello',
+      previousSpeaker: 'Ada',
+      nextText: 'waves',
+      speaker: 'Bea',
+      dialogue: 'Good morning',
+    });
+
+    expect(result.markdown).toContain('Bea（waves）：Good morning');
+  });
+
+  it('uses the previous speaker when renaming a legacy split action and speech pair', () => {
+    const split = [
+      `<BlockAnchor id="${A}" />smiles`,
+      `<BlockAnchor id="${B}" />Ada：Hello`,
+    ].join('\n\n');
+    const result = applyScriptDialogueCommand(split, {
+      type: 'edit',
+      role: 'action',
+      blockId: '66666666-6666-4666-8666-666666666666',
+      previousText: 'smiles',
+      previousDialogue: 'Hello',
+      previousSpeaker: 'Ada',
+      nextText: 'waves',
+      speaker: 'Bea',
+      dialogue: 'Good morning',
+    });
+
+    expect(result.markdown).toContain('Bea（waves）：Good morning');
+    expect(result.markdown).not.toContain('Ada：Hello');
+  });
+
   it('normalizes a cue written after the colon to speaker-cue-colon-dialogue', () => {
     const document = source.replace('Ada：Hello', 'Ada：（smiles）Hello');
     const result = applyScriptDialogueCommand(document, {
@@ -132,6 +169,34 @@ describe('script dialogue document sync', () => {
       beforeText: 'Ada：Hello',
     });
 
+    expect(result.markdown.indexOf(inserted)).toBeLessThan(result.markdown.indexOf(C));
+  });
+
+  it('uses the previous source neighbor when the table next neighbor is absent', () => {
+    const inserted = '66666666-6666-4666-8666-666666666666';
+    const result = applyScriptDialogueCommand(source, {
+      type: 'insert',
+      blockId: inserted,
+      text: 'Cara：New line',
+      afterText: 'Ada：Hello',
+      beforeText: 'Generated next row absent from the document',
+    });
+
+    expect(result.markdown.indexOf(inserted)).toBeGreaterThan(result.markdown.indexOf(A));
+    expect(result.markdown.indexOf(inserted)).toBeLessThan(result.markdown.indexOf(B));
+  });
+
+  it('uses the next source neighbor when the table previous neighbor is absent', () => {
+    const inserted = '66666666-6666-4666-8666-666666666666';
+    const result = applyScriptDialogueCommand(source, {
+      type: 'insert',
+      blockId: inserted,
+      text: 'Cara：New line',
+      afterText: 'Generated previous row absent from the document',
+      beforeText: 'Ben：Wait',
+    });
+
+    expect(result.markdown.indexOf(inserted)).toBeGreaterThan(result.markdown.indexOf(B));
     expect(result.markdown.indexOf(inserted)).toBeLessThan(result.markdown.indexOf(C));
   });
 
@@ -313,5 +378,85 @@ describe('script dialogue document sync', () => {
 
     expect(result.changedBlockIds).toEqual([A, B, C]);
     expect(result.markdown.trim()).toBe('');
+  });
+
+  it('inserts between dialogue neighbors when narration intervenes in the source', () => {
+    const narration = '55555555-5555-4555-8555-555555555555';
+    const inserted = '66666666-6666-4666-8666-666666666666';
+    const document = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${narration}" />Rain keeps falling.`,
+      `<BlockAnchor id="${C}" />Ben：Wait`,
+    ].join('\n\n');
+
+    const result = applyScriptDialogueCommand(document, {
+      type: 'insert',
+      blockId: inserted,
+      text: 'Ada：New line',
+      afterText: 'Ada：Hello',
+      beforeText: 'Ben：Wait',
+    });
+
+    expect(result.markdown.indexOf(inserted)).toBeGreaterThan(result.markdown.indexOf(A));
+    expect(result.markdown.indexOf(inserted)).toBeLessThan(result.markdown.indexOf(C));
+    expect(result.markdown).toContain('Ada：New line');
+  });
+
+  it('deletes narration using the plain environment source text', () => {
+    const document = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${B}" />Rain keeps falling.`,
+      `<BlockAnchor id="${C}" />Ben：Wait`,
+    ].join('\n\n');
+
+    const result = applyScriptDialogueCommand(document, {
+      type: 'delete',
+      blockId: '66666666-6666-4666-8666-666666666666',
+      previousTexts: ['Rain keeps falling.'],
+    });
+
+    expect(result.changedBlockIds).toEqual([B]);
+    expect(result.markdown).not.toContain('Rain keeps falling.');
+    expect(result.markdown).toContain('Ada：Hello');
+  });
+
+  it('rejects a speaker-prefixed narration delete that does not exist in the source', () => {
+    const document = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${B}" />Rain keeps falling.`,
+    ].join('\n\n');
+
+    expect(() => applyScriptDialogueCommand(document, {
+      type: 'delete',
+      previousTexts: ['Narrator：Rain keeps falling.'],
+    })).toThrow('SOURCE_MAPPING_AMBIGUOUS');
+  });
+
+  it('reorders one dialogue block without moving intervening narration', () => {
+    const result = applyScriptDialogueCommand(source, {
+      type: 'reorder',
+      movingTexts: ['Ben：Wait'],
+      targetText: 'Ada：Hello',
+      edge: 'before',
+    });
+
+    expect(result.changedBlockIds).toEqual([C]);
+    expect(result.markdown.indexOf(C)).toBeLessThan(result.markdown.indexOf(A));
+    expect(result.markdown.indexOf(A)).toBeLessThan(result.markdown.indexOf(B));
+  });
+
+  it('rejects a reorder whose visible source text is ambiguous', () => {
+    const duplicate = [
+      `<BlockAnchor id="${A}" />Ada：Hello`,
+      `<BlockAnchor id="${B}" />Ben：Wait`,
+      `<BlockAnchor id="${C}" />Ben：Wait`,
+    ].join('\n\n');
+
+    expect(() => applyScriptDialogueCommand(duplicate, {
+      type: 'reorder',
+      movingTexts: ['Ben：Wait'],
+      targetText: 'Ada：Hello',
+      edge: 'before',
+    })).toThrow('SOURCE_MAPPING_AMBIGUOUS');
   });
 });

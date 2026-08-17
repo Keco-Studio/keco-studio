@@ -8,9 +8,6 @@ jest.mock('../libraries/components/VisualNovelScriptView.module.css', () => ({
   default: new Proxy({}, { get: (_target, property) => String(property) }),
 }));
 
-jest.mock('antd', () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => children,
-}));
 jest.mock('@dnd-kit/sortable', () => ({
   useSortable: () => ({
     attributes: {},
@@ -127,6 +124,10 @@ describe('ScriptEditableDialogBlock', () => {
     expect(render(true)).toContain('data-edit-controls');
     expect(render(false)).not.toContain('aria-label="Delete dialogue"');
     expect(render(true)).toContain('aria-label="Delete dialogue"');
+  });
+
+  it('uses a lifecycle-free native title for the hover-only drag control', () => {
+    expect(render(true)).toContain('title="Drag to reorder"');
   });
 
   it('renders autosave inputs and a whole-block delete action', () => {

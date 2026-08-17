@@ -49,6 +49,79 @@ describe('planDerivedDialogueCommand', () => {
     });
   });
 
+  it('recovers a stale action value when speaker and dialogue still identify one block', () => {
+    const plan = planDerivedDialogueCommand(rows, fields, {
+      type: 'edit',
+      role: 'action',
+      previousText: 'already changed in the document',
+      previousDialogue: 'original line',
+      nextText: 'smiles',
+      speaker: 'Lu',
+      dialogue: 'original line',
+    });
+
+    expect(plan).toMatchObject({
+      type: 'edit',
+      block: { actionRowId: 'action', speechRowId: 'speech' },
+      values: { speaker: 'Lu', action: 'smiles', dialogue: 'original line' },
+    });
+  });
+
+  it('recovers stale dialogue when speaker and action still identify one block', () => {
+    const plan = planDerivedDialogueCommand(rows, fields, {
+      type: 'edit',
+      role: 'action',
+      previousText: 'whispers',
+      previousDialogue: 'already changed in the conversation',
+      nextText: 'whispers',
+      speaker: 'Lu',
+      dialogue: 'final line',
+    });
+
+    expect(plan).toMatchObject({
+      type: 'edit',
+      block: { actionRowId: 'action', speechRowId: 'speech' },
+      values: { speaker: 'Lu', action: 'whispers', dialogue: 'final line' },
+    });
+  });
+
+  it('uses the previous speaker to locate a block before renaming it', () => {
+    const plan = planDerivedDialogueCommand(rows, fields, {
+      type: 'edit',
+      role: 'action',
+      previousText: 'whispers',
+      previousDialogue: 'original line',
+      previousSpeaker: 'Lu',
+      nextText: 'whispers',
+      speaker: 'Mira',
+      dialogue: 'renamed line',
+    });
+
+    expect(plan).toMatchObject({
+      type: 'edit',
+      block: { actionRowId: 'action', speechRowId: 'speech' },
+      values: { speaker: 'Mira', action: 'whispers', dialogue: 'renamed line' },
+    });
+  });
+
+  it('does not recover a stale action when speaker and dialogue are ambiguous', () => {
+    const duplicated = [
+      ...rows,
+      row('action-2', '3', 'Lu', 'looks away', 5),
+      row('speech-2', '2', 'Lu', 'original line', 6),
+    ];
+
+    expect(planDerivedDialogueCommand(duplicated, fields, {
+      type: 'edit',
+      role: 'action',
+      previousText: 'already changed in the document',
+      previousDialogue: 'original line',
+      nextText: 'smiles',
+      speaker: 'Lu',
+      dialogue: 'original line',
+    })).toBeNull();
+  });
+
   it('places an inserted block after the uniquely matching previous dialogue', () => {
     const plan = planDerivedDialogueCommand(rows, fields, {
       type: 'insert',
@@ -121,6 +194,50 @@ describe('planDerivedDialogueCommand', () => {
       action: 'smiles',
       dialogue: 'new line',
       speechType: '2',
+    });
+  });
+
+  it('builds a row-order mutation for a matched dialogue reorder', () => {
+    const operation = buildDerivedDialogueTableOperation(
+      'table-id',
+      rows,
+      fields,
+      {
+        type: 'reorder',
+        movingTexts: ['Lu：original line'],
+        targetText: 'Lin：previous line',
+        edge: 'before',
+      },
+    );
+
+    expect(operation).toEqual({
+      type: 'reorder',
+      libraryId: 'table-id',
+      typeFieldId: 'type',
+      nameFieldId: 'name',
+      contentFieldId: 'content',
+      expectedOrderIds: ['previous', 'action', 'speech', 'next'],
+      nextOrderIds: ['action', 'speech', 'previous', 'next'],
+    });
+  });
+
+  it('maps a plain document narration edit to its environment row', () => {
+    const environmentRows = [row('rain', '3', 'Speaker', 'Rain falls.', 1)];
+    expect(buildDerivedDialogueTableOperation(
+      'table-id',
+      environmentRows,
+      fields,
+      {
+        type: 'edit',
+        role: 'narration',
+        previousText: 'Rain falls.',
+        nextText: 'Rain stops.',
+      },
+    )).toMatchObject({
+      type: 'edit',
+      actionRowId: null,
+      speechRowId: 'rain',
+      dialogue: 'Rain stops.',
     });
   });
 });

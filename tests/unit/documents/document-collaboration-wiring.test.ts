@@ -225,6 +225,53 @@ describe('document collaboration React boundary', () => {
     });
   });
 
+  it('shows derived Script sync failures while keeping successful sync quiet', async () => {
+    const { getScriptDocumentSyncPresentation } = await import(
+      '@/components/documents/useDocumentCollaboration'
+    );
+
+    expect(getScriptDocumentSyncPresentation('idle')).toEqual({
+      visible: false,
+      label: '',
+      tone: 'neutral',
+    });
+    expect(getScriptDocumentSyncPresentation('synced').visible).toBe(false);
+    expect(getScriptDocumentSyncPresentation('regenerate-required')).toMatchObject({
+      visible: true,
+      tone: 'warning',
+      label: expect.stringContaining('Regenerate the conversation'),
+    });
+    expect(getScriptDocumentSyncPresentation('conflict')).toMatchObject({
+      visible: true,
+      tone: 'warning',
+      label: expect.stringContaining('newer document edit'),
+    });
+    expect(getScriptDocumentSyncPresentation('error')).toMatchObject({
+      visible: true,
+      tone: 'error',
+      label: expect.stringContaining('could not sync'),
+    });
+  });
+
+  it('tracks the latest derived Script reconciliation result without stale response races', () => {
+    const source = readFileSync(hookPath, 'utf8');
+    expect(source).toContain("setScriptSyncStatus('syncing')");
+    expect(source).toContain('scriptSyncRequestRef.current += 1');
+    expect(source).toContain('requestId !== scriptSyncRequestRef.current');
+    expect(source).toContain('setScriptSyncStatus(result.status)');
+    expect(source).toContain("setScriptSyncStatus('error')");
+    expect(source).toContain('queryKeys.libraryAssets(libraryId)');
+    expect(source).toContain("refetchType: 'all'");
+  });
+
+  it('renders a persistent warning when derived Script data is out of sync', () => {
+    const source = readFileSync(documentEditorPath, 'utf8');
+    expect(source).toContain('collaboration.scriptSync.visible');
+    expect(source).toContain('collaboration.scriptSync.label');
+    expect(source).toContain('derivedSyncBanner');
+    expect(source).toContain('data-testid="document-derived-sync-status"');
+  });
+
   it('owns one durable session lifecycle, token refresh, flush, and unload guard', () => {
     const source = readFileSync(hookPath, 'utf8');
     expect(source).toContain('new DocumentCollaborationSession');
