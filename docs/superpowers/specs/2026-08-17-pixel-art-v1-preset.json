@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "presetId": "pixel-art",
+  "presetVersion": 1,
+  "title": "Pixel Art",
+  "previewAssetSet": {
+    "id": "pixel-art-v1",
+    "map": {
+      "sourcePath": "public/game-art-styles/pixel-art/v1/map.png",
+      "publicPath": "/game-art-styles/pixel-art/v1/map.png",
+      "width": 168,
+      "height": 96,
+      "alt": "A bright pixel art riverside village map with branching paths, gardens, workshops, and a wooden bridge.",
+      "sha256": "efe40ba47a11de306b83240630f6f28e3eae3418161fb8c82bc398d7e0e090bc",
+      "bytes": 18174,
+      "alpha": "opaque"
+    },
+    "character": {
+      "sourcePath": "public/game-art-styles/pixel-art/v1/character.png",
+      "publicPath": "/game-art-styles/pixel-art/v1/character.png",
+      "width": 96,
+      "height": 96,
+      "alt": "A full-body pixel art field cartographer with a satchel and practical exploration gear.",
+      "sha256": "53a2ca8c61c0e71bcecf315a5e538bb7e6f55b07675d4799096349800e69a6d1",
+      "bytes": 2514,
+      "alpha": "transparent"
+    },
+    "supporting": []
+  },
+  "specification": {
+    "visualIdentity": "Welcoming top-down adventure pixel art with practical landmarks, open routes, and calm exploration as the dominant visual read.",
+    "pixelTechnique": "Use crisp native-resolution pixel clusters without antialiasing, one-pixel material-colored contours, selective internal outlines, and two or three deliberate shade steps per material.",
+    "shapeLanguage": "Favor clear asymmetrical silhouettes, breathable clusters, broad primary paths, compact secondary details, and off-center landmarks over perfect symmetry or enclosed arenas.",
+    "paletteAndLighting": "Use fresh greens, clear blues, honey and walnut timber, warm gray stone, restrained terracotta, and pale golden daylight with short readable shadows cast down-right.",
+    "characterDirection": "Build clearly adult characters with natural anatomy, grounded practical poses, readable equipment, friendly neutral expressions, and silhouettes that remain distinct at thumbnail size.",
+    "environmentDirection": "Compose maps around immediately legible traversal hierarchy, multiple routes continuing beyond the frame, recognizable material zones, and useful landmarks with generous walkable space.",
+    "propDirection": "Construct props from simple readable masses, limited material palettes, and restrained highlights; each prop should communicate one gameplay purpose without decorative clutter.",
+    "effectsDirection": "Keep effects compact and rhythmic with a strong core shape, a limited frame-to-frame palette, and brief readable accents that do not obscure characters or traversal.",
+    "uiHudDirection": "Use compact pixel-aligned panels, high-contrast icons, plain readable labels, and restrained ornament; UI must remain legible without relying on the preview images.",
+    "animationDirection": "Animate with economical key poses, stable silhouettes, intentional holds, and consistent pixel volumes; avoid subpixel movement and automatic smoothing.",
+    "accessibility": "Maintain clear value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker, generated text, horror, gore, or uncanny anatomy."
+  }
+}

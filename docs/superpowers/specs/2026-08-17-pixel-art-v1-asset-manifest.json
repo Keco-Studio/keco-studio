@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "assetSetId": "pixel-art-v1",
+  "provider": "PixelLab",
+  "transport": "hosted-mcp",
+  "runtimeGeneration": false,
+  "manifestPurpose": "authoring provenance and CI cross-check evidence only; never a runtime registry input",
+  "runtimeSource": "docs/superpowers/specs/2026-08-17-pixel-art-v1-preset.json",
+  "status": "approved",
+  "comfortConstraints": [
+    "no horror, gore, threatening imagery, or uncanny anatomy",
+    "no oppressive enclosure, isolated circular arena, or concentric plaza",
+    "no dark desaturated mood",
+    "no readable generated text, labels, logos, or watermarks"
+  ],
+  "assets": [
+    {
+      "assetKey": "pixel-art-map",
+      "kind": "image",
+      "purpose": "fixed map preview for the Pixel Art preset",
+      "providerOperation": "create_image_pro",
+      "retrievalOperation": "get_image",
+      "providerMode": "pro",
+      "providerResultId": "381c129a-a14a-4e93-a85e-046104467c8a",
+      "generatedAt": "2026-08-17T12:32:54Z",
+      "createToolSchemaSha256": "896a9b8153847a7984fbcae9d9e4d508c3babef76305b9518ac4b9d46b315751",
+      "retrievalToolSchemaSha256": "5435686bf5cc8a11c4097699468d1dbee521236a4f158b76ef3686af925e9d02",
+      "submittedArguments": {
+        "width": 168,
+        "height": 96,
+        "no_background": false,
+        "seed": 4100
+      },
+      "submittedPrompt": "Top-down three-quarter orthographic pixel-art RPG map, 168x96, opaque full-scene background. A welcoming riverside village crossroads in bright late-morning sunlight. Use a readable 12-16 px environmental tile scale with crisp pixel clusters, no antialiasing. Place the main crossroads slightly left of center: one broad primary dirt path crosses the scene diagonally, with narrower secondary paths branching asymmetrically toward open map edges. Include tidy vegetable and flower gardens, a modest timber workshop with an open work yard, a clear blue river crossing the lower third, and one small wooden footbridge aligned with the primary route. Keep buildings and vegetation in loose, breathable clusters so the walkable hierarchy is immediately readable at thumbnail size; preserve multiple open exploration routes entering and leaving the frame. Fresh spring-green grass, clear cornflower-blue water, honey and walnut timber, warm gray stone, restrained terracotta accents, and pale golden sunlight. One-pixel colored outlines in deep brown, blue, or green matched to each material; selective internal outlines; two or three clean shade steps per material; short soft-edged pixel shadows cast down-right; minimal controlled dithering. Friendly, practical game-map composition with distinct landmarks and uncluttered traversal space. No people, characters, animals, enemies, combat, weapons, danger, ruins, horror, gore, threatening imagery, ominous fog, darkness, desaturated mood, heavy black outlines, enclosed courtyards, encircling walls, isolated circular arenas, symmetrical plaza layout, maze-like paths, cramped passages, readable text, letters, numbers, signs with writing, UI, borders, labels, logos, or watermarks.",
+      "submittedPromptSha256": "65107620db12f776c85fa77d626d2cd2d08823d18a982ef0c96388af3ee7bffd",
+      "selectedCandidate": "riverside-village/0",
+      "resultIdentifier": "sha256:efe40ba47a11de306b83240630f6f28e3eae3418161fb8c82bc398d7e0e090bc",
+      "authoringSourcePath": ".superpowers/art-style-candidates/maps/riverside-village/0.png",
+      "authoringSourcePersistence": "temporary local review artifact; final sourcePath and providerResultId are the durable evidence",
+      "sourcePath": "public/game-art-styles/pixel-art/v1/map.png",
+      "publicPath": "/game-art-styles/pixel-art/v1/map.png",
+      "alt": "A bright pixel art riverside village map with branching paths, gardens, workshops, and a wooden bridge.",
+      "width": 168,
+      "height": 96,
+      "bytes": 18174,
+      "sha256": "efe40ba47a11de306b83240630f6f28e3eae3418161fb8c82bc398d7e0e090bc",
+      "alpha": "opaque",
+      "review": {
+        "status": "approved",
+        "reviewer": "design_review",
+        "reviewedAt": "2026-08-17T12:56:44Z",
+        "evidence": [
+          "best route readability among eight independently prompted map candidates",
+          "open composition with multiple visible exits and no enclosed circular arena",
+          "inviting palette and coherent Pixel Art material language",
+          "no generated text, threatening content, or malformed focal architecture"
+        ]
+      }
+    },
+    {
+      "assetKey": "pixel-art-character",
+      "kind": "character",
+      "purpose": "fixed character preview for the Pixel Art preset",
+      "providerOperation": "create_character",
+      "providerMode": "pro",
+      "retrievalOperation": "get_character",
+      "providerResultId": "2485ec87-6092-4eed-8d0c-448b73ef8f85",
+      "generatedAt": "2026-08-17T12:40:13Z",
+      "createToolSchemaSha256": "aed38bc8a61d39c19d2ea210c6c50f69ad70d70fe81f9fa650703626a569f5c9",
+      "retrievalToolSchemaSha256": "7ac5b30211d149fd548c782002e1ce82d1bf45bd1fe2e8faf5e8e70647872254",
+      "submittedArguments": {
+        "name": "Field Cartographer",
+        "body_type": "humanoid",
+        "mode": "pro",
+        "size": 96,
+        "view": "low top-down"
+      },
+      "submittedPrompt": "Capable adult field cartographer and explorer for a welcoming pixel-art RPG. Clearly adult practical proportions and natural anatomy, friendly neutral expression, relaxed alert stance, sturdy boots, layered field jacket, compact satchel, rolled blank map case, compass and harmless survey tools, no weapon. Match this visual language: crisp native pixel clusters, material-colored one-pixel outlines, selective internal outlines, two or three clean shade steps, minimal dithering, bright late-morning light; spring green, cornflower blue, honey and walnut brown, warm gray stone, restrained terracotta and pale gold accents. Readable full-body silhouette at gameplay scale. No horror, gore, injury, threat, armor, combat pose, uncanny face, childlike proportions, pin-up styling, distorted anatomy, extra limbs, readable text, letters, numbers, logos, UI, scenery, or watermark.",
+      "submittedPromptSha256": "a709661eda0194de14941d68cd676235f4a40b2540e2b7b947777afd94c069c8",
+      "selectedCandidate": "typed-pro-cartographer/south",
+      "resultIdentifier": "sha256:53a2ca8c61c0e71bcecf315a5e538bb7e6f55b07675d4799096349800e69a6d1",
+      "authoringSourcePath": ".superpowers/art-style-candidates/characters/typed-pro-cartographer/south.png",
+      "authoringSourcePersistence": "temporary local review artifact; final sourcePath and providerResultId are the durable evidence",
+      "sourcePath": "public/game-art-styles/pixel-art/v1/character.png",
+      "publicPath": "/game-art-styles/pixel-art/v1/character.png",
+      "alt": "A full-body pixel art field cartographer with a satchel and practical exploration gear.",
+      "width": 96,
+      "height": 96,
+      "bytes": 2514,
+      "sha256": "53a2ca8c61c0e71bcecf315a5e538bb7e6f55b07675d4799096349800e69a6d1",
+      "alpha": "transparent",
+      "styleReference": "approved pixel-art-map",
+      "review": {
+        "status": "approved",
+        "reviewer": "prompt_review",
+        "reviewedAt": "2026-08-17T12:56:44Z",
+        "evidence": [
+          "strongest clearly adult silhouette among the reviewed character candidates",
+          "natural stance, calm expression, and readable cartography equipment",
+          "palette and pixel density align with the approved map",
+          "real transparent background with no scenery, generated text, or threatening content"
+        ]
+      }
+    }
+  ],
+  "validation": {
+    "format": "PNG",
+    "maxBytes": 5242880,
+    "requireVisiblePixels": true,
+    "recordSha256": true,
+    "independentVisualReview": true,
+    "completed": true
+  }
+}
