@@ -119,6 +119,8 @@ describe('GameDesignSystemCreatePage', () => {
     expect(map.getAttribute('height')).toBe('96');
     expect(character.getAttribute('width')).toBe('96');
     expect(character.getAttribute('height')).toBe('96');
+    expect(screen.getByRole('heading', { name: 'Visual DNA' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Craft/ }).getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByText('Welcoming top-down adventure pixel art with practical landmarks, open routes, and calm exploration as the dominant visual read.')).toBeTruthy();
     expect(screen.getByLabelText('Custom art direction').getAttribute('maxLength')).toBe('2000');
     expect(screen.getByLabelText('Visual avoid guidance').getAttribute('maxLength')).toBe('1000');

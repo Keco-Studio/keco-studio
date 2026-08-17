@@ -190,6 +190,9 @@ describe('GameDesignSystemsPage', () => {
 
     expect(screen.getByRole('img', { name: artStyleSnapshot.previewAssetSet.map.alt })).toBeTruthy();
     expect(screen.getByRole('img', { name: artStyleSnapshot.previewAssetSet.character.alt })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Visual DNA' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Art style sections' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Craft' }).getAttribute('href')).toBe('#art-style-browse-craft');
     expect(screen.getByText('Revision 1')).toBeTruthy();
     for (const value of Object.values(artStyleSnapshot.specification)) expect(screen.getByText(value)).toBeTruthy();
     expect(screen.getByText(artStyleSnapshot.customization.direction)).toBeTruthy();

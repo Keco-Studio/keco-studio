@@ -149,7 +149,7 @@ function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) 
     <section className={styles.artStyleView} role="tabpanel">
       {!version?.artStyle
         ? <div className={styles.inlineEmpty}>No art style specified</div>
-        : <GameArtStylePreview snapshot={version.artStyle} showCustomization />}
+        : <GameArtStylePreview snapshot={version.artStyle} mode="browse" showCustomization />}
     </section>
   );
 }

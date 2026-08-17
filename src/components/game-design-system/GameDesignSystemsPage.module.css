@@ -901,8 +901,8 @@
 
 .artStyleWorkbench {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 28px;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
 }
 
 .artStyleCatalog {
@@ -954,6 +954,8 @@
 
 .artStyleMain {
   display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  align-items: start;
   min-width: 0;
   gap: 26px;
 }
@@ -1012,6 +1014,8 @@
 
 .artStyleCharacterFrame {
   aspect-ratio: 1;
+  width: min(100%, 320px);
+  justify-self: center;
   background-color: #eef2f5;
   background-image: linear-gradient(45deg, #e2e7eb 25%, transparent 25%), linear-gradient(-45deg, #e2e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e7eb 75%), linear-gradient(-45deg, transparent 75%, #e2e7eb 75%);
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
@@ -1022,6 +1026,82 @@
   display: block;
   max-width: none;
   image-rendering: pixelated;
+}
+
+.artStylePreviewCreation .artStylePreviewHeading {
+  margin-bottom: 10px;
+}
+
+.artStylePreviewBrowse .artStylePreviewHeading {
+  margin-bottom: 16px;
+}
+
+.artStyleDna {
+  margin-top: 22px;
+  border-top: 1px solid #dfe5eb;
+  padding-top: 18px;
+}
+
+.artStyleSectionHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.artStyleSectionHeading h4 {
+  margin: 3px 0 0;
+  color: #27313d;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.artStyleDnaGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 14px 0 0;
+}
+
+.artStyleDnaGrid > div {
+  min-width: 0;
+}
+
+.artStyleDnaGrid dt,
+.artStyleSpecificationGroupContent dt {
+  color: #4b5764;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.artStyleDnaGrid dd,
+.artStyleSpecificationGroupContent dd {
+  margin: 5px 0 0;
+  color: #606c79;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.artStyleSectionNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 20px 0 4px;
+  border-bottom: 1px solid #e2e7ec;
+  padding-bottom: 12px;
+}
+
+.artStyleSectionNav a {
+  color: #356da8;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.artStyleSectionNav a:hover,
+.artStyleSectionNav a:focus-visible {
+  color: #155cb5;
+  text-decoration: underline;
 }
 
 .artStylePreviewItem figcaption {
@@ -1043,32 +1123,67 @@
 
 .artStyleSpecification {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 24px;
-  margin: 20px 0 0;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 18px 0 0;
 }
 
-.artStyleSpecification > div {
+.artStyleSpecificationGroup {
   min-width: 0;
-  border-top: 1px solid #e2e7ec;
-  padding: 10px 0;
+  scroll-margin-top: 24px;
+  border-top: 1px solid #dfe5eb;
+  padding-top: 10px;
 }
 
-.artStyleSpecification dt {
-  color: #4b5764;
-  font-size: 10px;
+.artStyleSpecificationToggle {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #27313d;
+  cursor: pointer;
+  text-align: left;
+}
+
+.artStyleSpecificationToggle > span:last-child {
+  flex: 0 0 auto;
+  color: #6f7b88;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.artStyleSpecificationToggle strong {
+  display: block;
+  font-size: 12px;
   font-weight: 700;
 }
 
-.artStyleSpecification dd {
-  margin: 4px 0 0;
-  color: #606c79;
+.artStyleSpecificationToggle small {
+  display: block;
+  max-width: 720px;
+  margin-top: 4px;
+  color: #74808e;
   font-size: 11px;
-  line-height: 1.55;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
-.artStylePreviewCompact .artStyleSpecification {
-  grid-template-columns: 1fr;
+.artStyleSpecificationGroupContent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  margin: 8px 0 2px;
+}
+
+.artStyleSpecificationGroupContent > div {
+  min-width: 0;
+  border-top: 1px solid #edf0f3;
+  padding: 10px 0 5px;
 }
 
 .artStyleCustomization {
@@ -1129,8 +1244,8 @@
 .artStyleFields {
   display: grid;
   gap: 18px;
-  border-top: 1px solid #dfe5eb;
-  padding-top: 22px;
+  border-left: 1px solid #dfe5eb;
+  padding: 4px 0 0 24px;
 }
 
 .artStyleFields .field > small {
@@ -1811,6 +1926,11 @@
     gap: 22px;
   }
 
+  .artStyleMain {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
   .artStyleCatalog {
     border-right: 0;
     border-bottom: 1px solid #e1e6eb;
@@ -1819,6 +1939,20 @@
 
   .artStyleSpecification {
     grid-template-columns: 1fr;
+  }
+
+  .artStyleFields {
+    border-top: 1px solid #dfe5eb;
+    border-left: 0;
+    padding: 22px 0 0;
+  }
+
+  .artStyleDnaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .artStyleCharacterFrame {
+    width: min(100%, 240px);
   }
 
   .visualReferenceRow {
@@ -1889,6 +2023,11 @@
 @media (max-width: 440px) {
   .artStyleGallery {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .artStyleDnaGrid,
+  .artStyleSpecificationGroupContent {
+    grid-template-columns: 1fr;
   }
 
   .stageTab,

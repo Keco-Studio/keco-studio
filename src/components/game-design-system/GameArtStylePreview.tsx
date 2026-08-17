@@ -8,20 +8,45 @@ import styles from './GameDesignSystemsPage.module.css';
 
 type CatalogPreset = (typeof GAME_ART_STYLE_CATALOG)[number];
 type PreviewKey = 'map' | 'character';
+type PreviewMode = 'creation' | 'browse';
+type SpecificationKey = keyof GameArtStyleSnapshot['specification'];
 
-const specificationSections = [
-  ['visualIdentity', 'Visual identity'],
-  ['pixelTechnique', 'Pixel technique'],
-  ['shapeLanguage', 'Shape language'],
-  ['paletteAndLighting', 'Palette and lighting'],
-  ['characterDirection', 'Characters'],
-  ['environmentDirection', 'Environments'],
-  ['propDirection', 'Props'],
-  ['effectsDirection', 'Effects'],
-  ['uiHudDirection', 'UI and HUD'],
-  ['animationDirection', 'Animation'],
-  ['accessibility', 'Accessibility'],
-] as const;
+const specificationGroups: Array<{
+  id: string;
+  label: string;
+  summaryKey: SpecificationKey;
+  fields: Array<[SpecificationKey, string]>;
+}> = [
+  {
+    id: 'visual',
+    label: 'Visual identity',
+    summaryKey: 'visualIdentity',
+    fields: [['visualIdentity', 'Visual identity'], ['paletteAndLighting', 'Palette and lighting']],
+  },
+  {
+    id: 'craft',
+    label: 'Craft',
+    summaryKey: 'pixelTechnique',
+    fields: [['pixelTechnique', 'Pixel technique'], ['shapeLanguage', 'Shape language'], ['accessibility', 'Accessibility']],
+  },
+  {
+    id: 'world',
+    label: 'World',
+    summaryKey: 'environmentDirection',
+    fields: [['environmentDirection', 'Environments'], ['characterDirection', 'Characters'], ['propDirection', 'Props']],
+  },
+  {
+    id: 'production',
+    label: 'Production',
+    summaryKey: 'animationDirection',
+    fields: [['animationDirection', 'Animation'], ['effectsDirection', 'Effects'], ['uiHudDirection', 'UI and HUD']],
+  },
+];
+
+function summarize(value: string): string {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  return compact.length > 96 ? `${compact.slice(0, 93).trimEnd()}...` : `${compact}...`;
+}
 
 type Props = ({
   preset: CatalogPreset;
@@ -33,6 +58,7 @@ type Props = ({
   showCustomization?: boolean;
 }) & {
   compact?: boolean;
+  mode?: PreviewMode;
   imageFailures?: Partial<Record<PreviewKey, boolean>>;
   onImageFailure?: (key: PreviewKey) => void;
 };
@@ -97,9 +123,12 @@ function ArtStylePreviewFrame({
 }
 
 export function GameArtStylePreview(props: Props) {
-  const { compact = false, imageFailures, onImageFailure, showCustomization = false } = props;
+  const { compact = false, mode = 'browse', imageFailures, onImageFailure, showCustomization = false } = props;
   const preview = props.preset ?? props.snapshot;
   const [localFailures, setLocalFailures] = useState<Partial<Record<PreviewKey, boolean>>>({});
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(
+    specificationGroups.map((group) => [group.id, mode === 'browse' || group.id === 'visual']),
+  ));
   const previews = [
     { key: 'map' as const, label: 'Map', asset: preview.previewAssetSet.map },
     { key: 'character' as const, label: 'Character', asset: preview.previewAssetSet.character },
@@ -110,11 +139,18 @@ export function GameArtStylePreview(props: Props) {
     onImageFailure?.(key);
   }
 
+  const summaryItems = [
+    ['Visual identity', summarize(preview.specification.visualIdentity)],
+    ['Palette and lighting', summarize(preview.specification.paletteAndLighting)],
+    ['Shape language', summarize(preview.specification.shapeLanguage)],
+    ['Pixel technique', summarize(preview.specification.pixelTechnique)],
+  ] as const;
+
   return (
-    <section className={compact ? styles.artStylePreviewCompact : styles.artStylePreview} aria-label={`${preview.title} preview`}>
+    <section className={`${compact ? styles.artStylePreviewCompact : styles.artStylePreview} ${mode === 'creation' ? styles.artStylePreviewCreation : styles.artStylePreviewBrowse}`} aria-label={`${preview.title} preview`}>
       <div className={styles.artStylePreviewHeading}>
         <div>
-          <span className={styles.eyebrow}>Official preset</span>
+          <span className={styles.eyebrow}>{mode === 'browse' ? 'Official preset' : 'Visual board'}</span>
           <h3>{preview.title}</h3>
         </div>
         <span>Revision {preview.presetVersion}</span>
@@ -136,14 +172,57 @@ export function GameArtStylePreview(props: Props) {
           );
         })}
       </div>
-      <dl className={styles.artStyleSpecification}>
-        {specificationSections.map(([key, label]) => (
-          <div key={key}>
-            <dt>{label}</dt>
-            <dd>{preview.specification[key]}</dd>
-          </div>
-        ))}
-      </dl>
+      <section className={styles.artStyleDna} aria-labelledby={`art-style-dna-${mode}`}>
+        <div className={styles.artStyleSectionHeading}>
+          <span className={styles.eyebrow}>At a glance</span>
+          <h4 id={`art-style-dna-${mode}`}>Visual DNA</h4>
+        </div>
+        <dl className={styles.artStyleDnaGrid}>
+          {summaryItems.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      {mode === 'browse' ? (
+        <nav className={styles.artStyleSectionNav} aria-label="Art style sections">
+          {specificationGroups.map((group) => <a key={group.id} href={`#art-style-${mode}-${group.id}`}>{group.label}</a>)}
+        </nav>
+      ) : null}
+      <div className={styles.artStyleSpecification}>
+        {specificationGroups.map((group) => {
+          const open = Boolean(openGroups[group.id]);
+          return (
+            <section className={styles.artStyleSpecificationGroup} id={`art-style-${mode}-${group.id}`} key={group.id}>
+              <button
+                className={styles.artStyleSpecificationToggle}
+                type="button"
+                aria-expanded={open}
+                aria-controls={`art-style-${mode}-${group.id}-content`}
+                onClick={() => setOpenGroups((current) => ({ ...current, [group.id]: !current[group.id] }))}
+              >
+                <span>
+                  <strong>{group.label}</strong>
+                  {!open ? <small>{preview.specification[group.summaryKey]}</small> : null}
+                </span>
+                <span aria-hidden="true">{open ? '-' : '+'}</span>
+              </button>
+              {open ? (
+                <dl className={styles.artStyleSpecificationGroupContent} id={`art-style-${mode}-${group.id}-content`}>
+                  {group.fields.map(([key, label]) => (
+                    <div key={key}>
+                      <dt>{label}</dt>
+                      <dd>{preview.specification[key]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
       {showCustomization && props.snapshot ? (
         <section className={styles.artStyleCustomization} aria-label="Saved art style customization">
           <div>

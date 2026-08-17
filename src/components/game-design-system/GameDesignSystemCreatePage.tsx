@@ -330,7 +330,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
               <p>Pixel Art is the fixed v1 option and cannot be switched during creation.</p>
             </aside>
             <div className={styles.artStyleMain}>
-              <GameArtStylePreview preset={GAME_ART_STYLE_CATALOG[0]} />
+              <GameArtStylePreview preset={GAME_ART_STYLE_CATALOG[0]} mode="creation" />
               <div className={styles.artStyleFields}>
                 <div className={styles.field}>
                   <label htmlFor="gds-art-direction">Custom art direction</label>
