@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, jest } from '@jest/globals';
 import {
   createGameDesignSystemVersion,
+  createGameDesignSystem,
   createGameDesignSystemGenerationJob,
+  copyGameDesignSystem,
   IdempotencyConflictError,
   claimGameDesignSystemGenerationJob,
   getGameDesignSystemDetail,
@@ -11,6 +13,7 @@ import {
   type GameDesignSystemVersion,
 } from './gameDesignSystemService';
 import { parseGameDesignDocument, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
+import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 
 const ruleSet = parseRuleSet({
   schemaVersion: 1,
@@ -40,12 +43,25 @@ const document = parseGameDesignDocument({
   experiencePresentation: 'Show intent, costs, and state changes at the point of action.',
 });
 
+const artStyle = compileGameArtStyle({
+  presetId: 'pixel-art',
+  presetVersion: 1,
+  customization: {
+    direction: 'Bright readable routes.',
+    referenceGames: [{ name: 'Eastward', borrow: 'Material clusters' }],
+    avoid: 'No horror.',
+  },
+});
+
 describe('gameDesignSystemService version and job behavior', () => {
   it('creates an immutable version through the atomic RPC with a deterministic diff', async () => {
     const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
       data: {
         id: 'version-4',
         version_number: 4,
+        document: args.p_document,
+        rules: args.p_rules,
+        art_style: args.p_art_style,
         rendered_markdown: String(args.p_rendered_markdown).replace(
           /^> Version: __KECO_ATOMIC_VERSION_LINE__$/m,
           '> Version: 4',
@@ -53,7 +69,7 @@ describe('gameDesignSystemService version and job behavior', () => {
       },
       error: null,
     }));
-    const parent = { rules: ruleSet } as GameDesignSystemVersion;
+    const parent = { rules: ruleSet, artStyle } as GameDesignSystemVersion;
     const supabase = { rpc } as never;
 
     const created = await createGameDesignSystemVersion(supabase, {
@@ -78,8 +94,9 @@ describe('gameDesignSystemService version and job behavior', () => {
       p_created_by: 'user-1',
       p_generation_job_id: null,
       p_document: document,
+      p_art_style: artStyle,
       p_content_hash: createHash('sha256')
-        .update(JSON.stringify({ document, rules: { ...ruleSet, rules: [...ruleSet.rules, { ...ruleSet.rules[0], id: 'visible-costs' }] } }))
+        .update(JSON.stringify({ document, rules: { ...ruleSet, rules: [...ruleSet.rules, { ...ruleSet.rules[0], id: 'visible-costs' }] }, artStyle }))
         .digest('hex'),
       p_rendered_markdown: expect.stringContaining('> Version: __KECO_ATOMIC_VERSION_LINE__'),
     }));
@@ -90,6 +107,9 @@ describe('gameDesignSystemService version and job behavior', () => {
       data: {
         id: 'copy-version-1',
         version_number: 1,
+        document: args.p_document,
+        rules: args.p_rules,
+        art_style: args.p_art_style,
         rendered_markdown: String(args.p_rendered_markdown).replace(
           /^> Version: __KECO_ATOMIC_VERSION_LINE__$/m,
           '> Version: 1',
@@ -102,6 +122,7 @@ describe('gameDesignSystemService version and job behavior', () => {
       system_id: 'official-system',
       version_number: 8,
       rules: ruleSet,
+      artStyle,
     } as GameDesignSystemVersion;
 
     const created = await createGameDesignSystemVersion({ rpc } as never, {
@@ -117,12 +138,13 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_system_id: 'personal-copy',
       p_parent_version_id: 'official-version-8',
+      p_art_style: artStyle,
     }));
   });
 
   it('passes generation identity into atomic version creation', async () => {
     const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
-      data: { id: 'generated-version', version_number: 1, rendered_markdown: args.p_rendered_markdown },
+      data: { id: 'generated-version', version_number: 1, document: args.p_document, rules: args.p_rules, art_style: args.p_art_style, rendered_markdown: args.p_rendered_markdown },
       error: null,
     }));
 
@@ -132,10 +154,127 @@ describe('gameDesignSystemService version and job behavior', () => {
       createdBy: 'user-1',
       rules: ruleSet,
       generationJobId: 'job-1',
+      artStyle,
     });
 
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_generation_job_id: 'job-1',
+      p_art_style: artStyle,
+    }));
+  });
+
+  it('stores null for direct legacy creation without a parent style', async () => {
+    const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
+      data: { id: 'legacy-version', version_number: 1, document: args.p_document, rules: args.p_rules, art_style: args.p_art_style, rendered_markdown: args.p_rendered_markdown },
+      error: null,
+    }));
+
+    const created = await createGameDesignSystemVersion({ rpc } as never, {
+      systemId: 'legacy-system',
+      title: 'Legacy Rules',
+      createdBy: 'user-1',
+      rules: ruleSet,
+    });
+
+    expect(created.artStyle).toBeNull();
+    expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
+      p_art_style: null,
+      p_content_hash: createHash('sha256').update(JSON.stringify({ document: created.document, rules: ruleSet, artStyle: null })).digest('hex'),
+    }));
+  });
+
+  it('returns the persisted RPC art style without leaking the database column name', async () => {
+    const persistedArtStyle = compileGameArtStyle({
+      presetId: 'pixel-art',
+      presetVersion: 1,
+      customization: { direction: 'Persisted value.', referenceGames: [] },
+    });
+    const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
+      data: {
+        id: 'deduplicated-version',
+        version_number: 1,
+        document: args.p_document,
+        rules: args.p_rules,
+        art_style: persistedArtStyle,
+        rendered_markdown: args.p_rendered_markdown,
+      },
+      error: null,
+    }));
+
+    const created = await createGameDesignSystemVersion({ rpc } as never, {
+      systemId: 'generated-system',
+      title: 'Generated Rules',
+      createdBy: 'user-1',
+      rules: ruleSet,
+      artStyle,
+      generationJobId: 'job-1',
+    });
+
+    expect(created.artStyle).toEqual(persistedArtStyle);
+    expect(created).not.toHaveProperty('art_style');
+  });
+
+  it('forwards art style while repairing an idempotent system without its version', async () => {
+    const existingSystem = {
+      id: 'generated-system', owner_id: 'user-1', source: 'user', title: 'Generated Rules',
+      current_version_id: null,
+    };
+    const maybeSingle = jest.fn(async () => ({ data: existingSystem, error: null }));
+    const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
+      data: { id: 'repaired-version', version_number: 1, document: args.p_document, rules: args.p_rules, art_style: args.p_art_style, rendered_markdown: args.p_rendered_markdown },
+      error: null,
+    }));
+    const supabase = {
+      from: jest.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle }) }) })),
+      rpc,
+    };
+
+    await createGameDesignSystem(supabase as never, 'user-1', {
+      title: 'Generated Rules', genres: [], philosophies: [], rules: ruleSet,
+      artStyle, generationJobId: 'job-1',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
+      p_art_style: artStyle,
+      p_generation_job_id: 'job-1',
+    }));
+  });
+
+  it('copies the current source version art style rather than historical style', async () => {
+    const source = {
+      id: 'source-system', owner_id: 'user-1', source: 'user', title: 'Source', summary: null,
+      provenance: {}, current_version_id: 'version-2', migration_status: 'ready',
+    } as never;
+    const versions = [
+      { id: 'version-2', system_id: 'source-system', version_number: 2, document, rules: ruleSet, art_style: artStyle, rendered_markdown: '# Current', source_snapshots: [], diff: { added: [], removed: [], changed: [], conflicts: [] }, conflicts: [] },
+      { id: 'version-1', system_id: 'source-system', version_number: 1, document, rules: ruleSet, art_style: null, rendered_markdown: '# Historical', source_snapshots: [], diff: { added: [], removed: [], changed: [], conflicts: [] }, conflicts: [] },
+    ];
+    const copiedSystem = { id: 'copied-system', owner_id: 'user-1', source: 'user', title: 'Source (Copy)', current_version_id: null };
+    const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({
+      data: { id: 'copy-version', version_number: 1, document: args.p_document, rules: args.p_rules, art_style: args.p_art_style, rendered_markdown: args.p_rendered_markdown },
+      error: null,
+    }));
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'game_design_systems') return {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: source, error: null }) }) }),
+          insert: () => ({ select: () => ({ single: async () => ({ data: copiedSystem, error: null }) }) }),
+        };
+        return {
+          select: () => ({
+            eq: () => ({ order: async () => ({ data: versions, error: null }) }),
+            in: async () => ({ data: versions.map((version) => ({ id: version.id, source_snapshots: [] })), error: null }),
+          }),
+        };
+      }),
+      rpc,
+    };
+
+    await copyGameDesignSystem(supabase as never, source, 'user-1');
+
+    expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
+      p_parent_version_id: 'version-2',
+      p_art_style: artStyle,
     }));
   });
 
@@ -242,7 +381,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     };
     const legacyVersion = {
       id: 'version-1', system_id: 'system-1', version_number: 1, document: null,
-      rules: ruleSet, rendered_markdown: '# Legacy version',
+      rules: ruleSet, art_style: { schemaVersion: 999 }, rendered_markdown: '# Legacy version',
     };
     const supabase = {
       from: jest.fn((table: string) => table === 'game_design_systems'
@@ -255,6 +394,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(detail?.current_version?.document.designIntent).toContain('A readable tactics system.');
     expect(detail?.current_version?.document.designIntent).toContain('compatibility summary');
     expect(detail?.current_version?.document.coreLoop).toContain('did not store');
+    expect(detail?.current_version?.artStyle).toBeNull();
   });
 
   it('projects list metadata from the newest RLS-readable version instead of the system cache', async () => {
