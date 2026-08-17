@@ -6,6 +6,7 @@ import type { ChatItem } from './types';
 import { deriveUserDisplay } from './userMessageDisplay';
 import { getMessageText } from '@/lib/agent/content-parts';
 import type { ChatMessage } from '@/lib/agent/types';
+import { parseGameDesignRuleEvidence, type GameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 
 export interface HistoryMessageRow {
   id: string;
@@ -59,7 +60,7 @@ function toolNameFromCall(tc: ToolCallRef): string {
 export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): ChatItem[] {
   const loaded: ChatItem[] = [];
   let turnItems: ChatItem[] = [];
-  let assistantSegments: Array<{ id: string; text: string }> = [];
+  let assistantSegments: Array<{ id: string; text: string; evidence?: GameDesignRuleEvidence }> = [];
   let i = 0;
 
   const flushTurn = () => {
@@ -69,8 +70,9 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
       .filter(Boolean)
       .join('\n\n');
     const lastAssistant = assistantSegments.at(-1);
+    const evidence = assistantSegments.findLast((segment) => segment.evidence)?.evidence;
     if (text && lastAssistant) {
-      loaded.push({ id: lastAssistant.id, role: 'assistant', text });
+      loaded.push({ id: lastAssistant.id, role: 'assistant', text, ...(evidence ? { gameDesignEvidence: evidence } : {}) });
     }
     turnItems = [];
     assistantSegments = [];
@@ -93,7 +95,11 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
       const toolCalls = Array.isArray(body.tool_calls) ? (body.tool_calls as ToolCallRef[]) : [];
 
       if (text) {
-        assistantSegments.push({ id: m.id, text });
+        assistantSegments.push({
+          id: m.id,
+          text,
+          evidence: parseGameDesignRuleEvidence(body.game_design_evidence),
+        });
       }
 
       if (toolCalls.length > 0) {

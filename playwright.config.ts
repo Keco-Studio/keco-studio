@@ -19,10 +19,22 @@ dotenv.config({
   override: true // Allow .env.local variables to override .env
 });
 
+process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.PLAYWRIGHT_SUPABASE_URL
+  ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.PLAYWRIGHT_SUPABASE_ANON_KEY
+  ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.PLAYWRIGHT_SUPABASE_SERVICE_ROLE_KEY
+  ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 process.env.INVITATION_SECRET ??= 'keco-playwright-invitation-secret-2026-07-10';
 process.env.SKIP_INVITATION_EMAIL = 'true';
 process.env.MCP_CONNECTION_ID_SIGNING_SECRET ??=
   'keco-playwright-mcp-connection-signing-secret-2026-07-24';
+const playwrightCronSecret = 'keco-playwright-cron-secret-2026-08-15';
+process.env.CRON_SECRET = playwrightCronSecret;
+const playwrightPort = process.env.PLAYWRIGHT_PORT ?? '3000';
+const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
+const playwrightDistDir = process.env.PLAYWRIGHT_PORT ? '.next-playwright' : '.next';
 
 export default defineConfig({
   testDir: './tests',
@@ -50,7 +62,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
-    baseURL: 'http://localhost:3000',
+    baseURL: playwrightBaseUrl,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'retain-on-failure', // Only keep traces for failed tests to save resources
@@ -102,8 +114,14 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    command: `node scripts/run-playwright-dev-server.mjs ${playwrightPort}`,
+    url: playwrightBaseUrl,
+    reuseExistingServer: !process.env.CI && !process.env.PLAYWRIGHT_PORT,
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+    env: {
+      ...process.env,
+      CRON_SECRET: playwrightCronSecret,
+      NEXT_DIST_DIR: playwrightDistDir,
+    },
   },
 });

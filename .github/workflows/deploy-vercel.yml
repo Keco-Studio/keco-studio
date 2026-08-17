@@ -345,6 +345,21 @@ jobs:
             vercel env add MCP_CODEC_SECRET production --force \
               --token=${{ secrets.VERCEL_TOKEN }}
 
+      - name: Sync production Game Design System worker secret
+        if: steps.env.outputs.is_prod == 'true'
+        env:
+          GAME_DESIGN_SYSTEM_WORKER_SECRET: ${{ secrets.GAME_DESIGN_SYSTEM_WORKER_SECRET }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$GAME_DESIGN_SYSTEM_WORKER_SECRET" ]; then
+            echo "::error::GAME_DESIGN_SYSTEM_WORKER_SECRET is required"
+            exit 1
+          fi
+          printf '%s' "$GAME_DESIGN_SYSTEM_WORKER_SECRET" | \
+            vercel env add CRON_SECRET production --force \
+              --token=${{ secrets.VERCEL_TOKEN }}
+
       # Pull Vercel environment variables based on deployment environment
       # This will automatically use the correct Supabase config (Production or Preview)
       # from Vercel Dashboard based on the environment determined above

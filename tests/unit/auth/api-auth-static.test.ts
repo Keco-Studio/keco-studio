@@ -10,6 +10,9 @@ const SERVICE_AUTH_API_ROUTES = new Set([
   'src/app/api/mcp/codec/route.ts',
   'src/app/api/mcp/reindex/route.ts',
 ]);
+const CRON_AUTH_API_ROUTES = new Set([
+  'src/app/api/internal/game-design-system-worker/route.ts',
+]);
 
 function routeFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
@@ -47,6 +50,7 @@ describe('API authentication boundaries', () => {
       .map((path) => path.slice(process.cwd().length + 1))
       .filter((path) => !PUBLIC_API_ROUTES.has(path))
       .filter((path) => !SERVICE_AUTH_API_ROUTES.has(path))
+      .filter((path) => !CRON_AUTH_API_ROUTES.has(path))
       .filter((path) => !readFileSync(join(process.cwd(), path), 'utf8').includes('withAuth'));
 
     expect(routesWithoutSharedBoundary).toEqual([]);
@@ -57,6 +61,16 @@ describe('API authentication boundaries', () => {
       const source = readFileSync(join(process.cwd(), path), 'utf8');
       expect(source).toContain('process.env.MCP_CODEC_SECRET');
       expect(source).toContain('timingSafeEqual');
+      expect(source).toMatch(/if \(!authorized\(request\)\)[\s\S]+status: 401/);
+    }
+  });
+
+  it('keeps internal workers behind constant-time Cron authentication', () => {
+    for (const path of CRON_AUTH_API_ROUTES) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8');
+      expect(source).toContain('process.env.CRON_SECRET');
+      expect(source).toContain('timingSafeEqual');
+      expect(source).toContain('authorization');
       expect(source).toMatch(/if \(!authorized\(request\)\)[\s\S]+status: 401/);
     }
   });

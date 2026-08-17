@@ -41,6 +41,25 @@ describe('mapHistoryMessagesToChatItems', () => {
     expect(items[0]).toMatchObject({ id: 'm2', role: 'assistant', text: 'Hi there' });
   });
 
+  it('exposes persisted validated rule evidence on the final assistant item', () => {
+    const evidence = {
+      systemId: 'system-1', versionId: 'version-2', version: 2,
+      includedRuleIds: ['required-a'], omittedRuleIds: ['warning-b'],
+      declaredRuleIds: ['required-a'], invalidRuleIds: [], declarationStatus: 'declared',
+    };
+    const rows: HistoryRow[] = [{
+      id: 'm-evidence', role: 'assistant', content: {
+        content: 'Applied rules: required-a',
+        game_design_evidence: evidence,
+      },
+    }];
+
+    expect(mapHistoryMessagesToChatItems(rows)[0]).toMatchObject({
+      id: 'm-evidence',
+      gameDesignEvidence: evidence,
+    });
+  });
+
   it('renders tool cards for assistant tool_calls with matching tool rows', () => {
     const rows: HistoryRow[] = [
       {

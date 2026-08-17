@@ -148,10 +148,13 @@ export function LeftNav({ userId }: { userId?: string }) {
     simulation: onSimulation,
     script: onScript,
     createMap: onCreateMap,
+    gameDesignSystem: onGameDesignSystem,
     keco101: onKeco101,
   } = navigationState;
 
-  const navigate = (item: 'studio' | 'simulation' | 'script' | 'createMap' | 'keco101') => {
+  const navigate = (
+    item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem' | 'keco101',
+  ) => {
     const studioPreference = readStudioNavigationPreference(userId);
     const destination = getProductNavigationDestination(pathname, item, {
       scriptProjectId: onScript || item === 'script' ? readScriptProjectPreference()?.projectId : undefined,
@@ -239,12 +242,12 @@ export function LeftNav({ userId }: { userId?: string }) {
         </button>
         <button
           type="button"
-          className={`${styles.item} ${styles.itemDisabled}`}
-          aria-label="Coming soon"
-          aria-disabled="true"
-          tabIndex={-1}
+          className={`${styles.item} ${onGameDesignSystem ? styles.itemActive : ''}`}
+          aria-label="Game Design System"
+          aria-current={onGameDesignSystem ? 'page' : undefined}
+          onClick={() => navigate('gameDesignSystem')}
         >
-          <IconArchive active={false} />
+          <IconArchive active={onGameDesignSystem} />
         </button>
       </div>
       <div className={styles.footer}>

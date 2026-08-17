@@ -1,11 +1,28 @@
 import {
   applyAssistantDelta,
+  applyGameDesignEvidence,
   finalizeAssistantItem,
   promoteAssistantTextToReasoning,
 } from '@/components/agent/assistantStreamItems';
 import type { ChatItem } from '@/components/agent/types';
 
 describe('assistantStreamItems', () => {
+  it('attaches server-validated Game Design System evidence to the live assistant item', () => {
+    const evidence = {
+      systemId: 'system-1', versionId: 'version-2', version: 2,
+      includedRuleIds: ['required-a'], omittedRuleIds: ['warning-b'],
+      declaredRuleIds: ['required-a'], invalidRuleIds: [], declarationStatus: 'declared' as const,
+    };
+
+    expect(applyGameDesignEvidence(
+      [{ id: 'assistant-1', role: 'assistant', text: 'Done.' }],
+      'assistant-1',
+      evidence,
+    )).toEqual([{
+      id: 'assistant-1', role: 'assistant', text: 'Done.', gameDesignEvidence: evidence,
+    }]);
+  });
+
   it('does not create an item for a leading whitespace-only delta', () => {
     expect(applyAssistantDelta([], null, {
       newId: 'assistant-1',

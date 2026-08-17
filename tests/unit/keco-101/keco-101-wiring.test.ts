@@ -33,6 +33,7 @@ describe('Keco 101 product navigation', () => {
       simulation: false,
       script: false,
       createMap: false,
+      gameDesignSystem: false,
       keco101: true,
     });
   });
@@ -49,10 +50,10 @@ describe('Keco 101 product navigation', () => {
     expect(source).toContain("navigate('keco101')");
     const keco101 = source.indexOf('aria-label="Keco 101"');
     const studio = source.indexOf('aria-label="Studio"');
-    const comingSoon = source.indexOf('aria-label="Coming soon"');
+    const gameDesignSystem = source.indexOf('aria-label="Game Design System"');
     expect(keco101).toBeGreaterThan(-1);
     expect(studio).toBeGreaterThan(keco101);
-    expect(comingSoon).toBeGreaterThan(studio);
+    expect(gameDesignSystem).toBeGreaterThan(studio);
   });
 });
 

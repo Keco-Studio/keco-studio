@@ -11,6 +11,7 @@ sync with the actual `.yml` files in this directory.
 | Deploy to Vercel | `deploy-vercel.yml` | Pull requests and pushes to `main`, `master`, and `release/**` | Checks migration changes, runs Supabase migrations, deploys Vercel, verifies the production codec, then deploys the production MCP Edge Function on main/master pushes. |
 | Playwright Tests | `playwright.yml` | Pull requests and pushes to `main`, `master`, and `release/**` | Starts local Supabase and runs Playwright E2E tests in a 4-way shard matrix. |
 | MCP Account Connections Production Acceptance | `mcp-account-connections-production.yml` | Manual dispatch from `main` | Creates isolated temporary production OAuth fixtures, verifies account connection isolation, exact revocation, token invalidation, and responsive UI behavior, then removes the fixtures. |
+| Game Design System Worker | `game-design-system-worker.yml` | Every five minutes; manual dispatch | Recovers queued, leased, and retryable Game Design System generation jobs through the protected production worker endpoint. |
 
 ## Playwright Sharding
 
@@ -79,3 +80,9 @@ migration is additive and does not need a destructive rollback.
   individual's fork.
 - Do not document placeholder workflow names unless the files are committed in
   `.github/workflows/`.
+
+The Game Design System worker is scheduled by GitHub Actions because the Hobby
+Vercel plan does not support the required one-minute Cron frequency. Configure
+the repository secret `GAME_DESIGN_SYSTEM_WORKER_SECRET`; the production deploy
+workflow syncs it to Vercel as `CRON_SECRET`. The worker workflow keeps runs
+non-cancelling so overlapping polls can safely rely on atomic job claims.

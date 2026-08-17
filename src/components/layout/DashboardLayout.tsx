@@ -28,17 +28,25 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const hideSidebarForSimulation = pathname?.startsWith('/simulation-system') ?? false;
+  const hideSidebarForGameDesignSystems = pathname?.startsWith('/game-design-systems') ?? false;
   const onScriptSystem = isScriptSystemPath(pathname);
   const createMapChrome = getCreateMapDashboardChrome(pathname);
   const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
   const onKeco101 = isKeco101Path(pathname);
-  // Simulation and Create Map hide the Studio resource sidebar and Agent Chat. Script keeps both,
-  // and mounts ScriptSidebar as a left sibling of TopBar/main. Keco 101 is a full-bleed guide:
-  // it carries its own in-page navigation, so the Studio chrome stays out of the way.
+  // Simulation, Game Design Systems, Create Map, and Keco 101 hide Studio resource chrome.
+  // Script mounts ScriptSidebar as a left sibling of TopBar/main.
   const showStudioSidebar =
-    !hideSidebarForSimulation && !onScriptSystem && !hideSidebarForCreateMap && !onKeco101;
+    !hideSidebarForSimulation &&
+    !hideSidebarForGameDesignSystems &&
+    !onScriptSystem &&
+    !hideSidebarForCreateMap &&
+    !onKeco101;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
-  const hideChatPanel = hideSidebarForSimulation || !createMapChrome.showChatPanel || onKeco101;
+  const hideChatPanel =
+    hideSidebarForSimulation ||
+    hideSidebarForGameDesignSystems ||
+    !createMapChrome.showChatPanel ||
+    onKeco101;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {

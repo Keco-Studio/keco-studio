@@ -237,6 +237,7 @@ export async function saveMessage(
   if (message.tool_calls) content.tool_calls = message.tool_calls;
   if (message.tool_call_id) content.tool_call_id = message.tool_call_id;
   if (message.name) content.name = message.name;
+  if (message.game_design_evidence) content.game_design_evidence = message.game_design_evidence;
 
   const { data, error } = await supabase
     .from('agent_messages')

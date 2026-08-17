@@ -1,4 +1,5 @@
 import type { ChatItem } from './types';
+import type { GameDesignRuleEvidence } from '@/lib/game-design-system/agentEvidence';
 
 export interface AssistantDeltaOptions {
   newId: string;
@@ -62,6 +63,17 @@ export function finalizeAssistantItem(
     if (!item.reasoning?.trim() || item.reasoningEndedAt) return [item];
     return [{ ...item, reasoningEndedAt: now }];
   });
+}
+
+export function applyGameDesignEvidence(
+  items: ChatItem[],
+  assistantId: string | null,
+  evidence: GameDesignRuleEvidence,
+): ChatItem[] {
+  if (!assistantId) return items;
+  return items.map((item) => item.id === assistantId
+    ? { ...item, gameDesignEvidence: evidence }
+    : item);
 }
 
 /**

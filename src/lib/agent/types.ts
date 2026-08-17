@@ -193,6 +193,8 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
+  /** Server-validated model declaration for the pinned Game Design System policy. */
+  game_design_evidence?: import('@/lib/game-design-system/agentEvidence').GameDesignRuleEvidence;
 }
 
 export interface ToolCall {
@@ -236,6 +238,7 @@ export type SSEEvent =
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
   | { type: 'cache_invalidated'; invalidations: AgentInvalidation[]; paths?: string[] }
+  | { type: 'game_design_evidence'; evidence: import('@/lib/game-design-system/agentEvidence').GameDesignRuleEvidence }
   | { type: 'done' }
   | { type: 'error'; message: string };
 

@@ -216,9 +216,29 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
       )}
 
       {showAssistantBubble && (
-        <div className={`${styles.bubble} ${styles.assistant}`}>
-          <AssistantMarkdown markdown={normalizedText} />
-        </div>
+        <>
+          <div className={`${styles.bubble} ${styles.assistant}`}>
+            <AssistantMarkdown markdown={normalizedText} />
+          </div>
+          {item.gameDesignEvidence ? (
+            <div
+              className={styles.ruleEvidence}
+              data-status={item.gameDesignEvidence.declarationStatus}
+              data-tone={item.gameDesignEvidence.declarationStatus === 'invalid' ? 'warning' : 'neutral'}
+            >
+              <span>
+                {item.gameDesignEvidence.declarationStatus === 'declared'
+                  ? `Rule declaration validated for v${item.gameDesignEvidence.version}`
+                  : item.gameDesignEvidence.declarationStatus === 'invalid'
+                    ? `Rule declaration contains invalid IDs: ${item.gameDesignEvidence.invalidRuleIds.join(', ')}`
+                    : `No rule declaration recorded for v${item.gameDesignEvidence.version}`}
+              </span>
+              {item.gameDesignEvidence.omittedRuleIds.length > 0 ? (
+                <span>Omitted by policy budget: {item.gameDesignEvidence.omittedRuleIds.join(', ')}</span>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );
