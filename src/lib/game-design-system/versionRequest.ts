@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolveOfferedGameArtStylePreset } from '@/lib/game-art-style/presets';
 import { gameArtStyleInputSchema } from '@/lib/game-art-style/schema';
 import { gameDesignDocumentSchema, gameDesignRuleSetSchema } from './ruleSchema';
 
@@ -16,6 +17,18 @@ export const createGameDesignSystemVersionRequestSchema = z.object({
       code: z.ZodIssueCode.custom,
       message: 'At least one version component must be supplied.',
     });
+  }
+
+  if (value.artStyle !== undefined && value.artStyle !== null) {
+    try {
+      resolveOfferedGameArtStylePreset(value.artStyle.presetId, value.artStyle.presetVersion);
+    } catch (error) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['artStyle'],
+        message: error instanceof Error ? error.message : 'Unknown Game Art Style.',
+      });
+    }
   }
 });
 

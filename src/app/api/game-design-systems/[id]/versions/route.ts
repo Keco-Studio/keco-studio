@@ -93,7 +93,7 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
   } catch (error) {
     if (error instanceof PublicGameDesignSystemVersionError) {
       return NextResponse.json({
-        error: error.message,
+        error: error.publicMessage,
         code: error.code,
         ...(error.ruleIds ? { ruleIds: error.ruleIds } : {}),
       }, { status: VERSION_ERROR_STATUS[error.code] ?? 500 });

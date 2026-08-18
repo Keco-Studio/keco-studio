@@ -3,7 +3,7 @@ import { gameDesignGenerationRequestSchema } from './generationRequest';
 
 const artStyle = {
   presetId: 'pixel-art',
-  presetVersion: 1,
+  presetVersion: 2,
   customization: {
     direction: '  Bright routes.  ',
     referenceGames: [{ name: ' Eastward ', borrow: ' Material clusters ' }],

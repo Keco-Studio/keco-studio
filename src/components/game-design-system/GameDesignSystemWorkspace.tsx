@@ -41,13 +41,23 @@ export type GameDesignSystemView = 'overview' | 'art-style' | 'rules' | 'version
 export type ProjectOption = { id: string; name: string };
 type Feedback = { tone: 'success' | 'error'; text: string };
 
-const views: Array<{ id: GameDesignSystemView; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'art-style', label: 'Art Style' },
-  { id: 'rules', label: 'Rules' },
-  { id: 'versions', label: 'Versions' },
-  { id: 'sources', label: 'Sources' },
-  { id: 'projects', label: 'Projects' },
+const viewGroups: Array<{ label: string; views: Array<{ id: GameDesignSystemView; label: string }> }> = [
+  {
+    label: 'Design',
+    views: [
+      { id: 'overview', label: 'Overview' },
+      { id: 'art-style', label: 'Art Style' },
+      { id: 'rules', label: 'Rules' },
+    ],
+  },
+  {
+    label: 'Manage',
+    views: [
+      { id: 'versions', label: 'Versions' },
+      { id: 'sources', label: 'Sources' },
+      { id: 'projects', label: 'Projects' },
+    ],
+  },
 ];
 
 const ruleKindLabels: Record<GameDesignRule['kind'], string> = {
@@ -161,10 +171,10 @@ function OverviewView(props: {
   );
 }
 
-function ArtStyleView({ version, canEdit, onStartVersion }: { version: GameDesignSystemVersion | null; canEdit: boolean; onStartVersion: () => void }) {
+function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) {
   return (
     <section className={styles.artStyleView} role="tabpanel">
-      {canEdit ? <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Read-only snapshot</span><h2>Want to change the visual direction?</h2><p>Start a version iteration to choose a new preset or update art direction.</p></div><button className={styles.secondaryButton} type="button" aria-label="Iterate from Art Style view" onClick={onStartVersion}><EditOutlined /> Iterate this version</button></div> : null}
+      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Read-only snapshot</span><h2>Visual direction</h2><p>Review the preset and saved visual guidance for this version. Use the single iteration action in the system header to make changes.</p></div></div>
       {version?.artStyleReadError
         ? <div className={styles.inlineEmpty}>This version contains an unsupported Art Style snapshot. It remains inherited exactly until explicitly replaced.</div>
         : !version?.artStyle
@@ -177,8 +187,6 @@ function ArtStyleView({ version, canEdit, onStartVersion }: { version: GameDesig
 function RulesView(props: {
   detail: GameDesignSystemDetail;
   version: GameDesignSystemVersion | null;
-  canEdit: boolean;
-  onStartVersion: () => void;
 }) {
   const [selectedRuleId, setSelectedRuleId] = useState('');
   const selectedRule = props.version?.rules.rules.find((rule) => rule.id === selectedRuleId)
@@ -202,8 +210,7 @@ function RulesView(props: {
       </aside>
       <article className={styles.ruleReading}>
         <div className={styles.sectionHeading}>
-          <div><span className={styles.eyebrow}>{selectedRule ? ruleKindLabels[selectedRule.kind] : 'Rule'}</span><h3>{selectedRule?.title || 'No rule selected'}</h3><p>This is a read-only snapshot. Add or refine rules from a new version iteration.</p></div>
-          {props.canEdit ? <button className={styles.secondaryButton} type="button" aria-label="Iterate from Rules view" onClick={props.onStartVersion}><EditOutlined /> Iterate this version</button> : null}
+          <div><span className={styles.eyebrow}>{selectedRule ? ruleKindLabels[selectedRule.kind] : 'Rule'}</span><h3>{selectedRule?.title || 'No rule selected'}</h3><p>This is a read-only snapshot. Use the system header action to add or refine rules in a new version.</p></div>
         </div>
         {selectedRule ? (
           <>
@@ -239,12 +246,11 @@ function RulesView(props: {
   );
 }
 
-function VersionsView({ detail, selectedVersionId, onSelect, canEdit, onStartVersion }: { detail: GameDesignSystemDetail; selectedVersionId: string; onSelect: (id: string) => void; canEdit: boolean; onStartVersion: () => void }) {
+function VersionsView({ detail, selectedVersionId, onSelect }: { detail: GameDesignSystemDetail; selectedVersionId: string; onSelect: (id: string) => void }) {
   return (
     <section className={styles.viewPanel} role="tabpanel">
       <div className={styles.sectionHeading}>
-        <div><span className={styles.eyebrow}>Immutable history</span><h3>{detail.versions.length} saved {detail.versions.length === 1 ? 'version' : 'versions'}</h3><p>Select a version to inspect it, or start a new iteration from the selected snapshot.</p></div>
-        {canEdit ? <button className={styles.primaryButton} type="button" onClick={onStartVersion}><EditOutlined /> Start version iteration</button> : null}
+        <div><span className={styles.eyebrow}>Immutable history</span><h3>{detail.versions.length} saved {detail.versions.length === 1 ? 'version' : 'versions'}</h3><p>Select a version to inspect its exact snapshot. Start a new iteration from the system header when you are ready to change it.</p></div>
       </div>
       <div className={styles.versionList}>
         {detail.versions.map((version) => (
@@ -598,25 +604,19 @@ export function GameDesignSystemWorkspace(props: Props) {
 
       <div className={styles.workspaceControls}>
         <nav className={styles.viewTabs} aria-label="Game Design System views" role="tablist">
-          {views.map((item) => <button type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? styles.viewTabActive : styles.viewTab} key={item.id} onClick={() => changeView(item.id)}>{item.label}</button>)}
+          {viewGroups.map((group) => <div className={styles.viewTabGroup} key={group.label}>
+            <span className={styles.viewTabGroupLabel}>{group.label}</span>
+            {group.views.map((item) => <button type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? styles.viewTabActive : styles.viewTab} key={item.id} onClick={() => changeView(item.id)}>{item.label}</button>)}
+          </div>)}
         </nav>
         <label className={styles.versionSelect}><span>Version</span><select className={styles.select} value={selectedVersion?.id ?? ''} onChange={(event) => changeVersion(event.target.value)}>{detail.versions.map((version) => <option key={version.id} value={version.id}>Version {version.version_number}{version.id === detail.current_version_id ? ' (Current)' : ''}</option>)}</select></label>
       </div>
 
-      <div className={styles.versionIterationGuide} role="note">
-        <div>
-          <span className={styles.eyebrow}>Version workflow</span>
-          <strong>Turn a design decision into a new immutable version</strong>
-          <p>The current view is a read-only snapshot. Start an iteration to edit the game background, rules and tables, or Art Style, then review the exact changes before publishing.</p>
-        </div>
-        {owned ? <button className={styles.secondaryButton} type="button" aria-label="Start version iteration from workflow guide" onClick={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }}><EditOutlined /> Start version iteration</button> : <span className={styles.inlineEmpty}>Read-only snapshot</span>}
-      </div>
-
       {feedback ? <div className={feedback.tone === 'error' ? styles.error : styles.notice} role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.text}</div> : null}
       {view === 'overview' ? <OverviewView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
-      {view === 'art-style' ? <ArtStyleView key={selectedVersion?.id ?? 'no-version'} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
-      {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
-      {view === 'versions' ? <VersionsView detail={detail} selectedVersionId={selectedVersion?.id ?? ''} onSelect={changeVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
+      {view === 'art-style' ? <ArtStyleView key={selectedVersion?.id ?? 'no-version'} version={selectedVersion} /> : null}
+      {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} /> : null}
+      {view === 'versions' ? <VersionsView detail={detail} selectedVersionId={selectedVersion?.id ?? ''} onSelect={changeVersion} /> : null}
       {view === 'sources' ? <SourcesView version={selectedVersion} /> : null}
       {view === 'projects' ? <ProjectsView detail={detail} version={selectedVersion} projects={props.projects} loading={props.projectsLoading} error={props.projectsError} onRetry={props.onRetryProjects} onFeedback={setFeedback} /> : null}
       {view === 'versions' && selectedVersion ? <details className={styles.markdownDisclosure}><summary>View GAME_DESIGN_SYSTEM.md projection</summary><article className={styles.markdown}><ReactMarkdown>{selectedVersion.rendered_markdown}</ReactMarkdown></article></details> : null}

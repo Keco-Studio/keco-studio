@@ -28,7 +28,7 @@ const document = {
 
 const generated = { document, rules };
 const artStyle = compileGameArtStyle({
-  presetId: 'pixel-art', presetVersion: 1,
+  presetId: 'pixel-art', presetVersion: 2,
   customization: { direction: 'Bright routes.', referenceGames: [], avoid: '' },
 });
 

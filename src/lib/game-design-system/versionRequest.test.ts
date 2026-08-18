@@ -40,7 +40,7 @@ describe('createGameDesignSystemVersionRequestSchema', () => {
       rules,
       artStyle: {
         presetId: 'pixel-art',
-        presetVersion: 1,
+        presetVersion: 2,
         customization: { referenceGames: [] },
       },
     };
@@ -71,7 +71,7 @@ describe('createGameDesignSystemVersionRequestSchema', () => {
     ['forged compiled snapshot fields', {
       artStyle: {
         presetId: 'pixel-art',
-        presetVersion: 1,
+        presetVersion: 2,
         customization: { referenceGames: [] },
         specification: { visualIdentity: 'forged' },
       },
@@ -79,8 +79,11 @@ describe('createGameDesignSystemVersionRequestSchema', () => {
     ['unknown preset', {
       artStyle: { presetId: 'unknown-style', presetVersion: 1, customization: { referenceGames: [] } },
     }],
+    ['retired preset version', {
+      artStyle: { presetId: 'pixel-art', presetVersion: 1, customization: { referenceGames: [] } },
+    }],
     ['unknown preset version', {
-      artStyle: { presetId: 'pixel-art', presetVersion: 2, customization: { referenceGames: [] } },
+      artStyle: { presetId: 'pixel-art', presetVersion: 999, customization: { referenceGames: [] } },
     }],
     ['missing replacement', {}],
     ['invalid parent UUID', { parentVersionId: 'version-1', rules }],

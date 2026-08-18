@@ -55,12 +55,15 @@ const PUBLIC_ERROR_MESSAGES: Record<PublicGameDesignSystemVersionErrorCode, stri
 
 export class PublicGameDesignSystemVersionError extends Error {
   readonly code: PublicGameDesignSystemVersionErrorCode;
+  readonly publicMessage: string;
   readonly ruleIds?: string[];
 
   constructor(code: PublicGameDesignSystemVersionErrorCode, options?: { ruleIds?: string[] }) {
-    super(PUBLIC_ERROR_MESSAGES[code]);
+    const publicMessage = PUBLIC_ERROR_MESSAGES[code];
+    super(publicMessage);
     this.name = 'PublicGameDesignSystemVersionError';
     this.code = code;
+    this.publicMessage = publicMessage;
     this.ruleIds = options?.ruleIds;
   }
 }

@@ -317,10 +317,13 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
+    expect(screen.getByText('Design', { selector: 'span' })).toBeTruthy();
+    expect(screen.getByText('Manage', { selector: 'span' })).toBeTruthy();
+    expect(screen.queryByText('Version workflow')).toBeNull();
     await user.click(screen.getByRole('tab', { name: 'Versions' }));
     expect(screen.getByRole('heading', { name: 'Version 1' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start version iteration' })).toBeTruthy();
-    expect(screen.getByText('Select a version to inspect it, or start a new iteration from the selected snapshot.')).toBeTruthy();
+    expect(screen.getByText('Select a version to inspect its exact snapshot. Start a new iteration from the system header when you are ready to change it.')).toBeTruthy();
     await user.click(screen.getByRole('tab', { name: 'Sources' }));
     expect(screen.getByText('No source snapshots for this version.')).toBeTruthy();
     await user.click(screen.getByRole('tab', { name: 'Projects' }));

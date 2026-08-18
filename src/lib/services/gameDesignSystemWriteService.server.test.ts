@@ -44,7 +44,7 @@ const rules = {
 
 const supportedArtStyleInput = {
   presetId: 'pixel-art' as const,
-  presetVersion: 1 as const,
+  presetVersion: 2 as const,
   customization: { referenceGames: [] },
 };
 

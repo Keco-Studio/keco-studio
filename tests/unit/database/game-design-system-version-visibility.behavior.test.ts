@@ -470,7 +470,7 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
 
     const offeredInput = {
       presetId: 'pixel-art' as const,
-      presetVersion: 1 as const,
+      presetVersion: 2 as const,
       customization: { referenceGames: [] },
     };
     const replacement = await createPublicGameDesignSystemVersion(fixture.svc, {
@@ -564,7 +564,7 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     const casSystemId = await createCasSystem();
     const offeredArtStyle = {
       presetId: 'pixel-art' as const,
-      presetVersion: 1 as const,
+      presetVersion: 2 as const,
       customization: { referenceGames: [] },
     };
     const compiledArtStyle = compileGameArtStyle(offeredArtStyle);
@@ -637,7 +637,7 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     const casSystemId = await createCasSystem();
     const offeredArtStyle = {
       presetId: 'pixel-art' as const,
-      presetVersion: 1 as const,
+      presetVersion: 2 as const,
       customization: { referenceGames: [] },
     };
     const initial = await fixture.svc.from('game_design_system_versions').insert({

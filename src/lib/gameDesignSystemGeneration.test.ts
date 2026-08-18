@@ -44,7 +44,7 @@ const validOutput = { document: validDocument, rules: validRules };
 
 const artStyle = compileGameArtStyle({
   presetId: 'pixel-art',
-  presetVersion: 1,
+  presetVersion: 2,
   customization: { direction: 'NEVER-IN-MODEL', referenceGames: [], avoid: '' },
 });
 
@@ -116,7 +116,7 @@ describe('structured Game Design System generation', () => {
       ...input,
       artStyle: compileGameArtStyle({
         presetId: 'pixel-art',
-        presetVersion: 1,
+        presetVersion: 2,
         customization: { direction: 'Different direction', referenceGames: [], avoid: '' },
       }),
     };
