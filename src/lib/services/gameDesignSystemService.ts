@@ -14,7 +14,14 @@ import {
   type GameDesignRuleSet,
 } from '@/lib/game-design-system/ruleSchema';
 import { GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER, renderRuleSetMarkdown } from '@/lib/game-design-system/ruleMarkdown';
-import { diffRuleSets, type GameDesignRuleDiff } from '@/lib/game-design-system/ruleDiff';
+import type { GameDesignRuleDiff } from '@/lib/game-design-system/ruleDiff';
+import {
+  createVersionDiff,
+  gameDesignSystemVersionDiffV2Schema,
+  type GameDesignSystemVersionDiff,
+  type GameDesignSystemVersionDiffNotRecorded,
+  type GameDesignSystemVersionDiffV2,
+} from '@/lib/game-design-system/versionDiff';
 import { gameArtStyleSnapshotSchema, type GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 
 export type GameDesignSystemSource = 'official' | 'user' | 'team';
@@ -69,9 +76,10 @@ export type GameDesignSystemVersion = {
   document: GameDesignDocument;
   rules: GameDesignRuleSet;
   artStyle: GameArtStyleSnapshot | null;
+  artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' } | null;
   rendered_markdown: string;
   source_snapshots: GameDesignSourceSnapshot[];
-  diff: GameDesignRuleDiff;
+  diff: GameDesignSystemVersionDiff;
   conflicts: GameDesignRuleDiff['conflicts'];
   content_hash: string;
   created_by: string | null;
@@ -123,21 +131,96 @@ function hashJson(value: unknown): string {
 function hydrateVersion(
   row: Record<string, unknown>,
   metadata: { title?: string; summary?: string | null } = {},
+  projectedDiff?: GameDesignSystemVersionDiff,
 ): GameDesignSystemVersion {
   const rules = parseRuleSet(row.rules);
   const document = row.document == null
     ? buildCompatibilityGameDesignDocument(rules, metadata)
     : parseGameDesignDocument(row.document);
-  const parsedArtStyle = row.art_style == null
+  const rawArtStyle = row.art_style;
+  const parsedArtStyle = rawArtStyle == null
     ? null
-    : gameArtStyleSnapshotSchema.safeParse(row.art_style);
+    : gameArtStyleSnapshotSchema.safeParse(rawArtStyle);
   const { art_style: _artStyle, ...version } = row;
+  const diff = projectedDiff ?? projectStoredVersionDiff(row.diff);
   return {
     ...(version as unknown as GameDesignSystemVersion),
     document,
     rules,
     artStyle: parsedArtStyle && parsedArtStyle.success ? parsedArtStyle.data : null,
+    artStyleReadError: rawArtStyle != null && !parsedArtStyle?.success
+      ? { code: 'UNSUPPORTED_SNAPSHOT' }
+      : null,
+    diff,
   };
+}
+
+function readRuleDiff(value: unknown): GameDesignRuleDiff {
+  const diff = value && typeof value === 'object' ? value as Partial<GameDesignRuleDiff> : {};
+  const stringArray = (candidate: unknown) => Array.isArray(candidate)
+    ? candidate.filter((item): item is string => typeof item === 'string')
+    : [];
+  return {
+    added: stringArray(diff.added),
+    removed: stringArray(diff.removed),
+    changed: stringArray(diff.changed),
+    conflicts: Array.isArray(diff.conflicts)
+      ? diff.conflicts.filter((conflict): conflict is GameDesignRuleDiff['conflicts'][number] => (
+        conflict !== null
+        && typeof conflict === 'object'
+        && typeof (conflict as { ruleId?: unknown }).ruleId === 'string'
+        && typeof (conflict as { reason?: unknown }).reason === 'string'
+      )).map((conflict) => ({ ruleId: conflict.ruleId, reason: conflict.reason }))
+      : [],
+  };
+}
+
+function parseVersionDiffV2(value: unknown): GameDesignSystemVersionDiffV2 | null {
+  const parsed = gameDesignSystemVersionDiffV2Schema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function notRecordedVersionDiff(value: unknown): GameDesignSystemVersionDiffNotRecorded {
+  return {
+    ...readRuleDiff(value),
+    document: 'not_recorded',
+    artStyle: 'not_recorded',
+    ruleSetSettingsChanged: 'not_recorded',
+    tableGuidanceChanged: 'not_recorded',
+  };
+}
+
+function projectStoredVersionDiff(value: unknown): GameDesignSystemVersionDiff {
+  return parseVersionDiffV2(value) ?? notRecordedVersionDiff(value);
+}
+
+function hydrateVersionRows(
+  rows: Record<string, unknown>[],
+  metadataForRow: (row: Record<string, unknown>) => { title?: string; summary?: string | null },
+): GameDesignSystemVersion[] {
+  const rowsById = new Map(rows.map((row) => [row.id as string, row]));
+  return rows.map((row) => {
+    const metadata = metadataForRow(row);
+    const storedV2Diff = parseVersionDiffV2(row.diff);
+    if (storedV2Diff) return hydrateVersion(row, metadata, storedV2Diff);
+    const parentId = typeof row.parent_version_id === 'string' ? row.parent_version_id : null;
+    const parentRow = parentId ? rowsById.get(parentId) : undefined;
+    if (!parentRow) return hydrateVersion(row, metadata, notRecordedVersionDiff(row.diff));
+
+    const currentRules = parseRuleSet(row.rules);
+    const parentRules = parseRuleSet(parentRow.rules);
+    const currentDocument = row.document == null
+      ? buildCompatibilityGameDesignDocument(currentRules, metadata)
+      : parseGameDesignDocument(row.document);
+    const parentDocument = parentRow.document == null
+      ? buildCompatibilityGameDesignDocument(parentRules, metadata)
+      : parseGameDesignDocument(parentRow.document);
+    const derived = createVersionDiff(
+      { document: parentDocument, rules: parentRules, artStyle: parentRow.art_style ?? null },
+      { document: currentDocument, rules: currentRules, artStyle: row.art_style ?? null },
+    );
+    return hydrateVersion(row, metadata, { ...derived, ...readRuleDiff(row.diff) });
+  });
 }
 
 export class IdempotencyConflictError extends Error {
@@ -178,14 +261,13 @@ export async function listGameDesignSystems(supabase: SupabaseClient): Promise<G
     .order('version_number', { ascending: false });
   if (versions.error) throw versions.error;
   const readableBySystem = new Map<string, GameDesignSystemVersion[]>();
-  for (const row of versions.data ?? []) {
-    const system = systems.find((candidate) => candidate.id === (row as { system_id: string }).system_id);
-    const version = {
-      ...hydrateVersion(row as Record<string, unknown>, system ?? {}),
-      source_snapshots: [],
-    };
+  const hydratedVersions = hydrateVersionRows(
+    (versions.data ?? []) as Record<string, unknown>[],
+    (row) => systems.find((candidate) => candidate.id === row.system_id) ?? {},
+  );
+  for (const version of hydratedVersions) {
     const systemVersions = readableBySystem.get(version.system_id) ?? [];
-    systemVersions.push(version);
+    systemVersions.push({ ...version, source_snapshots: [] });
     readableBySystem.set(version.system_id, systemVersions);
   }
   return systems.map((system) => {
@@ -218,8 +300,8 @@ export async function listGameDesignSystemVersions(
     .eq('system_id', systemId)
     .order('version_number', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((version) => ({
-    ...hydrateVersion(version as Record<string, unknown>, metadata),
+  return hydrateVersionRows((data ?? []) as Record<string, unknown>[], () => metadata).map((version) => ({
+    ...version,
     source_snapshots: [],
   }));
 }
@@ -298,9 +380,18 @@ export async function createGameDesignSystemVersion(
     ? input.artStyle
     : input.parentVersion?.artStyle ?? null;
   const artStyle = artStyleValue == null ? null : gameArtStyleSnapshotSchema.parse(artStyleValue);
-  const diff = input.parentVersion
-    ? diffRuleSets(parseRuleSet(input.parentVersion.rules), rules)
-    : { added: rules.rules.map((rule) => rule.id).sort(), removed: [], changed: [], conflicts: [] };
+  const parentRules = input.parentVersion ? parseRuleSet(input.parentVersion.rules) : null;
+  const parentDocument = parentRules
+    ? input.parentVersion?.document
+      ? parseGameDesignDocument(input.parentVersion.document)
+      : buildCompatibilityGameDesignDocument(parentRules, { title: input.title })
+    : null;
+  const diff = createVersionDiff(
+    parentRules && parentDocument
+      ? { document: parentDocument, rules: parentRules, artStyle: input.parentVersion?.artStyle ?? null }
+      : null,
+    { document, rules, artStyle },
+  );
   const rendered = renderRuleSetMarkdown(rules, {
     title: input.title,
     version: GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER,
@@ -323,7 +414,7 @@ export async function createGameDesignSystemVersion(
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('Version creation returned no row.');
-  return hydrateVersion(row as Record<string, unknown>, { title: input.title });
+  return hydrateVersion(row as Record<string, unknown>, { title: input.title }, diff);
 }
 
 export async function createGameDesignSystem(

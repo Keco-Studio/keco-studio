@@ -90,7 +90,14 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_system_id: 'system-1',
       p_parent_version_id: 'version-1',
-      p_diff: expect.objectContaining({ added: ['visible-costs'], conflicts: [] }),
+      p_diff: expect.objectContaining({
+        schemaVersion: 2,
+        added: ['visible-costs'],
+        conflicts: [],
+        artStyle: { change: 'unchanged' },
+        ruleSetSettingsChanged: false,
+        tableGuidanceChanged: false,
+      }),
       p_created_by: 'user-1',
       p_generation_job_id: null,
       p_document: document,
@@ -177,6 +184,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     });
 
     expect(created.artStyle).toBeNull();
+    expect(created.artStyleReadError).toBeNull();
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_art_style: null,
       p_content_hash: createHash('sha256').update(JSON.stringify({ document: created.document, rules: ruleSet, artStyle: null })).digest('hex'),
@@ -211,6 +219,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     });
 
     expect(created.artStyle).toEqual(persistedArtStyle);
+    expect(created.artStyleReadError).toBeNull();
     expect(created).not.toHaveProperty('art_style');
   });
 
@@ -395,6 +404,52 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(detail?.current_version?.document.designIntent).toContain('compatibility summary');
     expect(detail?.current_version?.document.coreLoop).toContain('did not store');
     expect(detail?.current_version?.artStyle).toBeNull();
+    expect(detail?.current_version?.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
+    expect(detail?.current_version).not.toHaveProperty('art_style');
+  });
+
+  it('derives cross-domain changes for legacy diffs when their parent is readable', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Legacy tactics', summary: null,
+      current_version_id: 'version-2', body: '# Version 2', genres: [], philosophies: [], suitable_for: null,
+    };
+    const parentDocument = { ...document, gameBackground: 'A quiet river settlement.' };
+    const currentDocument = { ...document, gameBackground: 'A flooded river settlement.' };
+    const legacyRuleDiff = {
+      schemaVersion: 2,
+      added: ['stored-addition'],
+      unexpected: 'must not cross the read boundary',
+    };
+    const versions = [
+      {
+        id: 'version-2', system_id: 'system-1', version_number: 2, parent_version_id: 'version-1',
+        document: currentDocument, rules: ruleSet, art_style: artStyle, rendered_markdown: '# Version 2', diff: legacyRuleDiff,
+      },
+      {
+        id: 'version-1', system_id: 'system-1', version_number: 1, parent_version_id: null,
+        document: parentDocument, rules: ruleSet, art_style: null, rendered_markdown: '# Version 1',
+        diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] },
+      },
+    ];
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ order: async () => ({ data: versions, error: null }) }) }) }),
+    };
+
+    const detail = await getGameDesignSystemDetail(supabase as never, 'system-1');
+
+    expect(detail?.current_version?.diff).toMatchObject({
+      schemaVersion: 2,
+      added: ['stored-addition'],
+      document: { changedSections: ['gameBackground'] },
+      artStyle: { change: 'added' },
+      ruleSetSettingsChanged: false,
+      tableGuidanceChanged: false,
+    });
+    expect(detail?.current_version?.diff).not.toHaveProperty('unexpected');
+    expect(detail?.versions[1].diff.document).toBe('not_recorded');
+    expect(detail?.versions[1].diff.artStyle).toBe('not_recorded');
   });
 
   it('projects list metadata from the newest RLS-readable version instead of the system cache', async () => {
