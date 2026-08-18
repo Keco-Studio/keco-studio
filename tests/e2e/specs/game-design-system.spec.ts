@@ -816,6 +816,7 @@ test.describe('Game Design System real workflow', () => {
   });
 
   test('generates from real sources, versions rules, and binds the selected version', async ({ page }) => {
+    test.skip(!hasGameDesignSystemLlm, 'Requires GAME_DESIGN_SYSTEM_LLM_API_KEY for real generation.');
     await page.setViewportSize({ width: 1440, height: 1000 });
     const pixelLabRequests: string[] = [];
     page.on('request', (request) => {
