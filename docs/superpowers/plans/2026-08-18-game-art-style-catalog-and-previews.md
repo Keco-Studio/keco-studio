@@ -36,6 +36,8 @@
 - Modify: `src/lib/game-art-style/presets.ts`
 - Modify: `src/lib/game-art-style/compiler.ts`
 - Modify: `src/lib/game-art-style/compiler.test.ts`
+- Modify: `src/lib/game-design-system/versionDiff.ts`
+- Modify: `src/lib/game-design-system/versionDiff.test.ts`
 - Modify: `src/lib/services/gameDesignSystemService.ts`
 - Modify: `src/lib/services/gameDesignSystemService.test.ts`
 - Modify: `tests/unit/game-art-style-assets.test.ts`
@@ -48,7 +50,7 @@
 
 - [ ] **Step 1: Write failing generalized registry/compiler tests**
 
-Assert compound-key uniqueness, strict known key resolution, retired-vs-offered separation, unknown ID/version rejection, client-owned-field rejection, and deep-freeze. Parameterize asset validation over all currently retained presets rather than importing one hard-coded fixture. At this stage service hydration covers retained Pixel v1, an unknown but structurally valid non-null compound key producing `UNSUPPORTED_SNAPSHOT`, malformed non-null JSON producing the same read error, and SQL NULL producing neither snapshot nor error. Task 6 adds the five new retained keys after their imports exist.
+Assert compound-key uniqueness, strict known key resolution, retired-vs-offered separation, unknown ID/version rejection, client-owned-field rejection, and deep-freeze. Parameterize asset validation over all currently retained presets rather than importing one hard-coded fixture. At this stage service hydration covers retained Pixel v1, an unknown but structurally valid non-null compound key producing `UNSUPPORTED_SNAPSHOT`, malformed non-null JSON producing the same read error, and SQL NULL producing neither snapshot nor error. Diff tests prove an unknown structural key such as `pixel-art@999` remains unsupported: equal raw values classify `unchanged`, replacement with a retained preset classifies `preset_changed`, and clear classifies `removed`, never `preset_version_changed`. Task 6 adds the five new retained keys after their imports exist.
 
 ```ts
 expect(resolveGameArtStylePreset('pixel-art', 1)).toBe(PIXEL_ART_V1_PRESET);
@@ -60,13 +62,14 @@ expect(GAME_ART_STYLE_CATALOG.map((preset) => gameArtStyleKey(preset.presetId, p
 - [ ] **Step 2: Run RED**
 
 ```bash
-npx jest src/lib/game-art-style/compiler.test.ts src/lib/services/gameDesignSystemService.test.ts \
+npx jest src/lib/game-art-style/compiler.test.ts src/lib/game-design-system/versionDiff.test.ts \
+  src/lib/services/gameDesignSystemService.test.ts \
   tests/unit/game-art-style-assets.test.ts --runInBand
 ```
 
 - [ ] **Step 3: Generalize schemas without loosening server resolution**
 
-Use bounded preset IDs and positive integer versions in the structural schemas; validate offered/retained compound-key membership in resolver/compiler logic. `parseRetainedGameArtStyleSnapshot` first applies the structural schema and then requires retained-registry membership. Replace service hydration's direct structural `safeParse` with this parser so unknown storage keys cannot masquerade as supported snapshots. Keep every existing specification and asset field. Input normalization remains strict and cannot contain snapshot fields.
+Use bounded preset IDs and positive integer versions in the structural schemas; validate offered/retained compound-key membership in resolver/compiler logic. `parseRetainedGameArtStyleSnapshot` first applies the structural schema and then requires retained-registry membership. Replace direct structural parsing in both service hydration and `versionDiff` classification with this parser so unknown storage keys cannot masquerade as supported snapshots. Add a boundary assertion that these persistence/read-integrity paths do not call the structural snapshot schema directly. Keep every existing specification and asset field. Input normalization remains strict and cannot contain snapshot fields.
 
 - [ ] **Step 4: Build explicit frozen registry and migrate documentation files**
 
@@ -75,14 +78,16 @@ Use explicit JSON imports and map construction that throws on duplicate compound
 - [ ] **Step 5: Run GREEN, verify hashes unchanged, and commit**
 
 ```bash
-npx jest src/lib/game-art-style/compiler.test.ts src/lib/services/gameDesignSystemService.test.ts \
+npx jest src/lib/game-art-style/compiler.test.ts src/lib/game-design-system/versionDiff.test.ts \
+  src/lib/services/gameDesignSystemService.test.ts \
   tests/unit/game-art-style-assets.test.ts --runInBand
 sha256sum public/game-art-styles/pixel-art/v1/map.png public/game-art-styles/pixel-art/v1/character.png
 git diff --check
 git add docs/superpowers/specs/2026-08-17-pixel-art-v1-preset.json \
   docs/superpowers/specs/2026-08-17-pixel-art-v1-asset-manifest.json \
   docs/superpowers/specs/game-art-styles/pixel-art/v1 \
-  src/lib/game-art-style src/lib/services/gameDesignSystemService.ts \
+  src/lib/game-art-style src/lib/game-design-system/versionDiff.ts \
+  src/lib/game-design-system/versionDiff.test.ts src/lib/services/gameDesignSystemService.ts \
   src/lib/services/gameDesignSystemService.test.ts tests/unit/game-art-style-assets.test.ts
 git commit -m "refactor: generalize game art style registry"
 ```
@@ -291,6 +296,7 @@ Expected: no credential or candidate file appears as a committable change.
 - Create: `public/game-art-styles/<preset-id>/vN/character.png`
 - Modify: `src/lib/game-art-style/presets.ts`
 - Modify: `src/lib/game-art-style/compiler.test.ts`
+- Modify: `src/lib/game-design-system/versionDiff.test.ts`
 - Modify: `src/lib/services/gameDesignSystemService.test.ts`
 - Modify: `tests/unit/game-art-style-assets.test.ts`
 
@@ -313,13 +319,15 @@ Assert every offered key compiles, unknown/retired input behavior is intentional
 - [ ] **Step 4: Run release verification and commit**
 
 ```bash
-npx jest src/lib/game-art-style/compiler.test.ts src/lib/services/gameDesignSystemService.test.ts \
+npx jest src/lib/game-art-style/compiler.test.ts src/lib/game-design-system/versionDiff.test.ts \
+  src/lib/services/gameDesignSystemService.test.ts \
   tests/unit/game-art-style-assets.test.ts \
   scripts/game-art-style --runInBand
 npm run typecheck
 git diff --check
 git add docs/superpowers/specs/game-art-styles public/game-art-styles \
   src/lib/game-art-style/presets.ts src/lib/game-art-style/compiler.test.ts \
+  src/lib/game-design-system/versionDiff.test.ts \
   src/lib/services/gameDesignSystemService.test.ts \
   tests/unit/game-art-style-assets.test.ts
 git commit -m "feat: publish five game art style presets"
@@ -349,6 +357,7 @@ At desktop and mobile, select each style and assert title/preview/Visual DNA upd
 
 ```bash
 npx jest src/lib/game-art-style scripts/game-art-style \
+  src/lib/game-design-system/versionDiff.test.ts \
   src/lib/services/gameDesignSystemService.test.ts \
   src/components/game-design-system/GameArtStyleCatalog.test.tsx \
   src/components/game-design-system/GameDesignSystemCreatePage.test.tsx \
