@@ -55,12 +55,13 @@ After success, the workspace selects the new version and returns to Overview. Ex
 
 ## Game Design And Background
 
-`GameDesignDocument` gains an optional `gameBackground` field with the same 4,000-character bound as other document sections. Optionality preserves strict parsing of historical snapshots that predate the field.
+The compatibility read/storage `GameDesignDocument` schema gains an optional `gameBackground` field with the same 4,000-character bound as other document sections. Optionality preserves strict parsing of historical snapshots that predate the field. A separate generated-output schema extends the compatibility schema and requires non-empty `gameBackground`, so new model generation cannot silently omit it.
 
-- New generation output requires and persists `gameBackground`.
+- New generation output parses through the required generated-output schema and persists `gameBackground`.
 - Compatibility and historical documents may omit it.
 - The read view shows `Not specified` for an absent historical value instead of inventing content.
 - The version editor always shows `Game background & setting` as an editable field.
+- A user may still create an unrelated edit from a historical version without filling the absent field; the compatibility version-write schema does not retroactively block that work.
 - Rendered Markdown includes the section only when a value exists, preserving historical output behavior.
 
 The other document fields retain their names and limits.
@@ -87,6 +88,8 @@ type CreateVersionRequest = {
 };
 ```
 
+The public route also requires a UUID `Idempotency-Key` header. New public versions persist that key under a unique `(system_id, idempotency_key)` constraint. A repeated request with the same owner, parent, and compiled complete content returns the original version; reuse with different content returns `409 IDEMPOTENCY_CONFLICT`. Trusted internal first-version, copy, and generation paths may omit the key.
+
 Semantics:
 
 - omitted content field: inherit the exact parent component;
@@ -98,9 +101,13 @@ Semantics:
 - parent versions must belong to the same system;
 - deleted rule IDs cannot be reintroduced through a historical branch.
 
-The database RPC checks `expectedCurrentVersionId` while holding the existing system-row lock. A mismatch returns `409 VERSION_STALE` without inserting a version. This also makes an ambiguous network retry safe: after a successful first insert, the same retry is stale rather than creating a duplicate.
+The database RPC receives nullable `p_expected_current_version_id` and compares it to the locked system row with `IS NOT DISTINCT FROM`. Public version editing always supplies the non-null current version. Trusted internal creation supplies `NULL` only when creating the first version of a new system. The public route enforces that its parent belongs to the edited system; existing copy and generation services may continue to use a cross-system parent through trusted server-only calls. No client-controlled flag can select the trusted mode.
 
-The service continues to persist one complete `document + rules + artStyle` snapshot and hashes that complete result. Sources are inherited from the parent and remain immutable.
+A mismatch returns `409 VERSION_STALE` without inserting a version. An idempotency lookup happens before reporting stale state, so a retry after a lost success response returns the already-created version. A true stale write keeps the draft and reloads the latest version, but does not automatically merge or reapply the complete local snapshot. The UI compares each changed domain and asks the user which local changes to reapply before opening a new draft on current.
+
+The migration drops the exact prior RPC signature before creating the CAS/idempotency signature, revokes all public and authenticated execution on every obsolete overload, grants only the intended service role, and triggers the repository's normal PostgREST schema refresh. Tests prove the old no-CAS signature cannot be resolved.
+
+The service continues to persist one complete `document + rules + artStyle` snapshot and hashes that complete result. No-op detection compares the server-parsed, inherited, and compiled complete components using canonical structural JSON with recursively sorted object keys; it does not compare request text or trust an old content hash. Sources are inherited from the parent and remain immutable.
 
 ## Cross-Domain Diff
 
@@ -108,17 +115,19 @@ Rule conflict detection keeps the existing `added`, `removed`, `changed`, and `c
 
 ```ts
 type GameDesignSystemVersionDiff = GameDesignRuleDiff & {
-  schemaVersion?: 2;
-  document?: { changedSections: Array<keyof GameDesignDocument> };
-  artStyle?: {
+  schemaVersion: 2;
+  document: { changedSections: Array<keyof GameDesignDocument> };
+  artStyle: {
     change: 'unchanged' | 'added' | 'removed' | 'preset_changed' | 'preset_version_changed' | 'customization_changed';
   };
-  ruleSetSettingsChanged?: boolean;
-  tableGuidanceChanged?: boolean;
+  ruleSetSettingsChanged: boolean;
+  tableGuidanceChanged: boolean;
 };
 ```
 
-Historical diff objects hydrate with empty cross-domain summaries; no historical rows are rewritten. Review and Versions show text labels for changed domains and do not use Rule-only counts as the whole-version summary.
+Every new version persists the complete v2 shape. Art Style classification uses this priority when several properties differ: `preset_changed`, then `preset_version_changed`, then `customization_changed`. Historical diff objects are not interpreted as cross-domain unchanged: when the parent is readable, the read model derives Document and Art Style changes on demand; otherwise it reports `not_recorded`. No historical rows are rewritten. Review and Versions show text labels for changed domains and do not use Rule-only counts as the whole-version summary.
+
+The final Review page is more detailed than the persisted summary. It renders Document and background before/after values, rule-set settings and Table Guidance before/after, per-rule changes, and Art Style preset/revision/customization before/after.
 
 ## Art Style Registry
 
@@ -134,9 +143,9 @@ The catalog published for new selection contains five styles:
 | `flat-graphic-2d@1` | Flat Graphic 2D | Clean curves, flat color shapes, restrained shading, no brush texture or 3D volume |
 | `hand-painted-2d@1` | Hand-Painted 2D | Visible brushwork, layered color, organic edges, no vector-clean or PBR finish |
 | `cel-shaded-3d@1` | Cel-Shaded 3D | Smooth modeled volume with stepped lighting and controlled outlines, not exposed low-poly facets |
-| `low-poly-3d@1` | Low-Poly 3D | Simplified geometry, readable facets, flat/matte materials, no smooth high-detail surfaces |
+| `low-poly-3d@1` | Low-Poly 3D | Simplified geometry, readable facets, flat/matte materials, no smooth high-detail surfaces, cel-shading bands, or outline treatment |
 
-`pixel-art@1` remains readable for historical snapshots but is retired from new selection. Files for any published revision are never overwritten.
+`pixel-art@1` remains readable for historical snapshots but is retired from new selection. Its preset and manifest move into the mirrored documentation directory while the existing public images and their hashes stay byte-identical. Static imports, manifest `runtimeSource`, tests, and internal documentation references are updated to the canonical location. Files for any published revision are never overwritten.
 
 Canonical files use mirrored versioned directories:
 
@@ -151,9 +160,11 @@ The input schema accepts only catalog-offered compound keys and text customizati
 
 ## Art Style Selection
 
-Creation and version editing render the catalog as a real single-selection control. Selection changes the visual board immediately and preserves project customization fields where possible. Review shows the exact style title, revision, direction, visual references, and avoid guidance.
+Creation and version editing render the catalog as a real single-selection control. New creation uses an explicit `DEFAULT_GAME_ART_STYLE_KEY = 'pixel-art@2'`; it never relies on array order. Selection changes the visual board immediately and always preserves direction, visual references, and avoid guidance. A separate Reset action clears those customization fields after confirmation. Review shows the exact style title, revision, direction, visual references, and avoid guidance.
 
-When editing a supported stored snapshot, the selector starts on its compound key and copies only its customization into client-editable input. If the snapshot is historical or retired, it remains inherited exactly until the user chooses a new catalog style. The client never reconstructs or submits canonical snapshot fields.
+When editing a supported stored snapshot, the selector starts on its compound key and copies only its customization into client-editable input. If the snapshot is historical or retired, it remains inherited exactly until the user chooses a new catalog style. Switching from a retired revision is labeled `Preset upgrade`; Review explicitly states that canonical specification and preview assets will change. The client never reconstructs or submits canonical snapshot fields.
+
+Version reads distinguish database `NULL` from an invalid or unsupported non-null snapshot. The read model adds `artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' } | null`; only a database `NULL` produces `artStyle: null` with no error. Unknown non-null data produces a visible unsupported state and never masquerades as legacy absence.
 
 Preview failures stay local to an image. All textual specification remains available.
 
@@ -167,6 +178,7 @@ The non-secret provider base URL defaults to the user-supplied endpoint. Credent
 GAME_ART_IMAGE_BASE_URL=<configured non-secret base URL>
 GAME_ART_IMAGE_API_KEY=<local secret>
 GAME_ART_IMAGE_MODEL=<discovered or explicit image model>
+GAME_ART_IMAGE_DOWNLOAD_HOSTS=<optional comma-separated CDN allowlist>
 ```
 
 The key is never committed, included in `NEXT_PUBLIC_*`, printed, added to manifests, or stored in signed URLs. Candidate output lives under ignored `.cache/game-art-styles/`.
@@ -176,22 +188,23 @@ The authoring client:
 1. normalizes base URLs with or without `/v1`;
 2. requires HTTPS except localhost;
 3. probes `GET /models` without treating enumeration as proof of image capability;
-4. performs an explicitly budgeted `/images/generations` smoke request;
-5. accepts bounded `b64_json` or same-origin HTTPS result URLs;
-6. limits time, redirects, response bytes, image dimensions, and generation count;
-7. redacts credentials and upstream response headers from every error;
-8. refuses to overwrite a published revision.
+4. selects an explicit `GAME_ART_IMAGE_MODEL` first; otherwise accepts only the single model whose service metadata explicitly declares image output, and fails closed if selection is ambiguous;
+5. performs an explicitly budgeted `/images/generations` smoke request without trying multiple paid models speculatively;
+6. prefers bounded `b64_json`; URL results may use the provider origin or an explicit download-host allowlist, never receive Authorization, and are rejected for non-HTTPS, private-network resolution, unsafe redirects, excess size, or timeout;
+7. limits time, redirects, response bytes, image dimensions, and generation count;
+8. redacts credentials and upstream response headers from every error;
+9. refuses to overwrite a published revision.
 
 The five styles use the same comparison subjects. Each map depicts a bright riverside village with primary and secondary routes, a bridge, gardens, and a workshop in a three-quarter top-down view. Each character depicts the same clearly adult field cartographer, full body, neutral pose, practical satchel and exploration equipment, and no weapon. Prompts contain no artist, studio, franchise, game, film, or named-character references.
 
-Each style generates multiple map candidates. After a map is approved, character candidates reuse the exact style capsule and, when supported, the approved map as a reference. Automated validation covers decode, PNG conversion provenance, dimensions, byte limit, visible pixels, alpha truthfulness, duplicate detection, and SHA-256. Independent agents review route readability, anatomy, style boundary, pair consistency, generated text/watermarks, and IP imitation. Only an approved pair is published.
+Each style generates three map candidates and, after selection, three character candidates by default. `--max-generations` is mandatory and provides a hard paid-request ceiling. Character candidates reuse the exact style capsule and, when supported, the approved map as a reference. Automated validation covers decode, PNG conversion provenance, dimensions, byte limit, visible pixels, alpha truthfulness, duplicate detection, and SHA-256. Independent agents review route readability, anatomy, style boundary, pair consistency, generated text/watermarks, and IP imitation. Every rubric item must explicitly pass. The release evidence retains labeled map and character contact sheets, final pair comparison, reviewer identity, and rejection reasons. Only an approved pair is published.
 
 The asset manifest records the non-sensitive protocol, endpoint-path and base-URL hash, model ID, request fields, prompt and prompt hash, provider request/result IDs, timestamps, original/final hashes, deterministic conversions, candidate identity, and review decisions. It never records credentials, Authorization, signed URLs, or raw response headers.
 
 ## Error Handling
 
 - Validation errors identify the editor section and field and focus the first invalid control.
-- `VERSION_STALE` keeps the draft and offers refresh/rebase rather than silently overwriting current state.
+- `VERSION_STALE` keeps the draft and offers a domain-by-domain restart on the latest version; it never automatically merges or overwrites current state.
 - Permission loss returns 403 and preserves locally copyable content.
 - Submission freezes the base version and duplicate submit action while leaving Review readable.
 - A missing or unknown stored Art Style is reported as an unsupported snapshot, not silently converted to legacy `null`.
@@ -203,9 +216,11 @@ The asset manifest records the non-sensitive protocol, endpoint-path and base-UR
 - Change summaries use words in addition to color and symbols.
 - All icon-only controls have tooltips and accessible names.
 - At narrow widths the editor becomes a single column, section navigation becomes a compact menu/select, and the primary Review action stays reachable without overlapping fields.
+- On narrow widths Rules use a searchable native-selector pattern that exposes the current rule, validation errors, and unsaved-change markers instead of the existing horizontal outline.
 - Touch targets are at least 44 by 44 CSS pixels on touch layouts.
 - Preview frames have stable aspect ratios and bounded character height.
 - Errors use `role="alert"`; saved/created feedback uses `role="status"`.
+- Opening the editor focuses its title, section changes focus the section heading, validation focuses the first invalid control, cancel restores focus to `Create new version`, and successful creation focuses the new Overview heading.
 
 ## Testing
 
