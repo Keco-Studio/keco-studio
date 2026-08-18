@@ -44,7 +44,7 @@ const job = {
 describe('GDD generation worker', () => {
   it('persists an initialized Yjs snapshot and structured metadata without source excerpts', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
-      data: [{ document_id: 'document-1', document_name: 'Game Design Document - Draft' }],
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd' }],
       error: null,
     }));
     const sourceJob = {
@@ -65,7 +65,7 @@ describe('GDD generation worker', () => {
     } as GddGenerationJob;
 
     await expect(persistGeneratedGddDocument({ rpc } as never, sourceJob, 'worker-1', generated, '# GDD')).resolves.toEqual({
-      id: 'document-1', name: 'Game Design Document - Draft',
+      id: 'document-1', name: 'Harbor Tactics gdd',
     });
     const rpcArgs = rpc.mock.calls[0][1] as Record<string, unknown>;
     const metadata = rpcArgs.p_metadata as Record<string, unknown>;
@@ -89,7 +89,7 @@ describe('GDD generation worker', () => {
 
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
-    const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => ({ id: 'document-1', name: 'Game Design Document - Draft' }));
+    const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => ({ id: 'document-1', name: 'Harbor Tactics gdd' }));
     const result = await processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat, revalidateContext: jest.fn(async () => undefined), generate: jest.fn(async () => generated), persist,
       retry: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string, _delay: number) => 'queued' as const),

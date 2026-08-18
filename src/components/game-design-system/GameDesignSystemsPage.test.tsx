@@ -133,7 +133,7 @@ describe('GameDesignSystemsPage', () => {
     fetchBinding.mockResolvedValue(null);
     startGdd.mockResolvedValue({
       id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
-      output_document_id: 'document-1', output_document_name: 'Game Design Document - Draft',
+      output_document_id: 'document-1', output_document_name: 'Harbor Tactics gdd',
     });
     fetchGddJob.mockResolvedValue(null);
     cancelGdd.mockResolvedValue({

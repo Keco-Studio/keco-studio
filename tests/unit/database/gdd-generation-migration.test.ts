@@ -2,6 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20260817200000_gdd_generation_jobs.sql'), 'utf8');
+const documentNameSql = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260818140000_gdd_document_project_name.sql'),
+  'utf8',
+);
 
 describe('GDD generation migration security and atomic persistence', () => {
   it('limits job visibility to owners and accepted writable collaborators', () => {
@@ -36,5 +40,12 @@ describe('GDD generation migration security and atomic persistence', () => {
     expect(rpc).toMatch(/perform 1[\s\S]*from public\.project_game_design_systems[\s\S]*design_system_id = v_job\.design_system_id[\s\S]*version_id = v_job\.version_id[\s\S]*for share;[\s\S]*if not found then/i);
     expect(rpc.indexOf('for share;')).toBeLessThan(rpc.indexOf('insert into public.documents'));
     expect(rpc.indexOf('project_game_design_systems')).toBeLessThan(rpc.indexOf('insert into public.documents'));
+  });
+
+  it('names generated GDD documents from the project name plus gdd', () => {
+    expect(documentNameSql).toMatch(/create or replace function public\.persist_completed_gdd_generation_job/i);
+    expect(documentNameSql).toMatch(/select btrim\(project\.name\)[\s\S]*into v_project_name[\s\S]*from public\.projects/i);
+    expect(documentNameSql).toMatch(/v_base_name := v_project_name \|\| ' gdd'/);
+    expect(documentNameSql).not.toMatch(/Game Design Document - Draft/);
   });
 });
