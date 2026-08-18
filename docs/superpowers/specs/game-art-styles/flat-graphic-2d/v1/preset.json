@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "presetId": "flat-graphic-2d",
+  "presetVersion": 1,
+  "title": "Flat Graphic 2D",
+  "previewAssetSet": {
+    "id": "flat-graphic-2d-v1",
+    "map": {
+      "sourcePath": "public/game-art-styles/flat-graphic-2d/v1/map.png",
+      "publicPath": "/game-art-styles/flat-graphic-2d/v1/map.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4232264,
+      "sha256": "50453e6af0a57c613085b27f27e754854061d4c615fc5c07660e3f70f6fd5434",
+      "alpha": "opaque",
+      "alt": "A bright flat graphic 2d riverside village map with branching paths and a wooden bridge."
+    },
+    "character": {
+      "sourcePath": "public/game-art-styles/flat-graphic-2d/v1/character.png",
+      "publicPath": "/game-art-styles/flat-graphic-2d/v1/character.png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1192797,
+      "sha256": "f7d6db7a6b1ecdec3a548a16364ae274d7297ad105a83dcfbc77edfaa0acb5d6",
+      "alpha": "opaque",
+      "alt": "A full-body flat graphic 2d adult field cartographer with practical exploration gear."
+    },
+    "supporting": []
+  },
+  "specification": {
+    "characterDirection": "Build clearly adult characters with natural anatomy, practical layered equipment, grounded poses, and silhouettes that remain distinct at thumbnail size.",
+    "environmentDirection": "Compose maps around immediately legible traversal hierarchy, routes that continue beyond the frame, useful landmarks, and generous walkable space.",
+    "propDirection": "Give every prop a clear gameplay purpose, readable material grouping, and a silhouette that survives at gameplay scale without decorative clutter.",
+    "effectsDirection": "Keep effects compact, high contrast, and brief so they communicate timing without obscuring characters, landmarks, or traversal.",
+    "uiHudDirection": "Use compact panels, high-contrast icons, plain readable labels, and restrained ornament; interface meaning must never depend on the preview images.",
+    "accessibility": "Maintain value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker or visually noisy backgrounds.",
+    "visualIdentity": "Bright graphic 2D worlds built from confident geometric silhouettes, broad color planes, and a quiet editorial clarity that reads immediately.",
+    "pixelTechnique": "Use crisp vector-like edges, minimal surface texture, broad unbroken fills, restrained linework, and one subtle flat shadow layer.",
+    "shapeLanguage": "Build scenes from rounded rectangles, wedges, arcs, and asymmetric layered masses with generous negative space and clearly separated silhouettes.",
+    "paletteAndLighting": "Use verdant green, cyan blue, coral, mustard, charcoal, and off-white with restrained flat shadows and no realistic light falloff.",
+    "animationDirection": "Animate with clean pose-to-pose transitions, graphic smears, simple easing, and stable shape proportions without texture crawl."
+  }
+}

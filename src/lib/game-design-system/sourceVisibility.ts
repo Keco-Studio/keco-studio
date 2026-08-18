@@ -26,11 +26,16 @@ export function redactGameDesignSystemDetailSources(
   detail: GameDesignSystemDetail,
   visibility: SourceVisibility,
 ): GameDesignSystemDetail {
-  const versions = detail.versions.map((version): GameDesignSystemVersion => ({
-    ...version,
-    source_snapshots: version.source_snapshots.map((snapshot) =>
-      redactSnapshot(snapshot, detail, visibility)),
-  }));
+  const versions = detail.versions.map((version): GameDesignSystemVersion => {
+    const { art_style: _rawArtStyle, ...safeVersion } = version as GameDesignSystemVersion & {
+      art_style?: unknown;
+    };
+    return {
+      ...safeVersion,
+      source_snapshots: version.source_snapshots.map((snapshot) =>
+        redactSnapshot(snapshot, detail, visibility)),
+    };
+  });
   return {
     ...detail,
     versions,

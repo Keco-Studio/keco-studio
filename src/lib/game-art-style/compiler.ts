@@ -5,7 +5,7 @@ import {
   type NormalizedGameArtStyleInput,
   type GameArtStyleSnapshot,
 } from './schema';
-import { PIXEL_ART_V1_PRESET } from './presets';
+import { resolveOfferedGameArtStylePreset } from './presets';
 
 export class GameArtStyleCompilationError extends Error {
   constructor(message: string) {
@@ -68,15 +68,21 @@ export function normalizeGameArtStyleInput(value: unknown): NormalizedGameArtSty
 
 export function compileGameArtStyle(value: unknown): GameArtStyleSnapshot {
   const input = normalizeGameArtStyleInput(value);
+  let preset;
+  try {
+    preset = resolveOfferedGameArtStylePreset(input.presetId, input.presetVersion);
+  } catch (error) {
+    throw new GameArtStyleCompilationError(error instanceof Error ? error.message : 'Unknown Game Art Style.');
+  }
   const snapshot = gameArtStyleSnapshotSchema.parse({
-    ...PIXEL_ART_V1_PRESET,
+    ...preset,
     previewAssetSet: {
-      ...PIXEL_ART_V1_PRESET.previewAssetSet,
-      map: { ...PIXEL_ART_V1_PRESET.previewAssetSet.map },
-      character: { ...PIXEL_ART_V1_PRESET.previewAssetSet.character },
-      supporting: PIXEL_ART_V1_PRESET.previewAssetSet.supporting.map((asset) => ({ ...asset })),
+      ...preset.previewAssetSet,
+      map: { ...preset.previewAssetSet.map },
+      character: { ...preset.previewAssetSet.character },
+      supporting: preset.previewAssetSet.supporting.map((asset) => ({ ...asset })),
     },
-    specification: { ...PIXEL_ART_V1_PRESET.specification },
+    specification: { ...preset.specification },
     customization: input.customization,
   });
   const bytes = postgresJsonbTextBytes(snapshot);

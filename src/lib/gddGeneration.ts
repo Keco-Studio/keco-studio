@@ -110,6 +110,7 @@ function sourceContext(source: GameDesignSourceSnapshot): string {
 function designDocumentContext(document: GameDesignDocument): string {
   const sanitize = (value: string) => sanitizeAgentPolicyText(value, GDD_DESIGN_DOCUMENT_FIELD_MAX_CHARS);
   const sanitized = {
+    gameBackground: document.gameBackground ? sanitize(document.gameBackground) : null,
     designIntent: sanitize(document.designIntent),
     playerFantasy: sanitize(document.playerFantasy),
     coreLoop: sanitize(document.coreLoop),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -10,7 +10,8 @@ import {
   SaveOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import type { GameDesignDocument, GameDesignRule, GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
+import type { GameDesignDocument, GameDesignRule } from '@/lib/game-design-system/ruleSchema';
+import type { CreateGameDesignSystemVersionRequest } from '@/lib/game-design-system/versionRequest';
 import type {
   GameDesignSystemDetail,
   GameDesignSystemStatus,
@@ -23,6 +24,7 @@ import {
   clearProjectGameDesignSystem,
   createGameDesignSystemVersion,
   deleteGameDesignSystem,
+  fetchGameDesignSystem,
   fetchProjectGameDesignSystem,
   fetchLatestProjectGddGenerationJob,
   fetchProjectGddGenerationJob,
@@ -30,9 +32,8 @@ import {
   updateGameDesignSystemDraft,
 } from '@/lib/services/gameDesignSystemClient';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import { GameDesignSystemRuleEditor } from './GameDesignSystemRuleEditor';
-import { GameDesignSystemDocumentEditor } from './GameDesignSystemDocumentEditor';
 import { GameArtStylePreview } from './GameArtStylePreview';
+import { GameDesignSystemVersionEditor } from './GameDesignSystemVersionEditor';
 import { GddGenerationDialog, type GddGenerationOptions } from './GddGenerationDialog';
 import styles from './GameDesignSystemsPage.module.css';
 
@@ -40,13 +41,23 @@ export type GameDesignSystemView = 'overview' | 'art-style' | 'rules' | 'version
 export type ProjectOption = { id: string; name: string };
 type Feedback = { tone: 'success' | 'error'; text: string };
 
-const views: Array<{ id: GameDesignSystemView; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'art-style', label: 'Art Style' },
-  { id: 'rules', label: 'Rules' },
-  { id: 'versions', label: 'Versions' },
-  { id: 'sources', label: 'Sources' },
-  { id: 'projects', label: 'Projects' },
+const viewGroups: Array<{ label: string; views: Array<{ id: GameDesignSystemView; label: string }> }> = [
+  {
+    label: 'Design',
+    views: [
+      { id: 'overview', label: 'Overview' },
+      { id: 'art-style', label: 'Art Style' },
+      { id: 'rules', label: 'Rules' },
+    ],
+  },
+  {
+    label: 'Manage',
+    views: [
+      { id: 'versions', label: 'Versions' },
+      { id: 'sources', label: 'Sources' },
+      { id: 'projects', label: 'Projects' },
+    ],
+  },
 ];
 
 const ruleKindLabels: Record<GameDesignRule['kind'], string> = {
@@ -121,27 +132,21 @@ const documentSections: Array<{ key: keyof GameDesignDocument; label: string; ey
 function OverviewView(props: {
   detail: GameDesignSystemDetail;
   version: GameDesignSystemVersion | null;
-  editing: boolean;
-  pending: boolean;
-  onCancelEditing: () => void;
-  onDirtyChange: (dirty: boolean) => void;
-  onCreateVersion: (document: GameDesignDocument) => Promise<void>;
+  canEdit: boolean;
+  onStartVersion: () => void;
 }) {
   if (!props.version) return <div className={styles.workspaceState}>This system has no available versions.</div>;
-  if (props.editing) {
-    return <GameDesignSystemDocumentEditor
-      base={props.version.document}
-      pending={props.pending}
-      onDirtyChange={props.onDirtyChange}
-      onCancel={props.onCancelEditing}
-      onSave={props.onCreateVersion}
-    />;
-  }
   return (
     <section className={styles.documentView} role="tabpanel">
       <div className={styles.documentHeading}>
-        <div><span className={styles.eyebrow}>Human-readable system</span><h2>Design document</h2><p>Version {props.version.version_number} / {props.version.rules.suitableFor}</p></div>
+        <div><span className={styles.eyebrow}>Human-readable system</span><h2 id="gds-document-heading" tabIndex={-1}>Design document</h2><p>Version {props.version.version_number} / {props.version.rules.suitableFor}</p></div>
+        {props.canEdit ? <button className={styles.secondaryButton} type="button" aria-label="Iterate from document view" onClick={props.onStartVersion}><EditOutlined /> Iterate this version</button> : null}
       </div>
+      <section className={styles.gameBackgroundReading}>
+        <span className={styles.eyebrow}>World context</span>
+        <h3>Game Background &amp; Setting</h3>
+        <p>{props.version.document.gameBackground || 'Not specified'}</p>
+      </section>
       <div className={styles.documentLead}>
         <section>
           <span className={styles.eyebrow}>Design intent</span>
@@ -169,8 +174,11 @@ function OverviewView(props: {
 function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) {
   return (
     <section className={styles.artStyleView} role="tabpanel">
-      {!version?.artStyle
-        ? <div className={styles.inlineEmpty}>No art style specified</div>
+      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Read-only snapshot</span><h2>Visual direction</h2><p>Review the preset and saved visual guidance for this version. Use the single iteration action in the system header to make changes.</p></div></div>
+      {version?.artStyleReadError
+        ? <div className={styles.inlineEmpty}>This version contains an unsupported Art Style snapshot. It remains inherited exactly until explicitly replaced.</div>
+        : !version?.artStyle
+          ? <div className={styles.inlineEmpty}>No art style specified</div>
         : <GameArtStylePreview snapshot={version.artStyle} mode="browse" showCustomization />}
     </section>
   );
@@ -179,20 +187,13 @@ function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) 
 function RulesView(props: {
   detail: GameDesignSystemDetail;
   version: GameDesignSystemVersion | null;
-  owned: boolean;
-  pending: boolean;
-  onDirtyChange: (dirty: boolean) => void;
-  onCreateVersion: (rules: GameDesignRuleSet) => void;
 }) {
   const [selectedRuleId, setSelectedRuleId] = useState('');
-  const [editing, setEditing] = useState(false);
   const selectedRule = props.version?.rules.rules.find((rule) => rule.id === selectedRuleId)
     ?? props.version?.rules.rules[0]
     ?? null;
 
   if (!props.version) return <div className={styles.workspaceState}>This system has no available versions.</div>;
-  if (editing) return <GameDesignSystemRuleEditor base={props.version.rules} pending={props.pending} onDirtyChange={props.onDirtyChange} onCancel={() => setEditing(false)} onCreate={props.onCreateVersion} />;
-
   return (
     <section className={styles.rulesWorkbench} role="tabpanel">
       <aside className={styles.ruleOutline} aria-label="Rule outline">
@@ -209,8 +210,7 @@ function RulesView(props: {
       </aside>
       <article className={styles.ruleReading}>
         <div className={styles.sectionHeading}>
-          <div><span className={styles.eyebrow}>{selectedRule ? ruleKindLabels[selectedRule.kind] : 'Rule'}</span><h3>{selectedRule?.title || 'No rule selected'}</h3></div>
-          {props.owned ? <button className={styles.primaryButton} type="button" aria-label="New version" onClick={() => setEditing(true)}><EditOutlined /> New version</button> : null}
+          <div><span className={styles.eyebrow}>{selectedRule ? ruleKindLabels[selectedRule.kind] : 'Rule'}</span><h3>{selectedRule?.title || 'No rule selected'}</h3><p>This is a read-only snapshot. Use the system header action to add or refine rules in a new version.</p></div>
         </div>
         {selectedRule ? (
           <>
@@ -226,8 +226,15 @@ function RulesView(props: {
         ) : null}
       </article>
       <aside className={styles.ruleContext}>
-        <span className={styles.eyebrow}>Version context</span>
+        <span className={styles.eyebrow}>Rule-set context</span>
         <h3>Version {props.version.version_number}</h3>
+        <dl>
+          <div><dt>Genres</dt><dd>{props.version.rules.genres.join(', ') || 'Not specified'}</dd></div>
+          <div><dt>Philosophies</dt><dd>{props.version.rules.philosophies.join(', ') || 'Not specified'}</dd></div>
+          <div><dt>Suitable for</dt><dd>{props.version.rules.suitableFor}</dd></div>
+        </dl>
+        <h4>Table Guidance</h4>
+        {props.version.rules.tableGuidance.length ? <div className={styles.ruleGuidanceReading}>{props.version.rules.tableGuidance.map((item) => <div key={item.table}><strong>{item.table}</strong><span>{item.purpose}</span><small>{item.fields.join(', ') || 'No fields recorded'}</small></div>)}</div> : <p>No table guidance.</p>}
         <VersionContext detail={props.detail} version={props.version} />
         <dl>
           <div><dt>Rules</dt><dd>{props.version.rules.rules.length}</dd></div>
@@ -242,7 +249,9 @@ function RulesView(props: {
 function VersionsView({ detail, selectedVersionId, onSelect }: { detail: GameDesignSystemDetail; selectedVersionId: string; onSelect: (id: string) => void }) {
   return (
     <section className={styles.viewPanel} role="tabpanel">
-      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Immutable history</span><h3>{detail.versions.length} saved {detail.versions.length === 1 ? 'version' : 'versions'}</h3></div></div>
+      <div className={styles.sectionHeading}>
+        <div><span className={styles.eyebrow}>Immutable history</span><h3>{detail.versions.length} saved {detail.versions.length === 1 ? 'version' : 'versions'}</h3><p>Select a version to inspect its exact snapshot. Start a new iteration from the system header when you are ready to change it.</p></div>
+      </div>
       <div className={styles.versionList}>
         {detail.versions.map((version) => (
           <article className={version.id === selectedVersionId ? styles.versionRowActive : styles.versionRow} key={version.id}>
@@ -253,6 +262,12 @@ function VersionsView({ detail, selectedVersionId, onSelect }: { detail: GameDes
             <div className={styles.diffMetricsCompact}>
               <span>+{version.diff.added.length}</span><span>~{version.diff.changed.length}</span><span>-{version.diff.removed.length}</span><span className={version.conflicts.length ? styles.conflictText : ''}>{version.conflicts.length} conflicts</span>
             </div>
+            {'schemaVersion' in version.diff ? <div className={styles.versionDomainChanges}>
+              <span>Document: {version.diff.document.changedSections.length ? version.diff.document.changedSections.join(', ') : 'unchanged'}</span>
+              <span>Rules settings: {version.diff.ruleSetSettingsChanged ? 'changed' : 'unchanged'}</span>
+              <span>Table Guidance: {version.diff.tableGuidanceChanged ? 'changed' : 'unchanged'}</span>
+              <span>Art Style: {version.diff.artStyle.change.replaceAll('_', ' ')}</span>
+            </div> : <div className={styles.versionDomainChanges}><span>Document: not recorded</span><span>Rules settings: not recorded</span><span>Table Guidance: not recorded</span><span>Art Style: not recorded</span></div>}
             <VersionContext detail={detail} version={version} />
             <code className={styles.hash}>{version.content_hash}</code>
           </article>
@@ -450,9 +465,9 @@ export function GameDesignSystemWorkspace(props: Props) {
   const [view, setView] = useState<GameDesignSystemView>('overview');
   const [selectedVersionId, setSelectedVersionId] = useState(detail.current_version?.id ?? detail.versions[0]?.id ?? '');
   const [editingMetadata, setEditingMetadata] = useState(false);
-  const [editingDocument, setEditingDocument] = useState(false);
-  const [documentDirty, setDocumentDirty] = useState(false);
-  const [rulesDirty, setRulesDirty] = useState(false);
+  const [editingVersion, setEditingVersion] = useState(false);
+  const versionActionRef = useRef<HTMLButtonElement | null>(null);
+  const versionIdempotencyKeyRef = useRef(crypto.randomUUID());
   const [metadataDraft, setMetadataDraft] = useState<{ title: string; summary: string; status: GameDesignSystemStatus }>({ title: detail.title, summary: detail.summary ?? '', status: detail.status });
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const selectedVersion = detail.versions.find((version) => version.id === selectedVersionId)
@@ -465,7 +480,7 @@ export function GameDesignSystemWorkspace(props: Props) {
     || metadataDraft.summary !== (detail.summary ?? '')
     || metadataDraft.status !== detail.status
   );
-  const draftDirty = documentDirty || rulesDirty || metadataDirty;
+  const draftDirty = metadataDirty;
   const resetMetadataDraft = () => setMetadataDraft({
     title: detail.title,
     summary: detail.summary ?? '',
@@ -481,21 +496,15 @@ export function GameDesignSystemWorkspace(props: Props) {
 
   const changeView = (nextView: GameDesignSystemView) => {
     if (nextView === view || !confirmDiscardDraft()) return;
-    setEditingDocument(false);
     setEditingMetadata(false);
     resetMetadataDraft();
-    setDocumentDirty(false);
-    setRulesDirty(false);
     setView(nextView);
   };
 
   const changeVersion = (nextVersionId: string) => {
     if (nextVersionId === selectedVersion?.id || !confirmDiscardDraft()) return;
-    setEditingDocument(false);
     setEditingMetadata(false);
     resetMetadataDraft();
-    setDocumentDirty(false);
-    setRulesDirty(false);
     setSelectedVersionId(nextVersionId);
   };
 
@@ -510,9 +519,11 @@ export function GameDesignSystemWorkspace(props: Props) {
     onError: (error) => setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to save system details.' }),
   });
   const versionMutation = useMutation({
-    mutationFn: (input: { rules: GameDesignRuleSet; document?: GameDesignDocument }) => input.document
-      ? createGameDesignSystemVersion(detail.id, input.rules, selectedVersion?.id, input.document)
-      : createGameDesignSystemVersion(detail.id, input.rules, selectedVersion?.id),
+    mutationFn: (input: CreateGameDesignSystemVersionRequest) => {
+      if (!selectedVersion) throw new Error('Select a base version before creating a version.');
+      if (!detail.current_version) throw new Error('Reload the current version before creating a version.');
+      return createGameDesignSystemVersion(detail.id, input, versionIdempotencyKeyRef.current);
+    },
     onSuccess: async (version) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystem(detail.id) }),
@@ -529,7 +540,11 @@ export function GameDesignSystemWorkspace(props: Props) {
         suitable_for: version.rules.suitableFor,
       } : current);
       setSelectedVersionId(version.id);
+      setEditingVersion(false);
+      setView('overview');
+      versionIdempotencyKeyRef.current = crypto.randomUUID();
       setFeedback({ tone: 'success', text: 'Version ' + version.version_number + ' created.' });
+      window.setTimeout(() => globalThis.document.getElementById('gds-document-heading')?.focus(), 0);
     },
     onError: (error) => setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to create version.' }),
   });
@@ -542,6 +557,26 @@ export function GameDesignSystemWorkspace(props: Props) {
     onError: (error) => setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to delete system.' }),
   });
   const busy = metadataMutation.isPending || versionMutation.isPending || deleteMutation.isPending;
+
+  async function refreshLatestVersion(): Promise<GameDesignSystemVersion> {
+    const latestDetail = await fetchGameDesignSystem(detail.id);
+    queryClient.setQueryData(queryKeys.gameDesignSystem(detail.id), latestDetail);
+    const latest = latestDetail.current_version;
+    if (!latest) throw new Error('The current version could not be loaded.');
+    versionIdempotencyKeyRef.current = crypto.randomUUID();
+    return latest;
+  }
+
+  if (editingVersion && selectedVersion) {
+    return <GameDesignSystemVersionEditor
+      baseVersion={selectedVersion}
+      currentVersionId={detail.current_version?.id ?? detail.current_version_id ?? selectedVersion.id}
+      pending={versionMutation.isPending}
+      onCancel={() => { setEditingVersion(false); window.setTimeout(() => versionActionRef.current?.focus(), 0); }}
+      onCreate={(request) => versionMutation.mutateAsync(request)}
+      onRefreshLatest={refreshLatestVersion}
+    />;
+  }
 
   return (
     <section className={styles.workspace} aria-label="System details">
@@ -561,23 +596,26 @@ export function GameDesignSystemWorkspace(props: Props) {
         )}
         <div className={styles.detailActions}>
           {owned && editingMetadata ? <button className={styles.primaryButton} type="button" aria-label="Save details" disabled={!metadataDraft.title.trim() || busy} onClick={() => metadataMutation.mutate()}><SaveOutlined /> Save details</button> : null}
-          {owned ? <button className={styles.secondaryButton} type="button" aria-label={editingMetadata ? 'Cancel editing details' : 'Edit details'} disabled={busy} onClick={() => { if (editingMetadata) { if (!confirmDiscardDraft()) return; resetMetadataDraft(); setEditingMetadata(false); return; } setEditingMetadata(true); }}><EditOutlined /> {editingMetadata ? 'Cancel' : 'Edit details'}</button> : null}
-          {owned ? <button className={styles.secondaryButton} type="button" aria-label="Edit document" disabled={busy || editingMetadata} onClick={() => { if (view !== 'overview' && !confirmDiscardDraft()) return; setRulesDirty(false); setView('overview'); setEditingDocument(true); }}><EditOutlined /> Edit document</button> : null}
+          {owned ? <button className={styles.secondaryButton} type="button" aria-label={editingMetadata ? 'Cancel editing system info' : 'Edit system info'} disabled={busy} onClick={() => { if (editingMetadata) { if (!confirmDiscardDraft()) return; resetMetadataDraft(); setEditingMetadata(false); return; } setEditingMetadata(true); }}><EditOutlined /> {editingMetadata ? 'Cancel' : 'Edit system info'}</button> : null}
+          {owned ? <button ref={versionActionRef} className={styles.primaryButton} type="button" aria-label="Start version iteration" disabled={busy || editingMetadata || !selectedVersion} onClick={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }}><EditOutlined /> Start version iteration</button> : null}
           {owned ? <button className={styles.iconButtonDanger} type="button" aria-label="Delete system" title="Delete system" disabled={busy} onClick={() => { if (window.confirm('Delete this system?')) deleteMutation.mutate(); }}><DeleteOutlined /></button> : null}
         </div>
       </header>
 
       <div className={styles.workspaceControls}>
         <nav className={styles.viewTabs} aria-label="Game Design System views" role="tablist">
-          {views.map((item) => <button type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? styles.viewTabActive : styles.viewTab} key={item.id} onClick={() => changeView(item.id)}>{item.label}</button>)}
+          {viewGroups.map((group) => <div className={styles.viewTabGroup} key={group.label}>
+            <span className={styles.viewTabGroupLabel}>{group.label}</span>
+            {group.views.map((item) => <button type="button" role="tab" aria-selected={view === item.id} className={view === item.id ? styles.viewTabActive : styles.viewTab} key={item.id} onClick={() => changeView(item.id)}>{item.label}</button>)}
+          </div>)}
         </nav>
         <label className={styles.versionSelect}><span>Version</span><select className={styles.select} value={selectedVersion?.id ?? ''} onChange={(event) => changeVersion(event.target.value)}>{detail.versions.map((version) => <option key={version.id} value={version.id}>Version {version.version_number}{version.id === detail.current_version_id ? ' (Current)' : ''}</option>)}</select></label>
       </div>
 
       {feedback ? <div className={feedback.tone === 'error' ? styles.error : styles.notice} role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.text}</div> : null}
-      {view === 'overview' ? <OverviewView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} editing={editingDocument} pending={versionMutation.isPending} onDirtyChange={setDocumentDirty} onCancelEditing={() => setEditingDocument(false)} onCreateVersion={async (document) => { await versionMutation.mutateAsync({ rules: selectedVersion!.rules, document }); setEditingDocument(false); }} /> : null}
+      {view === 'overview' ? <OverviewView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
       {view === 'art-style' ? <ArtStyleView key={selectedVersion?.id ?? 'no-version'} version={selectedVersion} /> : null}
-      {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} owned={owned} pending={versionMutation.isPending} onDirtyChange={setRulesDirty} onCreateVersion={(rules) => versionMutation.mutate({ rules })} /> : null}
+      {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} /> : null}
       {view === 'versions' ? <VersionsView detail={detail} selectedVersionId={selectedVersion?.id ?? ''} onSelect={changeVersion} /> : null}
       {view === 'sources' ? <SourcesView version={selectedVersion} /> : null}
       {view === 'projects' ? <ProjectsView detail={detail} version={selectedVersion} projects={props.projects} loading={props.projectsLoading} error={props.projectsError} onRetry={props.onRetryProjects} onFeedback={setFeedback} /> : null}

@@ -49,18 +49,27 @@ const validDocument = {
 describe('Game Design Rule Set contract', () => {
   it('strictly parses a complete human-readable design document', () => {
     expect(parseGameDesignDocument(validDocument)).toEqual(validDocument);
+    expect(parseGameDesignDocument({
+      ...validDocument,
+      gameBackground: 'A river kingdom recovering from a magical flood.',
+    }).gameBackground).toBe('A river kingdom recovering from a magical flood.');
     expect(() => parseGameDesignDocument({ ...validDocument, coreLoop: '' })).toThrow();
     expect(() => parseGameDesignDocument({ ...validDocument, extra: 'not allowed' })).toThrow();
     expect(() => parseGameDesignDocument({ ...validDocument, designIntent: 'x'.repeat(4001) })).toThrow();
   });
 
   it('parses a bounded generated document and rules envelope', () => {
-    expect(parseGeneratedGameDesignSystem({ document: validDocument, rules: valid })).toEqual({
-      document: validDocument,
+    const generatedDocument = {
+      ...validDocument,
+      gameBackground: 'A river kingdom recovering from a magical flood.',
+    };
+    expect(() => parseGeneratedGameDesignSystem({ document: validDocument, rules: valid })).toThrow(/gameBackground/);
+    expect(parseGeneratedGameDesignSystem({ document: generatedDocument, rules: valid })).toEqual({
+      document: generatedDocument,
       rules: valid,
     });
     expect(() => parseGeneratedGameDesignSystem({
-      document: Object.fromEntries(Object.keys(validDocument).map((key) => [key, 'x'.repeat(4000)])),
+      document: Object.fromEntries(Object.keys(generatedDocument).map((key) => [key, 'x'.repeat(4000)])),
       rules: {
         ...valid,
         rules: Array.from({ length: 40 }, (_, index) => ({

@@ -1,0 +1,83 @@
+{
+  "release": "cel-shaded-3d@1",
+  "reviewers": [
+    {
+      "name": "Pascal",
+      "role": "independent visual reviewer"
+    },
+    {
+      "name": "Hubble",
+      "role": "independent visual reviewer"
+    }
+  ],
+  "selected": {
+    "map": 1,
+    "character": 1
+  },
+  "candidates": {
+    "map": [
+      {
+        "variant": 1,
+        "sha256": "770535810487fc6736cc087b88c7757e405cc2f825a5eb94a0dc13752fb12f50"
+      },
+      {
+        "variant": 2,
+        "sha256": "45972a747e50107eba054cb8841d43058e0ab8b52cdea18fbb3c707d21ac6c5f"
+      },
+      {
+        "variant": 3,
+        "sha256": "0194ba299185562e0814f7a810291ecec9244fc526b880878a3a7eec8c85a55b"
+      }
+    ],
+    "character": [
+      {
+        "variant": 1,
+        "sha256": "f16cc71642c250274aedc6a18e68e16cc7b2e6f835246d8328d78b4c0847e450"
+      },
+      {
+        "variant": 2,
+        "sha256": "69dfad9be787f7f6da593037a13fb248f3f877bf280012ecb1eb59f1a6308a4b"
+      },
+      {
+        "variant": 3,
+        "sha256": "811fb39a30e23d381d12c1294932afebe875a72fbbc2d8ebfaa9aa6900822372"
+      }
+    ]
+  },
+  "rubrics": {
+    "mapRouteReadability": "pass",
+    "adultAnatomy": "pass",
+    "styleBoundary": "pass",
+    "pairConsistency": "pass",
+    "noTextLogoOrWatermark": "pass",
+    "noArtistFranchiseOrCharacterImitation": "pass",
+    "celShadedAndLowPolyMutualExclusion": "pass"
+  },
+  "rejections": [
+    {
+      "kind": "map",
+      "variant": 2,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "map",
+      "variant": 3,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "character",
+      "variant": 2,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "character",
+      "variant": 3,
+      "reason": "Not selected after independent visual comparison."
+    }
+  ],
+  "contactSheets": {
+    "mapSha256": "c19c9ab0d3612604177147856712779de22ff2a58553fd1b2154cbeb758b4a7a",
+    "characterSha256": "7112140c7394a9b592152a5c8e01e13047488d91dec93d21454a9ba0bfc7c654",
+    "pairSha256": "e04571b314fc0523c6f5b59f5721220350e8aed3ae38eb8aa3911eb8f86d263a"
+  }
+}

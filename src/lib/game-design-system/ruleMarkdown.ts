@@ -33,6 +33,14 @@ export function renderRuleSetMarkdown(
 
   if (metadata.document) {
     const document = metadata.document;
+    if (document.gameBackground) {
+      lines.push(
+        '',
+        '## Game Background & Setting',
+        '',
+        document.gameBackground,
+      );
+    }
     lines.push(
       '',
       '## Design Intent & Player Fantasy',

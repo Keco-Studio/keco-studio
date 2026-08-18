@@ -21,9 +21,12 @@ const normalizedReferenceGameSchema = z.object({
   borrow: z.string().min(1).max(500),
 }).strict();
 
+const presetIdSchema = z.string().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const presetVersionSchema = z.number().int().positive();
+
 const rawInputSchema = z.object({
-  presetId: z.literal('pixel-art'),
-  presetVersion: z.literal(1),
+  presetId: presetIdSchema,
+  presetVersion: presetVersionSchema,
   customization: z.object({
     direction: z.string().optional(),
     referenceGames: z.array(rawReferenceGameSchema).max(8),
@@ -100,11 +103,11 @@ export const gameArtStyleSpecificationSchema = z.object({
 
 export const gameArtStylePresetSchema = z.object({
   schemaVersion: z.literal(1),
-  presetId: z.literal('pixel-art'),
-  presetVersion: z.literal(1),
-  title: z.literal('Pixel Art'),
+  presetId: presetIdSchema,
+  presetVersion: presetVersionSchema,
+  title: z.string().trim().min(1).max(120),
   previewAssetSet: z.object({
-    id: z.literal('pixel-art-v1'),
+    id: z.string().trim().min(1).max(120),
     map: gameArtStylePreviewAssetSchema,
     character: gameArtStylePreviewAssetSchema,
     supporting: z.array(gameArtStylePreviewAssetSchema),
@@ -121,6 +124,7 @@ export const gameArtStyleSnapshotSchema = gameArtStylePresetSchema.extend({
 }).strict();
 
 export type GameArtStyleInput = z.input<typeof gameArtStyleInputSchema>;
+export type GameArtStylePresetId = z.infer<typeof presetIdSchema>;
 export type NormalizedGameArtStyleInput = z.output<typeof gameArtStyleInputSchema>;
 export type GameArtStylePreviewAsset = z.infer<typeof gameArtStylePreviewAssetSchema>;
 export type GameArtStylePreset = z.infer<typeof gameArtStylePresetSchema>;

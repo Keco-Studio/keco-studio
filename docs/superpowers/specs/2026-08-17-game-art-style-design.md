@@ -131,7 +131,7 @@ type GameArtStylePreviewAsset = {
 
 `sourcePath` identifies the checked-in repository file, while `publicPath` is the browser URL. Width, height, and bytes are positive integers. Preset files live under a never-overwritten path such as `public/game-art-styles/pixel-art/v1/`. A future replacement creates `v2`; it does not mutate `v1`.
 
-The literal canonical Pixel Art v1 values are checked in at `docs/superpowers/specs/2026-08-17-pixel-art-v1-preset.json`. That file is the only runtime registry input and contains the exact specification copy, preview metadata, asset dimensions, hashes, and paths; implementations must not paraphrase or independently duplicate those values. The adjacent asset manifest is authoring provenance and CI cross-check evidence only. Neither the compiler nor the UI may read runtime values from the provenance manifest.
+The literal canonical Pixel Art v1 values are checked in at `docs/superpowers/specs/game-art-styles/pixel-art/v1/preset.json`. That file is the only runtime registry input and contains the exact specification copy, preview metadata, asset dimensions, hashes, and paths; implementations must not paraphrase or independently duplicate those values. The adjacent asset manifest is authoring provenance and CI cross-check evidence only. Neither the compiler nor the UI may read runtime values from the provenance manifest.
 
 ## Normalization And Limits
 

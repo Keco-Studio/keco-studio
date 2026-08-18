@@ -245,11 +245,11 @@
 
 .workspaceHeader {
   display: flex;
-  min-height: 116px;
+  min-height: 92px;
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  padding: 22px 28px 18px;
+  padding: 18px 28px 14px;
   border-bottom: 1px solid #e5e9ee;
 }
 
@@ -342,6 +342,30 @@
   overflow-x: auto;
 }
 
+.viewTabGroup {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.viewTabGroup + .viewTabGroup {
+  margin-left: 18px;
+  border-left: 1px solid #e1e6eb;
+  padding-left: 10px;
+}
+
+.viewTabGroupLabel {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px 0 0;
+  color: #9aa3ad;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 .viewTab,
 .viewTabActive {
   height: 49px;
@@ -419,6 +443,26 @@
   gap: 36px;
   padding: 30px 0;
   border-bottom: 1px solid #e5e9ed;
+}
+
+.gameBackgroundReading {
+  padding: 24px 0;
+  border-bottom: 1px solid #e5e9ed;
+}
+
+.gameBackgroundReading h3 {
+  margin: 5px 0 10px;
+  color: #202a36;
+  font-size: 15px;
+}
+
+.gameBackgroundReading p {
+  max-width: 840px;
+  margin: 0;
+  color: #4f5c69;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
 }
 
 .documentLead section,
@@ -663,6 +707,31 @@
   line-height: 1.55;
 }
 
+.ruleContext h4 {
+  margin: 22px 0 8px;
+  color: #34404d;
+  font-size: 11px;
+}
+
+.ruleGuidanceReading {
+  display: grid;
+  gap: 9px;
+}
+
+.ruleGuidanceReading > div {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid #e1e6eb;
+  padding-top: 8px;
+  color: #53606e;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.ruleGuidanceReading small {
+  color: #7a8491;
+}
+
 .ruleContext dl {
   margin-top: 18px;
   border-top: 1px solid #e1e6eb;
@@ -802,6 +871,15 @@
   gap: 12px;
   color: #687381;
   font-size: 11px;
+}
+
+.versionDomainChanges {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: #5f6b78;
+  font-size: 10px;
 }
 
 .versionRow .versionContext,
@@ -970,37 +1048,61 @@
   line-height: 1.55;
 }
 
-.artStyleCatalogOption {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
+.artStyleCatalogOptions {
+  display: grid;
+  gap: 6px;
   margin-top: 10px;
-  border: 1px solid #8bb9ed;
+}
+
+.artStyleCatalogOption,
+.artStyleCatalogOptionActive {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #d7dde4;
   border-radius: 7px;
-  background: #edf5ff;
-  padding: 12px;
+  background: #fff;
+  padding: 8px;
   color: #27313d;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.artStyleCatalogOption input {
-  margin: 2px 0 0;
-  accent-color: #2070d8;
+.artStyleCatalogOptionActive {
+  border-color: #8bb9ed;
+  background: #edf5ff;
 }
 
-.artStyleCatalogOption span {
+.artStyleCatalogOption > span:last-child,
+.artStyleCatalogOptionActive > span:last-child {
   display: grid;
   min-width: 0;
   gap: 3px;
 }
 
-.artStyleCatalogOption strong {
+.artStyleCatalogOption strong,
+.artStyleCatalogOptionActive strong {
   font-size: 12px;
 }
 
-.artStyleCatalogOption small {
+.artStyleCatalogOption small,
+.artStyleCatalogOptionActive small {
   color: #55708f;
   font-size: 10px;
   line-height: 1.4;
+}
+
+.artStyleCatalogSwatch {
+  flex: 0 0 54px;
+  width: 54px;
+  height: 36px;
+  border: 1px solid #d9dee4;
+  border-radius: 4px;
+  background-position: center;
+  background-size: cover;
 }
 
 .artStyleMain {
@@ -1038,11 +1140,13 @@
 .artStyleGallery {
   display: grid;
   grid-template-columns: minmax(0, 1.75fr) minmax(140px, .75fr);
+  align-items: start;
   gap: 10px;
 }
 
 .artStylePreviewItem {
   min-width: 0;
+  align-self: start;
   margin: 0;
   overflow: hidden;
   border: 1px solid #dce2e8;
@@ -1059,12 +1163,7 @@
   background: #e9eef2;
 }
 
-.artStyleMapFrame {
-  aspect-ratio: 7 / 4;
-}
-
 .artStyleCharacterFrame {
-  aspect-ratio: 1;
   width: min(100%, 320px);
   justify-self: center;
   background-color: #eef2f5;
@@ -1073,9 +1172,14 @@
   background-size: 16px 16px;
 }
 
-.artStylePixelImage {
+.artStylePreviewImage {
   display: block;
-  max-width: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.artStylePixelImage {
   image-rendering: pixelated;
 }
 
@@ -1785,6 +1889,239 @@
   white-space: nowrap;
 }
 
+.versionEditor {
+  min-height: calc(100vh - 48px);
+  background: #fff;
+  color: #27313d;
+}
+
+.versionEditorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid #e2e7ec;
+  padding: 22px 28px 18px;
+}
+
+.versionEditorHeader h1 {
+  margin: 4px 0 5px;
+  color: #18202b;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.versionEditorHeader p {
+  margin: 0;
+  color: #74808e;
+  font-size: 11px;
+}
+
+.versionWorkflowSteps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  border-bottom: 1px solid #e2e7ec;
+  background: #f8fafc;
+  padding: 14px 28px;
+  list-style: none;
+}
+
+.versionWorkflowSteps li {
+  min-width: 0;
+  border-left: 2px solid #d7e1eb;
+  padding: 2px 10px;
+}
+
+.versionWorkflowSteps li:first-child {
+  border-left-color: #2070d8;
+}
+
+.versionWorkflowSteps strong,
+.versionWorkflowSteps span {
+  display: block;
+}
+
+.versionWorkflowSteps strong {
+  color: #263b52;
+  font-size: 11px;
+}
+
+.versionWorkflowSteps span {
+  margin-top: 3px;
+  color: #718092;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.versionEditorTabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid #e2e7ec;
+  padding: 0 28px;
+}
+
+.versionEditorTab,
+.versionEditorTabActive {
+  min-height: 48px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #687381;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.versionEditorTabActive {
+  border-bottom-color: #2070d8;
+  color: #155cb5;
+  font-weight: 650;
+}
+
+.versionEditorSectionSelect {
+  display: none;
+}
+
+.versionEditorPanel {
+  min-height: 480px;
+}
+
+.versionEditor .ruleEditorWorkbench {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.ruleFilters {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.ruleFilters label,
+.compactRuleSelect {
+  color: #687381;
+  font-size: 10px;
+}
+
+.compactRuleSelect {
+  display: none;
+}
+
+.artStyleEditor,
+.versionReview {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 30px 34px 54px;
+}
+
+.artStyleFieldsStandalone {
+  display: grid;
+  gap: 20px;
+}
+
+.versionReviewDomains {
+  display: grid;
+  gap: 34px;
+}
+
+.versionReviewDomains > section {
+  border-top: 1px solid #dfe5eb;
+  padding-top: 16px;
+}
+
+.versionReviewDomains h3 {
+  margin: 0 0 10px;
+  color: #27313d;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.versionReviewDomains dl {
+  margin: 0;
+}
+
+.versionChangeRow {
+  display: grid;
+  grid-template-columns: minmax(130px, .55fr) repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  border-top: 1px solid #edf0f3;
+  padding: 12px 0;
+}
+
+.versionChangeRow dt {
+  color: #4b5764;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.versionChangeRow dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.versionChangeRow dd > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #8a94a1;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.versionChangeRow p {
+  margin: 0;
+  color: #3f4b58;
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.staleRecovery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-top: 1px solid #e2e7ec;
+  border-bottom: 1px solid #e2e7ec;
+  padding: 14px 0;
+  color: #4b5764;
+  font-size: 11px;
+}
+
+.staleRecovery label {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+}
+
+.staleRecovery .primaryButton {
+  margin-left: auto;
+}
+
+.versionEditorActions {
+  position: sticky;
+  z-index: 10;
+  bottom: 0;
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  border-top: 1px solid #dfe5eb;
+  background: rgba(255, 255, 255, .97);
+  padding: 12px 28px;
+}
+
+.versionEditorActions > span {
+  margin-right: auto;
+  color: #74808e;
+  font-size: 10px;
+}
+
 @keyframes shimmer {
   from { background-position: 100% 0; }
   to { background-position: -100% 0; }
@@ -1871,6 +2208,89 @@
     padding: 0 16px;
   }
 
+  .versionEditorHeader {
+    padding: 18px 16px;
+  }
+
+  .versionEditorTabs {
+    display: none;
+  }
+
+  .versionEditorSectionSelect {
+    display: grid;
+    gap: 6px;
+    border-bottom: 1px solid #e2e7ec;
+    padding: 12px 16px;
+    color: #4b5764;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .versionEditorSectionSelect .select,
+  .versionEditor .input,
+  .versionEditor .select,
+  .versionEditor .primaryButton,
+  .versionEditor .secondaryButton,
+  .versionEditor .iconButton,
+  .versionEditor .iconButtonDanger {
+    min-height: 44px;
+  }
+
+  .versionEditor .iconButton,
+  .versionEditor .iconButtonDanger {
+    min-width: 44px;
+  }
+
+  .versionEditor .ruleEditorWorkbench {
+    display: block;
+  }
+
+  .versionEditor .ruleOutline {
+    overflow: visible;
+  }
+
+  .versionEditor .outlineGroup {
+    display: none;
+  }
+
+  .versionEditor .ruleFilters {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(130px, .45fr));
+  }
+
+  .compactRuleSelect {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 6px;
+  }
+
+  .versionEditor .formGrid,
+  .versionEditor .documentEditorGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .versionEditor .documentEditorGrid > *,
+  .versionEditor .fieldWide {
+    grid-column: 1;
+  }
+
+  .artStyleEditor,
+  .versionReview,
+  .versionEditor .documentEditor,
+  .versionEditor .ruleForm {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .versionChangeRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .versionEditorActions {
+    min-height: 72px;
+    padding: 12px 16px;
+  }
+
   .rulesWorkbench,
   .ruleEditorWorkbench {
     display: block;
@@ -1929,6 +2349,25 @@
 }
 
 @media (max-width: 640px) {
+  .versionWorkflowSteps {
+    grid-template-columns: 1fr 1fr;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .versionEditorHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .versionEditor .ruleFilters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .versionEditor .staleRecovery label {
+    min-height: 44px;
+  }
+
   .workspaceHeader {
     padding-right: 16px;
   }
