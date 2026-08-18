@@ -421,6 +421,26 @@
   border-bottom: 1px solid #e5e9ed;
 }
 
+.gameBackgroundReading {
+  padding: 24px 0;
+  border-bottom: 1px solid #e5e9ed;
+}
+
+.gameBackgroundReading h3 {
+  margin: 5px 0 10px;
+  color: #202a36;
+  font-size: 15px;
+}
+
+.gameBackgroundReading p {
+  max-width: 840px;
+  margin: 0;
+  color: #4f5c69;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
 .documentLead section,
 .documentBody section,
 .documentReview section {
@@ -663,6 +683,31 @@
   line-height: 1.55;
 }
 
+.ruleContext h4 {
+  margin: 22px 0 8px;
+  color: #34404d;
+  font-size: 11px;
+}
+
+.ruleGuidanceReading {
+  display: grid;
+  gap: 9px;
+}
+
+.ruleGuidanceReading > div {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid #e1e6eb;
+  padding-top: 8px;
+  color: #53606e;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.ruleGuidanceReading small {
+  color: #7a8491;
+}
+
 .ruleContext dl {
   margin-top: 18px;
   border-top: 1px solid #e1e6eb;
@@ -802,6 +847,15 @@
   gap: 12px;
   color: #687381;
   font-size: 11px;
+}
+
+.versionDomainChanges {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: #5f6b78;
+  font-size: 10px;
 }
 
 .versionRow .versionContext,
