@@ -233,41 +233,36 @@ function bulletList(items: string[], empty = '- None specified.'): string[] {
 
 export function renderGddMarkdown(gdd: GeneratedGdd, options: { input: GddGenerationInput }): string {
   const { input } = options;
-  const proposal = '> Provenance: AI proposal synthesized from authorized project evidence and sanitized Game Design System guidance. Authorized project evidence is the factual source; sanitized Game Design System guidance shapes the proposal.';
-  const guidance = '> Provenance: AI production guidance synthesized from authorized project evidence and sanitized Game Design System guidance.';
-  const uncertainty = '> Provenance: Assumptions are AI-identified uncertainties awaiting project confirmation.';
-  const evidence = '> Provenance: Server-verified generation evidence.';
   const lines = [
     `# ${gdd.title}`,
     '',
     `> Project: ${input.projectName}`,
     `> Generated from Game Design System: ${input.systemTitle} / Version ${input.versionNumber}`,
     '',
-    '## Overview', '', proposal, '', gdd.overview,
-    '', '## Design Intent', '', proposal, '', gdd.designIntent,
-    '', '## Player Fantasy', '', proposal, '', gdd.playerFantasy,
-    '', '## Core Loop', '', proposal, '', gdd.coreLoop,
-    '', '## Decision Structure', '', proposal, '', gdd.decisionStructure,
-    '', '## Gameplay Systems', '', proposal, '', gdd.gameplaySystems,
-    '', '## Content Model', '', proposal, '', gdd.contentModel,
-    '', '## Progression and Economy', '', proposal, '', gdd.progressionEconomy,
-    '', '## Difficulty and Balance', '', proposal, '', gdd.difficultyBalance,
-    '', '## Narrative and World', '', proposal, '', gdd.narrativeWorld,
-    '', '## Experience and Presentation', '', proposal, '', gdd.experiencePresentation,
-    '', '## Keco Table Plan', '', guidance,
+    '## Overview', '', gdd.overview,
+    '', '## Design Intent', '', gdd.designIntent,
+    '', '## Player Fantasy', '', gdd.playerFantasy,
+    '', '## Core Loop', '', gdd.coreLoop,
+    '', '## Decision Structure', '', gdd.decisionStructure,
+    '', '## Gameplay Systems', '', gdd.gameplaySystems,
+    '', '## Content Model', '', gdd.contentModel,
+    '', '## Progression and Economy', '', gdd.progressionEconomy,
+    '', '## Difficulty and Balance', '', gdd.difficultyBalance,
+    '', '## Narrative and World', '', gdd.narrativeWorld,
+    '', '## Experience and Presentation', '', gdd.experiencePresentation,
+    '', '## Keco Table Plan',
   ];
   if (gdd.productionTables.length === 0) lines.push('', '- No table plan was generated.');
   for (const table of gdd.productionTables) {
     lines.push('', `### ${table.table}`, '', table.purpose, '', `- Fields: ${table.fields.join(', ') || 'None specified'}`);
   }
-  lines.push('', '## Assumptions to Confirm', '', uncertainty, '', ...bulletList(gdd.assumptions));
-  lines.push('', '## Generation Evidence', '', evidence, '', `- Applied rules: ${gdd.appliedRuleIds.join(', ') || 'None declared'}`);
-  lines.push(`- Omitted rules: ${(gdd.omittedRuleIds ?? []).join(', ') || 'None'}`);
-  lines.push(`- Source snapshots: ${input.projectSources.length}`);
-  lines.push('', 'This document is an AI-generated draft. Verify assumptions before treating proposals as project facts.', '');
+  if (gdd.assumptions.length > 0) {
+    lines.push('', '## Assumptions to Confirm', '', ...bulletList(gdd.assumptions));
+  }
+  lines.push('');
   return lines.join('\n');
 }
 
-export function hashGddGenerationInput(input: GddGenerationInput): string {
+export function hashGddGenerationInput(input: unknown): string {
   return createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }

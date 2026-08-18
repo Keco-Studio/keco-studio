@@ -3,9 +3,14 @@ jest.mock('server-only', () => ({}));
 import {
   buildBlueprintMessages,
   generateGddBlueprint,
+  generateGddMarkdownV2,
+  generateGddV2,
   generateSectionBatch,
   GddV2GenerationValidationError,
+  repairGddSections,
+  reviewGddDocument,
 } from './generator';
+import type { ChatMessage } from '@/lib/agent/types';
 import type { GddGenerationRequestV2 } from './contracts';
 
 const input: GddGenerationRequestV2 = {
@@ -47,10 +52,53 @@ const blueprint = {
 };
 
 describe('GDD v2 staged generator', () => {
+  it('generates production Markdown in one completion without JSON parsing or model review', async () => {
+    const markdown = [
+      '```markdown',
+      '# 街角暖光：流浪羁绊',
+      '',
+      '## 游戏概述',
+      '这是完整概述。',
+      '',
+      '## Provenance',
+      'AI generated from project sources.',
+      '',
+      '## 核心循环',
+      '进入地图 → 选择地点 → 遇见猫咪 → 互动 → 推进时间。',
+      '```',
+    ].join('\n');
+    const complete = jest.fn(async () => markdown);
+
+    const result = await generateGddMarkdownV2({ ...input, mode: 'quick' }, complete);
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(result.markdown).toContain('# 街角暖光：流浪羁绊');
+    expect(result.markdown).toContain('## 核心循环');
+    expect(result.markdown).not.toContain('```');
+    expect(result.markdown).not.toMatch(/provenance/i);
+    expect(result.review).toMatchObject({ status: 'pass', issues: [] });
+  });
+
+  it('asks professional direct generation for a bounded executable Markdown GDD', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## 游戏概述\n正文。');
+
+    await generateGddMarkdownV2(input, complete);
+
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[0].content).toContain('Return the finished GDD as Markdown directly');
+    expect(messages[0].content).toContain('6,000-9,000 readable Chinese characters');
+    expect(messages[0].content).toContain('Do not return JSON');
+    expect(messages[0].content).toContain('calculate every worked example before writing it');
+  });
+
   it('builds a professional adaptive blueprint prompt with the creative brief', () => {
     const messages = buildBlueprintMessages(input);
     expect(messages[0].content).toContain('9 to 13 first-level sections');
     expect(messages[0].content).toContain('Do not add a production milestone section');
+    expect(messages[0].content).toContain('hyphens, underscores, or dots');
+    expect(messages[0].content).toContain('numericRegistry IDs and numericRefs must use lowercase ASCII identifiers');
+    expect(messages[0].content).toContain('Register every gameplay number exactly once');
+    expect(messages[0].content).toContain('Omit optional properties when unknown; never use null');
     expect(messages[1].content).toContain(input.creativeBrief);
     expect(messages[1].content).toContain('BEGIN_UNTRUSTED_GAME_DESIGN_DOCUMENT_DATA');
   });
@@ -61,11 +109,32 @@ describe('GDD v2 staged generator', () => {
     expect(complete).toHaveBeenCalledTimes(2);
   });
 
+  it('accepts a JSON response wrapped in a Markdown code fence', async () => {
+    const complete = jest.fn(async () => `\`\`\`json\n${JSON.stringify(blueprint)}\n\`\`\``);
+
+    await expect(generateGddBlueprint(input, complete)).resolves.toEqual(blueprint);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts complete JSON after an opening code fence without a closing fence', async () => {
+    const complete = jest.fn(async () => `\`\`\`json\n${JSON.stringify(blueprint)}`);
+
+    await expect(generateGddBlueprint(input, complete)).resolves.toEqual(blueprint);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it('generates only the requested section group', async () => {
     const sections = [{ id: 'systems', title: '系统', depth: 0, group: 'systems', blocks: [{ kind: 'paragraph', id: 'systems-p', text: '系统正文。' }], numericRefs: [] }];
     const complete = jest.fn(async () => JSON.stringify(sections));
     await expect(generateSectionBatch(input, blueprint, 'systems', complete)).resolves.toEqual(sections);
-    const prompt = (complete.mock.calls[0][0] as Array<{ content: string }>)[1].content;
+    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
+    const prompt = requestMessages[1].content;
+    expect(requestMessages[0].content).toContain('Use "kind", never "type"');
+    expect(requestMessages[0].content).toContain('Allowed ID separators are dot, hyphen, and underscore');
+    expect(requestMessages[0].content).toContain('Every quantitative statement and worked example must be recalculated');
+    expect(requestMessages[0].content).toContain('2,000-3,000 Chinese characters');
+    expect(requestMessages[0].content).toContain('omit parentId entirely for depth 0 sections');
+    expect(requestMessages[0].content).toContain('{"kind":"paragraph","id":"block-id","text":"..."}');
     expect(prompt).toContain('"id":"systems"');
     expect(prompt).not.toContain('Write only these nodes:\n[{"id":"overview"');
   });
@@ -74,5 +143,318 @@ describe('GDD v2 staged generator', () => {
     const transport = new Error('network');
     await expect(generateGddBlueprint(input, jest.fn(async () => { throw transport; }))).rejects.toBe(transport);
     await expect(generateGddBlueprint(input, jest.fn(async () => '{}'))).rejects.toBeInstanceOf(GddV2GenerationValidationError);
+  });
+
+  it('caps professional generation at two bounded section drafts, one review, and one repair', async () => {
+    const groups = ['core', 'systems', 'content'] as const;
+    const nodes = groups.flatMap((group) => [1, 2, 3].map((index) => ({
+      id: `${group}-${index}`,
+      label: `${group}-${index}`,
+      depth: 0,
+      group,
+    })));
+    const professionalBlueprint = {
+      version: 2 as const,
+      title: '完整 GDD',
+      numericRegistry: [],
+      nodes,
+    };
+    const sections = nodes.map((node) => ({
+      id: node.id,
+      title: node.label,
+      depth: 0,
+      group: node.group,
+      blocks: [{
+        kind: 'paragraph' as const,
+        id: `${node.id}-paragraph`,
+        text: `${node.id}${'完整设计内容'.repeat(120)}`,
+      }],
+      numericRefs: [],
+    }));
+    const unresolvedReview = {
+      version: 2 as const,
+      summary: '主体可用，仍可继续润色。',
+      status: 'repair' as const,
+      issues: [{
+        id: 'issue-warning',
+        severity: 'error' as const,
+        sectionId: 'systems-1',
+        message: '边界说明可以更具体。',
+        repairInstruction: '补充边界说明。',
+      }],
+    };
+    let reviewCalls = 0;
+    let repairCalls = 0;
+    let sectionCalls = 0;
+    const sectionPrompts: string[] = [];
+    const complete = jest.fn(async (messages: ChatMessage[]) => {
+      const system = typeof messages[0].content === 'string' ? messages[0].content : '';
+      if (system.includes('lead game designer planning')) return JSON.stringify(professionalBlueprint);
+      if (system.includes('writing the core, systems section groups')) {
+        sectionCalls += 1;
+        sectionPrompts.push(typeof messages[1].content === 'string' ? messages[1].content : '');
+        return JSON.stringify(sections.filter((section) => section.group !== 'content'));
+      }
+      if (system.includes('writing the content section group')) {
+        sectionCalls += 1;
+        sectionPrompts.push(typeof messages[1].content === 'string' ? messages[1].content : '');
+        return JSON.stringify(sections.filter((section) => section.group === 'content'));
+      }
+      if (system.includes('Review a complete GDD')) {
+        reviewCalls += 1;
+        return JSON.stringify(unresolvedReview);
+      }
+      if (system.includes('Repair only the named GDD sections')) {
+        repairCalls += 1;
+        return JSON.stringify(sections.filter((section) => section.id === 'systems-1'));
+      }
+      throw new Error('Unexpected completion stage.');
+    });
+
+    await expect(generateGddV2(input, complete)).resolves.toMatchObject({
+      document: { title: '完整 GDD' },
+      review: unresolvedReview,
+    });
+    expect(sectionCalls).toBe(2);
+    expect(reviewCalls).toBe(1);
+    expect(repairCalls).toBe(1);
+    expect(sectionPrompts[0]).toContain('"id":"core-1"');
+    expect(sectionPrompts[0]).toContain('"id":"systems-1"');
+    expect(sectionPrompts[1]).toContain('"id":"content-1"');
+    expect(sectionPrompts[1]).toContain('Previously generated canonical sections:');
+    expect(sectionPrompts[1]).toContain('"id":"systems-1"');
+  });
+
+  it('gives section repair the complete document for cross-section consistency', async () => {
+    const sections = blueprint.nodes.map((node) => ({
+      id: node.id,
+      title: node.label,
+      depth: 0,
+      group: node.group,
+      blocks: [{ kind: 'paragraph' as const, id: `${node.id}-p`, text: `${node.label}正文。` }],
+      numericRefs: [],
+    }));
+    const document = {
+      version: 2 as const,
+      id: 'test-gdd',
+      title: '跨章节修复测试',
+      blueprint,
+      numericRegistry: { version: 2 as const, entries: [] },
+      sections,
+    };
+    const report = {
+      version: 2 as const,
+      summary: '系统章节与概述重复。',
+      status: 'repair' as const,
+      issues: [{
+        id: 'duplicate-warning',
+        severity: 'warning' as const,
+        sectionId: 'systems',
+        message: '内容重复。',
+        repairInstruction: '参考全文去除重复内容。',
+      }],
+    };
+    const complete = jest.fn(async () => JSON.stringify(sections.filter((section) => section.id === 'systems')));
+
+    await repairGddSections(input, blueprint, document, report, complete);
+
+    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
+    expect(requestMessages[1].content).toContain('Full document for cross-section consistency:');
+    expect(requestMessages[1].content).toContain('"title":"跨章节修复测试"');
+  });
+
+  it('limits blocking review findings to material design errors', async () => {
+    const document = {
+      version: 2 as const,
+      id: 'review-test-gdd',
+      title: '评审测试',
+      blueprint,
+      numericRegistry: { version: 2 as const, entries: [] },
+      sections: [{
+        id: 'overview',
+        title: '游戏概述',
+        depth: 0,
+        group: 'core',
+        blocks: [{ kind: 'paragraph' as const, id: 'overview-p', text: '完整正文。' }],
+        numericRefs: [],
+      }],
+    };
+    const complete = jest.fn(async () => JSON.stringify({
+      version: 2,
+      summary: '可通过。',
+      status: 'pass',
+      issues: [],
+    }));
+
+    await reviewGddDocument(input, blueprint, document, [], complete);
+
+    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
+    expect(requestMessages[0].content).toContain('Advisory polish warnings do not block pass');
+    expect(requestMessages[0].content).toContain('Reserve severity error for material contradictions');
+    expect(requestMessages[1].content).toContain('Frozen source context:');
+    expect(requestMessages[1].content).toContain('BEGIN_UNTRUSTED_GAME_DESIGN_DOCUMENT_DATA');
+  });
+
+  it('requires repair output to contain every targeted section', async () => {
+    const sections = blueprint.nodes.map((node) => ({
+      id: node.id,
+      title: node.label,
+      depth: 0,
+      group: node.group,
+      blocks: [{ kind: 'paragraph' as const, id: `${node.id}-p`, text: `${node.label}正文。` }],
+      numericRefs: [],
+    }));
+    const document = {
+      version: 2 as const,
+      id: 'repair-target-gdd',
+      title: '修复目标测试',
+      blueprint,
+      numericRegistry: { version: 2 as const, entries: [] },
+      sections,
+    };
+    const report = {
+      version: 2 as const,
+      summary: '两个章节需要修复。',
+      status: 'repair' as const,
+      issues: [
+        { id: 'systems-warning', severity: 'warning' as const, sectionId: 'systems', message: '补充规则。', repairInstruction: '补充规则。' },
+        { id: 'presentation-warning', severity: 'warning' as const, sectionId: 'presentation', message: '减少重复。', repairInstruction: '减少重复。' },
+      ],
+    };
+    const targets = sections.filter((section) => section.id === 'systems' || section.id === 'presentation');
+    const complete = jest.fn(async () => JSON.stringify(complete.mock.calls.length === 1 ? targets.slice(0, 1) : targets));
+
+    await expect(repairGddSections(input, blueprint, document, report, complete)).resolves.toEqual(targets);
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it('repairs the whole document when review reports many consistency problems', async () => {
+    const sections = blueprint.nodes.map((node) => ({
+      id: node.id,
+      title: node.label,
+      depth: 0,
+      group: node.group,
+      blocks: [{ kind: 'paragraph' as const, id: `${node.id}-p`, text: `${node.label}正文。` }],
+      numericRefs: [],
+    }));
+    const document = {
+      version: 2 as const,
+      id: 'global-repair-gdd',
+      title: '全局修复测试',
+      blueprint,
+      numericRegistry: { version: 2 as const, entries: [] },
+      sections,
+    };
+    const report = {
+      version: 2 as const,
+      summary: '存在多处跨章节冲突。',
+      status: 'repair' as const,
+      issues: [
+        { id: 'issue-1', severity: 'error' as const, sectionId: 'systems', message: '数值冲突。', repairInstruction: '对齐数值。' },
+        { id: 'issue-2', severity: 'error' as const, sectionId: 'systems', message: '示例错误。', repairInstruction: '重算示例。' },
+        { id: 'issue-3', severity: 'warning' as const, sectionId: 'presentation', message: '术语冲突。', repairInstruction: '统一术语。' },
+        { id: 'issue-4', severity: 'warning' as const, sectionId: 'systems', message: '内容过长。', repairInstruction: '删除重复。' },
+      ],
+    };
+    const complete = jest.fn(async () => JSON.stringify(sections));
+
+    await expect(repairGddSections(input, blueprint, document, report, complete)).resolves.toEqual(sections);
+
+    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
+    expect(requestMessages[0].content).toContain('whole-document consistency repair');
+    expect(requestMessages[1].content).toContain('"id":"overview"');
+    expect(requestMessages[1].content).toContain('"id":"presentation"');
+  });
+
+  it('generates quick mode in one model completion without model review', async () => {
+    const quickInput = { ...input, mode: 'quick' as const };
+    const quickBlueprint = {
+      version: 2 as const,
+      title: '快速 GDD',
+      numericRegistry: [],
+      nodes: [{ id: 'overview', label: '游戏概述', depth: 0, group: 'core' }],
+    };
+    const section = {
+      id: 'overview',
+      title: '游戏概述',
+      depth: 0,
+      group: 'core',
+      blocks: [{ kind: 'paragraph' as const, id: 'overview-p', text: '完整正文。' }],
+      numericRefs: [],
+    };
+    const document = {
+      version: 2 as const,
+      id: 'quick-gdd',
+      title: '快速 GDD',
+      blueprint: quickBlueprint,
+      numericRegistry: { version: 2 as const, entries: [] },
+      sections: [section],
+    };
+    const complete = jest.fn(async (messages: ChatMessage[]) => {
+      const system = typeof messages[0].content === 'string' ? messages[0].content : '';
+      if (system.includes('Create a compact structured GDD in one pass')) return JSON.stringify(document);
+      throw new Error('Unexpected completion stage.');
+    });
+
+    await expect(generateGddV2(quickInput, complete)).resolves.toMatchObject({
+      document: { id: 'quick-gdd' },
+      review: { status: 'pass' },
+    });
+    expect(complete).toHaveBeenCalledTimes(1);
+    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
+    expect(requestMessages[0].content).toContain('silently check terminology, numbers, formulas, examples, and assumptions');
+    expect(requestMessages[0].content).toContain('The embedded blueprint and numericRegistry must be canonical');
+  });
+
+  it('normalizes compact quick blueprint node aliases without another model call', async () => {
+    const quickInput = { ...input, mode: 'quick' as const };
+    const response = {
+      version: 2,
+      id: 'quick-gdd',
+      title: '快速 GDD',
+      blueprint: {
+        version: 2,
+        nodes: [{ id: 'overview', title: '游戏概述', description: '蓝图摘要', fields: ['目标'] }],
+      },
+      numericRegistry: { version: 2, entries: [] },
+      sections: [{
+        id: 'overview', title: '游戏概述', depth: 0, group: 'core',
+        blocks: [{ kind: 'paragraph', id: 'overview-p', text: '完整正文。' }], numericRefs: [],
+      }],
+    };
+    const complete = jest.fn(async () => JSON.stringify(response));
+
+    await expect(generateGddV2(quickInput, complete)).resolves.toMatchObject({
+      document: {
+        blueprint: { nodes: [{ id: 'overview', label: '游戏概述', depth: 0, group: 'core' }] },
+      },
+    });
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('still rejects deterministic structural quality failures', async () => {
+    const quickInput = { ...input, mode: 'quick' as const };
+    const quickBlueprint = {
+      version: 2 as const,
+      title: '损坏 GDD',
+      numericRegistry: [],
+      nodes: [{ id: 'overview', label: '游戏概述', depth: 0, group: 'core' }],
+    };
+    const document = {
+      version: 2 as const,
+      id: 'broken-gdd',
+      title: '损坏 GDD',
+      blueprint: quickBlueprint,
+      numericRegistry: { version: 2 as const, entries: [] },
+      sections: [{ id: 'overview', title: '游戏概述', depth: 0, group: 'core', blocks: [], numericRefs: [] }],
+    };
+    const complete = jest.fn(async (messages: ChatMessage[]) => {
+      const system = typeof messages[0].content === 'string' ? messages[0].content : '';
+      if (system.includes('Create a compact structured GDD in one pass')) return JSON.stringify(document);
+      throw new Error('Unexpected completion stage.');
+    });
+
+    await expect(generateGddV2(quickInput, complete)).rejects.toThrow('Quick GDD failed deterministic quality gate');
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
+  cancelGddGenerationJob,
   claimGddGenerationJob,
   createGddGenerationJob,
   getPublicGddGenerationJob,
+  getLatestPublicGddGenerationJob,
   GddIdempotencyConflictError,
   persistCompletedGddGenerationJob,
   toPublicGddGenerationJob,
@@ -39,6 +41,28 @@ describe('gddGenerationService', () => {
     });
   });
 
+  it('cancels an active job and releases its lease', async () => {
+    const row = {
+      id: 'job-1', project_id: 'project-1', design_system_id: 'system-1', version_id: 'version-1',
+      status: 'failed', phase: 'failed', error: 'Generation cancelled by user.', attempt_count: 1,
+      max_attempts: 3, available_at: 'available', completed_at: 'completed', output_document_id: null,
+      output_document_name: null, applied_rule_ids: [], omitted_rule_ids: [],
+    };
+    const maybeSingle = jest.fn(async () => ({ data: row, error: null }));
+    const select = jest.fn(() => ({ maybeSingle }));
+    const inStatus = jest.fn((_column: string, _values: string[]) => ({ select }));
+    const eqId = jest.fn(() => ({ in: inStatus }));
+    const update = jest.fn((_value: unknown) => ({ eq: eqId }));
+
+    await expect(cancelGddGenerationJob({ from: () => ({ update }) } as never, 'job-1')).resolves.toMatchObject({
+      status: 'failed', phase: 'failed', error: 'Generation cancelled by user.',
+    });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed', phase: 'failed', lease_owner: null, lease_expires_at: null,
+    }));
+    expect(inStatus).toHaveBeenCalledWith('status', ['queued', 'running']);
+  });
+
   it('persists the Document and completion through one service-role RPC', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
     await expect(persistCompletedGddGenerationJob({ rpc } as never, {
@@ -73,5 +97,21 @@ describe('gddGenerationService', () => {
     const columns = select.mock.calls[0][0];
     expect(columns).toContain('output_document_id');
     expect(columns).not.toMatch(/input|source_snapshots|idempotency|hash|lease|owner_id/);
+  });
+
+  it('reads the latest public job for a pinned project version', async () => {
+    const maybeSingle = jest.fn(async () => ({ data: { id: 'job-2', project_id: 'project-1', created_at: '2026-08-18T00:00:00Z' }, error: null }));
+    const limit = jest.fn(() => ({ maybeSingle }));
+    const order = jest.fn((_column: string, _options: unknown) => ({ limit }));
+    const eqVersion = jest.fn(() => ({ order }));
+    const eqSystem = jest.fn(() => ({ eq: eqVersion }));
+    const eqProject = jest.fn(() => ({ eq: eqSystem }));
+    const select = jest.fn(() => ({ eq: eqProject }));
+    const result = await getLatestPublicGddGenerationJob({ from: () => ({ select }) } as never, {
+      projectId: 'project-1', designSystemId: 'system-1', versionId: 'version-1',
+    });
+    expect(result?.id).toBe('job-2');
+    expect(result).not.toHaveProperty('created_at');
+    expect(order).toHaveBeenCalledWith('created_at', { ascending: false });
   });
 });

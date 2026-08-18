@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
-const entityIdSchema = z.string().trim().min(1).max(120).regex(/^[a-z][a-z0-9]*(?:[-.][a-z0-9]+)*$/);
-const numericRefSchema = z.string().trim().min(1).max(120).regex(/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/);
+const entityIdSchema = z.string().trim().min(1).max(120).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/);
+const numericRefSchema = z.string().trim().min(1).max(120).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/);
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
+const optionalModelField = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(
+  (value) => value === null ? undefined : value,
+  schema.optional(),
+);
+const optionalEntityIdSchema = optionalModelField(entityIdSchema);
 
 function rejectDangerousKeys(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value;
@@ -99,7 +104,10 @@ const exampleBlockSchema = z.object({
   id: entityIdSchema,
   title: boundedText(160),
   body: boundedText(8_000),
-  numericRefs: z.array(numericRefSchema).min(1).max(20),
+  numericRefs: z.preprocess(
+    (value) => value === null ? undefined : value,
+    z.array(numericRefSchema).max(20).default([]),
+  ),
 }).strict();
 
 const flowBlockSchema = z.object({
@@ -145,12 +153,22 @@ export function parseTypedBlockV2(value: unknown): TypedBlock {
 
 export const blueprintOutlineSchema = z.object({
   version: z.literal(2),
+  title: optionalModelField(boundedText(160)),
+  premise: optionalModelField(boundedText(2_000)),
+  designPillars: optionalModelField(z.array(boundedText(400)).min(2).max(8)),
+  numericRegistry: optionalModelField(z.array(z.object({
+    id: numericRefSchema,
+    value: z.number().finite(),
+    label: optionalModelField(boundedText(160)),
+  }).strict()).max(500)),
+  assumptions: optionalModelField(z.array(boundedText(800)).max(30)),
   nodes: z.array(z.object({
     id: entityIdSchema,
     label: boundedText(160),
     depth: z.number().int().min(0).max(20),
-    parentId: entityIdSchema.optional(),
+    parentId: optionalEntityIdSchema,
     group: boundedText(80),
+    requiredBlocks: optionalModelField(z.array(z.enum(['paragraph', 'bullet-list', 'data-table', 'formula', 'flow', 'example', 'quote'])).max(8)),
   }).strict()).min(1).max(200),
 }).strict().superRefine((value, context) => {
   ensureUniqueIds(value.nodes, (node) => node.id, 'blueprint node');
@@ -198,20 +216,51 @@ export const numericRegistrySchema = z.object({
   entries: z.array(z.object({
     id: numericRefSchema,
     value: z.number().finite(),
-    label: boundedText(160).optional(),
-  }).strict()).min(1).max(500),
+    label: optionalModelField(boundedText(160)),
+  }).strict()).max(500),
 }).strict().superRefine((value) => {
   ensureUniqueIds(value.entries, (entry) => entry.id, 'numeric registry entry');
 });
 
-export const sectionSchema = z.object({
+const typedBlockKinds = new Set(['paragraph', 'bullet-list', 'data-table', 'formula', 'example', 'flow', 'quote']);
+
+function normalizeModelSection(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const section = value as Record<string, unknown>;
+  if (!Array.isArray(section.blocks)) return value;
+  const parsedSectionId = entityIdSchema.safeParse(section.id);
+  const sectionId = parsedSectionId.success ? parsedSectionId.data : 'section';
+  const blocks = section.blocks.map((block, index) => {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) return block;
+    const normalized = { ...(block as Record<string, unknown>) };
+    if (normalized.kind === undefined && typeof normalized.type === 'string') {
+      normalized.kind = normalized.type;
+      delete normalized.type;
+    } else if (normalized.type !== undefined && normalized.kind === normalized.type) {
+      delete normalized.type;
+    }
+    if (normalized.id === undefined || normalized.id === null || normalized.id === '') {
+      const kind = typeof normalized.kind === 'string' && typedBlockKinds.has(normalized.kind)
+        ? normalized.kind
+        : 'block';
+      normalized.id = `${sectionId}-${kind}-${index + 1}`;
+    }
+    return normalized;
+  });
+  return { ...section, blocks };
+}
+
+const strictSectionSchema = z.object({
   id: entityIdSchema,
   title: boundedText(160),
   depth: z.number().int().min(0).max(20),
-  parentId: entityIdSchema.optional(),
-  group: boundedText(80).optional(),
+  parentId: optionalEntityIdSchema,
+  group: optionalModelField(boundedText(80)),
   blocks: z.array(typedBlockSchema).max(200),
-  numericRefs: z.array(numericRefSchema).max(100).default([]),
+  numericRefs: z.preprocess(
+    (value) => value === null ? undefined : value,
+    z.array(numericRefSchema).max(100).default([]),
+  ),
 }).strict().superRefine((value, context) => {
   if (value.depth === 0) {
     if (value.parentId) {
@@ -231,18 +280,20 @@ export const sectionSchema = z.object({
   ensureUniqueIds(value.blocks, (block) => block.id, `section block for ${value.id}`);
 });
 
+export const sectionSchema = z.preprocess(normalizeModelSection, strictSectionSchema);
+
 export const reviewSchema = z.object({
   version: z.literal(2),
   summary: boundedText(4_000),
   issues: z.array(z.object({
     id: entityIdSchema,
     severity: z.enum(['info', 'warning', 'error']),
-    sectionId: entityIdSchema.optional(),
+    sectionId: optionalEntityIdSchema,
     message: boundedText(1_500),
-    repairInstruction: boundedText(1_500).optional(),
+    repairInstruction: optionalModelField(boundedText(1_500)),
   }).strict()).max(200),
-  status: z.enum(['pass', 'repair']).optional(),
-  repairRound: z.number().int().min(0).max(2).optional(),
+  status: optionalModelField(z.enum(['pass', 'repair'])),
+  repairRound: optionalModelField(z.number().int().min(0).max(2)),
 }).strict().superRefine((value) => {
   ensureUniqueIds(value.issues, (issue) => issue.id, 'review issue');
 });
@@ -258,14 +309,14 @@ export const documentSchema = z.object({
   version: z.literal(2),
   id: entityIdSchema,
   title: boundedText(160),
-  versionLabel: boundedText(80).optional(),
-  gameType: boundedText(240).optional(),
-  targetPlatforms: z.array(boundedText(120)).max(12).optional(),
-  premise: boundedText(2_000).optional(),
+  versionLabel: optionalModelField(boundedText(80)),
+  gameType: optionalModelField(boundedText(240)),
+  targetPlatforms: optionalModelField(z.array(boundedText(120)).max(12)),
+  premise: optionalModelField(boundedText(2_000)),
   blueprint: blueprintOutlineSchema,
   numericRegistry: numericRegistrySchema,
   sections: z.array(sectionSchema).min(1).max(200),
-  assumptions: z.array(boundedText(800)).max(30).optional(),
+  assumptions: optionalModelField(z.array(boundedText(800)).max(30)),
 }).strict().superRefine((value) => {
   ensureUniqueIds(value.sections, (section) => section.id, 'section');
   const knownNumericIds = new Set(value.numericRegistry.entries.map((entry) => entry.id));

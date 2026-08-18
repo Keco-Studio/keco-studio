@@ -100,6 +100,51 @@ describe('GDD generation worker', () => {
     expect(persist).toHaveBeenCalledWith(expect.anything(), job, 'worker-1', generated, expect.stringContaining('## Assumptions to Confirm'));
   });
 
+  it('renews the lease while a structured v2 generation is still running', async () => {
+    jest.useFakeTimers();
+    let finishGeneration!: (value: { markdown: string; review: any }) => void;
+    const generateV2 = jest.fn(() => new Promise<{ markdown: string; review: any }>((resolve) => { finishGeneration = resolve; }));
+    const heartbeat = jest.fn(async () => undefined);
+    const persistV2 = jest.fn(async (..._args: unknown[]) => ({ id: 'document-1', name: 'GDD' }));
+    const v2Job = {
+      ...job,
+      input: {
+        contractVersion: 2, mode: 'quick', projectId: generationInput.projectId,
+        versionId: generationInput.versionId,
+      },
+    } as GddGenerationJob;
+    const resultPromise = processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
+      heartbeat,
+      revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated),
+      generateV2: generateV2 as never,
+      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      persistV2,
+      retry: jest.fn(async () => 'queued' as const),
+      fail: jest.fn(async () => undefined),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    jest.advanceTimersByTime(30_000);
+    await Promise.resolve();
+    expect((heartbeat.mock.calls as unknown[][]).filter((call) => call[3] === 'generating')).toHaveLength(2);
+
+    finishGeneration({
+      markdown: '# GDD\n\n## 核心循环\n正文。',
+      review: { version: 2, summary: 'pass', status: 'pass', issues: [] },
+    });
+    await expect(resultPromise).resolves.toBe('completed');
+    expect(persistV2).toHaveBeenCalledWith(
+      expect.anything(),
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## 核心循环\n正文。',
+      expect.objectContaining({ status: 'pass' }),
+    );
+    jest.useRealTimers();
+  });
+
   it('directly revalidates owner write access and the exact pinned binding', async () => {
     const calls: string[] = [];
     const serviceClient = {

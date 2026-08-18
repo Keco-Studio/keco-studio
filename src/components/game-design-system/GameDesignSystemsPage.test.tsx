@@ -24,6 +24,7 @@ const fetchDetail = jest.fn();
 const fetchBinding = jest.fn();
 const startGdd = jest.fn();
 const fetchGddJob = jest.fn();
+const cancelGdd = jest.fn();
 const push = jest.fn();
 const system: GameDesignSystem = {
   id: 'system-1', owner_id: 'user-1', source: 'user', title: 'Tactical Rules', summary: 'Old summary',
@@ -117,6 +118,7 @@ jest.mock('@/lib/services/gameDesignSystemClient', () => ({
   fetchProjectGameDesignSystem: (...args: unknown[]) => fetchBinding(...args),
   startProjectGddGeneration: (...args: unknown[]) => startGdd(...args),
   fetchProjectGddGenerationJob: (...args: unknown[]) => fetchGddJob(...args),
+  cancelProjectGddGeneration: (...args: unknown[]) => cancelGdd(...args),
 }));
 
 describe('GameDesignSystemsPage', () => {
@@ -134,6 +136,10 @@ describe('GameDesignSystemsPage', () => {
       output_document_id: 'document-1', output_document_name: 'Game Design Document - Draft',
     });
     fetchGddJob.mockResolvedValue(null);
+    cancelGdd.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'failed', phase: 'failed',
+      output_document_id: null, error: 'Generation cancelled by user.',
+    });
     fetchSystems.mockResolvedValue([system]);
     fetchDetail.mockResolvedValue({ ...system, current_version: version, versions: [version] });
   });
@@ -466,8 +472,9 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+    await user.click(screen.getByRole('button', { name: '开始生成' }));
 
-    await waitFor(() => expect(startGdd).toHaveBeenCalledWith('project-1', 'system-1', 'version-1'));
+    await waitFor(() => expect(startGdd).toHaveBeenCalledWith('project-1', 'system-1', 'version-1', { mode: 'professional' }));
     expect((await screen.findByRole('link', { name: 'Open GDD Document' })).getAttribute('href')).toBe('/project-1/doc/document-1');
   });
 
@@ -488,10 +495,11 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+    await user.click(screen.getByRole('button', { name: '开始生成' }));
     expect((screen.getByRole('button', { name: 'Generating GDD...' }) as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
-    expect(await screen.findByText(/GDD: generating/)).toBeTruthy();
+    expect(await screen.findByText(/GDD: Writing draft/)).toBeTruthy();
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
     expect(await screen.findByRole('link', { name: 'Open GDD Document' })).toBeTruthy();
     jest.useRealTimers();
@@ -509,6 +517,7 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+    await user.click(screen.getByRole('button', { name: '开始生成' }));
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
 
     expect(await screen.findByRole('button', { name: 'Retry GDD Draft' })).toBeTruthy();
@@ -517,6 +526,30 @@ describe('GameDesignSystemsPage', () => {
     await act(async () => { jest.advanceTimersByTime(1_800); await Promise.resolve(); });
     expect(fetchGddJob).toHaveBeenCalledTimes(callsAfterFailure);
     jest.useRealTimers();
+  });
+
+  it('lets the user stop an active GDD generation job', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    startGdd.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'queued', phase: 'collecting',
+      output_document_id: null, error: null,
+    });
+    fetchGddJob.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'queued', phase: 'collecting',
+      output_document_id: null, error: null,
+    });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+    await user.click(screen.getByRole('button', { name: '开始生成' }));
+    await user.click(await screen.findByRole('button', { name: 'Stop GDD generation' }));
+
+    await waitFor(() => expect(cancelGdd).toHaveBeenCalledWith('project-1', 'gdd-job-1'));
+    expect(await screen.findByRole('button', { name: 'Retry GDD Draft' })).toBeTruthy();
   });
 
   it('does not classify another user\'s readable system as mine', async () => {

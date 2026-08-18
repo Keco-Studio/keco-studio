@@ -50,7 +50,7 @@ export function renderGddV2Markdown(document: DocumentV2): string {
   if (document.gameType) lines.push(`**类型：** ${document.gameType}`);
   if (document.targetPlatforms?.length) lines.push(`**目标平台：** ${document.targetPlatforms.join(' / ')}`);
   if (document.versionLabel || document.gameType || document.targetPlatforms?.length) lines.push('');
-  lines.push(document.premise, '');
+  if (document.premise) lines.push(document.premise, '');
 
   for (const section of document.sections) {
     const headingLevel = Math.min(4, section.depth + 2);
@@ -59,7 +59,7 @@ export function renderGddV2Markdown(document: DocumentV2): string {
     for (const block of section.blocks) lines.push(renderBlock(block), '');
   }
 
-  if (document.assumptions.length > 0) {
+  if (document.assumptions && document.assumptions.length > 0) {
     lines.push('## 待确认事项', '', ...document.assumptions.map((item) => `- ${item}`), '');
   }
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;

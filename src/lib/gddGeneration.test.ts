@@ -75,11 +75,12 @@ describe('GDD generation contract', () => {
     expect(() => parseGeneratedGdd({ ...generated, assumptions: ['x'.repeat(2001)] }, rules)).toThrow();
   });
 
-  it('renders deterministic GDD Markdown with assumptions and evidence', () => {
+  it('renders deterministic GDD Markdown with assumptions and no internal evidence', () => {
     const markdown = renderGddMarkdown(generated, { input });
     expect(markdown).toContain('# Harbor Tactics GDD');
     expect(markdown).toContain('## Assumptions to Confirm');
-    expect(markdown).toContain('Applied rules: readable-state');
+    expect(markdown).not.toMatch(/Provenance/i);
+    expect(markdown).not.toContain('Applied rules: readable-state');
     expect(markdown.indexOf('## Core Loop')).toBeLessThan(markdown.indexOf('## Gameplay Systems'));
   });
 
@@ -153,21 +154,11 @@ describe('GDD generation contract', () => {
     expect(normalized.omittedRuleIds).toEqual([]);
   });
 
-  it('allows no assumptions and labels every rendered section provenance', () => {
+  it('omits assumptions and internal generation evidence when there is nothing to confirm', () => {
     const markdown = renderGddMarkdown({ ...generated, assumptions: [] }, { input });
-    const sectionHeadings = [
-      'Overview', 'Design Intent', 'Player Fantasy', 'Core Loop', 'Decision Structure',
-      'Gameplay Systems', 'Content Model', 'Progression and Economy', 'Difficulty and Balance',
-      'Narrative and World', 'Experience and Presentation', 'Keco Table Plan',
-      'Assumptions to Confirm', 'Generation Evidence',
-    ];
-
-    expect(markdown).toContain('## Assumptions to Confirm\n\n> Provenance: Assumptions are AI-identified uncertainties awaiting project confirmation.');
-    for (const heading of sectionHeadings) {
-      expect(markdown).toContain(`## ${heading}\n\n> Provenance:`);
-    }
-    expect(markdown).toContain('AI proposal synthesized from authorized project evidence and sanitized Game Design System guidance.');
-    expect(markdown).toContain('Authorized project evidence is the factual source; sanitized Game Design System guidance shapes the proposal.');
+    expect(markdown).not.toContain('## Assumptions to Confirm');
+    expect(markdown).not.toContain('## Generation Evidence');
+    expect(markdown).not.toMatch(/Provenance/i);
   });
 
   it('hashes equivalent inputs deterministically', () => {

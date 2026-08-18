@@ -8,6 +8,7 @@ import {
   EditOutlined,
   ReloadOutlined,
   SaveOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import type { GameDesignDocument, GameDesignRule, GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
 import type {
@@ -18,10 +19,12 @@ import type {
 import type { PublicGddGenerationJob } from '@/lib/services/gddGenerationService';
 import {
   applyProjectGameDesignSystem,
+  cancelProjectGddGeneration,
   clearProjectGameDesignSystem,
   createGameDesignSystemVersion,
   deleteGameDesignSystem,
   fetchProjectGameDesignSystem,
+  fetchLatestProjectGddGenerationJob,
   fetchProjectGddGenerationJob,
   startProjectGddGeneration,
   updateGameDesignSystemDraft,
@@ -30,6 +33,7 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 import { GameDesignSystemRuleEditor } from './GameDesignSystemRuleEditor';
 import { GameDesignSystemDocumentEditor } from './GameDesignSystemDocumentEditor';
 import { GameArtStylePreview } from './GameArtStylePreview';
+import { GddGenerationDialog, type GddGenerationOptions } from './GddGenerationDialog';
 import styles from './GameDesignSystemsPage.module.css';
 
 export type GameDesignSystemView = 'overview' | 'art-style' | 'rules' | 'versions' | 'sources' | 'projects';
@@ -73,6 +77,21 @@ function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
 }
+
+const gddPhaseLabels: Record<PublicGddGenerationJob['phase'], string> = {
+  collecting: 'Collecting sources',
+  planning: 'Planning structure',
+  generating_core: 'Writing core design',
+  generating_systems: 'Writing systems',
+  generating_content: 'Writing content',
+  reviewing: 'Reviewing consistency',
+  repairing: 'Repairing draft',
+  generating: 'Writing draft',
+  validating: 'Validating output',
+  saving: 'Saving document',
+  completed: 'Completed',
+  failed: 'Stopped',
+};
 
 function VersionContext({ detail, version }: { detail: GameDesignSystemDetail; version: GameDesignSystemVersion }) {
   const parent = version.parent_version_id
@@ -273,6 +292,7 @@ function ProjectsView(props: {
   const { onFeedback } = props;
   const [projectId, setProjectId] = useState('');
   const [gddJobs, setGddJobs] = useState<Record<string, PublicGddGenerationJob>>({});
+  const [generationProjectId, setGenerationProjectId] = useState<string | null>(null);
   const bindingQueries = useQueries({
     queries: props.projects.map((project) => ({
       queryKey: queryKeys.projectGameDesignSystem(project.id),
@@ -297,9 +317,11 @@ function ProjectsView(props: {
     onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to remove project binding.' }),
   });
   const generateGddMutation = useMutation({
-    mutationFn: (targetProjectId: string) => startProjectGddGeneration(targetProjectId, props.detail.id, props.version!.id),
-    onSuccess: (job, targetProjectId) => {
+    mutationFn: ({ targetProjectId, options }: { targetProjectId: string; options: GddGenerationOptions }) => startProjectGddGeneration(targetProjectId, props.detail.id, props.version!.id, options),
+    onSuccess: (job, variables) => {
+      const { targetProjectId } = variables;
       setGddJobs((current) => ({ ...current, [targetProjectId]: job }));
+      setGenerationProjectId(null);
       if (job.status === 'completed') {
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents(targetProjectId) });
         onFeedback({ tone: 'success', text: 'GDD draft created.' });
@@ -309,6 +331,34 @@ function ProjectsView(props: {
     },
     onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to start GDD generation.' }),
   });
+  const cancelGddMutation = useMutation({
+    mutationFn: ({ targetProjectId, jobId }: { targetProjectId: string; jobId: string }) => cancelProjectGddGeneration(targetProjectId, jobId),
+    onSuccess: (job, variables) => {
+      setGddJobs((current) => ({ ...current, [variables.targetProjectId]: job }));
+      onFeedback({ tone: 'success', text: 'GDD generation stopped.' });
+    },
+    onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to stop GDD generation.' }),
+  });
+
+  useEffect(() => {
+    if (!props.version || typeof fetchLatestProjectGddGenerationJob !== 'function') return undefined;
+    let cancelled = false;
+    void Promise.all(props.projects.map(async (project) => {
+      try {
+        return [project.id, await fetchLatestProjectGddGenerationJob(project.id, props.detail.id, props.version!.id)] as const;
+      } catch {
+        return null;
+      }
+    })).then((results) => {
+      if (cancelled) return;
+      setGddJobs((current) => {
+        const next = { ...current };
+        for (const result of results) if (result?.[1]) next[result[0]] = result[1];
+        return next;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [props.detail.id, props.projects, props.version]);
 
   useEffect(() => {
     const active = Object.entries(gddJobs).filter(([, job]) => job.status === 'queued' || job.status === 'running');
@@ -322,7 +372,7 @@ function ProjectsView(props: {
         }
       }));
       for (const update of updates) {
-        if (!update) continue;
+        if (!update || !update[1]) continue;
         const [targetProjectId, job] = update;
         const previous = gddJobs[targetProjectId];
         if (job.status === 'completed' && previous?.status !== 'completed') {
@@ -335,7 +385,7 @@ function ProjectsView(props: {
       setGddJobs((current) => {
         const next = { ...current };
         for (const update of updates) {
-          if (!update) continue;
+          if (!update || !update[1]) continue;
           const [targetProjectId, job] = update;
           next[targetProjectId] = job;
         }
@@ -371,16 +421,24 @@ function ProjectsView(props: {
           const generating = gddJob?.status === 'queued' || gddJob?.status === 'running';
           return (
             <article className={styles.projectRow} key={project.id}>
-              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddJob.phase : ''}</small></div>
+              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddPhaseLabels[gddJob.phase] : ''}</small></div>
               <div className={styles.projectActions}>
                 {gddJob?.status === 'completed' && gddJob.output_document_id ? <a className={styles.secondaryButton} href={`/${project.id}/doc/${gddJob.output_document_id}`}>Open GDD Document</a> : null}
-                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={generating || generateGddMutation.isPending} onClick={() => generateGddMutation.mutate(project.id)}>{generating ? 'Generating GDD...' : gddJob?.status === 'failed' ? 'Retry GDD Draft' : 'Generate GDD Draft'}</button> : null}
+                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={generating || generateGddMutation.isPending} onClick={() => setGenerationProjectId(project.id)}>{generating ? 'Generating GDD...' : gddJob?.status === 'failed' ? 'Retry GDD Draft' : 'Generate GDD Draft'}</button> : null}
+                {generating ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" aria-label="Stop GDD generation" disabled={cancelGddMutation.isPending} onClick={() => cancelGddMutation.mutate({ targetProjectId: project.id, jobId: gddJob.id })}><StopOutlined /> Stop</button> : null}
                 {binding ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" disabled={clearMutation.isPending || generating} onClick={() => { if (window.confirm('Remove the Game Design System from this project?')) clearMutation.mutate(project.id); }}><DeleteOutlined /> Remove</button> : <button className={styles.secondaryButton} type="button" disabled={!props.version || versionHasConflicts(props.version) || applyMutation.isPending} onClick={() => applyMutation.mutate(project.id)}>Apply selected</button>}
               </div>
             </article>
           );
         })}
       </div>
+      <GddGenerationDialog
+        open={Boolean(generationProjectId)}
+        projectName={props.projects.find((project) => project.id === generationProjectId)?.name ?? '项目'}
+        pending={generateGddMutation.isPending}
+        onCancel={() => setGenerationProjectId(null)}
+        onSubmit={(options) => { if (generationProjectId) generateGddMutation.mutate({ targetProjectId: generationProjectId, options }); }}
+      />
     </section>
   );
 }

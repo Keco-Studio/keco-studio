@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20260817140000_gdd_generation_jobs.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20260817200000_gdd_generation_jobs.sql'), 'utf8');
 
 describe('GDD generation migration security and atomic persistence', () => {
   it('limits job visibility to owners and accepted writable collaborators', () => {

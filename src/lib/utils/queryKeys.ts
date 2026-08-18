@@ -24,6 +24,8 @@ export const queryKeys = {
   gameDesignSystem: (id: string) => ['game-design-system', id] as const,
   gameDesignSystemGenerationJob: (id: string) => ['game-design-system-generation-job', id] as const,
   projectGameDesignSystem: (projectId: string) => ['project', projectId, 'game-design-system'] as const,
+  projectGddGenerationJob: (projectId: string, designSystemId: string, versionId: string) =>
+    ['project', projectId, 'gdd-generation-job', designSystemId, versionId] as const,
   
   /**
    * Single project by ID
@@ -149,6 +151,5 @@ export type ProjectKey = ReturnType<typeof queryKeys.project>;
 export type LibraryKey = ReturnType<typeof queryKeys.library>;
 export type FolderKey = ReturnType<typeof queryKeys.folder>;
 export type AssetKey = ReturnType<typeof queryKeys.asset>;
-
 
 

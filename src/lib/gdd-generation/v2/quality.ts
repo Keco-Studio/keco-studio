@@ -1,5 +1,5 @@
 import type { GddGenerationMode } from './contracts';
-import type { BlueprintOutlineV2, DocumentV2 } from './contracts';
+import type { BlueprintOutlineV2, DocumentV2, TypedBlock } from './contracts';
 import { renderGddV2Markdown } from './renderer';
 
 export type DeterministicQualityIssue = {
@@ -21,9 +21,7 @@ export function countReadableCharacters(markdown: string): number {
 }
 
 function blueprintRequiredBlocks(blueprint: BlueprintOutlineV2 | undefined): Map<string, Set<string>> {
-  // The outline contract intentionally remains compatible with older v2 jobs;
-  // richer required-block hints are checked when they are present.
-  return new Map(blueprint?.nodes.map((node) => [node.id, new Set<string>()]) ?? []);
+  return new Map(blueprint?.nodes.map((node) => [node.id, new Set(node.requiredBlocks ?? [])]) ?? []);
 }
 
 export function validateGddQuality(
@@ -54,7 +52,7 @@ export function validateGddQuality(
     }
     const required = requiredBlocks.get(section.id) ?? new Set<string>();
     const actual = new Set(section.blocks.map((block) => block.kind));
-    for (const block of required) {
+    for (const block of required as Set<TypedBlock['kind']>) {
       if (!actual.has(block)) issues.push({ code: 'missing-required-block', sectionId: section.id, message: `Missing required block type: ${block}.` });
     }
     for (const block of section.blocks) {

@@ -125,6 +125,135 @@ describe('GDD generation v2 contracts', () => {
     expect(parseArtifactsV2(validArtifacts)).toEqual(validArtifacts);
   });
 
+  it('accepts stable model-generated numeric IDs', () => {
+    const registry = {
+      version: 2,
+      entries: [
+        { id: 'bond_max', value: 150 },
+        { id: 'bond-max', value: 100 },
+        { id: 'actionpoints', value: 4 },
+        { id: 'weather.multiplier', value: 1.2 },
+        { id: 'bond.max_value', value: 80 },
+      ],
+    };
+
+    expect(parseNumericRegistryV2(registry)).toEqual(registry);
+  });
+
+  it('accepts stable model-generated entity IDs', () => {
+    const parsedBlueprint = parseBlueprintOutlineV2({
+      version: 2,
+      nodes: [{ id: 'core_loop', label: '核心循环', depth: 0, group: 'core' }],
+    });
+    const parsedSection = parseSectionV2({
+      id: 'core_loop',
+      title: '核心循环',
+      depth: 0,
+      blocks: [{ kind: 'paragraph', id: 'core_loop_summary', text: '循环说明。' }],
+    });
+    const parsedReview = parseReviewV2({
+      version: 2,
+      summary: '需要修复。',
+      issues: [{ id: 'issue_1', severity: 'warning', sectionId: 'core_loop', message: '补充边界。' }],
+    });
+
+    expect(parsedBlueprint.nodes[0].id).toBe('core_loop');
+    expect(parsedSection.blocks[0].id).toBe('core_loop_summary');
+    expect(parsedReview.issues[0].id).toBe('issue_1');
+  });
+
+  it('normalizes null optional numeric references to empty arrays', () => {
+    const section = parseSectionV2({
+      ...validSection,
+      numericRefs: null,
+      blocks: [{
+        kind: 'example',
+        id: 'example',
+        title: '示例',
+        body: '示例正文。',
+        numericRefs: null,
+      }],
+    });
+
+    expect(section.numericRefs).toEqual([]);
+    expect(section.blocks[0]).toMatchObject({ numericRefs: [] });
+  });
+
+  it('normalizes a null root parent ID to an omitted parent', () => {
+    const section = parseSectionV2({
+      ...validSection,
+      depth: 0,
+      parentId: null,
+    });
+
+    expect(section.parentId).toBeUndefined();
+  });
+
+  it('normalizes model block type aliases and assigns stable block IDs', () => {
+    const section = parseSectionV2({
+      ...validSection,
+      blocks: [
+        { type: 'paragraph', text: '第一段。' },
+        { type: 'paragraph', text: '第二段。' },
+      ],
+    });
+
+    expect(section.blocks).toEqual([
+      { kind: 'paragraph', id: 'section-1-paragraph-1', text: '第一段。' },
+      { kind: 'paragraph', id: 'section-1-paragraph-2', text: '第二段。' },
+    ]);
+  });
+
+  it('normalizes null optional fields across model-generated contracts', () => {
+    const parsedBlueprint = parseBlueprintOutlineV2({
+      ...validBlueprint,
+      title: null,
+      premise: null,
+      designPillars: null,
+      numericRegistry: null,
+      assumptions: null,
+      nodes: validBlueprint.nodes.map((node, index) => ({
+        ...node,
+        ...(index === 0 ? { parentId: null } : {}),
+        requiredBlocks: null,
+      })),
+    });
+    const parsedRegistry = parseNumericRegistryV2({
+      version: 2,
+      entries: [{ id: 'economy.gold', value: 120, label: null }],
+    });
+    const parsedSection = parseSectionV2({ ...validSection, group: null });
+    const parsedReview = parseReviewV2({
+      ...validReview,
+      status: null,
+      repairRound: null,
+      issues: [{
+        ...validReview.issues[0],
+        sectionId: null,
+        repairInstruction: null,
+      }],
+    });
+    const parsedDocument = parseDocumentV2({
+      ...validDocument,
+      versionLabel: null,
+      gameType: null,
+      targetPlatforms: null,
+      premise: null,
+      assumptions: null,
+    });
+
+    expect(parsedBlueprint.title).toBeUndefined();
+    expect(parsedBlueprint.nodes[0].parentId).toBeUndefined();
+    expect(parsedBlueprint.nodes[0].requiredBlocks).toBeUndefined();
+    expect(parsedRegistry.entries[0].label).toBeUndefined();
+    expect(parsedSection.group).toBeUndefined();
+    expect(parsedReview.status).toBeUndefined();
+    expect(parsedReview.issues[0].sectionId).toBeUndefined();
+    expect(parsedReview.issues[0].repairInstruction).toBeUndefined();
+    expect(parsedDocument.versionLabel).toBeUndefined();
+    expect(parsedDocument.targetPlatforms).toBeUndefined();
+  });
+
   it.each([
     ['duplicate blueprint ids', { ...validBlueprint, nodes: [...validBlueprint.nodes, { ...validBlueprint.nodes[0] }] }],
     ['bad parent hierarchy', { ...validBlueprint, nodes: [{ ...validBlueprint.nodes[0], depth: 1 }] }],
@@ -170,8 +299,8 @@ describe('GDD generation v2 contracts', () => {
     ['paragraph', { kind: 'paragraph', id: 'p', text: '' }],
     ['bullet-list', { kind: 'bullet-list', id: 'b', items: [] }],
     ['data-table', { kind: 'data-table', id: 't', columns: ['Name'], rows: [['A', 'B']] }],
-    ['formula', { kind: 'formula', id: 'f', expression: 'x', numericRefs: ['missing'] }],
-    ['example', { kind: 'example', id: 'e', title: 'Example', body: 'Example body.', numericRefs: ['missing'] }],
+    ['formula', { kind: 'formula', id: 'f', expression: 'x', numericRefs: ['missing ref'] }],
+    ['example', { kind: 'example', id: 'e', title: 'Example', body: 'Example body.', numericRefs: ['missing!'] }],
     ['flow', { kind: 'flow', id: 'f2', steps: [] }],
     ['quote', { kind: 'quote', id: 'q', text: '', cite: 'Someone' }],
   ])('rejects invalid %s blocks', (_label, block) => {

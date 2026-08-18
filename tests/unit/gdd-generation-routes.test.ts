@@ -4,12 +4,18 @@ const getUserProjectRole = jest.fn();
 const getGddGenerationJob = jest.fn();
 const getPublicGddGenerationJob = jest.fn();
 const createGddGenerationJob = jest.fn();
+const cancelGddGenerationJob = jest.fn();
 const getGameDesignSystemDetail = jest.fn();
 const listGameDesignReferenceOptions = jest.fn();
 const getSupabaseServiceRoleClient = jest.fn();
+const processNextGddJob = jest.fn();
 let userId: string | null = 'user-1';
 let supabase: any;
 
+jest.mock('next/server', () => {
+  const actual = jest.requireActual('next/server') as Record<string, unknown>;
+  return { ...actual, after: (callback: () => Promise<void>) => { void callback(); } };
+});
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/auth/route-auth', () => ({
   withAuth: (handler: Function, options: any = {}) => async (request: NextRequest, context: unknown) => {
@@ -27,6 +33,7 @@ jest.mock('@/lib/services/gddGenerationService', () => {
     getGddGenerationJob: (...args: unknown[]) => getGddGenerationJob(...args),
     getPublicGddGenerationJob: (...args: unknown[]) => getPublicGddGenerationJob(...args),
     createGddGenerationJob: (...args: unknown[]) => createGddGenerationJob(...args),
+    cancelGddGenerationJob: (...args: unknown[]) => cancelGddGenerationJob(...args),
   };
 });
 jest.mock('@/lib/services/gameDesignSystemService', () => ({
@@ -40,10 +47,10 @@ jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({
 jest.mock('@/lib/server/supabaseServiceRole', () => ({
   getSupabaseServiceRoleClient: () => getSupabaseServiceRoleClient(),
 }));
-jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: jest.fn() }));
+jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: (...args: unknown[]) => processNextGddJob(...args) }));
 
 import { POST } from '@/app/api/projects/[projectId]/gdd-generation-jobs/route';
-import { GET } from '@/app/api/projects/[projectId]/gdd-generation-jobs/[id]/route';
+import { DELETE, GET } from '@/app/api/projects/[projectId]/gdd-generation-jobs/[id]/route';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const SYSTEM_ID = '22222222-2222-4222-8222-222222222222';
@@ -77,8 +84,10 @@ describe('project GDD generation routes', () => {
     getGddGenerationJob.mockResolvedValue(internalJob);
     getPublicGddGenerationJob.mockResolvedValue(publicJob);
     createGddGenerationJob.mockResolvedValue(internalJob);
+    cancelGddGenerationJob.mockResolvedValue({ ...publicJob, status: 'failed', phase: 'failed', error: 'Generation cancelled by user.' });
     listGameDesignReferenceOptions.mockResolvedValue([]);
     getSupabaseServiceRoleClient.mockReturnValue({ service: true });
+    processNextGddJob.mockResolvedValue({ claimed: true, jobId: JOB_ID, status: 'completed' });
     supabase = {
       from: (table: string) => {
         if (table === 'project_game_design_systems') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { design_system_id: SYSTEM_ID, version_id: VERSION_ID }, error: null }) }) }) };
@@ -115,6 +124,33 @@ describe('project GDD generation routes', () => {
     expect(body.job).not.toHaveProperty('idempotency_key');
     expect(body.job).not.toHaveProperty('input_hash');
     expect(body.job).not.toHaveProperty('lease_owner');
+  });
+
+  it('opportunistically wakes a queued job while it is being polled', async () => {
+    getPublicGddGenerationJob.mockResolvedValue({ ...publicJob, status: 'queued', phase: 'collecting' });
+
+    const response = await GET(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`), params);
+    await Promise.resolve();
+
+    expect(response.status).toBe(200);
+    expect(processNextGddJob).toHaveBeenCalledWith(expect.objectContaining({
+      serviceClient: { service: true },
+      workerId: expect.stringMatching(/^gdd-poll-/),
+    }));
+  });
+
+  it('lets an editor cancel an active project GDD job', async () => {
+    getPublicGddGenerationJob.mockResolvedValue({ ...publicJob, status: 'queued', phase: 'collecting' });
+    const serviceClient = { service: true };
+    getSupabaseServiceRoleClient.mockReturnValue(serviceClient);
+
+    const response = await DELETE(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`, {
+      method: 'DELETE',
+    }), params);
+
+    expect(response.status).toBe(200);
+    expect(cancelGddGenerationJob).toHaveBeenCalledWith(serviceClient, JOB_ID);
+    expect(await response.json()).toEqual({ job: expect.objectContaining({ status: 'failed', phase: 'failed' }) });
   });
 
   it('returns a safe migration-required 503 when GET cannot see the jobs relation', async () => {
