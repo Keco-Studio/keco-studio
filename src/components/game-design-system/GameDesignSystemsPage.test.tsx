@@ -1,10 +1,12 @@
 /** @jest-environment jsdom */
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TextEncoder } from 'util';
 import { GameDesignSystemsPage } from './GameDesignSystemsPage';
+import { gameDesignSystemScopeCounts, visibleGameDesignSystems } from './GameDesignSystemLibrary';
+import type { GameDesignSystem } from '@/lib/services/gameDesignSystemService';
 
 global.TextEncoder = TextEncoder as typeof global.TextEncoder;
 
@@ -20,8 +22,10 @@ const createVersion = jest.fn();
 const fetchSystems = jest.fn();
 const fetchDetail = jest.fn();
 const fetchBinding = jest.fn();
+const startGdd = jest.fn();
+const fetchGddJob = jest.fn();
 const push = jest.fn();
-const system = {
+const system: GameDesignSystem = {
   id: 'system-1', owner_id: 'user-1', source: 'user', title: 'Tactical Rules', summary: 'Old summary',
   genres: ['Strategy'], philosophies: ['Readable Systems'], suitable_for: 'Tactical games', body: '', provenance: {}, status: 'draft',
   current_version_id: 'version-1', migration_status: 'ready', generation_job_id: null, created_at: '', updated_at: '',
@@ -62,6 +66,8 @@ jest.mock('@/lib/services/gameDesignSystemClient', () => ({
   applyProjectGameDesignSystem: (...args: unknown[]) => applyVersion(...args),
   clearProjectGameDesignSystem: (...args: unknown[]) => clearBinding(...args),
   fetchProjectGameDesignSystem: (...args: unknown[]) => fetchBinding(...args),
+  startProjectGddGeneration: (...args: unknown[]) => startGdd(...args),
+  fetchProjectGddGenerationJob: (...args: unknown[]) => fetchGddJob(...args),
 }));
 
 describe('GameDesignSystemsPage', () => {
@@ -74,8 +80,17 @@ describe('GameDesignSystemsPage', () => {
     clearBinding.mockResolvedValue(undefined);
     createVersion.mockResolvedValue({ ...version, id: 'version-2', version_number: 2, parent_version_id: 'version-1' });
     fetchBinding.mockResolvedValue(null);
+    startGdd.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+      output_document_id: 'document-1', output_document_name: 'Game Design Document - Draft',
+    });
+    fetchGddJob.mockResolvedValue(null);
     fetchSystems.mockResolvedValue([system]);
     fetchDetail.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('keeps Official visible as a real empty library state', async () => {
@@ -86,6 +101,31 @@ describe('GameDesignSystemsPage', () => {
     await user.click(screen.getByRole('tab', { name: /Official/ }));
 
     expect(screen.getByText('No official systems yet.')).toBeTruthy();
+    expect(screen.queryByText('Tactical Rules')).toBeNull();
+  });
+
+  it('classifies readable foreign user systems as Shared with an independent count', () => {
+    const foreign = { ...system, id: 'foreign-system', owner_id: 'user-2', title: 'Shared Rules' };
+    const official = { ...system, id: 'official-system', owner_id: null, source: 'official' as const };
+    const systems = [system, foreign, official];
+
+    expect(gameDesignSystemScopeCounts(systems, 'user-1')).toEqual({ mine: 1, shared: 1, official: 1 });
+    expect(visibleGameDesignSystems(systems, 'shared', 'user-1', '')).toEqual([foreign]);
+  });
+
+  it('shows readable foreign user systems in the Shared tab', async () => {
+    const foreign = { ...system, id: 'foreign-system', owner_id: 'user-2', title: 'Shared Tactical Rules' };
+    fetchSystems.mockResolvedValue([system, foreign]);
+    fetchDetail.mockImplementation(async (id: string) => ({
+      ...(id === foreign.id ? foreign : system), current_version: version, versions: [version],
+    }));
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByText('Tactical Rules');
+    await user.click(screen.getByRole('tab', { name: 'Shared 1' }));
+
+    expect((await screen.findAllByText('Shared Tactical Rules')).length).toBeGreaterThan(0);
     expect(screen.queryByText('Tactical Rules')).toBeNull();
   });
 
@@ -277,6 +317,71 @@ describe('GameDesignSystemsPage', () => {
     await user.selectOptions(screen.getByLabelText('Select project'), 'project-1');
     await user.click(screen.getByRole('button', { name: 'Use version 1' }));
     await waitFor(() => expect(applyVersion).toHaveBeenCalledWith('project-1', 'system-1', 'version-1'));
+  });
+
+  it('generates a GDD draft from the exact version already pinned to a project', async () => {
+    global.fetch = jest.fn(async (url: string) => {
+      expect(url).toBe('/api/projects/writable');
+      return { ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] };
+    }) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+
+    await waitFor(() => expect(startGdd).toHaveBeenCalledWith('project-1', 'system-1', 'version-1'));
+    expect((await screen.findByRole('link', { name: 'Open GDD Document' })).getAttribute('href')).toBe('/project-1/doc/document-1');
+  });
+
+  it('polls queued and running jobs until completed', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    startGdd.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'queued', phase: 'collecting',
+      output_document_id: null, output_document_name: null,
+    });
+    fetchGddJob
+      .mockResolvedValueOnce({ id: 'gdd-job-1', project_id: 'project-1', status: 'running', phase: 'generating', output_document_id: null })
+      .mockResolvedValueOnce({ id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed', output_document_id: 'document-1' });
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+    expect((screen.getByRole('button', { name: 'Generating GDD...' }) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+    expect(await screen.findByText(/GDD: generating/)).toBeTruthy();
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+    expect(await screen.findByRole('link', { name: 'Open GDD Document' })).toBeTruthy();
+    jest.useRealTimers();
+  });
+
+  it('stops polling and exposes retry after a failed job', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    startGdd.mockResolvedValue({ id: 'gdd-job-1', project_id: 'project-1', status: 'queued', phase: 'collecting', output_document_id: null });
+    fetchGddJob.mockResolvedValue({ id: 'gdd-job-1', project_id: 'project-1', status: 'failed', phase: 'failed', output_document_id: null, error: 'Permission changed.' });
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+
+    expect(await screen.findByRole('button', { name: 'Retry GDD Draft' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Permission changed.');
+    const callsAfterFailure = fetchGddJob.mock.calls.length;
+    await act(async () => { jest.advanceTimersByTime(1_800); await Promise.resolve(); });
+    expect(fetchGddJob).toHaveBeenCalledTimes(callsAfterFailure);
+    jest.useRealTimers();
   });
 
   it('does not classify another user\'s readable system as mine', async () => {

@@ -10,11 +10,13 @@ import {
 } from '@/lib/game-design-system/sourceSnapshots';
 import { hashGddGenerationInput, type GddGenerationInput } from '@/lib/gddGeneration';
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
+import { isGddSchemaUnavailable, safeGddRouteErrorIdentity } from '@/lib/gdd-generation/routeErrors';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { getGameDesignSystemDetail } from '@/lib/services/gameDesignSystemService';
 import {
   createGddGenerationJob,
   GddIdempotencyConflictError,
+  toPublicGddGenerationJob,
 } from '@/lib/services/gddGenerationService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
@@ -119,14 +121,23 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
       inputHash: hashGddGenerationInput(input),
     });
     if (job.status === 'queued') scheduleWorker();
+    const publicJob = toPublicGddGenerationJob(job);
     return NextResponse.json({
-      job: { ...job, applied_rule_ids: job.applied_rule_ids.length ? job.applied_rule_ids : policy.appliedRuleIds, omitted_rule_ids: job.omitted_rule_ids.length ? job.omitted_rule_ids : policy.omittedRuleIds },
+      job: {
+        ...publicJob,
+        applied_rule_ids: publicJob.applied_rule_ids.length ? publicJob.applied_rule_ids : policy.appliedRuleIds,
+        omitted_rule_ids: publicJob.omitted_rule_ids.length ? publicJob.omitted_rule_ids : policy.omittedRuleIds,
+      },
     }, { status: 202 });
   } catch (error) {
     if (error instanceof GddIdempotencyConflictError) {
       return NextResponse.json({ error: 'Idempotency key was already used with a different GDD request.' }, { status: 409 });
     }
-    console.error('[POST project GDD generation job]', error);
+    if (isGddSchemaUnavailable(error)) {
+      console.error('[POST project GDD generation job]', safeGddRouteErrorIdentity(error));
+      return NextResponse.json({ error: 'GDD generation database migration is not applied.' }, { status: 503 });
+    }
+    console.error('[POST project GDD generation job]', safeGddRouteErrorIdentity(error));
     return NextResponse.json({ error: 'Failed to start GDD generation.' }, { status: 400 });
   }
 });

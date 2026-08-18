@@ -4,7 +4,18 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { GameDesignSystem } from '@/lib/services/gameDesignSystemService';
 import styles from './GameDesignSystemsPage.module.css';
 
-export type GameDesignSystemScope = 'mine' | 'official';
+export type GameDesignSystemScope = 'mine' | 'shared' | 'official';
+
+export function gameDesignSystemScopeCounts(
+  systems: GameDesignSystem[],
+  viewerUserId: string,
+): Record<GameDesignSystemScope, number> {
+  return {
+    mine: systems.filter((system) => system.source === 'user' && system.owner_id === viewerUserId).length,
+    shared: systems.filter((system) => system.source === 'user' && system.owner_id !== viewerUserId).length,
+    official: systems.filter((system) => system.source === 'official').length,
+  };
+}
 
 type Props = {
   systems: GameDesignSystem[];
@@ -30,6 +41,7 @@ export function visibleGameDesignSystems(
   const query = search.trim().toLowerCase();
   return systems.filter((system) => {
     if (scope === 'mine' && (system.source !== 'user' || system.owner_id !== viewerUserId)) return false;
+    if (scope === 'shared' && (system.source !== 'user' || system.owner_id === viewerUserId)) return false;
     if (scope === 'official' && system.source !== 'official') return false;
     if (!query) return true;
     return [system.title, system.summary, ...system.genres, ...system.philosophies]
@@ -42,10 +54,11 @@ export function visibleGameDesignSystems(
 
 export function GameDesignSystemLibrary(props: Props) {
   const filtered = visibleGameDesignSystems(props.systems, props.scope, props.viewerUserId, props.search);
-  const mineCount = props.systems.filter((system) => system.source === 'user' && system.owner_id === props.viewerUserId).length;
-  const officialCount = props.systems.filter((system) => system.source === 'official').length;
+  const counts = gameDesignSystemScopeCounts(props.systems, props.viewerUserId);
   const emptyText = props.scope === 'official' && !props.search.trim()
-    ? 'No official systems yet.'
+      ? 'No official systems yet.'
+    : props.scope === 'shared' && !props.search.trim()
+      ? 'No shared systems yet.'
     : props.scope === 'mine' && !props.search.trim()
       ? 'No personal systems yet.'
       : 'No systems match the current filters.';
@@ -70,10 +83,13 @@ export function GameDesignSystemLibrary(props: Props) {
 
       <div className={styles.libraryScopes} role="tablist" aria-label="System source">
         <button type="button" role="tab" aria-selected={props.scope === 'mine'} className={props.scope === 'mine' ? styles.scopeTabActive : styles.scopeTab} onClick={() => props.onScopeChange('mine')}>
-          My Systems <span>{mineCount}</span>
+          My Systems <span>{counts.mine}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={props.scope === 'shared'} className={props.scope === 'shared' ? styles.scopeTabActive : styles.scopeTab} onClick={() => props.onScopeChange('shared')}>
+          Shared <span>{counts.shared}</span>
         </button>
         <button type="button" role="tab" aria-selected={props.scope === 'official'} className={props.scope === 'official' ? styles.scopeTabActive : styles.scopeTab} onClick={() => props.onScopeChange('official')}>
-          Official <span>{officialCount}</span>
+          Official <span>{counts.official}</span>
         </button>
       </div>
 

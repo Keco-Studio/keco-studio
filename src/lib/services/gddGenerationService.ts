@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import type { GddGenerationInput } from '@/lib/gddGeneration';
 
 export type GddJobStatus = 'queued' | 'running' | 'completed' | 'failed';
@@ -33,7 +34,34 @@ export type GddGenerationJob = {
   updated_at: string;
 };
 
+export type PublicGddGenerationJob = Pick<GddGenerationJob,
+  | 'id' | 'project_id' | 'design_system_id' | 'version_id' | 'status' | 'phase'
+  | 'attempt_count' | 'max_attempts' | 'available_at' | 'completed_at'
+  | 'output_document_id' | 'output_document_name' | 'applied_rule_ids' | 'omitted_rule_ids'
+> & { error: string | null };
+
+export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenerationJob {
+  return {
+    id: job.id,
+    project_id: job.project_id,
+    design_system_id: job.design_system_id,
+    version_id: job.version_id,
+    status: job.status,
+    phase: job.phase,
+    attempt_count: job.attempt_count,
+    max_attempts: job.max_attempts,
+    available_at: job.available_at,
+    completed_at: job.completed_at,
+    output_document_id: job.output_document_id,
+    output_document_name: job.output_document_name,
+    applied_rule_ids: job.applied_rule_ids,
+    omitted_rule_ids: job.omitted_rule_ids,
+    error: job.error ? job.error.slice(0, 500) : null,
+  };
+}
+
 const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at';
+const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,applied_rule_ids,omitted_rule_ids,error';
 
 export class GddIdempotencyConflictError extends Error {
   constructor() {
@@ -67,6 +95,7 @@ export async function createGddGenerationJob(
     if ((existing.data as { input_hash?: string }).input_hash !== input.inputHash) throw new GddIdempotencyConflictError();
     return existing.data as GddGenerationJob;
   }
+  const policy = buildAgentRulePolicy(input.input.rules);
   const { data, error } = await supabase.from('gdd_generation_jobs').insert({
     owner_id: input.ownerId,
     project_id: input.projectId,
@@ -74,6 +103,8 @@ export async function createGddGenerationJob(
     version_id: input.versionId,
     input: input.input,
     source_snapshots: input.input.projectSources,
+    applied_rule_ids: policy.appliedRuleIds,
+    omitted_rule_ids: policy.omittedRuleIds,
     idempotency_key: input.idempotencyKey,
     input_hash: input.inputHash,
     status: 'queued',
@@ -90,6 +121,18 @@ export async function getGddGenerationJob(supabase: SupabaseClient, id: string):
   const { data, error } = await supabase.from('gdd_generation_jobs').select(JOB_COLUMNS).eq('id', id).maybeSingle();
   if (error) throw error;
   return (data as GddGenerationJob | null) ?? null;
+}
+
+export async function getPublicGddGenerationJob(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<PublicGddGenerationJob | null> {
+  const { data, error } = await supabase.from('gdd_generation_jobs')
+    .select(PUBLIC_JOB_COLUMNS)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PublicGddGenerationJob | null) ?? null;
 }
 
 export async function claimGddGenerationJob(
@@ -133,20 +176,35 @@ export async function retryGddGenerationJob(
   return data as GddJobStatus | null;
 }
 
-export async function completeGddGenerationJob(
+export async function persistCompletedGddGenerationJob(
   serviceClient: SupabaseClient,
-  job: GddGenerationJob,
-  workerId: string,
-  output: { documentId: string; documentName: string; appliedRuleIds: string[]; omittedRuleIds: string[] },
-): Promise<void> {
-  const { data, error } = await serviceClient.from('gdd_generation_jobs').update({
-    status: 'completed', phase: 'completed', output_document_id: output.documentId,
-    output_document_name: output.documentName, applied_rule_ids: output.appliedRuleIds,
-    omitted_rule_ids: output.omittedRuleIds, completed_at: new Date().toISOString(),
-    lease_owner: null, lease_expires_at: null, heartbeat_at: null, error: null,
-  }).eq('id', job.id).eq('status', 'running').eq('lease_owner', workerId).select('id').maybeSingle();
+  input: {
+    jobId: string;
+    workerId: string;
+    markdown: string;
+    yjsState: string;
+    description: string;
+    metadata: Record<string, unknown>;
+    appliedRuleIds: string[];
+    omittedRuleIds: string[];
+  },
+): Promise<{ id: string; name: string }> {
+  const { data, error } = await serviceClient.rpc('persist_completed_gdd_generation_job', {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_markdown: input.markdown,
+    p_yjs_state: input.yjsState,
+    p_description: input.description,
+    p_metadata: input.metadata,
+    p_applied_rule_ids: input.appliedRuleIds,
+    p_omitted_rule_ids: input.omittedRuleIds,
+  });
   if (error) throw error;
-  if (!data) throw new Error('GDD generation job lease was lost before completion.');
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row.document_id !== 'string' || typeof row.document_name !== 'string') {
+    throw new Error('GDD generation job lease was lost before completion.');
+  }
+  return { id: row.document_id, name: row.document_name };
 }
 
 export async function failGddGenerationJob(

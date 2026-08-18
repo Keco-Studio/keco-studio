@@ -54,7 +54,7 @@
 
 .libraryScopes {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 10px 12px 0;
 }
 
@@ -813,6 +813,17 @@
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.projectActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.projectActions a {
+  text-decoration: none;
+}
+
 .applyBar {
   margin-bottom: 16px;
   border: 1px solid #e3e7ec;
@@ -1549,6 +1560,11 @@
   .sourceRow time,
   .diffMetricsCompact {
     justify-content: flex-start;
+  }
+
+  .projectActions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .formActions,

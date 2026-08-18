@@ -15,12 +15,15 @@ import type {
   GameDesignSystemStatus,
   GameDesignSystemVersion,
 } from '@/lib/services/gameDesignSystemService';
+import type { PublicGddGenerationJob } from '@/lib/services/gddGenerationService';
 import {
   applyProjectGameDesignSystem,
   clearProjectGameDesignSystem,
   createGameDesignSystemVersion,
   deleteGameDesignSystem,
   fetchProjectGameDesignSystem,
+  fetchProjectGddGenerationJob,
+  startProjectGddGeneration,
   updateGameDesignSystemDraft,
 } from '@/lib/services/gameDesignSystemClient';
 import { queryKeys } from '@/lib/utils/queryKeys';
@@ -255,7 +258,9 @@ function ProjectsView(props: {
   onFeedback: (feedback: Feedback) => void;
 }) {
   const queryClient = useQueryClient();
+  const { onFeedback } = props;
   const [projectId, setProjectId] = useState('');
+  const [gddJobs, setGddJobs] = useState<Record<string, PublicGddGenerationJob>>({});
   const bindingQueries = useQueries({
     queries: props.projects.map((project) => ({
       queryKey: queryKeys.projectGameDesignSystem(project.id),
@@ -267,18 +272,66 @@ function ProjectsView(props: {
     mutationFn: (targetProjectId: string) => applyProjectGameDesignSystem(targetProjectId, props.detail.id, props.version!.id),
     onSuccess: (_system, targetProjectId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectGameDesignSystem(targetProjectId) });
-      props.onFeedback({ tone: 'success', text: 'Version ' + props.version!.version_number + ' applied to project.' });
+      onFeedback({ tone: 'success', text: 'Version ' + props.version!.version_number + ' applied to project.' });
     },
-    onError: (error) => props.onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to apply version.' }),
+    onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to apply version.' }),
   });
   const clearMutation = useMutation({
     mutationFn: (targetProjectId: string) => clearProjectGameDesignSystem(targetProjectId),
     onSuccess: (_result, targetProjectId) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectGameDesignSystem(targetProjectId) });
-      props.onFeedback({ tone: 'success', text: 'Project binding removed.' });
+      onFeedback({ tone: 'success', text: 'Project binding removed.' });
     },
-    onError: (error) => props.onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to remove project binding.' }),
+    onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to remove project binding.' }),
   });
+  const generateGddMutation = useMutation({
+    mutationFn: (targetProjectId: string) => startProjectGddGeneration(targetProjectId, props.detail.id, props.version!.id),
+    onSuccess: (job, targetProjectId) => {
+      setGddJobs((current) => ({ ...current, [targetProjectId]: job }));
+      if (job.status === 'completed') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.documents(targetProjectId) });
+        onFeedback({ tone: 'success', text: 'GDD draft created.' });
+      } else {
+        onFeedback({ tone: 'success', text: 'GDD generation started.' });
+      }
+    },
+    onError: (error) => onFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to start GDD generation.' }),
+  });
+
+  useEffect(() => {
+    const active = Object.entries(gddJobs).filter(([, job]) => job.status === 'queued' || job.status === 'running');
+    if (active.length === 0) return undefined;
+    const timer = window.setInterval(async () => {
+      const updates = await Promise.all(active.map(async ([targetProjectId, job]) => {
+        try {
+          return [targetProjectId, await fetchProjectGddGenerationJob(targetProjectId, job.id)] as const;
+        } catch {
+          return null;
+        }
+      }));
+      for (const update of updates) {
+        if (!update) continue;
+        const [targetProjectId, job] = update;
+        const previous = gddJobs[targetProjectId];
+        if (job.status === 'completed' && previous?.status !== 'completed') {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.documents(targetProjectId) });
+          onFeedback({ tone: 'success', text: 'GDD draft created.' });
+        } else if (job.status === 'failed' && previous?.status !== 'failed') {
+          onFeedback({ tone: 'error', text: job.error || 'GDD generation failed.' });
+        }
+      }
+      setGddJobs((current) => {
+        const next = { ...current };
+        for (const update of updates) {
+          if (!update) continue;
+          const [targetProjectId, job] = update;
+          next[targetProjectId] = job;
+        }
+        return next;
+      });
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [gddJobs, onFeedback, queryClient]);
   const cannotApply = !projectId || !props.version || props.detail.migration_status !== 'ready' || versionHasConflicts(props.version) || applyMutation.isPending;
 
   return (
@@ -301,10 +354,17 @@ function ProjectsView(props: {
         {props.projects.map((project, index) => {
           const bindingQuery = bindingQueries[index];
           const binding = bindingQuery.data ?? null;
+          const selectedVersionIsBound = binding?.id === props.detail.id && binding.current_version?.id === props.version?.id;
+          const gddJob = gddJobs[project.id];
+          const generating = gddJob?.status === 'queued' || gddJob?.status === 'running';
           return (
             <article className={styles.projectRow} key={project.id}>
-              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}</small></div>
-              {binding ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" disabled={clearMutation.isPending} onClick={() => { if (window.confirm('Remove the Game Design System from this project?')) clearMutation.mutate(project.id); }}><DeleteOutlined /> Remove</button> : <button className={styles.secondaryButton} type="button" disabled={!props.version || versionHasConflicts(props.version) || applyMutation.isPending} onClick={() => applyMutation.mutate(project.id)}>Apply selected</button>}
+              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddJob.phase : ''}</small></div>
+              <div className={styles.projectActions}>
+                {gddJob?.status === 'completed' && gddJob.output_document_id ? <a className={styles.secondaryButton} href={`/${project.id}/doc/${gddJob.output_document_id}`}>Open GDD Document</a> : null}
+                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={generating || generateGddMutation.isPending} onClick={() => generateGddMutation.mutate(project.id)}>{generating ? 'Generating GDD...' : gddJob?.status === 'failed' ? 'Retry GDD Draft' : 'Generate GDD Draft'}</button> : null}
+                {binding ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" disabled={clearMutation.isPending || generating} onClick={() => { if (window.confirm('Remove the Game Design System from this project?')) clearMutation.mutate(project.id); }}><DeleteOutlined /> Remove</button> : <button className={styles.secondaryButton} type="button" disabled={!props.version || versionHasConflicts(props.version) || applyMutation.isPending} onClick={() => applyMutation.mutate(project.id)}>Apply selected</button>}
+              </div>
             </article>
           );
         })}
@@ -316,6 +376,7 @@ function ProjectsView(props: {
 export function GameDesignSystemWorkspace(props: Props) {
   const queryClient = useQueryClient();
   const detail = props.detail;
+  const { onDirtyChange } = props;
   const [view, setView] = useState<GameDesignSystemView>('overview');
   const [selectedVersionId, setSelectedVersionId] = useState(detail.current_version?.id ?? detail.versions[0]?.id ?? '');
   const [editingMetadata, setEditingMetadata] = useState(false);
@@ -342,9 +403,9 @@ export function GameDesignSystemWorkspace(props: Props) {
   });
 
   useEffect(() => {
-    props.onDirtyChange(draftDirty);
-    return () => props.onDirtyChange(false);
-  }, [draftDirty, props.onDirtyChange]);
+    onDirtyChange(draftDirty);
+    return () => onDirtyChange(false);
+  }, [draftDirty, onDirtyChange]);
 
   const confirmDiscardDraft = () => !draftDirty || window.confirm('Discard unsaved Game Design System changes?');
 

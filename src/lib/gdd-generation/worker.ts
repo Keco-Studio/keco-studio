@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { documentStateGateway } from '@/lib/documents/documentStateGateway';
+import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import {
   generateGdd,
@@ -11,9 +11,9 @@ import {
 } from '@/lib/gddGeneration';
 import {
   claimGddGenerationJob,
-  completeGddGenerationJob,
   failGddGenerationJob,
   heartbeatGddGenerationJob,
+  persistCompletedGddGenerationJob,
   retryGddGenerationJob,
   type GddGenerationJob,
   type GddJobStatus,
@@ -21,64 +21,122 @@ import {
 
 type WorkerDependencies = {
   heartbeat: typeof heartbeatGddGenerationJob;
+  revalidateContext: typeof revalidateGddJobContext;
   generate: typeof generateGdd;
-  createDocument: typeof createGeneratedGddDocument;
-  complete: typeof completeGddGenerationJob;
+  persist: typeof persistGeneratedGddDocument;
   retry: typeof retryGddGenerationJob;
   fail: typeof failGddGenerationJob;
 };
 
 const defaultDependencies: WorkerDependencies = {
   heartbeat: heartbeatGddGenerationJob,
+  revalidateContext: revalidateGddJobContext,
   generate: generateGdd,
-  createDocument: createGeneratedGddDocument,
-  complete: completeGddGenerationJob,
+  persist: persistGeneratedGddDocument,
   retry: retryGddGenerationJob,
   fail: failGddGenerationJob,
 };
 
+export class GddJobContextInvalidError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GddJobContextInvalidError';
+  }
+}
+
 function isPermanentError(error: unknown): boolean {
-  if (error instanceof GddGenerationValidationError) return true;
+  if (error instanceof GddGenerationValidationError || error instanceof GddJobContextInvalidError) return true;
   if (!error || typeof error !== 'object') return false;
   const code = (error as { code?: unknown }).code;
   return code === '42501' || code === '23503' || code === '23514' || code === 'P0002';
 }
 
-async function nextDocumentName(serviceClient: SupabaseClient, projectId: string): Promise<string> {
-  const base = 'Game Design Document - Draft';
-  const { data, error } = await serviceClient.from('documents').select('name').eq('project_id', projectId);
-  if (error) throw error;
-  const names = new Set((data ?? []).map((row) => String(row.name)));
-  if (!names.has(base)) return base;
-  let suffix = 2;
-  while (names.has(`${base} (${suffix})`)) suffix += 1;
-  return `${base} (${suffix})`;
-}
-
-export async function createGeneratedGddDocument(
+export async function revalidateGddJobContext(
   serviceClient: SupabaseClient,
   job: GddGenerationJob,
-  _gdd: GeneratedGdd,
+): Promise<void> {
+  const projectPromise = serviceClient.from('projects')
+    .select('owner_id')
+    .eq('id', job.project_id)
+    .maybeSingle();
+  const collaboratorPromise = serviceClient.from('project_collaborators')
+    .select('role,accepted_at')
+    .eq('project_id', job.project_id)
+    .eq('user_id', job.owner_id)
+    .maybeSingle();
+  const bindingPromise = serviceClient.from('project_game_design_systems')
+    .select('design_system_id,version_id')
+    .eq('project_id', job.project_id)
+    .maybeSingle();
+  const [project, collaborator, binding] = await Promise.all([
+    projectPromise,
+    collaboratorPromise,
+    bindingPromise,
+  ]);
+  if (project.error) throw project.error;
+  if (collaborator.error) throw collaborator.error;
+  if (binding.error) throw binding.error;
+
+  const isOwner = project.data?.owner_id === job.owner_id;
+  const hasAcceptedWriteRole = Boolean(
+    collaborator.data?.accepted_at
+      && (collaborator.data.role === 'admin' || collaborator.data.role === 'editor'),
+  );
+  if (!project.data || (!isOwner && !hasAcceptedWriteRole)) {
+    throw new GddJobContextInvalidError('GDD generation permission is no longer valid.');
+  }
+  if (
+    !binding.data
+    || binding.data.design_system_id !== job.design_system_id
+    || binding.data.version_id !== job.version_id
+  ) {
+    throw new GddJobContextInvalidError('The project Game Design System binding changed before generation.');
+  }
+}
+
+function sourceSnapshotMetadata(job: GddGenerationJob): Array<Record<string, unknown>> {
+  return job.input.projectSources.map((source) => ({
+    kind: source.kind,
+    ...(source.projectId ? { projectId: source.projectId } : {}),
+    ...(source.resourceId ? { resourceId: source.resourceId } : {}),
+    label: source.label,
+    contentHash: source.contentHash,
+    byteCount: source.byteCount,
+    truncated: source.truncated,
+    ...(source.updatedAt ? { updatedAt: source.updatedAt } : {}),
+  }));
+}
+
+export async function persistGeneratedGddDocument(
+  serviceClient: SupabaseClient,
+  job: GddGenerationJob,
+  workerId: string,
+  gdd: GeneratedGdd,
   markdown: string,
 ): Promise<{ id: string; name: string }> {
   validateSanctionedMdx(markdown);
-  const name = await nextDocumentName(serviceClient, job.project_id);
-  const { data, error } = await serviceClient.from('documents').insert({
-    project_id: job.project_id,
-    folder_id: null,
-    name,
+  const yjsState = await documentContentCodec.markdownToYjsState(markdown);
+  const createdAt = new Date().toISOString();
+  return persistCompletedGddGenerationJob(serviceClient, {
+    jobId: job.id,
+    workerId,
+    markdown,
+    yjsState,
     description: `AI-generated GDD draft from ${job.input.systemTitle} version ${job.input.versionNumber}.`,
-    content: markdown,
-    created_by: job.owner_id,
-  }).select('id,name').single();
-  if (error || !data) throw error ?? new Error('Failed to create generated GDD Document.');
-  try {
-    await documentStateGateway.initialize(serviceClient, data.id as string, markdown);
-  } catch (initializationError) {
-    await serviceClient.from('documents').delete().eq('id', data.id).eq('project_id', job.project_id);
-    throw initializationError;
-  }
-  return { id: data.id as string, name: data.name as string };
+    metadata: {
+      source: 'game_design_system_generation',
+      designSystemId: job.design_system_id,
+      versionId: job.version_id,
+      jobId: job.id,
+      sourceSnapshots: sourceSnapshotMetadata(job),
+      appliedRuleIds: gdd.appliedRuleIds,
+      omittedRuleIds: gdd.omittedRuleIds ?? [],
+      createdBy: job.owner_id,
+      createdAt,
+    },
+    appliedRuleIds: gdd.appliedRuleIds,
+    omittedRuleIds: gdd.omittedRuleIds ?? [],
+  });
 }
 
 async function generateWithLeaseHeartbeat(
@@ -109,18 +167,13 @@ export async function processClaimedGddJob(
   const { serviceClient, workerId, job } = input;
   try {
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'generating');
+    await dependencies.revalidateContext(serviceClient, job);
     const generated = await generateWithLeaseHeartbeat(input, dependencies);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
     const markdown = renderGddMarkdown(generated, { input: job.input });
     validateSanctionedMdx(markdown);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
-    const document = await dependencies.createDocument(serviceClient, job, generated, markdown);
-    await dependencies.complete(serviceClient, job, workerId, {
-      documentId: document.id,
-      documentName: document.name,
-      appliedRuleIds: generated.appliedRuleIds,
-      omittedRuleIds: generated.omittedRuleIds ?? [],
-    });
+    await dependencies.persist(serviceClient, job, workerId, generated, markdown);
     return 'completed';
   } catch (error) {
     const message = error instanceof Error ? error.message : 'GDD generation failed.';
