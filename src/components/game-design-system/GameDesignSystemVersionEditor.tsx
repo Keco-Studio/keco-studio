@@ -334,9 +334,16 @@ export function GameDesignSystemVersionEditor({
   return (
     <section className={styles.versionEditor} aria-label="Create Game Design System version">
       <header className={styles.versionEditorHeader}>
-        <div><span className={styles.eyebrow}>Immutable version</span><h1>Create new version</h1><p>{rebasedVersionNumber ? `Based on current version ${rebasedVersionNumber}` : `Based on version ${workingBase.version_number}`}</p></div>
+        <div><span className={styles.eyebrow}>Version iteration</span><h1>Create new version</h1><p>{rebasedVersionNumber ? `Based on current version ${rebasedVersionNumber}` : `Based on version ${workingBase.version_number}`}</p><p>Nothing changes until you confirm the reviewed draft.</p></div>
         <button className={styles.secondaryButton} type="button" aria-label="Cancel version draft" disabled={busy} onClick={cancel}>Cancel</button>
       </header>
+
+      <ol className={styles.versionWorkflowSteps} aria-label="Version iteration steps">
+        <li><strong>1. Edit Document</strong><span>Background, intent, loop and presentation</span></li>
+        <li><strong>2. Edit Rules</strong><span>Add, remove, reorder and refine rules or table guidance</span></li>
+        <li><strong>3. Edit Art Style</strong><span>Preset, art direction, references and avoid guidance</span></li>
+        <li><strong>4. Review &amp; create</strong><span>Inspect Before / After, then save the immutable version</span></li>
+      </ol>
 
       {workingBase.id !== workingCurrentVersionId && rebasedVersionNumber === null ? <div className={styles.notice} role="status">Version {workingBase.version_number} is historical. The current version will still be checked before creation.</div> : null}
 

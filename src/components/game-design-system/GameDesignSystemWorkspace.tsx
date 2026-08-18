@@ -122,12 +122,15 @@ const documentSections: Array<{ key: keyof GameDesignDocument; label: string; ey
 function OverviewView(props: {
   detail: GameDesignSystemDetail;
   version: GameDesignSystemVersion | null;
+  canEdit: boolean;
+  onStartVersion: () => void;
 }) {
   if (!props.version) return <div className={styles.workspaceState}>This system has no available versions.</div>;
   return (
     <section className={styles.documentView} role="tabpanel">
       <div className={styles.documentHeading}>
         <div><span className={styles.eyebrow}>Human-readable system</span><h2 id="gds-document-heading" tabIndex={-1}>Design document</h2><p>Version {props.version.version_number} / {props.version.rules.suitableFor}</p></div>
+        {props.canEdit ? <button className={styles.secondaryButton} type="button" aria-label="Iterate from document view" onClick={props.onStartVersion}><EditOutlined /> Iterate this version</button> : null}
       </div>
       <section className={styles.gameBackgroundReading}>
         <span className={styles.eyebrow}>World context</span>
@@ -158,9 +161,10 @@ function OverviewView(props: {
   );
 }
 
-function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) {
+function ArtStyleView({ version, canEdit, onStartVersion }: { version: GameDesignSystemVersion | null; canEdit: boolean; onStartVersion: () => void }) {
   return (
     <section className={styles.artStyleView} role="tabpanel">
+      {canEdit ? <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Read-only snapshot</span><h2>Want to change the visual direction?</h2><p>Start a version iteration to choose a new preset or update art direction.</p></div><button className={styles.secondaryButton} type="button" aria-label="Iterate from Art Style view" onClick={onStartVersion}><EditOutlined /> Iterate this version</button></div> : null}
       {version?.artStyleReadError
         ? <div className={styles.inlineEmpty}>This version contains an unsupported Art Style snapshot. It remains inherited exactly until explicitly replaced.</div>
         : !version?.artStyle
@@ -173,6 +177,8 @@ function ArtStyleView({ version }: { version: GameDesignSystemVersion | null }) 
 function RulesView(props: {
   detail: GameDesignSystemDetail;
   version: GameDesignSystemVersion | null;
+  canEdit: boolean;
+  onStartVersion: () => void;
 }) {
   const [selectedRuleId, setSelectedRuleId] = useState('');
   const selectedRule = props.version?.rules.rules.find((rule) => rule.id === selectedRuleId)
@@ -196,7 +202,8 @@ function RulesView(props: {
       </aside>
       <article className={styles.ruleReading}>
         <div className={styles.sectionHeading}>
-          <div><span className={styles.eyebrow}>{selectedRule ? ruleKindLabels[selectedRule.kind] : 'Rule'}</span><h3>{selectedRule?.title || 'No rule selected'}</h3></div>
+          <div><span className={styles.eyebrow}>{selectedRule ? ruleKindLabels[selectedRule.kind] : 'Rule'}</span><h3>{selectedRule?.title || 'No rule selected'}</h3><p>This is a read-only snapshot. Add or refine rules from a new version iteration.</p></div>
+          {props.canEdit ? <button className={styles.secondaryButton} type="button" aria-label="Iterate from Rules view" onClick={props.onStartVersion}><EditOutlined /> Iterate this version</button> : null}
         </div>
         {selectedRule ? (
           <>
@@ -232,10 +239,13 @@ function RulesView(props: {
   );
 }
 
-function VersionsView({ detail, selectedVersionId, onSelect }: { detail: GameDesignSystemDetail; selectedVersionId: string; onSelect: (id: string) => void }) {
+function VersionsView({ detail, selectedVersionId, onSelect, canEdit, onStartVersion }: { detail: GameDesignSystemDetail; selectedVersionId: string; onSelect: (id: string) => void; canEdit: boolean; onStartVersion: () => void }) {
   return (
     <section className={styles.viewPanel} role="tabpanel">
-      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Immutable history</span><h3>{detail.versions.length} saved {detail.versions.length === 1 ? 'version' : 'versions'}</h3></div></div>
+      <div className={styles.sectionHeading}>
+        <div><span className={styles.eyebrow}>Immutable history</span><h3>{detail.versions.length} saved {detail.versions.length === 1 ? 'version' : 'versions'}</h3><p>Select a version to inspect it, or start a new iteration from the selected snapshot.</p></div>
+        {canEdit ? <button className={styles.primaryButton} type="button" onClick={onStartVersion}><EditOutlined /> Start version iteration</button> : null}
+      </div>
       <div className={styles.versionList}>
         {detail.versions.map((version) => (
           <article className={version.id === selectedVersionId ? styles.versionRowActive : styles.versionRow} key={version.id}>
@@ -581,7 +591,7 @@ export function GameDesignSystemWorkspace(props: Props) {
         <div className={styles.detailActions}>
           {owned && editingMetadata ? <button className={styles.primaryButton} type="button" aria-label="Save details" disabled={!metadataDraft.title.trim() || busy} onClick={() => metadataMutation.mutate()}><SaveOutlined /> Save details</button> : null}
           {owned ? <button className={styles.secondaryButton} type="button" aria-label={editingMetadata ? 'Cancel editing system info' : 'Edit system info'} disabled={busy} onClick={() => { if (editingMetadata) { if (!confirmDiscardDraft()) return; resetMetadataDraft(); setEditingMetadata(false); return; } setEditingMetadata(true); }}><EditOutlined /> {editingMetadata ? 'Cancel' : 'Edit system info'}</button> : null}
-          {owned ? <button ref={versionActionRef} className={styles.secondaryButton} type="button" aria-label="Create new version" disabled={busy || editingMetadata || !selectedVersion} onClick={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }}><EditOutlined /> Create new version</button> : null}
+          {owned ? <button ref={versionActionRef} className={styles.primaryButton} type="button" aria-label="Start version iteration" disabled={busy || editingMetadata || !selectedVersion} onClick={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }}><EditOutlined /> Start version iteration</button> : null}
           {owned ? <button className={styles.iconButtonDanger} type="button" aria-label="Delete system" title="Delete system" disabled={busy} onClick={() => { if (window.confirm('Delete this system?')) deleteMutation.mutate(); }}><DeleteOutlined /></button> : null}
         </div>
       </header>
@@ -593,11 +603,20 @@ export function GameDesignSystemWorkspace(props: Props) {
         <label className={styles.versionSelect}><span>Version</span><select className={styles.select} value={selectedVersion?.id ?? ''} onChange={(event) => changeVersion(event.target.value)}>{detail.versions.map((version) => <option key={version.id} value={version.id}>Version {version.version_number}{version.id === detail.current_version_id ? ' (Current)' : ''}</option>)}</select></label>
       </div>
 
+      <div className={styles.versionIterationGuide} role="note">
+        <div>
+          <span className={styles.eyebrow}>Version workflow</span>
+          <strong>Turn a design decision into a new immutable version</strong>
+          <p>The current view is a read-only snapshot. Start an iteration to edit the game background, rules and tables, or Art Style, then review the exact changes before publishing.</p>
+        </div>
+        {owned ? <button className={styles.secondaryButton} type="button" aria-label="Start version iteration from workflow guide" onClick={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }}><EditOutlined /> Start version iteration</button> : <span className={styles.inlineEmpty}>Read-only snapshot</span>}
+      </div>
+
       {feedback ? <div className={feedback.tone === 'error' ? styles.error : styles.notice} role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.text}</div> : null}
-      {view === 'overview' ? <OverviewView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} /> : null}
-      {view === 'art-style' ? <ArtStyleView key={selectedVersion?.id ?? 'no-version'} version={selectedVersion} /> : null}
-      {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} /> : null}
-      {view === 'versions' ? <VersionsView detail={detail} selectedVersionId={selectedVersion?.id ?? ''} onSelect={changeVersion} /> : null}
+      {view === 'overview' ? <OverviewView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
+      {view === 'art-style' ? <ArtStyleView key={selectedVersion?.id ?? 'no-version'} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
+      {view === 'rules' ? <RulesView key={selectedVersion?.id ?? 'no-version'} detail={detail} version={selectedVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
+      {view === 'versions' ? <VersionsView detail={detail} selectedVersionId={selectedVersion?.id ?? ''} onSelect={changeVersion} canEdit={owned} onStartVersion={() => { versionIdempotencyKeyRef.current = crypto.randomUUID(); setEditingVersion(true); }} /> : null}
       {view === 'sources' ? <SourcesView version={selectedVersion} /> : null}
       {view === 'projects' ? <ProjectsView detail={detail} version={selectedVersion} projects={props.projects} loading={props.projectsLoading} error={props.projectsError} onRetry={props.onRetryProjects} onFeedback={setFeedback} /> : null}
       {view === 'versions' && selectedVersion ? <details className={styles.markdownDisclosure}><summary>View GAME_DESIGN_SYSTEM.md projection</summary><article className={styles.markdown}><ReactMarkdown>{selectedVersion.rendered_markdown}</ReactMarkdown></article></details> : null}

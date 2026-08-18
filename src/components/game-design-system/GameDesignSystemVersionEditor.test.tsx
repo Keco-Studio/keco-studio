@@ -230,7 +230,7 @@ describe('GameDesignSystemVersionEditor', () => {
       },
       artStyle: {
         presetId: 'pixel-art',
-        presetVersion: 1,
+        presetVersion: 2,
         customization: {
           direction: 'Bright aerial landmarks.',
           referenceGames: [{ name: 'Skies of Arcadia', borrow: 'Readable airborne silhouettes.' }],

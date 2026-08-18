@@ -319,6 +319,8 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Versions' }));
     expect(screen.getByRole('heading', { name: 'Version 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start version iteration' })).toBeTruthy();
+    expect(screen.getByText('Select a version to inspect it, or start a new iteration from the selected snapshot.')).toBeTruthy();
     await user.click(screen.getByRole('tab', { name: 'Sources' }));
     expect(screen.getByText('No source snapshots for this version.')).toBeTruthy();
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
@@ -341,7 +343,7 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('button', { name: 'Create new version' }));
+    await user.click(screen.getByRole('button', { name: 'Start version iteration' }));
     await user.click(screen.getByRole('tab', { name: 'Rules' }));
     await user.click(screen.getByRole('button', { name: 'Readable state' }));
     const statement = screen.getByLabelText('Rule statement');
@@ -384,7 +386,7 @@ describe('GameDesignSystemsPage', () => {
 
     await screen.findByRole('heading', { name: 'Design document' });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Version' }), historical.id);
-    await user.click(screen.getByRole('button', { name: 'Create new version' }));
+    await user.click(screen.getByRole('button', { name: 'Start version iteration' }));
     await user.click(screen.getByRole('tab', { name: 'Rules' }));
     await user.click(screen.getByRole('button', { name: 'Readable state' }));
     await user.type(screen.getByLabelText('Rule statement'), ' Historical branch.');
@@ -406,7 +408,7 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('button', { name: 'Create new version' }));
+    await user.click(screen.getByRole('button', { name: 'Start version iteration' }));
     expect(screen.queryByRole('button', { name: 'Copy and edit' })).toBeNull();
     const intent = screen.getByLabelText('Design intent');
     await user.clear(intent);
@@ -435,7 +437,7 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('button', { name: 'Create new version' }));
+    await user.click(screen.getByRole('button', { name: 'Start version iteration' }));
     const intent = screen.getByLabelText('Design intent');
     await user.clear(intent);
     await user.type(intent, 'Keep this unsaved draft.');
@@ -452,12 +454,12 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    const action = screen.getByRole('button', { name: 'Create new version' });
+    const action = screen.getByRole('button', { name: 'Start version iteration' });
     await user.click(action);
     await user.type(screen.getByLabelText('Design intent'), ' Unsaved.');
     await user.click(screen.getByRole('button', { name: 'Cancel version draft' }));
 
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Create new version' })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Start version iteration' })));
   });
 
   it('resets metadata after a confirmed discard', async () => {

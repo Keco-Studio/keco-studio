@@ -27,6 +27,10 @@ function inputFromSnapshot(snapshot: GameArtStyleSnapshot | null): GameArtStyleI
   };
 }
 
+function isOfferedPreset(key: string): boolean {
+  return GAME_ART_STYLE_CATALOG.some((preset) => gameArtStyleKey(preset.presetId, preset.presetVersion) === key);
+}
+
 export function GameDesignSystemArtStyleFields({
   originalSnapshot,
   artStyleReadError,
@@ -73,9 +77,13 @@ export function GameDesignSystemArtStyleFields({
   const draft = value ?? inputFromSnapshot(originalSnapshot);
   const selectedKey = gameArtStyleKey(draft.presetId, draft.presetVersion);
   const selectedPreset = GAME_ART_STYLE_PRESETS_BY_KEY[selectedKey];
+  const historicalPreset = !isOfferedPreset(selectedKey);
+  const editableDraft = historicalPreset
+    ? { ...inputFromSnapshot(null), customization: draft.customization }
+    : draft;
   const updateCustomization = (next: Partial<GameArtStyleInput['customization']>) => onChange({
-    ...draft,
-    customization: { ...draft.customization, ...next },
+    ...editableDraft,
+    customization: { ...editableDraft.customization, ...next },
   });
 
   return (
@@ -84,6 +92,7 @@ export function GameDesignSystemArtStyleFields({
         <div><span className={styles.eyebrow}>Version draft</span><h2 id="gds-version-art-heading" tabIndex={-1}>Art Style</h2><p>{selectedPreset?.title ?? originalSnapshot?.title ?? 'Retired preset'} / Revision {draft.presetVersion}{changed ? ' / Modified' : ' / Inherited'}</p></div>
         {changed ? <button className={styles.secondaryButton} type="button" aria-label="Undo Art Style changes" onClick={() => onChange(null)}>Undo changes</button> : null}
       </div>
+      {historicalPreset ? <div className={styles.notice} role="status">This historical preset is read-only. Editing a direction or reference will continue from the current Pixel Art v2 preset; you can also choose another offered style above.</div> : null}
       <GameArtStyleCatalog
         catalog={GAME_ART_STYLE_CATALOG}
         selectedKey={selectedKey}
