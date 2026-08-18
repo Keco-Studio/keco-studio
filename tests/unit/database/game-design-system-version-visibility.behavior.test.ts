@@ -7,6 +7,11 @@ import {
   type ProjectFixture,
 } from './helpers/rlsTestClient';
 import { getGameDesignSystemDetail } from '@/lib/services/gameDesignSystemService';
+import { randomUUID } from 'node:crypto';
+
+if (process.env.REQUIRE_RLS_DB_TESTS === '1' && !RLS_DB_TESTS_ENABLED) {
+  throw new Error('REQUIRE_RLS_DB_TESTS=1 requires the local RLS database suite to be enabled.');
+}
 
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 
@@ -26,6 +31,40 @@ const rules = {
   tableGuidance: [],
 };
 
+function versionRpcArgs(input: {
+  systemId: string;
+  ownerId: string;
+  label: string;
+  hashCharacter: string;
+  parentVersionId?: string | null;
+  expectedCurrentVersionId?: string | null;
+  idempotencyKey?: string | null;
+  generationJobId?: string | null;
+  versionRules?: typeof rules;
+}) {
+  return {
+    p_system_id: input.systemId,
+    p_parent_version_id: input.parentVersionId ?? null,
+    p_document: null,
+    p_art_style: null,
+    p_rules: input.versionRules ?? rules,
+    p_rendered_markdown: `# ${input.label}\n\n> Version: __KECO_ATOMIC_VERSION_LINE__`,
+    p_source_snapshots: [],
+    p_diff: { added: [], removed: [], changed: [], conflicts: [] },
+    p_conflicts: [],
+    p_content_hash: input.hashCharacter.repeat(64),
+    p_created_by: input.ownerId,
+    p_generation_job_id: input.generationJobId ?? null,
+    p_expected_current_version_id: input.expectedCurrentVersionId ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
+  };
+}
+
+function versionIdFromRpc(data: unknown): string {
+  const row = Array.isArray(data) ? data[0] : data;
+  return String((row as { id?: unknown } | null)?.id ?? '');
+}
+
 describeDb('Game Design System pinned version visibility (live database)', () => {
   let fixture: ProjectFixture;
   let systemId = '';
@@ -34,6 +73,27 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
   let officialSystemId = '';
   let officialVersionId = '';
   let pendingInvitee: RlsUser;
+  const casSystemIds: string[] = [];
+  const generationJobIds: string[] = [];
+
+  async function createCasSystem(generationJobId?: string): Promise<string> {
+    const created = await fixture.svc.from('game_design_systems').insert({
+      owner_id: fixture.outsider.id,
+      source: 'user',
+      title: `cas-system-${randomUUID()}`,
+      summary: null,
+      genres: [],
+      philosophies: [],
+      suitable_for: null,
+      body: '',
+      status: 'draft',
+      generation_job_id: generationJobId ?? null,
+    }).select('id').single();
+    if (created.error || !created.data) throw new Error(`create CAS system failed: ${created.error?.message}`);
+    const id = String(created.data.id);
+    casSystemIds.push(id);
+    return id;
+  }
 
   beforeAll(async () => {
     fixture = await buildProjectFixture();
@@ -125,6 +185,12 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     if (fixture && officialSystemId) {
       await fixture.svc.from('game_design_systems').delete().eq('id', officialSystemId);
     }
+    if (fixture && casSystemIds.length > 0) {
+      await fixture.svc.from('game_design_systems').delete().in('id', casSystemIds);
+    }
+    if (fixture && generationJobIds.length > 0) {
+      await fixture.svc.from('game_design_system_generation_jobs').delete().in('id', generationJobIds);
+    }
     if (fixture) await teardownProjectFixture(fixture);
   }, 60_000);
 
@@ -204,6 +270,187 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     );
     expect(unauthorizedClaim.data).toBeNull();
     expect(unauthorizedClaim.error).not.toBeNull();
+  });
+
+  it('allows only one concurrent write for distinct keys with the same expected current version', async () => {
+    const casSystemId = await createCasSystem();
+    const initial = await fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
+      systemId: casSystemId,
+      ownerId: fixture.outsider.id,
+      label: 'CAS initial',
+      hashCharacter: '1',
+    }));
+    expect(initial.error).toBeNull();
+    const initialVersionId = versionIdFromRpc(initial.data);
+    expect(initialVersionId).not.toBe('');
+
+    const shared = {
+      systemId: casSystemId,
+      ownerId: fixture.outsider.id,
+      parentVersionId: initialVersionId,
+      expectedCurrentVersionId: initialVersionId,
+    };
+    const results = await Promise.all([
+      fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
+        ...shared,
+        label: 'CAS first contender',
+        hashCharacter: '2',
+        idempotencyKey: randomUUID(),
+      })),
+      fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
+        ...shared,
+        label: 'CAS second contender',
+        hashCharacter: '3',
+        idempotencyKey: randomUUID(),
+      })),
+    ]);
+
+    const successes = results.filter((result) => result.error === null);
+    const failures = results.filter((result) => result.error !== null);
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error?.message).toContain('VERSION_STALE');
+    const versions = await fixture.svc.from('game_design_system_versions')
+      .select('id').eq('system_id', casSystemId);
+    expect(versions.error).toBeNull();
+    expect(versions.data).toHaveLength(2);
+  });
+
+  it('returns the same version for concurrent replay of one idempotency key', async () => {
+    const casSystemId = await createCasSystem();
+    const idempotencyKey = randomUUID();
+    const args = versionRpcArgs({
+      systemId: casSystemId,
+      ownerId: fixture.outsider.id,
+      label: 'Idempotent concurrent output',
+      hashCharacter: '4',
+      idempotencyKey,
+    });
+
+    const results = await Promise.all([
+      fixture.svc.rpc('create_game_design_system_version', args),
+      fixture.svc.rpc('create_game_design_system_version', args),
+    ]);
+
+    expect(results.map((result) => result.error)).toEqual([null, null]);
+    const versionIds = results.map((result) => versionIdFromRpc(result.data));
+    expect(versionIds[0]).not.toBe('');
+    expect(versionIds[1]).toBe(versionIds[0]);
+    const versions = await fixture.svc.from('game_design_system_versions')
+      .select('id,idempotency_key').eq('system_id', casSystemId);
+    expect(versions.error).toBeNull();
+    expect(versions.data).toEqual([{ id: versionIds[0], idempotency_key: idempotencyKey }]);
+  });
+
+  it('returns the original generation output after current advances without persistence side effects', async () => {
+    const job = await fixture.svc.from('game_design_system_generation_jobs').insert({
+      owner_id: fixture.outsider.id,
+      input: { title: 'Generation replay fixture' },
+      status: 'running',
+      phase: 'saving',
+      lease_owner: 'live-test-worker',
+      lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+    }).select('id').single();
+    if (job.error || !job.data) throw new Error(`create generation job failed: ${job.error?.message}`);
+    const generationJobId = String(job.data.id);
+    generationJobIds.push(generationJobId);
+    const generatedSystemId = await createCasSystem(generationJobId);
+
+    const original = await fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
+      systemId: generatedSystemId,
+      ownerId: fixture.outsider.id,
+      label: 'Original generation output',
+      hashCharacter: '5',
+      generationJobId,
+    }));
+    expect(original.error).toBeNull();
+    const originalVersionId = versionIdFromRpc(original.data);
+    const completed = await fixture.svc.from('game_design_system_generation_jobs').update({
+      status: 'completed',
+      phase: 'completed',
+      design_system_id: generatedSystemId,
+      output_version_id: originalVersionId,
+      lease_owner: null,
+      lease_expires_at: null,
+    }).eq('id', generationJobId);
+    expect(completed.error).toBeNull();
+
+    const advancedRules = {
+      ...rules,
+      genres: ['Advanced genre'],
+      philosophies: ['Advanced philosophy'],
+      suitableFor: 'Advanced audience',
+    };
+    const advanced = await fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
+      systemId: generatedSystemId,
+      ownerId: fixture.outsider.id,
+      label: 'Advanced current output',
+      hashCharacter: '6',
+      parentVersionId: originalVersionId,
+      expectedCurrentVersionId: originalVersionId,
+      idempotencyKey: randomUUID(),
+      versionRules: advancedRules,
+    }));
+    expect(advanced.error).toBeNull();
+    const advancedVersionId = versionIdFromRpc(advanced.data);
+
+    const beforeSystem = await fixture.svc.from('game_design_systems')
+      .select('current_version_id,body,genres,philosophies,suitable_for')
+      .eq('id', generatedSystemId).single();
+    const beforeVersions = await fixture.svc.from('game_design_system_versions')
+      .select('id', { count: 'exact' }).eq('system_id', generatedSystemId);
+    const beforeJob = await fixture.svc.from('game_design_system_generation_jobs')
+      .select('output_version_id').eq('id', generationJobId).single();
+    expect(beforeSystem.error).toBeNull();
+    expect(beforeSystem.data).toMatchObject({
+      current_version_id: advancedVersionId,
+      body: '',
+      genres: [],
+      philosophies: [],
+      suitable_for: null,
+    });
+    expect(beforeVersions.count).toBe(2);
+    expect(beforeJob.data?.output_version_id).toBe(originalVersionId);
+
+    const replay = await fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
+      systemId: generatedSystemId,
+      ownerId: fixture.outsider.id,
+      label: 'Must not be persisted',
+      hashCharacter: '7',
+      generationJobId,
+      expectedCurrentVersionId: null,
+    }));
+    expect(replay.error).toBeNull();
+    expect(versionIdFromRpc(replay.data)).toBe(originalVersionId);
+
+    const afterSystem = await fixture.svc.from('game_design_systems')
+      .select('current_version_id,body,genres,philosophies,suitable_for')
+      .eq('id', generatedSystemId).single();
+    const afterVersions = await fixture.svc.from('game_design_system_versions')
+      .select('id', { count: 'exact' }).eq('system_id', generatedSystemId);
+    const afterJob = await fixture.svc.from('game_design_system_generation_jobs')
+      .select('output_version_id').eq('id', generationJobId).single();
+    expect(afterSystem.data).toEqual(beforeSystem.data);
+    expect(afterVersions.count).toBe(beforeVersions.count);
+    expect(afterVersions.data).toEqual(beforeVersions.data);
+    expect(afterJob.data).toEqual(beforeJob.data);
+  });
+
+  it('does not expose the obsolete no-CAS RPC signature after schema refresh', async () => {
+    const casSystemId = await createCasSystem();
+    const oldArgs = versionRpcArgs({
+      systemId: casSystemId,
+      ownerId: fixture.outsider.id,
+      label: 'Obsolete signature',
+      hashCharacter: '8',
+    }) as Record<string, unknown>;
+    delete oldArgs.p_expected_current_version_id;
+    delete oldArgs.p_idempotency_key;
+
+    const obsolete = await fixture.svc.rpc('create_game_design_system_version', oldArgs);
+
+    expect(obsolete.data).toBeNull();
+    expect(obsolete.error?.code).toBe('PGRST202');
   });
 
   it('builds a non-owner API detail from the pinned version without widening through snapshot hydration', async () => {

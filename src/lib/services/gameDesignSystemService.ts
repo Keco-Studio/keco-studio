@@ -338,6 +338,21 @@ export async function getGameDesignSystemVersion(supabase: SupabaseClient, id: s
   return hydrateVersion(data as Record<string, unknown>);
 }
 
+/** Server-only replay lookup: callers receive identity only, never version content. */
+export async function getGameDesignSystemVersionByGenerationJobId(
+  serviceClient: SupabaseClient,
+  generationJobId: string,
+): Promise<{ systemId: string; versionId: string } | null> {
+  const { data, error } = await serviceClient
+    .from('game_design_system_versions')
+    .select('system_id,id')
+    .eq('generation_job_id', generationJobId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { systemId: data.system_id as string, versionId: data.id as string };
+}
+
 export async function getGameDesignSystemDetail(
   supabase: SupabaseClient,
   id: string,
@@ -368,6 +383,8 @@ export async function createGameDesignSystemVersion(
     parentVersion?: GameDesignSystemVersionParent | null;
     sourceSnapshots?: GameDesignSourceSnapshot[];
     generationJobId?: string;
+    expectedCurrentVersionId?: string | null;
+    idempotencyKey?: string | null;
   },
 ): Promise<GameDesignSystemVersion> {
   const rules = parseRuleSet(input.rules);
@@ -410,6 +427,8 @@ export async function createGameDesignSystemVersion(
     p_content_hash: hashJson({ document, rules, artStyle }),
     p_created_by: input.createdBy,
     p_generation_job_id: input.generationJobId ?? null,
+    p_expected_current_version_id: input.expectedCurrentVersionId ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
@@ -446,9 +465,12 @@ export async function createGameDesignSystem(
     if (existing.error) throw existing.error;
     if (existing.data) {
       const system = existing.data as GameDesignSystem;
-      if (system.current_version_id) {
-        const currentVersion = await getGameDesignSystemVersion(supabase, system.current_version_id);
-        return projectSystemVersionMetadata(system, currentVersion);
+      const output = await getGameDesignSystemVersionByGenerationJobId(supabase, input.generationJobId);
+      if (output) {
+        if (output.systemId !== system.id) throw new Error('Generation output belongs to another system.');
+        const version = await getGameDesignSystemVersion(supabase, output.versionId);
+        if (!version || version.system_id !== system.id) throw new Error('Generation output version could not be loaded.');
+        return projectSystemVersionMetadata(system, version);
       }
       const version = await createGameDesignSystemVersion(supabase, {
         systemId: system.id,

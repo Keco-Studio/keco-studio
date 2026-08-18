@@ -5,9 +5,11 @@ import {
   createGameDesignSystem,
   createGameDesignSystemGenerationJob,
   copyGameDesignSystem,
+  completeGameDesignSystemGenerationJob,
   IdempotencyConflictError,
   claimGameDesignSystemGenerationJob,
   getGameDesignSystemDetail,
+  getGameDesignSystemVersionByGenerationJobId,
   getProjectGameDesignSystem,
   listGameDesignSystems,
   type GameDesignSystemVersion,
@@ -80,6 +82,8 @@ describe('gameDesignSystemService version and job behavior', () => {
       rules: { ...ruleSet, rules: [...ruleSet.rules, { ...ruleSet.rules[0], id: 'visible-costs' }] },
       parentVersion: { ...parent, id: 'version-1' },
       sourceSnapshots: [],
+      expectedCurrentVersionId: 'version-1',
+      idempotencyKey: 'a8b68831-7587-42a4-b7bf-d46f0ab9787b',
     });
 
     expect(created.id).toBe('version-4');
@@ -100,6 +104,8 @@ describe('gameDesignSystemService version and job behavior', () => {
       }),
       p_created_by: 'user-1',
       p_generation_job_id: null,
+      p_expected_current_version_id: 'version-1',
+      p_idempotency_key: 'a8b68831-7587-42a4-b7bf-d46f0ab9787b',
       p_document: document,
       p_art_style: artStyle,
       p_content_hash: createHash('sha256')
@@ -167,6 +173,8 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_generation_job_id: 'job-1',
       p_art_style: artStyle,
+      p_expected_current_version_id: null,
+      p_idempotency_key: null,
     }));
   });
 
@@ -234,7 +242,9 @@ describe('gameDesignSystemService version and job behavior', () => {
       error: null,
     }));
     const supabase = {
-      from: jest.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle }) }) })),
+      from: jest.fn((table: string) => table === 'game_design_system_versions'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ maybeSingle }) }) }),
       rpc,
     };
 
@@ -246,7 +256,95 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_art_style: artStyle,
       p_generation_job_id: 'job-1',
+      p_expected_current_version_id: null,
+      p_idempotency_key: null,
     }));
+  });
+
+  it('returns a sanitized generation replay handle', async () => {
+    const maybeSingle = jest.fn(async () => ({
+      data: { system_id: 'generated-system', id: 'generated-version', rules: { mustNotLeak: true } },
+      error: null,
+    }));
+    const select = jest.fn((_columns: string) => ({ eq: () => ({ maybeSingle }) }));
+    const from = jest.fn(() => ({ select }));
+
+    const output = await getGameDesignSystemVersionByGenerationJobId({ from } as never, 'job-1');
+
+    expect(select).toHaveBeenCalledWith('system_id,id');
+    expect(output).toEqual({ systemId: 'generated-system', versionId: 'generated-version' });
+    expect(output).not.toHaveProperty('rules');
+  });
+
+  it('projects generation replay from its original output instead of the current version', async () => {
+    const generationJob = { output_version_id: 'version-original' };
+    const system = {
+      id: 'generated-system', owner_id: 'user-1', source: 'user', title: 'Generated Rules',
+      summary: null, body: '# Current', genres: ['Current'], philosophies: ['Current'],
+      suitable_for: 'Current', provenance: {}, status: 'draft', current_version_id: 'version-current',
+      migration_status: 'ready', generation_job_id: 'job-1', created_at: '', updated_at: '',
+    };
+    const originalRules = {
+      ...ruleSet,
+      genres: ['Original'],
+      philosophies: ['Original philosophy'],
+      suitableFor: 'Original audience',
+    };
+    const originalVersion = {
+      id: 'version-original', system_id: system.id, version_number: 1, parent_version_id: null,
+      document, rules: originalRules, art_style: artStyle, rendered_markdown: '# Original output',
+      source_snapshots: [], diff: { added: [], removed: [], changed: [], conflicts: [] },
+      conflicts: [], content_hash: 'a'.repeat(64), created_by: 'user-1', created_at: '',
+    };
+    const from = jest.fn((table: string) => ({
+      select: (columns: string) => ({
+        eq: (column: string) => ({
+          maybeSingle: async () => {
+            if (table === 'game_design_systems') return { data: system, error: null };
+            if (columns === 'system_id,id' && column === 'generation_job_id') {
+              return { data: { system_id: system.id, id: originalVersion.id }, error: null };
+            }
+            return { data: originalVersion, error: null };
+          },
+        }),
+      }),
+    }));
+
+    const replayed = await createGameDesignSystem({ from } as never, 'user-1', {
+      title: 'Generated Rules', genres: [], philosophies: [], rules: ruleSet, generationJobId: 'job-1',
+    });
+
+    expect(replayed).toMatchObject({
+      current_version_id: 'version-original',
+      body: '# Original output',
+      genres: ['Original'],
+      philosophies: ['Original philosophy'],
+      suitable_for: 'Original audience',
+    });
+    expect(generationJob.output_version_id).toBe('version-original');
+    expect(from).not.toHaveBeenCalledWith('game_design_system_generation_jobs');
+  });
+
+  it('completes generation replay with the original output version', async () => {
+    const job = { id: 'job-1', output_version_id: 'version-original' };
+    const maybeSingle = jest.fn(async () => ({ data: { id: 'job-1' }, error: null }));
+    const select = jest.fn(() => ({ maybeSingle }));
+    const eqLease = jest.fn(() => ({ select }));
+    const eqStatus = jest.fn(() => ({ eq: eqLease }));
+    const eqId = jest.fn(() => ({ eq: eqStatus }));
+    const update = jest.fn((_patch: Record<string, unknown>) => ({ eq: eqId }));
+    const from = jest.fn(() => ({ update }));
+
+    await completeGameDesignSystemGenerationJob({ from } as never, job as never, 'worker-1', {
+      systemId: 'generated-system',
+      versionId: 'version-original',
+    });
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      design_system_id: 'generated-system',
+      output_version_id: 'version-original',
+    }));
+    expect(job.output_version_id).toBe('version-original');
   });
 
   it('copies the current source version art style rather than historical style', async () => {
@@ -284,6 +382,8 @@ describe('gameDesignSystemService version and job behavior', () => {
     expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
       p_parent_version_id: 'version-2',
       p_art_style: artStyle,
+      p_expected_current_version_id: null,
+      p_idempotency_key: null,
     }));
   });
 
