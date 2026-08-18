@@ -114,7 +114,7 @@ git commit -m "feat: version game background in design systems"
 - Modify: `src/lib/game-design-system/sourceVisibility.test.ts`
 
 **Interfaces:**
-- Produces: `GameDesignSystemVersionDiffV2`, `createVersionDiff(parent, next)`, `canonicalJsonEqual(a, b)`.
+- Produces: `GameDesignSystemVersionDiffV2`, `createVersionDiff(parent, next)`, `canonicalJsonEqual(a, b)`; diff inputs retain raw JSON-compatible Art Style values even when the public read model cannot hydrate them.
 - Extends: `GameDesignSystemVersion.artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' } | null`.
 - Preserves: top-level rule `added/removed/changed/conflicts` fields for compatibility.
 
@@ -143,7 +143,7 @@ Expected: new module/type assertions fail.
 
 - [ ] **Step 3: Implement canonical equality and v2 diff**
 
-Canonicalization recursively sorts object keys, retains array order, rejects unsupported JS values, and compares JSON strings. `createVersionDiff` embeds `diffRuleSets` and emits every required v2 field. Legacy rows keep their stored rule diff; the detail read projection derives cross-domain changes when the parent is loaded, otherwise marks them `not_recorded` in the view model rather than `unchanged`.
+Canonicalization recursively sorts object keys, retains array order, rejects unsupported JS values, and compares JSON strings. `createVersionDiff` embeds `diffRuleSets` and emits every required v2 field. Equal unsupported raw Art Style JSON is `unchanged`; unsupported non-null to supported is `preset_changed`; unsupported to null is `removed`. Legacy rows keep their stored rule diff; the detail read projection derives cross-domain changes when the parent is loaded, otherwise marks them `not_recorded` in the view model rather than `unchanged`.
 
 - [ ] **Step 4: Preserve unsupported Art Style state through visibility redaction**
 
@@ -188,6 +188,8 @@ Assert the migration drops the old 12-argument signature, creates one 14-argumen
 
 Service tests must show public-style input forwards non-null CAS/key, initial internal creation forwards both as null, generation idempotency remains unchanged, and replay hydration returns the original row. Add live-database behavior cases that issue concurrent RPC calls: two distinct keys with the same expected current produce exactly one success and one `VERSION_STALE` with only one inserted row; the same key submitted concurrently returns the same version from both calls; and a generation-job replay still returns its original output after current has advanced.
 
+The behavior suite must throw at registration when `REQUIRE_RLS_DB_TESTS=1` but the existing local-only `RLS_DB_TESTS_ENABLED` guard is false. This lets focused development skip safely while making final concurrency verification a hard release gate.
+
 - [ ] **Step 2: Run RED**
 
 ```bash
@@ -230,19 +232,25 @@ git commit -m "feat: serialize design system version writes"
 **Files:**
 - Create: `src/lib/game-design-system/versionRequest.ts`
 - Create: `src/lib/game-design-system/versionRequest.test.ts`
+- Create: `src/lib/services/gameDesignSystemWriteService.server.ts`
+- Create: `src/lib/services/gameDesignSystemWriteService.server.test.ts`
+- Modify: `src/lib/services/gameDesignSystemService.ts`
+- Modify: `src/lib/services/gameDesignSystemService.test.ts`
 - Modify: `src/app/api/game-design-systems/[id]/versions/route.ts`
 - Modify: `tests/unit/game-design-system-routes.test.ts`
 - Modify: `tests/unit/game-design-system-route-test-boundaries.test.ts`
+- Modify: `tests/unit/database/game-design-system-version-visibility.behavior.test.ts`
 - Modify: `src/lib/services/gameDesignSystemClient.ts`
 
 **Interfaces:**
 - Produces: strict `createGameDesignSystemVersionRequestSchema` and `CreateGameDesignSystemVersionRequest`.
+- Produces: server-only `createPublicGameDesignSystemVersion()`; its private write-base reader retains raw `artStyleJson` without ever returning it to the route, a public read model, or a client bundle.
 - Changes client to `createGameDesignSystemVersion(id, request, idempotencyKey)`.
 - Maps: stale to `409 VERSION_STALE`, key conflict to `409 IDEMPOTENCY_CONFLICT`, no-op to `409 VERSION_NO_CHANGES`.
 
 - [ ] **Step 1: Write failing schema/route tests**
 
-Cover strict unknown-key rejection, missing/invalid UUID header, same-system parent, owner authorization, absent-field inheritance, simultaneous three-domain replacement, `artStyle: null`, forged snapshot fields, retired/unknown preset, canonical no-op, reintroduced rule IDs, stale current, replayed key, and key conflict.
+Cover strict unknown-key rejection, missing/invalid UUID header, same-system parent, owner authorization, absent-field inheritance, simultaneous three-domain replacement, `artStyle: null`, forged snapshot fields, retired/unknown preset, canonical no-op, reintroduced rule IDs, stale current, replayed key, and key conflict. Add server-only unit and live PostgreSQL write cases where a structurally unknown snapshot and a schema-malformed non-null JSONB object are copied with exact JSONB equality through Document-only and Rules-only versions, remain hydrated as `UNSUPPORTED_SNAPSHOT`, and are replaced only after an explicit offered preset input. Assert the server function's result, route responses, errors/logs, and client-reachable imports never contain the raw unsupported value.
 
 Expected request example:
 
@@ -260,13 +268,16 @@ Expected request example:
 
 ```bash
 npx jest src/lib/game-design-system/versionRequest.test.ts \
+  src/lib/services/gameDesignSystemWriteService.server.test.ts \
+  src/lib/services/gameDesignSystemService.test.ts \
   tests/unit/game-design-system-route-test-boundaries.test.ts \
-  tests/unit/game-design-system-routes.test.ts --runInBand
+  tests/unit/game-design-system-routes.test.ts \
+  tests/unit/database/game-design-system-version-visibility.behavior.test.ts --runInBand
 ```
 
 - [ ] **Step 3: Resolve one trusted complete snapshot in the route**
 
-Parse the strict request and key, load system/parent/current, compile only a supplied non-null Art Style, inherit omitted fields, compare the resolved complete triple canonically to the parent, retain ancestry checks, then call the service with CAS and key. Never accept `GameArtStyleSnapshot` from the request.
+Parse the strict request and key in the route, then delegate the authorized write to `createPublicGameDesignSystemVersion()`. Inside that `server-only` function, load system/current and the raw parent row, compile only a supplied non-null Art Style, inherit omitted fields from raw parent components, compare the resolved complete triple canonically to the same raw parent, retain ancestry checks, compute hash/diff/rendered output, call the CAS RPC, and hydrate only the sanitized result. Raw unsupported Art Style JSONB is copied without parsing when omitted; replacement from unsupported to supported classifies as `preset_changed`, and explicit clear as `removed`. Never accept `GameArtStyleSnapshot` from the request and never return or log raw unsupported JSON. Export only a sanitized row hydrator from the ordinary service if reuse is needed; raw write types and functions stay in the server-only module.
 
 - [ ] **Step 4: Replace the positional browser client API**
 
@@ -286,8 +297,12 @@ Run Step 2, then:
 
 ```bash
 git add src/lib/game-design-system/versionRequest.ts src/lib/game-design-system/versionRequest.test.ts \
+  src/lib/services/gameDesignSystemWriteService.server.ts \
+  src/lib/services/gameDesignSystemWriteService.server.test.ts \
+  src/lib/services/gameDesignSystemService.ts src/lib/services/gameDesignSystemService.test.ts \
   src/app/api/game-design-systems/[id]/versions/route.ts \
   tests/unit/game-design-system-route-test-boundaries.test.ts tests/unit/game-design-system-routes.test.ts \
+  tests/unit/database/game-design-system-version-visibility.behavior.test.ts \
   src/lib/services/gameDesignSystemClient.ts
 git commit -m "feat: add atomic version replacement API"
 ```
@@ -309,7 +324,7 @@ git commit -m "feat: add atomic version replacement API"
 
 - [ ] **Step 1: Write failing unified editor tests**
 
-Test one draft changing background, document genres/philosophies/suitability, every Rule field for at least one rule, Table Guidance, Art Style preset/revision, and Art Style customization across section navigation. Assert values survive navigation, Review displays concrete before/after data for each of those fields, and `onCreate` receives one partial-replacement request derived from the same reviewed draft. Cover no-op disabled state, switching values back to their originals restoring no-op, validation focus, cancel confirmation, failed-save state retention, keyboard section navigation, historical-base warning, and unsupported Art Style read state.
+Test one draft changing background, rule-set genres/philosophies/suitability, every Rule field for at least one rule, Table Guidance, and Art Style customization across section navigation. Assert values survive navigation, Review displays concrete before/after data for each of those fields, and `onCreate` receives one partial-replacement request derived from the same reviewed draft. Cover no-op disabled state, switching values back to their originals restoring no-op, validation focus, cancel confirmation, failed-save state retention, keyboard section navigation, historical-base warning, and unsupported Art Style read state. Multi-preset identity/revision Review belongs to Art Catalog Task 2 after those presets exist.
 
 - [ ] **Step 2: Run RED**
 
@@ -371,9 +386,9 @@ npx jest src/components/game-design-system/GameDesignSystemsPage.test.tsx --runI
 
 Keep browse tabs. The header action opens the editor for `selectedVersion`; exit restores focus. Successful save updates the query cache, selects the result, returns to Overview, and focuses the document heading. Delete metadata behavior is unchanged.
 
-- [ ] **Step 4: Enrich Rules and Versions read views**
+- [ ] **Step 4: Enrich Overview, Rules, and Versions read views**
 
-Rules displays genres, philosophies, suitability, and Table Guidance beside the selected rule. Versions renders domain labels and detailed/unknown legacy states. Source snapshots remain read-only and the existing Sources view may remain.
+Overview renders `Game Background & Setting` before Design Intent using the selected version's actual value, or the literal `Not specified` for a historical compatibility document with no field. Rules displays genres, philosophies, suitability, and Table Guidance beside the selected rule. Versions renders domain labels and detailed/unknown legacy states. Source snapshots remain read-only and the existing Sources view may remain.
 
 - [ ] **Step 5: Run GREEN and commit**
 
@@ -413,12 +428,14 @@ npx jest src/lib/game-design-system src/lib/services/gameDesignSystemService.tes
   tests/unit/game-design-system-route-test-boundaries.test.ts \
   tests/unit/game-design-system-routes.test.ts \
   tests/unit/database/game-design-rule-system-migration.test.ts --runInBand
+REQUIRE_RLS_DB_TESTS=1 npx jest \
+  tests/unit/database/game-design-system-version-visibility.behavior.test.ts --runInBand
 npm run typecheck
 npx playwright test tests/e2e/specs/game-design-system.spec.ts --workers=1
 git diff --check
 ```
 
-Expected: all focused suites pass; screenshots/canvas-independent layout checks are non-overlapping at both viewports.
+Expected: all focused suites pass; the live behavior suite runs (zero skipped tests) against local PostgreSQL with current migrations and proves the three concurrency/replay cases; screenshots/canvas-independent layout checks are non-overlapping at both viewports. Missing `RLS_DB_TESTS=1`, local Supabase URL/keys, or a running migrated local stack makes `REQUIRE_RLS_DB_TESTS=1` fail rather than skip.
 
 - [ ] **Step 4: Commit acceptance coverage**
 

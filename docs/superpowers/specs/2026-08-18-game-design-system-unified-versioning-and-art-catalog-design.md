@@ -109,6 +109,8 @@ The migration drops the exact prior RPC signature before creating the CAS/idempo
 
 The service continues to persist one complete `document + rules + artStyle` snapshot and hashes that complete result. No-op detection compares the server-parsed, inherited, and compiled complete components using canonical structural JSON with recursively sorted object keys; it does not compare request text or trust an old content hash. Sources are inherited from the parent and remain immutable.
 
+Public version hydration remains fail-closed: an unsupported non-null Art Style is exposed only as `artStyle: null` plus `artStyleReadError`, never as raw JSON. Version writes use a separate `server-only` write-base reader that loads the parent row's raw `art_style jsonb`. When the request omits Art Style, that raw JSONB value is copied unchanged and participates in canonical no-op comparison, content hashing, and diff construction. A structurally unknown or malformed snapshot therefore survives Document/Rules-only edits exactly; only an explicit compiled replacement or API-level clear changes it. The raw value must never cross the route response or a client import boundary.
+
 ## Cross-Domain Diff
 
 Rule conflict detection keeps the existing `added`, `removed`, `changed`, and `conflicts` fields. New versions additionally persist a compatible summary:
@@ -126,6 +128,8 @@ type GameDesignSystemVersionDiff = GameDesignRuleDiff & {
 ```
 
 Every new version persists the complete v2 shape. Art Style classification uses this priority when several properties differ: `preset_changed`, then `preset_version_changed`, then `customization_changed`. Historical diff objects are not interpreted as cross-domain unchanged: when the parent is readable, the read model derives Document and Art Style changes on demand; otherwise it reports `not_recorded`. No historical rows are rewritten. Review and Versions show text labels for changed domains and do not use Rule-only counts as the whole-version summary.
+
+For a write whose inherited unsupported Art Style JSONB is unchanged, the v2 Art Style classification is `unchanged`. Replacing an unsupported non-null value with a supported preset is `preset_changed`; clearing it is `removed`. The write path compares the raw canonical JSONB without exposing it to the UI.
 
 The final Review page is more detailed than the persisted summary. It renders Document and background before/after values, rule-set settings and Table Guidance before/after, per-rule changes, and Art Style preset/revision/customization before/after.
 
