@@ -134,6 +134,7 @@ jest.mock('@/lib/documents/documentLexicalYjsBinding', () => ({
   createDocumentLexicalYjsBinding: () => mockBinding,
 }));
 
+import { syncCursorPositions } from '@lexical/yjs';
 import { documentCollaborationPlugin } from '@/components/documents/documentCollaborationPlugin';
 
 describe('document collaboration cursor root lifecycle', () => {
@@ -232,5 +233,81 @@ describe('document collaboration cursor root lifecycle', () => {
     expect(mockBinding.cursorsContainer).toBe(cursorContainer);
     expect(cursorContainer!.parentElement).toBe(newParent);
     expect(cursorContainer!.children).toContain(remoteSelection);
+  });
+
+  it('does not detach the cursor overlay while the Lexical root is temporarily null', () => {
+    const realm = { pub: jest.fn() };
+    const plugin = documentCollaborationPlugin as unknown as {
+      init: (realm: typeof realm, params: unknown) => void;
+    };
+    plugin.init(realm, {
+      cursorColor: '#123456',
+      session: mockSession,
+      username: 'Collaborator',
+    });
+    const Lifecycle = realm.pub.mock.calls[0]?.[1] as () => null;
+    Lifecycle();
+
+    const oldParent = new FakeElement();
+    const oldRoot = new FakeElement();
+    oldParent.appendChild(oldRoot);
+    mockRootListener?.(oldRoot as unknown as HTMLElement, null);
+    const cursorContainer = mockBinding.cursorsContainer;
+    expect(cursorContainer?.parentElement).toBe(oldParent);
+
+    mockRootListener?.(null, oldRoot as unknown as HTMLElement);
+
+    expect(cursorContainer?.parentElement).toBe(oldParent);
+    expect(mockSession.reportBindingFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the binding when a replacement root is not attached yet', () => {
+    const realm = { pub: jest.fn() };
+    const plugin = documentCollaborationPlugin as unknown as {
+      init: (realm: typeof realm, params: unknown) => void;
+    };
+    plugin.init(realm, {
+      cursorColor: '#123456',
+      session: mockSession,
+      username: 'Collaborator',
+    });
+    const Lifecycle = realm.pub.mock.calls[0]?.[1] as () => null;
+    Lifecycle();
+
+    const detachedRoot = new FakeElement();
+    expect(() =>
+      mockRootListener?.(detachedRoot as unknown as HTMLElement, null)
+    ).not.toThrow();
+    expect(mockSession.reportBindingFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the binding when cursor overlay removeChild races React', () => {
+    const realm = { pub: jest.fn() };
+    const plugin = documentCollaborationPlugin as unknown as {
+      init: (realm: typeof realm, params: unknown) => void;
+    };
+    plugin.init(realm, {
+      cursorColor: '#123456',
+      session: mockSession,
+      username: 'Collaborator',
+    });
+    const Lifecycle = realm.pub.mock.calls[0]?.[1] as () => null;
+    Lifecycle();
+
+    const parent = new FakeElement();
+    const root = new FakeElement();
+    parent.appendChild(root);
+    mockRootListener?.(root as unknown as HTMLElement, null);
+
+    const error = new Error(
+      "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node."
+    );
+    error.name = 'NotFoundError';
+    jest.mocked(syncCursorPositions).mockImplementation(() => {
+      throw error;
+    });
+
+    expect(() => mockAwarenessUpdate?.()).not.toThrow();
+    expect(mockSession.reportBindingFailure).not.toHaveBeenCalled();
   });
 });

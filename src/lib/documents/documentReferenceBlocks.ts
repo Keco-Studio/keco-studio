@@ -3,7 +3,9 @@ import { documentContentCodec } from './documentContentCodec';
 import type { DocumentReferenceBlock } from './documentBlockIdentity';
 import {
   normalizeDocumentState,
+  readDocumentState,
   readDocumentTransportState,
+  initializeDocumentState,
 } from './documentStateGateway';
 import { broadcastDocumentStateReset } from './documentStateResetBroadcaster';
 import {
@@ -19,9 +21,9 @@ export async function ensureDocumentReferenceBlocks(
     try {
       const state = await readDocumentTransportState(client, documentId);
       if (state.yjsStateBase64 === null) {
-        throw new DocumentCollaborationUnavailableError(
-          'Document collaboration state is not initialized'
-        );
+        const full = await readDocumentState(client, documentId);
+        await initializeDocumentState(client, documentId, full.markdown);
+        continue;
       }
 
       const normalized = await documentContentCodec.normalizeYjsState(

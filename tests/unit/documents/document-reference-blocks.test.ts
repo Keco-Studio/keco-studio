@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const normalizeYjsState = jest.fn();
 const readDocumentTransportState = jest.fn();
+const readDocumentState = jest.fn();
+const initializeDocumentState = jest.fn();
 const normalizeDocumentState = jest.fn();
 const broadcastDocumentStateReset = jest.fn();
 
@@ -11,6 +13,8 @@ jest.mock('@/lib/documents/documentContentCodec', () => ({
 
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   readDocumentTransportState,
+  readDocumentState,
+  initializeDocumentState,
   normalizeDocumentState,
 }));
 
@@ -20,7 +24,6 @@ jest.mock('@/lib/documents/documentStateResetBroadcaster', () => ({
 
 import { ensureDocumentReferenceBlocks } from '@/lib/documents/documentReferenceBlocks';
 import {
-  DocumentCollaborationUnavailableError,
   DocumentStateConflictError,
 } from '@/lib/documents/documentStateTypes';
 
@@ -86,16 +89,26 @@ describe('ensureDocumentReferenceBlocks', () => {
     broadcastDocumentStateReset.mockResolvedValue(undefined);
   });
 
-  it('rejects a document whose collaborative Yjs state is not initialized', async () => {
-    readDocumentTransportState.mockResolvedValue(
-      transportState({ yjsStateBase64: null })
-    );
+  it('initializes a legacy document from markdown before listing blocks', async () => {
+    readDocumentTransportState
+      .mockResolvedValueOnce(transportState({ yjsStateBase64: null }))
+      .mockResolvedValueOnce(transportState());
+    readDocumentState.mockResolvedValue({
+      ...transportState({ yjsStateBase64: null }),
+      markdown: '# V0806 feedback\n\n- bug one',
+    });
+    initializeDocumentState.mockResolvedValue(transportState());
+    normalizeYjsState.mockResolvedValue(normalized(null));
 
     await expect(
       ensureDocumentReferenceBlocks(client, DOCUMENT_ID)
-    ).rejects.toBeInstanceOf(DocumentCollaborationUnavailableError);
-    expect(normalizeYjsState).not.toHaveBeenCalled();
-    expect(normalizeDocumentState).not.toHaveBeenCalled();
+    ).resolves.toEqual({ projectId: PROJECT_ID, blocks });
+    expect(initializeDocumentState).toHaveBeenCalledWith(
+      client,
+      DOCUMENT_ID,
+      '# V0806 feedback\n\n- bug one'
+    );
+    expect(normalizeYjsState).toHaveBeenCalledWith('snapshot', ['tail']);
   });
 
   it('returns canonical blocks without committing a no-op normalization', async () => {

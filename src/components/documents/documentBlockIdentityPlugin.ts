@@ -9,6 +9,7 @@ import {
 import {
   documentHeadingExportVisitor,
   documentHeadingImportVisitor,
+  documentListItemExportVisitor,
   documentParagraphExportVisitor,
   documentParagraphImportVisitor,
   normalizeDocumentBlockIds,
@@ -36,6 +37,7 @@ export const documentBlockIdentityPlugin =
         [addExportVisitor$]: [
           documentParagraphExportVisitor,
           documentHeadingExportVisitor,
+          documentListItemExportVisitor,
         ],
       });
       realm.pub(createRootEditorSubscription$, (editor) =>

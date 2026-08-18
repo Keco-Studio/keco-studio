@@ -112,8 +112,10 @@ describe('document Lexical Yjs adapter contract', () => {
   it('moves cursor observation and composition handling when Lexical replaces its root', () => {
     expect(plugin).toContain('editor.registerRootListener');
     expect(plugin).toContain("previousRoot?.removeEventListener('compositionend'");
-    expect(plugin).toContain("nextRoot?.addEventListener('compositionend'");
+    expect(plugin).toContain("nextRoot.addEventListener('compositionend'");
     expect(plugin).toContain('binding.cursorsContainer?.parentElement !== parent');
     expect(plugin).toContain('cursorMutationObserver.disconnect()');
+    expect(plugin).toContain('isDetachedNodeError');
+    expect(plugin).toContain('Keep the overlay attached across temporary null roots');
   });
 });
