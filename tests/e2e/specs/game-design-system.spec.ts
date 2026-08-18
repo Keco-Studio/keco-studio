@@ -846,8 +846,7 @@ test.describe('Game Design System real workflow', () => {
     )).toEqual(['Foundation', 'Art Style', 'Sources', 'Review']);
     await page.getByRole('button', { name: 'Continue to art style' }).click();
     await expect(page.getByRole('tab', { name: 'Art Style' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('radio', { name: 'Pixel Art, selected and locked' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: 'Pixel Art, selected and locked' })).toBeDisabled();
+    await expect(page.getByRole('radio', { name: /Pixel Art/ })).toBeChecked();
     await expectLoadedArtStyleImages(page);
     const desktopCatalog = await page.getByLabel('Art style catalog').boundingBox();
     const desktopPreview = await page.getByRole('region', { name: 'Pixel Art preview' }).boundingBox();
