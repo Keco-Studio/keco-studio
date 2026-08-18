@@ -1103,6 +1103,7 @@ test.describe('Game Design System real workflow', () => {
   });
 
   test('redacts source excerpts when a bound-system viewer cannot read the source project', async ({ page }) => {
+    test.skip(!hasGameDesignSystemLlm, 'Requires the generated system fixture from the LLM-backed workflow.');
     const login = new LoginPage(page);
     await login.goto();
     await login.login(viewer);
@@ -1122,6 +1123,7 @@ test.describe('Game Design System real workflow', () => {
   });
 
   test('shows failed and scheduled retry states', async ({ page }) => {
+    test.skip(!hasGameDesignSystemLlm, 'Requires the generated system fixture from the LLM-backed workflow.');
     const pixelLabRequests: string[] = [];
     page.on('request', (request) => {
       if (/pixellab/i.test(request.url())) pixelLabRequests.push(request.url());
