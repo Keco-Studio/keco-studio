@@ -20,6 +20,7 @@
 - Sources are inherited exactly and never edited by this workflow.
 - No automatic rebase, complex merge, new rule kinds, Agent-policy changes, or runtime image generation.
 - Preserve unrelated `next-env.d.ts` and `.superpowers/` worktree changes.
+- Complete and review Tasks 1-7 of this plan before starting any Game Art Style Catalog task. The plans share the version editor, CSS, tests, and E2E files and must not be implemented in parallel.
 
 ---
 
@@ -130,6 +131,8 @@ expect(diff.tableGuidanceChanged).toBe(false);
 
 Add hydration coverage where SQL `art_style = null` gives no read error, a valid snapshot parses, and malformed non-null JSON gives `UNSUPPORTED_SNAPSHOT` instead of indistinguishable legacy absence.
 
+This plan initially uses the current strict Pixel v1 parser. The catalog plan must replace this call site with its retained-registry-aware parser when structural snapshot schemas are generalized, preserving the same null/unsupported distinction.
+
 - [ ] **Step 2: Run RED**
 
 ```bash
@@ -183,7 +186,7 @@ git commit -m "feat: describe complete design system version changes"
 
 Assert the migration drops the old 12-argument signature, creates one 14-argument signature, uses `IS NOT DISTINCT FROM` under the system-row lock, checks existing idempotency output before stale rejection, includes the key in insert, revokes obsolete overloads from `public, anon, authenticated`, grants only `service_role`, and notifies PostgREST.
 
-Service tests must show public-style input forwards non-null CAS/key, initial internal creation forwards both as null, generation idempotency remains unchanged, and replay hydration returns the original row.
+Service tests must show public-style input forwards non-null CAS/key, initial internal creation forwards both as null, generation idempotency remains unchanged, and replay hydration returns the original row. Add live-database behavior cases that issue concurrent RPC calls: two distinct keys with the same expected current produce exactly one success and one `VERSION_STALE` with only one inserted row; the same key submitted concurrently returns the same version from both calls; and a generation-job replay still returns its original output after current has advanced.
 
 - [ ] **Step 2: Run RED**
 
@@ -195,12 +198,12 @@ npx jest tests/unit/database/game-design-rule-system-migration.test.ts \
 
 - [ ] **Step 3: Implement the additive column/index and closed RPC migration**
 
-The RPC order is:
+The RPC order under the destination-system row lock is:
 
 1. lock and authorize the destination system;
 2. resolve an existing `(system_id, idempotency_key)` row and verify parent/content hash/actor before returning it;
-3. compare current ID with `p_expected_current_version_id` using `IS NOT DISTINCT FROM`;
-4. retain generation-job replay;
+3. resolve an existing `generation_job_id` row, verify it belongs to the expected destination/job contract, and return it before CAS so a completed internal generation remains replayable after current changes;
+4. compare current ID with `p_expected_current_version_id` using `IS NOT DISTINCT FROM`;
 5. retain trusted readable cross-system parent authorization;
 6. allocate number, insert the complete snapshot/key, and update current.
 
@@ -300,13 +303,13 @@ git commit -m "feat: add atomic version replacement API"
 - Modify: `src/components/game-design-system/GameDesignSystemsPage.module.css`
 
 **Interfaces:**
-- Produces: `GameDesignSystemVersionEditor({ baseVersion, currentVersionId, pending, onCancel, onCreate })`.
+- Produces: `GameDesignSystemVersionEditor({ baseVersion, currentVersionId, pending, onCancel, onCreate, onRefreshLatest })`.
 - Refactors Document/Rules editors into controlled field surfaces; only the unified editor owns draft/review/save state.
 - Supports the current Pixel Art input in this plan; the next plan expands the catalog.
 
 - [ ] **Step 1: Write failing unified editor tests**
 
-Test one draft changing background, a rule, Table Guidance, and Art Style customization across section navigation. Assert values survive navigation, Review displays concrete before/after data, and `onCreate` receives one partial-replacement request. Cover no-op disabled state, validation focus, cancel confirmation, failed-save state retention, keyboard section navigation, historical-base warning, and unsupported Art Style read state.
+Test one draft changing background, document genres/philosophies/suitability, every Rule field for at least one rule, Table Guidance, Art Style preset/revision, and Art Style customization across section navigation. Assert values survive navigation, Review displays concrete before/after data for each of those fields, and `onCreate` receives one partial-replacement request derived from the same reviewed draft. Cover no-op disabled state, switching values back to their originals restoring no-op, validation focus, cancel confirmation, failed-save state retention, keyboard section navigation, historical-base warning, and unsupported Art Style read state.
 
 - [ ] **Step 2: Run RED**
 
@@ -322,7 +325,7 @@ Document accepts `value/onChange` and includes `Game background & setting`. Rule
 
 The parent clones the base, tracks changed domains, preserves section state, focuses headings/errors, and emits only changed components. Art Style submits input only when changed; otherwise it is omitted so retired/historical snapshots inherit exactly.
 
-On `VERSION_STALE`, keep the draft, show latest version context, and let the user select domains to copy into a fresh draft. Do not auto-merge.
+On `VERSION_STALE`, keep the draft and call `onRefreshLatest()`. The Workspace owns the TanStack query refetch and returns the newly loaded current version; the editor then shows that version's number/context and lets the user select domains to copy into a fresh draft based on it. If refresh fails, retain the original draft and expose retry/cancel. Do not auto-merge. Test the editor callback contract and the Workspace refetch/cache handoff separately.
 
 - [ ] **Step 5: Add stable responsive layout**
 
@@ -356,7 +359,7 @@ git commit -m "feat: add unified design system version editor"
 
 - [ ] **Step 1: Write failing workspace behavior tests**
 
-Assert personal/official action visibility, base version initialization, one API call for cross-domain edits, selected new version, return to Overview, project binding untouched, stale recovery, idempotent lost-response recovery, complete Rules settings/Table Guidance in read mode, legacy diff `not recorded`, unsupported Art Style state, and full tab keyboard behavior.
+Assert personal/official action visibility, base version initialization, one API call for cross-domain edits, selected new version, return to Overview, project binding untouched, stale recovery through a Workspace-owned latest-version refetch, idempotent lost-response recovery, actual Game Background display plus historical `Not specified`, complete Rules settings/Table Guidance in read mode, legacy diff `not recorded`, unsupported Art Style state, and full tab keyboard behavior.
 
 - [ ] **Step 2: Run RED**
 
@@ -391,6 +394,7 @@ git commit -m "feat: unify game design system version creation"
 
 **Interfaces:**
 - Verifies the complete plan without changing API contracts.
+- Runs the live PostgreSQL CAS/idempotency suite when `RLS_DB_TESTS_ENABLED` is configured; a skipped suite is reported as an unverified release gate, not treated as concurrency evidence.
 
 - [ ] **Step 1: Extend the mock backend for CAS/idempotency and cross-domain versions**
 

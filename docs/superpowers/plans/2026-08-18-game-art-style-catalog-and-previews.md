@@ -22,6 +22,8 @@
 - Generate images only after catalog code and authoring tests pass.
 - Each style uses the same riverside-village map and adult field-cartographer comparison subject.
 - Preserve unrelated `next-env.d.ts` and `.superpowers/` changes.
+- This plan starts only after every Unified Game Design System Versioning task passes review and verification. Shared editor, CSS, unit-test, and E2E files are sequential ownership points and must not be implemented concurrently.
+- Provider POSTs are governed by one persisted release-session ledger, including smoke tests, candidates, timeouts, and unknown outcomes. Restarting or concurrently invoking the CLI cannot reset or exceed the session ceiling.
 
 ---
 
@@ -34,16 +36,19 @@
 - Modify: `src/lib/game-art-style/presets.ts`
 - Modify: `src/lib/game-art-style/compiler.ts`
 - Modify: `src/lib/game-art-style/compiler.test.ts`
+- Modify: `src/lib/services/gameDesignSystemService.ts`
+- Modify: `src/lib/services/gameDesignSystemService.test.ts`
 - Modify: `tests/unit/game-art-style-assets.test.ts`
 - Modify: affected documentation references under `docs/superpowers/`
 
 **Interfaces:**
 - Produces: `GameArtStylePresetId`, `gameArtStyleKey(id, version)`, `GAME_ART_STYLE_PRESETS_BY_KEY`, `GAME_ART_STYLE_CATALOG`, `RETIRED_GAME_ART_STYLE_KEYS`, `DEFAULT_GAME_ART_STYLE_KEY`.
-- Keeps new-selection catalog temporarily on `pixel-art@1` until Task 5 publishes assets; retained registry and offered catalog are separate.
+- Keeps new-selection catalog temporarily on `pixel-art@1` until Task 6 publishes assets; retained registry and offered catalog are separate.
+- Produces: `parseRetainedGameArtStyleSnapshot(raw)` which accepts only snapshots whose compound key exists in the retained registry.
 
 - [ ] **Step 1: Write failing generalized registry/compiler tests**
 
-Assert compound-key uniqueness, strict known key resolution, retired-vs-offered separation, unknown ID/version rejection, client-owned-field rejection, and deep-freeze. Parameterize asset validation over all retained presets rather than importing one hard-coded fixture.
+Assert compound-key uniqueness, strict known key resolution, retired-vs-offered separation, unknown ID/version rejection, client-owned-field rejection, and deep-freeze. Parameterize asset validation over all retained presets rather than importing one hard-coded fixture. Add service hydration tests for retained Pixel v1, every newly retained compound key fixture, an unknown but structurally valid non-null compound key producing `UNSUPPORTED_SNAPSHOT`, malformed non-null JSON producing the same read error, and SQL NULL producing neither snapshot nor error.
 
 ```ts
 expect(resolveGameArtStylePreset('pixel-art', 1)).toBe(PIXEL_ART_V1_PRESET);
@@ -60,7 +65,7 @@ npx jest src/lib/game-art-style/compiler.test.ts tests/unit/game-art-style-asset
 
 - [ ] **Step 3: Generalize schemas without loosening server resolution**
 
-Use bounded preset IDs and positive integer versions in the structural schemas; validate offered/retained compound-key membership in resolver/compiler logic. Keep every existing specification and asset field. Input normalization remains strict and cannot contain snapshot fields.
+Use bounded preset IDs and positive integer versions in the structural schemas; validate offered/retained compound-key membership in resolver/compiler logic. `parseRetainedGameArtStyleSnapshot` first applies the structural schema and then requires retained-registry membership. Replace service hydration's direct structural `safeParse` with this parser so unknown storage keys cannot masquerade as supported snapshots. Keep every existing specification and asset field. Input normalization remains strict and cannot contain snapshot fields.
 
 - [ ] **Step 4: Build explicit frozen registry and migrate documentation files**
 
@@ -84,6 +89,7 @@ git commit -m "refactor: generalize game art style registry"
 - Modify: `src/components/game-design-system/GameDesignSystemCreatePage.tsx`
 - Modify: `src/components/game-design-system/GameDesignSystemCreatePage.test.tsx`
 - Modify: `src/components/game-design-system/GameDesignSystemArtStyleFields.tsx`
+- Modify: `src/components/game-design-system/GameDesignSystemVersionEditor.tsx`
 - Modify: `src/components/game-design-system/GameDesignSystemVersionEditor.test.tsx`
 - Modify: `src/components/game-design-system/GameArtStylePreview.tsx`
 - Modify: `src/components/game-design-system/GameDesignSystemsPage.module.css`
@@ -92,10 +98,11 @@ git commit -m "refactor: generalize game art style registry"
 - Produces shared `GameArtStyleCatalog({ catalog, selectedKey, onSelect, retiredSnapshot? })`.
 - Creation uses `DEFAULT_GAME_ART_STYLE_KEY`; version editing omits Art Style input until a real change.
 - UI label changes from `Pixel technique` to `Rendering technique` only.
+- `GameDesignSystemArtStyleFields` is controlled by the parent with `{ originalSnapshot, artStyleReadError, value, changed, onChange }`; its draft `null` means inherit/omit, never the API's explicit-clear sentinel.
 
 - [ ] **Step 1: Write failing shared-selection tests**
 
-With a two-preset test catalog, assert radio/list selection, Arrow/Home/End keyboard behavior, visual preview switch, retained customization, confirmed Reset, Review identity/revision, failed-submit preservation, and retired snapshot `Preset upgrade` behavior. Assert no code reads `catalog[0]` as a product default.
+With a two-preset test catalog, assert radio/list selection, Arrow/Home/End keyboard behavior, visual preview switch, retained customization, confirmed Reset, Review identity/revision, failed-submit preservation, and retired snapshot `Preset upgrade` behavior. In the parent editor, cover preset switching, switching back to the original compound key restoring no-op, retired/unsupported snapshots remaining omitted until an explicit offered selection, and Review/request using the same compound key and customization. Assert no code reads `catalog[0]` as a product default.
 
 - [ ] **Step 2: Run RED**
 
@@ -107,7 +114,7 @@ npx jest src/components/game-design-system/GameArtStyleCatalog.test.tsx \
 
 - [ ] **Step 3: Implement shared catalog and wire both flows**
 
-Store a compound key, resolve from the frozen registry, and build client input from only ID/version/customization. Changing preset preserves direction, references, and avoid exactly. Reset is separate and confirmed. Historical retired snapshots remain inherited unless the user explicitly selects an offered key.
+Store a compound key, resolve from the frozen registry, and build client input from only ID/version/customization. The parent editor owns `VersionDraft.artStyle`, computes `changed` canonically against `originalSnapshot`, and passes the controlled contract to the field surface. Draft `null` omits Art Style and inherits the snapshot; only the route-level request type uses explicit `artStyle: null` to clear. Changing preset preserves direction, references, and avoid exactly. Reset is separate and confirmed. Historical retired or unsupported snapshots remain inherited unless the user explicitly selects an offered key.
 
 - [ ] **Step 4: Stabilize responsive preview/catalog layout**
 
@@ -123,6 +130,7 @@ git add src/components/game-design-system/GameArtStyleCatalog.tsx \
   src/components/game-design-system/GameDesignSystemCreatePage.tsx \
   src/components/game-design-system/GameDesignSystemCreatePage.test.tsx \
   src/components/game-design-system/GameDesignSystemArtStyleFields.tsx \
+  src/components/game-design-system/GameDesignSystemVersionEditor.tsx \
   src/components/game-design-system/GameDesignSystemVersionEditor.test.tsx \
   src/components/game-design-system/GameArtStylePreview.tsx \
   src/components/game-design-system/GameDesignSystemsPage.module.css
@@ -188,11 +196,11 @@ git commit -m "feat: add safe game art image provider client"
 **Interfaces:**
 - Produces commands `npm run art-style:probe`, `npm run art-style:generate`, `npm run art-style:contact-sheet`, `npm run art-style:publish`.
 - Defaults provider base URL to the supplied non-secret endpoint.
-- Requires `--max-generations`; candidates live in `.cache/game-art-styles/<release-key>/`.
+- Requires `--session`, `--max-generations`, and one persistent locked ledger at `.cache/game-art-styles/sessions/<session>/budget.json`; candidates live in `.cache/game-art-styles/<release-key>/`.
 
 - [ ] **Step 1: Write failing brief and authoring tests**
 
-Assert five release definitions, exact common subjects, shared style capsule between map/character, forbidden proper-name patterns, three default candidates per stage, mandatory max budget, dry run, deterministic cache paths, append-only release refusal, and secret-free logs/manifests.
+Assert five release definitions, exact common subjects, shared style capsule between map/character, forbidden proper-name patterns, three default candidates per stage, mandatory session/budget, dry run, deterministic cache paths, append-only release refusal, and secret-free logs/manifests. Test that the locked ledger counts every provider POST before dispatch, including timeout/unknown outcomes; persists across phases and process restarts; serializes concurrent commands; rejects lower/different ceilings for an existing session; and refuses the next request once the cumulative ceiling is reached.
 
 - [ ] **Step 2: Write failing media tests**
 
@@ -208,7 +216,9 @@ npx jest scripts/game-art-style/styleBriefs.test.ts \
 
 - [ ] **Step 4: Implement the CLI phases**
 
-`probe` lists only safe model capability facts. `generate` performs smoke/candidate requests within the hard budget. `contact-sheet` produces map/character comparison PNGs. `publish` requires a review JSON in which every rubric is `pass`, verifies selected candidate hashes, refuses existing destinations, copies final PNGs, and writes preset/manifest metadata atomically.
+`probe` lists only safe model capability facts. `generate` reserves one ledger unit atomically before every provider POST and never refunds it; smoke/candidate/regeneration phases share the same ceiling. `contact-sheet` produces map/character comparison PNGs. `publish` requires a review JSON in which every rubric is `pass`, verifies selected candidate hashes, and uses the recoverable two-tree protocol below.
+
+Publishing stages a complete mirrored release under one transaction directory, including preset, manifest, final map/character images, and all three review sheets. It preflights that every exact target is absent, then writes a durable transaction marker listing created paths. Exact targets are `docs/superpowers/specs/game-art-styles/<preset-id>/vN/...` and `public/game-art-styles/<preset-id>/vN/{map.png,character.png}`. It promotes files one by one with exclusive creation, verifies the whole final set and hashes, and only then marks committed. On an injected failure it removes only paths recorded as newly created by that transaction; on startup it detects incomplete markers and performs the same ownership-checked rollback before retry. Tests inject failure after each promotion boundary and prove no half-release remains and unrelated/pre-existing paths are never removed.
 
 Review JSON shape includes reviewer, selected IDs, every candidate ID/hash, rubric results, rejection reasons, and contact-sheet hashes. Provider base URL is stored only as SHA-256 plus endpoint path.
 
@@ -218,7 +228,7 @@ Review JSON shape includes reviewer, selected IDs, every candidate ID/hash, rubr
 
 - [ ] **Step 6: Run GREEN and commit**
 
-Run Step 3, `npm run art-style:generate -- --dry-run --max-generations 1`, `git diff --check`, then:
+Run Step 3, `npm run art-style:generate -- --dry-run --session dry-run --max-generations 1`, `git diff --check`, then:
 
 ```bash
 git add scripts/game-art-style package.json .env.example
@@ -234,7 +244,7 @@ git commit -m "feat: add game art preview authoring workflow"
 
 **Interfaces:**
 - Consumes the user-provided base URL/API key without echoing either secret value.
-- Produces 3 map and 3 character candidates per new release within an explicit 30-request ceiling, plus contact sheets and machine validation reports.
+- Produces 3 map and 3 character candidates per new release within an explicit 51-request release-session ceiling (`1 smoke + 30 initial candidates + at most 20 rejected-candidate regenerations`), plus contact sheets and machine validation reports.
 
 - [ ] **Step 1: Configure ignored local credentials without shell-history exposure**
 
@@ -244,18 +254,18 @@ Verify `.env.game-art-style.local` is ignored with `git check-ignore`. Store the
 
 ```bash
 npm run art-style:probe -- --env-file .env.game-art-style.local
-npm run art-style:generate -- --env-file .env.game-art-style.local --smoke --max-generations 1
+npm run art-style:generate -- --env-file .env.game-art-style.local --session 2026-08-18-five-style-v1 --smoke --max-generations 51
 ```
 
 Stop on ambiguous model or unsupported image response; fix the authoring adapter through its tests rather than bypassing validation.
 
 - [ ] **Step 3: Generate map candidates, review, then character candidates**
 
-Generate all five map sets within 15 requests. Create a contact sheet and dispatch at least two independent visual reviewers. Record all rubric decisions. Generate character sets only after one map per style passes, using the selected map as reference when the declared API supports it.
+Generate all five map sets within 15 requests using the same release-session ledger. Create a contact sheet and dispatch at least two independent visual reviewers. Record all rubric decisions. Generate character sets only after one map per style passes, using the selected map as reference when the declared API supports it. The 15 character requests bring initial candidate usage to 31 including smoke.
 
 - [ ] **Step 4: Cross-review final pairs**
 
-Create final pair sheets and dispatch independent reviewers for anatomy, route readability, style boundary, pair consistency, text/watermark absence, IP imitation, and low-poly/cel mutual exclusion. Resolve every rejection with a bounded regeneration and update review evidence.
+Create final pair sheets and dispatch independent reviewers for anatomy, route readability, style boundary, pair consistency, text/watermark absence, IP imitation, and low-poly/cel mutual exclusion. Resolve rejections within the explicitly reserved 20-request regeneration allowance and update review evidence after each request. The persistent ledger is the authority across map, character, smoke, restart, and concurrent invocations; reaching 51 stops further provider calls and blocks publication of an unapproved pair.
 
 - [ ] **Step 5: Confirm cache remains ignored**
 
@@ -271,8 +281,8 @@ Expected: no credential or candidate file appears as a committable change.
 **Files:**
 - Create: `docs/superpowers/specs/game-art-styles/pixel-art/v2/{preset.json,asset-manifest.json,review-map.png,review-character.png,review-pair.png}`
 - Create analogous v1 directories for `flat-graphic-2d`, `hand-painted-2d`, `cel-shaded-3d`, and `low-poly-3d`
-- Create: `public/game-art-styles/<release>/map.png`
-- Create: `public/game-art-styles/<release>/character.png`
+- Create: `public/game-art-styles/<preset-id>/vN/map.png`
+- Create: `public/game-art-styles/<preset-id>/vN/character.png`
 - Modify: `src/lib/game-art-style/presets.ts`
 - Modify: `src/lib/game-art-style/compiler.test.ts`
 - Modify: `tests/unit/game-art-style-assets.test.ts`
@@ -283,7 +293,7 @@ Expected: no credential or candidate file appears as a committable change.
 
 - [ ] **Step 1: Publish from approved review records**
 
-Run `art-style:publish` once per release key. It must fail if any target exists or any rubric/hash is missing.
+Run one batch `art-style:publish` transaction for the five approved release keys. It must fail before promotion if any target exists or any rubric/hash is missing, and recover cleanly from an interrupted prior attempt using its durable marker.
 
 - [ ] **Step 2: Add explicit imports and offered ordering**
 
