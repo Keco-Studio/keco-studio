@@ -237,8 +237,12 @@ export const reviewSchema = z.object({
   issues: z.array(z.object({
     id: entityIdSchema,
     severity: z.enum(['info', 'warning', 'error']),
+    sectionId: entityIdSchema.optional(),
     message: boundedText(1_500),
+    repairInstruction: boundedText(1_500).optional(),
   }).strict()).max(200),
+  status: z.enum(['pass', 'repair']).optional(),
+  repairRound: z.number().int().min(0).max(2).optional(),
 }).strict().superRefine((value) => {
   ensureUniqueIds(value.issues, (issue) => issue.id, 'review issue');
 });
@@ -254,9 +258,14 @@ export const documentSchema = z.object({
   version: z.literal(2),
   id: entityIdSchema,
   title: boundedText(160),
+  versionLabel: boundedText(80).optional(),
+  gameType: boundedText(240).optional(),
+  targetPlatforms: z.array(boundedText(120)).max(12).optional(),
+  premise: boundedText(2_000).optional(),
   blueprint: blueprintOutlineSchema,
   numericRegistry: numericRegistrySchema,
   sections: z.array(sectionSchema).min(1).max(200),
+  assumptions: z.array(boundedText(800)).max(30).optional(),
 }).strict().superRefine((value) => {
   ensureUniqueIds(value.sections, (section) => section.id, 'section');
   const knownNumericIds = new Set(value.numericRegistry.entries.map((entry) => entry.id));
