@@ -334,6 +334,12 @@
   padding: 24px 28px 42px;
 }
 
+.artStyleView {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 30px 34px 54px;
+}
+
 .documentView,
 .documentEditor {
   width: min(980px, 100%);
@@ -836,7 +842,7 @@
 
 .stageTabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   border-bottom: 1px solid #e5e9ee;
   background: #fafbfc;
   padding: 0 30px;
@@ -885,6 +891,393 @@
   width: min(940px, calc(100% - 60px));
   margin: 0 auto;
   padding: 28px 0 48px;
+}
+
+.createStageWide {
+  width: min(1160px, calc(100% - 60px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+
+.artStyleWorkbench {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.artStyleCatalog {
+  min-width: 0;
+  border-right: 1px solid #e1e6eb;
+  padding-right: 20px;
+}
+
+.artStyleCatalog > p,
+.fieldHint {
+  margin: 9px 0 0;
+  color: #74808e;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.artStyleCatalogOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  border: 1px solid #8bb9ed;
+  border-radius: 7px;
+  background: #edf5ff;
+  padding: 12px;
+  color: #27313d;
+}
+
+.artStyleCatalogOption input {
+  margin: 2px 0 0;
+  accent-color: #2070d8;
+}
+
+.artStyleCatalogOption span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.artStyleCatalogOption strong {
+  font-size: 12px;
+}
+
+.artStyleCatalogOption small {
+  color: #55708f;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.artStyleMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  align-items: start;
+  min-width: 0;
+  gap: 26px;
+}
+
+.artStylePreview,
+.artStylePreviewCompact {
+  min-width: 0;
+}
+
+.artStylePreviewHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.artStylePreviewHeading h3 {
+  margin: 3px 0 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.artStylePreviewHeading > span {
+  color: #687381;
+  font-size: 11px;
+}
+
+.artStyleGallery {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(140px, .75fr);
+  gap: 10px;
+}
+
+.artStylePreviewItem {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #dce2e8;
+  border-radius: 7px;
+  background: #f7f9fb;
+}
+
+.artStyleMapFrame,
+.artStyleCharacterFrame {
+  display: grid;
+  width: 100%;
+  place-items: center;
+  overflow: hidden;
+  background: #e9eef2;
+}
+
+.artStyleMapFrame {
+  aspect-ratio: 7 / 4;
+}
+
+.artStyleCharacterFrame {
+  aspect-ratio: 1;
+  width: min(100%, 320px);
+  justify-self: center;
+  background-color: #eef2f5;
+  background-image: linear-gradient(45deg, #e2e7eb 25%, transparent 25%), linear-gradient(-45deg, #e2e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e7eb 75%), linear-gradient(-45deg, transparent 75%, #e2e7eb 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.artStylePixelImage {
+  display: block;
+  max-width: none;
+  image-rendering: pixelated;
+}
+
+.artStylePreviewCreation .artStylePreviewHeading {
+  margin-bottom: 10px;
+}
+
+.artStylePreviewBrowse .artStylePreviewHeading {
+  margin-bottom: 16px;
+}
+
+.artStyleDna {
+  margin-top: 22px;
+  border-top: 1px solid #dfe5eb;
+  padding-top: 18px;
+}
+
+.artStyleSectionHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.artStyleSectionHeading h4 {
+  margin: 3px 0 0;
+  color: #27313d;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.artStyleDnaGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 14px 0 0;
+}
+
+.artStyleDnaGrid > div {
+  min-width: 0;
+}
+
+.artStyleDnaGrid dt,
+.artStyleSpecificationGroupContent dt {
+  color: #4b5764;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.artStyleDnaGrid dd,
+.artStyleSpecificationGroupContent dd {
+  margin: 5px 0 0;
+  color: #606c79;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.artStyleSectionNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 20px 0 4px;
+  border-bottom: 1px solid #e2e7ec;
+  padding-bottom: 12px;
+}
+
+.artStyleSectionNav a {
+  color: #356da8;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.artStyleSectionNav a:hover,
+.artStyleSectionNav a:focus-visible {
+  color: #155cb5;
+  text-decoration: underline;
+}
+
+.artStylePreviewItem figcaption {
+  padding: 7px 9px;
+  color: #687381;
+  font-size: 10px;
+}
+
+.artStyleImageUnavailable {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 12px;
+  color: #3f4b58;
+  font-size: 11px;
+  text-align: center;
+}
+
+.artStyleSpecification {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 18px 0 0;
+}
+
+.artStyleSpecificationGroup {
+  min-width: 0;
+  scroll-margin-top: 24px;
+  border-top: 1px solid #dfe5eb;
+  padding-top: 10px;
+}
+
+.artStyleSpecificationToggle {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #27313d;
+  cursor: pointer;
+  text-align: left;
+}
+
+.artStyleSpecificationToggle > span:last-child {
+  flex: 0 0 auto;
+  color: #6f7b88;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.artStyleSpecificationToggle strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.artStyleSpecificationToggle small {
+  display: block;
+  max-width: 720px;
+  margin-top: 4px;
+  color: #74808e;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.artStyleSpecificationGroupContent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  margin: 8px 0 2px;
+}
+
+.artStyleSpecificationGroupContent > div {
+  min-width: 0;
+  border-top: 1px solid #edf0f3;
+  padding: 10px 0 5px;
+}
+
+.artStyleCustomization {
+  margin-top: 28px;
+  border-top: 1px solid #dfe5eb;
+  padding-top: 22px;
+}
+
+.artStyleCustomization h4 {
+  margin: 4px 0 12px;
+  color: #27313d;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.artStyleCustomization > dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin: 0;
+}
+
+.artStyleCustomization > dl > div {
+  min-width: 0;
+}
+
+.artStyleCustomization dt {
+  color: #4b5764;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.artStyleCustomization dd {
+  margin: 5px 0 0;
+  color: #606c79;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.artStyleReferenceList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.artStyleReferenceList li {
+  display: grid;
+  gap: 2px;
+}
+
+.artStyleReferenceList strong {
+  color: #3f4b58;
+}
+
+.artStyleFields {
+  display: grid;
+  gap: 18px;
+  border-left: 1px solid #dfe5eb;
+  padding: 4px 0 0 24px;
+}
+
+.artStyleFields .field > small {
+  align-self: flex-end;
+  color: #85909c;
+  font-size: 10px;
+}
+
+.visualReferenceList {
+  display: grid;
+  gap: 7px;
+}
+
+.visualReferenceRow {
+  display: grid;
+  grid-template-columns: minmax(130px, .7fr) minmax(180px, 1.3fr) 34px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.fieldError {
+  color: #b23a32;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.reviewInlineList {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .formGrid {
@@ -1460,8 +1853,27 @@
 
   .overviewGrid,
   .reviewGrid,
-  .documentLead {
+  .documentLead,
+  .artStyleCustomization > dl {
     grid-template-columns: 1fr;
+  }
+
+  .artStyleWorkbench,
+  .artStyleMain {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .artStyleCatalog {
+    border-right: 0;
+    border-bottom: 1px solid #e1e6eb;
+    padding: 0 0 18px;
+  }
+
+  .artStyleFields {
+    border-top: 1px solid #dfe5eb;
+    border-left: 0;
+    padding: 22px 0 0;
   }
 }
 
@@ -1482,6 +1894,7 @@
   }
 
   .viewPanel,
+  .artStyleView,
   .ruleReading,
   .ruleForm,
   .reviewPanel,
@@ -1520,6 +1933,30 @@
   .formGrid,
   .resourcePicker {
     grid-template-columns: 1fr;
+  }
+
+  .createStageWide {
+    width: calc(100% - 32px);
+  }
+
+  .artStyleSpecification {
+    grid-template-columns: 1fr;
+  }
+
+  .artStyleDnaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .artStyleCharacterFrame {
+    width: min(100%, 240px);
+  }
+
+  .visualReferenceRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visualReferenceRow .iconButtonDanger {
+    justify-self: end;
   }
 
   .fieldWide {
@@ -1576,5 +2013,21 @@
 
   .diffMetrics > div:nth-child(2) {
     border-right: 0;
+  }
+}
+
+@media (max-width: 440px) {
+  .artStyleGallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .artStyleDnaGrid,
+  .artStyleSpecificationGroupContent {
+    grid-template-columns: 1fr;
+  }
+
+  .stageTab,
+  .stageTabActive {
+    gap: 4px;
   }
 }

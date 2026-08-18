@@ -3,6 +3,32 @@ import { buildAgentRulePolicy, AGENT_RULE_POLICY_MAX_CHARS } from './agentPolicy
 import { parseRuleSet } from './ruleSchema';
 
 describe('Game Design System Agent policy boundary', () => {
+  it('never includes immutable Art Style snapshot data', () => {
+    const rules = parseRuleSet({
+      schemaVersion: 1,
+      genres: ['Strategy'],
+      philosophies: ['Readable Systems'],
+      suitableFor: 'Tactical games',
+      rules: [{
+        id: 'readable-state', kind: 'principle', title: 'Readable state',
+        statement: 'Expose decision inputs.', appliesWhen: 'Presenting choices.', severity: 'required',
+      }],
+      tableGuidance: [],
+    });
+    const rulesWithArtStyle = Object.assign(rules, {
+      artStyle: {
+        title: 'ART_STYLE_POLICY_LEAK',
+        customization: { direction: 'ART_DIRECTION_POLICY_LEAK' },
+      },
+    });
+
+    const policy = buildAgentRulePolicy(rulesWithArtStyle);
+
+    expect(policy.text).toContain('readable-state');
+    expect(policy.text).not.toContain('ART_STYLE_POLICY_LEAK');
+    expect(policy.text).not.toContain('ART_DIRECTION_POLICY_LEAK');
+  });
+
   it('injects only allow-listed rule fields and excludes rationale and arbitrary metadata', () => {
     const rules = parseRuleSet({
       schemaVersion: 1,

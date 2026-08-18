@@ -1,6 +1,7 @@
 import type { GameDesignDocument, GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
 import type { GameDesignReferenceOption, GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
 import type { GameDesignSystemReferenceGame } from '@/lib/gameDesignSystem';
+import type { GameArtStyleInput } from '@/lib/game-art-style/schema';
 import type {
   GameDesignSystem,
   GameDesignSystemDetail,
@@ -18,6 +19,7 @@ export type GameDesignGenerationRequest = {
   pastedMarkdown?: string;
   references: GameDesignSourceReference[];
   referenceGames: GameDesignSystemReferenceGame[];
+  artStyle: GameArtStyleInput;
 };
 
 async function readJson<T>(response: Response): Promise<T> {

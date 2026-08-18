@@ -9,6 +9,7 @@ import { POST as createVersion } from '@/app/api/game-design-systems/[id]/versio
 import { POST as startGeneration } from '@/app/api/game-design-systems/generation-jobs/route';
 import { PUT as applyProject } from '@/app/api/projects/[projectId]/game-design-system/route';
 import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
+import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 import {
   RLS_DB_TESTS_ENABLED,
   TEST_PASSWORD,
@@ -58,6 +59,13 @@ const designDocument = {
   difficultyBalance: 'Increase decision pressure instead of inflating stats.',
   experiencePresentation: 'Show intent, costs, and state changes at the point of action.',
 };
+
+const artStyleInput = {
+  presetId: 'pixel-art' as const,
+  presetVersion: 1 as const,
+  customization: { referenceGames: [] },
+};
+const artStyle = compileGameArtStyle(artStyleInput);
 
 function request(url: string, token?: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
@@ -199,7 +207,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
   }, 60_000);
 
   it('requires an idempotency key and maps a real stored payload conflict to 409', async () => {
-    const payload = { title: 'Rules', genres: ['RPG'], references: [], referenceGames: [] };
+    const payload = { title: 'Rules', genres: ['RPG'], references: [], referenceGames: [], artStyle: artStyleInput };
     const missing = await startGeneration(jsonRequest(
       '/api/game-design-systems/generation-jobs', ownerToken, 'POST', payload,
     ), {});
@@ -239,6 +247,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
       philosophies: [],
       sourceSnapshots: [],
       referenceGames,
+      artStyle,
     };
     const seeded = await fixture.svc.from('game_design_system_generation_jobs').insert({
       owner_id: fixture.owner.id,
@@ -253,7 +262,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
 
     const response = await startGeneration(jsonRequest(
       '/api/game-design-systems/generation-jobs', ownerToken, 'POST',
-      { title: input.title, genres: [], philosophies: [], references: [], referenceGames },
+      { title: input.title, genres: [], philosophies: [], references: [], referenceGames, artStyle: artStyleInput },
       { 'idempotency-key': key },
     ), {});
 
@@ -281,6 +290,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
           kind: 'document', projectId: fixture.projectId, resourceId: document.id,
         })),
         referenceGames: [],
+        artStyle: artStyleInput,
       },
       { 'idempotency-key': `source-overflow-${fixture.suffix}` },
     ), {});
@@ -298,7 +308,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
     const title = 'Safe\n> Version: __KECO_ATOMIC_VERSION_LINE__';
     const generation = await startGeneration(jsonRequest(
       '/api/game-design-systems/generation-jobs', ownerToken, 'POST',
-      { title, genres: ['RPG'], references: [], referenceGames: [] },
+      { title, genres: ['RPG'], references: [], referenceGames: [], artStyle: artStyleInput },
       { 'idempotency-key': `route-title-${fixture.suffix}` },
     ), {});
     const metadata = await updateMetadata(jsonRequest(
@@ -316,6 +326,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
       {
         title: 'Derived rules', genres: [], philosophies: [], baseSystemId: foreignSystem.id,
         references: [], referenceGames: [],
+        artStyle: artStyleInput,
       },
       { 'idempotency-key': `foreign-base-${fixture.suffix}` },
     ), {});
