@@ -352,8 +352,50 @@ describe('GameDesignSystemsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Create version' }));
     await waitFor(() => expect(createVersion).toHaveBeenCalledWith(
       'system-1',
-      expect.objectContaining({ rules: expect.arrayContaining([expect.objectContaining({ statement: 'Show all decision inputs.' })]) }),
-      'version-1',
+      {
+        parentVersionId: 'version-1',
+        expectedCurrentVersionId: 'version-1',
+        rules: expect.objectContaining({
+          rules: expect.arrayContaining([
+            expect.objectContaining({ statement: 'Show all decision inputs.' }),
+          ]),
+        }),
+      },
+    ));
+  });
+
+  it('branches from a historical selection while comparing against the actual current version', async () => {
+    const historical = { ...version, id: 'version-1', version_number: 1 };
+    const current = {
+      ...version,
+      id: 'version-2',
+      version_number: 2,
+      parent_version_id: historical.id,
+    };
+    fetchDetail.mockResolvedValue({
+      ...system,
+      current_version_id: current.id,
+      current_version: current,
+      versions: [current, historical],
+    });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Version' }), historical.id);
+    await user.click(screen.getByRole('tab', { name: 'Rules' }));
+    await user.click(screen.getByRole('button', { name: 'New version' }));
+    await user.click(screen.getByRole('button', { name: 'Readable state' }));
+    await user.type(screen.getByLabelText('Rule statement'), ' Historical branch.');
+    await user.click(screen.getByRole('button', { name: 'Review changes' }));
+    await user.click(screen.getByRole('button', { name: 'Create version' }));
+
+    await waitFor(() => expect(createVersion).toHaveBeenCalledWith(
+      'system-1',
+      expect.objectContaining({
+        parentVersionId: historical.id,
+        expectedCurrentVersionId: current.id,
+      }),
     ));
   });
 
@@ -377,9 +419,12 @@ describe('GameDesignSystemsPage', () => {
 
     await waitFor(() => expect(createVersion).toHaveBeenCalledWith(
       'system-1',
-      version.rules,
-      'version-1',
-      expect.objectContaining({ designIntent: 'Make every consequence readable.' }),
+      {
+        parentVersionId: 'version-1',
+        expectedCurrentVersionId: 'version-1',
+        rules: version.rules,
+        document: expect.objectContaining({ designIntent: 'Make every consequence readable.' }),
+      },
     ));
   });
 

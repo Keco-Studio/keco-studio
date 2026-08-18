@@ -21,6 +21,10 @@ const artStylePath = join(process.cwd(), 'supabase/migrations/20260817140000_gam
 const artStyleSql = existsSync(artStylePath) ? readFileSync(artStylePath, 'utf8') : '';
 const versionCasPath = join(process.cwd(), 'supabase/migrations/20260818190000_game_design_system_version_cas.sql');
 const versionCasSql = existsSync(versionCasPath) ? readFileSync(versionCasPath, 'utf8') : '';
+const losslessArtInheritancePath = join(process.cwd(), 'supabase/migrations/20260818200000_game_design_system_lossless_art_inheritance.sql');
+const losslessArtInheritanceSql = existsSync(losslessArtInheritancePath)
+  ? readFileSync(losslessArtInheritancePath, 'utf8')
+  : '';
 
 describe('Game Design Rule System migration contract', () => {
   it('creates immutable versions and pins project bindings', () => {
@@ -205,5 +209,41 @@ describe('Game Design Rule System migration contract', () => {
     expect(versionCasSql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to service_role/i);
     expect(versionCasSql).not.toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to (?:public|anon|authenticated)/i);
     expect(versionCasSql).toMatch(/notify pgrst, 'reload schema'/i);
+  });
+
+  it('moves inherited Art Style copying and effective hashing into the final locked RPC', () => {
+    const previousSignature = /uuid\s*,\s*uuid\s*,\s*jsonb\s*,\s*jsonb\s*,\s*jsonb\s*,\s*text\s*,\s*jsonb\s*,\s*jsonb\s*,\s*jsonb\s*,\s*text\s*,\s*uuid\s*,\s*uuid\s*,\s*uuid\s*,\s*uuid\s*\)/i;
+    const finalFunction = losslessArtInheritanceSql.match(
+      /create function public\.create_game_design_system_version\([\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+    const keyAt = finalFunction.search(/idempotency_key = p_idempotency_key/i);
+    const generationAt = finalFunction.search(/where generation_job_id = p_generation_job_id/i);
+    const casAt = finalFunction.search(/current_version_id is not distinct from p_expected_current_version_id/i);
+
+    expect(losslessArtInheritanceSql).toMatch(new RegExp(
+      `revoke all on function public\\.create_game_design_system_version\\([\\s\\S]*${previousSignature.source}[\\s\\S]*from public, anon, authenticated`,
+      'i',
+    ));
+    expect(losslessArtInheritanceSql).toMatch(new RegExp(
+      `drop function if exists public\\.create_game_design_system_version\\([\\s\\S]*${previousSignature.source}`,
+      'i',
+    ));
+    expect(finalFunction).toMatch(/p_art_style jsonb\s*,\s*p_inherit_art_style boolean\s*,\s*p_rules jsonb/i);
+    expect(finalFunction).toMatch(/if p_inherit_art_style then[\s\S]*v_parent_version\.art_style/i);
+    expect(finalFunction).toMatch(/jsonb_build_object\([\s\S]*p_document[\s\S]*p_rules[\s\S]*v_effective_art_style/i);
+    expect(finalFunction).toContain('extensions.digest(');
+    expect(finalFunction).toMatch(/v_effective_content_hash\s*:=\s*encode\([\s\S]*extensions\.digest/i);
+    expect(finalFunction).toMatch(/v_version\.document is not distinct from p_document/i);
+    expect(finalFunction).toMatch(/v_version\.rules is not distinct from p_rules/i);
+    expect(finalFunction).toMatch(/v_version\.art_style is not distinct from v_effective_art_style/i);
+    expect(finalFunction).toMatch(/p_content_hash text\s*,\s*-- deprecated: accepted for compatibility and ignored/i);
+    expect(finalFunction).not.toMatch(/v_effective_content_hash\s*:=\s*p_content_hash/i);
+    expect(finalFunction).toMatch(/insert into public\.game_design_system_versions[\s\S]*v_effective_art_style[\s\S]*v_effective_content_hash/i);
+    expect([keyAt, generationAt, casAt].every((index) => index >= 0)).toBe(true);
+    expect(keyAt).toBeLessThan(generationAt);
+    expect(generationAt).toBeLessThan(casAt);
+    expect(losslessArtInheritanceSql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*boolean[\s\S]*to service_role/i);
+    expect(losslessArtInheritanceSql).not.toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to (?:public|anon|authenticated)/i);
+    expect(losslessArtInheritanceSql).toMatch(/notify pgrst, 'reload schema'/i);
   });
 });

@@ -8,12 +8,19 @@ import {
 } from './helpers/rlsTestClient';
 import { getGameDesignSystemDetail } from '@/lib/services/gameDesignSystemService';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+
+jest.mock('server-only', () => ({}));
+
+import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
+import { createPublicGameDesignSystemVersion } from '@/lib/services/gameDesignSystemWriteService.server';
 
 if (process.env.REQUIRE_RLS_DB_TESTS === '1' && !RLS_DB_TESTS_ENABLED) {
   throw new Error('REQUIRE_RLS_DB_TESTS=1 requires the local RLS database suite to be enabled.');
 }
 
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
+const postgresUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 
 const rules = {
   schemaVersion: 1,
@@ -31,6 +38,36 @@ const rules = {
   tableGuidance: [],
 };
 
+const designDocument = {
+  designIntent: 'Make every tactical choice legible before commitment.',
+  playerFantasy: 'Lead a compact squad through risky decisions.',
+  coreLoop: 'Scout, commit, resolve consequences, and adapt.',
+  decisionStructure: 'Trade immediate safety for positional advantage.',
+  systemBoundaries: 'Uncertainty may hide outcomes but never action costs.',
+  progressionEconomy: 'New tools widen options without invalidating old ones.',
+  contentModel: 'Combine objectives, terrain pressure, and enemy roles.',
+  difficultyBalance: 'Increase decision pressure instead of inflating stats.',
+  experiencePresentation: 'Show intent, costs, and state changes at the point of action.',
+};
+
+function querySqlScalar(sql: string): string {
+  const result = spawnSync('psql', [
+    postgresUrl,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-q',
+    '-At',
+    '-c',
+    sql,
+  ], { encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`psql failed: ${result.stderr.trim()}`);
+  return result.stdout.trim();
+}
+
+function querySqlBoolean(sql: string): boolean {
+  return querySqlScalar(sql) === 't';
+}
+
 function versionRpcArgs(input: {
   systemId: string;
   ownerId: string;
@@ -47,6 +84,7 @@ function versionRpcArgs(input: {
     p_parent_version_id: input.parentVersionId ?? null,
     p_document: null,
     p_art_style: null,
+    p_inherit_art_style: false,
     p_rules: input.versionRules ?? rules,
     p_rendered_markdown: `# ${input.label}\n\n> Version: __KECO_ATOMIC_VERSION_LINE__`,
     p_source_snapshots: [],
@@ -342,6 +380,305 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     expect(versions.data).toEqual([{ id: versionIds[0], idempotency_key: idempotencyKey }]);
   });
 
+  it.each([
+    ['structurally unknown', {
+      schemaVersion: 99,
+      presetId: 'future-neon',
+      payload: { secret: 'live-unknown-raw-sentinel', layers: [3, 2, 1] },
+    }],
+    ['schema-malformed', {
+      schemaVersion: 1,
+      presetId: 'pixel-art',
+      presetVersion: 1,
+      customization: { direction: 'missing canonical preset fields' },
+      secret: 'live-malformed-raw-sentinel',
+    }],
+  ])('preserves %s Art Style JSONB through partial writes until explicit replacement', async (_label, rawArtStyle) => {
+    const casSystemId = await createCasSystem();
+    const initial = await fixture.svc.from('game_design_system_versions').insert({
+      system_id: casSystemId,
+      version_number: 1,
+      document: designDocument,
+      rules,
+      art_style: rawArtStyle,
+      rendered_markdown: '# Raw Art Style base',
+      source_snapshots: [],
+      diff: { added: [], removed: [], changed: [], conflicts: [] },
+      conflicts: [],
+      content_hash: '9'.repeat(64),
+      created_by: fixture.outsider.id,
+    }).select('id').single();
+    expect(initial.error).toBeNull();
+    const initialVersionId = String(initial.data?.id ?? '');
+    const setCurrent = await fixture.svc.from('game_design_systems')
+      .update({ current_version_id: initialVersionId })
+      .eq('id', casSystemId);
+    expect(setCurrent.error).toBeNull();
+
+    const documentVersion = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey: randomUUID(),
+      request: {
+        parentVersionId: initialVersionId,
+        expectedCurrentVersionId: initialVersionId,
+        document: { ...designDocument, gameBackground: 'A rain-soaked orbital port.' },
+      },
+    });
+    expect(documentVersion.artStyle).toBeNull();
+    expect(documentVersion.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
+    expect(JSON.stringify(documentVersion)).not.toContain(String(rawArtStyle.secret ?? rawArtStyle.payload));
+    expect(documentVersion).not.toHaveProperty('idempotency_key');
+    expect(documentVersion).not.toHaveProperty('generation_job_id');
+    const documentRaw = await fixture.svc.from('game_design_system_versions')
+      .select('art_style').eq('id', documentVersion.id).single();
+    expect(documentRaw.error).toBeNull();
+    expect(documentRaw.data?.art_style).toEqual(rawArtStyle);
+
+    const changedRules = { ...rules, genres: ['Strategy', 'RPG'] };
+    const rulesVersion = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey: randomUUID(),
+      request: {
+        parentVersionId: documentVersion.id,
+        expectedCurrentVersionId: documentVersion.id,
+        rules: changedRules,
+      },
+    });
+    expect(rulesVersion.artStyle).toBeNull();
+    expect(rulesVersion.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
+    expect(rulesVersion).not.toHaveProperty('idempotency_key');
+    expect(rulesVersion).not.toHaveProperty('generation_job_id');
+    expect(rulesVersion.diff).toMatchObject({ artStyle: { change: 'unchanged' } });
+    const rulesRaw = await fixture.svc.from('game_design_system_versions')
+      .select('art_style').eq('id', rulesVersion.id).single();
+    expect(rulesRaw.error).toBeNull();
+    expect(rulesRaw.data?.art_style).toEqual(rawArtStyle);
+
+    const hydrated = await getGameDesignSystemDetail(fixture.svc, casSystemId, {
+      snapshotClient: fixture.svc,
+    });
+    expect(hydrated?.current_version).toMatchObject({
+      id: rulesVersion.id,
+      artStyle: null,
+      artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' },
+    });
+    expect(JSON.stringify(hydrated)).not.toContain('raw-sentinel');
+
+    const offeredInput = {
+      presetId: 'pixel-art' as const,
+      presetVersion: 1 as const,
+      customization: { referenceGames: [] },
+    };
+    const replacement = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey: randomUUID(),
+      request: {
+        parentVersionId: rulesVersion.id,
+        expectedCurrentVersionId: rulesVersion.id,
+        artStyle: offeredInput,
+      },
+    });
+    expect(replacement.artStyle).toEqual(compileGameArtStyle(offeredInput));
+    expect(replacement.artStyleReadError).toBeNull();
+    expect(replacement.diff).toMatchObject({ artStyle: { change: 'preset_changed' } });
+    const replacedRaw = await fixture.svc.from('game_design_system_versions')
+      .select('art_style').eq('id', replacement.id).single();
+    expect(replacedRaw.error).toBeNull();
+    expect(replacedRaw.data?.art_style).toEqual(compileGameArtStyle(offeredInput));
+  });
+
+  it('copies exact JSONB numeric values through Document-only and Rules-only public versions', async () => {
+    const casSystemId = await createCasSystem();
+    const precisionArtStyle = '{"schemaVersion":99,"presetId":"future-precision","unsafeInteger":9007199254740993,"highPrecisionDecimal":0.123456789012345678901234567890123456789}';
+    const initialVersionId = querySqlScalar(`
+      insert into public.game_design_system_versions (
+        system_id, version_number, document, rules, art_style, rendered_markdown,
+        source_snapshots, diff, conflicts, content_hash, created_by
+      ) values (
+        '${casSystemId}'::uuid,
+        1,
+        $document$${JSON.stringify(designDocument)}$document$::jsonb,
+        $rules$${JSON.stringify(rules)}$rules$::jsonb,
+        $precision$${precisionArtStyle}$precision$::jsonb,
+        '# Precision Art Style base',
+        '[]'::jsonb,
+        '{"added":[],"removed":[],"changed":[],"conflicts":[]}'::jsonb,
+        '[]'::jsonb,
+        '${'8'.repeat(64)}',
+        '${fixture.outsider.id}'::uuid
+      )
+      returning id::text
+    `);
+    expect(initialVersionId).toMatch(/^[0-9a-f-]{36}$/i);
+    const setCurrent = await fixture.svc.from('game_design_systems')
+      .update({ current_version_id: initialVersionId })
+      .eq('id', casSystemId);
+    expect(setCurrent.error).toBeNull();
+
+    const documentVersion = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey: randomUUID(),
+      request: {
+        parentVersionId: initialVersionId,
+        expectedCurrentVersionId: initialVersionId,
+        document: { ...designDocument, gameBackground: 'A mathematically exact observatory.' },
+      },
+    });
+    expect(documentVersion.artStyle).toBeNull();
+    expect(documentVersion.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
+    expect(JSON.stringify(documentVersion)).not.toContain('unsafeInteger');
+    expect(querySqlBoolean(`
+      select art_style = $precision$${precisionArtStyle}$precision$::jsonb
+      from public.game_design_system_versions
+      where id = '${documentVersion.id}'::uuid
+    `)).toBe(true);
+
+    const rulesVersion = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey: randomUUID(),
+      request: {
+        parentVersionId: documentVersion.id,
+        expectedCurrentVersionId: documentVersion.id,
+        rules: { ...rules, genres: ['Strategy', 'RPG'] },
+      },
+    });
+    expect(rulesVersion.artStyle).toBeNull();
+    expect(rulesVersion.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
+    expect(rulesVersion.diff).toMatchObject({ artStyle: { change: 'unchanged' } });
+    expect(JSON.stringify(rulesVersion)).not.toContain('highPrecisionDecimal');
+    expect(querySqlBoolean(`
+      select art_style = $precision$${precisionArtStyle}$precision$::jsonb
+      from public.game_design_system_versions
+      where id = '${rulesVersion.id}'::uuid
+    `)).toBe(true);
+  });
+
+  it('replays equivalent explicit and inherited Art Style writes by effective persisted content', async () => {
+    const casSystemId = await createCasSystem();
+    const offeredArtStyle = {
+      presetId: 'pixel-art' as const,
+      presetVersion: 1 as const,
+      customization: { referenceGames: [] },
+    };
+    const compiledArtStyle = compileGameArtStyle(offeredArtStyle);
+    const initial = await fixture.svc.from('game_design_system_versions').insert({
+      system_id: casSystemId,
+      version_number: 1,
+      document: designDocument,
+      rules,
+      art_style: compiledArtStyle,
+      rendered_markdown: '# Supported Art Style base',
+      source_snapshots: [],
+      diff: { added: [], removed: [], changed: [], conflicts: [] },
+      conflicts: [],
+      content_hash: '7'.repeat(64),
+      created_by: fixture.outsider.id,
+    }).select('id').single();
+    expect(initial.error).toBeNull();
+    const parentVersionId = String(initial.data?.id ?? '');
+    const setCurrent = await fixture.svc.from('game_design_systems')
+      .update({ current_version_id: parentVersionId })
+      .eq('id', casSystemId);
+    expect(setCurrent.error).toBeNull();
+
+    const idempotencyKey = randomUUID();
+    const changedDocument = { ...designDocument, gameBackground: 'A mirrored observatory above the clouds.' };
+    const explicit = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey,
+      request: {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        document: changedDocument,
+        artStyle: offeredArtStyle,
+      },
+    });
+    const inheritedReplay = await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey,
+      request: {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        document: changedDocument,
+      },
+    });
+
+    expect(inheritedReplay.id).toBe(explicit.id);
+  });
+
+  it.each([
+    ['Document', (parentVersionId: string) => ({
+      parentVersionId,
+      expectedCurrentVersionId: parentVersionId,
+      document: { ...designDocument, gameBackground: 'A genuinely different replay document.' },
+    })],
+    ['Rules', (parentVersionId: string) => ({
+      parentVersionId,
+      expectedCurrentVersionId: parentVersionId,
+      document: { ...designDocument, gameBackground: 'A changed document shared by both writes.' },
+      rules: { ...rules, genres: ['Strategy', 'RPG'] },
+    })],
+    ['Art Style', (parentVersionId: string) => ({
+      parentVersionId,
+      expectedCurrentVersionId: parentVersionId,
+      document: { ...designDocument, gameBackground: 'A changed document shared by both writes.' },
+      artStyle: null,
+    })],
+  ])('rejects a replay key when the effective %s component differs', async (_component, buildDifferentRequest) => {
+    const casSystemId = await createCasSystem();
+    const offeredArtStyle = {
+      presetId: 'pixel-art' as const,
+      presetVersion: 1 as const,
+      customization: { referenceGames: [] },
+    };
+    const initial = await fixture.svc.from('game_design_system_versions').insert({
+      system_id: casSystemId,
+      version_number: 1,
+      document: designDocument,
+      rules,
+      art_style: compileGameArtStyle(offeredArtStyle),
+      rendered_markdown: '# Conflict Art Style base',
+      source_snapshots: [],
+      diff: { added: [], removed: [], changed: [], conflicts: [] },
+      conflicts: [],
+      content_hash: '6'.repeat(64),
+      created_by: fixture.outsider.id,
+    }).select('id').single();
+    expect(initial.error).toBeNull();
+    const parentVersionId = String(initial.data?.id ?? '');
+    const setCurrent = await fixture.svc.from('game_design_systems')
+      .update({ current_version_id: parentVersionId })
+      .eq('id', casSystemId);
+    expect(setCurrent.error).toBeNull();
+
+    const idempotencyKey = randomUUID();
+    await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey,
+      request: {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        document: { ...designDocument, gameBackground: 'A changed document shared by both writes.' },
+        artStyle: offeredArtStyle,
+      },
+    });
+
+    await expect(createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey,
+      request: buildDifferentRequest(parentVersionId),
+    })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  });
+
   it('returns the original generation output after current advances without persistence side effects', async () => {
     const job = await fixture.svc.from('game_design_system_generation_jobs').insert({
       owner_id: fixture.outsider.id,
@@ -446,6 +783,7 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
     }) as Record<string, unknown>;
     delete oldArgs.p_expected_current_version_id;
     delete oldArgs.p_idempotency_key;
+    delete oldArgs.p_inherit_art_style;
 
     const obsolete = await fixture.svc.rpc('create_game_design_system_version', oldArgs);
 

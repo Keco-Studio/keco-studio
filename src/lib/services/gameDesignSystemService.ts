@@ -128,7 +128,7 @@ function hashJson(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function hydrateVersion(
+export function hydrateGameDesignSystemVersionRow(
   row: Record<string, unknown>,
   metadata: { title?: string; summary?: string | null } = {},
   projectedDiff?: GameDesignSystemVersionDiff,
@@ -141,18 +141,55 @@ function hydrateVersion(
   const parsedArtStyle = rawArtStyle == null
     ? null
     : gameArtStyleSnapshotSchema.safeParse(rawArtStyle);
-  const { art_style: _artStyle, ...version } = row;
   const diff = projectedDiff ?? projectStoredVersionDiff(row.diff);
   return {
-    ...(version as unknown as GameDesignSystemVersion),
+    id: typeof row.id === 'string' ? row.id : '',
+    system_id: typeof row.system_id === 'string' ? row.system_id : '',
+    version_number: typeof row.version_number === 'number' ? row.version_number : 0,
+    parent_version_id: typeof row.parent_version_id === 'string' ? row.parent_version_id : null,
     document,
     rules,
     artStyle: parsedArtStyle && parsedArtStyle.success ? parsedArtStyle.data : null,
     artStyleReadError: rawArtStyle != null && !parsedArtStyle?.success
       ? { code: 'UNSUPPORTED_SNAPSHOT' }
       : null,
+    rendered_markdown: typeof row.rendered_markdown === 'string' ? row.rendered_markdown : '',
+    source_snapshots: projectSourceSnapshots(row.source_snapshots),
     diff,
+    conflicts: readRuleDiff({ conflicts: row.conflicts }).conflicts,
+    content_hash: typeof row.content_hash === 'string' ? row.content_hash : '',
+    created_by: typeof row.created_by === 'string' ? row.created_by : null,
+    created_at: typeof row.created_at === 'string' ? row.created_at : '',
   };
+}
+
+function projectSourceSnapshots(value: unknown): GameDesignSourceSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  const snapshots: GameDesignSourceSnapshot[] = [];
+  for (const candidate of value) {
+    if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+    const snapshot = candidate as Record<string, unknown>;
+    if (
+      (snapshot.kind !== 'document' && snapshot.kind !== 'table' && snapshot.kind !== 'legacy_markdown')
+      || typeof snapshot.label !== 'string'
+      || typeof snapshot.contentHash !== 'string'
+      || typeof snapshot.byteCount !== 'number'
+      || !Number.isFinite(snapshot.byteCount)
+      || typeof snapshot.truncated !== 'boolean'
+    ) continue;
+    snapshots.push({
+      kind: snapshot.kind,
+      ...(typeof snapshot.projectId === 'string' ? { projectId: snapshot.projectId } : {}),
+      ...(typeof snapshot.resourceId === 'string' ? { resourceId: snapshot.resourceId } : {}),
+      label: snapshot.label,
+      ...(typeof snapshot.updatedAt === 'string' ? { updatedAt: snapshot.updatedAt } : {}),
+      contentHash: snapshot.contentHash,
+      ...(typeof snapshot.excerpt === 'string' ? { excerpt: snapshot.excerpt } : {}),
+      byteCount: snapshot.byteCount,
+      truncated: snapshot.truncated,
+    });
+  }
+  return snapshots;
 }
 
 function readRuleDiff(value: unknown): GameDesignRuleDiff {
@@ -202,10 +239,10 @@ function hydrateVersionRows(
   return rows.map((row) => {
     const metadata = metadataForRow(row);
     const storedV2Diff = parseVersionDiffV2(row.diff);
-    if (storedV2Diff) return hydrateVersion(row, metadata, storedV2Diff);
+    if (storedV2Diff) return hydrateGameDesignSystemVersionRow(row, metadata, storedV2Diff);
     const parentId = typeof row.parent_version_id === 'string' ? row.parent_version_id : null;
     const parentRow = parentId ? rowsById.get(parentId) : undefined;
-    if (!parentRow) return hydrateVersion(row, metadata, notRecordedVersionDiff(row.diff));
+    if (!parentRow) return hydrateGameDesignSystemVersionRow(row, metadata, notRecordedVersionDiff(row.diff));
 
     const currentRules = parseRuleSet(row.rules);
     const parentRules = parseRuleSet(parentRow.rules);
@@ -219,7 +256,7 @@ function hydrateVersionRows(
       { document: parentDocument, rules: parentRules, artStyle: parentRow.art_style ?? null },
       { document: currentDocument, rules: currentRules, artStyle: row.art_style ?? null },
     );
-    return hydrateVersion(row, metadata, { ...derived, ...readRuleDiff(row.diff) });
+    return hydrateGameDesignSystemVersionRow(row, metadata, { ...derived, ...readRuleDiff(row.diff) });
   });
 }
 
@@ -335,7 +372,7 @@ export async function getGameDesignSystemVersion(supabase: SupabaseClient, id: s
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return hydrateVersion(data as Record<string, unknown>);
+  return hydrateGameDesignSystemVersionRow(data as Record<string, unknown>);
 }
 
 /** Server-only replay lookup: callers receive identity only, never version content. */
@@ -419,6 +456,7 @@ export async function createGameDesignSystemVersion(
     p_parent_version_id: input.parentVersion?.id ?? null,
     p_document: document,
     p_art_style: artStyle,
+    p_inherit_art_style: false,
     p_rules: rules,
     p_rendered_markdown: rendered,
     p_source_snapshots: input.sourceSnapshots ?? [],
@@ -433,7 +471,7 @@ export async function createGameDesignSystemVersion(
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('Version creation returned no row.');
-  return hydrateVersion(row as Record<string, unknown>, { title: input.title }, diff);
+  return hydrateGameDesignSystemVersionRow(row as Record<string, unknown>, { title: input.title }, diff);
 }
 
 export async function createGameDesignSystem(

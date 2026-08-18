@@ -510,9 +510,16 @@ export function GameDesignSystemWorkspace(props: Props) {
     onError: (error) => setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Failed to save system details.' }),
   });
   const versionMutation = useMutation({
-    mutationFn: (input: { rules: GameDesignRuleSet; document?: GameDesignDocument }) => input.document
-      ? createGameDesignSystemVersion(detail.id, input.rules, selectedVersion?.id, input.document)
-      : createGameDesignSystemVersion(detail.id, input.rules, selectedVersion?.id),
+    mutationFn: (input: { rules: GameDesignRuleSet; document?: GameDesignDocument }) => {
+      if (!selectedVersion) throw new Error('Select a base version before creating a version.');
+      if (!detail.current_version) throw new Error('Reload the current version before creating a version.');
+      return createGameDesignSystemVersion(detail.id, {
+        parentVersionId: selectedVersion.id,
+        expectedCurrentVersionId: detail.current_version.id,
+        rules: input.rules,
+        ...(input.document ? { document: input.document } : {}),
+      });
+    },
     onSuccess: async (version) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystem(detail.id) }),

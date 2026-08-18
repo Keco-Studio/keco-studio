@@ -108,6 +108,7 @@ describe('gameDesignSystemService version and job behavior', () => {
       p_idempotency_key: 'a8b68831-7587-42a4-b7bf-d46f0ab9787b',
       p_document: document,
       p_art_style: artStyle,
+      p_inherit_art_style: false,
       p_content_hash: createHash('sha256')
         .update(JSON.stringify({ document, rules: { ...ruleSet, rules: [...ruleSet.rules, { ...ruleSet.rules[0], id: 'visible-costs' }] }, artStyle }))
         .digest('hex'),

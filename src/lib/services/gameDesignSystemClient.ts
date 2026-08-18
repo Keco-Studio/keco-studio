@@ -1,4 +1,5 @@
-import type { GameDesignDocument, GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
+import type { GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
+import type { CreateGameDesignSystemVersionRequest } from '@/lib/game-design-system/versionRequest';
 import type { GameDesignReferenceOption, GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
 import type { GameDesignSystemReferenceGame } from '@/lib/gameDesignSystem';
 import type { GameArtStyleInput } from '@/lib/game-art-style/schema';
@@ -25,7 +26,13 @@ export type GameDesignGenerationRequest = {
 
 async function readJson<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(
+      typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`,
+    ) as Error & { code?: string };
+    if (typeof payload?.code === 'string') error.code = payload.code;
+    throw error;
+  }
   return payload as T;
 }
 
@@ -49,11 +56,14 @@ export async function updateGameDesignSystemDraft(id: string, input: { title?: s
 
 export async function createGameDesignSystemVersion(
   id: string,
-  rules: GameDesignRuleSet,
-  parentVersionId?: string,
-  document?: GameDesignDocument,
+  input: CreateGameDesignSystemVersionRequest,
+  key = crypto.randomUUID(),
 ): Promise<GameDesignSystemVersion> {
-  const response = await fetch(`/api/game-design-systems/${encodeURIComponent(id)}/versions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document, rules, parentVersionId }) });
+  const response = await fetch(`/api/game-design-systems/${encodeURIComponent(id)}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+    body: JSON.stringify(input),
+  });
   return (await readJson<{ version: GameDesignSystemVersion }>(response)).version;
 }
 
