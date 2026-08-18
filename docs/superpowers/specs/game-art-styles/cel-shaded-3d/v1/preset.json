@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "presetId": "cel-shaded-3d",
+  "presetVersion": 1,
+  "title": "Cel-Shaded 3D",
+  "previewAssetSet": {
+    "id": "cel-shaded-3d-v1",
+    "map": {
+      "sourcePath": "public/game-art-styles/cel-shaded-3d/v1/map.png",
+      "publicPath": "/game-art-styles/cel-shaded-3d/v1/map.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4450301,
+      "sha256": "770535810487fc6736cc087b88c7757e405cc2f825a5eb94a0dc13752fb12f50",
+      "alpha": "opaque",
+      "alt": "A bright cel-shaded 3d riverside village map with branching paths and a wooden bridge."
+    },
+    "character": {
+      "sourcePath": "public/game-art-styles/cel-shaded-3d/v1/character.png",
+      "publicPath": "/game-art-styles/cel-shaded-3d/v1/character.png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1384823,
+      "sha256": "f16cc71642c250274aedc6a18e68e16cc7b2e6f835246d8328d78b4c0847e450",
+      "alpha": "opaque",
+      "alt": "A full-body cel-shaded 3d adult field cartographer with practical exploration gear."
+    },
+    "supporting": []
+  },
+  "specification": {
+    "characterDirection": "Build clearly adult characters with natural anatomy, practical layered equipment, grounded poses, and silhouettes that remain distinct at thumbnail size.",
+    "environmentDirection": "Compose maps around immediately legible traversal hierarchy, routes that continue beyond the frame, useful landmarks, and generous walkable space.",
+    "propDirection": "Give every prop a clear gameplay purpose, readable material grouping, and a silhouette that survives at gameplay scale without decorative clutter.",
+    "effectsDirection": "Keep effects compact, high contrast, and brief so they communicate timing without obscuring characters, landmarks, or traversal.",
+    "uiHudDirection": "Use compact panels, high-contrast icons, plain readable labels, and restrained ornament; interface meaning must never depend on the preview images.",
+    "accessibility": "Maintain value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker or visually noisy backgrounds.",
+    "visualIdentity": "Polished stylized 3D forms presented through graphic light bands, selective ink accents, clean silhouettes, and energetic color separation.",
+    "pixelTechnique": "Use smooth modeled surfaces, two-step cel lighting, hard shadow boundaries, selective contour accents, and simplified non-photoreal materials.",
+    "shapeLanguage": "Favor smooth tapered volumes, readable bevels, sweeping curves, and decisive silhouette breaks while avoiding visible polygon faceting.",
+    "paletteAndLighting": "Use saturated green, bright blue, warm wood, orange-red accents, and cool gray with a hard two-band key light and restrained rim light.",
+    "animationDirection": "Animate with strong 3D key poses, readable arcs, short graphic holds, stable outlines, and deliberate transitions between light bands."
+  }
+}

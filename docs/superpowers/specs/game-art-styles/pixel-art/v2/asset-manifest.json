@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "releaseKey": "pixel-art@2",
+  "manifestPurpose": "Authoring provenance and review evidence; never a runtime registry input.",
+  "runtimeSource": "docs/superpowers/specs/game-art-styles/pixel-art/v2/preset.json",
+  "validation": {
+    "requireVisiblePixels": true,
+    "requireDistinctFinalHashes": true
+  },
+  "assets": [
+    {
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4426788,
+      "sha256": "25054c1f4cab5635ba2667f6cff88de6347f99a7b6df7aab1c570d6137d7adea",
+      "alpha": "opaque",
+      "release": "pixel-art@2",
+      "kind": "map",
+      "variant": 3,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: polished modern pixel art with crisp native-resolution clusters, clear silhouettes, and controlled material-colored outlines. Color palette: fresh greens, clear river blue, warm timber, terracotta accents, pale gold daylight. Rendering technique: no antialiasing, deliberate pixel clusters, two to four shade steps per material, restrained dithering. Primary request: a welcoming riverside village map in bright late-morning light. Composition/framing: wide 3:2 top-down three-quarter orthographic view; a broad diagonal dirt path crosses a clear blue river on a small wooden bridge; secondary paths branch toward open frame edges; include a timber workshop, practical gardens, warm stone, compact homes, and generous walkable space. Route hierarchy and landmarks must read at thumbnail size. Variant 3: vary building grouping and bridge approach while preserving the exact subject. Constraints: no people or creatures. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "82d873193eb781c2988ce64ee6d4938486945b7c13f7d9f464b5eefdef833e1e",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    },
+    {
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1139039,
+      "sha256": "dafd83c5ec5f6bf4d0ad69be69cca477338d319b9b1292e02fb7a6ca1b4fe0c8",
+      "alpha": "opaque",
+      "release": "pixel-art@2",
+      "kind": "character",
+      "variant": 1,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: polished modern pixel art with crisp native-resolution clusters, clear silhouettes, and controlled material-colored outlines. Color palette: fresh greens, clear river blue, warm timber, terracotta accents, pale gold daylight. Rendering technique: no antialiasing, deliberate pixel clusters, two to four shade steps per material, restrained dithering. Primary request: a clearly adult field cartographer, full body, practical layered field jacket, sturdy boots, compact satchel, rolled blank map case, compass and harmless survey tools. Composition/framing: centered three-quarter standing pose, entire silhouette visible with generous padding, simple neutral backdrop, friendly focused expression, natural adult anatomy. Variant 1: vary pose and equipment arrangement while preserving the exact subject. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "eaad77575d16be630745dc0fe04eae54f63077b24c6637498ea86d7b139bb153",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    }
+  ],
+  "review": {
+    "release": "pixel-art@2",
+    "reviewers": [
+      {
+        "name": "Pascal",
+        "role": "independent visual reviewer"
+      },
+      {
+        "name": "Hubble",
+        "role": "independent visual reviewer"
+      }
+    ],
+    "selected": {
+      "map": 3,
+      "character": 1
+    },
+    "candidates": {
+      "map": [
+        {
+          "variant": 1,
+          "sha256": "ec45e160e35d0f64324a6dd7d8af75f68c4a82a751390fbd754bd1fc311937be"
+        },
+        {
+          "variant": 2,
+          "sha256": "20867aea10aa93f819fd5d0171bace951b0803eb6d2389be45268e449bac61a4"
+        },
+        {
+          "variant": 3,
+          "sha256": "25054c1f4cab5635ba2667f6cff88de6347f99a7b6df7aab1c570d6137d7adea"
+        }
+      ],
+      "character": [
+        {
+          "variant": 1,
+          "sha256": "dafd83c5ec5f6bf4d0ad69be69cca477338d319b9b1292e02fb7a6ca1b4fe0c8"
+        },
+        {
+          "variant": 2,
+          "sha256": "6616a263927829677c700381472a5760784115c72d35b4ea362d60bf3b49cdd7"
+        },
+        {
+          "variant": 3,
+          "sha256": "3721b0c230aafd3a0703e9e39eaa544e244eff6395dd7e5b4ec317ed4262fb4e"
+        }
+      ]
+    },
+    "rubrics": {
+      "mapRouteReadability": "pass",
+      "adultAnatomy": "pass",
+      "styleBoundary": "pass",
+      "pairConsistency": "pass",
+      "noTextLogoOrWatermark": "pass",
+      "noArtistFranchiseOrCharacterImitation": "pass",
+      "celShadedAndLowPolyMutualExclusion": "pass"
+    },
+    "rejections": [
+      {
+        "kind": "map",
+        "variant": 1,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "map",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 3,
+        "reason": "Not selected after independent visual comparison."
+      }
+    ],
+    "contactSheets": {
+      "mapSha256": "c0d85233b3c93028c7e0983c64fb16d1eb152aaac7d32b9ebdca9db6a7e7e4b7",
+      "characterSha256": "fce7328ce49264f5987f04148ce82d76fc007a49ce9661cd130b1b8577779c02",
+      "pairSha256": "1e15be0a89e0c441da89b6fbf3a86fe749e5d9612f1f2fb8be3e56cdedf2e5fd"
+    }
+  }
+}

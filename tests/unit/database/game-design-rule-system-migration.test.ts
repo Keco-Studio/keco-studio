@@ -19,6 +19,16 @@ const atomicRepairPath = join(process.cwd(), 'supabase/migrations/20260814030000
 const atomicRepairSql = existsSync(atomicRepairPath) ? readFileSync(atomicRepairPath, 'utf8') : '';
 const artStylePath = join(process.cwd(), 'supabase/migrations/20260817140000_game_design_system_art_style.sql');
 const artStyleSql = existsSync(artStylePath) ? readFileSync(artStylePath, 'utf8') : '';
+const versionCasPath = join(process.cwd(), 'supabase/migrations/20260818190000_game_design_system_version_cas.sql');
+const versionCasSql = existsSync(versionCasPath) ? readFileSync(versionCasPath, 'utf8') : '';
+const losslessArtInheritancePath = join(process.cwd(), 'supabase/migrations/20260818200000_game_design_system_lossless_art_inheritance.sql');
+const losslessArtInheritanceSql = existsSync(losslessArtInheritancePath)
+  ? readFileSync(losslessArtInheritancePath, 'utf8')
+  : '';
+const noOpIdempotencyPath = join(process.cwd(), 'supabase/migrations/20260818210000_game_design_system_version_noop_idempotency.sql');
+const noOpIdempotencySql = existsSync(noOpIdempotencyPath)
+  ? readFileSync(noOpIdempotencyPath, 'utf8')
+  : '';
 
 describe('Game Design Rule System migration contract', () => {
   it('creates immutable versions and pins project bindings', () => {
@@ -156,5 +166,106 @@ describe('Game Design Rule System migration contract', () => {
     expect(artStyleSql).toMatch(/grant select \([\s\S]*art_style[\s\S]*\) on public\.game_design_system_versions to authenticated/i);
     expect(artStyleSql).not.toMatch(/grant select \([\s\S]*source_snapshots[\s\S]*\) on public\.game_design_system_versions to authenticated/i);
     expect(artStyleSql).toMatch(/revoke all on function public\.create_game_design_system_version[\s\S]*from public, anon, authenticated/i);
+  });
+
+  it('serializes version writes with replay before nullable CAS and a closed RPC signature', () => {
+    const oldSignature = /uuid\s*,\s*uuid\s*,\s*jsonb\s*,\s*jsonb\s*,\s*jsonb\s*,\s*text\s*,\s*jsonb\s*,\s*jsonb\s*,\s*jsonb\s*,\s*text\s*,\s*uuid\s*,\s*uuid\s*\)/i;
+    const functionBody = versionCasSql.match(/create function public\.create_game_design_system_version\([\s\S]*?\n\$\$;/i)?.[0] ?? '';
+    const idempotencyReplay = functionBody.match(/if p_idempotency_key is not null then([\s\S]*?)end if;/i)?.[1] ?? '';
+
+    expect(versionCasSql).toMatch(/add column if not exists idempotency_key uuid/i);
+    expect(versionCasSql).toMatch(/create unique index[\s\S]*\(system_id, idempotency_key\)[\s\S]*where idempotency_key is not null/i);
+    expect(versionCasSql).toMatch(new RegExp(`revoke all on function public\\.create_game_design_system_version\\([\\s\\S]*${oldSignature.source}[\\s\\S]*from public, anon, authenticated`, 'i'));
+    expect(versionCasSql).toMatch(new RegExp(`drop function if exists public\\.create_game_design_system_version\\([\\s\\S]*${oldSignature.source}`, 'i'));
+    expect(versionCasSql.match(/create function public\.create_game_design_system_version\(/gi)).toHaveLength(1);
+    expect(versionCasSql).toMatch(/p_generation_job_id uuid\s*,\s*p_expected_current_version_id uuid\s*,\s*p_idempotency_key uuid/i);
+
+    const lockAt = functionBody.search(/from public\.game_design_systems[\s\S]*?for update/i);
+    const keyAt = functionBody.search(/where system_id = p_system_id[\s\S]*?idempotency_key = p_idempotency_key/i);
+    const generationAt = functionBody.search(/where generation_job_id = p_generation_job_id/i);
+    const casAt = functionBody.search(/current_version_id is not distinct from p_expected_current_version_id/i);
+    const generationReplay = generationAt >= 0 && casAt > generationAt
+      ? functionBody.slice(generationAt, casAt)
+      : '';
+    const parentAt = functionBody.search(/join public\.game_design_systems parent_system/i);
+    const insertAt = functionBody.search(/insert into public\.game_design_system_versions/i);
+    const updateAt = functionBody.search(/update public\.game_design_systems/i);
+    expect([lockAt, keyAt, generationAt, casAt, parentAt, insertAt, updateAt].every((index) => index >= 0)).toBe(true);
+    expect(lockAt).toBeLessThan(keyAt);
+    expect(keyAt).toBeLessThan(generationAt);
+    expect(generationAt).toBeLessThan(casAt);
+    expect(casAt).toBeLessThan(parentAt);
+    expect(parentAt).toBeLessThan(insertAt);
+    expect(insertAt).toBeLessThan(updateAt);
+
+    expect(idempotencyReplay).toMatch(/parent_version_id is not distinct from p_parent_version_id/i);
+    expect(idempotencyReplay).toMatch(/content_hash = p_content_hash/i);
+    expect(idempotencyReplay).toMatch(/created_by = v_actor/i);
+    expect(idempotencyReplay).toContain('IDEMPOTENCY_CONFLICT');
+    expect(generationReplay).toMatch(/v_version\.system_id <> p_system_id/i);
+    expect(generationReplay).toMatch(/v_system\.generation_job_id is distinct from p_generation_job_id/i);
+    expect(generationReplay).toMatch(/return v_version/i);
+    expect(generationReplay).not.toMatch(/update public\.(?:game_design_systems|game_design_system_generation_jobs)/i);
+    expect(functionBody).toMatch(/raise exception 'VERSION_STALE' using errcode = 'P0001'/i);
+    expect(functionBody).toMatch(/insert into public\.game_design_system_versions[\s\S]*idempotency_key[\s\S]*p_idempotency_key/i);
+
+    expect(versionCasSql).toMatch(/revoke all on function public\.create_game_design_system_version\([\s\S]*from public, anon, authenticated/i);
+    expect(versionCasSql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to service_role/i);
+    expect(versionCasSql).not.toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to (?:public|anon|authenticated)/i);
+    expect(versionCasSql).toMatch(/notify pgrst, 'reload schema'/i);
+  });
+
+  it('moves inherited Art Style copying and effective hashing into the final locked RPC', () => {
+    const previousSignature = /uuid\s*,\s*uuid\s*,\s*jsonb\s*,\s*jsonb\s*,\s*jsonb\s*,\s*text\s*,\s*jsonb\s*,\s*jsonb\s*,\s*jsonb\s*,\s*text\s*,\s*uuid\s*,\s*uuid\s*,\s*uuid\s*,\s*uuid\s*\)/i;
+    const finalFunction = losslessArtInheritanceSql.match(
+      /create function public\.create_game_design_system_version\([\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+    const keyAt = finalFunction.search(/idempotency_key = p_idempotency_key/i);
+    const generationAt = finalFunction.search(/where generation_job_id = p_generation_job_id/i);
+    const casAt = finalFunction.search(/current_version_id is not distinct from p_expected_current_version_id/i);
+
+    expect(losslessArtInheritanceSql).toMatch(new RegExp(
+      `revoke all on function public\\.create_game_design_system_version\\([\\s\\S]*${previousSignature.source}[\\s\\S]*from public, anon, authenticated`,
+      'i',
+    ));
+    expect(losslessArtInheritanceSql).toMatch(new RegExp(
+      `drop function if exists public\\.create_game_design_system_version\\([\\s\\S]*${previousSignature.source}`,
+      'i',
+    ));
+    expect(finalFunction).toMatch(/p_art_style jsonb\s*,\s*p_inherit_art_style boolean\s*,\s*p_rules jsonb/i);
+    expect(finalFunction).toMatch(/if p_inherit_art_style then[\s\S]*v_parent_version\.art_style/i);
+    expect(finalFunction).toMatch(/jsonb_build_object\([\s\S]*p_document[\s\S]*p_rules[\s\S]*v_effective_art_style/i);
+    expect(finalFunction).toContain('extensions.digest(');
+    expect(finalFunction).toMatch(/v_effective_content_hash\s*:=\s*encode\([\s\S]*extensions\.digest/i);
+    expect(finalFunction).toMatch(/v_version\.document is not distinct from p_document/i);
+    expect(finalFunction).toMatch(/v_version\.rules is not distinct from p_rules/i);
+    expect(finalFunction).toMatch(/v_version\.art_style is not distinct from v_effective_art_style/i);
+    expect(finalFunction).toMatch(/p_content_hash text\s*,\s*-- deprecated: accepted for compatibility and ignored/i);
+    expect(finalFunction).not.toMatch(/v_effective_content_hash\s*:=\s*p_content_hash/i);
+    expect(finalFunction).toMatch(/insert into public\.game_design_system_versions[\s\S]*v_effective_art_style[\s\S]*v_effective_content_hash/i);
+    expect([keyAt, generationAt, casAt].every((index) => index >= 0)).toBe(true);
+    expect(keyAt).toBeLessThan(generationAt);
+    expect(generationAt).toBeLessThan(casAt);
+    expect(losslessArtInheritanceSql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*boolean[\s\S]*to service_role/i);
+    expect(losslessArtInheritanceSql).not.toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to (?:public|anon|authenticated)/i);
+    expect(losslessArtInheritanceSql).toMatch(/notify pgrst, 'reload schema'/i);
+  });
+
+  it('checks keyed idempotency replay before enforcing canonical no-ops', () => {
+    const finalFunction = noOpIdempotencySql.match(
+      /create (?:or replace )?function public\.create_game_design_system_version\([\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+    const replayAt = finalFunction.search(/idempotency_key = p_idempotency_key/i);
+    const noOpAt = finalFunction.search(/VERSION_NO_CHANGES/i);
+    const insertAt = finalFunction.search(/insert into public\.game_design_system_versions/i);
+
+    expect(noOpIdempotencySql).toMatch(/20260818200000/i);
+    expect(finalFunction).toMatch(
+      /p_idempotency_key is not null[\s\S]*p_document is not distinct from v_parent_version\.document[\s\S]*p_rules is not distinct from v_parent_version\.rules[\s\S]*v_effective_art_style is not distinct from v_parent_version\.art_style/i,
+    );
+    expect([replayAt, noOpAt, insertAt].every((index) => index >= 0)).toBe(true);
+    expect(replayAt).toBeLessThan(noOpAt);
+    expect(noOpAt).toBeLessThan(insertAt);
+    expect(noOpIdempotencySql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to service_role/i);
   });
 });

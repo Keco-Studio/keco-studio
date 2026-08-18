@@ -81,6 +81,10 @@ function jsonRequest(url: string, token: string, method: string, body: unknown, 
   });
 }
 
+function versionRequest(url: string, token: string, body: unknown, idempotencyKey = randomUUID()) {
+  return jsonRequest(url, token, 'POST', body, { 'Idempotency-Key': idempotencyKey });
+}
+
 describeDb('Game Design System route authentication boundary (live Auth)', () => {
   it.each([
     ['metadata update', () => updateMetadata(request('/api/game-design-systems/system-1', undefined, { method: 'PATCH' }), { params: Promise.resolve({ id: 'system-1' }) })],
@@ -127,6 +131,8 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
     title: string;
     versions?: Array<{
       rules: ReturnType<typeof ruleSet>;
+      document?: typeof designDocument;
+      artStyle?: unknown;
       parentVersionId?: string | null;
       sourceSnapshots?: Array<Record<string, unknown>>;
     }>;
@@ -153,7 +159,9 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
         system_id: systemId,
         version_number: versionNumber,
         parent_version_id: spec.parentVersionId ?? versions.at(-1)?.id ?? null,
+        document: spec.document ?? designDocument,
         rules: spec.rules,
+        art_style: spec.artStyle ?? null,
         rendered_markdown: `# ${input.title} version ${versionNumber}`,
         source_snapshots: spec.sourceSnapshots ?? [],
         diff: { added: spec.rules.rules.map((rule) => rule.id), removed: [], changed: [], conflicts: [] },
@@ -368,8 +376,10 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
 
   it('creates an immutable structured version for the owning user', async () => {
     const system = await seedSystem({ ownerId: fixture.owner.id, title: 'version-create' });
-    const response = await createVersion(jsonRequest(
-      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST', {
+    const response = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId: system.versions[0].id,
+        expectedCurrentVersionId: system.versions[0].id,
         document: designDocument,
         rules: ruleSet(['retained', 'deleted']),
       },
@@ -378,6 +388,185 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
     expect(response.status).toBe(201);
     const body = await response.json() as { version: { system_id: string; version_number: number; document: unknown } };
     expect(body.version).toMatchObject({ system_id: system.id, version_number: 2, document: designDocument });
+  });
+
+  it('enforces owner and same-system parent checks inside the service-role write boundary', async () => {
+    const foreign = await seedSystem({ ownerId: fixture.outsider.id, title: 'version-foreign-owner' });
+    const owned = await seedSystem({ ownerId: fixture.owner.id, title: 'version-cross-parent' });
+    const foreignResponse = await createVersion(versionRequest(
+      `/api/game-design-systems/${foreign.id}/versions`, ownerToken, {
+        parentVersionId: foreign.versions[0].id,
+        expectedCurrentVersionId: foreign.versions[0].id,
+        rules: { ...ruleSet(), genres: ['RPG'] },
+      },
+    ), { params: Promise.resolve({ id: foreign.id }) });
+    expect(foreignResponse.status).toBe(403);
+    await expect(foreignResponse.json()).resolves.toMatchObject({ code: 'VERSION_FORBIDDEN' });
+
+    const crossParentResponse = await createVersion(versionRequest(
+      `/api/game-design-systems/${owned.id}/versions`, ownerToken, {
+        parentVersionId: foreign.versions[0].id,
+        expectedCurrentVersionId: owned.versions[0].id,
+        rules: { ...ruleSet(), genres: ['RPG'] },
+      },
+    ), { params: Promise.resolve({ id: owned.id }) });
+    expect(crossParentResponse.status).toBe(400);
+    await expect(crossParentResponse.json()).resolves.toMatchObject({ code: 'VERSION_PARENT_INVALID' });
+  });
+
+  it('inherits omitted fields, replaces all three domains together, and explicitly clears Art Style', async () => {
+    const system = await seedSystem({
+      ownerId: fixture.owner.id,
+      title: 'version-partial-replacement',
+      versions: [{ rules: ruleSet(), document: designDocument, artStyle }],
+    });
+    const inheritedDocument = { ...designDocument, gameBackground: 'A rain-soaked orbital port.' };
+    const inheritedResponse = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId: system.versions[0].id,
+        expectedCurrentVersionId: system.versions[0].id,
+        document: inheritedDocument,
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(inheritedResponse.status).toBe(201);
+    const inheritedBody = await inheritedResponse.json() as { version: { id: string; rules: unknown; artStyle: unknown } };
+    expect(inheritedBody.version).toMatchObject({ rules: ruleSet(), artStyle });
+
+    const replacedRules = { ...ruleSet(), genres: ['Strategy', 'RPG'] };
+    const replacementArtStyle = {
+      ...artStyleInput,
+      customization: { direction: 'Crisp moonlit silhouettes.', referenceGames: [] },
+    };
+    const replacedDocument = { ...inheritedDocument, gameBackground: 'A bright desert arena.' };
+    const replacedResponse = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId: inheritedBody.version.id,
+        expectedCurrentVersionId: inheritedBody.version.id,
+        document: replacedDocument,
+        rules: replacedRules,
+        artStyle: replacementArtStyle,
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(replacedResponse.status).toBe(201);
+    const replacedBody = await replacedResponse.json() as {
+      version: { id: string; document: unknown; rules: unknown; artStyle: unknown; diff: { artStyle: unknown } };
+    };
+    expect(replacedBody.version).toMatchObject({
+      document: replacedDocument,
+      rules: replacedRules,
+      artStyle: compileGameArtStyle(replacementArtStyle),
+    });
+
+    const clearedResponse = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId: replacedBody.version.id,
+        expectedCurrentVersionId: replacedBody.version.id,
+        artStyle: null,
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(clearedResponse.status).toBe(201);
+    await expect(clearedResponse.json()).resolves.toMatchObject({
+      version: {
+        artStyle: null,
+        artStyleReadError: null,
+        diff: { artStyle: { change: 'removed' } },
+      },
+    });
+  });
+
+  it('never exposes inherited unsupported Art Style JSON in the live route response', async () => {
+    const rawArtStyle = {
+      schemaVersion: 99,
+      presetId: 'future-neon',
+      payload: { secret: `live-route-raw-sentinel-${fixture.suffix}` },
+    };
+    const system = await seedSystem({
+      ownerId: fixture.owner.id,
+      title: 'version-raw-route-boundary',
+      versions: [{ rules: ruleSet(), document: designDocument, artStyle: rawArtStyle }],
+    });
+
+    const response = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId: system.versions[0].id,
+        expectedCurrentVersionId: system.versions[0].id,
+        document: { ...designDocument, gameBackground: 'A glass city at dawn.' },
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+
+    expect(response.status).toBe(201);
+    const payload = await response.json() as { version: { id: string } };
+    expect(payload).toMatchObject({
+      version: {
+        artStyle: null,
+        artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain(String(rawArtStyle.payload.secret));
+    expect(payload.version).not.toHaveProperty('art_style');
+    expect(payload.version).not.toHaveProperty('idempotency_key');
+    expect(payload.version).not.toHaveProperty('generation_job_id');
+    const stored = await fixture.svc.from('game_design_system_versions')
+      .select('art_style').eq('id', payload.version.id).single();
+    expect(stored.error).toBeNull();
+    expect(stored.data?.art_style).toEqual(rawArtStyle);
+  });
+
+  it('rejects canonical no-op, maps stale/key conflict, and returns an idempotent replay', async () => {
+    const system = await seedSystem({ ownerId: fixture.owner.id, title: 'version-cas-replay' });
+    const parentVersionId = system.versions[0].id;
+    const noOp = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        rules: {
+          rules: ruleSet().rules,
+          tableGuidance: [],
+          suitableFor: 'Tactical games',
+          philosophies: ['Readable Systems'],
+          genres: ['Strategy'],
+          schemaVersion: 1,
+        },
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(noOp.status).toBe(409);
+    await expect(noOp.json()).resolves.toMatchObject({ code: 'VERSION_NO_CHANGES' });
+
+    const key = randomUUID();
+    const firstRequest = {
+      parentVersionId,
+      expectedCurrentVersionId: parentVersionId,
+      rules: { ...ruleSet(), genres: ['Strategy', 'RPG'] },
+    };
+    const first = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, firstRequest, key,
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(first.status).toBe(201);
+    const firstBody = await first.json() as { version: { id: string } };
+
+    const replay = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, firstRequest, key,
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(replay.status).toBe(201);
+    await expect(replay.json()).resolves.toMatchObject({ version: { id: firstBody.version.id } });
+
+    const conflict = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        ...firstRequest,
+        rules: { ...ruleSet(), genres: ['Strategy', 'Simulation'] },
+      }, key,
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(conflict.status).toBe(409);
+    await expect(conflict.json()).resolves.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+
+    const stale = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        ...firstRequest,
+        rules: { ...ruleSet(), genres: ['Strategy', 'Stealth'] },
+      },
+    ), { params: Promise.resolve({ id: system.id }) });
+    expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toMatchObject({ code: 'VERSION_STALE' });
   });
 
   it('redacts inaccessible source excerpts from a created-version response', async () => {
@@ -399,11 +588,12 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
       versions: [{ rules: ruleSet(), sourceSnapshots }],
     });
 
-    const response = await createVersion(jsonRequest(
-      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST', {
+    const response = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
         parentVersionId: system.versions[0].id,
+        expectedCurrentVersionId: system.versions[0].id,
         document: designDocument,
-        rules: ruleSet(),
+        rules: { ...ruleSet(), genres: ['Strategy', 'Stealth'] },
       },
     ), { params: Promise.resolve({ id: system.id }) });
 
@@ -424,15 +614,21 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
 
   it('rejects an invalid design document before creating a version', async () => {
     const system = await seedSystem({ ownerId: fixture.owner.id, title: 'invalid-document' });
-    const response = await createVersion(jsonRequest(
-      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST', {
+    const response = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken, {
+        parentVersionId: system.versions[0].id,
+        expectedCurrentVersionId: system.versions[0].id,
         document: { ...designDocument, coreLoop: '' },
         rules: ruleSet(),
       },
     ), { params: Promise.resolve({ id: system.id }) });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: 'Invalid design document.' });
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Invalid version request.',
+      code: 'VERSION_REQUEST_INVALID',
+      issues: { fieldErrors: { document: expect.any(Array) } },
+    });
   });
 
   it('rejects a rule ID reintroduced after deletion in the selected parent lineage', async () => {
@@ -445,14 +641,19 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
       ],
     });
     const parentVersionId = system.versions.at(-1)!.id;
-    const response = await createVersion(jsonRequest(
-      `/api/game-design-systems/${system.id}/versions`, ownerToken, 'POST',
-      { parentVersionId, rules: ruleSet(['retained', 'deleted']) },
+    const response = await createVersion(versionRequest(
+      `/api/game-design-systems/${system.id}/versions`, ownerToken,
+      {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        rules: ruleSet(['retained', 'deleted']),
+      },
     ), { params: Promise.resolve({ id: system.id }) });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: 'Rule IDs cannot be reintroduced after deletion.',
+      code: 'VERSION_RULE_REINTRODUCED',
       ruleIds: ['deleted-rule'],
     });
   });
@@ -468,14 +669,19 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
       title: 'external-child',
       versions: [{ rules: ruleSet(['retained']), parentVersionId: external.versions[0].id }],
     });
-    const response = await createVersion(jsonRequest(
-      `/api/game-design-systems/${child.id}/versions`, ownerToken, 'POST',
-      { parentVersionId: child.versions[0].id, rules: ruleSet(['retained', 'deleted']) },
+    const response = await createVersion(versionRequest(
+      `/api/game-design-systems/${child.id}/versions`, ownerToken,
+      {
+        parentVersionId: child.versions[0].id,
+        expectedCurrentVersionId: child.versions[0].id,
+        rules: ruleSet(['retained', 'deleted']),
+      },
     ), { params: Promise.resolve({ id: child.id }) });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: 'Rule IDs cannot be reintroduced after deletion.',
+      code: 'VERSION_RULE_REINTRODUCED',
       ruleIds: ['deleted-rule'],
     });
   });

@@ -3,6 +3,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { PIXEL_ART_V2_PRESET } from '@/lib/game-art-style/presets';
 import { GameDesignSystemCreatePage } from './GameDesignSystemCreatePage';
 
 const push = jest.fn();
@@ -62,7 +63,7 @@ describe('GameDesignSystemCreatePage', () => {
     retry.mockResolvedValue({ id: 'job-1', status: 'queued', phase: 'collecting', attempt_count: 1, max_attempts: 3, available_at: new Date().toISOString() });
   });
 
-  it('uses four numbered stages and presents the locked Pixel Art catalog option', async () => {
+  it('uses four numbered stages and presents the offered style catalog', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -73,9 +74,9 @@ describe('GameDesignSystemCreatePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
     const pixelArt = screen.getByRole('radio', { name: /Pixel Art/ });
-    expect((pixelArt as HTMLInputElement).checked).toBe(true);
-    expect((pixelArt as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByText('Official preset / Revision 1')).toBeTruthy();
+    expect(pixelArt.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('Official preset / Revision 2')).toBeTruthy();
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
   });
 
   it('connects tabs to panels and supports roving keyboard navigation', async () => {
@@ -113,15 +114,17 @@ describe('GameDesignSystemCreatePage', () => {
     renderPage();
     await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
 
-    const map = screen.getByAltText('A bright pixel art riverside village map with branching paths, gardens, workshops, and a wooden bridge.');
-    const character = screen.getByAltText('A full-body pixel art field cartographer with a satchel and practical exploration gear.');
-    expect(map.getAttribute('width')).toBe('168');
-    expect(map.getAttribute('height')).toBe('96');
-    expect(character.getAttribute('width')).toBe('96');
-    expect(character.getAttribute('height')).toBe('96');
+    const mapAsset = PIXEL_ART_V2_PRESET.previewAssetSet.map;
+    const characterAsset = PIXEL_ART_V2_PRESET.previewAssetSet.character;
+    const map = screen.getByAltText(mapAsset.alt);
+    const character = screen.getByAltText(characterAsset.alt);
+    expect(map.getAttribute('width')).toBe(String(mapAsset.width));
+    expect(map.getAttribute('height')).toBe(String(mapAsset.height));
+    expect(character.getAttribute('width')).toBe(String(characterAsset.width));
+    expect(character.getAttribute('height')).toBe(String(characterAsset.height));
     expect(screen.getByRole('heading', { name: 'Visual DNA' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Craft/ }).getAttribute('aria-expanded')).toBe('false');
-    expect(screen.getByText('Welcoming top-down adventure pixel art with practical landmarks, open routes, and calm exploration as the dominant visual read.')).toBeTruthy();
+    expect(screen.getByText(PIXEL_ART_V2_PRESET.specification.visualIdentity)).toBeTruthy();
     expect(screen.getByLabelText('Custom art direction').getAttribute('maxLength')).toBe('2000');
     expect(screen.getByLabelText('Visual avoid guidance').getAttribute('maxLength')).toBe('1000');
 
@@ -132,10 +135,10 @@ describe('GameDesignSystemCreatePage', () => {
     expect(screen.queryByLabelText('Visual reference game 1')).toBeNull();
 
     fireEvent.error(map);
-    expect(screen.getByRole('status', { name: 'Map preview unavailable. A bright pixel art riverside village map with branching paths, gardens, workshops, and a wooden bridge.' })).toBeTruthy();
-    expect(screen.getByAltText('A full-body pixel art field cartographer with a satchel and practical exploration gear.')).toBeTruthy();
+    expect(screen.getByRole('status', { name: `Map preview unavailable. ${mapAsset.alt}` })).toBeTruthy();
+    expect(screen.getByAltText(characterAsset.alt)).toBeTruthy();
     fireEvent.error(character);
-    expect(screen.getByRole('status', { name: 'Character preview unavailable. A full-body pixel art field cartographer with a satchel and practical exploration gear.' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: `Character preview unavailable. ${characterAsset.alt}` })).toBeTruthy();
   });
 
   it('returns incomplete visual reference rows to Art Style and preserves entered values', async () => {
@@ -179,7 +182,7 @@ describe('GameDesignSystemCreatePage', () => {
 
     const summary = screen.getByLabelText('Art Style summary');
     expect(within(summary).getByText('Pixel Art')).toBeTruthy();
-    expect(within(summary).getByText('Revision 1')).toBeTruthy();
+    expect(within(summary).getByText('Revision 2')).toBeTruthy();
     expect(within(summary).getByText('Brighter route markers.')).toBeTruthy();
     expect(within(summary).getByText('Eastward: Material clusters.')).toBeTruthy();
     expect(within(summary).getByText('Muddy silhouettes.')).toBeTruthy();
@@ -194,7 +197,7 @@ describe('GameDesignSystemCreatePage', () => {
       referenceGames: [{ name: 'Into the Breach', reference: 'Readable intent', avoid: 'Direct copying' }],
       artStyle: {
         presetId: 'pixel-art',
-        presetVersion: 1,
+        presetVersion: 2,
         customization: {
           direction: 'Brighter route markers.',
           referenceGames: [{ name: 'Eastward', borrow: 'Material clusters.' }],

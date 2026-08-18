@@ -1,0 +1,83 @@
+{
+  "release": "flat-graphic-2d@1",
+  "reviewers": [
+    {
+      "name": "Pascal",
+      "role": "independent visual reviewer"
+    },
+    {
+      "name": "Hubble",
+      "role": "independent visual reviewer"
+    }
+  ],
+  "selected": {
+    "map": 3,
+    "character": 1
+  },
+  "candidates": {
+    "map": [
+      {
+        "variant": 1,
+        "sha256": "5788f9b31c0d705376d973033f3741d9eef05bf331a7098f87bbdefdddc0791b"
+      },
+      {
+        "variant": 2,
+        "sha256": "34e655257ef93bc241368c00a320773751e138eb4ec0330d5c8405348a513fb0"
+      },
+      {
+        "variant": 3,
+        "sha256": "50453e6af0a57c613085b27f27e754854061d4c615fc5c07660e3f70f6fd5434"
+      }
+    ],
+    "character": [
+      {
+        "variant": 1,
+        "sha256": "f7d6db7a6b1ecdec3a548a16364ae274d7297ad105a83dcfbc77edfaa0acb5d6"
+      },
+      {
+        "variant": 2,
+        "sha256": "6bed4627ec59e8905c950433297137688c6fd64a1f09a16d435e8ae23a331219"
+      },
+      {
+        "variant": 3,
+        "sha256": "22dcfeb36c9ef095b852cb9b94c037b468a64e4a5c2e31d053af05d65918517e"
+      }
+    ]
+  },
+  "rubrics": {
+    "mapRouteReadability": "pass",
+    "adultAnatomy": "pass",
+    "styleBoundary": "pass",
+    "pairConsistency": "pass",
+    "noTextLogoOrWatermark": "pass",
+    "noArtistFranchiseOrCharacterImitation": "pass",
+    "celShadedAndLowPolyMutualExclusion": "pass"
+  },
+  "rejections": [
+    {
+      "kind": "map",
+      "variant": 1,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "map",
+      "variant": 2,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "character",
+      "variant": 2,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "character",
+      "variant": 3,
+      "reason": "Not selected after independent visual comparison."
+    }
+  ],
+  "contactSheets": {
+    "mapSha256": "647688e8d0dcdae5a50227530fdb081c7dcb332f8c3018738ebe871b5600094e",
+    "characterSha256": "b8d7af3093de27d7620b707f635c3571c37ae3a3ebef6eeb4ce4f574e11c5611",
+    "pairSha256": "5bc7c60c576c06e6e96f1fa6c4bf57f5df145a55185f011d801c093a1a0c0cf4"
+  }
+}

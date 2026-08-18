@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "presetId": "hand-painted-2d",
+  "presetVersion": 1,
+  "title": "Hand-Painted 2D",
+  "previewAssetSet": {
+    "id": "hand-painted-2d-v1",
+    "map": {
+      "sourcePath": "public/game-art-styles/hand-painted-2d/v1/map.png",
+      "publicPath": "/game-art-styles/hand-painted-2d/v1/map.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4361311,
+      "sha256": "4e8e6293fdbe05163cde274103699db13c8a03a102b9d932a04ea5a57c4d08e0",
+      "alpha": "opaque",
+      "alt": "A bright hand-painted 2d riverside village map with branching paths and a wooden bridge."
+    },
+    "character": {
+      "sourcePath": "public/game-art-styles/hand-painted-2d/v1/character.png",
+      "publicPath": "/game-art-styles/hand-painted-2d/v1/character.png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1491608,
+      "sha256": "31e2994f65b495331cebfdb5750c7e50ebd18d1d114df1456005752b80bd002e",
+      "alpha": "opaque",
+      "alt": "A full-body hand-painted 2d adult field cartographer with practical exploration gear."
+    },
+    "supporting": []
+  },
+  "specification": {
+    "characterDirection": "Build clearly adult characters with natural anatomy, practical layered equipment, grounded poses, and silhouettes that remain distinct at thumbnail size.",
+    "environmentDirection": "Compose maps around immediately legible traversal hierarchy, routes that continue beyond the frame, useful landmarks, and generous walkable space.",
+    "propDirection": "Give every prop a clear gameplay purpose, readable material grouping, and a silhouette that survives at gameplay scale without decorative clutter.",
+    "effectsDirection": "Keep effects compact, high contrast, and brief so they communicate timing without obscuring characters, landmarks, or traversal.",
+    "uiHudDirection": "Use compact panels, high-contrast icons, plain readable labels, and restrained ornament; interface meaning must never depend on the preview images.",
+    "accessibility": "Maintain value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker or visually noisy backgrounds.",
+    "visualIdentity": "Warm painterly 2D adventure art with visible brushwork, softened natural edges, selective detail, and a calm illustrated-world atmosphere.",
+    "pixelTechnique": "Use layered opaque brushwork, visible but controlled strokes, softened edge hierarchy, painterly light transitions, and crisp accents only at focal points.",
+    "shapeLanguage": "Combine broad organic masses with tapered structures, irregular foliage rhythms, and selectively sharpened landmark silhouettes.",
+    "paletteAndLighting": "Use moss green, river blue, warm umber, muted coral, and sunlit ochre with grouped values and warm directional light.",
+    "animationDirection": "Animate with expressive held poses, softly painted replacement shapes, restrained secondary motion, and consistent brush texture across frames."
+  }
+}

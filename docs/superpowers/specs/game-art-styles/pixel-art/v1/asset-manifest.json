@@ -5,7 +5,7 @@
   "transport": "hosted-mcp",
   "runtimeGeneration": false,
   "manifestPurpose": "authoring provenance and CI cross-check evidence only; never a runtime registry input",
-  "runtimeSource": "docs/superpowers/specs/2026-08-17-pixel-art-v1-preset.json",
+  "runtimeSource": "docs/superpowers/specs/game-art-styles/pixel-art/v1/preset.json",
   "status": "approved",
   "comfortConstraints": [
     "no horror, gore, threatening imagery, or uncanny anatomy",

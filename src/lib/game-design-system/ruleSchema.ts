@@ -50,6 +50,7 @@ export const gameDesignRuleSetSchema = z.object({
 });
 
 export const gameDesignDocumentSchema = z.object({
+  gameBackground: boundedString(4000).optional(),
   designIntent: boundedString(4000),
   playerFantasy: boundedString(4000),
   coreLoop: boundedString(4000),
@@ -61,14 +62,19 @@ export const gameDesignDocumentSchema = z.object({
   experiencePresentation: boundedString(4000),
 }).strict();
 
+export const generatedGameDesignDocumentSchema = gameDesignDocumentSchema.extend({
+  gameBackground: boundedString(4000),
+}).strict();
+
 export const generatedGameDesignSystemSchema = z.object({
-  document: gameDesignDocumentSchema,
+  document: generatedGameDesignDocumentSchema,
   rules: gameDesignRuleSetSchema,
 }).strict();
 
 export type GameDesignRule = z.infer<typeof gameDesignRuleSchema>;
 export type GameDesignRuleSet = z.infer<typeof gameDesignRuleSetSchema>;
 export type GameDesignDocument = z.infer<typeof gameDesignDocumentSchema>;
+export type GeneratedGameDesignDocument = z.infer<typeof generatedGameDesignDocumentSchema>;
 export type GeneratedGameDesignSystem = z.infer<typeof generatedGameDesignSystemSchema>;
 export type TableGuidance = z.infer<typeof tableGuidanceSchema>;
 

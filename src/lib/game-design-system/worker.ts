@@ -7,6 +7,7 @@ import {
   completeGameDesignSystemGenerationJob,
   createGameDesignSystem,
   failGameDesignSystemGenerationJob,
+  getGameDesignSystemVersionByGenerationJobId,
   heartbeatGameDesignSystemGenerationJob,
   retryGameDesignSystemGenerationJob,
   type GameDesignSystem,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/services/gameDesignSystemService';
 
 type WorkerDependencies = {
+  findGenerationOutput: typeof getGameDesignSystemVersionByGenerationJobId;
   heartbeat: typeof heartbeatGameDesignSystemGenerationJob;
   generate: typeof generateGameDesignSystemOutput;
   createSystem: typeof createGameDesignSystem;
@@ -24,6 +26,7 @@ type WorkerDependencies = {
 };
 
 const defaultDependencies: WorkerDependencies = {
+  findGenerationOutput: getGameDesignSystemVersionByGenerationJobId,
   heartbeat: heartbeatGameDesignSystemGenerationJob,
   generate: generateGameDesignSystemOutput,
   createSystem: createGameDesignSystem,
@@ -66,6 +69,11 @@ export async function processClaimedGameDesignSystemJob(
 ): Promise<GameDesignSystemJobStatus> {
   const { serviceClient, workerId, job } = input;
   try {
+    const existingOutput = await dependencies.findGenerationOutput(serviceClient, job.id);
+    if (existingOutput) {
+      await dependencies.complete(serviceClient, job, workerId, existingOutput);
+      return 'completed';
+    }
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'generating');
     const generationInput = job.input as unknown as ResolvedGameDesignGenerationInput;
     const generated = await generateWithLeaseHeartbeat({

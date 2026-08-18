@@ -11,7 +11,7 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
-import { GAME_ART_STYLE_CATALOG } from '@/lib/game-art-style/presets';
+import { DEFAULT_GAME_ART_STYLE_KEY, GAME_ART_STYLE_CATALOG, GAME_ART_STYLE_PRESETS_BY_KEY } from '@/lib/game-art-style/presets';
 import { gameArtStyleInputSchema, type NormalizedGameArtStyleInput } from '@/lib/game-art-style/schema';
 import {
   fetchGameDesignReferenceOptions,
@@ -25,6 +25,7 @@ import type { GameDesignSystemGenerationJob } from '@/lib/services/gameDesignSys
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { GameArtStylePreview } from './GameArtStylePreview';
+import { GameArtStyleCatalog } from './GameArtStyleCatalog';
 import styles from './GameDesignSystemsPage.module.css';
 
 const GENRES = ['RPG', 'Strategy', 'Deckbuilder', 'Roguelike', 'Simulation', 'Narrative', 'Action', 'Puzzle', 'Management'];
@@ -84,6 +85,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   const [description, setDescription] = useState('');
   const [suitableFor, setSuitableFor] = useState('');
   const [artDirection, setArtDirection] = useState('');
+  const [selectedArtStyleKey, setSelectedArtStyleKey] = useState(DEFAULT_GAME_ART_STYLE_KEY);
   const [visualReferences, setVisualReferences] = useState<VisualReferenceDraft[]>([]);
   const [artAvoid, setArtAvoid] = useState('');
   const [visualReferenceError, setVisualReferenceError] = useState<string | null>(null);
@@ -118,11 +120,12 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       .filter((game) => game.name || game.reference || game.avoid),
     [referenceGames],
   );
+  const selectedArtStylePreset = GAME_ART_STYLE_PRESETS_BY_KEY[selectedArtStyleKey] ?? GAME_ART_STYLE_PRESETS_BY_KEY[DEFAULT_GAME_ART_STYLE_KEY];
   const artStyleResult = useMemo(() => gameArtStyleInputSchema.safeParse({
-    presetId: 'pixel-art',
-    presetVersion: 1,
+    presetId: selectedArtStylePreset.presetId,
+    presetVersion: selectedArtStylePreset.presetVersion,
     customization: { direction: artDirection, referenceGames: visualReferences, avoid: artAvoid },
-  }), [artAvoid, artDirection, visualReferences]);
+  }), [artAvoid, artDirection, selectedArtStylePreset, visualReferences]);
   const reviewCustomization = artStyleResult.success
     ? artStyleResult.data.customization
     : {
@@ -321,16 +324,12 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         <section id="gds-create-panel-art-style" aria-labelledby="gds-create-tab-art-style" className={styles.createStageWide} role="tabpanel">
           <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 2</span><h2>Art Style</h2><p>Review the fixed visual language and add project-specific direction.</p></div></div>
           <div className={styles.artStyleWorkbench}>
-            <aside className={styles.artStyleCatalog} aria-label="Art style catalog">
+            <aside className={styles.artStyleCatalog}>
               <span className={styles.eyebrow}>Preset catalog</span>
-              <label className={styles.artStyleCatalogOption}>
-                <input type="radio" name="art-style-preset" checked disabled readOnly aria-label="Pixel Art, selected and locked" />
-                <span><strong>{GAME_ART_STYLE_CATALOG[0].title}</strong><small>Official preset / Revision {GAME_ART_STYLE_CATALOG[0].presetVersion}</small></span>
-              </label>
-              <p>Pixel Art is the fixed v1 option and cannot be switched during creation.</p>
+              <GameArtStyleCatalog catalog={GAME_ART_STYLE_CATALOG} selectedKey={selectedArtStyleKey} onSelect={setSelectedArtStyleKey} />
             </aside>
             <div className={styles.artStyleMain}>
-              <GameArtStylePreview preset={GAME_ART_STYLE_CATALOG[0]} mode="creation" />
+              <GameArtStylePreview preset={selectedArtStylePreset} mode="creation" />
               <div className={styles.artStyleFields}>
                 <div className={styles.field}>
                   <label htmlFor="gds-art-direction">Custom art direction</label>
@@ -401,7 +400,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 4</span><h2>Review</h2><p>Confirm the exact input before starting the durable job.</p></div></div>
           <div className={styles.reviewGrid}>
             <section><span className={styles.eyebrow}>Foundation</span><h3>{title.trim() || 'System name required'}</h3><dl className={styles.breakdown}><div><dt>Genres</dt><dd>{genres.join(', ') || 'None'}</dd></div><div><dt>Philosophies</dt><dd>{philosophies.join(', ') || 'None'}</dd></div><div><dt>Suitable for</dt><dd>{suitableFor.trim() || 'Not specified'}</dd></div></dl></section>
-            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span><h3>{GAME_ART_STYLE_CATALOG[0].title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>Revision {GAME_ART_STYLE_CATALOG[0].presetVersion}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></section>
+            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span><h3>{selectedArtStylePreset.title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>Revision {selectedArtStylePreset.presetVersion}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></section>
             <section><span className={styles.eyebrow}>Evidence</span><h3>{references.length + normalizedGames.length} selected references</h3><dl className={styles.breakdown}><div><dt>Project resources</dt><dd>{references.length}</dd></div><div><dt>Reference games</dt><dd>{normalizedGames.length}</dd></div><div><dt>Base system</dt><dd>{baseSystemId ? baseSystems.find((system) => system.id === baseSystemId)?.title || 'Selected' : 'None'}</dd></div></dl></section>
             <section><span className={styles.eyebrow}>Output contract</span><h3>Validated structured rules</h3><p>The job validates the canonical rule schema and saves one immutable version only after validation succeeds.</p></section>
           </div>

@@ -37,8 +37,20 @@ const detail = {
   id: 'system-1',
   owner_id: 'owner-1',
   current_version_id: 'version-1',
-  versions: [{ id: 'version-1', source_snapshots: snapshots }],
-  current_version: { id: 'version-1', source_snapshots: snapshots },
+  versions: [{
+    id: 'version-1',
+    source_snapshots: snapshots,
+    artStyle: null,
+    artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' },
+    art_style: { schemaVersion: 999, private: 'raw unsupported JSON' },
+  }],
+  current_version: {
+    id: 'version-1',
+    source_snapshots: snapshots,
+    artStyle: null,
+    artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' },
+    art_style: { schemaVersion: 999, private: 'raw unsupported JSON' },
+  },
 } as unknown as GameDesignSystemDetail;
 
 describe('Game Design System source visibility', () => {
@@ -53,6 +65,9 @@ describe('Game Design System source visibility', () => {
       undefined,
     ]);
     expect(visible.current_version?.source_snapshots[0].contentHash).toBe('a'.repeat(64));
+    expect(visible.current_version?.artStyleReadError).toEqual({ code: 'UNSUPPORTED_SNAPSHOT' });
+    expect(visible.current_version).not.toHaveProperty('art_style');
+    expect(visible.versions[0]).not.toHaveProperty('art_style');
   });
 
   it('allows the owner to see unscoped legacy source but still checks project sources', () => {

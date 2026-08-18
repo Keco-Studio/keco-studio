@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "presetId": "low-poly-3d",
+  "presetVersion": 1,
+  "title": "Low-Poly 3D",
+  "previewAssetSet": {
+    "id": "low-poly-3d-v1",
+    "map": {
+      "sourcePath": "public/game-art-styles/low-poly-3d/v1/map.png",
+      "publicPath": "/game-art-styles/low-poly-3d/v1/map.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4164469,
+      "sha256": "fad2b955d4d2acaab10ab33d833f44d7b7ab4be5b85f5c7953798952b20c6b1b",
+      "alpha": "opaque",
+      "alt": "A bright low-poly 3d riverside village map with branching paths and a wooden bridge."
+    },
+    "character": {
+      "sourcePath": "public/game-art-styles/low-poly-3d/v1/character.png",
+      "publicPath": "/game-art-styles/low-poly-3d/v1/character.png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1300319,
+      "sha256": "9d84001a2858f7ff7b9dd70c981743825817e81f6454d01056657d3b96bddfc8",
+      "alpha": "opaque",
+      "alt": "A full-body low-poly 3d adult field cartographer with practical exploration gear."
+    },
+    "supporting": []
+  },
+  "specification": {
+    "characterDirection": "Build clearly adult characters with natural anatomy, practical layered equipment, grounded poses, and silhouettes that remain distinct at thumbnail size.",
+    "environmentDirection": "Compose maps around immediately legible traversal hierarchy, routes that continue beyond the frame, useful landmarks, and generous walkable space.",
+    "propDirection": "Give every prop a clear gameplay purpose, readable material grouping, and a silhouette that survives at gameplay scale without decorative clutter.",
+    "effectsDirection": "Keep effects compact, high contrast, and brief so they communicate timing without obscuring characters, landmarks, or traversal.",
+    "uiHudDirection": "Use compact panels, high-contrast icons, plain readable labels, and restrained ornament; interface meaning must never depend on the preview images.",
+    "accessibility": "Maintain value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker or visually noisy backgrounds.",
+    "visualIdentity": "Compact stylized 3D worlds defined by deliberate polygon facets, modular construction, clean silhouettes, and tactile miniature-like staging.",
+    "pixelTechnique": "Use visibly faceted low-density geometry, flat-shaded surfaces, soft ambient occlusion, no ink outlines, no cel-light bands, and no photoreal texture maps.",
+    "shapeLanguage": "Build with planar wedges, chamfered blocks, low-sided cylinders, and asymmetric modular clusters whose facets remain visible at thumbnail size.",
+    "paletteAndLighting": "Use pine green, turquoise blue, honey wood, clay red, and stone gray with soft environmental light that reveals each polygon plane.",
+    "animationDirection": "Animate with clear 3D poses, economical joint motion, stable faceted volumes, and restrained secondary movement suited to modular rigs."
+  }
+}

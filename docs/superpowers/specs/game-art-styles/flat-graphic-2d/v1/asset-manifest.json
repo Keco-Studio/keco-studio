@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "releaseKey": "flat-graphic-2d@1",
+  "manifestPurpose": "Authoring provenance and review evidence; never a runtime registry input.",
+  "runtimeSource": "docs/superpowers/specs/game-art-styles/flat-graphic-2d/v1/preset.json",
+  "validation": {
+    "requireVisiblePixels": true,
+    "requireDistinctFinalHashes": true
+  },
+  "assets": [
+    {
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4232264,
+      "sha256": "50453e6af0a57c613085b27f27e754854061d4c615fc5c07660e3f70f6fd5434",
+      "alpha": "opaque",
+      "release": "flat-graphic-2d@1",
+      "kind": "map",
+      "variant": 3,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: clean flat graphic 2D game illustration with bold geometric silhouettes, layered shapes, and restrained linework. Color palette: verdant green, cyan blue, coral, mustard, charcoal, off-white. Rendering technique: crisp vector-like edges, minimal texture, broad color planes, subtle flat shadows. Primary request: a welcoming riverside village map in bright late-morning light. Composition/framing: wide 3:2 top-down three-quarter orthographic view; a broad diagonal dirt path crosses a clear blue river on a small wooden bridge; secondary paths branch toward open frame edges; include a timber workshop, practical gardens, warm stone, compact homes, and generous walkable space. Route hierarchy and landmarks must read at thumbnail size. Variant 3: vary building grouping and bridge approach while preserving the exact subject. Constraints: no people or creatures. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "a193a74bf5f626a7e3f6d95efaae1e63229ce06eb1ebf10f4679e1dd931df1bf",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    },
+    {
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1192797,
+      "sha256": "f7d6db7a6b1ecdec3a548a16364ae274d7297ad105a83dcfbc77edfaa0acb5d6",
+      "alpha": "opaque",
+      "release": "flat-graphic-2d@1",
+      "kind": "character",
+      "variant": 1,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: clean flat graphic 2D game illustration with bold geometric silhouettes, layered shapes, and restrained linework. Color palette: verdant green, cyan blue, coral, mustard, charcoal, off-white. Rendering technique: crisp vector-like edges, minimal texture, broad color planes, subtle flat shadows. Primary request: a clearly adult field cartographer, full body, practical layered field jacket, sturdy boots, compact satchel, rolled blank map case, compass and harmless survey tools. Composition/framing: centered three-quarter standing pose, entire silhouette visible with generous padding, simple neutral backdrop, friendly focused expression, natural adult anatomy. Variant 1: vary pose and equipment arrangement while preserving the exact subject. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "4b57867772de481b7bd6ad0753e665983b68650432b932b7ce623e5aeae95d4d",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    }
+  ],
+  "review": {
+    "release": "flat-graphic-2d@1",
+    "reviewers": [
+      {
+        "name": "Pascal",
+        "role": "independent visual reviewer"
+      },
+      {
+        "name": "Hubble",
+        "role": "independent visual reviewer"
+      }
+    ],
+    "selected": {
+      "map": 3,
+      "character": 1
+    },
+    "candidates": {
+      "map": [
+        {
+          "variant": 1,
+          "sha256": "5788f9b31c0d705376d973033f3741d9eef05bf331a7098f87bbdefdddc0791b"
+        },
+        {
+          "variant": 2,
+          "sha256": "34e655257ef93bc241368c00a320773751e138eb4ec0330d5c8405348a513fb0"
+        },
+        {
+          "variant": 3,
+          "sha256": "50453e6af0a57c613085b27f27e754854061d4c615fc5c07660e3f70f6fd5434"
+        }
+      ],
+      "character": [
+        {
+          "variant": 1,
+          "sha256": "f7d6db7a6b1ecdec3a548a16364ae274d7297ad105a83dcfbc77edfaa0acb5d6"
+        },
+        {
+          "variant": 2,
+          "sha256": "6bed4627ec59e8905c950433297137688c6fd64a1f09a16d435e8ae23a331219"
+        },
+        {
+          "variant": 3,
+          "sha256": "22dcfeb36c9ef095b852cb9b94c037b468a64e4a5c2e31d053af05d65918517e"
+        }
+      ]
+    },
+    "rubrics": {
+      "mapRouteReadability": "pass",
+      "adultAnatomy": "pass",
+      "styleBoundary": "pass",
+      "pairConsistency": "pass",
+      "noTextLogoOrWatermark": "pass",
+      "noArtistFranchiseOrCharacterImitation": "pass",
+      "celShadedAndLowPolyMutualExclusion": "pass"
+    },
+    "rejections": [
+      {
+        "kind": "map",
+        "variant": 1,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "map",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 3,
+        "reason": "Not selected after independent visual comparison."
+      }
+    ],
+    "contactSheets": {
+      "mapSha256": "647688e8d0dcdae5a50227530fdb081c7dcb332f8c3018738ebe871b5600094e",
+      "characterSha256": "b8d7af3093de27d7620b707f635c3571c37ae3a3ebef6eeb4ce4f574e11c5611",
+      "pairSha256": "5bc7c60c576c06e6e96f1fa6c4bf57f5df145a55185f011d801c093a1a0c0cf4"
+    }
+  }
+}

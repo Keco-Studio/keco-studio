@@ -341,8 +341,8 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('button', { name: 'Create new version' }));
     await user.click(screen.getByRole('tab', { name: 'Rules' }));
-    await user.click(screen.getByRole('button', { name: 'New version' }));
     await user.click(screen.getByRole('button', { name: 'Readable state' }));
     const statement = screen.getByLabelText('Rule statement');
     await user.clear(statement);
@@ -352,8 +352,52 @@ describe('GameDesignSystemsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Create version' }));
     await waitFor(() => expect(createVersion).toHaveBeenCalledWith(
       'system-1',
-      expect.objectContaining({ rules: expect.arrayContaining([expect.objectContaining({ statement: 'Show all decision inputs.' })]) }),
-      'version-1',
+      {
+        parentVersionId: 'version-1',
+        expectedCurrentVersionId: 'version-1',
+        rules: expect.objectContaining({
+          rules: expect.arrayContaining([
+            expect.objectContaining({ statement: 'Show all decision inputs.' }),
+          ]),
+        }),
+      },
+      expect.any(String),
+    ));
+  });
+
+  it('branches from a historical selection while comparing against the actual current version', async () => {
+    const historical = { ...version, id: 'version-1', version_number: 1 };
+    const current = {
+      ...version,
+      id: 'version-2',
+      version_number: 2,
+      parent_version_id: historical.id,
+    };
+    fetchDetail.mockResolvedValue({
+      ...system,
+      current_version_id: current.id,
+      current_version: current,
+      versions: [current, historical],
+    });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Version' }), historical.id);
+    await user.click(screen.getByRole('button', { name: 'Create new version' }));
+    await user.click(screen.getByRole('tab', { name: 'Rules' }));
+    await user.click(screen.getByRole('button', { name: 'Readable state' }));
+    await user.type(screen.getByLabelText('Rule statement'), ' Historical branch.');
+    await user.click(screen.getByRole('button', { name: 'Review changes' }));
+    await user.click(screen.getByRole('button', { name: 'Create version' }));
+
+    await waitFor(() => expect(createVersion).toHaveBeenCalledWith(
+      'system-1',
+      expect.objectContaining({
+        parentVersionId: historical.id,
+        expectedCurrentVersionId: current.id,
+      }),
+      expect.any(String),
     ));
   });
 
@@ -362,59 +406,58 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('tab', { name: 'Rules' }));
-    await user.click(screen.getByRole('button', { name: 'Edit document' }));
-    expect(screen.getByRole('tab', { name: 'Overview' }).getAttribute('aria-selected')).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'Create new version' }));
     expect(screen.queryByRole('button', { name: 'Copy and edit' })).toBeNull();
     const intent = screen.getByLabelText('Design intent');
     await user.clear(intent);
     await user.type(intent, 'Make every consequence readable.');
     expect(createVersion).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'Review document' }));
+    await user.click(screen.getByRole('button', { name: 'Review changes' }));
     expect(screen.getByText('Make every consequence readable.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Create version' }));
 
     await waitFor(() => expect(createVersion).toHaveBeenCalledWith(
       'system-1',
-      version.rules,
-      'version-1',
-      expect.objectContaining({ designIntent: 'Make every consequence readable.' }),
+      {
+        parentVersionId: 'version-1',
+        expectedCurrentVersionId: 'version-1',
+        document: expect.objectContaining({ designIntent: 'Make every consequence readable.' }),
+      },
+      expect.any(String),
     ));
   });
 
-  it('keeps a dirty document draft when navigation is not confirmed', async () => {
+  it('keeps a dirty unified draft when cancellation is not confirmed', async () => {
     const confirm = jest.fn(() => false);
     window.confirm = confirm;
     const user = userEvent.setup();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('button', { name: 'Edit document' }));
+    await user.click(screen.getByRole('button', { name: 'Create new version' }));
     const intent = screen.getByLabelText('Design intent');
     await user.clear(intent);
     await user.type(intent, 'Keep this unsaved draft.');
-    await user.click(screen.getByRole('tab', { name: 'Rules' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel version draft' }));
 
-    expect(confirm).toHaveBeenCalledWith('Discard unsaved Game Design System changes?');
-    expect(screen.getByRole('tab', { name: 'Overview' }).getAttribute('aria-selected')).toBe('true');
+    expect(confirm).toHaveBeenCalledWith('Discard this version draft?');
     expect((screen.getByLabelText('Design intent') as HTMLTextAreaElement).value).toBe('Keep this unsaved draft.');
   });
 
-  it('keeps the current scope and draft when a dirty scope change is rejected', async () => {
+  it('returns focus to the unified version action after a confirmed cancel', async () => {
     const confirm = jest.fn(() => false);
-    window.confirm = confirm;
+    window.confirm = jest.fn(() => true);
     const user = userEvent.setup();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('button', { name: 'Edit document' }));
+    const action = screen.getByRole('button', { name: 'Create new version' });
+    await user.click(action);
     await user.type(screen.getByLabelText('Design intent'), ' Unsaved.');
-    await user.click(screen.getByRole('tab', { name: /Official/ }));
+    await user.click(screen.getByRole('button', { name: 'Cancel version draft' }));
 
-    expect(confirm).toHaveBeenCalledWith('Discard unsaved Game Design System changes?');
-    expect(screen.getByRole('tab', { name: /My Systems/ }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByLabelText('Design intent')).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Create new version' })));
   });
 
   it('resets metadata after a confirmed discard', async () => {
@@ -422,12 +465,12 @@ describe('GameDesignSystemsPage', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
 
     await screen.findByRole('heading', { name: 'Design document' });
-    await user.click(screen.getByRole('button', { name: 'Edit details' }));
+    await user.click(screen.getByRole('button', { name: 'Edit system info' }));
     const summary = screen.getByLabelText('System summary');
     await user.clear(summary);
     await user.type(summary, 'Discarded summary');
-    await user.click(screen.getByRole('button', { name: 'Cancel editing details' }));
-    await user.click(screen.getByRole('button', { name: 'Edit details' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel editing system info' }));
+    await user.click(screen.getByRole('button', { name: 'Edit system info' }));
 
     expect((screen.getByLabelText('System summary') as HTMLTextAreaElement).value).toBe('Old summary');
   });
@@ -439,7 +482,7 @@ describe('GameDesignSystemsPage', () => {
     await user.click(screen.getByRole('tab', { name: 'Rules' }));
     expect(await screen.findByText('readable-state')).toBeTruthy();
     expect(screen.getByRole('option', { name: /Version 1/ })).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Edit details' }));
+    await user.click(screen.getByRole('button', { name: 'Edit system info' }));
     const summary = screen.getByLabelText('System summary');
     await user.clear(summary);
     await user.type(summary, 'New summary');
