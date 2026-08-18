@@ -30,6 +30,7 @@ const VISUAL_REFERENCE_NAME = 'Into the Breach';
 const VISUAL_REFERENCE_BORROW = 'Borrow its immediate board-state readability and restrained effects.';
 const ART_AVOID = 'Avoid noisy outlines, muddy values, and oversized combat effects.';
 const EVIDENCE_DIR = path.resolve(process.cwd(), '.superpowers/evidence/game-art-style/task-6');
+const hasGameDesignSystemLlm = Boolean(process.env.GAME_DESIGN_SYSTEM_LLM_API_KEY?.trim());
 const SUPABASE_ORIGIN = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321';
 const MOCK_USER_ID = '10000000-0000-4000-8000-000000000061';
 const MOCK_PROJECT_ID = '20000000-0000-4000-8000-000000000062';
@@ -750,6 +751,7 @@ test.describe('Game Design System real workflow', () => {
   });
 
   test('completes a queued job through Cron without an accepting request instance', async ({ request }) => {
+    test.skip(!hasGameDesignSystemLlm, 'Requires GAME_DESIGN_SYSTEM_LLM_API_KEY for real generation.');
     const cronSecret = process.env.CRON_SECRET;
     if (!cronSecret) throw new Error('CRON_SECRET is required for durable worker acceptance.');
     cronJobId = crypto.randomUUID();

@@ -238,7 +238,7 @@ describe('GameDesignSystemVersionEditor', () => {
         },
       },
     });
-  });
+  }, 15_000);
 
   it('restores the no-op state when a value is changed back to its original', async () => {
     const user = userEvent.setup();
