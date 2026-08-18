@@ -176,18 +176,20 @@ git commit -m "feat: describe complete design system version changes"
 - Modify: `tests/unit/database/game-design-system-version-visibility.behavior.test.ts`
 - Modify: `src/lib/services/gameDesignSystemService.ts`
 - Modify: `src/lib/services/gameDesignSystemService.test.ts`
+- Modify: `src/lib/game-design-system/worker.ts`
 - Modify: `src/lib/game-design-system/worker.test.ts`
 
 **Interfaces:**
 - Adds: nullable `game_design_system_versions.idempotency_key uuid` and unique partial index on `(system_id, idempotency_key)`.
 - Replaces RPC with new parameters `p_expected_current_version_id uuid` and `p_idempotency_key uuid`.
 - Adds service inputs `expectedCurrentVersionId?: string | null` and `idempotencyKey?: string | null`.
+- Adds server-only `getGameDesignSystemVersionByGenerationJobId()` returning only the sanitized `{ systemId, versionId }` replay handle needed by the worker/service.
 
 - [ ] **Step 1: Write failing migration/service tests**
 
 Assert the migration drops the old 12-argument signature, creates one 14-argument signature, uses `IS NOT DISTINCT FROM` under the system-row lock, checks existing idempotency output before stale rejection, includes the key in insert, and makes the existing-generation branch return before CAS without an update to either system or job. Also assert it revokes obsolete overloads from `public, anon, authenticated`, grants only `service_role`, and notifies PostgREST.
 
-Service tests must show public-style input forwards non-null CAS/key, initial internal creation forwards both as null, and generation replay looks up and returns the version carrying that `generation_job_id` rather than the system's current version. Service and worker replay tests assert the job retains its original `output_version_id`. Add live-database behavior cases that issue concurrent RPC calls: two distinct keys with the same expected current produce exactly one success and one `VERSION_STALE` with only one inserted row; the same key submitted concurrently returns the same version from both calls; and a generation-job replay after current advances returns its original output while leaving `current_version_id`, projected `body/genres/philosophies/suitable_for`, version row count, and job `output_version_id` unchanged.
+Service tests must show public-style input forwards non-null CAS/key, initial internal creation forwards both as null, and generation replay looks up and returns the version carrying that `generation_job_id` rather than the system's current version. Service and worker replay tests assert the job retains its original `output_version_id`. The worker has an injected `findGenerationOutput` preflight dependency that runs before `generate`; when it finds an existing version it calls `complete` with that original `{systemId, versionId}` and `generate`/`createSystem` are not called. Add live-database behavior cases that issue concurrent RPC calls: two distinct keys with the same expected current produce exactly one success and one `VERSION_STALE` with only one inserted row; the same key submitted concurrently returns the same version from both calls; and a generation-job replay after current advances returns its original output while leaving `current_version_id`, projected `body/genres/philosophies/suitable_for`, version row count, and job `output_version_id` unchanged.
 
 The behavior suite must throw at registration when `REQUIRE_RLS_DB_TESTS=1` but the existing local-only `RLS_DB_TESTS_ENABLED` guard is false. This lets focused development skip safely while making final concurrency verification a hard release gate.
 
@@ -215,7 +217,7 @@ Raise stable exception messages/codes for stale and key conflicts so the route c
 
 - [ ] **Step 4: Forward nullable trusted inputs without changing callers' authority**
 
-`createGameDesignSystemVersion()` forwards explicit nullable values. Internal creation/copy/generation callers omit them and therefore pass null. On an existing system generation replay, `createGameDesignSystem()` queries the version by `generation_job_id` and returns metadata projected from that original output, never from `system.current_version_id`; the worker keeps the same `output_version_id`. Do not accept a `trusted` boolean or mode from browser input.
+`createGameDesignSystemVersion()` forwards explicit nullable values. Internal creation/copy/generation callers omit them and therefore pass null. On an existing system generation replay, `createGameDesignSystem()` queries the version by `generation_job_id` and returns metadata projected from that original output, never from `system.current_version_id`; the worker's preflight keeps the same `output_version_id`. Do not accept a `trusted` boolean or mode from browser input.
 
 - [ ] **Step 5: Run GREEN and commit**
 

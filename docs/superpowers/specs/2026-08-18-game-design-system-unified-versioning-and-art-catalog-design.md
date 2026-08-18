@@ -107,6 +107,8 @@ A mismatch returns `409 VERSION_STALE` without inserting a version. An idempoten
 
 Trusted generation-job replay is also lookup-only. It returns the version already identified by `generation_job_id` even if the system current has since advanced, without updating `current_version_id`, projected metadata, version rows, or the job's original `output_version_id`. Service and worker replay paths resolve the generation version itself rather than substituting the system's current version.
 
+The leased worker performs this lookup before any model call: if a version already carries the claimed job ID, it completes the still-running job against that original `{systemId, versionId}` and never invokes the provider again. This closes the crash-after-insert/before-complete window without charging or retrying generation.
+
 The migration drops the exact prior RPC signature before creating the CAS/idempotency signature, revokes all public and authenticated execution on every obsolete overload, grants only the intended service role, and triggers the repository's normal PostgREST schema refresh. Tests prove the old no-CAS signature cannot be resolved.
 
 The service continues to persist one complete `document + rules + artStyle` snapshot and hashes that complete result. No-op detection compares the server-parsed, inherited, and compiled complete components using canonical structural JSON with recursively sorted object keys; it does not compare request text or trust an old content hash. Sources are inherited from the parent and remain immutable.
