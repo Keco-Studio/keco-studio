@@ -274,7 +274,7 @@ permissions, changed bindings, and save failure. Add component coverage for
 mode selection, creative brief input, phase progress, refresh recovery, and the
 created-document handoff.
 
-The reference 《街角暖光：流浪羁绊》 is used as a quality benchmark for
+The reference *Street-Corner Warmth: Stray Bonds* is used as a quality benchmark for
 structure and density, not as hard-coded game content. A gated real-model smoke
 test produces a report but is excluded from ordinary CI unless explicitly
 enabled.

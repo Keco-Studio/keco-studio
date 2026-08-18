@@ -143,18 +143,18 @@ describe('GDD generation v2 contracts', () => {
   it('accepts stable model-generated entity IDs', () => {
     const parsedBlueprint = parseBlueprintOutlineV2({
       version: 2,
-      nodes: [{ id: 'core_loop', label: '核心循环', depth: 0, group: 'core' }],
+      nodes: [{ id: 'core_loop', label: 'Core Loop', depth: 0, group: 'core' }],
     });
     const parsedSection = parseSectionV2({
       id: 'core_loop',
-      title: '核心循环',
+      title: 'Core Loop',
       depth: 0,
-      blocks: [{ kind: 'paragraph', id: 'core_loop_summary', text: '循环说明。' }],
+      blocks: [{ kind: 'paragraph', id: 'core_loop_summary', text: 'Loop description.' }],
     });
     const parsedReview = parseReviewV2({
       version: 2,
-      summary: '需要修复。',
-      issues: [{ id: 'issue_1', severity: 'warning', sectionId: 'core_loop', message: '补充边界。' }],
+      summary: 'Needs repair.',
+      issues: [{ id: 'issue_1', severity: 'warning', sectionId: 'core_loop', message: 'Add boundary cases.' }],
     });
 
     expect(parsedBlueprint.nodes[0].id).toBe('core_loop');
@@ -169,8 +169,8 @@ describe('GDD generation v2 contracts', () => {
       blocks: [{
         kind: 'example',
         id: 'example',
-        title: '示例',
-        body: '示例正文。',
+        title: 'Example',
+        body: 'Example body.',
         numericRefs: null,
       }],
     });
@@ -193,14 +193,14 @@ describe('GDD generation v2 contracts', () => {
     const section = parseSectionV2({
       ...validSection,
       blocks: [
-        { type: 'paragraph', text: '第一段。' },
-        { type: 'paragraph', text: '第二段。' },
+        { type: 'paragraph', text: 'First paragraph.' },
+        { type: 'paragraph', text: 'Second paragraph.' },
       ],
     });
 
     expect(section.blocks).toEqual([
-      { kind: 'paragraph', id: 'section-1-paragraph-1', text: '第一段。' },
-      { kind: 'paragraph', id: 'section-1-paragraph-2', text: '第二段。' },
+      { kind: 'paragraph', id: 'section-1-paragraph-1', text: 'First paragraph.' },
+      { kind: 'paragraph', id: 'section-1-paragraph-2', text: 'Second paragraph.' },
     ]);
   });
 

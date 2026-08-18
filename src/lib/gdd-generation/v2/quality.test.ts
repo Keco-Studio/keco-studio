@@ -6,21 +6,21 @@ import type { DocumentV2 } from './contracts';
 const document: DocumentV2 = {
   version: 2,
   id: 'warmth-gdd',
-  title: '街角暖光',
+  title: 'Street-Corner Warmth',
   versionLabel: '1.0',
-  gameType: '情感陪伴模拟',
-  targetPlatforms: ['移动端', 'PC'],
-  premise: '玩家在城市街角遇见流浪猫，并通过持续而克制的陪伴建立信任。',
-  blueprint: { version: 2, nodes: [{ id: 'overview', label: '游戏概述', depth: 0, group: 'core' }] },
-  numericRegistry: { version: 2, entries: [{ id: 'bond.base', value: 5, label: '基础羁绊' }] },
+  gameType: 'Emotional companion simulation',
+  targetPlatforms: ['Mobile', 'PC'],
+  premise: 'The player meets stray cats on a city street corner and builds trust through patient, restrained companionship.',
+  blueprint: { version: 2, nodes: [{ id: 'overview', label: 'Game Overview', depth: 0, group: 'core' }] },
+  numericRegistry: { version: 2, entries: [{ id: 'bond.base', value: 5, label: 'Base Bond' }] },
   sections: [{
-    id: 'overview', title: '游戏概述', depth: 0, blocks: [
-      { kind: 'paragraph', id: 'overview-p', text: '温柔但有责任重量的陪伴体验。' },
-      { kind: 'flow', id: 'overview-flow', steps: [{ id: 'step-a', text: '进入街角' }, { id: 'step-b', text: '观察并互动' }] },
-      { kind: 'data-table', id: 'overview-table', columns: ['行为', '基础值'], rows: [['喂食', '5']] },
-      { kind: 'formula', id: 'overview-formula', expression: '实际增量 = 基础值 × 天气系数', numericRefs: ['bond.base'] },
-      { kind: 'example', id: 'overview-example', title: '计算例', body: '晴天喂食时，基础值为 5。', numericRefs: ['bond.base'] },
-      { kind: 'quote', id: 'overview-quote', text: '它不是被你养大，而是选择了你。', cite: '设计哲学' },
+    id: 'overview', title: 'Game Overview', depth: 0, blocks: [
+      { kind: 'paragraph', id: 'overview-p', text: 'A gentle companionship experience that still carries responsibility.' },
+      { kind: 'flow', id: 'overview-flow', steps: [{ id: 'step-a', text: 'Enter the street corner' }, { id: 'step-b', text: 'Observe and interact' }] },
+      { kind: 'data-table', id: 'overview-table', columns: ['Action', 'Base Value'], rows: [['Feed', '5']] },
+      { kind: 'formula', id: 'overview-formula', expression: 'actual increment = base value × weather multiplier', numericRefs: ['bond.base'] },
+      { kind: 'example', id: 'overview-example', title: 'Worked example', body: 'On a sunny day, feeding uses a base value of 5.', numericRefs: ['bond.base'] },
+      { kind: 'quote', id: 'overview-quote', text: 'It was not raised by you; it chose you.', cite: 'Design philosophy' },
     ],
   }],
   assumptions: [],
@@ -29,17 +29,17 @@ const document: DocumentV2 = {
 describe('v2 GDD renderer and deterministic quality', () => {
   it('renders natural numbered Markdown blocks without provenance', () => {
     const markdown = renderGddV2Markdown(document);
-    expect(markdown).toContain('# 街角暖光');
-    expect(markdown).toContain('## 1. 游戏概述');
-    expect(markdown).toContain('| 行为 | 基础值 |');
-    expect(markdown).toContain('实际增量 = 基础值 × 天气系数');
-    expect(markdown).toContain('> —— 设计哲学');
+    expect(markdown).toContain('# Street-Corner Warmth');
+    expect(markdown).toContain('## 1. Game Overview');
+    expect(markdown).toContain('| Action | Base Value |');
+    expect(markdown).toContain('actual increment = base value × weather multiplier');
+    expect(markdown).toContain('> —— Design philosophy');
     expect(markdown).not.toMatch(/Provenance/i);
   });
 
   it('renders assumptions only when present', () => {
-    expect(renderGddV2Markdown(document)).not.toContain('待确认事项');
-    expect(renderGddV2Markdown({ ...document, assumptions: ['目标平台尚未确认。'] })).toContain('## 待确认事项');
+    expect(renderGddV2Markdown(document)).not.toContain('Open Questions');
+    expect(renderGddV2Markdown({ ...document, assumptions: ['Target platform is not confirmed yet.'] })).toContain('## Open Questions');
   });
 
   it('reports deterministic structural issues', () => {

@@ -10,7 +10,7 @@ export type DeterministicQualityIssue = {
   message: string;
 };
 
-const PLACEHOLDER = /\b(?:TBD|TODO|FIXME|lorem ipsum|待补充|待填写|占位)\b/i;
+const PLACEHOLDER = /\b(?:TBD|TODO|FIXME|lorem ipsum|placeholder|to be filled)\b/i;
 
 export function countReadableCharacters(markdown: string): number {
   return markdown

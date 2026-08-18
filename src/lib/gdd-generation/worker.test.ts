@@ -131,7 +131,7 @@ describe('GDD generation worker', () => {
     expect((heartbeat.mock.calls as unknown[][]).filter((call) => call[3] === 'generating')).toHaveLength(2);
 
     finishGeneration({
-      markdown: '# GDD\n\n## 核心循环\n正文。',
+      markdown: '# GDD\n\n## Core Loop\nBody text.',
       review: { version: 2, summary: 'pass', status: 'pass', issues: [] },
     });
     await expect(resultPromise).resolves.toBe('completed');
@@ -139,7 +139,7 @@ describe('GDD generation worker', () => {
       expect.anything(),
       v2Job,
       'worker-1',
-      '# GDD\n\n## 核心循环\n正文。',
+      '# GDD\n\n## Core Loop\nBody text.',
       expect.objectContaining({ status: 'pass' }),
     );
     jest.useRealTimers();

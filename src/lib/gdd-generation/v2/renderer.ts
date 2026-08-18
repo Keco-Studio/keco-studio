@@ -46,9 +46,9 @@ function sectionNumbers(sections: SectionV2[]): Map<string, string> {
 export function renderGddV2Markdown(document: DocumentV2): string {
   const numbers = sectionNumbers(document.sections);
   const lines: string[] = [`# ${document.title}`, ''];
-  if (document.versionLabel) lines.push(`**文档版本：** ${document.versionLabel}`);
-  if (document.gameType) lines.push(`**类型：** ${document.gameType}`);
-  if (document.targetPlatforms?.length) lines.push(`**目标平台：** ${document.targetPlatforms.join(' / ')}`);
+  if (document.versionLabel) lines.push(`**Document version:** ${document.versionLabel}`);
+  if (document.gameType) lines.push(`**Type:** ${document.gameType}`);
+  if (document.targetPlatforms?.length) lines.push(`**Target platforms:** ${document.targetPlatforms.join(' / ')}`);
   if (document.versionLabel || document.gameType || document.targetPlatforms?.length) lines.push('');
   if (document.premise) lines.push(document.premise, '');
 
@@ -60,7 +60,7 @@ export function renderGddV2Markdown(document: DocumentV2): string {
   }
 
   if (document.assumptions && document.assumptions.length > 0) {
-    lines.push('## 待确认事项', '', ...document.assumptions.map((item) => `- ${item}`), '');
+    lines.push('## Open Questions', '', ...document.assumptions.map((item) => `- ${item}`), '');
   }
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }

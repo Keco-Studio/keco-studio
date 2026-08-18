@@ -434,7 +434,7 @@ function ProjectsView(props: {
       </div>
       <GddGenerationDialog
         open={Boolean(generationProjectId)}
-        projectName={props.projects.find((project) => project.id === generationProjectId)?.name ?? '项目'}
+        projectName={props.projects.find((project) => project.id === generationProjectId)?.name ?? 'Project'}
         pending={generateGddMutation.isPending}
         onCancel={() => setGenerationProjectId(null)}
         onSubmit={(options) => { if (generationProjectId) generateGddMutation.mutate({ targetProjectId: generationProjectId, options }); }}

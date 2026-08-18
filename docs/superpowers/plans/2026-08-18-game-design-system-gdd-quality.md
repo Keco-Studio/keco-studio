@@ -189,13 +189,13 @@ Cover numbered headings, each block type, conditional metadata, conditional assu
 
 ```ts
 const markdown = renderGddV2Markdown(validDocument);
-expect(markdown).toContain('## 1. 游戏概述');
-expect(markdown).toContain('### 1.1. 核心体验');
-expect(markdown).toContain('| 行为 | 基础值 |');
-expect(markdown).toContain('```text\n实际增量 = max(1, round(原始增量))\n```');
+expect(markdown).toContain('## 1. Game Overview');
+expect(markdown).toContain('### 1.1. Core Experience');
+expect(markdown).toContain('| Action | Base Value |');
+expect(markdown).toContain('```text\nactual increment = max(1, round(raw increment))\n```');
 expect(markdown).not.toMatch(/Provenance/i);
 expect(renderGddV2Markdown({ ...validDocument, assumptions: [] }))
-  .not.toContain('待确认事项');
+  .not.toContain('Open Questions');
 
 const issues = validateGddQuality(validDocument, 'professional');
 expect(issues).toEqual([]);
@@ -239,7 +239,7 @@ switch (block.type) {
 }
 ```
 
-Do not render source names, rule IDs, AI disclaimers, or provenance. Render `## 待确认事项` only when `document.assumptions.length > 0`.
+Do not render source names, rule IDs, AI disclaimers, or provenance. Render `## Open Questions` only when `document.assumptions.length > 0`.
 
 - [ ] **Step 4: Implement deterministic quality findings**
 

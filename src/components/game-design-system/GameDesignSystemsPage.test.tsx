@@ -472,7 +472,7 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: '开始生成' }));
+    await user.click(screen.getByRole('button', { name: 'Start generation' }));
 
     await waitFor(() => expect(startGdd).toHaveBeenCalledWith('project-1', 'system-1', 'version-1', { mode: 'professional' }));
     expect((await screen.findByRole('link', { name: 'Open GDD Document' })).getAttribute('href')).toBe('/project-1/doc/document-1');
@@ -495,7 +495,7 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: '开始生成' }));
+    await user.click(screen.getByRole('button', { name: 'Start generation' }));
     expect((screen.getByRole('button', { name: 'Generating GDD...' }) as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
@@ -517,7 +517,7 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: '开始生成' }));
+    await user.click(screen.getByRole('button', { name: 'Start generation' }));
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
 
     expect(await screen.findByRole('button', { name: 'Retry GDD Draft' })).toBeTruthy();
@@ -545,7 +545,7 @@ describe('GameDesignSystemsPage', () => {
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
     await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: '开始生成' }));
+    await user.click(screen.getByRole('button', { name: 'Start generation' }));
     await user.click(await screen.findByRole('button', { name: 'Stop GDD generation' }));
 
     await waitFor(() => expect(cancelGdd).toHaveBeenCalledWith('project-1', 'gdd-job-1'));
