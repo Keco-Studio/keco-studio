@@ -28,6 +28,7 @@ const validRules = {
 };
 
 const validDocument = {
+  gameBackground: 'A river kingdom recovering from a magical flood.',
   designIntent: 'Make every tactical choice legible and consequential.',
   playerFantasy: 'Lead a small squad through uncertain encounters.',
   coreLoop: 'Scout, commit resources, resolve the encounter, and adapt the squad.',
@@ -102,6 +103,7 @@ describe('structured Game Design System generation', () => {
     expect(messages[1].content).not.toContain('document: Combat GDD\n');
     expect(messages[0].content).toContain('Return one JSON object');
     expect(messages[0].content).toContain('"document":{');
+    expect(messages[0].content).toContain('gameBackground');
     expect(messages[0].content).toContain('designIntent');
     expect(messages[0].content).toContain('experiencePresentation');
     expect(messages[0].content).toContain('"tableGuidance":[{"table":');
@@ -142,6 +144,7 @@ describe('structured Game Design System generation', () => {
     const complete = jest.fn(async (_messages: ChatMessage[], _options?: StreamLlmOptions) => complete.mock.calls.length === 1 ? invalid : JSON.stringify(validOutput));
     await generateGameDesignSystemOutput(input, complete);
     expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content).toContain('tableGuidance entries must be objects');
+    expect((complete.mock.calls[1][0] as Array<{ content: string }>)[1].content).toContain('gameBackground');
   });
 
   it('keeps the normalized request and real sources in the repair pass', async () => {
