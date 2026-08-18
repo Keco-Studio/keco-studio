@@ -228,7 +228,7 @@ git add supabase/migrations/20260818190000_game_design_system_version_cas.sql \
   tests/unit/database/game-design-rule-system-migration.test.ts \
   tests/unit/database/game-design-system-version-visibility.behavior.test.ts \
   src/lib/services/gameDesignSystemService.ts src/lib/services/gameDesignSystemService.test.ts \
-  src/lib/game-design-system/worker.test.ts
+  src/lib/game-design-system/worker.ts src/lib/game-design-system/worker.test.ts
 git commit -m "feat: serialize design system version writes"
 ```
 
