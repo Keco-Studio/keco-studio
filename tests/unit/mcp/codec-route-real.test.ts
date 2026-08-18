@@ -10,8 +10,8 @@ const MARKDOWN_FIXTURE = [
   '',
   '<BlockAnchor id="22222222-2222-4222-8222-222222222222" />A paragraph with **bold text** and a [safe link](https://example.com).',
   '',
-  '- first item',
-  '- second item',
+  '- <BlockAnchor id="33333333-3333-4333-8333-333333333333" />first item',
+  '- <BlockAnchor id="44444444-4444-4444-8444-444444444444" />second item',
 ].join('\n');
 
 function codecProbe(input: Record<string, unknown>): Record<string, unknown> {

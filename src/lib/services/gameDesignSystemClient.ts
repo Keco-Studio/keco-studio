@@ -8,6 +8,7 @@ import type {
   GameDesignSystemGenerationJob,
   GameDesignSystemVersion,
 } from './gameDesignSystemService';
+import type { PublicGddGenerationJob } from './gddGenerationService';
 
 export type GameDesignGenerationRequest = {
   title: string;
@@ -104,4 +105,47 @@ export async function applyProjectGameDesignSystem(projectId: string, designSyst
 
 export async function clearProjectGameDesignSystem(projectId: string): Promise<void> {
   await readJson<{ ok: boolean }>(await fetch(`/api/projects/${encodeURIComponent(projectId)}/game-design-system`, { method: 'DELETE' }));
+}
+
+export async function startProjectGddGeneration(
+  projectId: string,
+  designSystemId: string,
+  versionId: string,
+  optionsOrKey: string | { mode?: 'quick' | 'professional'; creativeBrief?: string } = {},
+  keyOrOptions: string | { mode?: 'quick' | 'professional'; creativeBrief?: string } = crypto.randomUUID(),
+): Promise<PublicGddGenerationJob> {
+  const key = typeof optionsOrKey === 'string'
+    ? optionsOrKey
+    : typeof keyOrOptions === 'string' ? keyOrOptions : crypto.randomUUID();
+  const options = typeof optionsOrKey === 'string'
+    ? typeof keyOrOptions === 'object' ? keyOrOptions : {}
+    : optionsOrKey;
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+    body: JSON.stringify({ designSystemId, versionId, ...options }),
+  });
+  return (await readJson<{ job: PublicGddGenerationJob }>(response)).job;
+}
+
+export async function fetchLatestProjectGddGenerationJob(
+  projectId: string,
+  designSystemId: string,
+  versionId: string,
+): Promise<PublicGddGenerationJob | null> {
+  const params = new URLSearchParams({ designSystemId, versionId });
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs?${params.toString()}`, { cache: 'no-store' });
+  return (await readJson<{ job: PublicGddGenerationJob | null }>(response)).job;
+}
+
+export async function fetchProjectGddGenerationJob(projectId: string, jobId: string): Promise<PublicGddGenerationJob> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+  return (await readJson<{ job: PublicGddGenerationJob }>(response)).job;
+}
+
+export async function cancelProjectGddGeneration(projectId: string, jobId: string): Promise<PublicGddGenerationJob> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE',
+  });
+  return (await readJson<{ job: PublicGddGenerationJob }>(response)).job;
 }

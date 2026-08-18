@@ -161,13 +161,6 @@ export function useScriptSidebarActions({
                     body?.error || 'Failed to remove document from workspace'
                   );
                 }
-                await queryClient.invalidateQueries({
-                  queryKey: ['script-workspace', projectId],
-                });
-                await queryClient.invalidateQueries({
-                  queryKey: scriptWorkspaceDocumentQueryKey(projectId, documentId),
-                });
-                await onRefreshWorkspace();
                 showSuccessToast('Removed from Script workspace');
                 if (
                   typeof window !== 'undefined' &&
@@ -177,6 +170,16 @@ export function useScriptSidebarActions({
                 ) {
                   router.push(`/script-system/${projectId}`);
                 }
+                void Promise.all([
+                  queryClient.invalidateQueries({
+                    queryKey: ['script-workspace', projectId],
+                  }),
+                  queryClient.invalidateQueries({
+                    queryKey: scriptWorkspaceDocumentQueryKey(projectId, documentId),
+                  }),
+                ]).catch((err) => {
+                  console.error('Failed to refresh Script workspace after remove', err);
+                });
               } catch (err) {
                 showErrorToast(
                   err instanceof Error
@@ -198,12 +201,6 @@ export function useScriptSidebarActions({
             onConfirm: async () => {
               try {
                 await deleteLibrary(supabase, libraryId);
-                await invalidateLibraryData(queryClient, {
-                  projectId,
-                  libraryId,
-                  refetchActiveFoldersLibraries: true,
-                });
-                await onRefreshWorkspace();
                 showSuccessToast('Script deleted');
                 if (
                   typeof window !== 'undefined' &&
@@ -213,6 +210,12 @@ export function useScriptSidebarActions({
                 ) {
                   router.push(`/script-system/${projectId}`);
                 }
+                void invalidateLibraryData(queryClient, {
+                  projectId,
+                  libraryId,
+                }).catch((err) => {
+                  console.error('Failed to refresh sidebar after script delete', err);
+                });
               } catch (err) {
                 showErrorToast(
                   err instanceof Error ? err.message : 'Failed to delete script'

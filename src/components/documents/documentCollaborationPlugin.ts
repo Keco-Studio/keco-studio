@@ -55,6 +55,10 @@ type CompositionState = Pick<
 
 const activeEditorBindings = new WeakMap<LexicalEditor, ActiveEditorBinding>();
 
+function isDetachedNodeError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'NotFoundError';
+}
+
 function releaseEditorBinding(
   editor: LexicalEditor,
   entry: ActiveEditorBinding
@@ -79,11 +83,12 @@ function releaseEditorBinding(
 function ensureCursorsContainer(
   binding: Binding,
   rootElement: HTMLElement | null
-): HTMLElement {
+): HTMLElement | null {
   const parent = rootElement?.parentElement;
-  if (!parent) {
-    throw new Error('Document collaboration editor is not mounted');
-  }
+  // Lexical can hand us a root that is not in the document yet (or already
+  // leaving it). Throwing here runs during React's commit/ref phase and can
+  // surface as a NotFoundError removeChild crash for the whole app shell.
+  if (!parent) return null;
 
   const container = binding.cursorsContainer ?? document.createElement('div');
   if (!binding.cursorsContainer) {
@@ -178,9 +183,13 @@ function attachEditorBinding(
   const refreshCursorPositions = () => {
     if (disposed || !activeRoot) return;
     try {
-      ensureCursorsContainer(binding, activeRoot);
+      if (!ensureCursorsContainer(binding, activeRoot)) return;
       syncCursorPositions(binding, provider);
     } catch (error) {
+      // Cursor overlay nodes are siblings of Lexical's contenteditable. React 19
+      // can delete them during the same commit that clears the editor root;
+      // treat that race as presence-only noise, not a binding failure.
+      if (isDetachedNodeError(error)) return;
       failBinding(error, 'presence');
     }
   };
@@ -282,20 +291,21 @@ function attachEditorBinding(
     }
     previousRoot?.removeEventListener('compositionend', onCompositionEnd);
     activeRoot = nextRoot;
-    if (!nextRoot) {
-      binding.cursorsContainer?.remove();
-      return;
-    }
+    // Keep the overlay attached across temporary null roots. Detaching it here
+    // races React's commitDeletionEffectsOnFiber removeChild and throws
+    // NotFoundError while the document editor is remounting.
+    if (!nextRoot) return;
     try {
-      ensureCursorsContainer(binding, nextRoot);
+      if (!ensureCursorsContainer(binding, nextRoot)) return;
       cursorMutationObserver.observe(nextRoot, {
         childList: true,
         characterData: true,
         subtree: true,
       });
-      nextRoot?.addEventListener('compositionend', onCompositionEnd);
+      nextRoot.addEventListener('compositionend', onCompositionEnd);
       scheduleCursorRefresh();
     } catch (error) {
+      if (isDetachedNodeError(error)) return;
       failBinding(error, 'presence');
     }
   });

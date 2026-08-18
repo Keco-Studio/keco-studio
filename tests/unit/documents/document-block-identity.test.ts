@@ -1,4 +1,10 @@
 import {
+  $createListItemNode,
+  $createListNode,
+  ListItemNode,
+  ListNode,
+} from '@lexical/list';
+import {
   $createHeadingNode,
   $createQuoteNode,
   $isHeadingNode,
@@ -248,6 +254,40 @@ describe('document block identity', () => {
         headingLevel: undefined,
         nearestHeading: 'Section',
       },
+    ]);
+    expect(new Set(blocks(editor).map(({ blockId }) => blockId)).size).toBe(4);
+  });
+
+  it('lists list items and quoted paragraphs so feedback documents are selectable', () => {
+    const editor = createEditor({
+      nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode],
+    });
+    editor.update(
+      () => {
+        const list = $createListNode('bullet');
+        list.append(
+          $createListItemNode().append($createTextNode('bug one')),
+          $createListItemNode().append($createTextNode('bug two'))
+        );
+        const quote = $createQuoteNode();
+        quote.append(
+          $createParagraphNode().append($createTextNode('quoted feedback'))
+        );
+        $getRoot().append(
+          $createHeadingNode('h1').append($createTextNode('V0806 feedback')),
+          list,
+          quote
+        );
+        normalizeDocumentBlockIds();
+      },
+      { discrete: true }
+    );
+
+    expect(blocks(editor).map(({ blockType, text }) => ({ blockType, text }))).toEqual([
+      { blockType: 'heading', text: 'V0806 feedback' },
+      { blockType: 'paragraph', text: 'bug one' },
+      { blockType: 'paragraph', text: 'bug two' },
+      { blockType: 'paragraph', text: 'quoted feedback' },
     ]);
     expect(new Set(blocks(editor).map(({ blockId }) => blockId)).size).toBe(4);
   });

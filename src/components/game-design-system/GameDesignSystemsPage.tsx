@@ -18,7 +18,7 @@ import styles from './GameDesignSystemsPage.module.css';
 type WorkspaceMode = 'system' | 'create';
 
 async function fetchProjects(): Promise<ProjectOption[]> {
-  const response = await fetch('/api/projects', { cache: 'no-store' });
+  const response = await fetch('/api/projects/writable', { cache: 'no-store' });
   if (!response.ok) throw new Error('Failed to load projects.');
   return (await response.json()) as ProjectOption[];
 }

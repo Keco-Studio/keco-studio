@@ -313,18 +313,19 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
   });
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteConfirmState.onConfirm) return;
-    setDeleteConfirmState((prev) => ({ ...prev, loading: true }));
+    if (!deleteConfirmState.onConfirm || deleteConfirmState.loading) return;
+    const onConfirm = deleteConfirmState.onConfirm;
+    setDeleteConfirmState({
+      open: false,
+      title: 'Confirm deletion',
+      content: '',
+      loading: false,
+      onConfirm: undefined,
+    });
     try {
-      await deleteConfirmState.onConfirm();
-    } finally {
-      setDeleteConfirmState({
-        open: false,
-        title: 'Confirm deletion',
-        content: '',
-        loading: false,
-        onConfirm: undefined,
-      });
+      await onConfirm();
+    } catch {
+      // Errors are reported by onConfirm; the dialog must not stay open.
     }
   }, [deleteConfirmState]);
 

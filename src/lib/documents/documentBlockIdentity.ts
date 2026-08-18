@@ -1,4 +1,8 @@
 import {
+  $isListItemNode,
+  ListItemNode,
+} from '@lexical/list';
+import {
   $createHeadingNode,
   $isHeadingNode,
   HeadingNode,
@@ -14,14 +18,17 @@ import {
   $getRoot,
   $getState,
   $isElementNode,
+  $isLineBreakNode,
   $isParagraphNode,
   $isRootNode,
+  $isTextNode,
   $setState,
   createState,
   ParagraphNode,
   type LexicalEditor,
+  type LexicalNode,
 } from 'lexical';
-import type { Heading, Paragraph, RootContent } from 'mdast';
+import type { Heading, ListItem, Paragraph, RootContent } from 'mdast';
 import type { MdxJsxTextElement } from 'mdast-util-mdx-jsx';
 import { isUuid } from '@/lib/utils/uuid';
 
@@ -41,23 +48,64 @@ export type DocumentReferenceBlock = {
   nearestHeading?: string;
 };
 
-type DocumentBlockNode = HeadingNode | ParagraphNode;
+type DocumentBlockNode = HeadingNode | ParagraphNode | ListItemNode;
+
+const TABLE_NODE_TYPES = new Set(['table', 'tablecell', 'tablerow']);
+
+function isTableNode(node: LexicalNode): boolean {
+  return TABLE_NODE_TYPES.has(node.getType());
+}
+
+function isInsideTable(node: LexicalNode): boolean {
+  for (let parent = node.getParent(); parent; parent = parent.getParent()) {
+    if (isTableNode(parent)) return true;
+  }
+  return false;
+}
 
 function isTopLevelDocumentBlock(node: DocumentBlockNode): boolean {
   return $isRootNode(node.getParent());
 }
 
-function documentBlocks(): DocumentBlockNode[] {
-  return $getRoot()
+function shouldSkipEmptyTrailingParagraph(node: DocumentBlockNode): boolean {
+  return (
+    $isParagraphNode(node) &&
+    isTopLevelDocumentBlock(node) &&
+    node.getNextSibling() === null &&
+    displayText(node).length === 0
+  );
+}
+
+function listItemOwnText(node: ListItemNode): string {
+  return node
     .getChildren()
-    .filter(
-      (node): node is DocumentBlockNode =>
-        $isHeadingNode(node) || $isParagraphNode(node)
-    );
+    .filter((child) => $isTextNode(child) || $isLineBreakNode(child))
+    .map((child) => child.getTextContent())
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function displayText(node: DocumentBlockNode): string {
+  if ($isListItemNode(node)) return listItemOwnText(node);
   return node.getTextContent().replace(/\s+/g, ' ').trim();
+}
+
+function documentBlocks(): DocumentBlockNode[] {
+  const blocks: DocumentBlockNode[] = [];
+  const visit = (node: LexicalNode) => {
+    if (isTableNode(node)) return;
+    if ($isListItemNode(node)) {
+      if (listItemOwnText(node)) blocks.push(node);
+    } else if ($isHeadingNode(node) || $isParagraphNode(node)) {
+      blocks.push(node);
+    }
+    if ($isElementNode(node)) {
+      for (const child of node.getChildren()) visit(child);
+    }
+  };
+  for (const child of $getRoot().getChildren()) visit(child);
+  return blocks;
 }
 
 export function normalizeDocumentBlockIds(): void {
@@ -69,12 +117,7 @@ export function normalizeDocumentBlockIds(): void {
       seen.add(current);
       continue;
     }
-    if (
-      current.length === 0 &&
-      node.getNextSibling() === null &&
-      $isParagraphNode(node) &&
-      displayText(node).length === 0
-    ) {
+    if (current.length === 0 && shouldSkipEmptyTrailingParagraph(node)) {
       continue;
     }
 
@@ -174,21 +217,28 @@ export function registerDocumentBlockIdentity(
   };
 
   const normalize = (node: DocumentBlockNode) => {
-    if (!shouldAssignMissingIds() || !isTopLevelDocumentBlock(node)) return;
+    if (!shouldAssignMissingIds() || isInsideTable(node)) return;
+    if (node.getType() === 'listitem' && !listItemOwnText(node as ListItemNode)) {
+      return;
+    }
     if (!isUuid($getState(node, documentBlockIdState))) {
       $setState(node, documentBlockIdState, crypto.randomUUID());
     }
     scheduleNormalization();
   };
-  const unregister = mergeRegister(
+  const registrations = [
     editor.registerUpdateListener(() => reconcileDocumentBlockDom(editor)),
     editor.registerRootListener((nextRoot, previousRoot) => {
       if (previousRoot !== nextRoot) clearDocumentBlockDom(previousRoot);
       reconcileDocumentBlockDom(editor);
     }),
     editor.registerNodeTransform(ParagraphNode, normalize),
-    editor.registerNodeTransform(HeadingNode, normalize)
-  );
+    editor.registerNodeTransform(HeadingNode, normalize),
+  ];
+  if (editor.hasNode(ListItemNode)) {
+    registrations.push(editor.registerNodeTransform(ListItemNode, normalize));
+  }
+  const unregister = mergeRegister(...registrations);
 
   return () => {
     disposed = true;
@@ -291,6 +341,9 @@ export const documentParagraphImportVisitor: MdastImportVisitor<Paragraph> = {
       if (parentType === 'listitem' && previousSibling?.type === 'paragraph') {
         lexicalParent.append($createLineBreakNode(), $createLineBreakNode());
       }
+      if (parentType === 'listitem') {
+        $setState(lexicalParent, documentBlockIdState, anchor.blockId);
+      }
       actions.visitChildren(content, lexicalParent);
       return;
     }
@@ -330,8 +383,9 @@ export const documentParagraphExportVisitor: LexicalExportVisitor<
   visitLexicalNode({ lexicalNode, mdastParent, actions }) {
     const blockId = $getState(lexicalNode, documentBlockIdState);
     if (
-      !isTopLevelDocumentBlock(lexicalNode) ||
-      !isUuid(blockId)
+      !isUuid(blockId) ||
+      isInsideTable(lexicalNode) ||
+      $isListItemNode(lexicalNode.getParent())
     ) {
       actions.nextVisitor();
       return;
@@ -359,10 +413,7 @@ export const documentHeadingExportVisitor: LexicalExportVisitor<
   priority: 100,
   visitLexicalNode({ lexicalNode, mdastParent, actions }) {
     const blockId = $getState(lexicalNode, documentBlockIdState);
-    if (
-      !isTopLevelDocumentBlock(lexicalNode) ||
-      !isUuid(blockId)
-    ) {
+    if (!isUuid(blockId) || isInsideTable(lexicalNode)) {
       actions.nextVisitor();
       return;
     }
@@ -374,5 +425,36 @@ export const documentHeadingExportVisitor: LexicalExportVisitor<
     actions.appendToParent(mdastParent, heading);
     actions.registerReferredComponent(BLOCK_ANCHOR_NAME);
     actions.visitChildren(lexicalNode, heading);
+  },
+};
+
+export const documentListItemExportVisitor: LexicalExportVisitor<
+  ListItemNode,
+  ListItem
+> = {
+  testLexicalNode: $isListItemNode,
+  priority: 100,
+  visitLexicalNode({ lexicalNode, mdastParent, actions }) {
+    const blockId = $getState(lexicalNode, documentBlockIdState);
+    const hasNestedElement = lexicalNode
+      .getChildren()
+      .some((child) => $isElementNode(child));
+    if (!isUuid(blockId) || !listItemOwnText(lexicalNode) || hasNestedElement) {
+      actions.nextVisitor();
+      return;
+    }
+    const paragraph: Paragraph = {
+      type: 'paragraph',
+      children: [blockAnchor(blockId)],
+    };
+    const checked = lexicalNode.getChecked();
+    const listItem: ListItem = {
+      type: 'listItem',
+      ...(checked === undefined ? {} : { checked }),
+      children: [paragraph],
+    };
+    actions.appendToParent(mdastParent, listItem);
+    actions.registerReferredComponent(BLOCK_ANCHOR_NAME);
+    actions.visitChildren(lexicalNode, paragraph);
   },
 };

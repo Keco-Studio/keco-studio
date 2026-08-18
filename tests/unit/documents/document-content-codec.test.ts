@@ -130,6 +130,21 @@ describe('document content codec', () => {
     expect(blockAnchorIds(second)).toEqual(firstIds);
   });
 
+  it('exposes list items and quoted paragraphs as selectable reference blocks', () => {
+    const result = runCodecProbe({
+      mode: 'normalize',
+      markdown: '- bug one\n- bug two\n\n> quoted feedback',
+    }) as {
+      blocks: Array<{ blockType: string; text: string }>;
+    };
+
+    expect(result.blocks.map(({ blockType, text }) => ({ blockType, text }))).toEqual([
+      { blockType: 'paragraph', text: 'bug one' },
+      { blockType: 'paragraph', text: 'bug two' },
+      { blockType: 'paragraph', text: 'quoted feedback' },
+    ]);
+  });
+
   it('keeps the first duplicate block anchor and regenerates the later one', () => {
     const duplicateId = '11111111-1111-4111-8111-111111111111';
     const { markdown } = runCodecProbe({
