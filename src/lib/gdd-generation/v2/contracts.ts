@@ -98,6 +98,7 @@ const exampleBlockSchema = z.object({
   kind: z.literal('example'),
   id: entityIdSchema,
   title: boundedText(160),
+  body: boundedText(8_000),
   numericRefs: z.array(numericRefSchema).min(1).max(20),
 }).strict();
 
@@ -304,6 +305,34 @@ export type ReviewV2 = z.infer<typeof reviewSchema>;
 export type ArtifactsV2 = z.infer<typeof artifactsSchema>;
 export type DocumentV2 = z.infer<typeof documentSchema>;
 export type GddGenerationInputV2 = z.infer<typeof generationInputV2Schema>;
+
+export const gddGenerationModeSchema = z.enum(['quick', 'professional']);
+export type GddGenerationMode = z.infer<typeof gddGenerationModeSchema>;
+
+export type GddGenerationRequestV2 = {
+  contractVersion: 2;
+  mode: GddGenerationMode;
+  creativeBrief?: string;
+  language: 'zh-CN';
+  projectId: string;
+  projectName: string;
+  designSystemId: string;
+  versionId: string;
+  versionNumber: number;
+  systemTitle: string;
+  rules: import('@/lib/game-design-system/ruleSchema').GameDesignRuleSet;
+  designDocument: import('@/lib/game-design-system/ruleSchema').GameDesignDocument;
+  projectSources: import('@/lib/services/gameDesignSystemService').GameDesignSourceSnapshot[];
+};
+
+export function isGddGenerationRequestV2(value: unknown): value is GddGenerationRequestV2 {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return candidate.contractVersion === 2
+    && (candidate.mode === 'quick' || candidate.mode === 'professional')
+    && typeof candidate.projectId === 'string'
+    && typeof candidate.versionId === 'string';
+}
 
 export function parseBlueprintOutlineV2(value: unknown): BlueprintOutlineV2 {
   return blueprintOutlineSchema.parse(rejectDangerousKeys(value));

@@ -41,6 +41,7 @@ const validBlocks = [
     kind: 'example',
     id: 'example',
     title: 'Example use',
+    body: 'Start with 120 gold.',
     numericRefs: ['economy.gold'],
   },
   {
@@ -170,7 +171,7 @@ describe('GDD generation v2 contracts', () => {
     ['bullet-list', { kind: 'bullet-list', id: 'b', items: [] }],
     ['data-table', { kind: 'data-table', id: 't', columns: ['Name'], rows: [['A', 'B']] }],
     ['formula', { kind: 'formula', id: 'f', expression: 'x', numericRefs: ['missing'] }],
-    ['example', { kind: 'example', id: 'e', title: 'Example', numericRefs: ['missing'] }],
+    ['example', { kind: 'example', id: 'e', title: 'Example', body: 'Example body.', numericRefs: ['missing'] }],
     ['flow', { kind: 'flow', id: 'f2', steps: [] }],
     ['quote', { kind: 'quote', id: 'q', text: '', cite: 'Someone' }],
   ])('rejects invalid %s blocks', (_label, block) => {
