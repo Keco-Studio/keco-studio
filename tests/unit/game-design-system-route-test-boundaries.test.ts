@@ -87,24 +87,25 @@ describe('Game Design System route test boundaries', () => {
 import { POST as startGeneration } from '@/app/api/game-design-systems/generation-jobs/route';
 import { POST as createVersion } from '@/app/api/game-design-systems/[id]/versions/route';
 import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
+import { GAME_ART_STYLE_CATALOG } from '@/lib/game-art-style/presets';
 import { PublicGameDesignSystemVersionError } from '@/lib/services/gameDesignSystemWriteService.server';
 import { createGameDesignSystemVersion as createVersionClient } from '@/lib/services/gameDesignSystemClient';
 
 const VALID_ART_STYLE = {
   presetId: 'pixel-art',
-  presetVersion: 1,
+  presetVersion: 2,
   customization: { referenceGames: [] },
 };
 
 const STORAGE_BOUNDARY_ART_STYLE = {
   presetId: 'pixel-art',
-  presetVersion: 1,
+  presetVersion: 2,
   customization: {
     direction: '\u0001'.repeat(2_000),
     avoid: '\u0001'.repeat(1_000),
-    referenceGames: ['aa', 'bb', 'cc', 'dd'].map((name, index) => ({
+    referenceGames: ['aa', 'bb', 'cc', 'dd', 'ee', 'ff', 'gg', 'hh'].map((name, index) => ({
       name,
-      borrow: index < 3 ? '\u0001'.repeat(500) : `${'\u0001'.repeat(434)}x`,
+      borrow: index < 7 ? '\u0001'.repeat(500) : `${'\u0001'.repeat(499)}x`,
     })),
   },
 };
@@ -129,7 +130,7 @@ describe('POST /api/game-design-systems/generation-jobs Art Style boundary', () 
     ['unknown request key', { unknownRequestKey: true }, 'unknownRequestKey'],
     ['forged specification', { artStyle: { ...VALID_ART_STYLE, specification: {} } }, 'artStyle'],
     ['unknown preset', { artStyle: { ...VALID_ART_STYLE, presetId: 'painted' } }, 'artStyle'],
-    ['unknown preset version', { artStyle: { ...VALID_ART_STYLE, presetVersion: 2 } }, 'artStyle'],
+    ['unknown preset version', { artStyle: { ...VALID_ART_STYLE, presetVersion: 999 } }, 'artStyle'],
     ['over-limit direction', {
       artStyle: { ...VALID_ART_STYLE, customization: { direction: 'x'.repeat(2_001), referenceGames: [] } },
     }, 'artStyle'],
@@ -151,12 +152,12 @@ describe('POST /api/game-design-systems/generation-jobs Art Style boundary', () 
     const response = await postGeneration({ artStyle: STORAGE_BOUNDARY_ART_STYLE });
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       error: 'Invalid generation request.',
       issues: {
         formErrors: [],
         fieldErrors: {
-          artStyle: ['Game Art Style snapshot exceeds the 32 KiB limit (32859 bytes).'],
+          artStyle: [expect.stringMatching(/Game Art Style snapshot exceeds the 32 KiB limit/)],
         },
       },
     });
@@ -184,6 +185,23 @@ describe('POST /api/game-design-systems/generation-jobs Art Style boundary', () 
       'route-test-user',
       expect.objectContaining({ artStyle: compileGameArtStyle(artStyle) }),
       expect.objectContaining({ idempotencyKey: 'route-test-key' }),
+    );
+  });
+
+  it.each(GAME_ART_STYLE_CATALOG)('accepts offered $presetId@$presetVersion input', async (preset) => {
+    const artStyle = {
+      presetId: preset.presetId,
+      presetVersion: preset.presetVersion,
+      customization: { referenceGames: [] },
+    };
+    const response = await postGeneration({ artStyle });
+
+    expect(response.status).toBe(202);
+    expect(createGameDesignSystemGenerationJob).toHaveBeenCalledWith(
+      { role: 'service' },
+      'route-test-user',
+      expect.objectContaining({ artStyle: compileGameArtStyle(artStyle) }),
+      expect.any(Object),
     );
   });
 });

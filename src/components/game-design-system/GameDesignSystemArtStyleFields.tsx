@@ -3,6 +3,8 @@
 import { useEffect } from 'react';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { GameArtStyleInput, GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
+import { DEFAULT_GAME_ART_STYLE_KEY, GAME_ART_STYLE_CATALOG, GAME_ART_STYLE_PRESETS_BY_KEY, gameArtStyleKey } from '@/lib/game-art-style/presets';
+import { GameArtStyleCatalog } from './GameArtStyleCatalog';
 import styles from './GameDesignSystemsPage.module.css';
 
 type ArtStyleReadError = { code: 'UNSUPPORTED_SNAPSHOT' } | null;
@@ -17,9 +19,10 @@ type Props = {
 };
 
 function inputFromSnapshot(snapshot: GameArtStyleSnapshot | null): GameArtStyleInput {
+  const fallback = GAME_ART_STYLE_PRESETS_BY_KEY[DEFAULT_GAME_ART_STYLE_KEY];
   return {
-    presetId: 'pixel-art',
-    presetVersion: 1,
+    presetId: snapshot?.presetId ?? fallback.presetId,
+    presetVersion: snapshot?.presetVersion ?? fallback.presetVersion,
     customization: snapshot?.customization ?? { direction: '', referenceGames: [], avoid: '' },
   };
 }
@@ -50,7 +53,7 @@ export function GameDesignSystemArtStyleFields({
           <div><span className={styles.eyebrow}>Version draft</span><h2 id="gds-version-art-heading" tabIndex={-1}>Art Style</h2></div>
         </div>
         <div className={styles.notice} role="status">This version contains an unsupported Art Style snapshot. It will be inherited exactly unless you explicitly replace it.</div>
-        <button className={styles.secondaryButton} type="button" onClick={() => onChange(inputFromSnapshot(null))}>Replace with Pixel Art</button>
+        <button className={styles.secondaryButton} type="button" onClick={() => onChange(inputFromSnapshot(null))}>Choose an offered preset</button>
       </section>
     );
   }
@@ -62,12 +65,14 @@ export function GameDesignSystemArtStyleFields({
           <div><span className={styles.eyebrow}>Version draft</span><h2 id="gds-version-art-heading" tabIndex={-1}>Art Style</h2></div>
         </div>
         <div className={styles.inlineEmpty}>No Art Style is specified in this version.</div>
-        <button className={styles.secondaryButton} type="button" onClick={() => onChange(inputFromSnapshot(null))}>Add Pixel Art</button>
+        <button className={styles.secondaryButton} type="button" onClick={() => onChange(inputFromSnapshot(null))}>Choose an offered preset</button>
       </section>
     );
   }
 
   const draft = value ?? inputFromSnapshot(originalSnapshot);
+  const selectedKey = gameArtStyleKey(draft.presetId, draft.presetVersion);
+  const selectedPreset = GAME_ART_STYLE_PRESETS_BY_KEY[selectedKey];
   const updateCustomization = (next: Partial<GameArtStyleInput['customization']>) => onChange({
     ...draft,
     customization: { ...draft.customization, ...next },
@@ -76,9 +81,18 @@ export function GameDesignSystemArtStyleFields({
   return (
     <section className={styles.artStyleEditor} aria-labelledby="gds-version-art-heading">
       <div className={styles.sectionHeading}>
-        <div><span className={styles.eyebrow}>Version draft</span><h2 id="gds-version-art-heading" tabIndex={-1}>Art Style</h2><p>Pixel Art / Revision 1{changed ? ' / Modified' : ' / Inherited'}</p></div>
+        <div><span className={styles.eyebrow}>Version draft</span><h2 id="gds-version-art-heading" tabIndex={-1}>Art Style</h2><p>{selectedPreset?.title ?? originalSnapshot?.title ?? 'Retired preset'} / Revision {draft.presetVersion}{changed ? ' / Modified' : ' / Inherited'}</p></div>
         {changed ? <button className={styles.secondaryButton} type="button" aria-label="Undo Art Style changes" onClick={() => onChange(null)}>Undo changes</button> : null}
       </div>
+      <GameArtStyleCatalog
+        catalog={GAME_ART_STYLE_CATALOG}
+        selectedKey={selectedKey}
+        onSelect={(key) => {
+          const preset = GAME_ART_STYLE_PRESETS_BY_KEY[key];
+          if (!preset) return;
+          onChange({ presetId: preset.presetId, presetVersion: preset.presetVersion, customization: draft.customization });
+        }}
+      />
       <div className={styles.artStyleFieldsStandalone}>
         <div className={styles.field}>
           <label htmlFor="gds-version-art-direction">Custom art direction</label>

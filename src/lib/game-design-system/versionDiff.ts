@@ -1,4 +1,4 @@
-import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
+import { parseRetainedGameArtStyleSnapshot } from '@/lib/game-art-style/presets';
 import { z } from 'zod';
 import { diffRuleSets, type GameDesignRuleDiff } from './ruleDiff';
 import type { GameDesignDocument, GameDesignRuleSet } from './ruleSchema';
@@ -120,9 +120,12 @@ function classifyArtStyleChange(parent: unknown | null, next: unknown | null): G
   if (parent === null) return 'added';
   if (next === null) return 'removed';
 
-  const parsedParent = gameArtStyleSnapshotSchema.safeParse(parent);
-  const parsedNext = gameArtStyleSnapshotSchema.safeParse(next);
-  if (parsedParent.success !== parsedNext.success) return 'preset_changed';
+  let parentSupported = false;
+  let nextSupported = false;
+  try { parseRetainedGameArtStyleSnapshot(parent); parentSupported = true; } catch {}
+  try { parseRetainedGameArtStyleSnapshot(next); nextSupported = true; } catch {}
+  if (parentSupported !== nextSupported) return 'preset_changed';
+  if (!parentSupported && !nextSupported) return 'preset_changed';
 
   const parentRecord = isRecord(parent) ? parent : null;
   const nextRecord = isRecord(next) ? next : null;

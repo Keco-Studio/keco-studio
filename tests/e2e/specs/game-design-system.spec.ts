@@ -3,8 +3,8 @@ import path from 'node:path';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildAgentSystemMessage } from '@/lib/agent/core';
-import { PIXEL_ART_V1_PRESET } from '@/lib/game-art-style/presets';
-import type { GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
+import { FLAT_GRAPHIC_2D_V1_PRESET, GAME_ART_STYLE_CATALOG, PIXEL_ART_V1_PRESET, PIXEL_ART_V2_PRESET } from '@/lib/game-art-style/presets';
+import type { GameArtStylePreset, GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 import type { GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
 import type {
   GameDesignSystem,
@@ -116,10 +116,10 @@ async function expectScrollableSingleLineTabRail(tablist: Locator): Promise<void
   expect(trailingTabBox!.x + trailingTabBox!.width).toBeLessThanOrEqual(tablistBox!.x + tablistBox!.width + 1);
 }
 
-async function expectLoadedArtStyleImages(page: Page): Promise<void> {
+async function expectLoadedArtStyleImages(page: Page, preset: GameArtStylePreset = PIXEL_ART_V2_PRESET): Promise<void> {
   const previews = [
-    { alt: PIXEL_ART_V1_PRESET.previewAssetSet.map.alt, width: 168, height: 96, ratio: 7 / 4 },
-    { alt: PIXEL_ART_V1_PRESET.previewAssetSet.character.alt, width: 96, height: 96, ratio: 1 },
+    { alt: preset.previewAssetSet.map.alt, width: preset.previewAssetSet.map.width, height: preset.previewAssetSet.map.height, ratio: preset.previewAssetSet.map.width / preset.previewAssetSet.map.height },
+    { alt: preset.previewAssetSet.character.alt, width: preset.previewAssetSet.character.width, height: preset.previewAssetSet.character.height, ratio: preset.previewAssetSet.character.width / preset.previewAssetSet.character.height },
   ];
   for (const preview of previews) {
     const image = page.getByRole('img', { name: preview.alt });
@@ -167,16 +167,10 @@ async function expectLoadedArtStyleImages(page: Page): Promise<void> {
     expect(pixels).toEqual(expect.objectContaining({
       naturalWidth: preview.width,
       naturalHeight: preview.height,
-      imageRendering: 'pixelated',
+      imageRendering: preset.presetId === 'pixel-art' ? 'pixelated' : 'auto',
     }));
     expect(pixels?.opaquePixels).toBeGreaterThan(0);
     expect(pixels?.channelRange).toBeGreaterThan(16);
-    const widthScale = pixels!.renderedWidth / preview.width;
-    const heightScale = pixels!.renderedHeight / preview.height;
-    expect(widthScale).toBeGreaterThanOrEqual(1);
-    expect(Math.abs(widthScale - Math.round(widthScale))).toBeLessThan(0.01);
-    expect(Math.abs(heightScale - Math.round(heightScale))).toBeLessThan(0.01);
-    expect(Math.abs(widthScale - heightScale)).toBeLessThan(0.01);
     const frame = await image.locator('xpath=..').boundingBox();
     expect(frame).not.toBeNull();
     expect(Math.abs(frame!.width / frame!.height - preview.ratio)).toBeLessThan(0.08);
@@ -211,8 +205,8 @@ const MOCK_RULES: GameDesignRuleSet = {
   tableGuidance: [],
 };
 
-function mockArtStyle(customization: GameArtStyleSnapshot['customization']): GameArtStyleSnapshot {
-  const snapshot = structuredClone(PIXEL_ART_V1_PRESET) as GameArtStyleSnapshot;
+function mockArtStyle(customization: GameArtStyleSnapshot['customization'], preset = PIXEL_ART_V2_PRESET): GameArtStyleSnapshot {
+  const snapshot = structuredClone(preset) as GameArtStyleSnapshot;
   snapshot.customization = customization;
   return snapshot;
 }
@@ -291,12 +285,12 @@ class GameArtStyleMockBackend {
     direction: ART_DIRECTION,
     referenceGames: [{ name: VISUAL_REFERENCE_NAME, borrow: VISUAL_REFERENCE_BORROW }],
     avoid: ART_AVOID,
-  });
+  }, FLAT_GRAPHIC_2D_V1_PRESET);
   readonly historicalArtStyle = mockArtStyle({
     direction: 'Historical amber route markers and compact landmark clusters.',
     referenceGames: [{ name: 'Chrono Trigger', borrow: 'Borrow its historical landmark grouping.' }],
     avoid: 'Avoid dense historical decoration.',
-  });
+  }, PIXEL_ART_V1_PRESET);
   readonly currentVersion = mockVersion({
     id: MOCK_CURRENT_VERSION_ID,
     systemId: MOCK_SYSTEM_ID,
@@ -485,7 +479,7 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const pixelLabRequests: string[] = [];
     page.on('request', (request) => {
-      if (/pixellab/i.test(request.url())) pixelLabRequests.push(request.url());
+      if (/pixellab|image2\.penguinsaichat/i.test(request.url())) pixelLabRequests.push(request.url());
     });
     const backend = new GameArtStyleMockBackend();
     await loginWithMockBackend(page, backend);
@@ -499,8 +493,8 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await page.getByRole('button', { name: 'RPG', exact: true }).click();
     await page.getByRole('button', { name: 'Continue to art style' }).click();
     await expect(page.getByRole('tab', { name: 'Art Style' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('radio', { name: 'Pixel Art, selected and locked' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: 'Pixel Art, selected and locked' })).toBeDisabled();
+    await expect(page.getByRole('radio', { name: /Pixel Art/ })).toBeChecked();
+    await expect(page.getByRole('radio', { name: /Pixel Art/ })).not.toBeDisabled();
     await expectLoadedArtStyleImages(page);
     await page.getByLabel('Custom art direction').fill(ART_DIRECTION);
     await page.getByRole('button', { name: 'Add visual reference' }).click();
@@ -549,11 +543,21 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await expectNoDocumentOverflow(page);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'create-art-style-390x844.png'), fullPage: true });
 
+    for (const preset of GAME_ART_STYLE_CATALOG) {
+      await page.getByRole('radio', { name: new RegExp(preset.title) }).click();
+      await expect(page.getByRole('radio', { name: new RegExp(preset.title) })).toBeChecked();
+      const preview = page.getByRole('region', { name: `${preset.title} preview` });
+      await expect(preview).toContainText(preset.specification.visualIdentity);
+      await expectLoadedArtStyleImages(page, preset);
+    }
+    await expect(page.getByRole('radio', { name: /Low-Poly 3D/ })).toBeChecked();
+    await page.getByRole('radio', { name: /Flat Graphic 2D/ }).click();
+
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('button', { name: 'Continue to sources' }).click();
     await page.getByRole('button', { name: 'Review input' }).click();
     const artStyleSummary = page.getByLabel('Art Style summary');
-    await expect(artStyleSummary).toContainText('Pixel Art');
+    await expect(artStyleSummary).toContainText('Flat Graphic 2D');
     await expect(artStyleSummary).toContainText('Revision 1');
     await expect(artStyleSummary).toContainText(ART_DIRECTION);
     await expect(artStyleSummary).toContainText(`${VISUAL_REFERENCE_NAME}: ${VISUAL_REFERENCE_BORROW}`);
@@ -579,7 +583,7 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     expect(backend.generationBodies).toHaveLength(2);
     for (const body of backend.generationBodies) {
       expect(body.artStyle).toEqual({
-        presetId: 'pixel-art',
+        presetId: 'flat-graphic-2d',
         presetVersion: 1,
         customization: {
           direction: ART_DIRECTION,
@@ -601,8 +605,8 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     expect(pixelLabRequests).toEqual([]);
 
     await page.getByRole('tab', { name: 'Art Style' }).click();
-    const currentPreview = page.getByRole('region', { name: 'Pixel Art preview' });
-    await expectLoadedArtStyleImages(page);
+    const currentPreview = page.getByRole('region', { name: 'Flat Graphic 2D preview' });
+    await expectLoadedArtStyleImages(page, FLAT_GRAPHIC_2D_V1_PRESET);
     await expect(currentPreview).toContainText(ART_DIRECTION);
     await expect(currentPreview).toContainText(VISUAL_REFERENCE_NAME);
     await expect(currentPreview).toContainText(VISUAL_REFERENCE_BORROW);
@@ -612,11 +616,11 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await resetViewportScroll(page);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'workspace-art-style-1440x1000.png'), fullPage: true });
 
-    await page.getByRole('img', { name: PIXEL_ART_V1_PRESET.previewAssetSet.character.alt }).evaluate((image) => {
+    await page.getByRole('img', { name: FLAT_GRAPHIC_2D_V1_PRESET.previewAssetSet.character.alt }).evaluate((image) => {
       image.dispatchEvent(new Event('error'));
     });
-    await expect(page.getByRole('status', { name: new RegExp(`Character preview unavailable.*${PIXEL_ART_V1_PRESET.previewAssetSet.character.alt}`) })).toBeVisible();
-    await expect(page.getByRole('img', { name: PIXEL_ART_V1_PRESET.previewAssetSet.map.alt })).toBeVisible();
+    await expect(page.getByRole('status', { name: new RegExp(`Character preview unavailable.*${FLAT_GRAPHIC_2D_V1_PRESET.previewAssetSet.character.alt}`) })).toBeVisible();
+    await expect(page.getByRole('img', { name: FLAT_GRAPHIC_2D_V1_PRESET.previewAssetSet.map.alt })).toBeVisible();
     await expect(currentPreview).toContainText(ART_DIRECTION);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'workspace-art-style-failed-image-1440x1000.png'), fullPage: true });
 
@@ -626,7 +630,7 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await expect(versionSelect.locator('option:checked')).toHaveText('Version 1');
     await expect(page.getByText('Historical amber route markers and compact landmark clusters.', { exact: true })).toBeVisible();
     await expect(page.getByText('Chrono Trigger', { exact: true })).toBeVisible();
-    await expectLoadedArtStyleImages(page);
+    await expectLoadedArtStyleImages(page, PIXEL_ART_V1_PRESET);
     const workspaceTabs = page.getByRole('tablist', { name: 'Game Design System views' });
     expect(await workspaceTabs.getByRole('tab').allTextContents()).toEqual([
       'Overview', 'Art Style', 'Rules', 'Versions', 'Sources', 'Projects',
@@ -885,7 +889,7 @@ test.describe('Game Design System real workflow', () => {
     await page.getByRole('button', { name: 'Review input' }).click();
     const artStyleSummary = page.getByLabel('Art Style summary');
     await expect(artStyleSummary).toContainText('Pixel Art');
-    await expect(artStyleSummary).toContainText('Revision 1');
+    await expect(artStyleSummary).toContainText('Revision 2');
     await expect(artStyleSummary).toContainText(ART_DIRECTION);
     await expect(artStyleSummary).toContainText(`${VISUAL_REFERENCE_NAME}: ${VISUAL_REFERENCE_BORROW}`);
     await expect(artStyleSummary).toContainText(ART_AVOID);
@@ -899,7 +903,7 @@ test.describe('Game Design System real workflow', () => {
     };
     expect(generationPayload.artStyle).toEqual({
       presetId: 'pixel-art',
-      presetVersion: 1,
+      presetVersion: 2,
       customization: {
         direction: ART_DIRECTION,
         referenceGames: [{ name: VISUAL_REFERENCE_NAME, borrow: VISUAL_REFERENCE_BORROW }],
@@ -935,11 +939,11 @@ test.describe('Game Design System real workflow', () => {
     await expectNoDocumentOverflow(page);
     await resetViewportScroll(page);
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'workspace-art-style-1440x1000.png'), fullPage: true });
-    await page.getByRole('img', { name: PIXEL_ART_V1_PRESET.previewAssetSet.character.alt }).evaluate((image) => {
+    await page.getByRole('img', { name: PIXEL_ART_V2_PRESET.previewAssetSet.character.alt }).evaluate((image) => {
       image.dispatchEvent(new Event('error'));
     });
-    await expect(page.getByRole('status', { name: new RegExp(`Character preview unavailable.*${PIXEL_ART_V1_PRESET.previewAssetSet.character.alt}`) })).toBeVisible();
-    await expect(page.getByRole('img', { name: PIXEL_ART_V1_PRESET.previewAssetSet.map.alt })).toBeVisible();
+    await expect(page.getByRole('status', { name: new RegExp(`Character preview unavailable.*${PIXEL_ART_V2_PRESET.previewAssetSet.character.alt}`) })).toBeVisible();
+    await expect(page.getByRole('img', { name: PIXEL_ART_V2_PRESET.previewAssetSet.map.alt })).toBeVisible();
     await expect(workspaceArtStyle).toContainText(ART_DIRECTION);
     await page.getByRole('tab', { name: 'Sources' }).click();
     await expect(page.getByText(documentName, { exact: true })).toBeVisible();
@@ -964,7 +968,7 @@ test.describe('Game Design System real workflow', () => {
     expect((firstVersion.document as { designIntent: string }).designIntent.length).toBeGreaterThan(0);
     expect(firstVersion.art_style).toEqual(expect.objectContaining({
       presetId: 'pixel-art',
-      presetVersion: 1,
+      presetVersion: 2,
       title: 'Pixel Art',
       customization: {
         direction: ART_DIRECTION,

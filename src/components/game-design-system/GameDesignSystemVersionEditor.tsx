@@ -415,6 +415,7 @@ function VersionReview({ base, reviewed }: { base: GameDesignSystemVersion; revi
         })}
       </dl></section> : null}
       {artChanged && nextArt ? <section aria-label="Art Style changes"><h3>Art Style</h3>{base.artStyleReadError ? <p className={styles.notice}>This replaces the inherited unsupported Art Style snapshot.</p> : null}<dl>
+        <ChangeRow label="Preset" before={base.artStyle ? `${base.artStyle.title} @ ${base.artStyle.presetVersion}` : undefined} after={`${nextArt.presetId} @ ${nextArt.presetVersion}`} />
         <ChangeRow label="Custom art direction" before={base.artStyle?.customization.direction} after={nextArt.customization.direction} />
         <ChangeRow label="Visual references" before={base.artStyle?.customization.referenceGames.map((reference) => `${reference.name}: ${reference.borrow}`)} after={nextArt.customization.referenceGames.map((reference) => `${reference.name}: ${reference.borrow}`)} />
         <ChangeRow label="Visual avoid guidance" before={base.artStyle?.customization.avoid} after={nextArt.customization.avoid} />

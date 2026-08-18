@@ -22,7 +22,8 @@ import {
   type GameDesignSystemVersionDiffNotRecorded,
   type GameDesignSystemVersionDiffV2,
 } from '@/lib/game-design-system/versionDiff';
-import { gameArtStyleSnapshotSchema, type GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
+import type { GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
+import { parseRetainedGameArtStyleSnapshot } from '@/lib/game-art-style/presets';
 
 export type GameDesignSystemSource = 'official' | 'user' | 'team';
 export type GameDesignSystemStatus = 'draft' | 'published';
@@ -138,9 +139,16 @@ export function hydrateGameDesignSystemVersionRow(
     ? buildCompatibilityGameDesignDocument(rules, metadata)
     : parseGameDesignDocument(row.document);
   const rawArtStyle = row.art_style;
-  const parsedArtStyle = rawArtStyle == null
-    ? null
-    : gameArtStyleSnapshotSchema.safeParse(rawArtStyle);
+  let parsedArtStyle: GameArtStyleSnapshot | null = null;
+  let artStyleSupported = rawArtStyle == null;
+  if (rawArtStyle != null) {
+    try {
+      parsedArtStyle = parseRetainedGameArtStyleSnapshot(rawArtStyle);
+      artStyleSupported = true;
+    } catch {
+      artStyleSupported = false;
+    }
+  }
   const diff = projectedDiff ?? projectStoredVersionDiff(row.diff);
   return {
     id: typeof row.id === 'string' ? row.id : '',
@@ -149,8 +157,8 @@ export function hydrateGameDesignSystemVersionRow(
     parent_version_id: typeof row.parent_version_id === 'string' ? row.parent_version_id : null,
     document,
     rules,
-    artStyle: parsedArtStyle && parsedArtStyle.success ? parsedArtStyle.data : null,
-    artStyleReadError: rawArtStyle != null && !parsedArtStyle?.success
+    artStyle: parsedArtStyle,
+    artStyleReadError: rawArtStyle != null && !artStyleSupported
       ? { code: 'UNSUPPORTED_SNAPSHOT' }
       : null,
     rendered_markdown: typeof row.rendered_markdown === 'string' ? row.rendered_markdown : '',
@@ -433,7 +441,7 @@ export async function createGameDesignSystemVersion(
   const artStyleValue = input.artStyle !== undefined
     ? input.artStyle
     : input.parentVersion?.artStyle ?? null;
-  const artStyle = artStyleValue == null ? null : gameArtStyleSnapshotSchema.parse(artStyleValue);
+  const artStyle = artStyleValue == null ? null : parseRetainedGameArtStyleSnapshot(artStyleValue);
   const parentRules = input.parentVersion ? parseRuleSet(input.parentVersion.rules) : null;
   const parentDocument = parentRules
     ? input.parentVersion?.document

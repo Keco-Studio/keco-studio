@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "releaseKey": "cel-shaded-3d@1",
+  "manifestPurpose": "Authoring provenance and review evidence; never a runtime registry input.",
+  "runtimeSource": "docs/superpowers/specs/game-art-styles/cel-shaded-3d/v1/preset.json",
+  "validation": {
+    "requireVisiblePixels": true,
+    "requireDistinctFinalHashes": true
+  },
+  "assets": [
+    {
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4450301,
+      "sha256": "770535810487fc6736cc087b88c7757e405cc2f825a5eb94a0dc13752fb12f50",
+      "alpha": "opaque",
+      "release": "cel-shaded-3d@1",
+      "kind": "map",
+      "variant": 1,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: stylized cel-shaded 3D game render with smooth modeled forms, graphic ink accents, and two-step lighting. Color palette: saturated green, bright blue, warm wood, orange-red accents, cool gray. Rendering technique: smooth 3D geometry, hard shadow bands, selective outlines, polished materials without photorealism. Primary request: a welcoming riverside village map in bright late-morning light. Composition/framing: wide 3:2 top-down three-quarter orthographic view; a broad diagonal dirt path crosses a clear blue river on a small wooden bridge; secondary paths branch toward open frame edges; include a timber workshop, practical gardens, warm stone, compact homes, and generous walkable space. Route hierarchy and landmarks must read at thumbnail size. Variant 1: vary building grouping and bridge approach while preserving the exact subject. Constraints: no people or creatures. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "f3fad7ff9316c054d5939804269cda7a9869402a354b7471416a8b64f8a5fc23",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    },
+    {
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1384823,
+      "sha256": "f16cc71642c250274aedc6a18e68e16cc7b2e6f835246d8328d78b4c0847e450",
+      "alpha": "opaque",
+      "release": "cel-shaded-3d@1",
+      "kind": "character",
+      "variant": 1,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: stylized cel-shaded 3D game render with smooth modeled forms, graphic ink accents, and two-step lighting. Color palette: saturated green, bright blue, warm wood, orange-red accents, cool gray. Rendering technique: smooth 3D geometry, hard shadow bands, selective outlines, polished materials without photorealism. Primary request: a clearly adult field cartographer, full body, practical layered field jacket, sturdy boots, compact satchel, rolled blank map case, compass and harmless survey tools. Composition/framing: centered three-quarter standing pose, entire silhouette visible with generous padding, simple neutral backdrop, friendly focused expression, natural adult anatomy. Variant 1: vary pose and equipment arrangement while preserving the exact subject. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "6e937624c157002493e34ee69884ae952ff85e18e7aacfe2276fb97bf6daec23",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    }
+  ],
+  "review": {
+    "release": "cel-shaded-3d@1",
+    "reviewers": [
+      {
+        "name": "Pascal",
+        "role": "independent visual reviewer"
+      },
+      {
+        "name": "Hubble",
+        "role": "independent visual reviewer"
+      }
+    ],
+    "selected": {
+      "map": 1,
+      "character": 1
+    },
+    "candidates": {
+      "map": [
+        {
+          "variant": 1,
+          "sha256": "770535810487fc6736cc087b88c7757e405cc2f825a5eb94a0dc13752fb12f50"
+        },
+        {
+          "variant": 2,
+          "sha256": "45972a747e50107eba054cb8841d43058e0ab8b52cdea18fbb3c707d21ac6c5f"
+        },
+        {
+          "variant": 3,
+          "sha256": "0194ba299185562e0814f7a810291ecec9244fc526b880878a3a7eec8c85a55b"
+        }
+      ],
+      "character": [
+        {
+          "variant": 1,
+          "sha256": "f16cc71642c250274aedc6a18e68e16cc7b2e6f835246d8328d78b4c0847e450"
+        },
+        {
+          "variant": 2,
+          "sha256": "69dfad9be787f7f6da593037a13fb248f3f877bf280012ecb1eb59f1a6308a4b"
+        },
+        {
+          "variant": 3,
+          "sha256": "811fb39a30e23d381d12c1294932afebe875a72fbbc2d8ebfaa9aa6900822372"
+        }
+      ]
+    },
+    "rubrics": {
+      "mapRouteReadability": "pass",
+      "adultAnatomy": "pass",
+      "styleBoundary": "pass",
+      "pairConsistency": "pass",
+      "noTextLogoOrWatermark": "pass",
+      "noArtistFranchiseOrCharacterImitation": "pass",
+      "celShadedAndLowPolyMutualExclusion": "pass"
+    },
+    "rejections": [
+      {
+        "kind": "map",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "map",
+        "variant": 3,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 3,
+        "reason": "Not selected after independent visual comparison."
+      }
+    ],
+    "contactSheets": {
+      "mapSha256": "c19c9ab0d3612604177147856712779de22ff2a58553fd1b2154cbeb758b4a7a",
+      "characterSha256": "7112140c7394a9b592152a5c8e01e13047488d91dec93d21454a9ba0bfc7c654",
+      "pairSha256": "e04571b314fc0523c6f5b59f5721220350e8aed3ae38eb8aa3911eb8f86d263a"
+    }
+  }
+}

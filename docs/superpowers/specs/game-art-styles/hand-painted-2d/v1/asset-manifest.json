@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "releaseKey": "hand-painted-2d@1",
+  "manifestPurpose": "Authoring provenance and review evidence; never a runtime registry input.",
+  "runtimeSource": "docs/superpowers/specs/game-art-styles/hand-painted-2d/v1/preset.json",
+  "validation": {
+    "requireVisiblePixels": true,
+    "requireDistinctFinalHashes": true
+  },
+  "assets": [
+    {
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4361311,
+      "sha256": "4e8e6293fdbe05163cde274103699db13c8a03a102b9d932a04ea5a57c4d08e0",
+      "alpha": "opaque",
+      "release": "hand-painted-2d@1",
+      "kind": "map",
+      "variant": 1,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: warm hand-painted 2D game illustration with visible brush texture, softened edges, and storybook environmental detail. Color palette: moss green, river blue, warm umber, muted coral, sunlit ochre. Rendering technique: layered opaque brushwork, selective detail, painterly light, readable value grouping. Primary request: a welcoming riverside village map in bright late-morning light. Composition/framing: wide 3:2 top-down three-quarter orthographic view; a broad diagonal dirt path crosses a clear blue river on a small wooden bridge; secondary paths branch toward open frame edges; include a timber workshop, practical gardens, warm stone, compact homes, and generous walkable space. Route hierarchy and landmarks must read at thumbnail size. Variant 1: vary building grouping and bridge approach while preserving the exact subject. Constraints: no people or creatures. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "83b09ae2affadd818ea579f67c947ef686cc56e5b04d7a410e9b9961be17c4b6",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    },
+    {
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1491608,
+      "sha256": "31e2994f65b495331cebfdb5750c7e50ebd18d1d114df1456005752b80bd002e",
+      "alpha": "opaque",
+      "release": "hand-painted-2d@1",
+      "kind": "character",
+      "variant": 3,
+      "submittedPrompt": "Use case: stylized-concept. Asset type: Game Art Style comparison preview. Style/medium: warm hand-painted 2D game illustration with visible brush texture, softened edges, and storybook environmental detail. Color palette: moss green, river blue, warm umber, muted coral, sunlit ochre. Rendering technique: layered opaque brushwork, selective detail, painterly light, readable value grouping. Primary request: a clearly adult field cartographer, full body, practical layered field jacket, sturdy boots, compact satchel, rolled blank map case, compass and harmless survey tools. Composition/framing: centered three-quarter standing pose, entire silhouette visible with generous padding, simple neutral backdrop, friendly focused expression, natural adult anatomy. Variant 3: vary pose and equipment arrangement while preserving the exact subject. No text, letters, numbers, signs with writing, logo, watermark, UI, frame, combat, weapon, horror, gore, ruins, dark fog, childlike anatomy, extra limbs, malformed hands, franchise imitation, artist imitation, or copyrighted character.",
+      "submittedPromptSha256": "18004e129fa9871969990c66f68a18e3d3349c7a9273d4172d8cfbd0f82112b7",
+      "endpointHash": "c064e527b26f0df20e93ee5dd520ddee2336f42a7f10dc1c0be316a733942cdb",
+      "model": "gpt-image-2"
+    }
+  ],
+  "review": {
+    "release": "hand-painted-2d@1",
+    "reviewers": [
+      {
+        "name": "Pascal",
+        "role": "independent visual reviewer"
+      },
+      {
+        "name": "Hubble",
+        "role": "independent visual reviewer"
+      }
+    ],
+    "selected": {
+      "map": 1,
+      "character": 3
+    },
+    "candidates": {
+      "map": [
+        {
+          "variant": 1,
+          "sha256": "4e8e6293fdbe05163cde274103699db13c8a03a102b9d932a04ea5a57c4d08e0"
+        },
+        {
+          "variant": 2,
+          "sha256": "33a9caad8a775da34bea1f111f59f2917c1c0ed38ef5e5099f7ee6f94efb4c48"
+        },
+        {
+          "variant": 3,
+          "sha256": "36ccae59436f5d00e671eebeac27f4c759155e7f43a625ee7b671d3e195212ed"
+        }
+      ],
+      "character": [
+        {
+          "variant": 1,
+          "sha256": "0b8d90c7faf018c66e43c7a013b42650967b2fbe354428ecd66936cc9ebf73f2"
+        },
+        {
+          "variant": 2,
+          "sha256": "a7821a67bf12191f1d32fbb6389742c3b04e7aef917fe694001583793b0af387"
+        },
+        {
+          "variant": 3,
+          "sha256": "31e2994f65b495331cebfdb5750c7e50ebd18d1d114df1456005752b80bd002e"
+        }
+      ]
+    },
+    "rubrics": {
+      "mapRouteReadability": "pass",
+      "adultAnatomy": "pass",
+      "styleBoundary": "pass",
+      "pairConsistency": "pass",
+      "noTextLogoOrWatermark": "pass",
+      "noArtistFranchiseOrCharacterImitation": "pass",
+      "celShadedAndLowPolyMutualExclusion": "pass"
+    },
+    "rejections": [
+      {
+        "kind": "map",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "map",
+        "variant": 3,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 1,
+        "reason": "Not selected after independent visual comparison."
+      },
+      {
+        "kind": "character",
+        "variant": 2,
+        "reason": "Not selected after independent visual comparison."
+      }
+    ],
+    "contactSheets": {
+      "mapSha256": "6c112f2220647d43c66c696ba2e06ed18dd4e05be00577807eac76cb1b4f623b",
+      "characterSha256": "810b0d83bf4e76e148f39e3d9a4f07dba34570d95c93451870b2f4967955670d",
+      "pairSha256": "d70c0f8a8148d058eb0093c3fa540af7d7c767451c01732eddcedb0568cc213a"
+    }
+  }
+}

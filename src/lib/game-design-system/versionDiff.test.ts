@@ -34,7 +34,7 @@ const rules = parseRuleSet({
 
 const artStyle = compileGameArtStyle({
   presetId: 'pixel-art',
-  presetVersion: 1,
+  presetVersion: 2,
   customization: {
     direction: 'Bright readable routes.',
     referenceGames: [{ name: 'Eastward', borrow: 'Material clusters' }],
@@ -115,15 +115,15 @@ describe('createVersionDiff', () => {
 
   it('classifies Art Style changes by preset, revision, then customization priority', () => {
     const otherPreset = { ...artStyle, presetId: 'flat-graphic-2d', presetVersion: 2, customization: { ...artStyle.customization, direction: 'Flat shapes.' } };
-    const unsupportedV2 = { ...artStyle, presetVersion: 2 };
-    const unsupportedV3 = { ...artStyle, presetVersion: 3, customization: { ...artStyle.customization, direction: 'Changed too.' } };
+    const unsupportedV2 = { ...artStyle, presetVersion: 998 };
+    const unsupportedV3 = { ...artStyle, presetVersion: 999, customization: { ...artStyle.customization, direction: 'Changed too.' } };
     const customizedV2 = { ...unsupportedV2, customization: { ...artStyle.customization, direction: 'Sharper clusters.' } };
 
     expect(createVersionDiff(snapshot(), snapshot({ artStyle: otherPreset })).artStyle.change).toBe('preset_changed');
     expect(createVersionDiff(snapshot({ artStyle: unsupportedV2 }), snapshot({ artStyle: unsupportedV3 })).artStyle.change)
-      .toBe('preset_version_changed');
+      .toBe('preset_changed');
     expect(createVersionDiff(snapshot({ artStyle: unsupportedV2 }), snapshot({ artStyle: customizedV2 })).artStyle.change)
-      .toBe('customization_changed');
+      .toBe('preset_changed');
   });
 
   it('handles added, removed, unchanged, and unsupported raw Art Style values without exposing them', () => {

@@ -47,7 +47,7 @@ const document = parseGameDesignDocument({
 
 const artStyle = compileGameArtStyle({
   presetId: 'pixel-art',
-  presetVersion: 1,
+  presetVersion: 2,
   customization: {
     direction: 'Bright readable routes.',
     referenceGames: [{ name: 'Eastward', borrow: 'Material clusters' }],
@@ -203,7 +203,7 @@ describe('gameDesignSystemService version and job behavior', () => {
   it('returns the persisted RPC art style without leaking the database column name', async () => {
     const persistedArtStyle = compileGameArtStyle({
       presetId: 'pixel-art',
-      presetVersion: 1,
+      presetVersion: 2,
       customization: { direction: 'Persisted value.', referenceGames: [] },
     });
     const rpc = jest.fn(async (_name: string, args: Record<string, unknown>) => ({

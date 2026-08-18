@@ -134,6 +134,11 @@
     "probe:mcp-capabilities": "tsx scripts/probe-mcp-capabilities.ts",
     "probe:mcp-load": "tsx scripts/load-mcp-phase-2.ts",
     "probe:pixellab-map": "tsx scripts/probe-pixellab-map.ts",
-    "scan:mcp-evidence": "tsx scripts/scan-mcp-evidence.ts"
+    "scan:mcp-evidence": "tsx scripts/scan-mcp-evidence.ts",
+    "art-style:probe": "tsx scripts/game-art-style/author.ts probe",
+    "art-style:generate": "tsx scripts/game-art-style/author.ts generate",
+    "art-style:contact-sheet": "tsx scripts/game-art-style/author.ts contact-sheet",
+    "art-style:record-review": "tsx scripts/game-art-style/author.ts record-review",
+    "art-style:publish": "tsx scripts/game-art-style/author.ts publish"
   }
 }

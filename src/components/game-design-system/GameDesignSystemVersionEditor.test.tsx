@@ -369,7 +369,7 @@ describe('GameDesignSystemVersionEditor', () => {
     setup({ baseVersion: version({ artStyle: null, artStyleReadError: { code: 'UNSUPPORTED_SNAPSHOT' } }), onCreate });
     await user.type(screen.getByLabelText('Design intent'), ' Updated.');
     await openSection(user, 'Art Style');
-    await user.click(screen.getByRole('button', { name: 'Replace with Pixel Art' }));
+    await user.click(screen.getByRole('button', { name: 'Choose an offered preset' }));
     expect(screen.getByRole('button', { name: 'Undo Art Style changes' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Undo Art Style changes' }));
     expect(screen.getByRole('status').textContent).toContain('unsupported Art Style snapshot');

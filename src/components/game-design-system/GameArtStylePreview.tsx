@@ -1,13 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { GAME_ART_STYLE_CATALOG } from '@/lib/game-art-style/presets';
 import type { GameArtStylePreviewAsset, GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 import styles from './GameDesignSystemsPage.module.css';
 
-type CatalogPreset = (typeof GAME_ART_STYLE_CATALOG)[number];
 type PreviewKey = 'map' | 'character';
+type CatalogPreset = (typeof GAME_ART_STYLE_CATALOG)[number];
 type PreviewMode = 'creation' | 'browse';
 type SpecificationKey = keyof GameArtStyleSnapshot['specification'];
 
@@ -27,7 +27,7 @@ const specificationGroups: Array<{
     id: 'craft',
     label: 'Craft',
     summaryKey: 'pixelTechnique',
-    fields: [['pixelTechnique', 'Pixel technique'], ['shapeLanguage', 'Shape language'], ['accessibility', 'Accessibility']],
+    fields: [['pixelTechnique', 'Rendering technique'], ['shapeLanguage', 'Shape language'], ['accessibility', 'Accessibility']],
   },
   {
     id: 'world',
@@ -69,50 +69,25 @@ function ArtStylePreviewFrame({
   frameClassName,
   label,
   onImageFailure,
+  pixelated,
 }: {
   asset: GameArtStylePreviewAsset;
   failed: boolean;
   frameClassName: string;
   label: string;
   onImageFailure: () => void;
+  pixelated: boolean;
 }) {
-  const frameRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-
-    const updateScale = () => {
-      const bounds = frame.getBoundingClientRect();
-      const nextScale = Math.max(1, Math.floor(Math.min(
-        bounds.width / asset.width,
-        bounds.height / asset.height,
-      )));
-      setScale((current) => current === nextScale ? current : nextScale);
-    };
-    updateScale();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateScale);
-      return () => window.removeEventListener('resize', updateScale);
-    }
-    const observer = new ResizeObserver(updateScale);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, [asset.height, asset.width]);
-
   return (
-    <div className={frameClassName} ref={frameRef}>
+    <div className={frameClassName} style={{ aspectRatio: `${asset.width} / ${asset.height}` }}>
       {failed ? (
         <div className={styles.artStyleImageUnavailable} role="status" aria-label={`${label} preview unavailable. ${asset.alt}`}>{label} preview unavailable.</div>
       ) : (
         <Image
-          className={styles.artStylePixelImage}
+          className={`${styles.artStylePreviewImage} ${pixelated ? styles.artStylePixelImage : ''}`}
           src={asset.publicPath}
           width={asset.width}
           height={asset.height}
-          style={{ width: asset.width * scale, height: asset.height * scale }}
           alt={asset.alt}
           unoptimized
           onError={onImageFailure}
@@ -141,7 +116,7 @@ export function GameArtStylePreview(props: Props) {
     ['Visual identity', summarize(preview.specification.visualIdentity)],
     ['Palette and lighting', summarize(preview.specification.paletteAndLighting)],
     ['Shape language', summarize(preview.specification.shapeLanguage)],
-    ['Pixel technique', summarize(preview.specification.pixelTechnique)],
+    ['Rendering technique', summarize(preview.specification.pixelTechnique)],
   ] as const;
 
   return (
@@ -164,6 +139,7 @@ export function GameArtStylePreview(props: Props) {
                 frameClassName={key === 'map' ? styles.artStyleMapFrame : styles.artStyleCharacterFrame}
                 label={label}
                 onImageFailure={() => markFailed(key)}
+                pixelated={preview.presetId === 'pixel-art'}
               />
               <figcaption>{label} study</figcaption>
             </figure>

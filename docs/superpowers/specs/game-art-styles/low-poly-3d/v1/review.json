@@ -1,0 +1,83 @@
+{
+  "release": "low-poly-3d@1",
+  "reviewers": [
+    {
+      "name": "Pascal",
+      "role": "independent visual reviewer"
+    },
+    {
+      "name": "Hubble",
+      "role": "independent visual reviewer"
+    }
+  ],
+  "selected": {
+    "map": 3,
+    "character": 2
+  },
+  "candidates": {
+    "map": [
+      {
+        "variant": 1,
+        "sha256": "6e762ced65393b7d267696ece946326d471f192552daded3066d493c8ed5f4f0"
+      },
+      {
+        "variant": 2,
+        "sha256": "3c11cf7420fe9ff9fa2fbfe4af4c15cebf8211878f326976ba0b48b3d059fb9c"
+      },
+      {
+        "variant": 3,
+        "sha256": "fad2b955d4d2acaab10ab33d833f44d7b7ab4be5b85f5c7953798952b20c6b1b"
+      }
+    ],
+    "character": [
+      {
+        "variant": 1,
+        "sha256": "e3251348b81fc0b474df35104684b1182bd9467c9363298906133857ffeda818"
+      },
+      {
+        "variant": 2,
+        "sha256": "9d84001a2858f7ff7b9dd70c981743825817e81f6454d01056657d3b96bddfc8"
+      },
+      {
+        "variant": 3,
+        "sha256": "6a49f965357a04c60c3996b6033b88036fa5c4e8859d34dbb58becfbc64a85a9"
+      }
+    ]
+  },
+  "rubrics": {
+    "mapRouteReadability": "pass",
+    "adultAnatomy": "pass",
+    "styleBoundary": "pass",
+    "pairConsistency": "pass",
+    "noTextLogoOrWatermark": "pass",
+    "noArtistFranchiseOrCharacterImitation": "pass",
+    "celShadedAndLowPolyMutualExclusion": "pass"
+  },
+  "rejections": [
+    {
+      "kind": "map",
+      "variant": 1,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "map",
+      "variant": 2,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "character",
+      "variant": 1,
+      "reason": "Not selected after independent visual comparison."
+    },
+    {
+      "kind": "character",
+      "variant": 3,
+      "reason": "Not selected after independent visual comparison."
+    }
+  ],
+  "contactSheets": {
+    "mapSha256": "7137908145c6c43ef085eacf08c7e9348d84f02e7caace956ca7174eb9012c46",
+    "characterSha256": "36b363319810b4e0ebb058f78e487b14ee923d8d7537ee6dbc1da9be57dc180c",
+    "pairSha256": "cfe1faf4742afcd45352d2499b1d083eb811950e5c067c4d60836ad6976b8ead"
+  }
+}

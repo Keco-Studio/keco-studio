@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "presetId": "pixel-art",
+  "presetVersion": 2,
+  "title": "Pixel Art",
+  "previewAssetSet": {
+    "id": "pixel-art-v2",
+    "map": {
+      "sourcePath": "public/game-art-styles/pixel-art/v2/map.png",
+      "publicPath": "/game-art-styles/pixel-art/v2/map.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 4426788,
+      "sha256": "25054c1f4cab5635ba2667f6cff88de6347f99a7b6df7aab1c570d6137d7adea",
+      "alpha": "opaque",
+      "alt": "A bright pixel art riverside village map with branching paths and a wooden bridge."
+    },
+    "character": {
+      "sourcePath": "public/game-art-styles/pixel-art/v2/character.png",
+      "publicPath": "/game-art-styles/pixel-art/v2/character.png",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 1139039,
+      "sha256": "dafd83c5ec5f6bf4d0ad69be69cca477338d319b9b1292e02fb7a6ca1b4fe0c8",
+      "alpha": "opaque",
+      "alt": "A full-body pixel art adult field cartographer with practical exploration gear."
+    },
+    "supporting": []
+  },
+  "specification": {
+    "characterDirection": "Build clearly adult characters with natural anatomy, practical layered equipment, grounded poses, and silhouettes that remain distinct at thumbnail size.",
+    "environmentDirection": "Compose maps around immediately legible traversal hierarchy, routes that continue beyond the frame, useful landmarks, and generous walkable space.",
+    "propDirection": "Give every prop a clear gameplay purpose, readable material grouping, and a silhouette that survives at gameplay scale without decorative clutter.",
+    "effectsDirection": "Keep effects compact, high contrast, and brief so they communicate timing without obscuring characters, landmarks, or traversal.",
+    "uiHudDirection": "Use compact panels, high-contrast icons, plain readable labels, and restrained ornament; interface meaning must never depend on the preview images.",
+    "accessibility": "Maintain value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker or visually noisy backgrounds.",
+    "visualIdentity": "Welcoming top-down adventure pixel art with practical landmarks, open routes, calm exploration, and intentional pixel clusters as the dominant visual read.",
+    "pixelTechnique": "Use crisp native-resolution pixel clusters without antialiasing, material-colored contours, selective internal outlines, two to four shade steps per material, and restrained dithering.",
+    "shapeLanguage": "Favor clean stepped silhouettes, breathable clusters, broad primary paths, compact secondary details, and off-center landmarks.",
+    "paletteAndLighting": "Use fresh greens, clear blues, honey timber, warm gray stone, terracotta accents, and pale golden daylight with short pixel-defined shadows.",
+    "animationDirection": "Animate on an integer pixel grid with economical key poses, stable volumes, intentional holds, and no subpixel interpolation."
+  }
+}
