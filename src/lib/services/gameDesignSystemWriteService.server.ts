@@ -14,7 +14,6 @@ import {
 } from '@/lib/game-design-system/ruleSchema';
 import { findReintroducedRuleIds } from '@/lib/game-design-system/ruleDiff';
 import {
-  canonicalJsonEqual,
   createVersionDiff,
 } from '@/lib/game-design-system/versionDiff';
 import {
@@ -177,6 +176,9 @@ function mapRpcError(error: { code?: string; message?: string } | null) {
   if (message.includes('IDEMPOTENCY_CONFLICT')) {
     return new PublicGameDesignSystemVersionError('IDEMPOTENCY_CONFLICT');
   }
+  if (message.includes('VERSION_NO_CHANGES')) {
+    return new PublicGameDesignSystemVersionError('VERSION_NO_CHANGES');
+  }
   if (message.includes('VERSION_STALE')) {
     return new PublicGameDesignSystemVersionError('VERSION_STALE');
   }
@@ -227,16 +229,6 @@ export async function createPublicGameDesignSystemVersion(
       ? null
       : compileGameArtStyle(request.artStyle);
   const parentArtStyle = inheritArtStyle ? null : await loadRawArtStyle(serviceClient, parent.id);
-
-  const noOp = inheritArtStyle
-    ? canonicalJsonEqual({ document: parentDocument, rules: parentRules }, { document, rules })
-    : canonicalJsonEqual(
-      { document: parentDocument, rules: parentRules, artStyle: parentArtStyle },
-      { document, rules, artStyle: artStyleJson },
-    );
-  if (noOp) {
-    throw new PublicGameDesignSystemVersionError('VERSION_NO_CHANGES');
-  }
 
   if (request.rules !== undefined) {
     const ancestors = await loadAncestorRules(serviceClient, parent);

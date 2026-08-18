@@ -25,6 +25,10 @@ const losslessArtInheritancePath = join(process.cwd(), 'supabase/migrations/2026
 const losslessArtInheritanceSql = existsSync(losslessArtInheritancePath)
   ? readFileSync(losslessArtInheritancePath, 'utf8')
   : '';
+const noOpIdempotencyPath = join(process.cwd(), 'supabase/migrations/20260818210000_game_design_system_version_noop_idempotency.sql');
+const noOpIdempotencySql = existsSync(noOpIdempotencyPath)
+  ? readFileSync(noOpIdempotencyPath, 'utf8')
+  : '';
 
 describe('Game Design Rule System migration contract', () => {
   it('creates immutable versions and pins project bindings', () => {
@@ -245,5 +249,23 @@ describe('Game Design Rule System migration contract', () => {
     expect(losslessArtInheritanceSql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*boolean[\s\S]*to service_role/i);
     expect(losslessArtInheritanceSql).not.toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to (?:public|anon|authenticated)/i);
     expect(losslessArtInheritanceSql).toMatch(/notify pgrst, 'reload schema'/i);
+  });
+
+  it('checks keyed idempotency replay before enforcing canonical no-ops', () => {
+    const finalFunction = noOpIdempotencySql.match(
+      /create (?:or replace )?function public\.create_game_design_system_version\([\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+    const replayAt = finalFunction.search(/idempotency_key = p_idempotency_key/i);
+    const noOpAt = finalFunction.search(/VERSION_NO_CHANGES/i);
+    const insertAt = finalFunction.search(/insert into public\.game_design_system_versions/i);
+
+    expect(noOpIdempotencySql).toMatch(/20260818200000/i);
+    expect(finalFunction).toMatch(
+      /p_idempotency_key is not null[\s\S]*p_document is not distinct from v_parent_version\.document[\s\S]*p_rules is not distinct from v_parent_version\.rules[\s\S]*v_effective_art_style is not distinct from v_parent_version\.art_style/i,
+    );
+    expect([replayAt, noOpAt, insertAt].every((index) => index >= 0)).toBe(true);
+    expect(replayAt).toBeLessThan(noOpAt);
+    expect(noOpAt).toBeLessThan(insertAt);
+    expect(noOpIdempotencySql).toMatch(/grant execute on function public\.create_game_design_system_version\([\s\S]*to service_role/i);
   });
 });

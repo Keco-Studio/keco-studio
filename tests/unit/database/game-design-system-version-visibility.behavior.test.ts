@@ -334,12 +334,14 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
         label: 'CAS first contender',
         hashCharacter: '2',
         idempotencyKey: randomUUID(),
+        versionRules: { ...rules, genres: ['First contender'] },
       })),
       fixture.svc.rpc('create_game_design_system_version', versionRpcArgs({
         ...shared,
         label: 'CAS second contender',
         hashCharacter: '3',
         idempotencyKey: randomUUID(),
+        versionRules: { ...rules, genres: ['Second contender'] },
       })),
     ]);
 
@@ -676,6 +678,52 @@ describeDb('Game Design System pinned version visibility (live database)', () =>
       actorId: fixture.outsider.id,
       idempotencyKey,
       request: buildDifferentRequest(parentVersionId),
+    })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  });
+
+  it('checks idempotency before rejecting a parent-equivalent retry as a no-op', async () => {
+    const casSystemId = await createCasSystem();
+    const initial = await fixture.svc.from('game_design_system_versions').insert({
+      system_id: casSystemId,
+      version_number: 1,
+      document: designDocument,
+      rules,
+      art_style: null,
+      rendered_markdown: '# No-op idempotency base',
+      source_snapshots: [],
+      diff: { added: [], removed: [], changed: [], conflicts: [] },
+      conflicts: [],
+      content_hash: '6'.repeat(64),
+      created_by: fixture.outsider.id,
+    }).select('id').single();
+    expect(initial.error).toBeNull();
+    const parentVersionId = String(initial.data?.id ?? '');
+    const setCurrent = await fixture.svc.from('game_design_systems')
+      .update({ current_version_id: parentVersionId })
+      .eq('id', casSystemId);
+    expect(setCurrent.error).toBeNull();
+
+    const idempotencyKey = randomUUID();
+    await createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey,
+      request: {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        document: { ...designDocument, gameBackground: 'A changed document for the first keyed write.' },
+      },
+    });
+
+    await expect(createPublicGameDesignSystemVersion(fixture.svc, {
+      systemId: casSystemId,
+      actorId: fixture.outsider.id,
+      idempotencyKey,
+      request: {
+        parentVersionId,
+        expectedCurrentVersionId: parentVersionId,
+        document: designDocument,
+      },
     })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
   });
 

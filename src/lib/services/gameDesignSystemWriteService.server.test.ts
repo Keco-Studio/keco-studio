@@ -231,7 +231,7 @@ describe('createPublicGameDesignSystemVersion', () => {
     expect(result.artStyleReadError).toBeNull();
   });
 
-  it('rejects a canonical no-op without calling the RPC', async () => {
+  it('defers a canonical no-op to the RPC after idempotency handling', async () => {
     const reorderedRules = {
       rules: rules.rules.map((rule) => ({
         severity: rule.severity,
@@ -247,12 +247,18 @@ describe('createPublicGameDesignSystemVersion', () => {
       genres: rules.genres,
       schemaVersion: 1,
     };
-    const { client, rpc } = mockServiceClient({ versions: [versionRow({ rules: reorderedRules })] });
+    const { client, rpc } = mockServiceClient({
+      versions: [versionRow({ rules: reorderedRules })],
+      rpcError: { code: 'P0001', message: 'VERSION_NO_CHANGES' },
+    });
 
     await expect(createPublicGameDesignSystemVersion(client, createInput({ rules }))).rejects.toMatchObject({
       code: 'VERSION_NO_CHANGES',
     });
-    expect(rpc).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('create_game_design_system_version', expect.objectContaining({
+      p_parent_version_id: parentId,
+      p_idempotency_key: idempotencyKey,
+    }));
   });
 
   it.each([
