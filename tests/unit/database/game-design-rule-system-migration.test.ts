@@ -17,6 +17,8 @@ const atomicVersionPath = join(process.cwd(), 'supabase/migrations/2026081402900
 const atomicVersionSql = existsSync(atomicVersionPath) ? readFileSync(atomicVersionPath, 'utf8') : '';
 const atomicRepairPath = join(process.cwd(), 'supabase/migrations/20260814030000_game_design_system_atomic_version_repairs.sql');
 const atomicRepairSql = existsSync(atomicRepairPath) ? readFileSync(atomicRepairPath, 'utf8') : '';
+const artStylePath = join(process.cwd(), 'supabase/migrations/20260817140000_game_design_system_art_style.sql');
+const artStyleSql = existsSync(artStylePath) ? readFileSync(artStylePath, 'utf8') : '';
 
 describe('Game Design Rule System migration contract', () => {
   it('creates immutable versions and pins project bindings', () => {
@@ -141,5 +143,18 @@ describe('Game Design Rule System migration contract', () => {
   it('preserves immutable generation provenance when deleting jobs', () => {
     expect(atomicRepairSql).toMatch(/foreign key \(generation_job_id\)[\s\S]*on delete restrict/i);
     expect(atomicRepairSql).not.toMatch(/foreign key \(generation_job_id\)[\s\S]*on delete set null/i);
+  });
+
+  it('stores a bounded nullable art style snapshot through the atomic version RPC', () => {
+    expect(artStyleSql).toMatch(/add column (?:if not exists )?art_style jsonb/i);
+    expect(artStyleSql).toMatch(/art_style is null or jsonb_typeof\(art_style\) = 'object'/i);
+    expect(artStyleSql).toMatch(/octet_length\(art_style::text\) <= 32768/i);
+    expect(artStyleSql).toMatch(/p_art_style jsonb/i);
+    expect(artStyleSql).toMatch(/generation_job_id = p_generation_job_id/i);
+    expect(artStyleSql).toMatch(/regexp_replace\([\s\S]*__KECO_ATOMIC_VERSION_LINE__/i);
+    expect(artStyleSql).toMatch(/insert into public\.game_design_system_versions[\s\S]*art_style/i);
+    expect(artStyleSql).toMatch(/grant select \([\s\S]*art_style[\s\S]*\) on public\.game_design_system_versions to authenticated/i);
+    expect(artStyleSql).not.toMatch(/grant select \([\s\S]*source_snapshots[\s\S]*\) on public\.game_design_system_versions to authenticated/i);
+    expect(artStyleSql).toMatch(/revoke all on function public\.create_game_design_system_version[\s\S]*from public, anon, authenticated/i);
   });
 });

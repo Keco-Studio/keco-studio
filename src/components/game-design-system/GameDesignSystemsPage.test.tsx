@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TextEncoder } from 'util';
 import { GameDesignSystemsPage } from './GameDesignSystemsPage';
@@ -41,10 +41,59 @@ const designDocument = {
   difficultyBalance: 'Increase decision pressure instead of inflating stats.',
   experiencePresentation: 'Show intent, costs, and state changes at the point of action.',
 };
+const artStyleSnapshot = {
+  schemaVersion: 1 as const,
+  presetId: 'pixel-art' as const,
+  presetVersion: 1 as const,
+  title: 'Pixel Art' as const,
+  previewAssetSet: {
+    id: 'pixel-art-v1' as const,
+    map: {
+      sourcePath: 'public/game-art-styles/pixel-art/v1/map.png',
+      publicPath: '/game-art-styles/pixel-art/v1/map.png',
+      width: 168,
+      height: 96,
+      alt: 'A bright pixel art riverside village map with branching paths, gardens, workshops, and a wooden bridge.',
+      sha256: 'a'.repeat(64),
+      bytes: 18174,
+      alpha: 'opaque' as const,
+    },
+    character: {
+      sourcePath: 'public/game-art-styles/pixel-art/v1/character.png',
+      publicPath: '/game-art-styles/pixel-art/v1/character.png',
+      width: 96,
+      height: 96,
+      alt: 'A full-body pixel art field cartographer with a satchel and practical exploration gear.',
+      sha256: 'b'.repeat(64),
+      bytes: 2514,
+      alpha: 'transparent' as const,
+    },
+    supporting: [],
+  },
+  specification: {
+    visualIdentity: 'Welcoming top-down adventure pixel art with practical landmarks, open routes, and calm exploration as the dominant visual read.',
+    pixelTechnique: 'Use crisp native-resolution pixel clusters without antialiasing, one-pixel material-colored contours, selective internal outlines, and two or three deliberate shade steps per material.',
+    shapeLanguage: 'Favor clear asymmetrical silhouettes, breathable clusters, broad primary paths, compact secondary details, and off-center landmarks over perfect symmetry or enclosed arenas.',
+    paletteAndLighting: 'Use fresh greens, clear blues, honey and walnut timber, warm gray stone, restrained terracotta, and pale golden daylight with short readable shadows cast down-right.',
+    characterDirection: 'Build clearly adult characters with natural anatomy, grounded practical poses, readable equipment, friendly neutral expressions, and silhouettes that remain distinct at thumbnail size.',
+    environmentDirection: 'Compose maps around immediately legible traversal hierarchy, multiple routes continuing beyond the frame, recognizable material zones, and useful landmarks with generous walkable space.',
+    propDirection: 'Construct props from simple readable masses, limited material palettes, and restrained highlights; each prop should communicate one gameplay purpose without decorative clutter.',
+    effectsDirection: 'Keep effects compact and rhythmic with a strong core shape, a limited frame-to-frame palette, and brief readable accents that do not obscure characters or traversal.',
+    uiHudDirection: 'Use compact pixel-aligned panels, high-contrast icons, plain readable labels, and restrained ornament; UI must remain legible without relying on the preview images.',
+    animationDirection: 'Animate with economical key poses, stable silhouettes, intentional holds, and consistent pixel volumes; avoid subpixel movement and automatic smoothing.',
+    accessibility: 'Maintain clear value separation between walkable terrain, obstacles, characters, and interaction targets; never rely on hue alone, and avoid flicker, generated text, horror, gore, or uncanny anatomy.',
+  },
+  customization: {
+    direction: 'Keep route markers warm and immediately readable.',
+    referenceGames: [{ name: 'Eastward', borrow: 'Compact material clusters and practical props.' }],
+    avoid: 'Avoid muddy silhouettes and decorative clutter.',
+  },
+};
 const version = {
   id: 'version-1', system_id: 'system-1', version_number: 1, parent_version_id: null,
   document: designDocument,
   rules: { schemaVersion: 1, genres: ['Strategy'], philosophies: ['Readable Systems'], suitableFor: 'Tactical games', rules: [{ id: 'readable-state', kind: 'principle', title: 'Readable state', statement: 'Show inputs.', appliesWhen: 'Choosing.', severity: 'required' }], tableGuidance: [] },
+  artStyle: artStyleSnapshot,
   rendered_markdown: '# Tactical Rules', source_snapshots: [], diff: { added: ['readable-state'], removed: [], changed: [], conflicts: [] }, conflicts: [], content_hash: 'a'.repeat(64), created_by: 'user-1', created_at: '',
 };
 
@@ -168,6 +217,92 @@ describe('GameDesignSystemsPage', () => {
 
     expect(screen.getByText('readable-state')).toBeTruthy();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('shows the current immutable art style snapshot between Overview and Rules', async () => {
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    const viewTabs = within(screen.getByRole('tablist', { name: 'Game Design System views' })).getAllByRole('tab');
+    expect(viewTabs.map((tab) => tab.textContent)).toEqual(['Overview', 'Art Style', 'Rules', 'Versions', 'Sources', 'Projects']);
+    await user.click(screen.getByRole('tab', { name: 'Art Style' }));
+
+    expect(screen.getByRole('img', { name: artStyleSnapshot.previewAssetSet.map.alt })).toBeTruthy();
+    expect(screen.getByRole('img', { name: artStyleSnapshot.previewAssetSet.character.alt })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Visual DNA' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Art style sections' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Craft' }).getAttribute('href')).toBe('#art-style-browse-craft');
+    expect(screen.getByRole('button', { name: 'Visual identity' }).getAttribute('aria-expanded')).toBe('true');
+    for (const group of ['Craft', 'World', 'Production']) {
+      const toggle = screen.getByRole('button', { name: new RegExp(`^${group}`) });
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      await user.click(toggle);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    }
+    expect(screen.getByText('Revision 1')).toBeTruthy();
+    for (const value of Object.values(artStyleSnapshot.specification)) expect(screen.getByText(value)).toBeTruthy();
+    expect(screen.getByText(artStyleSnapshot.customization.direction)).toBeTruthy();
+    expect(screen.getByText(artStyleSnapshot.customization.referenceGames[0].name)).toBeTruthy();
+    expect(screen.getByText(artStyleSnapshot.customization.referenceGames[0].borrow)).toBeTruthy();
+    expect(screen.getByText(artStyleSnapshot.customization.avoid)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /edit art style/i })).toBeNull();
+  });
+
+  it('shows the stored historical art style snapshot after switching versions', async () => {
+    const user = userEvent.setup();
+    const historicalArtStyle = {
+      ...artStyleSnapshot,
+      specification: {
+        ...artStyleSnapshot.specification,
+        visualIdentity: 'Historical stored identity independent from the current preset registry.',
+      },
+      customization: {
+        direction: 'Historical amber route markers.',
+        referenceGames: [{ name: 'Chrono Trigger', borrow: 'Historical landmark grouping.' }],
+        avoid: 'Historical avoid guidance.',
+      },
+    };
+    const current = { ...version, id: 'version-2', version_number: 2, parent_version_id: 'version-1' };
+    const historical = { ...version, artStyle: historicalArtStyle };
+    fetchDetail.mockResolvedValue({ ...system, current_version_id: current.id, current_version: current, versions: [current, historical] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Art Style' }));
+    expect(screen.getByText(artStyleSnapshot.specification.visualIdentity)).toBeTruthy();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Version' }), historical.id);
+
+    expect(screen.getByText(historicalArtStyle.specification.visualIdentity)).toBeTruthy();
+    expect(screen.getByText(historicalArtStyle.customization.direction)).toBeTruthy();
+    expect(screen.queryByText(artStyleSnapshot.specification.visualIdentity)).toBeNull();
+  });
+
+  it('shows the exact legacy art style empty state without affecting other views', async () => {
+    const user = userEvent.setup();
+    const legacyVersion = { ...version, artStyle: null };
+    fetchDetail.mockResolvedValue({ ...system, current_version: legacyVersion, versions: [legacyVersion] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Art Style' }));
+    expect(screen.getByText('No art style specified').textContent).toBe('No art style specified');
+    await user.click(screen.getByRole('tab', { name: 'Rules' }));
+    expect(screen.getByText('readable-state')).toBeTruthy();
+  });
+
+  it('isolates a failed art style image while keeping the other image and text readable', async () => {
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Art Style' }));
+    fireEvent.error(screen.getByRole('img', { name: artStyleSnapshot.previewAssetSet.map.alt }));
+
+    expect(screen.getByRole('status', { name: `Map preview unavailable. ${artStyleSnapshot.previewAssetSet.map.alt}` })).toBeTruthy();
+    expect(screen.getByRole('img', { name: artStyleSnapshot.previewAssetSet.character.alt })).toBeTruthy();
+    expect(screen.getByText(artStyleSnapshot.specification.visualIdentity)).toBeTruthy();
+    expect(screen.getByText(artStyleSnapshot.customization.direction)).toBeTruthy();
   });
 
   it('renders every selected-system view from loaded data', async () => {

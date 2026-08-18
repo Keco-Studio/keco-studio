@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { MenuOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
-import { Tooltip } from 'antd';
 import { CSS } from '@dnd-kit/utilities';
 import { useSortable } from '@dnd-kit/sortable';
 import type {
@@ -260,25 +259,24 @@ export function ScriptEditableDialogBlock({
             <div className={styles.editControls} data-edit-controls="">
               {showChrome ? (
                 <>
-                  <Tooltip title="Drag to reorder">
-                    <button
-                      type="button"
-                      className={styles.dragHandle}
-                      aria-label="Drag to reorder"
-                      {...attributes}
-                      {...listeners}
-                      onPointerDown={(event) => {
-                        void commitDrafts();
-                        listeners?.onPointerDown?.(event);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === ' ' || event.key === 'Enter') void commitDrafts();
-                        listeners?.onKeyDown?.(event);
-                      }}
-                    >
-                      <MenuOutlined aria-hidden />
-                    </button>
-                  </Tooltip>
+                  <button
+                    type="button"
+                    className={styles.dragHandle}
+                    aria-label="Drag to reorder"
+                    title="Drag to reorder"
+                    {...attributes}
+                    {...listeners}
+                    onPointerDown={(event) => {
+                      void commitDrafts();
+                      listeners?.onPointerDown?.(event);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === ' ' || event.key === 'Enter') void commitDrafts();
+                      listeners?.onKeyDown?.(event);
+                    }}
+                  >
+                    <MenuOutlined aria-hidden />
+                  </button>
                   <button
                     type="button"
                     className={styles.deleteThreadButton}

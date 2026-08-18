@@ -7,10 +7,12 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { Avatar, Dropdown, Modal } from 'antd';
+import { createPortal } from 'react-dom';
+import { Avatar, Dropdown } from 'antd';
 import { DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
+import dialog from '@/components/shared/FormDialog.module.css';
 import homeMorehorizontalIcon from '@/assets/images/homeMorehorizontalIcon.svg';
 import homeQuestionIcon from '@/assets/images/homeQuestionIcon.svg';
 import homeMessageIcon from '@/assets/images/loginMessageIcon.svg';
@@ -24,9 +26,10 @@ import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { LibraryHeader } from '@/components/libraries/LibraryHeader';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import { PresenceMembersStack } from '@/components/collaboration/PresenceMembersStack';
-import { showSuccessToast } from '@/lib/utils/toast';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import searchIcon from "@/assets/images/searchIcon.svg";
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import { useSidebarProjects } from './hooks/useSidebarProjects';
 import { useSidebarFoldersLibraries } from './hooks/useSidebarFoldersLibraries';
 import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
@@ -736,22 +739,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       });
 
       if (result.updated === 0) {
-        setCellReplacePreview({
-          updated: 0,
-          skipped: result.skipped ?? cellReplacePreview?.updated ?? 1,
-          previews: [],
-          skips:
-            result.skips?.length > 0
-              ? result.skips
-              : [
-                {
-                  fieldLabel: cellReplacePendingHit?.fieldLabel ?? 'Cells',
-                  reason:
-                    'No cells were saved. You may lack edit permission, or values changed since preview.',
-                },
-              ],
-        });
-        setCellReplaceModalOpen(true);
+        const reason =
+          result.skips?.[0]?.reason ??
+          'No cells were saved. You may lack edit permission, or values changed since preview.';
+        showErrorToast(reason);
+        setCellReplaceModalOpen(false);
+        setCellReplacePreview(null);
         return;
       }
 
@@ -813,28 +806,15 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         error instanceof Error && 'skips' in error
           ? (error as Error & { skips?: Array<{ fieldLabel: string; reason: string }> }).skips
           : undefined;
-      setCellReplacePreview({
-        updated: 0,
-        skipped: apiSkips?.length ?? 1,
-        previews: [],
-        skips:
-          apiSkips && apiSkips.length > 0
-            ? apiSkips
-            : [
-              {
-                fieldLabel: cellReplacePendingHit?.fieldLabel ?? 'Cells',
-                reason: message,
-              },
-            ],
-      });
-      setCellReplaceModalOpen(true);
+      showErrorToast(apiSkips?.[0]?.reason ?? message);
+      setCellReplaceModalOpen(false);
+      setCellReplacePreview(null);
     } finally {
       setCellReplaceLoading(false);
     }
   }, [
     cellReplacePendingHit,
     cellReplacePendingMode,
-    cellReplacePreview,
     clearCellSearchFocusState,
     currentLibraryId,
     runCellReplaceRequest,
@@ -1879,64 +1859,83 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         </div>
       </div>
 
-      <Modal
-        title={cellReplacePendingMode === 'all' ? 'Replace all matching cells' : 'Replace cell value'}
-        open={cellReplaceModalOpen}
-        onCancel={() => {
-          if (!cellReplaceLoading) {
-            setCellReplaceModalOpen(false);
-            setCellReplacePreview(null);
-          }
-        }}
-        onOk={confirmCellReplace}
-        okText="Confirm replace"
-        cancelText="Cancel"
-        confirmLoading={cellReplaceLoading}
-        okButtonProps={{
-          disabled:
-            cellReplaceLoading ||
-            !cellReplacePreview ||
-            cellReplacePreview.updated === 0,
-        }}
-      >
-        {cellReplaceLoading && !cellReplacePreview ? (
-          <p>Validating types...</p>
-        ) : cellReplacePreview ? (
-          <div>
-            <p>
-              Cells containing &quot;{searchQuery.trim()}&quot; will have their value set to &quot;
-              {cellReplaceText}&quot;.
-            </p>
-            <p>
-              {cellReplacePreview.updated} cell(s) will be updated, {cellReplacePreview.skipped}{' '}
-              skipped.
-            </p>
-            {cellReplacePreview.previews.length > 0 && (
-              <ul className={styles.cellReplacePreviewList}>
-                {cellReplacePreview.previews.slice(0, 5).map((item, index) => (
-                  <li key={`preview-${index}`}>
-                    <strong>{item.fieldLabel}</strong>: &quot;{item.beforeDisplay}&quot; → &quot;
-                    {item.afterDisplay}&quot;
-                  </li>
-                ))}
-              </ul>
-            )}
-            {cellReplacePreview.skips.length > 0 && (
-              <ul className={styles.cellReplaceSkipList}>
-                {cellReplacePreview.skips.slice(0, 5).map((item, index) => (
-                  <li key={`skip-${index}`}>
-                    <strong>{item.fieldLabel}</strong>: {item.reason}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className={styles.cellReplaceHint}>
-              The full cell value is replaced, not just the matched text. Types are validated
-              before save.
-            </p>
-          </div>
-        ) : null}
-      </Modal>
+      {cellReplaceModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className={dialog.backdrop}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !cellReplaceLoading) {
+                setCellReplaceModalOpen(false);
+                setCellReplacePreview(null);
+              }
+            }}
+          >
+            <div
+              className={`${dialog.modal} ${dialog.modalCompact} ${styles.cellReplaceConfirmModal}`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cell-replace-confirm-title"
+            >
+              <div className={dialog.header}>
+                <div id="cell-replace-confirm-title" className={dialog.title}>
+                  {cellReplacePendingMode === 'all'
+                    ? 'Replace all matching cells'
+                    : 'Replace cell value'}
+                </div>
+                <button
+                  type="button"
+                  className={dialog.close}
+                  onClick={() => {
+                    if (!cellReplaceLoading) {
+                      setCellReplaceModalOpen(false);
+                      setCellReplacePreview(null);
+                    }
+                  }}
+                  aria-label="Close"
+                  disabled={cellReplaceLoading}
+                >
+                  <Image src={closeIcon} alt="" width={32} height={32} className="icon-32" />
+                </button>
+              </div>
+
+              <div className={styles.cellReplaceConfirmBody}>
+                {cellReplaceLoading && !cellReplacePreview ? (
+                  <p>Validating types...</p>
+                ) : (
+                  <p>Are you sure you want to replace?</p>
+                )}
+              </div>
+
+              <div className={dialog.footer}>
+                <button
+                  type="button"
+                  className={`${dialog.button} ${dialog.buttonAuto} ${dialog.secondary} ${dialog.importCancel}`}
+                  onClick={() => {
+                    if (!cellReplaceLoading) {
+                      setCellReplaceModalOpen(false);
+                      setCellReplacePreview(null);
+                    }
+                  }}
+                  disabled={cellReplaceLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`${dialog.button} ${dialog.importSubmit}`}
+                  onClick={() => void confirmCellReplace()}
+                  disabled={cellReplaceLoading}
+                >
+                  {cellReplaceLoading && cellReplacePreview
+                    ? 'Replacing...'
+                    : 'Confirm replace'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {isDocumentDetail && currentProjectId && (
         <InviteCollaboratorModal

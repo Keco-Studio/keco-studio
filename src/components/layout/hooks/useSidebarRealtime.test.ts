@@ -291,7 +291,9 @@ describe('sidebar library realtime invalidation', () => {
       invalidateQueries: jest.fn<(
         filters: { queryKey: readonly unknown[] }
       ) => Promise<void>>(async () => undefined),
-      refetchQueries: jest.fn(async () => undefined),
+      refetchQueries: jest.fn<(
+        filters: { queryKey: readonly unknown[]; type?: 'active' }
+      ) => Promise<void>>(async () => undefined),
     };
 
     await invalidateSidebarLibraryChange(
@@ -305,5 +307,12 @@ describe('sidebar library realtime invalidation', () => {
       JSON.stringify(filters.queryKey) === JSON.stringify(queryKeys.library('library-1'))
     ));
     expect(detailCalls).toHaveLength(1);
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.libraryAssets('library-1'),
+    });
+    expect(queryClient.refetchQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.libraryAssets('library-1'),
+      type: 'active',
+    });
   });
 });

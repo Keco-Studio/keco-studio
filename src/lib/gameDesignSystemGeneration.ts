@@ -11,6 +11,7 @@ import {
 } from '@/lib/game-design-system/ruleSchema';
 import type { GameDesignSourceSnapshot } from '@/lib/services/gameDesignSystemService';
 import type { GameDesignSystemReferenceGame } from '@/lib/gameDesignSystem';
+import type { GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 
 export type ResolvedGameDesignGenerationInput = {
   title: string;
@@ -20,6 +21,7 @@ export type ResolvedGameDesignGenerationInput = {
   suitableFor?: string;
   sourceSnapshots: GameDesignSourceSnapshot[];
   referenceGames: GameDesignSystemReferenceGame[];
+  artStyle: GameArtStyleSnapshot;
   baseSystemId?: string;
   baseVersionId?: string;
   baseDocument?: GameDesignDocument;

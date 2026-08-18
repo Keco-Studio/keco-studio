@@ -1,9 +1,9 @@
 import { after, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
-import { gameDesignSystemTitleSchema } from '@/lib/game-design-system/ruleSchema';
 import { resolveGameDesignSourceSnapshots, SourceSnapshotInputError } from '@/lib/game-design-system/sourceSnapshots';
+import { gameDesignGenerationRequestSchema } from '@/lib/game-design-system/generationRequest';
+import { compileGameArtStyle, GameArtStyleCompilationError } from '@/lib/game-art-style/compiler';
 import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
 import { getGameDesignSystemDetail, createGameDesignSystemGenerationJob, IdempotencyConflictError } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
@@ -11,29 +11,19 @@ import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker'
 
 export const maxDuration = 120;
 
-const requestSchema = z.object({
-  title: gameDesignSystemTitleSchema,
-  genres: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
-  philosophies: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
-  description: z.string().trim().max(4000).optional(),
-  suitableFor: z.string().trim().max(500).optional(),
-  baseSystemId: z.string().uuid().optional(),
-  pastedMarkdown: z.string().max(20_000).optional(),
-  references: z.array(z.object({
-    kind: z.enum(['document', 'table']),
-    projectId: z.string().uuid(),
-    resourceId: z.string().uuid(),
-  }).strict()).max(10).default([]),
-  referenceGames: z.array(z.object({
-    name: z.string().trim().min(1).max(120),
-    reference: z.string().trim().max(500),
-    avoid: z.string().trim().max(500),
-  }).strict()).max(10).default([]),
-}).strict();
-
 function idempotencyKey(request: Request): string | null {
   const value = request.headers.get('idempotency-key')?.trim();
   return value && /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : null;
+}
+
+function generationRequestIssues(error: { flatten: () => { formErrors: string[]; fieldErrors: object }; issues: Array<{ code: string; path: PropertyKey[]; keys?: string[]; message: string }> }) {
+  const issues = error.flatten();
+  const fieldErrors = issues.fieldErrors as Record<string, string[] | undefined>;
+  for (const issue of error.issues) {
+    if (issue.code !== 'unrecognized_keys' || issue.path.length !== 0) continue;
+    for (const key of issue.keys ?? []) fieldErrors[key] = [issue.message];
+  }
+  return issues;
 }
 
 function scheduleWorker(): void {
@@ -52,8 +42,8 @@ function scheduleWorker(): void {
 export const POST = withAuth(async function POST(request, _context, { supabase, user }) {
   const key = idempotencyKey(request);
   if (!key) return NextResponse.json({ error: 'A valid Idempotency-Key header is required.' }, { status: 400 });
-  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid generation request.', issues: parsed.error.flatten() }, { status: 400 });
+  const parsed = gameDesignGenerationRequestSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: 'Invalid generation request.', issues: generationRequestIssues(parsed.error) }, { status: 400 });
   const body = parsed.data;
   if (body.genres.length === 0 && body.philosophies.length === 0 && !body.description && !body.pastedMarkdown && body.references.length === 0 && body.referenceGames.length === 0 && !body.baseSystemId) {
     return NextResponse.json({ error: 'Add a genre, philosophy, description, source, or base system.' }, { status: 400 });
@@ -83,6 +73,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       suitableFor: body.suitableFor,
       sourceSnapshots,
       referenceGames: body.referenceGames.map((game) => ({ name: game.name!, reference: game.reference!, avoid: game.avoid! })),
+      artStyle: compileGameArtStyle(body.artStyle),
       baseSystemId: base?.id,
       baseVersionId: base?.current_version?.id,
       baseDocument: base?.current_version?.document,
@@ -108,6 +99,12 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
           formErrors: [],
           fieldErrors: { [error.field]: [error.message] },
         },
+      }, { status: 400 });
+    }
+    if (error instanceof GameArtStyleCompilationError) {
+      return NextResponse.json({
+        error: 'Invalid generation request.',
+        issues: { formErrors: [], fieldErrors: { artStyle: [error.message] } },
       }, { status: 400 });
     }
     console.error('[POST /api/game-design-systems/generation-jobs]', error);

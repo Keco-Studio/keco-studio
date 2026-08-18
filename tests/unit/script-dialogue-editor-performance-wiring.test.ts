@@ -31,11 +31,11 @@ describe('Script dialogue editor performance wiring', () => {
     expect(source).toContain('void refresh();\n      return true;');
   });
 
-  it('saves a complete dialogue block with one source sync and parallel row writes', () => {
+  it('saves a complete dialogue block with source sync before row writes', () => {
     expect(source).toContain('const saveBlock = useCallback(async (');
     expect(source).toContain('previousDialogue: block.dialogue');
     expect(source).toContain('updateDialogueRowsContent({');
-    expect(source).toContain('const [, completedUpdates] = await Promise.all([');
+    expect(source).toContain('persistSourceBeforeDialogueRows(');
     expect(source).not.toContain('const saveBlockField = useCallback(async (');
   });
 

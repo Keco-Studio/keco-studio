@@ -15,6 +15,7 @@ import {
 } from '@/lib/game-design-system/ruleSchema';
 import { GAME_DESIGN_SYSTEM_VERSION_PLACEHOLDER, renderRuleSetMarkdown } from '@/lib/game-design-system/ruleMarkdown';
 import { diffRuleSets, type GameDesignRuleDiff } from '@/lib/game-design-system/ruleDiff';
+import { gameArtStyleSnapshotSchema, type GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 
 export type GameDesignSystemSource = 'official' | 'user' | 'team';
 export type GameDesignSystemStatus = 'draft' | 'published';
@@ -67,6 +68,7 @@ export type GameDesignSystemVersion = {
   parent_version_id: string | null;
   document: GameDesignDocument;
   rules: GameDesignRuleSet;
+  artStyle: GameArtStyleSnapshot | null;
   rendered_markdown: string;
   source_snapshots: GameDesignSourceSnapshot[];
   diff: GameDesignRuleDiff;
@@ -79,7 +81,7 @@ export type GameDesignSystemVersion = {
 export type GameDesignSystemVersionParent = Pick<
   GameDesignSystemVersion,
   'id' | 'system_id' | 'version_number' | 'rules' | 'source_snapshots'
-> & Partial<Pick<GameDesignSystemVersion, 'document'>>;
+> & Partial<Pick<GameDesignSystemVersion, 'document' | 'artStyle'>>;
 
 export type GameDesignSystemDetail = GameDesignSystem & {
   current_version: GameDesignSystemVersion | null;
@@ -110,8 +112,8 @@ export type GameDesignSystemGenerationJob = {
 };
 
 const SYSTEM_COLUMNS = 'id,owner_id,source,title,summary,genres,philosophies,suitable_for,body,provenance,status,current_version_id,migration_status,generation_job_id,created_at,updated_at';
-const VERSION_COLUMNS = 'id,system_id,version_number,parent_version_id,document,rules,rendered_markdown,source_snapshots,diff,conflicts,content_hash,created_by,created_at';
-const VERSION_READ_COLUMNS = 'id,system_id,version_number,parent_version_id,document,rules,rendered_markdown,diff,conflicts,content_hash,created_by,created_at';
+const VERSION_COLUMNS = 'id,system_id,version_number,parent_version_id,document,rules,art_style,rendered_markdown,source_snapshots,diff,conflicts,content_hash,created_by,created_at';
+const VERSION_READ_COLUMNS = 'id,system_id,version_number,parent_version_id,document,rules,art_style,rendered_markdown,diff,conflicts,content_hash,created_by,created_at';
 const JOB_COLUMNS = 'id,owner_id,status,phase,input,error,design_system_id,output_version_id,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at';
 
 function hashJson(value: unknown): string {
@@ -126,7 +128,16 @@ function hydrateVersion(
   const document = row.document == null
     ? buildCompatibilityGameDesignDocument(rules, metadata)
     : parseGameDesignDocument(row.document);
-  return { ...(row as unknown as GameDesignSystemVersion), document, rules };
+  const parsedArtStyle = row.art_style == null
+    ? null
+    : gameArtStyleSnapshotSchema.safeParse(row.art_style);
+  const { art_style: _artStyle, ...version } = row;
+  return {
+    ...(version as unknown as GameDesignSystemVersion),
+    document,
+    rules,
+    artStyle: parsedArtStyle && parsedArtStyle.success ? parsedArtStyle.data : null,
+  };
 }
 
 export class IdempotencyConflictError extends Error {
@@ -271,6 +282,7 @@ export async function createGameDesignSystemVersion(
     createdBy: string;
     document?: GameDesignDocument | null;
     rules: unknown;
+    artStyle?: GameArtStyleSnapshot | null;
     parentVersion?: GameDesignSystemVersionParent | null;
     sourceSnapshots?: GameDesignSourceSnapshot[];
     generationJobId?: string;
@@ -282,6 +294,10 @@ export async function createGameDesignSystemVersion(
     : input.parentVersion?.document
       ? parseGameDesignDocument(input.parentVersion.document)
       : buildCompatibilityGameDesignDocument(rules, { title: input.title });
+  const artStyleValue = input.artStyle !== undefined
+    ? input.artStyle
+    : input.parentVersion?.artStyle ?? null;
+  const artStyle = artStyleValue == null ? null : gameArtStyleSnapshotSchema.parse(artStyleValue);
   const diff = input.parentVersion
     ? diffRuleSets(parseRuleSet(input.parentVersion.rules), rules)
     : { added: rules.rules.map((rule) => rule.id).sort(), removed: [], changed: [], conflicts: [] };
@@ -294,19 +310,20 @@ export async function createGameDesignSystemVersion(
     p_system_id: input.systemId,
     p_parent_version_id: input.parentVersion?.id ?? null,
     p_document: document,
+    p_art_style: artStyle,
     p_rules: rules,
     p_rendered_markdown: rendered,
     p_source_snapshots: input.sourceSnapshots ?? [],
     p_diff: diff,
     p_conflicts: diff.conflicts,
-    p_content_hash: hashJson({ document, rules }),
+    p_content_hash: hashJson({ document, rules, artStyle }),
     p_created_by: input.createdBy,
     p_generation_job_id: input.generationJobId ?? null,
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('Version creation returned no row.');
-  return { ...(row as GameDesignSystemVersion), document, rules };
+  return hydrateVersion(row as Record<string, unknown>, { title: input.title });
 }
 
 export async function createGameDesignSystem(
@@ -321,6 +338,7 @@ export async function createGameDesignSystem(
     body?: string;
     document?: GameDesignDocument | null;
     rules?: unknown;
+    artStyle?: GameArtStyleSnapshot | null;
     sourceSnapshots?: GameDesignSourceSnapshot[];
     generationJobId?: string;
     parentVersion?: GameDesignSystemVersionParent | null;
@@ -347,6 +365,7 @@ export async function createGameDesignSystem(
         createdBy: ownerId,
         document: input.document,
         rules,
+        artStyle: input.artStyle,
         sourceSnapshots: input.sourceSnapshots,
         parentVersion: input.parentVersion,
         generationJobId: input.generationJobId,
@@ -385,6 +404,7 @@ export async function createGameDesignSystem(
       createdBy: ownerId,
       document: input.document,
       rules,
+      artStyle: input.artStyle,
       sourceSnapshots: input.sourceSnapshots,
       parentVersion: input.parentVersion,
       generationJobId: input.generationJobId,
@@ -427,6 +447,7 @@ export async function copyGameDesignSystem(supabase: SupabaseClient, source: Gam
     suitableFor: detail.current_version.rules.suitableFor,
     document: detail.current_version.document,
     rules: detail.current_version.rules,
+    artStyle: detail.current_version.artStyle,
     sourceSnapshots: detail.current_version.source_snapshots,
     parentVersion: detail.current_version,
     provenance: { ...source.provenance, baseSystemId: source.id },

@@ -85,6 +85,7 @@ export async function processClaimedGameDesignSystemJob(
       suitableFor: rules.suitableFor,
       document,
       rules,
+      artStyle: generationInput.artStyle,
       sourceSnapshots: generationInput.sourceSnapshots,
       generationJobId: job.id,
       parentVersion: generationInput.baseVersionId && generationInput.baseSystemId && generationInput.baseRules ? {

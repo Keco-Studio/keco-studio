@@ -5,7 +5,9 @@ import {
   generateGameDesignSystemOutput,
   generateGameDesignRuleSet,
   RuleSetGenerationValidationError,
+  hashResolvedGenerationInput,
 } from '@/lib/gameDesignSystemGeneration';
+import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 import type { ChatMessage } from '@/lib/agent/types';
 import type { StreamLlmOptions } from '@/lib/agent/llm-client';
 
@@ -39,6 +41,12 @@ const validDocument = {
 
 const validOutput = { document: validDocument, rules: validRules };
 
+const artStyle = compileGameArtStyle({
+  presetId: 'pixel-art',
+  presetVersion: 1,
+  customization: { direction: 'NEVER-IN-MODEL', referenceGames: [], avoid: '' },
+});
+
 const input = {
   title: 'Tactical Rules',
   genres: ['Strategy'],
@@ -56,6 +64,7 @@ const input = {
     truncated: false,
   }],
   referenceGames: [],
+  artStyle,
 };
 
 describe('structured Game Design System generation', () => {
@@ -96,6 +105,20 @@ describe('structured Game Design System generation', () => {
     expect(messages[0].content).toContain('designIntent');
     expect(messages[0].content).toContain('experiencePresentation');
     expect(messages[0].content).toContain('"tableGuidance":[{"table":');
+    expect(JSON.stringify(messages)).not.toContain('NEVER-IN-MODEL');
+    expect(JSON.stringify(messages)).not.toContain('/game-art-styles/');
+  });
+
+  it('includes the compiled Art Style snapshot in the durable input hash', () => {
+    const changed = {
+      ...input,
+      artStyle: compileGameArtStyle({
+        presetId: 'pixel-art',
+        presetVersion: 1,
+        customization: { direction: 'Different direction', referenceGames: [], avoid: '' },
+      }),
+    };
+    expect(hashResolvedGenerationInput(input)).not.toBe(hashResolvedGenerationInput(changed));
   });
 
   it('repairs one invalid model response and returns a strict document and rules envelope', async () => {

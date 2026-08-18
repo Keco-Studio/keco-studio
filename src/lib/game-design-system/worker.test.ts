@@ -3,6 +3,7 @@ jest.mock('server-only', () => ({}));
 import { processClaimedGameDesignSystemJob } from './worker';
 import { RuleSetGenerationValidationError } from '@/lib/gameDesignSystemGeneration';
 import type { GameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
+import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 
 const rules = {
   schemaVersion: 1 as const,
@@ -26,10 +27,14 @@ const document = {
 };
 
 const generated = { document, rules };
+const artStyle = compileGameArtStyle({
+  presetId: 'pixel-art', presetVersion: 1,
+  customization: { direction: 'Bright routes.', referenceGames: [], avoid: '' },
+});
 
 const job = {
   id: 'job-1', owner_id: 'user-1', status: 'running', phase: 'collecting', attempt_count: 1,
-  input: { title: 'Rules', genres: [], philosophies: [], sourceSnapshots: [], referenceGames: [] },
+  input: { title: 'Rules', genres: [], philosophies: [], sourceSnapshots: [], referenceGames: [], artStyle },
 } as unknown as GameDesignSystemGenerationJob;
 
 describe('leased Game Design System worker', () => {
@@ -49,7 +54,7 @@ describe('leased Game Design System worker', () => {
     } as never);
     expect(result).toBe('completed');
     expect(heartbeat.mock.calls.map((call) => call[3])).toEqual(['generating', 'validating', 'saving']);
-    expect(createSystem).toHaveBeenCalledWith(expect.anything(), 'user-1', expect.objectContaining({ document, rules }));
+    expect(createSystem).toHaveBeenCalledWith(expect.anything(), 'user-1', expect.objectContaining({ document, rules, artStyle }));
     expect(complete).toHaveBeenCalledWith(expect.anything(), job, 'worker-1', { systemId: 'system-1', versionId: 'version-1' });
   });
 

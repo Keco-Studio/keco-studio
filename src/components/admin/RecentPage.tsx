@@ -5,7 +5,9 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { DocumentRecentCard } from '@/components/admin/DocumentRecentCard';
+import { requestDocumentContextMenu } from '@/components/documents/documentContextMenuRequest';
 import { LibraryCard } from '@/components/folders/LibraryCard';
+import { requestLibraryContextMenu } from '@/components/libraries/libraryContextMenuRequest';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -209,6 +211,7 @@ export function RecentPage({ projectId }: RecentPageProps) {
   const avatarColor = userProfile?.id
     ? getUserAvatarColor(userProfile.id)
     : '#7c3aed';
+  const userRole = roleQuery.data?.role ?? null;
 
   return (
     <div className={styles.page} data-testid="recent-page">
@@ -231,7 +234,7 @@ export function RecentPage({ projectId }: RecentPageProps) {
                 library={item.library}
                 projectId={projectId}
                 assetCount={item.assetCount}
-                userRole={roleQuery.data?.role ?? null}
+                userRole={userRole}
                 onClick={(libraryId) => router.push(`/${projectId}/${libraryId}`)}
               />
             ) : (
@@ -256,6 +259,7 @@ export function RecentPage({ projectId }: RecentPageProps) {
           </div>
           {items.map((item) => {
             const isTable = item.kind === 'table';
+            const itemId = isTable ? item.library.id : item.document.id;
             const name = isTable ? item.library.name : item.document.name;
             const updatedAt = isTable
               ? item.library.last_data_updated_at || item.library.updated_at
@@ -266,11 +270,18 @@ export function RecentPage({ projectId }: RecentPageProps) {
               : `/${projectId}/doc/${item.document.id}`;
 
             return (
-              <button
-                key={`${item.kind}:${isTable ? item.library.id : item.document.id}`}
-                type="button"
+              <div
+                key={`${item.kind}:${itemId}`}
+                role="button"
+                tabIndex={0}
                 className={styles.listRow}
                 onClick={() => router.push(href)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    router.push(href);
+                  }
+                }}
               >
                 <span className={styles.colName}>
                   <Image
@@ -291,11 +302,23 @@ export function RecentPage({ projectId }: RecentPageProps) {
                 <span className={styles.colItems}>{itemsLabel}</span>
                 <span className={styles.colUpdated}>{formatDate(updatedAt)}</span>
                 <span className={styles.colActions}>
-                  <span className={styles.moreButton} aria-hidden>
+                  <button
+                    type="button"
+                    className={styles.moreButton}
+                    aria-label="More options"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (isTable) {
+                        requestLibraryContextMenu(item.library.id, event.currentTarget);
+                        return;
+                      }
+                      requestDocumentContextMenu(item.document.id, event.currentTarget);
+                    }}
+                  >
                     <Image src={moreOptionsIcon} alt="" width={16} height={16} />
-                  </span>
+                  </button>
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
