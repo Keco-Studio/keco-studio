@@ -63,7 +63,8 @@ export function GameDesignSystemRuleEditor(props: Props) {
 }
 
 function RuleFields({ value, onChange, focusPath }: ControlledProps) {
-  const [selectedRuleId, setSelectedRuleId] = useState(value.rules[0]?.id ?? '');
+  // Rule IDs are editable draft data, so selection must use a stable array position.
+  const [selectedRuleIndex, setSelectedRuleIndex] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState<GameDesignRule['kind'] | 'all'>('all');
@@ -79,9 +80,12 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
       && (!query || `${rule.id} ${rule.title} ${rule.statement}`.toLocaleLowerCase().includes(query))
     ));
   }, [kindFilter, search, severityFilter, value.rules]);
-  const selectedRule = visibleRules.find((rule) => rule.id === selectedRuleId)
-    ?? visibleRules[0]
-    ?? null;
+  const boundedSelectedRuleIndex = Math.min(selectedRuleIndex, Math.max(0, value.rules.length - 1));
+  const selectedDraftRule = value.rules[boundedSelectedRuleIndex];
+  const selectedRule = selectedDraftRule && visibleRules.includes(selectedDraftRule)
+    ? selectedDraftRule
+    : visibleRules[0]
+      ?? null;
   const actualSelectedIndex = selectedRule ? value.rules.indexOf(selectedRule) : -1;
 
   useEffect(() => {
@@ -91,7 +95,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
       let id = 'gds-version-rules-heading';
       if (domain === 'rules' && typeof indexOrField === 'number') {
         const rule = value.rules[indexOrField];
-        if (rule) setSelectedRuleId(rule.id);
+        if (rule) setSelectedRuleIndex(indexOrField);
         setSettingsOpen(false);
         setSearch('');
         setKindFilter('all');
@@ -124,7 +128,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
   function addRule() {
     const rule = emptyRule(value.rules);
     onChange({ ...value, rules: [...value.rules, rule] });
-    setSelectedRuleId(rule.id);
+    setSelectedRuleIndex(value.rules.length);
     setSettingsOpen(false);
   }
 
@@ -132,7 +136,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
     if (!selectedRule || value.rules.length === 1) return;
     const next = value.rules.filter((_, index) => index !== actualSelectedIndex);
     onChange({ ...value, rules: next });
-    setSelectedRuleId(next[Math.max(0, actualSelectedIndex - 1)].id);
+    setSelectedRuleIndex(Math.max(0, actualSelectedIndex - 1));
   }
 
   function moveRule(offset: -1 | 1) {
@@ -141,6 +145,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
     const next = [...value.rules];
     [next[actualSelectedIndex], next[target]] = [next[target], next[actualSelectedIndex]];
     onChange({ ...value, rules: next });
+    setSelectedRuleIndex(target);
   }
 
   function updateGuidance(index: number, field: keyof TableGuidance, nextValue: string | string[]) {
@@ -163,7 +168,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
           <label className={styles.field}>Search rules<input className={styles.input} value={search} onChange={(event) => setSearch(event.target.value)} /></label>
           <label className={styles.field}>Filter by kind<select className={styles.select} value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}><option value="all">All kinds</option>{Object.entries(kindLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
           <label className={styles.field}>Filter by severity<select className={styles.select} value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}><option value="all">All severities</option><option value="required">Required</option><option value="recommended">Recommended</option><option value="warning">Warning</option></select></label>
-          <label className={styles.compactRuleSelect}>Selected rule<select className={styles.select} value={settingsOpen ? '__settings__' : selectedRule?.id ?? ''} onChange={(event) => { if (event.target.value === '__settings__') setSettingsOpen(true); else { setSelectedRuleId(event.target.value); setSettingsOpen(false); } }}><option value="__settings__">System settings</option>{visibleRules.map((rule) => <option key={rule.id} value={rule.id}>{rule.title}</option>)}</select></label>
+          <label className={styles.compactRuleSelect}>Selected rule<select className={styles.select} value={settingsOpen ? '__settings__' : selectedRule ? String(value.rules.indexOf(selectedRule)) : ''} onChange={(event) => { if (event.target.value === '__settings__') setSettingsOpen(true); else { setSelectedRuleIndex(Number(event.target.value)); setSettingsOpen(false); } }}><option value="__settings__">System settings</option>{visibleRules.map((rule) => { const index = value.rules.indexOf(rule); return <option key={index} value={index}>{rule.title}</option>; })}</select></label>
         </div>
         {Object.entries(kindLabels).map(([kind, label]) => {
           const matching = visibleRules.filter((rule) => rule.kind === kind);
@@ -171,7 +176,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
           return (
             <div className={styles.outlineGroup} key={kind}>
               <span>{label} <b>{matching.length}</b></span>
-              {matching.map((rule) => <button className={!settingsOpen && selectedRule?.id === rule.id ? styles.outlineButtonActive : styles.outlineButton} type="button" key={rule.id} onClick={() => { setSelectedRuleId(rule.id); setSettingsOpen(false); }}>{rule.title}</button>)}
+              {matching.map((rule) => { const index = value.rules.indexOf(rule); return <button className={!settingsOpen && actualSelectedIndex === index ? styles.outlineButtonActive : styles.outlineButton} type="button" key={index} onClick={() => { setSelectedRuleIndex(index); setSettingsOpen(false); }}>{rule.title}</button>; })}
             </div>
           );
         })}
@@ -210,7 +215,7 @@ function RuleFields({ value, onChange, focusPath }: ControlledProps) {
               </div>
             </div>
             <div className={styles.formGrid}>
-              <div className={styles.field}><label htmlFor="rule-id">Rule ID</label><input id="rule-id" className={styles.input} value={selectedRule.id} onChange={(event) => { updateRule('id', event.target.value); setSelectedRuleId(event.target.value); }} /></div>
+              <div className={styles.field}><label htmlFor="rule-id">Rule ID</label><input id="rule-id" className={styles.input} value={selectedRule.id} onChange={(event) => updateRule('id', event.target.value)} /></div>
               <div className={styles.field}><label htmlFor="rule-kind">Kind</label><select id="rule-kind" className={styles.select} value={selectedRule.kind} onChange={(event) => updateRule('kind', event.target.value as GameDesignRule['kind'])}>{Object.entries(kindLabels).map(([kind, label]) => <option value={kind} key={kind}>{label}</option>)}</select></div>
               <div className={styles.field}><label htmlFor="rule-title">Rule title</label><input id="rule-title" className={styles.input} value={selectedRule.title} onChange={(event) => updateRule('title', event.target.value)} /></div>
               <div className={styles.field}><label htmlFor="rule-severity">Severity</label><select id="rule-severity" className={styles.select} value={selectedRule.severity} onChange={(event) => updateRule('severity', event.target.value as GameDesignRule['severity'])}><option value="required">Required</option><option value="recommended">Recommended</option><option value="warning">Warning</option></select></div>
