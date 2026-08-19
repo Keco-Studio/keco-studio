@@ -4,6 +4,7 @@ import {
   materializeDialogueResources,
   normalizeDialoguePlans,
   renderDialogueReferences,
+  sanitizeDialogueResourcesForPersistence,
 } from './dialogueResources';
 
 const validPlan = {
@@ -110,6 +111,20 @@ describe('GDD dialogue resources', () => {
       plans: [],
       warning: null,
     });
+  });
+
+  it('strips UI-only metadata before sending dialogue resources to Postgres', () => {
+    const [resource] = materializeDialogueResources('gdd-job-1', [validPlan]);
+    expect(sanitizeDialogueResourcesForPersistence([resource])).toEqual([{
+      dialogueJobId: resource.dialogueJobId,
+      documentId: resource.documentId,
+      chapterKey: validPlan.chapterKey,
+      title: validPlan.title,
+      content: validPlan.content,
+      hasChoices: validPlan.hasChoices,
+      branchSummary: validPlan.branchSummary,
+    }]);
+    expect(sanitizeDialogueResourcesForPersistence([resource])[0]).not.toHaveProperty('documentName');
   });
 
   it('materializes dialogue resources and renders generating GDD references', () => {

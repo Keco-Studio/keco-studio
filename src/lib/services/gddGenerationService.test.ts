@@ -96,7 +96,15 @@ describe('gddGenerationService', () => {
       dialogueResources,
     });
     expect(rpc).toHaveBeenCalledWith('persist_completed_gdd_generation_job', expect.objectContaining({
-      p_dialogue_resources: dialogueResources,
+      p_dialogue_resources: [{
+        chapterKey: 'chapter-01',
+        title: 'Arrival',
+        content: 'Guide: Hello.',
+        hasChoices: false,
+        branchSummary: [],
+        documentId: 'document-2',
+        dialogueJobId: 'dialogue-job-1',
+      }],
     }));
   });
 

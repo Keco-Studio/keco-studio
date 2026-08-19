@@ -78,6 +78,31 @@ export type DialogueResource = DialoguePlan & {
   documentName: string;
 };
 
+export type PersistedDialogueResource = {
+  dialogueJobId: string;
+  documentId: string;
+  chapterKey: string;
+  title: string;
+  content: string;
+  hasChoices: boolean;
+  branchSummary: string[];
+};
+
+/** Keep the RPC payload stable even when a caller carries UI-only metadata. */
+export function sanitizeDialogueResourcesForPersistence(
+  resources: DialogueResource[],
+): PersistedDialogueResource[] {
+  return resources.map((resource) => ({
+    dialogueJobId: resource.dialogueJobId,
+    documentId: resource.documentId,
+    chapterKey: resource.chapterKey,
+    title: resource.title,
+    content: resource.content,
+    hasChoices: resource.hasChoices,
+    branchSummary: [...resource.branchSummary],
+  }));
+}
+
 export type DialogueResourceStatus = {
   dialogueJobId: string;
   status: 'queued' | 'running' | 'completed' | 'failed';
