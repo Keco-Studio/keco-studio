@@ -39,6 +39,7 @@ const input: GddGenerationRequestV2 = {
     contentModel: 'Cats, places, weather, interactions.', difficultyBalance: 'Weather adds pressure.',
     experiencePresentation: 'Warm watercolor scenes.',
   },
+  artStyle: null,
   projectSources: [],
 };
 

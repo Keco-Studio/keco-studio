@@ -382,6 +382,7 @@ export type GddGenerationRequestV2 = {
   systemTitle: string;
   rules: import('@/lib/game-design-system/ruleSchema').GameDesignRuleSet;
   designDocument: import('@/lib/game-design-system/ruleSchema').GameDesignDocument;
+  artStyle: import('@/lib/game-art-style/schema').GameArtStyleSnapshot | null;
   projectSources: import('@/lib/services/gameDesignSystemService').GameDesignSourceSnapshot[];
 };
 

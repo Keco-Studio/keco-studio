@@ -157,6 +157,7 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
       systemTitle: detail.title,
       rules: version.rules,
       designDocument: version.document,
+      artStyle: version.artStyle,
       projectSources,
     };
     const job = await createGddGenerationJob(getSupabaseServiceRoleClient(), {

@@ -100,6 +100,9 @@ const gddPhaseLabels: Record<PublicGddGenerationJob['phase'], string> = {
   generating: 'Writing draft',
   validating: 'Validating output',
   saving: 'Saving document',
+  compiling_maps: 'Compiling maps',
+  generating_maps: 'Generating maps',
+  finalizing_maps: 'Finalizing maps',
   completed: 'Completed',
   failed: 'Stopped',
 };
