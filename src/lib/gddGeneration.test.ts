@@ -87,7 +87,7 @@ describe('GDD generation contract', () => {
     const parsed = parseGeneratedGdd({
       ...generated,
       productionTables: [{
-        table: 'Products', purpose: '商品。', fields: ['name', 'category'],
+        table: 'Products', purpose: 'Product catalog.', fields: ['name', 'category'],
         rows: [{ name: 'Milk', category: 'Dairy', id: 'generated-row-id' }],
       }],
     }, rules);

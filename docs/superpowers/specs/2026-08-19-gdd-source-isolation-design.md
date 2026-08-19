@@ -5,8 +5,8 @@
 GDD generation currently auto-selects the first ten documents and tables in a
 project. Projects can contain GDDs generated for earlier designs, and those
 documents are then fed back into later generations as factual source material.
-This caused a project bound to the `超市经营` design system to receive old
-`收养猫` GDD content and produce another cat document.
+This caused a project bound to the `Supermarket Management` design system to receive old
+`Adopt a Cat` GDD content and produce another cat document.
 
 ## Approved Design
 

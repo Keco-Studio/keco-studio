@@ -103,7 +103,7 @@ describe('gddGenerationService', () => {
   it('strips model-only metadata before sending table resources to Postgres', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
     const resource = {
-      id: 'table-1', table: 'Products', purpose: '商品数据。', fields: ['name', 'category', 'base_cost'],
+      id: 'table-1', table: 'Products', purpose: 'Product catalog data.', fields: ['name', 'category', 'base_cost'],
       modelNote: 'ignore me',
       rows: [{ id: 'row-1', name: 'Milk', category: 'Dairy', base_cost: 10, sourceIndex: 0 }],
     } as never;
@@ -115,7 +115,7 @@ describe('gddGenerationService', () => {
 
     expect(rpc.mock.calls[0][1]).toEqual(expect.objectContaining({
       p_table_resources: [{
-        id: 'table-1', table: 'Products', purpose: '商品数据。', fields: ['name', 'category', 'base_cost'],
+        id: 'table-1', table: 'Products', purpose: 'Product catalog data.', fields: ['name', 'category', 'base_cost'],
         rows: [{ id: 'row-1', name: 'Milk', values: { name: 'Milk', category: 'Dairy', base_cost: 10 } }],
       }],
     }));

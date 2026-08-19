@@ -201,17 +201,17 @@ describe('GDD v2 direct Markdown generator', () => {
     const result = await generateGddMarkdownV2(input, jest.fn(async () => [
       '# GDD',
       '',
-      '库存 <5 时触发补货。',
+      'Restock when inventory <5.',
       '',
-      '`库存 <5`',
+      '`inventory <5`',
       '',
       '```text',
-      '库存 <5',
+      'inventory <5',
       '```',
     ].join('\n')));
 
-    expect(result.markdown).toContain('库存 &lt;5 时触发补货。');
-    expect(result.markdown).toContain('`库存 <5`');
-    expect(result.markdown).toContain('```text\n库存 <5\n```');
+    expect(result.markdown).toContain('Restock when inventory &lt;5.');
+    expect(result.markdown).toContain('`inventory <5`');
+    expect(result.markdown).toContain('```text\ninventory <5\n```');
   });
 });

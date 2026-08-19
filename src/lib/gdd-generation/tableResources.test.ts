@@ -55,11 +55,11 @@ describe('GDD table resources', () => {
 
   it('derives row name from the first name-like table field for localized schemas', () => {
     expect(coerceTableRowInput(
-      { values: { 商品名: '牛奶', category: 'Dairy' } },
-      ['商品名', 'category'],
+      { values: { product_name: 'Milk', category: 'Dairy' } },
+      ['product_name', 'category'],
     )).toEqual({
-      name: '牛奶',
-      values: { 商品名: '牛奶', category: 'Dairy' },
+      name: 'Milk',
+      values: { product_name: 'Milk', category: 'Dairy' },
     });
   });
 
@@ -84,7 +84,7 @@ describe('GDD table resources', () => {
 
   it('keeps id when id is an explicitly declared table field', () => {
     expect(normalizeTablePlans([{
-      table: 'Products', purpose: '商品数据。', fields: ['name', 'id'],
+      table: 'Products', purpose: 'Product catalog data.', fields: ['name', 'id'],
       rows: [{ name: 'Milk', id: 'milk-1' }],
     }])[0]!.rows[0]!.values).toEqual({ id: 'milk-1' });
   });
