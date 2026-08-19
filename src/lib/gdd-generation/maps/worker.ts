@@ -100,7 +100,7 @@ function providerInput(artifact: GddMapArtifact): Parameters<typeof invokePixelL
   }
   return {
     operation: artifact.phase === 'submitting'
-      ? artifact.attempt_count > 0 ? 'retry' : 'submit'
+      ? (artifact.attempt_count ?? 0) > 0 ? 'retry' : 'submit'
       : artifact.phase === 'polling' ? 'poll' : 'validate',
     projectId: artifact.project_id,
     assetId: artifact.map_asset_id,

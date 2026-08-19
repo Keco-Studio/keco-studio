@@ -29,7 +29,7 @@ export function GddMapReferenceEditor({ mdastNode }: JsxEditorProps) {
   if (!artifact || isLoading) {
     return <span className={`${styles.gddMapState} ${styles.resourceReferenceLoading}`} aria-label={`Loading map: ${fallbackTitle}`}><LoadingOutlined /><span>{fallbackTitle}</span></span>;
   }
-  const href = artifact.mapProjectId ? `/create-map?mapId=${encodeURIComponent(artifact.mapProjectId)}` : null;
+  const href = artifact.mapProjectId ? `/create-map?mapId=${encodeURIComponent(artifact.mapProjectId)}&viewer=1` : null;
   if (!artifact.imageUrl) {
     return <span className={styles.gddMapState} aria-label={`${artifact.title}: ${artifact.status}`}><EnvironmentOutlined /><span>{artifact.title}</span></span>;
   }

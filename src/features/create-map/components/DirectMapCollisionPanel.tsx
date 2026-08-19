@@ -20,6 +20,7 @@ export function DirectMapCollisionPanel({
   onPaintModeChange,
   onRetry,
   onClear,
+  readOnly = false,
 }: {
   grid: DirectMapCollisionGrid | null;
   phase: DirectMapCollisionPhase;
@@ -30,6 +31,7 @@ export function DirectMapCollisionPanel({
   onPaintModeChange: (mode: DirectMapCollisionCell) => void;
   onRetry: () => void;
   onClear: () => void;
+  readOnly?: boolean;
 }) {
   const counts = grid ? countCollisionCells(grid) : null;
   return (
@@ -58,6 +60,7 @@ export function DirectMapCollisionPanel({
                 type="button"
                 className={paintMode === value ? styles.collisionModeActive : styles.collisionMode}
                 aria-pressed={paintMode === value}
+                disabled={readOnly}
                 onClick={() => onPaintModeChange(value)}
               >
                 <span data-cell={value} />{label}
@@ -65,13 +68,13 @@ export function DirectMapCollisionPanel({
             ))}
           </div>
           <div className={styles.collisionActions}>
-            <button type="button" title={overlayVisible ? 'Hide collision overlay' : 'Show collision overlay'} onClick={() => onOverlayVisibleChange(!overlayVisible)}>
+            <button type="button" disabled={readOnly} title={overlayVisible ? 'Hide collision overlay' : 'Show collision overlay'} onClick={() => onOverlayVisibleChange(!overlayVisible)}>
               {overlayVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
               {overlayVisible ? 'Hide' : 'Show'}
             </button>
-            <button type="button" title="Clear all collision cells" onClick={onClear}><DeleteOutlined /> Clear</button>
+            <button type="button" disabled={readOnly} title="Clear all collision cells" onClick={onClear}><DeleteOutlined /> Clear</button>
           </div>
-          <button type="button" className={styles.secondaryButtonFull} onClick={onRetry}>
+          <button type="button" className={styles.secondaryButtonFull} disabled={readOnly} onClick={onRetry}>
             <ReloadOutlined /> Re-analyze with AI
           </button>
         </>
@@ -81,10 +84,10 @@ export function DirectMapCollisionPanel({
       {error ? <p className={styles.inlineError} role="alert">{error}</p> : null}
       {phase === 'failed' ? (
         <div className={styles.collisionActions}>
-          <button type="button" onClick={onRetry}>
+          <button type="button" disabled={readOnly} onClick={onRetry}>
             <ReloadOutlined /> Retry analysis
           </button>
-          <button type="button" onClick={onClear}>
+          <button type="button" disabled={readOnly} onClick={onClear}>
             <EditOutlined /> Edit manually
           </button>
         </div>

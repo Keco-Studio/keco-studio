@@ -519,8 +519,8 @@ describe('GameDesignSystemsPage', () => {
 
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
-    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: 'Start generation' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD + maps' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Generate GDD + maps' }));
 
     await waitFor(() => expect(startGdd).toHaveBeenCalledWith('project-1', 'system-1', 'version-1', { mode: 'professional' }));
     expect((await screen.findByRole('link', { name: 'Open GDD Document' })).getAttribute('href')).toBe('/project-1/doc/document-1');
@@ -542,9 +542,9 @@ describe('GameDesignSystemsPage', () => {
 
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
-    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: 'Start generation' }));
-    expect((screen.getByRole('button', { name: 'Generating GDD...' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD + maps' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Generate GDD + maps' }));
+    expect((screen.getByRole('button', { name: 'Generating GDD + maps...' }) as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
     expect(await screen.findByText(/GDD: Writing draft/)).toBeTruthy();
@@ -564,11 +564,11 @@ describe('GameDesignSystemsPage', () => {
 
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
-    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: 'Start generation' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD + maps' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Generate GDD + maps' }));
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
 
-    expect(await screen.findByRole('button', { name: 'Retry GDD Draft' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retry GDD + maps' })).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain('Permission changed.');
     const callsAfterFailure = fetchGddJob.mock.calls.length;
     await act(async () => { jest.advanceTimersByTime(1_800); await Promise.resolve(); });
@@ -592,12 +592,12 @@ describe('GameDesignSystemsPage', () => {
 
     await screen.findByRole('heading', { name: 'Design document' });
     await user.click(screen.getByRole('tab', { name: 'Projects' }));
-    await user.click(await screen.findByRole('button', { name: 'Generate GDD Draft' }));
-    await user.click(screen.getByRole('button', { name: 'Start generation' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD + maps' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Generate GDD + maps' }));
     await user.click(await screen.findByRole('button', { name: 'Stop GDD generation' }));
 
     await waitFor(() => expect(cancelGdd).toHaveBeenCalledWith('project-1', 'gdd-job-1'));
-    expect(await screen.findByRole('button', { name: 'Retry GDD Draft' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retry GDD + maps' })).toBeTruthy();
   });
 
   it('does not classify another user\'s readable system as mine', async () => {

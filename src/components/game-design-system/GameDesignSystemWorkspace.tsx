@@ -436,13 +436,15 @@ function ProjectsView(props: {
           const binding = bindingQuery.data ?? null;
           const selectedVersionIsBound = binding?.id === props.detail.id && binding.current_version?.id === props.version?.id;
           const gddJob = gddJobs[project.id];
-          const generating = gddJob?.status === 'queued' || gddJob?.status === 'running';
+          const generating = gddJob?.status === 'queued' || gddJob?.status === 'running' || gddJob?.status === 'waiting_for_maps';
+          const mapCount = gddJob?.maps?.length ?? 0;
           return (
             <article className={styles.projectRow} key={project.id}>
-              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddPhaseLabels[gddJob.phase] : ''}</small></div>
+              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddPhaseLabels[gddJob.phase] : ''}{mapCount ? ` / Maps: ${gddJob.maps.filter((map) => map.status === 'ready').length}/${mapCount} ready` : ''}</small></div>
               <div className={styles.projectActions}>
-                {gddJob?.status === 'completed' && gddJob.output_document_id ? <a className={styles.secondaryButton} href={`/${project.id}/doc/${gddJob.output_document_id}`}>Open GDD Document</a> : null}
-                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={generating || generateGddMutation.isPending} onClick={() => setGenerationProjectId(project.id)}>{generating ? 'Generating GDD...' : gddJob?.status === 'failed' ? 'Retry GDD Draft' : 'Generate GDD Draft'}</button> : null}
+                {gddJob && (gddJob.status === 'completed' || gddJob.status === 'completed_with_map_failures') && gddJob.output_document_id ? <a className={styles.secondaryButton} href={`/${project.id}/doc/${gddJob.output_document_id}`}>Open GDD Document{gddJob.status === 'completed_with_map_failures' ? ' (map partial success)' : ''}</a> : null}
+                {gddJob?.maps?.length && generating ? <div className={styles.gddMapProgress} aria-label="GDD map progress">{gddJob.maps.map((map) => <span key={map.id} data-status={map.status}>{map.title}: {map.status}</span>)}</div> : null}
+                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={generating || generateGddMutation.isPending} onClick={() => setGenerationProjectId(project.id)}>{generating ? 'Generating GDD + maps...' : gddJob?.status === 'failed' ? 'Retry GDD + maps' : 'Generate GDD + maps'}</button> : null}
                 {generating ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" aria-label="Stop GDD generation" disabled={cancelGddMutation.isPending} onClick={() => cancelGddMutation.mutate({ targetProjectId: project.id, jobId: gddJob.id })}><StopOutlined /> Stop</button> : null}
                 {binding ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" disabled={clearMutation.isPending || generating} onClick={() => { if (window.confirm('Remove the Game Design System from this project?')) clearMutation.mutate(project.id); }}><DeleteOutlined /> Remove</button> : <button className={styles.secondaryButton} type="button" disabled={!props.version || versionHasConflicts(props.version) || applyMutation.isPending} onClick={() => applyMutation.mutate(project.id)}>Apply selected</button>}
               </div>
