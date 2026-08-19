@@ -157,6 +157,32 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.markdown).not.toContain('KECO_TABLE_PLAN');
   });
 
+  it('extracts a strict dialogue plan marker from Markdown', async () => {
+    const result = await generateGddMarkdownV2(input, jest.fn(async () => [
+      '# GDD',
+      '<!-- KECO_DIALOGUE_PLAN [{"chapterKey":"chapter-01","title":"Arrival","content":"Guide: Hello.","hasChoices":false,"branchSummary":[]}] -->',
+      '## Core Loop',
+      'Body.',
+    ].join('\n')));
+    expect(result.dialoguePlans).toEqual([{
+      chapterKey: 'chapter-01',
+      title: 'Arrival',
+      content: 'Guide: Hello.',
+      hasChoices: false,
+      branchSummary: [],
+    }]);
+    expect(result.markdown).not.toContain('KECO_DIALOGUE_PLAN');
+  });
+
+  it('instructs the model to generate complete dialogue only for interactive chapters', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## Core Loop\nBody.');
+    await generateGddMarkdownV2(input, complete);
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[0].content).toMatch(/dialogue/i);
+    expect(messages[0].content).toMatch(/chapter|task/i);
+    expect(messages[0].content).toMatch(/choice|interaction|spoken/i);
+  });
+
   it('escapes numeric less-than prose while preserving code', async () => {
     const result = await generateGddMarkdownV2(input, jest.fn(async () => [
       '# GDD',

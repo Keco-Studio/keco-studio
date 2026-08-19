@@ -62,11 +62,19 @@ const generated = {
   productionTables: [{ table: 'Skills', purpose: 'Reusable actions.', fields: ['name', 'cost'], rows: [{ name: 'Basic', values: { name: 'Basic', cost: 1 } }] }],
   assumptions: ['The project is single-player.'],
   appliedRuleIds: ['readable-state'],
+  dialogueChapters: [{
+    chapterKey: 'chapter-01',
+    title: 'Arrival',
+    content: 'Guide: Hello.',
+    hasChoices: false,
+    branchSummary: [],
+  }],
 };
 
 describe('GDD generation contract', () => {
   it('parses a bounded generated GDD and validates applied rule IDs', () => {
     expect(parseGeneratedGdd(generated, rules).title).toBe('Harbor Tactics GDD');
+    expect(parseGeneratedGdd(generated, rules).dialogueChapters).toEqual(generated.dialogueChapters);
     expect(() => parseGeneratedGdd({ ...generated, appliedRuleIds: ['unknown'] }, rules)).toThrow(/unknown rule/i);
   });
 
@@ -111,6 +119,13 @@ describe('GDD generation contract', () => {
     expect(messages[1].content).toContain('Harbor Tactics');
     expect(messages[1].content).toContain('readable-state');
     expect(messages[1].content).toContain('"gameBackground":"[unsafe directive removed]"');
+  });
+
+  it('prompts for complete dialogue chapters only when interaction is present', () => {
+    const messages = buildGddGenerationMessages(input);
+    expect(messages[0].content).toMatch(/dialogue/i);
+    expect(messages[0].content).toMatch(/chapter|task/i);
+    expect(messages[0].content).toMatch(/choice|interaction|spoken/i);
   });
 
   it('gives generation and repair the exact production table contract', async () => {
