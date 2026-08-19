@@ -1,6 +1,8 @@
 import {
+  coerceDialoguePlanInput,
   extractDialoguePlanMarker,
   materializeDialogueResources,
+  normalizeDialoguePlans,
   renderDialogueReferences,
 } from './dialogueResources';
 
@@ -28,16 +30,62 @@ describe('GDD dialogue resources', () => {
     });
   });
 
-  it('rejects dialogue plans with unknown fields', () => {
-    expect(() => extractDialoguePlanMarker(
+  it('ignores unknown fields after coercion', () => {
+    const result = extractDialoguePlanMarker(
       `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([{ ...validPlan, unexpected: true }])} -->`,
-    )).toThrow();
+    );
+    expect(result.plans).toEqual([validPlan]);
+    expect(result.warning).toBeNull();
   });
 
-  it('rejects duplicate dialogue chapter keys', () => {
-    expect(() => extractDialoguePlanMarker(
+  it('coerces common LLM field aliases before validation', () => {
+    expect(normalizeDialoguePlans([{
+      chapter_key: 'chapter-2',
+      name: 'Departure',
+      dialogue: 'Clerk: Tickets please.',
+      has_choices: true,
+      branches: ['Buy ticket', 'Walk away'],
+    }])).toEqual([{
+      chapterKey: 'chapter-2',
+      title: 'Departure',
+      content: 'Clerk: Tickets please.',
+      hasChoices: true,
+      branchSummary: ['Buy ticket', 'Walk away'],
+    }]);
+  });
+
+  it('coerces dialogue plan records through the shared preprocessor', () => {
+    expect(coerceDialoguePlanInput({
+      key: 'chapter-3',
+      title: 'Finale',
+      text: 'Hero: We finish this today.',
+      branch_summary: [],
+    })).toEqual({
+      chapterKey: 'chapter-3',
+      title: 'Finale',
+      content: 'Hero: We finish this today.',
+      hasChoices: false,
+      branchSummary: [],
+    });
+  });
+
+  it('returns a bounded warning and no plans for duplicate dialogue chapter keys', () => {
+    const result = extractDialoguePlanMarker(
       `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([validPlan, { ...validPlan, title: 'Again' }])} -->`,
-    )).toThrow('Duplicate dialogue chapter key');
+    );
+    expect(result.plans).toEqual([]);
+    expect(result.warning).toMatch(/duplicate dialogue chapter key/i);
+    expect(result.warning?.length).toBeLessThanOrEqual(300);
+  });
+
+  it('returns a bounded warning and no plans for schema-invalid dialogue entries', () => {
+    const result = extractDialoguePlanMarker(
+      'Body\n<!-- KECO_DIALOGUE_PLAN [{"hasChoices":false,"branchSummary":[]}] -->\n',
+    );
+    expect(result.markdown).toBe('Body');
+    expect(result.plans).toEqual([]);
+    expect(result.warning).toBeTruthy();
+    expect(result.warning?.length).toBeLessThanOrEqual(300);
   });
 
   it('rejects multiple dialogue plan markers instead of silently ignoring later plans', () => {

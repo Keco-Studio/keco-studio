@@ -1,6 +1,9 @@
 import {
+  coerceTableRowInput,
+  extractTablePlanMarker,
   materializeTableResources,
   normalizeTablePlans,
+  parseTablePlanMarkerJson,
   renderTableReferences,
   type GeneratedTablePlan,
 } from './tableResources';
@@ -38,10 +41,32 @@ describe('GDD table resources', () => {
     }])[0]?.fields).toEqual(['name', 'cost']);
   });
 
+  it('derives row name from values when the model omitted the top-level name field', () => {
+    expect(normalizeTablePlans([{
+      table: 'Products',
+      purpose: 'Product catalog data.',
+      fields: ['name', 'category', 'base_cost'],
+      rows: [
+        { values: { name: 'Milk', category: 'Dairy', base_cost: 10 } },
+        { values: { name: 'Bread', category: 'Bakery', base_cost: 5 } },
+      ],
+    }])[0]?.rows.map((row) => row.name)).toEqual(['Milk', 'Bread']);
+  });
+
+  it('derives row name from the first name-like table field for localized schemas', () => {
+    expect(coerceTableRowInput(
+      { values: { 商品名: '牛奶', category: 'Dairy' } },
+      ['商品名', 'category'],
+    )).toEqual({
+      name: '牛奶',
+      values: { 商品名: '牛奶', category: 'Dairy' },
+    });
+  });
+
   it('normalizes legacy flat rows into values and drops only auxiliary ids', () => {
     expect(normalizeTablePlans([{
       table: 'Products',
-      purpose: '商品数据。',
+      purpose: 'Product catalog data.',
       fields: ['name', 'category', 'base_cost'],
       rows: [{
         name: 'Milk',
@@ -51,7 +76,7 @@ describe('GDD table resources', () => {
       }],
     }])).toEqual([{
       table: 'Products',
-      purpose: '商品数据。',
+      purpose: 'Product catalog data.',
       fields: ['name', 'category', 'base_cost'],
       rows: [{ name: 'Milk', values: { category: 'Dairy', base_cost: 10 } }],
     }]);
@@ -80,5 +105,38 @@ describe('GDD table resources', () => {
     expect(materializeTableResources('job-1', plans)).toEqual(materializeTableResources('job-1', plans));
     expect(materializeTableResources('job-1', plans)[0].id).toMatch(/^[0-9a-f-]{36}$/);
     expect(materializeTableResources('job-1', plans)[0].id).not.toBe(materializeTableResources('job-2', plans)[0].id);
+  });
+
+  it('extracts a valid table marker and removes it from the GDD body', () => {
+    const plan = { table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] };
+    const result = extractTablePlanMarker(`# GDD\n<!-- KECO_TABLE_PLAN ${JSON.stringify([plan])} -->`);
+    expect(result.markdown).toBe('# GDD');
+    expect(result.tablePlans).toEqual([{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }]);
+    expect(result.warning).toBeNull();
+  });
+
+  it('repairs trailing commas and smart quotes in table marker JSON', () => {
+    const parsed = parseTablePlanMarkerJson('[{"table":"Skills","purpose":"Actions.","fields":["name",],"rows":[{"name":"Basic","values":{"name":"Basic"},},],},]');
+    expect(parsed).toEqual([{
+      table: 'Skills',
+      purpose: 'Actions.',
+      fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]);
+  });
+
+  it('returns a bounded warning and no plans for malformed whole marker JSON', () => {
+    const result = extractTablePlanMarker('Body\n<!-- KECO_TABLE_PLAN [{bad json] -->\n');
+    expect(result.markdown).toBe('Body');
+    expect(result.tablePlans).toEqual([]);
+    expect(result.warning).toMatch(/not valid JSON/i);
+    expect(result.warning?.length).toBeLessThanOrEqual(300);
+  });
+
+  it('returns a bounded warning and no plans for schema-invalid table entries', () => {
+    const result = extractTablePlanMarker('Body\n<!-- KECO_TABLE_PLAN [{"table":"Skills"}] -->\n');
+    expect(result.tablePlans).toEqual([]);
+    expect(result.warning).toBeTruthy();
+    expect(result.warning?.length).toBeLessThanOrEqual(300);
   });
 });

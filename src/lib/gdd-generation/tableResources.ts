@@ -3,23 +3,82 @@ import { z } from 'zod';
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 
-export const generatedTableRowSchema = z.preprocess((value) => {
+function readTableString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function isNameLikeField(field: string): boolean {
+  return /(?:^|[_\s-])(name|title|label)(?:$|[_\s-])/i.test(field)
+    || /^(name|title|label)$/i.test(field);
+}
+
+export function coerceTableRowInput(value: unknown, fields: string[] = []): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(record, 'values')) return value;
-  const { name, ...values } = record;
-  return { name, values };
-}, z.object({
-  name: boundedText(160),
-  values: z.record(z.unknown()),
-}).strict());
 
-export const generatedTablePlanSchema = z.object({
-  table: boundedText(120),
-  purpose: boundedText(500),
-  fields: z.array(boundedText(120)).min(1).max(100),
-  rows: z.array(generatedTableRowSchema).min(1).max(500),
-}).strict();
+  let values: Record<string, unknown>;
+  if (record.values && typeof record.values === 'object' && !Array.isArray(record.values)) {
+    values = { ...(record.values as Record<string, unknown>) };
+  } else {
+    const {
+      name: _name,
+      rowName: _rowName,
+      row_name: _rowNameSnake,
+      title: _title,
+      label: _label,
+      values: _values,
+      ...flatValues
+    } = record;
+    values = flatValues;
+  }
+
+  const nameLikeField = fields.find((field) => isNameLikeField(field)) ?? fields[0];
+  const name = readTableString(record, ['name', 'rowName', 'row_name', 'title', 'label'])
+    ?? readTableString(values, ['name', 'title', 'label', 'productName', 'product_name'])
+    ?? (nameLikeField ? readTableString(values, [nameLikeField]) : undefined);
+
+  return { name, values };
+}
+
+export function coerceTablePlanInput(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const fields = Array.isArray(record.fields)
+    ? record.fields.filter((field): field is string => typeof field === 'string')
+    : [];
+  const rows = Array.isArray(record.rows)
+    ? record.rows.map((row) => coerceTableRowInput(row, fields))
+    : record.rows;
+  return {
+    table: readTableString(record, ['table', 'tableName', 'table_name', 'name']) ?? record.table,
+    purpose: readTableString(record, ['purpose', 'description', 'summary']) ?? record.purpose,
+    fields: record.fields,
+    rows,
+  };
+}
+
+export const generatedTableRowSchema = z.preprocess(
+  (value) => coerceTableRowInput(value),
+  z.object({
+    name: boundedText(160),
+    values: z.record(z.unknown()),
+  }).strict(),
+);
+
+export const generatedTablePlanSchema = z.preprocess(
+  coerceTablePlanInput,
+  z.object({
+    table: boundedText(120),
+    purpose: boundedText(500),
+    fields: z.array(boundedText(120)).min(1).max(100),
+    rows: z.array(generatedTableRowSchema).min(1).max(500),
+  }).strict(),
+);
 
 export type GeneratedTableRow = z.infer<typeof generatedTableRowSchema> & { id?: string };
 export type GeneratedTablePlan = z.infer<typeof generatedTablePlanSchema>;
@@ -71,6 +130,75 @@ export function materializeTableResources(jobId: string, plans: GeneratedTablePl
       })),
     };
   });
+}
+
+const TABLE_MARKER = /<!--\s*KECO_TABLE_PLAN\s*([\s\S]*?)\s*-->/i;
+const TABLE_MARKERS = /<!--\s*KECO_TABLE_PLAN\s*([\s\S]*?)\s*-->/gi;
+
+export const tablePlanShapeExample = JSON.stringify([{
+  table: 'Skills',
+  purpose: 'What this table controls.',
+  fields: ['name'],
+  rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+}]);
+
+export function repairTablePlanMarkerJson(raw: string): string {
+  let text = raw.trim();
+  if (/^```/.test(text)) {
+    text = text.replace(/^```(?:json)?[ \t]*(?:\r?\n|$)/i, '').replace(/(?:\r?\n)?```[ \t]*$/i, '').trim();
+  }
+  return text
+    .replace(/[\u201C\u201D\uFF02]/g, '"')
+    .replace(/[\u2018\u2019]/g, '\'')
+    .replace(/,\s*([}\]])/g, '$1');
+}
+
+export function parseTablePlanMarkerJson(raw: string): unknown {
+  const candidates = [raw.trim(), repairTablePlanMarkerJson(raw)];
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new SyntaxError('Invalid JSON');
+}
+
+export function extractTablePlanMarker(raw: string): {
+  markdown: string;
+  tablePlans: GeneratedTablePlan[];
+  warning: string | null;
+} {
+  if ([...raw.matchAll(TABLE_MARKERS)].length > 1) {
+    throw new Error('Multiple KECO table plan markers are not allowed.');
+  }
+  const match = TABLE_MARKER.exec(raw);
+  if (!match) return { markdown: raw.trim(), tablePlans: [], warning: null };
+  const markdown = raw.replace(match[0], '').trim();
+  try {
+    return {
+      markdown,
+      tablePlans: normalizeTablePlans(parseTablePlanMarkerJson(match[1])),
+      warning: null,
+    };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return {
+        markdown,
+        tablePlans: [],
+        warning: 'KECO table plan marker is not valid JSON.',
+      };
+    }
+    const message = error instanceof Error ? error.message : 'Invalid KECO table plan marker.';
+    return {
+      markdown,
+      tablePlans: [],
+      warning: message.slice(0, 300),
+    };
+  }
 }
 
 export function normalizeTablePlans(value: unknown): GeneratedTablePlan[] {

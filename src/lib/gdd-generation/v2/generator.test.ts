@@ -147,6 +147,18 @@ describe('GDD v2 direct Markdown generator', () => {
       .rejects.toThrow('incomplete heading');
   });
 
+  it('returns a bounded table-plan warning instead of failing the whole GDD', async () => {
+    const result = await generateGddMarkdownV2(input, jest.fn(async () => [
+      '# GDD',
+      '## Core Loop',
+      'Body.',
+      '<!-- KECO_TABLE_PLAN [{bad json] -->',
+    ].join('\n')));
+    expect(result.tablePlans).toEqual([]);
+    expect(result.tablePlanWarning).toMatch(/not valid JSON/i);
+    expect(result.markdown).not.toContain('KECO_TABLE_PLAN');
+  });
+
   it('extracts a strict independent table plan marker from Markdown', async () => {
     const result = await generateGddMarkdownV2(input, jest.fn(async () => [
       '# GDD',
@@ -178,6 +190,8 @@ describe('GDD v2 direct Markdown generator', () => {
     const complete = jest.fn(async () => '# GDD\n\n## Core Loop\nBody.');
     await generateGddMarkdownV2(input, complete);
     const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[0].content).toMatch(/KECO_DIALOGUE_PLAN/i);
+    expect(messages[0].content).toMatch(/chapterKey/i);
     expect(messages[0].content).toMatch(/dialogue/i);
     expect(messages[0].content).toMatch(/chapter|task/i);
     expect(messages[0].content).toMatch(/choice|interaction|spoken/i);

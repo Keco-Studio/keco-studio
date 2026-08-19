@@ -3,13 +3,72 @@ import { z } from 'zod';
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 
-export const dialoguePlanSchema = z.object({
-  chapterKey: boundedText(120),
-  title: boundedText(160),
-  content: boundedText(120_000),
-  hasChoices: z.boolean(),
-  branchSummary: z.array(boundedText(300)).max(50),
-}).strict();
+export const dialoguePlanShapeExample = JSON.stringify([{
+  chapterKey: 'chapter-01',
+  title: 'Arrival',
+  content: 'Guide: Hello.',
+  hasChoices: false,
+  branchSummary: [],
+}]);
+
+function readDialogueString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function normalizeBranchSummary(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (item && typeof item === 'object' && 'summary' in item) {
+        return String((item as { summary: unknown }).summary).trim();
+      }
+      if (item != null) return String(item).trim();
+      return '';
+    })
+    .filter((item) => item.length > 0);
+}
+
+export function coerceDialoguePlanInput(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const chapterKey = readDialogueString(record, [
+    'chapterKey', 'chapter_key', 'key', 'chapter', 'chapterId', 'chapter_id', 'id',
+  ]);
+  const title = readDialogueString(record, [
+    'title', 'name', 'chapterTitle', 'chapter_title', 'label',
+  ]);
+  const content = readDialogueString(record, [
+    'content', 'dialogue', 'text', 'script', 'body', 'sourceContent', 'source_content', 'lines',
+  ]);
+  const branchSummary = normalizeBranchSummary(
+    record.branchSummary ?? record.branch_summary ?? record.branches ?? record.choices,
+  );
+  let hasChoices = record.hasChoices ?? record.has_choices ?? record.hasChoices;
+  if (typeof hasChoices === 'string') {
+    hasChoices = hasChoices.trim().toLowerCase() === 'true';
+  }
+  if (typeof hasChoices !== 'boolean') {
+    hasChoices = branchSummary.length > 0;
+  }
+  return { chapterKey, title, content, hasChoices, branchSummary };
+}
+
+export const dialoguePlanSchema = z.preprocess(
+  coerceDialoguePlanInput,
+  z.object({
+    chapterKey: boundedText(120),
+    title: boundedText(160),
+    content: boundedText(120_000),
+    hasChoices: z.boolean(),
+    branchSummary: z.array(boundedText(300)).max(50),
+  }).strict(),
+);
 
 export type DialoguePlan = z.infer<typeof dialoguePlanSchema>;
 
@@ -70,7 +129,12 @@ export function extractDialoguePlanMarker(raw: string): {
         warning: 'KECO dialogue plan marker is not valid JSON.',
       };
     }
-    throw error;
+    const message = error instanceof Error ? error.message : 'Invalid KECO dialogue plan marker.';
+    return {
+      markdown,
+      plans: [],
+      warning: message.slice(0, 300),
+    };
   }
 }
 
