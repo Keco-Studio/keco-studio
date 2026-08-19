@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { after, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
 import { processNextDialogueJob } from '@/lib/gdd-generation/dialogueWorker';
+import { isGddSchemaUnavailable, safeGddRouteErrorIdentity } from '@/lib/gdd-generation/routeErrors';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import {
   findWakeableDialogueGenerationJob,
@@ -49,7 +50,17 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
     if (dueJob) scheduleDialogueJob(dueJob.id);
     return NextResponse.json({ jobs });
   } catch (error) {
-    console.error('[GET GDD dialogue jobs]', error);
+    if (isGddSchemaUnavailable(error)) {
+      // Dialogue jobs are an optional follow-up to the GDD. Keep the main
+      // generation view usable while an older environment is still missing
+      // the dialogue migration; a newly migrated environment will populate
+      // these jobs on the next completed GDD.
+      console.error('[GET GDD dialogue jobs] dialogue schema unavailable', safeGddRouteErrorIdentity(error));
+      return NextResponse.json({ jobs: [] }, {
+        headers: { 'X-Keco-Dialogue-Generation': 'unavailable' },
+      });
+    }
+    console.error('[GET GDD dialogue jobs]', safeGddRouteErrorIdentity(error));
     return NextResponse.json({ error: 'Failed to load dialogue jobs.' }, { status: 404 });
   }
 });

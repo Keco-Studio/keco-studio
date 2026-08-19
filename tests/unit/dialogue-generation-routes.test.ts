@@ -79,6 +79,14 @@ describe('dialogue generation routes', () => {
     expect(processNext).toHaveBeenCalled();
   });
 
+  it('keeps the GDD view usable when the optional dialogue migration is unavailable', async () => {
+    listJobs.mockRejectedValueOnce({ code: '42P01', message: 'relation "dialogue_generation_jobs" does not exist' });
+    const response = await GET(new NextRequest('https://example.test/dialogue-jobs'), params);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Keco-Dialogue-Generation')).toBe('unavailable');
+    expect(await response.json()).toEqual({ jobs: [] });
+  });
+
   it('rejects viewers', async () => {
     getUserProjectRole.mockResolvedValue({ role: 'viewer' });
     expect((await GET(new NextRequest('https://example.test/dialogue-jobs'), params)).status).toBe(403);
