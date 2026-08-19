@@ -160,12 +160,14 @@ export async function persistGeneratedGddV2Document(
   validateSanctionedMdx(markdown);
   const input = job.input as GddGenerationRequestV2;
   let mapCompilationFailed = false;
+  let mapCompilationError: string | null = null;
   let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
   try {
     briefs = await compileGddMapBriefs({ markdown, artStyle: input.artStyle ?? null });
   } catch (error) {
     mapCompilationFailed = true;
-    console.error('[GDD map brief compiler]', error instanceof Error ? error.message : error);
+    mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
+    console.error('[GDD map brief compiler]', mapCompilationError);
   }
   const mapArtifacts = briefs.map((brief) => ({
     id: randomUUID(),
@@ -201,6 +203,7 @@ export async function persistGeneratedGddV2Document(
       review,
       mapCount: briefs.length,
       mapCompilationFailed,
+      ...(mapCompilationError ? { mapCompilationError } : {}),
       createdBy: job.owner_id,
       createdAt: new Date().toISOString(),
     },

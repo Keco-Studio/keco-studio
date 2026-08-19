@@ -64,14 +64,23 @@ export function compileGddMapStyleContract(
   return gddMapStyleContractSchema.parse({ ...candidate, contentHash: sha256(candidate) });
 }
 
-function mapSignal(markdown: string): boolean {
-  return /(?:地图|世界地图|区域地图|关卡地图|场景地图|地图布局|map\b|world map|region map|level map|dungeon|settlement|interior)/i.test(markdown);
-}
-
 function markdownHeadings(markdown: string): string[] {
   return markdown.split(/\r?\n/)
     .map((line) => line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/)?.[1]?.trim())
     .filter((heading): heading is string => Boolean(heading));
+}
+
+export function hasExplicitGddMapSignal(markdown: string): boolean {
+  const headings = markdownHeadings(markdown);
+  const explicitHeading = headings.some((heading) => (
+    /(?:世界|区域|关卡|场景|城镇|城市|村庄|地牢|室内|房间)?地图(?!界面|图标|按钮|菜单|UI)/i.test(heading)
+    || /\b(?:world|region|level|dungeon|settlement|interior)\s+map\b/i.test(heading)
+  ));
+  if (explicitHeading) return true;
+  return /地图\s*(?:布局|设计|结构|尺寸|范围|分区|路线|道路|路径|地标|入口|出口|出入口|可通行|障碍|是|为|包含|由)/i.test(markdown)
+    || /(?:世界|区域|关卡|场景|城镇|城市|村庄|地牢|室内|房间)(?:的)?地图(?!界面|图标|按钮|菜单|UI)/i.test(markdown)
+    || /\b(?:world|region|level|dungeon|settlement|interior)\s+map\b/i.test(markdown)
+    || /\bmap\s+(?:layout|design|structure|size|regions?|routes?|roads?|paths?|landmarks?|entrances?|exits?|contains|includes)\b/i.test(markdown);
 }
 
 function parseJson(raw: string): unknown {
@@ -153,7 +162,7 @@ export async function compileGddMapBriefs(input: {
   artStyle: GameArtStyleSnapshot | null;
   complete?: Completion;
 }): Promise<GddMapBrief[]> {
-  if (!mapSignal(input.markdown)) return [];
+  if (!hasExplicitGddMapSignal(input.markdown)) return [];
   const style = compileGddMapStyleContract(input.artStyle);
   const messages = buildGddMapBriefMessages(input.markdown, style);
   const complete = input.complete ?? completeLlm;

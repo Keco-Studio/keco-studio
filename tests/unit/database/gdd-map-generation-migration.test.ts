@@ -5,6 +5,10 @@ const sql = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260819090000_gdd_map_generation_integration.sql'),
   'utf8',
 );
+const activeJobGuardSql = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260819140000_gdd_active_job_guard.sql'),
+  'utf8',
+);
 
 describe('GDD map generation migration', () => {
   it('adds bounded child artifacts and parent partial-success states', () => {
@@ -47,5 +51,18 @@ describe('GDD map generation migration', () => {
     expect(sql).toMatch(/select count\(\*\)[\s\S]*sibling\.status = 'running'[\s\S]*\) < 2/i);
     expect(sql).toMatch(/status in \('failed', 'blocked'\)/i);
     expect(sql).toMatch(/completed_with_map_failures/i);
+  });
+
+  it('serializes project generation starts and reuses identical active jobs', () => {
+    expect(activeJobGuardSql).toMatch(/pg_advisory_xact_lock[\s\S]*p_project_id::text/i);
+    expect(activeJobGuardSql).toMatch(/status in \('queued', 'running', 'waiting_for_maps'\)/i);
+    expect(activeJobGuardSql).toMatch(/if v_job\.input_hash = p_input_hash[\s\S]*return next v_job/i);
+    expect(activeJobGuardSql).toMatch(/hint = 'gdd_active_job_conflict'/i);
+  });
+
+  it('keeps guarded creation service-role-only and cleans stale duplicates', () => {
+    expect(activeJobGuardSql).toMatch(/Superseded by a completed duplicate GDD generation request/i);
+    expect(activeJobGuardSql).toMatch(/revoke all on function public\.create_gdd_generation_job_guarded[\s\S]*from public, anon, authenticated/i);
+    expect(activeJobGuardSql).toMatch(/grant execute on function public\.create_gdd_generation_job_guarded[\s\S]*to service_role/i);
   });
 });

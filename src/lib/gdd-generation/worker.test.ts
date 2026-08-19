@@ -3,7 +3,11 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: { markdownToYjsState: jest.fn(async () => 'encoded-yjs') },
 }));
-import { persistGeneratedGddDocument, processClaimedGddJob, revalidateGddJobContext } from './worker';
+const mockCompileGddMapBriefs = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+jest.mock('./maps/compiler', () => ({
+  compileGddMapBriefs: (...args: unknown[]) => mockCompileGddMapBriefs(...args),
+}));
+import { persistGeneratedGddDocument, persistGeneratedGddV2Document, processClaimedGddJob, revalidateGddJobContext } from './worker';
 import { GddGenerationValidationError, type GddGenerationInput, type GeneratedGdd } from '@/lib/gddGeneration';
 import type { GddGenerationJob } from '@/lib/services/gddGenerationService';
 
@@ -85,6 +89,39 @@ describe('GDD generation worker', () => {
       expect.objectContaining({ label: 'Project brief', contentHash: 'a'.repeat(64) }),
     ]);
     expect(sourceSnapshots[0]).not.toHaveProperty('excerpt');
+  });
+
+  it('persists a bounded map compiler error in v2 document metadata', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockCompileGddMapBriefs.mockRejectedValueOnce(new Error('Map compiler timed out.'));
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', job_status: 'completed_with_map_failures' }],
+      error: null,
+    }));
+    const v2Job = {
+      ...job,
+      applied_rule_ids: ['readable-state'],
+      omitted_rule_ids: [],
+      input: { ...generationInput, contractVersion: 2, mode: 'professional' },
+    } as GddGenerationJob;
+
+    await expect(persistGeneratedGddV2Document(
+      { rpc } as never,
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## Core Loop\nBody text.',
+      { status: 'pass' },
+    )).resolves.toEqual({ id: 'document-1', name: 'Harbor Tactics gdd', status: 'completed_with_map_failures' });
+
+    const rpcArgs = rpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(rpcArgs.p_metadata).toEqual(expect.objectContaining({
+      mapCount: 0,
+      mapCompilationFailed: true,
+      mapCompilationError: 'Map compiler timed out.',
+    }));
+    expect(rpcArgs.p_map_compilation_failed).toBe(true);
+    expect(rpcArgs.p_map_artifacts).toEqual([]);
+    consoleError.mockRestore();
   });
 
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {

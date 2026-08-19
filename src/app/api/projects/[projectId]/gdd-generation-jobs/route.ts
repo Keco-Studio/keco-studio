@@ -17,6 +17,7 @@ import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { getGameDesignSystemDetail } from '@/lib/services/gameDesignSystemService';
 import {
   createGddGenerationJob,
+  GddActiveJobConflictError,
   GddIdempotencyConflictError,
   getLatestPublicGddGenerationJob,
   toPublicGddGenerationJob,
@@ -189,6 +190,13 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     }, { status: 202 });
   } catch (error) {
     const identity = safeGddRouteErrorIdentity(error);
+    if (error instanceof GddActiveJobConflictError) {
+      return NextResponse.json({
+        error: error.message,
+        code: 'GDD_ACTIVE_JOB_EXISTS',
+        job: toPublicGddGenerationJob(error.job),
+      }, { status: 409 });
+    }
     if (error instanceof GddIdempotencyConflictError) {
       return NextResponse.json({ error: 'Idempotency key was already used with a different GDD request.' }, { status: 409 });
     }

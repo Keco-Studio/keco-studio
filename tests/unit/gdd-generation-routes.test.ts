@@ -51,6 +51,7 @@ jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: (...args: u
 
 import { POST } from '@/app/api/projects/[projectId]/gdd-generation-jobs/route';
 import { DELETE, GET } from '@/app/api/projects/[projectId]/gdd-generation-jobs/[id]/route';
+import { GddActiveJobConflictError } from '@/lib/services/gddGenerationService';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const SYSTEM_ID = '22222222-2222-4222-8222-222222222222';
@@ -186,6 +187,28 @@ describe('project GDD generation routes', () => {
     expect(body.job).not.toHaveProperty('source_snapshots');
     expect(body.job).not.toHaveProperty('idempotency_key');
     expect(body.job).not.toHaveProperty('lease_owner');
+  });
+
+  it('returns the existing bounded job when another project generation is active', async () => {
+    createGddGenerationJob.mockRejectedValue(new GddActiveJobConflictError({
+      ...internalJob,
+      status: 'running',
+      phase: 'generating',
+      maps: [],
+    }));
+    const response = await POST(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'request-key-active' },
+      body: JSON.stringify({ designSystemId: SYSTEM_ID, versionId: VERSION_ID }),
+    }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toEqual(expect.objectContaining({
+      code: 'GDD_ACTIVE_JOB_EXISTS',
+      job: expect.objectContaining({ id: JOB_ID, status: 'running' }),
+    }));
+    expect(body.job).not.toHaveProperty('input');
+    expect(body.job).not.toHaveProperty('idempotency_key');
   });
 
   it.each(['42P01', 'PGRST205', 'PGRST202'])('returns a safe migration-required 503 for missing GDD database schema (%s)', async (code) => {

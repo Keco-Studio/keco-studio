@@ -5,6 +5,7 @@ import {
   buildGddMapBriefMessages,
   compileGddMapBriefs,
   compileGddMapStyleContract,
+  hasExplicitGddMapSignal,
 } from './compiler';
 
 const style = {
@@ -44,6 +45,22 @@ describe('GDD map brief compiler', () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
+  it('does not treat map UI feedback as a spatial map description', async () => {
+    const markdown = '# Consequence Feedback\n| Change | Presentation | Example |\n| --- | --- | --- |\n| World state | 地图界面更新 | 十字镇区域图标变为铁誓控制 |';
+    const complete = jest.fn(async () => '[]');
+    expect(hasExplicitGddMapSignal(markdown)).toBe(false);
+    await expect(compileGddMapBriefs({ markdown, artStyle: null, complete })).resolves.toEqual([]);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '# 世界地图\n十字镇与港口通过主路连接。',
+    '# World\n地图布局包含北门、市场和两条支路。',
+    '# Region Map\nThe map contains a harbor route and eastern gate.',
+  ])('recognizes an explicit spatial map description', (markdown) => {
+    expect(hasExplicitGddMapSignal(markdown)).toBe(true);
+  });
+
   it('keeps exact headings, assigns server IDs, and freezes the shared style contract', async () => {
     const complete = jest.fn(async () => JSON.stringify([candidate('Harbor', 'World Map')]));
     const result = await compileGddMapBriefs({ markdown: '# World Map\nThe harbor route connects the regions.', artStyle: style, complete });
@@ -61,7 +78,7 @@ describe('GDD map brief compiler', () => {
       candidate('Third', 'Map Three', 2), candidate('Fourth', 'Map Four', 9),
     ]));
     const result = await compileGddMapBriefs({
-      markdown: '# Map One\n# Map Two\n# Map Three\n# Map Four', artStyle: null, complete,
+      markdown: '# Map One\n# Map Two\n# Map Three\n# Map Four\n\nMap layout includes four regions.', artStyle: null, complete,
     });
     expect(result.map((brief) => brief.title)).toEqual(['Fourth', 'Second', 'Third']);
   });

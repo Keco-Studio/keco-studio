@@ -24,6 +24,7 @@ const fetchDetail = jest.fn();
 const fetchBinding = jest.fn();
 const startGdd = jest.fn();
 const fetchGddJob = jest.fn();
+const fetchLatestGddJob = jest.fn();
 const cancelGdd = jest.fn();
 const push = jest.fn();
 const system: GameDesignSystem = {
@@ -118,6 +119,7 @@ jest.mock('@/lib/services/gameDesignSystemClient', () => ({
   fetchProjectGameDesignSystem: (...args: unknown[]) => fetchBinding(...args),
   startProjectGddGeneration: (...args: unknown[]) => startGdd(...args),
   fetchProjectGddGenerationJob: (...args: unknown[]) => fetchGddJob(...args),
+  fetchLatestProjectGddGenerationJob: (...args: unknown[]) => fetchLatestGddJob(...args),
   cancelProjectGddGeneration: (...args: unknown[]) => cancelGdd(...args),
 }));
 
@@ -136,6 +138,7 @@ describe('GameDesignSystemsPage', () => {
       output_document_id: 'document-1', output_document_name: 'Harbor Tactics gdd',
     });
     fetchGddJob.mockResolvedValue(null);
+    fetchLatestGddJob.mockResolvedValue(null);
     cancelGdd.mockResolvedValue({
       id: 'gdd-job-1', project_id: 'project-1', status: 'failed', phase: 'failed',
       output_document_id: null, error: 'Generation cancelled by user.',
@@ -526,7 +529,24 @@ describe('GameDesignSystemsPage', () => {
     expect((await screen.findByRole('link', { name: 'Open GDD Document' })).getAttribute('href')).toBe('/project-1/doc/document-1');
   });
 
-  it('polls queued and running jobs until completed', async () => {
+  it('keeps generation disabled until the latest job check finishes', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    let resolveLatest!: (value: null) => void;
+    fetchLatestGddJob.mockReturnValue(new Promise<null>((resolve) => { resolveLatest = resolve; }));
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    const checking = await screen.findByRole('button', { name: 'Checking GDD status...' });
+    expect((checking as HTMLButtonElement).disabled).toBe(true);
+
+    resolveLatest(null);
+    expect(await screen.findByRole('button', { name: 'Generate GDD + maps' })).toBeTruthy();
+  });
+
+  it('polls queued, running, and waiting-for-maps jobs until completed', async () => {
     jest.useFakeTimers();
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
     fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
@@ -536,6 +556,10 @@ describe('GameDesignSystemsPage', () => {
     });
     fetchGddJob
       .mockResolvedValueOnce({ id: 'gdd-job-1', project_id: 'project-1', status: 'running', phase: 'generating', output_document_id: null })
+      .mockResolvedValueOnce({
+        id: 'gdd-job-1', project_id: 'project-1', status: 'waiting_for_maps', phase: 'generating_maps', output_document_id: 'document-1',
+        maps: [{ id: 'map-1', title: 'Harbor', status: 'running' }],
+      })
       .mockResolvedValueOnce({ id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed', output_document_id: 'document-1' });
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
@@ -548,6 +572,9 @@ describe('GameDesignSystemsPage', () => {
 
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
     expect(await screen.findByText(/GDD: Writing draft/)).toBeTruthy();
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+    expect(await screen.findByText(/GDD: Generating maps/)).toBeTruthy();
+    expect(screen.getByLabelText('GDD map progress').textContent).toContain('Harbor: running');
     await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
     expect(await screen.findByRole('link', { name: 'Open GDD Document' })).toBeTruthy();
     jest.useRealTimers();

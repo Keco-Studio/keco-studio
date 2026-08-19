@@ -150,6 +150,16 @@ export class GddIdempotencyConflictError extends Error {
   }
 }
 
+export class GddActiveJobConflictError extends Error {
+  readonly job: GddGenerationJob;
+
+  constructor(job: GddGenerationJob) {
+    super('Another GDD generation is already active for this project.');
+    this.name = 'GddActiveJobConflictError';
+    this.job = job;
+  }
+}
+
 type CreateInput = {
   ownerId: string;
   projectId: string;
@@ -164,41 +174,36 @@ export async function createGddGenerationJob(
   supabase: SupabaseClient,
   input: CreateInput,
 ): Promise<GddGenerationJob> {
-  const existing = await supabase
-    .from('gdd_generation_jobs')
-    .select(JOB_COLUMNS)
-    .eq('owner_id', input.ownerId)
-    .eq('idempotency_key', input.idempotencyKey)
-    .maybeSingle();
-  if (existing.error) throw existing.error;
-  if (existing.data) {
-    if ((existing.data as { input_hash?: string }).input_hash !== input.inputHash) throw new GddIdempotencyConflictError();
-    return existing.data as GddGenerationJob;
-  }
   const policy = buildAgentRulePolicy(input.input.rules);
   const contractVersion = 'contractVersion' in input.input && input.input.contractVersion === 2 ? 2 : 1;
   const mode = contractVersion === 2 ? (input.input as GddGenerationRequestV2).mode : 'quick';
-  const { data, error } = await supabase.from('gdd_generation_jobs').insert({
-    owner_id: input.ownerId,
-    project_id: input.projectId,
-    design_system_id: input.designSystemId,
-    version_id: input.versionId,
-    mode,
-    contract_version: contractVersion,
-    input: input.input,
-    source_snapshots: input.input.projectSources,
-    applied_rule_ids: policy.appliedRuleIds,
-    omitted_rule_ids: policy.omittedRuleIds,
-    idempotency_key: input.idempotencyKey,
-    input_hash: input.inputHash,
-    status: 'queued',
-    phase: 'collecting',
-  }).select(JOB_COLUMNS).single();
+  const { data, error } = await supabase.rpc('create_gdd_generation_job_guarded', {
+    p_owner_id: input.ownerId,
+    p_project_id: input.projectId,
+    p_design_system_id: input.designSystemId,
+    p_version_id: input.versionId,
+    p_mode: mode,
+    p_contract_version: contractVersion,
+    p_input: input.input,
+    p_source_snapshots: input.input.projectSources,
+    p_applied_rule_ids: policy.appliedRuleIds,
+    p_omitted_rule_ids: policy.omittedRuleIds,
+    p_idempotency_key: input.idempotencyKey,
+    p_input_hash: input.inputHash,
+  });
   if (error) {
-    if (error.code === '23505') return createGddGenerationJob(supabase, input);
+    if (error.code === 'P0001' && error.hint === 'gdd_idempotency_conflict') {
+      throw new GddIdempotencyConflictError();
+    }
+    if (error.code === 'P0001' && error.hint === 'gdd_active_job_conflict' && typeof error.details === 'string') {
+      const active = await getGddGenerationJob(supabase, error.details);
+      if (active) throw new GddActiveJobConflictError(active);
+    }
     throw error;
   }
-  return data as GddGenerationJob;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row.id !== 'string') throw new Error('Invalid GDD generation job response.');
+  return withMapArtifacts(supabase, row as GddGenerationJob);
 }
 
 export async function getLatestPublicGddGenerationJob(
