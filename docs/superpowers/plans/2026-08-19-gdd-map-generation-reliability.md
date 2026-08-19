@@ -63,7 +63,7 @@
 - Produce `hasExplicitGddMapSignal(markdown: string): boolean`.
 - Store `mapCompilationError` as a bounded metadata string when extraction fails.
 
-- [x] Require a map-oriented heading or an explicit spatial-map phrase; reject incidental UI phrases such as `地图界面更新`.
+- [x] Require a map-oriented heading or an explicit spatial-map phrase; reject incidental UI phrases such as `map UI update`.
 - [x] Keep byte-for-byte unchanged GDD Markdown and zero child artifacts when no explicit map signal exists.
 - [x] Persist a bounded compiler error in GDD generation metadata while keeping the document usable.
 - [x] Add post-implementation regression tests for the observed false-positive GDD content.

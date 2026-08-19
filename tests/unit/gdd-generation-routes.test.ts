@@ -174,7 +174,7 @@ describe('project GDD generation routes', () => {
       body: JSON.stringify({
         designSystemId: SYSTEM_ID,
         versionId: VERSION_ID,
-        creativeBrief: '请生成包含地图描述的新 GDD',
+        creativeBrief: 'Generate a new GDD with a map description',
       }),
     }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
     const body = await response.json();
@@ -184,7 +184,7 @@ describe('project GDD generation routes', () => {
       { service: true },
       expect.objectContaining({
         input: expect.objectContaining({
-          creativeBrief: '请生成包含地图描述的新 GDD',
+          creativeBrief: 'Generate a new GDD with a map description',
           projectSources: [],
         }),
       }),

@@ -74,7 +74,7 @@ expect(createGddGenerationJob).toHaveBeenCalledWith(
   { service: true },
   expect.objectContaining({
     input: expect.objectContaining({
-      creativeBrief: '请生成包含地图描述的新 GDD',
+      creativeBrief: 'Generate a new GDD with a map description',
       projectSources: [],
     }),
   }),
@@ -118,7 +118,7 @@ Expected: all focused Jest suites, both TypeScript checks, ESLint, and whitespac
 
 **Interfaces:**
 - Consumes: the running app at `http://localhost:3000`, local Supabase, the current `hetu@qq.com` account, the bound GDS/version, and a new generic Creative brief.
-- Produces: browser-visible and database evidence that the generated GDD/map do not inherit the old distinctive location `十字镇`.
+- Produces: browser-visible and database evidence that the generated GDD/map do not inherit the old distinctive location `Crossroads Town`.
 
 - [x] **Step 1: Check local services**
 
@@ -126,17 +126,17 @@ Verify port 3000, local Supabase, and required Edge Functions are responsive. St
 
 - [x] **Step 2: Generate through the real UI**
 
-Sign in with the supplied current account, open the existing `test` project, and submit a new Creative brief that requests a GDD with one map description but does not mention `十字镇`, for example:
+Sign in with the supplied current account, open the existing `test` project, and submit a new Creative brief that requests a GDD with one map description but does not mention `Crossroads Town`, for example:
 
 ```text
-请生成一份全新的游戏设计文档，并在文档中包含一处适合核心玩法的基础地图描述。
+Generate a new game design document with one basic map description suitable for the core gameplay.
 ```
 
 Click `Generate GDD + maps` once and wait by polling the visible job status rather than using a fixed sleep.
 
 - [x] **Step 3: Inspect the new GDD and map**
 
-Open the generated document and verify it contains a newly generated map description and a rendered map reference/image. Confirm neither the new GDD nor the generated map metadata/image prompt reuses `十字镇` unless that name is independently present in the pinned GDS.
+Open the generated document and verify it contains a newly generated map description and a rendered map reference/image. Confirm neither the new GDD nor the generated map metadata/image prompt reuses `Crossroads Town` unless that name is independently present in the pinned GDS.
 
 - [x] **Step 4: Inspect durable job evidence**
 

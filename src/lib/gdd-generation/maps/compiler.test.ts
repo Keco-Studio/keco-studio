@@ -45,7 +45,7 @@ describe('GDD map brief compiler', () => {
   });
 
   it('does not treat map UI feedback as a spatial map description', async () => {
-    const markdown = '# Consequence Feedback\n| Change | Presentation | Example |\n| --- | --- | --- |\n| World state | 地图界面更新 | 十字镇区域图标变为铁誓控制 |';
+    const markdown = '# Consequence Feedback\n| Change | Presentation | Example |\n| --- | --- | --- |\n| World state | \u5730\u56fe\u754c\u9762\u66f4\u65b0 | \u5341\u5b57\u9547\u533a\u57df\u56fe\u6807\u53d8\u4e3a\u94c1\u8a93\u63a7\u5236 |';
     const complete = jest.fn(async () => '[]');
     await expect(compileGddMapBriefs({ markdown, artStyle: null, complete })).resolves.toEqual([]);
     expect(complete).toHaveBeenCalledTimes(1);
@@ -109,16 +109,16 @@ describe('GDD map brief compiler', () => {
   });
 
   it.each([
-    '基础地图描述',
-    '### 10. 基础地图描述',
+    '\u57fa\u7840\u5730\u56fe\u63cf\u8ff0',
+    '### 10. \u57fa\u7840\u5730\u56fe\u63cf\u8ff0',
   ])('maps model heading variant %s back to the exact numbered GDD heading', async (sourceHeading) => {
     const complete = jest.fn(async () => JSON.stringify([candidate('Town', sourceHeading)]));
     const result = await compileGddMapBriefs({
-      markdown: '## 10. 基础地图描述\n区域地图布局包含入口、市场、工坊和主路。',
+      markdown: '## 10. \u57fa\u7840\u5730\u56fe\u63cf\u8ff0\n\u533a\u57df\u5730\u56fe\u5e03\u5c40\u5305\u542b\u5165\u53e3\u3001\u5e02\u573a\u3001\u5de5\u574a\u548c\u4e3b\u8def\u3002',
       artStyle: null,
       complete,
     });
     expect(result).toHaveLength(1);
-    expect(result[0].sourceHeading).toBe('10. 基础地图描述');
+    expect(result[0].sourceHeading).toBe('10. \u57fa\u7840\u5730\u56fe\u63cf\u8ff0');
   });
 });
