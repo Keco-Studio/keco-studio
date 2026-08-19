@@ -79,7 +79,7 @@ describe('gddGenerationService', () => {
   });
 
   it('passes materialized dialogue resources to the completion RPC', async () => {
-    const rpc = jest.fn(async () => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
     const dialogueResources = [{
       chapterKey: 'chapter-01',
       title: 'Arrival',
