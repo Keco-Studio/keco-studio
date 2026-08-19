@@ -1,6 +1,7 @@
 import { isUuid } from '@/lib/utils/uuid';
 import { DocumentContentValidationError } from './documentStateTypes';
 import { parseResourceReferenceAttributes } from './resourceReferenceTypes';
+import { parseGddMapReferenceAttributes } from './gddMapReferenceTypes';
 import {
   parseSanctionedMdxAst,
   serializeSanctionedMdxAst,
@@ -70,6 +71,15 @@ export const SANCTIONED_MDX_REGISTRY = {
       { name: 'endBefore', required: false },
       { name: 'endAfter', required: false },
       { name: 'fallbackLabel', required: true },
+    ],
+  },
+  GddMapReference: {
+    kind: 'flow',
+    hasChildren: false,
+    props: [
+      { name: 'artifactId', required: true },
+      { name: 'display', required: true, allowedValues: ['compact', 'full'] },
+      { name: 'fallbackTitle', required: true },
     ],
   },
 } as const satisfies Record<string, SanctionedMdxComponentRule>;
@@ -328,6 +338,7 @@ export function validateSanctionedMdxPropertyEdit(
   ) {
     return null;
   }
+  if (componentName === 'GddMapReference' && !parseGddMapReferenceAttributes(validated)) return null;
   if (componentName === 'BlockAnchor' && !isUuid(validated.id)) return null;
   return validated;
 }
@@ -369,6 +380,9 @@ function validateJsxNode(node: AstNode): void {
     !parseResourceReferenceAttributes(attributes)
   ) {
     invalid('ResourceReference properties are invalid');
+  }
+  if (name === 'GddMapReference' && !parseGddMapReferenceAttributes(attributes)) {
+    invalid('GddMapReference properties are invalid');
   }
   if (rule.hasChildren && childrenOf(node).length === 0) {
     invalid(`${name} must contain Markdown children`);
