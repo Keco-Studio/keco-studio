@@ -596,23 +596,24 @@ export function TableHeader({
                       showErrorToast('Missing libraryId or column id, cannot delete');
                       return;
                     }
-                    setDeleteColumnConfirm((prev) => ({ ...prev, loading: true }));
+                    const propertyId = deleteColumnConfirm.propertyId;
+                    setDeleteColumnConfirm({
+                      open: false,
+                      propertyId: undefined,
+                      propertyName: undefined,
+                      loading: false,
+                    });
                     try {
-                      await deleteLibraryField(supabase, libraryId, deleteColumnConfirm.propertyId);
-                      await invalidateLibrarySchemaData(queryClient, {
+                      await deleteLibraryField(supabase, libraryId, propertyId);
+                      showSuccessToast('Column deleted');
+                      void invalidateLibrarySchemaData(queryClient, {
                         libraryId,
                         refetchActiveSchema: true,
+                      }).catch((err) => {
+                        console.error('Failed to refresh schema after column delete', err);
                       });
-                      showSuccessToast('Column deleted');
                     } catch (e: any) {
                       showErrorToast(e?.message || 'Failed to delete column');
-                    } finally {
-                      setDeleteColumnConfirm({
-                        open: false,
-                        propertyId: undefined,
-                        propertyName: undefined,
-                        loading: false,
-                      });
                     }
                   }}
                 >

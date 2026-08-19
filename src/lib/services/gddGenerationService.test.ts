@@ -69,9 +69,32 @@ describe('gddGenerationService', () => {
       jobId: 'job-1', workerId: 'worker-1', markdown: '# GDD', yjsState: 'encoded',
       description: 'Generated', metadata: { source: 'gdd-generation' },
       appliedRuleIds: ['rule-1'], omittedRuleIds: [],
+      tableResources: [{ id: 'table-1', table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ id: 'row-1', name: 'Basic', values: { name: 'Basic' } }] }],
     })).resolves.toEqual({ id: 'document-1', name: 'GDD' });
     expect(rpc).toHaveBeenCalledWith('persist_completed_gdd_generation_job', expect.objectContaining({
       p_job_id: 'job-1', p_worker_id: 'worker-1', p_yjs_state: 'encoded',
+      p_table_resources: [{ id: 'table-1', table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ id: 'row-1', name: 'Basic', values: { name: 'Basic' } }] }],
+    }));
+  });
+
+  it('strips model-only metadata before sending table resources to Postgres', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    const resource = {
+      id: 'table-1', table: 'Products', purpose: '商品数据。', fields: ['name', 'category', 'base_cost'],
+      modelNote: 'ignore me',
+      rows: [{ id: 'row-1', name: 'Milk', category: 'Dairy', base_cost: 10, sourceIndex: 0 }],
+    } as never;
+
+    await persistCompletedGddGenerationJob({ rpc } as never, {
+      jobId: 'job-1', workerId: 'worker-1', markdown: '# GDD', yjsState: 'encoded',
+      description: 'Generated', metadata: {}, appliedRuleIds: [], omittedRuleIds: [], tableResources: [resource],
+    });
+
+    expect(rpc.mock.calls[0][1]).toEqual(expect.objectContaining({
+      p_table_resources: [{
+        id: 'table-1', table: 'Products', purpose: '商品数据。', fields: ['name', 'category', 'base_cost'],
+        rows: [{ id: 'row-1', name: 'Milk', values: { name: 'Milk', category: 'Dairy', base_cost: 10 } }],
+      }],
     }));
   });
 
@@ -81,12 +104,16 @@ describe('gddGenerationService', () => {
       status: 'failed', phase: 'failed', attempt_count: 3, max_attempts: 3,
       available_at: 'available', completed_at: 'completed', output_document_id: null,
       output_document_name: null, applied_rule_ids: [], omitted_rule_ids: [], error: 'x'.repeat(2000),
+      output_folder_id: 'folder-1', output_table_ids: ['table-1'], output_table_names: ['Skills'],
       input: { secret: true }, lease_owner: 'worker', idempotency_key: 'secret',
     } as never);
     expect(publicJob.error).toHaveLength(500);
     expect(publicJob).not.toHaveProperty('input');
     expect(publicJob).not.toHaveProperty('lease_owner');
     expect(publicJob).not.toHaveProperty('idempotency_key');
+    expect(publicJob).toEqual(expect.objectContaining({
+      output_folder_id: 'folder-1', output_table_ids: ['table-1'], output_table_names: ['Skills'],
+    }));
   });
 
   it('reads public jobs using only the authorized public column list', async () => {
@@ -96,6 +123,8 @@ describe('gddGenerationService', () => {
 
     const columns = select.mock.calls[0][0];
     expect(columns).toContain('output_document_id');
+    expect(columns).toContain('output_folder_id');
+    expect(columns).toContain('output_table_ids');
     expect(columns).not.toMatch(/input|source_snapshots|idempotency|hash|lease|owner_id/);
   });
 

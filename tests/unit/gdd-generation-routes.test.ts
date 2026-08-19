@@ -9,6 +9,10 @@ const getGameDesignSystemDetail = jest.fn();
 const listGameDesignReferenceOptions = jest.fn();
 const getSupabaseServiceRoleClient = jest.fn();
 const processNextGddJob = jest.fn();
+const shouldWakeGddGenerationJob = jest.fn((job: { status: string; available_at: string; lease_expires_at?: string | null }) => {
+  if (job.status === 'queued') return Date.parse(job.available_at) <= Date.now();
+  return job.status === 'running' && Boolean(job.lease_expires_at) && Date.parse(job.lease_expires_at!) <= Date.now();
+});
 let userId: string | null = 'user-1';
 let supabase: any;
 
@@ -47,7 +51,10 @@ jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({
 jest.mock('@/lib/server/supabaseServiceRole', () => ({
   getSupabaseServiceRoleClient: () => getSupabaseServiceRoleClient(),
 }));
-jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: (...args: unknown[]) => processNextGddJob(...args) }));
+jest.mock('@/lib/gdd-generation/worker', () => ({
+  processNextGddJob: (...args: unknown[]) => processNextGddJob(...args),
+  shouldWakeGddGenerationJob: (...args: unknown[]) => shouldWakeGddGenerationJob(...args as Parameters<typeof shouldWakeGddGenerationJob>),
+}));
 
 import { POST } from '@/app/api/projects/[projectId]/gdd-generation-jobs/route';
 import { DELETE, GET } from '@/app/api/projects/[projectId]/gdd-generation-jobs/[id]/route';
@@ -63,6 +70,8 @@ const internalJob = {
   version_id: VERSION_ID, status: 'completed', phase: 'completed', attempt_count: 1,
   max_attempts: 3, available_at: '2026-08-17T00:00:00Z', completed_at: '2026-08-17T00:01:00Z',
   output_document_id: '55555555-5555-4555-8555-555555555555', output_document_name: 'GDD',
+  output_folder_id: '66666666-6666-4666-8666-666666666666',
+  output_table_ids: ['77777777-7777-4777-8777-777777777777'], output_table_names: ['Skills'],
   applied_rule_ids: ['rule-1'], omitted_rule_ids: [], error: null,
   input: { secret: 'prompt' }, source_snapshots: [{ excerpt: 'secret source' }],
   idempotency_key: 'private-key', input_hash: 'private-hash', lease_owner: 'private-worker',
@@ -73,6 +82,8 @@ const publicJob = {
   status: 'completed', phase: 'completed', attempt_count: 1, max_attempts: 3,
   available_at: '2026-08-17T00:00:00Z', completed_at: '2026-08-17T00:01:00Z',
   output_document_id: '55555555-5555-4555-8555-555555555555', output_document_name: 'GDD',
+  output_folder_id: '66666666-6666-4666-8666-666666666666',
+  output_table_ids: ['77777777-7777-4777-8777-777777777777'], output_table_names: ['Skills'],
   applied_rule_ids: ['rule-1'], omitted_rule_ids: [], error: null,
 };
 
@@ -119,6 +130,10 @@ describe('project GDD generation routes', () => {
 
     expect(response.status).toBe(200);
     expect(body.job).toEqual(expect.objectContaining({ id: JOB_ID, project_id: PROJECT_ID, output_document_name: 'GDD' }));
+    expect(body.job).toEqual(expect.objectContaining({
+      output_folder_id: '66666666-6666-4666-8666-666666666666',
+      output_table_ids: ['77777777-7777-4777-8777-777777777777'],
+    }));
     expect(body.job).not.toHaveProperty('input');
     expect(body.job).not.toHaveProperty('source_snapshots');
     expect(body.job).not.toHaveProperty('idempotency_key');
@@ -127,6 +142,7 @@ describe('project GDD generation routes', () => {
   });
 
   it('opportunistically wakes a queued job while it is being polled', async () => {
+    getGddGenerationJob.mockResolvedValue({ ...internalJob, status: 'queued', phase: 'collecting' });
     getPublicGddGenerationJob.mockResolvedValue({ ...publicJob, status: 'queued', phase: 'collecting' });
 
     const response = await GET(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`), params);
@@ -135,6 +151,25 @@ describe('project GDD generation routes', () => {
     expect(response.status).toBe(200);
     expect(processNextGddJob).toHaveBeenCalledWith(expect.objectContaining({
       serviceClient: { service: true },
+      workerId: expect.stringMatching(/^gdd-poll-/),
+    }));
+  });
+
+  it('opportunistically recovers a running job whose lease expired', async () => {
+    getGddGenerationJob.mockResolvedValue({
+      ...internalJob,
+      status: 'running',
+      phase: 'generating',
+      lease_expires_at: '2020-01-01T00:00:00.000Z',
+    });
+
+    const response = await GET(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`), params);
+    const body = await response.json();
+    await Promise.resolve();
+
+    expect(response.status).toBe(200);
+    expect(body.job).not.toHaveProperty('lease_expires_at');
+    expect(processNextGddJob).toHaveBeenCalledWith(expect.objectContaining({
       workerId: expect.stringMatching(/^gdd-poll-/),
     }));
   });
@@ -155,7 +190,7 @@ describe('project GDD generation routes', () => {
 
   it('returns a safe migration-required 503 when GET cannot see the jobs relation', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    getPublicGddGenerationJob.mockRejectedValue({ code: 'PGRST205', message: 'private schema detail' });
+    getGddGenerationJob.mockRejectedValue({ code: 'PGRST205', message: 'private schema detail' });
 
     const response = await GET(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`), params);
 
@@ -167,11 +202,11 @@ describe('project GDD generation routes', () => {
     consoleError.mockRestore();
   });
 
-  it('GET uses the public column selector instead of the internal job reader', async () => {
+  it('GET converts the internal service-role job to the bounded public DTO', async () => {
     await GET(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`), params);
 
-    expect(getPublicGddGenerationJob).toHaveBeenCalled();
-    expect(getGddGenerationJob).not.toHaveBeenCalled();
+    expect(getGddGenerationJob).toHaveBeenCalledWith({ service: true }, JOB_ID);
+    expect(getPublicGddGenerationJob).not.toHaveBeenCalled();
   });
 
   it('returns the same public DTO from POST', async () => {
@@ -186,6 +221,11 @@ describe('project GDD generation routes', () => {
     expect(body.job).not.toHaveProperty('source_snapshots');
     expect(body.job).not.toHaveProperty('idempotency_key');
     expect(body.job).not.toHaveProperty('lease_owner');
+    expect(listGameDesignReferenceOptions).toHaveBeenCalledWith(
+      supabase,
+      PROJECT_ID,
+      { excludeGeneratedResources: true },
+    );
   });
 
   it.each(['42P01', 'PGRST205', 'PGRST202'])('returns a safe migration-required 503 for missing GDD database schema (%s)', async (code) => {

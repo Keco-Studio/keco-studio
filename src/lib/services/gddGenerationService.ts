@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import type { GddGenerationInput } from '@/lib/gddGeneration';
 import type { GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
+import { sanitizeTableResourcesForPersistence, type GeneratedTableResource } from '@/lib/gdd-generation/tableResources';
 
 export type GddJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type GddJobPhase = 'collecting' | 'planning' | 'generating_core' | 'generating_systems'
@@ -23,6 +24,9 @@ export type GddGenerationJob = {
   omitted_rule_ids: string[];
   output_document_id: string | null;
   output_document_name: string | null;
+  output_folder_id: string | null;
+  output_table_ids: string[];
+  output_table_names: string[];
   error: string | null;
   idempotency_key: string | null;
   input_hash: string | null;
@@ -43,6 +47,7 @@ export type PublicGddGenerationJob = Pick<GddGenerationJob,
   | 'mode' | 'contract_version'
   | 'attempt_count' | 'max_attempts' | 'available_at' | 'completed_at'
   | 'output_document_id' | 'output_document_name' | 'applied_rule_ids' | 'omitted_rule_ids'
+  | 'output_folder_id' | 'output_table_ids' | 'output_table_names'
 > & { error: string | null };
 
 export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenerationJob {
@@ -61,14 +66,17 @@ export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenera
     completed_at: job.completed_at,
     output_document_id: job.output_document_id,
     output_document_name: job.output_document_name,
+    output_folder_id: job.output_folder_id ?? null,
+    output_table_ids: job.output_table_ids ?? [],
+    output_table_names: job.output_table_names ?? [],
     applied_rule_ids: job.applied_rule_ids,
     omitted_rule_ids: job.omitted_rule_ids,
     error: job.error ? job.error.slice(0, 500) : null,
   };
 }
 
-const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at';
-const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,applied_rule_ids,omitted_rule_ids,error';
+const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at';
+const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,applied_rule_ids,omitted_rule_ids,error';
 const LATEST_PUBLIC_JOB_COLUMNS = `${PUBLIC_JOB_COLUMNS},created_at`;
 
 export class GddIdempotencyConflictError extends Error {
@@ -260,6 +268,7 @@ export async function persistCompletedGddGenerationJob(
     metadata: Record<string, unknown>;
     appliedRuleIds: string[];
     omittedRuleIds: string[];
+    tableResources?: GeneratedTableResource[];
   },
 ): Promise<{ id: string; name: string }> {
   const { data, error } = await serviceClient.rpc('persist_completed_gdd_generation_job', {
@@ -271,6 +280,7 @@ export async function persistCompletedGddGenerationJob(
     p_metadata: input.metadata,
     p_applied_rule_ids: input.appliedRuleIds,
     p_omitted_rule_ids: input.omittedRuleIds,
+    p_table_resources: sanitizeTableResourcesForPersistence(input.tableResources ?? []),
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;

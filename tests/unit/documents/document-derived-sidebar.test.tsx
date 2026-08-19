@@ -396,6 +396,9 @@ describe('document-derived sidebar tree', () => {
     handleAction?.('delete');
     expect(requestDeleteConfirm).toHaveBeenCalledWith(expect.objectContaining({ content: 'Delete this document permanently? 2 tables and 1 script will also be deleted.' }));
     await deleteConfirmation?.onConfirm();
+    for (let i = 0; i < 6; i += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
     expect(deleteDocument).toHaveBeenCalledTimes(1);
     expect(deleteDocument).toHaveBeenCalledWith(deleteSupabase, 'doc');
     expect(deleteQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['documents', 'project'] });

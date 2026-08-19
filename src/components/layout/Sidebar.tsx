@@ -1178,18 +1178,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   });
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteConfirmState.onConfirm) return;
-    setDeleteConfirmState((prev) => ({ ...prev, loading: true }));
+    if (!deleteConfirmState.onConfirm || deleteConfirmState.loading) return;
+    const onConfirm = deleteConfirmState.onConfirm;
+    setDeleteConfirmState({
+      open: false,
+      title: 'Confirm deletion',
+      content: '',
+      loading: false,
+      onConfirm: undefined,
+    });
     try {
-      await deleteConfirmState.onConfirm();
-    } finally {
-      setDeleteConfirmState({
-        open: false,
-        title: 'Confirm deletion',
-        content: '',
-        loading: false,
-        onConfirm: undefined,
-      });
+      await onConfirm();
+    } catch {
+      // Errors are reported by onConfirm; the dialog must not stay open.
     }
   }, [deleteConfirmState]);
 
@@ -1795,28 +1796,29 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   title: 'Confirm deletion',
                   content: 'Delete this folder? All libraries and subfolders under it will be removed.',
                   loading: false,
-                  onConfirm: () => {
+                  onConfirm: async () => {
                     const librariesInFolder = libraries.filter((lib) => lib.folder_id === id);
                     const isViewingLibraryInFolder = librariesInFolder.some(
                       (lib) => lib.id === currentIds.libraryId
                     );
-                    return deleteFolder(supabase, id)
-                      .then(async () => {
-                        await invalidateFolderData(queryClient, {
-                          projectId: currentIds.projectId,
-                          folderId: id,
-                          refetchActiveFoldersLibraries: true,
-                        });
-                        if (
-                          (currentIds.folderId === id || isViewingLibraryInFolder) &&
-                          currentIds.projectId
-                        ) {
-                          router.push(`/${currentIds.projectId}`);
-                        }
-                      })
-                      .catch((err: unknown) => {
-                        setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                    try {
+                      await deleteFolder(supabase, id);
+                      if (
+                        (currentIds.folderId === id || isViewingLibraryInFolder) &&
+                        currentIds.projectId
+                      ) {
+                        router.push(`/${currentIds.projectId}`);
+                      }
+                      void invalidateFolderData(queryClient, {
+                        projectId: currentIds.projectId,
+                        folderId: id,
+                        refetchActiveFoldersLibraries: true,
+                      }).catch((err) => {
+                        console.error('Failed to refresh sidebar after folder delete', err);
                       });
+                    } catch (err: unknown) {
+                      setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                    }
                   },
                 });
               }

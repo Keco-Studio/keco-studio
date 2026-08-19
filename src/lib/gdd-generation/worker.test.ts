@@ -3,7 +3,14 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: { markdownToYjsState: jest.fn(async () => 'encoded-yjs') },
 }));
-import { persistGeneratedGddDocument, processClaimedGddJob, revalidateGddJobContext } from './worker';
+import {
+  describeGddGenerationError,
+  persistGeneratedGddDocument,
+  persistGeneratedGddV2Document,
+  processClaimedGddJob,
+  revalidateGddJobContext,
+  shouldWakeGddGenerationJob,
+} from './worker';
 import { GddGenerationValidationError, type GddGenerationInput, type GeneratedGdd } from '@/lib/gddGeneration';
 import type { GddGenerationJob } from '@/lib/services/gddGenerationService';
 
@@ -42,6 +49,28 @@ const job = {
 } as unknown as GddGenerationJob;
 
 describe('GDD generation worker', () => {
+  it('wakes available queued jobs and expired running leases only', () => {
+    const now = Date.parse('2026-08-19T06:00:00.000Z');
+    const base = {
+      status: 'queued' as const,
+      available_at: '2026-08-19T05:59:00.000Z',
+      lease_expires_at: null,
+    };
+    expect(shouldWakeGddGenerationJob(base, now)).toBe(true);
+    expect(shouldWakeGddGenerationJob({ ...base, available_at: '2026-08-19T06:01:00.000Z' }, now)).toBe(false);
+    expect(shouldWakeGddGenerationJob({ ...base, status: 'running', lease_expires_at: '2026-08-19T05:59:00.000Z' }, now)).toBe(true);
+    expect(shouldWakeGddGenerationJob({ ...base, status: 'running', lease_expires_at: '2026-08-19T06:01:00.000Z' }, now)).toBe(false);
+    expect(shouldWakeGddGenerationJob({ ...base, status: 'completed' }, now)).toBe(false);
+  });
+
+  it('preserves useful details from structured generation errors', () => {
+    expect(describeGddGenerationError({
+      message: 'Generated table row is invalid',
+      details: 'Field cost is missing',
+      code: '22023',
+    })).toBe('Generated table row is invalid: Field cost is missing [22023]');
+  });
+
   it('persists an initialized Yjs snapshot and structured metadata without source excerpts', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
       data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd' }],
@@ -85,6 +114,41 @@ describe('GDD generation worker', () => {
       expect.objectContaining({ label: 'Project brief', contentHash: 'a'.repeat(64) }),
     ]);
     expect(sourceSnapshots[0]).not.toHaveProperty('excerpt');
+    expect(rpcArgs.p_table_resources).toEqual([]);
+  });
+
+  it('persists v2 table references as safe project-relative links', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    await persistGeneratedGddV2Document(
+      { rpc } as never,
+      { ...job, input: { ...generationInput, contractVersion: 2, mode: 'quick', language: 'zh-CN' } } as GddGenerationJob,
+      'worker-1',
+      '# GDD\n\n## Core Loop\nBody.',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }],
+    );
+    const args = rpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(args.p_markdown).toContain(`[Skills](/${generationInput.projectId}/`);
+    expect(args.p_markdown).not.toContain('keco://');
+    expect(args.p_metadata).toEqual(expect.objectContaining({
+      tableResources: [expect.objectContaining({
+        rows: [expect.objectContaining({ values: { name: 'Basic' } })],
+      })],
+    }));
+  });
+
+  it('rebuilds v1 Markdown with table references at the persistence boundary', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    await persistGeneratedGddDocument(
+      { rpc } as never,
+      job,
+      'worker-1',
+      { ...generated, productionTables: [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }] },
+      '# Incomplete caller Markdown',
+    );
+    const args = rpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(args.p_markdown).toContain(`[Skills](/${generationInput.projectId}/`);
+    expect(args.p_markdown).not.toContain('Incomplete caller Markdown');
   });
 
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
@@ -141,6 +205,7 @@ describe('GDD generation worker', () => {
       'worker-1',
       '# GDD\n\n## Core Loop\nBody text.',
       expect.objectContaining({ status: 'pass' }),
+      undefined,
     );
     jest.useRealTimers();
   });

@@ -59,7 +59,7 @@ const generated = {
   difficultyBalance: 'Add constraints before adding stat inflation.',
   narrativeWorld: 'A coastal settlement under pressure.',
   experiencePresentation: 'Preview consequences before commitment.',
-  productionTables: [{ table: 'Skills', purpose: 'Reusable actions.', fields: ['name', 'cost'] }],
+  productionTables: [{ table: 'Skills', purpose: 'Reusable actions.', fields: ['name', 'cost'], rows: [{ name: 'Basic', values: { name: 'Basic', cost: 1 } }] }],
   assumptions: ['The project is single-player.'],
   appliedRuleIds: ['readable-state'],
 };
@@ -75,13 +75,30 @@ describe('GDD generation contract', () => {
     expect(() => parseGeneratedGdd({ ...generated, assumptions: ['x'.repeat(2001)] }, rules)).toThrow();
   });
 
+  it('accepts legacy flat production table rows and normalizes their values', () => {
+    const parsed = parseGeneratedGdd({
+      ...generated,
+      productionTables: [{
+        table: 'Products', purpose: '商品。', fields: ['name', 'category'],
+        rows: [{ name: 'Milk', category: 'Dairy', id: 'generated-row-id' }],
+      }],
+    }, rules);
+    expect(parsed.productionTables[0]!.rows).toEqual([
+      { name: 'Milk', values: { category: 'Dairy' } },
+    ]);
+  });
+
   it('renders deterministic GDD Markdown with assumptions and no internal evidence', () => {
-    const markdown = renderGddMarkdown(generated, { input });
+    const markdown = renderGddMarkdown(generated, {
+      input,
+      tableResources: [{ id: 'table-1', ...generated.productionTables[0] }],
+    });
     expect(markdown).toContain('# Harbor Tactics GDD');
     expect(markdown).toContain('## Assumptions to Confirm');
     expect(markdown).not.toMatch(/Provenance/i);
     expect(markdown).not.toContain('Applied rules: readable-state');
     expect(markdown.indexOf('## Core Loop')).toBeLessThan(markdown.indexOf('## Gameplay Systems'));
+    expect(markdown).toContain(`[Skills](/${input.projectId}/table-1)`);
   });
 
   it('builds JSON-only generation messages from the pinned version and project context', () => {
@@ -111,9 +128,9 @@ describe('GDD generation contract', () => {
 
     const firstMessages = complete.mock.calls[0][0] as Array<{ content: string }>;
     const repairMessages = complete.mock.calls[1][0] as Array<{ content: string }>;
-    const exactContract = 'productionTables entries must have exactly table, purpose, and fields';
+    const exactContract = 'productionTables entries must have exactly table, purpose, fields, and rows';
     expect(firstMessages[0].content).toContain(exactContract);
-    expect(firstMessages[0].content).toContain('"productionTables":[{"table":"Skills","purpose":"What this table controls.","fields":["name","cost"]}]');
+    expect(firstMessages[0].content).toContain('"productionTables":[{"table":"Skills","purpose":"What this table controls.","fields":["name","cost"],"rows":[{"name":"Basic","values":{"name":"Basic","cost":1}}]}]');
     expect(repairMessages[1].content).toContain(exactContract);
     expect(repairMessages[1].content).toContain('Original project request and sources:');
     expect(repairMessages[1].content).toContain(input.projectName);

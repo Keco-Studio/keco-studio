@@ -44,7 +44,9 @@ function idempotencyKey(request: Request): string | null {
 }
 
 async function automaticProjectSources(supabase: Parameters<typeof listGameDesignReferenceOptions>[0], projectId: string) {
-  const options = (await listGameDesignReferenceOptions(supabase, projectId)).slice(0, 10);
+  const options = (await listGameDesignReferenceOptions(supabase, projectId, {
+    excludeGeneratedResources: true,
+  })).slice(0, 10);
   const snapshots = [];
   let used = 0;
   for (const option of options) {

@@ -4,6 +4,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import {
+  materializeTableResources,
+  renderTableReferences,
+  sanitizeTableResourcesForPersistence,
+} from '@/lib/gdd-generation/tableResources';
+import {
   generateGdd,
   GddGenerationValidationError,
   renderGddMarkdown,
@@ -42,6 +47,39 @@ const defaultDependencies: WorkerDependencies = {
   retry: retryGddGenerationJob,
   fail: failGddGenerationJob,
 };
+
+export function shouldWakeGddGenerationJob(
+  job: Pick<GddGenerationJob, 'status' | 'available_at' | 'lease_expires_at'>,
+  now = Date.now(),
+): boolean {
+  if (job.status === 'queued') return Date.parse(job.available_at) <= now;
+  if (job.status === 'running') {
+    return Boolean(job.lease_expires_at) && Date.parse(job.lease_expires_at as string) <= now;
+  }
+  return false;
+}
+
+export function describeGddGenerationError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message.slice(0, 1_000);
+  if (error && typeof error === 'object') {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [value.message, value.details, value.hint]
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+    if (parts.length > 0) {
+      const code = typeof value.code === 'string' && value.code.trim() ? ` [${value.code.trim()}]` : '';
+      return `${parts.join(': ')}${code}`.slice(0, 1_000);
+    }
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') return serialized.slice(0, 1_000);
+    } catch {
+      // Fall through to a stable message for non-serializable errors.
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error.trim().slice(0, 1_000);
+  return 'GDD generation failed.';
+}
 
 export class GddJobContextInvalidError extends Error {
   constructor(message: string) {
@@ -120,13 +158,19 @@ export async function persistGeneratedGddDocument(
   gdd: GeneratedGdd,
   markdown: string,
 ): Promise<{ id: string; name: string }> {
-  validateSanctionedMdx(markdown);
-  const yjsState = await documentContentCodec.markdownToYjsState(markdown);
+  const tableResources = sanitizeTableResourcesForPersistence(
+    materializeTableResources(job.id, gdd.productionTables),
+  );
+  const completedMarkdown = tableResources.length > 0
+    ? renderGddMarkdown(gdd, { input: job.input, tableResources })
+    : markdown;
+  validateSanctionedMdx(completedMarkdown);
+  const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
   const createdAt = new Date().toISOString();
   return persistCompletedGddGenerationJob(serviceClient, {
     jobId: job.id,
     workerId,
-    markdown,
+    markdown: completedMarkdown,
     yjsState,
     description: `AI-generated GDD draft from ${job.input.systemTitle} version ${job.input.versionNumber}.`,
     metadata: {
@@ -137,11 +181,13 @@ export async function persistGeneratedGddDocument(
       sourceSnapshots: sourceSnapshotMetadata(job),
       appliedRuleIds: gdd.appliedRuleIds,
       omittedRuleIds: gdd.omittedRuleIds ?? [],
+      tableResources,
       createdBy: job.owner_id,
       createdAt,
     },
     appliedRuleIds: gdd.appliedRuleIds,
     omittedRuleIds: gdd.omittedRuleIds ?? [],
+    tableResources,
   });
 }
 
@@ -151,14 +197,21 @@ export async function persistGeneratedGddV2Document(
   workerId: string,
   markdown: string,
   review: unknown,
+  tablePlans: Parameters<typeof materializeTableResources>[1] = [],
 ): Promise<{ id: string; name: string }> {
-  validateSanctionedMdx(markdown);
-  const yjsState = await documentContentCodec.markdownToYjsState(markdown);
   const input = job.input as GddGenerationRequestV2;
+  const tableResources = sanitizeTableResourcesForPersistence(
+    materializeTableResources(job.id, tablePlans),
+  );
+  const completedMarkdown = tableResources.length > 0
+    ? `${markdown.trim()}\n\n## Keco Tables\n\n${renderTableReferences(job.project_id, tableResources)}\n`
+    : markdown;
+  validateSanctionedMdx(completedMarkdown);
+  const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
   return persistCompletedGddGenerationJob(serviceClient, {
     jobId: job.id,
     workerId,
-    markdown,
+    markdown: completedMarkdown,
     yjsState,
     description: `Structured ${input.mode} GDD draft from ${input.systemTitle} version ${input.versionNumber}.`,
     metadata: {
@@ -172,11 +225,13 @@ export async function persistGeneratedGddV2Document(
       appliedRuleIds: job.applied_rule_ids,
       omittedRuleIds: job.omitted_rule_ids,
       review,
+      tableResources,
       createdBy: job.owner_id,
       createdAt: new Date().toISOString(),
     },
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
+    tableResources,
   });
 }
 
@@ -216,18 +271,19 @@ export async function processClaimedGddJob(
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       validateSanctionedMdx(generatedV2.markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
-      await dependencies.persistV2(serviceClient, job, workerId, generatedV2.markdown, generatedV2.review);
+      await dependencies.persistV2(serviceClient, job, workerId, generatedV2.markdown, generatedV2.review, generatedV2.tablePlans);
       return 'completed';
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
-    const markdown = renderGddMarkdown(generated, { input: job.input });
+    const tableResources = materializeTableResources(job.id, generated.productionTables);
+    const markdown = renderGddMarkdown(generated, { input: job.input, tableResources });
     validateSanctionedMdx(markdown);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
     await dependencies.persist(serviceClient, job, workerId, generated, markdown);
     return 'completed';
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'GDD generation failed.';
+    const message = describeGddGenerationError(error);
     if (isPermanentError(error)) {
       await dependencies.fail(serviceClient, job.id, workerId, message);
       return 'failed';
