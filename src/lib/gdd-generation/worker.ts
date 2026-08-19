@@ -9,6 +9,11 @@ import {
   sanitizeTableResourcesForPersistence,
 } from '@/lib/gdd-generation/tableResources';
 import {
+  materializeDialogueResources,
+  renderDialogueReferences,
+  type DialoguePlan,
+} from '@/lib/gdd-generation/dialogueResources';
+import {
   generateGdd,
   GddGenerationValidationError,
   renderGddMarkdown,
@@ -161,16 +166,20 @@ export async function persistGeneratedGddDocument(
   const tableResources = sanitizeTableResourcesForPersistence(
     materializeTableResources(job.id, gdd.productionTables),
   );
+  const dialogueResources = materializeDialogueResources(job.id, gdd.dialogueChapters ?? []);
   const completedMarkdown = tableResources.length > 0
     ? renderGddMarkdown(gdd, { input: job.input, tableResources })
     : markdown;
-  validateSanctionedMdx(completedMarkdown);
-  const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
+  const dialogueMarkdown = dialogueResources.length > 0
+    ? `${completedMarkdown.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+    : completedMarkdown;
+  validateSanctionedMdx(dialogueMarkdown);
+  const yjsState = await documentContentCodec.markdownToYjsState(dialogueMarkdown);
   const createdAt = new Date().toISOString();
   return persistCompletedGddGenerationJob(serviceClient, {
     jobId: job.id,
     workerId,
-    markdown: completedMarkdown,
+    markdown: dialogueMarkdown,
     yjsState,
     description: `AI-generated GDD draft from ${job.input.systemTitle} version ${job.input.versionNumber}.`,
     metadata: {
@@ -182,12 +191,14 @@ export async function persistGeneratedGddDocument(
       appliedRuleIds: gdd.appliedRuleIds,
       omittedRuleIds: gdd.omittedRuleIds ?? [],
       tableResources,
+      dialogueResources,
       createdBy: job.owner_id,
       createdAt,
     },
     appliedRuleIds: gdd.appliedRuleIds,
     omittedRuleIds: gdd.omittedRuleIds ?? [],
     tableResources,
+    dialogueResources,
   });
 }
 
@@ -198,14 +209,19 @@ export async function persistGeneratedGddV2Document(
   markdown: string,
   review: unknown,
   tablePlans: Parameters<typeof materializeTableResources>[1] = [],
+  dialoguePlans: DialoguePlan[] = [],
 ): Promise<{ id: string; name: string }> {
   const input = job.input as GddGenerationRequestV2;
   const tableResources = sanitizeTableResourcesForPersistence(
     materializeTableResources(job.id, tablePlans),
   );
-  const completedMarkdown = tableResources.length > 0
+  const dialogueResources = materializeDialogueResources(job.id, dialoguePlans);
+  const tableMarkdown = tableResources.length > 0
     ? `${markdown.trim()}\n\n## Keco Tables\n\n${renderTableReferences(job.project_id, tableResources)}\n`
     : markdown;
+  const completedMarkdown = dialogueResources.length > 0
+    ? `${tableMarkdown.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+    : tableMarkdown;
   validateSanctionedMdx(completedMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
   return persistCompletedGddGenerationJob(serviceClient, {
@@ -226,12 +242,14 @@ export async function persistGeneratedGddV2Document(
       omittedRuleIds: job.omitted_rule_ids,
       review,
       tableResources,
+      dialogueResources,
       createdBy: job.owner_id,
       createdAt: new Date().toISOString(),
     },
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
     tableResources,
+    dialogueResources,
   });
 }
 
@@ -271,7 +289,15 @@ export async function processClaimedGddJob(
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       validateSanctionedMdx(generatedV2.markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
-      await dependencies.persistV2(serviceClient, job, workerId, generatedV2.markdown, generatedV2.review, generatedV2.tablePlans);
+      await dependencies.persistV2(
+        serviceClient,
+        job,
+        workerId,
+        generatedV2.markdown,
+        generatedV2.review,
+        generatedV2.tablePlans,
+        ...((generatedV2.dialoguePlans ?? []).length > 0 ? [generatedV2.dialoguePlans] : []),
+      );
       return 'completed';
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));

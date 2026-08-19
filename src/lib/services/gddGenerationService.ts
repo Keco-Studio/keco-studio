@@ -3,6 +3,7 @@ import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import type { GddGenerationInput } from '@/lib/gddGeneration';
 import type { GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { sanitizeTableResourcesForPersistence, type GeneratedTableResource } from '@/lib/gdd-generation/tableResources';
+import type { DialogueResource } from '@/lib/gdd-generation/dialogueResources';
 
 export type GddJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type GddJobPhase = 'collecting' | 'planning' | 'generating_core' | 'generating_systems'
@@ -267,8 +268,9 @@ export async function persistCompletedGddGenerationJob(
     description: string;
     metadata: Record<string, unknown>;
     appliedRuleIds: string[];
-    omittedRuleIds: string[];
-    tableResources?: GeneratedTableResource[];
+      omittedRuleIds: string[];
+      tableResources?: GeneratedTableResource[];
+      dialogueResources?: DialogueResource[];
   },
 ): Promise<{ id: string; name: string }> {
   const { data, error } = await serviceClient.rpc('persist_completed_gdd_generation_job', {
@@ -281,6 +283,7 @@ export async function persistCompletedGddGenerationJob(
     p_applied_rule_ids: input.appliedRuleIds,
     p_omitted_rule_ids: input.omittedRuleIds,
     p_table_resources: sanitizeTableResourcesForPersistence(input.tableResources ?? []),
+    p_dialogue_resources: input.dialogueResources ?? [],
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;

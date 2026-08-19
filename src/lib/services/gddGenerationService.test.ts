@@ -74,6 +74,29 @@ describe('gddGenerationService', () => {
     expect(rpc).toHaveBeenCalledWith('persist_completed_gdd_generation_job', expect.objectContaining({
       p_job_id: 'job-1', p_worker_id: 'worker-1', p_yjs_state: 'encoded',
       p_table_resources: [{ id: 'table-1', table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ id: 'row-1', name: 'Basic', values: { name: 'Basic' } }] }],
+      p_dialogue_resources: [],
+    }));
+  });
+
+  it('passes materialized dialogue resources to the completion RPC', async () => {
+    const rpc = jest.fn(async () => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    const dialogueResources = [{
+      chapterKey: 'chapter-01',
+      title: 'Arrival',
+      content: 'Guide: Hello.',
+      hasChoices: false,
+      branchSummary: [],
+      documentId: 'document-2',
+      dialogueJobId: 'dialogue-job-1',
+      documentName: 'Arrival dialogue',
+    }];
+    await persistCompletedGddGenerationJob({ rpc } as never, {
+      jobId: 'job-1', workerId: 'worker-1', markdown: '# GDD', yjsState: 'encoded',
+      description: 'Generated', metadata: {}, appliedRuleIds: [], omittedRuleIds: [],
+      dialogueResources,
+    });
+    expect(rpc).toHaveBeenCalledWith('persist_completed_gdd_generation_job', expect.objectContaining({
+      p_dialogue_resources: dialogueResources,
     }));
   });
 
