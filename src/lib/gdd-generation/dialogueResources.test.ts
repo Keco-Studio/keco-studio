@@ -40,6 +40,13 @@ describe('GDD dialogue resources', () => {
     )).toThrow('Duplicate dialogue chapter key');
   });
 
+  it('rejects multiple dialogue plan markers instead of silently ignoring later plans', () => {
+    expect(() => extractDialoguePlanMarker([
+      `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([validPlan])} -->`,
+      `<!-- KECO_DIALOGUE_PLAN ${JSON.stringify([{ ...validPlan, chapterKey: 'chapter-2' }])} -->`,
+    ].join('\n'))).toThrow(/multiple KECO dialogue plan markers/i);
+  });
+
   it('returns a bounded warning and no plans for malformed whole marker JSON', () => {
     const result = extractDialoguePlanMarker('Body\n<!-- KECO_DIALOGUE_PLAN [{bad json] -->\n');
 

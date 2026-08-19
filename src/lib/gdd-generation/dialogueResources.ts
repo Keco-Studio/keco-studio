@@ -26,6 +26,7 @@ export type DialogueResourceStatus = {
 };
 
 const DIALOGUE_MARKER = /<!--\s*KECO_DIALOGUE_PLAN\s*([\s\S]*?)\s*-->/i;
+const DIALOGUE_MARKERS = /<!--\s*KECO_DIALOGUE_PLAN\s*([\s\S]*?)\s*-->/gi;
 
 function deterministicUuid(seed: string): string {
   const hex = createHash('sha256').update(seed).digest('hex').slice(0, 32);
@@ -49,6 +50,9 @@ export function extractDialoguePlanMarker(raw: string): {
   plans: DialoguePlan[];
   warning: string | null;
 } {
+  if ([...raw.matchAll(DIALOGUE_MARKERS)].length > 1) {
+    throw new Error('Multiple KECO dialogue plan markers are not allowed.');
+  }
   const match = DIALOGUE_MARKER.exec(raw);
   if (!match) return { markdown: raw.trim(), plans: [], warning: null };
   const markdown = raw.replace(match[0], '').trim();

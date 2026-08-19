@@ -650,6 +650,76 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await expectNoDocumentOverflow(page);
     expect(pixelLabRequests).toEqual([]);
   });
+
+  test('renders generated dialogue Documents and retries one failed chapter', async ({ page }) => {
+    const gddJobId = '88000000-0000-4000-8000-000000000081';
+    const firstDialogueId = '89000000-0000-4000-8000-000000000082';
+    const secondDialogueId = '8a000000-0000-4000-8000-000000000083';
+    let retryRequested = false;
+    const backend = new GameArtStyleMockBackend();
+    await loginWithMockBackend(page, backend);
+    await page.route('**/api/projects/**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      if (path.endsWith('/game-design-system') && request.method() === 'GET') {
+        return fulfillJson(route, {
+          system: {
+            ...backend.generatedSystem,
+            current_version: backend.currentVersion,
+            versions: [backend.currentVersion],
+          },
+        });
+      }
+      if (path.endsWith('/gdd-generation-jobs') && request.method() === 'GET') {
+        return fulfillJson(route, { job: {
+          id: gddJobId, project_id: MOCK_PROJECT_ID, design_system_id: MOCK_SYSTEM_ID,
+          version_id: MOCK_CURRENT_VERSION_ID, status: 'completed', phase: 'completed',
+          mode: 'quick', contract_version: 1, attempt_count: 1, max_attempts: 3,
+          available_at: '2026-08-19T00:00:00.000Z', completed_at: '2026-08-19T00:01:00.000Z',
+          output_document_id: '8b000000-0000-4000-8000-000000000084', output_document_name: 'GDD',
+          output_folder_id: null, output_table_ids: [], output_table_names: [],
+          applied_rule_ids: [], omitted_rule_ids: [], error: null,
+        } });
+      }
+      if (path === `/api/projects/${MOCK_PROJECT_ID}/gdd-generation-jobs/${gddJobId}/dialogue-jobs` && request.method() === 'GET') {
+        return fulfillJson(route, { jobs: [
+          {
+            id: firstDialogueId, gdd_generation_job_id: gddJobId, project_id: MOCK_PROJECT_ID,
+            chapter_key: 'arrival', title: 'Arrival', document_id: '8c000000-0000-4000-8000-000000000085',
+            script_library_id: retryRequested ? '8d000000-0000-4000-8000-000000000086' : null,
+            status: retryRequested ? 'completed' : 'failed', attempt_count: retryRequested ? 1 : 3,
+            max_attempts: 3, available_at: '2026-08-19T00:00:00.000Z',
+            last_error: retryRequested ? null : 'Provider unavailable', completed_at: retryRequested ? '2026-08-19T00:02:00.000Z' : null,
+          },
+          {
+            id: secondDialogueId, gdd_generation_job_id: gddJobId, project_id: MOCK_PROJECT_ID,
+            chapter_key: 'departure', title: 'Departure', document_id: '8e000000-0000-4000-8000-000000000087',
+            script_library_id: '8f000000-0000-4000-8000-000000000088', status: 'completed', attempt_count: 1,
+            max_attempts: 3, available_at: '2026-08-19T00:00:00.000Z', last_error: null, completed_at: '2026-08-19T00:02:00.000Z',
+          },
+        ] });
+      }
+      if (path === `/api/projects/${MOCK_PROJECT_ID}/gdd-generation-jobs/${gddJobId}/dialogue-jobs/${firstDialogueId}/retry` && request.method() === 'POST') {
+        retryRequested = true;
+        return fulfillJson(route, { job: {
+          id: firstDialogueId, gdd_generation_job_id: gddJobId, project_id: MOCK_PROJECT_ID,
+          chapter_key: 'arrival', title: 'Arrival', document_id: '8c000000-0000-4000-8000-000000000085',
+          script_library_id: null, status: 'queued', attempt_count: 0, max_attempts: 3,
+          available_at: '2026-08-19T00:00:00.000Z', last_error: null, completed_at: null,
+        } }, 202);
+      }
+      return route.fallback();
+    });
+
+    await page.getByRole('tab', { name: 'Projects' }).click();
+    await expect(page.getByText('Arrival', { exact: true })).toBeVisible();
+    await expect(page.getByText('Departure', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Document' })).toHaveCount(2);
+    await expect(page.getByRole('link', { name: 'Script' })).toHaveCount(1);
+    await page.getByRole('button', { name: 'Retry Arrival' }).click();
+    await expect(page.getByText('Script ready', { exact: true })).toHaveCount(2);
+  });
 });
 
 test.describe('Game Design System real workflow', () => {
