@@ -185,6 +185,12 @@ function astInline(
       node.name === 'ResourceReference'
     ) {
       appendText(output, '[Reference unavailable]', inherited);
+    } else if (
+      (node.type === 'mdxJsxTextElement' || node.type === 'mdxJsxFlowElement') &&
+      node.name === 'GddMapReference'
+    ) {
+      const fallbackTitle = (node.attributes ?? []).find((attribute) => attribute.name === 'fallbackTitle' && typeof attribute.value === 'string')?.value as string | undefined;
+      appendText(output, fallbackTitle || 'Map unavailable', inherited);
     } else if (node.children) {
       output.push(...astInline(astChildren(node), definitions, inherited));
     }
@@ -258,12 +264,17 @@ function astBlocks(
     } else if (node.type === 'code') {
       blocks.push({ type: 'code', language: node.lang ?? '', text: node.value ?? '' });
     } else if (node.type === 'mdxJsxFlowElement') {
-      blocks.push({
-        type: 'callout',
-        component: node.name as 'Callout' | 'Details',
-        label: componentLabel(node),
-        children: astBlocks(astChildren(node), definitions, listLevel),
-      });
+      if (node.name === 'GddMapReference') {
+        const fallbackTitle = (node.attributes ?? []).find((attribute) => attribute.name === 'fallbackTitle' && typeof attribute.value === 'string')?.value as string | undefined;
+        blocks.push({ type: 'paragraph', content: [{ type: 'text', text: fallbackTitle || 'Map unavailable' }] });
+      } else {
+        blocks.push({
+          type: 'callout',
+          component: node.name as 'Callout' | 'Details',
+          label: componentLabel(node),
+          children: astBlocks(astChildren(node), definitions, listLevel),
+        });
+      }
     }
   }
   return blocks;

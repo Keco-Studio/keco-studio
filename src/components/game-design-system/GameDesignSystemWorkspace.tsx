@@ -100,6 +100,9 @@ const gddPhaseLabels: Record<PublicGddGenerationJob['phase'], string> = {
   generating: 'Writing draft',
   validating: 'Validating output',
   saving: 'Saving document',
+  compiling_maps: 'Compiling maps',
+  generating_maps: 'Generating maps',
+  finalizing_maps: 'Finalizing maps',
   completed: 'Completed',
   failed: 'Stopped',
 };
@@ -307,7 +310,10 @@ function ProjectsView(props: {
   const { onFeedback } = props;
   const [projectId, setProjectId] = useState('');
   const [gddJobs, setGddJobs] = useState<Record<string, PublicGddGenerationJob>>({});
+  const [loadedGddJobsKey, setLoadedGddJobsKey] = useState('');
   const [generationProjectId, setGenerationProjectId] = useState<string | null>(null);
+  const gddJobsKey = `${props.detail.id}:${props.version?.id ?? ''}:${props.projects.map((project) => project.id).join(',')}`;
+  const gddJobsLoaded = loadedGddJobsKey === gddJobsKey;
   const bindingQueries = useQueries({
     queries: props.projects.map((project) => ({
       queryKey: queryKeys.projectGameDesignSystem(project.id),
@@ -337,9 +343,11 @@ function ProjectsView(props: {
       const { targetProjectId } = variables;
       setGddJobs((current) => ({ ...current, [targetProjectId]: job }));
       setGenerationProjectId(null);
-      if (job.status === 'completed') {
+      if (job.status === 'completed' || job.status === 'completed_with_map_failures') {
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents(targetProjectId) });
-        onFeedback({ tone: 'success', text: 'GDD draft created.' });
+        onFeedback({ tone: 'success', text: job.status === 'completed'
+          ? 'GDD draft created.'
+          : 'GDD draft created with map failures.' });
       } else {
         onFeedback({ tone: 'success', text: 'GDD generation started.' });
       }
@@ -357,6 +365,7 @@ function ProjectsView(props: {
 
   useEffect(() => {
     if (!props.version || typeof fetchLatestProjectGddGenerationJob !== 'function') return undefined;
+    const requestKey = gddJobsKey;
     let cancelled = false;
     void Promise.all(props.projects.map(async (project) => {
       try {
@@ -366,17 +375,20 @@ function ProjectsView(props: {
       }
     })).then((results) => {
       if (cancelled) return;
-      setGddJobs((current) => {
-        const next = { ...current };
+      setGddJobs(() => {
+        const next: Record<string, PublicGddGenerationJob> = {};
         for (const result of results) if (result?.[1]) next[result[0]] = result[1];
         return next;
       });
+      setLoadedGddJobsKey(requestKey);
     });
     return () => { cancelled = true; };
-  }, [props.detail.id, props.projects, props.version]);
+  }, [gddJobsKey, props.detail.id, props.projects, props.version]);
 
   useEffect(() => {
-    const active = Object.entries(gddJobs).filter(([, job]) => job.status === 'queued' || job.status === 'running');
+    const active = Object.entries(gddJobs).filter(([, job]) => (
+      job.status === 'queued' || job.status === 'running' || job.status === 'waiting_for_maps'
+    ));
     if (active.length === 0) return undefined;
     const timer = window.setInterval(async () => {
       const updates = await Promise.all(active.map(async ([targetProjectId, job]) => {
@@ -390,9 +402,12 @@ function ProjectsView(props: {
         if (!update || !update[1]) continue;
         const [targetProjectId, job] = update;
         const previous = gddJobs[targetProjectId];
-        if (job.status === 'completed' && previous?.status !== 'completed') {
+        if ((job.status === 'completed' || job.status === 'completed_with_map_failures')
+          && previous?.status !== job.status) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.documents(targetProjectId) });
-          onFeedback({ tone: 'success', text: 'GDD draft created.' });
+          onFeedback({ tone: 'success', text: job.status === 'completed'
+            ? 'GDD draft created.'
+            : 'GDD draft created with map failures.' });
         } else if (job.status === 'failed' && previous?.status !== 'failed') {
           onFeedback({ tone: 'error', text: job.error || 'GDD generation failed.' });
         }
@@ -433,13 +448,15 @@ function ProjectsView(props: {
           const binding = bindingQuery.data ?? null;
           const selectedVersionIsBound = binding?.id === props.detail.id && binding.current_version?.id === props.version?.id;
           const gddJob = gddJobs[project.id];
-          const generating = gddJob?.status === 'queued' || gddJob?.status === 'running';
+          const generating = gddJob?.status === 'queued' || gddJob?.status === 'running' || gddJob?.status === 'waiting_for_maps';
+          const mapCount = gddJob?.maps?.length ?? 0;
           return (
             <article className={styles.projectRow} key={project.id}>
-              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddPhaseLabels[gddJob.phase] : ''}</small></div>
+              <div><strong>{project.name}</strong><small>{bindingQuery.isLoading ? 'Loading binding...' : bindingQuery.isError ? 'Binding unavailable' : binding ? binding.title + ' / Version ' + (binding.current_version?.version_number ?? 'unknown') : 'No Game Design System applied'}{generating ? ' / GDD: ' + gddPhaseLabels[gddJob.phase] : ''}{mapCount ? ` / Maps: ${gddJob.maps.filter((map) => map.status === 'ready').length}/${mapCount} ready` : ''}</small></div>
               <div className={styles.projectActions}>
-                {gddJob?.status === 'completed' && gddJob.output_document_id ? <a className={styles.secondaryButton} href={`/${project.id}/doc/${gddJob.output_document_id}`}>Open GDD Document</a> : null}
-                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={generating || generateGddMutation.isPending} onClick={() => setGenerationProjectId(project.id)}>{generating ? 'Generating GDD...' : gddJob?.status === 'failed' ? 'Retry GDD Draft' : 'Generate GDD Draft'}</button> : null}
+                {gddJob && (gddJob.status === 'completed' || gddJob.status === 'completed_with_map_failures') && gddJob.output_document_id ? <a className={styles.secondaryButton} href={`/${project.id}/doc/${gddJob.output_document_id}`}>Open GDD Document{gddJob.status === 'completed_with_map_failures' ? ' (map partial success)' : ''}</a> : null}
+                {gddJob?.maps?.length && generating ? <div className={styles.gddMapProgress} aria-label="GDD map progress">{gddJob.maps.map((map) => <span key={map.id} data-status={map.status}>{map.title}: {map.status}</span>)}</div> : null}
+                {selectedVersionIsBound ? <button className={styles.primaryButton} type="button" disabled={!gddJobsLoaded || generating || generateGddMutation.isPending} onClick={() => setGenerationProjectId(project.id)}>{!gddJobsLoaded ? 'Checking GDD status...' : generating ? 'Generating GDD + maps...' : gddJob?.status === 'failed' ? 'Retry GDD + maps' : 'Generate GDD + maps'}</button> : null}
                 {generating ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" aria-label="Stop GDD generation" disabled={cancelGddMutation.isPending} onClick={() => cancelGddMutation.mutate({ targetProjectId: project.id, jobId: gddJob.id })}><StopOutlined /> Stop</button> : null}
                 {binding ? <button className={styles.secondaryButton + ' ' + styles.dangerButton} type="button" disabled={clearMutation.isPending || generating} onClick={() => { if (window.confirm('Remove the Game Design System from this project?')) clearMutation.mutate(project.id); }}><DeleteOutlined /> Remove</button> : <button className={styles.secondaryButton} type="button" disabled={!props.version || versionHasConflicts(props.version) || applyMutation.isPending} onClick={() => applyMutation.mutate(project.id)}>Apply selected</button>}
               </div>

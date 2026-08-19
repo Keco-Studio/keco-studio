@@ -2,33 +2,64 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   cancelGddGenerationJob,
   claimGddGenerationJob,
+  heartbeatGddMapArtifact,
+  reconcileGddMapArtifact,
   createGddGenerationJob,
   getPublicGddGenerationJob,
   getLatestPublicGddGenerationJob,
+  GddActiveJobConflictError,
   GddIdempotencyConflictError,
   persistCompletedGddGenerationJob,
   toPublicGddGenerationJob,
 } from './gddGenerationService';
 
 describe('gddGenerationService', () => {
-  it('returns an existing job for the same idempotency payload', async () => {
+  const createInput = {
+    ownerId: 'user-1', projectId: 'project-1', designSystemId: 'system-1', versionId: 'version-1',
+    input: {
+      projectName: 'Game', projectSources: [],
+      rules: { rules: [], tableGuidance: [] },
+    } as never,
+    idempotencyKey: 'request-1', inputHash: 'a'.repeat(64),
+  };
+
+  it('creates or recovers a job only through the guarded service-role RPC', async () => {
     const existing = { id: 'job-1', input_hash: 'hash-a', status: 'queued' };
-    const maybeSingle = jest.fn(async () => ({ data: existing, error: null }));
-    const from = jest.fn(() => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle }) }) }) }));
-    const job = await createGddGenerationJob({ from } as never, {
-      ownerId: 'user-1', projectId: 'project-1', designSystemId: 'system-1', versionId: 'version-1',
-      input: { projectName: 'Game' } as never, idempotencyKey: 'request-1', inputHash: 'hash-a',
-    });
-    expect(job).toBe(existing);
+    const rpc = jest.fn(async (_name?: string, _args?: unknown) => ({ data: [existing], error: null }));
+    const from = jest.fn(() => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) }));
+    const job = await createGddGenerationJob({ rpc, from } as never, createInput);
+    expect(job).toEqual({ ...existing, maps: [] });
+    expect(rpc).toHaveBeenCalledWith('create_gdd_generation_job_guarded', expect.objectContaining({
+      p_project_id: 'project-1',
+      p_input_hash: 'a'.repeat(64),
+      p_idempotency_key: 'request-1',
+      p_source_snapshots: [],
+    }));
   });
 
   it('rejects an idempotency key reused with different input', async () => {
-    const maybeSingle = jest.fn(async () => ({ data: { id: 'job-1', input_hash: 'hash-a' }, error: null }));
-    const from = jest.fn(() => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle }) }) }) }));
-    await expect(createGddGenerationJob({ from } as never, {
-      ownerId: 'user-1', projectId: 'project-1', designSystemId: 'system-1', versionId: 'version-1',
-      input: { projectName: 'Other' } as never, idempotencyKey: 'request-1', inputHash: 'hash-b',
-    })).rejects.toBeInstanceOf(GddIdempotencyConflictError);
+    const rpc = jest.fn(async () => ({
+      data: null,
+      error: { code: 'P0001', hint: 'gdd_idempotency_conflict' },
+    }));
+    await expect(createGddGenerationJob({ rpc } as never, createInput)).rejects.toBeInstanceOf(GddIdempotencyConflictError);
+  });
+
+  it('returns the active project job with a different payload conflict', async () => {
+    const active = { id: 'job-active', project_id: 'project-1', status: 'running' };
+    const rpc = jest.fn(async () => ({
+      data: null,
+      error: { code: 'P0001', hint: 'gdd_active_job_conflict', details: 'job-active' },
+    }));
+    const maybeSingle = jest.fn(async () => ({ data: active, error: null }));
+    const order = jest.fn(async () => ({ data: [], error: null }));
+    const from = jest.fn((table: string) => table === 'gdd_generation_jobs'
+      ? { select: () => ({ eq: () => ({ maybeSingle }) }) }
+      : { select: () => ({ eq: () => ({ order }) }) });
+    await expect(createGddGenerationJob({ rpc, from } as never, createInput)).rejects.toMatchObject({
+      name: GddActiveJobConflictError.name,
+      job: { id: 'job-active', maps: [] },
+    });
   });
 
   it('claims jobs only through the service-role lease RPC', async () => {
@@ -39,6 +70,20 @@ describe('gddGenerationService', () => {
       p_worker_id: 'worker-1',
       p_lease_seconds: 90,
     });
+  });
+
+  it('renews and reconciles GDD map artifact leases through service-role RPCs', async () => {
+    const rpc = jest.fn(async (name: string) => ({
+      data: name === 'heartbeat_gdd_map_artifact' ? true : 'ready', error: null,
+    }));
+    await heartbeatGddMapArtifact({ rpc } as never, {
+      artifactId: 'artifact-1', workerId: 'worker-1', phase: 'validating',
+    });
+    await expect(reconcileGddMapArtifact({ rpc } as never, 'artifact-1')).resolves.toBe('ready');
+    expect((rpc.mock.calls as unknown[][])[0]).toEqual(['heartbeat_gdd_map_artifact', {
+      p_artifact_id: 'artifact-1', p_worker_id: 'worker-1', p_phase: 'validating', p_lease_seconds: 300,
+    }]);
+    expect((rpc.mock.calls as unknown[][])[1]).toEqual(['reconcile_gdd_map_artifact', { p_artifact_id: 'artifact-1' }]);
   });
 
   it('cancels an active job and releases its lease', async () => {

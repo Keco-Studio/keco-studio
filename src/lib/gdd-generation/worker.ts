@@ -1,14 +1,18 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import {
   generateGdd,
   GddGenerationValidationError,
   renderGddMarkdown,
   type GeneratedGdd,
+  hashGddGenerationInput,
 } from '@/lib/gddGeneration';
+import { compileGddMapBriefs } from './maps/compiler';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
 import { generateGddMarkdownV2, GddV2GenerationValidationError } from './v2/generator';
 import {
@@ -16,6 +20,7 @@ import {
   failGddGenerationJob,
   heartbeatGddGenerationJob,
   persistCompletedGddGenerationJob,
+  persistGddGenerationWithMaps,
   retryGddGenerationJob,
   type GddGenerationJob,
   type GddJobStatus,
@@ -151,14 +156,38 @@ export async function persistGeneratedGddV2Document(
   workerId: string,
   markdown: string,
   review: unknown,
-): Promise<{ id: string; name: string }> {
+): Promise<{ id: string; name: string; status?: GddJobStatus }> {
   validateSanctionedMdx(markdown);
-  const yjsState = await documentContentCodec.markdownToYjsState(markdown);
   const input = job.input as GddGenerationRequestV2;
-  return persistCompletedGddGenerationJob(serviceClient, {
+  let mapCompilationFailed = false;
+  let mapCompilationError: string | null = null;
+  let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
+  try {
+    briefs = await compileGddMapBriefs({ markdown, artStyle: input.artStyle ?? null });
+  } catch (error) {
+    mapCompilationFailed = true;
+    mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
+    console.error('[GDD map brief compiler]', mapCompilationError);
+  }
+  const mapArtifacts = briefs.map((brief) => ({
+    id: randomUUID(),
+    mapBriefId: brief.id,
+    title: brief.title,
+    mapBrief: brief,
+    styleContract: brief.styleContract,
+    inputHash: hashGddGenerationInput({ brief, styleContract: brief.styleContract }),
+  }));
+  const decoratedMarkdown = decorateGddWithMapReferences(markdown, briefs.map((brief, index) => ({
+    artifactId: mapArtifacts[index].id,
+    sourceHeading: brief.sourceHeading,
+    fallbackTitle: brief.title,
+  })));
+  validateSanctionedMdx(decoratedMarkdown);
+  const yjsState = await documentContentCodec.markdownToYjsState(decoratedMarkdown);
+  const result = await persistGddGenerationWithMaps(serviceClient, {
     jobId: job.id,
     workerId,
-    markdown,
+    markdown: decoratedMarkdown,
     yjsState,
     description: `Structured ${input.mode} GDD draft from ${input.systemTitle} version ${input.versionNumber}.`,
     metadata: {
@@ -172,12 +201,18 @@ export async function persistGeneratedGddV2Document(
       appliedRuleIds: job.applied_rule_ids,
       omittedRuleIds: job.omitted_rule_ids,
       review,
+      mapCount: briefs.length,
+      mapCompilationFailed,
+      ...(mapCompilationError ? { mapCompilationError } : {}),
       createdBy: job.owner_id,
       createdAt: new Date().toISOString(),
     },
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
+    mapArtifacts,
+    mapCompilationFailed,
   });
+  return { id: result.id, name: result.name, status: result.status };
 }
 
 async function runWithLeaseHeartbeat<T>(
@@ -216,8 +251,8 @@ export async function processClaimedGddJob(
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       validateSanctionedMdx(generatedV2.markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
-      await dependencies.persistV2(serviceClient, job, workerId, generatedV2.markdown, generatedV2.review);
-      return 'completed';
+      const persisted = await dependencies.persistV2(serviceClient, job, workerId, generatedV2.markdown, generatedV2.review);
+      return persisted.status ?? 'completed';
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');

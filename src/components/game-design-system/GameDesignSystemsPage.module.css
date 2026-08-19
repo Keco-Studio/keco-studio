@@ -2526,3 +2526,29 @@
     gap: 4px;
   }
 }
+
+.gddMapDisclosure {
+  margin: 0 0 12px;
+  color: var(--ant-color-text-secondary, #595959);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.gddMapProgress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  color: var(--ant-color-text-secondary, #595959);
+  font-size: 11px;
+}
+
+.gddMapProgress span {
+  padding: 2px 6px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 3px;
+}
+
+.gddMapProgress span[data-status='ready'] { color: var(--ant-color-success, #389e0d); }
+.gddMapProgress span[data-status='failed'],
+.gddMapProgress span[data-status='blocked'] { color: var(--ant-color-error, #cf1322); }

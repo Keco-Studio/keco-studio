@@ -6,6 +6,7 @@ import type {
 import styles from '../CreateMapWorkbench.module.css';
 
 type DirectMapGenerationPanelProps = {
+  readOnly?: boolean;
   phase: DirectMapGenerationPhase;
   asset: DirectMapGenerationAsset | null;
   error: string | null;
@@ -32,6 +33,7 @@ const PHASE_LABELS: Record<DirectMapGenerationPhase, string> = {
 };
 
 export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
+  const readOnly = props.readOnly ?? false;
   const busy = ['preparing', 'submitting', 'generating', 'validating'].includes(props.phase);
   const unknownSubmission = props.asset?.status === 'queued'
     || (props.asset?.status === 'blocked' && props.asset.lastErrorCode === 'pixellab_submit_outcome_unknown');
@@ -65,7 +67,7 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
             <input
               type="checkbox"
               name="acknowledgeDuplicateBilling"
-              disabled={!props.canResolveUnknown || busy}
+              disabled={readOnly || !props.canResolveUnknown || busy}
               onChange={(event) => {
                 const button = event.currentTarget.form?.elements.namedItem('restartUnknown');
                 if (button instanceof HTMLButtonElement) button.disabled = !event.currentTarget.checked;
@@ -78,7 +80,7 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
             name="restartUnknown"
             className={styles.secondaryButtonFull}
             disabled
-            onClick={() => props.onResolveUnknown(true)}
+            onClick={() => { if (!readOnly) props.onResolveUnknown(true); }}
           >
             <ReloadOutlined /> Start a new paid attempt
           </button>
@@ -86,22 +88,22 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
       ) : null}
 
       {props.phase === 'idle' || props.phase === 'failed' ? (
-        <button type="button" className={styles.primaryButton} disabled={!props.canPrepare || busy} onClick={props.onPrepare}>
+        <button type="button" className={styles.primaryButton} disabled={readOnly || !props.canPrepare || busy} onClick={props.onPrepare}>
           Prepare map generation
         </button>
       ) : null}
       {props.phase === 'awaiting-confirmation' ? (
-        <button type="button" className={styles.primaryButton} onClick={props.onConfirm}>
+        <button type="button" className={styles.primaryButton} disabled={readOnly} onClick={props.onConfirm}>
           Confirm and generate map
         </button>
       ) : null}
       {(props.phase === 'failed' || props.phase === 'blocked') && props.canRetry ? (
-        <button type="button" className={styles.secondaryButtonFull} onClick={props.onRetry}>
+        <button type="button" className={styles.secondaryButtonFull} disabled={readOnly} onClick={props.onRetry}>
           <ReloadOutlined /> Retry generation
         </button>
       ) : null}
       {props.phase === 'ready' ? (
-        <button type="button" className={styles.secondaryButtonFull} disabled={!props.canPrepare} onClick={props.onRegenerate}>
+        <button type="button" className={styles.secondaryButtonFull} disabled={readOnly || !props.canPrepare} onClick={props.onRegenerate}>
           <ReloadOutlined /> Regenerate map
         </button>
       ) : null}

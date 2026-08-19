@@ -152,6 +152,70 @@ export async function authorizeAsset(token: string, assetId: string, expectedPro
   };
 }
 
+/**
+ * Durable workers do not have a browser JWT. A service-role request is only
+ * accepted when it carries the child artifact and original actor identity;
+ * every relationship is reloaded with the service client before PixelLab is
+ * allowed to mutate the asset.
+ */
+export async function authorizeGddMapAsset(
+  serviceToken: string,
+  assetId: string,
+  expectedProjectId: string,
+  gddMapArtifactId: string,
+  actorUserId: string,
+): Promise<AuthorizedAsset> {
+  const configuredServiceToken = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!configuredServiceToken || serviceToken !== configuredServiceToken) {
+    throw new PixelLabMapError("pixellab_invalid_response", "Authentication required", 401);
+  }
+  const { serviceClient } = createPixelLabClients(serviceToken);
+  const { data: artifact, error: artifactError } = await serviceClient.from("gdd_map_artifacts")
+    .select("id, gdd_generation_job_id, project_id, owner_id, map_project_id, map_revision_id, map_asset_id, generation_id, status, phase")
+    .eq("id", gddMapArtifactId).single();
+  if (artifactError || !artifact || artifact.map_asset_id !== assetId || artifact.project_id !== expectedProjectId
+    || artifact.owner_id !== actorUserId || !artifact.map_project_id || !artifact.map_revision_id) {
+    throw new PixelLabMapError("pixellab_invalid_response", "GDD map artifact binding is invalid", 403);
+  }
+  const { data: job } = await serviceClient.from("gdd_generation_jobs")
+    .select("id, project_id, owner_id")
+    .eq("id", artifact.gdd_generation_job_id).maybeSingle();
+  if (!job || job.project_id !== artifact.project_id || job.owner_id !== artifact.owner_id) {
+    throw new PixelLabMapError("pixellab_invalid_response", "GDD map job binding is invalid", 403);
+  }
+  const { data: map } = await serviceClient.from("map_projects")
+    .select("id, project_id").eq("id", artifact.map_project_id).maybeSingle();
+  const { data: revision } = await serviceClient.from("map_revisions")
+    .select("id, map_project_id, schema_version, plan").eq("id", artifact.map_revision_id).maybeSingle();
+  const { data: asset, error: assetError } = await serviceClient.from("map_assets")
+    .select("id, map_revision_id, generation_id, plan_fingerprint, reference_asset_ids, reference_hashes, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, last_error_code, metadata, updated_at")
+    .eq("id", assetId).maybeSingle();
+  if (!map || map.project_id !== expectedProjectId || !revision || revision.map_project_id !== map.id
+    || !asset || assetError || asset.map_revision_id !== revision.id || asset.generation_id !== artifact.generation_id
+    || asset.kind !== "map_image" || asset.asset_key !== "map-image" || asset.requested_capability !== "direct_map_image") {
+    throw new PixelLabMapError("pixellab_invalid_response", "GDD map asset binding is invalid", 403);
+  }
+  const { data: project } = await serviceClient.from("projects").select("owner_id").eq("id", expectedProjectId).maybeSingle();
+  const { data: collaborator } = await serviceClient.from("project_collaborators")
+    .select("role, accepted_at").eq("project_id", expectedProjectId).eq("user_id", actorUserId).maybeSingle();
+  const role = project?.owner_id === actorUserId ? "admin" : collaborator?.accepted_at ? collaborator.role : null;
+  if (role !== "admin" && role !== "editor") {
+    throw new PixelLabMapError("pixellab_invalid_response", "Map generation requires editor access", 403);
+  }
+  return {
+    userClient: serviceClient,
+    serviceClient,
+    userId: actorUserId,
+    projectId: expectedProjectId,
+    mapId: map.id,
+    revisionId: revision.id,
+    schemaVersion: Number(revision.schema_version),
+    generationId: typeof asset.generation_id === "string" ? asset.generation_id : null,
+    revisionPlan: revision.plan,
+    asset: asset as Record<string, unknown>,
+  };
+}
+
 export async function authorizeProject(token: string, projectId: string): Promise<{ userClient: SupabaseClient; serviceClient: SupabaseClient; userId: string }> {
   const { authClient, userClient, serviceClient } = createPixelLabClients(token);
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
