@@ -27,9 +27,34 @@ export type GddMapArtifact = {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  // Service-role worker fields. These are intentionally omitted from the
+  // authenticated column grant and PublicGddMapArtifact DTO.
+  owner_id?: string;
+  map_brief?: unknown;
+  style_contract?: unknown;
+  input_hash?: string;
+  generation_id?: string | null;
+  plan_fingerprint?: string | null;
+  attempt_count?: number;
 };
 
-export type PublicGddMapArtifact = GddMapArtifact;
+export type PublicGddMapArtifact = Pick<GddMapArtifact,
+  'id' | 'map_brief_id' | 'title' | 'status' | 'phase' |
+  'map_project_id' | 'map_revision_id' | 'error'
+>;
+
+function toPublicGddMapArtifact(artifact: GddMapArtifact): PublicGddMapArtifact {
+  return {
+    id: artifact.id,
+    map_brief_id: artifact.map_brief_id,
+    title: artifact.title,
+    status: artifact.status,
+    phase: artifact.phase,
+    map_project_id: artifact.map_project_id,
+    map_revision_id: artifact.map_revision_id,
+    error: artifact.error ? artifact.error.slice(0, 500) : null,
+  };
+}
 
 export type GddGenerationJob = {
   id: string;
@@ -89,7 +114,7 @@ export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenera
     applied_rule_ids: job.applied_rule_ids,
     omitted_rule_ids: job.omitted_rule_ids,
     error: job.error ? job.error.slice(0, 500) : null,
-    maps: job.maps ?? [],
+    maps: (job.maps ?? []).map(toPublicGddMapArtifact),
   };
 }
 

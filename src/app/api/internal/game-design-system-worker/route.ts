@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker';
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
+import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 
 export const maxDuration = 300;
 
@@ -25,18 +26,22 @@ export async function GET(request: Request) {
   const serviceClient = getSupabaseServiceRoleClient();
   for (let index = 0; index < 3; index += 1) {
     const workerId = `cron-${randomUUID()}`;
-    const primary = index % 2 === 0 ? 'system' : 'gdd';
+    const primary = index % 3 === 0 ? 'system' : index % 3 === 1 ? 'gdd' : 'gdd-map';
     const first = primary === 'system'
       ? await processNextGameDesignSystemJob({ serviceClient, workerId })
-      : await processNextGddJob({ serviceClient, workerId });
+      : primary === 'gdd'
+        ? await processNextGddJob({ serviceClient, workerId })
+        : await processNextGddMapArtifact({ serviceClient, workerId });
     if (first.claimed) {
       results.push({ type: primary, ...first });
       continue;
     }
     const fallback = primary === 'system'
       ? await processNextGddJob({ serviceClient, workerId })
-      : await processNextGameDesignSystemJob({ serviceClient, workerId });
-    results.push({ type: primary === 'system' ? 'gdd' : 'system', ...fallback });
+      : primary === 'gdd'
+        ? await processNextGddMapArtifact({ serviceClient, workerId })
+        : await processNextGameDesignSystemJob({ serviceClient, workerId });
+    results.push({ type: primary === 'system' ? 'gdd' : primary === 'gdd' ? 'gdd-map' : 'system', ...fallback });
     if (!fallback.claimed) break;
   }
   return NextResponse.json({ results });

@@ -11,6 +11,7 @@ import {
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
 import type { GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
+import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 import { isGddSchemaUnavailable, safeGddRouteErrorIdentity } from '@/lib/gdd-generation/routeErrors';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { getGameDesignSystemDetail } from '@/lib/services/gameDesignSystemService';
@@ -70,6 +71,14 @@ function scheduleWorker(): void {
         serviceClient: getSupabaseServiceRoleClient(),
         workerId: `gdd-request-${randomUUID()}`,
       });
+      if (typeof processNextGddMapArtifact === 'function') {
+        for (let index = 0; index < 2; index += 1) {
+          await processNextGddMapArtifact({
+            serviceClient: getSupabaseServiceRoleClient(),
+            workerId: `gdd-map-request-${randomUUID()}`,
+          });
+        }
+      }
     } catch (error) {
       console.error('[GDD opportunistic worker]', error);
     }

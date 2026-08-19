@@ -62,6 +62,7 @@ export class PixelLabMapError extends Error {
       | "pixellab_rate_limited"
       | "pixellab_quota_exceeded"
       | "pixellab_upstream"
+      | "pixellab_submit_outcome_unknown"
       | "pixellab_invalid_response"
       | "pixellab_content_quality"
       | "atlas_manifest_incomplete"
