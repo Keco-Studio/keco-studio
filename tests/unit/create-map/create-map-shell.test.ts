@@ -33,6 +33,7 @@ jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/create-map',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/lib/contexts/AuthContext', () => ({

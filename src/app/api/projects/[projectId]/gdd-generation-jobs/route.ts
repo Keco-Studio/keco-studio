@@ -166,7 +166,7 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     const identity = safeGddRouteErrorIdentity(error);
     if (error instanceof GddActiveJobConflictError) {
       return NextResponse.json({
-        error: error.message,
+        error: 'A GDD generation is already active for this project.',
         code: 'GDD_ACTIVE_JOB_EXISTS',
         job: toPublicGddGenerationJob(error.job),
       }, { status: 409 });
