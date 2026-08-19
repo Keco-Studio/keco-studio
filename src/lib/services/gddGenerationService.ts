@@ -244,7 +244,7 @@ export async function getPublicGddGenerationJob(
 export async function claimGddMapArtifact(
   serviceClient: SupabaseClient,
   workerId: string,
-  leaseSeconds = 90,
+  leaseSeconds = 300,
 ): Promise<GddMapArtifact | null> {
   const { data, error } = await serviceClient.rpc('claim_gdd_map_artifact', {
     p_worker_id: workerId,
@@ -253,6 +253,31 @@ export async function claimGddMapArtifact(
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   return (row as GddMapArtifact | undefined) ?? null;
+}
+
+export async function heartbeatGddMapArtifact(
+  serviceClient: SupabaseClient,
+  input: { artifactId: string; workerId: string; phase: GddMapArtifactPhase; leaseSeconds?: number },
+): Promise<void> {
+  const { data, error } = await serviceClient.rpc('heartbeat_gdd_map_artifact', {
+    p_artifact_id: input.artifactId,
+    p_worker_id: input.workerId,
+    p_phase: input.phase,
+    p_lease_seconds: input.leaseSeconds ?? 300,
+  });
+  if (error) throw error;
+  if (data !== true) throw new Error('GDD map artifact lease was lost.');
+}
+
+export async function reconcileGddMapArtifact(
+  serviceClient: SupabaseClient,
+  artifactId: string,
+): Promise<GddMapArtifactStatus | null> {
+  const { data, error } = await serviceClient.rpc('reconcile_gdd_map_artifact', {
+    p_artifact_id: artifactId,
+  });
+  if (error) throw error;
+  return typeof data === 'string' ? data as GddMapArtifactStatus : null;
 }
 
 export async function prepareGddMapArtifact(

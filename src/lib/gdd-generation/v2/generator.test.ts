@@ -102,6 +102,7 @@ describe('GDD v2 staged generator', () => {
     expect(messages[0].content).toContain('Omit optional properties when unknown; never use null');
     expect(messages[1].content).toContain(input.creativeBrief);
     expect(messages[1].content).toContain('BEGIN_UNTRUSTED_GAME_DESIGN_DOCUMENT_DATA');
+    expect(messages[1].content).toContain('No project Documents or Tables are available.');
   });
 
   it('repairs one malformed blueprint response', async () => {

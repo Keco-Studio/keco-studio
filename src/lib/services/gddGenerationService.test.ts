@@ -2,6 +2,8 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   cancelGddGenerationJob,
   claimGddGenerationJob,
+  heartbeatGddMapArtifact,
+  reconcileGddMapArtifact,
   createGddGenerationJob,
   getPublicGddGenerationJob,
   getLatestPublicGddGenerationJob,
@@ -31,6 +33,7 @@ describe('gddGenerationService', () => {
       p_project_id: 'project-1',
       p_input_hash: 'a'.repeat(64),
       p_idempotency_key: 'request-1',
+      p_source_snapshots: [],
     }));
   });
 
@@ -67,6 +70,20 @@ describe('gddGenerationService', () => {
       p_worker_id: 'worker-1',
       p_lease_seconds: 90,
     });
+  });
+
+  it('renews and reconciles GDD map artifact leases through service-role RPCs', async () => {
+    const rpc = jest.fn(async (name: string) => ({
+      data: name === 'heartbeat_gdd_map_artifact' ? true : 'ready', error: null,
+    }));
+    await heartbeatGddMapArtifact({ rpc } as never, {
+      artifactId: 'artifact-1', workerId: 'worker-1', phase: 'validating',
+    });
+    await expect(reconcileGddMapArtifact({ rpc } as never, 'artifact-1')).resolves.toBe('ready');
+    expect((rpc.mock.calls as unknown[][])[0]).toEqual(['heartbeat_gdd_map_artifact', {
+      p_artifact_id: 'artifact-1', p_worker_id: 'worker-1', p_phase: 'validating', p_lease_seconds: 300,
+    }]);
+    expect((rpc.mock.calls as unknown[][])[1]).toEqual(['reconcile_gdd_map_artifact', { p_artifact_id: 'artifact-1' }]);
   });
 
   it('cancels an active job and releases its lease', async () => {

@@ -9,6 +9,10 @@ const activeJobGuardSql = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260819140000_gdd_active_job_guard.sql'),
   'utf8',
 );
+const reconciliationSql = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260820010000_gdd_map_artifact_reconciliation.sql'),
+  'utf8',
+);
 
 describe('GDD map generation migration', () => {
   it('adds bounded child artifacts and parent partial-success states', () => {
@@ -51,6 +55,15 @@ describe('GDD map generation migration', () => {
     expect(sql).toMatch(/select count\(\*\)[\s\S]*sibling\.status = 'running'[\s\S]*\) < 2/i);
     expect(sql).toMatch(/status in \('failed', 'blocked'\)/i);
     expect(sql).toMatch(/completed_with_map_failures/i);
+  });
+
+  it('renews active map leases and reconciles assets that finished before the artifact', () => {
+    expect(reconciliationSql).toMatch(/create function public\.heartbeat_gdd_map_artifact/i);
+    expect(reconciliationSql).toMatch(/lease_expires_at = now\(\) \+ make_interval/i);
+    expect(reconciliationSql).toMatch(/create function public\.reconcile_gdd_map_artifact/i);
+    expect(reconciliationSql).toMatch(/v_asset_status <> 'ready'/i);
+    expect(reconciliationSql).toMatch(/status = 'ready'[\s\S]*phase = 'ready'/i);
+    expect(reconciliationSql).toMatch(/grant execute on function public\.reconcile_gdd_map_artifact[\s\S]*service_role/i);
   });
 
   it('serializes project generation starts and reuses identical active jobs', () => {

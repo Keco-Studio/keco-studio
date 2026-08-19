@@ -3,11 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
-import {
-  listGameDesignReferenceOptions,
-  resolveGameDesignSourceSnapshots,
-  TOTAL_EXCERPT_LIMIT,
-} from '@/lib/game-design-system/sourceSnapshots';
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
 import type { GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
@@ -43,26 +38,6 @@ const latestQuerySchema = z.object({
 function idempotencyKey(request: Request): string | null {
   const value = request.headers.get('idempotency-key')?.trim();
   return value && /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : null;
-}
-
-async function automaticProjectSources(supabase: Parameters<typeof listGameDesignReferenceOptions>[0], projectId: string) {
-  const options = (await listGameDesignReferenceOptions(supabase, projectId)).slice(0, 10);
-  const snapshots = [];
-  let used = 0;
-  for (const option of options) {
-    if (used >= TOTAL_EXCERPT_LIMIT) break;
-    const [snapshot] = await resolveGameDesignSourceSnapshots(supabase, [{
-      kind: option.kind,
-      projectId: option.projectId,
-      resourceId: option.resourceId,
-    }]);
-    if (!snapshot) continue;
-    const remaining = TOTAL_EXCERPT_LIMIT - used;
-    const excerpt = (snapshot.excerpt ?? '').slice(0, remaining);
-    snapshots.push({ ...snapshot, excerpt, truncated: snapshot.truncated || excerpt.length < (snapshot.excerpt?.length ?? 0) });
-    used += excerpt.length;
-  }
-  return snapshots;
 }
 
 function scheduleWorker(): void {
@@ -152,7 +127,6 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     }
     const project = await supabase.from('projects').select('name').eq('id', projectId).single();
     if (project.error || !project.data) return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
-    const projectSources = await automaticProjectSources(supabase, projectId);
     const policy = buildAgentRulePolicy(version.rules);
     const input: GddGenerationRequestV2 = {
       contractVersion: 2,
@@ -168,7 +142,7 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
       rules: version.rules,
       designDocument: version.document,
       artStyle: version.artStyle,
-      projectSources,
+      projectSources: [],
     };
     const job = await createGddGenerationJob(getSupabaseServiceRoleClient(), {
       ownerId: user.id,

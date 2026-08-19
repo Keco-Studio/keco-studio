@@ -72,6 +72,26 @@ describe('GDD map child worker', () => {
     expect((blockedFinish.mock.calls as unknown[][])[0][1]).toEqual(expect.objectContaining({ status: 'blocked' }));
   });
 
+  it('reconciles a durable ready asset when validation loses its worker lease', async () => {
+    const invoke = jest.fn(async () => {
+      throw new GddMapProviderError('pixellab_upstream', 'PixelLab response timed out.', 502);
+    });
+    const reconcile = jest.fn(async () => 'ready' as const);
+    const finish = jest.fn();
+
+    const result = await processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('validating'),
+    }, {
+      claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish, invoke, reconcile,
+    } as never);
+
+    expect(result).toBe('ready');
+    expect((reconcile.mock.calls as unknown[][])[0]).toEqual([{}, artifact('validating').id]);
+    expect(finish).not.toHaveBeenCalled();
+  });
+
   it('retries transient submission failures and fails cleanly after the final attempt', async () => {
     const invoke = jest.fn(async () => {
       throw new GddMapProviderError('pixellab_upstream', 'PixelLab map request failed (503).', 503);

@@ -5,7 +5,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   claimGddMapArtifact,
   finishGddMapArtifact,
+  heartbeatGddMapArtifact,
   prepareGddMapArtifact,
+  reconcileGddMapArtifact,
   rescheduleGddMapArtifact,
   type GddMapArtifact,
   type GddMapArtifactPhase,
@@ -21,6 +23,8 @@ type MapWorkerDependencies = {
   prepare: typeof prepareGddMapArtifact;
   reschedule: typeof rescheduleGddMapArtifact;
   finish: typeof finishGddMapArtifact;
+  heartbeat?: typeof heartbeatGddMapArtifact;
+  reconcile?: typeof reconcileGddMapArtifact;
   invoke: typeof invokePixelLabMap;
 };
 
@@ -112,6 +116,35 @@ function providerInput(artifact: GddMapArtifact): Parameters<typeof invokePixelL
   };
 }
 
+async function invokeWithLeaseHeartbeat(
+  input: MapWorkerInput,
+  dependencies: MapWorkerDependencies,
+  operation: () => Promise<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  if (!dependencies.heartbeat) return operation();
+  let heartbeatFailure: unknown;
+  let pendingHeartbeat = Promise.resolve();
+  const timer = setInterval(() => {
+    if (heartbeatFailure) return;
+    pendingHeartbeat = pendingHeartbeat
+      .then(() => dependencies.heartbeat!(input.serviceClient, {
+        artifactId: input.artifact.id,
+        workerId: input.workerId,
+        phase: input.artifact.phase,
+        leaseSeconds: 300,
+      }))
+      .catch((error) => { heartbeatFailure = error; });
+  }, 30_000);
+  try {
+    const result = await operation();
+    await pendingHeartbeat;
+    if (heartbeatFailure) throw heartbeatFailure;
+    return result;
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 async function processClaimedGddMapArtifact(
   input: MapWorkerInput,
   dependencies: MapWorkerDependencies,
@@ -133,7 +166,7 @@ async function processClaimedGddMapArtifact(
   }
 
   const operation = providerInput(artifact);
-  const response = await dependencies.invoke(operation);
+  const response = await invokeWithLeaseHeartbeat(input, dependencies, () => dependencies.invoke(operation));
   const status = typeof response.status === 'string' ? response.status : null;
   if (artifact.phase === 'submitting') {
     if (status !== 'generating') throw new GddMapProviderError('pixellab_invalid_response', 'PixelLab did not start the map job.', 502);
@@ -162,6 +195,8 @@ const defaultDependencies: MapWorkerDependencies = {
   prepare: prepareGddMapArtifact,
   reschedule: rescheduleGddMapArtifact,
   finish: finishGddMapArtifact,
+  heartbeat: heartbeatGddMapArtifact,
+  reconcile: reconcileGddMapArtifact,
   invoke: invokePixelLabMap,
 };
 
@@ -179,6 +214,15 @@ export async function processClaimedGddMapArtifactWithDependencies(
       : error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
         ? (error as { code: string }).code
         : '';
+    // The Edge Function may persist the PNG before its response times out.
+    // Reconcile that durable asset before recording a terminal failure.
+    if (artifact.phase === 'validating' && dependencies.reconcile) {
+      try {
+        if (await dependencies.reconcile(serviceClient, artifact.id) === 'ready') return 'ready';
+      } catch {
+        // Preserve the original provider error when no ready asset exists.
+      }
+    }
     const retryableSubmission = artifact.phase === 'submitting' && (
       code === 'pixellab_rate_limited'
       || code === 'pixellab_quota_exceeded'

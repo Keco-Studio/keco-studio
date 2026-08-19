@@ -29,7 +29,10 @@ export async function resolveGddMapArtifact(
   let imageUrl: string | null = null;
   let width: number | null = null;
   let height: number | null = null;
-  if (artifact.map_asset_id && artifact.status === 'ready') {
+  // The provider can finish the private map asset before the child artifact
+  // lease is settled. Terminal artifact states are therefore not authoritative
+  // for whether an already-linked asset can be displayed.
+  if (artifact.map_asset_id && artifact.status !== 'queued' && artifact.status !== 'running') {
     const { data: asset, error: assetError } = await supabase.from('map_assets')
       .select(ASSET_COLUMNS).eq('id', artifact.map_asset_id).eq('map_revision_id', artifact.map_revision_id).maybeSingle();
     if (assetError) throw assetError;
@@ -40,18 +43,19 @@ export async function resolveGddMapArtifact(
       height = typeof asset.height === 'number' ? asset.height : null;
     }
   }
+  const assetDisplayed = imageUrl !== null;
   return {
     artifactId: artifact.id,
     title: artifact.title,
-    status: artifact.status,
-    phase: artifact.phase,
+    status: assetDisplayed ? 'ready' : artifact.status,
+    phase: assetDisplayed ? 'ready' : artifact.phase,
     mapProjectId: artifact.map_project_id,
     mapRevisionId: artifact.map_revision_id,
     mapAssetId: artifact.map_asset_id,
     imageUrl,
     width,
     height,
-    error: artifact.error,
+    error: assetDisplayed ? null : artifact.error,
   };
 }
 
@@ -63,4 +67,3 @@ export async function resolveGddMapArtifacts(
   const results = await Promise.all(artifactIds.map((id) => resolveGddMapArtifact(supabase, projectId, id)));
   return new Map(results.filter((value): value is GddMapArtifactView => Boolean(value)).map((value) => [value.artifactId, value]));
 }
-

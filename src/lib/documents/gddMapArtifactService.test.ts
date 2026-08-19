@@ -35,6 +35,25 @@ describe('GDD map artifact resolver', () => {
     expect(((assetQuery.secondEq.mock.calls as unknown[][])[0] ?? [])).toEqual(['map_revision_id', artifact.map_revision_id]);
   });
 
+  it('renders a ready linked asset even when the child artifact lease ended as failed', async () => {
+    const artifactQuery = queryResult({ ...artifact, status: 'failed', phase: 'failed', error: 'GDD map artifact lease was lost' });
+    const assetQuery = queryResult({
+      id: artifact.map_asset_id, map_revision_id: artifact.map_revision_id, status: 'ready',
+      storage_path: 'projects/p/maps/r/map-image.png', width: 688, height: 384,
+    });
+    const createSignedUrl = jest.fn(async () => ({ data: { signedUrl: 'https://signed.test/recovered-map.png' }, error: null }));
+    const client = {
+      from: (table: string) => table === 'gdd_map_artifacts' ? artifactQuery : assetQuery,
+      storage: { from: jest.fn(() => ({ createSignedUrl })) },
+    };
+
+    const result = await resolveGddMapArtifact(client as never, 'project-1', artifact.id);
+
+    expect(result).toEqual(expect.objectContaining({
+      status: 'ready', phase: 'ready', imageUrl: 'https://signed.test/recovered-map.png', error: null,
+    }));
+  });
+
   it('does not inspect or sign an asset while the child is pending', async () => {
     const artifactQuery = queryResult({ ...artifact, status: 'running', phase: 'polling' });
     const from = jest.fn((table: string) => {

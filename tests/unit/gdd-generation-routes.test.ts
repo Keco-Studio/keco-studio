@@ -6,7 +6,6 @@ const getPublicGddGenerationJob = jest.fn();
 const createGddGenerationJob = jest.fn();
 const cancelGddGenerationJob = jest.fn();
 const getGameDesignSystemDetail = jest.fn();
-const listGameDesignReferenceOptions = jest.fn();
 const getSupabaseServiceRoleClient = jest.fn();
 const processNextGddJob = jest.fn();
 let userId: string | null = 'user-1';
@@ -38,11 +37,6 @@ jest.mock('@/lib/services/gddGenerationService', () => {
 });
 jest.mock('@/lib/services/gameDesignSystemService', () => ({
   getGameDesignSystemDetail: (...args: unknown[]) => getGameDesignSystemDetail(...args),
-}));
-jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({
-  TOTAL_EXCERPT_LIMIT: 60_000,
-  listGameDesignReferenceOptions: (...args: unknown[]) => listGameDesignReferenceOptions(...args),
-  resolveGameDesignSourceSnapshots: jest.fn(),
 }));
 jest.mock('@/lib/server/supabaseServiceRole', () => ({
   getSupabaseServiceRoleClient: () => getSupabaseServiceRoleClient(),
@@ -86,7 +80,6 @@ describe('project GDD generation routes', () => {
     getPublicGddGenerationJob.mockResolvedValue(publicJob);
     createGddGenerationJob.mockResolvedValue(internalJob);
     cancelGddGenerationJob.mockResolvedValue({ ...publicJob, status: 'failed', phase: 'failed', error: 'Generation cancelled by user.' });
-    listGameDesignReferenceOptions.mockResolvedValue([]);
     getSupabaseServiceRoleClient.mockReturnValue({ service: true });
     processNextGddJob.mockResolvedValue({ claimed: true, jobId: JOB_ID, status: 'completed' });
     supabase = {
@@ -178,11 +171,24 @@ describe('project GDD generation routes', () => {
   it('returns the same public DTO from POST', async () => {
     const response = await POST(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'request-key-1' },
-      body: JSON.stringify({ designSystemId: SYSTEM_ID, versionId: VERSION_ID }),
+      body: JSON.stringify({
+        designSystemId: SYSTEM_ID,
+        versionId: VERSION_ID,
+        creativeBrief: '请生成包含地图描述的新 GDD',
+      }),
     }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
     const body = await response.json();
 
     expect(response.status).toBe(202);
+    expect(createGddGenerationJob).toHaveBeenCalledWith(
+      { service: true },
+      expect.objectContaining({
+        input: expect.objectContaining({
+          creativeBrief: '请生成包含地图描述的新 GDD',
+          projectSources: [],
+        }),
+      }),
+    );
     expect(body.job).not.toHaveProperty('input');
     expect(body.job).not.toHaveProperty('source_snapshots');
     expect(body.job).not.toHaveProperty('idempotency_key');
