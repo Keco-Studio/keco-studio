@@ -2,7 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/documents/documentContentCodec', () => ({ documentContentCodec: {} }));
 
-import { processClaimedGddMapArtifactWithDependencies } from './worker';
+import { GddMapProviderError, processClaimedGddMapArtifactWithDependencies } from './worker';
 import type { GddMapArtifact } from '@/lib/services/gddGenerationService';
 
 const brief = {
@@ -70,5 +70,33 @@ describe('GDD map child worker', () => {
       claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish: blockedFinish, invoke,
     } as never)).toBe('blocked');
     expect((blockedFinish.mock.calls as unknown[][])[0][1]).toEqual(expect.objectContaining({ status: 'blocked' }));
+  });
+
+  it('retries transient submission failures and fails cleanly after the final attempt', async () => {
+    const invoke = jest.fn(async () => {
+      throw new GddMapProviderError('pixellab_upstream', 'PixelLab map request failed (503).', 503);
+    });
+    const reschedule = jest.fn(async () => 'queued' as const);
+    const finish = jest.fn(async () => 'completed_with_map_failures' as const);
+    const dependencies = { claim: jest.fn(), prepare: jest.fn(), reschedule, finish, invoke } as never;
+
+    expect(await processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('submitting', { attempt_count: 0, max_attempts: 3 }),
+    }, dependencies)).toBe('queued');
+    expect((reschedule.mock.calls as unknown[][])[0][1]).toEqual(expect.objectContaining({
+      phase: 'submitting', delaySeconds: 30, error: 'PixelLab map request failed (503).',
+    }));
+    expect(finish).not.toHaveBeenCalled();
+
+    expect(await processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('submitting', { attempt_count: 2, max_attempts: 3 }),
+    }, dependencies)).toBe('failed');
+    expect((finish.mock.calls as unknown[][])[0][1]).toEqual(expect.objectContaining({
+      status: 'failed', error: 'PixelLab map request failed (503).',
+    }));
   });
 });

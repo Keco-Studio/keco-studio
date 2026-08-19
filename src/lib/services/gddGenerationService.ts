@@ -36,6 +36,7 @@ export type GddMapArtifact = {
   generation_id?: string | null;
   plan_fingerprint?: string | null;
   attempt_count?: number;
+  max_attempts?: number;
 };
 
 export type PublicGddMapArtifact = Pick<GddMapArtifact,

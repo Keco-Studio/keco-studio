@@ -179,12 +179,21 @@ export async function processClaimedGddMapArtifactWithDependencies(
       : error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
         ? (error as { code: string }).code
         : '';
-    if (artifact.phase === 'submitting' && code !== 'pixellab_rate_limited' && code !== 'pixellab_quota_exceeded') {
+    const retryableSubmission = artifact.phase === 'submitting' && (
+      code === 'pixellab_rate_limited'
+      || code === 'pixellab_quota_exceeded'
+      || (error instanceof GddMapProviderError && error.status >= 500 && code !== 'pixellab_invalid_response')
+    );
+    if (retryableSubmission) {
+      if ((artifact.attempt_count ?? 0) + 1 >= (artifact.max_attempts ?? 3)) {
+        await dependencies.finish(serviceClient, { artifactId: artifact.id, workerId, status: 'failed', error: message });
+        return 'failed';
+      }
+      return (await dependencies.reschedule(serviceClient, { artifactId: artifact.id, workerId, phase: 'submitting', delaySeconds: 30, error: message })) ?? 'failed';
+    }
+    if (artifact.phase === 'submitting') {
       await dependencies.finish(serviceClient, { artifactId: artifact.id, workerId, status: 'blocked', error: message });
       return 'blocked';
-    }
-    if (artifact.phase === 'submitting' && (code === 'pixellab_rate_limited' || code === 'pixellab_quota_exceeded')) {
-      return (await dependencies.reschedule(serviceClient, { artifactId: artifact.id, workerId, phase: 'submitting', delaySeconds: 30, error: message })) ?? 'failed';
     }
     if (artifact.phase === 'polling' && error instanceof GddMapProviderError && error.status >= 500) {
       return (await dependencies.reschedule(serviceClient, { artifactId: artifact.id, workerId, phase: 'polling', delaySeconds: 20, error: message })) ?? 'failed';

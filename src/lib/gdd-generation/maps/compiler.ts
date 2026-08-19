@@ -70,17 +70,13 @@ function markdownHeadings(markdown: string): string[] {
     .filter((heading): heading is string => Boolean(heading));
 }
 
-export function hasExplicitGddMapSignal(markdown: string): boolean {
-  const headings = markdownHeadings(markdown);
-  const explicitHeading = headings.some((heading) => (
-    /(?:世界|区域|关卡|场景|城镇|城市|村庄|地牢|室内|房间)?地图(?!界面|图标|按钮|菜单|UI)/i.test(heading)
-    || /\b(?:world|region|level|dungeon|settlement|interior)\s+map\b/i.test(heading)
-  ));
-  if (explicitHeading) return true;
-  return /地图\s*(?:布局|设计|结构|尺寸|范围|分区|路线|道路|路径|地标|入口|出口|出入口|可通行|障碍|是|为|包含|由)/i.test(markdown)
-    || /(?:世界|区域|关卡|场景|城镇|城市|村庄|地牢|室内|房间)(?:的)?地图(?!界面|图标|按钮|菜单|UI)/i.test(markdown)
-    || /\b(?:world|region|level|dungeon|settlement|interior)\s+map\b/i.test(markdown)
-    || /\bmap\s+(?:layout|design|structure|size|regions?|routes?|roads?|paths?|landmarks?|entrances?|exits?|contains|includes)\b/i.test(markdown);
+function comparableHeading(value: string): string {
+  return value.trim()
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^\d+(?:\.\d+)*[.)、:\s]+/, '')
+    .replace(/[：:]$/, '')
+    .trim()
+    .toLocaleLowerCase();
 }
 
 function parseJson(raw: string): unknown {
@@ -107,6 +103,8 @@ function stylePrompt(style: GddMapStyleContract | null): string {
   return style ? JSON.stringify(style) : 'No pinned Art Style snapshot is available. Keep the map direction internally consistent and describe it explicitly.';
 }
 
+const mapBriefJsonShape = '[{"title":"...","mapType":"world|region|level|settlement|interior|other","sourceHeading":"exact Markdown heading","purpose":"...","spatialLayout":"...","regions":["..."],"routes":["..."],"landmarks":["..."],"gameplayRequirements":["..."],"visualDescription":"...","outputSize":"512x512|688x384|384x688","priority":0,"createMapDescription":"..."}]';
+
 export function buildGddMapBriefMessages(
   markdown: string,
   style: GddMapStyleContract | null,
@@ -121,7 +119,9 @@ export function buildGddMapBriefMessages(
         'Do not infer a map from incidental scenery, a room mentioned in a story, an encounter, an illustration, or a generic location without spatial map description.',
         'Every sourceHeading must exactly match a Markdown heading in the supplied GDD. Never invent headings, locations, routes, landmarks, or gameplay requirements.',
         'Return [] when there is no explicit map. Return no more than twelve candidates; priority is an integer where higher means more important.',
+        'Every map object must include every field shown in the required shape. regions, routes, landmarks, and gameplayRequirements must be JSON arrays of plain strings, never arrays of objects.',
         'Use one of outputSize: 512x512, 688x384, 384x688. createMapDescription must be one complete provider-independent top-down image description, with no URLs, credentials, provider names, API commands, or dynamic UI text.',
+        `Required JSON shape: ${mapBriefJsonShape}`,
         `Shared pinned Art Style contract for every map: ${stylePrompt(style)}`,
       ].join('\n'),
     },
@@ -142,6 +142,8 @@ function repairMessages(
     content: [
       'Repair the response into one valid JSON array matching the map brief schema.',
       'Return JSON only. Keep only maps explicitly supported by exact source headings in the GDD; return [] when uncertain.',
+      'Every field in the required shape is mandatory. regions, routes, landmarks, and gameplayRequirements must contain strings only; flatten object values into concise strings.',
+      `Required JSON shape: ${mapBriefJsonShape}`,
       `Validation error: ${error instanceof Error ? error.message : 'invalid map brief output'}`,
       `Invalid response:\n${raw.slice(0, 20_000)}`,
       `Original GDD:\n${messages[1].content}`,
@@ -150,7 +152,11 @@ function repairMessages(
 }
 
 function selectCandidates(candidates: z.infer<typeof rawGddMapBriefArraySchema>, headings: string[]): typeof candidates {
-  const exact = candidates.filter((candidate) => headings.includes(candidate.sourceHeading));
+  const headingByComparable = new Map(headings.map((heading) => [comparableHeading(heading), heading]));
+  const exact = candidates.flatMap((candidate) => {
+    const sourceHeading = headingByComparable.get(comparableHeading(candidate.sourceHeading));
+    return sourceHeading ? [{ ...candidate, sourceHeading }] : [];
+  });
   const ranked = exact.length > 3
     ? [...exact].sort((left, right) => right.priority - left.priority)
     : exact;
@@ -162,7 +168,6 @@ export async function compileGddMapBriefs(input: {
   artStyle: GameArtStyleSnapshot | null;
   complete?: Completion;
 }): Promise<GddMapBrief[]> {
-  if (!hasExplicitGddMapSignal(input.markdown)) return [];
   const style = compileGddMapStyleContract(input.artStyle);
   const messages = buildGddMapBriefMessages(input.markdown, style);
   const complete = input.complete ?? completeLlm;
