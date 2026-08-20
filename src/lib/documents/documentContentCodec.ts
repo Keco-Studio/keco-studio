@@ -17,7 +17,7 @@ import {
   waitForLexicalCommit,
 } from './headlessDocumentNodes';
 import {
-  coerceSanctionedMdxImages,
+  coerceSanctionedMdx,
   validateSanctionedMdx,
   validateSanctionedMdxAstNode,
 } from './sanctionedMdx';
@@ -199,7 +199,7 @@ export function mergeYjsState(
 }
 
 async function markdownToYjsState(markdown: string): Promise<string> {
-  documentContentCodec.validate(markdown);
+  const { markdown: normalized } = documentContentCodec.validate(markdown);
   const headless = await createHeadlessDocumentEditor();
   // The headless Realm exposes no supported public destroy lifecycle.
   headless.clear();
@@ -220,10 +220,10 @@ async function markdownToYjsState(markdown: string): Promise<string> {
         syncError = error;
       }
     );
-    if (markdown.trim().length === 0) {
+    if (normalized.trim().length === 0) {
       headless.appendEmptyParagraph();
     } else {
-      await headless.setMarkdown(markdown);
+      await headless.setMarkdown(normalized);
     }
     headless.normalizeBlockIds();
     if (syncError) throw syncError;
@@ -305,7 +305,7 @@ async function normalizeYjsState(
       if (syncError) throw syncError;
     });
 
-    const markdown = coerceSanctionedMdxImages(headless.getMarkdown());
+    const markdown = coerceSanctionedMdx(headless.getMarkdown());
     validateSanctionedMdx(markdown);
     return {
       yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(doc)),
@@ -340,7 +340,7 @@ async function yjsStateToMarkdown(
 
 export const documentContentCodec: DocumentContentCodec = {
   validate(markdown) {
-    const normalized = coerceSanctionedMdxImages(markdown);
+    const normalized = coerceSanctionedMdx(markdown);
     validateSanctionedMdx(normalized);
     return { markdown: normalized };
   },

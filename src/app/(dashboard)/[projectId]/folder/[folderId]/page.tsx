@@ -171,17 +171,17 @@ export default function FolderPage() {
         if (await confirmDeletion('Delete this library?')) {
           try {
             await deleteLibrary(supabase, libraryId);
-            await invalidateLibraryData(queryClient, {
+            if (pathname.includes(libraryId)) {
+              router.push(`/${projectId}/folder/${folderId}`);
+            }
+            void invalidateLibraryData(queryClient, {
               projectId,
               folderId,
               libraryId,
               refetchActiveFoldersLibraries: true,
+            }).catch((err) => {
+              console.error('Failed to refresh after library delete', err);
             });
-            
-            // If viewing this library, navigate back to folder
-            if (pathname.includes(libraryId)) {
-              router.push(`/${projectId}/folder/${folderId}`);
-            }
           } catch (err: any) {
             console.error('Failed to delete library:', err);
             alert(err?.message || 'Failed to delete library');

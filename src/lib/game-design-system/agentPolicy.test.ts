@@ -46,7 +46,7 @@ describe('Game Design System Agent policy boundary', () => {
     expect(policy.text).toContain('readable-state');
     expect(policy.text).toContain('Expose decision inputs.');
     expect(policy.text).not.toContain('SECRET provenance');
-    expect(policy.text).not.toContain('Private Field');
+    expect(policy.text).toContain('Private Field');
     expect(policy.appliedRuleIds).toEqual(['readable-state']);
   });
 

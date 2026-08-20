@@ -21,27 +21,37 @@ function fakeSupabase(options: {
   failValueInsert?: boolean;
   documentFolderId?: string | null;
   missingPlotPlanColumn?: boolean;
+  failDialogueFinalization?: boolean;
+  failDelete?: boolean;
 } = {}) {
   const insertCalls: InsertCall[] = [];
   const deleteCalls: Array<{ table: string; column: string; value: string }> = [];
+  const updateCalls: InsertCall[] = [];
   const isCalls: Array<{ table: string; column: string; value: unknown }> = [];
   let fieldIdCounter = 0;
   let assetIdCounter = 0;
   let libraryIdCounter = 0;
+  const rpcCalls: Array<{ name: string; params: unknown }> = [];
 
   const supabase = {
+    rpc(name: string, params: unknown) {
+      rpcCalls.push({ name, params });
+      return Promise.resolve({ data: options.failDialogueFinalization ? false : true, error: null });
+    },
     from(table: string) {
       const query = {
         insertedValues: undefined as unknown,
         deleting: false,
+        updating: false,
         select() {
           return query;
         },
         eq(column?: string, value?: string) {
           if (query.deleting) {
             deleteCalls.push({ table, column: column ?? '', value: value ?? '' });
-            return Promise.resolve({ data: null, error: null });
+            return query;
           }
+          if (query.updating) return query;
           return query;
         },
         is(column: string, value: unknown) {
@@ -58,6 +68,21 @@ function fakeSupabase(options: {
           query.insertedValues = values;
           insertCalls.push({ table, values });
           return query;
+        },
+        update(values: unknown) {
+          query.updating = true;
+          query.insertedValues = values;
+          updateCalls.push({ table, values });
+          return query;
+        },
+        maybeSingle() {
+          if (table === 'libraries' && query.updating) {
+            return Promise.resolve({
+              data: options.failDialogueFinalization ? null : { id: '33333333-3333-4333-8333-333333333331' },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
         },
         delete() {
           query.deleting = true;
@@ -108,6 +133,13 @@ function fakeSupabase(options: {
           return Promise.resolve({ data: null, error: null });
         },
         then(resolve: (value: { data: unknown; error: null }) => void) {
+          if (query.deleting) {
+            resolve({
+              data: null,
+              error: options.failDelete ? { message: 'cleanup denied' } : null,
+            } as never);
+            return;
+          }
           if (table === 'library_field_definitions') {
             const rows = Array.isArray(query.insertedValues) ? query.insertedValues : [query.insertedValues];
             resolve({
@@ -142,7 +174,7 @@ function fakeSupabase(options: {
     },
   } as unknown as SupabaseClient;
 
-  return { supabase, insertCalls, deleteCalls, isCalls };
+  return { supabase, insertCalls, updateCalls, deleteCalls, isCalls, rpcCalls };
 }
 
 const ref = { sourceId: 'src', unitId: 'src:0', start: 0, end: 1 };
@@ -276,6 +308,79 @@ describe('importScriptFromFile', () => {
       column: 'folder_id',
       value: null,
     });
+  });
+
+  it('records explicit dialogue-job provenance without changing ordinary imports', async () => {
+    const { supabase, insertCalls, updateCalls, rpcCalls } = fakeSupabase();
+    await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: null,
+      libraryName: 'Generated dialogue',
+      document: storyDocument,
+      fileName: 'dialogue.md',
+      dialogueGenerationJobId: '88888888-8888-4888-8888-888888888888',
+      dialogueGenerationWorkerId: 'worker-1',
+      dialogueSourceState: { epoch: 2, revision: 3, updateIds: ['99999999-9999-4999-8999-999999999999'] },
+      documentSource: {
+        sourceDocumentId: '55555555-5555-4555-8555-555555555555',
+        exportType: 'script',
+      },
+    });
+    expect(insertCalls.find((call) => call.table === 'libraries')?.values).toEqual(expect.objectContaining({
+      dialogue_generation_job_id: '88888888-8888-4888-8888-888888888888',
+      dialogue_generation_ready: false,
+    }));
+    expect(updateCalls).toEqual([]);
+    expect(rpcCalls).toContainEqual({
+      name: 'finalize_dialogue_script_import',
+      params: expect.objectContaining({
+        p_job_id: '88888888-8888-4888-8888-888888888888',
+        p_worker_id: 'worker-1',
+        p_source_epoch: 2,
+        p_source_revision: 3,
+        p_source_update_ids: ['99999999-9999-4999-8999-999999999999'],
+      }),
+    });
+  });
+
+  it('removes a completed table when the dialogue finalization fence is lost', async () => {
+    const { supabase, deleteCalls } = fakeSupabase({ failDialogueFinalization: true });
+    await expect(importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: null,
+      libraryName: 'Lost fence dialogue',
+      document: storyDocument,
+      fileName: 'dialogue.md',
+      dialogueGenerationJobId: '88888888-8888-4888-8888-888888888888',
+      dialogueGenerationWorkerId: 'worker-1',
+      dialogueSourceState: { epoch: 2, revision: 3, updateIds: [] },
+      documentSource: {
+        sourceDocumentId: '55555555-5555-4555-8555-555555555555',
+        exportType: 'script',
+      },
+    })).rejects.toThrow(/finalization fence/i);
+    expect(deleteCalls).toContainEqual(expect.objectContaining({ table: 'libraries' }));
+  });
+
+  it('reports cleanup failure instead of silently leaving a staging dialogue library', async () => {
+    const { supabase } = fakeSupabase({ failDialogueFinalization: true, failDelete: true });
+    await expect(importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: null,
+      libraryName: 'Cleanup failure dialogue',
+      document: storyDocument,
+      fileName: 'dialogue.md',
+      dialogueGenerationJobId: '88888888-8888-4888-8888-888888888888',
+      dialogueGenerationWorkerId: 'worker-1',
+      dialogueSourceState: { epoch: 2, revision: 3, updateIds: [] },
+      documentSource: {
+        sourceDocumentId: '55555555-5555-4555-8555-555555555555',
+        exportType: 'script',
+      },
+    })).rejects.toThrow(/cleanup failed: cleanup denied/i);
   });
 
   it('uses the document current folder instead of a conflicting client folder', async () => {

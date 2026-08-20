@@ -4,6 +4,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Root } from 'react-dom/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -159,6 +161,21 @@ async function waitFor(check: () => boolean) {
 }
 
 describe('ResourceReferenceProvider', () => {
+  it('keeps the registration revision on the existing ref hook slot', () => {
+    const providerSource = readFileSync(
+      join(process.cwd(), 'src/components/documents/ResourceReferenceProvider.tsx'),
+      'utf8'
+    );
+
+    expect(providerSource).toContain('const registrationRevisionRef = useRef(0);');
+    expect(providerSource).not.toContain(
+      'const [registrationRevision, setRegistrationRevision] = useState(0);'
+    );
+    expect(providerSource).not.toMatch(
+      /const registrationRevision = useMemo\s*\(/
+    );
+  });
+
   let root: Root;
   let queryClient: QueryClient;
   let renderProvider: (children: ReactNode) => Promise<void>;
@@ -261,6 +278,28 @@ describe('ResourceReferenceProvider', () => {
 
     await renderProvider(null);
     expect(supabase.removeChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes the resolved map and advances the revision when occurrences unmount', async () => {
+    let state: ReferenceState | undefined;
+    await renderProvider(
+      <>
+        <Probe target={TABLE_TARGET} onState={(next) => { state = next; }} />
+        <Probe target={{ ...TABLE_TARGET }} />
+      </>
+    );
+    await waitFor(() => (state?.registrationRevision ?? 0) >= 2);
+    const duplicateRevision = state!.registrationRevision;
+
+    expect(state?.resolvedReferences?.get(resourceReferenceKey(TABLE_TARGET)))
+      .toBe(state?.resolved);
+
+    await renderProvider(
+      <Probe target={TABLE_TARGET} onState={(next) => { state = next; }} />
+    );
+    await waitFor(() => (state?.registrationRevision ?? 0) > duplicateRevision);
+
+    expect(resolveReferences).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates identical resolution targets even when fallback labels differ', async () => {

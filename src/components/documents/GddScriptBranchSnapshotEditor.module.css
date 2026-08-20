@@ -1,0 +1,110 @@
+.card {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+  max-width: 36rem;
+}
+
+.hitArea {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 0.75rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, currentColor 4%, transparent), transparent 48%),
+    color-mix(in srgb, canvas 92%, currentColor 8%);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.hitArea:hover {
+  border-color: color-mix(in srgb, currentColor 34%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.hitArea:focus-visible {
+  outline: 2px solid color-mix(in srgb, Highlight 70%, currentColor);
+  outline-offset: 2px;
+}
+
+.header {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+
+.title {
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, canvas 88%, currentColor 12%);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.node {
+  --depth: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.45rem;
+  margin-left: calc(var(--depth) * 0.9rem);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.nodeDot {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.nodeLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cta {
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.78;
+}
+
+.secondaryLink {
+  justify-self: start;
+  font-size: 0.8rem;
+  color: inherit;
+  opacity: 0.72;
+}
+
+.secondaryLink:hover {
+  opacity: 1;
+}
+
+.unavailable {
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.65rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}

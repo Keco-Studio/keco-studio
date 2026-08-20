@@ -3,7 +3,12 @@ import {
   buildDocumentSnapshot,
   buildTableSnapshot,
   enforceSnapshotTotalLimit,
+  listGameDesignReferenceOptions,
 } from './sourceSnapshots';
+
+jest.mock('@/lib/services/authorizationService', () => ({
+  verifyProjectAccess: jest.fn(async () => undefined),
+}));
 
 describe('Game Design System source snapshots', () => {
   it('stores actual Document content, identity, update time, and a stable hash', () => {
@@ -47,7 +52,54 @@ describe('Game Design System source snapshots', () => {
       { ...document, resourceId: 'doc-2', excerpt: 'y'.repeat(25_000) },
     ])).toThrow(/60,000/);
   });
+
+  it('filters generated documents and tables when requested', async () => {
+    const documentsQuery = sourceQuery([
+      { id: 'doc-1', project_id: 'project-1', name: 'Design Notes', updated_at: '2026-08-14T00:00:00Z' },
+    ]);
+    const librariesQuery = sourceQuery([
+      { id: 'table-1', project_id: 'project-1', name: 'Products', updated_at: '2026-08-14T00:00:00Z' },
+    ]);
+    const supabase = {
+      from: jest.fn((table: string) => table === 'documents' ? documentsQuery : librariesQuery),
+    } as never;
+
+    await listGameDesignReferenceOptions(supabase, 'project-1', { excludeGeneratedResources: true });
+
+    expect(documentsQuery.is).toHaveBeenCalledWith('gdd_generation_job_id', null);
+    expect(librariesQuery.is).toHaveBeenCalledWith('gdd_generation_job_id', null);
+  });
+
+  it('keeps generated resources available to the general reference picker by default', async () => {
+    const documentsQuery = sourceQuery([]);
+    const librariesQuery = sourceQuery([]);
+    const supabase = {
+      from: jest.fn((table: string) => table === 'documents' ? documentsQuery : librariesQuery),
+    } as never;
+
+    await listGameDesignReferenceOptions(supabase, 'project-1');
+
+    expect(documentsQuery.is).not.toHaveBeenCalled();
+    expect(librariesQuery.is).not.toHaveBeenCalled();
+  });
 });
+
+function sourceQuery(data: unknown[]) {
+  type Query = {
+    select: jest.Mock;
+    eq: jest.Mock;
+    order: jest.Mock;
+    is: jest.Mock;
+    then: (resolve: (value: { data: unknown[]; error: null }) => unknown) => Promise<unknown>;
+  };
+  const query = {} as Query;
+  query.select = jest.fn(() => query);
+  query.eq = jest.fn(() => query);
+  query.order = jest.fn(() => query);
+  query.is = jest.fn(() => query);
+  query.then = (resolve) => Promise.resolve(resolve({ data, error: null }));
+  return query;
+}
 
 function snapshotSource() {
   return {

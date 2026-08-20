@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
-import { processClaimedGameDesignSystemJob } from './worker';
+import { describeGenerationError, processClaimedGameDesignSystemJob, shouldWakeGameDesignSystemGenerationJob } from './worker';
 import { RuleSetGenerationValidationError } from '@/lib/gameDesignSystemGeneration';
 import type { GameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
 import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
@@ -38,6 +38,53 @@ const job = {
 } as unknown as GameDesignSystemGenerationJob;
 
 describe('leased Game Design System worker', () => {
+  it('preserves useful messages from plain provider and database errors', () => {
+    expect(describeGenerationError({ message: 'LLM request failed (502)', code: 'BAD_GATEWAY' })).toBe('LLM request failed (502) [BAD_GATEWAY]');
+    expect(describeGenerationError({ details: 'connection refused' })).toBe('connection refused');
+  });
+
+  it('wakes queued jobs and running jobs whose lease has expired', () => {
+    const now = Date.parse('2026-08-19T12:00:00.000Z');
+    const base = {
+      ...job,
+      available_at: '2026-08-19T11:59:00.000Z',
+      lease_expires_at: '2026-08-19T11:59:00.000Z',
+    };
+
+    expect(shouldWakeGameDesignSystemGenerationJob({ ...base, status: 'queued' }, now)).toBe(true);
+    expect(shouldWakeGameDesignSystemGenerationJob({ ...base, status: 'running' }, now)).toBe(true);
+    expect(shouldWakeGameDesignSystemGenerationJob({ ...base, status: 'running', lease_expires_at: '2026-08-19T12:01:00.000Z' }, now)).toBe(false);
+    expect(shouldWakeGameDesignSystemGenerationJob({ ...base, status: 'completed' }, now)).toBe(false);
+  });
+
+  it('requeues when the generation output lookup does not return', async () => {
+    jest.useFakeTimers();
+    try {
+      const retry = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string, _delay: number) => 'queued' as const);
+      const processing = processClaimedGameDesignSystemJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
+        findGenerationOutput: jest.fn(() => new Promise(() => undefined)),
+        heartbeat: jest.fn(async () => undefined),
+        generate: jest.fn(async () => generated),
+        createSystem: jest.fn(async () => ({ id: 'system-1', current_version_id: 'version-1' } as never)),
+        complete: jest.fn(async () => undefined),
+        retry,
+        fail: jest.fn(async () => undefined),
+      } as never);
+
+      await jest.advanceTimersByTimeAsync(15_000);
+      await expect(processing).resolves.toBe('queued');
+      expect(retry).toHaveBeenCalledWith(
+        expect.anything(),
+        'job-1',
+        'worker-1',
+        'Timed out while checking the generation output. The job will be retried.',
+        5,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('heartbeats phases and completes only with the claimed lease', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const findGenerationOutput = jest.fn(async () => null);

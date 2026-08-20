@@ -197,6 +197,12 @@ export default function LibraryPage() {
     if (hasInitializedBlankRowsRef.current) return;
     if (userRole === 'viewer') return;
     if (schemaLoading) return;
+    // Generated GDD tables already contain their complete rows. Never run the
+    // blank-library bootstrap against them, even during a schema/data race.
+    if (library?.gdd_generation_job_id) {
+      hasInitializedBlankRowsRef.current = true;
+      return;
+    }
 
     const initDefaultData = async () => {
       try {
@@ -255,6 +261,7 @@ export default function LibraryPage() {
   }, [
     contextCreateAsset,
     libraryId,
+    library?.gdd_generation_job_id,
     librarySchema,
     schemaLoading,
     queryClient,

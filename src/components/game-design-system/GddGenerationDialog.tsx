@@ -12,11 +12,12 @@ type Props = {
   open: boolean;
   projectName: string;
   pending?: boolean;
+  error?: string | null;
   onCancel: () => void;
   onSubmit: (options: GddGenerationOptions) => void;
 };
 
-export function GddGenerationDialog({ open, projectName, pending = false, onCancel, onSubmit }: Props) {
+export function GddGenerationDialog({ open, projectName, pending = false, error = null, onCancel, onSubmit }: Props) {
   const [mode, setMode] = useState<GddGenerationOptions['mode']>('professional');
   const [creativeBrief, setCreativeBrief] = useState('');
 
@@ -47,6 +48,7 @@ export function GddGenerationDialog({ open, projectName, pending = false, onCanc
           </label>
         </fieldset>
         <label className={styles.field} htmlFor="gdd-creative-brief"><span>Creative brief <small>optional</small></span><textarea id="gdd-creative-brief" className={styles.textarea} maxLength={4000} value={creativeBrief} onChange={(event) => setCreativeBrief(event.target.value)} placeholder="Add theme, audience, unique selling points, or areas you want expanded" /></label>
+        {error ? <div className={styles.error} role="alert">{error}</div> : null}
         <div className={styles.dialogActions}>
           <button className={styles.secondaryButton} type="button" disabled={pending} onClick={onCancel}>Cancel</button>
           <div className={styles.gddMapDisclosure}>This action generates the GDD and automatically submits up to 3 paid map images described in it. Map images do not include collision grids.</div>

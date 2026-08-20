@@ -3,8 +3,20 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
-import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { coerceSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
+import {
+  applyInlineTableResourceReferences,
+  GddTableReferenceError,
+  materializeTableResources,
+  sanitizeTableResourcesForPersistence,
+} from '@/lib/gdd-generation/tableResources';
+import { loadSeriesTableLibraryIds } from '@/lib/gdd-generation/seriesTableIds';
+import {
+  materializeDialogueResources,
+  renderDialogueReferences,
+  type DialoguePlan,
+} from '@/lib/gdd-generation/dialogueResources';
 import {
   generateGdd,
   GddGenerationValidationError,
@@ -14,13 +26,13 @@ import {
 } from '@/lib/gddGeneration';
 import { compileGddMapBriefs } from './maps/compiler';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
+import type { ResourceChangeSummary } from './resourceEvolution';
 import { generateGddMarkdownV2, GddV2GenerationValidationError } from './v2/generator';
 import {
   claimGddGenerationJob,
   failGddGenerationJob,
   heartbeatGddGenerationJob,
   persistCompletedGddGenerationJob,
-  persistGddGenerationWithMaps,
   retryGddGenerationJob,
   type GddGenerationJob,
   type GddJobStatus,
@@ -48,6 +60,47 @@ const defaultDependencies: WorkerDependencies = {
   fail: failGddGenerationJob,
 };
 
+export type PersistedGddGeneration = {
+  id: string;
+  name: string;
+  status?: GddJobStatus;
+  generationRevision: number | null;
+  resourceChangeSummary: ResourceChangeSummary | null;
+};
+
+export function shouldWakeGddGenerationJob(
+  job: Pick<GddGenerationJob, 'status' | 'available_at' | 'lease_expires_at'>,
+  now = Date.now(),
+): boolean {
+  if (job.status === 'queued') return Date.parse(job.available_at) <= now;
+  if (job.status === 'running') {
+    return Boolean(job.lease_expires_at) && Date.parse(job.lease_expires_at as string) <= now;
+  }
+  return false;
+}
+
+export function describeGddGenerationError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message.slice(0, 1_000);
+  if (error && typeof error === 'object') {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [value.message, value.details, value.hint]
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+    if (parts.length > 0) {
+      const code = typeof value.code === 'string' && value.code.trim() ? ` [${value.code.trim()}]` : '';
+      return `${parts.join(': ')}${code}`.slice(0, 1_000);
+    }
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') return serialized.slice(0, 1_000);
+    } catch {
+      // Fall through to a stable message for non-serializable errors.
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error.trim().slice(0, 1_000);
+  return 'GDD generation failed.';
+}
+
 export class GddJobContextInvalidError extends Error {
   constructor(message: string) {
     super(message);
@@ -56,7 +109,12 @@ export class GddJobContextInvalidError extends Error {
 }
 
 function isPermanentError(error: unknown): boolean {
-  if (error instanceof GddGenerationValidationError || error instanceof GddV2GenerationValidationError || error instanceof GddJobContextInvalidError) return true;
+  if (
+    error instanceof GddGenerationValidationError
+    || error instanceof GddV2GenerationValidationError
+    || error instanceof GddJobContextInvalidError
+    || error instanceof GddTableReferenceError
+  ) return true;
   if (!error || typeof error !== 'object') return false;
   const code = (error as { code?: unknown }).code;
   return code === '42501' || code === '23503' || code === '23514' || code === 'P0002';
@@ -124,14 +182,31 @@ export async function persistGeneratedGddDocument(
   workerId: string,
   gdd: GeneratedGdd,
   markdown: string,
-): Promise<{ id: string; name: string }> {
-  validateSanctionedMdx(markdown);
-  const yjsState = await documentContentCodec.markdownToYjsState(markdown);
+): Promise<PersistedGddGeneration> {
+  const existingLibraryIds = await loadSeriesTableLibraryIds(
+    serviceClient,
+    job.project_id,
+    job.design_system_id,
+  );
+  const tableResources = sanitizeTableResourcesForPersistence(
+    materializeTableResources(job.design_system_id, gdd.productionTables, existingLibraryIds),
+  );
+  const dialogueResources = materializeDialogueResources(job.id, gdd.dialogueChapters ?? []);
+  const completedMarkdown = tableResources.length > 0
+    ? renderGddMarkdown(gdd, { input: job.input, tableResources })
+    : markdown;
+  const withTableRefs = applyInlineTableResourceReferences(completedMarkdown, tableResources);
+  const withDialogue = dialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+    : withTableRefs;
+  const dialogueMarkdown = coerceSanctionedMdx(withDialogue);
+  validateSanctionedMdx(dialogueMarkdown);
+  const yjsState = await documentContentCodec.markdownToYjsState(dialogueMarkdown);
   const createdAt = new Date().toISOString();
   return persistCompletedGddGenerationJob(serviceClient, {
     jobId: job.id,
     workerId,
-    markdown,
+    markdown: dialogueMarkdown,
     yjsState,
     description: `AI-generated GDD draft from ${job.input.systemTitle} version ${job.input.versionNumber}.`,
     metadata: {
@@ -142,11 +217,15 @@ export async function persistGeneratedGddDocument(
       sourceSnapshots: sourceSnapshotMetadata(job),
       appliedRuleIds: gdd.appliedRuleIds,
       omittedRuleIds: gdd.omittedRuleIds ?? [],
+      tableResources,
+      dialogueResources,
       createdBy: job.owner_id,
       createdAt,
     },
     appliedRuleIds: gdd.appliedRuleIds,
     omittedRuleIds: gdd.omittedRuleIds ?? [],
+    tableResources,
+    dialogueResources,
   });
 }
 
@@ -156,14 +235,29 @@ export async function persistGeneratedGddV2Document(
   workerId: string,
   markdown: string,
   review: unknown,
-): Promise<{ id: string; name: string; status?: GddJobStatus }> {
-  validateSanctionedMdx(markdown);
+  tablePlans: Parameters<typeof materializeTableResources>[1] = [],
+  dialoguePlans: DialoguePlan[] = [],
+): Promise<PersistedGddGeneration> {
   const input = job.input as GddGenerationRequestV2;
+  const existingLibraryIds = await loadSeriesTableLibraryIds(
+    serviceClient,
+    job.project_id,
+    job.design_system_id,
+  );
+  const tableResources = sanitizeTableResourcesForPersistence(
+    materializeTableResources(job.design_system_id, tablePlans, existingLibraryIds),
+  );
+  const dialogueResources = materializeDialogueResources(job.id, dialoguePlans);
+  const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
+  const withDialogue = dialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+    : withTableRefs;
+
   let mapCompilationFailed = false;
   let mapCompilationError: string | null = null;
   let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
   try {
-    briefs = await compileGddMapBriefs({ markdown, artStyle: input.artStyle ?? null });
+    briefs = await compileGddMapBriefs({ markdown: withDialogue, artStyle: input.artStyle ?? null });
   } catch (error) {
     mapCompilationFailed = true;
     mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
@@ -177,58 +271,124 @@ export async function persistGeneratedGddV2Document(
     styleContract: brief.styleContract,
     inputHash: hashGddGenerationInput({ brief, styleContract: brief.styleContract }),
   }));
-  const decoratedMarkdown = decorateGddWithMapReferences(markdown, briefs.map((brief, index) => ({
-    artifactId: mapArtifacts[index].id,
+  const decoratedMarkdown = decorateGddWithMapReferences(withDialogue, briefs.map((brief, index) => ({
+    artifactId: mapArtifacts[index]!.id,
     sourceHeading: brief.sourceHeading,
     fallbackTitle: brief.title,
   })));
-  validateSanctionedMdx(decoratedMarkdown);
-  const yjsState = await documentContentCodec.markdownToYjsState(decoratedMarkdown);
-  const result = await persistGddGenerationWithMaps(serviceClient, {
+  const completedMarkdown = coerceSanctionedMdx(decoratedMarkdown);
+  validateSanctionedMdx(completedMarkdown);
+  const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
+
+  const metadata = {
+    source: 'game_design_system_generation',
+    contractVersion: 2,
+    mode: input.mode,
+    designSystemId: job.design_system_id,
+    versionId: job.version_id,
     jobId: job.id,
-    workerId,
-    markdown: decoratedMarkdown,
-    yjsState,
-    description: `Structured ${input.mode} GDD draft from ${input.systemTitle} version ${input.versionNumber}.`,
-    metadata: {
-      source: 'game_design_system_generation',
-      contractVersion: 2,
-      mode: input.mode,
-      designSystemId: job.design_system_id,
-      versionId: job.version_id,
-      jobId: job.id,
-      sourceSnapshots: sourceSnapshotMetadata(job),
-      appliedRuleIds: job.applied_rule_ids,
-      omittedRuleIds: job.omitted_rule_ids,
-      review,
-      mapCount: briefs.length,
-      mapCompilationFailed,
-      ...(mapCompilationError ? { mapCompilationError } : {}),
-      createdBy: job.owner_id,
-      createdAt: new Date().toISOString(),
-    },
+    sourceSnapshots: sourceSnapshotMetadata(job),
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
-    mapArtifacts,
+    review,
+    tableResources,
+    dialogueResources,
+    mapCount: briefs.length,
     mapCompilationFailed,
+    ...(mapCompilationError ? { mapCompilationError } : {}),
+    createdBy: job.owner_id,
+    createdAt: new Date().toISOString(),
+  };
+
+  // Tables/dialogue ownership stays on the resource-evolution RPC. Map
+  // artifacts are attached afterward so both pipelines can coexist without a
+  // unified persistence migration yet.
+  const persisted = await persistCompletedGddGenerationJob(serviceClient, {
+    jobId: job.id,
+    workerId,
+    markdown: completedMarkdown,
+    yjsState,
+    description: `Structured ${input.mode} GDD draft from ${input.systemTitle} version ${input.versionNumber}.`,
+    metadata,
+    appliedRuleIds: job.applied_rule_ids,
+    omittedRuleIds: job.omitted_rule_ids,
+    tableResources,
+    dialogueResources,
   });
-  return { id: result.id, name: result.name, status: result.status };
+
+  let status: GddJobStatus = 'completed';
+  if (mapCompilationFailed) {
+    status = 'completed_with_map_failures';
+    const { error } = await serviceClient.from('gdd_generation_jobs').update({
+      status,
+      phase: 'completed',
+    }).eq('id', job.id);
+    if (error) console.error('[GDD map compilation failure status]', error);
+  } else if (mapArtifacts.length > 0) {
+    const { error: insertError } = await serviceClient.from('gdd_map_artifacts').insert(
+      mapArtifacts.map((artifact) => ({
+        id: artifact.id,
+        gdd_generation_job_id: job.id,
+        gdd_document_id: persisted.id,
+        project_id: job.project_id,
+        owner_id: job.owner_id,
+        design_system_id: job.design_system_id,
+        version_id: job.version_id,
+        map_brief_id: artifact.mapBriefId,
+        title: artifact.title,
+        map_brief: artifact.mapBrief,
+        style_contract: artifact.styleContract,
+        input_hash: artifact.inputHash,
+      })),
+    );
+    if (insertError) {
+      console.error('[GDD map artifact insert]', insertError);
+      status = 'completed_with_map_failures';
+      await serviceClient.from('gdd_generation_jobs').update({
+        status,
+        phase: 'completed',
+      }).eq('id', job.id);
+    } else {
+      status = 'waiting_for_maps';
+      const { error } = await serviceClient.from('gdd_generation_jobs').update({
+        status,
+        phase: 'generating_maps',
+        completed_at: null,
+      }).eq('id', job.id);
+      if (error) {
+        console.error('[GDD waiting_for_maps status]', error);
+        status = 'completed_with_map_failures';
+      }
+    }
+  }
+
+  return { ...persisted, status };
 }
 
 async function runWithLeaseHeartbeat<T>(
   input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob },
   heartbeat: typeof heartbeatGddGenerationJob,
-  generate: () => Promise<T>,
+  generate: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const controller = new AbortController();
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
   const timer = setInterval(() => {
     pendingHeartbeat = pendingHeartbeat
       .then(() => heartbeat(input.serviceClient, input.job.id, input.workerId, 'generating'))
-      .catch((error) => { heartbeatFailure = error; });
+      .catch((error) => {
+        heartbeatFailure = error;
+        controller.abort(error);
+      });
   }, 30_000);
   try {
-    const generated = await generate();
+    let generated: T;
+    try {
+      generated = await generate(controller.signal);
+    } catch (error) {
+      if (heartbeatFailure) throw heartbeatFailure;
+      throw error;
+    }
     await pendingHeartbeat;
     if (heartbeatFailure) throw heartbeatFailure;
     return generated;
@@ -247,22 +407,33 @@ export async function processClaimedGddJob(
     await dependencies.revalidateContext(serviceClient, job);
     if (isGddGenerationRequestV2(job.input)) {
       if (!dependencies.generateV2 || !dependencies.persistV2) throw new Error('GDD v2 worker dependencies are not configured.');
-      const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generateV2!(job.input as GddGenerationRequestV2));
+      const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, (signal) => (
+        dependencies.generateV2!(job.input as GddGenerationRequestV2, undefined, { signal })
+      ));
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       validateSanctionedMdx(generatedV2.markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
-      const persisted = await dependencies.persistV2(serviceClient, job, workerId, generatedV2.markdown, generatedV2.review);
+      const persisted = await dependencies.persistV2(
+        serviceClient,
+        job,
+        workerId,
+        generatedV2.markdown,
+        generatedV2.review,
+        generatedV2.tablePlans,
+        generatedV2.dialoguePlans ?? [],
+      );
       return persisted.status ?? 'completed';
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
-    const markdown = renderGddMarkdown(generated, { input: job.input });
+    const tableResources = materializeTableResources(job.design_system_id, generated.productionTables);
+    const markdown = renderGddMarkdown(generated, { input: job.input, tableResources });
     validateSanctionedMdx(markdown);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
     await dependencies.persist(serviceClient, job, workerId, generated, markdown);
     return 'completed';
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'GDD generation failed.';
+    const message = describeGddGenerationError(error);
     if (isPermanentError(error)) {
       await dependencies.fail(serviceClient, job.id, workerId, message);
       return 'failed';

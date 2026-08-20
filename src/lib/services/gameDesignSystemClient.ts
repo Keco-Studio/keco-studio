@@ -10,6 +10,7 @@ import type {
   GameDesignSystemVersion,
 } from './gameDesignSystemService';
 import type { PublicGddGenerationJob } from './gddGenerationService';
+import type { PublicDialogueGenerationJob } from './dialogueGenerationService';
 
 export type GameDesignGenerationRequest = {
   title: string;
@@ -172,4 +173,23 @@ export async function cancelProjectGddGeneration(projectId: string, jobId: strin
     method: 'DELETE',
   });
   return (await readJson<{ job: PublicGddGenerationJob }>(response)).job;
+}
+
+export async function fetchGddDialogueJobs(
+  projectId: string,
+  gddJobId: string,
+): Promise<PublicDialogueGenerationJob[]> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${encodeURIComponent(gddJobId)}/dialogue-jobs`, { cache: 'no-store' });
+  return (await readJson<{ jobs: PublicDialogueGenerationJob[] }>(response)).jobs ?? [];
+}
+
+export async function retryGddDialogueJob(
+  projectId: string,
+  gddJobId: string,
+  dialogueJobId: string,
+): Promise<PublicDialogueGenerationJob> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${encodeURIComponent(gddJobId)}/dialogue-jobs/${encodeURIComponent(dialogueJobId)}/retry`, {
+    method: 'POST',
+  });
+  return (await readJson<{ job: PublicDialogueGenerationJob }>(response)).job;
 }

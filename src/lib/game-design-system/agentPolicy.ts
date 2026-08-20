@@ -52,6 +52,7 @@ export function buildAgentRulePolicy(ruleSet: GameDesignRuleSet): {
       kind: 'table_guidance',
       table: sanitizeAgentPolicyText(guidance.table, 120),
       purpose: sanitizeAgentPolicyText(guidance.purpose, 500),
+      fields: guidance.fields.map((field) => sanitizeAgentPolicyText(field, 120)),
     });
     const closingLength = '\nEND_UNTRUSTED_GAME_DESIGN_RULE_DATA'.length;
     if (`${lines.join('\n')}\n${line}`.length + closingLength > AGENT_RULE_POLICY_MAX_CHARS) break;
