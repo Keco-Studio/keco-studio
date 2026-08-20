@@ -328,6 +328,8 @@ class GameArtStyleMockBackend {
   async install(page: Page): Promise<void> {
     await page.route(`${SUPABASE_ORIGIN}/**`, (route) => this.handleSupabase(route));
     await page.route('**/api/projects/*/role', (route) => fulfillJson(route, { role: 'admin', isOwner: true }));
+    // GameDesignSystemsPage loads bindings from /writable (not /api/projects).
+    await page.route('**/api/projects/writable', (route) => fulfillJson(route, [{ id: MOCK_PROJECT_ID, name: 'Art Style E2E Project' }]));
     await page.route('**/api/projects', (route) => fulfillJson(route, [{ id: MOCK_PROJECT_ID, name: 'Art Style E2E Project' }]));
     await page.route('**/api/game-design-systems**', (route) => this.handleGameDesignSystem(route));
   }
@@ -662,6 +664,10 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
       const request = route.request();
       const url = new URL(request.url());
       const path = url.pathname;
+      // Later **/api/projects/** handlers take precedence over install(); keep writable covered.
+      if (path === '/api/projects/writable' && request.method() === 'GET') {
+        return fulfillJson(route, [{ id: MOCK_PROJECT_ID, name: 'Art Style E2E Project' }]);
+      }
       if (path.endsWith('/game-design-system') && request.method() === 'GET') {
         return fulfillJson(route, {
           system: {
@@ -716,6 +722,7 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     });
 
     await page.getByRole('tab', { name: 'Projects' }).click();
+    await expect(page.getByRole('option', { name: 'Art Style E2E Project' })).toBeAttached({ timeout: 15_000 });
     await expect(page.getByText('Arrival', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Departure', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Document' })).toHaveCount(2);
