@@ -166,6 +166,9 @@ export function ResourceReferenceEditor({
     ? groupReferences.find((reference) => reference?.table)?.table
     : undefined;
   const suppressTableProjection = Boolean(tableSchema && group && !group.isPrimary);
+  // Keep single-row chips (accessible name + asset deeplink) for insert/smoke UX.
+  // Multi-row adjacent groups still collapse into one projected table.
+  const projectAsTable = Boolean(tableSchema && groupKeys.length > 1);
 
   let reference: React.ReactNode;
   if (!target) {
@@ -178,13 +181,13 @@ export function ResourceReferenceEditor({
         <span>Reference unavailable</span>
       </span>
     );
-  } else if (tableSchema) {
+  } else if (projectAsTable) {
     reference = suppressTableProjection
       ? null
       : (
           <TableReferenceProjection
             references={groupReferences}
-            schema={tableSchema}
+            schema={tableSchema!}
           />
         );
   } else if (resolved?.status === 'available' && resolved.href) {
@@ -226,7 +229,7 @@ export function ResourceReferenceEditor({
     <span
       ref={containerRef}
       className={`${styles.resourceReferenceContainer} ${
-        tableSchema ? styles.resourceReferenceTableContainer : ''
+        projectAsTable ? styles.resourceReferenceTableContainer : ''
       } ${suppressTableProjection ? styles.resourceReferenceProjectionSuppressed : ''}`}
       data-resource-reference-kind={target?.kind}
       data-resource-reference-key={key || undefined}

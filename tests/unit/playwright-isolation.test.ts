@@ -20,7 +20,7 @@ describe('Playwright Next.js isolation', () => {
     expect(wrapper).toContain('You create reusable Game Design Systems for Keco Studio.');
     expect(wrapper).toMatch(/writeFileSync/);
     expect(wrapper).toMatch(/SIGTERM/);
-    expect(nextEnv).toContain('import "./.next/types/routes.d.ts";');
+    expect(nextEnv).toMatch(/import "\.\/\.next\/(?:dev\/)?types\/routes\.d\.ts";/);
     expect(nextEnv).not.toContain('.next-playwright');
     expect(tsconfig).not.toContain('.next-playwright');
   });

@@ -16,7 +16,7 @@ describe('GddGenerationDialog', () => {
     render(<GddGenerationDialog open projectName="Project" error="Bind the selected version first." onCancel={jest.fn()} onSubmit={onSubmit} />);
 
     expect(screen.getByRole('alert').textContent).toContain('Bind the selected version first.');
-    await user.click(screen.getByRole('button', { name: 'Start generation' }));
+    await user.click(screen.getByRole('button', { name: 'Generate GDD + maps' }));
     expect(onSubmit).toHaveBeenCalledWith({ mode: 'professional' });
   });
 });

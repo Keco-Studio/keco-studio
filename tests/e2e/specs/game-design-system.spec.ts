@@ -680,6 +680,9 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
           output_document_id: '8b000000-0000-4000-8000-000000000084', output_document_name: 'GDD',
           output_folder_id: null, output_table_ids: [], output_table_names: [],
           applied_rule_ids: [], omitted_rule_ids: [], error: null,
+          generation_series_id: null, generation_revision: null,
+          resource_change_summary: { created: [], updated: [], reused: [], preserved: [] },
+          maps: [],
         } });
       }
       if (path === `/api/projects/${MOCK_PROJECT_ID}/gdd-generation-jobs/${gddJobId}/dialogue-jobs` && request.method() === 'GET') {
@@ -712,7 +715,14 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
       return route.fallback();
     });
 
-    await page.getByRole('tab', { name: 'Projects' }).click();
+    await Promise.all([
+      page.waitForResponse((response) => (
+        response.url().includes(`/gdd-generation-jobs/${gddJobId}/dialogue-jobs`)
+        && response.request().method() === 'GET'
+        && response.ok()
+      ), { timeout: 30_000 }),
+      page.getByRole('tab', { name: 'Projects' }).click(),
+    ]);
     await expect(page.getByText('Arrival', { exact: true })).toBeVisible();
     await expect(page.getByText('Departure', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Document' })).toHaveCount(2);
