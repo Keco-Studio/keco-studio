@@ -2,8 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { DocumentAccessError } from '@/lib/documents/documentStateTypes';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
+import type { ResolvedStory } from '@/lib/services/scriptConversionService';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
-import { replaceDialogueReference } from '@/lib/documents/serverDocumentReplacement';
+import { replaceDialogueReference, replaceGddDialogueSnapshot } from '@/lib/documents/serverDocumentReplacement';
+import { renderDialogueSnapshot } from './dialogueSnapshots';
 import {
   claimDialogueGenerationJob,
   completeDialogueGenerationJob,
@@ -48,6 +50,7 @@ export type DialogueWorkerDependencies = {
   resolveOwner: (serviceClient: SupabaseClient, job: DialogueGenerationJob) => Promise<string>;
   findExistingScript: (serviceClient: SupabaseClient, job: DialogueGenerationJob, sourceState: { epoch: number; revision: number; updateIds: string[] }) => Promise<string | null>;
   updateReference: (serviceClient: SupabaseClient, job: DialogueGenerationJob, scriptLibraryId: string) => Promise<void>;
+  updateSnapshot: (serviceClient: SupabaseClient, job: DialogueGenerationJob, resolved: Pick<ResolvedStory, 'document' | 'plotPlan'>, scriptLibraryId: string) => Promise<void>;
 };
 
 const defaultDependencies: DialogueWorkerDependencies = {
@@ -112,6 +115,34 @@ const defaultDependencies: DialogueWorkerDependencies = {
       scriptLibraryId,
     });
   },
+  updateSnapshot: async (client, job, resolved, scriptLibraryId) => {
+    const { data, error } = await client.from('gdd_generation_jobs')
+      .select('owner_id,output_document_id')
+      .eq('id', job.gdd_generation_job_id)
+      .eq('project_id', job.project_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.owner_id || !data.output_document_id) return;
+    const snapshotMarkdown = renderDialogueSnapshot({
+      dialogueJobId: job.id,
+      chapterKey: job.chapter_key,
+      title: job.title,
+      projectId: job.project_id,
+      dialogueDocumentId: job.document_id,
+      scriptLibraryId,
+      document: resolved.document,
+      plotPlan: resolved.plotPlan,
+    });
+    await replaceGddDialogueSnapshot(client, {
+      actorUserId: data.owner_id,
+      projectId: job.project_id,
+      documentId: data.output_document_id,
+      dialogueJobId: job.id,
+      chapterKey: job.chapter_key,
+      chapterTitle: job.title,
+      snapshotMarkdown,
+    });
+  },
 };
 
 export function shouldWakeDialogueGenerationJob(
@@ -170,9 +201,24 @@ export async function processClaimedDialogueJob(
       } catch {
         // Job status remains authoritative when a user edit wins the GDD CAS race.
       }
+      try {
+        const resolved = await dependencies.resolve(content, {
+          sourceId: job.document_id,
+          skipSemanticAuditAfterValidation: true,
+          enableAiPlotPlanning: false,
+        });
+        await dependencies.updateSnapshot(serviceClient, job, resolved, existingScriptId);
+      } catch (error) {
+        console.warn('Dialogue GDD snapshot update failed after Script recovery', {
+          dialogueJobId: job.id,
+          chapterKey: job.chapter_key,
+          error: describeDialogueGenerationError(error),
+        });
+      }
       return 'completed';
     }
     await dependencies.heartbeat(serviceClient, job.id, workerId, 90);
+    let resolvedForImport: Pick<ResolvedStory, 'document' | 'plotPlan'>;
     const imported = await runWithLeaseHeartbeat(
       input,
       dependencies.heartbeat,
@@ -182,6 +228,7 @@ export async function processClaimedDialogueJob(
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: false,
         });
+        resolvedForImport = resolved;
         const ownerId = await dependencies.resolveOwner(serviceClient, job);
         return dependencies.importStory(serviceClient, {
           userId: ownerId,
@@ -202,6 +249,15 @@ export async function processClaimedDialogueJob(
       await dependencies.updateReference(serviceClient, job, imported.libraryId);
     } catch {
       // Job status remains authoritative when a user edit wins the GDD CAS race.
+    }
+    try {
+      await dependencies.updateSnapshot(serviceClient, job, resolvedForImport, imported.libraryId);
+    } catch (error) {
+      console.warn('Dialogue GDD snapshot update failed after Script import', {
+        dialogueJobId: job.id,
+        chapterKey: job.chapter_key,
+        error: describeDialogueGenerationError(error),
+      });
     }
     return 'completed';
   } catch (error) {

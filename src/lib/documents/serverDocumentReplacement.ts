@@ -52,3 +52,87 @@ export async function replaceDialogueReference(
   if (!row) throw new DocumentAccessError('Dialogue reference replacement returned no state');
   return true;
 }
+
+type DialogueSnapshotReplacementInput = {
+  actorUserId: string;
+  projectId: string;
+  documentId: string;
+  dialogueJobId: string;
+  chapterKey: string;
+  chapterTitle: string;
+  snapshotMarkdown: string;
+};
+
+function normalizeChapter(value: string): string {
+  return value.toLocaleLowerCase().replace(/[`*_#[\]()-]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function headingMatches(heading: string, chapterKey: string, chapterTitle: string): boolean {
+  const normalized = normalizeChapter(heading.replace(/\s+#+\s*$/, ''));
+  return normalized === normalizeChapter(chapterKey) || normalized === normalizeChapter(chapterTitle);
+}
+
+function removeSnapshotForJob(markdown: string, dialogueJobId: string): string {
+  const escaped = dialogueJobId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return markdown.replace(
+    new RegExp(`^[ \\t]*<!--\\s*KECO_GDD_DIALOGUE_SNAPSHOT\\b[\\s\\S]*?dialogueJobId=["']${escaped}["'][\\s\\S]*?<!--\\s*/KECO_GDD_DIALOGUE_SNAPSHOT\\s*-->[ \\t]*\\n?`, 'gmi'),
+    '',
+  );
+}
+
+function insertSnapshotInChapter(
+  markdown: string,
+  input: Pick<DialogueSnapshotReplacementInput, 'chapterKey' | 'chapterTitle' | 'snapshotMarkdown'>,
+): string | null {
+  const lines = markdown.split('\n');
+  const headings = lines.map((line, index) => {
+    const match = /^(#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line);
+    return match ? { index, level: match[1].length, title: match[2] } : null;
+  }).filter((item): item is { index: number; level: number; title: string } => Boolean(item));
+  const heading = headings.find((item) => headingMatches(item.title, input.chapterKey, input.chapterTitle));
+  if (!heading) return null;
+  const next = headings.find((item) => item.index > heading.index && item.level <= heading.level);
+  const end = next?.index ?? lines.length;
+  const before = lines.slice(0, end).join('\n').replace(/[ \t]+$/, '');
+  const after = lines.slice(end).join('\n').replace(/^\n+/, '');
+  const separator = before.endsWith('\n') ? '' : '\n';
+  const trailing = after ? `\n\n${after}` : '';
+  return `${before}${separator}\n${input.snapshotMarkdown.trim()}${trailing}`;
+}
+
+export async function replaceGddDialogueSnapshot(
+  serviceClient: SupabaseClient,
+  input: DialogueSnapshotReplacementInput,
+): Promise<{ updated: boolean; reason?: 'missing-chapter' | 'missing-state' }> {
+  const current = await documentStateGateway.read(serviceClient, input.documentId);
+  if (current.projectId !== input.projectId) throw new DocumentAccessError();
+  if (!current.yjsStateBase64) return { updated: false, reason: 'missing-state' };
+
+  const withoutPrevious = removeSnapshotForJob(current.markdown, input.dialogueJobId);
+  const replacementMarkdown = insertSnapshotInChapter(withoutPrevious, input);
+  if (replacementMarkdown == null) return { updated: false, reason: 'missing-chapter' };
+
+  const currentYjsState = mergeYjsState(
+    current.yjsStateBase64,
+    current.updateTail.map((update) => update.updateBase64),
+  );
+  const { data, error } = await serviceClient.rpc('replace_document_with_markdown', {
+    p_document_id: input.documentId,
+    p_actor_user_id: input.actorUserId,
+    p_backup_version_id: randomUUID(),
+    p_expected_epoch: current.token.epoch,
+    p_expected_revision: current.token.revision,
+    p_included_update_ids: current.updateTail.map((update) => update.id),
+    p_current_yjs_state: currentYjsState,
+    p_current_markdown: current.markdown,
+    p_replacement_yjs_state: await documentContentCodec.markdownToYjsState(replacementMarkdown),
+    p_replacement_markdown: replacementMarkdown,
+  });
+  if (error) {
+    if (error.code === 'PT409') throw new DocumentStateConflictError(error.message, current.token);
+    throw error;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new DocumentAccessError('Dialogue snapshot replacement returned no state');
+  return { updated: true };
+}

@@ -90,7 +90,7 @@ content is modified.
 
 Links are named Markdown links, not bare IDs:
 
-- Dialogue Document: `/project/doc/:dialogueDocumentId`
+- Dialogue Document: `/:projectId/doc/:dialogueDocumentId`
 - Script FlowChart: `/script-system/:projectId/script/:scriptLibraryId`
 
 The project ID comes from the conversion context. Link labels remain stable so

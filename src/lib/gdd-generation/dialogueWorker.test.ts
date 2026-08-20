@@ -12,6 +12,7 @@ jest.mock('@/lib/services/scriptImportService', () => ({
 }));
 jest.mock('@/lib/documents/serverDocumentReplacement', () => ({
   replaceDialogueReference: jest.fn(),
+  replaceGddDialogueSnapshot: jest.fn(),
 }));
 
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
@@ -44,10 +45,11 @@ describe('dialogue generation worker', () => {
     const heartbeat = jest.fn(async () => undefined);
     const complete = jest.fn(async () => true);
     const updateReference = jest.fn(async () => undefined);
+    const updateSnapshot = jest.fn(async () => undefined);
     const resolveOwner = jest.fn(async () => 'user-1');
     const findExistingScript = jest.fn(async () => null);
     const result = await processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
-      heartbeat, complete, updateReference, resolveOwner, findExistingScript, fail: jest.fn(async () => true), retry: jest.fn(async () => 'queued' as const),
+      heartbeat, complete, updateReference, updateSnapshot, resolveOwner, findExistingScript, fail: jest.fn(async () => true), retry: jest.fn(async () => 'queued' as const),
     } as any);
     expect(result).toBe('completed');
     expect(resolveStoryForImport).toHaveBeenCalledWith('Edited dialogue', expect.objectContaining({
@@ -64,6 +66,7 @@ describe('dialogue generation worker', () => {
     }));
     expect(complete).not.toHaveBeenCalled();
     expect(updateReference as jest.Mock).toHaveBeenCalledWith(expect.anything(), job, 'library-1');
+    expect(updateSnapshot as jest.Mock).toHaveBeenCalledWith(expect.anything(), job, expect.objectContaining({ document: { nodes: [] }, plotPlan: { nodes: [] } }), 'library-1');
   });
 
   it('keeps the source Document and retries transient conversion failures', async () => {
@@ -80,15 +83,39 @@ describe('dialogue generation worker', () => {
   it('repairs the GDD reference when recovering an already imported Script', async () => {
     const complete = jest.fn(async () => true);
     const updateReference = jest.fn(async () => undefined);
+    const updateSnapshot = jest.fn(async () => undefined);
+    const resolve = jest.fn(async () => ({ document: { nodes: [] }, plotPlan: { nodes: [] } } as any));
     await expect(processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async () => undefined),
       findExistingScript: jest.fn(async () => 'library-existing'),
       complete,
       updateReference,
+      updateSnapshot,
+      resolve,
     } as any)).resolves.toBe('completed');
     expect(complete as jest.Mock).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', 'library-existing');
     expect(updateReference as jest.Mock).toHaveBeenCalledWith(expect.anything(), job, 'library-existing');
+    expect(updateSnapshot as jest.Mock).toHaveBeenCalledWith(expect.anything(), job, expect.objectContaining({ document: { nodes: [] } }), 'library-existing');
     expect(replaceDialogueReference).not.toHaveBeenCalled();
+  });
+
+  it('keeps a completed Script job completed when snapshot replacement fails', async () => {
+    jest.mocked(documentStateGateway.read).mockResolvedValue({ markdown: 'Edited dialogue', token: { epoch: 1, revision: 1 }, updateTail: [] } as any);
+    const updateSnapshot = jest.fn(async () => { throw new Error('snapshot CAS conflict'); });
+    const retry = jest.fn(async () => 'queued' as const);
+    await expect(processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
+      heartbeat: jest.fn(async () => undefined),
+      resolve: jest.fn(async () => ({ document: { nodes: [] }, plotPlan: { nodes: [] } } as any)),
+      importStory: jest.fn(async () => ({ libraryId: 'library-new', rowCount: 1, fieldCount: 1 })),
+      resolveOwner: jest.fn(async () => 'user-1'),
+      findExistingScript: jest.fn(async () => null),
+      updateReference: jest.fn(async () => undefined),
+      updateSnapshot,
+      fail: jest.fn(async () => true),
+      retry,
+    } as any)).resolves.toBe('completed');
+    expect(updateSnapshot).toHaveBeenCalled();
+    expect(retry).not.toHaveBeenCalled();
   });
 
   it('deletes a non-ready Script before regenerating instead of completing from partial data', async () => {
