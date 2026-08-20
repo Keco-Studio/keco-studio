@@ -20,6 +20,7 @@ import {
   type GeneratedGdd,
 } from '@/lib/gddGeneration';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
+import type { ResourceChangeSummary } from './resourceEvolution';
 import { generateGddMarkdownV2, GddV2GenerationValidationError } from './v2/generator';
 import {
   claimGddGenerationJob,
@@ -51,6 +52,13 @@ const defaultDependencies: WorkerDependencies = {
   persistV2: persistGeneratedGddV2Document,
   retry: retryGddGenerationJob,
   fail: failGddGenerationJob,
+};
+
+export type PersistedGddGeneration = {
+  id: string;
+  name: string;
+  generationRevision: number | null;
+  resourceChangeSummary: ResourceChangeSummary | null;
 };
 
 export function shouldWakeGddGenerationJob(
@@ -162,7 +170,7 @@ export async function persistGeneratedGddDocument(
   workerId: string,
   gdd: GeneratedGdd,
   markdown: string,
-): Promise<{ id: string; name: string }> {
+): Promise<PersistedGddGeneration> {
   const tableResources = sanitizeTableResourcesForPersistence(
     materializeTableResources(job.id, gdd.productionTables),
   );
@@ -210,7 +218,7 @@ export async function persistGeneratedGddV2Document(
   review: unknown,
   tablePlans: Parameters<typeof materializeTableResources>[1] = [],
   dialoguePlans: DialoguePlan[] = [],
-): Promise<{ id: string; name: string }> {
+): Promise<PersistedGddGeneration> {
   const input = job.input as GddGenerationRequestV2;
   const tableResources = sanitizeTableResourcesForPersistence(
     materializeTableResources(job.id, tablePlans),
