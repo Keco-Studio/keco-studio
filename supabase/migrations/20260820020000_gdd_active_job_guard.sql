@@ -20,7 +20,7 @@ where stale.status in ('queued', 'running', 'waiting_for_maps')
       and finished.status in ('completed', 'completed_with_map_failures')
   );
 
-create function public.create_gdd_generation_job_guarded(
+create or replace function public.create_gdd_generation_job_guarded(
   p_owner_id uuid,
   p_project_id uuid,
   p_design_system_id uuid,
