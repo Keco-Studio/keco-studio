@@ -256,7 +256,6 @@ export async function processClaimedDialogueJob(
       return 'completed';
     }
     await dependencies.heartbeat(serviceClient, job.id, workerId, 90);
-    let resolvedForImport: Pick<ResolvedStory, 'document' | 'plotPlan'>;
     const imported = await runWithLeaseHeartbeat(
       input,
       dependencies.heartbeat,
@@ -266,9 +265,8 @@ export async function processClaimedDialogueJob(
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: false,
         });
-        resolvedForImport = resolved;
         const ownerId = await dependencies.resolveOwner(serviceClient, job);
-        return dependencies.importStory(serviceClient, {
+        const result = await dependencies.importStory(serviceClient, {
           userId: ownerId,
           projectId: job.project_id,
           folderId: null,
@@ -281,15 +279,16 @@ export async function processClaimedDialogueJob(
           dialogueGenerationWorkerId: workerId,
           dialogueSourceState: sourceState,
         });
+        return { imported: result, resolved };
       },
     );
     try {
-      await dependencies.updateReference(serviceClient, job, imported.libraryId);
+      await dependencies.updateReference(serviceClient, job, imported.imported.libraryId);
     } catch {
       // Job status remains authoritative when a user edit wins the GDD CAS race.
     }
     try {
-      await dependencies.updateSnapshot(serviceClient, job, resolvedForImport, imported.libraryId);
+      await dependencies.updateSnapshot(serviceClient, job, imported.resolved, imported.imported.libraryId);
     } catch (error) {
       console.warn('Dialogue GDD snapshot update failed after Script import', {
         dialogueJobId: job.id,

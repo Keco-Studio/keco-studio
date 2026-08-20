@@ -254,13 +254,13 @@ describe('resolveResourceReferences', () => {
         libraryId: staleLibraryId,
         assetId: staleAssetId,
         displayFieldId: staleFieldId,
-        fallbackLabel: '方便面',
+        fallbackLabel: 'Instant Noodles',
       }),
       tableTarget({
         libraryId: staleLibraryId,
         assetId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
         displayFieldId: staleFieldId,
-        fallbackLabel: '纸巾',
+        fallbackLabel: 'Tissue Pack',
       }),
     ];
     const noodleId = '12121212-1212-4121-8121-121212121212';
@@ -273,15 +273,15 @@ describe('resolveResourceReferences', () => {
         gdd_generation_job_id: 'job-stable',
       }],
       library_assets: [
-        { id: noodleId, library_id: LIBRARY_ID, name: '方便面' },
-        { id: tissueId, library_id: LIBRARY_ID, name: '纸巾' },
+        { id: noodleId, library_id: LIBRARY_ID, name: 'Instant Noodles' },
+        { id: tissueId, library_id: LIBRARY_ID, name: 'Tissue Pack' },
       ],
       library_field_definitions: [
         { id: FIELD_ID, library_id: LIBRARY_ID, label: 'name', order_index: 0 },
       ],
       library_asset_values: [
-        { asset_id: noodleId, field_id: FIELD_ID, value_json: '方便面' },
-        { asset_id: tissueId, field_id: FIELD_ID, value_json: '纸巾' },
+        { asset_id: noodleId, field_id: FIELD_ID, value_json: 'Instant Noodles' },
+        { asset_id: tissueId, field_id: FIELD_ID, value_json: 'Tissue Pack' },
       ],
     });
 
@@ -289,18 +289,18 @@ describe('resolveResourceReferences', () => {
 
     expect(resolved.get(resourceReferenceKey(targets[0]!))).toMatchObject({
       status: 'available',
-      contextLabel: 'Products / 方便面',
+      contextLabel: 'Products / Instant Noodles',
       table: {
         libraryId: LIBRARY_ID,
-        row: { assetId: noodleId, name: '方便面' },
+        row: { assetId: noodleId, name: 'Instant Noodles' },
       },
     });
     expect(resolved.get(resourceReferenceKey(targets[1]!))).toMatchObject({
       status: 'available',
-      contextLabel: 'Products / 纸巾',
+      contextLabel: 'Products / Tissue Pack',
       table: {
         libraryId: LIBRARY_ID,
-        row: { assetId: tissueId, name: '纸巾' },
+        row: { assetId: tissueId, name: 'Tissue Pack' },
       },
     });
   });

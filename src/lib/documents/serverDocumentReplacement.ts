@@ -75,7 +75,7 @@ function headingMatches(heading: string, chapterKey: string, chapterTitle: strin
   if (!normalized) return false;
   if (key && normalized === key) return true;
   if (title && normalized === title) return true;
-  // Soft match: "### 2. 开场对话" vs title "开场对话" / key "opening-dialogue".
+  // Soft match: "### 2. Opening dialogue" vs title "Opening dialogue" / key "opening-dialogue".
   if (title && title.length >= 2 && (normalized.includes(title) || title.includes(normalized))) {
     return true;
   }
@@ -113,7 +113,7 @@ function insertAfterLine(
 function insertSnapshotInChapter(
   markdown: string,
   input: Pick<DialogueSnapshotReplacementInput, 'chapterKey' | 'chapterTitle' | 'dialogueJobId' | 'snapshotMarkdown'>,
-): string | null {
+): string {
   const lines = markdown.split('\n');
   const headings = lines.map((line, index) => {
     const match = /^(#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line);
