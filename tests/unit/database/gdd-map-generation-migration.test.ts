@@ -67,6 +67,7 @@ describe('GDD map generation migration', () => {
   });
 
   it('serializes project generation starts and reuses identical active jobs', () => {
+    expect(activeJobGuardSql).toMatch(/create or replace function public\.create_gdd_generation_job_guarded/i);
     expect(activeJobGuardSql).toMatch(/pg_advisory_xact_lock[\s\S]*p_project_id::text/i);
     expect(activeJobGuardSql).toMatch(/status in \('queued', 'running', 'waiting_for_maps'\)/i);
     expect(activeJobGuardSql).toMatch(/if v_job\.input_hash = p_input_hash[\s\S]*return next v_job/i);
