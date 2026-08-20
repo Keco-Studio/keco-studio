@@ -7,6 +7,7 @@ import {
   sanitizeDialogueResourcesForPersistence,
   type DialogueResource,
 } from '@/lib/gdd-generation/dialogueResources';
+import type { ResourceChangeSummary } from '@/lib/gdd-generation/resourceEvolution';
 
 export type GddJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 export type GddJobPhase = 'collecting' | 'planning' | 'generating_core' | 'generating_systems'
@@ -42,6 +43,9 @@ export type GddGenerationJob = {
   heartbeat_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  generation_series_id: string | null;
+  generation_revision: number | null;
+  resource_change_summary: ResourceChangeSummary;
   created_at: string;
   updated_at: string;
 };
@@ -52,6 +56,7 @@ export type PublicGddGenerationJob = Pick<GddGenerationJob,
   | 'attempt_count' | 'max_attempts' | 'available_at' | 'completed_at'
   | 'output_document_id' | 'output_document_name' | 'applied_rule_ids' | 'omitted_rule_ids'
   | 'output_folder_id' | 'output_table_ids' | 'output_table_names'
+  | 'generation_series_id' | 'generation_revision' | 'resource_change_summary'
 > & { error: string | null };
 
 export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenerationJob {
@@ -76,11 +81,14 @@ export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenera
     applied_rule_ids: job.applied_rule_ids,
     omitted_rule_ids: job.omitted_rule_ids,
     error: job.error ? job.error.slice(0, 500) : null,
+    generation_series_id: job.generation_series_id ?? null,
+    generation_revision: job.generation_revision ?? null,
+    resource_change_summary: job.resource_change_summary ?? { created: [], updated: [], reused: [], preserved: [] },
   };
 }
 
-const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at';
-const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,applied_rule_ids,omitted_rule_ids,error';
+const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at,generation_series_id,generation_revision,resource_change_summary';
+const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,applied_rule_ids,omitted_rule_ids,error,generation_series_id,generation_revision,resource_change_summary';
 const LATEST_PUBLIC_JOB_COLUMNS = `${PUBLIC_JOB_COLUMNS},created_at`;
 
 export class GddIdempotencyConflictError extends Error {
@@ -275,7 +283,12 @@ export async function persistCompletedGddGenerationJob(
       tableResources?: GeneratedTableResource[];
       dialogueResources?: DialogueResource[];
   },
-): Promise<{ id: string; name: string }> {
+): Promise<{
+  id: string;
+  name: string;
+  generationRevision: number | null;
+  resourceChangeSummary: ResourceChangeSummary | null;
+}> {
   const { data, error } = await serviceClient.rpc('persist_completed_gdd_generation_job', {
     p_job_id: input.jobId,
     p_worker_id: input.workerId,
@@ -293,7 +306,36 @@ export async function persistCompletedGddGenerationJob(
   if (!row || typeof row.document_id !== 'string' || typeof row.document_name !== 'string') {
     throw new Error('GDD generation job lease was lost before completion.');
   }
-  return { id: row.document_id, name: row.document_name };
+  const hasRevision = Object.prototype.hasOwnProperty.call(row, 'generation_revision');
+  const generationRevision = hasRevision ? row.generation_revision : null;
+  if (hasRevision && (!Number.isSafeInteger(generationRevision) || generationRevision <= 0)) {
+    throw new Error('Invalid GDD generation revision returned by persistence RPC.');
+  }
+  const hasSummary = Object.prototype.hasOwnProperty.call(row, 'resource_change_summary');
+  const changeSummary = row.resource_change_summary;
+  let resourceChangeSummary: ResourceChangeSummary | null = null;
+  if (hasSummary) {
+    if (!changeSummary || typeof changeSummary !== 'object' || Array.isArray(changeSummary)) {
+      throw new Error('Invalid GDD resource change summary returned by persistence RPC.');
+    }
+    const summary = changeSummary as Record<string, unknown>;
+    const keys = ['created', 'updated', 'reused', 'preserved'] as const;
+    if (!keys.every((key) => Array.isArray(summary[key]) && summary[key].every((value) => typeof value === 'string'))) {
+      throw new Error('Invalid GDD resource change summary returned by persistence RPC.');
+    }
+    resourceChangeSummary = {
+      created: summary.created as string[],
+      updated: summary.updated as string[],
+      reused: summary.reused as string[],
+      preserved: summary.preserved as string[],
+    };
+  }
+  return {
+    id: row.document_id,
+    name: row.document_name,
+    generationRevision,
+    resourceChangeSummary,
+  };
 }
 
 export async function failGddGenerationJob(

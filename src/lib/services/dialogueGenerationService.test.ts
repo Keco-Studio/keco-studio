@@ -25,7 +25,9 @@ describe('dialogue generation service', () => {
 
     await expect(claimDialogueGenerationJob(client, 'worker-1', 45)).resolves.toEqual({ id: 'job-1', status: 'running' });
     await expect(heartbeatDialogueGenerationJob(client, 'job-1', 'worker-1', 45)).resolves.toBeUndefined();
-    await expect(completeDialogueGenerationJob(client, 'job-1', 'worker-1', 'library-1')).resolves.toBe(true);
+    await expect(completeDialogueGenerationJob(client, 'job-1', 'worker-1', 'library-1')).resolves.toEqual({
+      scriptLibraryId: 'library-1', action: 'reused',
+    });
     await expect(failDialogueGenerationJob(client, 'job-1', 'worker-1', 'conversion failed', 30)).resolves.toBe(true);
     await expect(retryDialogueGenerationJob(client, 'job-1', 'user-1')).resolves.toEqual(expect.objectContaining({
       id: 'job-1', status: 'queued',

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type DialogueJobStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type DialogueCompletionResult = {
+  scriptLibraryId: string;
+  action: 'created' | 'updated' | 'reused';
+};
 
 export type DialogueGenerationJob = {
   id: string;
@@ -42,6 +46,19 @@ function assertRpcResult(data: unknown, message: string): boolean {
   if (data === true) return true;
   if (data === false || data == null) throw new Error(message);
   return Boolean(data);
+}
+
+function parseCompletionResult(data: unknown, fallbackLibraryId: string): DialogueCompletionResult {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (row && typeof row === 'object') {
+    const value = row as { script_library_id?: unknown; action?: unknown };
+    if (typeof value.script_library_id === 'string'
+      && (value.action === 'created' || value.action === 'updated' || value.action === 'reused')) {
+      return { scriptLibraryId: value.script_library_id, action: value.action };
+    }
+  }
+  if (data === true) return { scriptLibraryId: fallbackLibraryId, action: 'reused' };
+  throw new Error('Dialogue generation completion result was invalid.');
 }
 
 export function toPublicDialogueGenerationJob(row: Record<string, unknown>): PublicDialogueGenerationJob {
@@ -89,14 +106,14 @@ export async function completeDialogueGenerationJob(
   jobId: string,
   workerId: string,
   scriptLibraryId: string,
-): Promise<boolean> {
+): Promise<DialogueCompletionResult> {
   const { data, error } = await serviceClient.rpc('complete_dialogue_generation_job', {
     p_job_id: jobId,
     p_worker_id: workerId,
     p_script_library_id: scriptLibraryId,
   });
   if (error) throw error;
-  return assertRpcResult(data, 'Dialogue generation job lease was lost.');
+  return parseCompletionResult(data, scriptLibraryId);
 }
 
 export async function failDialogueGenerationJob(

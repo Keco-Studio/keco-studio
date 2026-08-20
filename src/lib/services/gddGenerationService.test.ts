@@ -70,12 +70,45 @@ describe('gddGenerationService', () => {
       description: 'Generated', metadata: { source: 'gdd-generation' },
       appliedRuleIds: ['rule-1'], omittedRuleIds: [],
       tableResources: [{ id: 'table-1', table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ id: 'row-1', name: 'Basic', values: { name: 'Basic' } }] }],
-    })).resolves.toEqual({ id: 'document-1', name: 'GDD' });
+    })).resolves.toEqual({
+      id: 'document-1', name: 'GDD', generationRevision: null, resourceChangeSummary: null,
+    });
     expect(rpc).toHaveBeenCalledWith('persist_completed_gdd_generation_job', expect.objectContaining({
       p_job_id: 'job-1', p_worker_id: 'worker-1', p_yjs_state: 'encoded',
       p_table_resources: [{ id: 'table-1', table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ id: 'row-1', name: 'Basic', values: { name: 'Basic' } }] }],
       p_dialogue_resources: [],
     }));
+  });
+
+  it.each([0, -1, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+    'rejects a canonical completion with invalid revision %s',
+    async (generation_revision) => {
+      const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+        data: [{ document_id: 'document-1', document_name: 'GDD', generation_revision, resource_change_summary: {
+          created: [], updated: [], reused: [], preserved: [],
+        } }],
+        error: null,
+      }));
+
+      await expect(persistCompletedGddGenerationJob({ rpc } as never, {
+        jobId: 'job-1', workerId: 'worker-1', markdown: '# GDD', yjsState: 'encoded',
+        description: 'Generated', metadata: {}, appliedRuleIds: [], omittedRuleIds: [],
+      })).rejects.toThrow(/generation revision/i);
+    },
+  );
+
+  it('rejects a canonical completion whose summary contains non-string entries', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'GDD', generation_revision: 1, resource_change_summary: {
+        created: ['table:skills'], updated: [42], reused: [], preserved: [],
+      } }],
+      error: null,
+    }));
+
+    await expect(persistCompletedGddGenerationJob({ rpc } as never, {
+      jobId: 'job-1', workerId: 'worker-1', markdown: '# GDD', yjsState: 'encoded',
+      description: 'Generated', metadata: {}, appliedRuleIds: [], omittedRuleIds: [],
+    })).rejects.toThrow(/resource change summary/i);
   });
 
   it('passes materialized dialogue resources to the completion RPC', async () => {
