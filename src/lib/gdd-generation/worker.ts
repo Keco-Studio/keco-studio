@@ -1,8 +1,10 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { coerceSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import {
   applyInlineTableResourceReferences,
   GddTableReferenceError,
@@ -20,7 +22,9 @@ import {
   GddGenerationValidationError,
   renderGddMarkdown,
   type GeneratedGdd,
+  hashGddGenerationInput,
 } from '@/lib/gddGeneration';
+import { compileGddMapBriefs } from './maps/compiler';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
 import type { ResourceChangeSummary } from './resourceEvolution';
 import { generateGddMarkdownV2, GddV2GenerationValidationError } from './v2/generator';
@@ -59,6 +63,7 @@ const defaultDependencies: WorkerDependencies = {
 export type PersistedGddGeneration = {
   id: string;
   name: string;
+  status?: GddJobStatus;
   generationRevision: number | null;
   resourceChangeSummary: ResourceChangeSummary | null;
 };
@@ -247,36 +252,117 @@ export async function persistGeneratedGddV2Document(
   const withDialogue = dialogueResources.length > 0
     ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
     : withTableRefs;
-  const completedMarkdown = coerceSanctionedMdx(withDialogue);
+
+  let mapCompilationFailed = false;
+  let mapCompilationError: string | null = null;
+  let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
+  try {
+    briefs = await compileGddMapBriefs({ markdown: withDialogue, artStyle: input.artStyle ?? null });
+  } catch (error) {
+    mapCompilationFailed = true;
+    mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
+    console.error('[GDD map brief compiler]', mapCompilationError);
+  }
+  const mapArtifacts = briefs.map((brief) => ({
+    id: randomUUID(),
+    mapBriefId: brief.id,
+    title: brief.title,
+    mapBrief: brief,
+    styleContract: brief.styleContract,
+    inputHash: hashGddGenerationInput({ brief, styleContract: brief.styleContract }),
+  }));
+  const decoratedMarkdown = decorateGddWithMapReferences(withDialogue, briefs.map((brief, index) => ({
+    artifactId: mapArtifacts[index]!.id,
+    sourceHeading: brief.sourceHeading,
+    fallbackTitle: brief.title,
+  })));
+  const completedMarkdown = coerceSanctionedMdx(decoratedMarkdown);
   validateSanctionedMdx(completedMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
-  return persistCompletedGddGenerationJob(serviceClient, {
+
+  const metadata = {
+    source: 'game_design_system_generation',
+    contractVersion: 2,
+    mode: input.mode,
+    designSystemId: job.design_system_id,
+    versionId: job.version_id,
+    jobId: job.id,
+    sourceSnapshots: sourceSnapshotMetadata(job),
+    appliedRuleIds: job.applied_rule_ids,
+    omittedRuleIds: job.omitted_rule_ids,
+    review,
+    tableResources,
+    dialogueResources,
+    mapCount: briefs.length,
+    mapCompilationFailed,
+    ...(mapCompilationError ? { mapCompilationError } : {}),
+    createdBy: job.owner_id,
+    createdAt: new Date().toISOString(),
+  };
+
+  // Tables/dialogue ownership stays on the resource-evolution RPC. Map
+  // artifacts are attached afterward so both pipelines can coexist without a
+  // unified persistence migration yet.
+  const persisted = await persistCompletedGddGenerationJob(serviceClient, {
     jobId: job.id,
     workerId,
     markdown: completedMarkdown,
     yjsState,
     description: `Structured ${input.mode} GDD draft from ${input.systemTitle} version ${input.versionNumber}.`,
-    metadata: {
-      source: 'game_design_system_generation',
-      contractVersion: 2,
-      mode: input.mode,
-      designSystemId: job.design_system_id,
-      versionId: job.version_id,
-      jobId: job.id,
-      sourceSnapshots: sourceSnapshotMetadata(job),
-      appliedRuleIds: job.applied_rule_ids,
-      omittedRuleIds: job.omitted_rule_ids,
-      review,
-      tableResources,
-      dialogueResources,
-      createdBy: job.owner_id,
-      createdAt: new Date().toISOString(),
-    },
+    metadata,
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
     tableResources,
     dialogueResources,
   });
+
+  let status: GddJobStatus = 'completed';
+  if (mapCompilationFailed) {
+    status = 'completed_with_map_failures';
+    const { error } = await serviceClient.from('gdd_generation_jobs').update({
+      status,
+      phase: 'completed',
+    }).eq('id', job.id);
+    if (error) console.error('[GDD map compilation failure status]', error);
+  } else if (mapArtifacts.length > 0) {
+    const { error: insertError } = await serviceClient.from('gdd_map_artifacts').insert(
+      mapArtifacts.map((artifact) => ({
+        id: artifact.id,
+        gdd_generation_job_id: job.id,
+        gdd_document_id: persisted.id,
+        project_id: job.project_id,
+        owner_id: job.owner_id,
+        design_system_id: job.design_system_id,
+        version_id: job.version_id,
+        map_brief_id: artifact.mapBriefId,
+        title: artifact.title,
+        map_brief: artifact.mapBrief,
+        style_contract: artifact.styleContract,
+        input_hash: artifact.inputHash,
+      })),
+    );
+    if (insertError) {
+      console.error('[GDD map artifact insert]', insertError);
+      status = 'completed_with_map_failures';
+      await serviceClient.from('gdd_generation_jobs').update({
+        status,
+        phase: 'completed',
+      }).eq('id', job.id);
+    } else {
+      status = 'waiting_for_maps';
+      const { error } = await serviceClient.from('gdd_generation_jobs').update({
+        status,
+        phase: 'generating_maps',
+        completed_at: null,
+      }).eq('id', job.id);
+      if (error) {
+        console.error('[GDD waiting_for_maps status]', error);
+        status = 'completed_with_map_failures';
+      }
+    }
+  }
+
+  return { ...persisted, status };
 }
 
 async function runWithLeaseHeartbeat<T>(
@@ -327,16 +413,16 @@ export async function processClaimedGddJob(
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       validateSanctionedMdx(generatedV2.markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
-      await dependencies.persistV2(
+      const persisted = await dependencies.persistV2(
         serviceClient,
         job,
         workerId,
         generatedV2.markdown,
         generatedV2.review,
         generatedV2.tablePlans,
-        ...((generatedV2.dialoguePlans ?? []).length > 0 ? [generatedV2.dialoguePlans] : []),
+        generatedV2.dialoguePlans ?? [],
       );
-      return 'completed';
+      return persisted.status ?? 'completed';
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');

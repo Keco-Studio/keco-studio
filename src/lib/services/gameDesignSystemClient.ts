@@ -136,7 +136,21 @@ export async function startProjectGddGeneration(
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
     body: JSON.stringify({ designSystemId, versionId, ...options }),
   });
-  return (await readJson<{ job: PublicGddGenerationJob }>(response)).job;
+  const payload = await response.json().catch(() => ({})) as {
+    error?: string;
+    code?: string;
+    job?: PublicGddGenerationJob;
+  };
+  if (response.status === 409 && payload.code === 'GDD_ACTIVE_JOB_EXISTS' && payload.job) {
+    return payload.job;
+  }
+  if (!response.ok) {
+    const error = new Error(payload.error || `Request failed (${response.status})`) as Error & { code?: string };
+    if (payload.code) error.code = payload.code;
+    throw error;
+  }
+  if (!payload.job) throw new Error('GDD generation response did not include a job.');
+  return payload.job;
 }
 
 export async function fetchLatestProjectGddGenerationJob(

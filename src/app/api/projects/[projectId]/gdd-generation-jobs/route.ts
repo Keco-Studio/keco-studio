@@ -3,19 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
-import {
-  listGameDesignReferenceOptions,
-  resolveGameDesignSourceSnapshots,
-  TOTAL_EXCERPT_LIMIT,
-} from '@/lib/game-design-system/sourceSnapshots';
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
 import type { GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
+import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 import { isGddSchemaUnavailable, safeGddRouteErrorIdentity } from '@/lib/gdd-generation/routeErrors';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { getGameDesignSystemDetail } from '@/lib/services/gameDesignSystemService';
 import {
   createGddGenerationJob,
+  GddActiveJobConflictError,
   GddIdempotencyConflictError,
   getLatestPublicGddGenerationJob,
   toPublicGddGenerationJob,
@@ -43,28 +40,6 @@ function idempotencyKey(request: Request): string | null {
   return value && /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : null;
 }
 
-async function automaticProjectSources(supabase: Parameters<typeof listGameDesignReferenceOptions>[0], projectId: string) {
-  const options = (await listGameDesignReferenceOptions(supabase, projectId, {
-    excludeGeneratedResources: true,
-  })).slice(0, 10);
-  const snapshots = [];
-  let used = 0;
-  for (const option of options) {
-    if (used >= TOTAL_EXCERPT_LIMIT) break;
-    const [snapshot] = await resolveGameDesignSourceSnapshots(supabase, [{
-      kind: option.kind,
-      projectId: option.projectId,
-      resourceId: option.resourceId,
-    }]);
-    if (!snapshot) continue;
-    const remaining = TOTAL_EXCERPT_LIMIT - used;
-    const excerpt = (snapshot.excerpt ?? '').slice(0, remaining);
-    snapshots.push({ ...snapshot, excerpt, truncated: snapshot.truncated || excerpt.length < (snapshot.excerpt?.length ?? 0) });
-    used += excerpt.length;
-  }
-  return snapshots;
-}
-
 function scheduleWorker(): void {
   after(async () => {
     try {
@@ -72,6 +47,14 @@ function scheduleWorker(): void {
         serviceClient: getSupabaseServiceRoleClient(),
         workerId: `gdd-request-${randomUUID()}`,
       });
+      if (typeof processNextGddMapArtifact === 'function') {
+        for (let index = 0; index < 2; index += 1) {
+          await processNextGddMapArtifact({
+            serviceClient: getSupabaseServiceRoleClient(),
+            workerId: `gdd-map-request-${randomUUID()}`,
+          });
+        }
+      }
     } catch (error) {
       console.error('[GDD opportunistic worker]', error);
     }
@@ -144,7 +127,6 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     }
     const project = await supabase.from('projects').select('name').eq('id', projectId).single();
     if (project.error || !project.data) return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
-    const projectSources = await automaticProjectSources(supabase, projectId);
     const policy = buildAgentRulePolicy(version.rules);
     const input: GddGenerationRequestV2 = {
       contractVersion: 2,
@@ -159,7 +141,8 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
       systemTitle: detail.title,
       rules: version.rules,
       designDocument: version.document,
-      projectSources,
+      artStyle: version.artStyle,
+      projectSources: [],
     };
     const job = await createGddGenerationJob(getSupabaseServiceRoleClient(), {
       ownerId: user.id,
@@ -181,6 +164,13 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     }, { status: 202 });
   } catch (error) {
     const identity = safeGddRouteErrorIdentity(error);
+    if (error instanceof GddActiveJobConflictError) {
+      return NextResponse.json({
+        error: 'A GDD generation is already active for this project.',
+        code: 'GDD_ACTIVE_JOB_EXISTS',
+        job: toPublicGddGenerationJob(error.job),
+      }, { status: 409 });
+    }
     if (error instanceof GddIdempotencyConflictError) {
       return NextResponse.json({ error: 'Idempotency key was already used with a different GDD request.' }, { status: 409 });
     }

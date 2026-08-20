@@ -105,4 +105,18 @@ describe('Create Map V3 direct workbench', () => {
     expect(projectChange).toContain('draft.reset()');
     expect(projectChange).toContain('generation.reset()');
   });
+
+  it('opens GDD map deep links and disables mutation controls in viewer mode', () => {
+    const workbench = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/DirectMapWorkbench.tsx'),
+      'utf8',
+    );
+    expect(workbench).toContain('useSearchParams');
+    expect(workbench).toContain("searchParams?.get('mapId')");
+    expect(workbench).toContain("searchParams?.get('viewer') === '1'");
+    expect(workbench).toContain('openedRequestedMapId');
+    expect(workbench).toContain('void openSavedMap(requestedMap)');
+    expect(workbench).toContain('onPaintCell={readOnly ? undefined : collision.paintCell}');
+    expect(workbench).toContain('readOnly={readOnly}');
+  });
 });

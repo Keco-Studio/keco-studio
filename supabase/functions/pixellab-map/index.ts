@@ -1,4 +1,4 @@
-import { assertGenerationIdentity, assertRegionObstacleBackgroundBinding, authorizeAsset, authorizeProject } from "./auth.ts";
+import { assertGenerationIdentity, assertRegionObstacleBackgroundBinding, authorizeAsset, authorizeGddMapAsset, authorizeProject } from "./auth.ts";
 import { normalizeTileAtlas } from "./atlas.ts";
 import { composeAndPersistBackground } from "./background-storage.ts";
 import { runDirectMapLifecycle } from "./direct-map-lifecycle.ts";
@@ -95,7 +95,16 @@ async function handle(request: Request): Promise<Response> {
   }
   const assetId = typeof body.assetId === "string" ? body.assetId : null;
   if (!assetId) throw new PixelLabMapError("pixellab_invalid_response", "Asset is required", 400);
-  const authorized = await authorizeAsset(token, assetId, projectId);
+  const serviceRoleRequest = Boolean(token && token === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""));
+  let authorized;
+  if (serviceRoleRequest) {
+    if (typeof body.gddMapArtifactId !== "string" || typeof body.actorUserId !== "string") {
+      throw new PixelLabMapError("pixellab_invalid_response", "GDD map worker identity is required", 403);
+    }
+    authorized = await authorizeGddMapAsset(token, assetId, projectId, body.gddMapArtifactId, body.actorUserId);
+  } else {
+    authorized = await authorizeAsset(token, assetId, projectId);
+  }
   assertGenerationIdentity(authorized, body);
   const kind = edgeAssetKind(authorized.asset.kind);
   if (kind === "map_image") {

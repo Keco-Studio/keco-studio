@@ -142,9 +142,13 @@ async function submitDirectMap(
     result = await options.client.submitAsset(capability, providerArguments);
   } catch (error) {
     const code = errorCode(error);
+    const safeRejection = SAFE_SUBMISSION_REJECTION_CODES.has(code);
     await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "blocked", {
-      errorCode: SAFE_SUBMISSION_REJECTION_CODES.has(code) ? code : UNKNOWN_SUBMISSION_OUTCOME,
+      errorCode: safeRejection ? code : UNKNOWN_SUBMISSION_OUTCOME,
     });
+    if (!safeRejection) {
+      throw new PixelLabMapError(UNKNOWN_SUBMISSION_OUTCOME, "The paid map submission outcome is unknown and is blocked from retry.", 502);
+    }
     throw error;
   }
   const jobId = providerJobId(result);
@@ -152,7 +156,7 @@ async function submitDirectMap(
     await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "blocked", {
       errorCode: UNKNOWN_SUBMISSION_OUTCOME,
     });
-    throw new PixelLabMapError("pixellab_invalid_response", "Provider did not return a job id");
+    throw new PixelLabMapError(UNKNOWN_SUBMISSION_OUTCOME, "Provider did not return a job id; paid submission outcome is unknown.", 502);
   }
   await options.transitionAsset(options.authorized.serviceClient, assetId, "queued", "generating", {
     operation: capability.operation,

@@ -1,6 +1,7 @@
 'use client';
 
 import { CloseOutlined, MenuFoldOutlined, SettingOutlined } from '@ant-design/icons';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectMapCanvas';
@@ -49,6 +50,9 @@ const INITIAL_DIRECT_PLAN: MapPlanV3 = {
 };
 
 export function DirectMapWorkbench() {
+  const searchParams = useSearchParams();
+  const requestedMapId = searchParams?.get('mapId') ?? null;
+  const readOnly = searchParams?.get('viewer') === '1';
   const supabase = useSupabase();
   const service = useMemo(() => createMapService(supabase), [supabase]);
   const adapter = useMemo(() => createMapDraftAdapterV3(service), [service]);
@@ -68,6 +72,7 @@ export function DirectMapWorkbench() {
   const [rightOpen, setRightOpen] = useState(false);
   const openRequestEpoch = useRef(0);
   const referenceRequestEpoch = useRef(0);
+  const openedRequestedMapId = useRef<string | null>(null);
 
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
@@ -84,9 +89,9 @@ export function DirectMapWorkbench() {
   const issues = validation.success === false ? validation.issues : [];
   const busy = operation !== 'idle' || draft.status === 'creating' || draft.status === 'saving'
     || generation.phase === 'preparing' || generation.phase === 'submitting';
-  const canSave = Boolean(projectId) && validation.success && draft.isValid
+  const canSave = !readOnly && Boolean(projectId) && validation.success && draft.isValid
     && (!draft.identity || draft.isDirty) && !busy;
-  const canGenerate = Boolean(draft.identity) && validation.success && draft.isValid
+  const canGenerate = !readOnly && Boolean(draft.identity) && validation.success && draft.isValid
     && !draft.isDirty && draft.status === 'saved' && !busy;
 
   useEffect(() => {
@@ -132,6 +137,7 @@ export function DirectMapWorkbench() {
   };
 
   const createPlan = async () => {
+    if (readOnly) return;
     const request = description.trim();
     if (!request || busy) return;
     setOperation('planning');
@@ -174,7 +180,7 @@ export function DirectMapWorkbench() {
     }
   };
 
-  const openSavedMap = async (map: SavedMapSummary) => {
+  const openSavedMap = useCallback(async (map: SavedMapSummary) => {
     if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
     const requestEpoch = ++openRequestEpoch.current;
     setOperation('opening');
@@ -202,10 +208,28 @@ export function DirectMapWorkbench() {
         setOpeningMapId(null);
       }
     }
-  };
+  }, [closeDrawers, draft, generation, service]);
+
+  useEffect(() => {
+    if (!requestedMapId) {
+      openedRequestedMapId.current = null;
+      return;
+    }
+    if (savedMaps.isLoading || openedRequestedMapId.current === requestedMapId) return;
+    const requestedMap = savedMaps.maps.find((map) => map.id === requestedMapId);
+    if (!requestedMap) {
+      if (savedMaps.maps.length > 0) {
+        openedRequestedMapId.current = requestedMapId;
+        setError('The requested saved map could not be found.');
+      }
+      return;
+    }
+    openedRequestedMapId.current = requestedMapId;
+    void openSavedMap(requestedMap);
+  }, [openSavedMap, requestedMapId, savedMaps.isLoading, savedMaps.maps]);
 
   const uploadReference = async (file: File) => {
-    if (!projectId || referenceBusy) return;
+    if (readOnly || !projectId || referenceBusy) return;
     setReferenceBusy(true);
     setReferenceError(null);
     try {
@@ -233,7 +257,7 @@ export function DirectMapWorkbench() {
   const collision = useDirectMapCollisionGrid({
     projectId,
     identity: draft.identity,
-    canAnalyze: draft.status === 'saved' && !draft.isDirty,
+    canAnalyze: !readOnly && draft.status === 'saved' && !draft.isDirty,
     scene,
     image,
     service,
@@ -278,6 +302,7 @@ export function DirectMapWorkbench() {
           onGenerate={() => void generation.prepare()}
           canSave={canSave}
           canGenerate={canGenerate && (generation.phase === 'idle' || generation.phase === 'failed' || generation.phase === 'ready')}
+          readOnly={readOnly}
           busy={busy}
           error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
         />
@@ -296,7 +321,7 @@ export function DirectMapWorkbench() {
           records={references}
           references={plan.references}
           styleReference={plan.styleReference}
-          busy={busy || referenceBusy}
+          busy={busy || referenceBusy || readOnly}
           error={referenceError}
           onReferencesChange={(next) => changePlan({ ...plan, references: next })}
           onStyleReferenceChange={(next) => changePlan({ ...plan, styleReference: next })}
@@ -327,7 +352,7 @@ export function DirectMapWorkbench() {
           collisionGrid={scene.collisionGrid}
           collisionVisible={collision.overlayVisible}
           paintMode={collision.paintMode}
-          onPaintCell={collision.paintCell}
+          onPaintCell={readOnly ? undefined : collision.paintCell}
         />
       </section>
 
@@ -335,7 +360,7 @@ export function DirectMapWorkbench() {
         <button type="button" className={styles.drawerClose} aria-label="Close inspector panel" onClick={() => setRightOpen(false)}>
           <CloseOutlined />
         </button>
-        <DirectMapPlanInspector plan={plan} issues={issues} onChange={changePlan} disabled={busy} />
+        <DirectMapPlanInspector plan={plan} issues={issues} onChange={changePlan} disabled={busy || readOnly} />
         <DirectMapGenerationPanel
           phase={generation.phase}
           asset={generation.asset}
@@ -348,6 +373,7 @@ export function DirectMapWorkbench() {
           onRetry={() => void generation.retry()}
           onRegenerate={() => void generation.regenerate()}
           onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
+          readOnly={readOnly}
         />
         {image ? (
           <DirectMapCollisionPanel
@@ -360,6 +386,7 @@ export function DirectMapWorkbench() {
             onPaintModeChange={collision.setPaintMode}
             onRetry={() => void collision.retry()}
             onClear={collision.clearGrid}
+            readOnly={readOnly}
           />
         ) : null}
       </aside>

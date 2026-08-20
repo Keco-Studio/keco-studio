@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: { markdownToYjsState: jest.fn(async () => 'encoded-yjs') },
@@ -6,6 +6,14 @@ jest.mock('@/lib/documents/documentContentCodec', () => ({
 jest.mock('@/lib/gdd-generation/seriesTableIds', () => ({
   loadSeriesTableLibraryIds: jest.fn(async () => new Map()),
 }));
+const mockCompileGddMapBriefs = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+jest.mock('./maps/compiler', () => ({
+  compileGddMapBriefs: (...args: unknown[]) => mockCompileGddMapBriefs(...args),
+}));
+beforeEach(() => {
+  mockCompileGddMapBriefs.mockReset();
+  mockCompileGddMapBriefs.mockResolvedValue([]);
+});
 import {
   describeGddGenerationError,
   persistGeneratedGddDocument,
@@ -212,6 +220,49 @@ describe('GDD generation worker', () => {
     expect(args.p_markdown).not.toContain('KECO_TABLE_REF');
   });
 
+  it('persists a bounded map compiler error in v2 document metadata', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockCompileGddMapBriefs.mockRejectedValueOnce(new Error('Map compiler timed out.'));
+    const updateEq = jest.fn(async () => ({ data: null, error: null }));
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const serviceClient = {
+      rpc,
+      from: () => ({ update: () => ({ eq: updateEq }) }),
+    };
+    const v2Job = {
+      ...job,
+      applied_rule_ids: ['readable-state'],
+      omitted_rule_ids: [],
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN', artStyle: null },
+    } as GddGenerationJob;
+
+    await expect(persistGeneratedGddV2Document(
+      serviceClient as never,
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## Core Loop\nBody text.',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+    )).resolves.toEqual({
+      id: 'document-1',
+      name: 'Harbor Tactics gdd',
+      status: 'completed_with_map_failures',
+      generationRevision: 1,
+      resourceChangeSummary: { created: [], updated: [], reused: [], preserved: [] },
+    });
+
+    const rpcArgs = rpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(rpcArgs.p_metadata).toEqual(expect.objectContaining({
+      mapCount: 0,
+      mapCompilationFailed: true,
+      mapCompilationError: 'Map compiler timed out.',
+    }));
+    expect(updateEq).toHaveBeenCalledWith('id', 'job-1');
+    consoleError.mockRestore();
+  });
+
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => persistedGdd('document-1', 'Harbor Tactics gdd'));
@@ -267,6 +318,7 @@ describe('GDD generation worker', () => {
       '# GDD\n\n## Core Loop\nBody text.',
       expect.objectContaining({ status: 'pass' }),
       undefined,
+      [],
     );
     jest.useRealTimers();
   });

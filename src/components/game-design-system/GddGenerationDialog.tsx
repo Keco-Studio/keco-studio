@@ -51,7 +51,8 @@ export function GddGenerationDialog({ open, projectName, pending = false, error 
         {error ? <div className={styles.error} role="alert">{error}</div> : null}
         <div className={styles.dialogActions}>
           <button className={styles.secondaryButton} type="button" disabled={pending} onClick={onCancel}>Cancel</button>
-          <button className={styles.primaryButton} type="button" disabled={pending} onClick={() => onSubmit({ mode, ...(creativeBrief.trim() ? { creativeBrief: creativeBrief.trim() } : {}) })}>{pending ? 'Generating...' : 'Start generation'}</button>
+          <div className={styles.gddMapDisclosure}>This action generates the GDD and automatically submits up to 3 paid map images described in it. Map images do not include collision grids.</div>
+          <button className={styles.primaryButton} type="button" disabled={pending} onClick={() => onSubmit({ mode, ...(creativeBrief.trim() ? { creativeBrief: creativeBrief.trim() } : {}) })}>{pending ? 'Generating GDD + maps...' : 'Generate GDD + maps'}</button>
         </div>
       </section>
     </div>

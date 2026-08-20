@@ -34,6 +34,7 @@ export type GddGenerationRequestV2 = {
   systemTitle: string;
   rules: GameDesignRuleSet;
   designDocument: GameDesignDocument;
+  artStyle?: import('@/lib/game-art-style/schema').GameArtStyleSnapshot | null;
   projectSources: GameDesignSourceSnapshot[];
 };
 

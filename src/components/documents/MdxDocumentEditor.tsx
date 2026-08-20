@@ -83,6 +83,8 @@ import {
   ResourceReferenceEditor,
 } from './ResourceReferenceEditor';
 import { ResourceReferenceProvider } from './ResourceReferenceProvider';
+import { GddMapReferenceProvider } from './GddMapReferenceProvider';
+import { GddMapReferenceEditor } from './GddMapReferenceEditor';
 import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
@@ -356,12 +358,13 @@ export default function MdxDocumentEditor({
         readOnly={readOnly}
       />
     );
+    const GddMapReference = (props: JsxEditorProps) => <GddMapReferenceEditor {...props} />;
     const jsxComponentDescriptors = createSanctionedMdxDescriptors(
       SanctionedMdxEditor as unknown as ComponentType<SanctionedMdxEditorProps>
     ).map((descriptor) =>
       descriptor.name === 'BlockAnchor'
         ? { ...descriptor, Editor: () => null }
-        : descriptor.name === 'ResourceReference'
+          : descriptor.name === 'ResourceReference'
           ? {
               ...descriptor,
               Editor: ResourceReference as unknown as ComponentType<SanctionedMdxEditorProps>,
@@ -370,6 +373,11 @@ export default function MdxDocumentEditor({
             ? {
                 ...descriptor,
                 Editor: GddScriptBranchSnapshotEditor as unknown as ComponentType<SanctionedMdxEditorProps>,
+              }
+          : descriptor.name === 'GddMapReference'
+            ? {
+                ...descriptor,
+                Editor: GddMapReference as unknown as ComponentType<SanctionedMdxEditorProps>,
               }
             : descriptor
     );
@@ -476,16 +484,18 @@ export default function MdxDocumentEditor({
       onDoubleClick={handleLinkDoubleClick}
     >
       <ResourceReferenceProvider key={documentId} projectId={projectId}>
-            <MDXEditor
-              ref={setEditorMethodsRef}
-              markdown={sanitizedMarkdown}
-              readOnly={readOnly}
-              onChange={onChange}
-              plugins={plugins}
-              suppressSharedHistory={Boolean(collaboration)}
-              contentEditableClassName={styles.contentEditable}
-              className={styles.editor}
-            />
+        <GddMapReferenceProvider projectId={projectId}>
+          <MDXEditor
+            ref={setEditorMethodsRef}
+            markdown={sanitizedMarkdown}
+            readOnly={readOnly}
+            onChange={onChange}
+            plugins={plugins}
+            suppressSharedHistory={Boolean(collaboration)}
+            contentEditableClassName={styles.contentEditable}
+            className={styles.editor}
+          />
+        </GddMapReferenceProvider>
         <ResourceReferencePickerModal
           open={referencePicker.open}
           projectId={projectId}

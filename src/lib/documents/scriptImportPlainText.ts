@@ -11,6 +11,11 @@ export function toScriptImportPlainText(markdown: string): string {
       '$1'
     )
     .replace(/<ResourceReference\b[^>]*\/?>/gi, '')
+    .replace(
+      /<GddMapReference\b[^>]*\bfallbackTitle="([^"]*)"[^>]*\/?>/gi,
+      '$1'
+    )
+    .replace(/<GddMapReference\b[^>]*\/?>/gi, '')
     .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
       String.fromCharCode(Number.parseInt(hex, 16))
     )

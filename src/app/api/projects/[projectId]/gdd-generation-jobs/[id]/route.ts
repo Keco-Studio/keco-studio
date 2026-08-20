@@ -11,9 +11,11 @@ import {
 } from '@/lib/services/gddGenerationService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGddJob, shouldWakeGddGenerationJob } from '@/lib/gdd-generation/worker';
+import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 
 type Params = { params: Promise<{ projectId: string; id: string }> };
 const scheduledQueuedJobs = new Set<string>();
+const scheduledMapJobs = new Set<string>();
 
 function scheduleQueuedJob(jobId: string): void {
   if (scheduledQueuedJobs.has(jobId)) return;
@@ -32,6 +34,23 @@ function scheduleQueuedJob(jobId: string): void {
   });
 }
 
+function scheduleMapJob(jobId: string): void {
+  if (scheduledMapJobs.has(jobId)) return;
+  scheduledMapJobs.add(jobId);
+  after(async () => {
+    try {
+      await processNextGddMapArtifact({
+        serviceClient: getSupabaseServiceRoleClient(),
+        workerId: `gdd-map-poll-${randomUUID()}`,
+      });
+    } catch (error) {
+      console.error('[GDD map polling worker]', safeGddRouteErrorIdentity(error));
+    } finally {
+      scheduledMapJobs.delete(jobId);
+    }
+  });
+}
+
 export const GET = withAuth(async function GET(_request, { params }: Params, { supabase, user }) {
   const { projectId, id } = await params;
   try {
@@ -46,6 +65,7 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
     const job = await getGddGenerationJob(getSupabaseServiceRoleClient(), id);
     if (!job || job.project_id !== projectId) return NextResponse.json({ error: 'GDD generation job not found.' }, { status: 404 });
     if (shouldWakeGddGenerationJob(job)) scheduleQueuedJob(job.id);
+    if (job.status === 'waiting_for_maps') scheduleMapJob(job.id);
     return NextResponse.json({ job: toPublicGddGenerationJob(job) });
   } catch (error) {
     if (isGddSchemaUnavailable(error)) {

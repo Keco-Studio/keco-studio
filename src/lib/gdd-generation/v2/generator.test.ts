@@ -37,6 +37,7 @@ const input: GddGenerationRequestV2 = {
     difficultyBalance: 'Weather adds pressure.',
     experiencePresentation: 'Warm watercolor scenes.',
   },
+  artStyle: null,
   projectSources: [],
 };
 
