@@ -6,7 +6,7 @@ const sql = fs.readFileSync(
   'utf8',
 );
 const activeJobGuardSql = fs.readFileSync(
-  path.join(process.cwd(), 'supabase/migrations/20260819140000_gdd_active_job_guard.sql'),
+  path.join(process.cwd(), 'supabase/migrations/20260820020000_gdd_active_job_guard.sql'),
   'utf8',
 );
 const reconciliationSql = fs.readFileSync(
