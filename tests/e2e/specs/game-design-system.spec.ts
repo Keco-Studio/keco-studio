@@ -725,8 +725,9 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await expect(page.getByRole('option', { name: 'Art Style E2E Project' })).toBeAttached({ timeout: 15_000 });
     await expect(page.getByText('Arrival', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Departure', { exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Document' })).toHaveCount(2);
-    await expect(page.getByRole('link', { name: 'Script' })).toHaveCount(1);
+    // exact: avoid matching the sibling "Open GDD Document" action link
+    await expect(page.getByRole('link', { name: 'Document', exact: true })).toHaveCount(2);
+    await expect(page.getByRole('link', { name: 'Script', exact: true })).toHaveCount(1);
     await page.getByRole('button', { name: 'Retry Arrival' }).click();
     await expect(page.getByText('Script ready', { exact: true })).toHaveCount(2);
   });
