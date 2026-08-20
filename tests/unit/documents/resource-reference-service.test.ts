@@ -210,6 +210,17 @@ describe('resolveResourceReferences', () => {
         label: 'Active',
         contextLabel: 'Characters / Ada',
         href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
+        table: {
+          libraryId: LIBRARY_ID,
+          name: 'Characters',
+          href: `/${PROJECT_ID}/${LIBRARY_ID}`,
+          fields: [{ id: FIELD_ID, label: 'Status' }],
+          row: {
+            assetId: ASSET_ID,
+            name: 'Ada',
+            values: { [FIELD_ID]: 'Active' },
+          },
+        },
       },
     ]);
     for (const table of [
@@ -364,6 +375,17 @@ describe('resolveResourceReferences', () => {
             label: '(empty)',
             contextLabel: 'Characters / Ada',
             href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
+            table: {
+              libraryId: LIBRARY_ID,
+              name: 'Characters',
+              href: `/${PROJECT_ID}/${LIBRARY_ID}`,
+              fields: [{ id: FIELD_ID, label: 'Status' }],
+              row: {
+                assetId: ASSET_ID,
+                name: 'Ada',
+                values: { [FIELD_ID]: undefined },
+              },
+            },
           },
         ],
       ]));

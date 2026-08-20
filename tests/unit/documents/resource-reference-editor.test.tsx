@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ResolvedResourceReference } from '@/lib/documents/resourceReferenceService';
-import type { ResourceReferenceTarget } from '@/lib/documents/resourceReferenceTypes';
+import {
+  resourceReferenceKey,
+  type ResourceReferenceTarget,
+} from '@/lib/documents/resourceReferenceTypes';
+
+const PROJECT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const TABLE_TARGET: ResourceReferenceTarget = {
   kind: 'table-row',
@@ -9,6 +14,12 @@ const TABLE_TARGET: ResourceReferenceTarget = {
   assetId: '22222222-2222-4222-8222-222222222222',
   displayFieldId: '33333333-3333-4333-8333-333333333333',
   fallbackLabel: 'Ada Lovelace',
+};
+
+const SECOND_TABLE_TARGET: ResourceReferenceTarget = {
+  ...TABLE_TARGET,
+  assetId: '66666666-6666-4666-8666-666666666666',
+  fallbackLabel: 'Grace Hopper',
 };
 
 const DOCUMENT_TARGET: ResourceReferenceTarget = {
@@ -23,6 +34,12 @@ let referenceResult: {
   resolved: ResolvedResourceReference | undefined;
   isLoading: boolean;
   hasError: boolean;
+  registrationRevision?: number;
+  resolvedReferences?: ReadonlyMap<string, ResolvedResourceReference>;
+};
+let groupResult: {
+  containerRef: () => void;
+  group: { isPrimary: boolean; keys: string[] } | undefined;
 };
 const nextLink = jest.fn();
 
@@ -33,6 +50,10 @@ jest.mock('@/components/documents/MdxDocumentEditor.module.css', () => ({
 
 jest.mock('@/components/documents/ResourceReferenceProvider', () => ({
   useResourceReference: () => referenceResult,
+}));
+
+jest.mock('@/components/documents/useTableReferenceGroup', () => ({
+  useTableReferenceGroup: () => groupResult,
 }));
 
 jest.mock('next/link', () => ({
@@ -84,9 +105,40 @@ function renderReference(
   );
 }
 
+function tableReference(
+  target: Extract<ResourceReferenceTarget, { kind: 'table-row' }>,
+  values: Record<string, unknown>,
+  fields = [
+    { id: 'name-field', label: 'Name' },
+    { id: 'status-field', label: 'Status' },
+    { id: 'details-field', label: 'Details' },
+  ]
+): ResolvedResourceReference {
+  const key = resourceReferenceKey(target);
+  return {
+    key,
+    status: 'available',
+    label: target.fallbackLabel,
+    contextLabel: `Characters / ${target.fallbackLabel}`,
+    href: `/${PROJECT_ID}/${target.libraryId}?asset=${target.assetId}`,
+    table: {
+      libraryId: target.libraryId,
+      name: 'Characters',
+      href: `/${PROJECT_ID}/${target.libraryId}`,
+      fields,
+      row: {
+        assetId: target.assetId,
+        name: target.fallbackLabel,
+        values,
+      },
+    },
+  };
+}
+
 describe('ResourceReferenceEditor', () => {
   beforeEach(() => {
     referenceResult = { resolved: undefined, isLoading: true, hasError: false };
+    groupResult = { containerRef: () => undefined, group: undefined };
     nextLink.mockReset();
   });
 
@@ -112,7 +164,7 @@ describe('ResourceReferenceEditor', () => {
       icon: 'reference',
       contextLabel: 'World bible / Opening',
     },
-  ])('shows only the field value for an available $kind reference', ({ target, icon, contextLabel }) => {
+  ])('keeps the existing chip for an available $kind result without table data', ({ target, icon, contextLabel }) => {
     referenceResult = {
       isLoading: false,
       hasError: false,
@@ -135,6 +187,118 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain(`aria-label="${accessibleLabel}"`);
     expect(markup).not.toContain('data-tooltip=');
     expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
+  });
+
+  it('renders one table-row reference as a linked table with formatted cells', () => {
+    const resolved = tableReference(TABLE_TARGET, {
+      'name-field': 'Ada Lovelace',
+      'status-field': null,
+      'details-field': { level: 2 },
+    });
+    const key = resourceReferenceKey(TABLE_TARGET);
+    referenceResult = {
+      resolved,
+      resolvedReferences: new Map([[key, resolved]]),
+      registrationRevision: 1,
+      isLoading: false,
+      hasError: false,
+    };
+    groupResult = {
+      containerRef: () => undefined,
+      group: { isPrimary: true, keys: [key] },
+    };
+
+    const markup = renderReference(TABLE_TARGET, { readOnly: true });
+
+    expect(markup).toContain('role="table"');
+    expect(markup).toContain('aria-label="Characters"');
+    expect(markup).toContain('href="/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111"');
+    expect(markup).toContain('role="columnheader">Name<');
+    expect(markup).toContain('role="columnheader">Status<');
+    expect(markup).toContain('>Ada Lovelace<');
+    expect(markup).toContain('{&quot;level&quot;:2}');
+    expect(markup).not.toContain('?asset=');
+    expect(nextLink).toHaveBeenCalledWith(resolved.table!.href);
+  });
+
+  it('renders grouped occurrences as ordered rows and suppresses later projections', () => {
+    const firstKey = resourceReferenceKey(TABLE_TARGET);
+    const secondKey = resourceReferenceKey(SECOND_TABLE_TARGET);
+    const first = tableReference(TABLE_TARGET, {
+      'name-field': 'Ada',
+      'status-field': 'Active',
+      'details-field': '',
+    });
+    const second = tableReference(SECOND_TABLE_TARGET, {
+      'name-field': 'Grace',
+      'status-field': 'Admiral',
+      'details-field': false,
+    });
+    const resolvedReferences = new Map([
+      [firstKey, first],
+      [secondKey, second],
+    ]);
+    referenceResult = {
+      resolved: first,
+      resolvedReferences,
+      registrationRevision: 2,
+      isLoading: false,
+      hasError: false,
+    };
+    groupResult = {
+      containerRef: () => undefined,
+      group: { isPrimary: true, keys: [firstKey, secondKey] },
+    };
+
+    const primaryMarkup = renderReference(TABLE_TARGET);
+
+    expect(primaryMarkup.match(/role="row"/g)).toHaveLength(3);
+    expect(primaryMarkup.indexOf('>Ada<')).toBeLessThan(primaryMarkup.indexOf('>Grace<'));
+    expect(primaryMarkup).toContain('>false<');
+
+    referenceResult = { ...referenceResult, resolved: second };
+    groupResult = {
+      containerRef: () => undefined,
+      group: { isPrimary: false, keys: [firstKey, secondKey] },
+    };
+    const secondaryMarkup = renderReference(SECOND_TABLE_TARGET);
+
+    expect(secondaryMarkup).toContain('data-reference-projection-suppressed="true"');
+    expect(secondaryMarkup).not.toContain('role="table"');
+  });
+
+  it('keeps a partially unavailable occurrence in its table row position', () => {
+    const firstKey = resourceReferenceKey(TABLE_TARGET);
+    const secondKey = resourceReferenceKey(SECOND_TABLE_TARGET);
+    const first = tableReference(TABLE_TARGET, {
+      'name-field': 'Ada',
+      'status-field': 'Active',
+    });
+    const unavailable: ResolvedResourceReference = {
+      key: secondKey,
+      status: 'unavailable',
+      label: 'Reference unavailable',
+    };
+    referenceResult = {
+      resolved: first,
+      resolvedReferences: new Map([
+        [firstKey, first],
+        [secondKey, unavailable],
+      ]),
+      registrationRevision: 2,
+      isLoading: false,
+      hasError: false,
+    };
+    groupResult = {
+      containerRef: () => undefined,
+      group: { isPrimary: true, keys: [firstKey, secondKey] },
+    };
+
+    const markup = renderReference(TABLE_TARGET);
+
+    expect(markup).toContain('data-reference-row-unavailable="true"');
+    expect(markup).toContain('>Reference unavailable<');
+    expect(markup.match(/role="row"/g)).toHaveLength(3);
   });
 
   it('renders the exact unavailable warning without a link', () => {

@@ -15,6 +15,22 @@ export type ResolvedResourceReference = {
   label: string;
   contextLabel?: string;
   href?: string;
+  table?: ResolvedTableRowReference;
+};
+
+export type ResolvedTableRowReference = {
+  libraryId: string;
+  name: string;
+  href: string;
+  fields: Array<{
+    id: string;
+    label: string;
+  }>;
+  row: {
+    assetId: string;
+    name: string;
+    values: Record<string, unknown>;
+  };
 };
 
 export type TableReferenceSource = {
@@ -261,6 +277,20 @@ async function resolveTableReferences(
       label: joinTableRowDisplayValues(libraryFields, rowValues),
       contextLabel: `${library.name} / ${asset.name}`,
       href: `/${projectId}/${library.id}?asset=${asset.id}`,
+      table: {
+        libraryId: library.id,
+        name: library.name,
+        href: `/${projectId}/${library.id}`,
+        fields: libraryFields.map((field) => ({
+          id: field.id,
+          label: field.label,
+        })),
+        row: {
+          assetId: asset.id,
+          name: asset.name,
+          values: rowValues,
+        },
+      },
     });
   }
 }
