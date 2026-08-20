@@ -388,10 +388,13 @@ function ProjectsView(props: {
   useEffect(() => {
     if (!props.version || typeof fetchLatestProjectGddGenerationJob !== 'function') return undefined;
     const requestKey = gddJobsKey;
+    const designSystemId = props.detail.id;
+    const versionId = props.version.id;
+    const projects = props.projects;
     let cancelled = false;
-    void Promise.all(props.projects.map(async (project) => {
+    void Promise.all(projects.map(async (project) => {
       try {
-        return [project.id, await fetchLatestProjectGddGenerationJob(project.id, props.detail.id, props.version!.id)] as const;
+        return [project.id, await fetchLatestProjectGddGenerationJob(project.id, designSystemId, versionId)] as const;
       } catch {
         return null;
       }
@@ -405,7 +408,10 @@ function ProjectsView(props: {
       setLoadedGddJobsKey(requestKey);
     });
     return () => { cancelled = true; };
-  }, [gddJobsKey, props.detail.id, props.projects, props.version]);
+    // gddJobsKey already encodes design system, version, and project ids. Keep
+    // props.projects out of deps so parent array identity churn cannot cancel
+    // in-flight latest-job fetches before dialogue jobs can load.
+  }, [gddJobsKey]);
 
   useEffect(() => {
     const active = Object.entries(gddJobs).filter(([, job]) => (

@@ -715,15 +715,8 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
       return route.fallback();
     });
 
-    await Promise.all([
-      page.waitForResponse((response) => (
-        response.url().includes(`/gdd-generation-jobs/${gddJobId}/dialogue-jobs`)
-        && response.request().method() === 'GET'
-        && response.ok()
-      ), { timeout: 30_000 }),
-      page.getByRole('tab', { name: 'Projects' }).click(),
-    ]);
-    await expect(page.getByText('Arrival', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Projects' }).click();
+    await expect(page.getByText('Arrival', { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Departure', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Document' })).toHaveCount(2);
     await expect(page.getByRole('link', { name: 'Script' })).toHaveCount(1);
