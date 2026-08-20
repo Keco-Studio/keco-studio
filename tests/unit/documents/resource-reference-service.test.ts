@@ -62,6 +62,11 @@ function applyFilters(
       if (operation === 'eq') return row[column] === value;
       if (operation === 'neq') return row[column] !== value;
       if (operation === 'in') return (value as readonly unknown[]).includes(row[column]);
+      if (operation === 'not') {
+        const spec = value as { operator: string; value: unknown };
+        if (spec.operator === 'is' && spec.value === null) return row[column] != null;
+        return true;
+      }
       if (operation !== 'or') return true;
       if (value === 'document_export_type.is.null,document_export_type.neq.script') {
         return row.document_export_type == null || row.document_export_type !== 'script';
@@ -116,6 +121,11 @@ function makeClient(
       neq(column: string, value: unknown) {
         calls.push([table, `neq:${column}`, value]);
         query.filters.push(['neq', column, value]);
+        return builder;
+      },
+      not(column: string, operator: string, value: unknown) {
+        calls.push([table, `not:${column}`, { operator, value }]);
+        query.filters.push(['not', column, { operator, value }]);
         return builder;
       },
       or(filter: string) {
@@ -233,6 +243,66 @@ describe('resolveResourceReferences', () => {
         calledTable === table && operation === 'select'
       )).toHaveLength(1);
     }
+  });
+
+  it('remaps stale GDD table chips onto the stable series library by row name', async () => {
+    const staleLibraryId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const staleAssetId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const staleFieldId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const targets = [
+      tableTarget({
+        libraryId: staleLibraryId,
+        assetId: staleAssetId,
+        displayFieldId: staleFieldId,
+        fallbackLabel: '方便面',
+      }),
+      tableTarget({
+        libraryId: staleLibraryId,
+        assetId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        displayFieldId: staleFieldId,
+        fallbackLabel: '纸巾',
+      }),
+    ];
+    const noodleId = '12121212-1212-4121-8121-121212121212';
+    const tissueId = '13131313-1313-4131-8131-131313131313';
+    const { client } = makeClient({
+      libraries: [{
+        id: LIBRARY_ID,
+        project_id: PROJECT_ID,
+        name: 'Products',
+        gdd_generation_job_id: 'job-stable',
+      }],
+      library_assets: [
+        { id: noodleId, library_id: LIBRARY_ID, name: '方便面' },
+        { id: tissueId, library_id: LIBRARY_ID, name: '纸巾' },
+      ],
+      library_field_definitions: [
+        { id: FIELD_ID, library_id: LIBRARY_ID, label: 'name', order_index: 0 },
+      ],
+      library_asset_values: [
+        { asset_id: noodleId, field_id: FIELD_ID, value_json: '方便面' },
+        { asset_id: tissueId, field_id: FIELD_ID, value_json: '纸巾' },
+      ],
+    });
+
+    const resolved = await resolveResourceReferences(client, PROJECT_ID, targets);
+
+    expect(resolved.get(resourceReferenceKey(targets[0]!))).toMatchObject({
+      status: 'available',
+      contextLabel: 'Products / 方便面',
+      table: {
+        libraryId: LIBRARY_ID,
+        row: { assetId: noodleId, name: '方便面' },
+      },
+    });
+    expect(resolved.get(resourceReferenceKey(targets[1]!))).toMatchObject({
+      status: 'available',
+      contextLabel: 'Products / 纸巾',
+      table: {
+        libraryId: LIBRARY_ID,
+        row: { assetId: tissueId, name: '纸巾' },
+      },
+    });
   });
 
   it('loads all asset values for referenced rows', async () => {

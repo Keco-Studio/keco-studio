@@ -83,7 +83,11 @@ export const generatedTablePlanSchema = z.preprocess(
 export type GeneratedTableRow = z.infer<typeof generatedTableRowSchema> & { id?: string };
 export type GeneratedTablePlan = z.infer<typeof generatedTablePlanSchema>;
 
-export type GeneratedTableResource = Omit<GeneratedTablePlan, 'rows'> & { id: string; rows: GeneratedTableRow[] };
+export type GeneratedTableResource = Omit<GeneratedTablePlan, 'rows'> & {
+  id: string;
+  fieldIds: string[];
+  rows: GeneratedTableRow[];
+};
 
 /** Keep the RPC payload stable even when a caller carries model-only metadata. */
 export function sanitizeTableResourcesForPersistence(resources: GeneratedTableResource[]): GeneratedTableResource[] {
@@ -92,6 +96,7 @@ export function sanitizeTableResourcesForPersistence(resources: GeneratedTableRe
     table: resource.table,
     purpose: resource.purpose,
     fields: [...resource.fields],
+    fieldIds: [...resource.fieldIds],
     rows: resource.rows.map((row) => {
       const record = row as Record<string, unknown>;
       const { id, name, values, ...flatValues } = record;
@@ -118,12 +123,34 @@ function deterministicUuid(seed: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-export function materializeTableResources(jobId: string, plans: GeneratedTablePlan[]): GeneratedTableResource[] {
-  return plans.map((plan, index) => {
-    const id = deterministicUuid(`${jobId}:${index}:${plan.table.toLocaleLowerCase()}`);
+export function normalizeTableLogicalKey(table: string): string {
+  return table.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/**
+ * Materialize durable table/field/row IDs for GDD persistence and inline
+ * ResourceReference chips.
+ *
+ * Prefer an existing series library ID when the Game Design System already owns
+ * that logical table. Otherwise seed from `seriesSeed` (design system id) so
+ * later generations produce the same IDs instead of job-scoped ones that break
+ * references after resource evolution reuses the stable library.
+ */
+export function materializeTableResources(
+  seriesSeed: string,
+  plans: GeneratedTablePlan[],
+  existingLibraryIdsByKey: ReadonlyMap<string, string> = new Map(),
+): GeneratedTableResource[] {
+  return plans.map((plan) => {
+    const key = normalizeTableLogicalKey(plan.table);
+    const id = existingLibraryIdsByKey.get(key)
+      ?? deterministicUuid(`${seriesSeed}:table:${key}`);
     return {
       ...plan,
       id,
+      fieldIds: plan.fields.map((field, fieldIndex) => (
+        deterministicUuid(`${id}:field:${fieldIndex}:${field.toLocaleLowerCase()}`)
+      )),
       rows: plan.rows.map((row, rowIndex) => ({
         ...row,
         id: deterministicUuid(`${id}:row:${rowIndex}:${row.name.toLocaleLowerCase()}`),
@@ -132,7 +159,117 @@ export function materializeTableResources(jobId: string, plans: GeneratedTablePl
   });
 }
 
-const TABLE_MARKER = /<!--\s*KECO_TABLE_PLAN\s*([\s\S]*?)\s*-->/i;
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function serializeTableRowReference(input: {
+  libraryId: string;
+  assetId: string;
+  displayFieldId: string;
+  fallbackLabel: string;
+}): string {
+  const attrs = {
+    kind: 'table-row',
+    libraryId: input.libraryId,
+    assetId: input.assetId,
+    displayFieldId: input.displayFieldId,
+    fallbackLabel: input.fallbackLabel,
+  };
+  return `<ResourceReference ${Object.entries(attrs)
+    .map(([key, value]) => `${key}="${escapeAttribute(value)}"`)
+    .join(' ')} />`;
+}
+
+export function renderTableResourceReferences(resources: GeneratedTableResource[]): string {
+  if (resources.length === 0) return '';
+  return resources.map((table) => {
+    const displayFieldId = table.fieldIds[0];
+    if (!displayFieldId) {
+      throw new Error(`Generated table ${table.table} has no fields to reference.`);
+    }
+    // Prefix with the table name so MDX keeps the chips as inline text elements in
+    // one paragraph. Bare adjacent JSX void tags become separate flow blocks and
+    // render as one table projection per row.
+    const chips = table.rows.map((row) => {
+      if (!row.id) throw new Error(`Generated table ${table.table} row ${row.name} is missing an id.`);
+      return serializeTableRowReference({
+        libraryId: table.id,
+        assetId: row.id,
+        displayFieldId,
+        fallbackLabel: row.name,
+      });
+    }).join(' ');
+    return `${table.table}: ${chips}`;
+  }).join('\n\n');
+}
+
+const TABLE_REF_MARKER = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/gi;
+
+function normalizeTableRefName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/** Replace body KECO_TABLE_REF markers with toolbar-style ResourceReference chips. */
+export function applyInlineTableResourceReferences(
+  markdown: string,
+  resources: GeneratedTableResource[],
+): string {
+  try {
+    return replaceInlineTableResourceReferences(markdown, resources);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid KECO_TABLE_REF markers.';
+    throw new GddTableReferenceError(message);
+  }
+}
+
+export class GddTableReferenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GddTableReferenceError';
+  }
+}
+
+function replaceInlineTableResourceReferences(
+  markdown: string,
+  resources: GeneratedTableResource[],
+): string {
+  if (resources.length === 0) {
+    if (TABLE_REF_MARKER.test(markdown)) {
+      TABLE_REF_MARKER.lastIndex = 0;
+      throw new Error('GDD contains KECO_TABLE_REF markers but no table resources were generated.');
+    }
+    TABLE_REF_MARKER.lastIndex = 0;
+    return markdown;
+  }
+
+  const byName = new Map(
+    resources.map((resource) => [normalizeTableRefName(resource.table), resource] as const),
+  );
+  const seen = new Set<string>();
+  const replaced = markdown.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
+    const key = normalizeTableRefName(rawName);
+    if (!key) throw new Error('KECO_TABLE_REF marker is missing a table name.');
+    const resource = byName.get(key);
+    if (!resource) throw new Error(`Unknown KECO_TABLE_REF table: ${rawName.trim()}`);
+    if (seen.has(key)) throw new Error(`Duplicate KECO_TABLE_REF table: ${resource.table}`);
+    seen.add(key);
+    return renderTableResourceReferences([resource]);
+  });
+
+  for (const resource of resources) {
+    const key = normalizeTableRefName(resource.table);
+    if (!seen.has(key)) {
+      throw new Error(`Missing KECO_TABLE_REF marker for table: ${resource.table}`);
+    }
+  }
+  return replaced;
+}
+
 const TABLE_MARKERS = /<!--\s*KECO_TABLE_PLAN\s*([\s\S]*?)\s*-->/gi;
 
 export const tablePlanShapeExample = JSON.stringify([{
@@ -172,16 +309,17 @@ export function extractTablePlanMarker(raw: string): {
   tablePlans: GeneratedTablePlan[];
   warning: string | null;
 } {
-  if ([...raw.matchAll(TABLE_MARKERS)].length > 1) {
-    throw new Error('Multiple KECO table plan markers are not allowed.');
-  }
-  const match = TABLE_MARKER.exec(raw);
-  if (!match) return { markdown: raw.trim(), tablePlans: [], warning: null };
-  const markdown = raw.replace(match[0], '').trim();
+  const matches = [...raw.matchAll(TABLE_MARKERS)];
+  if (matches.length === 0) return { markdown: raw.trim(), tablePlans: [], warning: null };
+  const markdown = raw.replace(TABLE_MARKERS, '').trim();
   try {
+    const values = matches.map((match) => parseTablePlanMarkerJson(match[1]));
+    if (values.some((value) => !Array.isArray(value))) {
+      throw new Error('Each KECO table plan marker must contain an array.');
+    }
     return {
       markdown,
-      tablePlans: normalizeTablePlans(parseTablePlanMarkerJson(match[1])),
+      tablePlans: normalizeTablePlans(values.flat()),
       warning: null,
     };
   } catch (error) {
@@ -251,12 +389,4 @@ export function normalizeTablePlans(value: unknown): GeneratedTablePlan[] {
     }
   }
   return plans;
-}
-
-export function renderTableReferences(projectId: string, resources: GeneratedTableResource[]): string {
-  if (resources.length === 0) return '- No independent Keco tables were generated.';
-  return resources.map((table) => [
-    `- [${table.table}](/${encodeURIComponent(projectId)}/${encodeURIComponent(table.id)}) - ${table.purpose}`,
-    `  - Fields: ${table.fields.join(', ')}`,
-  ].join('\n')).join('\n');
 }

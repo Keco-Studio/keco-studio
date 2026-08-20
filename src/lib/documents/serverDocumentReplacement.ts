@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { documentContentCodec, mergeYjsState } from './documentContentCodec';
 import { documentStateGateway } from './documentStateGateway';
 import { DocumentAccessError, DocumentStateConflictError } from './documentStateTypes';
+import { coerceSanctionedMdx } from './sanctionedMdx';
 
 export async function replaceDialogueReference(
   serviceClient: SupabaseClient,
@@ -24,10 +25,10 @@ export async function replaceDialogueReference(
   const marker = new RegExp(`(^[ \\t]*- GDD dialogue job: ${escapedJobId}\\s*$\\n)[ \\t]*- Script: [^\\n]*`, 'm');
   if (!marker.test(current.markdown)) return false;
   const scriptHref = `/script-system/${encodeURIComponent(input.projectId)}/script/${encodeURIComponent(input.scriptLibraryId)}`;
-  const replacementMarkdown = current.markdown.replace(
+  const replacementMarkdown = coerceSanctionedMdx(current.markdown.replace(
     marker,
     `$1  - Script: Completed - [Script](${scriptHref})`,
-  );
+  ));
   const currentYjsState = mergeYjsState(
     current.yjsStateBase64,
     current.updateTail.map((update) => update.updateBase64),
@@ -69,35 +70,88 @@ function normalizeChapter(value: string): string {
 
 function headingMatches(heading: string, chapterKey: string, chapterTitle: string): boolean {
   const normalized = normalizeChapter(heading.replace(/\s+#+\s*$/, ''));
-  return normalized === normalizeChapter(chapterKey) || normalized === normalizeChapter(chapterTitle);
+  const key = normalizeChapter(chapterKey);
+  const title = normalizeChapter(chapterTitle);
+  if (!normalized) return false;
+  if (key && normalized === key) return true;
+  if (title && normalized === title) return true;
+  // Soft match: "### 2. 开场对话" vs title "开场对话" / key "opening-dialogue".
+  if (title && title.length >= 2 && (normalized.includes(title) || title.includes(normalized))) {
+    return true;
+  }
+  if (key && key.length >= 2 && (normalized.includes(key) || key.includes(normalized))) {
+    return true;
+  }
+  return false;
 }
 
 function removeSnapshotForJob(markdown: string, dialogueJobId: string): string {
   const escaped = dialogueJobId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return markdown.replace(
+  const withoutLegacy = markdown.replace(
     new RegExp(`^[ \\t]*<!--\\s*KECO_GDD_DIALOGUE_SNAPSHOT\\b[\\s\\S]*?dialogueJobId=["']${escaped}["'][\\s\\S]*?<!--\\s*/KECO_GDD_DIALOGUE_SNAPSHOT\\s*-->[ \\t]*\\n?`, 'gmi'),
+    '',
+  );
+  return withoutLegacy.replace(
+    new RegExp(`^[ \\t]*<GddScriptBranchSnapshot\\b(?=[^>]*\\bdialogueJobId=["']${escaped}["'])[^>]*/>[ \\t]*\\n?`, 'gmi'),
     '',
   );
 }
 
+function insertAfterLine(
+  markdown: string,
+  lineIndex: number,
+  snapshotMarkdown: string,
+): string {
+  const lines = markdown.split('\n');
+  const before = lines.slice(0, lineIndex + 1).join('\n').replace(/[ \t]+$/, '');
+  const after = lines.slice(lineIndex + 1).join('\n').replace(/^\n+/, '');
+  const separator = before.endsWith('\n') ? '' : '\n';
+  const trailing = after ? `\n\n${after}` : '';
+  return `${before}${separator}\n${snapshotMarkdown.trim()}${trailing}`;
+}
+
 function insertSnapshotInChapter(
   markdown: string,
-  input: Pick<DialogueSnapshotReplacementInput, 'chapterKey' | 'chapterTitle' | 'snapshotMarkdown'>,
+  input: Pick<DialogueSnapshotReplacementInput, 'chapterKey' | 'chapterTitle' | 'dialogueJobId' | 'snapshotMarkdown'>,
 ): string | null {
   const lines = markdown.split('\n');
   const headings = lines.map((line, index) => {
     const match = /^(#{1,6})[ \t]+(.+?)[ \t]*$/.exec(line);
     return match ? { index, level: match[1].length, title: match[2] } : null;
   }).filter((item): item is { index: number; level: number; title: string } => Boolean(item));
-  const heading = headings.find((item) => headingMatches(item.title, input.chapterKey, input.chapterTitle));
-  if (!heading) return null;
-  const next = headings.find((item) => item.index > heading.index && item.level <= heading.level);
-  const end = next?.index ?? lines.length;
-  const before = lines.slice(0, end).join('\n').replace(/[ \t]+$/, '');
-  const after = lines.slice(end).join('\n').replace(/^\n+/, '');
-  const separator = before.endsWith('\n') ? '' : '\n';
-  const trailing = after ? `\n\n${after}` : '';
-  return `${before}${separator}\n${input.snapshotMarkdown.trim()}${trailing}`;
+
+  // Prefer the most specific (deepest) matching heading so scene subsections win
+  // over parent chapters when both soft-match.
+  const heading = [...headings]
+    .reverse()
+    .find((item) => headingMatches(item.title, input.chapterKey, input.chapterTitle));
+
+  if (heading) {
+    const nextSameOrHigher = headings.find((item) => item.index > heading.index && item.level <= heading.level);
+    const nested = headings.find((item) => item.index > heading.index && item.level > heading.level);
+    const end = nested && (!nextSameOrHigher || nested.index < nextSameOrHigher.index)
+      ? nested.index
+      : (nextSameOrHigher?.index ?? lines.length);
+    const before = lines.slice(0, end).join('\n').replace(/[ \t]+$/, '');
+    const after = lines.slice(end).join('\n').replace(/^\n+/, '');
+    const separator = before.endsWith('\n') ? '' : '\n';
+    const trailing = after ? `\n\n${after}` : '';
+    return `${before}${separator}\n${input.snapshotMarkdown.trim()}${trailing}`;
+  }
+
+  // Fallback: park the card under the Dialogue Resources bullet for this job.
+  const jobLine = lines.findIndex((line) => (
+    line.includes(`GDD dialogue job: ${input.dialogueJobId}`)
+  ));
+  if (jobLine >= 0) {
+    let end = jobLine;
+    while (end + 1 < lines.length && /^[ \t]+- /.test(lines[end + 1] ?? '')) end += 1;
+    return insertAfterLine(markdown, end, input.snapshotMarkdown);
+  }
+
+  // Last resort: append so conversion still surfaces a navigable tree card.
+  const trimmed = markdown.replace(/\s+$/, '');
+  return `${trimmed}\n\n### Script branch: ${input.chapterTitle || input.chapterKey}\n\n${input.snapshotMarkdown.trim()}\n`;
 }
 
 export async function replaceGddDialogueSnapshot(
@@ -109,8 +163,8 @@ export async function replaceGddDialogueSnapshot(
   if (!current.yjsStateBase64) return { updated: false, reason: 'missing-state' };
 
   const withoutPrevious = removeSnapshotForJob(current.markdown, input.dialogueJobId);
-  const replacementMarkdown = insertSnapshotInChapter(withoutPrevious, input);
-  if (replacementMarkdown == null) return { updated: false, reason: 'missing-chapter' };
+  const inserted = insertSnapshotInChapter(withoutPrevious, input);
+  const replacementMarkdown = coerceSanctionedMdx(inserted);
 
   const currentYjsState = mergeYjsState(
     current.yjsStateBase64,

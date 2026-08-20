@@ -538,6 +538,7 @@ function ProjectsView(props: {
         open={Boolean(generationProjectId)}
         projectName={props.projects.find((project) => project.id === generationProjectId)?.name ?? 'Project'}
         pending={generateGddMutation.isPending}
+        error={generateGddMutation.isError ? (generateGddMutation.error instanceof Error ? generateGddMutation.error.message : 'Failed to start GDD generation.') : null}
         onCancel={() => setGenerationProjectId(null)}
         onSubmit={(options) => { if (generationProjectId) generateGddMutation.mutate({ targetProjectId: generationProjectId, options }); }}
       />

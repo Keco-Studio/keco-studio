@@ -1,5 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
-import { renderDialogueSnapshot, renderStoryBranchTree } from './dialogueSnapshots';
+import {
+  buildStoryBranchTreeNodes,
+  dialogueSnapshotExcerptLineCount,
+  renderDialogueSnapshot,
+  renderStoryBranchTree,
+} from './dialogueSnapshots';
+import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { parseSanctionedMdxAst } from '@/lib/documents/sanctionedMdxParser';
+import { parseGddScriptBranchTree } from '@/lib/documents/gddScriptBranchSnapshot';
 
 const document = {
   version: 1 as const,
@@ -46,24 +54,36 @@ const plotPlan = {
   ],
 };
 
+function treeFromSnapshotMarkdown(markdown: string) {
+  const root = parseSanctionedMdxAst(markdown);
+  const node = root.children?.find((child) => child.name === 'GddScriptBranchSnapshot');
+  const tree = node?.attributes?.find((attribute) => attribute.name === 'tree')?.value;
+  return typeof tree === 'string' ? parseGddScriptBranchTree(tree) : null;
+}
+
 describe('dialogue snapshot renderer', () => {
-  it('renders escaped excerpt, choices, tree, and named links in stable markers', () => {
+  it('renders a sanctioned GddScriptBranchSnapshot with encoded tree and FlowChart ids', () => {
     const result = renderDialogueSnapshot({
       dialogueJobId: 'job-1', chapterKey: 'chapter-1', title: 'Arrival at the Gate', projectId: 'project/1',
       dialogueDocumentId: 'doc-1', scriptLibraryId: 'lib-1', document, plotPlan,
     });
 
-    expect(result).toContain('<!-- KECO_GDD_DIALOGUE_SNAPSHOT');
+    expect(result).toContain('<GddScriptBranchSnapshot ');
     expect(result).toContain('dialogueJobId="job-1"');
-    expect(result).toContain('**Guard:** State your \\*business\\*\\.');
-    expect(result).toContain('- Show \\[the\\] letter → `open`');
-    expect(result).toContain('[Open Dialogue Document](/project%2F1/doc/doc-1)');
-    expect(result).toContain('[Open Script FlowChart](/script-system/project%2F1/script/lib-1)');
-    expect(result).toContain('- Show the letter → Gate opens');
-    expect(result).toContain('<!-- /KECO_GDD_DIALOGUE_SNAPSHOT -->');
+    expect(result).toContain('scriptLibraryId="lib-1"');
+    expect(result).toContain('projectId="project/1"');
+    expect(result).toContain('title="Arrival at the Gate"');
+    expect(() => validateSanctionedMdx(`# GDD\n\n${result}\n`)).not.toThrow();
+    expect(treeFromSnapshotMarkdown(result)?.map((node) => `${node.depth}:${node.label}`)).toEqual([
+      '0:Arrival',
+      '1:Show the letter → Gate opens',
+      '2:End',
+      '1:Walk away → Road',
+      '2:End',
+    ]);
   });
 
-  it('omits branch sections for a linear scene and bounds the excerpt', () => {
+  it('renders a single-node card for a linear scene and bounds excerpts', () => {
     const linearDocument = {
       ...document,
       nodes: [document.nodes[0]],
@@ -74,9 +94,9 @@ describe('dialogue snapshot renderer', () => {
       dialogueDocumentId: 'doc-2', scriptLibraryId: 'lib-2', document: linearDocument,
     });
 
-    expect(result).not.toContain('**Choices**');
-    expect(result).not.toContain('**Branch tree**');
-    expect(result.split('\n').filter((line) => line.startsWith('- **')).length).toBeLessThanOrEqual(8);
+    expect(result).toContain('<GddScriptBranchSnapshot ');
+    expect(dialogueSnapshotExcerptLineCount(linearDocument)).toBeLessThanOrEqual(8);
+    expect(treeFromSnapshotMarkdown(result)).toEqual([{ depth: 0, label: 'State your *business*.' }]);
   });
 
   it('renders a deterministic plot tree from plot nodes and edges', () => {
@@ -87,5 +107,6 @@ describe('dialogue snapshot renderer', () => {
       '  - Walk away → Road',
       '    - End',
     ].join('\n'));
+    expect(buildStoryBranchTreeNodes(document, plotPlan).map((node) => node.label)).toContain('Arrival');
   });
 });

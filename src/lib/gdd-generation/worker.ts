@@ -2,12 +2,14 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
-import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { coerceSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import {
+  applyInlineTableResourceReferences,
+  GddTableReferenceError,
   materializeTableResources,
-  renderTableReferences,
   sanitizeTableResourcesForPersistence,
 } from '@/lib/gdd-generation/tableResources';
+import { loadSeriesTableLibraryIds } from '@/lib/gdd-generation/seriesTableIds';
 import {
   materializeDialogueResources,
   renderDialogueReferences,
@@ -102,7 +104,12 @@ export class GddJobContextInvalidError extends Error {
 }
 
 function isPermanentError(error: unknown): boolean {
-  if (error instanceof GddGenerationValidationError || error instanceof GddV2GenerationValidationError || error instanceof GddJobContextInvalidError) return true;
+  if (
+    error instanceof GddGenerationValidationError
+    || error instanceof GddV2GenerationValidationError
+    || error instanceof GddJobContextInvalidError
+    || error instanceof GddTableReferenceError
+  ) return true;
   if (!error || typeof error !== 'object') return false;
   const code = (error as { code?: unknown }).code;
   return code === '42501' || code === '23503' || code === '23514' || code === 'P0002';
@@ -171,16 +178,23 @@ export async function persistGeneratedGddDocument(
   gdd: GeneratedGdd,
   markdown: string,
 ): Promise<PersistedGddGeneration> {
+  const existingLibraryIds = await loadSeriesTableLibraryIds(
+    serviceClient,
+    job.project_id,
+    job.design_system_id,
+  );
   const tableResources = sanitizeTableResourcesForPersistence(
-    materializeTableResources(job.id, gdd.productionTables),
+    materializeTableResources(job.design_system_id, gdd.productionTables, existingLibraryIds),
   );
   const dialogueResources = materializeDialogueResources(job.id, gdd.dialogueChapters ?? []);
   const completedMarkdown = tableResources.length > 0
     ? renderGddMarkdown(gdd, { input: job.input, tableResources })
     : markdown;
-  const dialogueMarkdown = dialogueResources.length > 0
-    ? `${completedMarkdown.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
-    : completedMarkdown;
+  const withTableRefs = applyInlineTableResourceReferences(completedMarkdown, tableResources);
+  const withDialogue = dialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+    : withTableRefs;
+  const dialogueMarkdown = coerceSanctionedMdx(withDialogue);
   validateSanctionedMdx(dialogueMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(dialogueMarkdown);
   const createdAt = new Date().toISOString();
@@ -220,16 +234,20 @@ export async function persistGeneratedGddV2Document(
   dialoguePlans: DialoguePlan[] = [],
 ): Promise<PersistedGddGeneration> {
   const input = job.input as GddGenerationRequestV2;
+  const existingLibraryIds = await loadSeriesTableLibraryIds(
+    serviceClient,
+    job.project_id,
+    job.design_system_id,
+  );
   const tableResources = sanitizeTableResourcesForPersistence(
-    materializeTableResources(job.id, tablePlans),
+    materializeTableResources(job.design_system_id, tablePlans, existingLibraryIds),
   );
   const dialogueResources = materializeDialogueResources(job.id, dialoguePlans);
-  const tableMarkdown = tableResources.length > 0
-    ? `${markdown.trim()}\n\n## Keco Tables\n\n${renderTableReferences(job.project_id, tableResources)}\n`
-    : markdown;
-  const completedMarkdown = dialogueResources.length > 0
-    ? `${tableMarkdown.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
-    : tableMarkdown;
+  const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
+  const withDialogue = dialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+    : withTableRefs;
+  const completedMarkdown = coerceSanctionedMdx(withDialogue);
   validateSanctionedMdx(completedMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
   return persistCompletedGddGenerationJob(serviceClient, {
@@ -264,17 +282,27 @@ export async function persistGeneratedGddV2Document(
 async function runWithLeaseHeartbeat<T>(
   input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob },
   heartbeat: typeof heartbeatGddGenerationJob,
-  generate: () => Promise<T>,
+  generate: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const controller = new AbortController();
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
   const timer = setInterval(() => {
     pendingHeartbeat = pendingHeartbeat
       .then(() => heartbeat(input.serviceClient, input.job.id, input.workerId, 'generating'))
-      .catch((error) => { heartbeatFailure = error; });
+      .catch((error) => {
+        heartbeatFailure = error;
+        controller.abort(error);
+      });
   }, 30_000);
   try {
-    const generated = await generate();
+    let generated: T;
+    try {
+      generated = await generate(controller.signal);
+    } catch (error) {
+      if (heartbeatFailure) throw heartbeatFailure;
+      throw error;
+    }
     await pendingHeartbeat;
     if (heartbeatFailure) throw heartbeatFailure;
     return generated;
@@ -293,7 +321,9 @@ export async function processClaimedGddJob(
     await dependencies.revalidateContext(serviceClient, job);
     if (isGddGenerationRequestV2(job.input)) {
       if (!dependencies.generateV2 || !dependencies.persistV2) throw new Error('GDD v2 worker dependencies are not configured.');
-      const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generateV2!(job.input as GddGenerationRequestV2));
+      const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, (signal) => (
+        dependencies.generateV2!(job.input as GddGenerationRequestV2, undefined, { signal })
+      ));
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       validateSanctionedMdx(generatedV2.markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
@@ -310,7 +340,7 @@ export async function processClaimedGddJob(
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
-    const tableResources = materializeTableResources(job.id, generated.productionTables);
+    const tableResources = materializeTableResources(job.design_system_id, generated.productionTables);
     const markdown = renderGddMarkdown(generated, { input: job.input, tableResources });
     validateSanctionedMdx(markdown);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');

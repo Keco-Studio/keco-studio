@@ -99,14 +99,19 @@ describe('GDD generation contract', () => {
   it('renders deterministic GDD Markdown with assumptions and no internal evidence', () => {
     const markdown = renderGddMarkdown(generated, {
       input,
-      tableResources: [{ id: 'table-1', ...generated.productionTables[0] }],
+      tableResources: [{
+        id: 'table-1',
+        fieldIds: ['field-1', 'field-2'],
+        ...generated.productionTables[0],
+      }],
     });
     expect(markdown).toContain('# Harbor Tactics GDD');
     expect(markdown).toContain('## Assumptions to Confirm');
     expect(markdown).not.toMatch(/Provenance/i);
     expect(markdown).not.toContain('Applied rules: readable-state');
     expect(markdown.indexOf('## Core Loop')).toBeLessThan(markdown.indexOf('## Gameplay Systems'));
-    expect(markdown).toContain(`[Skills](/${input.projectId}/table-1)`);
+    expect(markdown).toContain('<!-- KECO_TABLE_REF Skills -->');
+    expect(markdown).not.toContain(`[Skills](/${input.projectId}/table-1)`);
   });
 
   it('builds JSON-only generation messages from the pinned version and project context', () => {

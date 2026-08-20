@@ -1,5 +1,6 @@
 import { isUuid } from '@/lib/utils/uuid';
 import { DocumentContentValidationError } from './documentStateTypes';
+import { parseGddScriptBranchSnapshotAttributes } from './gddScriptBranchSnapshot';
 import { parseResourceReferenceAttributes } from './resourceReferenceTypes';
 import {
   parseSanctionedMdxAst,
@@ -70,6 +71,19 @@ export const SANCTIONED_MDX_REGISTRY = {
       { name: 'endBefore', required: false },
       { name: 'endAfter', required: false },
       { name: 'fallbackLabel', required: true },
+    ],
+  },
+  GddScriptBranchSnapshot: {
+    kind: 'flow',
+    hasChildren: false,
+    props: [
+      { name: 'dialogueJobId', required: true },
+      { name: 'chapterKey', required: true },
+      { name: 'title', required: true },
+      { name: 'projectId', required: true },
+      { name: 'dialogueDocumentId', required: true },
+      { name: 'scriptLibraryId', required: true },
+      { name: 'tree', required: true },
     ],
   },
 } as const satisfies Record<string, SanctionedMdxComponentRule>;
@@ -171,6 +185,24 @@ function coerceImgJsxNode(node: AstNode): AstNode {
 }
 
 /**
+ * MDX does not allow HTML comments (`<!-- ... -->`). Strip them outside fenced
+ * code blocks so legacy KECO markers and LLM artifacts do not break open/save.
+ */
+export function coerceSanctionedMdxHtmlComments(markdown: string): string {
+  if (!markdown.includes('<!--')) return markdown;
+  const segments = markdown.split(/(```[\s\S]*?```)/g);
+  let changed = false;
+  const next = segments.map((segment) => {
+    if (segment.startsWith('```')) return segment;
+    if (!segment.includes('<!--')) return segment;
+    changed = true;
+    return segment.replace(/<!--[\s\S]*?-->/g, '');
+  }).join('');
+  if (!changed) return markdown;
+  return next.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+}
+
+/**
  * MDXEditor may persist resized images as `<img ... />` JSX. Convert those to
  * Markdown image nodes so sanctioned MDX validation and storage stay consistent.
  */
@@ -178,6 +210,11 @@ export function coerceSanctionedMdxImages(markdown: string): string {
   if (!/<img\b/i.test(markdown)) return markdown;
   const root = parseSanctionedMdxAst(markdown);
   return serializeSanctionedMdxAst(coerceImgJsxNode(root));
+}
+
+/** Normalize document Markdown before parse/validate/encode. */
+export function coerceSanctionedMdx(markdown: string): string {
+  return coerceSanctionedMdxImages(coerceSanctionedMdxHtmlComments(markdown));
 }
 
 function visit(node: AstNode, visitor: (node: AstNode) => void): void {
@@ -328,6 +365,12 @@ export function validateSanctionedMdxPropertyEdit(
   ) {
     return null;
   }
+  if (
+    componentName === 'GddScriptBranchSnapshot' &&
+    !parseGddScriptBranchSnapshotAttributes(validated)
+  ) {
+    return null;
+  }
   if (componentName === 'BlockAnchor' && !isUuid(validated.id)) return null;
   return validated;
 }
@@ -369,6 +412,12 @@ function validateJsxNode(node: AstNode): void {
     !parseResourceReferenceAttributes(attributes)
   ) {
     invalid('ResourceReference properties are invalid');
+  }
+  if (
+    name === 'GddScriptBranchSnapshot' &&
+    !parseGddScriptBranchSnapshotAttributes(attributes)
+  ) {
+    invalid('GddScriptBranchSnapshot properties are invalid');
   }
   if (rule.hasChildren && childrenOf(node).length === 0) {
     invalid(`${name} must contain Markdown children`);
@@ -437,7 +486,7 @@ export function parseValidatedSanctionedMdx(markdown: string): SanctionedMdxAstN
   ) {
     throw new DocumentContentValidationError('Document content is invalid');
   }
-  const normalized = coerceSanctionedMdxImages(markdown);
+  const normalized = coerceSanctionedMdx(markdown);
   const root = parseSanctionedMdx(normalized);
   validateSanctionedMdxAstNode(root);
   return root;

@@ -4,6 +4,7 @@ import { generateGddMarkdownV2, GddV2GenerationValidationError } from './generat
 import type { ChatMessage } from '@/lib/agent/types';
 import type { StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { GddGenerationRequestV2 } from './contracts';
+import type { DialogueSceneEvent } from './dialogueSceneStream';
 
 const input: GddGenerationRequestV2 = {
   contractVersion: 2,
@@ -38,6 +39,24 @@ const input: GddGenerationRequestV2 = {
   },
   projectSources: [],
 };
+
+const sceneEvent: DialogueSceneEvent = {
+  chapterKey: 'arrival',
+  title: 'Arrival',
+  scene: 'The guide blocks the gate and asks the hero for proof.',
+  participants: ['Guide', 'Hero'],
+  choices: ['Show the letter', 'Leave'],
+  consequences: 'Showing the letter opens the gate; leaving postpones entry.',
+};
+
+const sceneMarker = (event: DialogueSceneEvent) => `<!-- KECO_DIALOGUE_SCENE ${JSON.stringify(event)} -->`;
+const scenePlan = (event: DialogueSceneEvent) => ({
+  chapterKey: event.chapterKey,
+  title: event.title,
+  content: `${event.participants[0] ?? 'Guide'}: Stop.`,
+  hasChoices: event.choices.length > 0,
+  branchSummary: event.choices,
+});
 
 describe('GDD v2 direct Markdown generator', () => {
   it('generates production Markdown in one completion and removes provenance', async () => {
@@ -91,6 +110,7 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(messages[0].content).toContain('6,000-9,000 readable Chinese characters');
     expect(messages[0].content).toContain('Do not return JSON');
     expect(messages[0].content).toContain('Do not render Markdown tables in the GDD body');
+    expect(messages[0].content).toContain('KECO_TABLE_REF');
     expect(messages[0].content).toContain('follow it exactly');
     expect(messages[0].content).toContain('every concrete entity');
     expect(messages[1].content).toContain('"fields":["Private Field"]');
@@ -132,6 +152,8 @@ describe('GDD v2 direct Markdown generator', () => {
         return '# GDD\n\n## Truncated';
       }
       expect(messages[0]?.content).toContain('compact recovery pass');
+      expect(messages[0]?.content).toContain('KECO_DIALOGUE_SCENE');
+      expect(messages[0]?.content).not.toContain('KECO_DIALOGUE_PLAN');
       expect(options?.maxCompletionTokens).toBeGreaterThan(18_000);
       options?.onFinish?.('stop');
       return '# GDD\n\n## Complete\nRecovered content.';
@@ -169,32 +191,142 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.markdown).not.toContain('KECO_TABLE_PLAN');
   });
 
-  it('extracts a strict dialogue plan marker from Markdown', async () => {
-    const result = await generateGddMarkdownV2(input, jest.fn(async () => [
-      '# GDD',
-      '<!-- KECO_DIALOGUE_PLAN [{"chapterKey":"chapter-01","title":"Arrival","content":"Guide: Hello.","hasChoices":false,"branchSummary":[]}] -->',
-      '## Core Loop',
-      'Body.',
-    ].join('\n')));
-    expect(result.dialoguePlans).toEqual([{
-      chapterKey: 'chapter-01',
-      title: 'Arrival',
-      content: 'Guide: Hello.',
-      hasChoices: false,
-      branchSummary: [],
-    }]);
-    expect(result.markdown).not.toContain('KECO_DIALOGUE_PLAN');
+  it('starts dialogue planning as soon as a concrete scene event arrives in the GDD stream', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\n\n## Arrival\nConcrete scene.\n${sceneMarker(sceneEvent)}` };
+      expect(planScene).toHaveBeenCalledTimes(1);
+      yield { type: 'text_delta' as const, content: '\n\n## Systems\nThe remaining GDD.' };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(input, { stream, planScene });
+
+    expect(result.dialoguePlans).toEqual([scenePlan(sceneEvent)]);
+    expect(result.markdown).not.toContain('KECO_DIALOGUE_SCENE');
+    expect(result.markdown).toContain('## Systems');
   });
 
-  it('instructs the model to generate complete dialogue only for interactive chapters', async () => {
+  it('instructs the model to emit scene events only for concrete interactive scenes', async () => {
     const complete = jest.fn(async () => '# GDD\n\n## Core Loop\nBody.');
     await generateGddMarkdownV2(input, complete);
     const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
-    expect(messages[0].content).toMatch(/KECO_DIALOGUE_PLAN/i);
+    expect(messages[0].content).toMatch(/KECO_DIALOGUE_SCENE/i);
     expect(messages[0].content).toMatch(/chapterKey/i);
-    expect(messages[0].content).toMatch(/dialogue/i);
-    expect(messages[0].content).toMatch(/chapter|task/i);
-    expect(messages[0].content).toMatch(/choice|interaction|spoken/i);
+    expect(messages[0].content).toMatch(/immediately/i);
+    expect(messages[0].content).toMatch(/concrete/i);
+    expect(messages[0].content).toMatch(/abstract/i);
+  });
+
+  it('does not plan dialogue for an abstract NPC interaction feature statement', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: '# GDD\n\nThe game supports NPC interaction and branching choices.' };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2({ ...input, creativeBrief: undefined }, { stream, planScene });
+
+    expect(result.dialoguePlans).toEqual([]);
+    expect(planScene).not.toHaveBeenCalled();
+  });
+
+  it('runs at most three scene planners concurrently and preserves encounter order', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    const events = Array.from({ length: 4 }, (_, index) => ({
+      ...sceneEvent,
+      chapterKey: `scene-${index + 1}`,
+      title: `Scene ${index + 1}`,
+    }));
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      active -= 1;
+      return scenePlan(event);
+    });
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\n${events.map(sceneMarker).join('\n')}\nComplete body.` };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const running = generateGddMarkdownV2(input, { stream, planScene });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(planScene).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(3);
+    releases.shift()?.();
+    for (let tick = 0; tick < 10 && planScene.mock.calls.length < 4; tick += 1) {
+      await Promise.resolve();
+    }
+    expect(planScene).toHaveBeenCalledTimes(4);
+    while (releases.length > 0) releases.shift()?.();
+
+    const result = await running;
+    expect(maxActive).toBe(3);
+    expect(result.dialoguePlans.map((plan) => plan.chapterKey)).toEqual(events.map((event) => event.chapterKey));
+  });
+
+  it('aborts an active scene planner and returns no partial result', async () => {
+    const controller = new AbortController();
+    const planScene = jest.fn(async (
+      _input: { event: DialogueSceneEvent },
+      _dependencies: unknown,
+      runtime: { signal?: AbortSignal },
+    ) => new Promise<ReturnType<typeof scenePlan>>((resolve, reject) => {
+      runtime.signal?.addEventListener('abort', () => reject(runtime.signal?.reason), { once: true });
+      void resolve;
+    }));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\nConcrete scene.\n${sceneMarker(sceneEvent)}\nComplete body.` };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const running = generateGddMarkdownV2(input, { stream, planScene }, { signal: controller.signal });
+    for (let tick = 0; tick < 10 && planScene.mock.calls.length === 0; tick += 1) await Promise.resolve();
+    controller.abort(new Error('Generation cancelled by user.'));
+
+    await expect(running).rejects.toThrow('Generation cancelled by user.');
+    expect(planScene).toHaveBeenCalledTimes(1);
+  });
+
+  it('extracts table plans while dialogue planning runs independently', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: [
+        '# GDD',
+        '## Arrival',
+        'Concrete scene.',
+        sceneMarker(sceneEvent),
+        '<!-- KECO_TABLE_PLAN [{"table":"Skills","purpose":"Actions.","fields":["name"],"rows":[{"name":"Basic","values":{"name":"Basic"}}]}] -->',
+        'Complete body.',
+      ].join('\n') };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(input, { stream, planScene });
+
+    expect(result.dialoguePlans).toEqual([scenePlan(sceneEvent)]);
+    expect(result.tablePlans).toEqual([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]);
+  });
+
+  it('does not pass hidden table-plan JSON into a later dialogue planner context', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    const tableMarker = '<!-- KECO_TABLE_PLAN [{"table":"Secret Table","purpose":"Internal","fields":["name"],"rows":[{"name":"Hidden","values":{"name":"Hidden"}}]}] -->';
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\n${tableMarker}\n## Arrival\nConcrete scene.\n${sceneMarker(sceneEvent)}` };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    await generateGddMarkdownV2(input, { stream, planScene });
+
+    expect(JSON.stringify(planScene.mock.calls[0]?.[0])).not.toContain('Secret Table');
+    expect(JSON.stringify(planScene.mock.calls[0]?.[0])).not.toContain('KECO_TABLE_PLAN');
   });
 
   it('escapes numeric less-than prose while preserving code', async () => {

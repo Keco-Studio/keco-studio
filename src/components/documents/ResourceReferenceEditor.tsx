@@ -231,7 +231,9 @@ export function ResourceReferenceEditor({
       data-resource-reference-kind={target?.kind}
       data-resource-reference-key={key || undefined}
       data-resource-reference-library-id={
-        target?.kind === 'table-row' ? target.libraryId : undefined
+        target?.kind === 'table-row'
+          ? (resolved?.table?.libraryId ?? target.libraryId)
+          : undefined
       }
       data-reference-projection-suppressed={
         suppressTableProjection ? 'true' : undefined

@@ -9,7 +9,7 @@ import {
   type GameDesignRuleSet,
 } from '@/lib/game-design-system/ruleSchema';
 import type { GameDesignSourceSnapshot } from '@/lib/services/gameDesignSystemService';
-import { generatedTableRowSchema, normalizeTablePlans, renderTableReferences, type GeneratedTableResource, type GeneratedTablePlan } from '@/lib/gdd-generation/tableResources';
+import { generatedTableRowSchema, normalizeTablePlans, type GeneratedTableResource, type GeneratedTablePlan } from '@/lib/gdd-generation/tableResources';
 import { dialoguePlanSchema, normalizeDialoguePlans } from '@/lib/gdd-generation/dialogueResources';
 import { z } from 'zod';
 
@@ -246,6 +246,7 @@ function bulletList(items: string[], empty = '- None specified.'): string[] {
 
 export function renderGddMarkdown(gdd: GeneratedGdd, options: { input: GddGenerationInput; tableResources?: GeneratedTableResource[] }): string {
   const { input } = options;
+  const tableResources = options.tableResources ?? [];
   const lines = [
     `# ${gdd.title}`,
     '',
@@ -263,9 +264,13 @@ export function renderGddMarkdown(gdd: GeneratedGdd, options: { input: GddGenera
     '', '## Difficulty and Balance', '', gdd.difficultyBalance,
     '', '## Narrative and World', '', gdd.narrativeWorld,
     '', '## Experience and Presentation', '', gdd.experiencePresentation,
-    '', '## Keco Tables',
   ];
-  lines.push('', renderTableReferences(input.projectId, options.tableResources ?? []));
+  if (tableResources.length > 0) {
+    lines.push('', '## Keco Tables', '');
+    for (const table of tableResources) {
+      lines.push(`<!-- KECO_TABLE_REF ${table.table} -->`, '');
+    }
+  }
   if (gdd.assumptions.length > 0) {
     lines.push('', '## Assumptions to Confirm', '', ...bulletList(gdd.assumptions));
   }

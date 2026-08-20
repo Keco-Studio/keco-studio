@@ -1,10 +1,11 @@
 import {
+  applyInlineTableResourceReferences,
   coerceTableRowInput,
   extractTablePlanMarker,
   materializeTableResources,
   normalizeTablePlans,
   parseTablePlanMarkerJson,
-  renderTableReferences,
+  renderTableResourceReferences,
   type GeneratedTablePlan,
 } from './tableResources';
 
@@ -89,22 +90,110 @@ describe('GDD table resources', () => {
     }])[0]!.rows[0]!.values).toEqual({ id: 'milk-1' });
   });
 
-  it('renders stable table resource references and never embeds rows', () => {
-    const plan = normalizeTablePlans([{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }])[0]!;
-    const markdown = renderTableReferences('project-1', [
-      { id: 'table-1', table: plan.table, purpose: plan.purpose, fields: plan.fields, rows: plan.rows },
-    ]);
-    expect(markdown).toContain('[Skills](/project-1/table-1)');
-    expect(markdown).toContain('Actions.');
-    expect(markdown).toContain('Fields: name');
-    expect(markdown).not.toContain('rows');
+  it('renders toolbar-style ResourceReference chips for each table row', () => {
+    const plan = normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name', 'cost'],
+      rows: [
+        { name: 'Basic', values: { name: 'Basic', cost: 1 } },
+        { name: 'Heavy', values: { name: 'Heavy', cost: 2 } },
+      ],
+    }])[0]!;
+    const [resource] = materializeTableResources('job-1', [plan]);
+    const markdown = renderTableResourceReferences([resource!]);
+    expect(markdown).toContain('<ResourceReference kind="table-row"');
+    expect(markdown).toContain(`libraryId="${resource!.id}"`);
+    expect(markdown).toContain(`assetId="${resource!.rows[0]!.id}"`);
+    expect(markdown).toContain(`assetId="${resource!.rows[1]!.id}"`);
+    expect(markdown).toContain(`displayFieldId="${resource!.fieldIds[0]}"`);
+    expect(markdown).toContain('fallbackLabel="Basic"');
+    expect(markdown).toContain('fallbackLabel="Heavy"');
+    expect(markdown).toMatch(/^Skills: <ResourceReference /);
+    expect(markdown).not.toContain('[Skills](');
+    expect(markdown).not.toContain('## Keco Tables');
   });
 
-  it('assigns deterministic resource IDs from the generation job', () => {
-    const plans = normalizeTablePlans([{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }]);
-    expect(materializeTableResources('job-1', plans)).toEqual(materializeTableResources('job-1', plans));
-    expect(materializeTableResources('job-1', plans)[0].id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(materializeTableResources('job-1', plans)[0].id).not.toBe(materializeTableResources('job-2', plans)[0].id);
+  it('keeps all row chips in one inline paragraph for MDX grouping', () => {
+    const plan = normalizeTablePlans([{
+      table: 'Products', purpose: 'Catalog.', fields: ['name'],
+      rows: [
+        { name: 'Milk', values: { name: 'Milk' } },
+        { name: 'Eggs', values: { name: 'Eggs' } },
+      ],
+    }])[0]!;
+    const [resource] = materializeTableResources('system-1', [plan]);
+    const markdown = renderTableResourceReferences([resource!]);
+    expect(markdown.startsWith('Products: ')).toBe(true);
+    expect(markdown.includes('\n')).toBe(false);
+    expect(() => {
+      const { validateSanctionedMdx } = require('@/lib/documents/sanctionedMdx') as typeof import('@/lib/documents/sanctionedMdx');
+      const { parseSanctionedMdxAst } = require('@/lib/documents/sanctionedMdxParser') as typeof import('@/lib/documents/sanctionedMdxParser');
+      validateSanctionedMdx(`# GDD\n\n${markdown}\n`);
+      const root = parseSanctionedMdxAst(`# GDD\n\n${markdown}\n`);
+      const paragraph = root.children?.find((child) => child.type === 'paragraph');
+      expect(paragraph).toBeTruthy();
+      const jsx = paragraph?.children?.filter((child) => child.type === 'mdxJsxTextElement') ?? [];
+      expect(jsx).toHaveLength(2);
+    }).not.toThrow();
+  });
+
+  it('assigns deterministic table, row, and field IDs from the series seed', () => {
+    const plans = normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name', 'cost'],
+      rows: [{ name: 'Basic', values: { name: 'Basic', cost: 1 } }],
+    }]);
+    expect(materializeTableResources('system-1', plans)).toEqual(materializeTableResources('system-1', plans));
+    const first = materializeTableResources('system-1', plans)[0]!;
+    expect(first.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first.fieldIds).toHaveLength(2);
+    expect(first.fieldIds[0]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first.fieldIds[0]).not.toBe(first.fieldIds[1]);
+    expect(first.id).not.toBe(materializeTableResources('system-2', plans)[0]!.id);
+  });
+
+  it('reuses an existing series library ID so ResourceReferences stay resolvable', () => {
+    const plans = normalizeTablePlans([{
+      table: 'CustomerTypes', purpose: 'Customers.', fields: ['name'],
+      rows: [{ name: 'Tourist', values: { name: 'Tourist' } }],
+    }]);
+    const stableId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const first = materializeTableResources('system-1', plans, new Map([['customertypes', stableId]]))[0]!;
+    const second = materializeTableResources('system-1', plans, new Map([['customertypes', stableId]]))[0]!;
+    expect(first.id).toBe(stableId);
+    expect(second.id).toBe(stableId);
+    expect(first.rows[0]!.id).toBe(second.rows[0]!.id);
+    expect(first.fieldIds[0]).toBe(second.fieldIds[0]);
+  });
+
+  it('replaces inline KECO_TABLE_REF markers with ResourceReference groups', () => {
+    const plans = normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]);
+    const resources = materializeTableResources('system-1', plans);
+    const markdown = applyInlineTableResourceReferences(
+      '# GDD\n\n## Skills\n<!-- KECO_TABLE_REF Skills -->\n\nBody.',
+      resources,
+    );
+    expect(markdown).toContain(`libraryId="${resources[0]!.id}"`);
+    expect(markdown).toContain('fallbackLabel="Basic"');
+    expect(markdown).not.toContain('KECO_TABLE_REF');
+  });
+
+  it('rejects missing, unknown, or duplicate KECO_TABLE_REF markers', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]));
+    expect(() => applyInlineTableResourceReferences('# GDD\nBody.', resources))
+      .toThrow(/missing KECO_TABLE_REF/i);
+    expect(() => applyInlineTableResourceReferences(
+      '# GDD\n<!-- KECO_TABLE_REF Missing -->\n',
+      resources,
+    )).toThrow(/unknown KECO_TABLE_REF/i);
+    expect(() => applyInlineTableResourceReferences(
+      '# GDD\n<!-- KECO_TABLE_REF Skills -->\n<!-- KECO_TABLE_REF Skills -->\n',
+      resources,
+    )).toThrow(/duplicate KECO_TABLE_REF/i);
   });
 
   it('extracts a valid table marker and removes it from the GDD body', () => {
@@ -112,6 +201,22 @@ describe('GDD table resources', () => {
     const result = extractTablePlanMarker(`# GDD\n<!-- KECO_TABLE_PLAN ${JSON.stringify([plan])} -->`);
     expect(result.markdown).toBe('# GDD');
     expect(result.tablePlans).toEqual([{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }]);
+    expect(result.warning).toBeNull();
+  });
+
+  it('merges multiple valid table markers in encounter order', () => {
+    const skills = { table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] };
+    const items = { table: 'Items', purpose: 'Inventory.', fields: ['name'], rows: [{ name: 'Potion', values: { name: 'Potion' } }] };
+    const result = extractTablePlanMarker([
+      '# GDD',
+      `<!-- KECO_TABLE_PLAN ${JSON.stringify([skills])} -->`,
+      '## Content',
+      `<!-- KECO_TABLE_PLAN ${JSON.stringify([items])} -->`,
+      'Body.',
+    ].join('\n'));
+
+    expect(result.markdown).toBe('# GDD\n\n## Content\n\nBody.');
+    expect(result.tablePlans.map((plan) => plan.table)).toEqual(['Skills', 'Items']);
     expect(result.warning).toBeNull();
   });
 

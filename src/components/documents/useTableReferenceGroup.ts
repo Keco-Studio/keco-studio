@@ -11,66 +11,83 @@ const TABLE_REFERENCE_SELECTOR =
   '[data-resource-reference-kind="table-row"]' +
   '[data-resource-reference-key]' +
   '[data-resource-reference-library-id]';
-const DOCUMENT_BLOCK_SELECTOR =
-  'p, li, h1, h2, h3, h4, h5, h6, td, th, blockquote';
 const NON_WHITESPACE_ELEMENT_SELECTOR =
   'br, hr, img, input, textarea, video, audio, iframe, canvas, svg, math';
+const EDITOR_ROOT_SELECTOR = [
+  '[contenteditable="true"]',
+  '[class*="ContentEditable"]',
+  '.mdxeditor',
+].join(', ');
 
 export type TableReferenceGroup = {
   isPrimary: boolean;
   keys: string[];
 };
 
-function isWhitespaceBetween(left: HTMLElement, right: HTMLElement): boolean {
+function libraryId(element: HTMLElement): string | undefined {
+  return element.dataset.resourceReferenceLibraryId;
+}
+
+function editorRoot(element: HTMLElement): ParentNode {
+  return element.closest(EDITOR_ROOT_SELECTOR) ?? element.ownerDocument.body;
+}
+
+/**
+ * True when the only content between two table-row chips is whitespace / empty
+ * Lexical wrappers. Projection UI lives inside each chip, so it is excluded by
+ * starting the range after `left` and ending before `right`.
+ */
+function isMergeableGap(left: HTMLElement, right: HTMLElement): boolean {
+  if (left.ownerDocument !== right.ownerDocument) return false;
   const range = left.ownerDocument.createRange();
-  range.setStartAfter(left);
-  range.setEndBefore(right);
+  try {
+    range.setStartAfter(left);
+    range.setEndBefore(right);
+  } catch {
+    return false;
+  }
+  if (range.collapsed) return true;
+
   const fragment = range.cloneContents();
+  for (const nested of fragment.querySelectorAll(TABLE_REFERENCE_SELECTOR)) {
+    nested.remove();
+  }
   return (
     (fragment.textContent ?? '').replace(/[\s\u200b\ufeff]/g, '') === '' &&
     !fragment.querySelector(NON_WHITESPACE_ELEMENT_SELECTOR)
   );
 }
 
-function libraryId(element: HTMLElement): string | undefined {
-  return element.dataset.resourceReferenceLibraryId;
-}
-
 export function findTableReferenceGroup(
   element: HTMLElement
 ): TableReferenceGroup {
-  const block = element.closest<HTMLElement>(DOCUMENT_BLOCK_SELECTOR)
-    ?? element.parentElement;
-  if (!block) {
-    return {
-      isPrimary: true,
-      keys: [element.dataset.resourceReferenceKey ?? ''],
-    };
+  const currentLibraryId = libraryId(element);
+  const fallbackKey = element.dataset.resourceReferenceKey ?? '';
+  if (!currentLibraryId) {
+    return { isPrimary: true, keys: [fallbackKey] };
   }
 
-  const references = [...block.querySelectorAll<HTMLElement>(TABLE_REFERENCE_SELECTOR)];
+  const references = [
+    ...editorRoot(element).querySelectorAll<HTMLElement>(TABLE_REFERENCE_SELECTOR),
+  ];
   const currentIndex = references.indexOf(element);
   if (currentIndex === -1) {
-    return {
-      isPrimary: true,
-      keys: [element.dataset.resourceReferenceKey ?? ''],
-    };
+    return { isPrimary: true, keys: [fallbackKey] };
   }
 
-  const currentLibraryId = libraryId(element);
   let start = currentIndex;
   let end = currentIndex;
   while (
-    start > 0 &&
-    libraryId(references[start - 1]!) === currentLibraryId &&
-    isWhitespaceBetween(references[start - 1]!, references[start]!)
+    start > 0
+    && libraryId(references[start - 1]!) === currentLibraryId
+    && isMergeableGap(references[start - 1]!, references[start]!)
   ) {
     start -= 1;
   }
   while (
-    end < references.length - 1 &&
-    libraryId(references[end + 1]!) === currentLibraryId &&
-    isWhitespaceBetween(references[end]!, references[end + 1]!)
+    end < references.length - 1
+    && libraryId(references[end + 1]!) === currentLibraryId
+    && isMergeableGap(references[end]!, references[end + 1]!)
   ) {
     end += 1;
   }
