@@ -39,7 +39,7 @@ function isPermanentError(error: unknown): boolean {
 export type DialogueWorkerDependencies = {
   claim: typeof claimDialogueGenerationJob;
   heartbeat: typeof heartbeatDialogueGenerationJob;
-  complete: typeof completeDialogueGenerationJob;
+  complete: (serviceClient: SupabaseClient, jobId: string, workerId: string, scriptLibraryId: string) => Promise<Awaited<ReturnType<typeof completeDialogueGenerationJob>> | boolean>;
   fail: typeof failDialogueGenerationJob;
   retry: (serviceClient: SupabaseClient, jobId: string, workerId: string, errorMessage: string, delaySeconds: number) => Promise<DialogueJobStatus | null>;
   read: typeof documentStateGateway.read;
@@ -83,7 +83,42 @@ const defaultDependencies: DialogueWorkerDependencies = {
       .eq('document_export_type', 'script')
       .maybeSingle();
     if (error) throw error;
-    if (!data) return null;
+    if (!data) {
+      // Stable Script resources are keyed by the parent GDD series and chapter
+      // rather than by this generation job. Environments without the evolution
+      // migration may reject this optional lookup, so fall back to regeneration.
+      try {
+        const parent = await client.from('gdd_generation_jobs')
+          .select('generation_series_id')
+          .eq('id', job.gdd_generation_job_id)
+          .eq('project_id', job.project_id)
+          .maybeSingle();
+        const seriesId = (parent.data as { generation_series_id?: unknown } | null)?.generation_series_id;
+        if (parent.error || typeof seriesId !== 'string') return null;
+        const key = job.chapter_key.trim().replace(/\s+/g, ' ').toLowerCase();
+        const mapping = await client.from('gdd_series_resources')
+          .select('library_id')
+          .eq('series_id', seriesId)
+          .eq('resource_kind', 'script_table')
+          .eq('logical_key', key)
+          .maybeSingle();
+        const stableId = (mapping.data as { library_id?: unknown } | null)?.library_id;
+        if (mapping.error || typeof stableId !== 'string') return null;
+        const stable = await client.from('libraries')
+          .select('id,dialogue_generation_ready,dialogue_generation_source_epoch,dialogue_generation_source_revision,dialogue_generation_source_update_ids')
+          .eq('id', stableId)
+          .eq('project_id', job.project_id)
+          .maybeSingle();
+        if (stable.error || !stable.data) return null;
+        if (stable.data.dialogue_generation_ready === true
+          && stable.data.dialogue_generation_source_epoch === sourceState.epoch
+          && stable.data.dialogue_generation_source_revision === sourceState.revision
+          && JSON.stringify(stable.data.dialogue_generation_source_update_ids ?? []) === JSON.stringify(sourceState.updateIds)) return stableId;
+      } catch {
+        return null;
+      }
+      return null;
+    }
     if (data.dialogue_generation_ready === true
       && data.dialogue_generation_source_epoch === sourceState.epoch
       && data.dialogue_generation_source_revision === sourceState.revision
@@ -164,9 +199,12 @@ export async function processClaimedDialogueJob(
     };
     const existingScriptId = await dependencies.findExistingScript(serviceClient, job, sourceState);
     if (existingScriptId) {
-      await dependencies.complete(serviceClient, job.id, workerId, existingScriptId);
+      const completion = await dependencies.complete(serviceClient, job.id, workerId, existingScriptId);
+      const completedScriptId = completion && typeof completion === 'object' && 'scriptLibraryId' in completion
+        ? completion.scriptLibraryId
+        : existingScriptId;
       try {
-        await dependencies.updateReference(serviceClient, job, existingScriptId);
+        await dependencies.updateReference(serviceClient, job, completedScriptId);
       } catch {
         // Job status remains authoritative when a user edit wins the GDD CAS race.
       }

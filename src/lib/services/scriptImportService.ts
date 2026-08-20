@@ -217,7 +217,12 @@ async function importCompiledScript(
         p_source_update_ids: dialogueSourceState!.updateIds,
       });
       if (finalized.error) throw finalized.error;
-      if (finalized.data !== true) throw new Error('Dialogue Script import lost its finalization fence.');
+      const finalRow = Array.isArray(finalized.data) ? finalized.data[0] : finalized.data;
+      const stableLibraryId = finalRow && typeof finalRow === 'object' && 'script_library_id' in finalRow
+        ? (finalRow as { script_library_id?: unknown }).script_library_id
+        : finalized.data === true ? libraryId : null;
+      if (typeof stableLibraryId !== 'string') throw new Error('Dialogue Script import lost its finalization fence.');
+      return { ...result, libraryId: stableLibraryId };
     }
     return result;
   } catch (error) {

@@ -266,8 +266,9 @@ begin
     or jsonb_array_length(p_table_resources) > 20 then
     raise exception 'GDD table resources must be an array with at most 20 entries' using errcode = '22023';
   end if;
-  if p_dialogue_resources is null or jsonb_typeof(p_dialogue_resources) <> 'array' then
-    raise exception 'GDD dialogue resources must be an array' using errcode = '22023';
+  if p_dialogue_resources is null or jsonb_typeof(p_dialogue_resources) <> 'array'
+    or jsonb_array_length(p_dialogue_resources) > 50 then
+    raise exception 'GDD dialogue resources must be an array with at most 50 entries' using errcode = '22023';
   end if;
   perform public.assert_document_snapshot_payload(p_yjs_state, p_markdown);
 
@@ -319,8 +320,8 @@ begin
   where system.id = v_job.design_system_id;
   if v_system_title is null then v_system_title := 'Game Design System'; end if;
 
-  insert into public.gdd_resource_series(project_id, design_system_id)
-  values (v_job.project_id, v_job.design_system_id)
+  insert into public.gdd_resource_series(project_id, design_system_id, current_revision)
+  values (v_job.project_id, v_job.design_system_id, 0)
   on conflict (project_id, design_system_id) do nothing;
 
   select series.* into v_series from public.gdd_resource_series as series
@@ -363,7 +364,8 @@ begin
     else
       select folder.id into v_existing_folder_id
       from public.folders as folder
-      where folder.project_id = v_job.project_id and folder.name = v_system_title;
+      where folder.project_id = v_job.project_id and folder.parent_folder_id is null
+        and lower(regexp_replace(btrim(folder.name), '\\s+', ' ', 'g')) = lower(regexp_replace(btrim(v_system_title), '\\s+', ' ', 'g'));
       if v_existing_folder_id is not null then
         raise exception 'A folder named "%" already exists in this project and is not associated with this GDD series; choose a different Game Design System title.', v_system_title
           using errcode = '23505';
@@ -375,11 +377,19 @@ begin
     update public.gdd_resource_series set folder_id = v_folder_id where id = v_series.id;
     v_series.folder_id := v_folder_id;
   end if;
-  if exists (select 1 from public.folders where id = v_folder_id and project_id = v_job.project_id and name <> v_system_title) then
-    if exists (select 1 from public.folders where project_id = v_job.project_id and name = v_system_title and id <> v_folder_id) then
+  if v_series.current_revision = 0 and exists (
+    select 1 from public.gdd_generation_jobs prior
+    where prior.project_id = v_job.project_id and prior.design_system_id = v_job.design_system_id
+      and prior.status = 'completed' and prior.id <> v_job.id
+  ) then
+    update public.gdd_resource_series set current_revision = 1 where id = v_series.id;
+    v_series.current_revision := 1;
+  end if;
+  if exists (select 1 from public.folders where id = v_folder_id and project_id = v_job.project_id and parent_folder_id is null and lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) <> lower(regexp_replace(btrim(v_system_title), '\\s+', ' ', 'g'))) then
+    if exists (select 1 from public.folders where project_id = v_job.project_id and parent_folder_id is null and id <> v_folder_id and lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) = lower(regexp_replace(btrim(v_system_title), '\\s+', ' ', 'g'))) then
       raise exception 'A folder named "%" already exists in this project and conflicts with the GDD series.', v_system_title using errcode = '23505';
     end if;
-    update public.folders set name = v_system_title where id = v_folder_id and project_id = v_job.project_id;
+    update public.folders set name = v_system_title where id = v_folder_id and project_id = v_job.project_id and parent_folder_id is null;
   end if;
 
   v_document_id := v_series.primary_document_id;
@@ -411,7 +421,11 @@ begin
     select distinct on (lower(btrim(table_name)))
       table_id as library_id,
       lower(btrim(table_name)) as logical_key,
-      encode(extensions.digest(convert_to(jsonb_build_object('table', library.name, 'purpose', library.description)::text, 'UTF8'), 'sha256'), 'hex') as content_hash
+          encode(extensions.digest(convert_to(jsonb_build_object(
+            'table', library.name, 'purpose', library.description,
+            'fields', coalesce((select jsonb_agg(definition.label order by definition.order_index, definition.id) from public.library_field_definitions definition where definition.library_id = library.id), '[]'::jsonb),
+            'rows', coalesce((select jsonb_agg(jsonb_build_object('name', asset.name, 'values', coalesce((select jsonb_object_agg(definition.label, value.value_json) from public.library_asset_values value join public.library_field_definitions definition on definition.id = value.field_id where value.asset_id = asset.id), '{}'::jsonb)) order by asset.row_index, asset.id) from public.library_assets asset where asset.library_id = library.id), '[]'::jsonb)
+          )::text, 'UTF8'), 'sha256'), 'hex') as content_hash
     from public.gdd_generation_jobs as prior
     cross join unnest(prior.output_table_ids, prior.output_table_names) as output(table_id, table_name)
     join public.libraries as library on library.id = output.table_id
@@ -437,6 +451,13 @@ begin
       raise exception 'Duplicate or invalid generated table resource' using errcode = '22023';
     end if;
     v_preflight_keys := array_append(v_preflight_keys, 'table:' || v_resource_key);
+  end loop;
+  for v_dialogue in select value from jsonb_array_elements(p_dialogue_resources) loop
+    v_dialogue_key := lower(regexp_replace(btrim(v_dialogue ->> 'chapterKey'), '\s+', ' ', 'g'));
+    if v_dialogue_key is null or v_dialogue_key = '' or ('dialogue_document:' || v_dialogue_key) = any(v_preflight_keys) then
+      raise exception 'Duplicate or invalid generated dialogue resource' using errcode = '22023';
+    end if;
+    v_preflight_keys := array_append(v_preflight_keys, 'dialogue_document:' || v_dialogue_key);
   end loop;
 
   v_document_hash := encode(extensions.digest(convert_to(
@@ -473,7 +494,7 @@ begin
       end if;
       update public.documents set folder_id = v_folder_id, content = p_markdown, yjs_state = p_yjs_state,
         description = left(coalesce(p_description, ''), 250), gdd_generation_metadata = p_metadata,
-        collab_revision = collab_revision + 1 where id = v_document_id;
+        collab_epoch = collab_epoch + 1, collab_revision = collab_revision + 1 where id = v_document_id;
       v_updated := array_append(v_updated, 'gdd_document:gdd');
       v_changed := true;
     end if;
@@ -588,11 +609,11 @@ begin
 
   -- Dialogue chapter Documents/jobs use the chapter key as their durable identity.
   for v_dialogue in select value from jsonb_array_elements(p_dialogue_resources) loop
-    v_dialogue_key := lower(regexp_replace(btrim(v_dialogue ->> 'chapterKey'), '\\s+', ' ', 'g'));
+    v_dialogue_key := lower(regexp_replace(btrim(v_dialogue ->> 'chapterKey'), '\s+', ' ', 'g'));
     if v_dialogue_key is null or v_dialogue_key = '' or ('dialogue_document:' || v_dialogue_key) = any(v_seen) then
       raise exception 'Duplicate or invalid generated dialogue resource' using errcode = '22023';
     end if;
-    v_dialogue_hash := encode(extensions.digest(convert_to(trim(regexp_replace(coalesce(v_dialogue ->> 'content', ''), E'\\r\\n?', E'\\n', 'g')), 'UTF8'), 'sha256'), 'hex');
+    v_dialogue_hash := encode(extensions.digest(convert_to(jsonb_build_object('title', btrim(v_dialogue ->> 'title'), 'content', trim(regexp_replace(coalesce(v_dialogue ->> 'content', ''), E'\\r\\n?', E'\\n', 'g')))::text, 'UTF8'), 'sha256'), 'hex');
     select resource.document_id into v_dialogue_document_id
     from public.gdd_series_resources resource
     where resource.series_id = v_series.id and resource.resource_kind = 'dialogue_document' and resource.logical_key = v_dialogue_key
@@ -607,10 +628,17 @@ begin
       values (coalesce((v_dialogue ->> 'dialogueJobId')::uuid, gen_random_uuid()), v_job.id, v_job.project_id, v_dialogue_key, coalesce(nullif(btrim(v_dialogue ->> 'title'), ''), v_dialogue_key), coalesce(v_dialogue ->> 'content', ''), v_dialogue_document_id)
       on conflict (gdd_generation_job_id, chapter_key) do nothing;
     else
-      if exists (select 1 from public.documents d where d.id = v_dialogue_document_id and trim(regexp_replace(coalesce(d.content, ''), E'\\r\\n?', E'\\n', 'g')) <> trim(regexp_replace(coalesce(v_dialogue ->> 'content', ''), E'\\r\\n?', E'\\n', 'g'))) then
+      select d.* into v_document from public.documents d where d.id = v_dialogue_document_id for update;
+      if v_document.id is not null and (trim(regexp_replace(coalesce(v_document.content, ''), E'\\r\\n?', E'\\n', 'g')) <> trim(regexp_replace(coalesce(v_dialogue ->> 'content', ''), E'\\r\\n?', E'\\n', 'g')) or v_document.name <> coalesce(nullif(btrim(v_dialogue ->> 'title'), ''), v_dialogue_key)) then
+        if exists (select 1 from public.document_yjs_updates pending where pending.document_id = v_dialogue_document_id and pending.epoch = v_document.collab_epoch) then
+          raise exception 'Dialogue Document has pending collaborative edits.' using errcode = 'PT409';
+        end if;
         insert into public.document_versions(document_id, project_id, name, version_type, snapshot_yjs_state, snapshot_content, snapshot_epoch, snapshot_revision, created_by)
-        select d.id, d.project_id, 'GDD Version ' || v_generation_revision::text, 'gdd_generation', d.yjs_state, d.content, d.collab_epoch, d.collab_revision, v_job.owner_id from public.documents d where d.id = v_dialogue_document_id;
-        update public.documents set content = v_dialogue ->> 'content', folder_id = v_folder_id where id = v_dialogue_document_id;
+        values (v_document.id, v_document.project_id, 'GDD Version ' || v_series.current_revision::text, 'gdd_generation', v_document.yjs_state, v_document.content, v_document.collab_epoch, v_document.collab_revision, v_job.owner_id);
+        update public.documents set content = v_dialogue ->> 'content', name = coalesce(nullif(btrim(v_dialogue ->> 'title'), ''), v_dialogue_key), folder_id = v_folder_id, collab_revision = collab_revision + 1 where id = v_dialogue_document_id;
+        insert into public.dialogue_generation_jobs(id, gdd_generation_job_id, project_id, chapter_key, title, source_content, document_id)
+        values (coalesce((v_dialogue ->> 'dialogueJobId')::uuid, gen_random_uuid()), v_job.id, v_job.project_id, v_dialogue_key, coalesce(nullif(btrim(v_dialogue ->> 'title'), ''), v_dialogue_key), coalesce(v_dialogue ->> 'content', ''), v_dialogue_document_id)
+        on conflict (gdd_generation_job_id, chapter_key) do update set title = excluded.title, source_content = excluded.source_content, document_id = excluded.document_id, status = 'queued', available_at = now(), lease_owner = null, lease_expires_at = null, completed_at = null, last_error = null;
         v_updated := array_append(v_updated, 'dialogue_document:' || v_dialogue_key);
       else
         v_reused := array_append(v_reused, 'dialogue_document:' || v_dialogue_key);
@@ -645,8 +673,20 @@ begin
 end;
 $$;
 
--- Keep the older nine-argument endpoint for workers deployed during a rolling
--- migration. It delegates to the canonical ten-argument implementation.
+-- Keep older endpoints as thin delegates so rolling workers receive the same
+-- stable identity and revision contract.
+drop function if exists public.persist_completed_gdd_generation_job(uuid, text, text, text, text, jsonb, text[], text[]);
+create function public.persist_completed_gdd_generation_job(
+  p_job_id uuid, p_worker_id text, p_markdown text, p_yjs_state text,
+  p_description text, p_metadata jsonb, p_applied_rule_ids text[], p_omitted_rule_ids text[]
+)
+returns table(document_id uuid, document_name text, folder_id uuid, table_ids uuid[], table_names text[], generation_revision integer, resource_change_summary jsonb)
+language sql security definer set search_path = '' as $$
+  select persisted.document_id, persisted.document_name, persisted.folder_id, persisted.table_ids, persisted.table_names, persisted.generation_revision, persisted.resource_change_summary
+  from public.persist_completed_gdd_generation_job(p_job_id, p_worker_id, p_markdown, p_yjs_state, p_description, p_metadata, p_applied_rule_ids, p_omitted_rule_ids, '[]'::jsonb, '[]'::jsonb) persisted;
+$$;
+
+drop function if exists public.persist_completed_gdd_generation_job(uuid, text, text, text, text, jsonb, text[], text[], jsonb);
 create or replace function public.persist_completed_gdd_generation_job(
   p_job_id uuid,
   p_worker_id text,
@@ -658,12 +698,12 @@ create or replace function public.persist_completed_gdd_generation_job(
   p_omitted_rule_ids text[],
   p_table_resources jsonb
 )
-returns table(document_id uuid, document_name text, folder_id uuid, table_ids uuid[], table_names text[])
+returns table(document_id uuid, document_name text, folder_id uuid, table_ids uuid[], table_names text[], generation_revision integer, resource_change_summary jsonb)
 language sql
 security definer
 set search_path = ''
 as $$
-  select persisted.document_id, persisted.document_name, persisted.folder_id, persisted.table_ids, persisted.table_names
+  select persisted.document_id, persisted.document_name, persisted.folder_id, persisted.table_ids, persisted.table_names, persisted.generation_revision, persisted.resource_change_summary
   from public.persist_completed_gdd_generation_job(
     p_job_id, p_worker_id, p_markdown, p_yjs_state, p_description, p_metadata,
     p_applied_rule_ids, p_omitted_rule_ids, p_table_resources, '[]'::jsonb
@@ -681,6 +721,12 @@ revoke all on function public.persist_completed_gdd_generation_job(
 ) from public, anon, authenticated;
 grant execute on function public.persist_completed_gdd_generation_job(
   uuid, text, text, text, text, jsonb, text[], text[], jsonb
+) to service_role;
+revoke all on function public.persist_completed_gdd_generation_job(
+  uuid, text, text, text, text, jsonb, text[], text[]
+) from public, anon, authenticated;
+grant execute on function public.persist_completed_gdd_generation_job(
+  uuid, text, text, text, text, jsonb, text[], text[]
 ) to service_role;
 
 notify pgrst, 'reload schema';

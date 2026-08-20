@@ -94,6 +94,7 @@ describe('GDD resource version evolution migration', () => {
     expect(sql).toMatch(/v_resource - 'id'/i);
     expect(sql).toMatch(/generation_revision = v_generation_revision/i);
     expect(sql).toMatch(/resource_change_summary = v_change_summary/i);
+    expect(sql).toMatch(/collab_epoch = collab_epoch \+ 1[\s\S]*collab_revision = collab_revision \+ 1/is);
     expect(sql).toMatch(/for v_dialogue in select value from jsonb_array_elements\(p_dialogue_resources\)/i);
     expect(sql).toMatch(/resource_kind, logical_key, document_id, content_hash[\s\S]*'dialogue_document'/is);
     expect(sql).toMatch(/insert into public\.dialogue_generation_jobs/i);
@@ -103,6 +104,8 @@ describe('GDD resource version evolution migration', () => {
   it('retains a nine-argument wrapper for rolling workers', () => {
     const sql = readFileSync(migrationPath, 'utf8');
 
-    expect(sql).toMatch(/create or replace function public\.persist_completed_gdd_generation_job\([\s\S]*p_table_resources jsonb[\s\S]*\)\s*returns table\(document_id uuid, document_name text, folder_id uuid, table_ids uuid\[\], table_names text\[\]\)[\s\S]*p_table_resources, '\[\]'::jsonb/is);
+    expect(sql).toMatch(/create or replace function public\.persist_completed_gdd_generation_job\([\s\S]*p_table_resources jsonb[\s\S]*\)\s*returns table\(document_id uuid, document_name text, folder_id uuid, table_ids uuid\[\], table_names text\[\], generation_revision integer, resource_change_summary jsonb\)[\s\S]*p_table_resources, '\[\]'::jsonb/is);
+    expect(sql).toMatch(/create function public\.persist_completed_gdd_generation_job\([\s\S]*p_omitted_rule_ids text\[\][\s\S]*\)\s*returns table\(document_id uuid, document_name text, folder_id uuid, table_ids uuid\[\], table_names text\[\], generation_revision integer, resource_change_summary jsonb\)/is);
   });
+
 });

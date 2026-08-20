@@ -4,7 +4,7 @@
  * Type definitions for library version control functionality
  */
 
-export type VersionType = 'manual' | 'restore' | 'backup';
+export type VersionType = 'manual' | 'restore' | 'backup' | 'gdd_generation';
 
 export interface LibraryVersion {
   id: string;
