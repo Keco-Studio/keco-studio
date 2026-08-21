@@ -748,6 +748,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     await loginAndOpen(page, backend);
     await createSavedMap(page);
     await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+    await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
     await expect(page.getByText('Generation failed', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('image_not_opaque', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Retry generation' }).click();
