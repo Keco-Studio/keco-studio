@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import process from 'node:process';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -17,9 +17,10 @@ const EMAIL = process.env.KECO_ACCEPTANCE_EMAIL ?? '';
 const PASSWORD = process.env.KECO_ACCEPTANCE_PASSWORD ?? '';
 const REQUESTED_MAP_ID = process.env.KECO_ACCEPTANCE_V3_MAP_ID ?? '';
 const REQUESTED_REVISION_ID = process.env.KECO_ACCEPTANCE_V3_REVISION_ID ?? '';
-const CREATE_V3 = process.env.KECO_ACCEPTANCE_CREATE_V3 === 'YES';
+const CREATE_V3 = process.env.KECO_ACCEPTANCE_CREATE_V3 === 'true';
+const CONFIRM_PAID = process.env.KECO_ACCEPTANCE_CONFIRM_PAID === 'true';
 const PROJECT_ID = process.env.KECO_ACCEPTANCE_PROJECT_ID ?? '';
-const EDGE_URL = (process.env.KECO_ACCEPTANCE_EDGE_URL ?? '').trim();
+const APP_URL = (process.env.KECO_ACCEPTANCE_APP_URL ?? '').trim();
 const POLL_INTERVAL_MS = Number(process.env.KECO_ACCEPTANCE_POLL_MS ?? 5_000);
 const MAX_POLL_CYCLES = Number(process.env.KECO_ACCEPTANCE_MAX_POLLS ?? 180);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -121,51 +122,36 @@ function assertDurableJsonSafe(value: unknown): void {
   visit(value);
 }
 
-async function invokePixelLab(
-  supabase: SupabaseClient,
+async function callCreateMapApi(
   body: JsonRecord,
   accessToken: string,
-  anonKey: string,
 ): Promise<JsonRecord> {
-  if (EDGE_URL) {
-    let endpoint: URL;
-    try {
-      endpoint = new URL(EDGE_URL);
-    } catch {
-      throw new AcceptanceError('acceptance_edge_url_invalid');
-    }
-    if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
-      throw new AcceptanceError('acceptance_edge_url_invalid');
-    }
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-        apikey: anonKey,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    const payload = await response.json().catch(() => null) as JsonRecord | null;
-    if (!response.ok) {
-      throw new AcceptanceError(
-        typeof payload?.code === 'string' ? payload.code : 'pixellab_function_error',
-        typeof payload?.error === 'string' ? payload.error : `Edge function returned HTTP ${response.status}`,
-      );
-    }
-    return payload ?? {};
+  let app: URL;
+  try {
+    app = new URL(APP_URL);
+  } catch {
+    throw new AcceptanceError('acceptance_app_url_invalid');
   }
-  const { data, error } = await supabase.functions.invoke('pixellab-map', { body });
-  if (!error) return (data ?? {}) as JsonRecord;
-  const context = error && typeof error === 'object' ? (error as { context?: unknown }).context : null;
-  let payload: JsonRecord | null = null;
-  if (context && typeof context === 'object' && 'json' in context && typeof context.json === 'function') {
-    payload = await (context.json as () => Promise<unknown>)().catch(() => null) as JsonRecord | null;
+  const localHttp = app.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(app.hostname);
+  if ((app.protocol !== 'https:' && !localHttp) || app.username || app.password) {
+    throw new AcceptanceError('acceptance_app_url_invalid');
   }
-  throw new AcceptanceError(
-    typeof payload?.code === 'string' ? payload.code : 'pixellab_function_error',
-    typeof payload?.error === 'string' ? payload.error : error.message,
-  );
+  const response = await fetch(new URL('/api/mcp/create-map', app), {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null) as JsonRecord | null;
+  if (!response.ok || !payload) {
+    throw new AcceptanceError(
+      typeof payload?.code === 'string' ? payload.code : 'create_map_api_error',
+      typeof payload?.error === 'string' ? payload.error : `Create Map API returned HTTP ${response.status}`,
+    );
+  }
+  return payload;
 }
 
 async function readRevision(supabase: SupabaseClient, revisionId: string): Promise<RevisionRow> {
@@ -207,7 +193,7 @@ async function authenticate(supabaseUrl: string, anonKey: string) {
 async function main(): Promise<void> {
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
   const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
-  if (!supabaseUrl || !anonKey) throw new AcceptanceError('supabase_not_configured');
+  if (!supabaseUrl || !anonKey || !APP_URL) throw new AcceptanceError('acceptance_environment_not_configured');
   if (Boolean(REQUESTED_MAP_ID) !== Boolean(REQUESTED_REVISION_ID)) {
     throw new AcceptanceError('authoritative_v3_map_and_revision_required');
   }
@@ -215,7 +201,7 @@ async function main(): Promise<void> {
   const authenticated = await authenticate(supabaseUrl, anonKey);
   const { supabase, data: auth, error: authError } = authenticated;
   if (authError || !auth.session || !auth.user) throw new AcceptanceError('authentication_failed');
-  log('authenticated', { email: EMAIL, userId: auth.user.id });
+  log('authenticated', { userId: auth.user.id });
 
   let mapId = REQUESTED_MAP_ID;
   let approvedRevisionId = REQUESTED_REVISION_ID;
@@ -282,7 +268,7 @@ async function main(): Promise<void> {
     throw new AcceptanceError('authenticated_editor_required');
   }
 
-  let revision = await readRevision(supabase, approvedRevisionId);
+  const revision = await readRevision(supabase, approvedRevisionId);
   if (revision.map_project_id !== mapId) throw new AcceptanceError('approved_revision_map_mismatch');
   const parsedPlan = validateMapPlanV3(revision.plan);
   if (parsedPlan.success === false) throw new AcceptanceError('approved_plan_invalid');
@@ -291,36 +277,38 @@ async function main(): Promise<void> {
   let generationRevisionId = revision.id;
   let nextDraftRevisionId = String(map.current_revision_id);
   let assets = await listAssets(supabase, generationRevisionId);
-
-  if (revision.status === 'draft') {
-    if (map.current_revision_id !== revision.id) throw new AcceptanceError('approved_draft_is_not_current');
-    if (assets.length !== 0) throw new AcceptanceError('approved_draft_has_assets');
-    const { data, error } = await supabase.rpc('publish_map_revision_v3', {
-      p_map_id: mapId,
-      p_draft_revision_id: revision.id,
-      p_expected_save_version: revision.save_version,
-    });
-    if (error) throw new AcceptanceError(error.code ?? 'publish_failed', error.message);
-    const published = firstRow<{
-      status: string;
-      published_revision_id: string;
-      next_draft_revision_id: string;
-    }>(data, 'publish_invalid_response');
-    if (published.status !== 'published') throw new AcceptanceError('publish_conflict');
-    generationRevisionId = published.published_revision_id;
-    nextDraftRevisionId = published.next_draft_revision_id;
-    revision = await readRevision(supabase, generationRevisionId);
-    const generationId = randomUUID();
-    const { data: createdData, error: createdError } = await supabase.rpc('create_map_asset_plan_v3', {
-      p_revision_id: generationRevisionId,
-      p_generation_id: generationId,
-      p_plan_fingerprint: fingerprint,
-    });
-    if (createdError) throw new AcceptanceError(createdError.code ?? 'asset_plan_failed', createdError.message);
-    const created = firstRow<{ asset_id: string }>(createdData, 'asset_plan_invalid_response');
+  const existingAsset = assets.length === 1 ? assets[0] : null;
+  const unknownBlocked = existingAsset?.status === 'blocked'
+    && existingAsset.last_error_code === 'pixellab_submit_outcome_unknown';
+  const shouldPrepare = revision.status === 'draft' || existingAsset?.status === 'planned' || unknownBlocked;
+  let prepared: JsonRecord | null = null;
+  if (shouldPrepare) {
+    prepared = await callCreateMapApi({
+      action: 'prepare_map_generation',
+      projectId: map.project_id,
+      mapId,
+      revisionId: revision.id,
+      saveVersion: revision.save_version,
+    }, auth.session.access_token);
+    if (
+      typeof prepared.feeNotice !== 'string'
+      || typeof prepared.confirmationToken !== 'string'
+      || !UUID.test(String(prepared.revisionId))
+      || !UUID.test(String(prepared.assetId))
+      || !UUID.test(String(prepared.generationId))
+      || !SHA256.test(String(prepared.planFingerprint))
+    ) throw new AcceptanceError('map_generation_prepare_invalid');
+    generationRevisionId = String(prepared.revisionId);
+    if (typeof prepared.nextDraftRevisionId === 'string') {
+      nextDraftRevisionId = prepared.nextDraftRevisionId;
+    }
     assets = await listAssets(supabase, generationRevisionId);
-    if (assets.length !== 1 || assets[0].id !== created.asset_id) throw new AcceptanceError('single_map_image_not_created');
-    log('generation_revision_created', { mapId, generationRevisionId, nextDraftRevisionId, generationId });
+    log('generation_prepared', {
+      mapId,
+      revisionId: generationRevisionId,
+      assetId: String(prepared.assetId),
+      status: String(prepared.status),
+    });
   }
 
   if (assets.length !== 1) throw new AcceptanceError('expected_exactly_one_map_image');
@@ -340,61 +328,61 @@ async function main(): Promise<void> {
     revisionId: generationRevisionId,
     generationId: asset.generation_id as string,
     assetId: asset.id,
+    planFingerprint: fingerprint,
   };
 
   let paidRequestSubmitted = false;
   const retryableBlocked = asset.status === 'blocked'
     && ['pixellab_rate_limited', 'pixellab_quota_exceeded'].includes(asset.last_error_code ?? '');
   const retryableFailed = asset.status === 'failed' && Boolean(asset.provider_job_id);
-  if ((asset.status === 'blocked' || asset.status === 'failed') && !retryableBlocked && !retryableFailed) {
+  if (
+    (asset.status === 'blocked' || asset.status === 'failed')
+    && !unknownBlocked
+    && !retryableBlocked
+    && !retryableFailed
+  ) {
     throw new AcceptanceError('generation_not_safe_to_retry');
   }
-  if (asset.status === 'planned' || retryableFailed || retryableBlocked) {
-    if (process.env.KECO_ACCEPTANCE_CONFIRM_PAID !== 'YES') {
+  if (prepared) {
+    if (!CONFIRM_PAID) {
       throw new AcceptanceError('explicit_paid_confirmation_required');
     }
-    const lifecycleOperation = asset.status === 'planned' ? 'submit' : 'retry';
-    log('paid_request_confirmed', {
-      operation: 'create_image_pro',
-      lifecycleOperation,
-      mapId,
-      revisionId: generationRevisionId,
-    });
-    await invokePixelLab(
-      supabase,
-      { operation: lifecycleOperation, ...identity },
-      auth.session.access_token,
-      anonKey,
-    );
+    await callCreateMapApi({
+      action: 'start_map_generation',
+      ...identity,
+      confirmationToken: prepared.confirmationToken,
+      confirmPaidGeneration: true,
+    }, auth.session.access_token);
+    paidRequestSubmitted = true;
+    assets = await listAssets(supabase, generationRevisionId);
+    asset = assets[0];
+  } else if (retryableFailed || retryableBlocked) {
+    await callCreateMapApi({
+      action: 'retry_map_generation',
+      ...identity,
+    }, auth.session.access_token);
     paidRequestSubmitted = true;
     assets = await listAssets(supabase, generationRevisionId);
     asset = assets[0];
   }
-  if (!['generating', 'ready'].includes(asset.status)) {
+  if (!['queued', 'generating', 'ready'].includes(asset.status)) {
     throw new AcceptanceError(asset.last_error_code ?? `generation_not_resumable:${asset.status}`);
   }
 
-  for (let cycle = 0; asset.status === 'generating' && cycle < MAX_POLL_CYCLES; cycle += 1) {
-    const polled = await invokePixelLab(
-      supabase,
-      { operation: 'poll', ...identity },
-      auth.session.access_token,
-      anonKey,
-    );
-    if (polled.status === 'completed') {
-      await invokePixelLab(
-        supabase,
-        { operation: 'validate', ...identity },
-        auth.session.access_token,
-        anonKey,
-      );
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
+  const terminalStatuses = ['ready', 'failed', 'blocked'];
+  for (let cycle = 0; !terminalStatuses.includes(asset.status) && cycle < MAX_POLL_CYCLES; cycle += 1) {
+    const polled = await callCreateMapApi({
+      action: 'get_map_generation',
+      ...identity,
+    }, auth.session.access_token);
     assets = await listAssets(supabase, generationRevisionId);
     if (assets.length !== 1) throw new AcceptanceError('map_image_count_changed');
     asset = assets[0];
-    log('generation_polled', { cycle: cycle + 1, status: asset.status });
+    const status = typeof polled.status === 'string' ? polled.status : asset.status;
+    log('generation_polled', { cycle: cycle + 1, status });
+    if (!terminalStatuses.includes(status)) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
   }
   if (asset.status !== 'ready') throw new AcceptanceError(asset.last_error_code ?? 'generation_poll_timeout');
 
@@ -461,17 +449,13 @@ async function main(): Promise<void> {
 
   log('acceptance_complete', {
     mapId,
-    mapName: map.name,
     approvedRevisionId,
     generationRevisionId,
     currentDraftRevisionId: nextDraftRevisionId,
-    operation: asset.provider_operation,
+    assetId: asset.id,
+    status: asset.status,
     paidRequestSubmitted,
-    dimensions: `${metadata.width}x${metadata.height}`,
-    sha256Prefix: digest.slice(0, 12),
-    transparency: asset.has_transparency,
     privateReadbackVerified: true,
-    durableMetadataSensitiveValues: false,
     createdDedicatedDraft,
   });
   await supabase.auth.signOut();
@@ -480,7 +464,6 @@ async function main(): Promise<void> {
 void main().catch((error) => {
   log('acceptance_failed', {
     code: error instanceof AcceptanceError ? error.code : 'create_map_v3_acceptance_failed',
-    error: error instanceof Error ? error.message : 'unknown_error',
   });
   process.exitCode = 1;
 });

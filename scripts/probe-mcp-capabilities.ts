@@ -8,8 +8,17 @@ const WRITE_TOOLS = ['add_table_field', 'complete_image_upload', 'complete_image
   'update_document', 'update_table_row', 'edit_table_field',
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
   'bulk_update_table_rows', 'upsert_table_rows'];
-const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS].sort();
-const ACCOUNT_BASE_TOOLS = ['keco_connection_probe', 'list_projects', ...READ_TOOLS].sort();
+const GDS_TOOLS = ['list_game_design_systems', 'read_game_design_system', 'read_project_game_design_system',
+  'get_game_design_system_generation', 'create_game_design_system', 'generate_game_design_system',
+  'create_game_design_system_version', 'set_project_game_design_system', 'clear_project_game_design_system'];
+const MAP_READ_TOOLS = ['list_maps', 'read_map', 'get_map_generation'];
+const MAP_WRITE_TOOLS = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
+  'start_map_generation', 'retry_map_generation'];
+const PROJECT_WRITE_TOOLS = [...WRITE_TOOLS, ...MAP_WRITE_TOOLS];
+const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS, ...GDS_TOOLS,
+  ...MAP_READ_TOOLS, ...MAP_WRITE_TOOLS].sort();
+const ACCOUNT_BASE_TOOLS = ['keco_connection_probe', 'list_projects', ...READ_TOOLS, ...GDS_TOOLS,
+  ...MAP_READ_TOOLS].sort();
 const LEGACY_RESOURCES = ['keco://documents', 'keco://project', 'keco://tables'].sort();
 const LEGACY_TEMPLATES = ['keco://documents/{documentId}', 'keco://project/structure',
   'keco://tables/{tableId}/rows{?limit,cursor}', 'keco://tables/{tableId}/schema'].sort();
@@ -60,10 +69,10 @@ async function callTool(client: McpRpcClient, name: string, args: Record<string,
 }
 
 function accountToolSet(tools: string[]): { writableToolAdvertisement: boolean } {
-  const base = tools.filter(name => !WRITE_TOOLS.includes(name));
+  const base = tools.filter(name => !PROJECT_WRITE_TOOLS.includes(name));
   exact(base, ACCOUNT_BASE_TOOLS, 'Account tool');
-  const writes = tools.filter(name => WRITE_TOOLS.includes(name));
-  if (writes.length !== 0 && JSON.stringify(writes) !== JSON.stringify([...WRITE_TOOLS].sort())) {
+  const writes = tools.filter(name => PROJECT_WRITE_TOOLS.includes(name));
+  if (writes.length !== 0 && JSON.stringify(writes) !== JSON.stringify([...PROJECT_WRITE_TOOLS].sort())) {
     throw new Error('Account write Tool advertisement is incomplete.');
   }
   return { writableToolAdvertisement: writes.length > 0 };
@@ -281,6 +290,10 @@ export function capabilitiesProbeOptions(
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args.includes('--help')) {
+    process.stdout.write('Usage: npm run probe:mcp-capabilities -- --mcp-url <url> --output <path> [--exercise-writes]\n');
+    return;
+  }
   const output = argument(args, '--output');
   await replaceEvidenceAtomically(output, () =>
     runCapabilitiesProbe(capabilitiesProbeOptions(args))

@@ -236,6 +236,107 @@ retry a lost mutation response until the read-back proves that the intended
 folder was not created. The Tool never overwrites, moves, renames, or deletes an
 existing folder.
 
+## Game Design Systems
+
+The GDS tool group supports account-owned systems and explicit project bindings:
+
+- `list_game_design_systems`, `read_game_design_system`, and
+  `get_game_design_system_generation` discover owned or visible systems and poll
+  generation jobs.
+- `create_game_design_system`, `generate_game_design_system`, and
+  `create_game_design_system_version` create systems or immutable versions.
+  Generation and version creation use their documented idempotency keys.
+- `read_project_game_design_system`, `set_project_game_design_system`, and
+  `clear_project_game_design_system` read or change one project's pinned system
+  version. Binding changes require current owner/admin access.
+
+Owned-system tools do not accept an artificial project selector. On the account
+endpoint, the three project-binding tools require `projectId` from
+`list_projects`. On a legacy endpoint, omit `projectId`; the endpoint injects
+its bound project. After every mutation, poll the generation job when present
+and use a fresh read tool call to verify the stable system/version IDs.
+
+GDS tools never delete a system or version. Idempotency conflicts and stale
+version parents must be resolved by reading current state; do not retry them
+with changed input under the same key.
+
+## Create Map V3
+
+Create Map exposes only schema version 3 through these tools:
+
+- `list_maps` and `read_map` discover saved maps and read the complete current
+  Plan, Scene, source document identity, and generation state.
+- `create_map_draft` creates a V3 draft from a bounded description or project
+  document. Its UUID `idempotencyKey` may be replayed only with identical input.
+- `update_map_draft` saves a complete validated V3 Plan and Scene using the
+  current `saveVersion`; stale writes return `MAP_REVISION_STALE`.
+- `prepare_map_generation`, `start_map_generation`,
+  `get_map_generation`, and `retry_map_generation` implement the paid image
+  lifecycle described below.
+
+Every Map tool requires `projectId` on the account endpoint. Omit `projectId`
+from every Map tool on a legacy endpoint, where the project is already bound.
+Viewers discover only `list_maps`, `read_map`, and `get_map_generation`.
+
+Account draft example:
+
+```json
+{
+  "projectId": "from list_projects",
+  "description": "A compact mountain village with readable roads",
+  "documentId": null,
+  "referenceIds": [],
+  "styleReferenceId": null,
+  "referenceRoles": {},
+  "referenceUsage": {},
+  "styleCopy": [],
+  "idempotencyKey": "new UUID"
+}
+```
+
+Use the same `create_map_draft` arguments without `projectId` on a legacy
+endpoint. Read the returned map and review its V3 Plan before updating or
+preparing generation.
+
+### Paid Map Confirmation
+
+Paid generation is always a two-step operation:
+
+1. Call `prepare_map_generation` with the exact current map ID, revision ID,
+   and save version. It freezes that revision, returns the next editable draft,
+   immutable generation IDs, a fee notice, expiry, and a short-lived
+   confirmation token. It makes no provider request.
+2. Show the returned fee notice. The original map request is intent, not paid
+   confirmation. Wait for a later explicit confirmation from the user.
+3. Only after that confirmation, call `start_map_generation` with the exact
+   returned map/revision/asset/generation/fingerprint identity, the token, and
+   literal `confirmPaidGeneration: true`. Omitted or false confirmation is
+   rejected before provider contact.
+4. Poll `get_map_generation` with the same immutable identity until `ready`,
+   `failed`, or `blocked`. Then call `read_map` for final read-back before
+   reporting success.
+
+Replaying a confirmed start returns the existing job state and does not submit
+twice. `retry_map_generation` accepts only safely rejected or provider-identified
+failure states. An unknown paid submission outcome is never retried silently:
+call `prepare_map_generation` again, show its new fee notice, obtain a new later
+confirmation, and let `start_map_generation` verify the `replace-unknown` token.
+Tokens, Bearer credentials, provider payloads, and signed image URLs must not be
+logged or persisted.
+
+Stable Map failures include `IDEMPOTENCY_CONFLICT`, `MAP_REVISION_STALE`,
+`MAP_CONFIRMATION_REQUIRED`, `MAP_CONFIRMATION_EXPIRED`,
+`MAP_CONFIRMATION_MISMATCH`, `MAP_GENERATION_BLOCKED`,
+`PROVIDER_RATE_LIMITED`, and `PROVIDER_QUOTA_EXCEEDED`. Re-read state after a
+conflict rather than inventing a provider operation. MCP does not expose direct
+PixelLab tools, map deletion, or public publication semantics.
+
+Real paid acceptance is opt-in and must use a controlled account and project.
+Set `KECO_ACCEPTANCE_CREATE_V3=true`, `KECO_ACCEPTANCE_CONFIRM_PAID=true`, and
+the documented acceptance project/app variables only when intentionally
+spending provider credits. Normal tests and capability probes never perform a
+paid request.
+
 ## Server Configuration
 
 The Supabase Edge Function requires `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
