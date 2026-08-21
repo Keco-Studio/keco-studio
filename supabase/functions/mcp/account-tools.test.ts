@@ -27,6 +27,17 @@ const ACCOUNT_WRITE_TOOL_NAMES = [
   "complete_image_uploads",
   "create_folder",
 ];
+const GDS_TOOL_NAMES = [
+  "list_game_design_systems",
+  "read_game_design_system",
+  "read_project_game_design_system",
+  "get_game_design_system_generation",
+  "create_game_design_system",
+  "generate_game_design_system",
+  "create_game_design_system_version",
+  "set_project_game_design_system",
+  "clear_project_game_design_system",
+];
 
 type RpcCall = { name: string; parameters: Record<string, unknown> };
 type StorageCall = { name: string; arguments: unknown[] };
@@ -301,6 +312,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "read_story_graph",
     "semantic_search",
     ...ACCOUNT_WRITE_TOOL_NAMES,
+    ...GDS_TOOL_NAMES,
   ]);
   const listProjects = tools.find((tool) => tool.name === "list_projects")!;
   assertEquals(Object.keys(listProjects.inputSchema.properties ?? {}), [
@@ -308,7 +320,19 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "cursor",
   ]);
   assertEquals(listProjects.inputSchema.required, undefined);
-  for (const tool of tools.slice(2)) {
+  const projectTools = tools.filter((tool) =>
+    ![
+      "keco_connection_probe",
+      "list_projects",
+      "list_game_design_systems",
+      "read_game_design_system",
+      "get_game_design_system_generation",
+      "create_game_design_system",
+      "generate_game_design_system",
+      "create_game_design_system_version",
+    ].includes(tool.name)
+  );
+  for (const tool of projectTools) {
     assertEquals(tool.inputSchema.required?.includes("projectId"), true);
   }
   const addField = tools.find((tool) => tool.name === "add_table_field")!;

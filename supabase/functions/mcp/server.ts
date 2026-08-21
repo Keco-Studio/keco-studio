@@ -12,6 +12,7 @@ import {
 import { toolFailure } from "./results.ts";
 import { asPublicMcpError } from "./errors.ts";
 import { registerAccountTools } from "./account-tools.ts";
+import { registerGdsTools } from "./gds-tools.ts";
 
 const READ_TOOLS = new Set([
   "list_projects",
@@ -20,6 +21,10 @@ const READ_TOOLS = new Set([
   "list_documents",
   "read_document",
   "read_story_graph",
+  "list_game_design_systems",
+  "read_game_design_system",
+  "read_project_game_design_system",
+  "get_game_design_system_generation",
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",
@@ -41,6 +46,11 @@ const WRITE_TOOLS = new Set([
   "prepare_image_uploads",
   "complete_image_uploads",
   "create_folder",
+  "create_game_design_system",
+  "generate_game_design_system",
+  "create_game_design_system_version",
+  "set_project_game_design_system",
+  "clear_project_game_design_system",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",
@@ -208,11 +218,13 @@ export async function createProbeServer(
 
   if (context.mode === "account") {
     await registerAccountTools(server, context);
+    registerGdsTools(server, context);
     registerResources(server, context);
     registerPrompts(server, context);
   } else {
     registerReadTools(server, context);
     registerWriteTools(server, context);
+    registerGdsTools(server, context);
     registerResources(server, context);
     registerPrompts(server, context);
   }
