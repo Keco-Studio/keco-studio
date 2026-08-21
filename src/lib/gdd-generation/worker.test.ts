@@ -223,7 +223,7 @@ describe('GDD generation worker', () => {
   it('persists a bounded map compiler error in v2 document metadata', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockCompileGddMapBriefs.mockRejectedValueOnce(new Error('Map compiler timed out.'));
-    const updateEq = jest.fn(async () => ({ data: null, error: null }));
+    const updateEq = jest.fn(async (_column: string, _value: string) => ({ data: null, error: null }));
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
       data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
       error: null,
@@ -340,7 +340,7 @@ describe('GDD generation worker', () => {
         runtime?.signal?.addEventListener('abort', () => reject(runtime.signal?.reason), { once: true });
       });
     });
-    const persistV2 = jest.fn(async () => ({ id: 'document-1', name: 'GDD' }));
+    const persistV2 = jest.fn(async () => persistedGdd('document-1', 'GDD'));
     const retry = jest.fn(async (
       _client: unknown,
       _jobId: string,
@@ -361,7 +361,7 @@ describe('GDD generation worker', () => {
       revalidateContext: jest.fn(async () => undefined),
       generate: jest.fn(async () => generated),
       generateV2: generateV2 as never,
-      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
       persistV2,
       retry,
       fail: jest.fn(async () => undefined),
@@ -392,7 +392,7 @@ describe('GDD generation worker', () => {
       tablePlans: [],
       dialoguePlans,
     }));
-    const persistV2 = jest.fn(async (..._args: unknown[]) => ({ id: 'document-1', name: 'GDD' }));
+    const persistV2 = jest.fn(async (..._args: unknown[]) => persistedGdd('document-1', 'GDD'));
     const v2Job = {
       ...job,
       input: {
@@ -407,7 +407,7 @@ describe('GDD generation worker', () => {
       generateV2: generateV2 as never,
       persistV2,
       generate: jest.fn(async () => generated),
-      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
       retry: jest.fn(async () => 'queued' as const),
       fail: jest.fn(async () => undefined),
     })).resolves.toBe('completed');
