@@ -6,7 +6,7 @@ import type { GameArtStyleInput } from '@/lib/game-art-style/schema';
 import type {
   GameDesignSystem,
   GameDesignSystemDetail,
-  GameDesignSystemGenerationJob,
+  PublicGameDesignSystemGenerationJob,
   GameDesignSystemVersion,
 } from './gameDesignSystemService';
 import type { PublicGddGenerationJob } from './gddGenerationService';
@@ -25,6 +25,9 @@ export type GameDesignGenerationRequest = {
   artStyle: GameArtStyleInput;
 };
 
+const GAME_DESIGN_SYSTEM_PAGE_LIMIT = 100;
+const GAME_DESIGN_SYSTEM_MAX_PAGES = 100;
+
 async function readJson<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -38,7 +41,27 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function fetchGameDesignSystems(): Promise<GameDesignSystem[]> {
-  return (await readJson<{ systems: GameDesignSystem[] }>(await fetch('/api/game-design-systems', { cache: 'no-store' }))).systems ?? [];
+  const systems: GameDesignSystem[] = [];
+  let offset = 0;
+
+  for (let page = 0; page < GAME_DESIGN_SYSTEM_MAX_PAGES; page += 1) {
+    const payload = await readJson<{
+      systems?: GameDesignSystem[];
+      hasMore?: boolean;
+      nextOffset?: number | null;
+    }>(await fetch(
+      `/api/game-design-systems?limit=${GAME_DESIGN_SYSTEM_PAGE_LIMIT}&offset=${offset}`,
+      { cache: 'no-store' },
+    ));
+    systems.push(...(payload.systems ?? []));
+    if (!payload.hasMore) return systems;
+    if (!Number.isSafeInteger(payload.nextOffset) || (payload.nextOffset ?? -1) <= offset) {
+      throw new Error('Game Design System pagination did not advance.');
+    }
+    offset = payload.nextOffset as number;
+  }
+
+  throw new Error(`Game Design System pagination exceeded ${GAME_DESIGN_SYSTEM_MAX_PAGES} pages.`);
 }
 
 export async function fetchGameDesignSystem(id: string): Promise<GameDesignSystemDetail> {
@@ -82,22 +105,22 @@ export async function fetchGameDesignReferenceOptions(projectId: string): Promis
   return (await readJson<{ options: GameDesignReferenceOption[] }>(response)).options ?? [];
 }
 
-export async function startGameDesignSystemGeneration(input: GameDesignGenerationRequest, key = crypto.randomUUID()): Promise<GameDesignSystemGenerationJob> {
+export async function startGameDesignSystemGeneration(input: GameDesignGenerationRequest, key = crypto.randomUUID()): Promise<PublicGameDesignSystemGenerationJob> {
   const response = await fetch('/api/game-design-systems/generation-jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
     body: JSON.stringify(input),
   });
-  return (await readJson<{ job: GameDesignSystemGenerationJob }>(response)).job;
+  return (await readJson<{ job: PublicGameDesignSystemGenerationJob }>(response)).job;
 }
 
-export async function retryGameDesignSystemGeneration(id: string, key = crypto.randomUUID()): Promise<GameDesignSystemGenerationJob> {
+export async function retryGameDesignSystemGeneration(id: string, key = crypto.randomUUID()): Promise<PublicGameDesignSystemGenerationJob> {
   const response = await fetch(`/api/game-design-systems/generation-jobs/${encodeURIComponent(id)}/retry`, { method: 'POST', headers: { 'Idempotency-Key': key } });
-  return (await readJson<{ job: GameDesignSystemGenerationJob }>(response)).job;
+  return (await readJson<{ job: PublicGameDesignSystemGenerationJob }>(response)).job;
 }
 
-export async function fetchGameDesignSystemGenerationJob(id: string): Promise<GameDesignSystemGenerationJob> {
-  return (await readJson<{ job: GameDesignSystemGenerationJob }>(await fetch(`/api/game-design-systems/generation-jobs/${encodeURIComponent(id)}`, { cache: 'no-store' }))).job;
+export async function fetchGameDesignSystemGenerationJob(id: string): Promise<PublicGameDesignSystemGenerationJob> {
+  return (await readJson<{ job: PublicGameDesignSystemGenerationJob }>(await fetch(`/api/game-design-systems/generation-jobs/${encodeURIComponent(id)}`, { cache: 'no-store' }))).job;
 }
 
 export async function fetchProjectGameDesignSystem(projectId: string): Promise<GameDesignSystemDetail | null> {

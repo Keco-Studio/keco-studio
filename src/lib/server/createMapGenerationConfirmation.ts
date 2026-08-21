@@ -9,7 +9,7 @@ const MAX_TOKEN_LENGTH = 4096;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
-export type MapGenerationConfirmationPurpose = 'submit' | 'replace-unknown';
+export type MapGenerationConfirmationPurpose = 'submit' | 'retry' | 'replace-unknown';
 
 export type MapGenerationConfirmationBinding = {
   purpose: MapGenerationConfirmationPurpose;
@@ -20,6 +20,7 @@ export type MapGenerationConfirmationBinding = {
   assetId: string;
   generationId: string;
   planFingerprint: string;
+  attemptCount: number;
 };
 
 export type MapGenerationConfirmationClaims = MapGenerationConfirmationBinding & {
@@ -60,6 +61,7 @@ function canonicalClaims(
     assetId: binding.assetId,
     generationId: binding.generationId,
     planFingerprint: binding.planFingerprint,
+    attemptCount: binding.attemptCount,
     issuedAt,
     expiresAt: issuedAt + TOKEN_TTL_MS,
   };
@@ -76,7 +78,7 @@ function signature(payload: string, signingSecret: string): Buffer {
 function validBinding(value: unknown): value is MapGenerationConfirmationBinding {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const binding = value as Record<string, unknown>;
-  return (binding.purpose === 'submit' || binding.purpose === 'replace-unknown')
+  return (binding.purpose === 'submit' || binding.purpose === 'retry' || binding.purpose === 'replace-unknown')
     && typeof binding.userId === 'string' && UUID_PATTERN.test(binding.userId)
     && typeof binding.projectId === 'string' && UUID_PATTERN.test(binding.projectId)
     && typeof binding.mapId === 'string' && UUID_PATTERN.test(binding.mapId)
@@ -84,7 +86,10 @@ function validBinding(value: unknown): value is MapGenerationConfirmationBinding
     && typeof binding.assetId === 'string' && UUID_PATTERN.test(binding.assetId)
     && typeof binding.generationId === 'string' && UUID_PATTERN.test(binding.generationId)
     && typeof binding.planFingerprint === 'string'
-    && SHA256_PATTERN.test(binding.planFingerprint);
+    && SHA256_PATTERN.test(binding.planFingerprint)
+    && typeof binding.attemptCount === 'number'
+    && Number.isSafeInteger(binding.attemptCount)
+    && binding.attemptCount >= 0;
 }
 
 function parseClaims(value: unknown): MapGenerationConfirmationClaims {
@@ -93,6 +98,7 @@ function parseClaims(value: unknown): MapGenerationConfirmationClaims {
   const keys = Object.keys(claims).sort();
   const expectedKeys = [
     'assetId',
+    'attemptCount',
     'expiresAt',
     'generationId',
     'issuedAt',

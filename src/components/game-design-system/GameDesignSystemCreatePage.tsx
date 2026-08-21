@@ -21,7 +21,7 @@ import {
   startGameDesignSystemGeneration,
   type GameDesignGenerationRequest,
 } from '@/lib/services/gameDesignSystemClient';
-import type { GameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
+import type { PublicGameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { GameArtStylePreview } from './GameArtStylePreview';
@@ -95,7 +95,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   const [sourceProjectId, setSourceProjectId] = useState('');
   const [references, setReferences] = useState<GameDesignSourceReference[]>([]);
   const [referenceGames, setReferenceGames] = useState<GameDraft[]>([]);
-  const [job, setJob] = useState<GameDesignSystemGenerationJob | null>(null);
+  const [job, setJob] = useState<PublicGameDesignSystemGenerationJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const submitKey = useRef<string>(newIdempotencyKey());
   const retryKey = useRef<string>(newIdempotencyKey());
@@ -278,7 +278,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         <div className={styles.progress} aria-live="polite">
           <span className={styles.eyebrow}>Durable generation job</span>
           <h2>{job.status === 'failed' ? 'Generation incomplete' : 'Generating Game Design System'}</h2>
-          <p>{job.status === 'failed' ? job.error || 'The model did not return usable structured rules.' : 'Attempt ' + Math.max(job.attempt_count, 1) + ' / ' + job.max_attempts + (retryAt ? ', retrying at ' + retryAt : '')}</p>
+          <p>{job.status === 'failed' ? job.error?.message || 'The model did not return usable structured rules.' : 'Attempt ' + Math.max(job.attempt_count, 1) + ' / ' + job.max_attempts + (retryAt ? ', retrying at ' + retryAt : '')}</p>
           <div className={styles.progressList}>
             {phases.map((phase, index) => {
               const done = job.status === 'completed' || index < currentIndex;

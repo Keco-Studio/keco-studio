@@ -271,7 +271,7 @@ Create Map exposes only schema version 3 through these tools:
 - `update_map_draft` saves a complete validated V3 Plan and Scene using the
   current `saveVersion`; stale writes return `MAP_REVISION_STALE`.
 - `prepare_map_generation`, `start_map_generation`,
-  `get_map_generation`, and `retry_map_generation` implement the paid image
+  `get_map_generation`, and `advance_map_generation` implement the paid image
   lifecycle described below.
 
 Every Map tool requires `projectId` on the account endpoint. Omit `projectId`
@@ -305,26 +305,31 @@ Paid generation is always a two-step operation:
 1. Call `prepare_map_generation` with the exact current map ID, revision ID,
    and save version. It freezes that revision, returns the next editable draft,
    immutable generation IDs, a fee notice, expiry, and a short-lived
-   confirmation token. It makes no provider request.
+   confirmation token bound to the asset's current `attemptCount`. It makes no
+   provider request.
 2. Show the returned fee notice. The original map request is intent, not paid
    confirmation. Wait for a later explicit confirmation from the user.
 3. Only after that confirmation, call `start_map_generation` with the exact
    returned map/revision/asset/generation/fingerprint identity, the token, and
    literal `confirmPaidGeneration: true`. Omitted or false confirmation is
    rejected before provider contact.
-4. Poll `get_map_generation` with the same immutable identity until `ready`,
-   `failed`, or `blocked`. Then call `read_map` for final read-back before
-   reporting success.
+4. For editors/admins, call `advance_map_generation` to poll and validate an
+   existing provider job, then call the provider-free `get_map_generation` read.
+   Repeat until `ready`, `failed`, or `blocked`. Viewers may only observe the
+   persisted state with `get_map_generation`.
 
 Replaying a confirmed start returns the existing job state and does not submit
-twice. `retry_map_generation` accepts only safely rejected or provider-identified
-failure states. An unknown paid submission outcome is never retried silently:
-call `prepare_map_generation` again, show its new fee notice, obtain a new later
-confirmation, and let `start_map_generation` verify the `replace-unknown` token.
+twice. Every failed, rate-limited, quota-blocked, or unknown-outcome resubmission
+must call `prepare_map_generation` again, show its new fee notice, and obtain a
+new later confirmation. `start_map_generation` verifies the purpose-bound
+`retry` or `replace-unknown` token and its bound `attemptCount`; a token from an
+earlier attempt cannot submit again. `advance_map_generation` never submits a
+new provider job.
 Tokens, Bearer credentials, provider payloads, and signed image URLs must not be
 logged or persisted.
 
-Stable Map failures include `IDEMPOTENCY_CONFLICT`, `MAP_REVISION_STALE`,
+Stable Map failures include `IDEMPOTENCY_CONFLICT`, `MAP_CREATION_IN_PROGRESS`,
+`MAP_REVISION_STALE`,
 `MAP_CONFIRMATION_REQUIRED`, `MAP_CONFIRMATION_EXPIRED`,
 `MAP_CONFIRMATION_MISMATCH`, `MAP_GENERATION_BLOCKED`,
 `PROVIDER_RATE_LIMITED`, and `PROVIDER_QUOTA_EXCEEDED`. Re-read state after a

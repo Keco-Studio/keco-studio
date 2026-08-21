@@ -5,7 +5,7 @@ import { resolveGameDesignSourceSnapshots, SourceSnapshotInputError } from '@/li
 import { gameDesignGenerationRequestSchema } from '@/lib/game-design-system/generationRequest';
 import { compileGameArtStyle, GameArtStyleCompilationError } from '@/lib/game-art-style/compiler';
 import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
-import { getGameDesignSystemDetail, createGameDesignSystemGenerationJob, IdempotencyConflictError } from '@/lib/services/gameDesignSystemService';
+import { getGameDesignSystemDetail, createGameDesignSystemGenerationJob, IdempotencyConflictError, publicGameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker';
 
@@ -58,7 +58,10 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       ? await getGameDesignSystemDetail(supabase, body.baseSystemId, { snapshotClient: getSupabaseServiceRoleClient() })
       : null;
     if (body.baseSystemId && !base?.current_version) {
-      return NextResponse.json({ error: 'Base Game Design System has no usable version.' }, { status: 404 });
+      return NextResponse.json({
+        error: 'Base Game Design System has no usable version.',
+        code: 'GDS_NOT_FOUND',
+      }, { status: 404 });
     }
     if (base && base.source !== 'official' && base.owner_id !== user.id) {
       return NextResponse.json({
@@ -87,10 +90,13 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       { idempotencyKey: key, inputHash: hashResolvedGenerationInput(input) },
     );
     if (job.status === 'queued') scheduleWorker();
-    return NextResponse.json({ job }, { status: 202 });
+    return NextResponse.json({ job: publicGameDesignSystemGenerationJob(job) }, { status: 202 });
   } catch (error) {
     if (error instanceof IdempotencyConflictError) {
-      return NextResponse.json({ error: 'Idempotency key was already used with a different payload.' }, { status: 409 });
+      return NextResponse.json({
+        error: 'Idempotency key was already used with a different payload.',
+        code: 'IDEMPOTENCY_CONFLICT',
+      }, { status: 409 });
     }
     if (error instanceof SourceSnapshotInputError) {
       return NextResponse.json({

@@ -33,15 +33,16 @@ paid confirmation.
    user, and use `update_map_draft` with the current `saveVersion` if edits are
    required. On `MAP_REVISION_STALE`, re-read instead of overwriting.
 5. PREPARE: call `prepare_map_generation` for the reviewed identity. This must
-   not contact the provider.
+   not contact the provider. The returned confirmation token is bound to the
+   current `attemptCount` and cannot authorize a later attempt.
 6. SHOW_FEE_NOTICE: display the returned fee notice without exposing the token.
 7. USER_CONFIRM: stop and wait for a later explicit confirmation of that fee.
 8. START: only then call `start_map_generation` with the exact immutable IDs,
    fingerprint, token, and literal `confirmPaidGeneration: true`.
-9. POLL: call `get_map_generation` until `ready`, `failed`, or `blocked`. Use
-   `retry_map_generation` only for a state the contract marks safely retryable.
-   Unknown provider submission outcomes require a new PREPARE, shown fee notice,
-   and later confirmation.
+9. POLL: editors/admins call `advance_map_generation`, then read persisted state
+   with `get_map_generation`, until `ready`, `failed`, or `blocked`. Every
+   failed, rate-limited, quota-blocked, or unknown-outcome resubmission requires
+   a new PREPARE, shown fee notice, and later confirmation before START.
 10. READ_BACK: after `ready`, make a fresh `read_map` call and verify the stored
     map identity, Plan, Scene, and generated asset.
 11. REPORT: report only verified persisted state and any terminal blocker.
@@ -61,8 +62,8 @@ Godot scene, delete maps, or claim public publication.
 | Save reviewed draft | `update_map_draft` |
 | Obtain fee and token | `prepare_map_generation` |
 | Start after confirmation | `start_map_generation` |
-| Poll generation | `get_map_generation` |
-| Retry bounded failure | `retry_map_generation` |
+| Read generation state | `get_map_generation` |
+| Advance existing job | `advance_map_generation` |
 
 Common mistakes are starting before a later confirmation, logging the token,
 retrying an unknown paid outcome, editing stale revisions, and reporting provider

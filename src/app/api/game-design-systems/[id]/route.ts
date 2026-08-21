@@ -16,11 +16,27 @@ const metadataSchema = z.object({
 
 export const GET = withAuth(async function GET(_request, { params }: Params, { supabase, user }) {
   const { id } = await params;
+  const rawLimit = new URL(_request.url).searchParams.get('versionLimit');
+  const parsedLimit = rawLimit === null
+    ? { success: true as const, data: undefined }
+    : z.coerce.number().int().min(1).max(50).safeParse(rawLimit);
+  if (!parsedLimit.success) {
+    return NextResponse.json({
+      error: 'Invalid Game Design System version limit.',
+      code: 'FIELD_VALIDATION_FAILED',
+    }, { status: 400 });
+  }
   try {
-    const system = await getGameDesignSystemDetail(supabase, id, { snapshotClient: getSupabaseServiceRoleClient() });
+    const system = await getGameDesignSystemDetail(supabase, id, {
+      snapshotClient: getSupabaseServiceRoleClient(),
+      versionLimit: parsedLimit.data,
+    });
     return system
       ? NextResponse.json({ system: await redactGameDesignSystemDetailForViewer(supabase, system, user.id) })
-      : NextResponse.json({ error: 'Game Design System not found.' }, { status: 404 });
+      : NextResponse.json({
+          error: 'Game Design System not found.',
+          code: 'GDS_NOT_FOUND',
+        }, { status: 404 });
   } catch (error) {
     console.error('[GET /api/game-design-systems/:id]', error);
     return NextResponse.json({ error: 'Failed to load Game Design System.' }, { status: 500 });

@@ -59,7 +59,7 @@ const WRITE_TOOLS = new Set([
   "update_map_draft",
   "prepare_map_generation",
   "start_map_generation",
-  "retry_map_generation",
+  "advance_map_generation",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",

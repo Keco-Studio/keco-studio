@@ -11,6 +11,7 @@ import {
 import {
   createMapService,
   type MapAssetRecord,
+  type MapDraftIdentity,
   type SavedMapWorkspaceV3,
 } from '../services/createMapService';
 
@@ -28,6 +29,7 @@ export type DirectMapGenerationPhase =
 export type DirectMapGenerationAsset = {
   id: string;
   status: MapAssetRecord['status'];
+  attemptCount: number;
   lastErrorCode: string | null;
   providerOperation: string | null;
   providerJobId: string | null;
@@ -45,6 +47,7 @@ export type DirectMapGenerationTarget = {
   projectId: string;
   mapId: string;
   revisionId: string;
+  saveVersion: number;
   generationId: string;
   planFingerprint: string;
 };
@@ -98,6 +101,7 @@ type PreparedDirectMapGeneration = {
   asset: DirectMapGenerationAsset;
   plan: MapPlanV3;
   input: DirectMapInputSnapshot;
+  confirmationToken: string;
 };
 
 function sameInputSnapshot(left: DirectMapInputSnapshot, right: DirectMapInputSnapshot): boolean {
@@ -149,6 +153,7 @@ function directMapAssetFromRecord(
   return {
     id: record.id,
     status: record.status,
+    attemptCount: record.attempt_count,
     lastErrorCode: record.last_error_code,
     providerOperation: record.provider_operation ?? null,
     providerJobId: record.provider_job_id ?? null,
@@ -196,6 +201,7 @@ export function directMapTargetMatches(
     && left.projectId === right.projectId
     && left.mapId === right.mapId
     && left.revisionId === right.revisionId
+    && left.saveVersion === right.saveVersion
     && left.generationId === right.generationId
     && left.planFingerprint === right.planFingerprint);
 }
@@ -296,6 +302,7 @@ export async function prepareDirectMapRestore(
     projectId: workspace.projectId,
     mapId: workspace.identity.mapId,
     revisionId: workspace.assetRevisionId,
+    saveVersion: workspace.assetRevisionSaveVersion ?? workspace.identity.saveVersion,
     generationId,
     planFingerprint,
   };
@@ -459,7 +466,8 @@ type UseDirectMapGenerationInput = {
   plan: MapPlanV3;
   scene: MapSceneV3;
   canPrepare: boolean;
-  publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string }>;
+  draftIdentity: MapDraftIdentity | null;
+  reloadDraftAfterPreparation: () => Promise<SavedMapWorkspaceV3 | null>;
   onSceneMaterialized: (scene: MapSceneV3) => void;
 };
 
@@ -468,7 +476,8 @@ export function useDirectMapGeneration({
   plan,
   scene,
   canPrepare,
-  publishForGeneration,
+  draftIdentity,
+  reloadDraftAfterPreparation,
   onSceneMaterialized,
 }: UseDirectMapGenerationInput) {
   const supabase = useSupabase();
@@ -530,7 +539,7 @@ export function useDirectMapGeneration({
       setError('Resolve the direct map Plan issues before preparing generation.');
       return null;
     }
-    if (!projectId || !canPrepare) {
+    if (!projectId || !canPrepare || !draftIdentity) {
       setError('Wait for the current map draft to finish saving.');
       return null;
     }
@@ -540,19 +549,37 @@ export function useDirectMapGeneration({
     setPhase('preparing');
     setError(null);
     try {
-      const published = await publishForGeneration();
-      const generationId = crypto.randomUUID();
       const planFingerprint = await directMapPlanFingerprint(validation.data);
+      const confirmation = await service.prepareMapGeneration({
+        projectId,
+        mapId: draftIdentity.mapId,
+        revisionId: draftIdentity.revisionId,
+        saveVersion: draftIdentity.saveVersion,
+      });
       const nextTarget: DirectMapGenerationTarget = {
         projectId,
-        mapId: published.mapId,
-        revisionId: published.publishedRevisionId,
-        generationId,
+        mapId: confirmation.mapId,
+        revisionId: confirmation.revisionId,
+        saveVersion: confirmation.saveVersion,
+        generationId: confirmation.generationId,
         planFingerprint,
       };
-      const created = await service.createAssetPlanV3(nextTarget.revisionId, generationId, planFingerprint);
-      const record = await service.readAssetPlan(created.asset_id);
+      if (
+        confirmation.mapId !== draftIdentity.mapId
+        || confirmation.revisionId !== draftIdentity.revisionId
+        || confirmation.saveVersion !== draftIdentity.saveVersion
+        || confirmation.planFingerprint !== planFingerprint
+        || confirmation.status !== 'planned'
+        || confirmation.confirmationPurpose !== 'submit'
+        || !confirmation.confirmationToken
+      ) throw new Error('Direct map confirmation does not match the prepared generation.');
+      const record = await service.readAssetPlan(confirmation.assetId);
       const nextAsset = directMapAssetFromRecord(record, validation.data, nextTarget);
+      if (
+        confirmation.assetId !== nextAsset.id
+        || confirmation.generationId !== nextAsset.generationId
+      ) throw new Error('Direct map confirmation does not match the prepared generation.');
+      await reloadDraftAfterPreparation();
       if (lifecycleEpoch.current !== epoch
         || !sameInputSnapshot(currentInput.current, expectedInput)) {
         if (lifecycleEpoch.current === epoch && !targetRef.current) setPhase('idle');
@@ -563,7 +590,13 @@ export function useDirectMapGeneration({
       setGenerationPlan(validation.data);
       setAsset(nextAsset);
       setPhase(directMapPhaseFor(nextAsset));
-      return { target: nextTarget, asset: nextAsset, plan: validation.data, input: expectedInput };
+      return {
+        target: nextTarget,
+        asset: nextAsset,
+        plan: validation.data,
+        input: expectedInput,
+        confirmationToken: confirmation.confirmationToken,
+      };
     } catch (cause) {
       if (lifecycleEpoch.current !== epoch) return null;
       if (sameInputSnapshot(currentInput.current, expectedInput)) {
@@ -576,7 +609,7 @@ export function useDirectMapGeneration({
     } finally {
       preparationActive.current = false;
     }
-  }, [canPrepare, plan, projectId, publishForGeneration, service]);
+  }, [canPrepare, draftIdentity, plan, projectId, reloadDraftAfterPreparation, service]);
 
   const submitPrepared = useCallback(async (prepared: PreparedDirectMapGeneration) => {
     const expected = prepared.target;
@@ -586,13 +619,15 @@ export function useDirectMapGeneration({
     setPhase('submitting');
     setError(null);
     try {
-      await service.invokePixelLab({
-        operation: 'submit',
+      await service.startMapGeneration({
         projectId: expected.projectId,
         mapId: expected.mapId,
         revisionId: expected.revisionId,
         generationId: expected.generationId,
         assetId: prepared.asset.id,
+        planFingerprint: expected.planFingerprint,
+        confirmationToken: prepared.confirmationToken,
+        confirmPaidGeneration: true,
       });
       await refresh(expected, prepared.plan);
     } catch (cause) {
@@ -612,13 +647,42 @@ export function useDirectMapGeneration({
   const confirm = useCallback(async () => {
     const expected = targetRef.current;
     if (!expected || !asset || asset.status !== 'planned') return;
-    await submitPrepared({
-      target: expected,
-      asset,
-      plan: generationPlan,
-      input: { ...currentInput.current },
-    });
-  }, [asset, generationPlan, submitPrepared]);
+    const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
+    try {
+      const confirmation = await service.prepareMapGeneration({
+        projectId: expected.projectId,
+        mapId: expected.mapId,
+        revisionId: expected.revisionId,
+        saveVersion: expected.saveVersion,
+      });
+      if (
+        confirmation.mapId !== expected.mapId
+        || confirmation.revisionId !== expected.revisionId
+        || confirmation.assetId !== asset.id
+        || confirmation.generationId !== expected.generationId
+        || confirmation.planFingerprint !== expected.planFingerprint
+        || confirmation.saveVersion !== expected.saveVersion
+        || confirmation.status !== 'planned'
+        || confirmation.confirmationPurpose !== 'submit'
+        || !confirmation.confirmationToken
+      ) throw new Error('Direct map confirmation does not match the prepared generation.');
+      if (!directMapTargetMatches(targetRef.current, expected)
+        || !sameInputSnapshot(currentInput.current, expectedInput)) return;
+      await submitPrepared({
+        target: expected,
+        asset,
+        plan: generationPlan,
+        input: expectedInput,
+        confirmationToken: confirmation.confirmationToken,
+      });
+    } catch (cause) {
+      if (directMapTargetMatches(targetRef.current, expected)
+        && sameInputSnapshot(currentInput.current, expectedInput)) {
+        setPhase(directMapPhaseFor(asset));
+        setError(cause instanceof Error ? cause.message : 'Could not confirm direct map generation.');
+      }
+    }
+  }, [asset, generationPlan, service, submitPrepared]);
 
   const generate = useCallback(async () => {
     const expected = targetRef.current;
@@ -628,17 +692,12 @@ export function useDirectMapGeneration({
       && expected.projectId === currentInput.current.projectId
       && canonical(generationPlan) === currentInput.current.planKey
     ) {
-      await submitPrepared({
-        target: expected,
-        asset,
-        plan: generationPlan,
-        input: { ...currentInput.current },
-      });
+      await confirm();
       return;
     }
     const prepared = await startPreparation();
     if (prepared) await submitPrepared(prepared);
-  }, [asset, generationPlan, startPreparation, submitPrepared]);
+  }, [asset, confirm, generationPlan, startPreparation, submitPrepared]);
 
   const retry = useCallback(async () => {
     const expected = targetRef.current;
@@ -648,13 +707,28 @@ export function useDirectMapGeneration({
     setPhase('submitting');
     setError(null);
     try {
-      await service.invokePixelLab({
-        operation: 'retry',
+      const confirmation = await service.prepareMapGeneration({
         projectId: expected.projectId,
         mapId: expected.mapId,
         revisionId: expected.revisionId,
-        generationId: expected.generationId,
+        saveVersion: expected.saveVersion,
+      });
+      if (
+        confirmation.assetId !== asset.id
+        || confirmation.generationId !== expected.generationId
+        || confirmation.planFingerprint !== expected.planFingerprint
+        || confirmation.confirmationPurpose !== 'retry'
+        || !confirmation.confirmationToken
+      ) throw new Error('Direct map retry confirmation does not match the failed generation.');
+      await service.startMapGeneration({
+        projectId: expected.projectId,
+        mapId: expected.mapId,
+        revisionId: expected.revisionId,
         assetId: asset.id,
+        generationId: expected.generationId,
+        planFingerprint: expected.planFingerprint,
+        confirmationToken: confirmation.confirmationToken,
+        confirmPaidGeneration: true,
       });
       await refresh(expected);
     } catch (cause) {

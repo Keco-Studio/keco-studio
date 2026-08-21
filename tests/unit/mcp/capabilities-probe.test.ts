@@ -17,7 +17,7 @@ const gdsTools = ['list_game_design_systems', 'read_game_design_system', 'read_p
   'create_game_design_system_version', 'set_project_game_design_system', 'clear_project_game_design_system'];
 const mapReadTools = ['list_maps', 'read_map', 'get_map_generation'];
 const mapWriteTools = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
-  'start_map_generation', 'retry_map_generation'];
+  'start_map_generation', 'advance_map_generation'];
 
 it('keeps the documented minimal CLI invocation out of the optional viewer branch', () => {
   expect(capabilitiesProbeOptions(

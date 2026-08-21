@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   createEmptyMapSceneV3,
   validateMapPlanV3,
+  validateMapSceneV3,
   type MapPlanV3,
   type MapSceneV3,
 } from '@/features/create-map/model/directMapSchema';
@@ -19,6 +20,7 @@ import { fingerprintMapPlanV3 } from '@/lib/gdd-generation/maps/plan';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { readCreateMapDocumentSource } from './createMapDocumentSource';
 import { createMapPlanV3, type DirectMapReferenceSelection } from './createMapPlanner';
+import { getSupabaseServiceRoleClient } from './supabaseServiceRole';
 import {
   signMapGenerationConfirmation,
   verifyMapGenerationConfirmation,
@@ -28,6 +30,23 @@ import {
 type ProjectRole = 'admin' | 'editor' | 'viewer';
 type ProviderOperation = 'submit' | 'retry' | 'poll' | 'validate' | 'resolve_unknown';
 type GenerationStatus = MapAssetRecord['status'];
+type DraftSource = Awaited<ReturnType<typeof readCreateMapDocumentSource>>;
+type DraftSourceToken = {
+  documentId: string;
+  documentUpdatedAt: string;
+  epoch: number;
+  revision: number;
+} | null;
+type DraftClaim =
+  | { status: 'completed'; workspace: PublicMapWorkspace }
+  | { status: 'in_progress' }
+  | {
+      status: 'claimed';
+      claimToken: string;
+      source: DraftSource | undefined;
+      sourceToken: DraftSourceToken;
+      references: DirectMapReferenceSelection;
+    };
 
 export type CreateMapDraftInput = {
   projectId: string;
@@ -46,6 +65,7 @@ export type PublicMapGenerationAsset = {
   status: GenerationStatus;
   generationId: string;
   planFingerprint: string;
+  attemptCount: number;
   lastErrorCode: string | null;
   providerJobId: string | null;
   storagePath: string | null;
@@ -78,7 +98,9 @@ export type CreateMapMcpBackend = {
   getProjectRole(projectId: string, userId: string): Promise<ProjectRole>;
   listMaps(projectId?: string): Promise<SavedMapSummary[]>;
   readMap(mapId: string): Promise<PublicMapWorkspace>;
-  createDraft(input: CreateMapDraftInput): Promise<PublicMapWorkspace>;
+  claimDraft(input: CreateMapDraftInput): Promise<DraftClaim>;
+  createDraft(input: CreateMapDraftInput, claim: Extract<DraftClaim, { status: 'claimed' }>): Promise<PublicMapWorkspace>;
+  releaseDraft(input: { idempotencyKey: string; claimToken: string }): Promise<void>;
   updateDraft(input: {
     projectId: string;
     mapId: string;
@@ -87,16 +109,24 @@ export type CreateMapMcpBackend = {
     plan: MapPlanV3;
     scene: MapSceneV3;
   }): Promise<number>;
-  freezeDraft(input: {
+  readRevision(input: {
+    projectId: string;
+    mapId: string;
+    revisionId: string;
+  }): Promise<{ saveVersion: number; plan: MapPlanV3 }>;
+  prepareAssetPlan(input: {
+    projectId: string;
     mapId: string;
     revisionId: string;
     saveVersion: number;
-  }): Promise<{ publishedRevisionId: string; nextDraftRevisionId: string }>;
-  createAssetPlan(input: {
-    revisionId: string;
     generationId: string;
     planFingerprint: string;
-  }): Promise<{ assetId: string; status: GenerationStatus }>;
+  }): Promise<{
+    publishedRevisionId: string;
+    nextDraftRevisionId: string;
+    assetId: string;
+    status: GenerationStatus;
+  }>;
   findGeneration(input: {
     projectId: string;
     mapId: string;
@@ -117,6 +147,7 @@ export type CreateMapMcpBackend = {
       assetId: string;
       generationId: string;
       planFingerprint: string;
+      expectedAttemptCount?: number;
       acknowledgeDuplicateBilling?: boolean;
     },
   ): Promise<unknown>;
@@ -125,6 +156,7 @@ export type CreateMapMcpBackend = {
 export type CreateMapMcpErrorCode =
   | 'PROJECT_WRITE_FORBIDDEN'
   | 'IDEMPOTENCY_CONFLICT'
+  | 'MAP_CREATION_IN_PROGRESS'
   | 'MAP_NOT_FOUND'
   | 'MAP_REVISION_STALE'
   | 'MAP_CONFIRMATION_REQUIRED'
@@ -140,6 +172,7 @@ export type CreateMapMcpErrorCode =
 const PUBLIC_MESSAGES: Record<CreateMapMcpErrorCode, string> = {
   PROJECT_WRITE_FORBIDDEN: 'This project requires admin or editor access.',
   IDEMPOTENCY_CONFLICT: 'The idempotency key was already used with different map input.',
+  MAP_CREATION_IN_PROGRESS: 'The idempotent map draft is still being planned. Retry this same request shortly.',
   MAP_NOT_FOUND: 'The requested V3 map was not found.',
   MAP_REVISION_STALE: 'The map revision or save version is stale.',
   MAP_CONFIRMATION_REQUIRED: 'Explicit paid map generation confirmation is required.',
@@ -177,7 +210,7 @@ type Dependencies = {
 };
 
 const FEE_NOTICE = 'PixelLab map generation is a paid operation and may consume provider credits. Confirm only after reviewing this exact map plan.';
-const SAFE_RETRY_BLOCKS = new Set(['pixellab_rate_limited', 'pixellab_quota_exceeded']);
+const CONFIRMED_RETRY_BLOCKS = new Set(['pixellab_rate_limited', 'pixellab_quota_exceeded']);
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -202,12 +235,15 @@ function publicAsset(record: MapAssetRecord, imageUrl: string | null): PublicMap
   if (
     typeof record.generation_id !== 'string'
     || typeof record.plan_fingerprint !== 'string'
+    || !Number.isSafeInteger(record.attempt_count)
+    || record.attempt_count < 0
   ) throw new CreateMapMcpError('MAP_GENERATION_FAILED');
   return {
     id: record.id,
     status: record.status,
     generationId: record.generation_id,
     planFingerprint: record.plan_fingerprint,
+    attemptCount: record.attempt_count,
     lastErrorCode: record.last_error_code,
     providerJobId: record.provider_job_id ?? null,
     storagePath: record.storage_path,
@@ -274,6 +310,13 @@ function providerInput(state: MapGenerationState) {
   };
 }
 
+function providerSubmissionInput(state: MapGenerationState) {
+  return {
+    ...providerInput(state),
+    expectedAttemptCount: state.asset.attemptCount,
+  };
+}
+
 function generationResult(asset: PublicMapGenerationAsset) {
   const { id, ...rest } = asset;
   return { assetId: id, ...rest };
@@ -293,6 +336,7 @@ function confirmationBinding(
     assetId: state.asset.id,
     generationId: state.asset.generationId,
     planFingerprint: state.asset.planFingerprint,
+    attemptCount: state.asset.attemptCount,
   };
 }
 
@@ -305,7 +349,11 @@ function mapProviderError(error: unknown): never {
   if (code === 'MAP_CONFIRMATION_MISMATCH') throw new CreateMapMcpError('MAP_CONFIRMATION_MISMATCH');
   if (code === 'pixellab_rate_limited') throw new CreateMapMcpError('PROVIDER_RATE_LIMITED');
   if (code === 'pixellab_quota_exceeded') throw new CreateMapMcpError('PROVIDER_QUOTA_EXCEEDED');
+  if (code === 'pixellab_invalid_response') throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
   if (code === 'KM409') throw new CreateMapMcpError('IDEMPOTENCY_CONFLICT');
+  if (code === 'KM410') throw new CreateMapMcpError('MAP_CREATION_IN_PROGRESS');
+  if (code === 'KM412') throw new CreateMapMcpError('MAP_REVISION_STALE');
+  if (code === 'KM413') throw new CreateMapMcpError('MAP_REVISION_STALE');
   if (code === '42501') throw new CreateMapMcpError('PROJECT_WRITE_FORBIDDEN');
   if (code === 'save_conflict') throw new CreateMapMcpError('MAP_REVISION_STALE');
   throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
@@ -358,6 +406,64 @@ function defaultBackend(
   userId: string,
 ): CreateMapMcpBackend {
   const maps = createMapService(supabase);
+
+  const readCreatedDraft = async (
+    mapId: string,
+    revisionId: string,
+  ): Promise<PublicMapWorkspace> => {
+    const { data: map, error: mapError } = await supabase.from('map_projects')
+      .select('project_id').eq('id', mapId).single();
+    const { data: revision, error: revisionError } = await supabase.from('map_revisions')
+      .select('id,revision_number,save_version,source_document_id,plan,scene')
+      .eq('id', revisionId)
+      .eq('map_project_id', mapId)
+      .eq('schema_version', 3)
+      .single();
+    if (mapError || revisionError || !map || !revision) {
+      throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
+    }
+    const parsedPlan = validateMapPlanV3(revision.plan);
+    if (parsedPlan.success === false) {
+      throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
+    }
+    const parsedScene = validateMapSceneV3(parsedPlan.data, revision.scene);
+    if (parsedScene.success === false) throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
+    return {
+      projectId: String(map.project_id),
+      identity: {
+        mapId,
+        revisionId: String(revision.id),
+        revisionNumber: Number(revision.revision_number),
+        saveVersion: Number(revision.save_version),
+      },
+      plan: parsedPlan.data,
+      scene: parsedScene.data,
+      sourceDocumentId: revision.source_document_id == null
+        ? null
+        : String(revision.source_document_id),
+      generation: null,
+    };
+  };
+
+  const readRevision = async (input: {
+    projectId: string;
+    mapId: string;
+    revisionId: string;
+  }): Promise<{ saveVersion: number; plan: MapPlanV3 }> => {
+    const { data, error } = await supabase.from('map_revisions')
+      .select('save_version,plan,map_projects!inner(project_id)')
+      .eq('id', input.revisionId)
+      .eq('map_project_id', input.mapId)
+      .eq('schema_version', 3)
+      .single();
+    const project = data?.map_projects as unknown as { project_id?: unknown } | null;
+    if (error || !data || project?.project_id !== input.projectId) {
+      throw new CreateMapMcpError('MAP_NOT_FOUND');
+    }
+    const parsed = validateMapPlanV3(data.plan);
+    if (parsed.success === false) throw new CreateMapMcpError('MAP_GENERATION_FAILED');
+    return { saveVersion: Number(data.save_version), plan: parsed.data };
+  };
 
   const findGeneration = async (input: {
     projectId: string;
@@ -412,16 +518,11 @@ function defaultBackend(
     async readMap(mapId) {
       return publicWorkspace(await maps.loadSavedMapV3(mapId));
     },
-    async createDraft(input) {
+    async claimDraft(input) {
       const source = input.documentId
         ? await readCreateMapDocumentSource(supabase, userId, input.projectId, input.documentId)
         : undefined;
-      const plan = await createMapPlanV3(
-        input.description,
-        source,
-        await loadReferenceSelection(supabase, input),
-      );
-      const scene = createEmptyMapSceneV3(plan);
+      const references = await loadReferenceSelection(supabase, input);
       const sourceToken = source
         ? {
             documentId: source.documentId,
@@ -430,22 +531,54 @@ function defaultBackend(
             revision: source.token.revision,
           }
         : null;
-      const hash = inputHash({
+      const intentHash = inputHash({
         projectId: input.projectId,
-        name: plan.name,
+        description: input.description.trim(),
+        documentId: input.documentId,
         source: sourceToken,
-        plan,
-        scene,
+        references,
       });
-      const { data, error } = await supabase.rpc('create_map_project_v3_idempotent', {
+      const { data, error } = await supabase.rpc('claim_map_project_v3_creation', {
         p_project_id: input.projectId,
         p_idempotency_key: input.idempotencyKey,
-        p_input_hash: hash,
+        p_intent_hash: intentHash,
+      });
+      if (error) mapProviderError(error);
+      const row = firstRow<{
+        claim_status: string;
+        request_token: string | null;
+        map_id: string | null;
+        revision_id: string | null;
+      }>(data);
+      if (row.claim_status === 'completed' && row.map_id && row.revision_id) {
+        return {
+          status: 'completed',
+          workspace: await readCreatedDraft(row.map_id, row.revision_id),
+        };
+      }
+      if (row.claim_status === 'in_progress') return { status: 'in_progress' };
+      if (row.claim_status !== 'claimed' || !row.request_token) {
+        throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
+      }
+      return {
+        status: 'claimed',
+        claimToken: row.request_token,
+        source,
+        sourceToken,
+        references,
+      };
+    },
+    async createDraft(input, claim) {
+      const plan = await createMapPlanV3(input.description, claim.source, claim.references);
+      const scene = createEmptyMapSceneV3(plan);
+      const { data, error } = await supabase.rpc('complete_map_project_v3_creation', {
+        p_idempotency_key: input.idempotencyKey,
+        p_request_token: claim.claimToken,
         p_name: plan.name,
-        p_source_document_id: sourceToken?.documentId ?? null,
-        p_source_document_updated_at: sourceToken?.documentUpdatedAt ?? null,
-        p_source_epoch: sourceToken?.epoch ?? null,
-        p_source_revision: sourceToken?.revision ?? null,
+        p_source_document_id: claim.sourceToken?.documentId ?? null,
+        p_source_document_updated_at: claim.sourceToken?.documentUpdatedAt ?? null,
+        p_source_epoch: claim.sourceToken?.epoch ?? null,
+        p_source_revision: claim.sourceToken?.revision ?? null,
         p_plan: plan,
         p_scene: scene,
       });
@@ -466,9 +599,16 @@ function defaultBackend(
         },
         plan,
         scene,
-        sourceDocumentId: sourceToken?.documentId ?? null,
+        sourceDocumentId: claim.sourceToken?.documentId ?? null,
         generation: null,
       };
+    },
+    async releaseDraft(input) {
+      const { error } = await supabase.rpc('release_map_project_v3_creation', {
+        p_idempotency_key: input.idempotencyKey,
+        p_request_token: input.claimToken,
+      });
+      if (error) throw error;
     },
     async updateDraft(input) {
       return maps.saveDraftV3({
@@ -478,25 +618,21 @@ function defaultBackend(
         saveVersion: input.saveVersion,
       }, input.plan, input.scene);
     },
-    async freezeDraft(input) {
-      const row = await maps.publishV3({
+    readRevision,
+    async prepareAssetPlan(input) {
+      const row = await maps.prepareGenerationV3({
         mapId: input.mapId,
         revisionId: input.revisionId,
-        revisionNumber: 0,
         saveVersion: input.saveVersion,
+        generationId: input.generationId,
+        planFingerprint: input.planFingerprint,
       });
       return {
         publishedRevisionId: row.published_revision_id,
         nextDraftRevisionId: row.next_draft_revision_id,
+        assetId: row.asset_id,
+        status: row.asset_status as GenerationStatus,
       };
-    },
-    async createAssetPlan(input) {
-      const row = await maps.createAssetPlanV3(
-        input.revisionId,
-        input.generationId,
-        input.planFingerprint,
-      );
-      return { assetId: row.asset_id, status: row.status as GenerationStatus };
     },
     findGeneration,
     async readGeneration(input) {
@@ -505,7 +641,11 @@ function defaultBackend(
       return state;
     },
     async invokeProvider(operation, input) {
-      return maps.invokePixelLab({ operation, ...input });
+      return createMapService(getSupabaseServiceRoleClient()).invokePixelLab({
+        operation,
+        ...input,
+        actorUserId: userId,
+      });
     },
   };
 }
@@ -537,6 +677,7 @@ export function createMapMcpService(
     status: state.asset.status,
     generationId: state.asset.generationId,
     planFingerprint: state.asset.planFingerprint,
+    saveVersion: state.saveVersion,
     feeNotice: FEE_NOTICE,
     confirmationPurpose: purpose,
     confirmationExpiresAt: new Date(now() + 10 * 60 * 1000).toISOString(),
@@ -548,18 +689,6 @@ export function createMapMcpService(
     state: MapGenerationState,
     purpose: MapGenerationConfirmationBinding['purpose'],
   ) => verify(token, confirmationBinding(context.userId, state, purpose));
-
-  const verifyReplay = (token: string, state: MapGenerationState) => {
-    try {
-      return verifyForPurpose(token, state, 'submit');
-    } catch (error) {
-      const code = error && typeof error === 'object' && 'code' in error
-        ? String((error as { code: unknown }).code)
-        : '';
-      if (code !== 'MAP_CONFIRMATION_MISMATCH') throw error;
-      return verifyForPurpose(token, state, 'replace-unknown');
-    }
-  };
 
   return {
     async listMaps(input: { projectId?: string }) {
@@ -584,7 +713,22 @@ export function createMapMcpService(
     async createDraft(input: CreateMapDraftInput) {
       try {
         await requireWriter(input.projectId);
-        const workspace = await backend.createDraft(input);
+        const claim = await backend.claimDraft(input);
+        if (claim.status === 'in_progress') throw new CreateMapMcpError('MAP_CREATION_IN_PROGRESS');
+        let workspace: PublicMapWorkspace;
+        if (claim.status === 'completed') {
+          workspace = claim.workspace;
+        } else {
+          try {
+            workspace = await backend.createDraft(input, claim);
+          } catch (error) {
+            await backend.releaseDraft({
+              idempotencyKey: input.idempotencyKey,
+              claimToken: claim.claimToken,
+            }).catch(() => undefined);
+            throw error;
+          }
+        }
         assertProject(workspace.projectId, input.projectId);
         return {
           ...workspace.identity,
@@ -637,28 +781,49 @@ export function createMapMcpService(
           ) throw new CreateMapMcpError('MAP_REVISION_STALE');
           if (existing.asset.status === 'planned') return prepareResponse(existing, null);
           if (
+            (existing.asset.status === 'failed' && Boolean(existing.asset.providerJobId))
+            || (existing.asset.status === 'blocked'
+              && existing.asset.lastErrorCode !== null
+              && CONFIRMED_RETRY_BLOCKS.has(existing.asset.lastErrorCode))
+          ) return prepareResponse(existing, null, 'retry');
+          if (
             existing.asset.status === 'blocked'
             && existing.asset.lastErrorCode === 'pixellab_submit_outcome_unknown'
           ) return prepareResponse(existing, null, 'replace-unknown');
           throw new CreateMapMcpError('MAP_REVISION_STALE');
         }
-        const workspace = await backend.readMap(input.mapId);
-        assertProject(workspace.projectId, input.projectId);
-        if (
-          workspace.identity.revisionId !== input.revisionId
-          || workspace.identity.saveVersion !== input.saveVersion
-        ) throw new CreateMapMcpError('MAP_REVISION_STALE');
-        const planFingerprint = fingerprintPlan(workspace.plan);
-        const frozen = await backend.freezeDraft(input);
-        if (frozen.publishedRevisionId !== input.revisionId) {
+        const revision = await backend.readRevision(input);
+        if (revision.saveVersion !== input.saveVersion) {
           throw new CreateMapMcpError('MAP_REVISION_STALE');
         }
+        const planFingerprint = fingerprintPlan(revision.plan);
         const generationId = makeUuid();
-        const created = await backend.createAssetPlan({
-          revisionId: input.revisionId,
-          generationId,
-          planFingerprint,
-        });
+        let created: Awaited<ReturnType<CreateMapMcpBackend['prepareAssetPlan']>>;
+        try {
+          created = await backend.prepareAssetPlan({
+            ...input,
+            revisionId: input.revisionId,
+            generationId,
+            planFingerprint,
+          });
+        } catch (error) {
+          const code = error && typeof error === 'object' && 'code' in error
+            ? String((error as { code: unknown }).code)
+            : '';
+          if (code !== 'KM413') throw error;
+          const concurrent = await backend.findGeneration(input);
+          if (
+            !concurrent
+            || concurrent.saveVersion !== input.saveVersion
+            || concurrent.asset.status !== 'planned'
+            || concurrent.asset.planFingerprint !== planFingerprint
+            || fingerprintPlan(concurrent.plan) !== planFingerprint
+          ) throw new CreateMapMcpError('MAP_REVISION_STALE');
+          return prepareResponse(concurrent, null);
+        }
+        if (created.publishedRevisionId !== input.revisionId) {
+          throw new CreateMapMcpError('MAP_REVISION_STALE');
+        }
         const state = await backend.readGeneration({
           projectId: input.projectId,
           mapId: input.mapId,
@@ -672,7 +837,7 @@ export function createMapMcpService(
           planFingerprint,
         }, fingerprintPlan);
         if (state.asset.status !== 'planned') throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
-        return prepareResponse(state, frozen.nextDraftRevisionId);
+        return prepareResponse(state, created.nextDraftRevisionId);
       } catch (error) {
         mapProviderError(error);
       }
@@ -697,7 +862,17 @@ export function createMapMcpService(
         assertGenerationIdentity(state, input, fingerprintPlan);
         if (state.asset.status === 'planned') {
           verifyForPurpose(input.confirmationToken, state, 'submit');
-          await backend.invokeProvider('submit', providerInput(state));
+          await backend.invokeProvider('submit', providerSubmissionInput(state));
+          return generationResult((await backend.readGeneration(input)).asset);
+        }
+        if (
+          (state.asset.status === 'failed' && Boolean(state.asset.providerJobId))
+          || (state.asset.status === 'blocked'
+            && state.asset.lastErrorCode !== null
+            && CONFIRMED_RETRY_BLOCKS.has(state.asset.lastErrorCode))
+        ) {
+          verifyForPurpose(input.confirmationToken, state, 'retry');
+          await backend.invokeProvider('retry', providerSubmissionInput(state));
           return generationResult((await backend.readGeneration(input)).asset);
         }
         if (
@@ -706,13 +881,12 @@ export function createMapMcpService(
         ) {
           verifyForPurpose(input.confirmationToken, state, 'replace-unknown');
           await backend.invokeProvider('retry', {
-            ...providerInput(state),
+            ...providerSubmissionInput(state),
             acknowledgeDuplicateBilling: true,
           });
           return generationResult((await backend.readGeneration(input)).asset);
         }
         if (state.asset.status === 'queued' || state.asset.status === 'generating' || state.asset.status === 'ready') {
-          verifyReplay(input.confirmationToken, state);
           return generationResult(state.asset);
         }
         throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
@@ -730,22 +904,15 @@ export function createMapMcpService(
       planFingerprint: string;
     }) {
       try {
-        let state = await backend.readGeneration(input);
+        const state = await backend.readGeneration(input);
         assertGenerationIdentity(state, input, fingerprintPlan);
-        if (state.asset.status === 'generating') {
-          const result = await backend.invokeProvider('poll', providerInput(state));
-          if (result && typeof result === 'object' && (result as { status?: unknown }).status === 'completed') {
-            await backend.invokeProvider('validate', providerInput(state));
-          }
-          state = await backend.readGeneration(input);
-        }
         return generationResult(state.asset);
       } catch (error) {
         mapProviderError(error);
       }
     },
 
-    async retryGeneration(input: {
+    async advanceGeneration(input: {
       projectId: string;
       mapId: string;
       revisionId: string;
@@ -757,12 +924,17 @@ export function createMapMcpService(
         await requireWriter(input.projectId);
         const state = await backend.readGeneration(input);
         assertGenerationIdentity(state, input, fingerprintPlan);
-        const safe = (state.asset.status === 'failed' && Boolean(state.asset.providerJobId))
-          || (state.asset.status === 'blocked'
-            && state.asset.lastErrorCode !== null
-            && SAFE_RETRY_BLOCKS.has(state.asset.lastErrorCode));
-        if (!safe) throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
-        await backend.invokeProvider('retry', providerInput(state));
+        if (state.asset.status === 'queued') {
+          await backend.invokeProvider('resolve_unknown', {
+            ...providerInput(state),
+            acknowledgeDuplicateBilling: true,
+          });
+        } else if (state.asset.status === 'generating') {
+          const result = await backend.invokeProvider('poll', providerInput(state));
+          if (result && typeof result === 'object' && (result as { status?: unknown }).status === 'completed') {
+            await backend.invokeProvider('validate', providerInput(state));
+          }
+        }
         return generationResult((await backend.readGeneration(input)).asset);
       } catch (error) {
         mapProviderError(error);

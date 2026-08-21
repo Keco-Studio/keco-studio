@@ -13,7 +13,7 @@ const GDS_TOOLS = ['list_game_design_systems', 'read_game_design_system', 'read_
   'create_game_design_system_version', 'set_project_game_design_system', 'clear_project_game_design_system'];
 const MAP_READ_TOOLS = ['list_maps', 'read_map', 'get_map_generation'];
 const MAP_WRITE_TOOLS = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
-  'start_map_generation', 'retry_map_generation'];
+  'start_map_generation', 'advance_map_generation'];
 const PROJECT_WRITE_TOOLS = [...WRITE_TOOLS, ...MAP_WRITE_TOOLS];
 const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS, ...GDS_TOOLS,
   ...MAP_READ_TOOLS, ...MAP_WRITE_TOOLS].sort();

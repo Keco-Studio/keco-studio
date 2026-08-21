@@ -110,9 +110,11 @@ Deno.test("GDS read and project handlers map to encoded app routes", async () =>
   registerGdsTools(server, accountContext, {
     callApp: async (_context, request) => {
       calls.push(request);
-      return request.path === "/api/game-design-systems"
+      return request.path === "/api/game-design-systems?limit=51&offset=0"
         ? {
           systems: [{ id: "system-1", title: "Tactics", owner_id: "secret" }],
+          hasMore: false,
+          nextOffset: null,
         }
         : { system: null };
     },
@@ -124,7 +126,7 @@ Deno.test("GDS read and project handlers map to encoded app routes", async () =>
   });
 
   assertEquals(calls, [
-    { method: "GET", path: "/api/game-design-systems" },
+    { method: "GET", path: "/api/game-design-systems?limit=51&offset=0" },
     {
       method: "GET",
       path:
@@ -135,6 +137,32 @@ Deno.test("GDS read and project handlers map to encoded app routes", async () =>
     id: "system-1",
     title: "Tactics",
   }]);
+});
+
+Deno.test("GDS generation jobs redact stored worker diagnostics", async () => {
+  const { server, tools } = recordingServer();
+  registerGdsTools(server, accountContext, {
+    callApp: async () => ({
+      job: {
+        id: "job-1",
+        status: "failed",
+        phase: "failed",
+        error: "SQL relation private_table failed; bearer private-token",
+      },
+    }),
+  });
+  const result = await tools.find((tool) =>
+    tool.name === "get_game_design_system_generation"
+  )!.handler({ generationJobId: "22222222-2222-4222-8222-222222222222" });
+  assertEquals(result.structuredContent?.job, {
+    id: "job-1",
+    status: "failed",
+    phase: "failed",
+    error: {
+      code: "GDS_GENERATION_FAILED",
+      message: "Game Design System generation failed.",
+    },
+  });
 });
 
 Deno.test("GDS mutations forward bodies and idempotency keys", async () => {

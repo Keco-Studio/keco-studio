@@ -127,7 +127,7 @@ function plannedRecord(generationId: string, fingerprint: string): MapAssetRecor
   };
 }
 
-function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string }>) {
+function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRevisionId: string; saveVersion: number }>) {
   runtime = new HookRuntime();
   let generationId = '';
   let fingerprint = '';
@@ -141,6 +141,23 @@ function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRev
     listAssets: jest.fn(async () => []),
     createSignedAssetUrl: jest.fn(async () => 'signed://map'),
     invokePixelLab: jest.fn(async () => ({})),
+    prepareMapGeneration: jest.fn(async (input: { mapId: string; revisionId: string; saveVersion: number }) => {
+      generationId = '10000000-0000-4000-8000-000000000032';
+      fingerprint = await directMapPlanFingerprint(makeValidMapPlanV3());
+      return {
+      mapId: input.mapId,
+      revisionId: input.revisionId,
+      assetId: '10000000-0000-4000-8000-000000000031',
+      status: 'planned',
+      generationId,
+      planFingerprint: fingerprint,
+      saveVersion: input.saveVersion,
+      confirmationToken: 'signed-confirmation',
+      confirmationPurpose: 'submit',
+      feeNotice: 'Paid generation consumes credits.',
+      };
+    }),
+    startMapGeneration: jest.fn(async () => ({ status: 'generating' })),
   };
   let latest!: HookResult;
   const render = (plan = makeValidMapPlanV3(), projectId = 'project-1') => runtime.render(() => {
@@ -149,7 +166,13 @@ function setup(publishForGeneration: () => Promise<{ mapId: string; publishedRev
       plan,
       scene: makeEmptyMapSceneV3({ ...plan }),
       canPrepare: true,
-      publishForGeneration,
+      draftIdentity: {
+        mapId: '10000000-0000-4000-8000-000000000029',
+        revisionId: '10000000-0000-4000-8000-000000000030',
+        revisionNumber: 1,
+        saveVersion: 0,
+      },
+      reloadDraftAfterPreparation: async () => null,
       onSceneMaterialized: jest.fn(),
     });
   });
@@ -162,64 +185,92 @@ beforeEach(() => {
 });
 
 describe('useDirectMapGeneration preparation guards', () => {
-  it('prepares and submits exactly once from one generate action', async () => {
+  it('prepares and submits exactly once through the confirmed App route', async () => {
     const publish = jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',
       publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
     }));
     const state = setup(publish);
     state.render();
 
     await state.latest.generate();
 
-    expect(publish).toHaveBeenCalledTimes(1);
-    expect(mockService.createAssetPlanV3).toHaveBeenCalledTimes(1);
-    expect(mockService.invokePixelLab).toHaveBeenCalledTimes(1);
-    expect(mockService.invokePixelLab).toHaveBeenCalledWith(expect.objectContaining({ operation: 'submit' }));
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+    expect(mockService.startMapGeneration).toHaveBeenCalledTimes(1);
+    expect(mockService.startMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      confirmationToken: 'signed-confirmation',
+      confirmPaidGeneration: true,
+    }));
+    expect(publish).not.toHaveBeenCalled();
+    expect(mockService.createAssetPlanV3).not.toHaveBeenCalled();
+    expect(mockService.invokePixelLab).not.toHaveBeenCalledWith(expect.objectContaining({ operation: 'submit' }));
   });
 
-  it('publishes and creates one asset plan when prepare is called twice concurrently', async () => {
+  it('atomically prepares one asset plan when prepare is called twice concurrently', async () => {
     const publish = jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',
       publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
     }));
     const state = setup(publish);
     state.render();
 
     await Promise.all([state.latest.prepare(), state.latest.prepare()]);
 
-    expect(publish).toHaveBeenCalledTimes(1);
-    expect(mockService.createAssetPlanV3).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+    expect(mockService.createAssetPlanV3).not.toHaveBeenCalled();
   });
 
-  it('creates the immutable asset but does not install it after the Plan changes during publish', async () => {
-    const pending = deferred<{ mapId: string; publishedRevisionId: string }>();
-    const publish = jest.fn(() => pending.promise);
+  it('creates the immutable asset but does not install it after the Plan changes during prepare', async () => {
+    const pending = deferred<Record<string, unknown>>();
+    const publish = jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
+    }));
     const state = setup(publish);
+    mockService.prepareMapGeneration.mockImplementationOnce(() => pending.promise);
     state.render();
     const preparation = state.latest.prepare();
 
     state.render(makeValidMapPlanV3({ description: 'A different approved opaque full-map description.' }));
+    const planFingerprint = await directMapPlanFingerprint(makeValidMapPlanV3());
     pending.resolve({
       mapId: '10000000-0000-4000-8000-000000000029',
-      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      revisionId: '10000000-0000-4000-8000-000000000030',
+      assetId: '10000000-0000-4000-8000-000000000031',
+      status: 'planned',
+      generationId: '10000000-0000-4000-8000-000000000032',
+      planFingerprint,
+      saveVersion: 0,
+      confirmationToken: 'signed-confirmation',
+      confirmationPurpose: 'submit',
     });
     await preparation;
     state.render(makeValidMapPlanV3({ description: 'A different approved opaque full-map description.' }));
 
-    expect(mockService.createAssetPlanV3).toHaveBeenCalledTimes(1);
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
     expect(state.latest.target).toBeNull();
   });
 
-  it('does not report an old publish failure after the Plan changes', async () => {
-    const pending = deferred<{ mapId: string; publishedRevisionId: string }>();
-    const state = setup(jest.fn(() => pending.promise));
+  it('does not report an old prepare failure after the Plan changes', async () => {
+    const pending = deferred<Record<string, unknown>>();
+    const state = setup(jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
+    })));
+    mockService.prepareMapGeneration.mockImplementationOnce(() => pending.promise);
     state.render();
     const preparation = state.latest.prepare();
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
     const changedPlan = makeValidMapPlanV3({ description: 'A replacement opaque full-map description.' });
     state.render(changedPlan);
-    pending.reject(new Error('old publish failed'));
+    pending.reject(new Error('old prepare failed'));
     await preparation;
     state.render(changedPlan);
 
@@ -231,6 +282,7 @@ describe('useDirectMapGeneration preparation guards', () => {
     const publish = jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',
       publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
     }));
     const state = setup(publish);
     const originalPlan = makeValidMapPlanV3();
@@ -239,8 +291,10 @@ describe('useDirectMapGeneration preparation guards', () => {
     state.render(originalPlan);
 
     const pending = deferred<unknown>();
-    mockService.invokePixelLab.mockImplementation(() => pending.promise);
+    mockService.startMapGeneration.mockImplementation(() => pending.promise);
     const confirmation = state.latest.confirm();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockService.startMapGeneration).toHaveBeenCalledTimes(1);
     const changedPlan = makeValidMapPlanV3({ description: 'A newer opaque full-map description.' });
     state.render(changedPlan);
     pending.reject(new Error('old submit failed'));
@@ -250,16 +304,38 @@ describe('useDirectMapGeneration preparation guards', () => {
     expect(state.latest.error).toBeNull();
   });
 
+  it('reports a confirmation refresh failure without starting a paid attempt', async () => {
+    const publish = jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+      saveVersion: 0,
+    }));
+    const state = setup(publish);
+    const plan = makeValidMapPlanV3();
+    state.render(plan);
+    await state.latest.prepare();
+    state.render(plan);
+    mockService.startMapGeneration.mockClear();
+    mockService.prepareMapGeneration.mockRejectedValueOnce(new Error('Confirmation unavailable'));
+
+    await expect(state.latest.confirm()).resolves.toBeUndefined();
+    state.render(plan);
+
+    expect(state.latest.error).toBe('Confirmation unavailable');
+    expect(mockService.startMapGeneration).not.toHaveBeenCalled();
+  });
+
   it('starts a new revision for an unknown submission only after explicit acknowledgement', async () => {
     const publishedRevisionId = '10000000-0000-4000-8000-000000000030';
     const mapId = '10000000-0000-4000-8000-000000000029';
-    const publish = jest.fn(async () => ({ mapId, publishedRevisionId }));
+    const publish = jest.fn(async () => ({ mapId, publishedRevisionId, saveVersion: 0 }));
     const state = setup(publish);
     const plan = makeValidMapPlanV3();
     const planFingerprint = await directMapPlanFingerprint(plan);
     const queuedAsset: DirectMapGenerationAsset = {
       id: '10000000-0000-4000-8000-000000000031',
       status: 'queued',
+      attemptCount: 0,
       lastErrorCode: null,
       providerOperation: null,
       providerJobId: null,
@@ -278,6 +354,7 @@ describe('useDirectMapGeneration preparation guards', () => {
         projectId: 'project-1',
         mapId,
         revisionId: publishedRevisionId,
+        saveVersion: 0,
         generationId: queuedAsset.generationId,
         planFingerprint,
       },
@@ -300,6 +377,67 @@ describe('useDirectMapGeneration preparation guards', () => {
       acknowledgeDuplicateBilling: true,
       assetId: queuedAsset.id,
     }));
-    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+  });
+
+  it('prepares a fresh confirmation before every retry without invoking PixelLab directly', async () => {
+    const mapId = '10000000-0000-4000-8000-000000000029';
+    const revisionId = '10000000-0000-4000-8000-000000000030';
+    const state = setup(jest.fn(async () => ({ mapId, publishedRevisionId: revisionId, saveVersion: 0 })));
+    const plan = makeValidMapPlanV3();
+    const planFingerprint = await directMapPlanFingerprint(plan);
+    const failedAsset: DirectMapGenerationAsset = {
+      id: '10000000-0000-4000-8000-000000000031',
+      status: 'failed',
+      attemptCount: 1,
+      lastErrorCode: 'pixellab_failed',
+      providerOperation: 'create_image_pro',
+      providerJobId: 'job-1',
+      generationId: '10000000-0000-4000-8000-000000000032',
+      planFingerprint,
+      storagePath: null,
+      sha256: null,
+      width: null,
+      height: null,
+      hasTransparency: null,
+      signedUrl: null,
+    };
+    mockService.prepareMapGeneration.mockResolvedValueOnce({
+      mapId,
+      revisionId,
+      assetId: failedAsset.id,
+      status: 'failed',
+      generationId: failedAsset.generationId,
+      planFingerprint,
+      saveVersion: 0,
+      confirmationToken: 'retry-confirmation',
+      confirmationPurpose: 'retry',
+      feeNotice: 'Paid generation consumes credits.',
+    });
+    state.render(plan);
+    state.latest.installRestore({
+      target: {
+        projectId: 'project-1', mapId, revisionId,
+        saveVersion: 0,
+        generationId: failedAsset.generationId, planFingerprint,
+      },
+      plan,
+      generationPlan: plan,
+      scene: makeEmptyMapSceneV3(),
+      asset: failedAsset,
+      phase: 'failed',
+      boundImage: null,
+    });
+    state.render(plan);
+
+    await state.latest.retry();
+
+    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+    expect(mockService.startMapGeneration).toHaveBeenCalledWith(expect.objectContaining({
+      confirmationToken: 'retry-confirmation',
+      confirmPaidGeneration: true,
+    }));
+    expect(mockService.invokePixelLab).not.toHaveBeenCalledWith(expect.objectContaining({ operation: 'retry' }));
   });
 });

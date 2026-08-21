@@ -45,8 +45,18 @@ export const PUT = withAuth(async function PUT(request, { params }: Params, { su
       .select('id,system_id,conflicts')
       .eq('id', versionId)
       .single();
-    if (versionError || !version || version.system_id !== designSystemId) return NextResponse.json({ error: 'Game Design System version not found.' }, { status: 404 });
-    if (Array.isArray(version.conflicts) && version.conflicts.length > 0) return NextResponse.json({ error: 'Resolve version conflicts before applying it.' }, { status: 409 });
+    if (versionError || !version || version.system_id !== designSystemId) {
+      return NextResponse.json({
+        error: 'Game Design System version not found.',
+        code: 'GDS_NOT_FOUND',
+      }, { status: 404 });
+    }
+    if (Array.isArray(version.conflicts) && version.conflicts.length > 0) {
+      return NextResponse.json({
+        error: 'Resolve version conflicts before applying it.',
+        code: 'GDS_JOB_CONFLICT',
+      }, { status: 409 });
+    }
     await setProjectGameDesignSystem(supabase, projectId, designSystemId, versionId, user.id);
     const system = await getProjectGameDesignSystem(supabase, projectId, { snapshotClient: getSupabaseServiceRoleClient() });
     return NextResponse.json({

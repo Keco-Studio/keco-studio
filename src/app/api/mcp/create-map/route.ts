@@ -72,8 +72,8 @@ const GetGeneration = z.object({
   action: z.literal('get_map_generation'),
   ...GenerationIdentity,
 }).strict();
-const RetryGeneration = z.object({
-  action: z.literal('retry_map_generation'),
+const AdvanceGeneration = z.object({
+  action: z.literal('advance_map_generation'),
   ...GenerationIdentity,
 }).strict();
 
@@ -85,7 +85,7 @@ const RequestBody = z.discriminatedUnion('action', [
   PrepareGeneration,
   StartGeneration,
   GetGeneration,
-  RetryGeneration,
+  AdvanceGeneration,
 ]).refine(
   (value) => value.action !== 'create_map_draft'
     || value.description.length > 0
@@ -96,6 +96,7 @@ const RequestBody = z.discriminatedUnion('action', [
 const ERROR_STATUS: Record<CreateMapMcpErrorCode, number> = {
   PROJECT_WRITE_FORBIDDEN: 403,
   IDEMPOTENCY_CONFLICT: 409,
+  MAP_CREATION_IN_PROGRESS: 409,
   MAP_NOT_FOUND: 404,
   MAP_REVISION_STALE: 409,
   MAP_CONFIRMATION_REQUIRED: 409,
@@ -118,7 +119,7 @@ type ValidatedRequest =
   | ({ action: 'prepare_map_generation' } & Parameters<CreateMapMcpService['prepareGeneration']>[0])
   | ({ action: 'start_map_generation' } & Parameters<CreateMapMcpService['startGeneration']>[0])
   | ({ action: 'get_map_generation' } & Parameters<CreateMapMcpService['getGeneration']>[0])
-  | ({ action: 'retry_map_generation' } & Parameters<CreateMapMcpService['retryGeneration']>[0]);
+  | ({ action: 'advance_map_generation' } & Parameters<CreateMapMcpService['advanceGeneration']>[0]);
 
 function withoutAction<T extends { action: string }>({ action: _action, ...input }: T): Omit<T, 'action'> {
   return input;
@@ -158,8 +159,8 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       case 'get_map_generation':
         result = await service.getGeneration(withoutAction(body));
         break;
-      case 'retry_map_generation':
-        result = await service.retryGeneration(withoutAction(body));
+      case 'advance_map_generation':
+        result = await service.advanceGeneration(withoutAction(body));
         break;
     }
     return NextResponse.json(result, { headers: NO_STORE_HEADERS });

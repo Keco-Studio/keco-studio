@@ -57,7 +57,7 @@ const expectedNames = [
   "prepare_map_generation",
   "start_map_generation",
   "get_map_generation",
-  "retry_map_generation",
+  "advance_map_generation",
 ];
 
 function recordingServer() {
@@ -147,6 +147,22 @@ Deno.test("Map tools register strict account and legacy project schemas", () => 
     start.config.description,
     /fee notice[\s\S]*explicit confirmation/i,
   );
+  const get = tools.find((tool) => tool.name === "get_map_generation")!;
+  const advance = tools.find((tool) => tool.name === "advance_map_generation")!;
+  assertEquals(get.config.annotations.readOnlyHint, true);
+  assertEquals(advance.config.annotations.readOnlyHint, false);
+});
+
+Deno.test("viewer Map tools expose provider-free generation reads only", () => {
+  const { server, tools } = recordingServer();
+  registerMapTools(server, { ...projectContext, role: "viewer" }, {
+    callApp: async () => ({}),
+  });
+  assertEquals(tools.map((tool) => tool.name), [
+    "list_maps",
+    "read_map",
+    "get_map_generation",
+  ]);
 });
 
 Deno.test("Map tools map account and project inputs to the strict app action route", async () => {
@@ -164,6 +180,14 @@ Deno.test("Map tools map account and project inputs to the strict app action rou
           status: "planned",
           confirmationToken: "signed-confirmation",
           feeNotice: "Paid generation consumes credits.",
+          providerSecret: "remove-me",
+        };
+      }
+      if ((request.body as { action?: string }).action === "get_map_generation") {
+        return {
+          assetId: IDS.assetId,
+          status: "failed",
+          attemptCount: 3,
           providerSecret: "remove-me",
         };
       }
@@ -204,6 +228,14 @@ Deno.test("Map tools map account and project inputs to the strict app action rou
     status: "planned",
     confirmationToken: "signed-confirmation",
     feeNotice: "Paid generation consumes credits.",
+  });
+
+  const generation = await tools.find((tool) => tool.name === "get_map_generation")!.handler(identity());
+  assertEquals(generation.structuredContent, {
+    ok: true,
+    assetId: IDS.assetId,
+    status: "failed",
+    attemptCount: 3,
   });
 });
 

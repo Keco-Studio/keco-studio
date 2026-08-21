@@ -23,4 +23,10 @@ describe('sidebar child folder creation contract', () => {
       /open=\{Boolean\(folderAddMenu\)\}[\s\S]*onCreateFolder=\{[\s\S]*folderAddMenu\.folderId/,
     );
   });
+
+  it('uses child-folder parent state for toolbar folder creation', () => {
+    expect(sidebarSource).toMatch(
+      /handleToolbarCreateFolder[\s\S]*setPendingFolderParentId\(custom\.detail\?\.folderId \?\? null\)[\s\S]*openNewFolder\(\)/,
+    );
+  });
 });

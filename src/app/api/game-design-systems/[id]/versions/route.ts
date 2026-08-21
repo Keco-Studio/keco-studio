@@ -92,9 +92,12 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     return NextResponse.json({ version: visible.current_version ?? visible.versions[0] }, { status: 201 });
   } catch (error) {
     if (error instanceof PublicGameDesignSystemVersionError) {
+      const publicCode = error.code === 'VERSION_SYSTEM_NOT_FOUND'
+        ? 'GDS_NOT_FOUND'
+        : error.code;
       return NextResponse.json({
         error: error.publicMessage,
-        code: error.code,
+        code: publicCode,
         ...(error.ruleIds ? { ruleIds: error.ruleIds } : {}),
       }, { status: VERSION_ERROR_STATUS[error.code] ?? 500 });
     }

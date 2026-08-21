@@ -1339,7 +1339,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const handleToolbarCreateFolder = (event: Event) => {
       const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
       if (!matchesProject(custom.detail) || userRole !== 'admin') return;
-      setSelectedFolderId(custom.detail?.folderId ?? null);
+      setPendingFolderParentId(custom.detail?.folderId ?? null);
       openNewFolder();
     };
 

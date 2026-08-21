@@ -9,7 +9,7 @@ const service = {
   prepareGeneration: jest.fn(),
   startGeneration: jest.fn(),
   getGeneration: jest.fn(),
-  retryGeneration: jest.fn(),
+  advanceGeneration: jest.fn(),
 };
 let authenticated = true;
 const supabase = {};
@@ -81,6 +81,15 @@ describe('POST /api/mcp/create-map', () => {
 
   it('rejects unknown actions, unknown fields, and false paid confirmation', async () => {
     expect((await post({ action: 'delete_map', projectId: IDS.projectId })).status).toBe(400);
+    expect((await post({
+      action: 'retry_map_generation',
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      assetId: IDS.assetId,
+      generationId: IDS.generationId,
+      planFingerprint: 'a'.repeat(64),
+    })).status).toBe(400);
     expect((await post({
       action: 'list_maps',
       projectId: IDS.projectId,

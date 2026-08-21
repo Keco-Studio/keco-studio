@@ -280,7 +280,11 @@ async function main(): Promise<void> {
   const existingAsset = assets.length === 1 ? assets[0] : null;
   const unknownBlocked = existingAsset?.status === 'blocked'
     && existingAsset.last_error_code === 'pixellab_submit_outcome_unknown';
-  const shouldPrepare = revision.status === 'draft' || existingAsset?.status === 'planned' || unknownBlocked;
+  const retryableBlocked = existingAsset?.status === 'blocked'
+    && ['pixellab_rate_limited', 'pixellab_quota_exceeded'].includes(existingAsset.last_error_code ?? '');
+  const retryableFailed = existingAsset?.status === 'failed' && Boolean(existingAsset.provider_job_id);
+  const shouldPrepare = revision.status === 'draft' || existingAsset?.status === 'planned'
+    || unknownBlocked || retryableBlocked || retryableFailed;
   let prepared: JsonRecord | null = null;
   if (shouldPrepare) {
     prepared = await callCreateMapApi({
@@ -332,9 +336,6 @@ async function main(): Promise<void> {
   };
 
   let paidRequestSubmitted = false;
-  const retryableBlocked = asset.status === 'blocked'
-    && ['pixellab_rate_limited', 'pixellab_quota_exceeded'].includes(asset.last_error_code ?? '');
-  const retryableFailed = asset.status === 'failed' && Boolean(asset.provider_job_id);
   if (
     (asset.status === 'blocked' || asset.status === 'failed')
     && !unknownBlocked
@@ -356,14 +357,6 @@ async function main(): Promise<void> {
     paidRequestSubmitted = true;
     assets = await listAssets(supabase, generationRevisionId);
     asset = assets[0];
-  } else if (retryableFailed || retryableBlocked) {
-    await callCreateMapApi({
-      action: 'retry_map_generation',
-      ...identity,
-    }, auth.session.access_token);
-    paidRequestSubmitted = true;
-    assets = await listAssets(supabase, generationRevisionId);
-    asset = assets[0];
   }
   if (!['queued', 'generating', 'ready'].includes(asset.status)) {
     throw new AcceptanceError(asset.last_error_code ?? `generation_not_resumable:${asset.status}`);
@@ -371,6 +364,10 @@ async function main(): Promise<void> {
 
   const terminalStatuses = ['ready', 'failed', 'blocked'];
   for (let cycle = 0; !terminalStatuses.includes(asset.status) && cycle < MAX_POLL_CYCLES; cycle += 1) {
+    await callCreateMapApi({
+      action: 'advance_map_generation',
+      ...identity,
+    }, auth.session.access_token);
     const polled = await callCreateMapApi({
       action: 'get_map_generation',
       ...identity,

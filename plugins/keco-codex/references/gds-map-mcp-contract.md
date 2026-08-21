@@ -72,15 +72,17 @@ and project binding IDs.
   account `projectId`. It freezes the exact revision and returns
   `nextDraftRevisionId`, `assetId`, `generationId`, `planFingerprint`,
   `feeNotice`, `confirmationPurpose`, `confirmationExpiresAt`, and a secret
-  `confirmationToken`. It does not contact the provider.
+  `confirmationToken` bound to the asset's current `attemptCount`. It does not
+  contact the provider.
 - `start_map_generation`: exact `mapId`, `revisionId`, `assetId`,
   `generationId`, 64-character `planFingerprint`, returned
   `confirmationToken`, and literal `confirmPaidGeneration: true`; account adds
   `projectId`.
 - `get_map_generation`: the same immutable identity without confirmation fields;
-  account adds `projectId`.
-- `retry_map_generation`: the same identity. It is only for a failed asset with
-  a provider job or bounded rate-limit/quota blocked states.
+  account adds `projectId`. This is a provider-free database read.
+- `advance_map_generation`: the same identity; account adds `projectId`. This
+  writer-only tool may resolve an old queued outcome, poll an existing provider
+  job, or validate its completed output. It never submits a new paid job.
 
 The V3 Plan is complete, not a patch: `{ schemaVersion: 3, name, summary, map:
 { width, height }, description, references, styleReference, generation }`.
@@ -103,17 +105,23 @@ The initial request to create a map is intent, not paid confirmation.
 3. Show `feeNotice` to the user and wait for a later explicit confirmation.
 4. Call `start_map_generation` only with the exact returned immutable identity,
    token, and literal confirmation.
-5. Poll `get_map_generation` through `planned`, `queued`, or `generating` until
-   terminal `ready`, `failed`, or `blocked`.
+5. Editors/admins call `advance_map_generation` and then the provider-free
+   `get_map_generation` read through `planned`, `queued`, or `generating` until
+   terminal `ready`, `failed`, or `blocked`. Viewers only read persisted state.
 6. On `ready`, call `read_map` again and verify the stored identity and image.
 
-A replay of the same confirmed start returns the existing operation. Never log
+A replay of the same confirmed start returns the existing operation. Failed,
+rate-limited, and quota-blocked resubmissions require another prepare, fee
+notice, later confirmation, and a purpose-bound `retry` start. A confirmation
+token is valid only for its bound `attemptCount`; after the attempt advances,
+the old token cannot submit again. Never log
 or persist the confirmation token, bearer credentials, provider payload, or
 signed image URL. An unknown provider submission outcome is not a normal retry:
 call prepare again, show the new fee notice, and obtain another later explicit
 confirmation before a `replace-unknown` start.
 
-Stable Map errors include `IDEMPOTENCY_CONFLICT`, `MAP_REVISION_STALE`,
+Stable Map errors include `IDEMPOTENCY_CONFLICT`, `MAP_CREATION_IN_PROGRESS`,
+`MAP_REVISION_STALE`,
 `MAP_CONFIRMATION_REQUIRED`, `MAP_CONFIRMATION_EXPIRED`,
 `MAP_CONFIRMATION_MISMATCH`, `MAP_GENERATION_BLOCKED`,
 `MAP_GENERATION_FAILED`, `PROVIDER_RATE_LIMITED`, `PROVIDER_QUOTA_EXCEEDED`,

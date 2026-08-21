@@ -278,6 +278,7 @@ export function useMapDraft<
       return {
         mapId: target.mapId,
         publishedRevisionId: published.publishedRevisionId,
+        saveVersion: target.saveVersion,
         nextDraft,
       };
     }
@@ -285,6 +286,7 @@ export function useMapDraft<
     return {
       mapId: target.mapId,
       publishedRevisionId: published.publishedRevisionId,
+      saveVersion: target.saveVersion,
       nextDraft,
     };
   }, [adapter, currentPayloadKey, install, lastSaved, status, writer]);

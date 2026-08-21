@@ -25,7 +25,7 @@ const mapTools = [
   'prepare_map_generation',
   'start_map_generation',
   'get_map_generation',
-  'retry_map_generation',
+  'advance_map_generation',
 ].sort();
 
 function skillPath(pluginRoot: string, skillName: string): string {
@@ -94,6 +94,7 @@ describe('Keco GDS and Create Map plugin skills', () => {
       );
       expect(source).toMatch(/initial request[\s\S]{0,120}not[\s\S]{0,80}(?:paid )?confirmation/i);
       expect(source).toMatch(/show[\s\S]{0,80}fee notice[\s\S]{0,180}(?:later|subsequent)[\s\S]{0,100}explicit confirmation/i);
+      expect(source).toMatch(/confirmation\s+token[\s\S]{0,160}`attemptCount`/i);
       expect(source).toMatch(/never call[\s\S]{0,80}PixelLab directly/i);
       expect(source).toMatch(/tilesets?[\s\S]{0,100}roads?[\s\S]{0,100}buildings?[\s\S]{0,100}props?[\s\S]{0,160}`pixellab-map-assets`/i);
       expect(source).toMatch(/POLL:[\s\S]{0,100}`get_map_generation`/i);
@@ -112,6 +113,7 @@ describe('Keco GDS and Create Map plugin skills', () => {
     expect(mentionedTools(source, mapTools)).toEqual(mapTools);
     expect(source).toMatch(/account[\s\S]{0,240}legacy/i);
     expect(source).toMatch(/MAP_CONFIRMATION_REQUIRED/);
+    expect(source).toMatch(/confirmation\s+token[\s\S]{0,160}`attemptCount`/i);
     expect(source).toMatch(/ready[\s\S]{0,160}failed[\s\S]{0,160}blocked/i);
   });
 });

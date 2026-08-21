@@ -39,15 +39,18 @@ describe('Create Map V3 acceptance tooling', () => {
   it('prepares, confirms, starts, and polls through the two-step paid contract', () => {
     const prepare = paidScript.indexOf("action: 'prepare_map_generation'");
     const start = paidScript.indexOf("action: 'start_map_generation'");
+    const advance = paidScript.indexOf("action: 'advance_map_generation'");
     const poll = paidScript.indexOf("action: 'get_map_generation'");
     expect(prepare).toBeGreaterThan(0);
     expect(start).toBeGreaterThan(prepare);
-    expect(poll).toBeGreaterThan(start);
+    expect(advance).toBeGreaterThan(start);
+    expect(poll).toBeGreaterThan(advance);
     expect(paidScript).toContain('prepared.feeNotice');
     expect(paidScript).toContain('prepared.confirmationToken');
     expect(paidScript).toContain('confirmPaidGeneration: true');
     expect(paidScript).toContain("KECO_ACCEPTANCE_CONFIRM_PAID === 'true'");
     expect(paidScript).toMatch(/\['ready', 'failed', 'blocked'\]/);
+    expect(paidScript).not.toContain("action: 'retry_map_generation'");
   });
 
   it('does not print credentials, fee tokens, user email, or map names', () => {

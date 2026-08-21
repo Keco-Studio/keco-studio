@@ -63,6 +63,7 @@ function authorized(status: string, metadata: Record<string, unknown> = {}) {
       reference_hashes: [],
       provider_operation: status === "generating" ? "create_image_pro" : null,
       provider_job_id: status === "generating" ? "job-1" : null,
+      attempt_count: 4,
       metadata,
     },
   };
@@ -174,15 +175,64 @@ Deno.test("retries an unknown blocked submission only with duplicate-billing ack
   const result = await runDirectMapLifecycle({
     operation: "retry",
     acknowledgeDuplicateBilling: true,
+    expectedAttemptCount: 4,
     ...state,
   } as never);
 
   assertEquals(result, { assetId: IDS.assetId, status: "generating" });
   assertEquals(state.submissions.length, 1);
-  assertEquals(state.transitions.map(({ from, to }) => ({ from, to })), [
-    { from: "blocked", to: "queued" },
-    { from: "queued", to: "generating" },
+  assertEquals(state.transitions, [
+    { from: "blocked", to: "queued", details: { expectedAttemptCount: 4 } },
+    { from: "queued", to: "generating", details: {
+      operation: "create_image_pro",
+      transport: "mcp",
+      jobId: "job-1",
+      metadata: {
+        schemaFingerprint: CAPABILITY.schemaFingerprint,
+        pollOperation: CAPABILITY.pollOperation,
+        pollSchemaFingerprint: CAPABILITY.pollSchemaFingerprint,
+      },
+    } },
   ]);
+});
+
+Deno.test("allows only one concurrent retry for the same confirmed attempt", async () => {
+  const first = harness({
+    status: "blocked",
+    lastErrorCode: "pixellab_rate_limited",
+    metadata: {},
+  });
+  const second = harness({
+    status: "blocked",
+    lastErrorCode: "pixellab_rate_limited",
+    metadata: {},
+  });
+  let durableAttempt = 4;
+  const confirmedTransition = async (
+    _client: unknown,
+    _assetId: string,
+    _from: string,
+    to: string,
+    details: Record<string, unknown> = {},
+  ) => {
+    if (to !== "queued") return;
+    if (details.expectedAttemptCount !== durableAttempt) {
+      throw new PixelLabMapError("pixellab_invalid_response", "Map asset state changed", 409);
+    }
+    durableAttempt += 1;
+  };
+
+  const results = await Promise.allSettled([first, second].map((state) => runDirectMapLifecycle({
+    operation: "retry",
+    expectedAttemptCount: 4,
+    ...state,
+    transitionAsset: confirmedTransition,
+  } as never)));
+
+  assertEquals(results.filter((result) => result.status === "fulfilled").length, 1);
+  assertEquals(results.filter((result) => result.status === "rejected").length, 1);
+  assertEquals(first.submissions.length + second.submissions.length, 1);
+  assertEquals(durableAttempt, 5);
 });
 
 Deno.test("does not resolve a queued submission before the safety window elapses", async () => {

@@ -154,11 +154,11 @@ function publicSystem(value: unknown): Record<string, unknown> {
 }
 
 function publicJob(value: unknown): Record<string, unknown> {
-  return pick(value, [
+  const source = record(value);
+  const output = pick(source, [
     "id",
     "status",
     "phase",
-    "error",
     "design_system_id",
     "output_version_id",
     "attempt_count",
@@ -169,6 +169,13 @@ function publicJob(value: unknown): Record<string, unknown> {
     "created_at",
     "updated_at",
   ]);
+  if (source.status === "failed") {
+    output.error = {
+      code: "GDS_GENERATION_FAILED",
+      message: "Game Design System generation failed.",
+    };
+  }
+  return output;
 }
 
 function projectIdFor(
@@ -195,9 +202,8 @@ function cursorSecret(): string {
   return secret;
 }
 
-async function listPage(
+async function listPosition(
   context: McpRequestContext,
-  systems: unknown[],
   input: { limit?: number; cursor?: string },
 ) {
   const limit = input.limit ?? 50;
@@ -223,16 +229,7 @@ async function listPage(
     }
     offset = Number(position.offset);
   }
-  const items = systems.slice(offset, offset + limit).map(publicSystem);
-  const nextOffset = offset + items.length;
-  return {
-    systems: items,
-    returnedCount: items.length,
-    hasMore: nextOffset < systems.length,
-    nextCursor: nextOffset < systems.length
-      ? await encodeCursor(binding, { offset: nextOffset }, cursorSecret())
-      : null,
-  };
+  return { limit, offset, binding };
 }
 
 export function registerGdsTools(
@@ -252,17 +249,27 @@ export function registerGdsTools(
     annotations: readAnnotations,
   }, async (input: z.infer<typeof listSchema>) => {
     try {
+      const position = await listPosition(context, input);
       const payload = record(
         await callApp(context, {
           method: "GET",
-          path: "/api/game-design-systems",
+          path: `/api/game-design-systems?limit=${position.limit + 1}&offset=${position.offset}`,
         }),
       );
-      const page = await listPage(
-        context,
-        Array.isArray(payload.systems) ? payload.systems : [],
-        input,
-      );
+      const systems = Array.isArray(payload.systems)
+        ? payload.systems.slice(0, position.limit).map(publicSystem)
+        : [];
+      const hasMore = payload.hasMore === true ||
+        (Array.isArray(payload.systems) && payload.systems.length > position.limit);
+      const nextOffset = position.offset + systems.length;
+      const page = {
+        systems,
+        returnedCount: systems.length,
+        hasMore,
+        nextCursor: hasMore
+          ? await encodeCursor(position.binding, { offset: nextOffset }, cursorSecret())
+          : null,
+      };
       return toolSuccess("Game Design Systems loaded.", { ok: true, ...page });
     } catch (error) {
       return toolFailure(error);
@@ -282,7 +289,7 @@ export function registerGdsTools(
           method: "GET",
           path: `/api/game-design-systems/${
             encodeURIComponent(input.systemId)
-          }`,
+          }?versionLimit=50`,
         }),
       );
       return toolSuccess("Game Design System loaded.", {

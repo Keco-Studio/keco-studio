@@ -135,6 +135,7 @@ const GENERATION_FIELDS = [
   "status",
   "generationId",
   "planFingerprint",
+  "attemptCount",
   "lastErrorCode",
   "providerJobId",
   "storagePath",
@@ -361,14 +362,14 @@ export function registerMapTools(
     const getSchema = z.object(generationShape).strict();
     register(
       "get_map_generation",
-      "Poll and read the current V3 map generation status and ready image URL.",
+      "Read persisted V3 map generation status and ready image URL without contacting the provider.",
       getSchema,
       { ...readAnnotations, openWorldHint: true },
     );
 
     register(
-      "retry_map_generation",
-      "Retry only a safely retryable map provider state. Unknown paid outcomes require a fresh prepare and explicit confirmation.",
+      "advance_map_generation",
+      "Advance an existing provider job by resolving an old unknown queue state, polling, or validating. This never starts a new paid provider submission.",
       getSchema,
       { ...writeAnnotations, openWorldHint: true },
     );
@@ -383,7 +384,7 @@ export function registerMapTools(
     }).strict();
     register(
       "get_map_generation",
-      "Poll and read the current V3 map generation status and ready image URL.",
+      "Read persisted V3 map generation status and ready image URL without contacting the provider.",
       getSchema,
       { ...readAnnotations, openWorldHint: true },
     );

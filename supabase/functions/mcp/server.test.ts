@@ -57,7 +57,7 @@ const MAP_TOOL_NAMES = [
   "prepare_map_generation",
   "start_map_generation",
   "get_map_generation",
-  "retry_map_generation",
+  "advance_map_generation",
 ];
 
 const context = {

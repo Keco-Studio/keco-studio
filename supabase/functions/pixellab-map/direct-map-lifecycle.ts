@@ -37,6 +37,7 @@ export type DirectMapLifecycleOptions = {
   persistAsset?: PersistAsset;
   resolveReferences?: (authorized: AuthorizedAsset) => Promise<ResolvedDirectMapReferences>;
   acknowledgeDuplicateBilling?: boolean;
+  expectedAttemptCount?: number;
   now?: () => number;
 };
 
@@ -142,7 +143,15 @@ async function submitDirectMap(
     throw error;
   }
 
-  await options.transitionAsset(options.authorized.serviceClient, assetId, status, "queued");
+  await options.transitionAsset(
+    options.authorized.serviceClient,
+    assetId,
+    status,
+    "queued",
+    options.expectedAttemptCount === undefined
+      ? undefined
+      : { expectedAttemptCount: options.expectedAttemptCount },
+  );
   let result: Record<string, unknown>;
   try {
     result = await options.client.submitAsset(capability, providerArguments);

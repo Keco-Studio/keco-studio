@@ -4,10 +4,6 @@ import type {
   DirectMapGenerationAsset,
   DirectMapGenerationPhase,
 } from '../hooks/useDirectMapGeneration';
-import {
-  shouldShowDirectMapPaidNotice,
-  suppressDirectMapPaidNoticeForToday,
-} from '../paidGenerationNotice';
 import styles from '../CreateMapWorkbench.module.css';
 
 type DirectMapGenerationPanelProps = {
@@ -36,8 +32,7 @@ const PHASE_LABELS: Record<DirectMapGenerationPhase, string> = {
 };
 
 export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
-  const [paidPromptOpen, setPaidPromptOpen] = useState(false);
-  const [skipPaidPromptToday, setSkipPaidPromptToday] = useState(false);
+  const [paidAction, setPaidAction] = useState<'generate' | 'retry' | null>(null);
   const readOnly = props.readOnly ?? false;
   const busy = ['preparing', 'submitting', 'generating', 'validating'].includes(props.phase);
   const showGenerate = ['idle', 'awaiting-confirmation', 'failed', 'ready'].includes(props.phase);
@@ -66,23 +61,15 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
       {props.error ? <p className={styles.inlineError} role="alert">{props.error}</p> : null}
       {props.asset?.lastErrorCode ? <code className={styles.errorCode}>{props.asset.lastErrorCode}</code> : null}
 
-      {paidPromptOpen ? (
+      {paidAction ? (
         <div className={styles.generationConfirmation} role="group" aria-label="Generation cost confirmation">
           <strong>Paid PixelLab request</strong>
           <p>Generating the complete map PNG may incur provider charges.</p>
-          <label className={styles.generationNoticeOption}>
-            <input
-              type="checkbox"
-              checked={skipPaidPromptToday}
-              onChange={(event) => setSkipPaidPromptToday(event.target.checked)}
-            />
-            <span>Do not show this again today</span>
-          </label>
           <div className={styles.generationNoticeActions}>
             <button
               type="button"
               className={styles.secondaryButtonFull}
-              onClick={() => setPaidPromptOpen(false)}
+              onClick={() => setPaidAction(null)}
             >
               Cancel
             </button>
@@ -90,9 +77,10 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
               type="button"
               className={styles.primaryButton}
               onClick={() => {
-                if (skipPaidPromptToday) suppressDirectMapPaidNoticeForToday();
-                setPaidPromptOpen(false);
-                props.onGenerate();
+                const confirmedAction = paidAction;
+                setPaidAction(null);
+                if (confirmedAction === 'retry') props.onRetry();
+                else props.onGenerate();
               }}
             >
               Continue to generate
@@ -128,25 +116,18 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
         </form>
       ) : null}
 
-      {showGenerate && !paidPromptOpen ? (
+      {showGenerate && !paidAction ? (
         <button
           type="button"
           className={styles.primaryButton}
           disabled={readOnly || !props.canGenerate || busy}
-          onClick={() => {
-            if (shouldShowDirectMapPaidNotice()) {
-              setSkipPaidPromptToday(false);
-              setPaidPromptOpen(true);
-              return;
-            }
-            props.onGenerate();
-          }}
+          onClick={() => setPaidAction('generate')}
         >
           Generate map
         </button>
       ) : null}
-      {(props.phase === 'failed' || props.phase === 'blocked') && props.canRetry ? (
-        <button type="button" className={styles.secondaryButtonFull} disabled={readOnly} onClick={props.onRetry}>
+      {(props.phase === 'failed' || props.phase === 'blocked') && props.canRetry && !paidAction ? (
+        <button type="button" className={styles.secondaryButtonFull} disabled={readOnly} onClick={() => setPaidAction('retry')}>
           <ReloadOutlined /> Retry generation
         </button>
       ) : null}

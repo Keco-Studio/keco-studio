@@ -1,6 +1,7 @@
 import { assertEquals, assertNotStrictEquals, assertThrows } from "@std/assert";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  assertDirectMapPaidOperationAccess,
   assertGenerationIdentity,
   assertRegionObstacleBackgroundBinding,
   createPixelLabClients,
@@ -72,6 +73,43 @@ Deno.test("keeps legacy assets on their existing identity contract", () => {
     schemaVersion: 1,
     generationId: null,
   }, {});
+});
+
+Deno.test("allows paid direct-map submission only through a trusted service caller", () => {
+  for (const operation of ["submit", "retry"] as const) {
+    const userError = assertThrows(() => assertDirectMapPaidOperationAccess(operation, {
+      serviceRoleRequest: false,
+      gddWorkerRequest: false,
+      expectedAttemptCount: 0,
+    }), PixelLabMapError);
+    assertEquals(userError.status, 403);
+
+    const missingAttemptError = assertThrows(() => assertDirectMapPaidOperationAccess(operation, {
+      serviceRoleRequest: true,
+      gddWorkerRequest: false,
+      expectedAttemptCount: undefined,
+    }), PixelLabMapError);
+    assertEquals(missingAttemptError.status, 403);
+
+    assertDirectMapPaidOperationAccess(operation, {
+      serviceRoleRequest: true,
+      gddWorkerRequest: false,
+      expectedAttemptCount: 0,
+    });
+    assertDirectMapPaidOperationAccess(operation, {
+      serviceRoleRequest: true,
+      gddWorkerRequest: true,
+      expectedAttemptCount: undefined,
+    });
+  }
+
+  for (const operation of ["poll", "validate", "resolve_unknown"] as const) {
+    assertDirectMapPaidOperationAccess(operation, {
+      serviceRoleRequest: false,
+      gddWorkerRequest: false,
+      expectedAttemptCount: undefined,
+    });
+  }
 });
 
 Deno.test("requires the exact generation identity for schema 3", () => {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { gameDesignRuleSetSchema, gameDesignSystemTitleSchema } from '@/lib/game-design-system/ruleSchema';
-import { createGameDesignSystem, listGameDesignSystems } from '@/lib/services/gameDesignSystemService';
+import { createGameDesignSystem, listGameDesignSystemsPage } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
 const createSchema = z.object({
@@ -11,9 +11,28 @@ const createSchema = z.object({
   rules: gameDesignRuleSetSchema,
 }).strict();
 
-export const GET = withAuth(async function GET(_request, _context, { supabase }) {
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(101),
+  offset: z.coerce.number().int().nonnegative(),
+});
+
+export const GET = withAuth(async function GET(request, _context, { supabase }) {
+  const searchParams = new URL(request.url).searchParams;
+  const parsed = listQuerySchema.safeParse({
+    limit: searchParams.get('limit') ?? '51',
+    offset: searchParams.get('offset') ?? '0',
+  });
+  if (!parsed.success) {
+    return NextResponse.json({
+      error: 'Invalid Game Design System pagination.',
+      code: 'FIELD_VALIDATION_FAILED',
+    }, { status: 400 });
+  }
   try {
-    return NextResponse.json({ systems: await listGameDesignSystems(supabase) });
+    return NextResponse.json(await listGameDesignSystemsPage(supabase, {
+      limit: parsed.data.limit ?? 51,
+      offset: parsed.data.offset ?? 0,
+    }));
   } catch (error) {
     console.error('[GET /api/game-design-systems]', error);
     return NextResponse.json({ error: 'Failed to load Game Design Systems.' }, { status: 500 });

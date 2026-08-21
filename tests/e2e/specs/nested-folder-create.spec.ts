@@ -5,6 +5,7 @@ import { LibraryPage } from '../pages/library.page';
 import { users } from '../fixures/users';
 
 async function createChildFolder(page: Page, parentName: string, childName: string) {
+  const parentPath = new URL(page.url()).pathname;
   const tree = page.getByRole('tree');
   const parentItem = tree
     .getByRole('treeitem')
@@ -20,6 +21,10 @@ async function createChildFolder(page: Page, parentName: string, childName: stri
   await page.getByRole('dialog').getByRole('button', { name: 'Create', exact: true }).click();
   await expect(input).not.toBeVisible({ timeout: 15_000 });
   await expect(tree.locator(`[title="${childName}"]`).first()).toBeVisible({ timeout: 15_000 });
+  await page.waitForURL(
+    (url) => url.pathname !== parentPath && /\/folder\/[^/]+$/.test(url.pathname),
+    { timeout: 15_000 }
+  );
 }
 
 test.describe('nested folder creation', () => {
@@ -67,11 +72,31 @@ test.describe('nested folder creation', () => {
     await expect(childItem).toBeVisible({ timeout: 15_000 });
     await expect(grandchildItem).toBeVisible({ timeout: 15_000 });
 
+    const grandchildPath = new URL(page.url()).pathname;
+    await rootItem.locator(`[title="${rootName}"]`).click();
+    await page.waitForURL(
+      (url) => url.pathname !== grandchildPath && /\/folder\/[^/]+$/.test(url.pathname),
+      { timeout: 15_000 }
+    );
+
+    const rootPath = new URL(page.url()).pathname;
     await grandchildItem.locator(`[title="${grandchildName}"]`).click();
-    await page.waitForURL(/\/folder\/[^/]+$/, { timeout: 15_000 });
+    await page.waitForURL(
+      (url) => url.pathname !== rootPath && /\/folder\/[^/]+$/.test(url.pathname),
+      { timeout: 15_000 }
+    );
+    await expect(page.getByText('Loading folder...', { exact: true })).not.toBeVisible({
+      timeout: 15_000,
+    });
     const banner = page.getByRole('banner');
-    await expect(banner.getByRole('button', { name: rootName, exact: true })).toBeVisible();
-    await expect(banner.getByRole('button', { name: childName, exact: true })).toBeVisible();
-    await expect(banner.getByRole('button', { name: grandchildName, exact: true })).toBeVisible();
+    await expect(banner.getByRole('button', { name: rootName, exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(banner.getByRole('button', { name: childName, exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(banner.getByRole('button', { name: grandchildName, exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });

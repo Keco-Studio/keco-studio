@@ -94,6 +94,36 @@ Deno.test("app bridge maps stable app errors without leaking response details", 
   assertEquals(error.message.includes(TOKEN), false);
 });
 
+Deno.test("app bridge preserves GDS not-found and stale-version codes", async () => {
+  for (const [status, code] of [[404, "GDS_NOT_FOUND"], [409, "VERSION_STALE"]] as const) {
+    const error = await assertRejects(
+      () => callKecoApp(context, { method: "GET", path: "/api/test" }, {
+        origin: "https://keco.test",
+        fetch: (() => Promise.resolve(Response.json({
+          code,
+          error: "Stable public GDS failure.",
+        }, { status }))) as typeof fetch,
+      }),
+      McpDomainError,
+    );
+    assertEquals(error.code, code);
+  }
+});
+
+Deno.test("app bridge preserves an active map creation claim", async () => {
+  const error = await assertRejects(
+    () => callKecoApp(context, { method: "POST", path: "/api/mcp/create-map" }, {
+      origin: "https://keco.test",
+      fetch: (() => Promise.resolve(Response.json({
+        code: "MAP_CREATION_IN_PROGRESS",
+        error: "The idempotent map draft is still being planned.",
+      }, { status: 409 }))) as typeof fetch,
+    }),
+    McpDomainError,
+  );
+  assertEquals(error.code, "MAP_CREATION_IN_PROGRESS");
+});
+
 Deno.test("app bridge maps malformed upstream failures to a retryable safe error", async () => {
   const error = await assertRejects(
     () => callKecoApp(context, { method: "GET", path: "/api/test" }, {
