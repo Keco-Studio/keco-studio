@@ -7,7 +7,6 @@ import { coerceSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanc
 import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import {
   applyInlineTableResourceReferences,
-  GddTableReferenceError,
   materializeTableResources,
   sanitizeTableResourcesForPersistence,
 } from '@/lib/gdd-generation/tableResources';
@@ -113,8 +112,9 @@ function isPermanentError(error: unknown): boolean {
     error instanceof GddGenerationValidationError
     || error instanceof GddV2GenerationValidationError
     || error instanceof GddJobContextInvalidError
-    || error instanceof GddTableReferenceError
   ) return true;
+  // Soft-strip orphan REFs when table plans are missing; prefer repair in the
+  // generator over failing the whole GDD job.
   if (!error || typeof error !== 'object') return false;
   const code = (error as { code?: unknown }).code;
   return code === '42501' || code === '23503' || code === '23514' || code === 'P0002';
@@ -203,7 +203,7 @@ export async function persistGeneratedGddDocument(
   validateSanctionedMdx(dialogueMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(dialogueMarkdown);
   const createdAt = new Date().toISOString();
-  return persistCompletedGddGenerationJob(serviceClient, {
+  const persisted = await persistCompletedGddGenerationJob(serviceClient, {
     jobId: job.id,
     workerId,
     markdown: dialogueMarkdown,
@@ -221,12 +221,21 @@ export async function persistGeneratedGddDocument(
       dialogueResources,
       createdBy: job.owner_id,
       createdAt,
+      versionSummary: `Update GDD content for ${job.input.systemTitle}`,
     },
     appliedRuleIds: gdd.appliedRuleIds,
     omittedRuleIds: gdd.omittedRuleIds ?? [],
     tableResources,
     dialogueResources,
   });
+  const { error: bindError } = typeof (serviceClient as { from?: unknown }).from === 'function'
+    ? await serviceClient
+      .from('documents')
+      .update({ gdd_generation_job_id: job.id })
+      .eq('id', persisted.id)
+    : { error: null };
+  if (bindError) console.error('[GDD document job binding]', bindError);
+  return persisted;
 }
 
 export async function persistGeneratedGddV2Document(
@@ -298,6 +307,7 @@ export async function persistGeneratedGddV2Document(
     ...(mapCompilationError ? { mapCompilationError } : {}),
     createdBy: job.owner_id,
     createdAt: new Date().toISOString(),
+    versionSummary: `Update GDD content for ${input.systemTitle}`,
   };
 
   // Tables/dialogue ownership stays on the resource-evolution RPC. Map
@@ -315,6 +325,16 @@ export async function persistGeneratedGddV2Document(
     tableResources,
     dialogueResources,
   });
+
+  // Series evolution historically omitted documents.gdd_generation_job_id.
+  // Map prepare requires the Document to be bindable to this job.
+  if (typeof (serviceClient as { from?: unknown }).from === 'function') {
+    const { error: bindError } = await serviceClient
+      .from('documents')
+      .update({ gdd_generation_job_id: job.id })
+      .eq('id', persisted.id);
+    if (bindError) console.error('[GDD document job binding]', bindError);
+  }
 
   let status: GddJobStatus = 'completed';
   if (mapCompilationFailed) {

@@ -1,13 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const migration = fs.readFileSync(
-  path.resolve(
-    __dirname,
-    '../../../supabase/migrations/20260716050000_document_agent_edit.sql'
-  ),
-  'utf8'
-);
+const migration = [
+  '20260716050000_document_agent_edit.sql',
+  '20260821100000_agent_version_semantic_summary.sql',
+].map((name) => fs.readFileSync(path.resolve(__dirname, '../../../supabase/migrations', name), 'utf8')).join('\n');
 
 describe('document Agent edit migration', () => {
   it('defines one guarded atomic Markdown replacement function', () => {
@@ -26,6 +23,11 @@ describe('document Agent edit migration', () => {
     expect(migration).toMatch(/insert into public\.document_versions[\s\S]+update public\.documents/i);
     expect(migration).toMatch(/collab_epoch = v_document\.collab_epoch \+ 1/i);
     expect(migration).toMatch(/delete from public\.document_yjs_updates[\s\S]+epoch = v_document\.collab_epoch/i);
+  });
+
+  it('accepts a semantic Agent change summary for the backup version', () => {
+    expect(migration).toMatch(/p_change_summary text/i);
+    expect(migration).toMatch(/p_change_summary/);
   });
 
   it('bounds both current and replacement snapshots before authorization or mutation', () => {

@@ -192,9 +192,10 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
     if (!displayFieldId) {
       throw new Error(`Generated table ${table.table} has no fields to reference.`);
     }
-    // Prefix with the table name so MDX keeps the chips as inline text elements in
-    // one paragraph. Bare adjacent JSX void tags become separate flow blocks and
-    // render as one table projection per row.
+    // Prefix with a zero-width space so MDX keeps the chips as inline text in one
+    // paragraph. Bare adjacent JSX void tags become separate flow blocks (one
+    // projection per row). Do not emit a visible table title here — the editor
+    // projection already renders the linked table name.
     const chips = table.rows.map((row) => {
       if (!row.id) throw new Error(`Generated table ${table.table} row ${row.name} is missing an id.`);
       return serializeTableRowReference({
@@ -204,7 +205,7 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
         fallbackLabel: row.name,
       });
     }).join(' ');
-    return `${table.table}: ${chips}`;
+    return `\u200B${chips}`;
   }).join('\n\n');
 }
 
@@ -212,6 +213,19 @@ const TABLE_REF_MARKER = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/gi;
 
 function normalizeTableRefName(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+export function listTableRefNames(markdown: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const match of markdown.matchAll(TABLE_REF_MARKER)) {
+    const name = match[1]?.trim() ?? '';
+    const key = normalizeTableRefName(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name.replace(/\s+/g, ' ').trim());
+  }
+  return names;
 }
 
 /** Replace body KECO_TABLE_REF markers with toolbar-style ResourceReference chips. */
@@ -234,40 +248,73 @@ export class GddTableReferenceError extends Error {
   }
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Drop a lone "TableName:" line immediately before its KECO_TABLE_REF marker. */
+function stripRedundantTableTitlesBeforeMarkers(
+  markdown: string,
+  resources: GeneratedTableResource[],
+): string {
+  let result = markdown;
+  for (const resource of resources) {
+    const name = escapeRegExp(resource.table.trim());
+    const pattern = new RegExp(
+      `(^|\\n)[ \\t]*${name}[ \\t]*[:：]?[ \\t]*\\n(?=[ \\t]*<!--\\s*KECO_TABLE_REF\\s+${name}\\s*-->)`,
+      'gi',
+    );
+    result = result.replace(pattern, '$1');
+  }
+  return result;
+}
+
+export function stripOrphanTableRefMarkers(markdown: string): string {
+  const withoutTitledMarkers = markdown.replace(
+    /(^|\n)[ \t]*([^\n<#]{1,120}?)[ \t]*[:：]?[ \t]*\n[ \t]*<!--\s*KECO_TABLE_REF\s+\2\s*-->/gi,
+    '$1',
+  );
+  return withoutTitledMarkers
+    .replace(TABLE_REF_MARKER, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 function replaceInlineTableResourceReferences(
   markdown: string,
   resources: GeneratedTableResource[],
 ): string {
   if (resources.length === 0) {
-    if (TABLE_REF_MARKER.test(markdown)) {
-      TABLE_REF_MARKER.lastIndex = 0;
-      throw new Error('GDD contains KECO_TABLE_REF markers but no table resources were generated.');
-    }
-    TABLE_REF_MARKER.lastIndex = 0;
-    return markdown;
+    // Last resort: keep the GDD instead of failing the whole job when the model
+    // emitted REF placeholders but no usable TABLE_PLAN.
+    return stripOrphanTableRefMarkers(markdown);
   }
 
+  const prepared = stripRedundantTableTitlesBeforeMarkers(markdown, resources);
   const byName = new Map(
     resources.map((resource) => [normalizeTableRefName(resource.table), resource] as const),
   );
   const seen = new Set<string>();
-  const replaced = markdown.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
+  let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
     const key = normalizeTableRefName(rawName);
-    if (!key) throw new Error('KECO_TABLE_REF marker is missing a table name.');
+    if (!key) return '';
     const resource = byName.get(key);
-    if (!resource) throw new Error(`Unknown KECO_TABLE_REF table: ${rawName.trim()}`);
-    if (seen.has(key)) throw new Error(`Duplicate KECO_TABLE_REF table: ${resource.table}`);
+    if (!resource) return '';
+    if (seen.has(key)) return '';
     seen.add(key);
     return renderTableResourceReferences([resource]);
   });
 
-  for (const resource of resources) {
-    const key = normalizeTableRefName(resource.table);
-    if (!seen.has(key)) {
-      throw new Error(`Missing KECO_TABLE_REF marker for table: ${resource.table}`);
-    }
+  const missing = resources.filter((resource) => !seen.has(normalizeTableRefName(resource.table)));
+  if (missing.length > 0) {
+    const appendix = [
+      '',
+      '## Keco Tables',
+      '',
+      ...missing.flatMap((resource) => [renderTableResourceReferences([resource]), '']),
+    ].join('\n');
+    replaced = `${replaced.trimEnd()}\n${appendix}`;
   }
-  return replaced;
+  return replaced.replace(/\n{3,}/g, '\n\n');
 }
 
 const TABLE_MARKERS = /<!--\s*KECO_TABLE_PLAN\s*([\s\S]*?)\s*-->/gi;

@@ -76,11 +76,21 @@ export function buildScriptFlowGraph(rows: Array<Record<string, string>>): FlowG
     while (usedIds.has(id)) id = `Plot${nodeIndex + 1}_${usedIds.size + 1}`;
     usedIds.add(id);
     const content = (firstRow.Content ?? '').trim();
+    const outcomeContent = rowIndexes
+      .map((index) => (rows[index]?.Content ?? '').trim())
+      .find(Boolean);
     const optionTitle = sourceLabel ? optionTextByTarget.get(sourceLabel) : undefined;
-    const title = optionTitle
-      || storyPlotHeadingTitle(content)
-      || sourceLabel
-      || `\u5267\u60c5 ${nodeIndex + 1}`;
+    const normalizeTitle = (value: string) => value
+      .toLocaleLowerCase()
+      .replace(/[\s\p{P}\p{S}]+/gu, '');
+    const differsFromOption = (value: string | undefined) => Boolean(
+      value && normalizeTitle(value) !== normalizeTitle(optionTitle ?? '')
+    );
+    const headingTitle = storyPlotHeadingTitle(content);
+    const title = (differsFromOption(headingTitle) ? headingTitle : undefined)
+      || (differsFromOption(outcomeContent) ? outcomeContent : undefined)
+      || (differsFromOption(sourceLabel) ? sourceLabel : undefined)
+      || (optionTitle ? `Branch ${nodeIndex + 1}` : `\u5267\u60c5 ${nodeIndex + 1}`);
     const speaker = rowIndexes
       .map((index) => (rows[index]?.Name ?? '').trim())
       .find(Boolean);

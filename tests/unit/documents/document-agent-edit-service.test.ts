@@ -83,6 +83,22 @@ describe('document Agent edit server command', () => {
     });
   });
 
+  it('persists an explicit semantic change summary through the Agent RPC', async () => {
+    await replaceDocumentAsAgent({
+      actorUserId: USER_ID,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      expectedUpdateIds: [UPDATE_ID],
+      markdown: '# Proposed',
+      changeSummary: 'Add combat loop and failure conditions',
+    });
+
+    expect(rpc).toHaveBeenCalledWith('replace_document_with_markdown_with_summary', expect.objectContaining({
+      p_change_summary: 'Add combat loop and failure conditions',
+    }));
+  });
+
   it('rejects before the RPC when an update was appended after approval', async () => {
     await expect(replaceDocumentAsAgent({
       actorUserId: USER_ID,

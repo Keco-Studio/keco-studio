@@ -9,7 +9,7 @@ Decision constraints are server-owned: every listed decision owner must be in a 
 Keep sibling option targets in separate plot nodes when they lead to different branches. A shared merge node may be grouped with later shared content only when every incoming branch reaches that same node.
 Create a separate plot node for meaningful story sections such as background, character introduction, suspense opening, opening dialogue, a decision point, each branch route, each route ending, flashback, epilogue, and teaser when present.
 Do not create plot nodes for selectable option text. Options belong only on graph edges, which the server derives from canonical options.
-Titles must be concise Chinese labels copied or minimally shortened from visible section headings, route names, or ending names. Do not summarize dialogue as a new event.
+Titles must be concise Chinese labels describing the consequence or outcome reached in that plot node. If no outcome is explicit, use the destination scene event or an existing ending name. A branch title must not repeat its incoming option text, even with punctuation, spacing, or casing changes. Do not summarize dialogue as a new event.
 Keep ordinary consecutive dialogue/action rows in the same plot node until a real story section, branch target, ending, flashback, or epilogue boundary.`;
 
 const idSchema = { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_-]{0,63}$' };

@@ -192,6 +192,36 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.markdown).not.toContain('KECO_TABLE_PLAN');
   });
 
+  it('repairs missing table plans when KECO_TABLE_REF markers are present', async () => {
+    const plan = {
+      table: 'Products',
+      purpose: 'Catalog.',
+      fields: ['name'],
+      rows: [{ name: 'Milk', values: { name: 'Milk' } }],
+    };
+    const complete = jest.fn(async () => {
+      if (complete.mock.calls.length === 1) {
+        return [
+          '# GDD',
+          '## Products',
+          'Milk and bread.',
+          '<!-- KECO_TABLE_REF Products -->',
+          '## Core Loop',
+          'Body.',
+        ].join('\n');
+      }
+      return `<!-- KECO_TABLE_PLAN ${JSON.stringify([plan])} -->`;
+    });
+
+    const result = await generateGddMarkdownV2(input, complete);
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.tablePlans).toEqual([plan]);
+    expect(result.tablePlanWarning).toBeNull();
+    expect(result.markdown).toContain('KECO_TABLE_REF Products');
+    expect(result.review.repairRound).toBe(1);
+  });
+
   it('starts dialogue planning as soon as a concrete scene event arrives in the GDD stream', async () => {
     const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
     async function* stream() {

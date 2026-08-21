@@ -208,7 +208,13 @@ export async function processClaimedGddMapArtifactWithDependencies(
   try {
     return await processClaimedGddMapArtifact(input, dependencies);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'GDD map generation failed.';
+    const message = (
+      error instanceof Error && error.message
+        ? error.message
+        : error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+          ? (error as { message: string }).message
+          : 'GDD map generation failed.'
+    ).slice(0, 1000);
     const code = error instanceof GddMapProviderError
       ? error.code
       : error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'

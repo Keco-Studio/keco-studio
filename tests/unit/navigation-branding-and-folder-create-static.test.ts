@@ -26,6 +26,7 @@ describe('navigation branding and folder create controls', () => {
     const topBar = read('src/components/layout/TopBar.tsx');
 
     expect(toolbar).toContain("const showCreateMenu = mode === 'project' || mode === 'folder' || mode === 'recent' || mode === 'admin';");
+    expect(toolbar).toContain("const showShare = mode === 'project' || mode === 'folder' || mode === 'recent';");
     expect(toolbar).toMatch(/<span className=\{styles\.createButtonText\}>\s*Create\s*<\/span>/s);
     expect(toolbar).not.toContain("'Create Library'");
     expect(topBar).toContain("mode={isFolderPage ? 'folder' : 'project'}");

@@ -60,6 +60,7 @@ const ParamsSchema = z
     documentId: z.string().uuid().optional(),
     documentName: z.string().min(1).max(200).optional(),
     folderName: z.string().min(1).max(200).optional(),
+    changeSummary: z.string().trim().min(1).max(120).optional(),
     operation: OperationSchema,
   })
   .strict()
@@ -113,6 +114,7 @@ const PreviewSchema = z.object({
   proposedMarkdown: z.string().max(MAX_DOCUMENT_CHARS),
   sourceHash: z.string().length(64).optional(),
   sourceLength: z.number().int().positive().optional(),
+  changeSummary: z.string().trim().min(1).max(120),
   approvalSignature: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
@@ -157,6 +159,7 @@ function canonicalApprovalPayload(
     params.documentId ?? null,
     params.documentName ?? null,
     params.folderName ?? null,
+    params.changeSummary ?? null,
     canonicalOperation(params.operation),
     preview.documentName,
     preview.folderName,
@@ -319,6 +322,8 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       projectId: state.projectId,
       operationType: operation.type,
       operationSummary: summarizeDocumentEditOperation(operation),
+      changeSummary: parsed.data.changeSummary
+        ?? summarizeDocumentEditOperation(operation).replace(/\.$/, '').slice(0, 120),
       expectedToken: state.token,
       baseHash: contentHash(state.markdown),
       baseMarkdown: state.markdown,
@@ -395,6 +400,9 @@ async function executeImport(
       expected: expectedToken,
       expectedUpdateIds: preview.data.baseUpdateIds,
       markdown: preview.data.proposedMarkdown,
+      ...(parsedParams.data.changeSummary
+        ? { changeSummary: preview.data.changeSummary }
+        : {}),
     });
     const { broadcastDocumentStateReset } = await import(
       '@/lib/documents/documentStateResetBroadcaster'
@@ -557,9 +565,10 @@ export const proposeDocumentEdit: AgentTool = {
       documentId: { type: 'string', format: 'uuid' },
       documentName: { type: 'string', minLength: 1, maxLength: 200, description: 'Exact document name.' },
       folderName: { type: 'string', minLength: 1, maxLength: 200, description: 'Exact folder name qualifier.' },
+      changeSummary: { type: 'string', minLength: 1, maxLength: 120, description: 'Concise semantic summary of what this edit changes, written for Version History.' },
       operation: { oneOf: operationVariants },
     },
-    required: ['operation'],
+    required: ['changeSummary', 'operation'],
     additionalProperties: false,
     anyOf: [
       { not: { required: ['folderName'] } },

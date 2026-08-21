@@ -64,6 +64,21 @@ describe('AI story plot grouping', () => {
     expect(plan.nodes.some((plot) => plot.title === 'East guest room')).toBe(false);
   });
 
+  it('rejects an AI branch title that duplicates an incoming option', () => {
+    expect(() => buildStoryPlotPlanFromGrouping(ancientHouseDocument(), {
+      nodes: [
+        { title: 'Plot background', storyNodeIds: ['Background'] },
+        { title: 'Suspense intro', storyNodeIds: ['Suspense', 'Decision'] },
+        { title: 'East guest room', storyNodeIds: ['East'] },
+        { title: 'Safe ending', storyNodeIds: ['SafeEnd'] },
+        { title: 'Curious route', storyNodeIds: ['West'] },
+        { title: "Heroine's memory", storyNodeIds: ['Memory'] },
+        { title: 'Bond ending', storyNodeIds: ['BondEnd'] },
+        { title: 'Rainy night unfinished', storyNodeIds: ['Teaser'] },
+      ],
+    })).toThrow(/option|title|duplicate/i);
+  });
+
   it('rejects a grouping that hides an option target inside its decision node', () => {
     expect(() => buildStoryPlotPlanFromGrouping(ancientHouseDocument(), {
       nodes: [

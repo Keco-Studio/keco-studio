@@ -22,7 +22,7 @@ type LibraryToolbarProps = {
    * Mode of the toolbar:
    * - 'project': Show "Create" button with menu for both folder and library
    * - 'folder': Show the same "Create" menu as Recent, scoped to the current folder
-   * - 'recent': Show create + view toggles
+   * - 'recent': Show create + share + view toggles
    * - 'admin': Show create only
    */
   mode?: 'project' | 'folder' | 'recent' | 'admin';
@@ -96,7 +96,7 @@ export function LibraryToolbar({
 
   // Match Libraries "+" visibility: admin/editor can open the menu
   const canCreate = userRole === 'admin' || userRole === 'editor';
-  const showShare = mode === 'project' || mode === 'folder';
+  const showShare = mode === 'project' || mode === 'folder' || mode === 'recent';
   const showViewToggle = mode !== 'admin';
   const showCreateMenu = mode === 'project' || mode === 'folder' || mode === 'recent' || mode === 'admin';
 

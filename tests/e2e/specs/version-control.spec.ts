@@ -15,7 +15,7 @@ import { users } from '../fixures/users';
  * 2. Manual Save Version: Click "+" button in sidebar → Fill Version Name → Click Create
  *    Result: New version saved successfully and appears at top of sidebar list
  * 3. Sidebar Information Display: View version list in sidebar
- *    Result: Each record contains Version Name, added by xxx, save time
+ *    Result: Each record contains Version Name, modified by xxx, save time
  * 4. Sidebar Sorting: View version list
  *    Result: Sorted by save time descending, newest version at top
  * 5. Version Type Display: View version list
@@ -229,9 +229,9 @@ test.describe('Version Control Tests', () => {
       // Verify Version Name is displayed
       await expect(versionItem.getByText(versionName)).toBeVisible();
       
-      // Verify "added by xxx" text is displayed
-      // The text format is "added by {name}" or "restored by {name}"
-      const addedByText = versionItem.getByText(/added by|restored by/i);
+      // Verify creator attribution is displayed
+      // The text format is "modified by {name}" or "restored by {name}"
+      const addedByText = versionItem.getByText(/modified by|restored by/i);
       await expect(addedByText).toBeVisible();
       
       // Verify date/time is displayed
