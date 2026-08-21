@@ -85,6 +85,14 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
+async function waitForMockCalls(mock: jest.Mock, expectedCalls: number) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (mock.mock.calls.length >= expectedCalls) break;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(mock).toHaveBeenCalledTimes(expectedCalls);
+}
+
 let runtime: HookRuntime;
 let mockService: Record<string, jest.Mock>;
 
@@ -266,8 +274,7 @@ describe('useDirectMapGeneration preparation guards', () => {
     state.render();
     const preparation = state.latest.prepare();
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockService.prepareMapGeneration).toHaveBeenCalledTimes(1);
+    await waitForMockCalls(mockService.prepareMapGeneration, 1);
     const changedPlan = makeValidMapPlanV3({ description: 'A replacement opaque full-map description.' });
     state.render(changedPlan);
     pending.reject(new Error('old prepare failed'));
@@ -293,8 +300,7 @@ describe('useDirectMapGeneration preparation guards', () => {
     const pending = deferred<unknown>();
     mockService.startMapGeneration.mockImplementation(() => pending.promise);
     const confirmation = state.latest.confirm();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(mockService.startMapGeneration).toHaveBeenCalledTimes(1);
+    await waitForMockCalls(mockService.startMapGeneration, 1);
     const changedPlan = makeValidMapPlanV3({ description: 'A newer opaque full-map description.' });
     state.render(changedPlan);
     pending.reject(new Error('old submit failed'));
