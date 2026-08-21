@@ -665,7 +665,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
     const createPlan = page.getByRole('button', { name: 'Generate map plan' });
 
-    await page.getByRole('textbox', { name: 'Description', exact: true }).fill('调用 API 生成地图');
+    await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Call the API to generate a map');
 
     const validationAlert = page.getByText(/^Invalid\. Description contains disallowed content/);
     await expect(validationAlert).toBeVisible();

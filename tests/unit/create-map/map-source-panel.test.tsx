@@ -18,7 +18,7 @@ describe('MapSourcePanel', () => {
     onCreatePlan: jest.fn(),
   };
 
-  it.each(['调用 API 生成地图', 'Authorization: Bearer secret'])('marks a disallowed description Invalid: %s', (description) => {
+  it.each(['Call the API to generate a map', 'Authorization: Bearer secret'])('marks a disallowed description Invalid: %s', (description) => {
     const markup = renderToStaticMarkup(React.createElement(MapSourcePanel, {
       ...baseProps, description, projectId: 'project-1', documentId: '',
     }));
