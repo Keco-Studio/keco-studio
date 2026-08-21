@@ -107,12 +107,13 @@ describe('GDD table resources', () => {
     expect(markdown).toContain(`displayFieldId="${resource!.fieldIds[0]}"`);
     expect(markdown).toContain('fallbackLabel="Basic"');
     expect(markdown).toContain('fallbackLabel="Heavy"');
-    expect(markdown).toMatch(/^Skills: <ResourceReference /);
+    expect(markdown).toMatch(/^\u200B<ResourceReference /);
+    expect(markdown).not.toMatch(/^Skills:/);
     expect(markdown).not.toContain('[Skills](');
     expect(markdown).not.toContain('## Keco Tables');
   });
 
-  it('keeps all row chips in one inline paragraph for MDX grouping', () => {
+  it('keeps all row chips in one inline paragraph for MDX grouping without a visible title', () => {
     const plan = normalizeTablePlans([{
       table: 'Products', purpose: 'Catalog.', fields: ['name'],
       rows: [
@@ -122,7 +123,8 @@ describe('GDD table resources', () => {
     }])[0]!;
     const [resource] = materializeTableResources('system-1', [plan]);
     const markdown = renderTableResourceReferences([resource!]);
-    expect(markdown.startsWith('Products: ')).toBe(true);
+    expect(markdown.startsWith('\u200B')).toBe(true);
+    expect(markdown).not.toContain('Products:');
     expect(markdown.includes('\n')).toBe(false);
     expect(() => {
       const { validateSanctionedMdx } = require('@/lib/documents/sanctionedMdx') as typeof import('@/lib/documents/sanctionedMdx');
@@ -134,6 +136,21 @@ describe('GDD table resources', () => {
       const jsx = paragraph?.children?.filter((child) => child.type === 'mdxJsxTextElement') ?? [];
       expect(jsx).toHaveLength(2);
     }).not.toThrow();
+  });
+
+  it('strips a redundant table title line before KECO_TABLE_REF markers', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([{
+      table: 'Products', purpose: 'Catalog.', fields: ['name'],
+      rows: [{ name: 'Milk', values: { name: 'Milk' } }],
+    }]));
+    const markdown = applyInlineTableResourceReferences(
+      '# GDD\n\nIntro.\n\nProducts:\n<!-- KECO_TABLE_REF Products -->\n\nBody.',
+      resources,
+    );
+    expect(markdown).not.toContain('Products:');
+    expect(markdown).toContain('Intro.');
+    expect(markdown).toContain('Body.');
+    expect(markdown).toContain('<ResourceReference kind="table-row"');
   });
 
   it('assigns deterministic table, row, and field IDs from the series seed', () => {
@@ -179,21 +196,37 @@ describe('GDD table resources', () => {
     expect(markdown).not.toContain('KECO_TABLE_REF');
   });
 
-  it('rejects missing, unknown, or duplicate KECO_TABLE_REF markers', () => {
+  it('strips orphan KECO_TABLE_REF markers when no table resources were generated', () => {
+    const markdown = applyInlineTableResourceReferences(
+      '# GDD\n\nProducts:\n<!-- KECO_TABLE_REF Products -->\n\nBody.',
+      [],
+    );
+    expect(markdown).not.toContain('KECO_TABLE_REF');
+    expect(markdown).not.toContain('Products:');
+    expect(markdown).toContain('Body.');
+  });
+
+  it('appends missing table references and drops unknown or duplicate markers', () => {
     const resources = materializeTableResources('system-1', normalizeTablePlans([{
       table: 'Skills', purpose: 'Actions.', fields: ['name'],
       rows: [{ name: 'Basic', values: { name: 'Basic' } }],
     }]));
-    expect(() => applyInlineTableResourceReferences('# GDD\nBody.', resources))
-      .toThrow(/missing KECO_TABLE_REF/i);
-    expect(() => applyInlineTableResourceReferences(
+    const appended = applyInlineTableResourceReferences('# GDD\nBody.', resources);
+    expect(appended).toContain('## Keco Tables');
+    expect(appended).toContain(`libraryId="${resources[0]!.id}"`);
+
+    const unknown = applyInlineTableResourceReferences(
       '# GDD\n<!-- KECO_TABLE_REF Missing -->\n',
       resources,
-    )).toThrow(/unknown KECO_TABLE_REF/i);
-    expect(() => applyInlineTableResourceReferences(
+    );
+    expect(unknown).not.toContain('KECO_TABLE_REF');
+    expect(unknown).toContain(`libraryId="${resources[0]!.id}"`);
+
+    const duplicate = applyInlineTableResourceReferences(
       '# GDD\n<!-- KECO_TABLE_REF Skills -->\n<!-- KECO_TABLE_REF Skills -->\n',
       resources,
-    )).toThrow(/duplicate KECO_TABLE_REF/i);
+    );
+    expect(duplicate.match(/libraryId=/g)).toHaveLength(1);
   });
 
   it('extracts a valid table marker and removes it from the GDD body', () => {
