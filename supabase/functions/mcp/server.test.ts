@@ -44,6 +44,21 @@ const GDS_TOOL_NAMES = [
   "set_project_game_design_system",
   "clear_project_game_design_system",
 ];
+const MAP_READ_TOOL_NAMES = [
+  "list_maps",
+  "read_map",
+  "get_map_generation",
+];
+const MAP_TOOL_NAMES = [
+  "list_maps",
+  "read_map",
+  "create_map_draft",
+  "update_map_draft",
+  "prepare_map_generation",
+  "start_map_generation",
+  "get_map_generation",
+  "retry_map_generation",
+];
 
 const context = {
   mode: "project",
@@ -139,7 +154,7 @@ Deno.test("initialize declares tools resources and prompts", async () => {
   assertEquals(message.result?.protocolVersion, LATEST_PROTOCOL_VERSION);
   assertEquals(message.result?.serverInfo, {
     name: "keco-mcp",
-    version: "0.3.1",
+    version: "0.4.0",
   });
   assertEquals(message.result?.capabilities, {
     tools: { listChanged: true },
@@ -163,6 +178,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     ...PROJECT_READ_TOOL_NAMES,
     ...PROJECT_WRITE_TOOL_NAMES,
     ...GDS_TOOL_NAMES,
+    ...MAP_TOOL_NAMES,
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
@@ -245,6 +261,7 @@ Deno.test("viewer tools/list excludes project writes and retains owned GDS tools
       "keco_connection_probe",
       ...PROJECT_READ_TOOL_NAMES,
       ...GDS_TOOL_NAMES,
+      ...MAP_READ_TOOL_NAMES,
     ],
   );
 });
@@ -301,6 +318,7 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       "read_story_graph",
       "semantic_search",
       ...GDS_TOOL_NAMES,
+      ...MAP_READ_TOOL_NAMES,
     ],
   );
 
@@ -397,7 +415,7 @@ Deno.test("unknown tools and malformed protocol bodies are admitted and complete
   assertEquals(calls[0].parameters.p_operation, "protocol_invalid_request");
 });
 
-Deno.test("GDS tools use read and write telemetry classes", async () => {
+Deno.test("GDS and Map tools use read and write telemetry classes", async () => {
   const calls: Array<{ name: string; parameters: Record<string, unknown> }> =
     [];
   const audited = {
@@ -423,6 +441,8 @@ Deno.test("GDS tools use read and write telemetry classes", async () => {
     const [name, expectedClass] of [
       ["read_game_design_system", "read"],
       ["generate_game_design_system", "write"],
+      ["get_map_generation", "read"],
+      ["prepare_map_generation", "write"],
     ] as const
   ) {
     calls.length = 0;

@@ -13,6 +13,7 @@ import { toolFailure } from "./results.ts";
 import { asPublicMcpError } from "./errors.ts";
 import { registerAccountTools } from "./account-tools.ts";
 import { registerGdsTools } from "./gds-tools.ts";
+import { registerMapTools } from "./map-tools.ts";
 
 const READ_TOOLS = new Set([
   "list_projects",
@@ -25,6 +26,9 @@ const READ_TOOLS = new Set([
   "read_game_design_system",
   "read_project_game_design_system",
   "get_game_design_system_generation",
+  "list_maps",
+  "read_map",
+  "get_map_generation",
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",
@@ -51,6 +55,11 @@ const WRITE_TOOLS = new Set([
   "create_game_design_system_version",
   "set_project_game_design_system",
   "clear_project_game_design_system",
+  "create_map_draft",
+  "update_map_draft",
+  "prepare_map_generation",
+  "start_map_generation",
+  "retry_map_generation",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",
@@ -193,7 +202,7 @@ export async function createProbeServer(
     prompts: { listChanged: true },
   };
   const server = new McpServer(
-    { name: "keco-mcp", version: "0.3.1" },
+    { name: "keco-mcp", version: "0.4.0" },
     { capabilities },
   );
 
@@ -217,14 +226,16 @@ export async function createProbeServer(
   });
 
   if (context.mode === "account") {
-    await registerAccountTools(server, context);
+    const includeMapWrites = await registerAccountTools(server, context);
     registerGdsTools(server, context);
+    registerMapTools(server, context, { includeWrites: includeMapWrites });
     registerResources(server, context);
     registerPrompts(server, context);
   } else {
     registerReadTools(server, context);
     registerWriteTools(server, context);
     registerGdsTools(server, context);
+    registerMapTools(server, context);
     registerResources(server, context);
     registerPrompts(server, context);
   }

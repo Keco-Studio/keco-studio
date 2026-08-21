@@ -38,6 +38,16 @@ const GDS_TOOL_NAMES = [
   "set_project_game_design_system",
   "clear_project_game_design_system",
 ];
+const MAP_TOOL_NAMES = [
+  "list_maps",
+  "read_map",
+  "create_map_draft",
+  "update_map_draft",
+  "prepare_map_generation",
+  "start_map_generation",
+  "get_map_generation",
+  "retry_map_generation",
+];
 
 type RpcCall = { name: string; parameters: Record<string, unknown> };
 type StorageCall = { name: string; arguments: unknown[] };
@@ -313,6 +323,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "semantic_search",
     ...ACCOUNT_WRITE_TOOL_NAMES,
     ...GDS_TOOL_NAMES,
+    ...MAP_TOOL_NAMES,
   ]);
   const listProjects = tools.find((tool) => tool.name === "list_projects")!;
   assertEquals(Object.keys(listProjects.inputSchema.properties ?? {}), [
