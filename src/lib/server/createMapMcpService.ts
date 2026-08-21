@@ -153,8 +153,12 @@ const PUBLIC_MESSAGES: Record<CreateMapMcpErrorCode, string> = {
   UPSTREAM_UNAVAILABLE: 'The Create Map service is temporarily unavailable.',
 };
 
+export function createMapMcpPublicMessage(code: CreateMapMcpErrorCode): string {
+  return PUBLIC_MESSAGES[code];
+}
+
 export class CreateMapMcpError extends Error {
-  constructor(readonly code: CreateMapMcpErrorCode, message = PUBLIC_MESSAGES[code]) {
+  constructor(readonly code: CreateMapMcpErrorCode, message = createMapMcpPublicMessage(code)) {
     super(message);
     this.name = 'CreateMapMcpError';
   }

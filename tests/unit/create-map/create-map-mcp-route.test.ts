@@ -27,12 +27,13 @@ jest.mock('@/lib/auth/route-auth', () => ({
 }));
 jest.mock('@/lib/server/createMapMcpService', () => {
   class MockCreateMapMcpError extends Error {
-    constructor(readonly code: string) {
-      super(code);
+    constructor(readonly code: string, message = code) {
+      super(message);
     }
   }
   return {
     CreateMapMcpError: MockCreateMapMcpError,
+    createMapMcpPublicMessage: (code: string) => `Public ${code}`,
     createMapMcpService: jest.fn(() => service),
   };
 });
@@ -132,5 +133,18 @@ describe('POST /api/mcp/create-map', () => {
     expect(response.status).toBe(status);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     await expect(response.json()).resolves.toMatchObject({ code, error: expect.any(String) });
+  });
+
+  it('never exposes a custom internal domain-error message', async () => {
+    service.listMaps.mockRejectedValueOnce(
+      new CreateMapMcpError('MAP_NOT_FOUND', 'database maps.secret_column does not exist'),
+    );
+
+    const response = await post({ action: 'list_maps', projectId: IDS.projectId });
+
+    await expect(response.json()).resolves.toEqual({
+      code: 'MAP_NOT_FOUND',
+      error: 'Public MAP_NOT_FOUND',
+    });
   });
 });

@@ -8,7 +8,7 @@ async function createChildFolder(page: Page, parentName: string, childName: stri
   const tree = page.getByRole('tree');
   const parentItem = tree
     .getByRole('treeitem')
-    .filter({ has: tree.locator(`[title="${parentName}"]`) })
+    .filter({ has: page.locator(`[title="${parentName}"]`) })
     .first();
   await expect(parentItem).toBeVisible({ timeout: 15_000 });
   await parentItem.getByRole('button', { name: 'Folder actions' }).click();
@@ -53,13 +53,25 @@ test.describe('nested folder creation', () => {
     const tree = page.getByRole('tree');
     const rootItem = tree
       .getByRole('treeitem')
-      .filter({ has: tree.locator(`[title="${rootName}"]`) })
+      .filter({ has: page.locator(`[title="${rootName}"]`) })
       .first();
-    const childItem = rootItem
+    const childItem = tree
       .getByRole('treeitem')
-      .filter({ has: tree.locator(`[title="${childName}"]`) })
+      .filter({ has: page.locator(`[title="${childName}"]`) })
       .first();
+    const grandchildItem = tree
+      .getByRole('treeitem')
+      .filter({ has: page.locator(`[title="${grandchildName}"]`) })
+      .first();
+    await expect(rootItem).toBeVisible({ timeout: 15_000 });
     await expect(childItem).toBeVisible({ timeout: 15_000 });
-    await expect(childItem.locator(`[title="${grandchildName}"]`)).toBeVisible({ timeout: 15_000 });
+    await expect(grandchildItem).toBeVisible({ timeout: 15_000 });
+
+    await grandchildItem.locator(`[title="${grandchildName}"]`).click();
+    await page.waitForURL(/\/folder\/[^/]+$/, { timeout: 15_000 });
+    const banner = page.getByRole('banner');
+    await expect(banner.getByRole('button', { name: rootName, exact: true })).toBeVisible();
+    await expect(banner.getByRole('button', { name: childName, exact: true })).toBeVisible();
+    await expect(banner.getByRole('button', { name: grandchildName, exact: true })).toBeVisible();
   });
 });
