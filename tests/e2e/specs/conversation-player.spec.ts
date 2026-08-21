@@ -180,9 +180,12 @@ test.describe.serial('Conversation player PR regression', () => {
       `/script-system/${projectId}/script/${fixture.libraryId}`,
       { waitUntil: 'domcontentloaded' }
     );
-    await expect(page.getByText('Rain surrounds the old manor.', { exact: true })).toBeVisible({
-      timeout: 45_000,
-    });
+    // Branch title and dialogue line can share this copy after plot-node labeling;
+    // wait on the branch chip so strict mode does not match multiple nodes.
+    await expect(page.getByTestId('script-branch-name')).toHaveText(
+      'Rain surrounds the old manor.',
+      { timeout: 45_000 },
+    );
   }
 
   /** Choice buttons only — flow-chart nodes also use role=button with option titles. */

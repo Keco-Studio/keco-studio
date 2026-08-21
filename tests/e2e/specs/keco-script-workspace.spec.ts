@@ -265,7 +265,8 @@ test.describe('Keco Script workspace smoke (seeded)', () => {
     await expect(page.getByRole('complementary', { name: 'Flow chart' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Flow chart', level: 2 })).toBeVisible();
 
-    // Plot-node VN pane (no player Restart toolbar) — seed dialogue must be visible.
-    await expect(page.getByText('Welcome to the city.')).toBeVisible();
+    // Plot-node VN pane (no player Restart toolbar). Branch title and dialogue can
+    // share this copy, so target the branch chip to avoid Playwright strict mode.
+    await expect(page.getByTestId('script-branch-name')).toHaveText('Welcome to the city.');
   });
 });
