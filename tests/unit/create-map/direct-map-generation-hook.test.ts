@@ -162,6 +162,22 @@ beforeEach(() => {
 });
 
 describe('useDirectMapGeneration preparation guards', () => {
+  it('prepares and submits exactly once from one generate action', async () => {
+    const publish = jest.fn(async () => ({
+      mapId: '10000000-0000-4000-8000-000000000029',
+      publishedRevisionId: '10000000-0000-4000-8000-000000000030',
+    }));
+    const state = setup(publish);
+    state.render();
+
+    await state.latest.generate();
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(mockService.createAssetPlanV3).toHaveBeenCalledTimes(1);
+    expect(mockService.invokePixelLab).toHaveBeenCalledTimes(1);
+    expect(mockService.invokePixelLab).toHaveBeenCalledWith(expect.objectContaining({ operation: 'submit' }));
+  });
+
   it('publishes and creates one asset plan when prepare is called twice concurrently', async () => {
     const publish = jest.fn(async () => ({
       mapId: '10000000-0000-4000-8000-000000000029',

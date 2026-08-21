@@ -68,11 +68,13 @@ describe('direct map V3 schemas', () => {
     'Use https://example.com/map.png',
     'Use data:text/plain;base64,c2VjcmV0 as the source',
     'Authorization: Bearer secret',
+    'The password is secret',
     'Call create_image_pro through the PixelLab MCP API',
     'Call the MCP server to render this map',
     'Invoke the API endpoint after planning',
     'Render the current Keco button label',
     'Include the title from the current Keco dialog',
+    'Click the selected button to continue',
   ])('rejects unsafe provider description content: %s', (description) => {
     const result = validateMapPlanV3({ ...makeValidMapPlanV3(), description });
 

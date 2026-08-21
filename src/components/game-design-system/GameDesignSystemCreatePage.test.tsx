@@ -42,7 +42,9 @@ async function enterRequiredFoundation(user: ReturnType<typeof userEvent.setup>,
   await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
 }
 
-async function continueToReview(user: ReturnType<typeof userEvent.setup>) {
+async function continueToReview(user: ReturnType<typeof userEvent.setup>, { fillArtStyle = true } = {}) {
+  const artDirection = screen.getByLabelText('Custom art direction') as HTMLTextAreaElement;
+  if (fillArtStyle && !artDirection.value) await user.type(artDirection, 'Readable visual hierarchy.');
   await user.click(screen.getByRole('button', { name: 'Continue to sources' }));
   await user.click(screen.getByRole('button', { name: 'Review input' }));
 }
@@ -164,6 +166,21 @@ describe('GameDesignSystemCreatePage', () => {
     expect(start).not.toHaveBeenCalled();
   });
 
+  it('returns an empty Art Style to step 2 and explains how to complete it', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await enterRequiredFoundation(user);
+    await continueToReview(user, { fillArtStyle: false });
+
+    await user.click(screen.getByRole('button', { name: 'Generate system' }));
+
+    expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
+    const fieldError = screen.getByRole('alert');
+    expect(fieldError.textContent).toBe('Add Art Style guidance before generating. Enter a custom art direction, add a complete visual reference, or describe what to avoid.');
+    await waitFor(() => expect(document.activeElement).toBe(fieldError));
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it('summarizes Art Style and submits only preset identity plus normalized customization', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -235,6 +252,7 @@ describe('GameDesignSystemCreatePage', () => {
     const user = userEvent.setup();
     renderPage();
     await enterRequiredFoundation(user);
+    await user.type(screen.getByLabelText('Custom art direction'), 'Readable visual hierarchy.');
     await user.click(screen.getByRole('button', { name: 'Continue to sources' }));
     await screen.findByRole('option', { name: 'Project A' });
     await user.selectOptions(await screen.findByLabelText('Source project'), '11111111-1111-4111-8111-111111111111');

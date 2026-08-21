@@ -232,6 +232,13 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         : artStyleResult.error.issues[0]?.message ?? 'Review the Art Style fields.');
       return;
     }
+    const artStyleCustomization = artStyleResult.data.customization;
+    if (!artStyleCustomization.direction && artStyleCustomization.referenceGames.length === 0 && !artStyleCustomization.avoid) {
+      setStage('art-style');
+      setInvalidVisualReference(null);
+      setVisualReferenceError('Add Art Style guidance before generating. Enter a custom art direction, add a complete visual reference, or describe what to avoid.');
+      return;
+    }
     try {
       const fresh = await startGameDesignSystemGeneration(generationInput(artStyleResult.data), submitKey.current);
       setJob(fresh);
@@ -331,9 +338,10 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
             <div className={styles.artStyleMain}>
               <GameArtStylePreview preset={selectedArtStylePreset} mode="creation" />
               <div className={styles.artStyleFields}>
+                {visualReferenceError ? <div id={VISUAL_REFERENCE_ERROR_ID} ref={visualReferenceErrorRef} className={styles.fieldError} role="alert" aria-live="polite" tabIndex={-1}>{visualReferenceError}</div> : null}
                 <div className={styles.field}>
                   <label htmlFor="gds-art-direction">Custom art direction</label>
-                  <textarea id="gds-art-direction" className={styles.textarea} maxLength={2000} value={artDirection} onChange={(event) => setArtDirection(event.target.value)} placeholder="Add visual priorities specific to this system." />
+                  <textarea id="gds-art-direction" className={styles.textarea} maxLength={2000} value={artDirection} onChange={(event) => { clearVisualReferenceError(); setArtDirection(event.target.value); }} placeholder="Add visual priorities specific to this system." />
                   <small>{artDirection.length} / 2,000</small>
                 </div>
                 <div className={styles.field}>
@@ -352,12 +360,11 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
                       );
                     })}
                   </div>
-                  {visualReferenceError ? <div id={VISUAL_REFERENCE_ERROR_ID} ref={visualReferenceErrorRef} className={styles.fieldError} role="alert" aria-live="polite" tabIndex={-1}>{visualReferenceError}</div> : null}
                   <button type="button" className={styles.secondaryButton} aria-label="Add visual reference" disabled={visualReferences.length >= 8} onClick={() => { clearVisualReferenceError(); setVisualReferences((current) => [...current, { name: '', borrow: '' }]); }}><PlusOutlined /> Add visual reference</button>
                 </div>
                 <div className={styles.field}>
                   <label htmlFor="gds-art-avoid">Visual avoid guidance</label>
-                  <textarea id="gds-art-avoid" className={styles.textarea} maxLength={1000} value={artAvoid} onChange={(event) => setArtAvoid(event.target.value)} placeholder="Call out visual treatments this system should avoid." />
+                  <textarea id="gds-art-avoid" className={styles.textarea} maxLength={1000} value={artAvoid} onChange={(event) => { clearVisualReferenceError(); setArtAvoid(event.target.value); }} placeholder="Call out visual treatments this system should avoid." />
                   <small>{artAvoid.length} / 1,000</small>
                 </div>
               </div>

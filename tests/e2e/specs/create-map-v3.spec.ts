@@ -618,17 +618,18 @@ async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promis
 }
 
 async function createSavedMap(page: Page): Promise<void> {
-  await page.getByLabel('Project Optional').selectOption(PROJECT_ID);
-  await page.getByRole('button', { name: 'Create map plan' }).click();
+  await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
+  await page.getByRole('textbox', { name: 'Description', exact: true }).fill('A quiet top-down village market with open paths.');
+  await page.getByRole('button', { name: 'Generate map plan' }).click();
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-  await page.getByRole('button', { name: 'Save draft' }).click();
   await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Generate map' }).click();
-  await expect(page.getByText('Awaiting confirmation', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Confirm and generate map' }).click();
+  await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('Paid PixelLab request');
+  await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('may incur provider charges');
+  await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
   await expect(page.getByText('Generating map', { exact: true })).toBeVisible();
   await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
 }
@@ -645,23 +646,38 @@ async function expectWithin(locator: Locator, container: Locator): Promise<void>
 test.describe('Create Map V3 mocked workflow', () => {
   test.describe.configure({ mode: 'serial', timeout: 45_000 });
 
-  test('creates a description-only V3 Plan without Project or Document context', async ({ page }) => {
+  test('creates a description-only V3 Plan in the required Project', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
     const description = 'A quiet top-down village market with open paths.';
+    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
     await page.getByRole('textbox', { name: 'Description', exact: true }).fill(description);
-    await page.getByRole('button', { name: 'Create map plan' }).click();
+    await page.getByRole('button', { name: 'Generate map plan' }).click();
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
-    expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description });
-    expect(backend.lastPlanRequest).not.toHaveProperty('projectId');
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
+    expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description, projectId: PROJECT_ID });
     expect(backend.lastPlanRequest).not.toHaveProperty('documentId');
+  });
+
+  test('rejects disallowed source description controls before planning', async ({ page }) => {
+    const backend = new CreateMapV3MockBackend();
+    await loginAndOpen(page, backend);
+    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
+    const createPlan = page.getByRole('button', { name: 'Generate map plan' });
+
+    await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Call the API to generate a map');
+
+    const validationAlert = page.getByText(/^Invalid\. Description contains disallowed content/);
+    await expect(validationAlert).toBeVisible();
+    await expect(createPlan).toBeDisabled();
+    expect(backend.lastPlanRequest).toBeNull();
   });
 
   test('uses optional Document and uploaded content/style references', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
-    await page.getByLabel('Project Optional').selectOption(PROJECT_ID);
-    await page.getByLabel('Document Optional').selectOption(DOCUMENT_ID);
+    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
+    await page.getByRole('combobox', { name: 'Document', exact: true }).selectOption(DOCUMENT_ID);
     const upload = page.locator('input[type="file"]');
     await upload.setInputFiles({ name: 'layout.png', mimeType: 'image/png', buffer: await backend.mapPng });
     await expect(page.getByText('layout.png', { exact: true })).toBeVisible();
@@ -672,7 +688,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await layoutRow.getByLabel('layout.png reference role').selectOption('layout');
     await layoutRow.getByLabel('layout.png usage').fill('Match the river crossing layout');
     await styleRow.getByLabel('Style').check();
-    await page.getByRole('button', { name: 'Create map plan' }).click();
+    await page.getByRole('button', { name: 'Generate map plan' }).click();
 
     expect(backend.lastPlanRequest).toMatchObject({
       schemaVersion: 3,
@@ -685,14 +701,16 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByText('1 / 4', { exact: true })).toBeVisible();
   });
 
-  test('edits the exact prompt, saves, confirms, polls, validates, and renders one map image', async ({ page }) => {
+  test('edits the exact prompt, autosaves, generates, validates, and renders one map image', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     const browserFailures = await loginAndOpen(page, backend);
-    await page.getByLabel('Project Optional').selectOption(PROJECT_ID);
-    await page.getByRole('button', { name: 'Create map plan' }).click();
+    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
+    await page.getByRole('textbox', { name: 'Description', exact: true }).fill('A quiet top-down village market with open paths.');
+    await page.getByRole('button', { name: 'Generate map plan' }).click();
+    await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
     const exactDescription = 'Exact final opaque top-down pixel art map.  Keep this spacing and punctuation.';
     await page.getByLabel('PixelLab description').fill(exactDescription);
-    await page.getByRole('button', { name: 'Save draft' }).click();
+    await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible();
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
     await generateReadyMap(page);
 
@@ -729,8 +747,9 @@ test.describe('Create Map V3 mocked workflow', () => {
     backend.failNextValidation = true;
     await loginAndOpen(page, backend);
     await createSavedMap(page);
-    await page.getByRole('button', { name: 'Generate map' }).click();
-    await page.getByRole('button', { name: 'Confirm and generate map' }).click();
+    await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+    await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
     await expect(page.getByText('Generation failed', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('image_not_opaque', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Retry generation' }).click();
@@ -777,9 +796,9 @@ test.describe('Create Map V3 mocked workflow', () => {
     await generateReadyMap(page);
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
-    await page.getByRole('button', { name: 'Regenerate map' }).click();
-    await expect(page.getByText('Awaiting confirmation', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Confirm and generate map' }).click();
+    await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+    await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
     const ready = backend.readyAssets();
     expect(ready).toHaveLength(2);
@@ -832,6 +851,9 @@ test.describe('Create Map V3 mocked workflow', () => {
         expect(workbenchBox).not.toBeNull();
         expect(canvasBox).not.toBeNull();
         expect(canvasBox?.width).toBeGreaterThanOrEqual((workbenchBox?.width ?? 0) - 1);
+        await expect.poll(async () => (await inspector.boundingBox())?.x ?? Number.POSITIVE_INFINITY)
+          .toBeLessThan((workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1);
+        await page.getByRole('button', { name: 'Close inspector panel' }).click();
         await expect.poll(async () => (await inspector.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual(
           (workbenchBox?.x ?? 0) + (workbenchBox?.width ?? 0) - 1,
         );

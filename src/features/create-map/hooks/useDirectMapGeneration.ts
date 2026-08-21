@@ -93,6 +93,13 @@ type DirectMapInputSnapshot = {
   sceneKey: string;
 };
 
+type PreparedDirectMapGeneration = {
+  target: DirectMapGenerationTarget;
+  asset: DirectMapGenerationAsset;
+  plan: MapPlanV3;
+  input: DirectMapInputSnapshot;
+};
+
 function sameInputSnapshot(left: DirectMapInputSnapshot, right: DirectMapInputSnapshot): boolean {
   return left.projectId === right.projectId
     && left.planKey === right.planKey
@@ -480,12 +487,15 @@ export function useDirectMapGeneration({
   currentInput.current = { projectId, planKey: canonical(plan), sceneKey: canonical(scene), scene };
   targetRef.current = target;
 
-  const refresh = useCallback(async (expected: DirectMapGenerationTarget) => {
+  const refresh = useCallback(async (
+    expected: DirectMapGenerationTarget,
+    expectedPlan: MapPlanV3 = generationPlan,
+  ) => {
     const records = await service.listAssets(expected.revisionId);
     if (!directMapTargetMatches(targetRef.current, expected)) return;
     const matches = records.filter((record) => record.kind === 'map_image' && record.asset_key === 'map-image');
     if (matches.length !== 1) throw new Error('Expected exactly one direct map image.');
-    let next = directMapAssetFromRecord(matches[0], generationPlan, expected);
+    let next = directMapAssetFromRecord(matches[0], expectedPlan, expected);
     if (next.status === 'ready' && next.storagePath) {
       try {
         next = { ...next, signedUrl: await service.createSignedAssetUrl(next.storagePath) };
@@ -498,8 +508,8 @@ export function useDirectMapGeneration({
     setPhase(directMapPhaseFor(next));
     if (next.status === 'ready') {
       const latest = currentInput.current;
-      if (latest.projectId !== expected.projectId || latest.planKey !== canonical(generationPlan)) return;
-      const materialized = materializeDirectMapScene(generationPlan, latest.scene, expected, next);
+      if (latest.projectId !== expected.projectId || latest.planKey !== canonical(expectedPlan)) return;
+      const materialized = materializeDirectMapScene(expectedPlan, latest.scene, expected, next);
       if (materialized) {
         setBoundImage({
           sourceRevisionId: expected.revisionId,
@@ -513,16 +523,16 @@ export function useDirectMapGeneration({
     }
   }, [generationPlan, onSceneMaterialized, service]);
 
-  const startPreparation = useCallback(async () => {
-    if (preparationActive.current) return;
+  const startPreparation = useCallback(async (): Promise<PreparedDirectMapGeneration | null> => {
+    if (preparationActive.current) return null;
     const validation = validateMapPlanV3(plan);
     if (validation.success === false) {
       setError('Resolve the direct map Plan issues before preparing generation.');
-      return;
+      return null;
     }
     if (!projectId || !canPrepare) {
       setError('Wait for the current map draft to finish saving.');
-      return;
+      return null;
     }
     preparationActive.current = true;
     const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
@@ -546,30 +556,32 @@ export function useDirectMapGeneration({
       if (lifecycleEpoch.current !== epoch
         || !sameInputSnapshot(currentInput.current, expectedInput)) {
         if (lifecycleEpoch.current === epoch && !targetRef.current) setPhase('idle');
-        return;
+        return null;
       }
       targetRef.current = nextTarget;
       setTarget(nextTarget);
       setGenerationPlan(validation.data);
       setAsset(nextAsset);
       setPhase(directMapPhaseFor(nextAsset));
+      return { target: nextTarget, asset: nextAsset, plan: validation.data, input: expectedInput };
     } catch (cause) {
-      if (lifecycleEpoch.current !== epoch) return;
+      if (lifecycleEpoch.current !== epoch) return null;
       if (sameInputSnapshot(currentInput.current, expectedInput)) {
         setPhase('failed');
         setError(cause instanceof Error ? cause.message : 'Could not prepare direct map generation.');
       } else if (!targetRef.current) {
         setPhase('idle');
       }
+      return null;
     } finally {
       preparationActive.current = false;
     }
   }, [canPrepare, plan, projectId, publishForGeneration, service]);
 
-  const confirm = useCallback(async () => {
-    const expected = targetRef.current;
-    if (!expected || !asset || asset.status !== 'planned' || submissionActive.current) return;
-    const expectedInput: DirectMapInputSnapshot = { ...currentInput.current };
+  const submitPrepared = useCallback(async (prepared: PreparedDirectMapGeneration) => {
+    const expected = prepared.target;
+    if (prepared.asset.status !== 'planned' || submissionActive.current) return;
+    const expectedInput = prepared.input;
     submissionActive.current = true;
     setPhase('submitting');
     setError(null);
@@ -580,22 +592,53 @@ export function useDirectMapGeneration({
         mapId: expected.mapId,
         revisionId: expected.revisionId,
         generationId: expected.generationId,
-        assetId: asset.id,
+        assetId: prepared.asset.id,
       });
-      await refresh(expected);
+      await refresh(expected, prepared.plan);
     } catch (cause) {
       if (directMapTargetMatches(targetRef.current, expected)
         && sameInputSnapshot(currentInput.current, expectedInput)) {
         setError(cause instanceof Error ? cause.message : 'Could not submit direct map generation.');
       }
-      try { await refresh(expected); } catch {
+      try { await refresh(expected, prepared.plan); } catch {
         if (directMapTargetMatches(targetRef.current, expected)
           && sameInputSnapshot(currentInput.current, expectedInput)) setPhase('failed');
       }
     } finally {
       submissionActive.current = false;
     }
-  }, [asset, refresh, service]);
+  }, [refresh, service]);
+
+  const confirm = useCallback(async () => {
+    const expected = targetRef.current;
+    if (!expected || !asset || asset.status !== 'planned') return;
+    await submitPrepared({
+      target: expected,
+      asset,
+      plan: generationPlan,
+      input: { ...currentInput.current },
+    });
+  }, [asset, generationPlan, submitPrepared]);
+
+  const generate = useCallback(async () => {
+    const expected = targetRef.current;
+    if (
+      expected
+      && asset?.status === 'planned'
+      && expected.projectId === currentInput.current.projectId
+      && canonical(generationPlan) === currentInput.current.planKey
+    ) {
+      await submitPrepared({
+        target: expected,
+        asset,
+        plan: generationPlan,
+        input: { ...currentInput.current },
+      });
+      return;
+    }
+    const prepared = await startPreparation();
+    if (prepared) await submitPrepared(prepared);
+  }, [asset, generationPlan, startPreparation, submitPrepared]);
 
   const retry = useCallback(async () => {
     const expected = targetRef.current;
@@ -641,6 +684,7 @@ export function useDirectMapGeneration({
     submissionActive.current = true;
     setPhase('submitting');
     setError(null);
+    let restart = false;
     try {
       if (asset.status === 'queued') {
         await service.invokePixelLab({
@@ -653,14 +697,15 @@ export function useDirectMapGeneration({
           acknowledgeDuplicateBilling: true,
         });
       }
-      await startPreparation();
+      restart = true;
     } catch (cause) {
       setPhase(directMapPhaseFor(asset));
       setError(cause instanceof Error ? cause.message : 'Could not resolve the unknown submission.');
     } finally {
       submissionActive.current = false;
     }
-  }, [asset, canPrepare, service, startPreparation]);
+    if (restart) await generate();
+  }, [asset, canPrepare, generate, service]);
 
   const prepareRestore = useCallback(
     (workspace: SavedMapWorkspaceV3) => prepareDirectMapRestore(workspace, service.createSignedAssetUrl),
@@ -701,10 +746,11 @@ export function useDirectMapGeneration({
     canRetry: canRetryDirectMap(asset),
     canResolveUnknown: canResolveUnknownDirectMap(asset) && canPrepare,
     prepare: startPreparation,
+    generate,
     confirm,
     retry,
     resolveUnknownAndRestart,
-    regenerate: startPreparation,
+    regenerate: generate,
     prepareRestore,
     installRestore,
     reset,

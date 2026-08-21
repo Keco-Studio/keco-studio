@@ -16,7 +16,7 @@ export function DirectMapPlanInspector({ plan, issues, onChange, disabled = fals
     <section className={styles.inspectorSection} aria-labelledby="direct-plan-heading">
       <div className={styles.sectionHeadingRow}>
         <div>
-          <span className={styles.eyebrow}>Generation input</span>
+          <span className={styles.eyebrow}>2 Review plan</span>
           <h2 id="direct-plan-heading" className={styles.sectionTitleSmall}>Map plan</h2>
         </div>
         <span className={issues.length > 0 ? styles.issueCount : styles.validCount}>

@@ -8,6 +8,8 @@ import {
   type MapPlanV2Issue,
 } from '@/features/create-map/model/mapPlanSchema';
 import {
+  containsUnsafeDescriptionContent,
+  DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
   DIRECT_MAP_PROFILES,
   validateMapPlanV3,
   type MapPlanV3,
@@ -260,10 +262,11 @@ export class CreateMapPlannerError extends Error {
 }
 
 export class CreateMapPlannerInputError extends Error {
-  readonly code = 'map_description_required' as const;
-  constructor() {
-    super('Map description is required');
+  readonly code: 'map_description_required' | 'map_description_unsafe';
+  constructor(code: 'map_description_required' | 'map_description_unsafe' = 'map_description_required') {
+    super(code === 'map_description_unsafe' ? DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE : 'Map description is required');
     this.name = 'CreateMapPlannerInputError';
+    this.code = code;
   }
 }
 
@@ -607,13 +610,18 @@ export async function createMapPlanV3(
   selection: DirectMapReferenceSelection = { references: [], styleReference: null },
 ): Promise<MapPlanV3> {
   const description = descriptionInput.trim();
-  if (!description) throw new CreateMapPlannerInputError();
+  if (!description && !source) throw new CreateMapPlannerInputError();
+  if (description && containsUnsafeDescriptionContent(description)) {
+    throw new CreateMapPlannerInputError('map_description_unsafe');
+  }
   const messages: ChatMessage[] = [
     {
       role: 'system',
       content: [
         'Create a complete direct-image MapPlan V3.',
-        'The user description is authoritative; optional Document text is supporting context only.',
+        source
+          ? 'The Document is the primary source. Treat optional additional directions as refinements or requested changes.'
+          : 'The additional directions are the primary source because no Document was provided.',
         'Write the final PixelLab create_image_pro description in English as one complete scene description.',
         'The final description must cover camera and top-down projection, composition, terrain, routes, landmarks, buildings, vegetation, lighting, palette, pixel-art treatment, and exclusions.',
         'Do not include URLs, data URIs, credentials, provider instructions, PixelLab, MCP, API commands, or dynamic Keco UI text in the description.',
@@ -624,7 +632,7 @@ export async function createMapPlanV3(
     {
       role: 'user',
       content: JSON.stringify({
-        description,
+        additionalDirections: description || null,
         document: source ? { name: source.documentName, markdown: source.markdown } : null,
       }),
     },

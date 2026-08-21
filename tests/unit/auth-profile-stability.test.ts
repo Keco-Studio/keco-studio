@@ -1,6 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   areUserProfilesEqual,
+  PROFILE_FETCH_RETRY_LIMIT,
+  shouldRetryProfileFetch,
   shouldFetchUserProfileForAuthEvent,
 } from '@/lib/auth/profile-stability';
 import type { UserProfile } from '@/lib/types/user';
@@ -16,6 +18,23 @@ const profile: UserProfile = {
 };
 
 describe('auth profile stability', () => {
+  it('retries transient browser transport failures, but only a bounded number of times', () => {
+    const networkFailure = {
+      status: 0,
+      error: { message: 'TypeError: Failed to fetch' },
+    };
+
+    expect(shouldRetryProfileFetch(networkFailure, 0)).toBe(true);
+    expect(shouldRetryProfileFetch(networkFailure, PROFILE_FETCH_RETRY_LIMIT - 1)).toBe(true);
+    expect(shouldRetryProfileFetch(networkFailure, PROFILE_FETCH_RETRY_LIMIT)).toBe(false);
+    expect(
+      shouldRetryProfileFetch(
+        { status: 401, error: { message: 'Unauthorized' } },
+        0
+      )
+    ).toBe(false);
+  });
+
   it.each(['SIGNED_IN', 'TOKEN_REFRESHED'])(
     'skips profile reload for same-user %s events',
     (event) => {
