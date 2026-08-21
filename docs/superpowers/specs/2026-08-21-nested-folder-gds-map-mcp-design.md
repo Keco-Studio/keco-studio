@@ -50,7 +50,7 @@ it is not a full-map workflow and must remain separate.
   delete, and routing behavior.
 - Expose complete, bounded GDS management over both account-scoped and legacy
   project-bound MCP connections.
-- Expose Create Map V3 draft, generation, status, retry, and publish operations
+- Expose Create Map V3 draft, generation, status, and retry operations
   over MCP.
 - Prevent an MCP client from starting a paid map-image request without a fresh,
   resource-bound user confirmation.
@@ -64,7 +64,8 @@ it is not a full-map workflow and must remain separate.
 
 - Deleting GDS records through MCP.
 - Deleting maps through MCP.
-- Automatically publishing a generated map.
+- Adding a separate public-publication state beyond the existing V3 revision
+  lifecycle.
 - Bypassing paid-generation confirmation.
 - Exposing raw PixelLab provider tools or provider responses through Keco MCP.
 - Modifying Godot scenes, importing maps into Godot, or collecting Godot runtime
@@ -288,18 +289,16 @@ All MCP-created and MCP-edited maps use schema version 3.
 - Uses the existing optimistic-lock RPC and returns the next save version.
 - A stale save version fails without changing the draft.
 
-`publish_map`
-
-- Publishes an explicit current draft revision only when the user asks.
-- Returns the published revision and next draft revision identities.
-- Generation completion never implies publication.
-
 ### Paid Generation Tools
 
 `prepare_map_generation`
 
 - Validates project access, current map/revision/save state, Plan fingerprint,
   dimensions, references, and provider readiness.
+- Uses the existing `publish_map_revision_v3` transition to freeze the exact
+  generation revision as `generating` and create the next editable draft. In
+  this schema, "publish" is an internal revision-freeze operation, not a public
+  release action.
 - Creates or reuses the exact `planned` direct-map asset for the revision.
 - Returns asset ID, immutable generation identity, public fee notice, expiry,
   and a signed confirmation token.
@@ -361,7 +360,7 @@ unseen paid request.
 | Generate/version GDS | Only the GDS owner | Only the GDS owner | Only the GDS owner |
 | Bind or clear project GDS | Yes | No | No |
 | List/read visible maps | Yes | Yes | Yes |
-| Create/update/generate/retry/publish map | Yes | Yes | No |
+| Create/update/generate/retry map | Yes | Yes | No |
 
 Every project operation is checked at execution time. The MCP role captured at
 connection authorization is not treated as permanently current. App API calls
@@ -440,7 +439,7 @@ This Skill handles full maps in the Keco Create Map product. It resolves project
 and source identities, creates/reads a V3 draft, previews the resulting Plan,
 prepares generation, displays the returned fee notice, obtains explicit user
 confirmation, submits generation, polls terminal state, reads back the ready
-image, and publishes only on explicit request.
+image, and leaves the automatically created next draft editable.
 
 The Skill must not treat a user's initial map request as confirmation of the fee
 notice. It must not invent provider tool names or call PixelLab directly.
@@ -490,7 +489,7 @@ Claude and Codex packages.
 - Map tests cover V3-only creation, optimistic-lock failure, preparation,
   confirmation expiry/mismatch, changed Plan/revision, role changes, atomic
   replay, all generation states, safe retry, unknown outcome, and explicit
-  publish.
+  revision freezing during preparation.
 - Database behavior tests cover any new RPC or idempotency storage introduced by
   implementation. Existing asset-state transitions are reused where they meet
   this contract.
@@ -524,8 +523,7 @@ the remote MCP capability contract is stable.
 4. GDS tools can create/generate, poll, version, bind, clear, and read back while
    enforcing ownership, project role, redaction, and idempotency.
 5. Map tools can create/update a V3 draft, prepare generation, require fresh paid
-   confirmation, submit once, poll/retry safely, read the ready image, and
-   publish only explicitly.
+   confirmation, submit once, poll/retry safely, and read the ready image.
 6. A replay, stale revision, changed Plan, expired/mismatched token, downgraded
    role, or unknown provider outcome cannot silently create a second charge.
 7. Tool failures expose stable public errors and retain resumable resource IDs
