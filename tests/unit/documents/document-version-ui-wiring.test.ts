@@ -45,7 +45,8 @@ describe('document version history UI wiring', () => {
     expect(sidebar).not.toContain('@/lib/services/versionService');
     expect(sidebar).not.toContain('library_versions');
     const item = readFileSync(componentPath('DocumentVersionItem.tsx'), 'utf8');
-    expect(item).toContain('modified by keco agent');
+    expect(item).toContain('with Keco Agent');
+    expect(item).not.toContain('modified by keco agent');
     expect(item).toContain('Current Version');
   });
 
@@ -84,7 +85,7 @@ describe('document version history UI wiring', () => {
       'okButtonProps={{ danger: true, disabled: submitting }}'
     );
     expect(restore).toContain('confirmLoading={submitting}');
-    expect(item).toContain('added by');
+    expect(item).toContain('modified by');
     expect(item).toContain('onSelect');
     expect(item).toContain('onRestore');
   });

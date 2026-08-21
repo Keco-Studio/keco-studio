@@ -63,5 +63,44 @@ describe('deterministic plot grouping', () => {
     });
   });
 
+  it('names a branch by its outcome instead of repeating the choice text', () => {
+    const document: StoryDocument = {
+      version: 1,
+      entryLabel: 'Decision',
+      nodes: [
+        node({
+          label: 'Decision', type: 'dialogue', content: 'What will you reveal?',
+          options: [{ text: 'Tell the truth', target: 'Truth', commands: [], sourceRefs: [ref] }],
+        }),
+        node({ label: 'Truth', type: 'narration', content: 'The alliance fractures after the confession.' }),
+      ],
+    };
+
+    const result = buildDeterministicStoryPlotPlan(document);
+
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
+      .toBe('The alliance fractures after the confession.');
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
+      .not.toBe('Tell the truth');
+  });
+
+  it('uses a stable branch fallback when the target content only repeats the option', () => {
+    const document: StoryDocument = {
+      version: 1,
+      entryLabel: 'Decision',
+      nodes: [
+        node({
+          label: 'Decision', type: 'dialogue', content: 'Choose.',
+          options: [{ text: 'Tell the truth', target: 'Truth', commands: [], sourceRefs: [ref] }],
+        }),
+        node({ label: 'Truth', type: 'dialogue', content: 'Tell the truth' }),
+      ],
+    };
+
+    const result = buildDeterministicStoryPlotPlan(document);
+
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('Branch 2');
+  });
+
 
 });

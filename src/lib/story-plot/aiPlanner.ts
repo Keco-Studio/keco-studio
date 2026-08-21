@@ -90,6 +90,21 @@ export function buildStoryPlotPlanFromGrouping(
     }
   }
 
+  const normalizeTitle = (value: string) => value
+    .toLocaleLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, '');
+  for (const plot of nodes) {
+    const incomingOptions = edges
+      .flatMap((edge) => (
+        edge.toPlotNodeId === plot.id && typeof edge.optionText === 'string'
+          ? [normalizeTitle(edge.optionText)]
+          : []
+      ));
+    if (incomingOptions.includes(normalizeTitle(plot.title))) {
+      throw new Error(`Plot title duplicates an incoming option: ${plot.title}`);
+    }
+  }
+
   return validateStoryPlotPlan({
     version: 1,
     entryPlotNodeId: plotByStoryNodeId.get(document.entryLabel)!,

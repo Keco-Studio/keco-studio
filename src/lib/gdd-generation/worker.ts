@@ -221,6 +221,7 @@ export async function persistGeneratedGddDocument(
       dialogueResources,
       createdBy: job.owner_id,
       createdAt,
+      versionSummary: `Update GDD content for ${job.input.systemTitle}`,
     },
     appliedRuleIds: gdd.appliedRuleIds,
     omittedRuleIds: gdd.omittedRuleIds ?? [],
@@ -306,6 +307,7 @@ export async function persistGeneratedGddV2Document(
     ...(mapCompilationError ? { mapCompilationError } : {}),
     createdBy: job.owner_id,
     createdAt: new Date().toISOString(),
+    versionSummary: `Update GDD content for ${input.systemTitle}`,
   };
 
   // Tables/dialogue ownership stays on the resource-evolution RPC. Map

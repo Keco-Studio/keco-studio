@@ -21,6 +21,7 @@ export type ReplaceDocumentAsAgentInput = {
   expected: DocumentStateToken;
   expectedUpdateIds: readonly string[];
   markdown: string;
+  changeSummary?: string;
   derivedTableOperations?: readonly DerivedDialogueTableOperation[];
   scriptReorder?: {
     libraryId: string;
@@ -94,6 +95,8 @@ export async function replaceDocumentAsAgent(
     ? 'replace_document_with_markdown_and_reorder_script'
     : input.derivedTableOperations && input.derivedTableOperations.length > 0
       ? 'replace_document_with_markdown_and_sync_tables'
+    : input.changeSummary
+      ? 'replace_document_with_markdown_with_summary'
       : 'replace_document_with_markdown';
   const rpcInput = {
     p_document_id: input.documentId,
@@ -106,6 +109,7 @@ export async function replaceDocumentAsAgent(
     p_current_markdown: currentMarkdown,
     p_replacement_yjs_state: replacementYjsState,
     p_replacement_markdown: input.markdown,
+    ...(input.changeSummary ? { p_change_summary: input.changeSummary } : {}),
     ...(input.scriptReorder ? {
       p_script_library_id: input.scriptReorder.libraryId,
       p_expected_order_ids: input.scriptReorder.expectedOrderIds,

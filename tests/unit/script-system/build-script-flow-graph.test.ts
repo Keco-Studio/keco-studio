@@ -36,6 +36,9 @@ describe('buildScriptFlowGraph', () => {
       expect.objectContaining({ from: 'Start', to: 'Stable', optionText: 'Fortify - stable route' }),
       expect.objectContaining({ from: 'Start', to: 'Loyal', optionText: 'Answer empress - loyal route' }),
     ]));
+    expect(g.nodes.find((node) => node.id === 'Stable')?.label).toBe('Bow');
+    expect(g.nodes.find((node) => node.id === 'Stable')?.label)
+      .not.toBe('Fortify - stable route');
   });
 
 
@@ -80,6 +83,8 @@ describe('buildScriptFlowGraph', () => {
       ])
     );
     expect(g.edges).toHaveLength(2);
+    expect(g.nodes.find((node) => node.id === 'Left')?.label).not.toBe('Left');
+    expect(g.nodes.find((node) => node.id === 'Right')?.label).not.toBe('Right');
   });
 
   it('accepts bare label Next targets without Jump prefix', () => {

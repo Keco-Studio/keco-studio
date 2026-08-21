@@ -77,14 +77,17 @@ export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryP
         ? '\u6700\u7ec8\u6c47\u805a'
         : '\u5267\u60c5\u6c47\u805a'
       : '';
+    const outcomeTitle = storyNodes
+      .map((node) => branchOutcomeTitle(node.content))
+      .find((title) => title && normalizeTitle(title) !== normalizeTitle(optionTitle ?? ''));
     nodes.push({
       id: first.label,
       title: headingTitle
         || endingTitle
-        || optionTitle
+        || outcomeTitle
         || decisionTitle
         || mergeTitle
-        || `\u5267\u60c5 ${plotIndex + 1}`,
+        || (optionTitle ? `Branch ${plotIndex + 1}` : `\u5267\u60c5 ${plotIndex + 1}`),
       storyNodeIds: storyNodes.map((node) => node.label),
     });
   }
@@ -165,6 +168,19 @@ export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryP
 function compactTitle(value: string): string {
   const text = value.replace(/\s+/g, ' ').trim();
   return text.length > 18 ? `${text.slice(0, 18)}...` : text;
+}
+
+function branchOutcomeTitle(value: string): string {
+  const text = value
+    .replace(/^\s*(?:\[[^\]]+\]|【[^】]+】)\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text || /^(?:decision|choice|option|branch)$/i.test(text)) return '';
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+function normalizeTitle(value: string): string {
+  return value.toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
 }
 
 function explicitEndingTitle(value: string): string {
