@@ -164,6 +164,27 @@ Deno.test("durably blocks a stale queued submission after explicit acknowledgeme
   assertEquals(state.submissions, []);
 });
 
+Deno.test("retries an unknown blocked submission only with duplicate-billing acknowledgement", async () => {
+  const state = harness({
+    status: "blocked",
+    lastErrorCode: "pixellab_submit_outcome_unknown",
+    metadata: {},
+  });
+
+  const result = await runDirectMapLifecycle({
+    operation: "retry",
+    acknowledgeDuplicateBilling: true,
+    ...state,
+  } as never);
+
+  assertEquals(result, { assetId: IDS.assetId, status: "generating" });
+  assertEquals(state.submissions.length, 1);
+  assertEquals(state.transitions.map(({ from, to }) => ({ from, to })), [
+    { from: "blocked", to: "queued" },
+    { from: "queued", to: "generating" },
+  ]);
+});
+
 Deno.test("does not resolve a queued submission before the safety window elapses", async () => {
   const state = harness({ status: "queued", updatedAt: "2026-08-11T00:00:00.000Z" });
 

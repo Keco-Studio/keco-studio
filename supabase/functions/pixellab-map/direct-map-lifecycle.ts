@@ -98,10 +98,16 @@ async function submitDirectMap(
   assetId: string,
 ): Promise<Record<string, unknown>> {
   const status = String(asset.status);
+  const acknowledgedUnknownReplacement = options.operation === "retry"
+    && status === "blocked"
+    && asset.last_error_code === UNKNOWN_SUBMISSION_OUTCOME
+    && options.acknowledgeDuplicateBilling === true;
   if (
     options.operation === "retry"
     && (
-      (status === "blocked" && !SAFE_SUBMISSION_REJECTION_CODES.has(String(asset.last_error_code)))
+      (status === "blocked"
+        && !SAFE_SUBMISSION_REJECTION_CODES.has(String(asset.last_error_code))
+        && !acknowledgedUnknownReplacement)
       || (status === "failed" && !asset.provider_job_id)
     )
   ) {
