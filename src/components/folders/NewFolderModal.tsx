@@ -12,11 +12,18 @@ import dialog from '@/components/shared/FormDialog.module.css';
 type NewFolderModalProps = {
   open: boolean;
   projectId: string;
+  parentFolderId?: string | null;
   onClose: () => void;
   onCreated: (folderId: string) => void;
 };
 
-export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolderModalProps) {
+export function NewFolderModal({
+  open,
+  projectId,
+  parentFolderId,
+  onClose,
+  onCreated,
+}: NewFolderModalProps) {
   const supabase = useSupabase();
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +55,7 @@ export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolde
       const folderId = await createFolder(supabase, {
         projectId,
         name: trimmed,
+        parentFolderId: parentFolderId ?? null,
       });
       onCreated(folderId);
       setName('');
