@@ -34,6 +34,12 @@ const sceneV3 = {
 };
 
 type CreatedMap = { map_id: string; draft_revision_id: string; revision_number: number; save_version: number };
+type MapCreationClaim = {
+  claim_status: 'claimed' | 'in_progress' | 'completed';
+  request_token: string | null;
+  map_id: string | null;
+  revision_id: string | null;
+};
 
 describeDb('Create Map RLS and atomic RPCs (live database)', () => {
   let fx: ProjectFixture;
@@ -212,16 +218,25 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect(invalidSave.error?.code).toBe('22023');
   });
 
-  it('creates V3 maps idempotently per actor and rejects changed replays or viewers', async () => {
+  it('claims and completes V3 maps idempotently per actor and rejects changed replays or viewers', async () => {
     const key = crypto.randomUUID();
-    const createIdempotent = (
+    const claimCreation = (
       client: SupabaseClient,
-      inputHash: string,
-      name = 'Idempotent V3 map',
-    ) => client.rpc('create_map_project_v3_idempotent', {
+      intentHash: string,
+      idempotencyKey = key,
+    ) => client.rpc('claim_map_project_v3_creation', {
       p_project_id: fx.projectId,
-      p_idempotency_key: key,
-      p_input_hash: inputHash,
+      p_idempotency_key: idempotencyKey,
+      p_intent_hash: intentHash,
+    });
+    const completeCreation = (
+      client: SupabaseClient,
+      requestToken: string,
+      idempotencyKey = key,
+      name = 'Idempotent V3 map',
+    ) => client.rpc('complete_map_project_v3_creation', {
+      p_idempotency_key: idempotencyKey,
+      p_request_token: requestToken,
       p_name: name,
       p_source_document_id: null,
       p_source_document_updated_at: null,
@@ -231,50 +246,57 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
       p_scene: sceneV3,
     });
 
-    const first = await createIdempotent(fx.owner.client, 'a'.repeat(64));
-    const replay = await createIdempotent(fx.owner.client, 'a'.repeat(64));
+    const firstClaim = await claimCreation(fx.owner.client, 'a'.repeat(64));
+    expect(firstClaim.error).toBeNull();
+    const claimed = (firstClaim.data as MapCreationClaim[])[0];
+    expect(claimed).toMatchObject({
+      claim_status: 'claimed',
+      map_id: null,
+      revision_id: null,
+    });
+    expect(claimed.request_token).toEqual(expect.any(String));
+
+    const first = await completeCreation(fx.owner.client, claimed.request_token!);
     expect(first.error).toBeNull();
-    expect(replay.error).toBeNull();
-    expect(replay.data).toEqual(first.data);
 
     const created = (first.data as CreatedMap[])[0];
+    const replay = await claimCreation(fx.owner.client, 'a'.repeat(64));
+    expect(replay.error).toBeNull();
+    expect((replay.data as MapCreationClaim[])[0]).toEqual({
+      claim_status: 'completed',
+      request_token: null,
+      map_id: created.map_id,
+      revision_id: created.draft_revision_id,
+    });
+
     const rows = await fx.svc.from('map_projects').select('id').eq('id', created.map_id);
     expect(rows.error).toBeNull();
     expect(rows.data).toHaveLength(1);
 
-    const conflict = await createIdempotent(
+    const conflict = await claimCreation(
       fx.owner.client,
       'b'.repeat(64),
-      'Changed map',
     );
     expect(conflict.error?.code).toBe('KM409');
 
-    const editor = await fx.editor.client.rpc('create_map_project_v3_idempotent', {
-      p_project_id: fx.projectId,
-      p_idempotency_key: crypto.randomUUID(),
-      p_input_hash: 'c'.repeat(64),
-      p_name: 'Editor idempotent V3 map',
-      p_source_document_id: null,
-      p_source_document_updated_at: null,
-      p_source_epoch: null,
-      p_source_revision: null,
-      p_plan: planV3,
-      p_scene: sceneV3,
-    });
+    const editorClaim = await claimCreation(fx.editor.client, 'c'.repeat(64));
+    expect(editorClaim.error).toBeNull();
+    const editorClaimed = (editorClaim.data as MapCreationClaim[])[0];
+    expect(editorClaimed.claim_status).toBe('claimed');
+    expect(editorClaimed.request_token).toEqual(expect.any(String));
+    const editor = await completeCreation(
+      fx.editor.client,
+      editorClaimed.request_token!,
+      key,
+      'Editor idempotent V3 map',
+    );
     expect(editor.error).toBeNull();
 
-    const viewer = await fx.viewer.client.rpc('create_map_project_v3_idempotent', {
-      p_project_id: fx.projectId,
-      p_idempotency_key: crypto.randomUUID(),
-      p_input_hash: 'd'.repeat(64),
-      p_name: 'Denied idempotent V3 map',
-      p_source_document_id: null,
-      p_source_document_updated_at: null,
-      p_source_epoch: null,
-      p_source_revision: null,
-      p_plan: planV3,
-      p_scene: sceneV3,
-    });
+    const viewer = await claimCreation(
+      fx.viewer.client,
+      'd'.repeat(64),
+      crypto.randomUUID(),
+    );
     expect(viewer.error?.code).toBe('42501');
   });
 
