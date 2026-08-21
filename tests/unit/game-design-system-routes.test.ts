@@ -239,6 +239,7 @@ describeDb('Game Design System route contracts (live Auth, RLS, and database)', 
     expect(conflict.status).toBe(409);
     await expect(conflict.json()).resolves.toEqual({
       error: 'Idempotency key was already used with a different payload.',
+      code: 'IDEMPOTENCY_CONFLICT',
     });
   });
 

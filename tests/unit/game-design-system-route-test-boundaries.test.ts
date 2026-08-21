@@ -27,6 +27,7 @@ jest.mock('@/lib/game-design-system/sourceSnapshots', () => ({
 jest.mock('@/lib/services/gameDesignSystemService', () => ({
   IdempotencyConflictError: class IdempotencyConflictError extends Error {},
   createGameDesignSystemGenerationJob: (...args: unknown[]) => createGameDesignSystemGenerationJob(...args),
+  publicGameDesignSystemGenerationJob: (job: unknown) => job,
   getGameDesignSystem: jest.fn(async () => ({
     id: 'system-1',
     owner_id: 'route-test-user',
@@ -334,7 +335,9 @@ describe('POST /api/game-design-systems/:id/versions strict boundary', () => {
     });
 
     expect(response.status).toBe(status);
-    await expect(response.json()).resolves.toMatchObject({ code });
+    await expect(response.json()).resolves.toMatchObject({
+      code: code === 'VERSION_SYSTEM_NOT_FOUND' ? 'GDS_NOT_FOUND' : code,
+    });
   });
 
   it('returns reintroduced rule IDs without logging an error object', async () => {

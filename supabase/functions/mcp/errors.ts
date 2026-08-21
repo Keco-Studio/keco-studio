@@ -14,6 +14,21 @@ export const MCP_ERROR_CODES = [
   "STORY_GRAPH_UNSUPPORTED_LIBRARY",
   "STORY_GRAPH_INVALID_SNAPSHOT",
   "STORY_GRAPH_CONFLICT",
+  "GDS_NOT_FOUND",
+  "GDS_JOB_CONFLICT",
+  "VERSION_STALE",
+  "IDEMPOTENCY_CONFLICT",
+  "MAP_CREATION_IN_PROGRESS",
+  "MAP_NOT_FOUND",
+  "MAP_REVISION_STALE",
+  "MAP_CONFIRMATION_REQUIRED",
+  "MAP_CONFIRMATION_EXPIRED",
+  "MAP_CONFIRMATION_MISMATCH",
+  "MAP_GENERATION_BLOCKED",
+  "MAP_GENERATION_FAILED",
+  "PROVIDER_RATE_LIMITED",
+  "PROVIDER_QUOTA_EXCEEDED",
+  "UPSTREAM_UNAVAILABLE",
   "INVALID_CURSOR",
   "INVALID_RESOURCE_URI",
   "PAYLOAD_TOO_LARGE",
@@ -30,13 +45,25 @@ export type McpErrorCode = typeof MCP_ERROR_CODES[number];
 export class McpDomainError extends Error {
   readonly code: McpErrorCode;
   readonly retryAfterSeconds?: number;
+  readonly retryable?: boolean;
 
-  constructor(code: McpErrorCode, message: string, retryAfterSeconds?: number) {
+  constructor(
+    code: McpErrorCode,
+    message: string,
+    retryAfterSeconds?: number,
+    retryable?: boolean,
+  ) {
     super(message);
     this.name = "McpDomainError";
     this.code = code;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.retryable = retryable;
   }
+}
+
+export function isMcpErrorCode(value: unknown): value is McpErrorCode {
+  return typeof value === "string" &&
+    (MCP_ERROR_CODES as readonly string[]).includes(value);
 }
 
 export function asPublicMcpError(error: unknown): McpDomainError {

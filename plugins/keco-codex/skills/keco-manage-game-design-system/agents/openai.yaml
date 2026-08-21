@@ -1,0 +1,14 @@
+interface:
+  display_name: "Manage Keco Game Design Systems"
+  short_description: "Create, version, and bind Keco design systems"
+  brand_color: "#0F766E"
+  default_prompt: "Use $keco-manage-game-design-system to create or update my Keco Game Design System and verify the result."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "keco"
+      description: "Keco Streamable HTTP MCP server"
+      transport: "streamable_http"
+      url: "https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp"
+policy:
+  allow_implicit_invocation: true

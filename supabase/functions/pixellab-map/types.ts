@@ -36,7 +36,9 @@ export type NormalizedTileAtlas = {
 
 export type PixelLabMapRequest =
   | { operation: "capabilities"; projectId: string }
-  | { operation: "submit" | "poll" | "validate" | "retry" | "compose_background"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string }
+  | { operation: "submit"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string; expectedAttemptCount?: number }
+  | { operation: "poll" | "validate" | "compose_background"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string }
+  | { operation: "retry"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string; expectedAttemptCount?: number; acknowledgeDuplicateBilling?: true }
   | { operation: "resolve_unknown"; projectId: string; mapId: string; revisionId: string; generationId: string; assetId: string; acknowledgeDuplicateBilling: true }
   | {
       operation: "inpaint";

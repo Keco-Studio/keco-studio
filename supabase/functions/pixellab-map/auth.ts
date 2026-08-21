@@ -89,6 +89,36 @@ export function assertGenerationIdentity(
   }
 }
 
+type DirectMapLifecycleOperation = "submit" | "retry" | "poll" | "validate" | "resolve_unknown";
+
+export function assertDirectMapPaidOperationAccess(
+  operation: DirectMapLifecycleOperation,
+  input: {
+    serviceRoleRequest: boolean;
+    gddWorkerRequest: boolean;
+    expectedAttemptCount: number | undefined;
+  },
+): void {
+  if (operation !== "submit" && operation !== "retry") return;
+  if (!input.serviceRoleRequest) {
+    throw new PixelLabMapError(
+      "pixellab_invalid_response",
+      "Paid map generation requires server confirmation",
+      403,
+    );
+  }
+  if (
+    !input.gddWorkerRequest
+    && (!Number.isSafeInteger(input.expectedAttemptCount) || input.expectedAttemptCount! < 0)
+  ) {
+    throw new PixelLabMapError(
+      "pixellab_invalid_response",
+      "Confirmed map generation attempt is required",
+      403,
+    );
+  }
+}
+
 type PixelLabClientOptions = {
   global?: { headers: { authorization: string } };
   auth: { persistSession: boolean };
@@ -152,6 +182,49 @@ export async function authorizeAsset(token: string, assetId: string, expectedPro
   };
 }
 
+export async function authorizeServiceMapAsset(
+  serviceToken: string,
+  assetId: string,
+  expectedProjectId: string,
+  actorUserId: string,
+): Promise<AuthorizedAsset> {
+  const configuredServiceToken = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!configuredServiceToken || serviceToken !== configuredServiceToken) {
+    throw new PixelLabMapError("pixellab_invalid_response", "Authentication required", 401);
+  }
+  const { serviceClient } = createPixelLabClients(serviceToken);
+  const { data: asset, error: assetError } = await serviceClient.from("map_assets")
+    .select("id, map_revision_id, generation_id, plan_fingerprint, reference_asset_ids, reference_hashes, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, last_error_code, metadata, updated_at")
+    .eq("id", assetId).maybeSingle();
+  const { data: revision } = asset ? await serviceClient.from("map_revisions")
+    .select("id, map_project_id, schema_version, plan").eq("id", asset.map_revision_id).maybeSingle() : { data: null };
+  const { data: map } = revision ? await serviceClient.from("map_projects")
+    .select("id, project_id").eq("id", revision.map_project_id).maybeSingle() : { data: null };
+  if (assetError || !asset || !revision || !map || map.project_id !== expectedProjectId) {
+    throw new PixelLabMapError("pixellab_invalid_response", "Map asset binding is invalid", 403);
+  }
+  const { data: project } = await serviceClient.from("projects")
+    .select("owner_id").eq("id", expectedProjectId).maybeSingle();
+  const { data: collaborator } = await serviceClient.from("project_collaborators")
+    .select("role, accepted_at").eq("project_id", expectedProjectId).eq("user_id", actorUserId).maybeSingle();
+  const role = project?.owner_id === actorUserId ? "admin" : collaborator?.accepted_at ? collaborator.role : null;
+  if (role !== "admin" && role !== "editor") {
+    throw new PixelLabMapError("pixellab_invalid_response", "Map generation requires editor access", 403);
+  }
+  return {
+    userClient: serviceClient,
+    serviceClient,
+    userId: actorUserId,
+    projectId: expectedProjectId,
+    mapId: String(map.id),
+    revisionId: String(revision.id),
+    schemaVersion: Number(revision.schema_version),
+    generationId: typeof asset.generation_id === "string" ? asset.generation_id : null,
+    revisionPlan: revision.plan,
+    asset: asset as Record<string, unknown>,
+  };
+}
+
 /**
  * Durable workers do not have a browser JWT. A service-role request is only
  * accepted when it carries the child artifact and original actor identity;
@@ -183,37 +256,21 @@ export async function authorizeGddMapAsset(
   if (!job || job.project_id !== artifact.project_id || job.owner_id !== artifact.owner_id) {
     throw new PixelLabMapError("pixellab_invalid_response", "GDD map job binding is invalid", 403);
   }
-  const { data: map } = await serviceClient.from("map_projects")
-    .select("id, project_id").eq("id", artifact.map_project_id).maybeSingle();
-  const { data: revision } = await serviceClient.from("map_revisions")
-    .select("id, map_project_id, schema_version, plan").eq("id", artifact.map_revision_id).maybeSingle();
-  const { data: asset, error: assetError } = await serviceClient.from("map_assets")
-    .select("id, map_revision_id, generation_id, plan_fingerprint, reference_asset_ids, reference_hashes, asset_key, kind, status, requested_capability, prompt, generation_params, provider_operation, provider_job_id, attempt_count, last_error_code, metadata, updated_at")
-    .eq("id", assetId).maybeSingle();
-  if (!map || map.project_id !== expectedProjectId || !revision || revision.map_project_id !== map.id
-    || !asset || assetError || asset.map_revision_id !== revision.id || asset.generation_id !== artifact.generation_id
-    || asset.kind !== "map_image" || asset.asset_key !== "map-image" || asset.requested_capability !== "direct_map_image") {
+  const authorized = await authorizeServiceMapAsset(
+    serviceToken,
+    assetId,
+    expectedProjectId,
+    actorUserId,
+  );
+  if (authorized.mapId !== artifact.map_project_id
+    || authorized.revisionId !== artifact.map_revision_id
+    || authorized.asset.generation_id !== artifact.generation_id
+    || authorized.asset.kind !== "map_image"
+    || authorized.asset.asset_key !== "map-image"
+    || authorized.asset.requested_capability !== "direct_map_image") {
     throw new PixelLabMapError("pixellab_invalid_response", "GDD map asset binding is invalid", 403);
   }
-  const { data: project } = await serviceClient.from("projects").select("owner_id").eq("id", expectedProjectId).maybeSingle();
-  const { data: collaborator } = await serviceClient.from("project_collaborators")
-    .select("role, accepted_at").eq("project_id", expectedProjectId).eq("user_id", actorUserId).maybeSingle();
-  const role = project?.owner_id === actorUserId ? "admin" : collaborator?.accepted_at ? collaborator.role : null;
-  if (role !== "admin" && role !== "editor") {
-    throw new PixelLabMapError("pixellab_invalid_response", "Map generation requires editor access", 403);
-  }
-  return {
-    userClient: serviceClient,
-    serviceClient,
-    userId: actorUserId,
-    projectId: expectedProjectId,
-    mapId: map.id,
-    revisionId: revision.id,
-    schemaVersion: Number(revision.schema_version),
-    generationId: typeof asset.generation_id === "string" ? asset.generation_id : null,
-    revisionPlan: revision.plan,
-    asset: asset as Record<string, unknown>,
-  };
+  return authorized;
 }
 
 export async function authorizeProject(token: string, projectId: string): Promise<{ userClient: SupabaseClient; serviceClient: SupabaseClient; userId: string }> {

@@ -217,6 +217,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [showImportDocumentModal, setShowImportDocumentModal] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [pendingFolderParentId, setPendingFolderParentId] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
@@ -1243,14 +1244,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   const handleFolderCreated = async (folderId: string) => {
+    const parentFolderId = pendingFolderParentId;
     closeFolderModal();
-    setSelectedFolderId(null); // Clear selection after creation
+    setPendingFolderParentId(null);
 
     await invalidateFolderData(queryClient, {
       projectId: currentIds.projectId,
       folderId,
       refetchActiveFoldersLibraries: true,
     });
+    expandFolder(parentFolderId);
     expandFolder(folderId);
 
     // Always navigate to the newly created folder if we have a projectId
@@ -1275,8 +1278,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setError('Please select a project first');
       return;
     }
-    // selectedFolderId is already set when button is clicked
+    setPendingFolderParentId(null);
     openNewFolder();
+  };
+
+  const handleCloseFolderModal = () => {
+    setPendingFolderParentId(null);
+    closeFolderModal();
   };
 
   const handleCreateTable = () => {
@@ -1331,7 +1339,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const handleToolbarCreateFolder = (event: Event) => {
       const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
       if (!matchesProject(custom.detail) || userRole !== 'admin') return;
-      setSelectedFolderId(custom.detail?.folderId ?? null);
+      setPendingFolderParentId(custom.detail?.folderId ?? null);
       openNewFolder();
     };
 
@@ -1609,8 +1617,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <NewFolderModal
         open={showFolderModal}
-        onClose={closeFolderModal}
+        onClose={handleCloseFolderModal}
         projectId={currentIds.projectId || ''}
+        parentFolderId={pendingFolderParentId}
         onCreated={handleFolderCreated}
       />
 
@@ -1711,6 +1720,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         open={Boolean(folderAddMenu)}
         anchorElement={folderAddMenu?.anchor ?? null}
         onClose={() => setFolderAddMenu(null)}
+        onCreateFolder={
+          userRole === 'admin'
+            ? () => {
+                if (!folderAddMenu) return;
+                setPendingFolderParentId(folderAddMenu.folderId);
+                setFolderAddMenu(null);
+                openNewFolder();
+              }
+            : undefined
+        }
         onCreateTable={
           userRole === 'admin'
             ? () => {

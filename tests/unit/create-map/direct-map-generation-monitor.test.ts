@@ -72,6 +72,7 @@ import {
 
 const TARGET: DirectMapGenerationTarget = {
   projectId: 'project-1', mapId: 'map-1', revisionId: 'revision-1',
+  saveVersion: 0,
   generationId: 'generation-1', planFingerprint: 'a'.repeat(64),
 };
 
@@ -79,6 +80,7 @@ function generatingAsset(id = 'asset-1'): DirectMapGenerationAsset {
   return {
     id,
     status: 'generating',
+    attemptCount: 1,
     lastErrorCode: null,
     providerOperation: 'create_image_pro',
     providerJobId: 'job-1',

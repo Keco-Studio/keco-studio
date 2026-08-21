@@ -12,6 +12,7 @@ import {
   getGameDesignSystemVersionByGenerationJobId,
   getProjectGameDesignSystem,
   listGameDesignSystems,
+  listGameDesignSystemsPage,
   type GameDesignSystemVersion,
 } from './gameDesignSystemService';
 import { parseGameDesignDocument, parseRuleSet } from '@/lib/game-design-system/ruleSchema';
@@ -588,5 +589,117 @@ describe('gameDesignSystemService version and job behavior', () => {
       philosophies: ['Pinned Philosophy'],
       suitable_for: 'Pinned audience',
     });
+  });
+
+  it('bounds GDS list rows in the database before hydration', async () => {
+    const range = jest.fn(async (_from: number, _to: number) => ({ data: [], error: null }));
+    const query: { order: jest.Mock; range: typeof range } = {
+      order: jest.fn(),
+      range,
+    };
+    query.order.mockReturnValue(query);
+    const supabase = {
+      from: jest.fn(() => ({ select: () => query })),
+    };
+
+    await expect(listGameDesignSystemsPage(supabase as never, {
+      limit: 25,
+      offset: 50,
+    })).resolves.toEqual({ systems: [], hasMore: false, nextOffset: null });
+    expect(range).toHaveBeenCalledWith(50, 75);
+  });
+
+  it('hydrates a bounded GDS page from the newest RLS-readable version', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Bounded',
+      current_version_id: 'version-9', body: '', genres: [], philosophies: [], suitable_for: null,
+    };
+    const readableRules = {
+      ...ruleSet,
+      genres: ['Pinned Genre'],
+      philosophies: ['Pinned Philosophy'],
+      suitableFor: 'Pinned audience',
+    };
+    const range = jest.fn(async () => ({ data: [system], error: null }));
+    const query: { order: jest.Mock; range: typeof range } = {
+      order: jest.fn(),
+      range,
+    };
+    query.order.mockReturnValue(query);
+    const rpc = jest.fn(async (_name: string, _args: { p_system_ids: string[] }) => ({
+      data: [{
+        id: 'version-2', system_id: 'system-1', version_number: 2,
+        rules: readableRules, rendered_markdown: '# Pinned version 2',
+      }],
+      error: null,
+    }));
+    const supabase = {
+      from: jest.fn(() => ({ select: () => query })),
+      rpc,
+    };
+
+    const result = await listGameDesignSystemsPage(supabase as never, { limit: 25, offset: 0 });
+
+    expect(rpc).toHaveBeenCalledWith('list_latest_readable_game_design_system_versions', {
+      p_system_ids: ['system-1'],
+    });
+    expect(result.systems[0]).toMatchObject({
+      current_version_id: 'version-2',
+      body: '# Pinned version 2',
+      genres: ['Pinned Genre'],
+    });
+    expect(query.order).toHaveBeenCalledWith('id', { ascending: true });
+  });
+
+  it('hydrates a legacy null-current system from its newest readable version', async () => {
+    const system = {
+      id: 'legacy-system', owner_id: 'author-1', source: 'user', title: 'Legacy',
+      current_version_id: null, body: '', genres: [], philosophies: [], suitable_for: null,
+    };
+    const range = jest.fn(async () => ({ data: [system], error: null }));
+    const query: { order: jest.Mock; range: typeof range } = {
+      order: jest.fn(),
+      range,
+    };
+    query.order.mockReturnValue(query);
+    const rpc = jest.fn(async (_name: string, _args: { p_system_ids: string[] }) => ({
+      data: [{
+        id: 'legacy-version-1', system_id: 'legacy-system', version_number: 1,
+        rules: ruleSet, rendered_markdown: '# Legacy version 1',
+      }],
+      error: null,
+    }));
+    const supabase = {
+      from: jest.fn(() => ({ select: () => query })),
+      rpc,
+    };
+
+    const result = await listGameDesignSystemsPage(supabase as never, { limit: 25, offset: 0 });
+
+    expect(rpc).toHaveBeenCalledWith('list_latest_readable_game_design_system_versions', {
+      p_system_ids: ['legacy-system'],
+    });
+    expect(result.systems[0]).toMatchObject({
+      current_version_id: 'legacy-version-1',
+      body: '# Legacy version 1',
+    });
+  });
+
+  it('bounds version history before returning a GDS detail payload', async () => {
+    const system = {
+      id: 'system-1', owner_id: 'author-1', source: 'user', title: 'Bounded',
+      current_version_id: null, body: '', genres: [], philosophies: [], suitable_for: null,
+    };
+    const limit = jest.fn(async (_count: number) => ({ data: [], error: null }));
+    const supabase = {
+      from: jest.fn((table: string) => table === 'game_design_systems'
+        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: system, error: null }) }) }) }
+        : { select: () => ({ eq: () => ({ order: () => ({ limit }) }) }) }),
+    };
+
+    await expect(getGameDesignSystemDetail(supabase as never, 'system-1', {
+      versionLimit: 50,
+    })).resolves.toMatchObject({ id: 'system-1', versions: [] });
+    expect(limit).toHaveBeenCalledWith(50);
   });
 });

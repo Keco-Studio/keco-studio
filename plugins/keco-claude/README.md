@@ -1,8 +1,8 @@
 # Keco (Claude Code plugin)
 
 Claude Code packaging of the Keco Studio workflows. The Codex packaging lives in
-`plugins/keco-codex/` and is unchanged; this plugin is the Claude-side equivalent with
-the contract defects found in the 2026-08-07 audit corrected.
+`plugins/keco-codex/`; both packages expose equivalent GDS and complete Create
+Map workflows in addition to their host-specific existing capabilities.
 
 ## Install
 
@@ -22,12 +22,15 @@ never bundles or overrides them.
 .mcp.json                           remote Keco MCP connection
 assets/                             brand icon and logo (one copy)
 references/                         plugin-wide shared contracts
+  gds-map-mcp-contract.md           GDS and Create Map V3 MCP schemas and states
   pixellab-capability-registry.md   capability keys + canonical assetKind vocabulary
 scripts/                            deterministic validators (one shared copy)
 skills/
   keco-build-tables-from-document/  documents -> new Keco tables
+  keco-create-map/                   complete persisted V3 map + paid confirmation
   keco-develop-godot-slice/         one bounded, evaluated Godot slice (V1)
   keco-develop-godot-slice-v2/      document-driven multi-Slice workflow (canonical)
+  keco-manage-game-design-system/   discover, create, version, and bind GDS data
   pixellab-map-assets/              Keco-first map and art resources
 ```
 
@@ -47,6 +50,19 @@ Skills reference the shared scripts as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py`
 | `validate_snapshot.py` | snapshot hashes, paths, and source identity |
 
 All are offline and contact no service.
+
+## GDS And Create Map
+
+`keco-manage-game-design-system` discovers stable system and version IDs,
+creates or generates systems, polls jobs, creates immutable versions, changes a
+project binding, and verifies every mutation with a fresh MCP read. It never
+deletes a system or version.
+
+`keco-create-map` creates and reviews a complete persisted V3 map. Paid image
+generation always pauses after `prepare_map_generation`, shows the exact fee
+notice, and waits for a later explicit confirmation before
+`start_map_generation`. Individual tilesets, roads, buildings, and props remain
+the responsibility of `pixellab-map-assets`.
 
 ## Changes against `plugins/keco-codex/`
 
@@ -85,6 +101,8 @@ Fixes carried into this packaging:
 13. Scripts and brand assets are stored once instead of duplicated per skill.
 14. All shipped text is ASCII; the manifest carries a clean semver.
 
-`tests/unit/plugins/keco-claude-plugin.test.ts` covers all four skills, including
-`pixellab-map-assets`, which previously had none, and adds the positive validator
-cases that let defects 1 and 2 go unnoticed.
+`tests/unit/plugins/keco-claude-plugin.test.ts` covers every packaged Skill,
+including `pixellab-map-assets`, which previously had none, and adds the positive
+validator cases that let defects 1 and 2 go unnoticed. The cross-package GDS and
+Create Map safety contract is covered by
+`tests/unit/plugins/keco-gds-map-plugin.test.ts`.

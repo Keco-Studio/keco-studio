@@ -20,7 +20,7 @@ const readAnnotations = {
 export async function registerAccountTools(
   server: McpServer,
   context: AccountMcpRequestContext,
-): Promise<void> {
+): Promise<boolean> {
   const listProjectsSchema = z.object({
     limit: z.number().int().min(1).max(100).optional(),
     cursor: z.string().min(1).max(4096).optional(),
@@ -55,4 +55,5 @@ export async function registerAccountTools(
       (projectId) => authorizeAccountProject(context, projectId, "write"),
     );
   }
+  return hasWritableProject;
 }

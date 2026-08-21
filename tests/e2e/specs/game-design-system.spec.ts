@@ -9,7 +9,7 @@ import type { GameDesignRuleSet } from '@/lib/game-design-system/ruleSchema';
 import type {
   GameDesignSystem,
   GameDesignSystemDetail,
-  GameDesignSystemGenerationJob,
+  PublicGameDesignSystemGenerationJob,
   GameDesignSystemVersion,
 } from '@/lib/services/gameDesignSystemService';
 import { LoginPage } from '../pages/login.page';
@@ -334,25 +334,25 @@ class GameArtStyleMockBackend {
     await page.route('**/api/game-design-systems**', (route) => this.handleGameDesignSystem(route));
   }
 
-  private job(id: string, status: GameDesignSystemGenerationJob['status'], phase: GameDesignSystemGenerationJob['phase']): GameDesignSystemGenerationJob {
+  private job(
+    id: string,
+    status: PublicGameDesignSystemGenerationJob['status'],
+    phase: PublicGameDesignSystemGenerationJob['phase'],
+  ): PublicGameDesignSystemGenerationJob {
     const completed = status === 'completed';
     return {
       id,
-      owner_id: MOCK_USER_ID,
       status,
       phase,
-      input: {},
-      error: status === 'failed' ? 'Mock durable worker unavailable.' : null,
+      error: status === 'failed' ? {
+        code: 'GDS_GENERATION_FAILED',
+        message: 'Game Design System generation failed.',
+      } : null,
       design_system_id: completed ? MOCK_SYSTEM_ID : null,
       output_version_id: completed ? MOCK_CURRENT_VERSION_ID : null,
-      idempotency_key: 'mock-game-art-style-job',
-      input_hash: 'a'.repeat(64),
       attempt_count: 1,
       max_attempts: 3,
       available_at: '2026-08-17T04:00:00.000Z',
-      lease_owner: null,
-      lease_expires_at: null,
-      heartbeat_at: null,
       started_at: null,
       completed_at: completed ? '2026-08-17T04:00:00.000Z' : null,
       created_at: '2026-08-17T03:00:00.000Z',
@@ -567,7 +567,7 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await expect(artStyleSummary).toContainText(ART_AVOID);
     await page.getByRole('button', { name: 'Generate system' }).click();
     await expect(page.getByRole('heading', { name: 'Generation incomplete' })).toBeVisible();
-    await expect(page.getByText('Mock durable worker unavailable.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Game Design System generation failed.', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Back to sources' }).click();
     await page.getByRole('tab', { name: 'Art Style' }).click();

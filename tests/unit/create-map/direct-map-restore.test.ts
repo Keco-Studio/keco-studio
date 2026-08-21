@@ -68,6 +68,7 @@ function loadMock(input: {
         single: async () => ({
           data: filters.id === input.generationRevisionId ? {
             schema_version: 3,
+            save_version: 0,
             plan: input.generationPlan ?? plan,
           } : {
           id: '10000000-0000-4000-8000-000000000030',
@@ -129,6 +130,7 @@ describe('direct map restore', () => {
       sourceDocumentId: null,
       generationPlan: null,
       assetRevisionId: null,
+      assetRevisionSaveVersion: null,
       imageAsset: null,
       imageUrl: null,
       boundImageAsset: null,

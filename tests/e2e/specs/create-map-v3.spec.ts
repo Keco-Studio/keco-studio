@@ -189,6 +189,7 @@ class CreateMapV3MockBackend {
     await page.route('**/api/create-map/references**', (route) => this.handleReferences(route));
     await page.route('**/api/create-map/plan', (route) => this.handlePlan(route));
     await page.route('**/api/create-map/collision-grid', (route) => this.handleCollisionGrid(route));
+    await page.route('**/api/mcp/create-map', (route) => this.handleMcpCreateMap(route));
   }
 
   seedReadyV3Map(id: string, name: string, delayMs = 0): void {
@@ -355,6 +356,87 @@ class CreateMapV3MockBackend {
         imageSha256: asset.sha256,
       },
     });
+  }
+
+  private async handleMcpCreateMap(route: Route): Promise<void> {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    const map = this.maps.get(String(body.mapId));
+    const revision = map?.revisions.get(String(body.revisionId));
+    if (!map || !revision) {
+      return json(route, { error: 'Map not found.', code: 'MAP_NOT_FOUND' }, 404);
+    }
+
+    if (body.action === 'prepare_map_generation') {
+      let asset = [...this.assets.values()].find((candidate) =>
+        candidate.map_revision_id === revision.id
+      );
+      let nextDraftRevisionId: string | null = null;
+      if (!asset) {
+        const generationId = uuid(++this.sequence);
+        const planFingerprint = fingerprint(revision.plan);
+        nextDraftRevisionId = uuid(++this.sequence);
+        map.revisions.set(nextDraftRevisionId, {
+          ...structuredClone(revision),
+          id: nextDraftRevisionId,
+          revision_number: revision.revision_number + 1,
+          save_version: 0,
+        });
+        map.currentRevisionId = nextDraftRevisionId;
+        asset = this.assetRecord(map.id, revision.id, generationId, planFingerprint);
+        this.assets.set(asset.id, asset);
+        this.createAssetRpc = {
+          name: 'prepare_map_generation_v3',
+          args: {
+            p_map_id: map.id,
+            p_revision_id: revision.id,
+            p_expected_save_version: body.saveVersion,
+            p_generation_id: generationId,
+            p_plan_fingerprint: planFingerprint,
+          },
+        };
+      }
+      const confirmationPurpose = asset.status === 'planned' ? 'submit' : 'retry';
+      return json(route, {
+        mapId: map.id,
+        revisionId: revision.id,
+        nextDraftRevisionId,
+        assetId: asset.id,
+        status: asset.status,
+        generationId: asset.generation_id,
+        planFingerprint: asset.plan_fingerprint,
+        saveVersion: revision.save_version,
+        feeNotice: 'Paid PixelLab request. Continuing may incur provider charges.',
+        confirmationPurpose,
+        confirmationExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+        confirmationToken: `mock-confirmation:${asset.id}:${confirmationPurpose}`,
+      });
+    }
+
+    if (body.action === 'start_map_generation') {
+      const asset = this.assets.get(String(body.assetId));
+      if (!asset) return json(route, { error: 'Map not found.', code: 'MAP_NOT_FOUND' }, 404);
+      const operation = asset.status === 'planned' ? 'submit' : 'retry';
+      if (
+        body.confirmPaidGeneration !== true
+        || body.confirmationToken !== `mock-confirmation:${asset.id}:${operation}`
+        || body.generationId !== asset.generation_id
+        || body.planFingerprint !== asset.plan_fingerprint
+      ) {
+        return json(route, {
+          error: 'Generation confirmation does not match.',
+          code: 'MAP_CONFIRMATION_MISMATCH',
+        }, 409);
+      }
+      this.edgeBodies.push({ operation, ...body });
+      asset.status = 'generating';
+      asset.provider_operation = 'create_image_pro';
+      asset.provider_job_id = `job-${asset.id}`;
+      asset.last_error_code = null;
+      asset.attempt_count += 1;
+      return json(route, { assetId: asset.id, status: asset.status });
+    }
+
+    return json(route, { error: 'Unsupported mock action.' }, 400);
   }
 
   private async handleSupabase(route: Route): Promise<void> {
@@ -718,7 +800,7 @@ test.describe('Create Map V3 mocked workflow', () => {
 
     const createAssetRpc = backend.createAssetRpc;
     expect(createAssetRpc).toEqual({
-      name: 'create_map_asset_plan_v3',
+      name: 'prepare_map_generation_v3',
       args: expect.objectContaining({
         p_revision_id: expect.any(String),
         p_generation_id: expect.any(String),
@@ -753,6 +835,9 @@ test.describe('Create Map V3 mocked workflow', () => {
     await expect(page.getByText('Generation failed', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('image_not_opaque', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Retry generation' }).click();
+    await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('Paid PixelLab request');
+    await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('may incur provider charges');
+    await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });
     expect(backend.edgeBodies.map((body) => body.operation)).toEqual([
       'submit', 'poll', 'validate', 'retry', 'poll', 'validate',

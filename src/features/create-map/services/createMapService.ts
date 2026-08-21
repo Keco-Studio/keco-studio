@@ -133,6 +133,7 @@ export type SavedMapWorkspaceV3 = {
   sourceDocumentId: string | null;
   generationPlan: MapPlanV3 | null;
   assetRevisionId: string | null;
+  assetRevisionSaveVersion: number | null;
   imageAsset: MapAssetRecord | null;
   imageUrl: string | null;
   boundImageAsset: MapAssetRecord | null;
@@ -493,10 +494,13 @@ export function createMapService(supabase: SupabaseClient) {
       const parentRevisionId = typeof revision.parent_revision_id === 'string' ? revision.parent_revision_id : null;
       const generationRevisionId = parentRevisionId ?? binding?.sourceRevisionId ?? null;
       let generationPlan: MapPlanV3 | null = generationRevisionId ? parsed.plan : null;
+      let assetRevisionSaveVersion: number | null = generationRevisionId === revision.id
+        ? Number(revision.save_version)
+        : null;
       if (parentRevisionId) {
         const { data: generationRevision, error: generationRevisionError } = await supabase
           .from('map_revisions')
-          .select('schema_version, plan')
+          .select('schema_version, save_version, plan')
           .eq('id', parentRevisionId)
           .eq('schema_version', 3)
           .single();
@@ -508,6 +512,7 @@ export function createMapService(supabase: SupabaseClient) {
           );
         }
         generationPlan = validatedGenerationPlan.data;
+        assetRevisionSaveVersion = Number(generationRevision.save_version);
       }
       const assetCache = new Map<string, MapAssetRecord | null>();
       const loadDirectAsset = async (revisionId: string): Promise<MapAssetRecord | null> => {
@@ -586,6 +591,7 @@ export function createMapService(supabase: SupabaseClient) {
         ...base,
         generationPlan,
         assetRevisionId: generationRevisionId,
+        assetRevisionSaveVersion,
         imageAsset: generationAsset,
         imageUrl,
         boundImageAsset,
@@ -936,10 +942,74 @@ export function createMapService(supabase: SupabaseClient) {
       return firstRow<{ asset_id: string; status: string }>(data);
     },
 
+    async prepareGenerationV3(input: {
+      mapId: string;
+      revisionId: string;
+      saveVersion: number;
+      generationId: string;
+      planFingerprint: string;
+    }) {
+      const { data, error } = await supabase.rpc('prepare_map_generation_v3', {
+        p_map_id: input.mapId,
+        p_revision_id: input.revisionId,
+        p_expected_save_version: input.saveVersion,
+        p_generation_id: input.generationId,
+        p_plan_fingerprint: input.planFingerprint,
+      });
+      if (error) throw new CreateMapServiceError(error.code ?? 'prepare_generation_failed', error.message);
+      return firstRow<{
+        published_revision_id: string;
+        next_draft_revision_id: string;
+        asset_id: string;
+        asset_status: string;
+      }>(data);
+    },
+
     async invokePixelLab(body: Record<string, unknown>) {
       const { data, error } = await supabase.functions.invoke('pixellab-map', { body });
       if (error) throw await pixelLabFunctionError(error);
       return data;
+    },
+
+    async prepareMapGeneration(input: {
+      projectId: string;
+      mapId: string;
+      revisionId: string;
+      saveVersion: number;
+    }) {
+      return responseJson(await fetch('/api/mcp/create-map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'prepare_map_generation', ...input }),
+      })) as Promise<{
+        mapId: string;
+        revisionId: string;
+        assetId: string;
+        status: MapAssetRecord['status'];
+        generationId: string;
+        planFingerprint: string;
+        saveVersion: number;
+        confirmationPurpose: 'submit' | 'retry' | 'replace-unknown';
+        confirmationToken: string;
+        feeNotice: string;
+      }>;
+    },
+
+    async startMapGeneration(input: {
+      projectId: string;
+      mapId: string;
+      revisionId: string;
+      assetId: string;
+      generationId: string;
+      planFingerprint: string;
+      confirmationToken: string;
+      confirmPaidGeneration: true;
+    }) {
+      return responseJson(await fetch('/api/mcp/create-map', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start_map_generation', ...input }),
+      }));
     },
   };
 }

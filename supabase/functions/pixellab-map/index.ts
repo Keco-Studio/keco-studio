@@ -1,4 +1,12 @@
-import { assertGenerationIdentity, assertRegionObstacleBackgroundBinding, authorizeAsset, authorizeGddMapAsset, authorizeProject } from "./auth.ts";
+import {
+  assertDirectMapPaidOperationAccess,
+  assertGenerationIdentity,
+  assertRegionObstacleBackgroundBinding,
+  authorizeAsset,
+  authorizeGddMapAsset,
+  authorizeProject,
+  authorizeServiceMapAsset,
+} from "./auth.ts";
 import { normalizeTileAtlas } from "./atlas.ts";
 import { composeAndPersistBackground } from "./background-storage.ts";
 import { runDirectMapLifecycle } from "./direct-map-lifecycle.ts";
@@ -28,12 +36,17 @@ function capabilityFor(kind: EdgeAssetKind): SemanticCapability {
 }
 
 async function transition(serviceClient: ReturnType<typeof authorizeAsset> extends Promise<infer T> ? T extends { serviceClient: infer C } ? C : never : never, assetId: string, from: string, to: string, details: Record<string, unknown> = {}) {
-  const { data, error } = await serviceClient.rpc("transition_map_asset", {
+  const expectedAttemptCount = details.expectedAttemptCount;
+  const confirmed = Number.isSafeInteger(expectedAttemptCount) && Number(expectedAttemptCount) >= 0;
+  const { data, error } = await serviceClient.rpc(confirmed
+    ? "transition_map_asset_confirmed"
+    : "transition_map_asset", {
     p_asset_id: assetId, p_expected_status: from, p_next_status: to,
     p_provider_operation: details.operation ?? null, p_provider_transport: details.transport ?? null,
     p_provider_job_id: details.jobId ?? null, p_last_error_code: details.errorCode ?? null,
     p_storage_path: null, p_sha256: null, p_width: null, p_height: null,
     p_has_transparency: null, p_metadata: details.metadata ?? {},
+    ...(confirmed ? { p_expected_attempt_count: expectedAttemptCount } : {}),
   });
   if (error) throw new PixelLabMapError("pixellab_upstream", "Could not persist provider state");
   if (mapAssetTransitionStatus(data) !== to) {
@@ -96,12 +109,15 @@ async function handle(request: Request): Promise<Response> {
   const assetId = typeof body.assetId === "string" ? body.assetId : null;
   if (!assetId) throw new PixelLabMapError("pixellab_invalid_response", "Asset is required", 400);
   const serviceRoleRequest = Boolean(token && token === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""));
+  const gddWorkerRequest = serviceRoleRequest && typeof body.gddMapArtifactId === "string";
   let authorized;
   if (serviceRoleRequest) {
-    if (typeof body.gddMapArtifactId !== "string" || typeof body.actorUserId !== "string") {
-      throw new PixelLabMapError("pixellab_invalid_response", "GDD map worker identity is required", 403);
+    if (typeof body.actorUserId !== "string") {
+      throw new PixelLabMapError("pixellab_invalid_response", "Map generation actor identity is required", 403);
     }
-    authorized = await authorizeGddMapAsset(token, assetId, projectId, body.gddMapArtifactId, body.actorUserId);
+    authorized = gddWorkerRequest
+      ? await authorizeGddMapAsset(token, assetId, projectId, body.gddMapArtifactId as string, body.actorUserId)
+      : await authorizeServiceMapAsset(token, assetId, projectId, body.actorUserId);
   } else {
     authorized = await authorizeAsset(token, assetId, projectId);
   }
@@ -111,6 +127,15 @@ async function handle(request: Request): Promise<Response> {
     if (!["submit", "retry", "poll", "validate", "resolve_unknown"].includes(operation)) {
       throw new PixelLabMapError("pixellab_invalid_response", "Unsupported direct map operation", 400);
     }
+    const expectedAttemptCount = typeof body.expectedAttemptCount === "number"
+        && Number.isSafeInteger(body.expectedAttemptCount)
+        && body.expectedAttemptCount >= 0
+      ? body.expectedAttemptCount
+      : undefined;
+    assertDirectMapPaidOperationAccess(
+      operation as "submit" | "retry" | "poll" | "validate" | "resolve_unknown",
+      { serviceRoleRequest, gddWorkerRequest, expectedAttemptCount },
+    );
     const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
     return jsonResponse(await runDirectMapLifecycle({
       operation: operation as "submit" | "retry" | "poll" | "validate" | "resolve_unknown",
@@ -118,6 +143,7 @@ async function handle(request: Request): Promise<Response> {
       client,
       transitionAsset: transition,
       acknowledgeDuplicateBilling: body.acknowledgeDuplicateBilling === true,
+      expectedAttemptCount,
     }));
   }
   const regionMetadata = authorized.asset.metadata && typeof authorized.asset.metadata === "object"

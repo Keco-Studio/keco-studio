@@ -17,6 +17,7 @@ const probeScript = fs.readFileSync(
 describe('Create Map V3 acceptance tooling', () => {
   it('creates a dedicated V3 draft only behind explicit acceptance configuration', () => {
     expect(paidScript).toContain('KECO_ACCEPTANCE_CREATE_V3');
+    expect(paidScript).toContain("KECO_ACCEPTANCE_CREATE_V3 === 'true'");
     expect(paidScript).toContain('KECO_ACCEPTANCE_PROJECT_ID');
     expect(paidScript).toContain("rpc('create_map_project_v3'");
   });
@@ -27,18 +28,35 @@ describe('Create Map V3 acceptance tooling', () => {
     expect(paidScript).toContain("['admin', 'editor'].includes(String(membership?.role))");
   });
 
-  it('can invoke a standalone Edge function with the authenticated user token', () => {
-    expect(paidScript).toContain('KECO_ACCEPTANCE_EDGE_URL');
+  it('uses the authenticated Keco Map API instead of direct provider operations', () => {
+    expect(paidScript).toContain('KECO_ACCEPTANCE_APP_URL');
     expect(paidScript).toContain('auth.session.access_token');
     expect(paidScript).toMatch(/authorization:\s*`Bearer \$\{accessToken\}`/i);
+    expect(paidScript).toContain("'/api/mcp/create-map'");
+    expect(paidScript).not.toContain('invokePixelLab(');
   });
 
-  it('retries only failed assets and explicitly rejected blocked submissions', () => {
-    expect(paidScript).toContain("['pixellab_rate_limited', 'pixellab_quota_exceeded'].includes(asset.last_error_code ?? '')");
-    expect(paidScript).toContain("asset.status === 'failed' && Boolean(asset.provider_job_id)");
-    expect(paidScript).toContain("asset.status === 'planned' || retryableFailed || retryableBlocked");
-    expect(paidScript).toContain("asset.status === 'planned' ? 'submit' : 'retry'");
-    expect(paidScript).toContain('generation_not_safe_to_retry');
+  it('prepares, confirms, starts, and polls through the two-step paid contract', () => {
+    const prepare = paidScript.indexOf("action: 'prepare_map_generation'");
+    const start = paidScript.indexOf("action: 'start_map_generation'");
+    const advance = paidScript.indexOf("action: 'advance_map_generation'");
+    const poll = paidScript.indexOf("action: 'get_map_generation'");
+    expect(prepare).toBeGreaterThan(0);
+    expect(start).toBeGreaterThan(prepare);
+    expect(advance).toBeGreaterThan(start);
+    expect(poll).toBeGreaterThan(advance);
+    expect(paidScript).toContain('prepared.feeNotice');
+    expect(paidScript).toContain('prepared.confirmationToken');
+    expect(paidScript).toContain('confirmPaidGeneration: true');
+    expect(paidScript).toContain("KECO_ACCEPTANCE_CONFIRM_PAID === 'true'");
+    expect(paidScript).toMatch(/\['ready', 'failed', 'blocked'\]/);
+    expect(paidScript).not.toContain("action: 'retry_map_generation'");
+  });
+
+  it('does not print credentials, fee tokens, user email, or map names', () => {
+    expect(paidScript).not.toContain("log('authenticated', { email:");
+    expect(paidScript).not.toContain('mapName: map.name');
+    expect(paidScript).not.toMatch(/log\([^\n]*confirmationToken/);
   });
 
   it('rejects failed and HTTP-error browser resources', () => {

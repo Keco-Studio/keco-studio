@@ -13,7 +13,7 @@ jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
 }));
 
 const plannedAsset: DirectMapGenerationAsset = {
-  id: 'asset-1', status: 'planned', lastErrorCode: null,
+  id: 'asset-1', status: 'planned', attemptCount: 0, lastErrorCode: null,
   providerOperation: null, providerJobId: null,
   generationId: 'generation-1', planFingerprint: 'a'.repeat(64),
   storagePath: null, sha256: null, width: null, height: null,
@@ -82,5 +82,27 @@ describe('DirectMapGenerationPanel', () => {
     expect(markup).toContain('Start a new paid attempt');
     expect(markup).toContain('disabled=""');
     expect(resolveUnknown).not.toHaveBeenCalled();
+  });
+
+  it('requires a fresh paid confirmation before retrying and never offers daily suppression', () => {
+    const retry = jest.fn();
+    render(React.createElement(DirectMapGenerationPanel, {
+      phase: 'failed',
+      asset: { ...plannedAsset, status: 'failed', providerJobId: 'job-1' },
+      error: null,
+      canGenerate: false,
+      canRetry: true,
+      canResolveUnknown: false,
+      onGenerate: jest.fn(),
+      onRetry: retry,
+      onResolveUnknown: jest.fn(),
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Retry generation/i }));
+    expect(screen.getByRole('group', { name: 'Generation cost confirmation' })).toBeTruthy();
+    expect(screen.queryByText('Do not show this again today')).toBeNull();
+    expect(retry).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to generate' }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });

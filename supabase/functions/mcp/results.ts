@@ -19,6 +19,7 @@ export function toolFailure(error: unknown): CallToolResult {
   if (safe.retryAfterSeconds !== undefined) {
     detail.retryAfterSeconds = safe.retryAfterSeconds;
   }
+  if (safe.retryable !== undefined) detail.retryable = safe.retryable;
   return {
     content: [{ type: "text", text: safe.code + ": " + safe.message }],
     structuredContent: { ok: false, error: detail },

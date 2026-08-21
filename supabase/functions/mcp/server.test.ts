@@ -33,6 +33,32 @@ const PROJECT_WRITE_TOOL_NAMES = [
   "complete_image_uploads",
   "create_folder",
 ];
+const GDS_TOOL_NAMES = [
+  "list_game_design_systems",
+  "read_game_design_system",
+  "read_project_game_design_system",
+  "get_game_design_system_generation",
+  "create_game_design_system",
+  "generate_game_design_system",
+  "create_game_design_system_version",
+  "set_project_game_design_system",
+  "clear_project_game_design_system",
+];
+const MAP_READ_TOOL_NAMES = [
+  "list_maps",
+  "read_map",
+  "get_map_generation",
+];
+const MAP_TOOL_NAMES = [
+  "list_maps",
+  "read_map",
+  "create_map_draft",
+  "update_map_draft",
+  "prepare_map_generation",
+  "start_map_generation",
+  "get_map_generation",
+  "advance_map_generation",
+];
 
 const context = {
   mode: "project",
@@ -128,7 +154,7 @@ Deno.test("initialize declares tools resources and prompts", async () => {
   assertEquals(message.result?.protocolVersion, LATEST_PROTOCOL_VERSION);
   assertEquals(message.result?.serverInfo, {
     name: "keco-mcp",
-    version: "0.3.1",
+    version: "0.4.0",
   });
   assertEquals(message.result?.capabilities, {
     tools: { listChanged: true },
@@ -151,6 +177,8 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "keco_connection_probe",
     ...PROJECT_READ_TOOL_NAMES,
     ...PROJECT_WRITE_TOOL_NAMES,
+    ...GDS_TOOL_NAMES,
+    ...MAP_TOOL_NAMES,
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
@@ -221,7 +249,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
   }
 });
 
-Deno.test("viewer tools/list excludes every write tool", async () => {
+Deno.test("viewer tools/list excludes project writes and retains owned GDS tools", async () => {
   const message = await rpc(
     "tools/list",
     {},
@@ -232,6 +260,8 @@ Deno.test("viewer tools/list excludes every write tool", async () => {
     [
       "keco_connection_probe",
       ...PROJECT_READ_TOOL_NAMES,
+      ...GDS_TOOL_NAMES,
+      ...MAP_READ_TOOL_NAMES,
     ],
   );
 });
@@ -287,6 +317,8 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       "read_document",
       "read_story_graph",
       "semantic_search",
+      ...GDS_TOOL_NAMES,
+      ...MAP_READ_TOOL_NAMES,
     ],
   );
 
@@ -381,6 +413,56 @@ Deno.test("unknown tools and malformed protocol bodies are admitted and complete
     "mcp_complete_operation",
   ]);
   assertEquals(calls[0].parameters.p_operation, "protocol_invalid_request");
+});
+
+Deno.test("GDS and Map tools use read and write telemetry classes", async () => {
+  const calls: Array<{ name: string; parameters: Record<string, unknown> }> =
+    [];
+  const audited = {
+    ...context,
+    supabase: {
+      async rpc(name: string, parameters: Record<string, unknown>) {
+        calls.push({ name, parameters });
+        if (name === "mcp_begin_operation") {
+          return {
+            data: [{
+              operation_id: "00000000-0000-4000-8000-000000000019",
+              remaining: 239,
+              reset_at: new Date(Date.now() + 60_000).toISOString(),
+            }],
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+    },
+  } as unknown as McpRequestContext;
+  for (
+    const [name, expectedClass] of [
+      ["read_game_design_system", "read"],
+      ["generate_game_design_system", "write"],
+      ["get_map_generation", "read"],
+      ["prepare_map_generation", "write"],
+    ] as const
+  ) {
+    calls.length = 0;
+    await handleProtocolRequest(
+      new Request("http://localhost/mcp/project", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name, arguments: {} },
+        }),
+      }),
+      audited,
+      { handleTransport: async () => Response.json({ ok: true }) },
+    );
+    assertEquals(calls[0].parameters.p_operation, name);
+    assertEquals(calls[0].parameters.p_operation_class, expectedClass);
+  }
 });
 
 Deno.test("prompts/get is strict and static", async () => {

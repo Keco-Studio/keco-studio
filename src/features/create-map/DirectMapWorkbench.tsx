@@ -82,7 +82,8 @@ export function DirectMapWorkbench() {
     plan,
     scene,
     canPrepare: Boolean(draft.identity) && draft.status === 'saved' && !draft.isDirty && draft.isValid,
-    publishForGeneration: draft.publishForGeneration,
+    draftIdentity: draft.identity,
+    reloadDraftAfterPreparation: draft.reload,
     onSceneMaterialized: setScene,
   });
   const validation = useMemo(() => validateMapPlanV3(plan), [plan]);

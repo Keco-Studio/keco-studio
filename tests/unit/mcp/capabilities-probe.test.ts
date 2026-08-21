@@ -1,4 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import fs from 'node:fs';
+import path from 'node:path';
 import { capabilitiesProbeOptions, runCapabilitiesProbe } from '../../../scripts/probe-mcp-capabilities';
 
 const accountEndpoint = 'https://example.supabase.co/functions/v1/mcp';
@@ -10,6 +12,12 @@ const writeTools = ['add_table_field', 'complete_image_upload', 'complete_image_
   'update_document', 'update_table_row', 'edit_table_field',
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
   'bulk_update_table_rows', 'upsert_table_rows'];
+const gdsTools = ['list_game_design_systems', 'read_game_design_system', 'read_project_game_design_system',
+  'get_game_design_system_generation', 'create_game_design_system', 'generate_game_design_system',
+  'create_game_design_system_version', 'set_project_game_design_system', 'clear_project_game_design_system'];
+const mapReadTools = ['list_maps', 'read_map', 'get_map_generation'];
+const mapWriteTools = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
+  'start_map_generation', 'advance_map_generation'];
 
 it('keeps the documented minimal CLI invocation out of the optional viewer branch', () => {
   expect(capabilitiesProbeOptions(
@@ -43,7 +51,7 @@ it('records account discovery, role counts, and generated labels without exposin
     expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${token}`);
     const message = JSON.parse(String(init?.body)) as { id: number; method: string };
     if (message.method === 'initialize') return rpcResult(message.id, { capabilities: { tools: {}, resources: {}, prompts: {} } });
-    if (message.method === 'tools/list') return rpcResult(message.id, { tools: ['keco_connection_probe', 'list_projects', ...readTools].map(name => ({ name })) });
+    if (message.method === 'tools/list') return rpcResult(message.id, { tools: ['keco_connection_probe', 'list_projects', ...readTools, ...gdsTools, ...mapReadTools].map(name => ({ name })) });
     if (message.method === 'resources/list') return rpcResult(message.id, { resources: [{ uri: 'keco://projects' }] });
     if (message.method === 'resources/templates/list') return rpcResult(message.id, { resourceTemplates: [
       'keco://projects/{projectId}', 'keco://projects/{projectId}/documents/{documentId}',
@@ -57,7 +65,7 @@ it('records account discovery, role counts, and generated labels without exposin
     ] } });
   });
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: token, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence).toEqual(expect.objectContaining({ mode: 'account', capabilities: expect.objectContaining({ tools: 8, writableToolAdvertisement: false }),
+  expect(evidence).toEqual(expect.objectContaining({ mode: 'account', capabilities: expect.objectContaining({ tools: 20, writableToolAdvertisement: false }),
     projects: { count: 2, roles: { admin: 1, viewer: 1 }, duplicateNameGroups: 1, labels: ['project-1', 'project-2'] },
     timings: expect.objectContaining({ listProjectsMs: expect.any(Number) }),
   }));
@@ -74,7 +82,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
     const message = JSON.parse(String(init?.body)) as { id: number; method: string; params?: { name?: string } };
     if (authorization === `Bearer ${legacyToken}` || (authorization === `Bearer ${accountToken}` && String(_url) === legacyEndpoint)) return new Response('', { status: 403 });
     if (message.method === 'initialize') return rpcResult(message.id, { capabilities: { tools: {}, resources: {}, prompts: {} } });
-    if (message.method === 'tools/list') return rpcResult(message.id, { tools: ['keco_connection_probe', 'list_projects', ...readTools, ...writeTools].map(name => ({ name })) });
+    if (message.method === 'tools/list') return rpcResult(message.id, { tools: ['keco_connection_probe', 'list_projects', ...readTools, ...writeTools, ...gdsTools, ...mapReadTools, ...mapWriteTools].map(name => ({ name })) });
     if (message.method === 'resources/list') return rpcResult(message.id, { resources: [{ uri: 'keco://projects' }] });
     if (message.method === 'resources/templates/list') return rpcResult(message.id, { resourceTemplates: [
       'keco://projects/{projectId}', 'keco://projects/{projectId}/documents/{documentId}',
@@ -88,7 +96,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: accountToken,
     viewerAccessToken: accountToken, viewerProjectId: '11111111-1111-4111-8111-111111111111',
     legacyMcpUrl: legacyEndpoint, legacyAccessToken: legacyToken, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence.capabilities.tools).toBe(27);
+  expect(evidence.capabilities.tools).toBe(44);
   expect(evidence.roleEnforcement.viewerWriteDenial).toBe('succeeded');
   expect(evidence.crossResourceReplay).toBe('succeeded');
   expect(JSON.stringify(evidence)).not.toContain(accountToken);
@@ -96,7 +104,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
 });
 
 it('preserves the exact legacy capability surface', async () => {
-  const tools = ['keco_connection_probe', ...readTools, ...writeTools];
+  const tools = ['keco_connection_probe', ...readTools, ...writeTools, ...gdsTools, ...mapReadTools, ...mapWriteTools];
   const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
     const message = JSON.parse(String(init?.body)) as { id: number; method: string; params: Record<string, unknown> };
     const result: Record<string, Record<string, unknown>> = {
@@ -137,7 +145,7 @@ it('preserves the exact legacy capability surface', async () => {
   expect(evidence).toEqual(expect.objectContaining({
     mode: 'legacy',
     storyGraphRead: 'succeeded',
-    capabilities: expect.objectContaining({ tools: 26, resources: 3, resourceTemplates: 4, prompts: 3 }),
+    capabilities: expect.objectContaining({ tools: 43, resources: 3, resourceTemplates: 4, prompts: 3 }),
   }));
   expect(JSON.stringify(evidence)).not.toContain('PrivateEntry');
   expect(JSON.stringify(evidence)).not.toContain('Private story content');
@@ -146,7 +154,7 @@ it('preserves the exact legacy capability surface', async () => {
 
 it('exercises add_table_field in the legacy write acceptance flow', async () => {
   const toolCalls: string[] = [];
-  const tools = ['keco_connection_probe', ...readTools, ...writeTools];
+  const tools = ['keco_connection_probe', ...readTools, ...writeTools, ...gdsTools, ...mapReadTools, ...mapWriteTools];
   const fetchMock = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
     const message = JSON.parse(String(init?.body)) as {
       id: number;
@@ -218,4 +226,14 @@ it('exercises add_table_field in the legacy write acceptance flow', async () => 
     'update_document',
   ]);
   expect(evidence.writes).toEqual(expect.objectContaining({ fieldAdd: true }));
+});
+
+it('documents GDS, Map, endpoint context, and paid confirmation contracts', () => {
+  const readme = fs.readFileSync(path.join(process.cwd(), 'docs/mcp/README.md'), 'utf8');
+  for (const tool of [...gdsTools, ...mapReadTools, ...mapWriteTools]) {
+    expect(readme).toContain(`\`${tool}\``);
+  }
+  expect(readme).toMatch(/account endpoint[\s\S]*projectId[\s\S]*legacy endpoint[\s\S]*omit/i);
+  expect(readme).toMatch(/prepare_map_generation[\s\S]*fee notice[\s\S]*later explicit confirmation[\s\S]*start_map_generation/i);
+  expect(readme).toMatch(/real paid acceptance[\s\S]*opt-in/i);
 });

@@ -1,0 +1,14 @@
+interface:
+  display_name: "Create Keco Map"
+  short_description: "Create and generate complete Keco V3 maps"
+  brand_color: "#0F766E"
+  default_prompt: "Use $keco-create-map to create a complete Keco V3 map and review it before paid generation."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "keco"
+      description: "Keco Streamable HTTP MCP server"
+      transport: "streamable_http"
+      url: "https://lulrcirmwwvvnupmwqcq.supabase.co/functions/v1/mcp"
+policy:
+  allow_implicit_invocation: true

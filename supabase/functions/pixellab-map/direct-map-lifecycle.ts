@@ -37,6 +37,7 @@ export type DirectMapLifecycleOptions = {
   persistAsset?: PersistAsset;
   resolveReferences?: (authorized: AuthorizedAsset) => Promise<ResolvedDirectMapReferences>;
   acknowledgeDuplicateBilling?: boolean;
+  expectedAttemptCount?: number;
   now?: () => number;
 };
 
@@ -98,10 +99,16 @@ async function submitDirectMap(
   assetId: string,
 ): Promise<Record<string, unknown>> {
   const status = String(asset.status);
+  const acknowledgedUnknownReplacement = options.operation === "retry"
+    && status === "blocked"
+    && asset.last_error_code === UNKNOWN_SUBMISSION_OUTCOME
+    && options.acknowledgeDuplicateBilling === true;
   if (
     options.operation === "retry"
     && (
-      (status === "blocked" && !SAFE_SUBMISSION_REJECTION_CODES.has(String(asset.last_error_code)))
+      (status === "blocked"
+        && !SAFE_SUBMISSION_REJECTION_CODES.has(String(asset.last_error_code))
+        && !acknowledgedUnknownReplacement)
       || (status === "failed" && !asset.provider_job_id)
     )
   ) {
@@ -136,7 +143,15 @@ async function submitDirectMap(
     throw error;
   }
 
-  await options.transitionAsset(options.authorized.serviceClient, assetId, status, "queued");
+  await options.transitionAsset(
+    options.authorized.serviceClient,
+    assetId,
+    status,
+    "queued",
+    options.expectedAttemptCount === undefined
+      ? undefined
+      : { expectedAttemptCount: options.expectedAttemptCount },
+  );
   let result: Record<string, unknown>;
   try {
     result = await options.client.submitAsset(capability, providerArguments);
