@@ -212,6 +212,72 @@ describeDb('Create Map RLS and atomic RPCs (live database)', () => {
     expect(invalidSave.error?.code).toBe('22023');
   });
 
+  it('creates V3 maps idempotently per actor and rejects changed replays or viewers', async () => {
+    const key = crypto.randomUUID();
+    const createIdempotent = (
+      client: SupabaseClient,
+      inputHash: string,
+      name = 'Idempotent V3 map',
+    ) => client.rpc('create_map_project_v3_idempotent', {
+      p_project_id: fx.projectId,
+      p_idempotency_key: key,
+      p_input_hash: inputHash,
+      p_name: name,
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: planV3,
+      p_scene: sceneV3,
+    });
+
+    const first = await createIdempotent(fx.owner.client, 'a'.repeat(64));
+    const replay = await createIdempotent(fx.owner.client, 'a'.repeat(64));
+    expect(first.error).toBeNull();
+    expect(replay.error).toBeNull();
+    expect(replay.data).toEqual(first.data);
+
+    const created = (first.data as CreatedMap[])[0];
+    const rows = await fx.svc.from('map_projects').select('id').eq('id', created.map_id);
+    expect(rows.error).toBeNull();
+    expect(rows.data).toHaveLength(1);
+
+    const conflict = await createIdempotent(
+      fx.owner.client,
+      'b'.repeat(64),
+      'Changed map',
+    );
+    expect(conflict.error?.code).toBe('KM409');
+
+    const editor = await fx.editor.client.rpc('create_map_project_v3_idempotent', {
+      p_project_id: fx.projectId,
+      p_idempotency_key: crypto.randomUUID(),
+      p_input_hash: 'c'.repeat(64),
+      p_name: 'Editor idempotent V3 map',
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: planV3,
+      p_scene: sceneV3,
+    });
+    expect(editor.error).toBeNull();
+
+    const viewer = await fx.viewer.client.rpc('create_map_project_v3_idempotent', {
+      p_project_id: fx.projectId,
+      p_idempotency_key: crypto.randomUUID(),
+      p_input_hash: 'd'.repeat(64),
+      p_name: 'Denied idempotent V3 map',
+      p_source_document_id: null,
+      p_source_document_updated_at: null,
+      p_source_epoch: null,
+      p_source_revision: null,
+      p_plan: planV3,
+      p_scene: sceneV3,
+    });
+    expect(viewer.error?.code).toBe('42501');
+  });
+
   it('exposes V3 reference registry rows only to accepted Project members', async () => {
     const reference = await fx.svc.from('map_reference_images').insert({
       project_id: fx.projectId,
