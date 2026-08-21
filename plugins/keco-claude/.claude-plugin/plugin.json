@@ -1,7 +1,7 @@
 {
   "name": "keco",
-  "version": "0.5.0",
-  "description": "Build Keco project data, import local images, and develop evaluated Godot gameplay slices.",
+  "version": "0.6.0",
+  "description": "Manage Keco game design systems, create maps, build project data, import images, and develop Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"
   },
@@ -12,6 +12,8 @@
     "godot",
     "gamedev",
     "pixellab",
+    "maps",
+    "game-design-system",
     "mcp"
   ],
   "license": "UNLICENSED",

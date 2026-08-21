@@ -20,10 +20,12 @@ const claudeInteractionContractPath = path.join(
 
 const ENTRY_SKILLS = [
   'keco-build-tables-from-document',
+  'keco-create-map',
   'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
   'keco-evaluate-game',
   'keco-import-local-assets',
+  'keco-manage-game-design-system',
   'pixellab-map-assets',
 ];
 

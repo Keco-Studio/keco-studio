@@ -11,8 +11,8 @@
     {
       "name": "keco",
       "source": "./plugins/keco-claude",
-      "description": "Build Keco tables, import local images, and implement evaluated Godot gameplay slices with review gates.",
-      "version": "0.5.0",
+      "description": "Manage Keco design systems and maps, build tables, import images, and implement evaluated Godot gameplay slices.",
+      "version": "0.6.0",
       "author": {
         "name": "Keco Studio"
       },
@@ -23,7 +23,9 @@
         "import",
         "godot",
         "gamedev",
-        "pixellab"
+        "pixellab",
+        "maps",
+        "game-design-system"
       ]
     }
   ]
