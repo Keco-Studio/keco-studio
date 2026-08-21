@@ -27,7 +27,8 @@ export type DocumentVersionType =
   | 'pre_restore'
   | 'restore'
   | 'pre_agent'
-  | 'import';
+  | 'import'
+  | 'gdd_generation';
 
 export type DocumentVersionSummary = {
   id: string;

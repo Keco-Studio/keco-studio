@@ -254,20 +254,19 @@ export default function ProjectPage() {
             // Get library info before deleting to notify proper events
             const libraryToDelete = libraries.find(lib => lib.id === libraryId);
             const deletedFolderId = libraryToDelete?.folder_id || null;
-            
+
             await deleteLibrary(supabase, libraryId);
-            
-            await invalidateLibraryData(queryClient, {
+            if (pathname.includes(libraryId)) {
+              router.push(`/${projectId}`);
+            }
+            void invalidateLibraryData(queryClient, {
               projectId,
               folderId: deletedFolderId,
               libraryId,
               refetchActiveFoldersLibraries: true,
+            }).catch((err) => {
+              console.error('Failed to refresh after library delete', err);
             });
-            
-            // If viewing this library, navigate to project
-            if (pathname.includes(libraryId)) {
-              router.push(`/${projectId}`);
-            }
           } catch (err: any) {
             console.error('Failed to delete library:', err);
             alert(err?.message || 'Failed to delete library');
@@ -295,16 +294,16 @@ export default function ProjectPage() {
         if (await confirmDeletion('Delete this folder? All libraries under it will be removed.')) {
           try {
             await deleteFolder(supabase, folderId);
-            await invalidateFolderData(queryClient, {
-              projectId,
-              folderId,
-              refetchActiveFoldersLibraries: true,
-            });
-            
-            // If viewing this folder, navigate to project
             if (pathname.includes(`/folder/${folderId}`)) {
               router.push(`/${projectId}`);
             }
+            void invalidateFolderData(queryClient, {
+              projectId,
+              folderId,
+              refetchActiveFoldersLibraries: true,
+            }).catch((err) => {
+              console.error('Failed to refresh after folder delete', err);
+            });
           } catch (err: any) {
             console.error('Failed to delete folder:', err);
             alert(err?.message || 'Failed to delete folder');

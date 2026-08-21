@@ -25,6 +25,40 @@ type WorkerDependencies = {
   fail: typeof failGameDesignSystemGenerationJob;
 };
 
+const GENERATION_OUTPUT_LOOKUP_TIMEOUT_MS = 15_000;
+
+export function shouldWakeGameDesignSystemGenerationJob(
+  job: Pick<GameDesignSystemGenerationJob, 'status' | 'available_at' | 'lease_expires_at'>,
+  now = Date.now(),
+): boolean {
+  if (job.status === 'queued') return Date.parse(job.available_at) <= now;
+  if (job.status === 'running') {
+    return Boolean(job.lease_expires_at) && Date.parse(job.lease_expires_at as string) <= now;
+  }
+  return false;
+}
+
+export function describeGenerationError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object') {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const message = [value.message, value.details, value.hint].find((item) => typeof item === 'string' && item.trim());
+    if (typeof message === 'string') {
+      return typeof value.code === 'string' && value.code.trim()
+        ? `${message} [${value.code}]`
+        : message;
+    }
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') return serialized.slice(0, 1_000);
+    } catch {
+      // Fall through to a stable user-facing message for non-serializable errors.
+    }
+  }
+  if (typeof error === 'string' && error.trim()) return error;
+  return 'Game Design System generation failed.';
+}
+
 const defaultDependencies: WorkerDependencies = {
   findGenerationOutput: getGameDesignSystemVersionByGenerationJobId,
   heartbeat: heartbeatGameDesignSystemGenerationJob,
@@ -40,6 +74,20 @@ function isPermanentGenerationError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const code = (error as { code?: unknown }).code;
   return code === '42501' || code === '23514' || code === 'P0002';
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function generateWithLeaseHeartbeat(
@@ -69,7 +117,11 @@ export async function processClaimedGameDesignSystemJob(
 ): Promise<GameDesignSystemJobStatus> {
   const { serviceClient, workerId, job } = input;
   try {
-    const existingOutput = await dependencies.findGenerationOutput(serviceClient, job.id);
+    const existingOutput = await withTimeout(
+      dependencies.findGenerationOutput(serviceClient, job.id),
+      GENERATION_OUTPUT_LOOKUP_TIMEOUT_MS,
+      'Timed out while checking the generation output. The job will be retried.',
+    );
     if (existingOutput) {
       await dependencies.complete(serviceClient, job, workerId, existingOutput);
       return 'completed';
@@ -118,7 +170,7 @@ export async function processClaimedGameDesignSystemJob(
     });
     return 'completed';
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Game Design System generation failed.';
+    const message = describeGenerationError(error);
     if (isPermanentGenerationError(error)) {
       await dependencies.fail(serviceClient, job.id, workerId, message);
       return 'failed';

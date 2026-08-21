@@ -35,6 +35,9 @@ interface ImportTableParams {
   fileName: string;
   documentSource?: DocumentLibrarySource;
   plotPlan?: StoryPlotPlan;
+  dialogueGenerationJobId?: string;
+  dialogueGenerationWorkerId?: string;
+  dialogueSourceState?: { epoch: number; revision: number; updateIds: string[] };
 }
 
 export interface ImportStoryParams extends ImportTableParams {
@@ -95,10 +98,17 @@ async function importCompiledScript(
     fileName,
     documentSource,
     plotPlan,
+    dialogueGenerationJobId,
+    dialogueGenerationWorkerId,
+    dialogueSourceState,
   } = params;
 
   if (!documentSource && folderId !== null && !isUuid(folderId)) {
     throw new Error('Invalid folder ID');
+  }
+  if (dialogueGenerationJobId && (!isUuid(dialogueGenerationJobId) || documentSource?.exportType !== 'script'
+    || !dialogueGenerationWorkerId || !dialogueSourceState)) {
+    throw new Error('Invalid dialogue generation job provenance');
   }
 
   if (documentSource?.exportType === 'script') {
@@ -162,6 +172,13 @@ async function importCompiledScript(
           document_export_type: placement.documentExportType,
         }
       : {}),
+    ...(dialogueGenerationJobId ? { dialogue_generation_job_id: dialogueGenerationJobId } : {}),
+    ...(dialogueGenerationJobId ? { dialogue_generation_ready: false } : {}),
+    ...(dialogueGenerationJobId ? {
+      dialogue_generation_source_epoch: dialogueSourceState!.epoch,
+      dialogue_generation_source_revision: dialogueSourceState!.revision,
+      dialogue_generation_source_update_ids: dialogueSourceState!.updateIds,
+    } : {}),
   };
   let createResult = await supabase
     .from('libraries')
@@ -189,12 +206,46 @@ async function importCompiledScript(
   const libraryId = createdLibrary.id as string;
 
   try {
-    return await insertScriptTable(supabase, libraryId, columns, rows);
+    const result = await insertScriptTable(supabase, libraryId, columns, rows);
+    if (dialogueGenerationJobId) {
+      const finalized = await supabase.rpc('finalize_dialogue_script_import', {
+        p_job_id: dialogueGenerationJobId,
+        p_worker_id: dialogueGenerationWorkerId,
+        p_script_library_id: libraryId,
+        p_source_epoch: dialogueSourceState!.epoch,
+        p_source_revision: dialogueSourceState!.revision,
+        p_source_update_ids: dialogueSourceState!.updateIds,
+      });
+      if (finalized.error) throw finalized.error;
+      const finalRow = Array.isArray(finalized.data) ? finalized.data[0] : finalized.data;
+      const stableLibraryId = finalRow && typeof finalRow === 'object' && 'script_library_id' in finalRow
+        ? (finalRow as { script_library_id?: unknown }).script_library_id
+        : finalized.data === true ? libraryId : null;
+      if (typeof stableLibraryId !== 'string') throw new Error('Dialogue Script import lost its finalization fence.');
+      return { ...result, libraryId: stableLibraryId };
+    }
+    return result;
   } catch (error) {
+    let cleanupFailure: unknown;
     try {
-      await supabase.from('libraries').delete().eq('id', libraryId);
-    } catch {
-      // Preserve the original write error; cleanup is best-effort under RLS/network failure.
+      const cleanupQuery = supabase.from('libraries').delete().eq('id', libraryId);
+      const cleanup = dialogueGenerationJobId
+        ? await cleanupQuery.eq('dialogue_generation_job_id', dialogueGenerationJobId).eq('dialogue_generation_ready', false)
+        : await cleanupQuery;
+      if (cleanup.error) {
+        cleanupFailure = cleanup.error;
+      }
+    } catch (cleanupError) {
+      cleanupFailure = cleanupError;
+    }
+    if (cleanupFailure) {
+      const originalMessage = error instanceof Error ? error.message : 'Dialogue Script import failed.';
+      const cleanupMessage = cleanupFailure instanceof Error
+        ? cleanupFailure.message
+        : typeof cleanupFailure === 'object' && cleanupFailure && 'message' in cleanupFailure
+          ? String(cleanupFailure.message)
+          : 'unknown cleanup error';
+      throw new Error(`${originalMessage}; cleanup failed: ${cleanupMessage}`);
     }
     throw error;
   }

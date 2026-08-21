@@ -17,6 +17,8 @@ function unavailableClient(): SupabaseClient {
       select: () => builder,
       in: () => builder,
       eq: () => builder,
+      not: () => builder,
+      is: () => builder,
       or: () => builder,
       order: () => builder,
       range: async () => ({ data: [] as [], error: null }),

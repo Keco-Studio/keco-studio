@@ -1,15 +1,32 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: { markdownToYjsState: jest.fn(async () => 'encoded-yjs') },
+}));
+jest.mock('@/lib/gdd-generation/seriesTableIds', () => ({
+  loadSeriesTableLibraryIds: jest.fn(async () => new Map()),
 }));
 const mockCompileGddMapBriefs = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.mock('./maps/compiler', () => ({
   compileGddMapBriefs: (...args: unknown[]) => mockCompileGddMapBriefs(...args),
 }));
-import { persistGeneratedGddDocument, persistGeneratedGddV2Document, processClaimedGddJob, revalidateGddJobContext } from './worker';
+beforeEach(() => {
+  mockCompileGddMapBriefs.mockReset();
+  mockCompileGddMapBriefs.mockResolvedValue([]);
+});
+import {
+  describeGddGenerationError,
+  persistGeneratedGddDocument,
+  persistGeneratedGddV2Document,
+  processClaimedGddJob,
+  revalidateGddJobContext,
+  shouldWakeGddGenerationJob,
+} from './worker';
+import { loadSeriesTableLibraryIds } from '@/lib/gdd-generation/seriesTableIds';
+import { materializeTableResources } from '@/lib/gdd-generation/tableResources';
 import { GddGenerationValidationError, type GddGenerationInput, type GeneratedGdd } from '@/lib/gddGeneration';
 import type { GddGenerationJob } from '@/lib/services/gddGenerationService';
+import type { ReviewV2 } from './v2/contracts';
 
 const generationInput: GddGenerationInput = {
   projectId: '11111111-1111-4111-8111-111111111111',
@@ -45,10 +62,42 @@ const job = {
   status: 'running', phase: 'collecting', attempt_count: 1, input: generationInput,
 } as unknown as GddGenerationJob;
 
+const persistedGdd = (id: string, name: string) => ({
+  id,
+  name,
+  generationRevision: null,
+  resourceChangeSummary: null,
+});
+
 describe('GDD generation worker', () => {
+  it('wakes available queued jobs and expired running leases only', () => {
+    const now = Date.parse('2026-08-19T06:00:00.000Z');
+    const base = {
+      status: 'queued' as const,
+      available_at: '2026-08-19T05:59:00.000Z',
+      lease_expires_at: null,
+    };
+    expect(shouldWakeGddGenerationJob(base, now)).toBe(true);
+    expect(shouldWakeGddGenerationJob({ ...base, available_at: '2026-08-19T06:01:00.000Z' }, now)).toBe(false);
+    expect(shouldWakeGddGenerationJob({ ...base, status: 'running', lease_expires_at: '2026-08-19T05:59:00.000Z' }, now)).toBe(true);
+    expect(shouldWakeGddGenerationJob({ ...base, status: 'running', lease_expires_at: '2026-08-19T06:01:00.000Z' }, now)).toBe(false);
+    expect(shouldWakeGddGenerationJob({ ...base, status: 'completed' }, now)).toBe(false);
+  });
+
+  it('preserves useful details from structured generation errors', () => {
+    expect(describeGddGenerationError({
+      message: 'Generated table row is invalid',
+      details: 'Field cost is missing',
+      code: '22023',
+    })).toBe('Generated table row is invalid: Field cost is missing [22023]');
+  });
+
   it('persists an initialized Yjs snapshot and structured metadata without source excerpts', async () => {
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
-      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd' }],
+      data: [{
+        document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 3,
+        resource_change_summary: { created: ['table:skills'], updated: [], reused: ['gdd_document:gdd'], preserved: [] },
+      }],
       error: null,
     }));
     const sourceJob = {
@@ -69,7 +118,8 @@ describe('GDD generation worker', () => {
     } as GddGenerationJob;
 
     await expect(persistGeneratedGddDocument({ rpc } as never, sourceJob, 'worker-1', generated, '# GDD')).resolves.toEqual({
-      id: 'document-1', name: 'Harbor Tactics gdd',
+      id: 'document-1', name: 'Harbor Tactics gdd', generationRevision: 3,
+      resourceChangeSummary: { created: ['table:skills'], updated: [], reused: ['gdd_document:gdd'], preserved: [] },
     });
     const rpcArgs = rpc.mock.calls[0][1] as Record<string, unknown>;
     const metadata = rpcArgs.p_metadata as Record<string, unknown>;
@@ -89,29 +139,119 @@ describe('GDD generation worker', () => {
       expect.objectContaining({ label: 'Project brief', contentHash: 'a'.repeat(64) }),
     ]);
     expect(sourceSnapshots[0]).not.toHaveProperty('excerpt');
+    expect(rpcArgs.p_table_resources).toEqual([]);
+  });
+
+  it('rejects malformed persistence revision evidence at the worker boundary', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{
+        document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 0,
+        resource_change_summary: { created: [], updated: [], reused: [], preserved: [] },
+      }],
+      error: null,
+    }));
+
+    await expect(
+      persistGeneratedGddDocument({ rpc } as never, job, 'worker-1', generated, '# GDD'),
+    ).rejects.toThrow(/generation revision/i);
+  });
+
+  it('persists v2 table references as ResourceReference chips', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    await persistGeneratedGddV2Document(
+      { rpc } as never,
+      { ...job, input: { ...generationInput, contractVersion: 2, mode: 'quick', language: 'zh-CN' } } as GddGenerationJob,
+      'worker-1',
+      '# GDD\n\n## Core Loop\nBody.\n\n<!-- KECO_TABLE_REF Skills -->\n',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }],
+    );
+    const args = rpc.mock.calls[0][1] as Record<string, unknown>;
+    const expected = materializeTableResources(generationInput.designSystemId, [{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }])[0]!;
+    expect(args.p_markdown).toContain('<ResourceReference kind="table-row"');
+    expect(args.p_markdown).toContain(`libraryId="${expected.id}"`);
+    expect(args.p_markdown).toContain('fallbackLabel="Basic"');
+    expect(args.p_markdown).not.toContain('KECO_TABLE_REF');
+    expect(args.p_markdown).not.toContain(`[Skills](/${generationInput.projectId}/`);
+    expect(args.p_markdown).not.toContain('keco://');
+    expect(args.p_metadata).toEqual(expect.objectContaining({
+      tableResources: [expect.objectContaining({
+        id: expected.id,
+        fieldIds: [expect.any(String)],
+        rows: [expect.objectContaining({ values: { name: 'Basic' } })],
+      })],
+    }));
+  });
+
+  it('reuses series library IDs when rematerializing table ResourceReferences', async () => {
+    const stableId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    jest.mocked(loadSeriesTableLibraryIds).mockResolvedValueOnce(new Map([['skills', stableId]]));
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    await persistGeneratedGddV2Document(
+      { rpc } as never,
+      { ...job, input: { ...generationInput, contractVersion: 2, mode: 'quick', language: 'zh-CN' } } as GddGenerationJob,
+      'worker-1',
+      '# GDD\n\n<!-- KECO_TABLE_REF Skills -->\n',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }],
+    );
+    const args = rpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(args.p_markdown).toContain(`libraryId="${stableId}"`);
+    expect(args.p_metadata).toEqual(expect.objectContaining({
+      tableResources: [expect.objectContaining({ id: stableId })],
+    }));
+  });
+
+  it('rebuilds v1 Markdown with ResourceReference chips at the persistence boundary', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: [{ document_id: 'document-1', document_name: 'GDD' }], error: null }));
+    await persistGeneratedGddDocument(
+      { rpc } as never,
+      job,
+      'worker-1',
+      { ...generated, productionTables: [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }] },
+      '# Incomplete caller Markdown',
+    );
+    const args = rpc.mock.calls[0][1] as Record<string, unknown>;
+    expect(args.p_markdown).toContain('<ResourceReference kind="table-row"');
+    expect(args.p_markdown).toContain('fallbackLabel="Basic"');
+    expect(args.p_markdown).not.toContain('Incomplete caller Markdown');
+    expect(args.p_markdown).not.toContain('KECO_TABLE_REF');
   });
 
   it('persists a bounded map compiler error in v2 document metadata', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockCompileGddMapBriefs.mockRejectedValueOnce(new Error('Map compiler timed out.'));
+    const updateEq = jest.fn(async () => ({ data: null, error: null }));
     const rpc = jest.fn(async (_name: string, _args: unknown) => ({
-      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', job_status: 'completed_with_map_failures' }],
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
       error: null,
     }));
+    const serviceClient = {
+      rpc,
+      from: () => ({ update: () => ({ eq: updateEq }) }),
+    };
     const v2Job = {
       ...job,
       applied_rule_ids: ['readable-state'],
       omitted_rule_ids: [],
-      input: { ...generationInput, contractVersion: 2, mode: 'professional' },
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN', artStyle: null },
     } as GddGenerationJob;
 
     await expect(persistGeneratedGddV2Document(
-      { rpc } as never,
+      serviceClient as never,
       v2Job,
       'worker-1',
       '# GDD\n\n## Core Loop\nBody text.',
-      { status: 'pass' },
-    )).resolves.toEqual({ id: 'document-1', name: 'Harbor Tactics gdd', status: 'completed_with_map_failures' });
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+    )).resolves.toEqual({
+      id: 'document-1',
+      name: 'Harbor Tactics gdd',
+      status: 'completed_with_map_failures',
+      generationRevision: 1,
+      resourceChangeSummary: { created: [], updated: [], reused: [], preserved: [] },
+    });
 
     const rpcArgs = rpc.mock.calls[0][1] as Record<string, unknown>;
     expect(rpcArgs.p_metadata).toEqual(expect.objectContaining({
@@ -119,14 +259,13 @@ describe('GDD generation worker', () => {
       mapCompilationFailed: true,
       mapCompilationError: 'Map compiler timed out.',
     }));
-    expect(rpcArgs.p_map_compilation_failed).toBe(true);
-    expect(rpcArgs.p_map_artifacts).toEqual([]);
+    expect(updateEq).toHaveBeenCalledWith('id', 'job-1');
     consoleError.mockRestore();
   });
 
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
-    const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => ({ id: 'document-1', name: 'Harbor Tactics gdd' }));
+    const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => persistedGdd('document-1', 'Harbor Tactics gdd'));
     const result = await processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat, revalidateContext: jest.fn(async () => undefined), generate: jest.fn(async () => generated), persist,
       retry: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string, _delay: number) => 'queued' as const),
@@ -139,10 +278,10 @@ describe('GDD generation worker', () => {
 
   it('renews the lease while a structured v2 generation is still running', async () => {
     jest.useFakeTimers();
-    let finishGeneration!: (value: { markdown: string; review: any }) => void;
-    const generateV2 = jest.fn(() => new Promise<{ markdown: string; review: any }>((resolve) => { finishGeneration = resolve; }));
+    let finishGeneration!: (value: { markdown: string; review: ReviewV2 }) => void;
+    const generateV2 = jest.fn(() => new Promise<{ markdown: string; review: ReviewV2 }>((resolve) => { finishGeneration = resolve; }));
     const heartbeat = jest.fn(async () => undefined);
-    const persistV2 = jest.fn(async (..._args: unknown[]) => ({ id: 'document-1', name: 'GDD' }));
+    const persistV2 = jest.fn(async (..._args: unknown[]) => persistedGdd('document-1', 'GDD'));
     const v2Job = {
       ...job,
       input: {
@@ -155,7 +294,7 @@ describe('GDD generation worker', () => {
       revalidateContext: jest.fn(async () => undefined),
       generate: jest.fn(async () => generated),
       generateV2: generateV2 as never,
-      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
       persistV2,
       retry: jest.fn(async () => 'queued' as const),
       fail: jest.fn(async () => undefined),
@@ -178,8 +317,110 @@ describe('GDD generation worker', () => {
       'worker-1',
       '# GDD\n\n## Core Loop\nBody text.',
       expect.objectContaining({ status: 'pass' }),
+      undefined,
+      [],
     );
     jest.useRealTimers();
+  });
+
+  it('aborts structured generation when lease renewal fails and never persists partial output', async () => {
+    jest.useFakeTimers();
+    let observedSignal: AbortSignal | undefined;
+    const leaseError = new Error('GDD generation job lease was lost.');
+    const heartbeat = jest.fn(async () => {
+      if (heartbeat.mock.calls.length >= 2) throw leaseError;
+    });
+    const generateV2 = jest.fn(async (
+      _input: unknown,
+      _dependencies: unknown,
+      runtime: { signal?: AbortSignal } | undefined,
+    ) => {
+      observedSignal = runtime?.signal;
+      return new Promise<never>((_resolve, reject) => {
+        runtime?.signal?.addEventListener('abort', () => reject(runtime.signal?.reason), { once: true });
+      });
+    });
+    const persistV2 = jest.fn(async () => ({ id: 'document-1', name: 'GDD' }));
+    const retry = jest.fn(async (
+      _client: unknown,
+      _jobId: string,
+      _workerId: string,
+      _error: string,
+      _delay: number,
+    ) => 'queued' as const);
+    const v2Job = {
+      ...job,
+      input: {
+        contractVersion: 2, mode: 'quick', projectId: generationInput.projectId,
+        versionId: generationInput.versionId,
+      },
+    } as GddGenerationJob;
+
+    const resultPromise = processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
+      heartbeat,
+      revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated),
+      generateV2: generateV2 as never,
+      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      persistV2,
+      retry,
+      fail: jest.fn(async () => undefined),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(observedSignal).toBeDefined();
+
+    await jest.advanceTimersByTimeAsync(30_000);
+    await expect(resultPromise).resolves.toBe('queued');
+    expect(observedSignal?.aborted).toBe(true);
+    expect(persistV2).not.toHaveBeenCalled();
+    expect(retry).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', leaseError.message, 5);
+    jest.useRealTimers();
+  });
+
+  it('forwards generated dialogue plans to atomic v2 persistence', async () => {
+    const dialoguePlans = [{
+      chapterKey: 'arrival',
+      title: 'Arrival',
+      content: 'Guide: Welcome.',
+      hasChoices: false,
+      branchSummary: [],
+    }];
+    const generateV2 = jest.fn(async () => ({
+      markdown: '# GDD\n\n## Arrival\nWelcome.',
+      review: { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      tablePlans: [],
+      dialoguePlans,
+    }));
+    const persistV2 = jest.fn(async (..._args: unknown[]) => ({ id: 'document-1', name: 'GDD' }));
+    const v2Job = {
+      ...job,
+      input: {
+        contractVersion: 2, mode: 'quick', projectId: generationInput.projectId,
+        versionId: generationInput.versionId,
+      },
+    } as GddGenerationJob;
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
+      heartbeat: jest.fn(async () => undefined),
+      revalidateContext: jest.fn(async () => undefined),
+      generateV2: generateV2 as never,
+      persistV2,
+      generate: jest.fn(async () => generated),
+      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      retry: jest.fn(async () => 'queued' as const),
+      fail: jest.fn(async () => undefined),
+    })).resolves.toBe('completed');
+
+    expect(persistV2).toHaveBeenCalledWith(
+      expect.anything(),
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## Arrival\nWelcome.',
+      expect.objectContaining({ version: 2 }),
+      [],
+      dialoguePlans,
+    );
   });
 
   it('directly revalidates owner write access and the exact pinned binding', async () => {
@@ -212,7 +453,7 @@ describe('GDD generation worker', () => {
       },
     };
     const generate = jest.fn(async () => generated);
-    const persist = jest.fn(async () => ({ id: 'unused', name: 'unused' }));
+    const persist = jest.fn(async () => persistedGdd('unused', 'unused'));
     const fail = jest.fn(async () => undefined);
     const result = await processClaimedGddJob({ serviceClient: serviceClient as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async () => undefined), revalidateContext: revalidateGddJobContext,
@@ -229,7 +470,7 @@ describe('GDD generation worker', () => {
     const retry = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string, _delay: number) => 'queued' as const);
     const result = await processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined), revalidateContext: jest.fn(async () => undefined), generate: jest.fn(async () => { throw new Error('network'); }),
-      persist: jest.fn(async () => ({ id: 'unused', name: 'unused' })),
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
       retry, fail: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string) => undefined),
     });
     expect(result).toBe('queued');
@@ -238,7 +479,7 @@ describe('GDD generation worker', () => {
 
   it('fails permanent schema errors without creating a Document', async () => {
     const fail = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _error: string) => undefined);
-    const persist = jest.fn(async () => ({ id: 'unused', name: 'unused' }));
+    const persist = jest.fn(async () => persistedGdd('unused', 'unused'));
     const result = await processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined),
       revalidateContext: jest.fn(async () => undefined),

@@ -1444,7 +1444,22 @@ export function materializeAiBranchStructure(
     throw new Error('AI branch option has neither exclusive route content nor a merge target');
   }
   const normalizedChoices = (groupedChoices.length > 0 ? groupedChoices : structure.choices).map((choice) => {
-    if (knownUnits.get(choice.sourceUnitId)?.text.includes(choice.text)) return choice;
+    const sourceUnit = knownUnits.get(choice.sourceUnitId);
+    if (sourceUnit?.text.includes(choice.text)) return choice;
+    if (sourceUnit) {
+      const matchingSegments = workingSource.segments.filter((segment) => (
+        segment.unitId === sourceUnit.id
+        && segment.kind === 'choice_text'
+        && (
+          segment.text === choice.text
+          || segment.text.includes(choice.text)
+          || choice.text.includes(segment.text)
+        )
+      ));
+      if (matchingSegments.length === 1) {
+        return { ...choice, text: matchingSegments[0].text };
+      }
+    }
     const matchingUnits = workingSource.units.filter((unit) => (
       unit.authoritative && unit.text.includes(choice.text)
     ));

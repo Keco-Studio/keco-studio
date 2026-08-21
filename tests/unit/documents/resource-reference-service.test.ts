@@ -62,6 +62,11 @@ function applyFilters(
       if (operation === 'eq') return row[column] === value;
       if (operation === 'neq') return row[column] !== value;
       if (operation === 'in') return (value as readonly unknown[]).includes(row[column]);
+      if (operation === 'not') {
+        const spec = value as { operator: string; value: unknown };
+        if (spec.operator === 'is' && spec.value === null) return row[column] != null;
+        return true;
+      }
       if (operation !== 'or') return true;
       if (value === 'document_export_type.is.null,document_export_type.neq.script') {
         return row.document_export_type == null || row.document_export_type !== 'script';
@@ -116,6 +121,11 @@ function makeClient(
       neq(column: string, value: unknown) {
         calls.push([table, `neq:${column}`, value]);
         query.filters.push(['neq', column, value]);
+        return builder;
+      },
+      not(column: string, operator: string, value: unknown) {
+        calls.push([table, `not:${column}`, { operator, value }]);
+        query.filters.push(['not', column, { operator, value }]);
         return builder;
       },
       or(filter: string) {
@@ -210,6 +220,17 @@ describe('resolveResourceReferences', () => {
         label: 'Active',
         contextLabel: 'Characters / Ada',
         href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
+        table: {
+          libraryId: LIBRARY_ID,
+          name: 'Characters',
+          href: `/${PROJECT_ID}/${LIBRARY_ID}`,
+          fields: [{ id: FIELD_ID, label: 'Status' }],
+          row: {
+            assetId: ASSET_ID,
+            name: 'Ada',
+            values: { [FIELD_ID]: 'Active' },
+          },
+        },
       },
     ]);
     for (const table of [
@@ -222,6 +243,66 @@ describe('resolveResourceReferences', () => {
         calledTable === table && operation === 'select'
       )).toHaveLength(1);
     }
+  });
+
+  it('remaps stale GDD table chips onto the stable series library by row name', async () => {
+    const staleLibraryId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const staleAssetId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const staleFieldId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const targets = [
+      tableTarget({
+        libraryId: staleLibraryId,
+        assetId: staleAssetId,
+        displayFieldId: staleFieldId,
+        fallbackLabel: 'Instant Noodles',
+      }),
+      tableTarget({
+        libraryId: staleLibraryId,
+        assetId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        displayFieldId: staleFieldId,
+        fallbackLabel: 'Tissue Pack',
+      }),
+    ];
+    const noodleId = '12121212-1212-4121-8121-121212121212';
+    const tissueId = '13131313-1313-4131-8131-131313131313';
+    const { client } = makeClient({
+      libraries: [{
+        id: LIBRARY_ID,
+        project_id: PROJECT_ID,
+        name: 'Products',
+        gdd_generation_job_id: 'job-stable',
+      }],
+      library_assets: [
+        { id: noodleId, library_id: LIBRARY_ID, name: 'Instant Noodles' },
+        { id: tissueId, library_id: LIBRARY_ID, name: 'Tissue Pack' },
+      ],
+      library_field_definitions: [
+        { id: FIELD_ID, library_id: LIBRARY_ID, label: 'name', order_index: 0 },
+      ],
+      library_asset_values: [
+        { asset_id: noodleId, field_id: FIELD_ID, value_json: 'Instant Noodles' },
+        { asset_id: tissueId, field_id: FIELD_ID, value_json: 'Tissue Pack' },
+      ],
+    });
+
+    const resolved = await resolveResourceReferences(client, PROJECT_ID, targets);
+
+    expect(resolved.get(resourceReferenceKey(targets[0]!))).toMatchObject({
+      status: 'available',
+      contextLabel: 'Products / Instant Noodles',
+      table: {
+        libraryId: LIBRARY_ID,
+        row: { assetId: noodleId, name: 'Instant Noodles' },
+      },
+    });
+    expect(resolved.get(resourceReferenceKey(targets[1]!))).toMatchObject({
+      status: 'available',
+      contextLabel: 'Products / Tissue Pack',
+      table: {
+        libraryId: LIBRARY_ID,
+        row: { assetId: tissueId, name: 'Tissue Pack' },
+      },
+    });
   });
 
   it('loads all asset values for referenced rows', async () => {
@@ -364,6 +445,17 @@ describe('resolveResourceReferences', () => {
             label: '(empty)',
             contextLabel: 'Characters / Ada',
             href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
+            table: {
+              libraryId: LIBRARY_ID,
+              name: 'Characters',
+              href: `/${PROJECT_ID}/${LIBRARY_ID}`,
+              fields: [{ id: FIELD_ID, label: 'Status' }],
+              row: {
+                assetId: ASSET_ID,
+                name: 'Ada',
+                values: { [FIELD_ID]: undefined },
+              },
+            },
           },
         ],
       ]));

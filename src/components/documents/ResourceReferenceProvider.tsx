@@ -26,6 +26,7 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 
 type Registration = {
   count: number;
+  revision: number;
   target: ResourceReferenceTarget;
 };
 
@@ -33,6 +34,7 @@ type ResourceReferenceContextValue = {
   hasError: boolean;
   isLoading: boolean;
   register: (target: ResourceReferenceTarget) => () => void;
+  registrationRevision: number;
   resolved: ReadonlyMap<string, ResolvedResourceReference> | undefined;
 };
 
@@ -57,19 +59,28 @@ export function ResourceReferenceProvider({
   const [registrations, setRegistrations] = useState<Map<string, Registration>>(
     () => new Map()
   );
+  const registrationRevisionRef = useRef(0);
   const channelByLibraryId = useRef(new Map<string, RealtimeChannel>());
   const referencedDocumentIdsRef = useRef(new Set<string>());
   const referenceKeysRef = useRef<readonly string[]>([]);
 
   const register = useCallback((target: ResourceReferenceTarget) => {
     const id = registrationKey(target);
+    registrationRevisionRef.current += 1;
+    const revision = registrationRevisionRef.current;
     setRegistrations((current) => {
       const next = new Map(current);
       const existing = next.get(id);
       next.set(id, {
         target: existing?.target ?? target,
         count: (existing?.count ?? 0) + 1,
+        revision,
       });
+      for (const [key, registration] of next) {
+        if (registration.revision !== revision) {
+          next.set(key, { ...registration, revision });
+        }
+      }
       return next;
     });
 
@@ -77,12 +88,19 @@ export function ResourceReferenceProvider({
     return () => {
       if (!active) return;
       active = false;
+      registrationRevisionRef.current += 1;
+      const revision = registrationRevisionRef.current;
       setRegistrations((current) => {
         const existing = current.get(id);
         if (!existing) return current;
         const next = new Map(current);
         if (existing.count === 1) next.delete(id);
-        else next.set(id, { ...existing, count: existing.count - 1 });
+        else next.set(id, { ...existing, count: existing.count - 1, revision });
+        for (const [key, registration] of next) {
+          if (registration.revision !== revision) {
+            next.set(key, { ...registration, revision });
+          }
+        }
         return next;
       });
     };
@@ -95,6 +113,7 @@ export function ResourceReferenceProvider({
         .map(([, registration]) => registration.target),
     [registrations]
   );
+  const registrationRevision = registrations.values().next().value?.revision ?? 0;
   const keys = useMemo(
     () => targets.map(registrationKey).sort(),
     [targets]
@@ -187,9 +206,17 @@ export function ResourceReferenceProvider({
       hasError: query.isError,
       isLoading: query.isPending || query.isFetching,
       register,
+      registrationRevision,
       resolved: query.data,
     }),
-    [query.data, query.isError, query.isFetching, query.isPending, register]
+    [
+      query.data,
+      query.isError,
+      query.isFetching,
+      query.isPending,
+      register,
+      registrationRevision,
+    ]
   );
 
   return (
@@ -202,7 +229,9 @@ export function ResourceReferenceProvider({
 export function useResourceReference(target: ResourceReferenceTarget | null): {
   hasError: boolean;
   isLoading: boolean;
+  registrationRevision: number;
   resolved: ResolvedResourceReference | undefined;
+  resolvedReferences: ReadonlyMap<string, ResolvedResourceReference> | undefined;
 } {
   const context = useContext(ResourceReferenceContext);
   if (!context) {
@@ -221,6 +250,8 @@ export function useResourceReference(target: ResourceReferenceTarget | null): {
   return {
     hasError: context.hasError,
     isLoading: Boolean(target) && !context.resolved?.get(key) && context.isLoading,
+    registrationRevision: context.registrationRevision,
     resolved: key ? context.resolved?.get(key) : undefined,
+    resolvedReferences: context.resolved,
   };
 }

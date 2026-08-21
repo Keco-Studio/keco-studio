@@ -1,18 +1,10 @@
 import { describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
-import {
-  buildBlueprintMessages,
-  generateGddBlueprint,
-  generateGddMarkdownV2,
-  generateGddV2,
-  generateSectionBatch,
-  GddV2GenerationValidationError,
-  repairGddSections,
-  reviewGddDocument,
-} from './generator';
-import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { generateGddMarkdownV2, GddV2GenerationValidationError } from './generator';
 import type { ChatMessage } from '@/lib/agent/types';
+import type { StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { GddGenerationRequestV2 } from './contracts';
+import type { DialogueSceneEvent } from './dialogueSceneStream';
 
 const input: GddGenerationRequestV2 = {
   contractVersion: 2,
@@ -34,28 +26,42 @@ const input: GddGenerationRequestV2 = {
     tableGuidance: [],
   },
   designDocument: {
-    designIntent: 'Use patient care to create emotional weight.', playerFantasy: 'Be chosen by a wary animal.',
-    coreLoop: 'Explore, observe, interact, and return.', decisionStructure: 'Spend limited daily actions.',
-    systemBoundaries: 'No forced purchases.', progressionEconomy: 'Trust unlocks behavior.',
-    contentModel: 'Cats, places, weather, interactions.', difficultyBalance: 'Weather adds pressure.',
+    gameBackground: 'A rainy city corner.',
+    designIntent: 'Use patient care to create emotional weight.',
+    playerFantasy: 'Be chosen by a wary animal.',
+    coreLoop: 'Explore, observe, interact, and return.',
+    decisionStructure: 'Spend limited daily actions.',
+    systemBoundaries: 'No forced purchases.',
+    progressionEconomy: 'Trust unlocks behavior.',
+    contentModel: 'Cats, places, weather, interactions.',
+    difficultyBalance: 'Weather adds pressure.',
     experiencePresentation: 'Warm watercolor scenes.',
   },
   artStyle: null,
   projectSources: [],
 };
 
-const blueprint = {
-  version: 2 as const,
-  nodes: [
-    { id: 'overview', label: 'Game Overview', depth: 0, group: 'core' },
-    { id: 'systems', label: 'Systems', depth: 0, group: 'systems' },
-    { id: 'presentation', label: 'Presentation', depth: 0, group: 'content' },
-  ],
+const sceneEvent: DialogueSceneEvent = {
+  chapterKey: 'arrival',
+  title: 'Arrival',
+  scene: 'The guide blocks the gate and asks the hero for proof.',
+  participants: ['Guide', 'Hero'],
+  choices: ['Show the letter', 'Leave'],
+  consequences: 'Showing the letter opens the gate; leaving postpones entry.',
 };
 
-describe('GDD v2 staged generator', () => {
-  it('generates production Markdown in one completion without JSON parsing or model review', async () => {
-    const markdown = [
+const sceneMarker = (event: DialogueSceneEvent) => `<!-- KECO_DIALOGUE_SCENE ${JSON.stringify(event)} -->`;
+const scenePlan = (event: DialogueSceneEvent) => ({
+  chapterKey: event.chapterKey,
+  title: event.title,
+  content: `${event.participants[0] ?? 'Guide'}: Stop.`,
+  hasChoices: event.choices.length > 0,
+  branchSummary: event.choices,
+});
+
+describe('GDD v2 direct Markdown generator', () => {
+  it('generates production Markdown in one completion and removes provenance', async () => {
+    const complete = jest.fn(async () => [
       '```markdown',
       '# Street-Corner Warmth: Stray Bonds',
       '',
@@ -66,10 +72,9 @@ describe('GDD v2 staged generator', () => {
       'AI generated from project sources.',
       '',
       '## Core Loop',
-      'Enter the map → Choose a location → Meet a cat → Interact → Advance time.',
+      'Enter the map -> Choose a location -> Meet a cat -> Interact.',
       '```',
-    ].join('\n');
-    const complete = jest.fn(async () => markdown);
+    ].join('\n'));
 
     const result = await generateGddMarkdownV2({ ...input, mode: 'quick' }, complete);
 
@@ -81,397 +86,265 @@ describe('GDD v2 staged generator', () => {
     expect(result.review).toMatchObject({ status: 'pass', issues: [] });
   });
 
-  it('asks professional direct generation for a bounded executable Markdown GDD', async () => {
+  it('sends the pinned design document, policy, creative brief, and project source context', async () => {
     const complete = jest.fn(async () => '# GDD\n\n## Game Overview\nBody text.');
+    const withSource = {
+      ...input,
+      rules: { ...input.rules, tableGuidance: [{ table: 'Skills', purpose: 'Actions.', fields: ['Private Field'] }] },
+      projectSources: [{
+        kind: 'document' as const,
+        projectId: input.projectId,
+        resourceId: 'source-1',
+        label: 'Project Notes',
+        contentHash: 'hash-1',
+        excerpt: 'Canonical project fact.',
+        byteCount: 24,
+        truncated: false,
+        updatedAt: '2026-08-19T00:00:00Z',
+      }],
+    };
 
-    await generateGddMarkdownV2(input, complete);
+    await generateGddMarkdownV2(withSource, complete);
 
     const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
     expect(messages[0].content).toContain('Return the finished GDD as Markdown directly');
     expect(messages[0].content).toContain('6,000-9,000 readable Chinese characters');
     expect(messages[0].content).toContain('Do not return JSON');
-    expect(messages[0].content).toContain('calculate every worked example before writing it');
+    expect(messages[0].content).toContain('Do not render Markdown tables in the GDD body');
+    expect(messages[0].content).toContain('KECO_TABLE_REF');
+    expect(messages[0].content).toContain('follow it exactly');
+    expect(messages[0].content).toContain('every concrete entity');
+    expect(messages[1].content).toContain('"fields":["Private Field"]');
+    expect(messages[1].content).toContain(withSource.creativeBrief!);
+    expect(messages[1].content).toContain('"gameBackground":"A rainy city corner."');
+    expect(messages[1].content).toContain('behavior-first');
+    expect(messages[1].content).toContain('SOURCE DOCUMENT: Project Notes');
+    expect(messages[1].content).toContain('Canonical project fact.');
   });
 
-  it('escapes literal braces in generated prose before MDX validation', async () => {
-    const complete = jest.fn(async () => [
-      '# Shop Game',
-      '',
-      '## Rules',
-      '订单数据示例：{"name":"Burger","count":3}',
-    ].join('\n'));
+  it('uses the quick mode token budget and prompt constraints', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## Overview\nBody.');
+
+    await generateGddMarkdownV2({ ...input, mode: 'quick' }, complete);
+
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[], { maxCompletionTokens: number }])[0];
+    expect(messages[0].content).toContain('2,500-3,800 readable Chinese characters');
+    expect(messages[0].content).toContain('Use 6-8 major sections');
+  });
+
+  it('rejects an empty model response', async () => {
+    await expect(generateGddMarkdownV2(input, jest.fn(async () => '   ')))
+      .rejects.toBeInstanceOf(GddV2GenerationValidationError);
+  });
+
+  it('rejects a response stopped by the provider output limit', async () => {
+    const complete = jest.fn(async (_messages: ChatMessage[], options?: StreamLlmOptions) => {
+      options?.onFinish?.('length');
+      return '# GDD\n\n## Incomplete';
+    });
+
+    await expect(generateGddMarkdownV2(input, complete)).rejects.toThrow('output limit');
+  });
+
+  it('retries a professional response with compact constraints after an output limit', async () => {
+    const complete = jest.fn(async (messages: ChatMessage[], options?: StreamLlmOptions) => {
+      if (complete.mock.calls.length === 1) {
+        options?.onFinish?.('length');
+        return '# GDD\n\n## Truncated';
+      }
+      expect(messages[0]?.content).toContain('compact recovery pass');
+      expect(messages[0]?.content).toContain('KECO_DIALOGUE_SCENE');
+      expect(messages[0]?.content).not.toContain('KECO_DIALOGUE_PLAN');
+      expect(options?.maxCompletionTokens).toBeGreaterThan(18_000);
+      options?.onFinish?.('stop');
+      return '# GDD\n\n## Complete\nRecovered content.';
+    });
 
     const result = await generateGddMarkdownV2(input, complete);
-
-    expect(result.markdown).toContain('\\{"name":"Burger","count":3\\}');
-    expect(() => validateSanctionedMdx(result.markdown)).not.toThrow();
-  });
-
-  it('builds a professional adaptive blueprint prompt with the creative brief', () => {
-    const messages = buildBlueprintMessages(input);
-    expect(messages[0].content).toContain('9 to 13 first-level sections');
-    expect(messages[0].content).toContain('Do not add a production milestone section');
-    expect(messages[0].content).toContain('hyphens, underscores, or dots');
-    expect(messages[0].content).toContain('numericRegistry IDs and numericRefs must use lowercase ASCII identifiers');
-    expect(messages[0].content).toContain('Register every gameplay number exactly once');
-    expect(messages[0].content).toContain('Omit optional properties when unknown; never use null');
-    expect(messages[1].content).toContain(input.creativeBrief);
-    expect(messages[1].content).toContain('BEGIN_UNTRUSTED_GAME_DESIGN_DOCUMENT_DATA');
-    expect(messages[1].content).toContain('No project Documents or Tables are available.');
-  });
-
-  it('repairs one malformed blueprint response', async () => {
-    const complete = jest.fn(async () => complete.mock.calls.length === 1 ? 'not-json' : JSON.stringify(blueprint));
-    await expect(generateGddBlueprint(input, complete)).resolves.toEqual(blueprint);
     expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.markdown).toContain('Recovered content.');
   });
 
-  it('accepts a JSON response wrapped in a Markdown code fence', async () => {
-    const complete = jest.fn(async () => `\`\`\`json\n${JSON.stringify(blueprint)}\n\`\`\``);
-
-    await expect(generateGddBlueprint(input, complete)).resolves.toEqual(blueprint);
-    expect(complete).toHaveBeenCalledTimes(1);
+  it('rejects a document that ends with an empty heading', async () => {
+    await expect(generateGddMarkdownV2(input, jest.fn(async () => '# GDD\n\n## Complete\nBody.\n\n## Incomplete')))
+      .rejects.toThrow('incomplete heading');
   });
 
-  it('accepts complete JSON after an opening code fence without a closing fence', async () => {
-    const complete = jest.fn(async () => `\`\`\`json\n${JSON.stringify(blueprint)}`);
-
-    await expect(generateGddBlueprint(input, complete)).resolves.toEqual(blueprint);
-    expect(complete).toHaveBeenCalledTimes(1);
+  it('returns a bounded table-plan warning instead of failing the whole GDD', async () => {
+    const result = await generateGddMarkdownV2(input, jest.fn(async () => [
+      '# GDD',
+      '## Core Loop',
+      'Body.',
+      '<!-- KECO_TABLE_PLAN [{bad json] -->',
+    ].join('\n')));
+    expect(result.tablePlans).toEqual([]);
+    expect(result.tablePlanWarning).toMatch(/not valid JSON/i);
+    expect(result.markdown).not.toContain('KECO_TABLE_PLAN');
   });
 
-  it('generates only the requested section group', async () => {
-    const sections = [{ id: 'systems', title: 'Systems', depth: 0, group: 'systems', blocks: [{ kind: 'paragraph', id: 'systems-p', text: 'Systems body.' }], numericRefs: [] }];
-    const complete = jest.fn(async () => JSON.stringify(sections));
-    await expect(generateSectionBatch(input, blueprint, 'systems', complete)).resolves.toEqual(sections);
-    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
-    const prompt = requestMessages[1].content;
-    expect(requestMessages[0].content).toContain('Use "kind", never "type"');
-    expect(requestMessages[0].content).toContain('Allowed ID separators are dot, hyphen, and underscore');
-    expect(requestMessages[0].content).toContain('Every quantitative statement and worked example must be recalculated');
-    expect(requestMessages[0].content).toContain('2,000-3,000 Chinese characters');
-    expect(requestMessages[0].content).toContain('omit parentId entirely for depth 0 sections');
-    expect(requestMessages[0].content).toContain('{"kind":"paragraph","id":"block-id","text":"..."}');
-    expect(prompt).toContain('"id":"systems"');
-    expect(prompt).not.toContain('Write only these nodes:\n[{"id":"overview"');
+  it('extracts a strict independent table plan marker from Markdown', async () => {
+    const result = await generateGddMarkdownV2(input, jest.fn(async () => [
+      '# GDD',
+      '<!-- KECO_TABLE_PLAN [{"table":"Skills","purpose":"Actions.","fields":["name"],"rows":[{"name":"Basic","values":{"name":"Basic"}}]}] -->',
+      '## Core Loop\nBody.',
+    ].join('\n')));
+    expect(result.tablePlans).toEqual([{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }]);
+    expect(result.markdown).not.toContain('KECO_TABLE_PLAN');
   });
 
-  it('keeps transport errors retryable and fails after two invalid schema responses', async () => {
-    const transport = new Error('network');
-    await expect(generateGddBlueprint(input, jest.fn(async () => { throw transport; }))).rejects.toBe(transport);
-    await expect(generateGddBlueprint(input, jest.fn(async () => '{}'))).rejects.toBeInstanceOf(GddV2GenerationValidationError);
+  it('starts dialogue planning as soon as a concrete scene event arrives in the GDD stream', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\n\n## Arrival\nConcrete scene.\n${sceneMarker(sceneEvent)}` };
+      expect(planScene).toHaveBeenCalledTimes(1);
+      yield { type: 'text_delta' as const, content: '\n\n## Systems\nThe remaining GDD.' };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(input, { stream, planScene });
+
+    expect(result.dialoguePlans).toEqual([scenePlan(sceneEvent)]);
+    expect(result.markdown).not.toContain('KECO_DIALOGUE_SCENE');
+    expect(result.markdown).toContain('## Systems');
   });
 
-  it('caps professional generation at two bounded section drafts, one review, and one repair', async () => {
-    const groups = ['core', 'systems', 'content'] as const;
-    const nodes = groups.flatMap((group) => [1, 2, 3].map((index) => ({
-      id: `${group}-${index}`,
-      label: `${group}-${index}`,
-      depth: 0,
-      group,
-    })));
-    const professionalBlueprint = {
-      version: 2 as const,
-      title: 'Complete GDD',
-      numericRegistry: [],
-      nodes,
-    };
-    const sections = nodes.map((node) => ({
-      id: node.id,
-      title: node.label,
-      depth: 0,
-      group: node.group,
-      blocks: [{
-        kind: 'paragraph' as const,
-        id: `${node.id}-paragraph`,
-        text: `${node.id}${'complete design content'.repeat(120)}`,
-      }],
-      numericRefs: [],
+  it('instructs the model to emit scene events only for concrete interactive scenes', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## Core Loop\nBody.');
+    await generateGddMarkdownV2(input, complete);
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[0].content).toMatch(/KECO_DIALOGUE_SCENE/i);
+    expect(messages[0].content).toMatch(/chapterKey/i);
+    expect(messages[0].content).toMatch(/immediately/i);
+    expect(messages[0].content).toMatch(/concrete/i);
+    expect(messages[0].content).toMatch(/abstract/i);
+  });
+
+  it('does not plan dialogue for an abstract NPC interaction feature statement', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: '# GDD\n\nThe game supports NPC interaction and branching choices.' };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2({ ...input, creativeBrief: undefined }, { stream, planScene });
+
+    expect(result.dialoguePlans).toEqual([]);
+    expect(planScene).not.toHaveBeenCalled();
+  });
+
+  it('runs at most three scene planners concurrently and preserves encounter order', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    const events = Array.from({ length: 4 }, (_, index) => ({
+      ...sceneEvent,
+      chapterKey: `scene-${index + 1}`,
+      title: `Scene ${index + 1}`,
     }));
-    const unresolvedReview = {
-      version: 2 as const,
-      summary: 'The draft is usable and can still be polished.',
-      status: 'repair' as const,
-      issues: [{
-        id: 'issue-warning',
-        severity: 'error' as const,
-        sectionId: 'systems-1',
-        message: 'Boundary notes can be more specific.',
-        repairInstruction: 'Add boundary notes.',
-      }],
-    };
-    let reviewCalls = 0;
-    let repairCalls = 0;
-    let sectionCalls = 0;
-    const sectionPrompts: string[] = [];
-    const complete = jest.fn(async (messages: ChatMessage[]) => {
-      const system = typeof messages[0].content === 'string' ? messages[0].content : '';
-      if (system.includes('lead game designer planning')) return JSON.stringify(professionalBlueprint);
-      if (system.includes('writing the core, systems section groups')) {
-        sectionCalls += 1;
-        sectionPrompts.push(typeof messages[1].content === 'string' ? messages[1].content : '');
-        return JSON.stringify(sections.filter((section) => section.group !== 'content'));
-      }
-      if (system.includes('writing the content section group')) {
-        sectionCalls += 1;
-        sectionPrompts.push(typeof messages[1].content === 'string' ? messages[1].content : '');
-        return JSON.stringify(sections.filter((section) => section.group === 'content'));
-      }
-      if (system.includes('Review a complete GDD')) {
-        reviewCalls += 1;
-        return JSON.stringify(unresolvedReview);
-      }
-      if (system.includes('Repair only the named GDD sections')) {
-        repairCalls += 1;
-        return JSON.stringify(sections.filter((section) => section.id === 'systems-1'));
-      }
-      throw new Error('Unexpected completion stage.');
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      active -= 1;
+      return scenePlan(event);
     });
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\n${events.map(sceneMarker).join('\n')}\nComplete body.` };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
 
-    await expect(generateGddV2(input, complete)).resolves.toMatchObject({
-      document: { title: 'Complete GDD' },
-      review: unresolvedReview,
-    });
-    expect(sectionCalls).toBe(2);
-    expect(reviewCalls).toBe(1);
-    expect(repairCalls).toBe(1);
-    expect(sectionPrompts[0]).toContain('"id":"core-1"');
-    expect(sectionPrompts[0]).toContain('"id":"systems-1"');
-    expect(sectionPrompts[1]).toContain('"id":"content-1"');
-    expect(sectionPrompts[1]).toContain('Previously generated canonical sections:');
-    expect(sectionPrompts[1]).toContain('"id":"systems-1"');
+    const running = generateGddMarkdownV2(input, { stream, planScene });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(planScene).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(3);
+    releases.shift()?.();
+    for (let tick = 0; tick < 10 && planScene.mock.calls.length < 4; tick += 1) {
+      await Promise.resolve();
+    }
+    expect(planScene).toHaveBeenCalledTimes(4);
+    while (releases.length > 0) releases.shift()?.();
+
+    const result = await running;
+    expect(maxActive).toBe(3);
+    expect(result.dialoguePlans.map((plan) => plan.chapterKey)).toEqual(events.map((event) => event.chapterKey));
   });
 
-  it('gives section repair the complete document for cross-section consistency', async () => {
-    const sections = blueprint.nodes.map((node) => ({
-      id: node.id,
-      title: node.label,
-      depth: 0,
-      group: node.group,
-      blocks: [{ kind: 'paragraph' as const, id: `${node.id}-p`, text: `${node.label} body.` }],
-      numericRefs: [],
+  it('aborts an active scene planner and returns no partial result', async () => {
+    const controller = new AbortController();
+    const planScene = jest.fn(async (
+      _input: { event: DialogueSceneEvent },
+      _dependencies: unknown,
+      runtime: { signal?: AbortSignal },
+    ) => new Promise<ReturnType<typeof scenePlan>>((resolve, reject) => {
+      runtime.signal?.addEventListener('abort', () => reject(runtime.signal?.reason), { once: true });
+      void resolve;
     }));
-    const document = {
-      version: 2 as const,
-      id: 'test-gdd',
-      title: 'Cross-section repair test',
-      blueprint,
-      numericRegistry: { version: 2 as const, entries: [] },
-      sections,
-    };
-    const report = {
-      version: 2 as const,
-      summary: 'The systems section duplicates the overview.',
-      status: 'repair' as const,
-      issues: [{
-        id: 'duplicate-warning',
-        severity: 'warning' as const,
-        sectionId: 'systems',
-        message: 'Duplicate content.',
-        repairInstruction: 'Remove duplicate content using the full document.',
-      }],
-    };
-    const complete = jest.fn(async () => JSON.stringify(sections.filter((section) => section.id === 'systems')));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\nConcrete scene.\n${sceneMarker(sceneEvent)}\nComplete body.` };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
 
-    await repairGddSections(input, blueprint, document, report, complete);
+    const running = generateGddMarkdownV2(input, { stream, planScene }, { signal: controller.signal });
+    for (let tick = 0; tick < 10 && planScene.mock.calls.length === 0; tick += 1) await Promise.resolve();
+    controller.abort(new Error('Generation cancelled by user.'));
 
-    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
-    expect(requestMessages[1].content).toContain('Full document for cross-section consistency:');
-    expect(requestMessages[1].content).toContain('"title":"Cross-section repair test"');
+    await expect(running).rejects.toThrow('Generation cancelled by user.');
+    expect(planScene).toHaveBeenCalledTimes(1);
   });
 
-  it('limits blocking review findings to material design errors', async () => {
-    const document = {
-      version: 2 as const,
-      id: 'review-test-gdd',
-      title: 'Review test',
-      blueprint,
-      numericRegistry: { version: 2 as const, entries: [] },
-      sections: [{
-        id: 'overview',
-        title: 'Game Overview',
-        depth: 0,
-        group: 'core',
-        blocks: [{ kind: 'paragraph' as const, id: 'overview-p', text: 'Complete body.' }],
-        numericRefs: [],
-      }],
-    };
-    const complete = jest.fn(async () => JSON.stringify({
-      version: 2,
-      summary: 'Can pass.',
-      status: 'pass',
-      issues: [],
-    }));
+  it('extracts table plans while dialogue planning runs independently', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: [
+        '# GDD',
+        '## Arrival',
+        'Concrete scene.',
+        sceneMarker(sceneEvent),
+        '<!-- KECO_TABLE_PLAN [{"table":"Skills","purpose":"Actions.","fields":["name"],"rows":[{"name":"Basic","values":{"name":"Basic"}}]}] -->',
+        'Complete body.',
+      ].join('\n') };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
 
-    await reviewGddDocument(input, blueprint, document, [], complete);
+    const result = await generateGddMarkdownV2(input, { stream, planScene });
 
-    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
-    expect(requestMessages[0].content).toContain('Advisory polish warnings do not block pass');
-    expect(requestMessages[0].content).toContain('Reserve severity error for material contradictions');
-    expect(requestMessages[1].content).toContain('Frozen source context:');
-    expect(requestMessages[1].content).toContain('BEGIN_UNTRUSTED_GAME_DESIGN_DOCUMENT_DATA');
+    expect(result.dialoguePlans).toEqual([scenePlan(sceneEvent)]);
+    expect(result.tablePlans).toEqual([{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }]);
   });
 
-  it('requires repair output to contain every targeted section', async () => {
-    const sections = blueprint.nodes.map((node) => ({
-      id: node.id,
-      title: node.label,
-      depth: 0,
-      group: node.group,
-      blocks: [{ kind: 'paragraph' as const, id: `${node.id}-p`, text: `${node.label} body.` }],
-      numericRefs: [],
-    }));
-    const document = {
-      version: 2 as const,
-      id: 'repair-target-gdd',
-      title: 'Repair target test',
-      blueprint,
-      numericRegistry: { version: 2 as const, entries: [] },
-      sections,
-    };
-    const report = {
-      version: 2 as const,
-      summary: 'Two sections need repair.',
-      status: 'repair' as const,
-      issues: [
-        { id: 'systems-warning', severity: 'warning' as const, sectionId: 'systems', message: 'Add rules.', repairInstruction: 'Add rules.' },
-        { id: 'presentation-warning', severity: 'warning' as const, sectionId: 'presentation', message: 'Reduce duplication.', repairInstruction: 'Reduce duplication.' },
-      ],
-    };
-    const targets = sections.filter((section) => section.id === 'systems' || section.id === 'presentation');
-    const complete = jest.fn(async () => JSON.stringify(complete.mock.calls.length === 1 ? targets.slice(0, 1) : targets));
+  it('does not pass hidden table-plan JSON into a later dialogue planner context', async () => {
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    const tableMarker = '<!-- KECO_TABLE_PLAN [{"table":"Secret Table","purpose":"Internal","fields":["name"],"rows":[{"name":"Hidden","values":{"name":"Hidden"}}]}] -->';
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: `# GDD\n${tableMarker}\n## Arrival\nConcrete scene.\n${sceneMarker(sceneEvent)}` };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
 
-    await expect(repairGddSections(input, blueprint, document, report, complete)).resolves.toEqual(targets);
-    expect(complete).toHaveBeenCalledTimes(2);
+    await generateGddMarkdownV2(input, { stream, planScene });
+
+    expect(JSON.stringify(planScene.mock.calls[0]?.[0])).not.toContain('Secret Table');
+    expect(JSON.stringify(planScene.mock.calls[0]?.[0])).not.toContain('KECO_TABLE_PLAN');
   });
 
-  it('repairs the whole document when review reports many consistency problems', async () => {
-    const sections = blueprint.nodes.map((node) => ({
-      id: node.id,
-      title: node.label,
-      depth: 0,
-      group: node.group,
-      blocks: [{ kind: 'paragraph' as const, id: `${node.id}-p`, text: `${node.label} body.` }],
-      numericRefs: [],
-    }));
-    const document = {
-      version: 2 as const,
-      id: 'global-repair-gdd',
-      title: 'Global repair test',
-      blueprint,
-      numericRegistry: { version: 2 as const, entries: [] },
-      sections,
-    };
-    const report = {
-      version: 2 as const,
-      summary: 'There are multiple cross-section conflicts.',
-      status: 'repair' as const,
-      issues: [
-        { id: 'issue-1', severity: 'error' as const, sectionId: 'systems', message: 'Numeric conflict.', repairInstruction: 'Align the numbers.' },
-        { id: 'issue-2', severity: 'error' as const, sectionId: 'systems', message: 'Incorrect example.', repairInstruction: 'Recalculate the example.' },
-        { id: 'issue-3', severity: 'warning' as const, sectionId: 'presentation', message: 'Terminology conflict.', repairInstruction: 'Unify terminology.' },
-        { id: 'issue-4', severity: 'warning' as const, sectionId: 'systems', message: 'Content is too long.', repairInstruction: 'Remove duplication.' },
-      ],
-    };
-    const complete = jest.fn(async () => JSON.stringify(sections));
+  it('escapes numeric less-than prose while preserving code', async () => {
+    const result = await generateGddMarkdownV2(input, jest.fn(async () => [
+      '# GDD',
+      '',
+      'Restock when inventory <5.',
+      '',
+      '`inventory <5`',
+      '',
+      '```text',
+      'inventory <5',
+      '```',
+    ].join('\n')));
 
-    await expect(repairGddSections(input, blueprint, document, report, complete)).resolves.toEqual(sections);
-
-    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
-    expect(requestMessages[0].content).toContain('whole-document consistency repair');
-    expect(requestMessages[1].content).toContain('"id":"overview"');
-    expect(requestMessages[1].content).toContain('"id":"presentation"');
-  });
-
-  it('generates quick mode in one model completion without model review', async () => {
-    const quickInput = { ...input, mode: 'quick' as const };
-    const quickBlueprint = {
-      version: 2 as const,
-      title: 'Quick GDD',
-      numericRegistry: [],
-      nodes: [{ id: 'overview', label: 'Game Overview', depth: 0, group: 'core' }],
-    };
-    const section = {
-      id: 'overview',
-      title: 'Game Overview',
-      depth: 0,
-      group: 'core',
-      blocks: [{ kind: 'paragraph' as const, id: 'overview-p', text: 'Complete body.' }],
-      numericRefs: [],
-    };
-    const document = {
-      version: 2 as const,
-      id: 'quick-gdd',
-      title: 'Quick GDD',
-      blueprint: quickBlueprint,
-      numericRegistry: { version: 2 as const, entries: [] },
-      sections: [section],
-    };
-    const complete = jest.fn(async (messages: ChatMessage[]) => {
-      const system = typeof messages[0].content === 'string' ? messages[0].content : '';
-      if (system.includes('Create a compact structured GDD in one pass')) return JSON.stringify(document);
-      throw new Error('Unexpected completion stage.');
-    });
-
-    await expect(generateGddV2(quickInput, complete)).resolves.toMatchObject({
-      document: { id: 'quick-gdd' },
-      review: { status: 'pass' },
-    });
-    expect(complete).toHaveBeenCalledTimes(1);
-    const requestMessages = ((complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0]);
-    expect(requestMessages[0].content).toContain('silently check terminology, numbers, formulas, examples, and assumptions');
-    expect(requestMessages[0].content).toContain('The embedded blueprint and numericRegistry must be canonical');
-  });
-
-  it('normalizes compact quick blueprint node aliases without another model call', async () => {
-    const quickInput = { ...input, mode: 'quick' as const };
-    const response = {
-      version: 2,
-      id: 'quick-gdd',
-      title: 'Quick GDD',
-      blueprint: {
-        version: 2,
-        nodes: [{ id: 'overview', title: 'Game Overview', description: 'Blueprint summary', fields: ['Goal'] }],
-      },
-      numericRegistry: { version: 2, entries: [] },
-      sections: [{
-        id: 'overview', title: 'Game Overview', depth: 0, group: 'core',
-        blocks: [{ kind: 'paragraph', id: 'overview-p', text: 'Complete body.' }], numericRefs: [],
-      }],
-    };
-    const complete = jest.fn(async () => JSON.stringify(response));
-
-    await expect(generateGddV2(quickInput, complete)).resolves.toMatchObject({
-      document: {
-        blueprint: { nodes: [{ id: 'overview', label: 'Game Overview', depth: 0, group: 'core' }] },
-      },
-    });
-    expect(complete).toHaveBeenCalledTimes(1);
-  });
-
-  it('still rejects deterministic structural quality failures', async () => {
-    const quickInput = { ...input, mode: 'quick' as const };
-    const quickBlueprint = {
-      version: 2 as const,
-      title: 'Broken GDD',
-      numericRegistry: [],
-      nodes: [{ id: 'overview', label: 'Game Overview', depth: 0, group: 'core' }],
-    };
-    const document = {
-      version: 2 as const,
-      id: 'broken-gdd',
-      title: 'Broken GDD',
-      blueprint: quickBlueprint,
-      numericRegistry: { version: 2 as const, entries: [] },
-      sections: [{ id: 'overview', title: 'Game Overview', depth: 0, group: 'core', blocks: [], numericRefs: [] }],
-    };
-    const complete = jest.fn(async (messages: ChatMessage[]) => {
-      const system = typeof messages[0].content === 'string' ? messages[0].content : '';
-      if (system.includes('Create a compact structured GDD in one pass')) return JSON.stringify(document);
-      throw new Error('Unexpected completion stage.');
-    });
-
-    await expect(generateGddV2(quickInput, complete)).rejects.toThrow('Quick GDD failed deterministic quality gate');
-    expect(complete).toHaveBeenCalledTimes(1);
+    expect(result.markdown).toContain('Restock when inventory &lt;5.');
+    expect(result.markdown).toContain('`inventory <5`');
+    expect(result.markdown).toContain('```text\ninventory <5\n```');
   });
 });

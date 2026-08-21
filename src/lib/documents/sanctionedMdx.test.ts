@@ -1,4 +1,4 @@
-import { validateSanctionedMdx, coerceSanctionedMdxImages } from './sanctionedMdx';
+import { validateSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments } from './sanctionedMdx';
 import { createSanctionedMdxDescriptors } from './sanctionedMdxDescriptors';
 import { DocumentContentValidationError } from './documentStateTypes';
 import {
@@ -189,6 +189,18 @@ describe('sanctioned MDX validation', () => {
     )).not.toThrow();
   });
 
+  it('accepts GddScriptBranchSnapshot flow cards with encoded branch trees', () => {
+    expect(() => validateSanctionedMdx(
+      '<GddScriptBranchSnapshot dialogueJobId="job-1" chapterKey="opening" title="Opening dialogue" projectId="project-1" dialogueDocumentId="doc-1" scriptLibraryId="lib-1" tree="[{&quot;d&quot;:0,&quot;t&quot;:&quot;Root&quot;},{&quot;d&quot;:1,&quot;t&quot;:&quot;Choice A&quot;}]" />'
+    )).not.toThrow();
+  });
+
+  it('rejects GddScriptBranchSnapshot cards with invalid tree payloads', () => {
+    expect(() => validateSanctionedMdx(
+      '<GddScriptBranchSnapshot dialogueJobId="job-1" chapterKey="opening" title="Opening dialogue" projectId="project-1" dialogueDocumentId="doc-1" scriptLibraryId="lib-1" tree="[]" />'
+    )).toThrow(DocumentContentValidationError);
+  });
+
   it.each([
     '# <BlockAnchor id="not-a-uuid" />Heading',
     'See <ResourceReference kind="table-row" libraryId="not-a-uuid" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.',
@@ -224,7 +236,6 @@ describe('sanctioned MDX validation', () => {
     '![image](http://example.com/image.png)',
     'export const value = 1',
     'import Component from "./component"',
-    '<!-- raw HTML -->',
     '<Callout type="info">Inline block component</Callout>',
     'Text before <Details summary="More">inline</Details> text after.',
     '<u>\n\nBlock underline.\n\n</u>',
@@ -232,6 +243,21 @@ describe('sanctioned MDX validation', () => {
     '<u />',
   ])('rejects unsafe or unsupported content: %s', (content) => {
     expect(() => validateSanctionedMdx(content)).toThrow(DocumentContentValidationError);
+  });
+
+  it('strips HTML comments outside fenced code before validation', () => {
+    expect(coerceSanctionedMdxHtmlComments(
+      '# Title\n\n<!-- KECO_GDD_DIALOGUE_SNAPSHOT dialogueJobId="job" -->\nOld\n<!-- /KECO_GDD_DIALOGUE_SNAPSHOT -->\n\nBody.',
+    )).toBe('# Title\n\nOld\n\nBody.');
+    expect(() => validateSanctionedMdx(
+      '# Guide\n\n<!-- raw HTML -->\n\nKeep this.',
+    )).not.toThrow();
+    expect(coerceSanctionedMdxHtmlComments(
+      'Before\n\n```md\n<!-- keep in code -->\n```\n\n<!-- strip me -->\nAfter',
+    )).toContain('<!-- keep in code -->');
+    expect(coerceSanctionedMdxHtmlComments(
+      'Before\n\n```md\n<!-- keep in code -->\n```\n\n<!-- strip me -->\nAfter',
+    )).not.toContain('<!-- strip me -->');
   });
 
   it.each([

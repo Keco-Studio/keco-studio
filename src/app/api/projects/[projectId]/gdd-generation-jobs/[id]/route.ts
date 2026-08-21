@@ -3,9 +3,14 @@ import { after, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { isGddSchemaUnavailable, safeGddRouteErrorIdentity } from '@/lib/gdd-generation/routeErrors';
-import { cancelGddGenerationJob, getPublicGddGenerationJob } from '@/lib/services/gddGenerationService';
+import {
+  cancelGddGenerationJob,
+  getGddGenerationJob,
+  getPublicGddGenerationJob,
+  toPublicGddGenerationJob,
+} from '@/lib/services/gddGenerationService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
-import { processNextGddJob } from '@/lib/gdd-generation/worker';
+import { processNextGddJob, shouldWakeGddGenerationJob } from '@/lib/gdd-generation/worker';
 import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 
 type Params = { params: Promise<{ projectId: string; id: string }> };
@@ -57,11 +62,11 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
     return NextResponse.json({ error: 'Reading a GDD generation job requires editor or admin permission.' }, { status: 403 });
   }
   try {
-    const job = await getPublicGddGenerationJob(supabase, id);
+    const job = await getGddGenerationJob(getSupabaseServiceRoleClient(), id);
     if (!job || job.project_id !== projectId) return NextResponse.json({ error: 'GDD generation job not found.' }, { status: 404 });
-    if (job.status === 'queued') scheduleQueuedJob(job.id);
+    if (shouldWakeGddGenerationJob(job)) scheduleQueuedJob(job.id);
     if (job.status === 'waiting_for_maps') scheduleMapJob(job.id);
-    return NextResponse.json({ job });
+    return NextResponse.json({ job: toPublicGddGenerationJob(job) });
   } catch (error) {
     if (isGddSchemaUnavailable(error)) {
       console.error('[GET project GDD generation job]', safeGddRouteErrorIdentity(error));

@@ -122,12 +122,22 @@ export function enforceSnapshotTotalLimit(snapshots: GameDesignSourceSnapshot[])
 export async function listGameDesignReferenceOptions(
   supabase: SupabaseClient,
   projectId: string,
+  options: { excludeGeneratedResources?: boolean } = {},
 ): Promise<GameDesignReferenceOption[]> {
   await verifyProjectAccess(supabase, projectId);
-  const [documents, libraries] = await Promise.all([
-    supabase.from('documents').select('id,project_id,name,updated_at').eq('project_id', projectId).order('name'),
-    supabase.from('libraries').select('id,project_id,name,updated_at').eq('project_id', projectId).order('name'),
-  ]);
+  let documentsQuery = supabase.from('documents')
+    .select('id,project_id,name,updated_at')
+    .eq('project_id', projectId)
+    .order('name');
+  let librariesQuery = supabase.from('libraries')
+    .select('id,project_id,name,updated_at')
+    .eq('project_id', projectId)
+    .order('name');
+  if (options.excludeGeneratedResources) {
+    documentsQuery = documentsQuery.is('gdd_generation_job_id', null);
+    librariesQuery = librariesQuery.is('gdd_generation_job_id', null);
+  }
+  const [documents, libraries] = await Promise.all([documentsQuery, librariesQuery]);
   if (documents.error) throw documents.error;
   if (libraries.error) throw libraries.error;
   return [

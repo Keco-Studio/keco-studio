@@ -29,6 +29,8 @@ export type Library = {
   source_document_id: string | null;
   document_export_type: DocumentExportType | null;
   plot_plan: StoryPlotPlan | null;
+  /** Set for tables materialized by a GDD generation job. */
+  gdd_generation_job_id?: string | null;
   asset_count?: number; // Number of assets in this library
   updater?: {
     id: string;

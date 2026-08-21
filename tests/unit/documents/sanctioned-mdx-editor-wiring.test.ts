@@ -21,7 +21,9 @@ describe('sanctioned MDX editor wiring', () => {
     expect(editor).toContain('styles.sanctionedMdx');
     expect(editor).toContain("descriptor.name === 'BlockAnchor'");
     expect(editor).toContain("descriptor.name === 'ResourceReference'");
+    expect(editor).toContain("descriptor.name === 'GddScriptBranchSnapshot'");
     expect(editor).toContain('<ResourceReferenceEditor');
+    expect(editor).toContain('GddScriptBranchSnapshotEditor');
     expect(editor).toContain('<ResourceReferenceProvider key={documentId} projectId={projectId}>');
   });
 
@@ -39,7 +41,7 @@ describe('sanctioned MDX editor wiring', () => {
     expect(headless).toContain('GenericJsxEditor');
   });
 
-  it('specializes only inert anchors and live resource references', () => {
+  it('specializes only inert anchors, live resource references, and GDD script snapshots', () => {
     const editor = source('src/components/documents/MdxDocumentEditor.tsx');
 
     expect(editor).toMatch(
@@ -47,6 +49,9 @@ describe('sanctioned MDX editor wiring', () => {
     );
     expect(editor).toMatch(
       /descriptor\.name === 'ResourceReference'[\s\S]*Editor: ResourceReference/
+    );
+    expect(editor).toMatch(
+      /descriptor\.name === 'GddScriptBranchSnapshot'[\s\S]*Editor: GddScriptBranchSnapshotEditor/
     );
     expect(editor).toMatch(
       /function SanctionedMdxEditor[\s\S]*<GenericJsxEditor/

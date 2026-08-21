@@ -15,6 +15,22 @@ export type ResolvedResourceReference = {
   label: string;
   contextLabel?: string;
   href?: string;
+  table?: ResolvedTableRowReference;
+};
+
+export type ResolvedTableRowReference = {
+  libraryId: string;
+  name: string;
+  href: string;
+  fields: Array<{
+    id: string;
+    label: string;
+  }>;
+  row: {
+    assetId: string;
+    name: string;
+    values: Record<string, unknown>;
+  };
 };
 
 export type TableReferenceSource = {
@@ -51,6 +67,7 @@ type LibraryRow = {
   project_id: string;
   name: string;
   document_export_type?: string | null;
+  gdd_generation_job_id?: string | null;
 };
 
 type AssetRow = {
@@ -215,24 +232,8 @@ async function resolveTableReferences(
   const libraries = indexById(libraryRows);
   const assets = indexById(assetRows);
   const fields = indexById(fieldRows);
-  const orderedFieldsByLibrary = new Map<string, FieldRow[]>();
-  for (const field of fieldRows) {
-    const list = orderedFieldsByLibrary.get(field.library_id) ?? [];
-    list.push(field);
-    orderedFieldsByLibrary.set(field.library_id, list);
-  }
-  for (const [libraryId, list] of orderedFieldsByLibrary) {
-    list.sort((left, right) =>
-      left.order_index - right.order_index || left.id.localeCompare(right.id)
-    );
-    orderedFieldsByLibrary.set(libraryId, list);
-  }
-  const values = new Map(
-    valueRows.map((row) => [
-      `${row.asset_id}:${row.field_id}`,
-      row.value_json,
-    ])
-  );
+  const orderedFieldsByLibrary = buildOrderedFieldsByLibrary(fieldRows);
+  const values = indexAssetValues(valueRows);
 
   for (const target of targets) {
     const library = libraries.get(target.libraryId);
@@ -249,19 +250,206 @@ async function resolveTableReferences(
       continue;
     }
 
-    const libraryFields = orderedFieldsByLibrary.get(library.id) ?? [];
-    const rowValues: Record<string, unknown> = {};
-    for (const field of libraryFields) {
-      rowValues[field.id] = values.get(`${asset.id}:${field.id}`);
+    resolved.set(
+      resourceReferenceKey(target),
+      buildAvailableTableReference({
+        key: resourceReferenceKey(target),
+        projectId,
+        library,
+        asset,
+        libraryFields: orderedFieldsByLibrary.get(library.id) ?? [],
+        values,
+      }),
+    );
+  }
+
+  const orphans = targets.filter(
+    (target) => resolved.get(resourceReferenceKey(target))?.status !== 'available',
+  );
+  if (orphans.length > 0) {
+    await remapOrphanedGddTableReferences(client, projectId, orphans, resolved);
+  }
+}
+
+function buildOrderedFieldsByLibrary(
+  fieldRows: readonly FieldRow[],
+): Map<string, FieldRow[]> {
+  const orderedFieldsByLibrary = new Map<string, FieldRow[]>();
+  for (const field of fieldRows) {
+    const list = orderedFieldsByLibrary.get(field.library_id) ?? [];
+    list.push(field);
+    orderedFieldsByLibrary.set(field.library_id, list);
+  }
+  for (const [libraryId, list] of orderedFieldsByLibrary) {
+    list.sort((left, right) =>
+      left.order_index - right.order_index || left.id.localeCompare(right.id)
+    );
+    orderedFieldsByLibrary.set(libraryId, list);
+  }
+  return orderedFieldsByLibrary;
+}
+
+function indexAssetValues(
+  valueRows: readonly ValueRow[],
+): Map<string, unknown> {
+  return new Map(
+    valueRows.map((row) => [
+      `${row.asset_id}:${row.field_id}`,
+      row.value_json,
+    ]),
+  );
+}
+
+function buildAvailableTableReference(input: {
+  key: string;
+  projectId: string;
+  library: LibraryRow;
+  asset: AssetRow;
+  libraryFields: readonly FieldRow[];
+  values: ReadonlyMap<string, unknown>;
+}): ResolvedResourceReference {
+  const rowValues: Record<string, unknown> = {};
+  for (const field of input.libraryFields) {
+    rowValues[field.id] = input.values.get(`${input.asset.id}:${field.id}`);
+  }
+  return {
+    key: input.key,
+    status: 'available',
+    label: joinTableRowDisplayValues(input.libraryFields, rowValues),
+    contextLabel: `${input.library.name} / ${input.asset.name}`,
+    href: `/${input.projectId}/${input.library.id}?asset=${input.asset.id}`,
+    table: {
+      libraryId: input.library.id,
+      name: input.library.name,
+      href: `/${input.projectId}/${input.library.id}`,
+      fields: input.libraryFields.map((field) => ({
+        id: field.id,
+        label: field.label,
+      })),
+      row: {
+        assetId: input.asset.id,
+        name: input.asset.name,
+        values: rowValues,
+      },
+    },
+  };
+}
+
+/**
+ * GDD resource evolution reuses stable library IDs while older Markdown chips may
+ * still point at job-scoped IDs. Remap orphaned chips by matching fallback labels
+ * to row names inside GDD-owned libraries in the same project.
+ */
+async function remapOrphanedGddTableReferences(
+  client: SupabaseClient,
+  projectId: string,
+  orphans: readonly Extract<ResourceReferenceTarget, { kind: 'table-row' }>[],
+  resolved: Map<string, ResolvedResourceReference>,
+): Promise<void> {
+  const gddLibraries = await fetchAllPaged<LibraryRow>((from, to) =>
+    client
+      .from('libraries')
+      .select('id, project_id, name, gdd_generation_job_id')
+      .eq('project_id', projectId)
+      .not('gdd_generation_job_id', 'is', null)
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
+  );
+  if (gddLibraries.length === 0) return;
+
+  const candidateIds = gddLibraries.map((library) => library.id);
+  const [assetRows, fieldRows] = await Promise.all([
+    fetchPagedBatches<AssetRow>(candidateIds, (batch, from, to) =>
+      client
+        .from('library_assets')
+        .select('id, library_id, name')
+        .in('library_id', batch)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<AssetRow>>
+    ),
+    fetchPagedBatches<FieldRow>(candidateIds, (batch, from, to) =>
+      client
+        .from('library_field_definitions')
+        .select('id, library_id, label, order_index')
+        .in('library_id', batch)
+        .order('order_index', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<FieldRow>>
+    ),
+  ]);
+  const libraries = indexById(gddLibraries);
+  const orderedFieldsByLibrary = buildOrderedFieldsByLibrary(fieldRows);
+  const assetsByLibrary = new Map<string, AssetRow[]>();
+  for (const asset of assetRows) {
+    const list = assetsByLibrary.get(asset.library_id) ?? [];
+    list.push(asset);
+    assetsByLibrary.set(asset.library_id, list);
+  }
+
+  const groups = new Map<string, Array<Extract<ResourceReferenceTarget, { kind: 'table-row' }>>>();
+  for (const orphan of orphans) {
+    const list = groups.get(orphan.libraryId) ?? [];
+    list.push(orphan);
+    groups.set(orphan.libraryId, list);
+  }
+
+  const remappedAssets: AssetRow[] = [];
+  const remappedTargets: Array<{
+    target: Extract<ResourceReferenceTarget, { kind: 'table-row' }>;
+    library: LibraryRow;
+    asset: AssetRow;
+    libraryFields: FieldRow[];
+  }> = [];
+
+  for (const group of groups.values()) {
+    const labels = group.map((target) => target.fallbackLabel.trim()).filter(Boolean);
+    if (labels.length === 0) continue;
+
+    let bestLibraryId: string | null = null;
+    let bestScore = 0;
+    for (const library of gddLibraries) {
+      const names = new Set(
+        (assetsByLibrary.get(library.id) ?? []).map((asset) => asset.name.trim()),
+      );
+      const score = labels.filter((label) => names.has(label)).length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestLibraryId = library.id;
+      }
     }
-    const key = resourceReferenceKey(target);
-    resolved.set(key, {
-      key,
-      status: 'available',
-      label: joinTableRowDisplayValues(libraryFields, rowValues),
-      contextLabel: `${library.name} / ${asset.name}`,
-      href: `/${projectId}/${library.id}?asset=${asset.id}`,
-    });
+    if (!bestLibraryId || bestScore === 0) continue;
+
+    const library = libraries.get(bestLibraryId);
+    const libraryFields = orderedFieldsByLibrary.get(bestLibraryId) ?? [];
+    if (!library || libraryFields.length === 0) continue;
+    const assets = assetsByLibrary.get(bestLibraryId) ?? [];
+    const assetByName = new Map(assets.map((asset) => [asset.name.trim(), asset]));
+
+    for (const target of group) {
+      const asset = assetByName.get(target.fallbackLabel.trim());
+      if (!asset) continue;
+      remappedAssets.push(asset);
+      remappedTargets.push({ target, library, asset, libraryFields });
+    }
+  }
+
+  if (remappedTargets.length === 0) return;
+  const remappedValues = indexAssetValues(
+    await fetchAssetValues(client, [...new Set(remappedAssets.map((asset) => asset.id))]),
+  );
+
+  for (const entry of remappedTargets) {
+    resolved.set(
+      resourceReferenceKey(entry.target),
+      buildAvailableTableReference({
+        key: resourceReferenceKey(entry.target),
+        projectId,
+        library: entry.library,
+        asset: entry.asset,
+        libraryFields: entry.libraryFields,
+        values: remappedValues,
+      }),
+    );
   }
 }
 

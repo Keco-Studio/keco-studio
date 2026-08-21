@@ -95,6 +95,21 @@ describe('streamLlm request options', () => {
     expect(JSON.parse(String(init?.body))).not.toHaveProperty('max_tokens');
   });
 
+  it('reports the provider finish reason to completion callers', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    const onFinish = jest.fn();
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}],"usage":{"completion_tokens":18000}}\n\ndata: [DONE]\n\n',
+      { status: 200 }
+    )) as typeof fetch;
+
+    const { completeLlm } = await import('../../../src/lib/agent/llm-client');
+    await expect(completeLlm([{ role: 'user', content: 'hello' }], { onFinish })).resolves.toBe('partial');
+    expect(onFinish).toHaveBeenCalledWith('length', { completion_tokens: 18000 });
+  });
+
   it('reports sanitized upstream response metadata through an optional callback', async () => {
     jest.resetModules();
     process.env.LLM_API_KEY = 'test-key';

@@ -9,7 +9,7 @@
  * network / 5xx / 429 errors before the first chunk is read.
  */
 
-import type { ChatMessage, OpenAITool, StreamChunk } from './types';
+import type { ChatMessage, OpenAITool, StreamChunk, TokenUsage } from './types';
 import { ThinkTagParser } from './think-tag-parser';
 import { outboundFetch } from './outbound-http';
 
@@ -48,6 +48,7 @@ export interface StreamLlmOptions {
   toolName?: string;
   signal?: AbortSignal;
   onResponseMetadata?: (metadata: LlmResponseMetadata) => void;
+  onFinish?: (reason: string, usage?: TokenUsage) => void;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -229,6 +230,7 @@ export async function* streamLlm(
         }
 
         if (choice.finish_reason) {
+          options.onFinish?.(choice.finish_reason, parsed.usage);
           yield {
             type: 'finish',
             reason: choice.finish_reason,

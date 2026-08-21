@@ -451,24 +451,26 @@ export function useSidebarContextMenuActions({
           requestDeleteConfirm({
             title: 'Confirm deletion',
             content: 'Delete this library?',
-            onConfirm: () => {
-              const libraryToDelete = libraries.find((lib) => lib.id === contextMenu.id);
+            onConfirm: async () => {
+              const libraryId = contextMenu.id;
+              const libraryToDelete = libraries.find((lib) => lib.id === libraryId);
               const deletedFolderId = libraryToDelete?.folder_id || null;
-              return deleteLibrary(supabase, contextMenu.id)
-                .then(async () => {
-                  await invalidateLibraryData(queryClient, {
-                    projectId: currentIds.projectId,
-                    folderId: deletedFolderId,
-                    libraryId: contextMenu.id,
-                    refetchActiveFoldersLibraries: true,
-                  });
-                  if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
-                    router.push(`/${currentIds.projectId}`);
-                  }
-                })
-                .catch((err: unknown) => {
-                  setError(err instanceof Error ? err.message : 'Failed to delete library');
+              try {
+                await deleteLibrary(supabase, libraryId);
+                if (currentIds.libraryId === libraryId && currentIds.projectId) {
+                  router.push(`/${currentIds.projectId}`);
+                }
+                void invalidateLibraryData(queryClient, {
+                  projectId: currentIds.projectId,
+                  folderId: deletedFolderId,
+                  libraryId,
+                  refetchActiveFoldersLibraries: true,
+                }).catch((err) => {
+                  console.error('Failed to refresh sidebar after library delete', err);
                 });
+              } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : 'Failed to delete library');
+              }
             },
           });
           closeContextMenu();
@@ -477,29 +479,30 @@ export function useSidebarContextMenuActions({
           requestDeleteConfirm({
             title: 'Confirm deletion',
             content: 'Delete this folder? All libraries and subfolders under it will be removed.',
-            onConfirm: () => {
-              const librariesInFolder = libraries.filter((lib) => lib.folder_id === contextMenu.id);
+            onConfirm: async () => {
+              const folderId = contextMenu.id;
+              const librariesInFolder = libraries.filter((lib) => lib.folder_id === folderId);
               const isViewingLibraryInFolder = librariesInFolder.some(
                 (lib) => lib.id === currentIds.libraryId
               );
-
-              return deleteFolder(supabase, contextMenu.id)
-                .then(async () => {
-                  await invalidateFolderData(queryClient, {
-                    projectId: currentIds.projectId,
-                    folderId: contextMenu.id,
-                    refetchActiveFoldersLibraries: true,
-                  });
-                  if (
-                    (currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) &&
-                    currentIds.projectId
-                  ) {
-                    router.push(`/${currentIds.projectId}`);
-                  }
-                })
-                .catch((err: unknown) => {
-                  setError(err instanceof Error ? err.message : 'Failed to delete folder');
+              try {
+                await deleteFolder(supabase, folderId);
+                if (
+                  (currentIds.folderId === folderId || isViewingLibraryInFolder) &&
+                  currentIds.projectId
+                ) {
+                  router.push(`/${currentIds.projectId}`);
+                }
+                void invalidateFolderData(queryClient, {
+                  projectId: currentIds.projectId,
+                  folderId,
+                  refetchActiveFoldersLibraries: true,
+                }).catch((err) => {
+                  console.error('Failed to refresh sidebar after folder delete', err);
                 });
+              } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : 'Failed to delete folder');
+              }
             },
           });
           closeContextMenu();
@@ -524,31 +527,32 @@ export function useSidebarContextMenuActions({
           requestDeleteConfirm({
             title: 'Confirm deletion',
             content: `Delete this document permanently?${cascadeCopy}`,
-            onConfirm: () => {
+            onConfirm: async () => {
               const documentId = contextMenu.id;
-              return deleteDocument(supabase, documentId)
-                .then(async () => {
-                  if (currentIds.projectId) {
-                    void broadcastProjectDocumentUpdate({
-                      documentId,
-                      projectId: currentIds.projectId,
-                      action: 'delete',
-                    });
-                    await queryClient.invalidateQueries({
-                      queryKey: queryKeys.documents(currentIds.projectId),
-                    });
-                    await invalidateLibraryData(queryClient, {
-                      projectId: currentIds.projectId,
-                      refetchActiveFoldersLibraries: true,
-                    });
-                  }
-                  if (currentIds.documentId === documentId && currentIds.projectId) {
-                    router.push(`/${currentIds.projectId}`);
-                  }
-                })
-                .catch((err: unknown) => {
-                  setError(err instanceof Error ? err.message : 'Failed to delete document');
-                });
+              try {
+                await deleteDocument(supabase, documentId);
+                if (currentIds.documentId === documentId && currentIds.projectId) {
+                  router.push(`/${currentIds.projectId}`);
+                }
+                if (currentIds.projectId) {
+                  void broadcastProjectDocumentUpdate({
+                    documentId,
+                    projectId: currentIds.projectId,
+                    action: 'delete',
+                  });
+                  void queryClient.invalidateQueries({
+                    queryKey: queryKeys.documents(currentIds.projectId),
+                  });
+                  void invalidateLibraryData(queryClient, {
+                    projectId: currentIds.projectId,
+                    refetchActiveFoldersLibraries: true,
+                  }).catch((err) => {
+                    console.error('Failed to refresh sidebar after document delete', err);
+                  });
+                }
+              } catch (err: unknown) {
+                setError(err instanceof Error ? err.message : 'Failed to delete document');
+              }
             },
           });
           closeContextMenu();
@@ -557,34 +561,31 @@ export function useSidebarContextMenuActions({
           requestDeleteConfirm({
             title: 'Confirm deletion',
             content: 'Delete this asset?',
-            onConfirm: () => {
+            onConfirm: async () => {
+              const assetId = contextMenu.id;
               const libraryId = Object.keys(assets).find((libId) =>
-                assets[libId].some((asset) => asset.id === contextMenu.id)
+                assets[libId].some((asset) => asset.id === assetId)
               );
               if (!libraryId) return;
-              return supabase
+              const result = await supabase
                 .from('library_assets')
                 .delete()
-                .eq('id', contextMenu.id)
-                .then(async (result) => {
-                  if (result.error) {
-                    console.error('Failed to delete asset', result.error);
-                  } else {
-                    await invalidateLibraryAssetsData(queryClient, {
-                      libraryId,
-                      assetId: contextMenu.id,
-                      refetchActiveAssets: true,
-                    });
-
-                    await fetchAssets(libraryId);
-                    if (
-                      currentIds.assetId === contextMenu.id &&
-                      currentIds.projectId
-                    ) {
-                      router.push(`/${currentIds.projectId}/${libraryId}`);
-                    }
-                  }
-                });
+                .eq('id', assetId);
+              if (result.error) {
+                console.error('Failed to delete asset', result.error);
+                return;
+              }
+              if (currentIds.assetId === assetId && currentIds.projectId) {
+                router.push(`/${currentIds.projectId}/${libraryId}`);
+              }
+              void fetchAssets(libraryId);
+              void invalidateLibraryAssetsData(queryClient, {
+                libraryId,
+                assetId,
+                refetchActiveAssets: true,
+              }).catch((err) => {
+                console.error('Failed to refresh sidebar after asset delete', err);
+              });
             },
           });
           closeContextMenu();
