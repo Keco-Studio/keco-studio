@@ -1401,7 +1401,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       return (
         <LibraryToolbar
           mode="recent"
-          title="Recent"
+          title={shareProjectName}
           onCreateFolder={handleTopbarCreateFolder}
           onCreateLibrary={handleTopbarCreateLibrary}
           onCreateDocument={handleTopbarCreateDocument}
