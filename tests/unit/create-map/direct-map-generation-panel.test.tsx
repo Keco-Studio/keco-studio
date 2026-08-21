@@ -1,6 +1,9 @@
+/** @jest-environment jsdom */
+
 import React from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { DirectMapGenerationPanel } from '@/features/create-map/components/DirectMapGenerationPanel';
 import type { DirectMapGenerationAsset } from '@/features/create-map/hooks/useDirectMapGeneration';
 
@@ -17,69 +20,59 @@ const plannedAsset: DirectMapGenerationAsset = {
   hasTransparency: null, signedUrl: null,
 };
 
-function findButton(node: React.ReactNode, label: string): React.ReactElement<{ onClick?: () => void }> | null {
-  if (!React.isValidElement(node)) return null;
-  const element = node as React.ReactElement<{ children?: React.ReactNode; onClick?: () => void }>;
-  if (element.type === 'button' && element.props.children === label) return element;
-  for (const child of React.Children.toArray(element.props.children)) {
-    const found = findButton(child, label);
-    if (found) return found;
-  }
-  return null;
-}
-
 describe('DirectMapGenerationPanel', () => {
-  it('shows one paid confirmation and no resource-composition stages', () => {
-    const confirm = jest.fn();
-    const tree = DirectMapGenerationPanel({
-      phase: 'awaiting-confirmation', asset: plannedAsset, error: null,
-      canPrepare: false, canRetry: false,
+  it('opens the inline fee confirmation only after Generate map is clicked', () => {
+    const generate = jest.fn();
+    const props = {
+      phase: 'idle', asset: null, error: null,
+      canGenerate: true, canRetry: false,
       canResolveUnknown: false,
-      onPrepare: jest.fn(), onConfirm: confirm, onRetry: jest.fn(), onRegenerate: jest.fn(),
+      onGenerate: generate, onRetry: jest.fn(),
       onResolveUnknown: jest.fn(),
-    });
-    findButton(tree, 'Confirm and generate map')?.props.onClick?.();
-    const markup = renderToStaticMarkup(tree);
+    } as const;
+    const initialMarkup = renderToStaticMarkup(React.createElement(DirectMapGenerationPanel, props));
 
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(markup).toContain('Awaiting confirmation');
-    expect(markup).not.toMatch(/terrain|path tiles|obstacle|compose background/i);
+    expect(initialMarkup).not.toContain('Paid PixelLab request');
+    render(React.createElement(DirectMapGenerationPanel, props));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate map' }));
+    expect(screen.getByRole('group', { name: 'Generation cost confirmation' })).toBeTruthy();
+    expect(generate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to generate' }));
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 
   it('shows validating, retry, blocked, and ready states with bounded actions', () => {
     const validating = renderToStaticMarkup(React.createElement(DirectMapGenerationPanel, {
       phase: 'validating', asset: { ...plannedAsset, status: 'generating' }, error: null,
-      canPrepare: false, canRetry: false,
+      canGenerate: false, canRetry: false,
       canResolveUnknown: false,
-      onPrepare: jest.fn(), onConfirm: jest.fn(), onRetry: jest.fn(), onRegenerate: jest.fn(),
+      onGenerate: jest.fn(), onRetry: jest.fn(),
       onResolveUnknown: jest.fn(),
     }));
     const ready = renderToStaticMarkup(React.createElement(DirectMapGenerationPanel, {
       phase: 'ready', asset: { ...plannedAsset, status: 'ready' }, error: null,
-      canPrepare: true, canRetry: false,
+      canGenerate: true, canRetry: false,
       canResolveUnknown: false,
-      onPrepare: jest.fn(), onConfirm: jest.fn(), onRetry: jest.fn(), onRegenerate: jest.fn(),
+      onGenerate: jest.fn(), onRetry: jest.fn(),
       onResolveUnknown: jest.fn(),
     }));
 
     expect(validating).toContain('Validating image');
     expect(ready).toContain('Map ready');
-    expect(ready).toContain('Regenerate map');
+    expect(ready).toContain('Generate map');
   });
 
   it('requires explicit duplicate-billing acknowledgement for an unknown submission', () => {
     const resolveUnknown = jest.fn();
-    const tree = DirectMapGenerationPanel({
+    const tree = React.createElement(DirectMapGenerationPanel, {
       phase: 'blocked',
       asset: { ...plannedAsset, status: 'queued' },
       error: null,
-      canPrepare: true,
+      canGenerate: true,
       canRetry: false,
       canResolveUnknown: true,
-      onPrepare: jest.fn(),
-      onConfirm: jest.fn(),
+      onGenerate: jest.fn(),
       onRetry: jest.fn(),
-      onRegenerate: jest.fn(),
       onResolveUnknown: resolveUnknown,
     });
     const markup = renderToStaticMarkup(tree);

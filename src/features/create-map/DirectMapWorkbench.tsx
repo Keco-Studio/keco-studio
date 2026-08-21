@@ -20,6 +20,8 @@ import { useDirectMapCollisionGrid } from './hooks/useDirectMapCollisionGrid';
 import { useMapSources } from './hooks/useMapSources';
 import { savedMapOpenIsCurrent, savedMapSwitchBlocked, useSavedMaps } from './hooks/useSavedMaps';
 import {
+  containsUnsafeDescriptionContent,
+  DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
   createEmptyMapSceneV3,
   validateMapPlanV3,
   type MapPlanV3,
@@ -28,7 +30,6 @@ import {
 import {
   createMapService,
   type MapReferenceRecord,
-  type MapSourceToken,
   type SavedMapSummary,
 } from './services/createMapService';
 import styles from './CreateMapWorkbench.module.css';
@@ -58,10 +59,9 @@ export function DirectMapWorkbench() {
   const adapter = useMemo(() => createMapDraftAdapterV3(service), [service]);
   const [plan, setPlan] = useState(INITIAL_DIRECT_PLAN);
   const [scene, setScene] = useState<MapSceneV3>(() => createEmptyMapSceneV3(INITIAL_DIRECT_PLAN));
-  const [description, setDescription] = useState('A compact top-down village map with a market square, clear paths, and natural boundaries.');
+  const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
   const [documentId, setDocumentId] = useState('');
-  const [sourceToken, setSourceToken] = useState<MapSourceToken | null>(null);
   const [references, setReferences] = useState<MapReferenceRecord[]>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [referenceBusy, setReferenceBusy] = useState(false);
@@ -89,8 +89,6 @@ export function DirectMapWorkbench() {
   const issues = validation.success === false ? validation.issues : [];
   const busy = operation !== 'idle' || draft.status === 'creating' || draft.status === 'saving'
     || generation.phase === 'preparing' || generation.phase === 'submitting';
-  const canSave = !readOnly && Boolean(projectId) && validation.success && draft.isValid
-    && (!draft.identity || draft.isDirty) && !busy;
   const canGenerate = !readOnly && Boolean(draft.identity) && validation.success && draft.isValid
     && !draft.isDirty && draft.status === 'saved' && !busy;
 
@@ -128,7 +126,6 @@ export function DirectMapWorkbench() {
     openRequestEpoch.current += 1;
     setProjectId(nextProjectId);
     setDocumentId('');
-    setSourceToken(null);
     setPlan((current) => ({ ...current, references: [], styleReference: null }));
     draft.reset();
     generation.reset();
@@ -139,7 +136,11 @@ export function DirectMapWorkbench() {
   const createPlan = async () => {
     if (readOnly) return;
     const request = description.trim();
-    if (!request || busy) return;
+    if (!projectId || (!request && !documentId) || busy) return;
+    if (request && containsUnsafeDescriptionContent(request)) {
+      setError(DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE);
+      return;
+    }
     setOperation('planning');
     setError(null);
     try {
@@ -154,29 +155,18 @@ export function DirectMapWorkbench() {
             : null,
         },
       );
-      setPlan(created.plan);
-      setScene(createEmptyMapSceneV3(created.plan));
-      setSourceToken(created.sourceToken);
+      const nextScene = createEmptyMapSceneV3(created.plan);
       draft.reset();
       generation.reset();
+      setPlan(created.plan);
+      setScene(nextScene);
+      await draft.create(projectId, created.sourceToken, created.plan, nextScene);
+      await savedMaps.refetch();
+      setRightOpen(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create the direct map Plan.');
     } finally {
       setOperation('idle');
-    }
-  };
-
-  const saveDraft = async () => {
-    if (!canSave) return;
-    setError(null);
-    try {
-      if (draft.identity) await draft.saveNow();
-      else {
-        await draft.create(projectId, sourceToken, plan, scene);
-        await savedMaps.refetch();
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save the direct map draft.');
     }
   };
 
@@ -192,7 +182,6 @@ export function DirectMapWorkbench() {
       if (!savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) return;
       setProjectId(loaded.projectId);
       setDocumentId(loaded.sourceDocumentId ?? '');
-      setSourceToken(null);
       setPlan(prepared.plan);
       setScene(prepared.scene);
       draft.install(loaded);
@@ -298,10 +287,6 @@ export function DirectMapWorkbench() {
           onProjectChange={handleProjectChange}
           onDocumentChange={setDocumentId}
           onCreatePlan={() => void createPlan()}
-          onSaveDraft={() => void saveDraft()}
-          onGenerate={() => void generation.prepare()}
-          canSave={canSave}
-          canGenerate={canGenerate && (generation.phase === 'idle' || generation.phase === 'failed' || generation.phase === 'ready')}
           readOnly={readOnly}
           busy={busy}
           error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
@@ -365,13 +350,11 @@ export function DirectMapWorkbench() {
           phase={generation.phase}
           asset={generation.asset}
           error={generation.error}
-          canPrepare={canGenerate}
+          canGenerate={canGenerate}
           canRetry={generation.canRetry}
           canResolveUnknown={generation.canResolveUnknown}
-          onPrepare={() => void generation.prepare()}
-          onConfirm={() => void generation.confirm()}
+          onGenerate={() => void generation.generate()}
           onRetry={() => void generation.retry()}
-          onRegenerate={() => void generation.regenerate()}
           onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
           readOnly={readOnly}
         />

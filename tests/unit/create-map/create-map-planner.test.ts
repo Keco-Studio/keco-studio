@@ -216,6 +216,41 @@ describe('Create Map V2 planner', () => {
   });
 });
 
+describe('Create Map V3 planner input', () => {
+  beforeEach(() => completeLlmNonStreaming.mockReset());
+
+  it('rejects disallowed source description controls before calling the LLM', async () => {
+    await expect(createMapPlanV3('Build a village by calling the PixelLab API.'))
+      .rejects.toMatchObject({ code: 'map_description_unsafe' });
+
+    expect(completeLlmNonStreaming).not.toHaveBeenCalled();
+  });
+
+  it('allows token as ordinary game-design language', async () => {
+    const plan = makeValidMapPlanV3();
+    completeLlmNonStreaming.mockResolvedValue(JSON.stringify(plan));
+
+    await expect(createMapPlanV3('Place a collectible token beside the village gate.')).resolves.toEqual(plan);
+  });
+
+  it('uses Document as the primary source when optional additional directions are empty', async () => {
+    const plan = makeValidMapPlanV3();
+    completeLlmNonStreaming.mockResolvedValue(JSON.stringify(plan));
+
+    await expect(createMapPlanV3('', source)).resolves.toEqual(plan);
+
+    const messages = completeLlmNonStreaming.mock.calls[0][0] as Array<{ content: string }>;
+    expect(messages[0].content).toMatch(/Document is the primary source/i);
+    expect(messages[1].content).toContain('"additionalDirections":null');
+    expect(messages[1].content).toContain(source.markdown);
+  });
+
+  it('rejects an empty Description when no Document is available', async () => {
+    await expect(createMapPlanV3('   ')).rejects.toMatchObject({ code: 'map_description_required' });
+    expect(completeLlmNonStreaming).not.toHaveBeenCalled();
+  });
+});
+
 describe('Create Map V3 planner', () => {
   beforeEach(() => completeLlmNonStreaming.mockReset());
 

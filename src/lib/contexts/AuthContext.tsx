@@ -7,6 +7,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import type { UserProfile } from '@/lib/types/user';
 import {
   areUserProfilesEqual,
+  shouldRetryProfileFetch,
   shouldFetchUserProfileForAuthEvent,
 } from '@/lib/auth/profile-stability';
 
@@ -98,7 +99,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.from('profiles').select('*').eq('id', userId).single();
 
     try {
-      let { data: profile, error } = await loadProfile();
+      let result = await loadProfile();
+      for (let attempt = 0; shouldRetryProfileFetch(result, attempt); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+        result = await loadProfile();
+      }
+      let { data: profile, error } = result;
 
       // PGRST303 = JWT iat is ahead of PostgREST's clock (common after WSL/Docker
       // sleep/resume drift). Refresh once so Auth re-issues a token with a current iat.

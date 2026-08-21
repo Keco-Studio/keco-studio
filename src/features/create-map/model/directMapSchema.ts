@@ -83,12 +83,12 @@ export type MapSceneV3ValidationResult =
   | { success: false; issues: MapPlanV3Issue[] };
 
 const UNSAFE_DESCRIPTION_PATTERNS = [
-  /https:\/\//i,
-  /http:\/\//i,
+  /\b(?:https?|ftp):\/\//i,
   /www\./i,
   /\bdata:/i,
-  /\b(?:api\s+key|authorization|bearer|password|token)\b\s*[:=]/i,
+  /\b(?:api[\s_-]?key|authorization|bearer|password|secret|access[\s_-]?token|refresh[\s_-]?token)\b\s*(?:is|equals|[:=])/i,
   /\b(?:create_image_pro|get_image|pixellab|mcp|api)\b/i,
+  /\b(?:click|press|select|open|close|type|enter|choose|display|show|hide|update)\b(?:\s+\w+){0,5}\s+\b(?:button|label|ui|user\s+interface|screen|panel|menu|control|dialog|header|title|status|text|copy)\b/i,
   /\b(?:current|live|active|selected|visible)\s+(?:keco\s+)?(?:button|label|ui|user\s+interface|screen|panel|menu|control|dialog|header|title|status|text|copy)\b/i,
   /\b(?:button|label|ui|user\s+interface|screen|panel|menu|control|dialog|header|title|status|text|copy)\b.{0,48}\b(?:current|live|active|selected|visible)\s+(?:keco\b)?/i,
 ];
@@ -97,7 +97,9 @@ function hasSupportedProfile(width: number, height: number): boolean {
   return DIRECT_MAP_PROFILES.some((profile) => profile.width === width && profile.height === height);
 }
 
-function containsUnsafeDescriptionContent(description: string): boolean {
+export const DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE = 'Description contains disallowed content. Remove provider/API controls, credentials, URLs, or dynamic UI instructions.';
+
+export function containsUnsafeDescriptionContent(description: string): boolean {
   return UNSAFE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(description));
 }
 
@@ -124,7 +126,7 @@ export function validateMapPlanV3(input: unknown): MapPlanV3ValidationResult {
   }
 
   if (containsUnsafeDescriptionContent(plan.description)) {
-    addIssue('unsafe_description', ['description'], 'Description contains provider controls, credentials, URLs, or dynamic UI instructions');
+    addIssue('unsafe_description', ['description'], DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE);
   }
 
   const referenceIds = new Set<string>();

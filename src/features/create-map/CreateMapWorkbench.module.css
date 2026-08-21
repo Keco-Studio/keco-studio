@@ -514,6 +514,48 @@
   font-size: 10px;
 }
 
+.generationConfirmation {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #d9c79e;
+  border-radius: var(--create-map-control-radius);
+  color: #66512d;
+  background: #fff9ea;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.generationConfirmation strong {
+  display: block;
+  color: #4f3d1f;
+  font-size: 11px;
+}
+
+.generationConfirmation p {
+  margin: 4px 0 0;
+}
+
+.generationNoticeOption {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.generationNoticeOption input {
+  margin: 0;
+}
+
+.generationNoticeActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.generationNoticeActions button {
+  flex: 1;
+}
+
 .unknownSubmissionResolution {
   display: grid;
   gap: 9px;

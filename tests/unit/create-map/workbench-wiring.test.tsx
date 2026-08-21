@@ -21,22 +21,28 @@ jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
 }));
 
 describe('Create Map V3 direct workbench', () => {
-  it('renders description-first direct map planning without composition controls', () => {
+  it('renders the guided direct map workflow without manual draft controls', () => {
     const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
     expect(markup).toContain('data-testid="create-map-workbench"');
     expect(markup).toContain('data-mode="direct"');
     expect(markup).toContain('data-schema-version="3"');
     expect(markup).toContain('Description');
-    expect(markup).toContain('No project');
+    expect(markup).toContain('Select project');
     expect(markup).toContain('No document');
-    expect(markup).toContain('Create map plan');
+    expect(markup).toContain('Generate map plan');
+    expect(markup).toContain('1 Source');
+    expect(markup).toContain('2 Review plan');
+    expect(markup).toContain('3 Generate');
     expect(markup).toContain('Local plan');
     expect(markup).toContain('PixelLab description');
     expect(markup).toContain('Output profile');
     expect(markup).toContain('References');
     expect(markup).toContain('Complete map PNG');
     expect(markup).toContain('Map preview');
+    expect(markup).not.toContain('Save draft');
+    expect(markup).not.toContain('Prepare map generation');
+    expect(markup).not.toContain('Confirm and generate map');
 
     expect(markup).not.toContain('Inpaint');
     expect(markup).not.toContain('Rectangle obstacle');
@@ -56,6 +62,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(router).not.toContain('LegacyCreateMapV2Workbench');
     expect(router).not.toContain('useState');
     expect(direct).toContain('service.createPlanV3(');
+    expect(direct).toContain('await draft.create(projectId, created.sourceToken, created.plan, nextScene)');
     expect(direct).toContain('service.loadSavedMapV3(');
     expect(direct).toContain('generation.installRestore(prepared)');
     expect(direct).toContain('<DirectMapCanvas');
@@ -101,7 +108,6 @@ describe('Create Map V3 direct workbench', () => {
     const projectChange = workbench.slice(projectChangeStart, projectChangeEnd);
 
     expect(projectChange).toContain("setDocumentId('')");
-    expect(projectChange).toContain('setSourceToken(null)');
     expect(projectChange).toContain('draft.reset()');
     expect(projectChange).toContain('generation.reset()');
   });

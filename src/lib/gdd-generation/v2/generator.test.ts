@@ -10,6 +10,7 @@ import {
   repairGddSections,
   reviewGddDocument,
 } from './generator';
+import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import type { ChatMessage } from '@/lib/agent/types';
 import type { GddGenerationRequestV2 } from './contracts';
 
@@ -90,6 +91,20 @@ describe('GDD v2 staged generator', () => {
     expect(messages[0].content).toContain('6,000-9,000 readable Chinese characters');
     expect(messages[0].content).toContain('Do not return JSON');
     expect(messages[0].content).toContain('calculate every worked example before writing it');
+  });
+
+  it('escapes literal braces in generated prose before MDX validation', async () => {
+    const complete = jest.fn(async () => [
+      '# Shop Game',
+      '',
+      '## Rules',
+      '订单数据示例：{"name":"Burger","count":3}',
+    ].join('\n'));
+
+    const result = await generateGddMarkdownV2(input, complete);
+
+    expect(result.markdown).toContain('\\{"name":"Burger","count":3\\}');
+    expect(() => validateSanctionedMdx(result.markdown)).not.toThrow();
   });
 
   it('builds a professional adaptive blueprint prompt with the creative brief', () => {

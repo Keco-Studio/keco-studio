@@ -20,7 +20,7 @@ const ReferenceId = z.string().uuid();
 const StyleCopy = z.enum(['color_palette', 'outline', 'detail', 'shading']);
 
 const Body = z.object({
-  description: z.string().trim().min(1).max(4_000),
+  description: z.string().trim().max(4_000).default(''),
   projectId: z.string().uuid().optional(),
   documentId: z.string().uuid().optional(),
   schemaVersion: z.literal(3).default(3),
@@ -30,6 +30,13 @@ const Body = z.object({
   referenceUsage: z.record(ReferenceId, z.string().trim().min(1).max(240)).default({}),
   styleCopy: z.array(StyleCopy).max(4).default([]),
 }).strict().superRefine((value, context) => {
+  if (!value.description && !value.documentId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Description or documentId is required',
+      path: ['description'],
+    });
+  }
   if (value.documentId && !value.projectId) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'projectId is required with documentId', path: ['projectId'] });
   }
@@ -150,7 +157,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       return NextResponse.json({ error: 'Could not create a valid map plan', code: error.code }, { status: 502 });
     }
     if (error instanceof CreateMapPlannerInputError) {
-      return NextResponse.json({ error: 'Map description is required', code: error.code }, { status: 400 });
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
     if (error instanceof CreateMapDocumentSourceError && error.code === 'document_empty') {
       return NextResponse.json({ error: 'Document is empty', code: error.code }, { status: 400 });

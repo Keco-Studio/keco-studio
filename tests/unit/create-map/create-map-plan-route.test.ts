@@ -62,7 +62,7 @@ describe('POST /api/create-map/plan', () => {
     referenceRows.mockResolvedValue({ data: [], error: null });
   });
 
-  it('requires authentication and a non-empty description', async () => {
+  it('requires authentication and either a Description or Document', async () => {
     authenticated = false;
     expect((await post({ description })).status).toBe(401);
     authenticated = true;
@@ -119,6 +119,13 @@ describe('POST /api/create-map/plan', () => {
       revision: 7,
     });
     expect(JSON.stringify(payload)).not.toContain(source.markdown);
+  });
+
+  it('accepts an empty optional Description when a Document is selected', async () => {
+    const response = await post({ schemaVersion: 3, description: '   ', projectId, documentId });
+
+    expect(response.status).toBe(200);
+    expect(createMapPlanV3).toHaveBeenCalledWith('', source, { references: [], styleReference: null });
   });
 
   it('rejects viewers and cross-project Documents before planning', async () => {

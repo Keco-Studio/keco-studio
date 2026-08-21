@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
+import { escapeLiteralMdxBraces } from '@/lib/document-parser';
 import type { DeterministicQualityIssue } from './quality';
 import {
   blueprintOutlineSchema,
@@ -118,8 +119,10 @@ function normalizeGeneratedMarkdown(raw: string, projectName: string): string {
   if (!markdown) {
     throw new GddV2GenerationValidationError('Model returned an empty GDD.');
   }
-  if (/^#(?!#)[ \t]+\S/m.test(markdown)) return markdown;
-  return `# ${projectName} Game Design Document\n\n${markdown}`;
+  const normalized = /^#(?!#)[ \t]+\S/m.test(markdown)
+    ? markdown
+    : `# ${projectName} Game Design Document\n\n${markdown}`;
+  return escapeLiteralMdxBraces(normalized);
 }
 
 export async function generateGddMarkdownV2(
