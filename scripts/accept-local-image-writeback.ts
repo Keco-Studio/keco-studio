@@ -339,6 +339,7 @@ async function runAcceptance(options: {
       } catch (error) {
         errors.push({ phase: 'cleanup', ...safeError(error) });
         evidence.cleanup = { tableDeleted: false };
+        evidence.passed = false;
       }
     }
   }

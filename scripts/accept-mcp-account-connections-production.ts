@@ -2,6 +2,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
+import { runAcceptance as runImageWritebackAcceptance } from './accept-local-image-writeback';
 
 const PRODUCTION_APP_URL = 'https://keco-studio-main.vercel.app';
 const PRODUCTION_SUPABASE_URL = 'https://lulrcirmwwvvnupmwqcq.supabase.co';
@@ -398,6 +400,9 @@ async function main() {
   });
   const userIds: string[] = [];
   const clientIds: string[] = [];
+  const projectId = randomUUID();
+  const uploadedImagePaths: string[] = [];
+  let imageProjectDeleted = false;
   let browser: Browser | null = null;
 
   await mkdir('artifacts', { recursive: true });
@@ -412,6 +417,15 @@ async function main() {
       assert(!error && data.user, 'Production acceptance user creation failed');
       userIds.push(data.user.id);
     }
+
+    acceptanceStage = 'create-image-writeback-project';
+    const { error: projectError } = await admin.from('projects').insert({
+      id: projectId,
+      owner_id: userIds[0],
+      name: 'MCP image writeback acceptance ' + runTag,
+      description: 'Disposable production acceptance fixture',
+    });
+    assert(!projectError, 'Production image writeback project creation failed');
 
     acceptanceStage = 'register-clients';
     const codexClient = await registerClient(supabaseUrl, 'Codex production acceptance ' + runTag);
@@ -511,6 +525,58 @@ async function main() {
     const siblingUser = await anonClient(supabaseUrl, anonKey).auth.getUser(refreshedCodex.accessToken);
     assert(!siblingUser.error && siblingUser.data.user?.id === userIds[0], 'Sibling refreshed token is invalid');
     await assertMcpOperational(refreshedCodex.accessToken, 'Sibling MCP connection stopped working');
+
+    acceptanceStage = 'image-writeback-fixtures';
+    const imageFiles = [
+      'artifacts/mcp-image-writeback-red.png',
+      'artifacts/mcp-image-writeback-green.png',
+    ];
+    await Promise.all([
+      sharp({ create: { width: 2, height: 2, channels: 4, background: '#d92d20' } })
+        .png().toFile(imageFiles[0]),
+      sharp({ create: { width: 2, height: 2, channels: 4, background: '#16803c' } })
+        .png().toFile(imageFiles[1]),
+    ]);
+    acceptanceStage = 'image-writeback-acceptance';
+    const imageEvidence = await runImageWritebackAcceptance({
+      mcpUrl: MCP_URL,
+      accessToken: refreshedCodex.accessToken,
+      projectId,
+      files: imageFiles,
+    });
+    assert(imageEvidence.passed === true, 'Production image writeback acceptance failed');
+    for (const row of Array.isArray(imageEvidence.rows) ? imageEvidence.rows : []) {
+      const image = row && typeof row === 'object'
+        ? (row as Record<string, unknown>).image
+        : null;
+      const path = image && typeof image === 'object'
+        ? (image as Record<string, unknown>).path
+        : null;
+      if (typeof path === 'string') uploadedImagePaths.push(path);
+    }
+    acceptanceStage = 'image-writeback-cleanup';
+    const { error: storageCleanupError } = await admin.storage
+      .from('library-media-files')
+      .remove(uploadedImagePaths);
+    assert(!storageCleanupError, 'Production image object cleanup failed');
+    uploadedImagePaths.length = 0;
+    const { error: projectCleanupError } = await admin
+      .from('projects')
+      .delete()
+      .eq('id', projectId);
+    assert(!projectCleanupError, 'Production image project cleanup failed');
+    imageProjectDeleted = true;
+    imageEvidence.cleanup = {
+      ...(imageEvidence.cleanup && typeof imageEvidence.cleanup === 'object'
+        ? imageEvidence.cleanup as Record<string, unknown>
+        : {}),
+      storageObjectsDeleted: true,
+      projectDeleted: true,
+    };
+    await writeFile(
+      'artifacts/mcp-local-image-writeback-production.json',
+      JSON.stringify(imageEvidence, null, 2),
+    );
     const originalClaudeUser = await anonClient(supabaseUrl, anonKey).auth.getUser(claude.accessToken);
     assert(
       !originalClaudeUser.error && originalClaudeUser.data.user?.id === userIds[0],
@@ -558,6 +624,13 @@ async function main() {
     await writeFile('artifacts/mcp-account-connections-production.json', JSON.stringify(evidence, null, 2));
   } finally {
     await browser?.close();
+    if (uploadedImagePaths.length > 0) {
+      await admin.storage.from('library-media-files').remove(uploadedImagePaths)
+        .catch(() => undefined);
+    }
+    if (!imageProjectDeleted) {
+      await admin.from('projects').delete().eq('id', projectId);
+    }
     for (const clientId of clientIds) {
       await admin.auth.admin.oauth.deleteClient(clientId).catch(() => undefined);
     }
