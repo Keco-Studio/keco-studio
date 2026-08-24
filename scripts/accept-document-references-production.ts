@@ -1,9 +1,9 @@
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { chromium, type Locator, type Page } from '@playwright/test';
-import { createClient } from '@supabase/supabase-js';
-import { documentContentCodec } from '../src/lib/documents/documentContentCodec';
-import { documentStateGateway } from '../src/lib/documents/documentStateGateway';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const PRODUCTION_APP_URL = 'https://keco-studio-main.vercel.app';
 const PRODUCTION_SUPABASE_URL = 'https://lulrcirmwwvvnupmwqcq.supabase.co';
@@ -12,6 +12,9 @@ const EVIDENCE_PATH = 'artifacts/document-references-production.json';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type JsonRecord = Record<string, unknown>;
+type CodecProbeInput =
+  | { mode: 'normalize'; markdown: string }
+  | { mode: 'state'; snapshot: string | null; updates: string[] };
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -37,6 +40,68 @@ function safeError(error: unknown, stage: string): JsonRecord {
       .replace(/https?:\/\/[^\s)]+/gi, '<redacted-url>')
       .replace(/(?:file:\/\/|[A-Za-z]:[\\/]|\/home\/|\/tmp\/)[^\s)]+/gi, '<redacted-path>'),
   };
+}
+
+function runDocumentCodecProbe<T>(input: CodecProbeInput): T {
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      path.join(process.cwd(), 'tests/helpers/documentCodecProbe.ts'),
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, DOCUMENT_CODEC_COMMONJS: '1' },
+      input: JSON.stringify(input),
+    },
+  );
+  if (probe.status !== 0) {
+    throw new Error(probe.stderr || 'Document codec probe failed');
+  }
+  return JSON.parse(probe.stdout) as T;
+}
+
+function createEmptyYjsState(): string {
+  const normalized = runDocumentCodecProbe<{ yjsStateBase64?: unknown }>({
+    mode: 'normalize',
+    markdown: '',
+  });
+  assert(
+    typeof normalized.yjsStateBase64 === 'string',
+    'Document codec probe did not return an empty Yjs state',
+  );
+  return normalized.yjsStateBase64;
+}
+
+async function readDurableDocumentMarkdown(
+  admin: SupabaseClient,
+  documentId: string,
+): Promise<string> {
+  const document = await admin
+    .from('documents')
+    .select('yjs_state, collab_epoch')
+    .eq('id', documentId)
+    .single();
+  assert(!document.error && document.data, 'Durable document state was not found');
+
+  const updates = await admin
+    .from('document_yjs_updates')
+    .select('update_data')
+    .eq('document_id', documentId)
+    .eq('epoch', document.data.collab_epoch)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+  assert(!updates.error, 'Durable document updates could not be read');
+
+  const state = runDocumentCodecProbe<{ markdown?: unknown }>({
+    mode: 'state',
+    snapshot: document.data.yjs_state,
+    updates: (updates.data ?? []).map((update) => update.update_data),
+  });
+  assert(typeof state.markdown === 'string', 'Document codec probe did not return Markdown');
+  return state.markdown;
 }
 
 async function login(page: Page, email: string): Promise<void> {
@@ -166,7 +231,7 @@ async function main(): Promise<void> {
     assert(!project.error, 'Production document-reference project creation failed');
 
     stage = 'create-documents';
-    const emptyYjsState = await documentContentCodec.markdownToYjsState('');
+    const emptyYjsState = createEmptyYjsState();
     const documents = await admin.from('documents').insert([
       {
         project_id: projectId,
@@ -189,8 +254,8 @@ async function main(): Promise<void> {
     const targetDocumentId = assertUuid(targetDocument?.id, 'Target document ID');
     evidence.sourceDocumentId = sourceDocumentId;
     evidence.targetDocumentId = targetDocumentId;
-    assert(sourceDocument?.content?.includes(sourceSecond), 'Legacy document content was not stored');
-    assert(sourceDocument?.yjs_state === emptyYjsState, 'Legacy empty collaboration state changed');
+    assert(sourceDocument?.content?.includes(sourceSecond), 'Fallback document content was not stored');
+    assert(sourceDocument?.yjs_state === emptyYjsState, 'Empty collaboration state changed');
 
     stage = 'create-tables';
     const libraries = await admin.from('libraries').insert([
@@ -287,7 +352,7 @@ async function main(): Promise<void> {
     await waitForDocument(page);
     await tableReference.waitFor({ state: 'visible' });
     assert((await tableReference.textContent()) === rowValue, 'Table reference did not survive reload');
-    const tableMarkdown = (await documentStateGateway.read(admin, targetDocumentId)).markdown;
+    const tableMarkdown = await readDurableDocumentMarkdown(admin, targetDocumentId);
     assert(
       tableMarkdown.includes('kind="table-row"')
         && tableMarkdown.includes(`libraryId="${tableId}"`)
@@ -347,7 +412,7 @@ async function main(): Promise<void> {
       (await documentReference.textContent()) === selectedText,
       'Document reference did not survive reload',
     );
-    const finalMarkdown = (await documentStateGateway.read(admin, targetDocumentId)).markdown;
+    const finalMarkdown = await readDurableDocumentMarkdown(admin, targetDocumentId);
     assert(
       finalMarkdown.includes('kind="document-range"')
         && finalMarkdown.includes(`documentId="${sourceDocumentId}"`)
