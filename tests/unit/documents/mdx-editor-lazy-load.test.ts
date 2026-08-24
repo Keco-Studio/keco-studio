@@ -28,7 +28,11 @@ describe('MDXEditor route-level lazy loading', () => {
       'src/components/documents/documentBlockIdentityPlugin.ts',
       'src/components/documents/documentClipboardImagePastePlugin.tsx',
       'src/components/documents/documentCollaborationPlugin.ts',
+      'src/components/documents/documentTableCellSelectionPlugin.tsx',
+      'src/components/documents/documentTableCopyPlugin.tsx',
+      'src/components/documents/documentTablePastePlugin.tsx',
       'src/lib/documents/documentBlockIdentity.ts',
+      'src/lib/documents/documentTablePaste.ts',
       'src/lib/documents/headlessDocumentNodes.ts',
       'src/lib/documents/markdownImageExportPlugin.ts',
     ]);

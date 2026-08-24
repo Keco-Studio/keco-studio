@@ -4,7 +4,18 @@ import { $getRoot, type LexicalEditor } from 'lexical';
 
 import type { DocumentTableMatrix } from '@/lib/documents/documentTableClipboard';
 
-function textToMdastCellChildren(value: string) {
+type MdastTextChild = { type: 'text'; value: string };
+
+/** MDXEditor implements this on TableNode but omits it from public typings. */
+type TableNodeWithCellUpdate = TableNode & {
+  updateCellContents(
+    colIndex: number,
+    rowIndex: number,
+    children: MdastTextChild[],
+  ): void;
+};
+
+function textToMdastCellChildren(value: string): MdastTextChild[] {
   return value ? [{ type: 'text' as const, value }] : [];
 }
 
@@ -43,7 +54,7 @@ export function applyMatrixToTableNode(
 
   matrix.forEach((row, rowOffset) => {
     row.forEach((value, colOffset) => {
-      tableNode.updateCellContents(
+      (tableNode as TableNodeWithCellUpdate).updateCellContents(
         startCol + colOffset,
         startRow + rowOffset,
         textToMdastCellChildren(String(value ?? '')),

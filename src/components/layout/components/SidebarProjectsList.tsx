@@ -75,18 +75,14 @@ export function SidebarProjectsList({
     async (projectId: string) => {
       if (isSaving) return;
       const trimmed = editingValue.trim();
-      if (!trimmed) {
-        exitRename();
-        return;
-      }
-
-      exitRename();
+      if (!trimmed) return;
 
       setIsSaving(true);
       try {
         await Promise.resolve(onSaveRename(`project-${projectId}`, trimmed));
+        exitRename();
       } catch {
-        // Keep edit mode on failure; toast feedback comes from upper-level handler.
+        focusRenameInputAtEnd(renameInputRef.current);
       } finally {
         setIsSaving(false);
       }

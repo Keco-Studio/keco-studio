@@ -35,6 +35,9 @@ describe('sidebar project selector', () => {
     expect(source).toContain('focusRenameInputAtEnd');
     expect(source).toContain('snapSidebarHorizontalScroll');
     expect(source).toContain('renameInputRef.current?.blur()');
+    expect(source).toMatch(/if \(!trimmed\) return;/);
+    expect(source).toContain('exitRename();');
+    expect(source).toMatch(/catch \{[\s\S]*focusRenameInputAtEnd\(renameInputRef\.current\)/);
   });
 
   it('does not let an administrator single-click close the menu before rename double-click', () => {

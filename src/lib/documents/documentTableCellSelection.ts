@@ -95,7 +95,7 @@ export function applyTableCellRangeHighlight(
   const rows = Array.from(table.querySelectorAll('tbody tr'));
   for (let rowIndex = range.minRow; rowIndex <= range.maxRow; rowIndex += 1) {
     const row = rows[rowIndex];
-    if (!row) continue;
+    if (!(row instanceof HTMLTableRowElement)) continue;
     const cells = getRowContentCells(row);
     for (let colIndex = range.minCol; colIndex <= range.maxCol; colIndex += 1) {
       const cell = cells[colIndex];

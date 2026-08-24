@@ -102,18 +102,14 @@ function InlineEditRow({
   const handleSave = useCallback(async () => {
     if (isSaving) return;
     const trimmed = value.trim();
-    if (!trimmed) {
-      exitEditMode();
-      return;
-    }
-
-    exitEditMode();
+    if (!trimmed) return;
 
     setIsSaving(true);
     try {
       await Promise.resolve(onSave(nodeKey, trimmed));
+      exitEditMode();
     } catch {
-      // Keep failure feedback in upper-level toast/state logic.
+      focusRenameInputAtEnd(inputRef.current);
     } finally {
       setIsSaving(false);
     }
