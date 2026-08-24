@@ -6,7 +6,7 @@ import styles from './GameDesignSystemsPage.module.css';
 
 type Props = {
   catalog: readonly (typeof GAME_ART_STYLE_CATALOG)[number][];
-  selectedKey: string;
+  selectedKey: string | null;
   onSelect: (key: string) => void;
 };
 
@@ -44,7 +44,7 @@ export function GameArtStyleCatalog({ catalog, selectedKey, onSelect }: Props) {
           onKeyDown={(event) => handleKey(event, index)}
         >
           <span className={styles.artStyleCatalogSwatch} style={{ backgroundImage: `url(${preset.previewAssetSet.map.publicPath})` }} aria-hidden="true" />
-          <span><strong>{preset.title}</strong><small>Official preset / Revision {preset.presetVersion}</small></span>
+          <span><strong>{preset.title}</strong><small>{index === 0 ? 'Recommended / ' : ''}Official preset / Revision {preset.presetVersion}</small></span>
         </button>;
       })}
     </div>

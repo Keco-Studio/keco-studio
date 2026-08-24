@@ -42,9 +42,13 @@ async function enterRequiredFoundation(user: ReturnType<typeof userEvent.setup>,
   await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
 }
 
-async function continueToReview(user: ReturnType<typeof userEvent.setup>, { fillArtStyle = true } = {}) {
-  const artDirection = screen.getByLabelText('Custom art direction') as HTMLTextAreaElement;
-  if (fillArtStyle && !artDirection.value) await user.type(artDirection, 'Readable visual hierarchy.');
+async function selectPixelArt(user: ReturnType<typeof userEvent.setup>) {
+  const pixelArt = screen.getByRole('radio', { name: /Pixel Art/ });
+  if (pixelArt.getAttribute('aria-checked') !== 'true') await user.click(pixelArt);
+}
+
+async function continueToReview(user: ReturnType<typeof userEvent.setup>) {
+  await selectPixelArt(user);
   await user.click(screen.getByRole('button', { name: 'Continue to sources' }));
   await user.click(screen.getByRole('button', { name: 'Review input' }));
 }
@@ -65,7 +69,7 @@ describe('GameDesignSystemCreatePage', () => {
     retry.mockResolvedValue({ id: 'job-1', status: 'queued', phase: 'collecting', attempt_count: 1, max_attempts: 3, available_at: new Date().toISOString() });
   });
 
-  it('uses four numbered stages and presents the offered style catalog', async () => {
+  it('starts without an Art Style and requires an explicit catalog selection', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -76,9 +80,33 @@ describe('GameDesignSystemCreatePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
     const pixelArt = screen.getByRole('radio', { name: /Pixel Art/ });
+    const catalog = screen.getAllByRole('radio');
+    expect(catalog).toHaveLength(5);
+    expect(catalog.every((option) => option.getAttribute('aria-checked') === 'false')).toBe(true);
+    expect(pixelArt.tabIndex).toBe(0);
+    expect(screen.getByLabelText('No Art Style selected')).toBeTruthy();
+    expect(screen.getByText('Select an Art Style to preview its visual direction.')).toBeTruthy();
+    expect(screen.getByText(/Recommended.*Official preset.*Revision 2/)).toBeTruthy();
+
+    await user.type(screen.getByLabelText('Custom art direction'), 'Bright route markers.');
+    await user.type(screen.getByLabelText('Visual avoid guidance'), 'Low contrast.');
+    await user.click(screen.getByRole('button', { name: 'Continue to sources' }));
+    const fieldError = screen.getByRole('alert');
+    expect(fieldError.textContent).toBe('Select an Art Style before continuing.');
+    await waitFor(() => expect(document.activeElement).toBe(fieldError));
+    expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
+
+    pixelArt.focus();
+    await user.keyboard('{ArrowDown}');
+    const flatGraphic = screen.getByRole('radio', { name: /Flat Graphic 2D/ });
+    expect(document.activeElement).toBe(flatGraphic);
+    expect(flatGraphic.getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByLabelText('Flat Graphic 2D preview')).toBeTruthy();
+
+    await user.click(pixelArt);
     expect(pixelArt.getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByText('Official preset / Revision 2')).toBeTruthy();
-    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.getByLabelText('Pixel Art preview')).toBeTruthy();
   });
 
   it('connects tabs to panels and supports roving keyboard navigation', async () => {
@@ -115,6 +143,7 @@ describe('GameDesignSystemCreatePage', () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
+    await selectPixelArt(user);
 
     const mapAsset = PIXEL_ART_V2_PRESET.previewAssetSet.map;
     const characterAsset = PIXEL_ART_V2_PRESET.previewAssetSet.character;
@@ -147,6 +176,7 @@ describe('GameDesignSystemCreatePage', () => {
     const user = userEvent.setup();
     renderPage();
     await enterRequiredFoundation(user);
+    await selectPixelArt(user);
     await user.click(screen.getByRole('button', { name: 'Add visual reference' }));
     await user.type(screen.getByLabelText('Visual reference game 1'), 'Eastward');
     await continueToReview(user);
@@ -166,25 +196,44 @@ describe('GameDesignSystemCreatePage', () => {
     expect(start).not.toHaveBeenCalled();
   });
 
-  it('returns an empty Art Style to step 2 and explains how to complete it', async () => {
+  it('returns direct Review submission to Art Style when no preset was selected', async () => {
     const user = userEvent.setup();
     renderPage();
-    await enterRequiredFoundation(user);
-    await continueToReview(user, { fillArtStyle: false });
+
+    await user.click(screen.getByRole('tab', { name: 'Review' }));
+    expect(within(screen.getByLabelText('Art Style summary')).getByText('Not selected')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: 'Generate system' }));
 
     expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
     const fieldError = screen.getByRole('alert');
-    expect(fieldError.textContent).toBe('Add Art Style guidance before generating. Enter a custom art direction, add a complete visual reference, or describe what to avoid.');
+    expect(fieldError.textContent).toBe('Select an Art Style before generating.');
     await waitFor(() => expect(document.activeElement).toBe(fieldError));
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it('submits an explicitly selected preset with empty customization', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await enterRequiredFoundation(user);
+    await continueToReview(user);
+
+    await user.click(screen.getByRole('button', { name: 'Generate system' }));
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith(expect.objectContaining({
+      artStyle: {
+        presetId: 'pixel-art',
+        presetVersion: 2,
+        customization: { direction: '', referenceGames: [], avoid: '' },
+      },
+    }), expect.any(String)));
   });
 
   it('summarizes Art Style and submits only preset identity plus normalized customization', async () => {
     const user = userEvent.setup();
     renderPage();
     await enterRequiredFoundation(user);
+    await selectPixelArt(user);
     await user.type(screen.getByLabelText('Custom art direction'), '  Brighter route markers.  ');
     await user.click(screen.getByRole('button', { name: 'Add visual reference' }));
     await user.type(screen.getByLabelText('Visual reference game 1'), '  Eastward  ');
@@ -232,6 +281,7 @@ describe('GameDesignSystemCreatePage', () => {
     const user = userEvent.setup();
     renderPage();
     await enterRequiredFoundation(user);
+    await selectPixelArt(user);
     await user.type(screen.getByLabelText('Custom art direction'), 'Warm daylight');
     await user.click(screen.getByRole('button', { name: 'Add visual reference' }));
     await user.type(screen.getByLabelText('Visual reference game 1'), 'Eastward');
@@ -252,6 +302,7 @@ describe('GameDesignSystemCreatePage', () => {
     const user = userEvent.setup();
     renderPage();
     await enterRequiredFoundation(user);
+    await selectPixelArt(user);
     await user.type(screen.getByLabelText('Custom art direction'), 'Readable visual hierarchy.');
     await user.click(screen.getByRole('button', { name: 'Continue to sources' }));
     await screen.findByRole('option', { name: 'Project A' });
@@ -286,6 +337,7 @@ describe('GameDesignSystemCreatePage', () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
+    await selectPixelArt(user);
     await user.click(screen.getByRole('button', { name: 'Continue to sources' }));
 
     expect(await screen.findByRole('option', { name: 'Official Rules (Official)' })).not.toBeNull();
