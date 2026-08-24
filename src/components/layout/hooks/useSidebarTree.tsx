@@ -10,6 +10,7 @@ import { truncateText } from '@/lib/utils/truncateText';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
+import { beginSidebarInlineRename } from '../sidebarScrollReset';
 import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
@@ -125,7 +126,9 @@ export function useSidebarTree(
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (userRole === 'admin') setEditingKey(libKey);
+                  if (userRole === 'admin') {
+                    beginSidebarInlineRename(() => setEditingKey(libKey));
+                  }
                 }}
               >
                 {truncateText(lib.name, computeMaxChars(15))}
@@ -169,7 +172,9 @@ export function useSidebarTree(
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (canRename) setEditingKey(docKey);
+                  if (canRename) {
+                    beginSidebarInlineRename(() => setEditingKey(docKey));
+                  }
                 }}
               >
                 {truncateText(doc.name, computeMaxChars(15))}
@@ -215,7 +220,9 @@ export function useSidebarTree(
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (userRole === 'admin') setEditingKey(folderKey);
+                  if (userRole === 'admin') {
+                    beginSidebarInlineRename(() => setEditingKey(folderKey));
+                  }
                 }}
               >
                 {truncateText(folder.name, computeMaxChars(20))}

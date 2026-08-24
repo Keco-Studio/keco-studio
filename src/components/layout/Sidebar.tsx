@@ -43,6 +43,7 @@ import { notifyDocumentDerivedLibraryCreated } from "@/lib/documents/documentDer
 import { runDocumentDerivedImport } from "@/lib/documents/runDocumentDerivedImport";
 import { showErrorToast, showSuccessToast } from "@/lib/utils/toast";
 import { resolveSidebarDrop } from "./sidebarTreeDnD";
+import { beginSidebarInlineRename } from "./sidebarScrollReset";
 import {
   createSidebarOptimisticMove,
   runOptimisticSidebarMutation,
@@ -1136,7 +1137,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openMoveLibrary,
     openMoveDocument,
     openNewDocumentInFolder,
-    startInlineRename: (key: string) => setEditingKey(key),
+    startInlineRename: (key: string) => beginSidebarInlineRename(() => setEditingKey(key)),
     startDocumentDerivedImport: (source, exportType) => {
       void (async () => {
         try {

@@ -784,6 +784,8 @@
 .projectSelectorRenameInput {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
+  width: 100%;
   height: 26px;
   padding: 0 5px;
   border: 1px solid #8ecfff;
@@ -791,7 +793,12 @@
   outline: none;
   background: #ffffff;
   color: #22262b;
+  caret-color: #22262b;
   font: inherit;
+  overflow-x: auto;
+  box-sizing: border-box;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .projectSelectorCreate {
@@ -883,6 +890,14 @@
 
 .treeWrapper {
   margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.tree :global(.ant-tree-list-holder),
+.tree :global(.ant-tree-list-holder-inner) {
+  overflow-x: hidden !important;
+  max-width: 100%;
 }
 
 .tree {
@@ -1015,6 +1030,15 @@
 .tree :global(.ant-tree-node-content-wrapper) .ant-tree-title {
   user-select: none;
   -webkit-user-select: none;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.tree :global(.ant-tree-node-content-wrapper) .ant-tree-title:has(.renameInput) {
+  /* Avoid clipping the blinking caret at the input's trailing edge */
+  overflow: visible;
 }
 
 .tree :global(.ant-tree-node-content-wrapper) .itemText {
@@ -1252,27 +1276,39 @@
   /* Reserve space for delete button to avoid text overlap */
 }
 
-/* Inline rename input: match row height and itemText appearance, minimal border */
+/* Inline rename input: fixed to row width; long names scroll inside the input only */
 .renameInput {
   flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   height: 1.5rem;
   line-height: 1.5rem;
   font-size: 16px;
   font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.88);
-  padding: 0 24px 0 0;
+  color: #070707;
+  caret-color: #070707;
+  padding: 0 8px 0 0;
   margin: 0;
   border: none;
   border-radius: 0;
   outline: none;
   background: transparent;
   box-sizing: border-box;
+  overflow-x: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.tree :global(.ant-tree-node-content-wrapper) .renameInput {
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 .renameInput:focus {
   outline: none;
+  caret-color: #070707;
 }
 
 .renameInput::placeholder {

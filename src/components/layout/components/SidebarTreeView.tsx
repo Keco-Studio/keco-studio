@@ -15,6 +15,7 @@ import {
   canDragSidebarNode,
   resolveSidebarDrop,
 } from '../sidebarTreeDnD';
+import { snapSidebarHorizontalScroll, focusRenameInputAtEnd } from '../sidebarScrollReset';
 import styles from '../Sidebar.module.css';
 
 type SidebarTreeNodeMeta = {
@@ -66,6 +67,8 @@ function InlineEditRow({
   setError,
   currentProjectId,
   isLibraryUnderFolder,
+  skipBlurSaveRef,
+  scrollAnchorRef,
 }: {
   nodeKey: string;
   initialValue: string;
@@ -78,32 +81,43 @@ function InlineEditRow({
   setError: (msg: string | null) => void;
   currentProjectId: string | null;
   isLibraryUnderFolder?: boolean;
+  skipBlurSaveRef: React.MutableRefObject<boolean>;
+  scrollAnchorRef: React.RefObject<HTMLElement | null>;
 }) {
   const [value, setValue] = useState(initialValue);
   const [isSaving, setIsSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-    // Do not call select() here; it can trigger the browser text-selection toolbar.
+    focusRenameInputAtEnd(inputRef.current);
   }, []);
+
+  const exitEditMode = useCallback(() => {
+    skipBlurSaveRef.current = true;
+    onCancel();
+    // Leave rename: show the name from the first character again; reset any tree nudge.
+    snapSidebarHorizontalScroll(scrollAnchorRef.current ?? inputRef.current);
+  }, [onCancel, scrollAnchorRef, skipBlurSaveRef]);
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      exitEditMode();
+      return;
+    }
+
+    exitEditMode();
 
     setIsSaving(true);
     try {
       await Promise.resolve(onSave(nodeKey, trimmed));
-      onCancel();
     } catch {
-      // Keep inline edit mode on save failure (e.g. duplicate name).
-      // Error feedback is handled by upper-level toast/state logic.
+      // Keep failure feedback in upper-level toast/state logic.
     } finally {
       setIsSaving(false);
     }
-  }, [value, nodeKey, onSave, onCancel, isSaving]);
+  }, [value, nodeKey, onSave, isSaving, exitEditMode]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -114,10 +128,10 @@ function InlineEditRow({
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        onCancel();
+        exitEditMode();
       }
     },
-    [handleSave, onCancel]
+    [handleSave, exitEditMode]
   );
 
   const isFolder = nodeType === 'folder';
@@ -147,6 +161,10 @@ function InlineEditRow({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onBlur={() => {
+            if (skipBlurSaveRef.current) {
+              skipBlurSaveRef.current = false;
+              return;
+            }
             void handleSave();
           }}
           onKeyDown={handleKeyDown}
@@ -207,6 +225,30 @@ export function SidebarTreeView({
 }: SidebarTreeViewProps) {
   const canEditTree = userRole === 'admin' || userRole === 'editor';
   const activeDragKeyRef = useRef<string | null>(null);
+  const skipBlurSaveRef = useRef(false);
+  const treeWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!editingKey) return;
+
+    const commitFromOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest(`.${styles.renameInput}`)) return;
+
+      const input = treeWrapperRef.current?.querySelector('input[aria-label="Rename"]');
+      if (input instanceof HTMLInputElement) {
+        input.blur();
+        return;
+      }
+
+      setEditingKey(null);
+      snapSidebarHorizontalScroll(treeWrapperRef.current);
+    };
+
+    document.addEventListener('pointerdown', commitFromOutside, true);
+    return () => document.removeEventListener('pointerdown', commitFromOutside, true);
+  }, [editingKey, setEditingKey]);
 
   const handleNodeDragStart = useCallback(
     (dragKey: string) => {
@@ -389,16 +431,18 @@ export function SidebarTreeView({
             setError={setError}
             currentProjectId={currentProjectId}
             isLibraryUnderFolder={isLibraryUnderFolder}
+            skipBlurSaveRef={skipBlurSaveRef}
+            scrollAnchorRef={treeWrapperRef}
           />
         );
       }
       return defaultTitle as React.ReactNode;
     },
-    [editingKey, setEditingKey, onSaveRename, setSelectedFolderId, onFolderAddClick, setError, userRole, currentProjectId]
+    [editingKey, setEditingKey, onSaveRename, setSelectedFolderId, onFolderAddClick, setError, userRole, currentProjectId, skipBlurSaveRef]
   );
 
   return (
-    <div className={styles.treeWrapper}>
+    <div className={styles.treeWrapper} ref={treeWrapperRef}>
       <Tree
         className={styles.tree}
         showIcon={false}
