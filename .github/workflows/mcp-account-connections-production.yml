@@ -39,17 +39,24 @@ jobs:
       - name: Run authenticated production acceptance
         run: npx tsx scripts/accept-mcp-account-connections-production.ts
 
+      - name: Run production document-reference acceptance
+        if: always()
+        run: npx tsx scripts/accept-document-references-production.ts
+
       - name: Scan production acceptance evidence
-        run: npm run scan:mcp-evidence -- artifacts/mcp-account-connections-production.json artifacts/mcp-local-image-writeback-production.json
+        id: scan-evidence
+        if: always()
+        run: npm run scan:mcp-evidence -- artifacts/mcp-account-connections-production.json artifacts/mcp-local-image-writeback-production.json artifacts/document-references-production.json
 
       - name: Upload sanitized production evidence
-        if: always()
+        if: ${{ always() && steps.scan-evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: mcp-account-connections-production-${{ github.run_id }}
           path: |
             artifacts/mcp-account-connections-production.json
             artifacts/mcp-local-image-writeback-production.json
+            artifacts/document-references-production.json
             artifacts/mcp-account-desktop.png
             artifacts/mcp-account-mobile.png
           if-no-files-found: warn

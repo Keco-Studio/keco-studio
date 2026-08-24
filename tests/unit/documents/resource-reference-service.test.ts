@@ -592,6 +592,56 @@ describe('resolveResourceReferences', () => {
     );
   });
 
+  it('revalidates a selected legacy-content range when collaborative state has no blocks', async () => {
+    const content = '# Arena\n\nCentral combat starts here.\n\nUpper route continues here.\n';
+    const { client, calls } = makeClient({
+      documents: [{
+        id: DOCUMENT_ID,
+        project_id: PROJECT_ID,
+        name: 'Legacy arena notes',
+        content,
+      }],
+    });
+    ensureDocumentReferenceBlocks.mockResolvedValue({ projectId: PROJECT_ID, blocks: [] });
+    const previewBlocks = await listDocumentReferenceBlocks(client, PROJECT_ID, DOCUMENT_ID);
+    const startBlock = previewBlocks.find((block) => block.text === 'Central combat starts here.');
+    const endBlock = previewBlocks.find((block) => block.text === 'Upper route continues here.');
+    expect(startBlock).toBeDefined();
+    expect(endBlock).toBeDefined();
+    const target = createDocumentRangeTarget({
+      documentId: DOCUMENT_ID,
+      blocks: previewBlocks,
+      anchor: { blockId: startBlock!.blockId, offset: 8 },
+      focus: { blockId: endBlock!.blockId, offset: 21 },
+    });
+    expect(target).not.toBeNull();
+
+    readDocumentState.mockResolvedValue({
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      markdown: '',
+    });
+    createHeadlessDocumentEditor.mockResolvedValue({
+      setMarkdown: jest.fn(async () => undefined),
+      listReferenceBlocks: jest.fn(() => []),
+    });
+
+    const resolved = await resolveResourceReferences(client, PROJECT_ID, [target!]);
+
+    expect(resolved.get(resourceReferenceKey(target!))).toEqual({
+      key: resourceReferenceKey(target!),
+      status: 'available',
+      label: 'combat starts here. Upper route continues',
+      contextLabel: 'Legacy arena notes / Arena',
+      href: `/${PROJECT_ID}/doc/${DOCUMENT_ID}#block-${startBlock!.blockId}`,
+    });
+    expect(calls).toContainEqual([
+      'documents',
+      'select',
+      'id, project_id, name, content',
+    ]);
+  });
+
   it.each([
     ['paragraph first', ['paragraph', 'heading']],
     ['heading first', ['heading', 'paragraph']],
@@ -751,20 +801,29 @@ describe('resource reference picker loaders', () => {
     ]);
   });
 
-  it('rejects a stale selection of a filtered conversation library', async () => {
-    const { client } = makeClient({
-      libraries: [{
-        id: OTHER_LIBRARY_ID,
-        project_id: PROJECT_ID,
-        name: 'Conversation',
-        document_export_type: 'script',
-        source_document_id: DOCUMENT_ID,
-      }],
-    });
+  it.each([
+    ['script conversation', 'script'],
+    ['legacy derived conversation', null],
+  ] as const)(
+    'rejects a stale selection of a filtered %s library',
+    async (_label, documentExportType) => {
+      const { client, calls } = makeClient({
+        libraries: [{
+          id: OTHER_LIBRARY_ID,
+          project_id: PROJECT_ID,
+          name: 'Conversation',
+          document_export_type: documentExportType,
+          source_document_id: DOCUMENT_ID,
+        }],
+      });
 
-    await expect(listTableReferenceRows(client, PROJECT_ID, OTHER_LIBRARY_ID))
-      .rejects.toThrow('Library is not available for document references');
-  });
+      await expect(listTableReferenceRows(client, PROJECT_ID, OTHER_LIBRARY_ID))
+        .rejects.toThrow('Library is not available for document references');
+      expect(calls.some(([table]) => table === 'library_field_definitions')).toBe(false);
+      expect(calls.some(([table]) => table === 'library_assets')).toBe(false);
+      expect(calls.some(([table]) => table === 'library_asset_values')).toBe(false);
+    }
+  );
 
   it('returns table and document picker sources beyond the default page cap', async () => {
     const { client, calls } = makeClient({

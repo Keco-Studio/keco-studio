@@ -539,7 +539,7 @@ async function resolveDocumentReferences(
     (batch, from, to) =>
       client
         .from('documents')
-        .select('id, project_id, name')
+        .select('id, project_id, name, content')
         .in('id', batch)
         .order('id', { ascending: true })
         .range(from, to) as unknown as PromiseLike<PagedResult<DocumentRow>>
@@ -566,8 +566,12 @@ async function resolveDocumentReferences(
       );
       const editor = await createHeadlessDocumentEditor();
       await editor.setMarkdown(state.markdown);
+      const currentBlocks = editor.listReferenceBlocks();
       const blocks = new Map(
-        editor.listReferenceBlocks().map((block) => [block.blockId, block])
+        (currentBlocks.length > 0
+          ? currentBlocks
+          : legacyContentPreview(document.id, document.content)
+        ).map((block) => [block.blockId, block])
       );
       for (const target of targetsByDocument.get(documentId) ?? []) {
         const key = resourceReferenceKey(target);
