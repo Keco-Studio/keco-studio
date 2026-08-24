@@ -85,7 +85,7 @@ import {
   invalidateProjectData,
 } from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
-import { primeLibraryNavigationCache } from './libraryNavigationCache';
+import { primeLibraryNavigationCache, primeDocumentNavigationCache } from './libraryNavigationCache';
 import {
   DOCUMENT_CONTEXT_MENU_REQUEST_EVENT,
   type DocumentContextMenuRequestDetail,
@@ -689,11 +689,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const key: string = info.node.key;
     if (key.startsWith('folder-')) {
       const id = key.replace('folder-', '');
-      // Navigate to folder page
+      // Navigate first so breadcrumbs and the main pane update immediately.
       if (currentIds.projectId) {
-        await queryClient.invalidateQueries({ queryKey: ['project', currentIds.projectId] });
-        await queryClient.invalidateQueries({ queryKey: ['folder', id] });
-        await navigateWithFlush(`/${currentIds.projectId}/folder/${id}`);
+        void navigateWithFlush(`/${currentIds.projectId}/folder/${id}`);
+        void queryClient.invalidateQueries({ queryKey: ['project', currentIds.projectId] });
+        void queryClient.invalidateQueries({ queryKey: ['folder', id] });
       }
     } else if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
@@ -704,7 +704,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const id = key.replace('document-', '');
       setSelectedFolderId(null);
       if (currentIds.projectId) {
-        await navigateWithFlush(`/${currentIds.projectId}/doc/${id}`);
+        const targetDocument = documents.find((doc) => doc.id === id);
+        if (targetDocument) {
+          primeDocumentNavigationCache(queryClient, targetDocument);
+        }
+        void navigateWithFlush(`/${currentIds.projectId}/doc/${id}`);
       }
     } else if (key.startsWith('asset-')) {
       const assetId = key.replace('asset-', '');

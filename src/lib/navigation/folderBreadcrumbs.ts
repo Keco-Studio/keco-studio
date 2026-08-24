@@ -6,6 +6,15 @@ export type FolderBreadcrumbSource = {
 
 export type FolderBreadcrumb = Pick<FolderBreadcrumbSource, 'id' | 'name'>;
 
+/** True when a cached breadcrumb path already ends at the active folder. */
+export function folderBreadcrumbPathEndsAt(
+  path: FolderBreadcrumb[],
+  folderId: string | null | undefined
+): boolean {
+  if (!folderId || path.length === 0) return false;
+  return path[path.length - 1]?.id === folderId;
+}
+
 /** Build a root-to-leaf folder path without looping on corrupt legacy data. */
 export function buildFolderBreadcrumbPath(
   folders: FolderBreadcrumbSource[],

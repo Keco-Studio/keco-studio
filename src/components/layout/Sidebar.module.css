@@ -975,20 +975,13 @@
   /* Provide positioning context for absolutely positioned itemActions */
 }
 
-/* Add left padding to leaf nodes (library and create button) to align with folder icon */
-/* This compensates for the missing switcher on leaf nodes */
+/* Add left padding to leaf nodes (library and create button) to align with folder switcher */
 .tree :global(.ant-tree-treenode[data-node-key*="library-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key^="document-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="asset-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper {
-  padding-left: calc(0.75rem + 12px);
+  padding-left: calc(1.125rem + 0.625rem);
 }
-
-/* Library under folder: align book icon with parent folder text start */
-.tree :global(.ant-tree-node-content-wrapper:has([data-library-under-folder])) {
-  padding-left: 0.75rem;
-}
-
 
 /* Ensure add-asset nodes have minimum width to prevent text from appearing word by word */
 .tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) .ant-tree-node-content-wrapper {
