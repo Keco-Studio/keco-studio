@@ -398,8 +398,8 @@ async function main(): Promise<void> {
     await documentOption.click();
     const preview = dialog.getByLabel('Document text preview');
     await preview.waitFor({ state: 'visible' });
-    assert((await preview.textContent())?.includes(sourceFirst), 'Legacy document preview omitted content');
-    assert((await preview.textContent())?.includes(sourceSecond), 'Legacy document preview was incomplete');
+    await expect(preview).toContainText(sourceFirst, { timeout: 30_000 });
+    await expect(preview).toContainText(sourceSecond, { timeout: 30_000 });
     const selectedRange = await selectDocumentRange(
       preview,
       sourceFirst,
