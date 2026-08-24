@@ -16,7 +16,9 @@ jest.mock('@/lib/services/authorizationService', () => ({
 }));
 
 import {
+  CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE,
   CreateMapMcpError,
+  createMapMcpPublicMessage,
   createMapMcpService,
   type CreateMapMcpBackend,
 } from '@/lib/server/createMapMcpService';
@@ -156,6 +158,45 @@ describe('Create Map MCP service', () => {
       description: 'A compact mountain village',
     }), expect.objectContaining({ status: 'claimed' }));
     expect(order).toEqual(['claim', 'plan']);
+  });
+
+  it('returns actionable validation guidance and releases an unsafe draft claim', async () => {
+    const domain = backend();
+    domain.createDraft.mockRejectedValueOnce({ code: 'map_description_unsafe' });
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, {
+      backend: domain,
+    });
+
+    await expect(service.createDraft({
+      projectId: IDS.projectId,
+      description: 'Unsupported map instructions',
+      documentId: null,
+      referenceIds: [],
+      styleReferenceId: null,
+      referenceRoles: {},
+      referenceUsage: {},
+      styleCopy: [],
+      idempotencyKey: IDS.requestId,
+    })).rejects.toMatchObject({
+      code: 'FIELD_VALIDATION_FAILED',
+      message: CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE,
+    });
+    expect(domain.releaseDraft).toHaveBeenCalledWith({
+      idempotencyKey: IDS.requestId,
+      claimToken: IDS.requestId,
+    });
+    expect(domain.invokeProvider).not.toHaveBeenCalled();
+  });
+
+  it('only exposes the approved unsafe-description validation message', () => {
+    expect(createMapMcpPublicMessage(
+      'FIELD_VALIDATION_FAILED',
+      CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE,
+    )).toBe(CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE);
+    expect(createMapMcpPublicMessage(
+      'FIELD_VALIDATION_FAILED',
+      'Description matched secret-value-123',
+    )).toBe('The Create Map request is invalid.');
   });
 
   it('replays a completed draft claim without calling the planner backend', async () => {

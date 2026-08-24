@@ -13,6 +13,7 @@ const service = {
 };
 let authenticated = true;
 const supabase = {};
+const UNSAFE_DESCRIPTION_MESSAGE = 'The map description contains unsupported instructions. Remove provider or API controls, credentials, URLs, and dynamic Keco UI instructions, then create a new draft request.';
 const withAuth = jest.fn((handler: unknown, options: { unauthorizedResponse?: () => Response } = {}) =>
   async (request: NextRequest) => {
     if (!authenticated) return options.unauthorizedResponse?.() ?? Response.json({}, { status: 401 });
@@ -33,7 +34,10 @@ jest.mock('@/lib/server/createMapMcpService', () => {
   }
   return {
     CreateMapMcpError: MockCreateMapMcpError,
-    createMapMcpPublicMessage: (code: string) => `Public ${code}`,
+    createMapMcpPublicMessage: (code: string, candidateMessage?: string) =>
+      code === 'FIELD_VALIDATION_FAILED' && candidateMessage === UNSAFE_DESCRIPTION_MESSAGE
+        ? candidateMessage
+        : `Public ${code}`,
     createMapMcpService: jest.fn(() => service),
   };
 });
@@ -144,6 +148,31 @@ describe('POST /api/mcp/create-map', () => {
     await expect(response.json()).resolves.toMatchObject({ code, error: expect.any(String) });
   });
 
+  it('returns the approved unsafe-description guidance to the MCP caller', async () => {
+    service.createDraft.mockRejectedValueOnce(
+      new CreateMapMcpError('FIELD_VALIDATION_FAILED', UNSAFE_DESCRIPTION_MESSAGE),
+    );
+
+    const response = await post({
+      action: 'create_map_draft',
+      projectId: IDS.projectId,
+      description: 'Unsupported map instructions',
+      documentId: null,
+      referenceIds: [],
+      styleReferenceId: null,
+      referenceRoles: {},
+      referenceUsage: {},
+      styleCopy: [],
+      idempotencyKey: '10000000-0000-4000-8000-000000000007',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: 'FIELD_VALIDATION_FAILED',
+      error: UNSAFE_DESCRIPTION_MESSAGE,
+    });
+  });
+
   it('never exposes a custom internal domain-error message', async () => {
     service.listMaps.mockRejectedValueOnce(
       new CreateMapMcpError('MAP_NOT_FOUND', 'database maps.secret_column does not exist'),
@@ -154,6 +183,20 @@ describe('POST /api/mcp/create-map', () => {
     await expect(response.json()).resolves.toEqual({
       code: 'MAP_NOT_FOUND',
       error: 'Public MAP_NOT_FOUND',
+    });
+
+    service.listMaps.mockRejectedValueOnce(
+      new CreateMapMcpError('FIELD_VALIDATION_FAILED', 'Description matched secret-value-123'),
+    );
+
+    const fieldValidationResponse = await post({
+      action: 'list_maps',
+      projectId: IDS.projectId,
+    });
+
+    await expect(fieldValidationResponse.json()).resolves.toEqual({
+      code: 'FIELD_VALIDATION_FAILED',
+      error: 'Public FIELD_VALIDATION_FAILED',
     });
   });
 });

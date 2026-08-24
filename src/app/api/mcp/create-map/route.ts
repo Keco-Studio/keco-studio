@@ -167,7 +167,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
   } catch (error) {
     if (error instanceof CreateMapMcpError) {
       return NextResponse.json(
-        { error: createMapMcpPublicMessage(error.code), code: error.code },
+        { error: createMapMcpPublicMessage(error.code, error.message), code: error.code },
         { status: ERROR_STATUS[error.code], headers: NO_STORE_HEADERS },
       );
     }
