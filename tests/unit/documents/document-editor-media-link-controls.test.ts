@@ -36,6 +36,8 @@ describe('document editor media and link controls', () => {
     expect(clipboardPluginSource).toContain('currentSelection');
     expect(clipboardPluginSource).toContain('rootHadFocus');
     expect(clipboardPluginSource).toContain('editor.isEditable()');
+    expect(clipboardPluginSource).toContain('isTabularClipboardPayload');
+    expect(clipboardPluginSource).toContain('COMMAND_PRIORITY_HIGH');
     expect(clipboardPluginSource).toContain('event.preventDefault()');
     expect(clipboardPluginSource).toContain(
       'uploadClipboardImages(imageFiles, imageUploadHandler)'

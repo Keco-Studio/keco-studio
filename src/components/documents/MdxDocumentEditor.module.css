@@ -336,3 +336,48 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.contentEditable :global(table tbody th[data-document-table-selected='true']),
+.contentEditable :global(table tbody td[data-document-table-selected='true']) {
+  background-color: rgba(22, 119, 255, 0.12);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-top='true']) {
+  box-shadow: inset 0 2px 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-bottom='true']) {
+  box-shadow: inset 0 -2px 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-left='true']) {
+  box-shadow: inset 2px 0 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-right='true']) {
+  box-shadow: inset -2px 0 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-top='true'][data-document-table-selected-left='true']) {
+  box-shadow:
+    inset 0 2px 0 0 var(--ant-color-primary, #1677ff),
+    inset 2px 0 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-top='true'][data-document-table-selected-right='true']) {
+  box-shadow:
+    inset 0 2px 0 0 var(--ant-color-primary, #1677ff),
+    inset -2px 0 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-bottom='true'][data-document-table-selected-left='true']) {
+  box-shadow:
+    inset 0 -2px 0 0 var(--ant-color-primary, #1677ff),
+    inset 2px 0 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.contentEditable :global(table tbody [data-document-table-selected-bottom='true'][data-document-table-selected-right='true']) {
+  box-shadow:
+    inset 0 -2px 0 0 var(--ant-color-primary, #1677ff),
+    inset -2px 0 0 0 var(--ant-color-primary, #1677ff);
+}
