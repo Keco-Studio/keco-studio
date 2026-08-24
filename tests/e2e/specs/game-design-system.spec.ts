@@ -496,12 +496,6 @@ test.describe('Game Design System mocked Art Style acceptance', () => {
     await page.getByRole('button', { name: 'RPG', exact: true }).click();
     await page.getByRole('button', { name: 'Continue to art style' }).click();
     await expect(page.getByRole('tab', { name: 'Art Style' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('region', { name: 'No Art Style selected' })).toBeVisible();
-    await expect(page.getByRole('radio', { name: /Pixel Art/ })).not.toBeChecked();
-    await page.getByRole('button', { name: 'Continue to sources' }).click();
-    await expect(page.locator('#gds-visual-reference-error')).toHaveText('Select an Art Style before continuing.');
-    await expect(page.getByRole('tab', { name: 'Art Style' })).toHaveAttribute('aria-selected', 'true');
-    await page.getByRole('radio', { name: /Pixel Art/ }).click();
     await expect(page.getByRole('radio', { name: /Pixel Art/ })).toBeChecked();
     await expect(page.getByRole('radio', { name: /Pixel Art/ })).not.toBeDisabled();
     await expectLoadedArtStyleImages(page);

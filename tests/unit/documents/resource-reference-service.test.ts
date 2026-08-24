@@ -713,18 +713,28 @@ describe('resource reference picker loaders', () => {
           project_id: PROJECT_ID,
           name: 'Characters',
           document_export_type: null,
+          source_document_id: null,
         },
         {
           id: DOCUMENT_ID,
           project_id: PROJECT_ID,
           name: 'Characters Table',
           document_export_type: 'table',
+          source_document_id: DOCUMENT_ID,
         },
         {
           id: OTHER_LIBRARY_ID,
           project_id: PROJECT_ID,
           name: 'Characters Conversation',
           document_export_type: 'script',
+          source_document_id: DOCUMENT_ID,
+        },
+        {
+          id: OTHER_FIELD_ID,
+          project_id: PROJECT_ID,
+          name: 'Legacy Conversation Library',
+          document_export_type: null,
+          source_document_id: DOCUMENT_ID,
         },
       ],
     });
@@ -739,6 +749,21 @@ describe('resource reference picker loaders', () => {
       'or',
       'document_export_type.is.null,document_export_type.neq.script',
     ]);
+  });
+
+  it('rejects a stale selection of a filtered conversation library', async () => {
+    const { client } = makeClient({
+      libraries: [{
+        id: OTHER_LIBRARY_ID,
+        project_id: PROJECT_ID,
+        name: 'Conversation',
+        document_export_type: 'script',
+        source_document_id: DOCUMENT_ID,
+      }],
+    });
+
+    await expect(listTableReferenceRows(client, PROJECT_ID, OTHER_LIBRARY_ID))
+      .rejects.toThrow('Library is not available for document references');
   });
 
   it('returns table and document picker sources beyond the default page cap', async () => {
@@ -969,5 +994,34 @@ describe('resource reference picker loaders', () => {
       listDocumentReferenceBlocks(mismatch.client, PROJECT_ID, DOCUMENT_ID)
     ).rejects.toThrow('Document does not belong to the current project');
     expect(ensureDocumentReferenceBlocks).not.toHaveBeenCalled();
+  });
+
+  it('falls back to legacy Markdown when normalized blocks are empty', async () => {
+    const { client } = makeClient({
+      documents: [{
+        id: DOCUMENT_ID,
+        project_id: PROJECT_ID,
+        name: 'Legacy outline',
+        content: '# Arena\n\nCentral combat zone.\n\n   ',
+      }],
+    });
+    ensureDocumentReferenceBlocks.mockResolvedValue({ projectId: PROJECT_ID, blocks: [] });
+
+    await expect(listDocumentReferenceBlocks(client, PROJECT_ID, DOCUMENT_ID))
+      .resolves.toEqual([
+        expect.objectContaining({
+          blockType: 'heading',
+          text: 'Arena',
+          headingLevel: 1,
+        }),
+        expect.objectContaining({
+          blockType: 'paragraph',
+          text: 'Central combat zone.',
+          nearestHeading: 'Arena',
+        }),
+      ]);
+    const first = await listDocumentReferenceBlocks(client, PROJECT_ID, DOCUMENT_ID);
+    const second = await listDocumentReferenceBlocks(client, PROJECT_ID, DOCUMENT_ID);
+    expect(first.map((block) => block.blockId)).toEqual(second.map((block) => block.blockId));
   });
 });

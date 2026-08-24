@@ -8,6 +8,7 @@ import {
   type ResourceReferenceTarget,
 } from './resourceReferenceTypes';
 import { joinTableRowDisplayValues } from './tableRowDisplayLabel';
+import { parseSanctionedMdxAst } from './sanctionedMdxParser';
 
 export type ResolvedResourceReference = {
   key: string;
@@ -67,6 +68,7 @@ type LibraryRow = {
   project_id: string;
   name: string;
   document_export_type?: string | null;
+  source_document_id?: string | null;
   gdd_generation_job_id?: string | null;
 };
 
@@ -95,9 +97,79 @@ type DocumentRow = {
   id: string;
   project_id: string;
   name: string;
+  content?: string | null;
 };
 
 const FILTER_BATCH_SIZE = 100;
+
+function isReferenceableLibrary(row: LibraryRow): boolean {
+  return row.document_export_type !== 'script' && !(
+    row.source_document_id != null && row.document_export_type == null
+  );
+}
+
+function deterministicPreviewBlockId(documentId: string, index: number): string {
+  let hash = 2166136261;
+  for (const character of `${documentId}:${index}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  const hex = hash.toString(16).padStart(8, '0');
+  const suffix = `${hex}${hex}${hex}`.slice(0, 12);
+  return `${hex}-${hex.slice(0, 4)}-4${hex.slice(1, 4)}-8${hex.slice(1, 4)}-${suffix}`;
+}
+
+type MarkdownPreviewNode = {
+  type?: string;
+  depth?: number;
+  value?: string;
+  children?: readonly MarkdownPreviewNode[];
+};
+
+function markdownNodeText(node: MarkdownPreviewNode): string {
+  if (typeof node.value === 'string') return node.value;
+  return (node.children ?? []).map(markdownNodeText).join('');
+}
+
+function legacyContentPreview(
+  documentId: string,
+  markdown: string | null | undefined
+): DocumentReferenceBlock[] {
+  if (!markdown || !markdown.trim()) return [];
+  let root: MarkdownPreviewNode;
+  try {
+    root = parseSanctionedMdxAst(markdown) as MarkdownPreviewNode;
+  } catch {
+    return markdown
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .map((text, index) => ({
+        blockId: deterministicPreviewBlockId(documentId, index),
+        blockType: 'paragraph' as const,
+        text,
+      }));
+  }
+  const blocks: DocumentReferenceBlock[] = [];
+  let nearestHeading: string | undefined;
+  for (const node of root.children ?? []) {
+    if (node.type !== 'heading' && node.type !== 'paragraph' && node.type !== 'listItem') {
+      continue;
+    }
+    const text = markdownNodeText(node).replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    const blockType = node.type === 'heading' ? 'heading' : 'paragraph';
+    if (blockType === 'heading') nearestHeading = text;
+    blocks.push({
+      blockId: deterministicPreviewBlockId(documentId, blocks.length),
+      blockType,
+      text,
+      ...(blockType === 'heading' ? { headingLevel: node.depth ?? 1 } : {}),
+      ...(nearestHeading && blockType !== 'heading' ? { nearestHeading } : {}),
+    });
+  }
+  return blocks;
+}
 
 type PagedResult<T> = {
   data: T[] | null;
@@ -585,14 +657,14 @@ export async function listTableReferenceSources(
   const rows = await fetchAllPaged<LibraryRow>((from, to) =>
     client
       .from('libraries')
-      .select('id, project_id, name, document_export_type')
+      .select('id, project_id, name, document_export_type, source_document_id')
       .eq('project_id', projectId)
       .or('document_export_type.is.null,document_export_type.neq.script')
       .order('name', { ascending: true })
       .order('id', { ascending: true })
       .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
   );
-  return rows.map((row) => ({
+  return rows.filter(isReferenceableLibrary).map((row) => ({
     id: row.id,
     projectId: row.project_id,
     name: row.name,
@@ -607,7 +679,7 @@ export async function listTableReferenceRows(
   const libraries = await fetchAllPaged<LibraryRow>((from, to) =>
     client
       .from('libraries')
-      .select('id, project_id, name')
+      .select('id, project_id, name, document_export_type, source_document_id')
       .eq('id', libraryId)
       .order('id', { ascending: true })
       .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
@@ -615,6 +687,9 @@ export async function listTableReferenceRows(
   const library = libraries.find((row) => row.id === libraryId);
   if (!library || library.project_id !== projectId) {
     throw new Error('Library does not belong to the current project');
+  }
+  if (!isReferenceableLibrary(library)) {
+    throw new Error('Library is not available for document references');
   }
 
   const [fieldRows, assetRows] = await Promise.all([
@@ -711,7 +786,7 @@ export async function listDocumentReferenceBlocks(
   const documents = await fetchAllPaged<DocumentRow>((from, to) =>
     client
       .from('documents')
-      .select('id, project_id, name')
+      .select('id, project_id, name, content')
       .eq('id', documentId)
       .order('id', { ascending: true })
       .range(from, to) as unknown as PromiseLike<PagedResult<DocumentRow>>
@@ -727,7 +802,9 @@ export async function listDocumentReferenceBlocks(
   if (result.projectId !== projectId) {
     throw new Error('Document does not belong to the current project');
   }
-  return result.blocks;
+  return result.blocks.length > 0
+    ? result.blocks
+    : legacyContentPreview(documentId, document.content);
 }
 
 function compareAssetRows(left: AssetRow, right: AssetRow): number {

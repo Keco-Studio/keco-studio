@@ -40,7 +40,7 @@ jobs:
         run: npx tsx scripts/accept-mcp-account-connections-production.ts
 
       - name: Scan production acceptance evidence
-        run: npm run scan:mcp-evidence -- artifacts/mcp-account-connections-production.json
+        run: npm run scan:mcp-evidence -- artifacts/mcp-account-connections-production.json artifacts/mcp-local-image-writeback-production.json
 
       - name: Upload sanitized production evidence
         if: always()
@@ -49,6 +49,7 @@ jobs:
           name: mcp-account-connections-production-${{ github.run_id }}
           path: |
             artifacts/mcp-account-connections-production.json
+            artifacts/mcp-local-image-writeback-production.json
             artifacts/mcp-account-desktop.png
             artifacts/mcp-account-mobile.png
           if-no-files-found: warn
