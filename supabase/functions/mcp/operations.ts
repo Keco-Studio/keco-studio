@@ -32,7 +32,25 @@ export async function listProjectStructure(context: ProjectMcpRequestContext) {
       "Project access has been revoked.",
     );
   }
-  return value;
+  const rawFolders = Array.isArray(value.folders) ? value.folders : [];
+  const normalized: Record<string, unknown> = {
+    ...value,
+    folders: rawFolders.map((folder) => {
+      const source =
+        folder && typeof folder === "object" && !Array.isArray(folder)
+          ? folder as Record<string, unknown>
+          : {};
+      return {
+        id: source.id,
+        projectId: source.projectId ?? source.project_id ?? context.projectId,
+        parentFolderId: source.parentFolderId ?? source.parent_folder_id ??
+          null,
+        name: source.name,
+        updatedAt: source.updatedAt ?? source.updated_at,
+      };
+    }),
+  };
+  return normalized;
 }
 
 type FieldRow = {

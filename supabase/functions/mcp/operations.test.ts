@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects } from '@std/assert';
 import type { ProjectMcpRequestContext } from './context.ts';
 import { McpDomainError } from './errors.ts';
-import { readDocument, readDocumentTransportState } from './operations.ts';
+import { listProjectStructure, readDocument, readDocumentTransportState } from './operations.ts';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -40,6 +40,42 @@ Deno.test('document transport state uses one project-bound RPC and preserves its
   assertEquals(calls, [{ name: 'mcp_read_document_transport_state', parameters: {
     p_project_id: PROJECT_ID, p_document_id: DOCUMENT_ID,
   } }]);
+});
+
+Deno.test('project structure exposes folder project and parent identities', async () => {
+  const calls: Array<{ name: string; parameters: Record<string, unknown> }> = [];
+  const context = { requestId: crypto.randomUUID(), userId: 'user-1', projectId: PROJECT_ID,
+    role: 'viewer', clientId: null, bearerToken: 'test-token', supabase: {
+      async rpc(name: string, parameters: Record<string, unknown>) {
+        calls.push({ name, parameters });
+        return { data: {
+          project: { id: PROJECT_ID },
+          folders: [{
+            id: '55555555-5555-4555-8555-555555555555',
+            project_id: PROJECT_ID,
+            parent_folder_id: '66666666-6666-4666-8666-666666666666',
+            name: 'Child',
+            updated_at: '2026-08-24T00:00:00.000Z',
+          }],
+          tables: [],
+          documents: [],
+        }, error: null };
+      },
+    } } as unknown as ProjectMcpRequestContext;
+
+  const result = await listProjectStructure(context);
+
+  assertEquals(result.folders, [{
+    id: '55555555-5555-4555-8555-555555555555',
+    projectId: PROJECT_ID,
+    parentFolderId: '66666666-6666-4666-8666-666666666666',
+    name: 'Child',
+    updatedAt: '2026-08-24T00:00:00.000Z',
+  }]);
+  assertEquals(calls, [{
+    name: 'mcp_read_project_structure',
+    parameters: { p_project_id: PROJECT_ID },
+  }]);
 });
 
 Deno.test('atomic RPC state includes a tail that arrives during the former head-tail gap', async () => {
