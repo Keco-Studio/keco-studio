@@ -144,22 +144,36 @@ async function selectDocumentRange(
     const endBlock = blocks.find((block) => block.textContent === values.endText);
     if (!startBlock || !endBlock) throw new Error('Document preview blocks were not found');
 
-    const findText = (root: HTMLElement, needle: string) => {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) {
-        const node = walker.currentNode as Text;
-        const offset = node.data.indexOf(needle);
-        if (offset >= 0) return { node, offset };
+    const startWalker = document.createTreeWalker(startBlock, NodeFilter.SHOW_TEXT);
+    let startNode: Text | null = null;
+    let startOffset = -1;
+    while (startWalker.nextNode()) {
+      const node = startWalker.currentNode as Text;
+      const offset = node.data.indexOf(values.startSelection);
+      if (offset >= 0) {
+        startNode = node;
+        startOffset = offset;
+        break;
       }
-      return null;
-    };
-    const start = findText(startBlock, values.startSelection);
-    const end = findText(endBlock, values.endSelection);
-    if (!start || !end) throw new Error('Document preview selection text was not found');
+    }
+
+    const endWalker = document.createTreeWalker(endBlock, NodeFilter.SHOW_TEXT);
+    let endNode: Text | null = null;
+    let endOffset = -1;
+    while (endWalker.nextNode()) {
+      const node = endWalker.currentNode as Text;
+      const offset = node.data.indexOf(values.endSelection);
+      if (offset >= 0) {
+        endNode = node;
+        endOffset = offset;
+        break;
+      }
+    }
+    if (!startNode || !endNode) throw new Error('Document preview selection text was not found');
 
     const range = document.createRange();
-    range.setStart(start.node, start.offset);
-    range.setEnd(end.node, end.offset + values.endSelection.length);
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset + values.endSelection.length);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
