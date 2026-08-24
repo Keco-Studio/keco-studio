@@ -114,7 +114,7 @@ async function login(page: Page, email: string): Promise<void> {
 
 async function waitForDocument(page: Page): Promise<void> {
   await page.getByTestId('document-collaboration-status').waitFor({
-    state: 'visible',
+    state: 'attached',
     timeout: 60_000,
   });
   await page.waitForFunction(() =>
