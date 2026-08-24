@@ -77,7 +77,7 @@ describe('GameDesignSystemCreatePage', () => {
     await user.click(screen.getByRole('button', { name: 'Continue to art style' }));
     const pixelArt = screen.getByRole('radio', { name: /Pixel Art/ });
     expect(pixelArt.getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByText('Official preset / Revision 2')).toBeTruthy();
+    expect(screen.getByText(/Official preset \/ Revision 2/)).toBeTruthy();
     expect(screen.getAllByRole('radio')).toHaveLength(5);
   });
 
