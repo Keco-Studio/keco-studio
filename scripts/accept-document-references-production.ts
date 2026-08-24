@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { chromium, type Locator, type Page } from '@playwright/test';
+import { chromium, expect, type Locator, type Page } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const PRODUCTION_APP_URL = 'https://keco-studio-main.vercel.app';
@@ -125,6 +125,10 @@ async function waitForDocument(page: Page): Promise<void> {
     state: 'visible',
     timeout: 60_000,
   });
+}
+
+function visibleSelectOption(page: Page, label: string): Locator {
+  return page.locator('.ant-select-item-option:visible').filter({ hasText: label });
 }
 
 async function selectDocumentRange(
@@ -331,14 +335,20 @@ async function main(): Promise<void> {
     const tableSelect = dialog.getByRole('combobox', { name: 'Table', exact: true });
     await tableSelect.click();
     await tableSelect.fill(tableName);
-    await page.getByRole('option', { name: tableName, exact: true }).waitFor({ state: 'visible' });
+    const tableOption = visibleSelectOption(page, tableName);
+    await expect(tableOption).toBeVisible({ timeout: 30_000 });
+    assert((await tableOption.textContent())?.trim() === tableName, 'Table source name was inaccurate');
     await tableSelect.fill(conversationName);
+    await expect(page.locator('.ant-select-item-option:visible')).toHaveCount(0, {
+      timeout: 30_000,
+    });
     assert(
-      await page.getByRole('option', { name: conversationName, exact: true }).count() === 0,
+      await visibleSelectOption(page, conversationName).count() === 0,
       'Conversation table remained visible in the reference picker',
     );
     await tableSelect.fill(tableName);
-    await tableSelect.press('Enter');
+    await expect(tableOption).toBeVisible({ timeout: 30_000 });
+    await tableOption.click();
     const rowOption = dialog.getByRole('option', { name: `Row: ${rowValue}` });
     await rowOption.waitFor({ state: 'visible' });
     assert((await rowOption.textContent())?.includes(rowValue), 'Table row value was inaccurate');
@@ -379,9 +389,13 @@ async function main(): Promise<void> {
     const documentSelect = dialog.getByRole('combobox', { name: 'Document', exact: true });
     await documentSelect.click();
     await documentSelect.fill(sourceDocumentName);
-    await page.getByRole('option', { name: sourceDocumentName, exact: true })
-      .waitFor({ state: 'visible' });
-    await documentSelect.press('Enter');
+    const documentOption = visibleSelectOption(page, sourceDocumentName);
+    await expect(documentOption).toBeVisible({ timeout: 30_000 });
+    assert(
+      (await documentOption.textContent())?.trim() === sourceDocumentName,
+      'Document source name was inaccurate',
+    );
+    await documentOption.click();
     const preview = dialog.getByLabel('Document text preview');
     await preview.waitFor({ state: 'visible' });
     assert((await preview.textContent())?.includes(sourceFirst), 'Legacy document preview omitted content');
