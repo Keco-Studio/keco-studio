@@ -96,9 +96,16 @@ describe('GameDesignSystemCreatePage', () => {
     await waitFor(() => expect(document.activeElement).toBe(fieldError));
     expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
 
+    pixelArt.focus();
+    await user.keyboard('{ArrowDown}');
+    const flatGraphic = screen.getByRole('radio', { name: /Flat Graphic 2D/ });
+    expect(document.activeElement).toBe(flatGraphic);
+    expect(flatGraphic.getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByLabelText('Flat Graphic 2D preview')).toBeTruthy();
+
     await user.click(pixelArt);
     expect(pixelArt.getAttribute('aria-checked')).toBe('true');
-    expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByLabelText('Pixel Art preview')).toBeTruthy();
   });
 
@@ -192,7 +199,6 @@ describe('GameDesignSystemCreatePage', () => {
   it('returns direct Review submission to Art Style when no preset was selected', async () => {
     const user = userEvent.setup();
     renderPage();
-    await enterRequiredFoundation(user);
 
     await user.click(screen.getByRole('tab', { name: 'Review' }));
     expect(within(screen.getByLabelText('Art Style summary')).getByText('Not selected')).toBeTruthy();

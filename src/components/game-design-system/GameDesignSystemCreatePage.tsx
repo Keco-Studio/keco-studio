@@ -228,6 +228,12 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
 
   async function submit() {
     setError(null);
+    if (!selectedArtStylePreset || !artStyleResult) {
+      setStage('art-style');
+      setInvalidVisualReference(null);
+      setVisualReferenceError('Select an Art Style before generating.');
+      return;
+    }
     if (!title.trim()) {
       setStage('foundation');
       setError('Enter a system name.');
@@ -236,12 +242,6 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     if (genres.length === 0 && philosophies.length === 0 && !description.trim() && !pastedMarkdown.trim() && references.length === 0 && normalizedGames.length === 0 && !baseSystemId) {
       setStage('foundation');
       setError('Add at least one genre, design philosophy, or reference.');
-      return;
-    }
-    if (!selectedArtStylePreset || !artStyleResult) {
-      setStage('art-style');
-      setInvalidVisualReference(null);
-      setVisualReferenceError('Select an Art Style before generating.');
       return;
     }
     if (!artStyleResult.success) {
