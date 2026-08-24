@@ -1156,6 +1156,29 @@
   gap: 26px;
 }
 
+.artStyleSelectionEmpty {
+  display: grid;
+  min-height: 420px;
+  align-content: center;
+  justify-items: center;
+  padding: 32px;
+  color: #687381;
+  text-align: center;
+}
+
+.artStyleSelectionEmpty h3 {
+  margin: 8px 0 0;
+  color: #27313d;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.artStyleSelectionEmpty p {
+  max-width: 360px;
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
 .artStylePreview,
 .artStylePreviewCompact {
   min-width: 0;

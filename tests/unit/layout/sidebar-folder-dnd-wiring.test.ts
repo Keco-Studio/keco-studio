@@ -36,6 +36,13 @@ describe('sidebar DnD wiring (P1–P3)', () => {
     expect(source).not.toMatch(/onDragEnd=\{/);
   });
 
+  it('keeps inline rename open for empty submit and save failures', () => {
+    const source = read('src/components/layout/components/SidebarTreeView.tsx');
+    expect(source).toMatch(/if \(!trimmed\) return;/);
+    expect(source).toContain('exitEditMode();');
+    expect(source).toMatch(/catch \{[\s\S]*focusRenameInputAtEnd\(inputRef\.current\)/);
+  });
+
   it('Sidebar wires leaf moves and folder nesting without document/table nesting', () => {
     const source = read('src/components/layout/Sidebar.tsx');
     expect(source).toContain('handleTreeDrop');

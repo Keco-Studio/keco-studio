@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import { buildFolderBreadcrumbPath } from '@/lib/navigation/folderBreadcrumbs';
+import { buildFolderBreadcrumbPath, folderBreadcrumbPathEndsAt } from '@/lib/navigation/folderBreadcrumbs';
 
 describe('buildFolderBreadcrumbPath', () => {
   it('returns every ancestor from the project root to the current folder', () => {
@@ -25,10 +25,28 @@ describe('buildFolderBreadcrumbPath', () => {
     ]);
   });
 
+  it('detects when a cached breadcrumb path matches the active folder', () => {
+    expect(folderBreadcrumbPathEndsAt([], 'folder-1')).toBe(false);
+    expect(folderBreadcrumbPathEndsAt([{ id: 'root', name: 'Root' }], 'child')).toBe(false);
+    expect(folderBreadcrumbPathEndsAt([
+      { id: 'root', name: 'Root' },
+      { id: 'child', name: 'Child' },
+    ], 'child')).toBe(true);
+  });
+
+  it('uses sidebar folder caches for immediate Studio breadcrumbs', () => {
+    const source = readFileSync('src/lib/contexts/NavigationContext.tsx', 'utf8');
+    expect(source).toContain("'folders-libraries'");
+    expect(source).toContain('folderBreadcrumbPathEndsAt');
+    expect(source).toContain('activeDocument');
+    expect(source).toContain('resolvedFolderPath');
+  });
+
   it('uses a document folder as the Studio breadcrumb source', () => {
     const source = readFileSync('src/lib/contexts/NavigationContext.tsx', 'utf8');
     expect(source).toContain('const [documentFolderId, setDocumentFolderId]');
-    expect(source).toContain('currentFolderIdFromUrl || libraryFolderId || documentFolderId');
+    expect(source).toContain('resolvedDocumentFolderId');
+    expect(source).toContain('resolvedLibraryFolderId');
     expect(source).toContain("select('name, folder_id')");
   });
 
