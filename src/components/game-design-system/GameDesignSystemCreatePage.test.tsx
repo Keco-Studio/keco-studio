@@ -166,7 +166,7 @@ describe('GameDesignSystemCreatePage', () => {
     expect(start).not.toHaveBeenCalled();
   });
 
-  it('returns an empty Art Style to step 2 and explains how to complete it', async () => {
+  it('allows the default Pixel Art style with no optional customization', async () => {
     const user = userEvent.setup();
     renderPage();
     await enterRequiredFoundation(user);
@@ -174,11 +174,16 @@ describe('GameDesignSystemCreatePage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Generate system' }));
 
-    expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
-    const fieldError = screen.getByRole('alert');
-    expect(fieldError.textContent).toBe('Add Art Style guidance before generating. Enter a custom art direction, add a complete visual reference, or describe what to avoid.');
-    await waitFor(() => expect(document.activeElement).toBe(fieldError));
-    expect(start).not.toHaveBeenCalled();
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start.mock.calls[0][0].artStyle).toEqual({
+      presetId: 'pixel-art',
+      presetVersion: 2,
+      customization: {
+        direction: '',
+        referenceGames: [],
+        avoid: '',
+      },
+    });
   });
 
   it('summarizes Art Style and submits only preset identity plus normalized customization', async () => {

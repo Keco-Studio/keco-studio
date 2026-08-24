@@ -232,13 +232,6 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         : artStyleResult.error.issues[0]?.message ?? 'Review the Art Style fields.');
       return;
     }
-    const artStyleCustomization = artStyleResult.data.customization;
-    if (!artStyleCustomization.direction && artStyleCustomization.referenceGames.length === 0 && !artStyleCustomization.avoid) {
-      setStage('art-style');
-      setInvalidVisualReference(null);
-      setVisualReferenceError('Add Art Style guidance before generating. Enter a custom art direction, add a complete visual reference, or describe what to avoid.');
-      return;
-    }
     try {
       const fresh = await startGameDesignSystemGeneration(generationInput(artStyleResult.data), submitKey.current);
       setJob(fresh);
