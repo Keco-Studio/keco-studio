@@ -33,6 +33,14 @@ describe('Game Design System generation request', () => {
       ...valid,
       artStyle: { ...artStyle, specification: { visualIdentity: 'forged' } },
     })).toThrow();
+    expect(gameDesignGenerationRequestSchema.parse({
+      ...valid,
+      artStyle: {
+        presetId: 'pixel-art',
+        presetVersion: 2,
+        customization: { direction: '', referenceGames: [], avoid: '' },
+      },
+    }).artStyle.customization).toEqual({ direction: '', referenceGames: [], avoid: '' });
   });
 
   it('keeps visual references separate from gameplay references', () => {

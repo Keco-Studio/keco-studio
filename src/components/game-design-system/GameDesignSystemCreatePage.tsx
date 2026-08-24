@@ -11,7 +11,7 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
-import { DEFAULT_GAME_ART_STYLE_KEY, GAME_ART_STYLE_CATALOG, GAME_ART_STYLE_PRESETS_BY_KEY } from '@/lib/game-art-style/presets';
+import { GAME_ART_STYLE_CATALOG, GAME_ART_STYLE_PRESETS_BY_KEY } from '@/lib/game-art-style/presets';
 import { gameArtStyleInputSchema, type NormalizedGameArtStyleInput } from '@/lib/game-art-style/schema';
 import {
   fetchGameDesignReferenceOptions,
@@ -85,7 +85,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   const [description, setDescription] = useState('');
   const [suitableFor, setSuitableFor] = useState('');
   const [artDirection, setArtDirection] = useState('');
-  const [selectedArtStyleKey, setSelectedArtStyleKey] = useState(DEFAULT_GAME_ART_STYLE_KEY);
+  const [selectedArtStyleKey, setSelectedArtStyleKey] = useState<string | null>(null);
   const [visualReferences, setVisualReferences] = useState<VisualReferenceDraft[]>([]);
   const [artAvoid, setArtAvoid] = useState('');
   const [visualReferenceError, setVisualReferenceError] = useState<string | null>(null);
@@ -120,13 +120,17 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       .filter((game) => game.name || game.reference || game.avoid),
     [referenceGames],
   );
-  const selectedArtStylePreset = GAME_ART_STYLE_PRESETS_BY_KEY[selectedArtStyleKey] ?? GAME_ART_STYLE_PRESETS_BY_KEY[DEFAULT_GAME_ART_STYLE_KEY];
-  const artStyleResult = useMemo(() => gameArtStyleInputSchema.safeParse({
-    presetId: selectedArtStylePreset.presetId,
-    presetVersion: selectedArtStylePreset.presetVersion,
-    customization: { direction: artDirection, referenceGames: visualReferences, avoid: artAvoid },
-  }), [artAvoid, artDirection, selectedArtStylePreset, visualReferences]);
-  const reviewCustomization = artStyleResult.success
+  const selectedArtStylePreset = selectedArtStyleKey
+    ? GAME_ART_STYLE_PRESETS_BY_KEY[selectedArtStyleKey]
+    : undefined;
+  const artStyleResult = useMemo(() => selectedArtStylePreset
+    ? gameArtStyleInputSchema.safeParse({
+        presetId: selectedArtStylePreset.presetId,
+        presetVersion: selectedArtStylePreset.presetVersion,
+        customization: { direction: artDirection, referenceGames: visualReferences, avoid: artAvoid },
+      })
+    : null, [artAvoid, artDirection, selectedArtStylePreset, visualReferences]);
+  const reviewCustomization = artStyleResult?.success
     ? artStyleResult.data.customization
     : {
         direction: artDirection.trim(),
@@ -179,6 +183,21 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     setInvalidVisualReference(null);
   }
 
+  function selectArtStyle(key: string) {
+    clearVisualReferenceError();
+    setSelectedArtStyleKey(key);
+  }
+
+  function continueFromArtStyle() {
+    setError(null);
+    if (!selectedArtStylePreset) {
+      setInvalidVisualReference(null);
+      setVisualReferenceError('Select an Art Style before continuing.');
+      return;
+    }
+    setStage('sources');
+  }
+
   function handleStageTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % stages.length;
@@ -219,6 +238,12 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       setError('Add at least one genre, design philosophy, or reference.');
       return;
     }
+    if (!selectedArtStylePreset || !artStyleResult) {
+      setStage('art-style');
+      setInvalidVisualReference(null);
+      setVisualReferenceError('Select an Art Style before generating.');
+      return;
+    }
     if (!artStyleResult.success) {
       const referenceIssue = artStyleResult.error.issues.find((issue) => issue.path.includes('referenceGames'));
       const referenceIndex = referenceIssue?.path.find((part) => typeof part === 'number');
@@ -230,13 +255,6 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       setVisualReferenceError(referenceIssue
         ? 'Enter both a game name and what to borrow.'
         : artStyleResult.error.issues[0]?.message ?? 'Review the Art Style fields.');
-      return;
-    }
-    const artStyleCustomization = artStyleResult.data.customization;
-    if (!artStyleCustomization.direction && artStyleCustomization.referenceGames.length === 0 && !artStyleCustomization.avoid) {
-      setStage('art-style');
-      setInvalidVisualReference(null);
-      setVisualReferenceError('Add Art Style guidance before generating. Enter a custom art direction, add a complete visual reference, or describe what to avoid.');
       return;
     }
     try {
@@ -333,10 +351,16 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <div className={styles.artStyleWorkbench}>
             <aside className={styles.artStyleCatalog}>
               <span className={styles.eyebrow}>Preset catalog</span>
-              <GameArtStyleCatalog catalog={GAME_ART_STYLE_CATALOG} selectedKey={selectedArtStyleKey} onSelect={setSelectedArtStyleKey} />
+              <GameArtStyleCatalog catalog={GAME_ART_STYLE_CATALOG} selectedKey={selectedArtStyleKey} onSelect={selectArtStyle} />
             </aside>
             <div className={styles.artStyleMain}>
-              <GameArtStylePreview preset={selectedArtStylePreset} mode="creation" />
+              {selectedArtStylePreset ? <GameArtStylePreview preset={selectedArtStylePreset} mode="creation" /> : (
+                <section className={styles.artStyleSelectionEmpty} aria-label="No Art Style selected">
+                  <span className={styles.eyebrow}>Art Style preview</span>
+                  <h3>Select an Art Style</h3>
+                  <p>Select an Art Style to preview its visual direction.</p>
+                </section>
+              )}
               <div className={styles.artStyleFields}>
                 {visualReferenceError ? <div id={VISUAL_REFERENCE_ERROR_ID} ref={visualReferenceErrorRef} className={styles.fieldError} role="alert" aria-live="polite" tabIndex={-1}>{visualReferenceError}</div> : null}
                 <div className={styles.field}>
@@ -370,7 +394,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
               </div>
             </div>
           </div>
-          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('foundation')}><ArrowLeftOutlined /> Foundation</button><button className={styles.primaryButton} type="button" onClick={() => { setError(null); setStage('sources'); }}>Continue to sources</button></div>
+          <div className={styles.formActions}><button className={styles.secondaryButton} type="button" onClick={() => setStage('foundation')}><ArrowLeftOutlined /> Foundation</button><button className={styles.primaryButton} type="button" onClick={continueFromArtStyle}>Continue to sources</button></div>
         </section>
       ) : null}
 
@@ -407,7 +431,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
           <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Step 4</span><h2>Review</h2><p>Confirm the exact input before starting the durable job.</p></div></div>
           <div className={styles.reviewGrid}>
             <section><span className={styles.eyebrow}>Foundation</span><h3>{title.trim() || 'System name required'}</h3><dl className={styles.breakdown}><div><dt>Genres</dt><dd>{genres.join(', ') || 'None'}</dd></div><div><dt>Philosophies</dt><dd>{philosophies.join(', ') || 'None'}</dd></div><div><dt>Suitable for</dt><dd>{suitableFor.trim() || 'Not specified'}</dd></div></dl></section>
-            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span><h3>{selectedArtStylePreset.title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>Revision {selectedArtStylePreset.presetVersion}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></section>
+            <section aria-label="Art Style summary"><span className={styles.eyebrow}>Art Style</span>{selectedArtStylePreset ? <><h3>{selectedArtStylePreset.title}</h3><dl className={styles.breakdown}><div><dt>Preset</dt><dd>Revision {selectedArtStylePreset.presetVersion}</dd></div><div><dt>Direction</dt><dd>{reviewCustomization.direction || 'Preset default'}</dd></div><div><dt>Visual references</dt><dd>{reviewCustomization.referenceGames.length > 0 ? <ul className={styles.reviewInlineList}>{reviewCustomization.referenceGames.map((reference) => <li key={reference.name.toLocaleLowerCase()}>{reference.name}: {reference.borrow}</li>)}</ul> : 'None'}</dd></div><div><dt>Avoid</dt><dd>{reviewCustomization.avoid || 'Not specified'}</dd></div></dl></> : <><h3>Not selected</h3><p>Select an Art Style before generating.</p></>}</section>
             <section><span className={styles.eyebrow}>Evidence</span><h3>{references.length + normalizedGames.length} selected references</h3><dl className={styles.breakdown}><div><dt>Project resources</dt><dd>{references.length}</dd></div><div><dt>Reference games</dt><dd>{normalizedGames.length}</dd></div><div><dt>Base system</dt><dd>{baseSystemId ? baseSystems.find((system) => system.id === baseSystemId)?.title || 'Selected' : 'None'}</dd></div></dl></section>
             <section><span className={styles.eyebrow}>Output contract</span><h3>Validated structured rules</h3><p>The job validates the canonical rule schema and saves one immutable version only after validation succeeds.</p></section>
           </div>
