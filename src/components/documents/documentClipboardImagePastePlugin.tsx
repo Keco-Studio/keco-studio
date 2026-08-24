@@ -21,13 +21,14 @@ import {
   $isRootOrShadowRoot,
   $isTextNode,
   $setSelection,
-  COMMAND_PRIORITY_CRITICAL,
+  COMMAND_PRIORITY_HIGH,
   PASTE_COMMAND,
   SKIP_DOM_SELECTION_TAG,
   type BaseSelection,
   type LexicalEditor,
   type RangeSelection,
 } from 'lexical';
+import { isTabularClipboardPayload } from '@/lib/documents/documentTableClipboard';
 import {
   extractClipboardImageFiles,
   uploadClipboardImages,
@@ -113,6 +114,7 @@ function DocumentClipboardImagePaste() {
       (event) => {
         if (!editor.isEditable() || !imageUploadHandler) return false;
         const clipboardData = 'clipboardData' in event ? event.clipboardData : null;
+        if (clipboardData && isTabularClipboardPayload(clipboardData)) return false;
         const imageFiles = extractClipboardImageFiles(clipboardData);
         if (imageFiles.length === 0) return false;
         const pasteSelection = capturePasteSelection();
@@ -146,7 +148,7 @@ function DocumentClipboardImagePaste() {
         });
         return true;
       },
-      COMMAND_PRIORITY_CRITICAL
+      COMMAND_PRIORITY_HIGH
     );
 
     return () => {

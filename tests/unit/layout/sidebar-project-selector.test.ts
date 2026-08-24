@@ -25,12 +25,19 @@ describe('sidebar project selector', () => {
     expect(css).toMatch(/\.projectSelectorCreate\s*\{/);
   });
 
-  it('retains project actions and closes from outside clicks or Escape', () => {
+  it('commits rename on outside click and snaps sidebar scroll back immediately', () => {
     expect(source).toContain("onContextMenu(e, 'project', project.id)");
     expect(source).toContain('startRename(project)');
     expect(source).toContain("document.addEventListener('pointerdown'");
     expect(source).toContain("window.addEventListener('keydown'");
     expect(source).toContain("event.key === 'Escape'");
+    expect(source).toContain('exitRename');
+    expect(source).toContain('focusRenameInputAtEnd');
+    expect(source).toContain('snapSidebarHorizontalScroll');
+    expect(source).toContain('renameInputRef.current?.blur()');
+    expect(source).toMatch(/if \(!trimmed\) return;/);
+    expect(source).toContain('exitRename();');
+    expect(source).toMatch(/catch \{[\s\S]*focusRenameInputAtEnd\(renameInputRef\.current\)/);
   });
 
   it('does not let an administrator single-click close the menu before rename double-click', () => {

@@ -6,6 +6,7 @@ import { Tooltip } from 'antd';
 import { CheckOutlined, DownOutlined } from '@ant-design/icons';
 import type { Project } from '@/lib/services/projectService';
 import projectRightIcon from '@/assets/images/ProjectDescIcon.svg';
+import { snapSidebarHorizontalScroll, focusRenameInputAtEnd } from '../sidebarScrollReset';
 import styles from '../Sidebar.module.css';
 
 export type SidebarProjectsListProps = {
@@ -39,6 +40,8 @@ export function SidebarProjectsList({
   const [isSaving, setIsSaving] = useState(false);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const skipBlurSaveRef = useRef(false);
   const pendingProjectSelectionRef = useRef<number | null>(null);
 
   const currentProject = useMemo(
@@ -62,6 +65,12 @@ export function SidebarProjectsList({
     [cancelPendingProjectSelection, userRole]
   );
 
+  const exitRename = useCallback(() => {
+    skipBlurSaveRef.current = true;
+    setEditingProjectId(null);
+    snapSidebarHorizontalScroll(selectorRef.current);
+  }, []);
+
   const saveRename = useCallback(
     async (projectId: string) => {
       if (isSaving) return;
@@ -71,15 +80,34 @@ export function SidebarProjectsList({
       setIsSaving(true);
       try {
         await Promise.resolve(onSaveRename(`project-${projectId}`, trimmed));
-        setEditingProjectId(null);
+        exitRename();
       } catch {
-        // Keep edit mode on failure; toast feedback comes from upper-level handler.
+        focusRenameInputAtEnd(renameInputRef.current);
       } finally {
         setIsSaving(false);
       }
     },
-    [editingValue, isSaving, onSaveRename]
+    [editingValue, exitRename, isSaving, onSaveRename]
   );
+
+  useEffect(() => {
+    if (!editingProjectId) return;
+    focusRenameInputAtEnd(renameInputRef.current);
+  }, [editingProjectId]);
+
+  useEffect(() => {
+    if (!editingProjectId) return;
+
+    const commitFromOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (renameInputRef.current?.contains(target)) return;
+      renameInputRef.current?.blur();
+    };
+
+    document.addEventListener('pointerdown', commitFromOutside, true);
+    return () => document.removeEventListener('pointerdown', commitFromOutside, true);
+  }, [editingProjectId]);
 
   useEffect(() => {
     if (!isSelectorOpen) return;
@@ -87,15 +115,21 @@ export function SidebarProjectsList({
     const closeFromOutside = (event: PointerEvent) => {
       if (event.target instanceof Node && !selectorRef.current?.contains(event.target)) {
         cancelPendingProjectSelection();
-        setEditingProjectId(null);
-        setIsSelectorOpen(false);
+        if (editingProjectId) {
+          renameInputRef.current?.blur();
+        } else {
+          setIsSelectorOpen(false);
+        }
       }
     };
     const closeFromKeyboard = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         cancelPendingProjectSelection();
-        setEditingProjectId(null);
-        setIsSelectorOpen(false);
+        if (editingProjectId) {
+          exitRename();
+        } else {
+          setIsSelectorOpen(false);
+        }
       }
     };
 
@@ -106,7 +140,7 @@ export function SidebarProjectsList({
       document.removeEventListener('pointerdown', closeFromOutside);
       window.removeEventListener('keydown', closeFromKeyboard);
     };
-  }, [cancelPendingProjectSelection, isSelectorOpen]);
+  }, [cancelPendingProjectSelection, editingProjectId, exitRename, isSelectorOpen]);
 
   const selectProject = useCallback(
     (projectId: string) => {
@@ -188,13 +222,17 @@ export function SidebarProjectsList({
                 >
                   {isEditing ? (
                     <input
+                      ref={renameInputRef}
                       className={styles.projectSelectorRenameInput}
                       value={editingValue}
-                      autoFocus
                       disabled={isSaving}
                       onChange={(e) => setEditingValue(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                       onBlur={() => {
+                        if (skipBlurSaveRef.current) {
+                          skipBlurSaveRef.current = false;
+                          return;
+                        }
                         void saveRename(project.id);
                       }}
                       onKeyDown={(e) => {
@@ -205,7 +243,7 @@ export function SidebarProjectsList({
                         } else if (e.key === 'Escape') {
                           e.preventDefault();
                           e.stopPropagation();
-                          setEditingProjectId(null);
+                          exitRename();
                         }
                       }}
                     />

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, ReactNode, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from './AuthContext';
 import { parseRouteParams } from '@/lib/utils/routeParams';
@@ -17,7 +17,11 @@ import {
 import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';
-import { buildFolderBreadcrumbPath, type FolderBreadcrumb } from '@/lib/navigation/folderBreadcrumbs';
+import { buildFolderBreadcrumbPath, folderBreadcrumbPathEndsAt, type FolderBreadcrumb, type FolderBreadcrumbSource } from '@/lib/navigation/folderBreadcrumbs';
+import { listFolders } from '@/lib/services/folderService';
+import { listLibraries } from '@/lib/services/libraryService';
+import { listDocuments, type DocumentSummary } from '@/lib/services/documentService';
+import { isUuid } from '@/lib/utils/uuid';
 
 type BreadcrumbItem = {
   label: string;
@@ -43,6 +47,25 @@ type NavigationContextType = {
 };
 
 const NavigationContext = createContext<NavigationContextType | null>(null);
+
+function resolveFolderBreadcrumbPath(
+  folders: FolderBreadcrumbSource[] | null | undefined,
+  folderId: string | null,
+  fallbackPath: FolderBreadcrumb[],
+  fallbackName: string | null
+): FolderBreadcrumb[] {
+  if (!folderId) return [];
+
+  if (folders?.length) {
+    return buildFolderBreadcrumbPath(folders, folderId);
+  }
+
+  if (folderBreadcrumbPathEndsAt(fallbackPath, folderId)) {
+    return fallbackPath;
+  }
+
+  return [{ id: folderId, name: fallbackName || 'Folder' }];
+}
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
   const params = useParams();
@@ -81,6 +104,56 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const currentDocumentId = routeParams.documentId;
   const currentFolderIdFromUrl = routeParams.folderId;
 
+  const { data: projectDocuments } = useQuery({
+    queryKey: queryKeys.documents(currentProjectId ?? ''),
+    queryFn: async () => {
+      if (!currentProjectId) return [] as DocumentSummary[];
+      return listDocuments(supabase, currentProjectId);
+    },
+    enabled: isUuid(currentProjectId),
+    staleTime: 0,
+  });
+
+  const { data: foldersAndLibraries } = useQuery({
+    queryKey: ['folders-libraries', currentProjectId],
+    queryFn: async () => {
+      if (!currentProjectId) {
+        return { folders: [] as FolderBreadcrumbSource[], libraries: [] as CachedLibraryMeta[] };
+      }
+      const [folders, libraries] = await Promise.all([
+        listFolders(supabase, currentProjectId),
+        listLibraries(supabase, currentProjectId),
+      ]);
+      return { folders, libraries };
+    },
+    enabled: isUuid(currentProjectId),
+    staleTime: 0,
+  });
+
+  type CachedLibraryMeta = {
+    id: string;
+    name: string;
+    folder_id: string | null;
+  };
+
+  const projectFolders = foldersAndLibraries?.folders;
+  const projectLibraries = foldersAndLibraries?.libraries;
+
+  const activeDocument = useMemo(() => {
+    if (!currentDocumentId || !projectDocuments) return null;
+    return projectDocuments.find((entry) => entry.id === currentDocumentId) ?? null;
+  }, [currentDocumentId, projectDocuments]);
+
+  const activeLibrary = useMemo(() => {
+    if (!currentLibraryId || !projectLibraries || isScriptSystemPath(pathname)) return null;
+    return projectLibraries.find((entry) => entry.id === currentLibraryId) ?? null;
+  }, [currentLibraryId, pathname, projectLibraries]);
+
+  const resolvedDocumentFolderId = activeDocument?.folder_id ?? null;
+  const resolvedLibraryFolderId = activeLibrary?.folder_id ?? null;
+  const resolvedDocumentName = activeDocument?.name ?? documentName;
+  const resolvedLibraryName = activeLibrary?.name ?? libraryName;
+
   // Current folder: from URL, library.folder_id, or document.folder_id.
   // Script workspace breadcrumbs follow the Script sidebar tree (project / doc /
   // script), not Studio folder paths — ignore library.folder_id there.
@@ -88,8 +161,43 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const onCreateMap = isCreateMapPath(pathname);
   const currentFolderId = useMemo(() => {
     if (onScriptSystem) return currentFolderIdFromUrl;
-    return currentFolderIdFromUrl || libraryFolderId || documentFolderId;
-  }, [currentFolderIdFromUrl, documentFolderId, libraryFolderId, onScriptSystem]);
+    return (
+      currentFolderIdFromUrl ||
+      resolvedLibraryFolderId ||
+      resolvedDocumentFolderId ||
+      libraryFolderId ||
+      documentFolderId
+    );
+  }, [
+    currentFolderIdFromUrl,
+    documentFolderId,
+    libraryFolderId,
+    onScriptSystem,
+    resolvedDocumentFolderId,
+    resolvedLibraryFolderId,
+  ]);
+
+  const resolvedFolderPath = useMemo(
+    () =>
+      resolveFolderBreadcrumbPath(projectFolders, currentFolderId, folderPath, folderName),
+    [currentFolderId, folderName, folderPath, projectFolders]
+  );
+
+  const resolvedFolderName = useMemo(() => {
+    if (!currentFolderId) return null;
+    const fromPath = resolvedFolderPath.find((folder) => folder.id === currentFolderId)?.name;
+    return fromPath ?? folderName;
+  }, [currentFolderId, folderName, resolvedFolderPath]);
+
+  // Drop stale folder/document/library metadata as soon as the route changes.
+  useEffect(() => {
+    if (!currentDocumentId) {
+      setDocumentFolderId(null);
+    }
+    if (!currentLibraryId) {
+      setLibraryFolderId(null);
+    }
+  }, [currentDocumentId, currentLibraryId]);
 
   useEffect(() => {
     if (!currentProjectId || !projectName?.trim()) return;
@@ -601,10 +709,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     // Add the complete folder ancestry to breadcrumbs when available.
     if (currentFolderId && currentProjectId) {
-      const path = folderPath.length > 0
-        ? folderPath
-        : [{ id: currentFolderId, name: folderName || 'Folder' }];
-      path.forEach((folder) => {
+      resolvedFolderPath.forEach((folder) => {
         nextBreadcrumbs.push({
           label: folder.name || 'Folder',
           path: `/${currentProjectId}/folder/${folder.id}`,
@@ -614,7 +719,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     if (currentLibraryId) {
       nextBreadcrumbs.push({
-        label: libraryName || 'Library',
+        label: resolvedLibraryName || 'Library',
         path: `/${currentProjectId}/${currentLibraryId}`,
       });
     }
@@ -628,7 +733,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     if (currentDocumentId) {
       nextBreadcrumbs.push({
-        label: documentName || 'Document',
+        label: resolvedDocumentName || 'Document',
         path: `/${currentProjectId}/doc/${currentDocumentId}`,
       });
     }
@@ -636,18 +741,17 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return nextBreadcrumbs;
   }, [
     assetName,
-    documentName,
     currentAssetId,
     currentDocumentId,
     currentFolderId,
-    folderPath,
     currentLibraryId,
     currentProjectId,
-    folderName,
-    libraryName,
     onScriptSystem,
-    projectName,
     pathname,
+    projectName,
+    resolvedDocumentName,
+    resolvedFolderPath,
+    resolvedLibraryName,
     scriptParentDocumentId,
     scriptParentDocumentName,
   ]);
@@ -657,13 +761,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentProjectId,
     currentProjectName: projectName,
     currentLibraryId,
-    currentLibraryName: libraryName,
+    currentLibraryName: resolvedLibraryName,
     currentAssetId,
     currentAssetName: assetName,
     currentDocumentId,
-    currentDocumentName: documentName,
+    currentDocumentName: resolvedDocumentName,
     currentFolderId,
-    currentFolderName: folderName,
+    currentFolderName: resolvedFolderName,
     isPredefinePage: routeParams.isPredefinePage,
     isLibraryPage: routeParams.isLibraryPage,
     showCreateProjectBreadcrumb,
@@ -676,9 +780,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentFolderId,
     currentLibraryId,
     currentProjectId,
-    documentName,
-    folderName,
-    libraryName,
+    resolvedDocumentName,
+    resolvedFolderName,
+    resolvedLibraryName,
     projectName,
     routeParams.isLibraryPage,
     routeParams.isPredefinePage,

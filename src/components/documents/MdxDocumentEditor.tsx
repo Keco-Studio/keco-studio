@@ -90,6 +90,9 @@ import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
 import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
 import { documentClipboardImagePastePlugin } from './documentClipboardImagePastePlugin';
+import { documentTableCopyPlugin } from './documentTableCopyPlugin';
+import { documentTableCellSelectionPlugin } from './documentTableCellSelectionPlugin';
+import { documentTablePastePlugin } from './documentTablePastePlugin';
 import { GddScriptBranchSnapshotEditor } from './GddScriptBranchSnapshotEditor';
 import { coerceSanctionedMdxHtmlComments } from '@/lib/documents/sanctionedMdx';
 
@@ -392,6 +395,9 @@ export default function MdxDocumentEditor({
       documentClipboardImagePastePlugin({ imageUploadHandler }),
       markdownImageExportPlugin(),
       tablePlugin(),
+      documentTableCellSelectionPlugin(),
+      documentTableCopyPlugin(),
+      documentTablePastePlugin(),
       codeBlockPlugin({
         defaultCodeBlockLanguage: '',
         codeBlockEditorDescriptors: [
