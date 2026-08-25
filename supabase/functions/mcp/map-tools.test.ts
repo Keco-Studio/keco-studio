@@ -4,6 +4,7 @@ import type {
   AccountMcpRequestContext,
   ProjectMcpRequestContext,
 } from "./context.ts";
+import { callKecoApp } from "./app-bridge.ts";
 import { registerMapTools } from "./map-tools.ts";
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<{
@@ -288,6 +289,43 @@ Deno.test("Map app failures become safe tool failures", async () => {
     error: {
       code: "INTERNAL_ERROR",
       message: "The Keco MCP operation failed.",
+    },
+  });
+});
+
+Deno.test("unsafe map descriptions return actionable non-retryable tool failures", async () => {
+  const safeMessage = "The map description contains unsupported instructions. Remove provider or API controls, credentials, URLs, and dynamic Keco UI instructions, then create a new draft request.";
+  const { server, tools } = recordingServer();
+  registerMapTools(server, projectContext, {
+    callApp: (context, request) => callKecoApp(context, request, {
+      origin: "https://keco.test",
+      fetch: (() => Promise.resolve(Response.json({
+        code: "FIELD_VALIDATION_FAILED",
+        error: safeMessage,
+      }, { status: 400 }))) as typeof fetch,
+    }),
+  });
+
+  const result = await tools.find((tool) =>
+    tool.name === "create_map_draft"
+  )!.handler({
+    description: "Unsupported map instructions",
+    documentId: null,
+    referenceIds: [],
+    styleReferenceId: null,
+    referenceRoles: {},
+    referenceUsage: {},
+    styleCopy: [],
+    idempotencyKey: IDS.requestId,
+  });
+
+  assertEquals(result.isError, true);
+  assertEquals(result.structuredContent, {
+    ok: false,
+    error: {
+      code: "FIELD_VALIDATION_FAILED",
+      message: safeMessage,
+      retryable: false,
     },
   });
 });

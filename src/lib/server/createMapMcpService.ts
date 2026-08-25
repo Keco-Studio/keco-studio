@@ -186,7 +186,16 @@ const PUBLIC_MESSAGES: Record<CreateMapMcpErrorCode, string> = {
   UPSTREAM_UNAVAILABLE: 'The Create Map service is temporarily unavailable.',
 };
 
-export function createMapMcpPublicMessage(code: CreateMapMcpErrorCode): string {
+export const CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE = 'The map description contains unsupported instructions. Remove provider or API controls, credentials, URLs, and dynamic Keco UI instructions, then create a new draft request.';
+
+export function createMapMcpPublicMessage(
+  code: CreateMapMcpErrorCode,
+  candidateMessage?: string,
+): string {
+  if (
+    code === 'FIELD_VALIDATION_FAILED'
+    && candidateMessage === CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE
+  ) return candidateMessage;
   return PUBLIC_MESSAGES[code];
 }
 
@@ -347,6 +356,12 @@ function mapProviderError(error: unknown): never {
     : '';
   if (code === 'MAP_CONFIRMATION_EXPIRED') throw new CreateMapMcpError('MAP_CONFIRMATION_EXPIRED');
   if (code === 'MAP_CONFIRMATION_MISMATCH') throw new CreateMapMcpError('MAP_CONFIRMATION_MISMATCH');
+  if (code === 'map_description_unsafe') {
+    throw new CreateMapMcpError(
+      'FIELD_VALIDATION_FAILED',
+      CREATE_MAP_MCP_UNSAFE_DESCRIPTION_MESSAGE,
+    );
+  }
   if (code === 'pixellab_rate_limited') throw new CreateMapMcpError('PROVIDER_RATE_LIMITED');
   if (code === 'pixellab_quota_exceeded') throw new CreateMapMcpError('PROVIDER_QUOTA_EXCEEDED');
   if (code === 'pixellab_invalid_response') throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
