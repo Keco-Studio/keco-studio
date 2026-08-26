@@ -9,16 +9,18 @@ const WRITE_TOOLS = ['add_table_field', 'complete_image_upload', 'complete_image
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
   'bulk_update_table_rows', 'upsert_table_rows'];
 const GDS_TOOLS = ['list_game_design_systems', 'read_game_design_system', 'read_project_game_design_system',
-  'get_game_design_system_generation', 'create_game_design_system', 'generate_game_design_system',
-  'create_game_design_system_version', 'set_project_game_design_system', 'clear_project_game_design_system'];
+  'get_game_design_system_generation', 'get_project_gdd_generation', 'create_game_design_system',
+  'generate_game_design_system', 'create_game_design_system_version', 'set_project_game_design_system',
+  'clear_project_game_design_system', 'generate_project_gdd', 'cancel_project_gdd_generation'];
 const MAP_READ_TOOLS = ['list_maps', 'read_map', 'get_map_generation'];
 const MAP_WRITE_TOOLS = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
   'start_map_generation', 'advance_map_generation'];
-const PROJECT_WRITE_TOOLS = [...WRITE_TOOLS, ...MAP_WRITE_TOOLS];
+const PROJECT_WRITE_TOOLS = [...WRITE_TOOLS, 'generate_project_gdd',
+  'cancel_project_gdd_generation', ...MAP_WRITE_TOOLS];
 const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS, ...GDS_TOOLS,
   ...MAP_READ_TOOLS, ...MAP_WRITE_TOOLS].sort();
-const ACCOUNT_BASE_TOOLS = ['keco_connection_probe', 'list_projects', ...READ_TOOLS, ...GDS_TOOLS,
-  ...MAP_READ_TOOLS].sort();
+const ACCOUNT_BASE_TOOLS = ['keco_connection_probe', 'list_projects', ...READ_TOOLS,
+  ...GDS_TOOLS.filter(name => !PROJECT_WRITE_TOOLS.includes(name)), ...MAP_READ_TOOLS].sort();
 const LEGACY_RESOURCES = ['keco://documents', 'keco://project', 'keco://tables'].sort();
 const LEGACY_TEMPLATES = ['keco://documents/{documentId}', 'keco://project/structure',
   'keco://tables/{tableId}/rows{?limit,cursor}', 'keco://tables/{tableId}/schema'].sort();
