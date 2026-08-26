@@ -6,8 +6,9 @@ Never guess an ID from a title.
 
 ## Endpoint Context
 
-The account endpoint discovers projects with `list_projects`. Every Map tool and
-the three project-binding GDS tools require `projectId` there. The legacy
+The account endpoint discovers projects with `list_projects`. Every Map tool,
+the three project-binding GDS tools, and the three project GDD tools require
+`projectId` there. The legacy
 project endpoint is already bound to one project: omit `projectId` because its
 schemas reject it. Owned-system GDS tools never take `projectId` in either mode.
 
@@ -48,6 +49,22 @@ available. Tool discovery is authoritative.
 - `set_project_game_design_system`: account adds `projectId`; both modes pass
   `designSystemId` and `versionId`.
 - `clear_project_game_design_system`: account `{ projectId }`; legacy `{}`.
+- `generate_project_gdd`: account adds `projectId`; both modes require
+  `designSystemId`, `versionId`, and `idempotencyKey`, plus optional `mode`
+  (`quick` or `professional`) and `creativeBrief`. The selected system/version
+  must already be bound to the project. Reuse the key only for identical intent.
+- `get_project_gdd_generation`: `generationJobId`, plus account `projectId`.
+  Poll through non-terminal `queued`, `running`, or `waiting_for_maps` states.
+  Terminal states are `completed`, `completed_with_map_failures`, and `failed`.
+- `cancel_project_gdd_generation`: `generationJobId`, plus account `projectId`.
+  Use it only to stop the identified active job, then read its persisted result.
+
+For a project GDD, bind the exact GDS version, call `generate_project_gdd`, and
+poll `get_project_gdd_generation`. A queued or running response is not a finished
+GDD. After a completed result, pass its `output_document_id` to `read_document`
+in the same project and verify the document before reporting success. A
+`completed_with_map_failures` result may still have a readable GDD; report its
+bounded map failures. Do not invent a document or fall back to manual generation.
 
 Reuse an idempotency key only for byte-equivalent intent. On
 `IDEMPOTENCY_CONFLICT`, `GDS_JOB_CONFLICT`, or `VERSION_STALE`, stop and read
