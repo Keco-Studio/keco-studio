@@ -369,6 +369,8 @@ function mapProviderError(error: unknown): never {
   if (code === 'KM410') throw new CreateMapMcpError('MAP_CREATION_IN_PROGRESS');
   if (code === 'KM412') throw new CreateMapMcpError('MAP_REVISION_STALE');
   if (code === 'KM413') throw new CreateMapMcpError('MAP_REVISION_STALE');
+  if (code === 'P0002') throw new CreateMapMcpError('MAP_NOT_FOUND');
+  if (code === 'PGRST116') throw new CreateMapMcpError('MAP_NOT_FOUND');
   if (code === '42501') throw new CreateMapMcpError('PROJECT_WRITE_FORBIDDEN');
   if (code === 'save_conflict') throw new CreateMapMcpError('MAP_REVISION_STALE');
   throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
@@ -465,14 +467,18 @@ function defaultBackend(
     mapId: string;
     revisionId: string;
   }): Promise<{ saveVersion: number; plan: MapPlanV3 }> => {
+    const { data: map, error: mapError } = await supabase.from('map_projects')
+      .select('project_id').eq('id', input.mapId).single();
+    if (mapError || !map || map.project_id !== input.projectId) {
+      throw new CreateMapMcpError('MAP_NOT_FOUND');
+    }
     const { data, error } = await supabase.from('map_revisions')
-      .select('save_version,plan,map_projects!inner(project_id)')
+      .select('save_version,plan')
       .eq('id', input.revisionId)
       .eq('map_project_id', input.mapId)
       .eq('schema_version', 3)
       .single();
-    const project = data?.map_projects as unknown as { project_id?: unknown } | null;
-    if (error || !data || project?.project_id !== input.projectId) {
+    if (error || !data) {
       throw new CreateMapMcpError('MAP_NOT_FOUND');
     }
     const parsed = validateMapPlanV3(data.plan);
