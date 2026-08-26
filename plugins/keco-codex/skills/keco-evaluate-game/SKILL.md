@@ -11,7 +11,7 @@ Before expensive or mutating work, summarize Goal, Source, Scope, Success, and N
 
 ## Boundary
 
-Use this Skill for a full milestone evaluation or a gameplay Slice quick evaluation. A full evaluation scores the fixed 80-point general rubric plus a locked 20-point genre/GDD profile and produces a 100-point `GameEvaluationReport`. A Slice evaluation covers only affected metrics, adjacent regressions, and relevant P0/P1 risks; it does not issue a new full score.
+Use this Skill for a full milestone evaluation or a gameplay Slice quick evaluation. A full evaluation scores exactly `artStyle` (50 points) and `playerFun` (50 points), with four fixed sub-items in each dimension. A Slice evaluation covers only affected items, adjacent regressions, and relevant P0/P1 risks; it does not issue a new full score.
 
 Do not implement or repair gameplay in this Skill. Route Keco-driven Godot implementation to `keco-develop-godot-slice-v2`. Do not trigger for analysis-only questions about EDD or for Godot debugging without Keco design sources.
 
@@ -21,9 +21,9 @@ Support Slice, Alpha, Beta, Release Candidate, and Release evaluation. Lock the 
 
 ## Evidence Boundary
 
-Reuse current Keco `EvalSpec`, `KECO_EVAL`, and Slice `EvalReport` evidence for deterministic state, flow, regression, resources, performance, and persistence. Keep `manual_required` status for visual and experience evaluations until target-player evidence exists. Never infer fun, feel, pacing, readability, or aesthetics from screenshots, file parsing, AI judgment, or a clean launch.
+Reuse current Keco `EvalSpec`, `KECO_EVAL`, and Slice `EvalReport` evidence for deterministic state, flow, regression, resources, performance, and persistence. This repository does not provide a Claude MCP; `claudeReview` accepts only externally generated, validated JSON. Without a real Claude capability, leave the review pending rather than claiming a provider call. Claude may make evidence-bounded appeal judgments, but must state limitations and must not claim that players found the game fun without player records. Never invent evidence.
 
-Use three to five target players plus one developer or designer observer for a standard milestone evaluation. Keep observer records outside player subjective averages. Missing evidence is `not_evaluated`; content a player did not encounter is `not_applicable`.
+Use three to five target players plus one developer or designer observer for a standard milestone evaluation when human evidence is available. Keep observer records outside Claude scores. Missing evidence is `not_evaluated` and cannot contribute to a total.
 
 ## Workflow
 
@@ -35,11 +35,11 @@ INTAKE -> PROFILE -> EVIDENCE_PLAN -> RUNTIME_EVIDENCE
 ```
 
 1. Identify the Keco project, Godot build, stage, primary genre, GDD revision, and evaluation scope.
-2. Create and lock the 80+20 profile before collecting scored evidence.
-3. Define required automatic, observer, questionnaire, and manual evidence for every applicable metric.
+2. Create and lock the fixed two-dimension profile before collecting scored evidence. Genre is identity metadata only and never changes weights.
+3. Define required evidence for all eight fixed items.
 4. Collect fresh structured runtime evidence from the current build. Preserve raw `KECO_EVAL` records.
-5. Collect behavior-anchored responses, group subjective ratings, concrete player events, and observer events without inventing missing data.
-6. Score the applicable profile, calculate coverage and confidence, classify P0-P3 findings, and apply stage gates.
+5. Obtain a validated external `claudeReview` JSON. Each item needs a status, score when evaluated, reason, evidence references, limitations, and next iteration. Use `not_evaluated` when evidence is insufficient.
+6. Score only the eight Claude items. Stability, coverage, mandatory evaluations, P0-P3 findings, and stage gates are non-scoring acceptance data.
 7. Validate the report before claiming a score or stage decision.
 8. Create improvement records with fixed retest criteria for every failed evaluation or material low-scoring finding.
 
@@ -60,11 +60,13 @@ docs/keco-game-evaluations/<evaluationId>/
   profile.json
   evidence.json
   report.json
+  progress.jsonl
+  progress.md
 ```
 
 The existing Slice `EvalReport` owns direct Godot runtime results and raw `KECO_EVAL` evidence. `GameEvaluationReport` is the higher-level score, player evidence, coverage, risks, and stage decision. Reference the Slice report; never rewrite its runtime facts.
 
-Run the deterministic chain from this Skill directory:
+Run the deterministic chain from this Skill directory. Each script appends one event to `progress.jsonl` and a Chinese readable mirror to `progress.md`; events are append-only and include actual parsed results.
 
 ```bash
 python3 scripts/create_evaluation_profile.py \
@@ -96,4 +98,4 @@ Do not claim the engine is runnable when a required bundled script is absent. Du
 
 ## Completion
 
-Report the 100-point score only for milestone evaluations with sufficient coverage. Always show player sentiment, coverage, P0-P3 counts, stage decision, primary blockers, and the retest scope beside the score. A high score never overrides a forbidden P0/P1 state.
+Report the 100-point Claude score only when all eight items are evaluated and validation passes. Keep `humanReview` in the same report with null `artStyle`, `playerFun`, and `total` slots until a human fills both dimensions. Never merge Claude and human scores automatically. Always show coverage, P0-P3 counts, stage decision, primary blockers, source references, and retest scope beside the score. A high score never overrides a forbidden P0/P1 state.

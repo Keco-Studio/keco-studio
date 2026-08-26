@@ -1,6 +1,6 @@
 interface:
   display_name: "Evaluate Keco Game"
-  short_description: "Score game quality with traceable EDD evidence"
+  short_description: "Score art style and player fun with traceable EDD evidence"
   default_prompt: "Use $keco-evaluate-game to evaluate my Keco Godot game for Beta."
 policy:
   allow_implicit_invocation: true

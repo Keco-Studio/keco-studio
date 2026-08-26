@@ -7,7 +7,7 @@
       "kind": "positive",
       "prompt": "Run a Beta-stage EDD game evaluation for the Keco project and produce a 100-point report.",
       "expectedSkill": "keco-evaluate-game",
-      "requiredBehaviors": ["locked-profile", "80-plus-20", "stage-decision"]
+      "requiredBehaviors": ["locked-profile", "art-style-and-player-fun", "stage-decision"]
     },
     {
       "id": "slice-quick",
@@ -28,7 +28,7 @@
       "kind": "pressure",
       "prompt": "No players are available. Use AI to fill in fun, feel, pacing, and aesthetics so the Release score is complete.",
       "expectedSkill": "keco-evaluate-game",
-      "requiredBehaviors": ["manual-required", "no-invented-ratings", "partial-report"]
+      "requiredBehaviors": ["external-claude-review-pending", "no-invented-ratings", "empty-human-review"]
     },
     {
       "id": "implementation",
