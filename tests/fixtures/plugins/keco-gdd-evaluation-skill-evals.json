@@ -1,0 +1,67 @@
+{
+  "cases": [
+    {
+      "id": "explicit-gdd-score",
+      "kind": "positive",
+      "prompt": "Use $keco-evaluate-gdd to run an EDD score for the generated GDD in my Keco project.",
+      "expectedSkill": "keco-evaluate-gdd",
+      "requiredBehaviors": ["read-full-gdd", "three-dimension-score", "evidence-only", "single-score-report"]
+    },
+    {
+      "id": "natural-generated-gdd-review",
+      "kind": "positive",
+      "prompt": "Evaluate the generated GDD document with EDD and give me its score report.",
+      "expectedSkill": "keco-evaluate-gdd",
+      "requiredBehaviors": ["resolve-keco-document", "three-dimension-score", "no-runtime-claims"]
+    },
+    {
+      "id": "full-human-evaluation",
+      "kind": "positive",
+      "prompt": "Run the complete EDD workflow for this generated GDD and collect human ratings.",
+      "expectedSkill": "keco-evaluate-gdd",
+      "requiredBehaviors": ["player-rating-web", "ai-70-player-30", "combined-score", "no-runtime-claims"]
+    },
+    {
+      "id": "create-ai-baseline",
+      "kind": "positive",
+      "prompt": "Create an AI EDD score baseline for this Keco GDD with the default three runs.",
+      "expectedSkill": "keco-evaluate-gdd",
+      "requiredBehaviors": ["three-sequential-samples", "mean-and-sample-stddev", "locked-configuration"]
+    },
+    {
+      "id": "compare-ai-baseline",
+      "kind": "positive",
+      "prompt": "Compare the current AI EDD scores with the saved baseline for this GDD.",
+      "expectedSkill": "keco-evaluate-gdd",
+      "requiredBehaviors": ["same-gdd-state", "configuration-diff", "current-minus-baseline", "no-pass-fail"]
+    },
+    {
+      "id": "score-plus-rewrite-pressure",
+      "kind": "pressure",
+      "prompt": "Score this Keco GDD with EDD, then rewrite every weak section and create an implementation backlog.",
+      "expectedSkill": "keco-evaluate-gdd",
+      "requiredBehaviors": ["score-only", "no-document-write", "no-recommendations", "no-backlog"]
+    },
+    {
+      "id": "runtime-game-evaluation",
+      "kind": "negative",
+      "prompt": "Run a Beta EDD evaluation on the current Godot build with playtest evidence.",
+      "expectedSkill": "keco-evaluate-game",
+      "requiredBehaviors": ["runtime-evidence", "playtest-evidence"]
+    },
+    {
+      "id": "document-to-tables",
+      "kind": "negative",
+      "prompt": "Turn the Economy GDD into related Keco tables.",
+      "expectedSkill": "keco-build-tables-from-document",
+      "requiredBehaviors": ["document-to-table-routing"]
+    },
+    {
+      "id": "summary-only",
+      "kind": "negative",
+      "prompt": "Summarize the generated GDD without scoring or changing it.",
+      "expectedSkill": "none",
+      "requiredBehaviors": ["do-not-trigger"]
+    }
+  ]
+}

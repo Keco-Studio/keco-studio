@@ -1,15 +1,15 @@
 {
   "name": "keco",
   "version": "0.4.0+codex.20260824051940",
-  "description": "Manage Keco game design systems, create maps, build project data, import images, and develop Godot gameplay slices.",
+  "description": "Manage Keco game design systems, evaluate GDDs, create maps, build project data, import images, and develop Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Keco",
-    "shortDescription": "Manage Keco design systems, maps, data, and Godot slices.",
-    "longDescription": "Connect Codex to Keco and use guided workflows to manage Game Design Systems, create complete V3 maps, build verified project tables, import local image assets, or implement and evaluate Godot gameplay slices.",
+    "shortDescription": "Manage Keco design systems, GDDs, maps, data, and Godot slices.",
+    "longDescription": "Connect Codex to Keco and use guided workflows to manage Game Design Systems, score generated GDDs, create complete V3 maps, build verified project tables, import local image assets, or implement and evaluate Godot gameplay slices.",
     "developerName": "Keco Studio",
     "category": "Productivity",
     "capabilities": [
@@ -23,6 +23,7 @@
       "Import my local image directory into a verified Keco asset table.",
       "Implement the next Godot gameplay slice from my Keco project and evaluate it.",
       "Read a Keco project document, plan its development ideas as ordered Godot slices, and execute them.",
+      "Run an EDD evaluation on a generated Keco GDD and return a single 100-point score report.",
       "Run an EDD game evaluation with an 80+20 score, playtest evidence, risk gates, and a stage decision.",
       "Generate a top-down PixelLab tileset and map-object pack for my Godot scene.",
       "Create and bind a new Keco Game Design System.",
