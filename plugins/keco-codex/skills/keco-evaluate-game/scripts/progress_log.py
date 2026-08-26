@@ -42,19 +42,19 @@ def append_event(
         handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
     with (run_dir / "progress.md").open("a", encoding="utf-8") as handle:
         handle.write(f"## {segment}\n\n")
-        handle.write(f"- 目标: {goal}\n")
-        handle.write("- 输入:\n\n```json\n")
+        handle.write(f"- \u76ee\u6807: {goal}\n")
+        handle.write("- \u8f93\u5165:\n\n```json\n")
         handle.write(json.dumps(inputs, ensure_ascii=False, indent=2, sort_keys=True) + "\n```\n\n")
-        handle.write(f"- 执行方式: {execution}\n- 预期输出: {expected_output}\n")
-        handle.write("- 实际结果:\n\n```json\n")
+        handle.write(f"- \u6267\u884c\u65b9\u5f0f: {execution}\n- \u9884\u671f\u8f93\u51fa: {expected_output}\n")
+        handle.write("- \u5b9e\u9645\u7ed3\u679c:\n\n```json\n")
         handle.write(json.dumps(actual_result, ensure_ascii=False, indent=2, sort_keys=True) + "\n```\n\n")
-        handle.write(f"- 具体含义: {meaning}\n- 对下一步影响: {next_impact}\n\n")
-        handle.write("### 步骤 1\n\n")
-        handle.write(f"- 工具: {execution}\n- 参数:\n\n```json\n")
+        handle.write(f"- \u5177\u4f53\u542b\u4e49: {meaning}\n- \u5bf9\u4e0b\u4e00\u6b65\u5f71\u54cd: {next_impact}\n\n")
+        handle.write("### \u6b65\u9aa4 1\n\n")
+        handle.write(f"- \u5de5\u5177: {execution}\n- \u53c2\u6570:\n\n```json\n")
         handle.write(json.dumps(inputs, ensure_ascii=False, indent=2, sort_keys=True) + "\n```\n\n")
-        handle.write("- 输出:\n\n```json\n")
+        handle.write("- \u8f93\u51fa:\n\n```json\n")
         handle.write(json.dumps(actual_result, ensure_ascii=False, indent=2, sort_keys=True) + "\n```\n\n")
-        handle.write(f"- 具体含义: {meaning}\n- 对下一步影响: {next_impact}\n\n")
+        handle.write(f"- \u5177\u4f53\u542b\u4e49: {meaning}\n- \u5bf9\u4e0b\u4e00\u6b65\u5f71\u54cd: {next_impact}\n\n")
     return event
 
 

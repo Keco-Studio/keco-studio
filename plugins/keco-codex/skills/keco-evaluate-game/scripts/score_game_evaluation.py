@@ -31,12 +31,12 @@ MANDATORY_STATUSES = {"passed", "failed", "blocked", "manual_required"}
 
 def append_progress(output: pathlib.Path, report: dict[str, Any]) -> None:
     append_event(
-        output.parent, "score", "按 Claude 外部评价汇总分数",
+        output.parent, "score", "\u6309 Claude \u5916\u90e8\u8bc4\u4ef7\u6c47\u603b\u5206\u6570",
         {"profileId": report["profileId"], "coverage": report["coverage"]},
-        "score_game_evaluation.py", "artStyle 和 playerFun 各 50 分",
+        "score_game_evaluation.py", "artStyle \u548c playerFun \u5404 50 \u5206",
         {"status": report["claudeReview"]["status"], "total": report["claudeReview"]["total"]["score"]},
-        "只有八项 Claude 评价贡献分数，人工字段保持空位",
-        "validator 将重算维度、总分和风险门禁",
+        "\u53ea\u6709\u516b\u9879 Claude \u8bc4\u4ef7\u8d21\u732e\u5206\u6570\uff0c\u4eba\u5de5\u5b57\u6bb5\u4fdd\u6301\u7a7a\u4f4d",
+        "validator \u5c06\u91cd\u7b97\u7ef4\u5ea6\u3001\u603b\u5206\u548c\u98ce\u9669\u95e8\u7981",
     )
 
 

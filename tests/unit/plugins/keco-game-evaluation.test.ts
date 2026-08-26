@@ -233,7 +233,7 @@ describe('Keco game evaluation scoring', () => {
       }));
     }
     const markdown = readFileSync(markdownPath, 'utf8');
-    expect(markdown).toMatch(/目标:[\s\S]*输入:[\s\S]*执行方式:[\s\S]*预期输出:[\s\S]*实际结果:[\s\S]*具体含义:[\s\S]*对下一步影响:/);
+    expect(markdown).toMatch(/\u76ee\u6807:[\s\S]*\u8f93\u5165:[\s\S]*\u6267\u884c\u65b9\u5f0f:[\s\S]*\u9884\u671f\u8f93\u51fa:[\s\S]*\u5b9e\u9645\u7ed3\u679c:[\s\S]*\u5177\u4f53\u542b\u4e49:[\s\S]*\u5bf9\u4e0b\u4e00\u6b65\u5f71\u54cd:/);
     expect(markdown).toContain('```json\n{\n  "');
     expect(report.claudeReview.total.score).toBe(100);
   });

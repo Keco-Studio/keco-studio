@@ -180,12 +180,12 @@ def validate(report: Any) -> None:
 
 def append_progress(report_path: pathlib.Path, report: dict[str, Any]) -> None:
     append_event(
-        report_path.parent, "validate", "校验评价报告契约和阶段门禁",
+        report_path.parent, "validate", "\u6821\u9a8c\u8bc4\u4ef7\u62a5\u544a\u5951\u7ea6\u548c\u9636\u6bb5\u95e8\u7981",
         {"reportId": report["reportId"]},
-        "validate_game_evaluation_report.py", "报告结构、证据和分数一致",
+        "validate_game_evaluation_report.py", "\u62a5\u544a\u7ed3\u6784\u3001\u8bc1\u636e\u548c\u5206\u6570\u4e00\u81f4",
         {"status": report["decision"]["status"], "total": report["claudeReview"]["total"]["score"]},
-        "报告可以作为当前评价结果使用，但人工评价仍独立保存",
-        "根据 decision 进入报告、改进或重测流程",
+        "\u62a5\u544a\u53ef\u4ee5\u4f5c\u4e3a\u5f53\u524d\u8bc4\u4ef7\u7ed3\u679c\u4f7f\u7528\uff0c\u4f46\u4eba\u5de5\u8bc4\u4ef7\u4ecd\u72ec\u7acb\u4fdd\u5b58",
+        "\u6839\u636e decision \u8fdb\u5165\u62a5\u544a\u3001\u6539\u8fdb\u6216\u91cd\u6d4b\u6d41\u7a0b",
     )
 
 

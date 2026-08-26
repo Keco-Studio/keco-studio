@@ -82,12 +82,12 @@ DIMENSIONS = {
 
 def append_progress(output: pathlib.Path, profile: dict[str, Any]) -> None:
     append_event(
-        output.parent, "profile", "锁定评价范围和固定评分项",
+        output.parent, "profile", "\u9501\u5b9a\u8bc4\u4ef7\u8303\u56f4\u548c\u56fa\u5b9a\u8bc4\u5206\u9879",
         {"gameId": profile["gameId"], "stage": profile["stage"], "genre": profile["genre"], "gddRevision": profile["gddRevision"], "buildHash": profile["buildHash"]},
-        "create_evaluation_profile.py", "两维八项固定 profile",
+        "create_evaluation_profile.py", "\u4e24\u7ef4\u516b\u9879\u56fa\u5b9a profile",
         {"profileId": profile["profileId"], "dimensions": list(profile["dimensions"])},
-        "评分权重已锁定，genre 只保留为身份元数据",
-        "后续证据只能按这八个子项提交",
+        "\u8bc4\u5206\u6743\u91cd\u5df2\u9501\u5b9a\uff0cgenre \u53ea\u4fdd\u7559\u4e3a\u8eab\u4efd\u5143\u6570\u636e",
+        "\u540e\u7eed\u8bc1\u636e\u53ea\u80fd\u6309\u8fd9\u516b\u4e2a\u5b50\u9879\u63d0\u4ea4",
     )
 
 
