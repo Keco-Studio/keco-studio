@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
@@ -7,6 +8,7 @@ const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-docume
 const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
 const gameEvaluationSkillRoot = path.join(pluginRoot, 'skills', 'keco-evaluate-game');
+const gddEvaluationSkillRoot = path.join(pluginRoot, 'skills', 'keco-evaluate-gdd');
 const pixelLabMapSkillRoot = path.join(pluginRoot, 'skills', 'pixellab-map-assets');
 const localImportSkillRoot = path.join(pluginRoot, 'skills', 'keco-import-local-assets');
 const interactionContractPath = path.join(pluginRoot, 'references', 'interaction-contract.md');
@@ -23,6 +25,7 @@ const ENTRY_SKILLS = [
   'keco-create-map',
   'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
+  'keco-evaluate-gdd',
   'keco-evaluate-game',
   'keco-import-local-assets',
   'keco-manage-game-design-system',
@@ -200,6 +203,141 @@ describe('Keco Codex plugin contract', () => {
     expect(evaluationSkill).toMatch(/full[\s\S]*milestone[\s\S]*evaluation/i);
     expect(evaluationSkill).toMatch(/does not implement|not for implementing/i);
     expect(evaluationMetadata).toMatch(/allow_implicit_invocation: true/);
+  });
+
+  it('ships complete EDD evaluation modes for generated Keco GDD documents', () => {
+    const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco-codex/.codex-plugin/plugin.json');
+    const skill = readFileSync(path.join(gddEvaluationSkillRoot, 'SKILL.md'), 'utf8');
+    const metadata = readFileSync(path.join(gddEvaluationSkillRoot, 'agents', 'openai.yaml'), 'utf8');
+    const rubric = readFileSync(path.join(gddEvaluationSkillRoot, 'references', 'rubric.md'), 'utf8');
+    const reportContract = readFileSync(path.join(gddEvaluationSkillRoot, 'references', 'report-contract.md'), 'utf8');
+    const workflowContract = readFileSync(path.join(gddEvaluationSkillRoot, 'references', 'workflow-contract.md'), 'utf8');
+
+    expect(manifest.interface.defaultPrompt).toEqual(expect.arrayContaining([
+      expect.stringMatching(/EDD[\s\S]*GDD[\s\S]*(?:score|evaluation)/i),
+    ]));
+    expect(skill).toMatch(/^---\nname: keco-evaluate-gdd\n/);
+    expect(skill).toMatch(/^description: Use when[^\n]*(?:score|evaluate)[^\n]*Keco[^\n]*GDD document/m);
+    expect(skill).toMatch(/existing Keco GDD document[\s\S]*read_document/i);
+    expect(skill).toMatch(/mode ["`]heading["`][\s\S]*mode ["`]lines["`][\s\S]*complete/i);
+    expect(skill).toMatch(/experienceValue[\s\S]*gameplaySystems[\s\S]*contentPresentation/);
+    expect(skill).toMatch(/single[\s\S]*score report/i);
+    expect(skill).toMatch(/must not[\s\S]*(?:modify|update|rewrite)[\s\S]*GDD/i);
+    expect(skill).toMatch(/score[\s\S]*evaluate[\s\S]*baseline[\s\S]*compare/i);
+    expect(skill).toMatch(/player|human rating/i);
+    expect(skill).toMatch(/AI[\s\S]*70%[\s\S]*(?:player|human)[\s\S]*30%/i);
+    expect(skill).toMatch(/no Godot[\s\S]*no runtime/i);
+    expect(skill).toContain('scripts/validate_gdd_evaluation_report.py');
+    expect(skill).toContain('assets/gdd-edd/src/keco-cli.mjs');
+
+    expect(rubric).toMatch(/Experience Value[^\n]*30/i);
+    expect(rubric).toMatch(/Gameplay and Systems[^\n]*40/i);
+    expect(rubric).toMatch(/Content and Presentation[^\n]*30/i);
+    expect(rubric).toMatch(/experience goal[\s\S]*design response[\s\S]*GDD evidence/i);
+    expect(rubric).toMatch(/same evidence[\s\S]*one primary dimension/i);
+    expect(reportContract).toMatch(/totalScore[\s\S]*sum/i);
+    expect(reportContract).toMatch(/observations[\s\S]*rationale[\s\S]*evidenceGaps/i);
+    expect(reportContract).toMatch(/AI-only[\s\S]*combined/i);
+    expect(workflowContract).toMatch(/AI[\s\S]*70%[\s\S]*(?:player|human)[\s\S]*30%/i);
+    expect(workflowContract).toMatch(/mean[\s\S]*sample standard deviation/i);
+    expect(workflowContract).toMatch(/GDD[\s\S]*Prompt[\s\S]*Rubric[\s\S]*Schema[\s\S]*model/i);
+    expect(workflowContract).toMatch(/must not[\s\S]*PASS\/FAIL/i);
+    expect(metadata).toMatch(/default_prompt: "Use \$keco-evaluate-gdd/);
+    expect(metadata).toMatch(/allow_implicit_invocation: true/);
+  });
+
+  it('validates the score-only GDD evaluation report contract', () => {
+    const validator = path.join(gddEvaluationSkillRoot, 'scripts', 'validate_gdd_evaluation_report.py');
+    const dimension = (score: number) => ({
+      score,
+      observations: [{ statement: 'The design states a concrete player outcome.', evidence: 'Core Experience: stay calm under pressure.' }],
+      rationale: 'The cited design response supports the documented experience goal.',
+      evidenceGaps: [],
+    });
+    const report = {
+      schemaVersion: 1,
+      source: { projectId: 'project-1', documentId: 'document-1', epoch: 2, revision: 0, title: 'Sample GDD' },
+      dimensions: {
+        experienceValue: dimension(24),
+        gameplaySystems: dimension(31),
+        contentPresentation: dimension(22),
+      },
+      totalScore: 77,
+      confidence: { level: 'high', rationale: 'All three dimensions have direct GDD evidence.', limitations: [] },
+    };
+
+    const valid = spawnSync('python3', [validator, '-'], { input: JSON.stringify(report), encoding: 'utf8' });
+    expect(valid.status).toBe(0);
+    expect(valid.stdout).toMatch(/valid/i);
+
+    const outOfRange = structuredClone(report);
+    outOfRange.dimensions.experienceValue.score = 31;
+    const invalidScore = spawnSync('python3', [validator, '-'], { input: JSON.stringify(outOfRange), encoding: 'utf8' });
+    expect(invalidScore.status).not.toBe(0);
+    expect(invalidScore.stderr).toMatch(/experienceValue\.score[\s\S]*0[\s\S]*30/i);
+
+    const withSuggestion = { ...report, recommendations: ['Rewrite the core loop.'] };
+    const invalidShape = spawnSync('python3', [validator, '-'], { input: JSON.stringify(withSuggestion), encoding: 'utf8' });
+    expect(invalidShape.status).not.toBe(0);
+    expect(invalidShape.stderr).toMatch(/unexpected[\s\S]*recommendations/i);
+  });
+
+  it('keeps GDD document scoring isolated from runtime evaluation and editing workflows', () => {
+    const evaluations = readJson<{
+      cases: Array<{ id: string; expectedSkill: string; requiredBehaviors: string[] }>;
+    }>('tests/fixtures/plugins/keco-gdd-evaluation-skill-evals.json');
+
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-evaluate-gdd').map((item) => item.id)).toEqual([
+      'explicit-gdd-score',
+      'natural-generated-gdd-review',
+      'full-human-evaluation',
+      'create-ai-baseline',
+      'compare-ai-baseline',
+      'score-plus-rewrite-pressure',
+    ]);
+    expect(evaluations.cases.find((item) => item.id === 'score-plus-rewrite-pressure')?.requiredBehaviors).toEqual(
+      expect.arrayContaining(['score-only', 'no-document-write', 'no-recommendations']),
+    );
+    expect(evaluations.cases.find((item) => item.id === 'full-human-evaluation')?.requiredBehaviors).toEqual(
+      expect.arrayContaining(['player-rating-web', 'ai-70-player-30', 'combined-score']),
+    );
+    expect(evaluations.cases.find((item) => item.id === 'create-ai-baseline')?.requiredBehaviors).toEqual(
+      expect.arrayContaining(['three-sequential-samples', 'mean-and-sample-stddev', 'locked-configuration']),
+    );
+    expect(evaluations.cases.find((item) => item.id === 'runtime-game-evaluation')?.expectedSkill).toBe('keco-evaluate-game');
+    expect(evaluations.cases.find((item) => item.id === 'document-to-tables')?.expectedSkill).toBe('keco-build-tables-from-document');
+    expect(evaluations.cases.find((item) => item.id === 'summary-only')?.expectedSkill).toBe('none');
+  });
+
+  it('bundles the complete generic EDD player and baseline engine', () => {
+    const engineRoot = path.join(gddEvaluationSkillRoot, 'assets', 'gdd-edd');
+    for (const relativePath of [
+      'package.json',
+      'public/index.html',
+      'public/player.js',
+      'public/styles.css',
+      'src/keco-cli.mjs',
+      'src/ai-evaluator.mjs',
+      'src/ai-evaluation.schema.json',
+      'src/scoring.mjs',
+      'src/server.mjs',
+      'src/store.mjs',
+      'src/eval-sampling.mjs',
+      'src/eval-statistics.mjs',
+      'src/eval-baseline-store.mjs',
+    ]) {
+      expect(existsSync(path.join(engineRoot, relativePath))).toBe(true);
+    }
+
+    const packageJson = JSON.parse(readFileSync(path.join(engineRoot, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts).toMatchObject({
+      eval: expect.stringMatching(/keco-cli/),
+      'eval:baseline': expect.stringMatching(/baseline/),
+      'eval:compare': expect.stringMatching(/compare/),
+      test: 'node --test',
+    });
   });
 
   it('defines isolated trigger cases for Keco-to-Godot development', () => {

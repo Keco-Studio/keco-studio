@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "dimensions", "issues"],
+  "properties": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "documentId", "epoch", "revision", "title"],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "documentId": { "type": "string", "minLength": 1 },
+        "epoch": { "type": "integer", "minimum": 0 },
+        "revision": { "type": "integer", "minimum": 0 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["experienceValue", "gameplaySystems", "contentPresentation"],
+      "properties": {
+        "experienceValue": { "$ref": "#/$defs/dimension30" },
+        "gameplaySystems": { "$ref": "#/$defs/dimension40" },
+        "contentPresentation": { "$ref": "#/$defs/dimension30" }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/issue" }
+    }
+  },
+  "$defs": {
+    "dimension30": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "observations", "rationale", "evidenceGaps"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 30 },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["statement", "evidence"],
+            "properties": {
+              "statement": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "evidence": { "type": "string", "minLength": 1, "maxLength": 300 }
+            }
+          }
+        },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "evidenceGaps": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    },
+    "dimension40": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "observations", "rationale", "evidenceGaps"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 40 },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["statement", "evidence"],
+            "properties": {
+              "statement": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "evidence": { "type": "string", "minLength": 1, "maxLength": 300 }
+            }
+          }
+        },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "evidenceGaps": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "evidence", "description", "suggestion"],
+      "properties": {
+        "dimension": { "type": "string", "enum": ["experienceValue", "gameplaySystems", "contentPresentation"] },
+        "evidence": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "suggestion": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    }
+  }
+}

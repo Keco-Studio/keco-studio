@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Rating</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="player-shell">
+    <header class="page-header">
+      <div class="cat-mark" aria-hidden="true">Cat</div>
+      <div><p class="eyebrow">Playtest Feedback</p><h1 id="game-title">Player Rating</h1></div>
+    </header>
+
+    <div id="page-message" class="message" role="status">Loading rating link...</div>
+
+    <form id="rating-form" hidden>
+      <section class="rating-section">
+        <div class="section-heading"><span>01</span><div><h2>Experience Value</h2><p>Are the target player, core fantasy, and play motivation clear and compelling?</p></div></div>
+        <div class="score-grid" role="radiogroup" aria-label="Experience Value rating">
+          <label><input type="radio" name="experienceValueScore" value="1"><span><b>1</b>Poor</span></label>
+          <label><input type="radio" name="experienceValueScore" value="2"><span><b>2</b>Fair</span></label>
+          <label><input type="radio" name="experienceValueScore" value="3"><span><b>3</b>Average</span></label>
+          <label><input type="radio" name="experienceValueScore" value="4"><span><b>4</b>Good</span></label>
+          <label><input type="radio" name="experienceValueScore" value="5"><span><b>5</b>Excellent</span></label>
+        </div>
+        <fieldset class="reasons" id="experience-value-reasons" hidden><legend>What needs improvement?</legend>
+          <label><input type="checkbox" name="experienceValueReasons" value="unclear_goal">Unclear experience goal</label>
+          <label><input type="checkbox" name="experienceValueReasons" value="weak_motivation">Weak player motivation</label>
+          <label><input type="checkbox" name="experienceValueReasons" value="vague_fantasy">Vague core fantasy</label>
+          <label><input type="checkbox" name="experienceValueReasons" value="low_differentiation">Low differentiation</label>
+          <label><input type="checkbox" name="experienceValueReasons" value="unclear_emotion">Unclear expected emotion</label>
+        </fieldset>
+      </section>
+
+      <section class="rating-section">
+        <div class="section-heading"><span>02</span><div><h2>Gameplay and Systems</h2><p>Do the loop, choices, feedback, difficulty, and progression systems hold up?</p></div></div>
+        <div class="score-grid" role="radiogroup" aria-label="Gameplay and Systems rating">
+          <label><input type="radio" name="gameplaySystemsScore" value="1"><span><b>1</b>Poor</span></label>
+          <label><input type="radio" name="gameplaySystemsScore" value="2"><span><b>2</b>Fair</span></label>
+          <label><input type="radio" name="gameplaySystemsScore" value="3"><span><b>3</b>Average</span></label>
+          <label><input type="radio" name="gameplaySystemsScore" value="4"><span><b>4</b>Good</span></label>
+          <label><input type="radio" name="gameplaySystemsScore" value="5"><span><b>5</b>Excellent</span></label>
+        </div>
+        <fieldset class="reasons" id="gameplay-systems-reasons" hidden><legend>What needs improvement?</legend>
+          <label><input type="checkbox" name="gameplaySystemsReasons" value="weak_loop">Weak core loop</label>
+          <label><input type="checkbox" name="gameplaySystemsReasons" value="low_agency">Low player agency</label>
+          <label><input type="checkbox" name="gameplaySystemsReasons" value="weak_feedback">Insufficient feedback</label>
+          <label><input type="checkbox" name="gameplaySystemsReasons" value="poor_difficulty">Unreasonable difficulty</label>
+          <label><input type="checkbox" name="gameplaySystemsReasons" value="unbalanced_progression">Progression or balance issues</label>
+        </fieldset>
+      </section>
+
+      <section class="rating-section">
+        <div class="section-heading"><span>03</span><div><h2>Content and Presentation</h2><p>Are content, narrative, visuals, audio, UI, and information delivery clear and consistent?</p></div></div>
+        <div class="score-grid" role="radiogroup" aria-label="Content and Presentation rating">
+          <label><input type="radio" name="contentPresentationScore" value="1"><span><b>1</b>Poor</span></label>
+          <label><input type="radio" name="contentPresentationScore" value="2"><span><b>2</b>Fair</span></label>
+          <label><input type="radio" name="contentPresentationScore" value="3"><span><b>3</b>Average</span></label>
+          <label><input type="radio" name="contentPresentationScore" value="4"><span><b>4</b>Good</span></label>
+          <label><input type="radio" name="contentPresentationScore" value="5"><span><b>5</b>Excellent</span></label>
+        </div>
+        <fieldset class="reasons" id="content-presentation-reasons" hidden><legend>What needs improvement?</legend>
+          <label><input type="checkbox" name="contentPresentationReasons" value="unclear_structure">Unclear content structure</label>
+          <label><input type="checkbox" name="contentPresentationReasons" value="weak_narrative">Weak narrative support</label>
+          <label><input type="checkbox" name="contentPresentationReasons" value="ui_clarity">Unclear UI information</label>
+          <label><input type="checkbox" name="contentPresentationReasons" value="visual_inconsistency">Inconsistent visual style</label>
+          <label><input type="checkbox" name="contentPresentationReasons" value="audio_gap">Insufficient audio design</label>
+        </fieldset>
+      </section>
+
+      <label class="comment-label" for="comment">Additional feedback <small>Optional, up to 300 characters, stored locally only</small></label>
+      <textarea id="comment" name="comment" maxlength="300" rows="4" placeholder="Share the one change you want most"></textarea>
+      <div class="form-footer"><span id="char-count">0 / 300</span><button id="submit-rating" type="submit" disabled>Submit rating</button></div>
+    </form>
+  </main>
+  <script src="/player.js" type="module"></script>
+</body>
+</html>
