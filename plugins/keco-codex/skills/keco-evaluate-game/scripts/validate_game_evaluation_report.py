@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed when a GameEvaluationReport is incomplete or contradictory."""
+"""Strictly validate a Keco two-dimension game evaluation report."""
 
 import argparse
 import json
@@ -7,152 +7,186 @@ import pathlib
 import sys
 from typing import Any
 
+from progress_log import append_event
 
-DECISIONS = {"passed", "conditional", "partial", "failed", "blocked"}
-ITEM_STATUSES = {"evaluated", "not_applicable", "not_evaluated"}
-SEVERITIES = ("P0", "P1", "P2", "P3")
+
+EXPECTED = {
+    "artStyle": {"styleConsistency": 20, "assetQualityAndFit": 15, "uiReadabilityAndLayout": 10, "visualFeedbackAndEmotion": 5},
+    "playerFun": {"coreLoopAppeal": 20, "meaningfulChoices": 15, "feedbackPacingAndGoals": 10, "motivationToContinue": 5},
+}
 THRESHOLDS = {"alpha": 60, "beta": 70, "rc": 80, "release": 85}
+STATUSES = {"passed", "conditional", "partial", "failed", "blocked"}
+ITEM_STATUSES = {"evaluated", "not_evaluated"}
+SEVERITIES = ("P0", "P1", "P2", "P3")
 
 
-def non_empty_strings(value: Any) -> bool:
-    return isinstance(value, list) and bool(value) and all(
-        isinstance(item, str) and item.strip() for item in value
-    )
+def text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def strings(value: Any, allow_empty: bool = False) -> bool:
+    return isinstance(value, list) and (allow_empty or bool(value)) and all(text(item) for item in value)
+
+
+def number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def score_value(value: Any, maximum: int, label: str) -> None:
+    if not number(value) or not 0 <= value <= maximum:
+        raise ValueError(f"{label} must be between 0 and {maximum}")
+
+
+def validate_item(item: Any, dimension: str, item_id: str, maximum: int) -> None:
+    if not isinstance(item, dict) or item.get("dimension") != dimension or item.get("itemId") != item_id:
+        raise ValueError("Claude review item identity is invalid")
+    if item.get("max") != maximum:
+        raise ValueError(f"Claude review item maximum for {item_id} is invalid")
+    if item.get("status") not in ITEM_STATUSES:
+        raise ValueError("Claude review item status is invalid")
+    if not text(item.get("reason")) or not strings(item.get("limitations")) or not text(item.get("nextIteration")):
+        raise ValueError("Claude review item requires reason, limitations, and next iteration")
+    if item["status"] == "evaluated":
+        score_value(item.get("score"), maximum, f"Claude review score for {item_id}")
+        if not strings(item.get("evidence")):
+            raise ValueError("evaluated Claude review item requires evidence")
+    else:
+        if item.get("score") is not None or not strings(item.get("evidence"), allow_empty=True):
+            raise ValueError("not_evaluated Claude review item must have null score")
+
+
+def validate_claude(review: Any) -> tuple[dict[str, Any], float, Any]:
+    if not isinstance(review, dict) or review.get("status") not in {"complete", "pending"}:
+        raise ValueError("claudeReview status is invalid")
+    dimensions = review.get("dimensions")
+    if not isinstance(dimensions, dict) or list(dimensions) != list(EXPECTED):
+        raise ValueError("claudeReview must contain only artStyle and playerFun")
+    all_items = []
+    for dimension, expected in EXPECTED.items():
+        entry = dimensions.get(dimension)
+        if not isinstance(entry, dict) or entry.get("max") != 50 or not isinstance(entry.get("items"), list):
+            raise ValueError(f"{dimension} dimension is invalid")
+        if len(entry["items"]) != 4:
+            raise ValueError(f"{dimension} must contain four items")
+        expected_ids = list(expected)
+        actual_ids = [item.get("itemId") if isinstance(item, dict) else None for item in entry["items"]]
+        if actual_ids != expected_ids:
+            raise ValueError(f"{dimension} items must match the fixed order")
+        for item_data, item_id in zip(entry["items"], expected_ids):
+            validate_item(item_data, dimension, item_id, expected[item_id])
+            all_items.append(item_data)
+        complete = all(item_data["status"] == "evaluated" for item_data in entry["items"])
+        expected_score = sum(item_data["score"] for item_data in entry["items"]) if complete else None
+        if entry.get("score") != expected_score:
+            raise ValueError(f"{dimension} dimension score does not equal item sum")
+    complete = all(item_data["status"] == "evaluated" for item_data in all_items)
+    total = sum(item_data["score"] for item_data in all_items) if complete else None
+    total_entry = review.get("total")
+    if not isinstance(total_entry, dict) or total_entry.get("max") != 100 or total_entry.get("score") != total:
+        raise ValueError("Claude total does not equal complete dimension sums")
+    expected_status = "complete" if complete else "pending"
+    if review["status"] != expected_status:
+        raise ValueError("Claude review status does not match evaluated items")
+    return review, len([item for item in all_items if item["status"] == "evaluated"]) / 8, total
+
+
+def validate_human(review: Any) -> Any:
+    if not isinstance(review, dict) or set(review) != {"artStyle", "playerFun", "total"}:
+        raise ValueError("humanReview must contain artStyle, playerFun, and total")
+    completed_dimensions = 0
+    total = 0
+    for dimension in EXPECTED:
+        entry = review[dimension]
+        if not isinstance(entry, dict):
+            raise ValueError("human review dimension must be an object")
+        if entry.get("max") != 50 or not text(entry.get("comment")) or not text(entry.get("nextIteration")):
+            if entry.get("score") is None and entry.get("comment") is None and entry.get("nextIteration") is None and entry.get("max") == 50:
+                continue
+            raise ValueError("human review fields must be all empty or complete")
+        score_value(entry.get("score"), 50, f"human {dimension} score")
+        completed_dimensions += 1
+        total += entry["score"]
+    total_entry = review["total"]
+    if not isinstance(total_entry, dict) or total_entry.get("max") != 100:
+        raise ValueError("human total is invalid")
+    if completed_dimensions == 2:
+        if total_entry.get("score") != total:
+            raise ValueError("human total does not equal dimension sums")
+    elif completed_dimensions == 0:
+        if total_entry.get("score") is not None:
+            raise ValueError("empty human review must have a null total")
+    else:
+        raise ValueError("human review must be entirely empty or complete in both dimensions")
+    return review
 
 
 def validate(report: Any) -> None:
     if not isinstance(report, dict) or report.get("version") != 1:
         raise ValueError("report must be a version 1 object")
-    required = {
-        "reportId", "profileId", "buildHash", "gddRevision", "stage", "genre",
-        "score", "coverage", "subjective", "confidence", "itemResults",
-        "mandatoryEvaluations", "findings", "severityCounts", "decision",
-        "rawResultReferences",
-    }
+    if "combinedScore" in report:
+        raise ValueError("combinedScore is not allowed; Claude and human reviews stay separate")
+    required = {"reportId", "profileId", "buildHash", "gddRevision", "stage", "genre", "sourceReferences", "claudeReview", "humanReview", "coverage", "mandatoryEvaluations", "findings", "severityCounts", "decision"}
     if required - report.keys():
-        raise ValueError("report lacks required fields, including raw result references")
+        raise ValueError("report lacks required fields")
+    allowed = required | {"version", "technicalEvidence"}
+    if report.keys() - allowed:
+        raise ValueError("report contains unsupported fields")
     if report["reportId"] != f"{report['profileId']}-report":
         raise ValueError("reportId identity does not match profileId")
-    if not all(isinstance(report[key], str) and report[key].strip() for key in (
-        "profileId", "buildHash", "gddRevision", "stage", "genre"
-    )):
-        raise ValueError("report identity fields must be non-empty strings")
-
-    score = report["score"]
-    if not isinstance(score, dict) or {"total", "formalTotal", "generalWeight", "specializedWeight", "groups"} - score.keys():
-        raise ValueError("score lacks required fields")
-    if score["generalWeight"] != 80 or score["specializedWeight"] != 20 or score["generalWeight"] + score["specializedWeight"] != 100:
-        raise ValueError("score weights must total 100 as 80 general plus 20 specialized")
-    if not isinstance(score["total"], (int, float)) or isinstance(score["total"], bool) or not 0 <= score["total"] <= 100:
-        raise ValueError("score total must be between 0 and 100")
-    if score["formalTotal"] is not None and (
-        not isinstance(score["formalTotal"], (int, float))
-        or isinstance(score["formalTotal"], bool)
-        or not 0 <= score["formalTotal"] <= 100
-    ):
-        raise ValueError("formal score must be null or between 0 and 100")
-    coverage = report["coverage"]
-    if not isinstance(coverage, (int, float)) or isinstance(coverage, bool) or not 0 <= coverage <= 1:
-        raise ValueError("coverage must be between 0 and 1")
-    if coverage < 0.7 and score["formalTotal"] is not None:
-        raise ValueError("coverage below 70 percent cannot have a formal score")
-
-    groups = score["groups"]
-    if not isinstance(groups, dict) or not groups:
-        raise ValueError("score groups must be a non-empty object")
-    group_score = 0.0
-    group_weight = 0
-    for group_id, group in groups.items():
-        if not isinstance(group_id, str) or not isinstance(group, dict) or {"weight", "score", "coverage"} - group.keys():
-            raise ValueError("score group is invalid")
-        if not isinstance(group["weight"], int) or isinstance(group["weight"], bool) or group["weight"] <= 0:
-            raise ValueError("score group weight is invalid")
-        if not isinstance(group["score"], (int, float)) or isinstance(group["score"], bool) or not 0 <= group["score"] <= group["weight"]:
-            raise ValueError("score group value is outside its weight")
-        if not isinstance(group["coverage"], (int, float)) or not 0 <= group["coverage"] <= 1:
-            raise ValueError("score group coverage is invalid")
-        group_score += group["score"]
-        group_weight += group["weight"]
-    if group_weight != 100 or abs(group_score - score["total"]) > 0.02:
-        raise ValueError("score groups must total the configured weight and score")
-
-    items = report["itemResults"]
-    if not isinstance(items, list) or not items:
-        raise ValueError("itemResults must be a non-empty array")
-    metric_ids: set[str] = set()
-    for item in items:
-        if not isinstance(item, dict) or not {"metricId", "status", "evidence"}.issubset(item):
-            raise ValueError("item result lacks required fields")
-        if not isinstance(item["metricId"], str) or item["metricId"] in metric_ids:
-            raise ValueError("item metric IDs must be unique")
-        if item["status"] not in ITEM_STATUSES:
-            raise ValueError("item result status is invalid")
-        if item["status"] == "evaluated" and (
-            not isinstance(item.get("rating"), (int, float))
-            or isinstance(item.get("rating"), bool)
-            or not 1 <= item["rating"] <= 5
-            or not non_empty_strings(item["evidence"])
-        ):
-            raise ValueError("evaluated item requires a 1-5 rating and evidence")
-        metric_ids.add(item["metricId"])
-
+    if not all(text(report.get(key)) for key in ("profileId", "buildHash", "gddRevision", "stage", "genre")):
+        raise ValueError("report identity fields must be non-empty")
+    sources = report["sourceReferences"]
+    if not isinstance(sources, dict) or sources.get("gddRevision") != report["gddRevision"] or sources.get("godotBuildHash") != report["buildHash"]:
+        raise ValueError("source reference identity does not match report")
+    if not text(sources.get("roadmapRevision")) or not text(sources.get("sourceSnapshot")) or not strings(sources.get("sliceEvalReports")):
+        raise ValueError("source references must include Slice EvalReport evidence")
+    _, coverage, total = validate_claude(report["claudeReview"])
+    if not number(report["coverage"]) or abs(report["coverage"] - coverage) > 0.000001:
+        raise ValueError("coverage does not match Claude item states")
+    validate_human(report["humanReview"])
     mandatory = report["mandatoryEvaluations"]
-    if not isinstance(mandatory, list) or not mandatory:
-        raise ValueError("mandatoryEvaluations must be a non-empty array")
-    mandatory_ids: set[str] = set()
+    if not isinstance(mandatory, list):
+        raise ValueError("mandatoryEvaluations must be an array")
+    mandatory_ids = set()
     for item in mandatory:
-        if not isinstance(item, dict) or not {"evalId", "status", "evidence"}.issubset(item):
-            raise ValueError("mandatory evaluation lacks required fields")
-        if not isinstance(item["evalId"], str) or item["evalId"] in mandatory_ids or not non_empty_strings(item["evidence"]):
-            raise ValueError("mandatory evaluation IDs and evidence are invalid")
+        if not isinstance(item, dict) or not text(item.get("evalId")) or item["evalId"] in mandatory_ids or item.get("status") not in {"passed", "failed", "blocked", "manual_required"} or not strings(item.get("evidence")):
+            raise ValueError("mandatory evaluation is invalid")
         mandatory_ids.add(item["evalId"])
-
     findings = report["findings"]
     if not isinstance(findings, list):
         raise ValueError("findings must be an array")
-    issue_ids: set[str] = set()
-    counted = {severity: 0 for severity in SEVERITIES}
+    issue_ids = set()
+    counts = {severity: 0 for severity in SEVERITIES}
+    valid_metrics = {f"{dimension}.{item_id}" for dimension, values in EXPECTED.items() for item_id in values}
     for finding in findings:
-        if not isinstance(finding, dict) or not {"issueId", "severity", "primaryMetricId", "evidence"}.issubset(finding):
-            raise ValueError("finding lacks required fields")
-        if not isinstance(finding["issueId"], str) or finding["issueId"] in issue_ids:
-            raise ValueError("duplicate issue ID")
-        if finding["severity"] not in counted or finding["primaryMetricId"] not in metric_ids or not non_empty_strings(finding["evidence"]):
-            raise ValueError("finding severity, primary metric, or evidence is invalid")
+        if not isinstance(finding, dict) or not text(finding.get("issueId")) or finding["issueId"] in issue_ids or finding.get("severity") not in counts or finding.get("primaryMetricId") not in valid_metrics or not strings(finding.get("evidence")):
+            raise ValueError("finding is invalid or duplicated")
         issue_ids.add(finding["issueId"])
-        counted[finding["severity"]] += 1
-    if report["severityCounts"] != counted:
+        linked = finding.get("linkedMetricIds")
+        if not isinstance(linked, list) or any(item not in valid_metrics for item in linked):
+            raise ValueError("finding linked metrics are invalid")
+        counts[finding["severity"]] += 1
+    if report["severityCounts"] != counts:
         raise ValueError("severity counts do not match findings")
-
-    references = report["rawResultReferences"]
-    if not isinstance(references, dict) or {"metricIds", "subjectiveGroupIds", "mandatoryEvaluationIds"} - references.keys():
-        raise ValueError("raw result references are incomplete")
-    if references["metricIds"] != [item["metricId"] for item in items] or references["mandatoryEvaluationIds"] != [item["evalId"] for item in mandatory]:
-        raise ValueError("raw result references do not match report results")
-
     decision = report["decision"]
-    if not isinstance(decision, dict) or {"stage", "status", "threshold", "reasons"} - decision.keys():
-        raise ValueError("decision lacks required fields")
-    if decision["stage"] != report["stage"] or decision["status"] not in DECISIONS or not isinstance(decision["reasons"], list):
-        raise ValueError("decision stage or status is invalid")
-    stage = report["stage"]
-    status = decision["status"]
-    if stage in {"rc", "release"} and status == "conditional":
+    if not isinstance(decision, dict) or decision.get("stage") != report["stage"] or decision.get("status") not in STATUSES or not isinstance(decision.get("reasons"), list) or decision.get("threshold") != THRESHOLDS.get(report["stage"]):
+        raise ValueError("decision is invalid")
+    if report["stage"] in {"rc", "release"} and decision["status"] == "conditional":
         raise ValueError("RC and Release cannot be conditional")
-    threshold = THRESHOLDS.get(stage)
-    if decision["threshold"] != threshold:
-        raise ValueError("decision threshold does not match stage")
-    if status == "passed":
-        if threshold is not None and score["total"] < threshold:
-            name = "Release" if stage == "release" else stage
-            raise ValueError(f"{name} passed score must meet threshold {threshold}")
-        if counted["P0"] or counted["P1"]:
-            raise ValueError("passed report cannot contain P0 or P1 findings")
-        if any(item["status"] != "passed" for item in mandatory):
-            raise ValueError("passed report requires all mandatory evaluations passed")
-        required_coverage = 1.0 if stage in {"rc", "release"} else 0.9 if stage == "beta" else 0.7
-        if coverage < required_coverage:
-            raise ValueError(f"{stage} passed report has insufficient coverage")
+    if decision["status"] == "passed":
+        if total is None or (THRESHOLDS.get(report["stage"]) is not None and total < THRESHOLDS[report["stage"]]) or counts["P0"] or counts["P1"] or any(item["status"] != "passed" for item in mandatory) or coverage < (1.0 if report["stage"] in {"rc", "release"} else 0.9 if report["stage"] == "beta" else 0.7):
+            raise ValueError("passed report violates a score, risk, mandatory, or coverage gate")
+
+
+def append_progress(report_path: pathlib.Path, report: dict[str, Any]) -> None:
+    append_event(
+        report_path.parent, "validate", "\u6821\u9a8c\u8bc4\u4ef7\u62a5\u544a\u5951\u7ea6\u548c\u9636\u6bb5\u95e8\u7981",
+        {"reportId": report["reportId"]},
+        "validate_game_evaluation_report.py", "\u62a5\u544a\u7ed3\u6784\u3001\u8bc1\u636e\u548c\u5206\u6570\u4e00\u81f4",
+        {"status": report["decision"]["status"], "total": report["claudeReview"]["total"]["score"]},
+        "\u62a5\u544a\u53ef\u4ee5\u4f5c\u4e3a\u5f53\u524d\u8bc4\u4ef7\u7ed3\u679c\u4f7f\u7528\uff0c\u4f46\u4eba\u5de5\u8bc4\u4ef7\u4ecd\u72ec\u7acb\u4fdd\u5b58",
+        "\u6839\u636e decision \u8fdb\u5165\u62a5\u544a\u3001\u6539\u8fdb\u6216\u91cd\u6d4b\u6d41\u7a0b",
+    )
 
 
 def main() -> int:
@@ -161,21 +195,13 @@ def main() -> int:
     args = parser.parse_args()
     try:
         report = json.loads(args.path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"invalid report: {exc}", file=sys.stderr)
-        return 2
-    try:
         validate(report)
-    except ValueError as exc:
+        append_progress(args.path, report)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    print(json.dumps({
-        "ok": True,
-        "status": report["decision"]["status"],
-        "stage": report["stage"],
-        "score": report["score"]["total"],
-        "coverage": report["coverage"],
-    }, sort_keys=True))
+    report = json.loads(args.path.read_text(encoding="utf-8"))
+    print(json.dumps({"ok": True, "status": report["decision"]["status"], "stage": report["stage"], "score": report["claudeReview"]["total"]["score"], "coverage": report["coverage"]}, sort_keys=True))
     return 0
 
 

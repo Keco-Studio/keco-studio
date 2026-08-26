@@ -249,12 +249,20 @@ The GDS tool group supports account-owned systems and explicit project bindings:
 - `read_project_game_design_system`, `set_project_game_design_system`, and
   `clear_project_game_design_system` read or change one project's pinned system
   version. Binding changes require current owner/admin access.
+- `generate_project_gdd` starts an idempotent GDD job from the pinned version,
+  `get_project_gdd_generation` polls its bounded status, and
+  `cancel_project_gdd_generation` cancels a non-terminal job. Read the generated
+  `output_document_id` with `read_document` after the job reaches a completed
+  status; queued or running jobs are not finished GDDs.
 
 Owned-system tools do not accept an artificial project selector. On the account
 endpoint, the three project-binding tools require `projectId` from
 `list_projects`. On a legacy endpoint, omit `projectId`; the endpoint injects
 its bound project. After every mutation, poll the generation job when present
 and use a fresh read tool call to verify the stable system/version IDs.
+The three project GDD tools follow the same `projectId` rule. Generation also
+requires the selected `designSystemId` and `versionId` to match the current
+project binding and forwards an `idempotencyKey` separately from its request body.
 
 GDS tools never delete a system or version. Idempotency conflicts and stale
 version parents must be resolved by reading current state; do not retry them

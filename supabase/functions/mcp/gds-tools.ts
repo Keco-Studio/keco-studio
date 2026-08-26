@@ -178,6 +178,64 @@ function publicJob(value: unknown): Record<string, unknown> {
   return output;
 }
 
+function publicGddMap(value: unknown): Record<string, unknown> {
+  const source = record(value);
+  const output = pick(source, [
+    "id",
+    "map_brief_id",
+    "title",
+    "status",
+    "phase",
+    "map_project_id",
+    "map_revision_id",
+  ]);
+  if (source.error) {
+    output.error = {
+      code: "GDD_MAP_GENERATION_FAILED",
+      message: "Project GDD map generation failed.",
+    };
+  }
+  return output;
+}
+
+function publicGddJob(value: unknown): Record<string, unknown> {
+  const source = record(value);
+  const output = pick(source, [
+    "id",
+    "project_id",
+    "design_system_id",
+    "version_id",
+    "status",
+    "phase",
+    "mode",
+    "contract_version",
+    "attempt_count",
+    "max_attempts",
+    "available_at",
+    "completed_at",
+    "output_document_id",
+    "output_document_name",
+    "output_folder_id",
+    "output_table_ids",
+    "output_table_names",
+    "applied_rule_ids",
+    "omitted_rule_ids",
+    "generation_series_id",
+    "generation_revision",
+    "resource_change_summary",
+  ]);
+  if (Array.isArray(source.maps)) {
+    output.maps = source.maps.slice(0, 100).map(publicGddMap);
+  }
+  if (source.error) {
+    output.error = {
+      code: "GDD_GENERATION_FAILED",
+      message: "Project GDD generation failed.",
+    };
+  }
+  return output;
+}
+
 function projectIdFor(
   context: McpRequestContext,
   input: { projectId?: unknown },
@@ -344,6 +402,34 @@ export function registerGdsTools(
       return toolSuccess("GDS generation status loaded.", {
         ok: true,
         job: publicJob(payload.job),
+      });
+    } catch (error) {
+      return toolFailure(error);
+    }
+  });
+
+  const projectGddJobSchema = z.object({
+    ...projectShape(context),
+    generationJobId: uuid,
+  }).strict();
+  server.registerTool("get_project_gdd_generation", {
+    description: "Read the bounded status of a project GDD generation job.",
+    inputSchema: projectGddJobSchema,
+    annotations: readAnnotations,
+  }, async (input: z.infer<typeof projectGddJobSchema>) => {
+    try {
+      const projectId = projectIdFor(context, input);
+      const payload = record(
+        await callApp(context, {
+          method: "GET",
+          path: `/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${
+            encodeURIComponent(input.generationJobId)
+          }`,
+        }),
+      );
+      return toolSuccess("Project GDD generation status loaded.", {
+        ok: true,
+        job: publicGddJob(payload.job),
       });
     } catch (error) {
       return toolFailure(error);
@@ -520,6 +606,68 @@ export function registerGdsTools(
         }/game-design-system`,
       });
       return toolSuccess("Project Game Design System cleared.", { ok: true });
+    } catch (error) {
+      return toolFailure(error);
+    }
+  });
+
+  const generateProjectGddSchema = z.object({
+    ...projectShape(context),
+    designSystemId: uuid,
+    versionId: uuid,
+    mode: z.enum(["quick", "professional"]).default("quick"),
+    creativeBrief: z.string().trim().max(4000).optional(),
+    idempotencyKey,
+  }).strict();
+  server.registerTool("generate_project_gdd", {
+    description:
+      "Start idempotent GDD generation from the Game Design System version pinned to a project.",
+    inputSchema: generateProjectGddSchema,
+    annotations: {
+      ...writeAnnotations,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  }, async (input: z.infer<typeof generateProjectGddSchema>) => {
+    try {
+      const projectId = projectIdFor(context, input);
+      const { idempotencyKey, projectId: _projectId, ...body } = input;
+      const payload = record(
+        await callApp(context, {
+          method: "POST",
+          path: `/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs`,
+          idempotencyKey,
+          body,
+        }),
+      );
+      return toolSuccess("Project GDD generation queued.", {
+        ok: true,
+        job: publicGddJob(payload.job),
+      });
+    } catch (error) {
+      return toolFailure(error);
+    }
+  });
+
+  server.registerTool("cancel_project_gdd_generation", {
+    description: "Cancel a project GDD generation job that has not completed.",
+    inputSchema: projectGddJobSchema,
+    annotations: writeAnnotations,
+  }, async (input: z.infer<typeof projectGddJobSchema>) => {
+    try {
+      const projectId = projectIdFor(context, input);
+      const payload = record(
+        await callApp(context, {
+          method: "DELETE",
+          path: `/api/projects/${encodeURIComponent(projectId)}/gdd-generation-jobs/${
+            encodeURIComponent(input.generationJobId)
+          }`,
+        }),
+      );
+      return toolSuccess("Project GDD generation cancelled.", {
+        ok: true,
+        job: publicGddJob(payload.job),
+      });
     } catch (error) {
       return toolFailure(error);
     }

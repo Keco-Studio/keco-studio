@@ -64,11 +64,14 @@ const expectedNames = [
   "read_game_design_system",
   "read_project_game_design_system",
   "get_game_design_system_generation",
+  "get_project_gdd_generation",
   "create_game_design_system",
   "generate_game_design_system",
   "create_game_design_system_version",
   "set_project_game_design_system",
   "clear_project_game_design_system",
+  "generate_project_gdd",
+  "cancel_project_gdd_generation",
 ];
 
 Deno.test("GDS tools register the approved account and project schemas", () => {
@@ -99,6 +102,31 @@ Deno.test("GDS tools register the approved account and project schemas", () => {
         systemId: "22222222-2222-4222-8222-222222222222",
         projectId: "11111111-1111-4111-8111-111111111111",
       }).success,
+      false,
+    );
+
+    const projectGddRead = tools.find((tool) =>
+      tool.name === "get_project_gdd_generation"
+    )!;
+    const projectGddIdentity = {
+      generationJobId: "55555555-5555-4555-8555-555555555555",
+      ...(context.mode === "account"
+        ? { projectId: "11111111-1111-4111-8111-111111111111" }
+        : {}),
+    };
+    assertEquals(
+      projectGddRead.config.inputSchema.safeParse(projectGddIdentity).success,
+      true,
+    );
+    assertEquals(
+      projectGddRead.config.inputSchema.safeParse(
+        context.mode === "account"
+          ? { generationJobId: projectGddIdentity.generationJobId }
+          : {
+            ...projectGddIdentity,
+            projectId: "11111111-1111-4111-8111-111111111111",
+          },
+      ).success,
       false,
     );
   }
@@ -161,6 +189,84 @@ Deno.test("GDS generation jobs redact stored worker diagnostics", async () => {
     error: {
       code: "GDS_GENERATION_FAILED",
       message: "Game Design System generation failed.",
+    },
+  });
+});
+
+Deno.test("project GDD generation reads return bounded job state", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const { server, tools } = recordingServer();
+  registerGdsTools(server, accountContext, {
+    callApp: async (_context, request) => {
+      calls.push(request);
+      return {
+        job: {
+          id: "job-1",
+          project_id: "project-1",
+          design_system_id: "system-1",
+          version_id: "version-1",
+          status: "failed",
+          phase: "failed",
+          output_document_id: null,
+          output_folder_id: null,
+          output_table_ids: [],
+          output_table_names: [],
+          generation_revision: null,
+          resource_change_summary: { created: [], updated: [], reused: [], preserved: [] },
+          maps: [{
+            id: "map-1",
+            map_brief_id: "brief-1",
+            title: "Village",
+            status: "failed",
+            phase: "failed",
+            error: "private provider payload",
+            owner_id: "private-owner",
+          }],
+          error: "SQL relation private_table failed; bearer private-token",
+          input: { secret: true },
+        },
+      };
+    },
+  });
+
+  const result = await tools.find((tool) =>
+    tool.name === "get_project_gdd_generation"
+  )!.handler({
+    projectId: "11111111-1111-4111-8111-111111111111",
+    generationJobId: "55555555-5555-4555-8555-555555555555",
+  });
+
+  assertEquals(calls, [{
+    method: "GET",
+    path: "/api/projects/11111111-1111-4111-8111-111111111111/gdd-generation-jobs/55555555-5555-4555-8555-555555555555",
+  }]);
+  assertEquals(result.structuredContent?.job, {
+    id: "job-1",
+    project_id: "project-1",
+    design_system_id: "system-1",
+    version_id: "version-1",
+    status: "failed",
+    phase: "failed",
+    output_document_id: null,
+    output_folder_id: null,
+    output_table_ids: [],
+    output_table_names: [],
+    generation_revision: null,
+    resource_change_summary: { created: [], updated: [], reused: [], preserved: [] },
+    maps: [{
+      id: "map-1",
+      map_brief_id: "brief-1",
+      title: "Village",
+      status: "failed",
+      phase: "failed",
+      error: {
+        code: "GDD_MAP_GENERATION_FAILED",
+        message: "Project GDD map generation failed.",
+      },
+    }],
+    error: {
+      code: "GDD_GENERATION_FAILED",
+      message: "Project GDD generation failed.",
     },
   });
 });
@@ -236,6 +342,48 @@ Deno.test("GDS mutations forward bodies and idempotency keys", async () => {
     calls[1].idempotencyKey,
     "44444444-4444-4444-8444-444444444444",
   );
+});
+
+Deno.test("project GDD generation start and cancel forward exact app requests", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const { server, tools } = recordingServer();
+  registerGdsTools(server, projectContext, {
+    callApp: async (_context, request) => {
+      calls.push(request);
+      return { job: { id: "job-1", status: request.method === "DELETE" ? "failed" : "queued" } };
+    },
+  });
+
+  await tools.find((tool) => tool.name === "generate_project_gdd")!.handler({
+    designSystemId: "22222222-2222-4222-8222-222222222222",
+    versionId: "33333333-3333-4333-8333-333333333333",
+    mode: "professional",
+    creativeBrief: "Build a readable tactical RPG.",
+    idempotencyKey: "gdd-request-1234",
+  });
+  await tools.find((tool) =>
+    tool.name === "cancel_project_gdd_generation"
+  )!.handler({
+    generationJobId: "55555555-5555-4555-8555-555555555555",
+  });
+
+  assertEquals(calls, [
+    {
+      method: "POST",
+      path: "/api/projects/11111111-1111-4111-8111-111111111111/gdd-generation-jobs",
+      idempotencyKey: "gdd-request-1234",
+      body: {
+        designSystemId: "22222222-2222-4222-8222-222222222222",
+        versionId: "33333333-3333-4333-8333-333333333333",
+        mode: "professional",
+        creativeBrief: "Build a readable tactical RPG.",
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/api/projects/11111111-1111-4111-8111-111111111111/gdd-generation-jobs/55555555-5555-4555-8555-555555555555",
+    },
+  ]);
 });
 
 Deno.test("GDS app failures become safe tool failures", async () => {

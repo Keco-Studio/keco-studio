@@ -32,11 +32,14 @@ const GDS_TOOL_NAMES = [
   "read_game_design_system",
   "read_project_game_design_system",
   "get_game_design_system_generation",
+  "get_project_gdd_generation",
   "create_game_design_system",
   "generate_game_design_system",
   "create_game_design_system_version",
   "set_project_game_design_system",
   "clear_project_game_design_system",
+  "generate_project_gdd",
+  "cancel_project_gdd_generation",
 ];
 const MAP_TOOL_NAMES = [
   "list_maps",

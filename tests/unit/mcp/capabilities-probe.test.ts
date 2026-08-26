@@ -13,8 +13,11 @@ const writeTools = ['add_table_field', 'complete_image_upload', 'complete_image_
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
   'bulk_update_table_rows', 'upsert_table_rows'];
 const gdsTools = ['list_game_design_systems', 'read_game_design_system', 'read_project_game_design_system',
-  'get_game_design_system_generation', 'create_game_design_system', 'generate_game_design_system',
-  'create_game_design_system_version', 'set_project_game_design_system', 'clear_project_game_design_system'];
+  'get_game_design_system_generation', 'get_project_gdd_generation', 'create_game_design_system',
+  'generate_game_design_system', 'create_game_design_system_version', 'set_project_game_design_system',
+  'clear_project_game_design_system', 'generate_project_gdd', 'cancel_project_gdd_generation'];
+const gddWriteTools = ['generate_project_gdd', 'cancel_project_gdd_generation'];
+const viewerGdsTools = gdsTools.filter(name => !gddWriteTools.includes(name));
 const mapReadTools = ['list_maps', 'read_map', 'get_map_generation'];
 const mapWriteTools = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
   'start_map_generation', 'advance_map_generation'];
@@ -51,7 +54,7 @@ it('records account discovery, role counts, and generated labels without exposin
     expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${token}`);
     const message = JSON.parse(String(init?.body)) as { id: number; method: string };
     if (message.method === 'initialize') return rpcResult(message.id, { capabilities: { tools: {}, resources: {}, prompts: {} } });
-    if (message.method === 'tools/list') return rpcResult(message.id, { tools: ['keco_connection_probe', 'list_projects', ...readTools, ...gdsTools, ...mapReadTools].map(name => ({ name })) });
+    if (message.method === 'tools/list') return rpcResult(message.id, { tools: ['keco_connection_probe', 'list_projects', ...readTools, ...viewerGdsTools, ...mapReadTools].map(name => ({ name })) });
     if (message.method === 'resources/list') return rpcResult(message.id, { resources: [{ uri: 'keco://projects' }] });
     if (message.method === 'resources/templates/list') return rpcResult(message.id, { resourceTemplates: [
       'keco://projects/{projectId}', 'keco://projects/{projectId}/documents/{documentId}',
@@ -65,7 +68,7 @@ it('records account discovery, role counts, and generated labels without exposin
     ] } });
   });
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: token, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence).toEqual(expect.objectContaining({ mode: 'account', capabilities: expect.objectContaining({ tools: 20, writableToolAdvertisement: false }),
+  expect(evidence).toEqual(expect.objectContaining({ mode: 'account', capabilities: expect.objectContaining({ tools: 21, writableToolAdvertisement: false }),
     projects: { count: 2, roles: { admin: 1, viewer: 1 }, duplicateNameGroups: 1, labels: ['project-1', 'project-2'] },
     timings: expect.objectContaining({ listProjectsMs: expect.any(Number) }),
   }));
@@ -96,7 +99,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: accountToken,
     viewerAccessToken: accountToken, viewerProjectId: '11111111-1111-4111-8111-111111111111',
     legacyMcpUrl: legacyEndpoint, legacyAccessToken: legacyToken, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence.capabilities.tools).toBe(44);
+  expect(evidence.capabilities.tools).toBe(47);
   expect(evidence.roleEnforcement.viewerWriteDenial).toBe('succeeded');
   expect(evidence.crossResourceReplay).toBe('succeeded');
   expect(JSON.stringify(evidence)).not.toContain(accountToken);
@@ -145,7 +148,7 @@ it('preserves the exact legacy capability surface', async () => {
   expect(evidence).toEqual(expect.objectContaining({
     mode: 'legacy',
     storyGraphRead: 'succeeded',
-    capabilities: expect.objectContaining({ tools: 43, resources: 3, resourceTemplates: 4, prompts: 3 }),
+    capabilities: expect.objectContaining({ tools: 46, resources: 3, resourceTemplates: 4, prompts: 3 }),
   }));
   expect(JSON.stringify(evidence)).not.toContain('PrivateEntry');
   expect(JSON.stringify(evidence)).not.toContain('Private story content');

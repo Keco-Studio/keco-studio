@@ -4,534 +4,268 @@ import os from 'node:os';
 import path from 'node:path';
 
 const repositoryRoot = process.cwd();
-const skillRoot = path.join(
-  repositoryRoot,
-  'plugins',
-  'keco-codex',
-  'skills',
-  'keco-evaluate-game',
-);
+const skillRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-evaluate-game');
 const profileScript = path.join(skillRoot, 'scripts', 'create_evaluation_profile.py');
 const scoreScript = path.join(skillRoot, 'scripts', 'score_game_evaluation.py');
 const reportValidator = path.join(skillRoot, 'scripts', 'validate_game_evaluation_report.py');
+const fixturePath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-game-evaluation-evidence.json');
 
-function readJson<T>(relativePath: string): T {
-  return JSON.parse(readFileSync(path.join(repositoryRoot, relativePath), 'utf8')) as T;
+const expectedItems = {
+  artStyle: {
+    styleConsistency: 20,
+    assetQualityAndFit: 15,
+    uiReadabilityAndLayout: 10,
+    visualFeedbackAndEmotion: 5,
+  },
+  playerFun: {
+    coreLoopAppeal: 20,
+    meaningfulChoices: 15,
+    feedbackPacingAndGoals: 10,
+    motivationToContinue: 5,
+  },
+};
+
+function readFixture(): Record<string, any> {
+  return JSON.parse(readFileSync(fixturePath, 'utf8')) as Record<string, any>;
 }
 
-describe('Keco EDD game evaluation Skill', () => {
-  it('ships an implicitly triggerable game evaluation entry', () => {
-    const skillPath = path.join(skillRoot, 'SKILL.md');
-    const metadataPath = path.join(skillRoot, 'agents', 'openai.yaml');
+describe('Keco game evaluation scoring', () => {
+  let tempRoot: string;
+  let profilePath: string;
 
-    expect(existsSync(skillPath)).toBe(true);
-    expect(existsSync(metadataPath)).toBe(true);
-    if (!existsSync(skillPath) || !existsSync(metadataPath)) return;
-
-    const skill = readFileSync(skillPath, 'utf8');
-    const metadata = readFileSync(metadataPath, 'utf8');
-
-    expect(skill).toMatch(/^---\nname: keco-evaluate-game\n/);
-    expect(skill).toMatch(/^description: Use when[^\n]*(?:score|evaluate)[^\n]*(?:game|Godot)/m);
-    expect(skill).toContain(
-      '[shared interaction contract](../../references/interaction-contract.md)',
-    );
-    expect(skill).toMatch(/Before expensive or mutating work[\s\S]{0,240}Goal[\s\S]{0,120}Source[\s\S]{0,120}Scope[\s\S]{0,120}Success[\s\S]{0,120}Next/i);
-    expect(skill).toMatch(/80[\s\S]*20[\s\S]*100-point/i);
-    expect(skill).toMatch(
-      /Slice[\s\S]*Alpha[\s\S]*Beta[\s\S]*Release Candidate[\s\S]*Release/i,
-    );
-    expect(skill).toMatch(/manual_required[\s\S]*visual[\s\S]*experience/i);
-    expect(metadata).toMatch(/default_prompt: "Use \$keco-evaluate-game/);
-    expect(metadata).toMatch(/allow_implicit_invocation: true/);
+  beforeEach(() => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-game-evaluation-'));
+    profilePath = path.join(tempRoot, 'profile.json');
+    const result = spawnSync('python3', [
+      profileScript,
+      '--game-id', 'village-rpg',
+      '--stage', 'beta',
+      '--genre', 'rpg',
+      '--gdd-revision', 'sha256:gdd123',
+      '--build-hash', 'sha256:build123',
+      '--locked-at', '2026-08-26T00:00:00Z',
+      '--output', profilePath,
+    ], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
   });
 
-  it('defines positive, pressure, and negative trigger cases', () => {
-    const fixture = readJson<{
-      skill: string;
-      invocation: string;
-      cases: Array<{
-        id: string;
-        kind: string;
-        prompt: string;
-        expectedSkill: string;
-        requiredBehaviors: string[];
-      }>;
-    }>('tests/fixtures/plugins/keco-game-evaluation-skill-evals.json');
+  afterEach(() => rmSync(tempRoot, { recursive: true, force: true }));
 
-    expect(fixture.skill).toBe('keco-evaluate-game');
-    expect(fixture.invocation).toBe('$keco-evaluate-game');
-    expect(fixture.cases).toHaveLength(6);
-    expect(fixture.cases.filter((item) => item.expectedSkill === 'keco-evaluate-game')).toHaveLength(4);
-    expect(fixture.cases).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'full-beta', kind: 'positive' }),
-      expect.objectContaining({ id: 'missing-human-evidence', kind: 'pressure' }),
-      expect.objectContaining({ id: 'implementation', expectedSkill: 'keco-develop-godot-slice-v2' }),
-      expect.objectContaining({ id: 'analysis-only', expectedSkill: 'none' }),
-    ]));
-  });
+  function score(evidence: Record<string, any> = readFixture()) {
+    const evidencePath = path.join(tempRoot, 'evidence.json');
+    const reportPath = path.join(tempRoot, 'report.json');
+    writeFileSync(evidencePath, JSON.stringify(evidence));
+    const result = spawnSync('python3', [
+      scoreScript, '--profile', profilePath, '--evidence', evidencePath, '--output', reportPath,
+    ], { encoding: 'utf8' });
+    const report = existsSync(reportPath)
+      ? JSON.parse(readFileSync(reportPath, 'utf8')) as Record<string, any>
+      : null;
+    return { result, report, reportPath };
+  }
 
-  describe('evaluation profile', () => {
-    let tempRoot: string;
+  function validate(report: Record<string, any>) {
+    const candidate = path.join(tempRoot, 'candidate.json');
+    writeFileSync(candidate, JSON.stringify(report));
+    return spawnSync('python3', [reportValidator, candidate], { encoding: 'utf8' });
+  }
 
-    beforeEach(() => {
-      tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-game-profile-'));
+  it('creates the fixed version 1 two-dimension, eight-item profile', () => {
+    const profile = JSON.parse(readFileSync(profilePath, 'utf8')) as Record<string, any>;
+    expect(profile).toMatchObject({
+      version: 1,
+      profileId: 'village-rpg-beta-v1',
+      gameId: 'village-rpg',
+      stage: 'beta',
+      genre: 'rpg',
+      gddRevision: 'sha256:gdd123',
+      buildHash: 'sha256:build123',
+      thresholds: { alpha: 60, beta: 70, rc: 80, release: 85 },
     });
-
-    afterEach(() => {
-      rmSync(tempRoot, { recursive: true, force: true });
-    });
-
-    function createProfile(extraArgs: string[] = []) {
-      const output = path.join(tempRoot, 'profile.json');
-      const result = spawnSync('python3', [
-        profileScript,
-        '--game-id', 'village-rpg',
-        '--stage', 'beta',
-        '--genre', 'rpg',
-        '--gdd-revision', 'sha256:gdd123',
-        '--build-hash', 'sha256:build123',
-        '--locked-at', '2026-08-12T12:00:00Z',
-        '--output', output,
-        ...extraArgs,
-      ], { encoding: 'utf8' });
-      return { output, result };
-    }
-
-    it('creates a locked 80 plus 20 RPG profile', () => {
-      const { output, result } = createProfile();
-
-      expect(result.status).toBe(0);
-      const profile = JSON.parse(readFileSync(output, 'utf8')) as {
-        version: number;
-        profileId: string;
-        gameId: string;
-        stage: string;
-        genre: string;
-        gddRevision: string;
-        buildHash: string;
-        lockedAt: string;
-        subjectiveWeight: number;
-        thresholds: Record<string, number>;
-        generalMetrics: Array<{ id: string; weight: number; anchors: Record<string, string>; requiredEvidence: string[] }>;
-        specializedMetrics: Array<{ id: string; weight: number; anchors: Record<string, string>; requiredEvidence: string[] }>;
-      };
-
-      expect(profile).toMatchObject({
-        version: 1,
-        gameId: 'village-rpg',
-        stage: 'beta',
-        genre: 'rpg',
-        gddRevision: 'sha256:gdd123',
-        buildHash: 'sha256:build123',
-        lockedAt: '2026-08-12T12:00:00Z',
-        subjectiveWeight: 0.2,
-        thresholds: { alpha: 60, beta: 70, rc: 80, release: 85 },
-      });
-      expect(profile.profileId).toBe('village-rpg-beta-v1');
-      expect(profile.generalMetrics.reduce((sum, metric) => sum + metric.weight, 0)).toBe(80);
-      expect(profile.specializedMetrics.reduce((sum, metric) => sum + metric.weight, 0)).toBe(20);
-      expect([...profile.generalMetrics, ...profile.specializedMetrics]).toHaveLength(39);
-      for (const metric of [...profile.generalMetrics, ...profile.specializedMetrics]) {
-        expect(metric.id).toMatch(/^(?:general|specialized)\./);
-        expect(metric.weight).toBeGreaterThan(0);
-        expect(metric.anchors).toEqual(expect.objectContaining({ '1': expect.any(String), '3': expect.any(String), '5': expect.any(String) }));
-        expect(metric.requiredEvidence.length).toBeGreaterThan(0);
+    expect(Object.keys(profile.dimensions)).toEqual(['artStyle', 'playerFun']);
+    for (const [dimension, items] of Object.entries(expectedItems)) {
+      expect(profile.dimensions[dimension].max).toBe(50);
+      expect(Object.fromEntries(profile.dimensions[dimension].items.map(
+        (item: Record<string, any>) => [item.id, item.max],
+      ))).toEqual(items);
+      for (const item of profile.dimensions[dimension].items) {
+        expect(item.dimension).toBe(dimension);
+        expect(item.anchors).toEqual(expect.objectContaining({ zero: expect.any(String), full: expect.any(String) }));
+        expect(item.requiredEvidence.length).toBeGreaterThan(0);
       }
-    });
+    }
+  });
 
-    it('rejects a custom profile that replaces more than ten points', () => {
-      const customPath = path.join(tempRoot, 'custom.json');
-      writeFileSync(customPath, JSON.stringify({
-        replaceMetricIds: [
-          'specialized.rpg.character-growth',
-          'specialized.rpg.builds',
-          'specialized.rpg.quest-exploration',
-        ],
-        customMetrics: [
-          {
-            id: 'specialized.project.custom-a',
-            name: 'Custom A',
-            weight: 12,
-            gddSource: 'GDD-6.3',
-            anchors: { '1': 'Absent', '3': 'Partial', '5': 'Strong' },
-            requiredEvidence: ['player event'],
-          },
-        ],
+  it('keeps genre as metadata without changing weights', () => {
+    const actionPath = path.join(tempRoot, 'action.json');
+    const result = spawnSync('python3', [
+      profileScript, '--game-id', 'village-rpg', '--stage', 'beta', '--genre', 'action',
+      '--gdd-revision', 'sha256:gdd123', '--build-hash', 'sha256:build123',
+      '--locked-at', '2026-08-26T00:00:00Z', '--output', actionPath,
+    ], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    const base = JSON.parse(readFileSync(profilePath, 'utf8')) as Record<string, any>;
+    const action = JSON.parse(readFileSync(actionPath, 'utf8')) as Record<string, any>;
+    expect(action.genre).toBe('action');
+    expect(action.dimensions).toEqual(base.dimensions);
+  });
+
+  it('scores only the complete external Claude review and leaves human review empty', () => {
+    const { result, report } = score();
+    expect(result.status).toBe(0);
+    expect(report.version).toBe(1);
+    expect(report).not.toHaveProperty('score');
+    expect(report.claudeReview).toMatchObject({
+      status: 'complete',
+      dimensions: {
+        artStyle: { score: 50, max: 50 },
+        playerFun: { score: 50, max: 50 },
+      },
+      total: { score: 100, max: 100 },
+    });
+    expect(report.humanReview).toEqual({
+      artStyle: { score: null, max: 50, comment: null, nextIteration: null },
+      playerFun: { score: null, max: 50, comment: null, nextIteration: null },
+      total: { score: null, max: 100 },
+    });
+    expect(report.coverage).toBe(1);
+    expect(report.decision.status).toBe('passed');
+  });
+
+  it('does not convert mandatory automation or technical evidence into player fun points', () => {
+    const evidence = readFixture();
+    evidence.claudeReview.items = evidence.claudeReview.items.map((item: Record<string, any>) => ({
+      ...item, score: 0,
+    }));
+    evidence.technicalEvidence = {
+      stability: 'all checks passed', coverage: 1, sliceEvalReport: 'KECO_EVAL:passed',
+    };
+    const { result, report } = score(evidence);
+    expect(result.status).toBe(0);
+    expect(report.claudeReview.total.score).toBe(0);
+    expect(report.claudeReview.dimensions.playerFun.score).toBe(0);
+    expect(report.mandatoryEvaluations[0].status).toBe('passed');
+    expect(report.decision.status).toBe('failed');
+  });
+
+  it('uses not_evaluated when evidence is insufficient and withholds affected totals', () => {
+    const evidence = readFixture();
+    evidence.claudeReview.items[0] = {
+      ...evidence.claudeReview.items[0],
+      status: 'not_evaluated', score: null, evidence: [],
+      reason: 'The captured frames do not show repeated gameplay states.',
+      limitations: ['No comparable gameplay frames are available.'],
+    };
+    const { result, report } = score(evidence);
+    expect(result.status).toBe(0);
+    expect(report.coverage).toBe(0.875);
+    expect(report.claudeReview.status).toBe('pending');
+    expect(report.claudeReview.dimensions.artStyle.score).toBeNull();
+    expect(report.claudeReview.dimensions.playerFun.score).toBe(50);
+    expect(report.claudeReview.total.score).toBeNull();
+    expect(report.decision.status).toBe('partial');
+  });
+
+  it('keeps the Claude review pending when no external review is supplied', () => {
+    const evidence = readFixture();
+    delete evidence.claudeReview;
+    const { result, report } = score(evidence);
+    expect(result.status).toBe(0);
+    expect(report.claudeReview.status).toBe('pending');
+    expect(report.claudeReview.total.score).toBeNull();
+    expect(report.coverage).toBe(0);
+  });
+
+  it.each([
+    ['over-limit score', (e: Record<string, any>) => { e.claudeReview.items[0].score = 21; }, /maximum|score/i],
+    ['duplicate item', (e: Record<string, any>) => { e.claudeReview.items[1] = structuredClone(e.claudeReview.items[0]); }, /duplicate|exactly/i],
+    ['unknown item', (e: Record<string, any>) => { e.claudeReview.items[0].itemId = 'stability'; }, /unknown|exactly/i],
+    ['evaluated item without evidence', (e: Record<string, any>) => { e.claudeReview.items[0].evidence = []; }, /evidence/i],
+    ['profile identity mismatch', (e: Record<string, any>) => { e.profileId = 'other-beta-v1'; }, /identity|profile/i],
+  ])('rejects %s without writing a report', (_label, mutate, expected) => {
+    const evidence = readFixture();
+    mutate(evidence);
+    const { result, report } = score(evidence);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(expected);
+    expect(result.stderr).not.toMatch(/Traceback/);
+    expect(report).toBeNull();
+  });
+
+  it('keeps P0 and mandatory failures as non-scoring acceptance gates', () => {
+    const evidence = readFixture();
+    evidence.findings = [{
+      issueId: 'ISSUE-P0', severity: 'P0', primaryMetricId: 'playerFun.coreLoopAppeal',
+      linkedMetricIds: [], evidence: ['slice-eval:crash'],
+    }];
+    evidence.mandatoryEvaluations = [{ evalId: 'core-flow', status: 'failed', evidence: ['KECO_EVAL:failed'] }];
+    const { result, report } = score(evidence);
+    expect(result.status).toBe(0);
+    expect(report.claudeReview.total.score).toBe(100);
+    expect(report.decision.status).toBe('failed');
+    expect(report.decision.reasons.join(' ')).toMatch(/P0.*mandatory|mandatory.*P0/i);
+  });
+
+  it('validates a generated report and a coherent manually completed review', () => {
+    const { report } = score();
+    expect(validate(report).status).toBe(0);
+    report.humanReview = {
+      artStyle: { score: 42, max: 50, comment: 'Coherent visual direction.', nextIteration: 'Improve combat readability.' },
+      playerFun: { score: 40, max: 50, comment: 'Promising loop in the session.', nextIteration: 'Test more build choices.' },
+      total: { score: 82, max: 100 },
+    };
+    expect(validate(report).status).toBe(0);
+  });
+
+  it('appends ordered JSONL events and a Chinese readable progress mirror', () => {
+    const { report, reportPath } = score();
+    const validated = spawnSync('python3', [reportValidator, reportPath], { encoding: 'utf8' });
+    expect(validated.status).toBe(0);
+    const progressPath = path.join(tempRoot, 'progress.jsonl');
+    const markdownPath = path.join(tempRoot, 'progress.md');
+    const events = readFileSync(progressPath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    expect(events.map(event => event.segment)).toEqual(['profile', 'score', 'validate']);
+    for (const event of events) {
+      expect(event).toEqual(expect.objectContaining({
+        goal: expect.any(String), inputs: expect.any(Object), execution: expect.any(String),
+        expectedOutput: expect.any(String), actualResult: expect.any(Object),
+        meaning: expect.any(String), nextImpact: expect.any(String),
       }));
-
-      const { result } = createProfile(['--specialized-config', customPath]);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(/custom specialized weight must not exceed 10/i);
-      expect(result.stderr).not.toMatch(/Traceback/);
-    });
-
-    it('documents all seven specialized genre templates', () => {
-      const rubricPath = path.join(skillRoot, 'references', 'rubric.md');
-      expect(existsSync(rubricPath)).toBe(true);
-      if (!existsSync(rubricPath)) return;
-      const rubric = readFileSync(rubricPath, 'utf8');
-      for (const genre of [
-        'Action',
-        'RPG',
-        'Simulation And Management',
-        'Puzzle',
-        'Visual Novel And Narrative',
-        'Strategy',
-        'Platformer',
-      ]) expect(rubric).toContain(`### ${genre}`);
-    });
+    }
+    const markdown = readFileSync(markdownPath, 'utf8');
+    expect(markdown).toMatch(/\u76ee\u6807:[\s\S]*\u8f93\u5165:[\s\S]*\u6267\u884c\u65b9\u5f0f:[\s\S]*\u9884\u671f\u8f93\u51fa:[\s\S]*\u5b9e\u9645\u7ed3\u679c:[\s\S]*\u5177\u4f53\u542b\u4e49:[\s\S]*\u5bf9\u4e0b\u4e00\u6b65\u5f71\u54cd:/);
+    expect(markdown).toContain('```json\n{\n  "');
+    expect(report.claudeReview.total.score).toBe(100);
   });
 
-  describe('score and decision', () => {
-    let tempRoot: string;
-    let profilePath: string;
-    let baseEvidence: Record<string, any>;
-
-    beforeEach(() => {
-      tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-game-score-'));
-      profilePath = path.join(tempRoot, 'profile.json');
-      const profile = spawnSync('python3', [
-        profileScript,
-        '--game-id', 'village-rpg',
-        '--stage', 'beta',
-        '--genre', 'rpg',
-        '--gdd-revision', 'sha256:gdd123',
-        '--build-hash', 'sha256:build123',
-        '--locked-at', '2026-08-12T12:00:00Z',
-        '--output', profilePath,
-      ], { encoding: 'utf8' });
-      expect(profile.status).toBe(0);
-      baseEvidence = readJson<Record<string, any>>(
-        'tests/fixtures/plugins/keco-game-evaluation-evidence.json',
-      );
-    });
-
-    afterEach(() => {
-      rmSync(tempRoot, { recursive: true, force: true });
-    });
-
-    function score(evidence: Record<string, any> = baseEvidence) {
-      const evidencePath = path.join(tempRoot, 'evidence.json');
-      const reportPath = path.join(tempRoot, 'report.json');
-      writeFileSync(evidencePath, JSON.stringify(evidence));
-      const result = spawnSync('python3', [
-        scoreScript,
-        '--profile', profilePath,
-        '--evidence', evidencePath,
-        '--output', reportPath,
-      ], { encoding: 'utf8' });
-      const report = existsSync(reportPath)
-        ? JSON.parse(readFileSync(reportPath, 'utf8')) as Record<string, any>
-        : null;
-      return { result, report };
-    }
-
-    function replaceItem(metricId: string, value: Record<string, any>) {
-      return {
-        ...baseEvidence,
-        itemResults: baseEvidence.itemResults.map((item: Record<string, any>) =>
-          item.metricId === metricId ? { ...item, ...value } : item),
-      };
-    }
-
-    it('scores complete evidence and passes the Beta gate', () => {
-      const { result, report } = score();
-      expect(result.status).toBe(0);
-      expect(report.score).toMatchObject({ total: 80, generalWeight: 80, specializedWeight: 20 });
-      expect(report.coverage).toBe(1);
-      expect(report.decision).toMatchObject({ status: 'passed', stage: 'beta' });
-      expect(report.severityCounts).toEqual({ P0: 0, P1: 0, P2: 0, P3: 0 });
-    });
-
-    it('uses the group subjective rating for exactly twenty percent', () => {
-      const evidence = {
-        ...baseEvidence,
-        subjectiveResults: baseEvidence.subjectiveResults.map((item: Record<string, any>) =>
-          item.groupId === 'general.core' ? { ...item, ratings: [3, 3, 3, 3, 3] } : item),
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.score.total).toBeCloseTo(78.2, 2);
-      expect(report.score.groups['general.core'].structuredRate).toBe(0.8);
-      expect(report.score.groups['general.core'].subjectiveRate).toBe(0.3);
-      expect(report.score.groups['general.core'].score).toBeCloseTo(12.6, 2);
-    });
-
-    it('normalizes not applicable metrics without reducing coverage', () => {
-      const evidence = replaceItem('general.pacing.reward-spacing', {
-        status: 'not_applicable', rating: undefined, evidence: [],
-      });
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.coverage).toBe(1);
-      expect(report.score.total).toBe(80);
-    });
-
-    it('keeps not evaluated metrics in the denominator and lowers coverage', () => {
-      const evidence = replaceItem('general.core.core-loop', {
-        status: 'not_evaluated', rating: undefined, evidence: [],
-      });
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.coverage).toBeCloseTo(0.96, 4);
-      expect(report.score.groups['general.core'].coverage).toBeLessThan(1);
-    });
-
-    it('flags low confidence and high disagreement', () => {
-      const evidence = {
-        ...baseEvidence,
-        subjectiveResults: baseEvidence.subjectiveResults.map((item: Record<string, any>) =>
-          item.groupId === 'general.core' ? { ...item, ratings: [5, 9] } : item),
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.subjective['general.core']).toMatchObject({
-        count: 2, lowConfidence: true, highDisagreement: true, min: 5, max: 9,
-      });
-    });
-
-    it('returns partial without a formal pass below seventy percent coverage', () => {
-      const evidence = {
-        ...baseEvidence,
-        itemResults: baseEvidence.itemResults.map((item: Record<string, any>, index: number) =>
-          index < 15 ? item : { ...item, status: 'not_evaluated', rating: undefined, evidence: [] }),
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.coverage).toBeLessThan(0.7);
-      expect(report.decision.status).toBe('partial');
-      expect(report.score.formalTotal).toBeNull();
-    });
-
-    it('fails on a P0 finding', () => {
-      const evidence = {
-        ...baseEvidence,
-        findings: [{
-          issueId: 'ISSUE-P0', severity: 'P0', primaryMetricId: 'general.stability.crash-block',
-          linkedMetricIds: [], evidence: ['crash log'],
-        }],
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.decision.status).toBe('failed');
-      expect(report.decision.reasons).toEqual(expect.arrayContaining([expect.stringMatching(/P0/i)]));
-    });
-
-    it('makes a managed Beta P1 conditional', () => {
-      const evidence = {
-        ...baseEvidence,
-        findings: [{
-          issueId: 'ISSUE-P1', severity: 'P1', primaryMetricId: 'general.clarity.next-action',
-          linkedMetricIds: [], evidence: ['session:s2'], owner: 'designer',
-          targetVersion: 'beta-2', fixedAcceptanceRule: '4 of 5 players progress in 15 seconds',
-        }],
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.decision.status).toBe('conditional');
-    });
-
-    it('fails RC when a P1 remains open', () => {
-      profilePath = path.join(tempRoot, 'rc-profile.json');
-      const profile = spawnSync('python3', [
-        profileScript, '--game-id', 'village-rpg', '--stage', 'rc', '--genre', 'rpg',
-        '--gdd-revision', 'sha256:gdd123', '--build-hash', 'sha256:build123',
-        '--locked-at', '2026-08-12T12:00:00Z', '--output', profilePath,
-      ], { encoding: 'utf8' });
-      expect(profile.status).toBe(0);
-      const evidence = {
-        ...baseEvidence,
-        profileId: 'village-rpg-rc-v1',
-        findings: [{
-          issueId: 'ISSUE-P1', severity: 'P1', primaryMetricId: 'general.clarity.next-action',
-          linkedMetricIds: [], evidence: ['session:s2'], owner: 'designer',
-          targetVersion: 'rc-2', fixedAcceptanceRule: '4 of 5 players progress in 15 seconds',
-        }],
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.decision.status).toBe('failed');
-    });
-
-    it('fails when a mandatory evaluation fails', () => {
-      const evidence = {
-        ...baseEvidence,
-        mandatoryEvaluations: [{ evalId: 'core-flow', status: 'failed', evidence: ['KECO_EVAL:failed'] }],
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.decision.status).toBe('failed');
-      expect(report.decision.reasons).toEqual(expect.arrayContaining([expect.stringMatching(/mandatory/i)]));
-    });
-
-    it('fails when a critical group minimum is missed', () => {
-      const evidence = {
-        ...baseEvidence,
-        itemResults: baseEvidence.itemResults.map((item: Record<string, any>) =>
-          item.metricId.startsWith('general.core.') ? { ...item, rating: 2 } : item),
-        subjectiveResults: baseEvidence.subjectiveResults.map((item: Record<string, any>) =>
-          item.groupId === 'general.core' ? { ...item, ratings: [4, 4, 4, 4, 4] } : item),
-      };
-      const { result, report } = score(evidence);
-      expect(result.status).toBe(0);
-      expect(report.decision.status).toBe('failed');
-      expect(report.decision.reasons).toEqual(expect.arrayContaining([expect.stringMatching(/core/i)]));
-    });
-
-    it('rejects duplicate issue IDs instead of double counting them', () => {
-      const finding = {
-        issueId: 'ISSUE-DUP', severity: 'P2', primaryMetricId: 'general.core.core-loop',
-        linkedMetricIds: [], evidence: ['session:s1'],
-      };
-      const { result } = score({ ...baseEvidence, findings: [finding, finding] });
-      expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(/duplicate issue ID/i);
-      expect(result.stderr).not.toMatch(/Traceback/);
-    });
-  });
-
-  describe('report validator', () => {
-    let tempRoot: string;
-    let validReport: Record<string, any>;
-
-    beforeEach(() => {
-      tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-game-report-'));
-      const profilePath = path.join(tempRoot, 'profile.json');
-      const reportPath = path.join(tempRoot, 'report.json');
-      const profile = spawnSync('python3', [
-        profileScript, '--game-id', 'village-rpg', '--stage', 'beta', '--genre', 'rpg',
-        '--gdd-revision', 'sha256:gdd123', '--build-hash', 'sha256:build123',
-        '--locked-at', '2026-08-12T12:00:00Z', '--output', profilePath,
-      ], { encoding: 'utf8' });
-      expect(profile.status).toBe(0);
-      const evidencePath = path.join(
-        repositoryRoot,
-        'tests',
-        'fixtures',
-        'plugins',
-        'keco-game-evaluation-evidence.json',
-      );
-      const scored = spawnSync('python3', [
-        scoreScript, '--profile', profilePath, '--evidence', evidencePath, '--output', reportPath,
-      ], { encoding: 'utf8' });
-      expect(scored.status).toBe(0);
-      validReport = JSON.parse(readFileSync(reportPath, 'utf8')) as Record<string, any>;
-    });
-
-    afterEach(() => {
-      rmSync(tempRoot, { recursive: true, force: true });
-    });
-
-    function validate(value: Record<string, any>) {
-      const reportPath = path.join(tempRoot, 'candidate.json');
-      writeFileSync(reportPath, JSON.stringify(value));
-      return spawnSync('python3', [reportValidator, reportPath], { encoding: 'utf8' });
-    }
-
-    it('accepts a valid generated game evaluation report', () => {
-      const result = validate(validReport);
-      expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({
-        ok: true, status: 'passed', stage: 'beta', score: 80, coverage: 1,
-      });
-    });
-
-    it.each([
-      ['weights not equal to 100', (report: Record<string, any>) => {
-        report.score.generalWeight = 79;
-      }, /weight/i],
-      ['score outside range', (report: Record<string, any>) => {
-        report.score.total = 101;
-      }, /score/i],
-      ['coverage outside range', (report: Record<string, any>) => {
-        report.coverage = 1.1;
-      }, /coverage/i],
-      ['Release pass below 85', (report: Record<string, any>) => {
-        report.stage = 'release';
-        report.decision = { stage: 'release', status: 'passed', threshold: 85, reasons: [] };
-      }, /Release.*85|85.*Release/i],
-      ['RC conditional result', (report: Record<string, any>) => {
-        report.stage = 'rc';
-        report.decision = { stage: 'rc', status: 'conditional', threshold: 80, reasons: [] };
-      }, /conditional/i],
-      ['passed report with P0', (report: Record<string, any>) => {
-        report.findings = [{
-          issueId: 'P0', severity: 'P0', primaryMetricId: 'general.core.core-loop',
-          linkedMetricIds: [], evidence: ['x'],
-        }];
-        report.severityCounts.P0 = 1;
-      }, /P0|P1/i],
-      ['Release below full coverage', (report: Record<string, any>) => {
-        report.stage = 'release';
-        report.decision = { stage: 'release', status: 'passed', threshold: 85, reasons: [] };
-        for (const group of Object.values(report.score.groups) as Array<Record<string, any>>) {
-          group.score = group.weight * 0.9;
-        }
-        report.score.total = 90;
-        report.score.formalTotal = 90;
-        report.coverage = 0.99;
-      }, /coverage/i],
-      ['evaluated item without evidence', (report: Record<string, any>) => {
-        report.itemResults[0].evidence = [];
-      }, /evidence/i],
-      ['profile and report identity mismatch', (report: Record<string, any>) => {
-        report.reportId = 'other-profile-report';
-      }, /identity|reportId/i],
-      ['duplicate issue ID', (report: Record<string, any>) => {
-        const issue = {
-          issueId: 'DUP', severity: 'P2', primaryMetricId: 'general.core.core-loop',
-          linkedMetricIds: [], evidence: ['x'],
-        };
-        report.findings = [issue, issue];
-        report.severityCounts.P2 = 2;
-      }, /duplicate/i],
-      ['missing raw result references', (report: Record<string, any>) => {
-        delete report.rawResultReferences;
-      }, /raw result references|required/i],
-    ])('rejects %s without crashing', (_label, mutate, expected) => {
-      const candidate = structuredClone(validReport);
-      mutate(candidate);
-      const result = validate(candidate);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(expected);
-      expect(result.stderr).not.toMatch(/Traceback/);
-    });
-  });
-
-  it('documents the end-to-end triggers, script chain, and report boundary', () => {
+  it('documents the two score dimensions and the external Claude boundary', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
-    const triggerFixture = readFileSync(
-      path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-game-evaluation-skill-evals.json'),
-      'utf8',
-    );
-    expect(skill).toContain('Use $keco-evaluate-game to run a Beta EDD evaluation');
-    expect(triggerFixture).toContain(
-      'Run a Beta-stage EDD game evaluation for the Keco project and produce a 100-point report.',
-    );
-    expect(triggerFixture).toContain(
-      'Run a quick EDD evaluation for the combat gameplay slice that was just completed.',
-    );
-    expect(skill).toMatch(/create_evaluation_profile\.py[\s\S]*score_game_evaluation\.py[\s\S]*validate_game_evaluation_report\.py/);
-    expect(skill).toMatch(/GameEvaluationReport[\s\S]*Slice[\s\S]*EvalReport/);
-    expect(skill).toMatch(/docs\/keco-game-evaluations\/<evaluationId>/);
-    expect(skill).toMatch(/KECO_EVAL[\s\S]*manual_required[\s\S]*improvement[\s\S]*retest/i);
-    expect(skill).toMatch(/validate_game_evaluation_report\.py[\s\S]*before claiming/i);
+    const rubric = readFileSync(path.join(skillRoot, 'references', 'rubric.md'), 'utf8');
+    const contract = readFileSync(path.join(skillRoot, 'references', 'report-contract.md'), 'utf8');
+    expect(skill).toMatch(/`artStyle` \(50 points\)[\s\S]*`playerFun` \(50 points\)/);
+    expect(skill).toMatch(/does not provide a Claude MCP[\s\S]*externally generated/i);
+    expect(skill).toMatch(/Never merge Claude and human scores automatically/i);
+    expect(skill).toMatch(/progress\.jsonl[\s\S]*progress\.md/);
+    for (const item of Object.values(expectedItems).flatMap(items => Object.keys(items))) {
+      expect(rubric).toContain(item);
+    }
+    expect(contract).toMatch(/Only complete Claude item scores contribute[\s\S]*never creates a combined score/i);
   });
 
-  it('routes full EDD scoring away from Slice implementation', () => {
-    const v2Skill = readFileSync(
-      path.join(
-        repositoryRoot,
-        'plugins',
-        'keco-codex',
-        'skills',
-        'keco-develop-godot-slice-v2',
-        'SKILL.md',
-      ),
-      'utf8',
-    );
-    expect(v2Skill).toMatch(/full[\s\S]{0,160}100-point[\s\S]{0,160}keco-evaluate-game/i);
-    expect(v2Skill).toMatch(/milestone[\s\S]{0,160}Alpha[\s\S]{0,160}Beta[\s\S]{0,160}Release/i);
+  it.each([
+    ['item maximum', (r: Record<string, any>) => { r.claudeReview.dimensions.artStyle.items[0].max = 21; }, /maximum|max/i],
+    ['dimension sum', (r: Record<string, any>) => { r.claudeReview.dimensions.artStyle.score = 49; }, /dimension|sum/i],
+    ['total sum', (r: Record<string, any>) => { r.claudeReview.total.score = 99; }, /total/i],
+    ['missing evidence', (r: Record<string, any>) => { r.claudeReview.dimensions.playerFun.items[0].evidence = []; }, /evidence/i],
+    ['partial human score', (r: Record<string, any>) => { r.humanReview.artStyle.score = 40; }, /human/i],
+    ['automatic combined score', (r: Record<string, any>) => { r.combinedScore = 95; }, /combined/i],
+    ['report identity', (r: Record<string, any>) => { r.reportId = 'wrong'; }, /identity|reportId/i],
+  ])('validator rejects %s', (_label, mutate, expected) => {
+    const { report } = score();
+    mutate(report);
+    const result = validate(report);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(expected);
+    expect(result.stderr).not.toMatch(/Traceback/);
   });
 });

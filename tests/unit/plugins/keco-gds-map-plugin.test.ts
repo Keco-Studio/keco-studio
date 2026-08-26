@@ -11,11 +11,14 @@ const gdsTools = [
   'read_game_design_system',
   'read_project_game_design_system',
   'get_game_design_system_generation',
+  'get_project_gdd_generation',
   'create_game_design_system',
   'generate_game_design_system',
   'create_game_design_system_version',
   'set_project_game_design_system',
   'clear_project_game_design_system',
+  'generate_project_gdd',
+  'cancel_project_gdd_generation',
 ].sort();
 const mapTools = [
   'list_maps',
@@ -83,6 +86,14 @@ describe('Keco GDS and Create Map plugin skills', () => {
       expect(source).toMatch(/stop[\s\S]{0,100}(?:conflict|stale)/i);
       expect(source).toMatch(/never delete/i);
       expect(source).toMatch(/fresh MCP read/i);
+      expect(source).toContain(
+        'DISCOVER -> READ_GDS -> PLAN -> MUTATE_GDS -> POLL_GDS -> BIND -> GENERATE_GDD -> POLL_GDD -> READ_GDD -> REPORT',
+      );
+      expect(source).toMatch(/GENERATE_GDD:[\s\S]{0,180}`generate_project_gdd`/i);
+      expect(source).toMatch(/POLL_GDD:[\s\S]{0,180}`get_project_gdd_generation`/i);
+      expect(source).toMatch(/READ_GDD:[\s\S]{0,180}`output_document_id`[\s\S]{0,120}`read_document`/i);
+      expect(source).toMatch(/queued[\s\S]{0,120}running[\s\S]{0,180}not[\s\S]{0,80}complete/i);
+      expect(source).toMatch(/`cancel_project_gdd_generation`/);
     }
   });
 
@@ -115,5 +126,7 @@ describe('Keco GDS and Create Map plugin skills', () => {
     expect(source).toMatch(/MAP_CONFIRMATION_REQUIRED/);
     expect(source).toMatch(/confirmation\s+token[\s\S]{0,160}`attemptCount`/i);
     expect(source).toMatch(/ready[\s\S]{0,160}failed[\s\S]{0,160}blocked/i);
+    expect(source).toMatch(/`generate_project_gdd`[\s\S]{0,100}`get_project_gdd_generation`/i);
+    expect(source).toMatch(/`output_document_id`[\s\S]{0,120}`read_document`/i);
   });
 });
