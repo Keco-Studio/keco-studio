@@ -123,6 +123,19 @@ function backend(): jest.Mocked<CreateMapMcpBackend> {
 describe('Create Map MCP service', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it.each(['P0002', 'PGRST116'])('maps an upstream missing-map response (%s) to MAP_NOT_FOUND', async (code) => {
+    const domain = backend();
+    domain.readMap.mockRejectedValueOnce({ code });
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, {
+      backend: domain,
+    });
+
+    await expect(service.readMap({
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+    })).rejects.toMatchObject({ code: 'MAP_NOT_FOUND' });
+  });
+
   it('creates an idempotent V3 draft through the backend', async () => {
     const domain = backend();
     const order: string[] = [];

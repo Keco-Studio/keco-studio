@@ -472,6 +472,7 @@ export function createMapService(supabase: SupabaseClient) {
         .from('map_revisions')
         .select('id, revision_number, save_version, parent_revision_id, source_document_id, schema_version, plan, scene')
         .eq('id', map.current_revision_id)
+        .eq('map_project_id', mapId)
         .eq('schema_version', 3)
         .single();
       if (revisionError || !revision) {
