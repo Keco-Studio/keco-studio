@@ -132,6 +132,15 @@ export type PixelLabClientFactory = (
 
 type PixelLabSupabaseConfig = { url: string; anon: string; service: string };
 
+function configuredServiceRoleToken(): string {
+  // Supabase reserves SUPABASE_* runtime variables and can rotate the value
+  // independently of application secrets. Keep a Keco-owned override so the
+  // trusted server caller can be rotated without changing the auth contract.
+  return Deno.env.get("KECO_SERVICE_ROLE_KEY")
+    ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    ?? "";
+}
+
 const defaultClientFactory: PixelLabClientFactory = (url, key, options) =>
   createClient(url, key, options);
 
@@ -188,7 +197,7 @@ export async function authorizeServiceMapAsset(
   expectedProjectId: string,
   actorUserId: string,
 ): Promise<AuthorizedAsset> {
-  const configuredServiceToken = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const configuredServiceToken = configuredServiceRoleToken();
   if (!configuredServiceToken || serviceToken !== configuredServiceToken) {
     throw new PixelLabMapError("pixellab_invalid_response", "Authentication required", 401);
   }

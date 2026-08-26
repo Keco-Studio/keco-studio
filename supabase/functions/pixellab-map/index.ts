@@ -108,7 +108,10 @@ async function handle(request: Request): Promise<Response> {
   }
   const assetId = typeof body.assetId === "string" ? body.assetId : null;
   if (!assetId) throw new PixelLabMapError("pixellab_invalid_response", "Asset is required", 400);
-  const serviceRoleRequest = Boolean(token && token === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""));
+  const serviceRoleToken = Deno.env.get("KECO_SERVICE_ROLE_KEY")
+    ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    ?? "";
+  const serviceRoleRequest = Boolean(token && token === serviceRoleToken);
   const gddWorkerRequest = serviceRoleRequest && typeof body.gddMapArtifactId === "string";
   let authorized;
   if (serviceRoleRequest) {

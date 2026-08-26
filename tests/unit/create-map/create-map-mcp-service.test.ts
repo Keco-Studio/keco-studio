@@ -644,6 +644,34 @@ describe('Create Map MCP service', () => {
     })).rejects.toMatchObject({ code: 'MAP_GENERATION_BLOCKED' });
   });
 
+  it('reports provider authentication failure as upstream unavailable', async () => {
+    const domain = backend();
+    domain.readGeneration.mockResolvedValue(generation({
+      asset: asset({ status: 'planned' }),
+    }));
+    domain.invokeProvider.mockRejectedValue({
+      code: 'pixellab_invalid_response',
+      message: 'Authentication required',
+    });
+    const service = createMapMcpService({ userId: IDS.userId, supabase: {} as never }, {
+      backend: domain,
+      fingerprintPlan: () => fingerprint,
+      verifyConfirmation: jest.fn(),
+      signConfirmation: jest.fn(() => 'signed-confirmation'),
+    });
+
+    await expect(service.startGeneration({
+      projectId: IDS.projectId,
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      assetId: IDS.assetId,
+      generationId: IDS.generationId,
+      planFingerprint: fingerprint,
+      confirmationToken: 'signed-confirmation',
+      confirmPaidGeneration: true,
+    })).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE' });
+  });
+
   it('allows viewer generation reads but rejects viewer advancement before provider contact', async () => {
     const domain = backend();
     domain.getProjectRole.mockResolvedValue('viewer');

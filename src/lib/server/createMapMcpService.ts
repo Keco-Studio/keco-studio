@@ -364,7 +364,17 @@ function mapProviderError(error: unknown): never {
   }
   if (code === 'pixellab_rate_limited') throw new CreateMapMcpError('PROVIDER_RATE_LIMITED');
   if (code === 'pixellab_quota_exceeded') throw new CreateMapMcpError('PROVIDER_QUOTA_EXCEEDED');
-  if (code === 'pixellab_invalid_response') throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
+  if (code === 'pixellab_invalid_response') {
+    const message = error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: unknown }).message ?? '')
+      : '';
+    // Provider authentication is an operator/configuration failure. It must not
+    // be presented as an unsafe paid-submission state: no provider job was made.
+    if (/^authentication required$/i.test(message.trim())) {
+      throw new CreateMapMcpError('UPSTREAM_UNAVAILABLE');
+    }
+    throw new CreateMapMcpError('MAP_GENERATION_BLOCKED');
+  }
   if (code === 'KM409') throw new CreateMapMcpError('IDEMPOTENCY_CONFLICT');
   if (code === 'KM410') throw new CreateMapMcpError('MAP_CREATION_IN_PROGRESS');
   if (code === 'KM412') throw new CreateMapMcpError('MAP_REVISION_STALE');
