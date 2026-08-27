@@ -30,7 +30,9 @@
 
 **Interfaces:**
 - Produces: `CharacterAssetPlanV1Schema`, `CharacterPlanV1Schema`, `AnimationPlanV1Schema`, `CharacterAssetPlanV1`, `validateCharacterAssetPlanV1(input)`, `fingerprintCharacterAssetPlanV1(plan)`.
-- Constraints: character sizes are positive powers-of-two from 16 through 256; animation `frameCount` is 2 through 32; `fps` is 1 through 60; prompts are nonblank and at most 2,000 characters.
+- Constraints: character frame dimensions are one of `32`, `64`, `96`, `128`,
+  or `256`; animation `frameCount` is 2 through 32; `fps` is 1 through 60;
+  prompts are nonblank and at most 2,000 characters.
 
 - [ ] **Step 1: Write schema tests for both variants and invalid source/frame inputs**
 
