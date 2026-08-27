@@ -1,0 +1,72 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from '@jest/globals';
+
+const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20260827090000_deterministic_slice_runs.sql'), 'utf8');
+
+describe('deterministic Slice run migration', () => {
+  it('creates project-owned runs, append-only events, artifacts, and private replay requests', () => {
+    for (const table of ['keco_slice_runs', 'keco_slice_run_events', 'keco_slice_run_artifacts', 'keco_slice_run_requests']) {
+      expect(sql).toMatch(new RegExp(`create table public\\.${table}`, 'i'));
+      expect(sql).toMatch(new RegExp(`alter table public\\.${table} force row level security`, 'i'));
+    }
+    expect(sql).toMatch(/primary key \(run_id, sequence\)/i);
+    expect(sql).toMatch(/unique \(run_id, event_id\)/i);
+    expect(sql).toMatch(/repair_count integer not null default 0 check \(repair_count between 0 and 3\)/i);
+    expect(sql).not.toMatch(/grant (?:insert|update|delete|all)[^;]+keco_slice_run_events/i);
+    expect(sql).not.toMatch(/grant (?:select|insert|update|delete|all)[^;]+keco_slice_run_requests/i);
+  });
+
+  it('evaluates observations and derives projection inside the trusted database path', () => {
+    expect(sql).toMatch(/function public\.keco_evaluate_slice_observation/i);
+    expect(sql).toMatch(/BUILD_HASH_MISMATCH/);
+    expect(sql).toMatch(/SNAPSHOT_HASH_MISMATCH/);
+    expect(sql).toMatch(/ACTUAL_PATH_MISSING/);
+    expect(sql).toMatch(/ROUNDTRIP_MARKER_MISSING/);
+    expect(sql).toMatch(/function public\.keco_derive_slice_projection/i);
+    expect(sql).toMatch(/implementationStatus/);
+    expect(sql).toMatch(/runtimeVerificationStatus/);
+    expect(sql).toMatch(/acceptanceStatus/);
+    expect(sql).toMatch(/releaseReadiness/);
+    expect(sql).toMatch(/distinct on \(event\.payload->>'taskId'\)[\s\S]+order by event\.payload->>'taskId', event\.sequence desc/i);
+    expect(sql).toMatch(/distinct on \(event\.payload->'result'->>'evalId'\)[\s\S]+order by event\.payload->'result'->>'evalId', event\.sequence desc/i);
+    expect(sql).toMatch(/'status', case when jsonb_array_length\(v_reasons\) > 0 then 'failed' else 'passed' end/i);
+    expect(sql).toMatch(/'manualRequired', coalesce\(\(p_spec->>'manualRequired'\)::boolean, false\)/i);
+  });
+
+  it('makes lifecycle writes idempotent and compare-and-swap protected', () => {
+    for (const operation of ['create_slice_bundle', 'checkpoint_slice', 'finalize_slice']) {
+      expect(sql).toMatch(new RegExp(`pg_advisory_xact_lock[\\s\\S]+:${operation}:`, 'i'));
+      expect(sql).toMatch(new RegExp(`operation = '${operation}'[\\s\\S]+idempotency_key = p_idempotency_key[\\s\\S]+for update`, 'i'));
+    }
+    expect(sql.match(/IDEMPOTENCY_CONFLICT/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(sql).toMatch(/v_run\.state_token <> p_expected_state_token[\s\S]+SLICE_STATE_CONFLICT/i);
+    expect(sql).toMatch(/v_run\.repair_count >= 3[\s\S]+SLICE_REPAIR_LIMIT/i);
+    expect(sql).toMatch(/previous_event_hash[\s\S]+event_hash/i);
+  });
+
+  it('creates document bundles atomically and exports canonical digests', () => {
+    expect(sql).toMatch(/function public\.mcp_create_slice_bundle/i);
+    expect(sql).toMatch(/assert_document_snapshot_payload/i);
+    expect(sql).toMatch(/insert into public\.documents/i);
+    expect(sql).toMatch(/insert into public\.keco_slice_runs/i);
+    expect(sql).toMatch(/function public\.mcp_export_slice_mirrors/i);
+    expect(sql).toMatch(/octet_length\(document\.content\)/i);
+    expect(sql).toMatch(/public\.keco_slice_hash\(document\.content\)/i);
+    expect(sql).toMatch(/manifestHash'[\s\S]+is distinct from v_manifest_hash/i);
+    expect(sql).toMatch(/entry\.value->>'documentId' = v_document->>'documentId'/i);
+    expect(sql).not.toMatch(/update public\.documents set content = v_document->>'markdown'/i);
+  });
+
+  it('exposes only bounded lifecycle RPCs to authenticated actors', () => {
+    for (const signature of [
+      'mcp_create_slice_bundle', 'mcp_read_slice_run', 'mcp_checkpoint_slice',
+      'mcp_finalize_slice', 'mcp_export_slice_mirrors',
+    ]) {
+      expect(sql).toMatch(new RegExp(`revoke all on function public\\.${signature}`, 'i'));
+      expect(sql).toMatch(new RegExp(`grant execute on function public\\.${signature}`, 'i'));
+    }
+    expect(sql).toMatch(/security definer set search_path = ''/i);
+    expect(sql).not.toMatch(/p_(?:actor|user)_id/i);
+  });
+});
