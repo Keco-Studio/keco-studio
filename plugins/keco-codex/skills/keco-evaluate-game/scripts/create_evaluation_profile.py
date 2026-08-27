@@ -8,6 +8,7 @@ import re
 import sys
 from typing import Any
 
+from execution_cache import execution_identity, reusable_event, sha256_file
 from progress_log import append_event
 
 
@@ -80,7 +81,10 @@ DIMENSIONS = {
 }
 
 
-def append_progress(output: pathlib.Path, profile: dict[str, Any]) -> None:
+EVALUATOR_VERSION = "profile-v1"
+
+
+def append_progress(output: pathlib.Path, profile: dict[str, Any], operation_key: str, input_hash: str) -> None:
     append_event(
         output.parent, "profile", "\u9501\u5b9a\u8bc4\u4ef7\u8303\u56f4\u548c\u56fa\u5b9a\u8bc4\u5206\u9879",
         {"gameId": profile["gameId"], "stage": profile["stage"], "genre": profile["genre"], "gddRevision": profile["gddRevision"], "buildHash": profile["buildHash"]},
@@ -88,6 +92,7 @@ def append_progress(output: pathlib.Path, profile: dict[str, Any]) -> None:
         {"profileId": profile["profileId"], "dimensions": list(profile["dimensions"])},
         "\u8bc4\u5206\u6743\u91cd\u5df2\u9501\u5b9a\uff0cgenre \u53ea\u4fdd\u7559\u4e3a\u8eab\u4efd\u5143\u6570\u636e",
         "\u540e\u7eed\u8bc1\u636e\u53ea\u80fd\u6309\u8fd9\u516b\u4e2a\u5b50\u9879\u63d0\u4ea4",
+        operation_key, input_hash, sha256_file(output),
     )
 
 
@@ -109,6 +114,16 @@ def main() -> int:
     parser.add_argument("--output", type=pathlib.Path, required=True)
     args = parser.parse_args()
     try:
+        cache_inputs = {
+            "gameId": args.game_id, "stage": args.stage, "genre": args.genre,
+            "gddRevision": args.gdd_revision, "buildHash": args.build_hash,
+            "lockedAt": args.locked_at,
+        }
+        operation_key, input_hash = execution_identity("profile", EVALUATOR_VERSION, cache_inputs)
+        reused = reusable_event(args.output.parent, operation_key, input_hash, args.output)
+        if reused is not None:
+            print(json.dumps({"ok": True, "outcome": "reused", "operationKey": operation_key}, sort_keys=True))
+            return 0
         game_id = non_empty(args.game_id, "gameId")
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", game_id):
             raise ValueError("gameId contains unsupported characters")
@@ -129,11 +144,11 @@ def main() -> int:
             json.dumps(profile, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        append_progress(args.output, profile)
+        append_progress(args.output, profile, operation_key, input_hash)
     except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    print(json.dumps({"ok": True, "profileId": profile["profileId"]}, sort_keys=True))
+    print(json.dumps({"ok": True, "outcome": "created", "operationKey": operation_key, "profileId": profile["profileId"]}, sort_keys=True))
     return 0
 
 
