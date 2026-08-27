@@ -9,6 +9,10 @@ import type { AccountMcpRequestContext } from "./context.ts";
 import { registerAccountReadTools } from "./read-tools.ts";
 import { toolFailure, toolSuccess } from "./results.ts";
 import { registerAccountWriteTools } from "./write-tools.ts";
+import {
+  registerAccountSliceReadTools,
+  registerAccountSliceWriteTools,
+} from "./slice-tools.ts";
 
 const readAnnotations = {
   readOnlyHint: true,
@@ -43,6 +47,10 @@ export async function registerAccountTools(
     server,
     (projectId) => authorizeAccountProject(context, projectId, "read"),
   );
+  registerAccountSliceReadTools(
+    server,
+    (projectId) => authorizeAccountProject(context, projectId, "read"),
+  );
   let hasWritableProject = false;
   try {
     hasWritableProject = await accountHasWritableProject(context);
@@ -51,6 +59,10 @@ export async function registerAccountTools(
   }
   if (hasWritableProject) {
     registerAccountWriteTools(
+      server,
+      (projectId) => authorizeAccountProject(context, projectId, "write"),
+    );
+    registerAccountSliceWriteTools(
       server,
       (projectId) => authorizeAccountProject(context, projectId, "write"),
     );

@@ -324,7 +324,11 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     "read_document",
     "read_story_graph",
     "semantic_search",
+    "export_slice_mirrors",
     ...ACCOUNT_WRITE_TOOL_NAMES,
+    "create_slice_bundle",
+    "checkpoint_slice",
+    "finalize_slice",
     ...GDS_TOOL_NAMES,
     ...MAP_TOOL_NAMES,
   ]);

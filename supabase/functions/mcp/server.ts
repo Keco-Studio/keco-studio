@@ -14,6 +14,7 @@ import { asPublicMcpError } from "./errors.ts";
 import { registerAccountTools } from "./account-tools.ts";
 import { registerGdsTools } from "./gds-tools.ts";
 import { registerMapTools } from "./map-tools.ts";
+import { registerSliceTools } from "./slice-tools.ts";
 
 const READ_TOOLS = new Set([
   "list_projects",
@@ -30,6 +31,7 @@ const READ_TOOLS = new Set([
   "list_maps",
   "read_map",
   "get_map_generation",
+  "export_slice_mirrors",
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",
@@ -63,6 +65,9 @@ const WRITE_TOOLS = new Set([
   "prepare_map_generation",
   "start_map_generation",
   "advance_map_generation",
+  "create_slice_bundle",
+  "checkpoint_slice",
+  "finalize_slice",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",
@@ -239,6 +244,7 @@ export async function createProbeServer(
     registerWriteTools(server, context);
     registerGdsTools(server, context);
     registerMapTools(server, context);
+    registerSliceTools(server, context);
     registerResources(server, context);
     registerPrompts(server, context);
   }
