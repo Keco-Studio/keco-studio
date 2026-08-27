@@ -33,7 +33,7 @@ function cleanupRow(value: unknown, expectedId: string): ProjectStorageCleanupRo
   if (
     row.id !== expectedId
     || typeof row.project_id !== 'string'
-    || row.bucket_id !== 'map-assets'
+    || (row.bucket_id !== 'map-assets' && row.bucket_id !== 'character-assets')
     || !Array.isArray(row.storage_paths)
     || row.storage_paths.length === 0
     || row.storage_paths.some((path) => typeof path !== 'string'
@@ -94,7 +94,10 @@ export async function deleteProjectWithServerBoundary({
   projectId,
   userId,
   serviceClient,
-}: DeleteProjectWithServerBoundaryInput): Promise<{ cleanupJobId: string | null }> {
+}: DeleteProjectWithServerBoundaryInput): Promise<{
+  cleanupJobId: string | null;
+  cleanupJobIds: string[];
+}> {
   await verifyProjectDeletionPermission(authClient, projectId, userId);
 
   const resolvedServiceClient = await resolveServiceClient(serviceClient);
@@ -104,8 +107,15 @@ export async function deleteProjectWithServerBoundary({
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] as Record<string, unknown> | undefined : undefined;
   const cleanupJobId = row?.cleanup_job_id;
+  const characterCleanupJobId = row?.character_cleanup_job_id;
   if (cleanupJobId !== null && cleanupJobId !== undefined && typeof cleanupJobId !== 'string') {
     throw new Error('Invalid project deletion response');
   }
-  return { cleanupJobId: typeof cleanupJobId === 'string' ? cleanupJobId : null };
+  if (characterCleanupJobId !== null && characterCleanupJobId !== undefined
+    && typeof characterCleanupJobId !== 'string') {
+    throw new Error('Invalid project deletion response');
+  }
+  const cleanupJobIds = [cleanupJobId, characterCleanupJobId]
+    .filter((value): value is string => typeof value === 'string');
+  return { cleanupJobId: cleanupJobIds[0] ?? null, cleanupJobIds };
 }
