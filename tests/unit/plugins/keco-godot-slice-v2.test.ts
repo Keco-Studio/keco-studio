@@ -22,6 +22,102 @@ function sha256(filePath: string): string {
 }
 
 describe('Keco Godot Slice V2 skill contract', () => {
+  it('produces the shared contract fixture outcomes through the Python CLI', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-fixtures-'));
+    const evaluator = path.join(skillRoot, 'scripts', 'evaluate_runtime_observations.py');
+    const fixture = JSON.parse(readFileSync(path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-slice-contract-cases.json'), 'utf8')) as {
+      buildHash: string;
+      snapshotHash: string;
+      cases: Array<Record<string, unknown>>;
+    };
+    try {
+      for (const item of fixture.cases) {
+        const id = item.id as string;
+        const spec = path.join(tempRoot, `${id}-spec.json`);
+        const debug = path.join(tempRoot, `${id}-debug.txt`);
+        const output = path.join(tempRoot, `${id}-result.json`);
+        writeFileSync(spec, JSON.stringify({ evaluations: [{
+          evalId: id,
+          buildHash: fixture.buildHash,
+          snapshotHash: fixture.snapshotHash,
+          assertions: [item.assertion],
+        }] }));
+        const runtime = {
+          schemaVersion: 1,
+          runId: 'run-1',
+          sliceId: 'slice-1',
+          evalId: id,
+          buildHash: item.observationBuildHash ?? fixture.buildHash,
+          snapshotHash: fixture.snapshotHash,
+          actual: item.actual,
+          errors: [],
+          ...(item.legacy ? { status: item.runtimeStatus, expected: item.runtimeExpected } : {}),
+        };
+        writeFileSync(debug, `${item.legacy ? 'KECO_EVAL' : 'KECO_OBSERVATION'} ${JSON.stringify(runtime)}\n`);
+        const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+        expect({ id, exitCode: result.status, stderr: result.stderr }).toEqual({ id, exitCode: 0, stderr: '' });
+        const evaluated = JSON.parse(readFileSync(output, 'utf8')).evaluations[0];
+        expect({ id, status: evaluated.status, reasonCode: evaluated.reasonCodes[0] }).toEqual({
+          id,
+          status: item.expectedStatus,
+          reasonCode: item.reasonCode,
+        });
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('computes runtime assertions locally and ignores legacy self-reported pass status', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-evidence-'));
+    const evaluator = path.join(skillRoot, 'scripts', 'evaluate_runtime_observations.py');
+    const hash = (character: string) => `sha256:${character.repeat(64)}`;
+    try {
+      const spec = path.join(tempRoot, 'eval-spec.json');
+      const debug = path.join(tempRoot, 'debug.txt');
+      const output = path.join(tempRoot, 'result.json');
+      writeFileSync(spec, JSON.stringify({ evaluations: [{
+        evalId: 'eval-1', buildHash: hash('a'), snapshotHash: hash('b'),
+        assertions: [{ assertionId: 'guardian', kind: 'equals', path: '/guardianRoundtrip', expected: true }],
+      }] }));
+      writeFileSync(debug, `KECO_EVAL ${JSON.stringify({
+        runId: 'run-1', sliceId: 'slice-1', evalId: 'eval-1',
+        buildHash: hash('a'), snapshotHash: hash('b'),
+        status: 'passed', expected: { guardianRoundtrip: true },
+        actual: { catType: 'sickly' }, errors: [],
+      })}\n`);
+      const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
+        status: 'failed',
+        evaluations: [{ status: 'failed', reasonCodes: ['ACTUAL_PATH_MISSING'] }],
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('derives implementation completion separately from manual acceptance', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-status-'));
+    try {
+      const input = path.join(tempRoot, 'input.json');
+      const output = path.join(tempRoot, 'output.json');
+      writeFileSync(input, JSON.stringify({
+        tasks: [{ status: 'completed', resultAccepted: true, reviewAccepted: true }],
+        evaluations: [{ status: 'passed' }], manualRequired: true,
+        mirrorsVerified: true,
+      }));
+      const result = spawnSync('python3', [path.join(skillRoot, 'scripts', 'derive_slice_status.py'), input, '--output', output], { encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
+        implementationStatus: 'completed', runtimeVerificationStatus: 'passed',
+        acceptanceStatus: 'manual_required', releaseReadiness: 'blocked_by_manual_review',
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('requires checklist-based authoritative Keco roadmap and Slice plans', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const orchestration = readFileSync(

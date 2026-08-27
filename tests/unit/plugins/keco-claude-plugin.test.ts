@@ -29,7 +29,10 @@ const SKILLS = [
 
 const SCRIPTS = [
   'build_spriteframes_resource.py',
+  'derive_slice_status.py',
+  'evaluate_runtime_observations.py',
   'export_keco_snapshot.py',
+  'slice_contract.py',
   'validate_eval_report.py',
   'validate_generated_asset_package.py',
   'validate_interaction_checkpoint.py',

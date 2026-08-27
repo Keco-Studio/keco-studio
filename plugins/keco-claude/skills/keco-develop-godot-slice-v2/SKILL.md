@@ -40,7 +40,7 @@ Every contract this workflow names is bundled; none require another plugin or a 
 
 ## Fixed Run Ledger
 
-Create and maintain these artifacts in order. Use `${CLAUDE_PLUGIN_ROOT}/scripts/validate_run_context.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_plan.py`, and `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py` before advancing. Validate every paused or resumed interaction record with `${CLAUDE_PLUGIN_ROOT}/scripts/validate_interaction_checkpoint.py` before presenting or consuming its checkpoint:
+Create and maintain these artifacts in order. Use `${CLAUDE_PLUGIN_ROOT}/scripts/validate_run_context.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_plan.py`, and `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py` before advancing. Compute runtime results with `${CLAUDE_PLUGIN_ROOT}/scripts/evaluate_runtime_observations.py`, derive independent status dimensions with `${CLAUDE_PLUGIN_ROOT}/scripts/derive_slice_status.py`, and treat `${CLAUDE_PLUGIN_ROOT}/scripts/slice_contract.py` as their shared deterministic contract. Validate every paused or resumed interaction record with `${CLAUDE_PLUGIN_ROOT}/scripts/validate_interaction_checkpoint.py` before presenting or consuming its checkpoint:
 
 ```text
 INTAKE -> BASELINE -> SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> ROADMAP_REVIEW
