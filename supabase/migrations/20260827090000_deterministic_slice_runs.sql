@@ -118,6 +118,32 @@ as $$
   select 'sha256:' || encode(extensions.digest(convert_to(p_value, 'UTF8'), 'sha256'), 'hex')
 $$;
 
+create or replace function public.keco_slice_canonical_json(p_value jsonb)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select case jsonb_typeof(p_value)
+    when 'object' then '{' || coalesce((
+      select string_agg(to_jsonb(entry.key)::text || ':' || public.keco_slice_canonical_json(entry.value), ',' order by entry.key)
+      from jsonb_each(p_value) as entry
+    ), '') || '}'
+    when 'array' then '[' || coalesce((
+      select string_agg(public.keco_slice_canonical_json(item.value), ',' order by item.ordinal)
+      from jsonb_array_elements(p_value) with ordinality as item(value, ordinal)
+    ), '') || ']'
+    else p_value::text
+  end
+$$;
+
+create or replace function public.keco_slice_json_hash(p_value jsonb)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select public.keco_slice_hash(public.keco_slice_canonical_json(p_value))
+$$;
+
 create or replace function public.keco_slice_pointer(p_value jsonb, p_pointer text)
 returns jsonb
 language plpgsql immutable
@@ -155,13 +181,13 @@ begin
     raise exception 'Slice evaluation identity mismatch' using errcode = '22023';
   end if;
   if p_spec->>'buildHash' is distinct from p_observation->>'buildHash' then
-    return jsonb_build_object('evalId', p_spec->>'evalId', 'status', 'failed', 'assertions', v_results, 'reasonCodes', jsonb_build_array('BUILD_HASH_MISMATCH'));
+    return jsonb_build_object('evalId', p_spec->>'evalId', 'status', 'failed', 'manualRequired', coalesce((p_spec->>'manualRequired')::boolean, false), 'assertions', v_results, 'reasonCodes', jsonb_build_array('BUILD_HASH_MISMATCH'));
   end if;
   if p_spec->>'snapshotHash' is distinct from p_observation->>'snapshotHash' then
-    return jsonb_build_object('evalId', p_spec->>'evalId', 'status', 'failed', 'assertions', v_results, 'reasonCodes', jsonb_build_array('SNAPSHOT_HASH_MISMATCH'));
+    return jsonb_build_object('evalId', p_spec->>'evalId', 'status', 'failed', 'manualRequired', coalesce((p_spec->>'manualRequired')::boolean, false), 'assertions', v_results, 'reasonCodes', jsonb_build_array('SNAPSHOT_HASH_MISMATCH'));
   end if;
   if jsonb_typeof(p_observation->'errors') <> 'array' or jsonb_array_length(p_observation->'errors') > 0 then
-    return jsonb_build_object('evalId', p_spec->>'evalId', 'status', 'failed', 'assertions', v_results, 'reasonCodes', jsonb_build_array('RUNTIME_ERRORS'));
+    return jsonb_build_object('evalId', p_spec->>'evalId', 'status', 'failed', 'manualRequired', coalesce((p_spec->>'manualRequired')::boolean, false), 'assertions', v_results, 'reasonCodes', jsonb_build_array('RUNTIME_ERRORS'));
   end if;
   if jsonb_typeof(p_observation->'actual') <> 'object' or jsonb_typeof(p_spec->'assertions') <> 'array' or jsonb_array_length(p_spec->'assertions') = 0 then
     raise exception 'Slice observation or assertions are invalid' using errcode = '22023';
@@ -239,9 +265,13 @@ declare
   v_eval_count integer;
   v_eval_passed integer;
   v_eval_failed integer;
+  v_expected_eval_count integer;
   v_manual boolean;
   v_mirror boolean;
   v_policy_blocked boolean;
+  v_policy_complete boolean;
+  v_package_ready boolean;
+  v_required_artifacts_ready boolean;
   v_implementation text;
   v_runtime text;
   v_acceptance text;
@@ -253,14 +283,14 @@ begin
   with plan_tasks as (
     select item->>'id' as task_id from jsonb_array_elements(v_run.plan_data->'tasks') as item
   ), latest_results as (
-    select distinct on (event.payload->>'taskId') event.payload
+    select distinct on (event.payload->>'taskId') event.event_id, event.payload
     from public.keco_slice_run_events as event
     join plan_tasks on plan_tasks.task_id = event.payload->>'taskId'
     where event.run_id = p_run_id and event.event_type = 'task_result'
       and event.payload->>'planRevision' = v_run.plan_data->>'planRevision'
     order by event.payload->>'taskId', event.sequence desc
   ), latest_reviews as (
-    select distinct on (event.payload->>'taskId') event.payload
+    select distinct on (event.payload->>'taskId') event.event_id, event.payload
     from public.keco_slice_run_events as event
     join plan_tasks on plan_tasks.task_id = event.payload->>'taskId'
     where event.run_id = p_run_id and event.event_type = 'task_review'
@@ -269,7 +299,11 @@ begin
   )
   select
     (select count(*) from latest_results where payload->>'status' = 'completed'),
-    (select count(*) from latest_reviews where payload->>'verdict' = 'accepted'),
+    (select count(*) from latest_reviews as review
+      join latest_results as result on result.payload->>'taskId' = review.payload->>'taskId'
+      where review.payload->>'verdict' = 'accepted'
+        and result.payload->>'status' = 'completed'
+        and review.payload->'taskResultIds' ? result.event_id::text),
     (select count(*) from latest_results where payload->>'status' = 'failed'),
     (select count(*) from latest_results where payload->>'status' = 'blocked')
   into v_results, v_reviews, v_task_failures, v_task_blocked;
@@ -284,21 +318,40 @@ begin
   )
   select count(*), count(*) filter (where result->>'status' = 'passed'), count(*) filter (where result->>'status' = 'failed')
     into v_eval_count, v_eval_passed, v_eval_failed from latest_evaluations;
+  v_expected_eval_count := jsonb_array_length(v_run.eval_spec->'evaluations');
   v_manual := exists (select 1 from jsonb_array_elements(v_run.eval_spec->'evaluations') as item where coalesce((item->>'manualRequired')::boolean, false));
   v_mirror := exists (
-    select 1 from public.keco_slice_run_events
-    where run_id = p_run_id and event_type = 'mirror_verification'
-      and sequence = v_run.current_sequence and payload->>'status' = 'verified'
+    select 1 from public.keco_slice_run_events as event
+    join public.keco_slice_run_artifacts as artifact
+      on artifact.run_id = event.run_id and artifact.event_id = event.event_id
+    where event.run_id = p_run_id and event.event_type = 'mirror_verification'
+      and event.payload->>'status' = 'verified'
+      and artifact.artifact_type = 'mirror_verification'
+      and artifact.payload->>'artifactType' = 'MirrorVerification'
+      and artifact.payload->>'manifestHash' = event.payload->>'manifestHash'
   );
-  select coalesce(payload->>'status' = 'failed', false) into v_policy_blocked
-  from public.keco_slice_run_events
-  where run_id = p_run_id and event_type = 'delivery_check'
-  order by sequence desc limit 1;
+  with required_gates as (
+    select value #>> '{}' as gate from jsonb_array_elements(v_run.delivery_policy->'releaseOrder')
+  ), latest_gates as (
+    select distinct on (event.payload->>'gate') event.payload
+    from public.keco_slice_run_events as event
+    join required_gates on required_gates.gate = event.payload->>'gate'
+    where event.run_id = p_run_id and event.event_type = 'delivery_check'
+    order by event.payload->>'gate', event.sequence desc
+  )
+  select
+    exists (select 1 from latest_gates where payload->>'status' = 'failed'),
+    (select count(*) from latest_gates where payload->>'status' = 'passed') = (select count(*) from required_gates),
+    exists (select 1 from latest_gates where payload->>'gate' = 'package' and payload->>'status' = 'passed')
+  into v_policy_blocked, v_policy_complete, v_package_ready;
   v_policy_blocked := coalesce(v_policy_blocked, false);
+  v_policy_complete := coalesce(v_policy_complete, false);
+  v_package_ready := coalesce(v_package_ready, false);
+  v_required_artifacts_ready := v_run.document_ids ? 'evalReport' and v_mirror;
   v_implementation := case when v_task_failures > 0 then 'failed' when v_task_blocked > 0 then 'blocked' when v_task_count > 0 and v_results = v_task_count and v_reviews = v_task_count then 'completed' when v_results > 0 then 'in_progress' else 'pending' end;
-  v_runtime := case when v_eval_count = 0 then 'not_run' when v_eval_failed > 0 then 'failed' when v_eval_passed = v_eval_count then 'passed' else 'partial' end;
+  v_runtime := case when v_eval_count = 0 then 'not_run' when v_eval_failed > 0 then 'failed' when v_eval_count < v_expected_eval_count then 'partial' when v_eval_passed = v_expected_eval_count then 'passed' else 'partial' end;
   v_acceptance := case when v_runtime = 'failed' then 'failed' when v_runtime = 'not_run' then 'pending' when v_manual then 'manual_required' when v_runtime = 'passed' then 'passed' else 'partial' end;
-  v_release := case when v_policy_blocked then 'blocked_by_policy' when v_implementation = 'failed' or v_acceptance = 'failed' then 'failed' when v_implementation <> 'completed' or v_runtime <> 'passed' then 'blocked_by_verification' when v_manual then 'blocked_by_manual_review' when v_mirror then 'ready' else 'not_ready' end;
+  v_release := case when v_policy_blocked then 'blocked_by_policy' when v_implementation = 'failed' or v_acceptance = 'failed' then 'failed' when v_implementation <> 'completed' or v_runtime <> 'passed' then 'blocked_by_verification' when v_manual then 'blocked_by_manual_review' when v_policy_complete and v_required_artifacts_ready and v_package_ready then 'ready' else 'not_ready' end;
   return jsonb_build_object('schemaVersion', 1, 'implementationStatus', v_implementation, 'runtimeVerificationStatus', v_runtime, 'acceptanceStatus', v_acceptance, 'releaseReadiness', v_release);
 end;
 $$;
@@ -320,6 +373,10 @@ declare
   v_event_id uuid := gen_random_uuid();
   v_event_hash text;
   v_result jsonb;
+  v_plan_hash text;
+  v_eval_spec_hash text;
+  v_delivery_policy_hash text;
+  v_request_hash text;
 begin
   v_actor := public.mcp_require_writer(p_project_id);
   if p_idempotency_key is null or length(p_idempotency_key) not between 8 and 128
@@ -327,7 +384,9 @@ begin
     or p_input_hash !~ '^sha256:[a-f0-9]{64}$' then
     raise exception 'Invalid Slice idempotency input' using errcode = '22023';
   end if;
-  if jsonb_typeof(p_plan_data->'tasks') <> 'array'
+  if p_plan_data->>'schemaVersion' <> '1'
+    or p_plan_data->>'planRevision' !~ '^sha256:[a-f0-9]{64}$'
+    or jsonb_typeof(p_plan_data->'tasks') <> 'array'
     or jsonb_array_length(p_plan_data->'tasks') not between 1 and 100
     or exists (
       select 1 from jsonb_array_elements(p_plan_data->'tasks') as task
@@ -339,14 +398,51 @@ begin
     or jsonb_array_length(p_eval_spec->'evaluations') not between 1 and 100
     or (select count(*) from jsonb_array_elements(p_eval_spec->'evaluations')) <>
        (select count(distinct evaluation->>'evalId') from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation)
+    or jsonb_typeof(p_plan_data->'allowedFiles') <> 'array'
+    or jsonb_array_length(p_plan_data->'allowedFiles') not between 1 and 500
+    or exists (
+      select 1 from jsonb_array_elements_text(p_plan_data->'allowedFiles') as file
+      where file = '' or left(file, 1) = '/' or file like E'%\\%' or ('/' || file || '/') like '%/../%'
+    )
+    or (select count(*) from jsonb_array_elements_text(p_plan_data->'allowedFiles')) <>
+       (select count(distinct file) from jsonb_array_elements_text(p_plan_data->'allowedFiles') as file)
+    or exists (
+      select 1 from jsonb_array_elements(p_plan_data->'tasks') as task
+      where jsonb_typeof(task->'files') <> 'array' or jsonb_array_length(task->'files') not between 1 and 100
+        or jsonb_typeof(task->'dependsOn') <> 'array'
+        or jsonb_typeof(task->'servesEvaluations') <> 'array' or jsonb_array_length(task->'servesEvaluations') not between 1 and 100
+        or task->'red'->>'command' is null or task->'red'->>'expected' not in ('fails', 'passes')
+        or task->'green'->>'command' is null or task->'green'->>'expected' not in ('fails', 'passes')
+        or task->'review'->>'spec' <> 'required' or task->'review'->>'quality' not in ('required', 'optional')
+        or exists (select 1 from jsonb_array_elements_text(task->'files') as file where not (p_plan_data->'allowedFiles' ? file))
+    )
+    or jsonb_typeof(p_delivery_policy->'releaseOrder') <> 'array'
+    or p_delivery_policy->'releaseOrder' <> '["implementation","runtime_verification","acceptance","mirrors","package"]'::jsonb
+    or jsonb_typeof(p_delivery_policy->'requiredArtifacts') <> 'array'
+    or p_delivery_policy->'requiredArtifacts' <> '["TaskResult","TaskReview","EvalReport","MirrorVerification"]'::jsonb
+    or p_delivery_policy->>'schemaVersion' <> '1'
+    or p_delivery_policy->>'runtimeEvidenceFreshness' <> 'current_build_and_snapshot'
     or coalesce((p_delivery_policy->>'maximumRepairs')::integer, -1) <> 3
     or coalesce((p_delivery_policy->>'manualReviewBlocksRelease')::boolean, false) is not true then
     raise exception 'Invalid Slice plan, EvalSpec, or delivery policy' using errcode = '22023';
   end if;
+  v_plan_hash := public.keco_slice_json_hash(p_plan_data);
+  v_eval_spec_hash := public.keco_slice_json_hash(p_eval_spec);
+  v_delivery_policy_hash := public.keco_slice_json_hash(p_delivery_policy);
+  if p_plan_hash is distinct from v_plan_hash
+    or p_eval_spec_hash is distinct from v_eval_spec_hash
+    or p_delivery_policy_hash is distinct from v_delivery_policy_hash then
+    raise exception 'Slice contract hash mismatch' using errcode = '22023';
+  end if;
+  v_request_hash := public.keco_slice_json_hash(jsonb_build_object(
+    'projectId', p_project_id, 'runId', p_run_id, 'folderId', p_folder_id, 'sliceId', p_slice_id,
+    'plan', p_plan_data, 'planHash', p_plan_hash, 'evalSpec', p_eval_spec, 'evalSpecHash', p_eval_spec_hash,
+    'deliveryPolicy', p_delivery_policy, 'deliveryPolicyHash', p_delivery_policy_hash, 'documents', p_documents
+  ));
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text || ':create_slice_bundle:' || p_idempotency_key, 0));
   select * into v_request from public.keco_slice_run_requests where actor_id = v_actor and operation = 'create_slice_bundle' and idempotency_key = p_idempotency_key for update;
   if found then
-    if v_request.input_hash <> p_input_hash then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = 'KS409'; end if;
+    if v_request.input_hash <> v_request_hash then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = 'KS409'; end if;
     return v_request.result || jsonb_build_object('outcome', 'reused');
   end if;
   if not exists (select 1 from public.folders where id = p_folder_id and project_id = p_project_id) then raise exception 'Folder outside project' using errcode = '23503'; end if;
@@ -376,13 +472,13 @@ begin
     v_document_ids := v_document_ids || jsonb_build_object(v_document->>'kind', jsonb_build_object('documentId', v_document->>'documentId', 'repositoryPath', v_document->>'repositoryPath', 'epoch', 0, 'revision', 1));
   end loop;
   insert into public.keco_slice_runs(id, project_id, folder_id, slice_id, plan_data, plan_hash, eval_spec, eval_spec_hash, delivery_policy, delivery_policy_hash, state_token, projection, document_ids, created_by)
-  values (p_run_id, p_project_id, p_folder_id, p_slice_id, p_plan_data, p_plan_hash, p_eval_spec, p_eval_spec_hash, p_delivery_policy, p_delivery_policy_hash, v_state_token, jsonb_build_object('schemaVersion', 1, 'implementationStatus', 'pending', 'runtimeVerificationStatus', 'not_run', 'acceptanceStatus', 'pending', 'releaseReadiness', 'blocked_by_verification'), v_document_ids, v_actor);
-  v_event_hash := public.keco_slice_hash(p_input_hash || p_plan_hash || p_eval_spec_hash || p_delivery_policy_hash);
+  values (p_run_id, p_project_id, p_folder_id, p_slice_id, p_plan_data, v_plan_hash, p_eval_spec, v_eval_spec_hash, p_delivery_policy, v_delivery_policy_hash, v_state_token, jsonb_build_object('schemaVersion', 1, 'implementationStatus', 'pending', 'runtimeVerificationStatus', 'not_run', 'acceptanceStatus', 'pending', 'releaseReadiness', 'blocked_by_verification'), v_document_ids, v_actor);
+  v_event_hash := public.keco_slice_hash(v_request_hash || v_plan_hash || v_eval_spec_hash || v_delivery_policy_hash);
   insert into public.keco_slice_run_events(run_id, sequence, event_id, event_type, payload, input_hash, output_hash, previous_event_hash, event_hash, created_by)
-  values (p_run_id, 1, v_event_id, 'bundle_created', jsonb_build_object('documents', v_document_ids), p_input_hash, v_event_hash, null, v_event_hash, v_actor);
+  values (p_run_id, 1, v_event_id, 'bundle_created', jsonb_build_object('documents', v_document_ids), v_request_hash, public.keco_slice_json_hash(jsonb_build_object('documents', v_document_ids)), null, v_event_hash, v_actor);
   update public.keco_slice_runs set current_sequence = 1 where id = p_run_id;
   v_result := jsonb_build_object('ok', true, 'outcome', 'created', 'runId', p_run_id, 'stateToken', v_state_token, 'currentSequence', 1, 'documents', v_document_ids, 'projection', (select projection from public.keco_slice_runs where id = p_run_id));
-  insert into public.keco_slice_run_requests(actor_id, operation, idempotency_key, input_hash, result) values (v_actor, 'create_slice_bundle', p_idempotency_key, p_input_hash, v_result);
+  insert into public.keco_slice_run_requests(actor_id, operation, idempotency_key, input_hash, result) values (v_actor, 'create_slice_bundle', p_idempotency_key, v_request_hash, v_result);
   return v_result;
 end;
 $$;
@@ -420,8 +516,21 @@ begin
     'evaluations', coalesce((select jsonb_agg(jsonb_build_object('status', result->>'status') order by result->>'evalId') from evaluations), '[]'::jsonb),
     'manualRequired', exists (select 1 from jsonb_array_elements(v_run.eval_spec->'evaluations') as item where coalesce((item->>'manualRequired')::boolean, false)),
     'policyBlocked', exists (select 1 from public.keco_slice_run_events where run_id = p_run_id and event_type = 'delivery_check' and payload->>'status' = 'failed'),
-    'mirrorsVerified', exists (select 1 from public.keco_slice_run_events where run_id = p_run_id and event_type = 'mirror_verification' and payload->>'status' = 'verified'),
-    'packageReady', true
+    'mirrorsVerified', exists (
+      select 1 from public.keco_slice_run_events as event
+      join public.keco_slice_run_artifacts as artifact
+        on artifact.run_id = event.run_id and artifact.event_id = event.event_id
+      where event.run_id = p_run_id and event.event_type = 'mirror_verification'
+        and event.payload->>'status' = 'verified'
+        and artifact.artifact_type = 'mirror_verification'
+        and artifact.payload->>'artifactType' = 'MirrorVerification'
+        and artifact.payload->>'manifestHash' = event.payload->>'manifestHash'
+    ),
+    'packageReady', exists (
+      select 1 from public.keco_slice_run_events
+      where run_id = p_run_id and event_type = 'delivery_check'
+        and payload->>'gate' = 'package' and payload->>'status' = 'passed'
+    )
   ) into v_facts;
   return jsonb_build_object('runId', v_run.id, 'sliceId', v_run.slice_id, 'stateToken', v_run.state_token, 'currentSequence', v_run.current_sequence, 'repairCount', v_run.repair_count, 'plan', v_run.plan_data, 'evalSpec', v_run.eval_spec, 'deliveryPolicy', v_run.delivery_policy, 'projection', v_run.projection, 'documents', v_run.document_ids, 'facts', v_facts);
 end;
@@ -453,6 +562,12 @@ declare
   v_manifest_hash text;
   v_evaluations jsonb := '[]'::jsonb;
   v_expected_evaluation jsonb;
+  v_task jsonb;
+  v_latest_result_event_id uuid;
+  v_latest_result_actor uuid;
+  v_computed_input_hash text;
+  v_computed_output_hash text;
+  v_request_hash text;
 begin
   v_actor := public.mcp_require_writer(p_project_id);
   if p_idempotency_key is null or length(p_idempotency_key) not between 8 and 128
@@ -469,9 +584,14 @@ begin
        (select count(distinct event->>'eventId') from jsonb_array_elements(p_events) as event) then
     raise exception 'Invalid Slice checkpoint input' using errcode = '22023';
   end if;
+  v_request_hash := public.keco_slice_json_hash(jsonb_build_object(
+    'projectId', p_project_id, 'runId', p_run_id, 'expectedStateToken', p_expected_state_token,
+    'events', p_events, 'artifacts', coalesce(p_artifacts, '[]'::jsonb),
+    'computedEvaluations', p_computed_evaluations
+  ));
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text || ':checkpoint_slice:' || p_idempotency_key, 0));
   select * into v_request from public.keco_slice_run_requests where actor_id = v_actor and operation = 'checkpoint_slice' and idempotency_key = p_idempotency_key for update;
-  if found then if v_request.input_hash <> p_input_hash then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = 'KS409'; end if; return v_request.result || jsonb_build_object('outcome', 'reused'); end if;
+  if found then if v_request.input_hash <> v_request_hash then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = 'KS409'; end if; return v_request.result || jsonb_build_object('outcome', 'reused'); end if;
   select * into v_run from public.keco_slice_runs where id = p_run_id and project_id = p_project_id for update;
   if not found then raise exception 'Slice run not found' using errcode = 'P0002'; end if;
   if v_run.state_token <> p_expected_state_token then raise exception 'SLICE_STATE_CONFLICT' using errcode = 'KS410', detail = jsonb_build_object('stateToken', v_run.state_token, 'currentSequence', v_run.current_sequence)::text; end if;
@@ -486,6 +606,32 @@ begin
       or v_event->>'eventType' not in ('plan_accepted','write_lease','task_result','task_review','runtime_observation','mirror_verification','repair_transition','manual_review','delivery_check') then
       raise exception 'Unsupported or malformed Slice event' using errcode = '22023';
     end if;
+    v_computed_input_hash := public.keco_slice_json_hash(v_event->'payload');
+    v_computed_output_hash := public.keco_slice_json_hash(jsonb_build_object(
+      'eventType', v_event->>'eventType', 'payload', v_event->'payload'
+    ));
+    if v_event->>'inputHash' is distinct from v_computed_input_hash
+      or v_event->>'outputHash' is distinct from v_computed_output_hash then
+      raise exception 'Slice event hash mismatch' using errcode = '22023';
+    end if;
+    if v_event->>'eventType' = 'plan_accepted' and (
+      v_event->'payload'->>'planRevision' is distinct from v_run.plan_data->>'planRevision'
+      or (v_event->'payload'->>'acceptedAt')::timestamptz is null
+    ) then
+      raise exception 'Accepted plan revision is invalid' using errcode = '22023';
+    end if;
+    if v_event->>'eventType' = 'write_lease' and (
+      jsonb_typeof(v_event->'payload'->'allowedFiles') <> 'array'
+      or v_event->'payload'->'allowedFiles' <> v_run.plan_data->'allowedFiles'
+      or (v_event->'payload'->>'acquiredAt')::timestamptz >= (v_event->'payload'->>'expiresAt')::timestamptz
+      or not exists (
+        select 1 from public.keco_slice_run_events
+        where run_id = p_run_id and event_type = 'plan_accepted'
+          and payload->>'planRevision' = v_run.plan_data->>'planRevision'
+      )
+    ) then
+      raise exception 'Slice write lease is invalid or has no accepted plan' using errcode = '22023';
+    end if;
     if v_event->>'eventType' in ('task_result', 'task_review') and (
       v_event->'payload'->>'runId' is distinct from p_run_id::text
       or v_event->'payload'->>'sliceId' is distinct from v_run.slice_id
@@ -499,14 +645,80 @@ begin
     ) then
       raise exception 'Slice task event is outside the accepted plan' using errcode = '22023';
     end if;
-    if v_event->>'eventType' = 'task_result'
-      and v_event->'payload'->>'status' not in ('completed', 'failed', 'blocked') then
-      raise exception 'Invalid Slice task result status' using errcode = '22023';
+    if v_event->>'eventType' = 'task_result' then
+      select task into v_task from jsonb_array_elements(v_run.plan_data->'tasks') as task
+      where task->>'id' = v_event->'payload'->>'taskId';
+      if v_event->'payload'->>'status' not in ('completed', 'failed', 'blocked')
+        or v_event->'payload'->>'phase' not in ('red', 'green', 'implementation', 'verification')
+        or jsonb_typeof(v_event->'payload'->'changedFiles') <> 'array' then
+        raise exception 'Slice task result shape is invalid' using errcode = '22023';
+      end if;
+      if exists (
+        select 1 from jsonb_array_elements(v_event->'payload'->'changedFiles') as changed_file(value)
+        where changed_file.value->>'path' is null
+          or changed_file.value->>'path' like E'%\\%'
+          or left(changed_file.value->>'path', 1) = '/'
+          or ('/' || (changed_file.value->>'path') || '/') like '%/../%'
+          or not ((v_run.plan_data->'allowedFiles') @> jsonb_build_array(changed_file.value->>'path'))
+          or not ((v_task->'files') @> jsonb_build_array(changed_file.value->>'path'))
+          or (changed_file.value->>'beforeHash' is not null and changed_file.value->>'beforeHash' !~ '^sha256:[a-f0-9]{64}$')
+          or (changed_file.value->>'afterHash' is not null and changed_file.value->>'afterHash' !~ '^sha256:[a-f0-9]{64}$')
+          or (changed_file.value->>'beforeHash' is null and changed_file.value->>'afterHash' is null)
+      ) then
+        raise exception 'Slice task result changed files are outside the accepted plan' using errcode = '22023';
+      end if;
+      if not exists (
+          select 1 from public.keco_slice_run_events
+          where run_id = p_run_id and event_type = 'plan_accepted'
+            and payload->>'planRevision' = v_run.plan_data->>'planRevision'
+        ) or not exists (
+          select 1 from public.keco_slice_run_events as lease
+          where lease.run_id = p_run_id and lease.event_type = 'write_lease'
+            and lease.payload->'allowedFiles' = v_run.plan_data->'allowedFiles'
+            and (lease.payload->>'acquiredAt')::timestamptz <= (v_event->'payload'->>'startedAt')::timestamptz
+            and (lease.payload->>'expiresAt')::timestamptz >= (v_event->'payload'->>'endedAt')::timestamptz
+          order by lease.sequence desc limit 1
+        ) then
+        raise exception 'Slice task result has no accepted plan or active write lease' using errcode = '22023';
+      end if;
+      if v_event->'payload'->>'phase' in ('red', 'green') and (
+          v_event->'payload'->'operation'->>'kind' <> 'command'
+          or v_event->'payload'->'operation'->>'command' is distinct from ((v_task -> (v_event->'payload'->>'phase')) ->> 'command')
+          or v_event->'payload'->>'expectedOutcome' is distinct from ((v_task -> (v_event->'payload'->>'phase')) ->> 'expected')
+        ) then
+        raise exception 'Slice task result command differs from the accepted plan' using errcode = '22023';
+      end if;
+      if (v_event->'payload'->>'phase' = 'red' and (
+          v_event->'payload'->>'observedOutcome' <> 'failed'
+          or v_event->'payload'->>'status' <> 'completed'
+          or coalesce((v_event->'payload'->>'exitCode')::integer, 0) = 0
+        ))
+        or (v_event->'payload'->>'phase' = 'green' and (
+          v_event->'payload'->>'observedOutcome' <> 'passed'
+          or v_event->'payload'->>'status' <> 'completed'
+          or coalesce((v_event->'payload'->>'exitCode')::integer, -1) <> 0
+        ))
+        or (v_event->'payload'->>'phase' in ('implementation', 'verification') and (
+          v_event->'payload'->>'expectedOutcome' <> 'completed'
+          or v_event->'payload'->>'observedOutcome' <> 'completed'
+          or v_event->'payload'->>'status' <> 'completed'
+          or coalesce((v_event->'payload'->>'exitCode')::integer, -1) <> 0
+        )) then
+        raise exception 'Slice task result outcome violates its approved phase' using errcode = '22023';
+      end if;
     end if;
     if v_event->>'eventType' = 'task_review' then
+      select prior.event_id, prior.created_by into v_latest_result_event_id, v_latest_result_actor
+      from public.keco_slice_run_events as prior
+      where prior.run_id = p_run_id and prior.event_type = 'task_result'
+        and prior.payload->>'taskId' = v_event->'payload'->>'taskId'
+        and prior.payload->>'planRevision' = v_run.plan_data->>'planRevision'
+      order by prior.sequence desc limit 1;
       if v_event->'payload'->>'verdict' not in ('accepted', 'rejected')
+        or v_event->'payload'->>'reviewerId' is distinct from v_actor::text
+        or v_event->'payload'->>'reviewerType' not in ('agent', 'human')
         or jsonb_typeof(v_event->'payload'->'taskResultIds') <> 'array'
-        or jsonb_array_length(v_event->'payload'->'taskResultIds') = 0
+        or v_event->'payload'->'taskResultIds' is distinct from jsonb_build_array(v_latest_result_event_id::text)
         or exists (
           select 1 from jsonb_array_elements_text(v_event->'payload'->'taskResultIds') as reviewed_id
           where not exists (
@@ -563,17 +775,24 @@ begin
     ) then
       raise exception 'Runtime observation authority or identity is invalid' using errcode = '22023';
     end if;
+    if v_event->>'eventType' = 'delivery_check' and (
+      not (v_run.delivery_policy->'releaseOrder' @> jsonb_build_array(v_event->'payload'->>'gate'))
+      or v_event->'payload'->>'status' not in ('passed', 'failed')
+      or v_event->'payload'->>'evidenceHash' !~ '^sha256:[a-f0-9]{64}$'
+    ) then
+      raise exception 'Slice delivery policy gate is invalid' using errcode = '22023';
+    end if;
     if v_event->>'eventType' = 'repair_transition' then
       if v_run.repair_count >= 3 then raise exception 'SLICE_REPAIR_LIMIT' using errcode = 'KS411'; end if;
       v_run.repair_count := v_run.repair_count + 1;
     end if;
     v_sequence := v_sequence + 1;
     v_event_hash := public.keco_slice_hash(
-      coalesce(v_previous_hash, '') || (v_event->>'inputHash') ||
-      (v_event->>'outputHash') || (v_event->'payload')::text
+      coalesce(v_previous_hash, '') || v_computed_input_hash ||
+      v_computed_output_hash || public.keco_slice_canonical_json(v_event->'payload')
     );
     insert into public.keco_slice_run_events(run_id, sequence, event_id, event_type, payload, input_hash, output_hash, previous_event_hash, event_hash, created_by)
-    values (p_run_id, v_sequence, (v_event->>'eventId')::uuid, v_event->>'eventType', v_event->'payload', v_event->>'inputHash', v_event->>'outputHash', v_previous_hash, v_event_hash, v_actor);
+    values (p_run_id, v_sequence, (v_event->>'eventId')::uuid, v_event->>'eventType', v_event->'payload', v_computed_input_hash, v_computed_output_hash, v_previous_hash, v_event_hash, v_actor);
     v_previous_hash := v_event_hash;
     if v_event->>'eventType' = 'runtime_observation' then
       select item into v_spec from jsonb_array_elements(v_run.eval_spec->'evaluations') as item where item->>'evalId' = v_event->'payload'->'observation'->>'evalId';
@@ -586,9 +805,9 @@ begin
       end if;
       v_evaluations := v_evaluations || jsonb_build_array(v_evaluation);
       v_sequence := v_sequence + 1; v_assertion_event_id := gen_random_uuid();
-      v_event_hash := public.keco_slice_hash(v_previous_hash || (v_event->>'eventId') || v_evaluation::text);
+      v_event_hash := public.keco_slice_hash(v_previous_hash || (v_event->>'eventId') || public.keco_slice_canonical_json(v_evaluation));
       insert into public.keco_slice_run_events(run_id, sequence, event_id, event_type, payload, input_hash, output_hash, previous_event_hash, event_hash, created_by)
-      values (p_run_id, v_sequence, v_assertion_event_id, 'assertion_result', jsonb_build_object('sourceEventId', v_event->>'eventId', 'result', v_evaluation), v_event->>'inputHash', public.keco_slice_hash(v_evaluation::text), v_previous_hash, v_event_hash, v_actor);
+      values (p_run_id, v_sequence, v_assertion_event_id, 'assertion_result', jsonb_build_object('sourceEventId', v_event->>'eventId', 'result', v_evaluation), v_computed_input_hash, public.keco_slice_json_hash(v_evaluation), v_previous_hash, v_event_hash, v_actor);
       v_previous_hash := v_event_hash;
     end if;
     if v_event->>'eventType' = 'mirror_verification' then
@@ -618,6 +837,7 @@ begin
         or v_artifact->>'artifactType' !~ '^[a-z][a-z0-9_]{0,99}$'
         or v_artifact->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
         or coalesce((v_artifact->>'schemaVersion')::integer, 0) <= 0
+        or v_artifact->>'contentHash' is distinct from public.keco_slice_json_hash(v_artifact->'payload')
         or not exists (
           select 1 from public.keco_slice_run_events
           where run_id = p_run_id and event_id = (v_artifact->>'eventId')::uuid
@@ -625,15 +845,31 @@ begin
         raise exception 'Invalid Slice artifact' using errcode = '22023';
       end if;
       insert into public.keco_slice_run_artifacts(id, run_id, event_id, artifact_type, schema_version, content_hash, payload, created_by)
-      values ((v_artifact->>'artifactId')::uuid, p_run_id, (v_artifact->>'eventId')::uuid, v_artifact->>'artifactType', (v_artifact->>'schemaVersion')::integer, v_artifact->>'contentHash', v_artifact->'payload', v_actor)
+      values ((v_artifact->>'artifactId')::uuid, p_run_id, (v_artifact->>'eventId')::uuid, v_artifact->>'artifactType', (v_artifact->>'schemaVersion')::integer, public.keco_slice_json_hash(v_artifact->'payload'), v_artifact->'payload', v_actor)
       on conflict (run_id, artifact_type, content_hash) do nothing;
     end loop;
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_events) as submitted
+    where submitted->>'eventType' = 'mirror_verification'
+      and not exists (
+        select 1 from public.keco_slice_run_artifacts as artifact
+        where artifact.run_id = p_run_id
+          and artifact.event_id = (submitted->>'eventId')::uuid
+          and artifact.artifact_type = 'mirror_verification'
+          and artifact.payload->>'schemaVersion' = '1'
+          and artifact.payload->>'artifactType' = 'MirrorVerification'
+          and artifact.payload->>'runId' = p_run_id::text
+          and artifact.payload->>'manifestHash' = submitted->'payload'->>'manifestHash'
+      )
+  ) then
+    raise exception 'Slice mirror verification requires its matching persisted artifact' using errcode = '22023';
   end if;
   update public.keco_slice_runs set current_sequence = v_sequence, repair_count = v_run.repair_count, state_token = v_new_token, updated_at = now() where id = p_run_id;
   v_projection := public.keco_derive_slice_projection(p_run_id);
   update public.keco_slice_runs set projection = v_projection where id = p_run_id;
   v_result := jsonb_build_object('ok', true, 'outcome', 'created', 'runId', p_run_id, 'stateToken', v_new_token, 'currentSequence', v_sequence, 'repairCount', v_run.repair_count, 'projection', v_projection, 'computedEvaluations', v_evaluations);
-  insert into public.keco_slice_run_requests(actor_id, operation, idempotency_key, input_hash, result) values (v_actor, 'checkpoint_slice', p_idempotency_key, p_input_hash, v_result);
+  insert into public.keco_slice_run_requests(actor_id, operation, idempotency_key, input_hash, result) values (v_actor, 'checkpoint_slice', p_idempotency_key, v_request_hash, v_result);
   return v_result;
 end;
 $$;
@@ -649,6 +885,29 @@ as $$
     p_projection->>'implementationStatus',
     p_projection->>'runtimeVerificationStatus',
     p_projection->>'acceptanceStatus', p_projection->>'releaseReadiness'
+  )
+$$;
+
+create or replace function public.keco_normalize_slice_projection_markdown(p_markdown text)
+returns text
+language sql immutable set search_path = ''
+as $$
+  select btrim(
+    replace(
+      replace(
+        pg_catalog.regexp_replace(
+          p_markdown,
+          '<BlockAnchor id="[0-9a-fA-F-]{36}" />',
+          '',
+          'g'
+        ),
+        E'\\_',
+        '_'
+      ),
+      chr(10) || chr(10),
+      chr(10)
+    ),
+    E' \t\r\n'
   )
 $$;
 
@@ -678,6 +937,7 @@ declare
   v_latest_mirror jsonb;
   v_kind text;
   v_expected_markdown text;
+  v_request_hash text;
 begin
   v_actor := public.mcp_require_writer(p_project_id);
   if p_idempotency_key is null or length(p_idempotency_key) not between 8 and 128
@@ -689,9 +949,15 @@ begin
     or (p_requested_terminal_intent = 'implementation_complete' and (p_mirror_verification_event_id is not null or p_mirror_manifest_hash is not null)) then
     raise exception 'Invalid Slice finalization input' using errcode = '22023';
   end if;
+  v_request_hash := public.keco_slice_json_hash(jsonb_build_object(
+    'projectId', p_project_id, 'runId', p_run_id, 'expectedStateToken', p_expected_state_token,
+    'documents', p_documents, 'requestedTerminalIntent', p_requested_terminal_intent,
+    'mirrorVerificationEventId', p_mirror_verification_event_id,
+    'mirrorManifestHash', p_mirror_manifest_hash
+  ));
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_actor::text || ':finalize_slice:' || p_idempotency_key, 0));
   select * into v_request from public.keco_slice_run_requests where actor_id = v_actor and operation = 'finalize_slice' and idempotency_key = p_idempotency_key for update;
-  if found then if v_request.input_hash <> p_input_hash then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = 'KS409'; end if; return v_request.result || jsonb_build_object('outcome', 'reused'); end if;
+  if found then if v_request.input_hash <> v_request_hash then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = 'KS409'; end if; return v_request.result || jsonb_build_object('outcome', 'reused'); end if;
   select * into v_run from public.keco_slice_runs where id = p_run_id and project_id = p_project_id for update;
   if not found then raise exception 'Slice run not found' using errcode = 'P0002'; end if;
   if v_run.state_token <> p_expected_state_token then raise exception 'SLICE_STATE_CONFLICT' using errcode = 'KS410'; end if;
@@ -717,8 +983,22 @@ begin
     v_manifest_hash := public.keco_slice_hash(v_files::text);
     if v_projection->>'implementationStatus' <> 'completed'
       or v_projection->>'runtimeVerificationStatus' <> 'passed'
+      or v_projection->>'acceptanceStatus' <> 'passed'
+      or v_projection->>'releaseReadiness' <> 'ready'
       or v_latest_mirror->>'status' <> 'verified'
-      or v_latest_mirror->>'manifestHash' is distinct from v_manifest_hash then
+      or v_latest_mirror->>'manifestHash' is distinct from v_manifest_hash
+      or not exists (
+        select 1 from public.keco_slice_run_events as package_gate
+        where package_gate.run_id = p_run_id
+          and package_gate.event_type = 'delivery_check'
+          and package_gate.payload->>'gate' = 'package'
+          and package_gate.payload->>'status' = 'passed'
+          and package_gate.sequence = (
+            select max(candidate.sequence) from public.keco_slice_run_events as candidate
+            where candidate.run_id = p_run_id and candidate.event_type = 'delivery_check'
+              and candidate.payload->>'gate' = 'package'
+          )
+      ) then
       raise exception 'SLICE_FINALIZATION_BLOCKED' using errcode = 'KS412';
     end if;
   end if;
@@ -729,6 +1009,13 @@ begin
       and payload->>'status' = 'verified'
       and payload->>'manifestHash' = p_mirror_manifest_hash
       and payload = v_latest_mirror
+      and exists (
+        select 1 from public.keco_slice_run_artifacts as artifact
+        where artifact.run_id = p_run_id
+          and artifact.event_id = p_mirror_verification_event_id
+          and artifact.artifact_type = 'mirror_verification'
+          and artifact.payload->>'manifestHash' = p_mirror_manifest_hash
+      )
   ) then
     raise exception 'Slice mirror verification reference is stale' using errcode = 'PT409';
   end if;
@@ -744,7 +1031,8 @@ begin
     v_kind := v_document->>'kind';
     if v_kind = 'evalReport' then
       v_expected_markdown := public.keco_render_slice_projection('evalReport', p_run_id, v_run.slice_id, v_run.current_sequence, v_projection);
-      if v_document->>'markdown' is distinct from v_expected_markdown
+      if public.keco_normalize_slice_projection_markdown(v_document->>'markdown')
+          is distinct from btrim(v_expected_markdown, E' \t\r\n')
         or v_document->>'name' is null or length(v_document->>'name') not between 1 and 200
         or v_document->>'repositoryPath' is null or left(v_document->>'repositoryPath', 1) = '/'
         or ('/' || (v_document->>'repositoryPath') || '/') like '%/../%' then
@@ -763,7 +1051,8 @@ begin
     end if;
     if v_kind in ('roadmap', 'status') then
       v_expected_markdown := public.keco_render_slice_projection(v_kind, p_run_id, v_run.slice_id, v_run.current_sequence, v_projection);
-      if v_document->>'markdown' is distinct from v_expected_markdown then
+      if public.keco_normalize_slice_projection_markdown(v_document->>'markdown')
+          is distinct from btrim(v_expected_markdown, E' \t\r\n') then
         raise exception 'Generated Slice projection does not match the ledger' using errcode = '22023';
       end if;
     end if;
@@ -793,12 +1082,12 @@ begin
   end loop;
   v_sequence := v_run.current_sequence + 1;
   select event_hash into v_previous_hash from public.keco_slice_run_events where run_id = p_run_id order by sequence desc limit 1;
-  v_event_hash := public.keco_slice_hash(v_previous_hash || p_input_hash || v_projection::text);
+  v_event_hash := public.keco_slice_hash(v_previous_hash || v_request_hash || public.keco_slice_canonical_json(v_projection));
   insert into public.keco_slice_run_events(run_id, sequence, event_id, event_type, payload, input_hash, output_hash, previous_event_hash, event_hash, created_by)
-  values (p_run_id, v_sequence, gen_random_uuid(), case when p_requested_terminal_intent = 'delivery' then 'finalized' else 'implementation_completed' end, jsonb_build_object('projection', v_projection), p_input_hash, public.keco_slice_hash(v_projection::text), v_previous_hash, v_event_hash, v_actor);
+  values (p_run_id, v_sequence, gen_random_uuid(), case when p_requested_terminal_intent = 'delivery' then 'finalized' else 'implementation_completed' end, jsonb_build_object('projection', v_projection), v_request_hash, public.keco_slice_json_hash(v_projection), v_previous_hash, v_event_hash, v_actor);
   update public.keco_slice_runs set current_sequence = v_sequence, state_token = v_token, projection = v_projection, document_ids = v_run.document_ids, finalized_at = case when p_requested_terminal_intent = 'delivery' then now() else finalized_at end, updated_at = now() where id = p_run_id;
   v_result := jsonb_build_object('ok', true, 'outcome', 'created', 'runId', p_run_id, 'stateToken', v_token, 'currentSequence', v_sequence, 'projection', v_projection, 'documents', v_run.document_ids);
-  insert into public.keco_slice_run_requests(actor_id, operation, idempotency_key, input_hash, result) values (v_actor, 'finalize_slice', p_idempotency_key, p_input_hash, v_result);
+  insert into public.keco_slice_run_requests(actor_id, operation, idempotency_key, input_hash, result) values (v_actor, 'finalize_slice', p_idempotency_key, v_request_hash, v_result);
   return v_result;
 end;
 $$;
@@ -824,6 +1113,7 @@ revoke all on function public.keco_slice_pointer(jsonb, text) from public, anon,
 revoke all on function public.keco_evaluate_slice_observation(jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.keco_derive_slice_projection(uuid) from public, anon, authenticated;
 revoke all on function public.keco_render_slice_projection(text,uuid,text,bigint,jsonb) from public, anon, authenticated;
+revoke all on function public.keco_normalize_slice_projection_markdown(text) from public, anon, authenticated;
 revoke all on function public.mcp_create_slice_bundle(uuid,uuid,uuid,text,jsonb,text,jsonb,text,jsonb,text,jsonb,text,text) from public, anon;
 revoke all on function public.mcp_read_slice_run(uuid,uuid) from public, anon;
 revoke all on function public.mcp_checkpoint_slice(uuid,uuid,uuid,jsonb,jsonb,text,text,jsonb) from public, anon;

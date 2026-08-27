@@ -244,7 +244,54 @@ const taskResultPayloadSchema = z.object({
 }).strict().refine(
   (value) => Date.parse(value.startedAt) <= Date.parse(value.endedAt),
   "TaskResult timestamps are inverted.",
-);
+).superRefine((value, context) => {
+  const expectedByPhase = {
+    red: "fails",
+    green: "passes",
+    implementation: "completed",
+    verification: "completed",
+  } as const;
+  if (value.expectedOutcome !== expectedByPhase[value.phase]) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "TaskResult expected outcome does not match its phase.",
+    });
+  }
+  const validOutcome = value.timedOut || value.cancelled
+    ? value.observedOutcome === "blocked" && value.status === "blocked"
+    : value.phase === "red"
+    ? value.observedOutcome === "failed" && value.status === "completed" &&
+      value.exitCode !== null && value.exitCode !== 0
+    : value.phase === "green"
+    ? value.observedOutcome === "passed" && value.status === "completed" &&
+      value.exitCode === 0
+    : value.observedOutcome === "completed"
+    ? value.status === "completed" &&
+      (value.operation.kind !== "command" || value.exitCode === 0)
+    : value.observedOutcome === "failed"
+    ? value.status === "failed" &&
+      (value.operation.kind !== "command" ||
+        value.exitCode !== null && value.exitCode !== 0)
+    : value.observedOutcome === "blocked" && value.status === "blocked";
+  if (!validOutcome) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "TaskResult status contradicts its observed command outcome.",
+    });
+  }
+  const paths = value.changedFiles.map((item) => item.path);
+  if (
+    new Set(paths).size !== paths.length ||
+    value.changedFiles.some((item) =>
+      item.beforeHash === null && item.afterHash === null
+    )
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "TaskResult changed files require unique paths and a digest.",
+    });
+  }
+});
 const taskReviewPayloadSchema = z.object({
   schemaVersion: z.literal(1),
   runId: uuid,
@@ -297,8 +344,10 @@ const eventSchema = z.discriminatedUnion("eventType", [
   z.object({
     eventId: uuid,
     eventType: z.literal("mirror_verification"),
-    payload: z.object({ status: z.literal("verified"), manifestHash: sha256 })
-      .strict(),
+    payload: z.object({
+      status: z.literal("verified"),
+      manifestHash: sha256,
+    }).strict(),
   }).strict(),
   z.object({
     eventId: uuid,
@@ -547,6 +596,7 @@ function validateEventBindings(
   events: z.infer<typeof eventSchema>[],
 ): void {
   const taskIds = new Set(run.plan.tasks.map((task) => task.id));
+  const allowedFiles = new Set(run.plan.allowedFiles);
   for (const event of events) {
     if (event.eventType === "runtime_observation") {
       if (
@@ -572,6 +622,23 @@ function validateEventBindings(
         "SLICE_CONTRACT_INVALID",
         "Task evidence must be bound to the accepted Slice plan and run.",
       );
+    }
+    if (event.eventType === "task_result") {
+      const taskPayload = event.payload;
+      const task = run.plan.tasks.find((candidate) =>
+        candidate.id === taskPayload.taskId
+      )!;
+      if (
+        taskPayload.changedFiles.some((file) => !allowedFiles.has(file.path)) ||
+        (taskPayload.phase === "red" || taskPayload.phase === "green") &&
+          (taskPayload.operation.kind !== "command" ||
+            taskPayload.operation.command !== task[taskPayload.phase].command)
+      ) {
+        throw new McpDomainError(
+          "SLICE_CONTRACT_INVALID",
+          "Task evidence must use the approved command and allowed files.",
+        );
+      }
     }
   }
 }
@@ -716,12 +783,38 @@ function registerSliceToolSet(
     events: z.array(eventSchema).min(1).max(50),
     artifacts: z.array(artifactSchema).max(50).default([]),
     idempotencyKey,
-  }).strict().refine(
-    (value) =>
-      new Set(value.events.map((item) => item.eventId)).size ===
-        value.events.length,
-    "Event IDs must be unique.",
-  );
+  }).strict().superRefine((value, context) => {
+    if (
+      new Set(value.events.map((item) => item.eventId)).size !==
+        value.events.length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Event IDs must be unique.",
+      });
+    }
+    for (const event of value.events) {
+      if (event.eventType !== "mirror_verification") continue;
+      const artifact = value.artifacts.find((candidate) =>
+        candidate.eventId === event.eventId &&
+        candidate.artifactType === "mirror_verification"
+      );
+      const payload = artifact?.payload;
+      if (
+        !artifact || !payload ||
+        payload.artifactType !== "MirrorVerification" ||
+        payload.runId !== value.runId ||
+        payload.manifestHash !== event.payload.manifestHash ||
+        !Array.isArray(payload.files) || payload.files.length === 0
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Mirror verification must bind the materialized read-back artifact.",
+        });
+      }
+    }
+  });
   if (options.writes) {
     server.registerTool("checkpoint_slice", {
       description:

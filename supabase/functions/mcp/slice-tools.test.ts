@@ -518,6 +518,37 @@ Deno.test("Slice schemas reject upper-case evidence IDs and bind task evidence t
   });
   assertEquals(upperCase.success, false);
 
+  const contradictoryTask = checkpoint.config.inputSchema.safeParse({
+    ...checkpointInput(),
+    events: [{
+      eventId: IDS.event,
+      eventType: "task_result",
+      payload: {
+        schemaVersion: 1, runId: IDS.run, sliceId: "slice-1", taskId: "task-1",
+        planRevision: hash("1"), attemptId: crypto.randomUUID(), phase: "green",
+        operation: { kind: "command", command: "npm test" },
+        startedAt: "2026-08-27T00:00:00Z", endedAt: "2026-08-27T00:00:01Z",
+        exitCode: 1, timedOut: false, cancelled: false, stdoutSummary: "", stdoutHash: hash("a"),
+        stderrSummary: "", stderrHash: hash("b"), changedFiles: [], expectedOutcome: "passes",
+        observedOutcome: "passed", status: "completed", concerns: [], artifactIds: [],
+      },
+    }],
+  });
+  assertEquals(contradictoryTask.success, false);
+
+  const unboundMirror = checkpoint.config.inputSchema.safeParse({
+    ...checkpointInput(),
+    events: [{
+      eventId: IDS.event,
+      eventType: "mirror_verification",
+      payload: {
+        status: "verified", manifestHash: hash("c"),
+      },
+    }],
+    artifacts: [],
+  });
+  assertEquals(unboundMirror.success, false);
+
   const calls: RpcCall[] = [];
   const bound = recordingServer();
   registerSliceTools(bound.server, projectContext(calls, { mcp_read_slice_run: runResult }));
