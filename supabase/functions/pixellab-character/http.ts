@@ -1,0 +1,5 @@
+import { PixelLabCharacterError } from "./types.ts";
+const MAX_BODY_BYTES = 64 * 1024;
+export function jsonResponse(body: unknown, status = 200): Response { return new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "POST, OPTIONS" } }); }
+export async function readJsonBody(request: Request): Promise<Record<string, unknown>> { const text = await request.text(); if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) throw new PixelLabCharacterError("pixellab_invalid_response", "Request body too large", 413); try { const value = JSON.parse(text); if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(); return value as Record<string, unknown>; } catch { throw new PixelLabCharacterError("pixellab_invalid_response", "Invalid request body", 400); } }
+export function bearerToken(request: Request): string { return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? ""; }

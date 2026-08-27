@@ -184,7 +184,7 @@ describe('character asset MCP service', () => {
       confirmationToken: 'signed-confirmation',
       confirmationPurpose: 'character-submit',
     });
-    expect(domain.preflightProvider).toHaveBeenCalledWith('character');
+    expect(domain.preflightProvider).toHaveBeenCalledWith(IDS.projectId, 'character');
     expect(domain.invokeProvider).not.toHaveBeenCalled();
     expect(sign).toHaveBeenCalledWith(expect.objectContaining({
       purpose: 'character-submit',
@@ -204,7 +204,7 @@ describe('character asset MCP service', () => {
 
     await service.prepareGeneration({ projectId: IDS.projectId, assetId: IDS.assetId, saveVersion: 0 });
 
-    expect(domain.preflightProvider).toHaveBeenCalledWith('animation');
+    expect(domain.preflightProvider).toHaveBeenCalledWith(IDS.projectId, 'animation');
     expect(sign).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'animation-submit' }));
   });
 

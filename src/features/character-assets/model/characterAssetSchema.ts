@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
-export const CHARACTER_FRAME_SIZES = [32, 64, 96, 128, 256] as const;
+export const CHARACTER_FRAME_SIZES = [32, 64, 96, 128] as const;
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const SafeNameSchema = z.string().trim().min(1).max(160);
-const UNSAFE_PROMPT = /https?:\/\/|www\.|\b(?:pixellab|mcp|api|create_character|animate_with_text)\b|\b(?:api\s*key|authorization|bearer|password|token)\b\s*[:=]?/i;
+const UNSAFE_PROMPT = /https?:\/\/|www\.|\b(?:pixellab|mcp|api|create_character|animate_character|animate_image|animate_with_text)\b|\b(?:api\s*key|authorization|bearer|password|token)\b\s*[:=]?/i;
 const SafePromptSchema = z.string().min(1).max(2_000)
   .refine((value) => value.trim().length > 0, 'Prompt cannot be blank')
   .refine((value) => !UNSAFE_PROMPT.test(value), 'Prompt contains unsupported provider controls, credentials, or URLs');
@@ -13,6 +13,8 @@ const FrameSizeSchema = z.number().int().refine(
     CHARACTER_FRAME_SIZES.includes(value as typeof CHARACTER_FRAME_SIZES[number]),
   'Unsupported character frame size',
 );
+const AnimationFrameDimensionSchema = z.number().int().min(16).max(256)
+  .refine((value) => value % 4 === 0, 'Animation frame dimensions must be divisible by 4');
 
 export const CharacterPlanV1Schema = z.object({
   schemaVersion: z.literal(1),
@@ -33,9 +35,9 @@ export const AnimationPlanV1Schema = z.object({
   sourceCharacterAssetId: z.string().uuid(),
   sourceCharacterSha256: Sha256Schema,
   motionDescription: SafePromptSchema,
-  frameWidth: FrameSizeSchema,
-  frameHeight: FrameSizeSchema,
-  frameCount: z.number().int().min(2).max(32),
+  frameWidth: AnimationFrameDimensionSchema,
+  frameHeight: AnimationFrameDimensionSchema,
+  frameCount: z.number().int().min(4).max(16).refine((value) => value % 2 === 0, 'PixelLab V3 requires an even frame count'),
   fps: z.number().int().min(1).max(60),
   loop: z.boolean(),
 }).strict();
@@ -43,7 +45,15 @@ export const AnimationPlanV1Schema = z.object({
 export const CharacterAssetPlanV1Schema = z.discriminatedUnion('kind', [
   CharacterPlanV1Schema,
   AnimationPlanV1Schema,
-]);
+]).superRefine((plan, context) => {
+  if (plan.kind === 'character' && plan.width !== plan.height) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'PixelLab pro characters require equal width and height',
+      path: ['height'],
+    });
+  }
+});
 
 export type CharacterPlanV1 = z.infer<typeof CharacterPlanV1Schema>;
 export type AnimationPlanV1 = z.infer<typeof AnimationPlanV1Schema>;

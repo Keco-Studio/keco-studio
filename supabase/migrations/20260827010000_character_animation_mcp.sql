@@ -32,7 +32,7 @@ create table public.character_generation_attempts (
   attempt_count integer not null default 0 check (attempt_count >= 0),
   status text not null default 'planned'
     check (status in ('planned', 'queued', 'generating', 'ready', 'failed', 'blocked')),
-  requested_capability text not null check (requested_capability in ('character-pro', 'animate-text-pro')),
+  requested_capability text not null check (requested_capability in ('character-pro', 'animate-character-v3')),
   provider_operation text,
   provider_transport text check (provider_transport is null or provider_transport in ('mcp', 'rest')),
   provider_job_id text,
@@ -92,8 +92,8 @@ begin
       or p_plan - array['schemaVersion', 'kind', 'name', 'description', 'perspective', 'facing', 'width', 'height', 'transparent'] <> '{}'::jsonb
       or p_plan ->> 'perspective' not in ('topdown', 'platformer', 'isometric')
       or p_plan ->> 'facing' not in ('front', 'back', 'left', 'right')
-      or (p_plan ->> 'width')::integer not in (32, 64, 96, 128, 256)
-      or (p_plan ->> 'height')::integer not in (32, 64, 96, 128, 256)
+      or (p_plan ->> 'width')::integer not in (32, 64, 96, 128)
+      or (p_plan ->> 'height')::integer <> (p_plan ->> 'width')::integer
       or p_plan -> 'transparent' <> 'true'::jsonb then
       raise exception 'invalid character plan' using errcode = '22023';
     end if;
@@ -103,9 +103,12 @@ begin
       or p_plan - array['schemaVersion', 'kind', 'name', 'sourceCharacterAssetId', 'sourceCharacterSha256', 'motionDescription', 'frameWidth', 'frameHeight', 'frameCount', 'fps', 'loop'] <> '{}'::jsonb
       or coalesce(p_plan ->> 'sourceCharacterAssetId', '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or coalesce(p_plan ->> 'sourceCharacterSha256', '') !~ '^[a-f0-9]{64}$'
-      or (p_plan ->> 'frameWidth')::integer not in (32, 64, 96, 128, 256)
-      or (p_plan ->> 'frameHeight')::integer not in (32, 64, 96, 128, 256)
-      or not ((p_plan ->> 'frameCount')::integer between 2 and 32)
+      or not ((p_plan ->> 'frameWidth')::integer between 16 and 256)
+      or ((p_plan ->> 'frameWidth')::integer % 4) <> 0
+      or not ((p_plan ->> 'frameHeight')::integer between 16 and 256)
+      or ((p_plan ->> 'frameHeight')::integer % 4) <> 0
+      or not ((p_plan ->> 'frameCount')::integer between 4 and 16)
+      or ((p_plan ->> 'frameCount')::integer % 2) <> 0
       or not ((p_plan ->> 'fps')::integer between 1 and 60)
       or jsonb_typeof(p_plan -> 'loop') is distinct from 'boolean' then
       raise exception 'invalid animation plan' using errcode = '22023';
@@ -116,7 +119,7 @@ begin
   if v_prompt is null or not (char_length(v_prompt) between 1 and 2000)
     or char_length(btrim(v_prompt)) = 0
     or v_prompt ~* 'https://|http://|www\.'
-    or v_prompt ~* '\y(?:pixellab|mcp|api|create_character|animate_with_text)\y'
+    or v_prompt ~* '\y(?:pixellab|mcp|api|create_character|animate_character|animate_image|animate_with_text)\y'
     or v_prompt ~* '\y(?:api\s*key|authorization|bearer|password|token)\y\s*[:=]?' then
     raise exception 'unsafe character asset prompt' using errcode = '22023';
   end if;
@@ -267,7 +270,7 @@ begin
     character_asset_id, generation_id, plan_fingerprint, requested_capability
   ) values (
     p_asset_id, p_generation_id, p_plan_fingerprint,
-    case when v_asset.kind = 'character' then 'character-pro' else 'animate-text-pro' end
+    case when v_asset.kind = 'character' then 'character-pro' else 'animate-character-v3' end
   ) returning id into v_attempt_id;
   update public.character_assets
   set status = 'generating'

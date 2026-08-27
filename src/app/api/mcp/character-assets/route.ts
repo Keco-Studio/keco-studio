@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { CharacterAssetPlanV1Schema } from '@/features/character-assets/model/characterAssetSchema';
+import type { CharacterAssetPlanV1 } from '@/features/character-assets/model/characterAssetSchema';
 import {
   CharacterAssetMcpError,
   createCharacterAssetMcpService,
@@ -63,10 +64,6 @@ const ERROR_STATUS: Record<CharacterAssetMcpErrorCode, number> = {
   UPSTREAM_UNAVAILABLE: 503,
 };
 
-function withoutAction<T extends { action: string }>({ action: _action, ...input }: T): Omit<T, 'action'> {
-  return input;
-}
-
 export const POST = withAuth(async function POST(request, _context, { supabase, user }) {
   const parsed = RequestBody.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -80,14 +77,14 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
   try {
     let result: unknown;
     switch (body.action) {
-      case 'list_character_assets': result = await service.listAssets(withoutAction(body)); break;
-      case 'read_character_asset': result = await service.readAsset(withoutAction(body)); break;
-      case 'create_character_asset_draft': result = await service.createDraft(withoutAction(body)); break;
-      case 'update_character_asset_draft': result = await service.updateDraft(withoutAction(body)); break;
-      case 'prepare_character_asset_generation': result = await service.prepareGeneration(withoutAction(body)); break;
-      case 'start_character_asset_generation': result = await service.startGeneration(withoutAction(body)); break;
-      case 'get_character_asset_generation': result = await service.getGeneration(withoutAction(body)); break;
-      case 'advance_character_asset_generation': result = await service.advanceGeneration(withoutAction(body)); break;
+      case 'list_character_assets': result = await service.listAssets({ projectId: body.projectId! }); break;
+      case 'read_character_asset': result = await service.readAsset({ projectId: body.projectId!, assetId: body.assetId! }); break;
+      case 'create_character_asset_draft': result = await service.createDraft({ projectId: body.projectId!, plan: body.plan as CharacterAssetPlanV1, idempotencyKey: body.idempotencyKey! }); break;
+      case 'update_character_asset_draft': result = await service.updateDraft({ projectId: body.projectId!, assetId: body.assetId!, saveVersion: body.saveVersion!, plan: body.plan as CharacterAssetPlanV1 }); break;
+      case 'prepare_character_asset_generation': result = await service.prepareGeneration({ projectId: body.projectId!, assetId: body.assetId!, saveVersion: body.saveVersion! }); break;
+      case 'start_character_asset_generation': result = await service.startGeneration({ projectId: body.projectId!, assetId: body.assetId!, attemptId: body.attemptId!, generationId: body.generationId!, planFingerprint: body.planFingerprint!, attemptCount: body.attemptCount!, confirmationToken: body.confirmationToken!, confirmPaidGeneration: true }); break;
+      case 'get_character_asset_generation': result = await service.getGeneration({ projectId: body.projectId!, assetId: body.assetId!, attemptId: body.attemptId!, generationId: body.generationId!, planFingerprint: body.planFingerprint! }); break;
+      case 'advance_character_asset_generation': result = await service.advanceGeneration({ projectId: body.projectId!, assetId: body.assetId!, attemptId: body.attemptId!, generationId: body.generationId!, planFingerprint: body.planFingerprint! }); break;
     }
     return NextResponse.json(result, { headers: NO_STORE_HEADERS });
   } catch (error) {

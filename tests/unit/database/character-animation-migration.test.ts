@@ -27,12 +27,17 @@ describe('character animation MCP migration', () => {
 
     expect(validator).toMatch(/p_plan - array\[[^\]]*'schemaVersion'[^\]]*'kind'[^\]]*'name'/i);
     expect(validator).toMatch(/kind' not in \('character', 'animation'\)/i);
-    expect(validator).toMatch(/\(32, 64, 96, 128, 256\)/i);
-    expect(validator).toMatch(/frameCount[^\n]+between 2 and 32/i);
+    expect(validator).toMatch(/width[^\n]+in \(32, 64, 96, 128\)/i);
+    expect(validator).toMatch(/height[^\n]+<>[^\n]+width/i);
+    expect(validator).toMatch(/frameWidth[^\n]+between 16 and 256/i);
+    expect(validator).toMatch(/frameWidth[^\n]+% 4/i);
+    expect(validator).toMatch(/frameCount[^\n]+between 4 and 16/i);
+    expect(validator).toMatch(/frameCount[^\n]+% 2[^\n]+<> 0/i);
     expect(validator).toMatch(/fps[^\n]+between 1 and 60/i);
     expect(validator).toMatch(/sourceCharacterSha256[\s\S]+\^\[a-f0-9\]\{64\}\$/i);
     expect(validator).toMatch(/https:\/\/|http:\/\//i);
     expect(validator).toMatch(/pixellab/i);
+    expect(validator).toMatch(/animate_character/i);
     expect(sql).toMatch(/revoke all on function public\.character_validate_asset_plan_v1\(jsonb\)/i);
     expect(sql).not.toMatch(/grant execute on function public\.character_validate_asset_plan_v1/i);
   });

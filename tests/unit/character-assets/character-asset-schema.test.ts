@@ -38,12 +38,15 @@ describe('CharacterAssetPlanV1', () => {
 
   it.each([
     ['unsupported character width', { ...CHARACTER, width: 48 }],
+    ['oversized pro character', { ...CHARACTER, width: 256, height: 256 }],
+    ['non-square pro character', { ...CHARACTER, width: 96, height: 64 }],
     ['opaque character', { ...CHARACTER, transparent: false }],
     ['unknown character field', { ...CHARACTER, seed: 7 }],
     ['invalid source id', { ...ANIMATION, sourceCharacterAssetId: 'not-a-uuid' }],
     ['invalid source hash', { ...ANIMATION, sourceCharacterSha256: 'abc' }],
-    ['zero frames', { ...ANIMATION, frameCount: 0 }],
-    ['too many frames', { ...ANIMATION, frameCount: 33 }],
+    ['too few frames', { ...ANIMATION, frameCount: 2 }],
+    ['odd frame count', { ...ANIMATION, frameCount: 5 }],
+    ['too many frames', { ...ANIMATION, frameCount: 18 }],
     ['zero fps', { ...ANIMATION, fps: 0 }],
     ['too much fps', { ...ANIMATION, fps: 61 }],
     ['blank motion', { ...ANIMATION, motionDescription: '   ' }],
@@ -51,9 +54,14 @@ describe('CharacterAssetPlanV1', () => {
     expect(validateCharacterAssetPlanV1(input).success).toBe(false);
   });
 
+  it('accepts provider canvas dimensions for animation frames', () => {
+    expect(validateCharacterAssetPlanV1({ ...ANIMATION, frameWidth: 136, frameHeight: 136 }).success).toBe(true);
+  });
+
   it('rejects provider controls, credentials, and URLs in prompts', () => {
     for (const description of [
       'Call PixelLab create_character for a ranger.',
+      'Call animate_character after creating the ranger.',
       'Use https://example.test/hero.png as the source.',
       'Authorization: Bearer secret',
     ]) {

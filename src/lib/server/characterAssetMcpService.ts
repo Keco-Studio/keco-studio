@@ -73,7 +73,7 @@ export type CharacterAssetMcpBackend = {
     plan: CharacterAssetPlanV1;
     planFingerprint: string;
   }): Promise<CharacterAssetWorkspace>;
-  preflightProvider(kind: CharacterAssetPlanV1['kind']): Promise<void>;
+  preflightProvider(projectId: string, kind: CharacterAssetPlanV1['kind']): Promise<void>;
   prepareGeneration(input: {
     projectId: string;
     assetId: string;
@@ -290,9 +290,9 @@ function defaultBackend(supabase: SupabaseClient, userId: string): CharacterAsse
       if (error) mapError(error);
       return readAsset(input.projectId, input.assetId);
     },
-    async preflightProvider(kind) {
+    async preflightProvider(projectId, kind) {
       const { error } = await serviceClient().functions.invoke('pixellab-character', {
-        body: { operation: 'capabilities', projectId: null, kind, actorUserId: userId },
+        body: { operation: 'capabilities', projectId, kind, actorUserId: userId },
       });
       if (error) mapError(error);
     },
@@ -376,7 +376,7 @@ export function createCharacterAssetMcpService(
         await requireWriter(input.projectId);
         const asset = await backend.readAsset(input.projectId, input.assetId);
         if (asset.saveVersion !== input.saveVersion) throw new CharacterAssetMcpError('CHARACTER_ASSET_REVISION_STALE');
-        await backend.preflightProvider(asset.plan.kind);
+        await backend.preflightProvider(input.projectId, asset.plan.kind);
         const state = await backend.prepareGeneration({ ...input, generationId: makeUuid(), planFingerprint: fingerprintPlan(asset.plan) });
         assertStateIdentity(state, input, fingerprintPlan);
         let purpose: CharacterAssetGenerationConfirmationPurpose;
