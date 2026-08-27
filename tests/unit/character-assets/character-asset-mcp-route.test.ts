@@ -17,7 +17,11 @@ jest.mock('@/lib/server/characterAssetMcpService', () => {
   class CharacterAssetMcpError extends Error {
     constructor(readonly code: string) { super('safe public error'); }
   }
-  return { CharacterAssetMcpError, createCharacterAssetMcpService: () => service };
+  return {
+    CharacterAssetMcpError,
+    characterAssetMcpPublicMessage: () => 'safe public error',
+    createCharacterAssetMcpService: () => service,
+  };
 });
 
 import { POST } from '@/app/api/mcp/character-assets/route';

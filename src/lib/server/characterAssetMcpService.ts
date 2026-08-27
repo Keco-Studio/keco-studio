@@ -134,9 +134,13 @@ const PUBLIC_MESSAGES: Record<CharacterAssetMcpErrorCode, string> = {
   UPSTREAM_UNAVAILABLE: 'The character asset service is temporarily unavailable.',
 };
 
+export function characterAssetMcpPublicMessage(code: CharacterAssetMcpErrorCode): string {
+  return PUBLIC_MESSAGES[code];
+}
+
 export class CharacterAssetMcpError extends Error {
   constructor(readonly code: CharacterAssetMcpErrorCode, _unsafeMessage?: string) {
-    super(PUBLIC_MESSAGES[code]);
+    super(characterAssetMcpPublicMessage(code));
     this.name = 'CharacterAssetMcpError';
   }
 }

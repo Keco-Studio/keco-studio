@@ -5,6 +5,7 @@ import { CharacterAssetPlanV1Schema } from '@/features/character-assets/model/ch
 import type { CharacterAssetPlanV1 } from '@/features/character-assets/model/characterAssetSchema';
 import {
   CharacterAssetMcpError,
+  characterAssetMcpPublicMessage,
   createCharacterAssetMcpService,
   type CharacterAssetMcpErrorCode,
 } from '@/lib/server/characterAssetMcpService';
@@ -90,7 +91,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
   } catch (error) {
     if (error instanceof CharacterAssetMcpError) {
       return NextResponse.json(
-        { error: error.message, code: error.code },
+        { error: characterAssetMcpPublicMessage(error.code), code: error.code },
         { status: ERROR_STATUS[error.code], headers: NO_STORE_HEADERS },
       );
     }
