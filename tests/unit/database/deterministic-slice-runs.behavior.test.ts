@@ -99,7 +99,7 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
       p_run_id: runId,
       p_folder_id: folderId,
       p_slice_id: sliceId,
-      p_plan_data: { schemaVersion: 1, tasks: taskIds.map(id => ({ id })) },
+      p_plan_data: { schemaVersion: 1, planRevision: hash('1'), tasks: taskIds.map(id => ({ id })) },
       p_plan_hash: hash('1'),
       p_eval_spec: {
         schemaVersion: 1,
@@ -157,12 +157,35 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
     };
   }
 
+  function taskResult(bundle: SliceBundle) {
+    return event('task_result', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: String(bundle.args.p_slice_id), taskId: 'task-1', planRevision: hash('1'), attemptId: crypto.randomUUID(),
+      phase: 'implementation', operation: { kind: 'command', command: 'test' }, startedAt: '2026-08-27T00:00:00Z', endedAt: '2026-08-27T00:00:01Z',
+      exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('a'), stderrSummary: '', stderrHash: hash('b'),
+      changedFiles: [], expectedOutcome: 'completed', observedOutcome: 'completed', status: 'completed', concerns: [], artifactIds: [],
+    });
+  }
+
+  function taskReview(bundle: SliceBundle, resultEventId: string) {
+    return event('task_review', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: String(bundle.args.p_slice_id), taskId: 'task-1', planRevision: hash('1'),
+      taskResultIds: [resultEventId], reviewedFiles: [], reviewerType: 'agent', reviewerId: 'reviewer-1', verdict: 'accepted',
+      specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
+    });
+  }
+
   async function checkpoint(
     bundle: SliceBundle,
     stateToken: string,
     events: Array<Record<string, unknown>>,
     key = `checkpoint:${crypto.randomUUID()}`,
   ) {
+    const computedEvaluations = events.filter(item => item.eventType === 'runtime_observation').map(item => {
+      const actual = ((item.payload as Record<string, unknown>).observation as Record<string, unknown>).actual as Record<string, unknown>;
+      const passed = actual.guardianRoundtrip === true;
+      return { evalId: 'eval-1', status: passed ? 'passed' : 'failed', manualRequired: false,
+        assertions: [{ assertionId: 'guardian', status: passed ? 'passed' : 'failed', reasonCode: passed ? 'OK' : 'VALUE_MISMATCH', actual: actual.guardianRoundtrip }], reasonCodes: passed ? [] : ['VALUE_MISMATCH'] };
+    });
     return await fx.editor.client.rpc('mcp_checkpoint_slice', {
       p_project_id: fx.projectId,
       p_run_id: bundle.runId,
@@ -171,6 +194,7 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
       p_artifacts: [],
       p_idempotency_key: key,
       p_input_hash: hash(key.includes('same') ? '7' : '8'),
+      p_computed_evaluations: computedEvaluations,
     });
   }
 
@@ -196,7 +220,7 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
       p_run_id: deniedRunId,
       p_folder_id: folderId,
       p_slice_id: `slice-${deniedRunId.slice(0, 8)}`,
-      p_plan_data: { schemaVersion: 1, tasks: [{ id: 'task-1' }] },
+      p_plan_data: { schemaVersion: 1, planRevision: hash('1'), tasks: [{ id: 'task-1' }] },
       p_plan_hash: hash('1'),
       p_eval_spec: { schemaVersion: 1, evaluations: [{
         evalId: 'eval-1', buildHash: hash('a'), snapshotHash: hash('b'),
@@ -247,9 +271,10 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
       }),
     ]);
     expect(claimedPass.error?.code).toBe('22023');
+    const completedTask = taskResult(bundle);
     const initial = await checkpoint(bundle, firstToken, [
-      event('task_result', { taskId: 'task-1', status: 'completed' }),
-      event('task_review', { taskId: 'task-1', verdict: 'accepted' }),
+      completedTask,
+      taskReview(bundle, completedTask.eventId),
       event('runtime_observation', { observation: observation(bundle.runId, sliceId, false) }),
     ]);
     expect(initial.error).toBeNull();
@@ -315,9 +340,10 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
   ])('verifies current mirrors and finalizes without revision drift (manual=%s)', async (manualRequired, readiness) => {
     const bundle = await createBundle({ manualRequired });
     const sliceId = String(bundle.args.p_slice_id);
+    const completedTask = taskResult(bundle);
     const verified = await checkpoint(bundle, String(bundle.result.stateToken), [
-      event('task_result', { taskId: 'task-1', status: 'completed' }),
-      event('task_review', { taskId: 'task-1', verdict: 'accepted' }),
+      completedTask,
+      taskReview(bundle, completedTask.eventId),
       event('runtime_observation', { observation: observation(bundle.runId, sliceId, true) }),
       event('delivery_check', { status: 'passed' }),
     ]);

@@ -55,6 +55,10 @@ describe('deterministic Slice run migration', () => {
     expect(sql).toMatch(/jsonb_array_elements\(v_event->'payload'->'reviewedFiles'\)/i);
     expect(sql).toMatch(/v_evaluations := v_evaluations \|\| jsonb_build_array\(v_evaluation\)/i);
     expect(sql).toMatch(/'computedEvaluations', v_evaluations/i);
+    expect(sql).toMatch(/p_computed_evaluations/i);
+    expect(sql).toMatch(/Client evaluator disagrees with trusted Slice evaluator/i);
+    expect(sql).toMatch(/coalesce\(changed_file->>'afterHash', changed_file->>'beforeHash'\)/i);
+    expect(sql).toMatch(/count\(distinct reviewed_file->>'path'\)/i);
   });
 
   it('creates document bundles atomically and exports canonical digests', () => {
@@ -70,6 +74,14 @@ describe('deterministic Slice run migration', () => {
     expect(sql).toMatch(/function public\.keco_render_slice_projection/i);
     expect(sql).toMatch(/Generated EvalReport is invalid/i);
     expect(sql).toMatch(/update public\.documents set content = v_document->>'markdown'/i);
+  });
+
+  it('splits implementation projection generation from mirror-verified delivery', () => {
+    expect(sql).toMatch(/p_requested_terminal_intent = 'implementation_complete'/i);
+    expect(sql).toMatch(/p_requested_terminal_intent = 'delivery'/i);
+    expect(sql).toMatch(/case when p_requested_terminal_intent = 'delivery' then 'finalized' else 'implementation_completed' end/i);
+    expect(sql).toMatch(/p_requested_terminal_intent = 'delivery' and jsonb_array_length\(p_documents\) <> 0/i);
+    expect(sql).toMatch(/'facts', v_facts/i);
   });
 
   it('exposes only bounded lifecycle RPCs to authenticated actors', () => {

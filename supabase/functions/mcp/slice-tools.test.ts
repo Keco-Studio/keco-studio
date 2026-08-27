@@ -133,6 +133,14 @@ const runResult = {
   deliveryPolicy: policy,
   projection,
   documents: documentMap,
+  facts: {
+    tasks: [{ status: "completed", resultAccepted: true, reviewAccepted: true }],
+    evaluations: [{ status: "passed" }],
+    manualRequired: false,
+    policyBlocked: false,
+    mirrorsVerified: true,
+    packageReady: true,
+  },
 };
 
 function recordingServer() {
@@ -241,6 +249,15 @@ function finalizeInput() {
       markdown: `# ${kind}\n`,
     })),
     idempotencyKey: "finalize:slice-1",
+  };
+}
+
+function implementationFinalizeInput() {
+  const input = finalizeInput();
+  return {
+    ...input,
+    requestedTerminalIntent: "implementation_complete" as const,
+    mirrorVerification: undefined,
   };
 }
 
@@ -459,9 +476,14 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
   ]);
   assertEquals(JSON.stringify(sentEvents).includes("assertion_result"), false);
   assertMatch(String(sentEvents[0].inputHash), /^sha256:[a-f0-9]{64}$/);
+  assertEquals(calls[1].parameters.p_computed_evaluations, [{
+    evalId: "eval-1", status: "failed", manualRequired: false,
+    assertions: [{ assertionId: "guardian", status: "failed", reasonCode: "ACTUAL_PATH_MISSING", actual: undefined }],
+    reasonCodes: ["ACTUAL_PATH_MISSING"],
+  }]);
 });
 
-Deno.test("checkpoint stale replay reaches the atomic RPC and mismatched documents fail locally", async () => {
+Deno.test("checkpoint stale replay reaches the atomic RPC", async () => {
   const staleCalls: RpcCall[] = [];
   const stale = recordingServer();
   registerSliceTools(
@@ -481,25 +503,6 @@ Deno.test("checkpoint stale replay reaches the atomic RPC and mismatched documen
   );
   assertEquals(staleCalls.map((call) => call.name), ["mcp_read_slice_run", "mcp_checkpoint_slice"]);
 
-  const mismatchCalls: RpcCall[] = [];
-  const mismatch = recordingServer();
-  registerSliceTools(
-    mismatch.server,
-    projectContext(mismatchCalls, {
-      mcp_read_slice_run: runResult,
-    }),
-  );
-  const input = finalizeInput();
-  input.documents = input.documents.slice(0, 3);
-  const mismatchResult = await mismatch.tools.find((tool) =>
-    tool.name === "finalize_slice"
-  )!.handler(input);
-  assertEquals(mismatchResult.isError, true);
-  assertMatch(
-    JSON.stringify(mismatchResult.structuredContent),
-    /SLICE_MIRROR_MISMATCH/,
-  );
-  assertEquals(mismatchCalls.map((call) => call.name), ["mcp_read_slice_run"]);
 });
 
 Deno.test("Slice schemas reject upper-case evidence IDs and bind task evidence to the run", async () => {
@@ -550,7 +553,7 @@ Deno.test("finalize encodes deterministic status, roadmap, and EvalReport projec
       } },
     },
   }));
-  await registered.tools.find((tool) => tool.name === "finalize_slice")!.handler(finalizeInput());
+  await registered.tools.find((tool) => tool.name === "finalize_slice")!.handler(implementationFinalizeInput());
   const documents = calls[1].parameters.p_documents as Array<Record<string, unknown>>;
   assertEquals(String(documents.find((document) => document.documentId === IDS.documents[0])!.markdown).includes("implementationStatus: completed"), true);
   assertEquals(String(documents.find((document) => document.kind === "evalReport")!.markdown).includes("releaseReadiness: ready"), true);
@@ -588,13 +591,30 @@ Deno.test("finalize returns only strict bounded database results", async () => {
   const sent = calls[1].parameters.p_documents as Array<
     Record<string, unknown>
   >;
-  assertEquals(sent.map((document) => document.yjsState), [
-    "AQ==",
-    "AQ==",
-    "AQ==",
-    "AQ==",
-    "AQ==",
-  ]);
+  assertEquals(sent, []);
+});
+
+Deno.test("checkpoint and both finalization phases preserve exact replay inputs", async () => {
+  const calls: RpcCall[] = [];
+  const response = {
+    ok: true, outcome: "reused", runId: IDS.run, stateToken: IDS.nextState,
+    currentSequence: 3, projection, repairCount: 0, computedEvaluations: [],
+  };
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext(calls, {
+    mcp_read_slice_run: runResult,
+    mcp_checkpoint_slice: response,
+    mcp_finalize_slice: {
+      ok: true, outcome: "reused", runId: IDS.run, stateToken: IDS.nextState,
+      currentSequence: 3, projection, documents: documentMap,
+    },
+  }));
+  await registered.tools.find((tool) => tool.name === "checkpoint_slice")!.handler(checkpointInput());
+  await registered.tools.find((tool) => tool.name === "finalize_slice")!.handler(implementationFinalizeInput());
+  await registered.tools.find((tool) => tool.name === "finalize_slice")!.handler(finalizeInput());
+  assertEquals(calls.filter((call) => call.name === "mcp_checkpoint_slice").length, 1);
+  assertEquals(calls.filter((call) => call.name === "mcp_finalize_slice").length, 2);
+  assertEquals((calls.filter((call) => call.name === "mcp_finalize_slice")[1].parameters.p_documents), []);
 });
 
 Deno.test("export_slice_mirrors verifies raw UTF-8 content digests", async () => {

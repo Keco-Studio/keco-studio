@@ -8,6 +8,8 @@ import { MAX_DOCUMENT_MARKDOWN_BYTES, utf8ByteLength } from "./limits.ts";
 import { scheduleMcpReindex } from "./reindex.ts";
 import { toolFailure, toolSuccess } from "./results.ts";
 import {
+  deriveSliceStatus,
+  evaluateObservation,
   sha256Canonical,
 } from "./slice-contracts.ts";
 
@@ -428,6 +430,18 @@ const readRunSchema = z.object({
   deliveryPolicy: policySchema,
   projection: projectionSchema,
   documents: documentMapSchema,
+  facts: z.object({
+    tasks: z.array(z.object({
+      status: z.string(),
+      resultAccepted: z.boolean().optional(),
+      reviewAccepted: z.boolean().optional(),
+    }).strict()).max(100),
+    evaluations: z.array(z.object({ status: z.string() }).strict()).max(100),
+    manualRequired: z.boolean(),
+    policyBlocked: z.boolean(),
+    mirrorsVerified: z.boolean(),
+    packageReady: z.boolean(),
+  }).strict(),
 }).strict();
 const exportResponseSchema = z.object({
   schemaVersion: z.literal(1),
@@ -581,6 +595,20 @@ function renderProjectionDocument(
   ].join("\n");
 }
 
+function serverComparableEvaluation(
+  evaluation: ReturnType<typeof evaluateObservation>,
+): Record<string, unknown> {
+  return {
+    evalId: evaluation.evalId,
+    status: evaluation.status,
+    manualRequired: evaluation.manualRequired,
+    assertions: evaluation.assertions.map(({ expected: _expected, ...assertion }) =>
+      assertion
+    ),
+    reasonCodes: evaluation.reasonCodes,
+  };
+}
+
 function registerSliceToolSet(
   server: McpServer,
   fixed: ProjectMcpRequestContext | null,
@@ -712,6 +740,20 @@ function registerSliceToolSet(
           }),
         );
         validateEventBindings(run, input.events);
+        const computedEvaluations = input.events
+          .filter((event) => event.eventType === "runtime_observation")
+          .map((event) => {
+            const spec = run.evalSpec.evaluations.find((candidate) =>
+              candidate.evalId === event.payload.observation.evalId
+            );
+            if (!spec) {
+              throw new McpDomainError(
+                "SLICE_CONTRACT_INVALID",
+                "Runtime evidence references an unknown evaluation.",
+              );
+            }
+            return evaluateObservation(spec, event.payload.observation);
+          });
         const events = await Promise.all(input.events.map(async (event) => ({
           ...event,
           inputHash: await sha256Canonical(event.payload),
@@ -727,6 +769,7 @@ function registerSliceToolSet(
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
             p_events: events,
+            p_computed_evaluations: computedEvaluations.map(serverComparableEvaluation),
             p_artifacts: input.artifacts,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
@@ -749,12 +792,12 @@ function registerSliceToolSet(
     mirrorVerification: z.object({
       eventId: uuid,
       manifestHash: sha256,
-    }).strict(),
+    }).strict().optional(),
     evalReport: z.object({
       documentId: uuid,
       name: z.string().trim().min(1).max(200),
       repositoryPath: relativePath,
-    }).strict(),
+    }).strict().optional(),
     documents: z.array(
       z.object({
         documentId: uuid,
@@ -762,7 +805,7 @@ function registerSliceToolSet(
         expectedRevision: z.number().int().nonnegative(),
         markdown: z.string(),
       }).strict(),
-    ).min(3).max(4),
+    ).max(4).default([]),
     idempotencyKey,
   }).strict().refine(
     (value) =>
@@ -787,27 +830,19 @@ function registerSliceToolSet(
             p_run_id: input.runId,
           }),
         );
-        const authoritativeIds = new Set(
-          Object.values(run.documents).map((document) => document.documentId),
-        );
-        if (
-          authoritativeIds.size !== input.documents.length ||
-          input.documents.some((document) =>
-            !authoritativeIds.has(document.documentId)
-          )
-        ) {
-          throw new McpDomainError(
-            "SLICE_MIRROR_MISMATCH",
-            "Final documents must exactly match the authoritative Slice bundle.",
-          );
-        }
-        const documents = await Promise.all(
+        const projection = deriveSliceStatus(run.facts);
+        const projectionRun = {
+          ...run,
+          projection: { schemaVersion: 1 as const, ...projection },
+        };
+        const documents = input.requestedTerminalIntent === "implementation_complete"
+          ? await Promise.all(
           input.documents.map(async (document) => {
             const kind = Object.entries(run.documents).find(([, identity]) =>
               identity.documentId === document.documentId
             )?.[0];
             const markdown = kind === "roadmap" || kind === "status"
-              ? renderProjectionDocument(kind, run)
+              ? renderProjectionDocument(kind, projectionRun)
               : document.markdown;
             ensureMarkdown(markdown);
             const encoded = await encodeDocumentMarkdown(markdown);
@@ -817,28 +852,29 @@ function registerSliceToolSet(
               yjsState: encoded.yjsStateBase64,
             };
           }),
-        );
-        const evalReportMarkdown = renderProjectionDocument("evalReport", run);
-        ensureMarkdown(evalReportMarkdown);
-        const evalReport = await encodeDocumentMarkdown(evalReportMarkdown);
+        ) : [];
+        const evalReportMarkdown = renderProjectionDocument("evalReport", projectionRun);
+        const evalReport = input.requestedTerminalIntent === "implementation_complete"
+          ? await encodeDocumentMarkdown(evalReportMarkdown)
+          : null;
         const data = parseTrusted(
           finalizeResponseSchema,
           await rpc<unknown>(context, "mcp_finalize_slice", {
             p_project_id: projectId,
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
-            p_documents: [
+            p_documents: input.requestedTerminalIntent === "implementation_complete" ? [
               ...documents,
               {
-                ...input.evalReport,
+                ...input.evalReport!,
                 kind: "evalReport",
-                markdown: evalReport.markdown,
-                yjsState: evalReport.yjsStateBase64,
+                markdown: evalReport!.markdown,
+                yjsState: evalReport!.yjsStateBase64,
               },
-            ],
+            ] : [],
             p_requested_terminal_intent: input.requestedTerminalIntent,
-            p_mirror_verification_event_id: input.mirrorVerification.eventId,
-            p_mirror_manifest_hash: input.mirrorVerification.manifestHash,
+            p_mirror_verification_event_id: input.mirrorVerification?.eventId ?? null,
+            p_mirror_manifest_hash: input.mirrorVerification?.manifestHash ?? null,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
