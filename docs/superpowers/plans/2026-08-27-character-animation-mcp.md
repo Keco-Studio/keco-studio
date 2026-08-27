@@ -70,7 +70,7 @@ git commit -m "feat: add character asset plan contract"
 - Create: `supabase/migrations/20260827010000_character_animation_mcp.sql`
 - Create: `tests/unit/database/character-animation-migration.test.ts`
 - Modify: `src/lib/server/projectDeletion.ts`
-- Modify: `tests/unit/project-deletion.test.ts`
+- Modify: `tests/unit/project-delete-server-boundary.test.ts`
 
 **Interfaces:**
 - Produces tables `character_assets` and `character_generation_attempts`.
@@ -87,7 +87,7 @@ expect(sql).toMatch(/bucket_id = 'character-assets'/i);
 
 - [ ] **Step 2: Run migration and project deletion tests to verify failure**
 
-Run: `npx jest --runInBand tests/unit/database/character-animation-migration.test.ts tests/unit/project-deletion.test.ts`
+Run: `npx jest --runInBand tests/unit/database/character-animation-migration.test.ts tests/unit/project-delete-server-boundary.test.ts`
 
 - [ ] **Step 3: Implement tables, constraints, RLS, compare-and-swap RPCs, atomic transitions, and storage bucket**
 
@@ -103,12 +103,12 @@ character paths are deleted from their own bucket.
 
 - [ ] **Step 5: Run focused migration and deletion tests**
 
-Run: `npx jest --runInBand tests/unit/database/character-animation-migration.test.ts tests/unit/project-deletion.test.ts`
+Run: `npx jest --runInBand tests/unit/database/character-animation-migration.test.ts tests/unit/project-delete-server-boundary.test.ts`
 
 - [ ] **Step 6: Commit persistence**
 
 ```bash
-git add supabase/migrations/20260827010000_character_animation_mcp.sql tests/unit/database/character-animation-migration.test.ts src/lib/server/projectDeletion.ts tests/unit/project-deletion.test.ts
+git add supabase/migrations/20260827010000_character_animation_mcp.sql tests/unit/database/character-animation-migration.test.ts src/lib/server/projectDeletion.ts tests/unit/project-delete-server-boundary.test.ts
 git commit -m "feat: persist character generation assets"
 ```
 
@@ -337,7 +337,7 @@ Run: `npm run check:mcp && npm run test:mcp`
 
 - [ ] **Step 3: Run Create Map and project deletion regressions**
 
-Run: `npm run test:create-map-v3 && npx jest --runInBand tests/unit/project-deletion.test.ts`
+Run: `npm run test:create-map-v3 && npx jest --runInBand tests/unit/project-delete-server-boundary.test.ts`
 
 - [ ] **Step 4: Run static verification**
 
