@@ -217,7 +217,7 @@ describe('Keco game evaluation scoring', () => {
     expect(validate(report).status).toBe(0);
   });
 
-  it('appends ordered JSONL events and a Chinese readable progress mirror', () => {
+  it('records one JSONL fact per operation and generates the Markdown projection', () => {
     const { report, reportPath } = score();
     const validated = spawnSync('python3', [reportValidator, reportPath], { encoding: 'utf8' });
     expect(validated.status).toBe(0);
@@ -230,12 +230,43 @@ describe('Keco game evaluation scoring', () => {
         goal: expect.any(String), inputs: expect.any(Object), execution: expect.any(String),
         expectedOutput: expect.any(String), actualResult: expect.any(Object),
         meaning: expect.any(String), nextImpact: expect.any(String),
+        operationKey: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        inputHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        outputHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        outcome: 'created',
       }));
     }
     const markdown = readFileSync(markdownPath, 'utf8');
-    expect(markdown).toMatch(/\u76ee\u6807:[\s\S]*\u8f93\u5165:[\s\S]*\u6267\u884c\u65b9\u5f0f:[\s\S]*\u9884\u671f\u8f93\u51fa:[\s\S]*\u5b9e\u9645\u7ed3\u679c:[\s\S]*\u5177\u4f53\u542b\u4e49:[\s\S]*\u5bf9\u4e0b\u4e00\u6b65\u5f71\u54cd:/);
+    expect(markdown).toMatch(/Goal:[\s\S]*Operation key:[\s\S]*Input hash:[\s\S]*Output hash:[\s\S]*Actual result:/);
     expect(markdown).toContain('```json\n{\n  "');
     expect(report.claudeReview.total.score).toBe(100);
+  });
+
+  it('reuses unchanged profile, score, and validation executions without duplicate facts', () => {
+    const profileAgain = spawnSync('python3', [
+      profileScript, '--game-id', 'village-rpg', '--stage', 'beta', '--genre', 'rpg',
+      '--gdd-revision', 'sha256:gdd123', '--build-hash', 'sha256:build123',
+      '--locked-at', '2026-08-26T00:00:00Z', '--output', profilePath,
+    ], { encoding: 'utf8' });
+    expect(JSON.parse(profileAgain.stdout).outcome).toBe('reused');
+
+    const evidencePath = path.join(tempRoot, 'evidence.json');
+    const reportPath = path.join(tempRoot, 'report.json');
+    writeFileSync(evidencePath, JSON.stringify(readFixture()));
+    const scoreArgs = [scoreScript, '--profile', profilePath, '--evidence', evidencePath, '--output', reportPath];
+    const firstScore = spawnSync('python3', scoreArgs, { encoding: 'utf8' });
+    const secondScore = spawnSync('python3', scoreArgs, { encoding: 'utf8' });
+    expect(JSON.parse(firstScore.stdout).outcome).toBe('created');
+    expect(JSON.parse(secondScore.stdout).outcome).toBe('reused');
+
+    const firstValidate = spawnSync('python3', [reportValidator, reportPath], { encoding: 'utf8' });
+    const secondValidate = spawnSync('python3', [reportValidator, reportPath], { encoding: 'utf8' });
+    expect(JSON.parse(firstValidate.stdout).outcome).toBe('created');
+    expect(JSON.parse(secondValidate.stdout).outcome).toBe('reused');
+
+    const events = readFileSync(path.join(tempRoot, 'progress.jsonl'), 'utf8')
+      .trim().split('\n').map(line => JSON.parse(line));
+    expect(events.map(event => event.segment)).toEqual(['profile', 'score', 'validate']);
   });
 
   it('documents the two score dimensions and the external Claude boundary', () => {
@@ -250,6 +281,22 @@ describe('Keco game evaluation scoring', () => {
       expect(rubric).toContain(item);
     }
     expect(contract).toMatch(/Only complete Claude item scores contribute[\s\S]*never creates a combined score/i);
+  });
+
+  it('locks every game evaluation contract surface to Art Style 50 + Player Fun 50', () => {
+    const files = [
+      path.join(repositoryRoot, 'plugins', 'keco-codex', '.codex-plugin', 'plugin.json'),
+      path.join(skillRoot, 'SKILL.md'),
+      path.join(skillRoot, 'references', 'rubric.md'),
+      path.join(skillRoot, 'references', 'report-contract.md'),
+      profileScript,
+      scoreScript,
+      reportValidator,
+    ];
+    const corpus = files.map(file => readFileSync(file, 'utf8')).join('\n');
+    expect(corpus).not.toMatch(/80\s*\+\s*20|token-efficiency-human-review/i);
+    expect(corpus).toMatch(/Art Style 50 \+ Player Fun 50/i);
+    expect(corpus).toMatch(/artStyle[\s\S]*50[\s\S]*playerFun[\s\S]*50/i);
   });
 
   it.each([

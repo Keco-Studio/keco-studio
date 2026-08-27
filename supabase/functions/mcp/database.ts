@@ -14,6 +14,14 @@ const FIELD_CONFLICT_OPERATIONS = new Set([
   "mcp_edit_table_field",
 ]);
 
+const SLICE_OPERATIONS = new Set([
+  "mcp_create_slice_bundle",
+  "mcp_read_slice_run",
+  "mcp_checkpoint_slice",
+  "mcp_finalize_slice",
+  "mcp_export_slice_mirrors",
+]);
+
 function isTableMaintenancePrecondition(message: unknown): boolean {
   if (typeof message !== "string") return false;
   return /clearValues|clearReferences|confirmName|Existing match field values|Required field would be empty/i
@@ -33,8 +41,20 @@ export async function rpc<T>(
   if (!error) return data as T;
   const preconditionFailed = error.code === "PT409" &&
     isTableMaintenancePrecondition(error.message);
-  const code = error.code === "42501"
+  const code = error.code === "KS409"
+    ? "IDEMPOTENCY_CONFLICT"
+    : error.code === "KS410"
+    ? "SLICE_STATE_CONFLICT"
+    : error.code === "KS411"
+    ? "SLICE_REPAIR_LIMIT"
+    : error.code === "KS412"
+    ? "SLICE_FINALIZATION_BLOCKED"
+    : error.code === "42501"
     ? "PROJECT_ACCESS_REVOKED"
+    : error.code === "22023" && SLICE_OPERATIONS.has(name)
+    ? "SLICE_CONTRACT_INVALID"
+    : error.code === "PT409" && name === "mcp_finalize_slice"
+    ? "SLICE_MIRROR_MISMATCH"
     : preconditionFailed
     ? "FIELD_VALIDATION_FAILED"
     : error.code === "PT409" && ROW_OPERATIONS.has(name)
@@ -43,6 +63,8 @@ export async function rpc<T>(
     ? "FIELD_VALIDATION_FAILED"
     : error.code === "PT409"
     ? "DOCUMENT_CONFLICT"
+    : error.code === "P0002" && SLICE_OPERATIONS.has(name)
+    ? "SLICE_STATE_CONFLICT"
     : error.code === "P0002" && ROW_OPERATIONS.has(name)
     ? "ROW_NOT_FOUND"
     : error.code === "P0002"
@@ -50,7 +72,19 @@ export async function rpc<T>(
     : error.code === "22023" || error.code === "23503" || error.code === "23505"
     ? "FIELD_VALIDATION_FAILED"
     : "INTERNAL_ERROR";
-  const message = code === "PROJECT_ACCESS_REVOKED"
+  const message = code === "IDEMPOTENCY_CONFLICT"
+    ? "This idempotency key was already used with different Slice inputs."
+    : code === "SLICE_STATE_CONFLICT"
+    ? "The Slice state changed; read the current run before continuing."
+    : code === "SLICE_REPAIR_LIMIT"
+    ? "The Slice repair limit has been reached."
+    : code === "SLICE_MIRROR_MISMATCH"
+    ? "The verified Slice mirrors no longer match the authoritative documents."
+    : code === "SLICE_FINALIZATION_BLOCKED"
+    ? "The Slice does not satisfy the finalization gates."
+    : code === "SLICE_CONTRACT_INVALID"
+    ? "The Slice request does not satisfy the deterministic contract."
+    : code === "PROJECT_ACCESS_REVOKED"
     ? "Project access has been revoked."
     : code === "DOCUMENT_CONFLICT"
     ? "The target changed; read it again before updating."

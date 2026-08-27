@@ -6,13 +6,23 @@ import pathlib
 import sys
 
 
-REQUIRED = ("version", "runId", "sliceId", "status", "snapshotHash", "evaluations", "runtimeBatches", "changedFiles", "manualRequirements")
-STATUSES = {"passed", "partial", "failed", "blocked_before_write"}
 EVALUATION_STATUSES = {"passed", "failed", "manual_required", "blocked"}
 
 
+def derived_status(evaluations: list[dict]) -> str:
+    """Compute the only aggregate statuses a current report may claim."""
+    statuses = [item["status"] for item in evaluations]
+    if any(status == "failed" for status in statuses):
+        return "failed"
+    if any(status == "blocked" for status in statuses):
+        return "blocked_before_write"
+    if any(status == "manual_required" for status in statuses):
+        return "partial"
+    return "passed"
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser()
     parser.add_argument("path", type=pathlib.Path)
     args = parser.parse_args()
     try:
@@ -20,20 +30,14 @@ def main() -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"invalid report: {exc}", file=sys.stderr)
         return 2
-    if not isinstance(report, dict):
-        print("report must be a JSON object", file=sys.stderr)
-        return 1
-    missing = [key for key in REQUIRED if key not in report]
+    required = ("version", "runId", "sliceId", "status", "snapshotHash", "evaluations", "runtimeBatches", "changedFiles", "manualRequirements")
+    missing = [key for key in required if key not in report]
     if missing:
         print("missing: " + ", ".join(missing), file=sys.stderr)
         return 1
-    if report["version"] != 2 or report["status"] not in STATUSES:
+    if report["version"] != 2 or report["status"] not in {"passed", "partial", "failed", "blocked_before_write"}:
         print("invalid version/status", file=sys.stderr)
         return 1
-    for key in ("changedFiles", "manualRequirements"):
-        if not isinstance(report[key], list):
-            print(f"{key} must be an array", file=sys.stderr)
-            return 1
     evaluations = report["evaluations"]
     if not isinstance(evaluations, list) or not evaluations:
         print("evaluations must be a non-empty array", file=sys.stderr)
@@ -45,6 +49,28 @@ def main() -> int:
         if evaluation["status"] not in EVALUATION_STATUSES:
             print(f"invalid evaluation status: {evaluation['status']!r}", file=sys.stderr)
             return 1
+        # Current reports carry computed AssertionResult values. A legacy
+        # self-reported pass has no authority unless semantic evidence exists.
+        assertions = evaluation.get("assertions")
+        if assertions is not None:
+            if not isinstance(assertions, list) or not assertions:
+                print("current evaluation assertions must be a non-empty array", file=sys.stderr)
+                return 1
+            if any(not isinstance(item, dict) or item.get("status") not in {"passed", "failed"} for item in assertions):
+                print("assertion results must provide passed or failed status", file=sys.stderr)
+                return 1
+            computed = "failed" if any(item["status"] == "failed" for item in assertions) else "passed"
+            if evaluation["status"] != computed:
+                print("evaluation status disagrees with computed assertion results", file=sys.stderr)
+                return 1
+        elif evaluation["status"] == "passed":
+            evidence = evaluation["evidence"]
+            if not isinstance(evidence, list) or not any(isinstance(item, dict) and item.get("actual") is not None for item in evidence):
+                print("legacy pass requires semantic evidence, not a self-reported pass", file=sys.stderr)
+                return 1
+    if report["status"] != derived_status(evaluations):
+        print("report status disagrees with computed evaluation status", file=sys.stderr)
+        return 1
     snapshot_hash = report["snapshotHash"]
     if report["status"] == "passed":
         if not isinstance(snapshot_hash, str) or not snapshot_hash.startswith("sha256:"):

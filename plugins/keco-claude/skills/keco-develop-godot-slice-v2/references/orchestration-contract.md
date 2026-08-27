@@ -5,7 +5,7 @@
 ```yaml
 version: 2
 runId: stable-run-id
-mode: implicit-v2|explicit-v2   # scripts/validate_run_context.py accepts exactly these
+mode: implicit-v2|explicit-v2
 kecoProjectId: uuid
 godotProjectPath: absolute-canonical-path
 godotGitCommit: full-sha
@@ -17,6 +17,10 @@ allowedFiles: []
 writeToken: null
 sourceRevisions: {}
 iteration: 0
+planRevision: sha256:accepted-plan-digest
+deliveryPolicyHash: sha256:locked-policy-digest
+stateToken: opaque-current-token
+repairCount: 0
 interaction:
   version: 1
   status: running|paused|resuming|completed|blocked_before_write|partial
@@ -54,11 +58,11 @@ evolution:
 ```
 The write token is null until the semantic source decision, roadmap read-back, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and state tokens are execution state, not guesses.
 
-The `interaction` block is required for new runs and must pass `${CLAUDE_PLUGIN_ROOT}/scripts/validate_interaction_checkpoint.py` when paused or resumed. Legacy version 2 RunContext files without an `interaction` block remain readable and valid. When present, `interaction.checkpoint.runId` must equal the containing `RunContext.runId`.
+The `interaction` block is required for new runs and must pass `scripts/validate_interaction_checkpoint.py` when paused or resumed. Legacy version 2 RunContext files without an `interaction` block remain readable and valid. When present, `interaction.checkpoint.runId` must equal the containing `RunContext.runId`.
 
 ## Artifact Ledger
 
-Each stage records `stage`, `status`, `createdAt`, `inputHashes`, `outputHash`, and `blockingReason`. The outer ledger records semantic source selection, Slice decomposition, roadmap revision, dependencies, priority, current Slice, and next Slice. The inner ledger records Keco folder/document IDs and local mirror paths under `documents`; Keco documents are the dated source of truth for the roadmap, spec, plan, status, and final evaluation report. A later stage may consume only an accepted artifact with unchanged input revisions. If a selected Keco document, roadmap, folder, table, project identity, or dirty-path baseline changes, invalidate the ledger and return to the earliest affected stage.
+The four user-visible phases are Preflight, Implementation, Verification, and Delivery. Preflight uses `create_slice_bundle`; durable task, review, observation, repair, and mirror events use `checkpoint_slice`; Delivery verifies an `export_slice_mirrors` manifest locally before `finalize_slice`. A later action may consume only an accepted artifact with unchanged input revisions and the current opaque state token. A stale token, repeated event, or changed selected document invalidates the affected stage rather than overwriting it.
 
 Every resource or table change records one `evolution.strategy`. `reuse_exact` and `extend_compatible` are preferred; `migrate_additive` preserves existing IDs while adding compatible fields or rows. `create_new` requires `noCompatibleTarget: true` or an explicit isolation requirement, with discovery evidence recorded. An ambiguous target keeps the write token null and performs zero writes.
 
@@ -108,12 +112,10 @@ green:
   command: exact command or MCP sequence
   expected: passing with zero relevant errors
 review:
-  spec: required        # or true; every task carries a spec review
-  quality: required     # or optional/false for small, low-risk tasks
+  spec: required
+  quality: required
 ```
 
-`scripts/validate_plan.py` accepts `true`/`required` and `false`/`optional` for both
-keys. `spec` must be required on every task; `quality` may be relaxed for small
-gameplay tasks, but at least one task in the plan must carry a quality review.
+`TaskResult` is a strict schema-versioned artifact bound to one run, Slice, task, plan revision, and attempt. It records one command or MCP operation, phase, timestamps, exit/timeout/cancellation facts, bounded redacted stdout/stderr summaries plus SHA-256 digests, changed-file before/after digests, and expected/observed outcome. RED must observe the approved failure and GREEN the approved pass.
 
-The implementer reports changed files, commands, outputs, and concerns. The reviewer sees the task contract and diff, not an unbounded conversation transcript.
+`TaskReview` is independent evidence. It binds exact TaskResult IDs and current plan revision, records an accepted/rejected verdict and bounded findings, and lists exact after-byte SHA-256 digests reviewed. A missing review, unknown key, secret-bearing summary, or review of different bytes blocks completion.

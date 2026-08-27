@@ -62,6 +62,12 @@ const MAP_TOOL_NAMES = [
   "get_map_generation",
   "advance_map_generation",
 ];
+const SLICE_READ_TOOL_NAMES = ["export_slice_mirrors"];
+const SLICE_WRITE_TOOL_NAMES = [
+  "create_slice_bundle",
+  "checkpoint_slice",
+  "finalize_slice",
+];
 
 const context = {
   mode: "project",
@@ -182,6 +188,8 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     ...PROJECT_WRITE_TOOL_NAMES,
     ...GDS_TOOL_NAMES,
     ...MAP_TOOL_NAMES,
+    ...SLICE_WRITE_TOOL_NAMES,
+    ...SLICE_READ_TOOL_NAMES,
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
@@ -265,6 +273,7 @@ Deno.test("viewer tools/list excludes project writes and retains owned GDS tools
       ...PROJECT_READ_TOOL_NAMES,
       ...GDS_TOOL_NAMES,
       ...MAP_READ_TOOL_NAMES,
+      ...SLICE_READ_TOOL_NAMES,
     ],
   );
 });
@@ -320,6 +329,7 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       "read_document",
       "read_story_graph",
       "semantic_search",
+      ...SLICE_READ_TOOL_NAMES,
       ...GDS_TOOL_NAMES,
       ...MAP_READ_TOOL_NAMES,
     ],

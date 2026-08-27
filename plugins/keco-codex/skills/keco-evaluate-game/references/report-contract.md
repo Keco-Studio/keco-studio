@@ -15,3 +15,10 @@ Evidence may also contain `technicalEvidence`, `mandatoryEvaluations` (`passed`,
 The scorer writes version 1 JSON containing identity and source references, `claudeReview` with two dimension totals and eight item records, an independent null-filled `humanReview`, coverage, technical evidence, findings and severity counts, mandatory evaluations, and decision status/reasons. Only complete Claude item scores contribute to Claude totals. It never creates a combined score.
 
 Human review uses the same report but is separate: both dimension entries and the total remain null until a human supplies complete comments and next-iteration notes. A manually completed human review must recompute its own total and is never merged with Claude.
+
+## Execution Ledger
+
+Profile, score, and validation operations use canonical input hashes plus the
+evaluator and contract versions. A matching key reuses an artifact only when its
+current SHA-256 digest matches the recorded output hash. `progress.jsonl` is the
+only append-only fact source; `progress.md` is a generated projection.

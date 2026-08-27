@@ -19,8 +19,10 @@ run_project -> get_debug_output -> stop_project
 The project must print one line per evaluation:
 
 ```text
-KECO_EVAL {"evalId":"...","status":"passed|failed","expected":{},"actual":{},"snapshotHash":"sha256:..."}
+KECO_OBSERVATION {"schemaVersion":1,"runId":"...","sliceId":"...","evalId":"...","buildHash":"sha256:...","snapshotHash":"sha256:...","actual":{},"errors":[]}
 ```
+
+`KECO_OBSERVATION` owns observations only. Runtime output must not include `expected`, `status`, `passed`, assertion results, or aggregate results; the locked EvalSpec and deterministic evaluator own those fields. Read legacy `KECO_EVAL` only as an adapter and ignore its self-reported expected/status values.
 
 Prefer one bounded aggregate evaluation scene for evaluations that can share a fresh process and snapshot. Run that scene through one runtime sequence and emit one `KECO_EVAL` line per evaluation. Use separate runtime sequences only when isolation, input, or lifecycle requirements make aggregation invalid, and record that reason in the EvalReport. Parse and retain the required records from one `get_debug_output` response; do not poll or repeat the same run after complete evidence is already available.
 

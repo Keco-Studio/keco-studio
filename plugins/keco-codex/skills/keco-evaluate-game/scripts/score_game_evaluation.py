@@ -7,6 +7,7 @@ import pathlib
 import sys
 from typing import Any
 
+from execution_cache import execution_identity, reusable_event, sha256_file
 from progress_log import append_event
 
 
@@ -27,9 +28,10 @@ EXPECTED = {
 THRESHOLDS = {"alpha": 60, "beta": 70, "rc": 80, "release": 85}
 SEVERITIES = ("P0", "P1", "P2", "P3")
 MANDATORY_STATUSES = {"passed", "failed", "blocked", "manual_required"}
+EVALUATOR_VERSION = "score-v1"
 
 
-def append_progress(output: pathlib.Path, report: dict[str, Any]) -> None:
+def append_progress(output: pathlib.Path, report: dict[str, Any], operation_key: str, input_hash: str) -> None:
     append_event(
         output.parent, "score", "\u6309 Claude \u5916\u90e8\u8bc4\u4ef7\u6c47\u603b\u5206\u6570",
         {"profileId": report["profileId"], "coverage": report["coverage"]},
@@ -37,6 +39,7 @@ def append_progress(output: pathlib.Path, report: dict[str, Any]) -> None:
         {"status": report["claudeReview"]["status"], "total": report["claudeReview"]["total"]["score"]},
         "\u53ea\u6709\u516b\u9879 Claude \u8bc4\u4ef7\u8d21\u732e\u5206\u6570\uff0c\u4eba\u5de5\u5b57\u6bb5\u4fdd\u6301\u7a7a\u4f4d",
         "validator \u5c06\u91cd\u7b97\u7ef4\u5ea6\u3001\u603b\u5206\u548c\u98ce\u9669\u95e8\u7981",
+        operation_key, input_hash, sha256_file(output),
     )
 
 
@@ -265,6 +268,13 @@ def main() -> int:
         profile = load_json(args.profile, "profile")
         validate_profile(profile)
         evidence = load_json(args.evidence, "evidence")
+        operation_key, input_hash = execution_identity(
+            "score", EVALUATOR_VERSION, {"profile": profile, "evidence": evidence}
+        )
+        reused = reusable_event(args.output.parent, operation_key, input_hash, args.output)
+        if reused is not None:
+            print(json.dumps({"ok": True, "outcome": "reused", "operationKey": operation_key}, sort_keys=True))
+            return 0
         if evidence.get("version") != 1:
             raise ValueError("evidence must be a version 1 object")
         if evidence.get("profileId") != profile["profileId"] or evidence.get("buildHash") != profile["buildHash"] or evidence.get("gddRevision") != profile["gddRevision"]:
@@ -315,11 +325,11 @@ def main() -> int:
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        append_progress(args.output, report)
+        append_progress(args.output, report, operation_key, input_hash)
     except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    print(json.dumps({"ok": True, "reportId": report["reportId"], "status": result_decision["status"]}, sort_keys=True))
+    print(json.dumps({"ok": True, "outcome": "created", "operationKey": operation_key, "reportId": report["reportId"], "status": result_decision["status"]}, sort_keys=True))
     return 0
 
 

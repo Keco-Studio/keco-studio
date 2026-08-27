@@ -20,6 +20,14 @@ PLAN_TASK_BLOCK_RE = re.compile(
 PLAN_DEPENDS_RE = re.compile(r"^\s+- Depends on:\s*(.+?)\s*$", re.MULTILINE)
 STATUSES = {"planned", "in_progress", "blocked", "completed", "superseded"}
 TASK_STATUSES = {"pending", "in_progress", "blocked", "completed"}
+DERIVED_STATUS_KEYS = {"implementationStatus", "runtimeVerificationStatus", "acceptanceStatus", "releaseReadiness"}
+DERIVED_STATUS_VALUES = {
+    "implementationStatus": {"pending", "in_progress", "completed", "failed", "blocked"},
+    "runtimeVerificationStatus": {"not_run", "passed", "partial", "failed", "blocked"},
+    "acceptanceStatus": {"pending", "passed", "partial", "failed", "manual_required"},
+    "releaseReadiness": {"not_ready", "ready", "blocked_by_verification", "blocked_by_manual_review", "blocked_by_policy", "failed"},
+}
+HASH_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
 
 
 def fail(message: str) -> None:
@@ -30,12 +38,14 @@ def parse_frontmatter(path: Path, expected_type: str) -> dict[str, str]:
     lines = path.read_text(encoding="utf-8").splitlines()
     if len(lines) < 3 or lines[0].strip() != "---":
         fail(f"{path.name} must start with YAML frontmatter")
-    try:
-        end = lines.index("---", 1)
-    except ValueError:
+    end = next((index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"), None)
+    if end is None:
         fail(f"{path.name} frontmatter is not closed")
     values: dict[str, str] = {}
     for line in lines[1:end]:
+        # Blank lines and `#` comments are ordinary YAML and carry no key.
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
         if ":" not in line:
             fail(f"invalid frontmatter line in {path.name}: {line}")
         key, value = line.split(":", 1)
@@ -204,6 +214,20 @@ def validate(slice_dir: Path) -> dict:
             fail(f"invalid eval-report.json: {exc}")
         if report.get("sliceId") != slice_id or report.get("status") in {None, "blocked_before_write"}:
             fail("eval-report.json must belong to the completed slice")
+        derived = status.get("derivedStatus")
+        if not isinstance(derived, dict) or set(derived) != DERIVED_STATUS_KEYS or any(
+            derived.get(key) not in DERIVED_STATUS_VALUES[key] for key in DERIVED_STATUS_KEYS
+        ):
+            fail("completed slice requires all four derived status dimensions")
+        provenance = status.get("mirrorVerification")
+        if (
+            not isinstance(provenance, dict)
+            or provenance.get("artifactType") != "MirrorVerification"
+            or not isinstance(provenance.get("manifestHash"), str)
+            or not HASH_RE.fullmatch(provenance["manifestHash"])
+            or not isinstance(provenance.get("files"), list)
+        ):
+            fail("completed slice requires current mirror provenance")
     return {"ok": True, "sliceId": slice_id, "status": status["status"], "latest": status["latest"], "completed": status["completed"]}
 
 
