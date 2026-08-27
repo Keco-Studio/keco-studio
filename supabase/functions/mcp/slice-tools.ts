@@ -8,9 +8,6 @@ import { MAX_DOCUMENT_MARKDOWN_BYTES, utf8ByteLength } from "./limits.ts";
 import { scheduleMcpReindex } from "./reindex.ts";
 import { toolFailure, toolSuccess } from "./results.ts";
 import {
-  evaluateObservation,
-  type EvaluationResult,
-  type EvaluationSpec,
   sha256Canonical,
 } from "./slice-contracts.ts";
 
@@ -20,6 +17,7 @@ type ProjectContextResolver = (
 
 const uuid = z.string().uuid();
 const identifier = z.string().trim().min(1).max(100);
+const sliceId = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
 const sha256 = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const idempotencyKey = z.string().trim().min(8).max(128).regex(
   /^[A-Za-z0-9._:-]+$/,
@@ -193,7 +191,7 @@ const policySchema = z.object({
 const runtimeObservationSchema = z.object({
   schemaVersion: z.literal(1),
   runId: uuid,
-  sliceId: identifier,
+  sliceId,
   evalId: identifier,
   buildHash: sha256,
   snapshotHash: sha256,
@@ -211,7 +209,7 @@ const changedFileSchema = z.object({
 const taskResultPayloadSchema = z.object({
   schemaVersion: z.literal(1),
   runId: uuid,
-  sliceId: identifier,
+  sliceId,
   taskId: identifier,
   planRevision: sha256,
   attemptId: uuid,
@@ -248,7 +246,7 @@ const taskResultPayloadSchema = z.object({
 const taskReviewPayloadSchema = z.object({
   schemaVersion: z.literal(1),
   runId: uuid,
-  sliceId: identifier,
+  sliceId,
   taskId: identifier,
   planRevision: sha256,
   taskResultIds: z.array(uuid).min(1).max(50),
@@ -374,13 +372,19 @@ const documentIdentitySchema = z.object({
   epoch: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(),
 }).strict();
-const documentMapSchema = z.record(
-  z.enum(["roadmap", "spec", "plan", "status"]),
-  documentIdentitySchema,
-)
-  .refine((value) =>
-    Object.keys(value).length >= 3 && Object.keys(value).length <= 4
-  );
+const documentMapSchema = z.record(z.string(), documentIdentitySchema)
+  .superRefine((value, context) => {
+    const allowed = new Set(["roadmap", "spec", "plan", "status", "evalReport"]);
+    if (
+      Object.keys(value).length < 3 || Object.keys(value).length > 5 ||
+      Object.keys(value).some((key) => !allowed.has(key))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Slice documents have an invalid generated document kind.",
+      });
+    }
+  });
 const mutationResponseBase = {
   ok: z.literal(true),
   outcome: z.enum(["created", "reused"]),
@@ -396,11 +400,26 @@ const createResponseSchema = z.object({
 const checkpointResponseSchema = z.object({
   ...mutationResponseBase,
   repairCount: z.number().int().min(0).max(3),
+  computedEvaluations: z.array(z.object({
+    evalId: identifier,
+    status: z.enum(["passed", "failed", "manual_required"]),
+    manualRequired: z.boolean(),
+    assertions: z.array(z.object({
+      assertionId: identifier,
+      status: z.enum(["passed", "failed"]),
+      actual: z.unknown().optional(),
+      reasonCode: identifier,
+    }).passthrough()).max(100),
+    reasonCodes: z.array(identifier).max(100),
+  }).strict()).max(50).default([]),
 }).strict();
-const finalizeResponseSchema = z.object(mutationResponseBase).strict();
+const finalizeResponseSchema = z.object({
+  ...mutationResponseBase,
+  documents: documentMapSchema,
+}).strict();
 const readRunSchema = z.object({
   runId: uuid,
-  sliceId: identifier,
+  sliceId,
   stateToken: uuid,
   currentSequence: z.number().int().positive(),
   repairCount: z.number().int().min(0).max(3),
@@ -418,7 +437,7 @@ const exportResponseSchema = z.object({
   currentSequence: z.number().int().positive(),
   files: z.array(
     z.object({
-      kind: z.enum(["roadmap", "spec", "plan", "status"]),
+      kind: z.enum(["roadmap", "spec", "plan", "status", "evalReport"]),
       repositoryPath: relativePath,
       documentId: uuid,
       epoch: z.number().int().nonnegative(),
@@ -429,7 +448,7 @@ const exportResponseSchema = z.object({
       sha256,
       content: z.string(),
     }).strict(),
-  ).min(3).max(4),
+  ).min(3).max(5),
   manifestHash: sha256,
 }).strict().superRefine((value, context) => {
   if (
@@ -509,6 +528,59 @@ function withoutIdempotency(
   return rest;
 }
 
+function validateEventBindings(
+  run: z.infer<typeof readRunSchema>,
+  events: z.infer<typeof eventSchema>[],
+): void {
+  const taskIds = new Set(run.plan.tasks.map((task) => task.id));
+  for (const event of events) {
+    if (event.eventType === "runtime_observation") {
+      if (
+        event.payload.observation.runId !== run.runId ||
+        event.payload.observation.sliceId !== run.sliceId
+      ) {
+        throw new McpDomainError(
+          "SLICE_CONTRACT_INVALID",
+          "Runtime evidence must be bound to the current Slice run.",
+        );
+      }
+      continue;
+    }
+    if (event.eventType !== "task_result" && event.eventType !== "task_review") {
+      continue;
+    }
+    const payload = event.payload;
+    if (
+      payload.runId !== run.runId || payload.sliceId !== run.sliceId ||
+      payload.planRevision !== run.plan.planRevision || !taskIds.has(payload.taskId)
+    ) {
+      throw new McpDomainError(
+        "SLICE_CONTRACT_INVALID",
+        "Task evidence must be bound to the accepted Slice plan and run.",
+      );
+    }
+  }
+}
+
+function renderProjectionDocument(
+  kind: "roadmap" | "status" | "evalReport",
+  run: z.infer<typeof readRunSchema>,
+): string {
+  const projection = run.projection;
+  return [
+    `# Keco Slice ${kind}`,
+    "schemaVersion: 1",
+    `runId: ${run.runId}`,
+    `sliceId: ${run.sliceId}`,
+    `sequence: ${run.currentSequence}`,
+    `implementationStatus: ${projection.implementationStatus}`,
+    `runtimeVerificationStatus: ${projection.runtimeVerificationStatus}`,
+    `acceptanceStatus: ${projection.acceptanceStatus}`,
+    `releaseReadiness: ${projection.releaseReadiness}`,
+    "",
+  ].join("\n");
+}
+
 function registerSliceToolSet(
   server: McpServer,
   fixed: ProjectMcpRequestContext | null,
@@ -520,7 +592,7 @@ function registerSliceToolSet(
     ...shape,
     runId: uuid,
     folderId: uuid,
-    sliceId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100),
+    sliceId,
     plan: planSchema,
     evalSpec: evalSpecSchema,
     deliveryPolicy: policySchema,
@@ -639,31 +711,7 @@ function registerSliceToolSet(
             p_run_id: input.runId,
           }),
         );
-        if (run.stateToken !== input.stateToken) {
-          throw new McpDomainError(
-            "SLICE_STATE_CONFLICT",
-            "The Slice state changed; read the current run before continuing.",
-          );
-        }
-        const evaluations: EvaluationResult[] = [];
-        for (const event of input.events) {
-          if (event.eventType !== "runtime_observation") continue;
-          const spec = run.evalSpec.evaluations.find((candidate) =>
-            candidate.evalId === event.payload.observation.evalId
-          );
-          if (!spec) {
-            throw new McpDomainError(
-              "SLICE_CONTRACT_INVALID",
-              "Runtime evidence references an unknown evaluation.",
-            );
-          }
-          evaluations.push(
-            evaluateObservation(
-              spec as EvaluationSpec,
-              event.payload.observation,
-            ),
-          );
-        }
+        validateEventBindings(run, input.events);
         const events = await Promise.all(input.events.map(async (event) => ({
           ...event,
           inputHash: await sha256Canonical(event.payload),
@@ -686,7 +734,6 @@ function registerSliceToolSet(
         );
         return toolSuccess("Slice checkpoint accepted.", {
           ...data,
-          computedEvaluations: evaluations,
         });
       } catch (error) {
         return toolFailure(error);
@@ -698,6 +745,16 @@ function registerSliceToolSet(
     ...shape,
     runId: uuid,
     stateToken: uuid,
+    requestedTerminalIntent: z.enum(["implementation_complete", "delivery"]),
+    mirrorVerification: z.object({
+      eventId: uuid,
+      manifestHash: sha256,
+    }).strict(),
+    evalReport: z.object({
+      documentId: uuid,
+      name: z.string().trim().min(1).max(200),
+      repositoryPath: relativePath,
+    }).strict(),
     documents: z.array(
       z.object({
         documentId: uuid,
@@ -730,12 +787,6 @@ function registerSliceToolSet(
             p_run_id: input.runId,
           }),
         );
-        if (run.stateToken !== input.stateToken) {
-          throw new McpDomainError(
-            "SLICE_STATE_CONFLICT",
-            "The Slice state changed; read the current run before continuing.",
-          );
-        }
         const authoritativeIds = new Set(
           Object.values(run.documents).map((document) => document.documentId),
         );
@@ -752,8 +803,14 @@ function registerSliceToolSet(
         }
         const documents = await Promise.all(
           input.documents.map(async (document) => {
-            ensureMarkdown(document.markdown);
-            const encoded = await encodeDocumentMarkdown(document.markdown);
+            const kind = Object.entries(run.documents).find(([, identity]) =>
+              identity.documentId === document.documentId
+            )?.[0];
+            const markdown = kind === "roadmap" || kind === "status"
+              ? renderProjectionDocument(kind, run)
+              : document.markdown;
+            ensureMarkdown(markdown);
+            const encoded = await encodeDocumentMarkdown(markdown);
             return {
               ...document,
               markdown: encoded.markdown,
@@ -761,13 +818,27 @@ function registerSliceToolSet(
             };
           }),
         );
+        const evalReportMarkdown = renderProjectionDocument("evalReport", run);
+        ensureMarkdown(evalReportMarkdown);
+        const evalReport = await encodeDocumentMarkdown(evalReportMarkdown);
         const data = parseTrusted(
           finalizeResponseSchema,
           await rpc<unknown>(context, "mcp_finalize_slice", {
             p_project_id: projectId,
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
-            p_documents: documents,
+            p_documents: [
+              ...documents,
+              {
+                ...input.evalReport,
+                kind: "evalReport",
+                markdown: evalReport.markdown,
+                yjsState: evalReport.yjsStateBase64,
+              },
+            ],
+            p_requested_terminal_intent: input.requestedTerminalIntent,
+            p_mirror_verification_event_id: input.mirrorVerification.eventId,
+            p_mirror_manifest_hash: input.mirrorVerification.manifestHash,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
@@ -818,10 +889,11 @@ function registerSliceToolSet(
 export function registerSliceTools(
   server: McpServer,
   context: ProjectMcpRequestContext,
+  options: { writes?: boolean; reads?: boolean } = {},
 ): void {
   registerSliceToolSet(server, context, null, {
-    writes: context.role !== "viewer",
-    reads: true,
+    writes: context.role !== "viewer" && options.writes !== false,
+    reads: options.reads !== false,
   });
 }
 

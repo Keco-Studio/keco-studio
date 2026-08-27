@@ -43,6 +43,18 @@ describe('deterministic Slice run migration', () => {
     expect(sql).toMatch(/v_run\.state_token <> p_expected_state_token[\s\S]+SLICE_STATE_CONFLICT/i);
     expect(sql).toMatch(/v_run\.repair_count >= 3[\s\S]+SLICE_REPAIR_LIMIT/i);
     expect(sql).toMatch(/previous_event_hash[\s\S]+event_hash/i);
+    expect(sql).toMatch(/p_mirror_verification_event_id is null/i);
+    expect(sql).toMatch(/payload->>'manifestHash' = p_mirror_manifest_hash/i);
+  });
+
+  it('binds accepted task evidence and generated projections to the loaded run', () => {
+    expect(sql).toMatch(/v_event->'payload'->>'runId' is distinct from p_run_id::text/i);
+    expect(sql).toMatch(/v_event->'payload'->>'sliceId' is distinct from v_run\.slice_id/i);
+    expect(sql).toMatch(/v_event->'payload'->>'planRevision' is distinct from v_run\.plan_data->>'planRevision'/i);
+    expect(sql).toMatch(/jsonb_array_elements_text\(v_event->'payload'->'taskResultIds'\)/i);
+    expect(sql).toMatch(/jsonb_array_elements\(v_event->'payload'->'reviewedFiles'\)/i);
+    expect(sql).toMatch(/v_evaluations := v_evaluations \|\| jsonb_build_array\(v_evaluation\)/i);
+    expect(sql).toMatch(/'computedEvaluations', v_evaluations/i);
   });
 
   it('creates document bundles atomically and exports canonical digests', () => {
@@ -55,7 +67,9 @@ describe('deterministic Slice run migration', () => {
     expect(sql).toMatch(/public\.keco_slice_hash\(document\.content\)/i);
     expect(sql).toMatch(/manifestHash'[\s\S]+is distinct from v_manifest_hash/i);
     expect(sql).toMatch(/entry\.value->>'documentId' = v_document->>'documentId'/i);
-    expect(sql).not.toMatch(/update public\.documents set content = v_document->>'markdown'/i);
+    expect(sql).toMatch(/function public\.keco_render_slice_projection/i);
+    expect(sql).toMatch(/Generated EvalReport is invalid/i);
+    expect(sql).toMatch(/update public\.documents set content = v_document->>'markdown'/i);
   });
 
   it('exposes only bounded lifecycle RPCs to authenticated actors', () => {

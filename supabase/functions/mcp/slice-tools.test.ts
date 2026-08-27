@@ -227,6 +227,13 @@ function finalizeInput() {
   return {
     runId: IDS.run,
     stateToken: IDS.state,
+    requestedTerminalIntent: "delivery",
+    mirrorVerification: { eventId: IDS.event, manifestHash: hash("f") },
+    evalReport: {
+      documentId: "88888888-8888-4888-8888-888888888888",
+      name: "eval report",
+      repositoryPath: "docs/slices/eval-report.md",
+    },
     documents: kinds.map((kind, index) => ({
       documentId: IDS.documents[index],
       expectedEpoch: 0,
@@ -408,6 +415,13 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
         stateToken: IDS.nextState,
         currentSequence: 3,
         repairCount: 0,
+        computedEvaluations: [{
+          evalId: "eval-1",
+          status: "failed",
+          manualRequired: false,
+    assertions: [{ assertionId: "guardian", status: "failed", expected: true, reasonCode: "ACTUAL_PATH_MISSING" }],
+          reasonCodes: ["ACTUAL_PATH_MISSING"],
+        }],
         projection: {
           ...projection,
           runtimeVerificationStatus: "failed",
@@ -429,7 +443,6 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
       assertionId: "guardian",
       status: "failed",
       expected: true,
-      actual: undefined,
       reasonCode: "ACTUAL_PATH_MISSING",
     }],
     reasonCodes: ["ACTUAL_PATH_MISSING"],
@@ -448,13 +461,14 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
   assertMatch(String(sentEvents[0].inputHash), /^sha256:[a-f0-9]{64}$/);
 });
 
-Deno.test("checkpoint and finalize reject stale or mismatched authority before mutation", async () => {
+Deno.test("checkpoint stale replay reaches the atomic RPC and mismatched documents fail locally", async () => {
   const staleCalls: RpcCall[] = [];
   const stale = recordingServer();
   registerSliceTools(
     stale.server,
     projectContext(staleCalls, {
       mcp_read_slice_run: { ...runResult, stateToken: IDS.nextState },
+      mcp_checkpoint_slice: new Error("stale state"),
     }),
   );
   const staleResult = await stale.tools.find((tool) =>
@@ -465,7 +479,7 @@ Deno.test("checkpoint and finalize reject stale or mismatched authority before m
     JSON.stringify(staleResult.structuredContent),
     /SLICE_STATE_CONFLICT/,
   );
-  assertEquals(staleCalls.map((call) => call.name), ["mcp_read_slice_run"]);
+  assertEquals(staleCalls.map((call) => call.name), ["mcp_read_slice_run", "mcp_checkpoint_slice"]);
 
   const mismatchCalls: RpcCall[] = [];
   const mismatch = recordingServer();
@@ -488,6 +502,60 @@ Deno.test("checkpoint and finalize reject stale or mismatched authority before m
   assertEquals(mismatchCalls.map((call) => call.name), ["mcp_read_slice_run"]);
 });
 
+Deno.test("Slice schemas reject upper-case evidence IDs and bind task evidence to the run", async () => {
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext([], {}));
+  const checkpoint = registered.tools.find((tool) => tool.name === "checkpoint_slice")!;
+  const upperCase = checkpoint.config.inputSchema.safeParse({
+    ...checkpointInput(),
+    events: [{
+      ...checkpointInput().events[0],
+      payload: { observation: { ...checkpointInput().events[0].payload.observation, sliceId: "Slice-1" } },
+    }],
+  });
+  assertEquals(upperCase.success, false);
+
+  const calls: RpcCall[] = [];
+  const bound = recordingServer();
+  registerSliceTools(bound.server, projectContext(calls, { mcp_read_slice_run: runResult }));
+  const result = await bound.tools.find((tool) => tool.name === "checkpoint_slice")!.handler({
+    ...checkpointInput(),
+    events: [{
+      eventId: IDS.event,
+      eventType: "task_result",
+      payload: {
+        schemaVersion: 1, runId: IDS.run, sliceId: "slice-other", taskId: "task-1",
+        planRevision: hash("1"), attemptId: crypto.randomUUID(), phase: "implementation",
+        operation: { kind: "command", command: "test" },
+        startedAt: "2026-08-27T00:00:00Z", endedAt: "2026-08-27T00:00:01Z",
+        exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: "", stdoutHash: hash("a"),
+        stderrSummary: "", stderrHash: hash("b"), changedFiles: [], expectedOutcome: "completed",
+        observedOutcome: "completed", status: "completed", concerns: [], artifactIds: [],
+      },
+    }],
+  });
+  assertEquals(result.isError, true);
+  assertEquals(calls.map((call) => call.name), ["mcp_read_slice_run"]);
+});
+
+Deno.test("finalize encodes deterministic status, roadmap, and EvalReport projections", async () => {
+  const calls: RpcCall[] = [];
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext(calls, {
+    mcp_read_slice_run: runResult,
+    mcp_finalize_slice: {
+      ok: true, outcome: "created", runId: IDS.run, stateToken: IDS.nextState, currentSequence: 3,
+      projection, documents: { ...documentMap, evalReport: {
+        documentId: "88888888-8888-4888-8888-888888888888", repositoryPath: "docs/slices/eval-report.md", epoch: 0, revision: 1,
+      } },
+    },
+  }));
+  await registered.tools.find((tool) => tool.name === "finalize_slice")!.handler(finalizeInput());
+  const documents = calls[1].parameters.p_documents as Array<Record<string, unknown>>;
+  assertEquals(String(documents.find((document) => document.documentId === IDS.documents[0])!.markdown).includes("implementationStatus: completed"), true);
+  assertEquals(String(documents.find((document) => document.kind === "evalReport")!.markdown).includes("releaseReadiness: ready"), true);
+});
+
 Deno.test("finalize returns only strict bounded database results", async () => {
   const calls: RpcCall[] = [];
   const registered = recordingServer();
@@ -502,6 +570,10 @@ Deno.test("finalize returns only strict bounded database results", async () => {
         stateToken: IDS.nextState,
         currentSequence: 3,
         projection,
+        documents: { ...documentMap, evalReport: {
+          documentId: "88888888-8888-4888-8888-888888888888",
+          repositoryPath: "docs/slices/eval-report.md", epoch: 0, revision: 1,
+        } },
       },
     }),
   );
@@ -517,6 +589,7 @@ Deno.test("finalize returns only strict bounded database results", async () => {
     Record<string, unknown>
   >;
   assertEquals(sent.map((document) => document.yjsState), [
+    "AQ==",
     "AQ==",
     "AQ==",
     "AQ==",
