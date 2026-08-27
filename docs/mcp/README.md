@@ -344,6 +344,26 @@ Stable Map failures include `IDEMPOTENCY_CONFLICT`, `MAP_CREATION_IN_PROGRESS`,
 conflict rather than inventing a provider operation. MCP does not expose direct
 PixelLab tools, map deletion, or public publication semantics.
 
+## Character And Animation Assets
+
+Character assets use a reviewed text plan and a separate paid animation plan. The
+available tools are `list_character_assets`, `read_character_asset`,
+`create_character_asset_draft`, `update_character_asset_draft`,
+`prepare_character_asset_generation`, `start_character_asset_generation`,
+`get_character_asset_generation`, and `advance_character_asset_generation`.
+Character generation runs through PixelLab `create_character` in pro mode and
+stores its provider character ID as the identity anchor. Animation generation uses
+`animate_character` V3 with an even 4-16 frame count and a mapped direction; the
+server returns one horizontal spritesheet, packing individual provider frames when
+needed. Each stage has its own fee notice and later explicit confirmation.
+
+Real paid acceptance is opt-in. Run `npm run accept:character-animation:paid`
+only with `KECO_ACCEPTANCE_CHARACTER_ANIMATION=true`,
+`KECO_ACCEPTANCE_CONFIRM_PAID=true`, the acceptance app/project credentials, and
+an account intentionally approved to spend credits. The script performs the
+character fee confirmation first, then uses the verified character SHA and canvas
+dimensions for a separate animation fee confirmation.
+
 Real paid acceptance is opt-in and must use a controlled account and project.
 Set `KECO_ACCEPTANCE_CREATE_V3=true`, `KECO_ACCEPTANCE_CONFIRM_PAID=true`, and
 the documented acceptance project/app variables only when intentionally

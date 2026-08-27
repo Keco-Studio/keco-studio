@@ -13,10 +13,10 @@
 ## Global Constraints
 
 - Character generation and animation generation are separate paid provider jobs with separate confirmations.
-- `character-pro` and `animate-text-pro` are typed capabilities; generic image generation is not a fallback.
+- `character-pro` and `animate-character-v3` are typed capabilities; generic image generation is not a fallback.
 - Provider credentials, confirmation tokens, raw responses, and signed URLs are never persisted or logged.
 - Animations reference a same-project ready character and its exact SHA-256.
-- Ready animation PNG geometry is exactly `frameWidth * frameCount` by `frameHeight`.
+- Ready animation PNG geometry is exactly `frameWidth * frameCount` by `frameHeight`; frameCount is even and 4-16.
 - Version 1 exposes MCP and server persistence only; it adds no frontend or local Godot writes.
 - Normal automated tests and probes never spend provider credits.
 
@@ -30,8 +30,9 @@
 
 **Interfaces:**
 - Produces: `CharacterAssetPlanV1Schema`, `CharacterPlanV1Schema`, `AnimationPlanV1Schema`, `CharacterAssetPlanV1`, `validateCharacterAssetPlanV1(input)`, `fingerprintCharacterAssetPlanV1(plan)`.
-- Constraints: character frame dimensions are one of `32`, `64`, `96`, `128`,
-  or `256`; animation `frameCount` is 2 through 32; `fps` is 1 through 60;
+- Constraints: character output is square with width and height both one of
+  `32`, `64`, `96`, or `128`; animation frame width and height are each 16-256
+  and divisible by 4; animation `frameCount` is even and 4-16; `fps` is 1-60;
   prompts are nonblank and at most 2,000 characters.
 
 - [ ] **Step 1: Write schema tests for both variants and invalid source/frame inputs**
@@ -214,9 +215,9 @@ git commit -m "feat: expose character asset app API"
 **Interfaces:**
 - Accepts service-role requests `{ operation, projectId, assetId, generationId, planFingerprint, expectedAttemptCount, actorUserId }`.
 - Operations: `capabilities`, `submit`, `retry`, `poll`, `validate`, `resolve_unknown`.
-- Character submit prefers compatible live `create_character`/`get_character`
-  typed MCP tools and otherwise uses official `POST /v2/create-character-pro`;
-  animation submit uses discovered `animate_with_text` MCP.
+- Character submit uses compatible live `create_character`/`get_character`
+  typed MCP tools with `mode: pro`; animation submit uses live
+  `animate_character` V3 and `get_character`.
 
 - [ ] **Step 1: Write provider contract tests for discovery, argument mapping, status parsing, and error mapping**
 
@@ -229,10 +230,9 @@ Run: `deno test --config supabase/functions/pixellab-character/deno.json --allow
 - [ ] **Step 4: Implement bounded provider client and response parsing**
 
 Character calls first validate live `create_character` and `get_character`
-schemas, preserving `mode: pro`; if they are absent, the adapter uses
-`https://api.pixellab.ai/v2/create-character-pro` and its documented retrieval
-contract. Animation uses live MCP schemas; all downloads require credential-free
-HTTPS or bounded PNG data URLs.
+schemas, preserving `mode: pro`. Animation validates `animate_character` V3
+with `frame_count` 4-16 and `keep_first_frame: false`; all downloads require
+credential-free HTTPS.
 
 - [ ] **Step 5: Implement PNG validation and deterministic private persistence**
 

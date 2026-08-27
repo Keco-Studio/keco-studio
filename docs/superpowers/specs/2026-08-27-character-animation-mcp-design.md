@@ -40,7 +40,7 @@ Version 1 supports:
 
 - text-to-character generation through PixelLab's typed `character-pro`
   capability;
-- text-directed animation through PixelLab's typed `animate-text-pro`
+- text-directed animation through PixelLab's typed `animate-character-v3`
   capability;
 - one persisted PNG for a canonical character;
 - one horizontal PNG spritesheet for each animation asset;
@@ -80,16 +80,23 @@ type CharacterAssetPlanV1 =
       motionDescription: string;
       frameWidth: number;
       frameHeight: number;
-      frameCount: number;
+      frameCount: 4 | 6 | 8 | 10 | 12 | 14 | 16;
       fps: number;
       loop: boolean;
     };
 ```
 
 Provider-specific argument names are not persisted in the plan. The server
-adapter maps the semantic plan to the freshly verified provider contract.
+adapter maps the semantic plan to the freshly verified provider contract. It
+maps `front/back/left/right` to PixelLab `south/north/west/east`, persists the
+verified provider `character_id`, and uses that identity for animation.
 Supported dimensions and frame bounds are constants shared by TypeScript,
 MCP, and SQL validation.
+
+Canonical character output is square: width and height must match and be one
+of `32`, `64`, `96`, or `128`. Animation frame width and height may each be
+`16` through `256`, inclusive, and must be divisible by 4 because the provider
+may return a larger per-frame canvas such as 136 pixels.
 
 An animation draft may reference only a `ready` character asset in the same
 project. Keco stores the source character's SHA-256 in the animation plan. A
@@ -111,7 +118,7 @@ Create a private `character-assets` storage bucket and two project-owned tables.
 `character_generation_attempts` stores:
 
 - asset identity, immutable generation ID, fingerprint, and attempt number;
-- `character-pro` or `animate-text-pro` capability identity;
+- `character-pro` or `animate-character-v3` capability identity;
 - provider transport, operation, job ID, and schema fingerprint;
 - `planned`, `queued`, `generating`, `ready`, `failed`, or `blocked` status;
 - bounded public error code without raw provider payloads;
@@ -180,15 +187,11 @@ Implement character and animation generation in a dedicated
 
 The adapter owns two typed capabilities:
 
-- `character-pro`, official endpoint `POST /v2/create-character-pro`;
-- `animate-text-pro`, official endpoint `POST /v2/animate-with-text-v2` and the
-  exact `animate_with_text` MCP transport when its live schema is compatible.
+- `character-pro`, exact live `create_character` MCP transport in `pro` mode;
+- `animate-character-v3`, exact live `animate_character` MCP transport in `v3`
+  mode with `get_character` retrieval.
 
-The current PixelLab MCP registry has no exact `character-pro` transport.
-Therefore the Keco server may use the official REST endpoint for that capability
-with the API token held only in Edge Function environment configuration. This
-REST adapter must have an explicit request/response contract, mocked contract
-tests, and an opt-in live capability probe. It must fail closed with
+The adapter validates live tool schemas and fails closed with
 `PROVIDER_CAPABILITY_MISSING` before paid confirmation when the deployed
 provider contract is unavailable or incompatible.
 
@@ -197,9 +200,9 @@ validates their schemas, records schema fingerprints, and maps only declared
 fields. It must not fall back to generic Pixflux/Bitforge generation or invent
 an unsupported operation.
 
-For animation, the server creates a short-lived signed URL for the verified
-source character immediately before provider submission. The URL is not logged
-or persisted.
+For animation, the server binds the same-project ready source hash to the
+provider character ID stored by character generation. No source URL is exposed
+to the MCP client.
 
 ## Output Validation
 
@@ -215,8 +218,9 @@ server downloads bounded bytes and validates:
 - animation height equals `frameHeight`;
 - positive bounded `fps`, stable animation name, and planned `loop` metadata.
 
-Godot can later use the horizontal sheet directly with `AtlasTexture`; the MCP
-does not split a sheet into separate frame files.
+Godot can later use the horizontal sheet directly with `AtlasTexture`. When the
+provider returns separate frame files, Keco packs them left-to-right on the
+server; the MCP still returns one sheet.
 
 The server uploads validated bytes to private storage, reads the stored object
 back, verifies its hash and metadata, and only then atomically transitions the
