@@ -105,6 +105,7 @@
     "test:create-map-v3": "jest --runInBand tests/unit/create-map tests/unit/database/create-map-v3-migration.test.ts",
     "test:e2e:create-map-v3": "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=e2e-anon playwright test tests/e2e/specs/create-map-v3.spec.ts --workers=1",
     "accept:create-map-v3:paid": "tsx scripts/accept-create-map-v3-paid.ts",
+    "accept:character-animation:paid": "tsx scripts/accept-character-animation-paid.ts",
     "accept:create-map-v3:browser": "tsx scripts/accept-create-map-v3-browser.ts",
     "accept:local-image-writeback": "tsx scripts/accept-local-image-writeback.ts",
     "test:e2e:parallel": "playwright test --workers=50%",

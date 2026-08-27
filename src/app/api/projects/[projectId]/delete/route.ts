@@ -32,12 +32,14 @@ const deleteHandler = async (
         projectId,
         userId: user.id,
       });
-      if (deletion.cleanupJobId) {
+      if (deletion.cleanupJobIds.length > 0) {
         after(async () => {
-          try {
-            await processProjectStorageCleanupJob({ cleanupJobId: deletion.cleanupJobId! });
-          } catch (cleanupError) {
-            console.error('[API /projects/delete] Deferred storage cleanup failed:', cleanupError);
+          for (const cleanupJobId of deletion.cleanupJobIds) {
+            try {
+              await processProjectStorageCleanupJob({ cleanupJobId });
+            } catch (cleanupError) {
+              console.error('[API /projects/delete] Deferred storage cleanup failed:', cleanupError);
+            }
           }
         });
       }

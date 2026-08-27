@@ -58,6 +58,7 @@ function createServiceClient(
   calls: string[],
   references: Array<{ storage_path: string }> = [],
   removeError: QueryError | null = null,
+  bucketId: 'map-assets' | 'character-assets' = 'map-assets',
 ): SupabaseClient {
   let activeTable = '';
   const builder: QueryBuilder = {
@@ -87,7 +88,7 @@ function createServiceClient(
           data: {
             id: 'cleanup-1',
             project_id: 'project-1',
-            bucket_id: 'map-assets',
+            bucket_id: bucketId,
             storage_paths: references.map((row) => row.storage_path),
           },
           error: null,
@@ -101,8 +102,8 @@ function createServiceClient(
       calls.push(`rpc:${name}:${String(args.p_project_id)}`);
       return {
         data: references.length > 0
-          ? [{ cleanup_job_id: 'cleanup-1', storage_paths: references.map((row) => row.storage_path) }]
-          : [{ cleanup_job_id: null, storage_paths: [] }],
+          ? [{ cleanup_job_id: 'cleanup-1', character_cleanup_job_id: 'cleanup-2', storage_paths: references.map((row) => row.storage_path) }]
+          : [{ cleanup_job_id: null, character_cleanup_job_id: null, storage_paths: [] }],
         error: null,
       };
     },
@@ -168,7 +169,7 @@ describe('deleteProjectWithServerBoundary', () => {
       userId: 'admin-user',
     });
 
-    expect(result).toEqual({ cleanupJobId: 'cleanup-1' });
+    expect(result).toEqual({ cleanupJobId: 'cleanup-1', cleanupJobIds: ['cleanup-1', 'cleanup-2'] });
     expect(calls).toEqual(['rpc:delete_project_and_enqueue_storage_cleanup:project-1']);
   });
 
@@ -194,5 +195,21 @@ describe('deleteProjectWithServerBoundary', () => {
     expect(calls[0]).toBe('rpc:delete_project_and_enqueue_storage_cleanup:project-1');
     expect(calls).toContain('update:failed');
     expect(calls).not.toContain('delete');
+  });
+
+  it('processes a project-scoped character asset cleanup job', async () => {
+    const calls: string[] = [];
+    const serviceClient = createServiceClient(
+      calls,
+      [{ storage_path: 'project-1/character-1/generation-1/a.png' }],
+      null,
+      'character-assets',
+    );
+
+    await processProjectStorageCleanupJob({ serviceClient, cleanupJobId: 'cleanup-1' });
+
+    expect(calls).toContain('storage:character-assets');
+    expect(calls).toContain('remove:project-1/character-1/generation-1/a.png');
+    expect(calls).toContain('delete');
   });
 });

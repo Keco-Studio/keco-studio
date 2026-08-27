@@ -383,3 +383,6 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.mcp]
 verify_jwt = false
+
+[functions.pixellab-character]
+verify_jwt = false

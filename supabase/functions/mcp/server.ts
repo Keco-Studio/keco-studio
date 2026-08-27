@@ -14,6 +14,7 @@ import { asPublicMcpError } from "./errors.ts";
 import { registerAccountTools } from "./account-tools.ts";
 import { registerGdsTools } from "./gds-tools.ts";
 import { registerMapTools } from "./map-tools.ts";
+import { registerCharacterTools } from "./character-tools.ts";
 import { registerSliceTools } from "./slice-tools.ts";
 
 const READ_TOOLS = new Set([
@@ -32,6 +33,9 @@ const READ_TOOLS = new Set([
   "read_map",
   "get_map_generation",
   "export_slice_mirrors",
+  "list_character_assets",
+  "read_character_asset",
+  "get_character_asset_generation",
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",
@@ -68,6 +72,11 @@ const WRITE_TOOLS = new Set([
   "create_slice_bundle",
   "checkpoint_slice",
   "finalize_slice",
+  "create_character_asset_draft",
+  "update_character_asset_draft",
+  "prepare_character_asset_generation",
+  "start_character_asset_generation",
+  "advance_character_asset_generation",
 ]);
 const STATIC_METHODS = new Set([
   "initialize",
@@ -237,6 +246,7 @@ export async function createProbeServer(
     const includeMapWrites = await registerAccountTools(server, context);
     registerGdsTools(server, context);
     registerMapTools(server, context, { includeWrites: includeMapWrites });
+    registerCharacterTools(server, context, { includeWrites: includeMapWrites });
     registerResources(server, context);
     registerPrompts(server, context);
   } else {
@@ -245,6 +255,7 @@ export async function createProbeServer(
     registerGdsTools(server, context);
     registerMapTools(server, context);
     registerSliceTools(server, context);
+    registerCharacterTools(server, context);
     registerResources(server, context);
     registerPrompts(server, context);
   }

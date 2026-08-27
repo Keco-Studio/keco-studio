@@ -9,9 +9,9 @@ The official endpoint is the provider capability identity. An MCP tool is only a
 | `ui-elements-pro` | `ui` | `POST /v2/generate-ui-v2` | none | `unavailable` |
 | `pixflux` | `image`, `effect` | `POST /v2/create-image-pixflux` | `generate_image_pixflux` | `exact` |
 | `bitforge` | `image`, `effect` | `POST /v2/create-image-bitforge` | `generate_image_bitforge` | `exact` |
-| `character-pro` | `character` | `POST /v2/create-character-pro` | none | `unavailable` |
+| `character-pro` | `character` | `POST /v2/create-character-pro` | `create_character` (`mode: pro`) + `get_character` | `exact` |
 | `eight-rotations-pro` | `character-rotation` | `POST /v2/generate-8-rotations-v2` | `rotate` | `fallback` |
-| `animate-text-pro` | `animation` | `POST /v2/animate-with-text-v2` | `animate_with_text` | `exact` |
+| `animate-character-v3` | `animation` | `POST /v2/animate-with-text-v2` | `animate_character` (`mode: v3`) + `get_character` | `exact` |
 | `animate-skeleton` | `animation` | `POST /v2/animate-with-skeleton` | `animate_with_skeleton` | `exact` |
 | `inpaint-pro` | `edit` | `POST /v2/inpaint-v3` | `inpaint` | `exact` |
 | `edit-images-pro` | `edit` | `POST /v2/edit-images-v2` | none | `unavailable` |

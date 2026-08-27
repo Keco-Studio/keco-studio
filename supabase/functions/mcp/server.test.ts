@@ -68,6 +68,8 @@ const SLICE_WRITE_TOOL_NAMES = [
   "checkpoint_slice",
   "finalize_slice",
 ];
+const CHARACTER_READ_TOOL_NAMES = ["list_character_assets", "read_character_asset", "get_character_asset_generation"];
+const CHARACTER_TOOL_NAMES = ["list_character_assets", "read_character_asset", "create_character_asset_draft", "update_character_asset_draft", "prepare_character_asset_generation", "start_character_asset_generation", "get_character_asset_generation", "advance_character_asset_generation"];
 
 const context = {
   mode: "project",
@@ -190,6 +192,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     ...MAP_TOOL_NAMES,
     ...SLICE_WRITE_TOOL_NAMES,
     ...SLICE_READ_TOOL_NAMES,
+    ...CHARACTER_TOOL_NAMES,
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
@@ -274,6 +277,7 @@ Deno.test("viewer tools/list excludes project writes and retains owned GDS tools
       ...GDS_TOOL_NAMES,
       ...MAP_READ_TOOL_NAMES,
       ...SLICE_READ_TOOL_NAMES,
+      ...CHARACTER_READ_TOOL_NAMES,
     ],
   );
 });
@@ -332,6 +336,7 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       ...SLICE_READ_TOOL_NAMES,
       ...GDS_TOOL_NAMES,
       ...MAP_READ_TOOL_NAMES,
+      ...CHARACTER_READ_TOOL_NAMES,
     ],
   );
 
