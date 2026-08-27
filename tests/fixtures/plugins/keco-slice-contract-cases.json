@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "buildHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "snapshotHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "cases": [
+    {
+      "id": "equals-pass",
+      "assertion": { "assertionId": "a1", "kind": "equals", "path": "/guardianRoundtrip", "expected": true },
+      "actual": { "guardianRoundtrip": true },
+      "expectedStatus": "passed"
+    },
+    {
+      "id": "range-missing-field",
+      "assertion": { "assertionId": "a2", "kind": "range", "path": "/score", "minimum": 1, "maximum": 4, "minimumInclusive": true, "maximumInclusive": true },
+      "actual": {},
+      "expectedStatus": "failed",
+      "reasonCode": "ACTUAL_PATH_MISSING"
+    },
+    {
+      "id": "subset-array-order-independent",
+      "assertion": { "assertionId": "a3", "kind": "subset", "path": "/cats", "expected": ["sickly", "guardian"] },
+      "actual": { "cats": ["guardian", "other", "sickly"] },
+      "expectedStatus": "passed"
+    },
+    {
+      "id": "roundtrip-missing-marker",
+      "assertion": { "assertionId": "a4", "kind": "roundtrip", "beforePath": "/before", "afterPath": "/after", "markerPaths": ["/entered", "/exited"] },
+      "actual": { "before": 1, "after": 1, "entered": true },
+      "expectedStatus": "failed",
+      "reasonCode": "ROUNDTRIP_MARKER_MISSING"
+    },
+    {
+      "id": "runtime-self-pass-mismatch",
+      "assertion": { "assertionId": "a5", "kind": "equals", "path": "/guardianRoundtrip", "expected": true },
+      "actual": { "catType": "sickly" },
+      "legacy": true,
+      "runtimeStatus": "passed",
+      "runtimeExpected": { "guardianRoundtrip": true },
+      "expectedStatus": "failed",
+      "reasonCode": "ACTUAL_PATH_MISSING"
+    },
+    {
+      "id": "stale-build",
+      "assertion": { "assertionId": "a6", "kind": "equals", "path": "/ready", "expected": true },
+      "actual": { "ready": true },
+      "observationBuildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expectedStatus": "failed",
+      "reasonCode": "BUILD_HASH_MISMATCH"
+    }
+  ]
+}

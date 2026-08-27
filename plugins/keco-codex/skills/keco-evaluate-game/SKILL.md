@@ -66,7 +66,10 @@ docs/keco-game-evaluations/<evaluationId>/
 
 The existing Slice `EvalReport` owns direct Godot runtime results and raw `KECO_EVAL` evidence. `GameEvaluationReport` is the higher-level score, player evidence, coverage, risks, and stage decision. Reference the Slice report; never rewrite its runtime facts.
 
-Run the deterministic chain from this Skill directory. Each script appends one event to `progress.jsonl` and a Chinese readable mirror to `progress.md`; events are append-only and include actual parsed results.
+Run the deterministic chain from this Skill directory. `progress.jsonl` is the
+append-only fact ledger and `progress.md` is regenerated from those facts.
+Unchanged verified inputs return `reused` without rewriting the artifact or
+appending another event; any changed dependency creates a new result.
 
 ```bash
 python3 scripts/create_evaluation_profile.py \
@@ -91,6 +94,7 @@ Read `references/rubric.md` before creating a profile or questionnaire. Read `re
 Use these scripts when present:
 
 - `scripts/create_evaluation_profile.py` creates a deterministic locked profile.
+- `scripts/execution_cache.py` computes canonical execution keys and verifies reuse.
 - `scripts/score_game_evaluation.py` converts validated evidence into a report.
 - `scripts/validate_game_evaluation_report.py` rejects incomplete or contradictory reports.
 

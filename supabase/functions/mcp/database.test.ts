@@ -52,3 +52,23 @@ Deno.test("database maps table maintenance preconditions without row drift guida
     "The table maintenance request is missing a required confirmation, clear flag, or stable match-field state.",
   );
 });
+
+Deno.test("database maps deterministic Slice SQL states without leaking details", async () => {
+  for (
+    const [sqlState, expectedCode] of [
+      ["KS409", "IDEMPOTENCY_CONFLICT"],
+      ["KS410", "SLICE_STATE_CONFLICT"],
+      ["KS411", "SLICE_REPAIR_LIMIT"],
+      ["KS412", "SLICE_FINALIZATION_BLOCKED"],
+      ["22023", "SLICE_CONTRACT_INVALID"],
+    ] as const
+  ) {
+    const context = contextWithError(sqlState, "private Slice SQL detail");
+    const mapped = await assertRejects(
+      () => rpc(context, "mcp_checkpoint_slice", {}),
+      McpDomainError,
+    );
+    assertEquals(mapped.code, expectedCode);
+    assertEquals(mapped.message.includes("private Slice SQL detail"), false);
+  }
+});

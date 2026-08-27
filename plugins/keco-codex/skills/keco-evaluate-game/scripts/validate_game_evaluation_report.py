@@ -7,6 +7,7 @@ import pathlib
 import sys
 from typing import Any
 
+from execution_cache import execution_identity, reusable_event, sha256_file
 from progress_log import append_event
 
 
@@ -18,6 +19,7 @@ THRESHOLDS = {"alpha": 60, "beta": 70, "rc": 80, "release": 85}
 STATUSES = {"passed", "conditional", "partial", "failed", "blocked"}
 ITEM_STATUSES = {"evaluated", "not_evaluated"}
 SEVERITIES = ("P0", "P1", "P2", "P3")
+EVALUATOR_VERSION = "validate-v1"
 
 
 def text(value: Any) -> bool:
@@ -178,7 +180,7 @@ def validate(report: Any) -> None:
             raise ValueError("passed report violates a score, risk, mandatory, or coverage gate")
 
 
-def append_progress(report_path: pathlib.Path, report: dict[str, Any]) -> None:
+def append_progress(report_path: pathlib.Path, report: dict[str, Any], operation_key: str, input_hash: str) -> None:
     append_event(
         report_path.parent, "validate", "\u6821\u9a8c\u8bc4\u4ef7\u62a5\u544a\u5951\u7ea6\u548c\u9636\u6bb5\u95e8\u7981",
         {"reportId": report["reportId"]},
@@ -186,6 +188,7 @@ def append_progress(report_path: pathlib.Path, report: dict[str, Any]) -> None:
         {"status": report["decision"]["status"], "total": report["claudeReview"]["total"]["score"]},
         "\u62a5\u544a\u53ef\u4ee5\u4f5c\u4e3a\u5f53\u524d\u8bc4\u4ef7\u7ed3\u679c\u4f7f\u7528\uff0c\u4f46\u4eba\u5de5\u8bc4\u4ef7\u4ecd\u72ec\u7acb\u4fdd\u5b58",
         "\u6839\u636e decision \u8fdb\u5165\u62a5\u544a\u3001\u6539\u8fdb\u6216\u91cd\u6d4b\u6d41\u7a0b",
+        operation_key, input_hash, sha256_file(report_path),
     )
 
 
@@ -195,13 +198,18 @@ def main() -> int:
     args = parser.parse_args()
     try:
         report = json.loads(args.path.read_text(encoding="utf-8"))
+        operation_key, input_hash = execution_identity("validate", EVALUATOR_VERSION, report)
+        reused = reusable_event(args.path.parent, operation_key, input_hash, args.path)
+        if reused is not None:
+            print(json.dumps({"ok": True, "outcome": "reused", "operationKey": operation_key}, sort_keys=True))
+            return 0
         validate(report)
-        append_progress(args.path, report)
+        append_progress(args.path, report, operation_key, input_hash)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     report = json.loads(args.path.read_text(encoding="utf-8"))
-    print(json.dumps({"ok": True, "status": report["decision"]["status"], "stage": report["stage"], "score": report["claudeReview"]["total"]["score"], "coverage": report["coverage"]}, sort_keys=True))
+    print(json.dumps({"ok": True, "outcome": "created", "operationKey": operation_key, "status": report["decision"]["status"], "stage": report["stage"], "score": report["claudeReview"]["total"]["score"], "coverage": report["coverage"]}, sort_keys=True))
     return 0
 
 

@@ -29,7 +29,12 @@ const SKILLS = [
 
 const SCRIPTS = [
   'build_spriteframes_resource.py',
+  'derive_slice_status.py',
+  'evaluate_runtime_observations.py',
   'export_keco_snapshot.py',
+  'materialize_slice_mirrors.py',
+  'slice_contract.py',
+  'validate_delivery_policy.py',
   'validate_eval_report.py',
   'validate_generated_asset_package.py',
   'validate_interaction_checkpoint.py',
@@ -37,6 +42,7 @@ const SCRIPTS = [
   'validate_run_context.py',
   'validate_slice_documents.py',
   'validate_snapshot.py',
+  'validate_task_evidence.py',
 ];
 
 function readJson<T>(relativePath: string): T {
@@ -525,6 +531,78 @@ describe('Keco Claude plugin validators', () => {
     expect(result.status).toBe(0);
   });
 
+  it('keeps shared deterministic delivery scripts and contracts byte-identical', () => {
+    const codexRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-develop-godot-slice-v2');
+    for (const name of ['validate_task_evidence.py', 'validate_delivery_policy.py', 'materialize_slice_mirrors.py', 'validate_eval_report.py', 'validate_run_context.py', 'validate_slice_documents.py']) {
+      expect(readFileSync(path.join(scriptsRoot, name))).toEqual(readFileSync(path.join(codexRoot, 'scripts', name)));
+    }
+    for (const name of ['orchestration-contract.md', 'eval-contract.md', 'godot-mcp-contract.md', 'slice-document-contract.md', 'review-workflow.md', 'default-delivery-policy.json']) {
+      expect(readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', name))).toEqual(readFileSync(path.join(codexRoot, 'references', name)));
+    }
+  });
+
+  it('validates task evidence, policy gates, and atomic mirror provenance', () => {
+    const hash = (character: string) => `sha256:${character.repeat(64)}`;
+    const planRevision = hash('1');
+    const resultId = '11111111-1111-4111-8111-111111111111';
+    const run = runContext({ allowedFiles: ['game/scripts/village.gd'] });
+    const plan = {
+      schemaVersion: 1,
+      planRevision,
+      allowedFiles: ['game/scripts/village.gd'],
+      tasks: [{
+        id: 'task-01', files: ['game/scripts/village.gd'], dependsOn: [], servesEvaluations: ['eval-1'],
+        red: { command: 'python3 red.py', expected: 'fails' }, green: { command: 'python3 green.py', expected: 'passes' },
+      }],
+    };
+    const taskResult = {
+      eventId: resultId, eventType: 'task_result', payload: {
+        schemaVersion: 1, runId: 'run-1', sliceId: 'slice-001', taskId: 'task-01', planRevision,
+        attemptId: '22222222-2222-4222-8222-222222222222', phase: 'green', operation: { kind: 'command', command: 'python3 green.py' },
+        startedAt: '2026-08-27T00:00:00Z', endedAt: '2026-08-27T00:00:01Z', exitCode: 0, timedOut: false, cancelled: false,
+        stdoutSummary: 'passed', stdoutHash: hash('a'), stderrSummary: '', stderrHash: hash('b'),
+        changedFiles: [{ path: 'game/scripts/village.gd', beforeHash: hash('c'), afterHash: hash('d') }],
+        expectedOutcome: 'passes', observedOutcome: 'passed', status: 'completed', concerns: [], artifactIds: [],
+      },
+    };
+    const review = {
+      eventId: '33333333-3333-4333-8333-333333333333', eventType: 'task_review', payload: {
+        schemaVersion: 1, runId: 'run-1', sliceId: 'slice-001', taskId: 'task-01', planRevision,
+        taskResultIds: [resultId], reviewedFiles: [{ path: 'game/scripts/village.gd', hash: hash('d') }],
+        reviewerType: 'agent', reviewerId: 'independent-reviewer', verdict: 'accepted', specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
+      },
+    };
+    const valid = runScript('validate_task_evidence.py', [
+      '--run-context', writeTempJson(tempRoot, 'run.json', run), '--plan', writeTempJson(tempRoot, 'plan.json', plan),
+      '--task-result', writeTempJson(tempRoot, 'result.json', taskResult), '--task-review', writeTempJson(tempRoot, 'review.json', review),
+    ]);
+    expect(valid.status).toBe(0);
+    review.payload.reviewedFiles[0].hash = hash('e');
+    const wrongBytes = runScript('validate_task_evidence.py', [
+      '--run-context', writeTempJson(tempRoot, 'run-2.json', run), '--plan', writeTempJson(tempRoot, 'plan-2.json', plan),
+      '--task-result', writeTempJson(tempRoot, 'result-2.json', taskResult), '--task-review', writeTempJson(tempRoot, 'review-2.json', review),
+    ]);
+    expect(wrongBytes.status).toBe(1);
+    expect(wrongBytes.stderr).toMatch(/different bytes/i);
+
+    const policy = runScript('validate_delivery_policy.py', ['--output', path.join(tempRoot, 'policy.json')]);
+    expect(policy.status).toBe(0);
+    expect(JSON.parse(policy.stdout)).toMatchObject({ ok: true, source: 'default', policy: { maximumRepairs: 3, manualReviewBlocksRelease: true } });
+
+    const content = 'mirror bytes\n';
+    const file = { kind: 'status', repositoryPath: 'game/scripts/village.gd', documentId: 'doc-1', epoch: 0, revision: 1, byteCount: Buffer.byteLength(content), sha256: `sha256:${createHash('sha256').update(content).digest('hex')}`, content };
+    const canonical = JSON.stringify([file], Object.keys(file).sort());
+    const manifest = { schemaVersion: 1, canonicalizationVersion: 1, runId: 'run-1', stateToken: 'token-1', currentSequence: 1, files: [file], manifestHash: `sha256:${createHash('sha256').update(canonical).digest('hex')}` };
+    const root = path.join(tempRoot, 'repository');
+    mkdirSync(root);
+    const mirror = runScript('materialize_slice_mirrors.py', [
+      '--manifest', writeTempJson(tempRoot, 'manifest.json', manifest), '--repository-root', root,
+      '--run-context', writeTempJson(tempRoot, 'mirror-run.json', run), '--output', path.join(tempRoot, 'mirror-verification.json'),
+    ]);
+    expect(mirror.status).toBe(0);
+    expect(readFileSync(path.join(root, 'game/scripts/village.gd'), 'utf8')).toBe(content);
+  });
+
   it.each([
     ['the documented required/required strings', 'required', 'required'],
     ['boolean true/true', true, true],
@@ -673,7 +751,7 @@ describe('Keco Claude plugin validators', () => {
     sliceId: 'slice-001',
     status: 'passed',
     snapshotHash: 'sha256:abc',
-    evaluations: [{ evalId: 'eval-1', status: 'passed', evidence: ['KECO_EVAL'] }],
+    evaluations: [{ evalId: 'eval-1', status: 'passed', evidence: ['KECO_OBSERVATION'], assertions: [{ assertionId: 'a-1', status: 'passed' }] }],
     runtimeBatches: [{
       batchId: 'batch-1',
       evaluationIds: ['eval-1'],
@@ -693,8 +771,8 @@ describe('Keco Claude plugin validators', () => {
 
   it.each([
     ['a passing report without a snapshot hash', report({ snapshotHash: null }), /snapshot hash/],
-    ['a passing report with an unproven evaluation', report({ evaluations: [{ evalId: 'e', status: 'passed', evidence: [] }] }), /evidence/],
-    ['a passing report with a failed evaluation', report({ evaluations: [{ evalId: 'e', status: 'failed', evidence: ['x'] }] }), /all passed/],
+    ['a passing report with an unproven evaluation', report({ evaluations: [{ evalId: 'e', status: 'passed', evidence: [] }] }), /semantic evidence/],
+    ['a passing report with a failed evaluation', report({ evaluations: [{ evalId: 'e', status: 'failed', evidence: ['x'], assertions: [{ assertionId: 'a', status: 'failed' }] }] }), /computed evaluation status/],
     ['a malformed evaluations array', report({ evaluations: 'none' }), /non-empty array/],
     ['an unknown evaluation status', report({ evaluations: [{ evalId: 'e', status: 'ok', evidence: ['x'] }] }), /invalid evaluation status/],
     ['runtime batches that omit an evaluation', report({ runtimeBatches: [] }), /runtime batches must cover every evaluation exactly once/],
@@ -702,8 +780,8 @@ describe('Keco Claude plugin validators', () => {
       'multiple runtime batches without split reasons',
       report({
         evaluations: [
-          { evalId: 'eval-1', status: 'passed', evidence: ['KECO_EVAL'] },
-          { evalId: 'eval-2', status: 'passed', evidence: ['KECO_EVAL'] },
+          { evalId: 'eval-1', status: 'passed', evidence: ['KECO_OBSERVATION'], assertions: [{ assertionId: 'a-1', status: 'passed' }] },
+          { evalId: 'eval-2', status: 'passed', evidence: ['KECO_OBSERVATION'], assertions: [{ assertionId: 'a-2', status: 'passed' }] },
         ],
         runtimeBatches: [
           { batchId: 'batch-1', evaluationIds: ['eval-1'], runtimeSequence: ['run_project', 'get_debug_output', 'stop_project'], splitReason: null },
@@ -720,7 +798,7 @@ describe('Keco Claude plugin validators', () => {
   });
 
   it('allows a blocked report to omit the snapshot hash', () => {
-    const value = report({ status: 'blocked_before_write', snapshotHash: null });
+    const value = report({ status: 'blocked_before_write', snapshotHash: null, evaluations: [{ evalId: 'eval-1', status: 'blocked', evidence: ['MCP unavailable'] }], runtimeBatches: [] });
     expect(runScript('validate_eval_report.py', [writeTempJson(tempRoot, 'report.json', value)]).status).toBe(0);
   });
 
