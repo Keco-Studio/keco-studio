@@ -51,6 +51,7 @@ const MAP_TOOL_NAMES = [
   "get_map_generation",
   "advance_map_generation",
 ];
+const CHARACTER_TOOL_NAMES = ["list_character_assets", "read_character_asset", "create_character_asset_draft", "update_character_asset_draft", "prepare_character_asset_generation", "start_character_asset_generation", "get_character_asset_generation", "advance_character_asset_generation"];
 
 type RpcCall = { name: string; parameters: Record<string, unknown> };
 type StorageCall = { name: string; arguments: unknown[] };
@@ -327,6 +328,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     ...ACCOUNT_WRITE_TOOL_NAMES,
     ...GDS_TOOL_NAMES,
     ...MAP_TOOL_NAMES,
+    ...CHARACTER_TOOL_NAMES,
   ]);
   const listProjects = tools.find((tool) => tool.name === "list_projects")!;
   assertEquals(Object.keys(listProjects.inputSchema.properties ?? {}), [

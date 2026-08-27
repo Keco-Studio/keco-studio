@@ -15,12 +15,18 @@ const GDS_TOOLS = ['list_game_design_systems', 'read_game_design_system', 'read_
 const MAP_READ_TOOLS = ['list_maps', 'read_map', 'get_map_generation'];
 const MAP_WRITE_TOOLS = ['create_map_draft', 'update_map_draft', 'prepare_map_generation',
   'start_map_generation', 'advance_map_generation'];
+const CHARACTER_READ_TOOLS = ['list_character_assets', 'read_character_asset',
+  'get_character_asset_generation'];
+const CHARACTER_WRITE_TOOLS = ['create_character_asset_draft', 'update_character_asset_draft',
+  'prepare_character_asset_generation', 'start_character_asset_generation',
+  'advance_character_asset_generation'];
 const PROJECT_WRITE_TOOLS = [...WRITE_TOOLS, 'generate_project_gdd',
-  'cancel_project_gdd_generation', ...MAP_WRITE_TOOLS];
+  'cancel_project_gdd_generation', ...MAP_WRITE_TOOLS, ...CHARACTER_WRITE_TOOLS];
 const LEGACY_TOOLS = ['keco_connection_probe', ...READ_TOOLS, ...WRITE_TOOLS, ...GDS_TOOLS,
-  ...MAP_READ_TOOLS, ...MAP_WRITE_TOOLS].sort();
+  ...MAP_READ_TOOLS, ...MAP_WRITE_TOOLS, ...CHARACTER_READ_TOOLS, ...CHARACTER_WRITE_TOOLS].sort();
 const ACCOUNT_BASE_TOOLS = ['keco_connection_probe', 'list_projects', ...READ_TOOLS,
-  ...GDS_TOOLS.filter(name => !PROJECT_WRITE_TOOLS.includes(name)), ...MAP_READ_TOOLS].sort();
+  ...GDS_TOOLS.filter(name => !PROJECT_WRITE_TOOLS.includes(name)), ...MAP_READ_TOOLS,
+  ...CHARACTER_READ_TOOLS].sort();
 const LEGACY_RESOURCES = ['keco://documents', 'keco://project', 'keco://tables'].sort();
 const LEGACY_TEMPLATES = ['keco://documents/{documentId}', 'keco://project/structure',
   'keco://tables/{tableId}/rows{?limit,cursor}', 'keco://tables/{tableId}/schema'].sort();
