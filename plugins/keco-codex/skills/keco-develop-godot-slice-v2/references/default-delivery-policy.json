@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "requiredArtifacts": ["TaskResult", "TaskReview", "EvalReport", "MirrorVerification"],
+  "runtimeEvidenceFreshness": "current_build_and_snapshot",
+  "maximumRepairs": 3,
+  "releaseOrder": ["implementation", "runtime_verification", "acceptance", "mirrors", "package"],
+  "manualReviewBlocksRelease": true
+}

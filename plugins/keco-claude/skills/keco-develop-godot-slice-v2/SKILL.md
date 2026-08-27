@@ -27,6 +27,7 @@ Every contract this workflow names is bundled; none require another plugin or a 
 | [references/eval-contract.md](references/eval-contract.md) | writing the EvalSpec |
 | [references/godot-mcp-contract.md](references/godot-mcp-contract.md) | any Godot call |
 | [references/slice-document-contract.md](references/slice-document-contract.md) | creating roadmap or per-Slice documents |
+| [references/default-delivery-policy.json](references/default-delivery-policy.json) | selecting a delivery policy |
 
 `RunContext`, `writeToken`, `sourceDecision`, `sliceDecision`, and the per-task contract are defined in the orchestration and slice-decision contracts. Do not improvise their shapes.
 
@@ -38,19 +39,22 @@ Every contract this workflow names is bundled; none require another plugin or a 
 - Route Keco-only new tables to `keco-build-tables-from-document`; route standalone assets and Godot-only work elsewhere.
 - If the user explicitly selected another applicable Skill, do not silently override that selection.
 
-## Fixed Run Ledger
+## Four-Phase Delivery
 
-Create and maintain these artifacts in order. Use `${CLAUDE_PLUGIN_ROOT}/scripts/validate_run_context.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_plan.py`, and `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py` before advancing. Compute runtime results with `${CLAUDE_PLUGIN_ROOT}/scripts/evaluate_runtime_observations.py`, derive independent status dimensions with `${CLAUDE_PLUGIN_ROOT}/scripts/derive_slice_status.py`, and treat `${CLAUDE_PLUGIN_ROOT}/scripts/slice_contract.py` as their shared deterministic contract. Validate every paused or resumed interaction record with `${CLAUDE_PLUGIN_ROOT}/scripts/validate_interaction_checkpoint.py` before presenting or consuming its checkpoint:
+Present only **Preflight**, **Implementation**, **Verification**, and **Delivery**. Keep lifecycle detail in the ledger rather than narrating it as user-visible stages:
 
 ```text
-INTAKE -> BASELINE -> SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> ROADMAP_REVIEW
-  -> PLANNING_DOCUMENT_PREFLIGHT -> WRITE_ROADMAP -> SELECT_NEXT_SLICE
-  -> RESOLVE_SOURCES -> SELECT_SLICE -> DESIGN -> WRITE_SPEC -> WRITE_PLAN -> PLAN_REVIEW
-  -> EXECUTION_PREFLIGHT -> EXECUTE_TASKS -> TASK_REVIEW -> RUNTIME_EVAL
-  -> REPAIR (max 3) -> FINAL_VERIFY -> UPDATE_ROADMAP -> NEXT_SLICE -> REPORT
+Preflight: create_slice_bundle -> accepted plan/policy -> write lease
+Implementation: approved tasks -> TaskResult -> independent TaskReview -> checkpoint_slice
+Verification: KECO_OBSERVATION -> computed assertions -> checkpoint_slice -> repair (max 3)
+Delivery: export_slice_mirrors -> local verification -> finalize_slice -> report
 ```
 
-Required outer-loop artifacts are `SourceSelection` and `Roadmap`. Required per-Slice artifacts are `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `AssetPlan` when assets are needed, `DesignReview`, `PlanReview`, one `TaskResult` and `TaskReview` per task, and `EvalReport`. The authoritative roadmap and Slice documents live in a discovered folder inside the matching Keco Project. Keep `docs/keco-godot-slices/<sliceId>/spec.md`, `plan.md`, `status.json`, and `eval-report.json` as validated repository mirrors. Use a local mirror for tooling, never as the only copy. Report the Keco project ID, folder ID, source document ID, roadmap ID, per-Slice document IDs, dates, hashes, and revisions.
+Use `create_slice_bundle` during Preflight after source, Keco project, optional GDD, plan, EvalSpec, and policy validation. Use `checkpoint_slice` at durable task and verification boundaries with its current state token; a stale token or repeated checkpoint is a conflict/reuse result, never permission to overwrite. Before Delivery, call `export_slice_mirrors`, materialize with `${CLAUDE_PLUGIN_ROOT}/scripts/materialize_slice_mirrors.py` beneath the explicit repository root, checkpoint its `MirrorVerification`, then call `finalize_slice` as the final gate.
+
+Required per-Slice artifacts are `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `TaskResult`, independent `TaskReview`, `EvalReport`, and `MirrorVerification`. Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_run_context.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_plan.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_task_evidence.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_delivery_policy.py`, and `${CLAUDE_PLUGIN_ROOT}/scripts/validate_slice_documents.py` before their related checkpoints. The authoritative roadmap and Slice documents live in the matching Keco Project; local mirror, never as the only copy, is verified secondary evidence and includes `spec.md`, `plan.md`, `status.json`, and `eval-report.json`.
+
+The bundled evaluators `${CLAUDE_PLUGIN_ROOT}/scripts/slice_contract.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/evaluate_runtime_observations.py`, and `${CLAUDE_PLUGIN_ROOT}/scripts/derive_slice_status.py` compute evidence and the four derived dimensions. Read [references/ab-matrix.md](references/ab-matrix.md) before comparing V2 with the legacy workflow.
 
 ## Slice Ambiguity Gate
 
@@ -72,7 +76,7 @@ At `SOURCE_DISCOVERY`, `SLICE_DECOMPOSITION`, and `SELECT_SLICE`, compare the us
 8. **Keco-first assets:** follow the shared [PixelLab capability registry](../../references/pixellab-capability-registry.md), [references/keco-pixellab-contract.md](references/keco-pixellab-contract.md), and [references/existing-resource-evolution.md](references/existing-resource-evolution.md). Discover compatible tables, rows, resources, and nodes first; reuse or extend them by stable key before creating new ones. If no compatible target exists, record the reason in the plan. Never require a fixed PixelLab tool name: resolve the live adapter and record `compatibility`.
 9. **Asset integration:** read [references/generated-asset-contract.md](references/generated-asset-contract.md) for every non-UI asset and validate the package with `${CLAUDE_PLUGIN_ROOT}/scripts/validate_generated_asset_package.py` before materialization. Read [references/godot-animation-contract.md](references/godot-animation-contract.md) for character or animation assets, and [references/godot-tileset-contract.md](references/godot-tileset-contract.md) for tile or tileset assets. Build or materialize only from verified metadata.
 10. **Task execution and review:** order tasks so dependencies precede their dependents, then execute the visible checklist from top to bottom. For every task, run the planned RED verification, make the smallest change, and run GREEN verification. Never silently skip an unfinished task; follow the explicit temporary transition and return rules in [references/orchestration-contract.md](references/orchestration-contract.md) when a newly discovered prerequisite forces a jump. Every task carries a spec review. Perform the additional quality review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task. At least one task per plan carries a quality review.
-11. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_EVAL` record and the current snapshot hash. Aggregate compatible evaluations into one bounded runtime sequence; split them only when isolation or lifecycle requirements demand it. Startup logs, parsing, screenshots, upload responses, or agent assertions are not substitutes.
+11. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_OBSERVATION` record and the current build and snapshot hashes. Runtime output must not supply `expected`, `status`, `passed`, assertion results, or aggregate status; the locked EvalSpec derives those facts. Aggregate compatible evaluations into one bounded runtime sequence; split them only when isolation or lifecycle requirements demand it.
 12. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. On the third failed repair iteration, persist evidence and the read-back Slice status/eval-report, mark the roadmap `paused`, clear `NEXT_SLICE`, and ask the user. Partial writes are preserved, never deleted or duplicated.
 
 Roadmaps and per-Slice plans must be ordered Markdown checklists in their authoritative Keco Project Folder documents. Keep the accepted per-Slice plan immutable during execution and track checks in `status.json`; change a roadmap Slice entry to `- [x]` only after the required evidence and completion read-back succeed. Do not execute from free-form roadmap prose. The Keco read-back plan is authoritative; local repository mirrors are secondary.
@@ -83,7 +87,7 @@ Read [references/source-data-contract.md](references/source-data-contract.md), [
 
 ## Completion Contract
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_snapshot.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_slice_documents.py`, and the repository's focused tests before claiming completion. Report status as `passed`, `partial`, `failed`, or `blocked_before_write`, with exact evidence, hashes, MCP availability, Keco IDs, asset provenance, changed files, original dirty files, manual requirements, residual risks, and repair iteration. Use [references/ab-matrix.md](references/ab-matrix.md) to record the old-vs-v2 comparison.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_task_evidence.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_delivery_policy.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_snapshot.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_slice_documents.py`, and focused tests before claiming completion. Report implementation, acceptance, and release readiness separately. `manual_required` may complete implementation but blocks release when the locked policy requires it.
 
 ## Common Rationalizations
 
@@ -92,6 +96,6 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py`, `${CLAUDE_PLUGIN_RO
 | "Godot is unavailable; write data/assets first." | Stop before writes and report `blocked_before_write`. |
 | "The temporary PixelLab file is good enough." | Keep it temporary; Keco read-back is the only integration source. |
 | "The plan is obvious; skip review." | Write and validate the plan, then review it. |
-| "Clean launch proves the slice." | Require `KECO_EVAL` plus current snapshot hash; otherwise mark blocked/manual. |
+| "Clean launch proves the slice." | Require `KECO_OBSERVATION` plus current build and snapshot hashes; otherwise mark blocked/manual. |
 | "Add one file outside the list just this once." | Return to planning and expand `allowedFiles` explicitly, or stop. |
 | "That PixelLab tool worked last time; just call it." | Resolve the live adapter against the shared registry and record `compatibility`. |

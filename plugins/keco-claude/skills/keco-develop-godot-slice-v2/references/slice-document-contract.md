@@ -48,4 +48,6 @@ docs/keco-godot-slices/<slice-id>/
 
 The local folder is part of `SlicePlan.allowedFiles` and exists for repository review, diffs, and validation. It is never the authoritative or only copy. Do not consume an edited local mirror until the same revision has been written to Keco and read back.
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_slice_documents.py --slice-dir <path>` before `PLAN_REVIEW` and `FINAL_VERIFY`, then compare the local hashes with the authoritative Keco document hashes.
+Only the `export_slice_mirrors` manifest may materialize local mirrors. Run `scripts/materialize_slice_mirrors.py --manifest <path> --repository-root <root> --run-context <run-context> --output <mirror-verification.json>` after export. It requires every repository path in `allowedFiles`, rejects parent traversal and symlinks, atomically writes and reads back every byte, and binds `MirrorVerification` to the manifest SHA-256 digest. A mismatch emits no verification artifact.
+
+For current completed artifacts, `status.json` carries all four derived dimensions (`implementationStatus`, `runtimeVerificationStatus`, `acceptanceStatus`, `releaseReadiness`) and current `MirrorVerification` provenance. Run `scripts/validate_slice_documents.py --slice-dir <path>` before `PLAN_REVIEW` and `FINAL_VERIFY`, then compare local hashes with authoritative Keco document hashes.

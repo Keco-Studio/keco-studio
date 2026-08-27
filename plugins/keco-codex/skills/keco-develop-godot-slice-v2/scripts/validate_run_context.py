@@ -10,6 +10,7 @@ REQUIRED = ("version", "runId", "mode", "kecoProjectId", "godotProjectPath", "sl
 # Must stay in sync with references/orchestration-contract.md RunContext.mode.
 MODES = ("implicit-v2", "explicit-v2")
 MAX_ITERATION = 3
+HASH_PREFIX = "sha256:"
 
 
 def main() -> int:
@@ -62,6 +63,23 @@ def main() -> int:
         if not isinstance(checkpoint, dict) or checkpoint.get("runId") != value["runId"]:
             print("interaction checkpoint runId must match RunContext.runId", file=sys.stderr)
             return 1
+    # Current lifecycle additions are optional so existing version-2 ledgers
+    # remain readable. When present, each is strict enough to reject stale or
+    # malformed continuation data without compiling project prose.
+    for key in ("planRevision", "deliveryPolicyHash", "mirrorManifestHash"):
+        if key in value and (not isinstance(value[key], str) or not value[key].startswith(HASH_PREFIX)):
+            print(f"{key} must be a sha256 digest", file=sys.stderr)
+            return 1
+    if "stateToken" in value and (not isinstance(value["stateToken"], str) or not value["stateToken"].strip()):
+        print("stateToken must be a non-empty string", file=sys.stderr)
+        return 1
+    if "repairCount" in value and (
+        not isinstance(value["repairCount"], int)
+        or isinstance(value["repairCount"], bool)
+        or not 0 <= value["repairCount"] <= MAX_ITERATION
+    ):
+        print(f"repairCount must be an integer from 0 through {MAX_ITERATION}", file=sys.stderr)
+        return 1
     print(json.dumps({"ok": True, "mode": value["mode"], "sliceId": value["sliceId"], "iteration": iteration}, sort_keys=True))
     return 0
 

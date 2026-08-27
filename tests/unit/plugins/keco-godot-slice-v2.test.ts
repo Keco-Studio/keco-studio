@@ -147,7 +147,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(skill).toMatch(/^---\nname: keco-develop-godot-slice-v2\n/);
     expect(skill).toMatch(/document-driven[\s\S]*implicit/i);
     expect(skill).not.toContain('explicitly selects `$keco-develop-godot-slice-v2`');
-    expect(skill).toMatch(/INTAKE[\s\S]*WRITE_PLAN[\s\S]*TASK_REVIEW[\s\S]*FINAL_VERIFY/);
+    expect(skill).toMatch(/Preflight[\s\S]*Implementation[\s\S]*Verification[\s\S]*Delivery/);
     expect(skill).toMatch(/write token/i);
     expect(skill).toMatch(/blocked_before_write/);
     expect(skill).toMatch(/independent review/i);
@@ -183,11 +183,14 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'scripts/validate_run_context.py',
       'scripts/validate_plan.py',
       'scripts/validate_eval_report.py',
+      'scripts/validate_delivery_policy.py',
       'scripts/export_keco_snapshot.py',
       'scripts/validate_snapshot.py',
       'scripts/build_spriteframes_resource.py',
       'scripts/validate_generated_asset_package.py',
       'scripts/validate_slice_documents.py',
+      'scripts/validate_task_evidence.py',
+      'scripts/materialize_slice_mirrors.py',
     ];
     for (const file of files) expect(existsSync(path.join(skillRoot, file))).toBe(true);
     const assets = readFileSync(path.join(skillRoot, 'references', 'keco-pixellab-contract.md'), 'utf8');
@@ -218,7 +221,8 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(capabilityRegistry).toMatch(/exact\|fallback\|unavailable/i);
     const godot = readFileSync(path.join(skillRoot, 'references', 'godot-mcp-contract.md'), 'utf8');
     expect(godot).toMatch(/run_project -> get_debug_output -> stop_project/);
-    expect(godot).toMatch(/KECO_EVAL/);
+    expect(godot).toMatch(/KECO_OBSERVATION/);
+    expect(godot).toMatch(/must not include `expected`, `status`, `passed`/i);
     expect(godot).toMatch(/aggregate[\s\S]{0,240}evaluations[\s\S]{0,240}one runtime sequence/i);
     expect(godot).toMatch(/stable executable[\s\S]{0,160}command prefix[\s\S]{0,240}persistent prefix approval/i);
     expect(godot).toMatch(/cannot suppress or pre-approve the host prompt/i);
@@ -582,7 +586,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
   it('keeps the pressure scenarios as reviewable fixtures', () => {
     const fixture = JSON.parse(readFileSync(path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-evals.json'), 'utf8')) as { cases: unknown[]; invocation: string };
     expect(fixture.invocation).toBe('$keco-develop-godot-slice-v2');
-    expect(fixture.cases).toHaveLength(7);
+    expect(fixture.cases).toHaveLength(10);
   });
 
   it('rejects unsafe run contexts and incomplete plans', () => {
