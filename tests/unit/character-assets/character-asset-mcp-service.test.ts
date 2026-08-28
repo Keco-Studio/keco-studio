@@ -283,6 +283,29 @@ describe('character asset MCP service', () => {
     expect(domain.invokeProvider.mock.calls.map(([operation]) => operation)).toEqual(['poll', 'validate']);
   });
 
+  it('revalidates a failed attempt with an existing provider job without retrying paid submission', async () => {
+    const domain = backend();
+    const failed = generation('failed');
+    failed.generation.lastErrorCode = 'validation_failed';
+    domain.readGeneration
+      .mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(generation('ready'));
+    domain.invokeProvider.mockResolvedValueOnce({ status: 'ready' });
+    const service = createCharacterAssetMcpService(
+      { userId: IDS.userId, supabase: {} as never },
+      { backend: domain, fingerprintPlan: () => fingerprint },
+    );
+
+    await expect(service.advanceGeneration({
+      projectId: IDS.projectId,
+      assetId: IDS.assetId,
+      attemptId: IDS.attemptId,
+      generationId: IDS.generationId,
+      planFingerprint: fingerprint,
+    })).resolves.toMatchObject({ status: 'ready' });
+    expect(domain.invokeProvider.mock.calls.map(([operation]) => operation)).toEqual(['validate']);
+  });
+
   it('does not expose arbitrary internal error messages', () => {
     expect(new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE', 'Bearer secret-value').message)
       .toBe('The character asset service is temporarily unavailable.');

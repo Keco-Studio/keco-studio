@@ -456,6 +456,12 @@ export function createCharacterAssetMcpService(
           if (result && typeof result === 'object' && (result as { status?: unknown }).status === 'completed') {
             await backend.invokeProvider('validate', providerInput);
           }
+        } else if (state.generation.status === 'failed'
+          && state.generation.lastErrorCode === 'validation_failed'
+          && state.generation.providerJobId) {
+          // A completed provider job can outlive a transient validation failure.
+          // Revalidate that same job instead of forcing a duplicate paid retry.
+          await backend.invokeProvider('validate', providerInput);
         }
         return generationResult((await backend.readGeneration(input)).generation);
       } catch (error) { mapError(error); }
