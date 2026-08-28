@@ -1,5 +1,9 @@
 import type { ProviderStatus } from "./types.ts";
 
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const UUID_PATTERN = new RegExp(`^${UUID}$`, "i");
+const EMBEDDED_UUID_PATTERN = new RegExp(`\\b${UUID}\\b`, "i");
+
 function values(value: unknown): unknown[] {
   if (Array.isArray(value)) return value.flatMap(values);
   if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap(values);
@@ -14,15 +18,32 @@ function records(value: unknown): Record<string, unknown>[] {
     try { return records(JSON.parse(value)); } catch { return []; }
   }
   if (Array.isArray(value)) return value.flatMap(records);
+  if (typeof value === "string") return textRecords(value);
   if (!value || typeof value !== "object") return [];
   const row = value as Record<string, unknown>;
   return [row, ...Object.values(row).flatMap(records)];
 }
 
+// PixelLab's MCP server returns human-readable key/value text in content[].text
+// rather than JSON. Preserve the useful directional rows for the same result
+// parsers used by structured responses.
+function textRecords(text: string): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^\s*(south|east|north|west|south-east|south-west|north-east|north-west)\s*:\s*(https:\/\/\S+)/i);
+    if (match) rows.push({ direction: match[1].toLowerCase(), image_url: match[2].replace(/[),.;]+$/, "") });
+  }
+  return rows;
+}
+
+function textLeaves(value: unknown): string[] {
+  return values(value).filter((item): item is string => typeof item === "string");
+}
+
 export function providerCharacterId(value: unknown): string | null {
   for (const item of values(value)) {
     if (typeof item !== "string") continue;
-    if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(item)) return item;
+    if (UUID_PATTERN.test(item)) return item;
   }
   const visit = (item: unknown): string | null => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;
@@ -32,10 +53,21 @@ export function providerCharacterId(value: unknown): string | null {
     }
     return null;
   };
-  return visit(value) ?? records(value).map((row) => {
+  const keyed = visit(value) ?? records(value).map((row) => {
     const candidate = row.character_id ?? row.id;
     return typeof candidate === "string" && candidate.length >= 8 ? candidate : null;
   }).find((candidate): candidate is string => Boolean(candidate)) ?? null;
+  if (keyed) return keyed;
+
+  for (const text of textLeaves(value)) {
+    const labelled = text.match(new RegExp(`\\b(?:character[_\\s-]*id|id)\\s*[:=]\\s*["']?(${UUID})`, "i"));
+    if (labelled) return labelled[1];
+  }
+  for (const text of textLeaves(value)) {
+    const embedded = text.match(EMBEDDED_UUID_PATTERN);
+    if (embedded) return embedded[0];
+  }
+  return null;
 }
 
 export function providerStatus(value: unknown): ProviderStatus {
@@ -51,13 +83,18 @@ export function providerStatus(value: unknown): ProviderStatus {
     };
     return visit(value) ?? records(value).map((row) => typeof row.status === "string" ? row.status.toLowerCase() : "").find(Boolean) ?? "";
   })();
-  if (status === "completed" || status === "complete" || status === "ready" || status === "succeeded" || status === "success") return "completed";
-  if (status === "failed" || status === "error" || status === "cancelled" || status === "canceled" || /\b(error|failed)\b/.test(text)) return "failed";
+  const textStatus = textLeaves(value).join(" ").match(/\bstatus\s*[:=]\s*(completed|complete|ready|succeeded|success|failed|error|cancelled|canceled)\b/i)?.[1]?.toLowerCase();
+  const normalizedStatus = status || textStatus || "";
+  if (["completed", "complete", "ready", "succeeded", "success"].includes(normalizedStatus)) return "completed";
+  if (["failed", "error", "cancelled", "canceled"].includes(normalizedStatus) || /\b(error|failed)\b/.test(text)) return "failed";
   return "processing";
 }
 
 function imageUrl(value: unknown): string | null {
-  if (typeof value === "string" && /^https:\/\//.test(value)) return value;
+  if (typeof value === "string") {
+    const match = value.match(/https:\/\/[^\s<>"']+/i);
+    return match?.[0]?.replace(/[),.;]+$/, "") ?? null;
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     if (typeof child === "string" && /^https:\/\//.test(child) && /url|image|download|sheet|sprite/i.test(key)) return child;

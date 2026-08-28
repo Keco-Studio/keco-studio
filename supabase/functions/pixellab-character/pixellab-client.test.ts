@@ -122,6 +122,32 @@ Deno.test("parses JSON embedded in MCP text content", () => {
   });
 });
 
+Deno.test("parses PixelLab's human-readable create response from MCP text", () => {
+  const result = {
+    content: [{ type: "text", text: "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44\nstatus: processing (~2-3 minutes)" }],
+    isError: false,
+  };
+  assertEquals(providerCharacterId(result), "2ba78163-4be1-4e3f-8433-b2df9dddbb44");
+  assertEquals(providerStatus(result), "processing");
+});
+
+Deno.test("parses PixelLab completed rotations from human-readable MCP text", () => {
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "rotations:",
+      "  south: https://cdn.example.test/south.png?t=1",
+      "  west: https://cdn.example.test/west.png?t=1",
+    ].join("\n") }],
+  };
+  assertEquals(providerStatus(result), "completed");
+  assertEquals(characterResult(result, "south"), {
+    characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+    imageUrl: "https://cdn.example.test/south.png?t=1",
+  });
+});
+
 Deno.test("maps explicit provider quota and rate errors to stable codes", async () => {
   for (const [message, code] of [
     ["generation balance: 0", "pixellab_quota_exceeded"],
