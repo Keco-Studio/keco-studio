@@ -1,5 +1,5 @@
 import { animationArguments, characterArguments, type PixelLabCharacterClient } from "./pixellab-client.ts";
-import { animationResult, characterResult, providerCharacterId, providerStatus } from "./provider-response.ts";
+import { animationResult, characterResult, providerAnimationJobId, providerCharacterId, providerStatus } from "./provider-response.ts";
 import { PixelLabCharacterError, type AuthorizedCharacterAttempt, type CharacterCapability, type LifecycleOperation } from "./types.ts";
 
 type Dependencies = {
@@ -40,13 +40,15 @@ export async function runCharacterLifecycle(
         ? characterArguments(state.plan)
         : animationArguments(state.plan, state.sourceProviderCharacterId ?? "", facing(state));
       const result = await dependencies.submit(capability, args);
-      const providerId = semantic === "animation" ? state.sourceProviderCharacterId : providerCharacterId(result);
+      const providerId = semantic === "animation" ? providerAnimationJobId(result) : providerCharacterId(result);
       if (!providerId) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider character identity is missing");
       await dependencies.transition("queued", "generating", {
         expectedAttemptCount: state.attemptCount + 1,
         providerOperation: capability.operation, providerJobId: providerId,
         schemaFingerprint: capability.schemaFingerprint,
-        metadata: { providerCharacterId: providerId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint },
+        metadata: semantic === "animation"
+          ? { providerCharacterId: state.sourceProviderCharacterId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint }
+          : { providerCharacterId: providerId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint },
       });
       return { assetId: state.assetId, status: "generating" };
     } catch (error) {
@@ -62,9 +64,16 @@ export async function runCharacterLifecycle(
   if (input.operation === "poll") {
     if (!state.providerJobId) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider job is missing", 409);
     const result = await dependencies.poll(capability, state.providerJobId);
-    const status = state.plan.kind === "animation"
+    const status = state.plan.kind === "animation" && capability.pollOperation === "get_character"
       ? animationResult(result, state.plan.name, facing(state) === "front" ? "south" : facing(state) === "back" ? "north" : facing(state) === "left" ? "west" : "east")?.status ?? "processing"
       : providerStatus(result);
+    if (status === "failed" && state.status === "generating") {
+      await dependencies.transition("generating", "failed", {
+        expectedAttemptCount: state.attemptCount,
+        lastErrorCode: "provider_job_failed",
+        metadata: state.metadata,
+      });
+    }
     return { assetId: state.assetId, status };
   }
   if (input.operation === "validate") {
@@ -91,6 +100,8 @@ export function createLifecycleDependencies(client: PixelLabCharacterClient, ext
     ...extras,
     discover: (semantic) => client.discover(semantic),
     submit: (capability, args) => client.callTool(capability.operation, args),
-    poll: (capability, providerJobId) => client.callTool(capability.pollOperation, { character_id: providerJobId }),
+    poll: (capability, providerJobId) => capability.pollOperation === "get_background_job"
+      ? client.getBackgroundJob(providerJobId)
+      : client.callTool(capability.pollOperation, { character_id: providerJobId }),
   };
 }

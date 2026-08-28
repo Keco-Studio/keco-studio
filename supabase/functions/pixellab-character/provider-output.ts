@@ -15,12 +15,21 @@ async function download(url: string, fetcher: typeof fetch): Promise<Uint8Array>
 }
 
 export async function downloadProviderOutput(
-  result: { imageUrl: string | null; frameUrls: string[] },
+  result: { imageUrl: string | null; frameUrls: string[]; frameData?: string[] },
   fetcher: typeof fetch = fetch,
 ): Promise<Uint8Array> {
   if (result.imageUrl) return download(result.imageUrl, fetcher);
-  if (!result.frameUrls.length || result.frameUrls.length > 16) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider animation frames are missing", 422);
+  const frameSources = result.frameUrls.length ? result.frameUrls : result.frameData ?? [];
+  if (!frameSources.length || frameSources.length > 16) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider animation frames are missing", 422);
   const frames: Uint8Array[] = [];
-  for (const url of result.frameUrls) frames.push(await download(url, fetcher));
+  if (result.frameUrls.length) {
+    for (const url of result.frameUrls) frames.push(await download(url, fetcher));
+  } else {
+    for (const encoded of frameSources) {
+      const raw = encoded.startsWith("data:") ? encoded.slice(encoded.indexOf(",") + 1) : encoded;
+      try { frames.push(Uint8Array.from(atob(raw), (char) => char.charCodeAt(0))); }
+      catch { throw new PixelLabCharacterError("pixellab_invalid_response", "Provider animation frame is invalid", 422); }
+    }
+  }
   return packHorizontal(frames);
 }

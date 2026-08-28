@@ -155,7 +155,7 @@ type Dependencies = {
 };
 
 const FEE_NOTICE = 'PixelLab character asset generation is a paid operation and may consume provider credits. Confirm only after reviewing this exact asset plan.';
-const RETRY_ERRORS = new Set(['pixellab_rate_limited', 'pixellab_quota_exceeded', 'validation_failed']);
+const RETRY_ERRORS = new Set(['pixellab_rate_limited', 'pixellab_quota_exceeded', 'validation_failed', 'provider_job_failed']);
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
