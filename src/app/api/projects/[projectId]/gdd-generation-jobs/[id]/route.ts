@@ -84,11 +84,14 @@ export const DELETE = withAuth(async function DELETE(_request, { params }: Param
     if (access.role !== 'admin' && access.role !== 'editor') {
       return NextResponse.json({ error: 'Cancelling a GDD generation job requires editor or admin permission.' }, { status: 403 });
     }
-    const current = await getPublicGddGenerationJob(supabase, id);
+    // Project authorization is checked above. Read the bounded job with the
+    // service client so private-table column grants cannot break cancellation.
+    const serviceClient = getSupabaseServiceRoleClient();
+    const current = await getPublicGddGenerationJob(serviceClient, id);
     if (!current || current.project_id !== projectId) {
       return NextResponse.json({ error: 'GDD generation job not found.' }, { status: 404 });
     }
-    const job = await cancelGddGenerationJob(getSupabaseServiceRoleClient(), id);
+    const job = await cancelGddGenerationJob(serviceClient, id);
     return NextResponse.json({ job });
   } catch (error) {
     if (isGddSchemaUnavailable(error)) {

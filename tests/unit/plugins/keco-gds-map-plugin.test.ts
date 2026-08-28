@@ -97,6 +97,29 @@ describe('Keco GDS and Create Map plugin skills', () => {
     }
   });
 
+  it('routes project GDD creation through the bound GDS workflow', () => {
+    for (const pluginRoot of pluginRoots) {
+      const source = read(skillPath(pluginRoot, skillNames[0]));
+      const description = source.match(/^description: ([^\n]+)$/m)?.[1] ?? '';
+
+      expect(description).toMatch(/(?:create|generate)[\s\S]*project GDD/i);
+      expect(source).toMatch(/project GDD[\s\S]{0,240}(?:must not|never)[\s\S]{0,160}`create_document`/i);
+      expect(source).toMatch(/(?:must not|never)[\s\S]{0,160}(?:manual|handwritten)[\s\S]{0,160}(?:fallback|replacement)/i);
+    }
+
+    const codexManifest = JSON.parse(
+      read(path.join(pluginRoots[1], '.codex-plugin', 'plugin.json')),
+    ) as { interface?: { defaultPrompt?: string[] } };
+    expect(codexManifest.interface?.defaultPrompt).toEqual(
+      expect.arrayContaining([expect.stringMatching(/generate[\s\S]*project GDD/i)]),
+    );
+
+    const codexAgent = read(
+      path.join(pluginRoots[1], 'skills', skillNames[0], 'agents', 'openai.yaml'),
+    );
+    expect(codexAgent).toMatch(/default_prompt:[^\n]*project GDD/i);
+  });
+
   it('requires a separate paid confirmation before map generation', () => {
     for (const pluginRoot of pluginRoots) {
       const source = read(skillPath(pluginRoot, skillNames[1]));

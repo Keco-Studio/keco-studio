@@ -1,6 +1,6 @@
 ---
 name: keco-manage-game-design-system
-description: Use when a user asks to discover, create, generate, version, inspect, or bind a Keco Game Design System; not for deleting design systems or general document and table editing.
+description: Use when a user asks to discover, create, generate, version, inspect, or bind a Keco Game Design System, or to create or generate a Keco project GDD; not for deleting design systems or general document and table editing.
 ---
 
 # Manage Keco Game Design Systems
@@ -21,6 +21,10 @@ Required state sequence:
 For an end-to-end project GDD request, use the extended sequence:
 
 `DISCOVER -> READ_GDS -> PLAN -> MUTATE_GDS -> POLL_GDS -> BIND -> GENERATE_GDD -> POLL_GDD -> READ_GDD -> REPORT`
+
+For a project GDD, never use `create_document`; never use a manual or
+handwritten document as a fallback or replacement. If this sequence is blocked,
+report the verified checkpoint and resume from the blocked state.
 
 1. DISCOVER: inspect available tools. On an account endpoint, use
    `list_projects` only when a project binding is involved. Use

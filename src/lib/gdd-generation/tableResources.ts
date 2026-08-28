@@ -132,9 +132,9 @@ export function normalizeTableLogicalKey(table: string): string {
  * ResourceReference chips.
  *
  * Prefer an existing series library ID when the Game Design System already owns
- * that logical table. Otherwise seed from `seriesSeed` (design system id) so
- * later generations produce the same IDs instead of job-scoped ones that break
- * references after resource evolution reuses the stable library.
+ * that logical table. Otherwise seed from the caller's project-scoped series
+ * identity so later generations produce the same IDs without colliding when a
+ * Game Design System is shared across projects.
  */
 export function materializeTableResources(
   seriesSeed: string,

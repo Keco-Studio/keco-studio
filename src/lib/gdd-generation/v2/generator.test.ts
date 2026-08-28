@@ -87,7 +87,14 @@ describe('GDD v2 direct Markdown generator', () => {
   });
 
   it('sends the pinned design document, policy, creative brief, and project source context', async () => {
-    const complete = jest.fn(async () => '# GDD\n\n## Game Overview\nBody text.');
+    const complete = jest.fn(async () => [
+      '# GDD',
+      '',
+      '## Game Overview',
+      'Body text.',
+      '<!-- KECO_TABLE_REF Skills -->',
+      '<!-- KECO_TABLE_PLAN [{"table":"Skills","purpose":"Actions.","fields":["Private Field"],"rows":[{"name":"Basic","values":{"Private Field":"Basic"}}]}] -->',
+    ].join('\n'));
     const withSource = {
       ...input,
       rules: { ...input.rules, tableGuidance: [{ table: 'Skills', purpose: 'Actions.', fields: ['Private Field'] }] },
@@ -222,6 +229,72 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.review.repairRound).toBe(1);
   });
 
+  it('repairs guided tables when the model writes Markdown tables without resource markers', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: [{
+          table: 'Wastes',
+          purpose: 'Defines collectible waste.',
+          fields: ['id', 'name', 'weight'],
+        }],
+      },
+    };
+    const plan = {
+      table: 'Wastes',
+      purpose: 'Defines collectible waste.',
+      fields: ['id', 'name', 'weight'],
+      rows: [{
+        name: 'Plastic Bottle',
+        values: { id: 'waste-plastic-bottle', name: 'Plastic Bottle', weight: 1 },
+      }],
+    };
+    const complete = jest.fn(async () => {
+      if (complete.mock.calls.length === 1) {
+        return [
+          '# GDD',
+          '## Waste Data',
+          '| id | name | weight |',
+          '| --- | --- | --- |',
+          '| waste-plastic-bottle | Plastic Bottle | 1 |',
+        ].join('\n');
+      }
+      return `<!-- KECO_TABLE_PLAN ${JSON.stringify([plan])} -->`;
+    });
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([plan]);
+    expect(result.review.repairRound).toBe(1);
+    expect(result.tablePlanWarning).toBeNull();
+  });
+
+  it('rejects a guided GDD when the missing table repair produces no usable plan', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: [{
+          table: 'Wastes',
+          purpose: 'Defines collectible waste.',
+          fields: ['id', 'name', 'weight'],
+        }],
+      },
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1
+        ? '# GDD\n\n## Waste Data\n| id | name | weight |\n| --- | --- | --- |'
+        : '<!-- KECO_TABLE_PLAN [] -->'
+    ));
+
+    await expect(generateGddMarkdownV2(guidedInput, complete))
+      .rejects.toMatchObject({
+        name: 'GddV2ResourceRecoveryError',
+        message: expect.stringMatching(/required guided tables.*Wastes/i),
+      });
+  });
+
   it('starts dialogue planning as soon as a concrete scene event arrives in the GDD stream', async () => {
     const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
     async function* stream() {
@@ -260,6 +333,60 @@ describe('GDD v2 direct Markdown generator', () => {
 
     expect(result.dialoguePlans).toEqual([]);
     expect(planScene).not.toHaveBeenCalled();
+  });
+
+  it('does not treat an explicit narrative exclusion as narrative intent', async () => {
+    const excludedInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'v1 has no story branches; focus on underwater waste collection and gear upgrades.',
+    };
+    const complete = jest.fn(async () => '[]');
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: '# GDD\n\n## Core Loop\nCollect waste and return to the buoy.' };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(excludedInput, { stream, complete, planScene });
+
+    expect(result.dialoguePlans).toEqual([]);
+    expect(complete).not.toHaveBeenCalled();
+    expect(planScene).not.toHaveBeenCalled();
+  });
+
+  it('recovers dialogue plans for a narrative GDS when a concrete scene has no marker', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'A narrative adventure about rebuilding a coastal town.',
+      rules: { ...input.rules, genres: ['Narrative adventure'] },
+    };
+    const recoveredEvent: DialogueSceneEvent = {
+      chapterKey: 'harbor-arrival',
+      title: 'Harbor Arrival',
+      scene: 'Mira meets the harbor master and asks permission to launch the cleanup boat.',
+      participants: ['Mira', 'Harbor Master'],
+      choices: [],
+      consequences: 'The harbor master grants access to the cleanup route.',
+    };
+    const complete = jest.fn(async () => JSON.stringify([recoveredEvent]));
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield {
+        type: 'text_delta' as const,
+        content: [
+          '# GDD',
+          '## Harbor Arrival',
+          'Mira approaches the harbor master beside the cleanup boat.',
+          'Mira: May I launch before the tide turns?',
+          'Harbor Master: Clear the eastern route first, then go.',
+        ].join('\n'),
+      };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(narrativeInput, { stream, complete, planScene });
+
+    expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });
 
   it('runs at most three scene planners concurrently and preserves encounter order', async () => {

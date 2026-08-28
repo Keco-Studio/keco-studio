@@ -11,6 +11,7 @@ import {
 import type { DialoguePlan } from '../dialogueResources';
 import {
   DialogueSceneStreamParser,
+  dialogueSceneEventSchema,
   dialogueSceneShapeExample,
   type DialogueSceneEvent,
 } from './dialogueSceneStream';
@@ -38,6 +39,13 @@ export class GddV2GenerationValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'GddV2GenerationValidationError';
+  }
+}
+
+export class GddV2ResourceRecoveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GddV2ResourceRecoveryError';
   }
 }
 
@@ -222,7 +230,7 @@ function normalizeGeneratedMarkdown(raw: string, projectName: string): {
 
 async function repairMissingTablePlans(
   markdown: string,
-  refNames: string[],
+  requiredTables: Array<{ table: string; purpose?: string; fields?: string[] }>,
   complete: Completion,
   signal?: AbortSignal,
 ): Promise<{ tablePlans: GeneratedTablePlan[]; warning: string | null }> {
@@ -233,13 +241,14 @@ async function repairMissingTablePlans(
       'Return ONLY one HTML comment with valid JSON (double-quoted keys/strings, no trailing commas, no code fences):',
       `<!-- KECO_TABLE_PLAN ${tablePlanShapeExample} -->`,
       'Include exactly one plan for each required table name, matching spelling and casing.',
+      'When purpose and fields are supplied for a required table, preserve them exactly and in the same field order.',
       'Every table must contain at least one concrete row drawn from entities named in the GDD.',
       'Do not invent table names that are not in the required list. Do not return Markdown prose.',
     ].join('\n'),
   }, {
     role: 'user',
     content: [
-      `Required table names: ${JSON.stringify(refNames)}`,
+      `Required tables: ${JSON.stringify(requiredTables)}`,
       'GDD markdown:',
       markdown.slice(0, 24_000),
     ].join('\n\n'),
@@ -258,12 +267,145 @@ async function repairMissingTablePlans(
       warning: extracted.warning ?? 'Table plan repair returned no usable plans.',
     };
   }
-  const wanted = new Set(refNames.map((name) => name.toLocaleLowerCase()));
+  const wanted = new Set(requiredTables.map(({ table }) => table.toLocaleLowerCase()));
   const matched = extracted.tablePlans.filter((plan) => wanted.has(plan.table.toLocaleLowerCase()));
   return {
     tablePlans: matched.length > 0 ? matched : extracted.tablePlans,
     warning: null,
   };
+}
+
+function sameStringList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+type RequiredTableGuidance = { table: string; purpose: string; fields: string[] };
+
+function requiredTableGuidance(input: GddGenerationRequestV2): RequiredTableGuidance[] {
+  return input.rules.tableGuidance.map((guidance) => {
+    if (!guidance.table || !guidance.purpose || !guidance.fields || guidance.fields.length === 0) {
+      throw new GddV2GenerationValidationError('Pinned Game Design System contains incomplete table guidance.');
+    }
+    return {
+      table: guidance.table,
+      purpose: guidance.purpose,
+      fields: guidance.fields,
+    };
+  });
+}
+
+function tablePlanMatchesGuidance(
+  plan: GeneratedTablePlan,
+  guidance: RequiredTableGuidance,
+): boolean {
+  return plan.table === guidance.table
+    && plan.purpose === guidance.purpose
+    && sameStringList(plan.fields, guidance.fields);
+}
+
+function missingGuidedTables(
+  input: GddGenerationRequestV2,
+  plans: GeneratedTablePlan[],
+): RequiredTableGuidance[] {
+  return requiredTableGuidance(input).filter((guidance) => (
+    !plans.some((plan) => tablePlanMatchesGuidance(plan, guidance))
+  ));
+}
+
+function mergeRepairedTablePlans(
+  current: GeneratedTablePlan[],
+  repaired: GeneratedTablePlan[],
+  targets: Array<{ table: string }>,
+): GeneratedTablePlan[] {
+  const replaced = new Set(targets.map(({ table }) => table.toLocaleLowerCase()));
+  return [
+    ...current.filter((plan) => !replaced.has(plan.table.toLocaleLowerCase())),
+    ...repaired,
+  ];
+}
+
+const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship)/i;
+const NARRATIVE_EXCLUSION = /(?:no|without|exclude|avoid)[^.!?;\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship)/i;
+
+function hasPositiveNarrativeSignal(value: string): boolean {
+  return value
+    .split(/[.!?;\n]+/)
+    .some((segment) => NARRATIVE_INTENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
+}
+
+function hasNarrativeIntent(input: GddGenerationRequestV2): boolean {
+  return hasPositiveNarrativeSignal([
+    ...input.rules.genres,
+    ...input.rules.philosophies,
+    input.rules.suitableFor,
+    input.creativeBrief ?? '',
+    input.designDocument.gameBackground ?? '',
+    input.designDocument.playerFantasy,
+    input.designDocument.decisionStructure,
+    input.designDocument.contentModel,
+    input.designDocument.experiencePresentation,
+  ].join('\n'));
+}
+
+function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
+  const trimmed = raw.trim()
+    .replace(/^```(?:json)?[ \t]*(?:\r?\n|$)/i, '')
+    .replace(/(?:\r?\n)?```[ \t]*$/i, '')
+    .trim();
+  let value: unknown;
+  try {
+    value = JSON.parse(trimmed);
+  } catch (error) {
+    throw new GddV2ResourceRecoveryError(
+      `Dialogue scene recovery is not JSON: ${error instanceof Error ? error.message : 'parse failed'}`,
+    );
+  }
+  const parsed = dialogueSceneEventSchema.array().max(20).safeParse(value);
+  if (!parsed.success) {
+    throw new GddV2ResourceRecoveryError(`Dialogue scene recovery failed validation: ${parsed.error.message}`);
+  }
+  return parsed.data;
+}
+
+async function recoverMissingDialoguePlans(
+  markdown: string,
+  dependencies: Required<GddV2GeneratorDependencies>,
+  signal?: AbortSignal,
+): Promise<DialoguePlan[]> {
+  const raw = await dependencies.complete([{
+    role: 'system',
+    content: [
+      'You recover concrete dialogue scene events omitted from a narrative game design document.',
+      'Return one JSON array only, without Markdown fences or commentary.',
+      `Each item must have this exact shape: ${dialogueSceneShapeExample}`,
+      'Extract only concrete chapters, tasks, meetings, confrontations, or choice scenes that require spoken interaction.',
+      'Do not extract abstract dialogue-system descriptions or illustrative examples.',
+      'Preserve scene order and return an empty array only when the GDD contains no concrete spoken scene.',
+    ].join('\n'),
+  }, {
+    role: 'user',
+    content: `GDD markdown:\n\n${markdown.slice(0, 32_000)}`,
+  }], {
+    ...gddV2LlmOptions(6_000),
+    ...(signal ? { signal } : {}),
+  });
+  const events = parseDialogueRecoveryEvents(raw);
+  if (events.length === 0) {
+    throw new GddV2ResourceRecoveryError(
+      'Narrative GDD produced no dialogue scene resources after one recovery pass.',
+    );
+  }
+  const { controller, unlink } = linkedAbortController(signal);
+  const runWithSlot = createSlotRunner(3, controller.signal);
+  try {
+    return await Promise.all(events.map((event) => runWithSlot(() => dependencies.planScene(
+      { event, gddContext: plannerContext(markdown) },
+      { complete: dependencies.complete },
+      { signal: controller.signal },
+    ))));
+  } finally {
+    unlink();
+  }
 }
 
 export async function generateGddMarkdownV2(
@@ -294,18 +436,28 @@ export async function generateGddMarkdownV2(
   let normalized = normalizeGeneratedMarkdown(generated.raw, input.projectName);
   let repairRound = 0;
   const refNames = listTableRefNames(normalized.markdown);
-  if (normalized.tablePlans.length === 0 && refNames.length > 0) {
+  const missingGuidance = missingGuidedTables(input, normalized.tablePlans);
+  const requiredTableRepairs = missingGuidance.length > 0
+    ? missingGuidance
+    : normalized.tablePlans.length === 0
+      ? refNames.map((table) => ({ table }))
+      : [];
+  if (requiredTableRepairs.length > 0) {
     repairRound = 1;
     const repaired = await repairMissingTablePlans(
       normalized.markdown,
-      refNames,
+      requiredTableRepairs,
       dependencies.complete,
       runtime.signal,
     );
     if (repaired.tablePlans.length > 0) {
       normalized = {
         ...normalized,
-        tablePlans: repaired.tablePlans,
+        tablePlans: mergeRepairedTablePlans(
+          normalized.tablePlans,
+          repaired.tablePlans,
+          requiredTableRepairs,
+        ),
         tablePlanWarning: null,
       };
     } else {
@@ -318,14 +470,31 @@ export async function generateGddMarkdownV2(
     }
   }
 
+  const unresolvedGuidance = missingGuidedTables(input, normalized.tablePlans);
+  if (unresolvedGuidance.length > 0) {
+    throw new GddV2ResourceRecoveryError(
+      `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`,
+    );
+  }
+
+  let dialoguePlans = generated.dialoguePlans;
+  if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
+    repairRound = Math.max(repairRound, 1);
+    dialoguePlans = await recoverMissingDialoguePlans(
+      normalized.markdown,
+      dependencies,
+      runtime.signal,
+    );
+  }
+
   return {
     ...normalized,
-    dialoguePlans: generated.dialoguePlans,
+    dialoguePlans,
     dialoguePlanWarning: null,
     review: reviewSchema.parse({
       version: 2,
       summary: repairRound > 0
-        ? 'Completed streaming Markdown generation with a table-plan repair pass.'
+        ? 'Completed streaming Markdown generation with a resource recovery pass.'
         : 'Completed streaming Markdown generation with local document and dialogue validation.',
       status: 'pass',
       repairRound,

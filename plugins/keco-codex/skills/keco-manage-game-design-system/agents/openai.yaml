@@ -1,8 +1,8 @@
 interface:
-  display_name: "Manage Keco Game Design Systems"
-  short_description: "Create, version, and bind Keco design systems"
+  display_name: "Manage Keco GDS and Project GDDs"
+  short_description: "Manage Keco design systems and generate project GDDs"
   brand_color: "#0F766E"
-  default_prompt: "Use $keco-manage-game-design-system to create or update my Keco Game Design System and verify the result."
+  default_prompt: "Use $keco-manage-game-design-system to create or update my Keco Game Design System, generate the project GDD from its bound version, and verify the result."
 dependencies:
   tools:
     - type: "mcp"

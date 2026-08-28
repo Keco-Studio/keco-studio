@@ -48,6 +48,10 @@ type WorkerDependencies = {
   fail: typeof failGddGenerationJob;
 };
 
+function tableSeriesSeed(job: Pick<GddGenerationJob, 'project_id' | 'design_system_id'>): string {
+  return `${job.project_id}:${job.design_system_id}`;
+}
+
 const defaultDependencies: WorkerDependencies = {
   heartbeat: heartbeatGddGenerationJob,
   revalidateContext: revalidateGddJobContext,
@@ -189,7 +193,7 @@ export async function persistGeneratedGddDocument(
     job.design_system_id,
   );
   const tableResources = sanitizeTableResourcesForPersistence(
-    materializeTableResources(job.design_system_id, gdd.productionTables, existingLibraryIds),
+    materializeTableResources(tableSeriesSeed(job), gdd.productionTables, existingLibraryIds),
   );
   const dialogueResources = materializeDialogueResources(job.id, gdd.dialogueChapters ?? []);
   const completedMarkdown = tableResources.length > 0
@@ -254,7 +258,7 @@ export async function persistGeneratedGddV2Document(
     job.design_system_id,
   );
   const tableResources = sanitizeTableResourcesForPersistence(
-    materializeTableResources(job.design_system_id, tablePlans, existingLibraryIds),
+    materializeTableResources(tableSeriesSeed(job), tablePlans, existingLibraryIds),
   );
   const dialogueResources = materializeDialogueResources(job.id, dialoguePlans);
   const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
@@ -446,7 +450,7 @@ export async function processClaimedGddJob(
     }
     const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
-    const tableResources = materializeTableResources(job.design_system_id, generated.productionTables);
+    const tableResources = materializeTableResources(tableSeriesSeed(job), generated.productionTables);
     const markdown = renderGddMarkdown(generated, { input: job.input, tableResources });
     validateSanctionedMdx(markdown);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');

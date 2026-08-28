@@ -167,7 +167,7 @@ describe('GDD generation worker', () => {
       [{ table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }] }],
     );
     const args = rpc.mock.calls[0][1] as Record<string, unknown>;
-    const expected = materializeTableResources(generationInput.designSystemId, [{
+    const expected = materializeTableResources(`${generationInput.projectId}:${generationInput.designSystemId}`, [{
       table: 'Skills', purpose: 'Actions.', fields: ['name'], rows: [{ name: 'Basic', values: { name: 'Basic' } }],
     }])[0]!;
     expect(args.p_markdown).toContain('<ResourceReference kind="table-row"');
@@ -183,6 +183,37 @@ describe('GDD generation worker', () => {
         rows: [expect.objectContaining({ values: { name: 'Basic' } })],
       })],
     }));
+  });
+
+  it('scopes newly materialized table IDs to the project', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'GDD' }],
+      error: null,
+    }));
+    const tablePlans = [{
+      table: 'Skills', purpose: 'Actions.', fields: ['name'],
+      rows: [{ name: 'Basic', values: { name: 'Basic' } }],
+    }];
+    const secondProjectId = '44444444-4444-4444-8444-444444444444';
+
+    for (const projectId of [generationInput.projectId, secondProjectId]) {
+      await persistGeneratedGddV2Document(
+        { rpc } as never,
+        {
+          ...job,
+          project_id: projectId,
+          input: { ...generationInput, projectId, contractVersion: 2, mode: 'quick', language: 'zh-CN' },
+        } as GddGenerationJob,
+        'worker-1',
+        '# GDD\n\n<!-- KECO_TABLE_REF Skills -->\n',
+        { version: 2, summary: 'pass', status: 'pass', issues: [] },
+        tablePlans,
+      );
+    }
+
+    const firstResources = (rpc.mock.calls[0][1] as Record<string, unknown>).p_table_resources as Array<{ id: string }>;
+    const secondResources = (rpc.mock.calls[1][1] as Record<string, unknown>).p_table_resources as Array<{ id: string }>;
+    expect(firstResources[0]!.id).not.toBe(secondResources[0]!.id);
   });
 
   it('reuses series library IDs when rematerializing table ResourceReferences', async () => {

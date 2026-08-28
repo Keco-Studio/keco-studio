@@ -178,6 +178,7 @@ describe('project GDD generation routes', () => {
     }), params);
 
     expect(response.status).toBe(200);
+    expect(getPublicGddGenerationJob).toHaveBeenCalledWith(serviceClient, JOB_ID);
     expect(cancelGddGenerationJob).toHaveBeenCalledWith(serviceClient, JOB_ID);
     expect(await response.json()).toEqual({ job: expect.objectContaining({ status: 'failed', phase: 'failed' }) });
   });

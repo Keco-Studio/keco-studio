@@ -30,7 +30,7 @@ skills/
   keco-create-map/                   complete persisted V3 map + paid confirmation
   keco-develop-godot-slice/         one bounded, evaluated Godot slice (V1)
   keco-develop-godot-slice-v2/      document-driven multi-Slice workflow (canonical)
-  keco-manage-game-design-system/   discover, create, version, and bind GDS data
+  keco-manage-game-design-system/   manage GDS data and generate project GDDs
   pixellab-map-assets/              Keco-first map and art resources
 ```
 
@@ -55,8 +55,9 @@ All are offline and contact no service.
 
 `keco-manage-game-design-system` discovers stable system and version IDs,
 creates or generates systems, polls jobs, creates immutable versions, changes a
-project binding, and verifies every mutation with a fresh MCP read. It never
-deletes a system or version.
+project binding, generates the project GDD from the bound version, and verifies
+every mutation with a fresh MCP read. It never creates a project GDD as a
+generic document and never deletes a system or version.
 
 `keco-create-map` creates and reviews a complete persisted V3 map. Paid image
 generation always pauses after `prepare_map_generation`, shows the exact fee
