@@ -324,12 +324,12 @@ function mergeRepairedTablePlans(
   ];
 }
 
-const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship|\u53d9\u4e8b|\u5267\u60c5|\u5bf9\u8bdd|\u5bf9\u767d|\u89c6\u89c9\u5c0f\u8bf4|\u89d2\u8272\u5173\u7cfb)/i;
-const NARRATIVE_EXCLUSION = /(?:no|without|exclude|avoid|\u7981\u6b62|\u4e0d\u5305\u542b|\u6392\u9664|\u907f\u514d|\u65e0)[^.!?。！？;；\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship|\u53d9\u4e8b|\u5267\u60c5|\u5bf9\u8bdd|\u5bf9\u767d|\u89c6\u89c9\u5c0f\u8bf4|\u89d2\u8272\u5173\u7cfb)/i;
+const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship)/i;
+const NARRATIVE_EXCLUSION = /(?:no|without|exclude|avoid)[^.!?;\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship)/i;
 
 function hasPositiveNarrativeSignal(value: string): boolean {
   return value
-    .split(/[.!?。！？;；\n]+/)
+    .split(/[.!?;\n]+/)
     .some((segment) => NARRATIVE_INTENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
 }
 

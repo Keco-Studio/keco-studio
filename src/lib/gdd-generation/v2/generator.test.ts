@@ -338,7 +338,7 @@ describe('GDD v2 direct Markdown generator', () => {
   it('does not treat an explicit narrative exclusion as narrative intent', async () => {
     const excludedInput: GddGenerationRequestV2 = {
       ...input,
-      creativeBrief: '\u9996\u7248\u7981\u6b62\u5267\u60c5\u5206\u652f\uff0c\u91cd\u70b9\u662f\u6d77\u5e95\u5783\u573e\u6536\u96c6\u4e0e\u88c5\u5907\u5347\u7ea7\u3002',
+      creativeBrief: 'v1 has no story branches; focus on underwater waste collection and gear upgrades.',
     };
     const complete = jest.fn(async () => '[]');
     const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
