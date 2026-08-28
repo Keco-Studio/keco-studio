@@ -65,7 +65,11 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return jsonResponse({}, 204);
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
   try { return await handle(request); } catch (error) {
-    if (error instanceof PixelLabCharacterError) return jsonResponse({ error: error.message, code: error.code }, error.status);
+    if (error instanceof PixelLabCharacterError) {
+      // Keep provider diagnostics in function logs without exposing payloads or credentials.
+      console.error("[pixellab-character] provider operation failed", { code: error.code, status: error.status });
+      return jsonResponse({ error: error.message, code: error.code }, error.status);
+    }
     console.error("[pixellab-character] failed", { name: error instanceof Error ? error.name : "UnknownError" });
     return jsonResponse({ error: "PixelLab character operation failed", code: "pixellab_upstream" }, 502);
   }
