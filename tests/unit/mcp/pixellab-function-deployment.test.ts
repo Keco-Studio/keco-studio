@@ -49,4 +49,34 @@ describe("production paid-generation Edge Function deployment", () => {
       executableLines.indexOf(commands[2]),
     );
   });
+
+  it("publishes one service-role credential to Vercel and Supabase", () => {
+    const vercelJob = workflowJob("deploy");
+    const productionJob = workflowJob("deploy-mcp-function");
+
+    expect(vercelJob).toContain(
+      "- name: Sync production PixelLab service role",
+    );
+    expect(vercelJob).toContain(
+      "SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+    );
+    expect(vercelJob).toContain(
+      "vercel env add SUPABASE_SERVICE_ROLE_KEY production --force",
+    );
+    expect(
+      vercelJob.indexOf("Sync production PixelLab service role"),
+    ).toBeLessThan(vercelJob.indexOf("Pull Vercel Environment Information"));
+
+    expect(productionJob).toContain(
+      "SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+    );
+    expect(productionJob).toContain(
+      'KECO_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"',
+    );
+    expect(
+      productionJob.indexOf('KECO_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"'),
+    ).toBeLessThan(
+      productionJob.indexOf("supabase functions deploy pixellab-character"),
+    );
+  });
 });
