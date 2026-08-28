@@ -6,23 +6,17 @@ export const DIRECT_MAP_COLLISION_VALUES = [0, 1] as const;
 export type DirectMapCollisionCell = typeof DIRECT_MAP_COLLISION_VALUES[number];
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
-const SUPPORTED_GRIDS = new Set(['64x64', '86x48', '48x86']);
+const MAX_GRID_AXIS = 86;
+const MAX_GRID_CELLS = 4_128;
 
 export const DirectMapCollisionGridSchema = z.object({
   version: z.literal(1),
   cellSize: z.literal(DIRECT_MAP_COLLISION_CELL_SIZE),
-  columns: z.number().int().positive(),
-  rows: z.number().int().positive(),
-  cells: z.array(z.union([z.literal(0), z.literal(1)])),
+  columns: z.number().int().positive().max(MAX_GRID_AXIS),
+  rows: z.number().int().positive().max(MAX_GRID_AXIS),
+  cells: z.array(z.union([z.literal(0), z.literal(1)])).max(MAX_GRID_CELLS),
   imageSha256: z.string().regex(SHA256_PATTERN),
 }).strict().superRefine((grid, context) => {
-  if (!SUPPORTED_GRIDS.has(`${grid.columns}x${grid.rows}`)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['columns'],
-      message: 'Collision grid dimensions are not supported',
-    });
-  }
   if (grid.cells.length !== grid.columns * grid.rows) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

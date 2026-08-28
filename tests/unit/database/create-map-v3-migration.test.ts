@@ -18,9 +18,14 @@ describe('Create Map V3 direct-image migration', () => {
   it('expands the validator to every native profile and generalizes collision-grid dimensions', () => {
     for (const profile of DIRECT_MAP_PROFILE_VALUES) {
       const [width, height] = profile.split('x');
-      expect(nativeSizesSql).toContain(`('${width}', '${height}')`);
+      expect(nativeSizesSql).toContain(`(${width}, ${height})`);
       expect(edgeFunctionSource).toContain(`"${profile}"`);
     }
+    for (const path of ['map,width', 'map,height', 'size,width', 'size,height', 'mapImage,width', 'mapImage,height']) {
+      const [object, field] = path.split(',');
+      expect(nativeSizesSql).toMatch(new RegExp(`jsonb_typeof\\(p_(?:plan|scene) #> '\\{${object},${field}\\}'\\) is distinct from 'number'`, 'i'));
+    }
+    expect(nativeSizesSql).toMatch(/map and scene dimensions must be integers/i);
     expect(nativeSizesSql).toMatch(/v_columns \* 8 <> \(p_scene #>> '\{size,width\}'\)::integer/i);
     expect(nativeSizesSql).toMatch(/v_rows \* 8 <> \(p_scene #>> '\{size,height\}'\)::integer/i);
     expect(nativeSizesSql).not.toMatch(/v_columns, v_rows\) not in/i);

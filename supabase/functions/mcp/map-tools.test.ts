@@ -154,6 +154,78 @@ Deno.test("Map tools register strict account and legacy project schemas", () => 
   assertEquals(advance.config.annotations.readOnlyHint, false);
 });
 
+Deno.test("Map draft updates accept every native 8px collision grid", () => {
+  const profiles = [
+    [256, 256],
+    [384, 384],
+    [512, 512],
+    [512, 288],
+    [512, 320],
+    [512, 384],
+    [576, 384],
+    [624, 416],
+    [640, 320],
+    [688, 384],
+    [288, 512],
+    [320, 512],
+    [384, 512],
+    [384, 576],
+    [416, 624],
+    [320, 640],
+    [384, 688],
+  ] as const;
+  const { server, tools } = recordingServer();
+  registerMapTools(server, projectContext, { callApp: async () => ({}) });
+  const update = tools.find((tool) => tool.name === "update_map_draft")!;
+
+  for (const [width, height] of profiles) {
+    const columns = width / 8;
+    const rows = height / 8;
+    const input = {
+      mapId: IDS.mapId,
+      revisionId: IDS.revisionId,
+      saveVersion: 0,
+      plan: {
+        schemaVersion: 3,
+        name: "Native map",
+        summary: "Native map summary",
+        map: { width, height },
+        description: "Top-down native map",
+        references: [],
+        styleReference: null,
+        generation: {
+          provider: "pixellab",
+          operation: "create_image_pro",
+          noBackground: false,
+          seed: null,
+        },
+      },
+      scene: {
+        schemaVersion: 3,
+        size: { width, height },
+        mapImage: null,
+        collisionGrid: {
+          version: 1,
+          cellSize: 8,
+          columns,
+          rows,
+          cells: Array.from({ length: columns * rows }, () => 0),
+          imageSha256: fingerprint,
+        },
+        canvas: { zoom: 1, panX: 0, panY: 0 },
+      },
+    };
+    assertEquals(update.config.inputSchema.safeParse(input).success, true);
+    assertEquals(
+      update.config.inputSchema.safeParse({
+        ...input,
+        scene: { ...input.scene, size: { width: width + 8, height } },
+      }).success,
+      false,
+    );
+  }
+});
+
 Deno.test("viewer Map tools expose provider-free generation reads only", () => {
   const { server, tools } = recordingServer();
   registerMapTools(server, { ...projectContext, role: "viewer" }, {

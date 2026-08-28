@@ -12,29 +12,45 @@ declare
   v_validation_plan jsonb;
   v_validation_scene jsonb;
 begin
+  if jsonb_typeof(p_plan #> '{map,width}') is distinct from 'number'
+    or jsonb_typeof(p_plan #> '{map,height}') is distinct from 'number'
+    or jsonb_typeof(p_scene #> '{size,width}') is distinct from 'number'
+    or jsonb_typeof(p_scene #> '{size,height}') is distinct from 'number' then
+    raise exception 'V3 map and scene dimensions must be numbers' using errcode = '22023';
+  end if;
+  if (p_plan #>> '{map,width}')::numeric <> trunc((p_plan #>> '{map,width}')::numeric)
+    or (p_plan #>> '{map,height}')::numeric <> trunc((p_plan #>> '{map,height}')::numeric)
+    or (p_scene #>> '{size,width}')::numeric <> trunc((p_scene #>> '{size,width}')::numeric)
+    or (p_scene #>> '{size,height}')::numeric <> trunc((p_scene #>> '{size,height}')::numeric) then
+    raise exception 'V3 map and scene dimensions must be integers' using errcode = '22023';
+  end if;
+
   if (
-    coalesce(p_plan #>> '{map,width}', ''),
-    coalesce(p_plan #>> '{map,height}', '')
+    (p_plan #>> '{map,width}')::numeric,
+    (p_plan #>> '{map,height}')::numeric
   ) not in (
-    ('256', '256'), ('384', '384'), ('512', '512'),
-    ('512', '288'), ('512', '320'), ('512', '384'), ('576', '384'),
-    ('624', '416'), ('640', '320'), ('688', '384'),
-    ('288', '512'), ('320', '512'), ('384', '512'), ('384', '576'),
-    ('416', '624'), ('320', '640'), ('384', '688')
+    (256, 256), (384, 384), (512, 512),
+    (512, 288), (512, 320), (512, 384), (576, 384),
+    (624, 416), (640, 320), (688, 384),
+    (288, 512), (320, 512), (384, 512), (384, 576),
+    (416, 624), (320, 640), (384, 688)
   ) then
     raise exception 'unsupported V3 map dimensions' using errcode = '22023';
   end if;
 
-  if p_scene #>> '{size,width}' is distinct from p_plan #>> '{map,width}'
-    or p_scene #>> '{size,height}' is distinct from p_plan #>> '{map,height}' then
+  if (p_scene #>> '{size,width}')::numeric <> (p_plan #>> '{map,width}')::numeric
+    or (p_scene #>> '{size,height}')::numeric <> (p_plan #>> '{map,height}')::numeric then
     raise exception 'V3 scene dimensions must match the plan' using errcode = '22023';
   end if;
-  if jsonb_typeof(p_scene -> 'mapImage') = 'object'
-    and (
-      p_scene #>> '{mapImage,width}' is distinct from p_plan #>> '{map,width}'
-      or p_scene #>> '{mapImage,height}' is distinct from p_plan #>> '{map,height}'
-    ) then
-    raise exception 'invalid V3 map image binding' using errcode = '22023';
+  if jsonb_typeof(p_scene -> 'mapImage') = 'object' then
+    if jsonb_typeof(p_scene #> '{mapImage,width}') is distinct from 'number'
+      or jsonb_typeof(p_scene #> '{mapImage,height}') is distinct from 'number'
+      or (p_scene #>> '{mapImage,width}')::numeric <> trunc((p_scene #>> '{mapImage,width}')::numeric)
+      or (p_scene #>> '{mapImage,height}')::numeric <> trunc((p_scene #>> '{mapImage,height}')::numeric)
+      or (p_scene #>> '{mapImage,width}')::numeric <> (p_plan #>> '{map,width}')::numeric
+      or (p_scene #>> '{mapImage,height}')::numeric <> (p_plan #>> '{map,height}')::numeric then
+      raise exception 'invalid V3 map image binding' using errcode = '22023';
+    end if;
   end if;
 
   -- The retained base validator owns every non-size V3 rule. Normalize only

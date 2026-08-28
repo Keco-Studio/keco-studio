@@ -54,13 +54,6 @@ const collisionGridSchema = z.object({
   cells: z.array(z.union([z.literal(0), z.literal(1)])).max(4_128),
   imageSha256: fingerprint,
 }).strict().superRefine((grid, context) => {
-  if (!["64x64", "86x48", "48x86"].includes(`${grid.columns}x${grid.rows}`)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["columns"],
-      message: "Unsupported collision grid.",
-    });
-  }
   if (grid.cells.length !== grid.columns * grid.rows) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -88,7 +81,22 @@ const sceneSchema = z.object({
     panX: z.number().finite(),
     panY: z.number().finite(),
   }).strict(),
-}).strict();
+}).strict().superRefine((scene, context) => {
+  if (
+    scene.collisionGrid !== null && (
+      scene.collisionGrid.columns * scene.collisionGrid.cellSize !==
+        scene.size.width ||
+      scene.collisionGrid.rows * scene.collisionGrid.cellSize !==
+        scene.size.height
+    )
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["collisionGrid"],
+      message: "Collision grid dimensions must match scene dimensions.",
+    });
+  }
+});
 
 const readAnnotations = {
   readOnlyHint: true,
