@@ -9,6 +9,26 @@ function clients() {
 }
 export type AuthorizedContext = { serviceClient: SupabaseClient; state: Record<string, unknown> };
 
+/**
+ * Older ready character attempts persisted the provider character identity in
+ * provider_job_id but left metadata.providerCharacterId null. Keep those
+ * attempts usable for animation submissions while preferring the explicit
+ * metadata field written by newer runs.
+ */
+export function resolveSourceProviderCharacterId(sourceAttempt: {
+  metadata?: unknown;
+  provider_job_id?: unknown;
+}): string | null {
+  const metadata = sourceAttempt.metadata;
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    const value = (metadata as Record<string, unknown>).providerCharacterId;
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return typeof sourceAttempt.provider_job_id === "string" && sourceAttempt.provider_job_id.trim()
+    ? sourceAttempt.provider_job_id
+    : null;
+}
+
 export async function authorizeProject(serviceToken: string, projectId: string, actorUserId: string): Promise<SupabaseClient> {
   if (!serviceToken || serviceToken !== serviceRole()) throw new PixelLabCharacterError("authorization_failed", "Service authorization required", 403);
   const serviceClient = clients();
@@ -33,9 +53,9 @@ export async function authorizeServiceRequest(request: Request, body: Record<str
   let sourceFacing: string | undefined;
   if (asset.kind === "animation") {
     const { data: source } = await serviceClient.from("character_assets").select("plan, latest_generation_attempt_id").eq("id", asset.source_character_asset_id).eq("project_id", projectId).eq("status", "ready").maybeSingle();
-    const { data: sourceAttempt } = source?.latest_generation_attempt_id ? await serviceClient.from("character_generation_attempts").select("metadata, sha256").eq("id", source.latest_generation_attempt_id).eq("status", "ready").maybeSingle() : { data: null };
-    if (!sourceAttempt || sourceAttempt.sha256 !== asset.plan?.sourceCharacterSha256 || typeof sourceAttempt.metadata?.providerCharacterId !== "string") throw new PixelLabCharacterError("authorization_failed", "Source character binding is invalid", 403);
-    sourceProviderCharacterId = sourceAttempt.metadata.providerCharacterId;
+    const { data: sourceAttempt } = source?.latest_generation_attempt_id ? await serviceClient.from("character_generation_attempts").select("metadata, provider_job_id, sha256").eq("id", source.latest_generation_attempt_id).eq("status", "ready").maybeSingle() : { data: null };
+    sourceProviderCharacterId = sourceAttempt ? resolveSourceProviderCharacterId(sourceAttempt) : null;
+    if (!sourceAttempt || sourceAttempt.sha256 !== asset.plan?.sourceCharacterSha256 || !sourceProviderCharacterId) throw new PixelLabCharacterError("authorization_failed", "Source character binding is invalid", 403);
     sourceFacing = source?.plan?.facing;
   }
   return { serviceClient, state: {
