@@ -6,6 +6,7 @@ import {
 } from "./pixellab-client.ts";
 import {
   animationResult,
+  providerAnimationJobId,
   characterResult,
   providerCharacterId,
   providerStatus,
@@ -50,7 +51,7 @@ Deno.test("discovers exact character and V3 animation tools with get_character p
     operation: "create_character", poll: "get_character",
   });
   assertEquals({ operation: animation.operation, poll: animation.pollOperation }, {
-    operation: "animate_character", poll: "get_character",
+    operation: "animate_character", poll: "get_background_job",
   });
   assertEquals(character.schemaFingerprint.length, 64);
   assertEquals(animation.schemaFingerprint.length, 64);
@@ -128,8 +129,13 @@ Deno.test("parses character IDs, completed rotations, and animation sheets witho
   });
   assertEquals(animationResult(completed, "walk_left", "west"), {
     characterId: "provider-character", animationGroupId: "animation-group",
-    imageUrl: "https://cdn.example.test/walk.png", frameUrls: [], frameCount: 6, status: "completed",
+    imageUrl: "https://cdn.example.test/walk.png", frameUrls: [], frameData: [], frameCount: 6, status: "completed",
   });
+});
+
+Deno.test("extracts the first PixelLab background job from an animation submission", () => {
+  const result = { structuredContent: { background_job_ids: ["acaee1a2-8cd8-4e56-89c8-3dca32b60dbd"] } };
+  assertEquals(providerAnimationJobId(result), "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd");
 });
 
 Deno.test("parses JSON embedded in MCP text content", () => {

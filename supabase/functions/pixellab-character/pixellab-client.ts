@@ -2,6 +2,7 @@ import { PixelLabCharacterError, type CharacterCapability, type CharacterAssetPl
 import { providerErrorText } from "./provider-response.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
+const API_URL = "https://api.pixellab.ai/v2";
 const CAPABILITY_DISCOVERY_ATTEMPTS = 3;
 const CAPABILITY_DISCOVERY_RETRY_MS = [150, 450];
 
@@ -76,9 +77,25 @@ export class PixelLabCharacterClient {
     if (!compatible(tool, required) || !compatible(poll, ["character_id"])) throw new PixelLabCharacterError("pixellab_capability_missing");
     const inputSchema = tool!.inputSchema as Record<string, unknown>;
     const pollInputSchema = poll!.inputSchema as Record<string, unknown>;
-    return { semantic, operation, pollOperation: "get_character", schemaFingerprint: await fingerprint(inputSchema), pollSchemaFingerprint: await fingerprint(pollInputSchema), inputSchema, pollInputSchema };
+    return { semantic, operation, pollOperation: semantic === "animation" ? "get_background_job" : "get_character", schemaFingerprint: await fingerprint(inputSchema), pollSchemaFingerprint: await fingerprint(pollInputSchema), inputSchema, pollInputSchema };
   }
   async callTool(name: string, arguments_: Record<string, unknown>): Promise<Record<string, unknown>> { return (await this.mcp(name, arguments_)).result as Record<string, unknown>; }
+  async getBackgroundJob(jobId: string): Promise<Record<string, unknown>> {
+    let response: Response;
+    try {
+      response = await this.fetcher(`${API_URL}/background-jobs/${encodeURIComponent(jobId)}`, {
+        method: "GET", headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
+      });
+    } catch { throw new PixelLabCharacterError("pixellab_upstream"); }
+    if (response.status === 401 || response.status === 403) throw new PixelLabCharacterError("pixellab_not_configured", "PixelLab authentication failed");
+    if (response.status === 429) throw new PixelLabCharacterError("pixellab_rate_limited");
+    if (!response.ok) throw new PixelLabCharacterError("pixellab_upstream");
+    try {
+      const value = await response.json();
+      if (!value || typeof value !== "object") throw new Error();
+      return value as Record<string, unknown>;
+    } catch { throw new PixelLabCharacterError("pixellab_invalid_response"); }
+  }
 }
 
 export function characterArguments(plan: Extract<CharacterAssetPlan, { kind: "character" }>): Record<string, unknown> {

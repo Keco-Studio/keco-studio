@@ -37,7 +37,7 @@ function fixture(overrides: Partial<AuthorizedCharacterAttempt> = {}) {
         submissions.push(args);
         return { structuredContent: { character_id: "provider-character" } } as Record<string, unknown>;
       },
-      poll: async () => ({ structuredContent: { status: "processing" } }),
+      poll: async (): Promise<Record<string, unknown>> => ({ structuredContent: { status: "processing" } }),
       transition: async (from: string, to: string, details: Record<string, unknown> = {}) => {
         transitions.push({ from, to, details });
       },
@@ -75,7 +75,7 @@ Deno.test("submits V3 animation only from the verified source provider character
     sourceProviderCharacterId: "provider-character",
     sourceFacing: "left",
   });
-  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character" });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_background_job" });
   test.dependencies.submit = async (_capability, args) => {
     test.submissions.push(args);
     return { structuredContent: { job_ids: ["animation-job"], animation_group_id: "animation-group" } };
@@ -87,6 +87,11 @@ Deno.test("submits V3 animation only from the verified source provider character
     character_id: "provider-character", action_description: "Walk steadily", animation_name: "walk_left",
     directions: ["west"], mode: "v3", frame_count: 6, keep_first_frame: false,
   }]);
+  assertEquals(test.transitions.at(-1)?.details.providerJobId, "animation-job");
+  assertEquals(test.transitions.at(-1)?.details.metadata, {
+    providerCharacterId: "provider-character", pollOperation: "get_background_job",
+    pollSchemaFingerprint: capability.pollSchemaFingerprint,
+  });
 });
 
 Deno.test("blocks an ambiguous paid submission outcome and never automatically resubmits it", async () => {
@@ -158,6 +163,27 @@ Deno.test("animation poll follows the requested direction instead of the complet
   assertEquals(await runCharacterLifecycle({ operation: "poll" }, test.state, test.dependencies), {
     assetId: IDS.assetId, status: "processing",
   });
+});
+
+Deno.test("animation poll reports a failed PixelLab background job", async () => {
+  const test = fixture({
+    status: "generating", providerJobId: "animation-job", sourceProviderCharacterId: "provider-character", sourceFacing: "left",
+    plan: {
+      schemaVersion: 1, kind: "animation", name: "walk_left", sourceCharacterAssetId: IDS.assetId,
+      sourceCharacterSha256: "d".repeat(64), motionDescription: "Walk steadily", frameWidth: 96,
+      frameHeight: 96, frameCount: 6, fps: 10, loop: true,
+    },
+  });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_background_job" });
+  test.dependencies.poll = async () => ({ id: "animation-job", status: "failed", error: "worker unavailable" } as Record<string, unknown>);
+  assertEquals(await runCharacterLifecycle({ operation: "poll" }, test.state, test.dependencies), {
+    assetId: IDS.assetId, status: "failed",
+  });
+  assertEquals(test.transitions, [{
+    from: "generating", to: "failed", details: {
+      expectedAttemptCount: 0, lastErrorCode: "provider_job_failed", metadata: test.state.metadata,
+    },
+  }]);
 });
 
 Deno.test("resolve_unknown blocks after the safety window without a second paid call", async () => {

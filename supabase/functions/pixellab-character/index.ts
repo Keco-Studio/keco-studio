@@ -35,13 +35,13 @@ async function handle(request: Request): Promise<Response> {
     },
     validateAndPersist: async (current, provider) => {
       const plan = current.plan as CharacterAssetPlan;
-      let output: { imageUrl: string | null; frameUrls: string[] } = { imageUrl: null, frameUrls: [] };
+      let output: { imageUrl: string | null; frameUrls: string[]; frameData: string[] } = { imageUrl: null, frameUrls: [], frameData: [] };
       let frameCount: number | undefined;
       if (plan.kind === "character") output.imageUrl = characterResult(provider, plan.facing === "front" ? "south" : plan.facing === "back" ? "north" : plan.facing === "left" ? "west" : "east")?.imageUrl ?? null;
       else {
         const direction = current.sourceFacing === "back" ? "north" : current.sourceFacing === "left" ? "west" : current.sourceFacing === "right" ? "east" : "south";
         const result = animationResult(provider, plan.name, direction);
-        output = { imageUrl: result?.imageUrl ?? null, frameUrls: result?.frameUrls ?? [] }; frameCount = result?.frameCount;
+        output = { imageUrl: result?.imageUrl ?? null, frameUrls: result?.frameUrls ?? [], frameData: result?.frameData ?? [] }; frameCount = result?.frameCount;
       }
       const bytes = await downloadProviderOutput(output);
       const validated = await persistValidatedCharacterAsset(authorized.serviceClient, current, bytes, plan.kind === "animation" ? { frameCount: plan.frameCount, frameWidth: plan.frameWidth, frameHeight: plan.frameHeight } : { alphaRequired: true });

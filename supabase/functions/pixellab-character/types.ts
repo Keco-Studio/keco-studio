@@ -7,7 +7,7 @@ export type ProviderStatus = "processing" | "completed" | "failed";
 export type CharacterCapability = {
   semantic: CharacterSemantic;
   operation: "create_character" | "animate_character";
-  pollOperation: "get_character";
+  pollOperation: "get_character" | "get_background_job";
   schemaFingerprint: string;
   pollSchemaFingerprint: string;
   inputSchema: Record<string, unknown>;
