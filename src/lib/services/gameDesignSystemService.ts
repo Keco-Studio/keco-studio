@@ -488,10 +488,11 @@ export async function getGameDesignSystemVersionByGenerationJobId(
     .from('game_design_system_versions')
     .select('system_id,id')
     .eq('generation_job_id', generationJobId)
-    .maybeSingle();
+    .limit(1);
   if (error) throw error;
-  if (!data) return null;
-  return { systemId: data.system_id as string, versionId: data.id as string };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return { systemId: row.system_id as string, versionId: row.id as string };
 }
 
 export async function getGameDesignSystemDetail(

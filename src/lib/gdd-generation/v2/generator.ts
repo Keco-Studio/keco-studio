@@ -234,44 +234,59 @@ async function repairMissingTablePlans(
   complete: Completion,
   signal?: AbortSignal,
 ): Promise<{ tablePlans: GeneratedTablePlan[]; warning: string | null }> {
-  const messages: ChatMessage[] = [{
-    role: 'system',
-    content: [
-      'You repair missing Keco table plans for a game design document.',
-      'Return ONLY one HTML comment with valid JSON (double-quoted keys/strings, no trailing commas, no code fences):',
-      `<!-- KECO_TABLE_PLAN ${tablePlanShapeExample} -->`,
-      'Include exactly one plan for each required table name, matching spelling and casing.',
-      'When purpose and fields are supplied for a required table, preserve them exactly and in the same field order.',
-      'Every table must contain at least one concrete row drawn from entities named in the GDD.',
-      'Do not invent table names that are not in the required list. Do not return Markdown prose.',
-    ].join('\n'),
-  }, {
-    role: 'user',
-    content: [
-      `Required tables: ${JSON.stringify(requiredTables)}`,
-      'GDD markdown:',
-      markdown.slice(0, 24_000),
-    ].join('\n\n'),
-  }];
-
-  const raw = await complete(messages, {
-    ...gddV2LlmOptions(6_000),
-    ...(signal ? { signal } : {}),
-  });
-  const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
-    ? raw
-    : `<!-- KECO_TABLE_PLAN ${raw} -->`);
-  if (extracted.tablePlans.length === 0) {
-    return {
-      tablePlans: [],
-      warning: extracted.warning ?? 'Table plan repair returned no usable plans.',
-    };
-  }
-  const wanted = new Set(requiredTables.map(({ table }) => table.toLocaleLowerCase()));
-  const matched = extracted.tablePlans.filter((plan) => wanted.has(plan.table.toLocaleLowerCase()));
+  const { controller, unlink } = linkedAbortController(signal);
+  const runWithSlot = createSlotRunner(3, controller.signal);
+  const repairs = await Promise.all(requiredTables.map((requiredTable) => runWithSlot(async () => {
+    const messages: ChatMessage[] = [{
+      role: 'system',
+      content: [
+        'You repair one missing Keco table plan for a game design document.',
+        'Return ONLY one HTML comment with valid JSON (double-quoted keys/strings, no trailing commas, no code fences):',
+        `<!-- KECO_TABLE_PLAN ${tablePlanShapeExample} -->`,
+        'Include exactly one plan for the required table, matching its spelling and casing.',
+        'Preserve the supplied purpose and fields exactly and in the same field order.',
+        'Every table must contain at least one concrete row drawn from entities named in the GDD.',
+        'Do not invent another table name. Do not return Markdown prose.',
+      ].join('\n'),
+    }, {
+      role: 'user',
+      content: [
+        `Required tables: ${JSON.stringify([requiredTable])}`,
+        'GDD markdown:',
+        markdown.slice(0, 24_000),
+      ].join('\n\n'),
+    }];
+    try {
+      const raw = await complete(messages, {
+        ...gddV2LlmOptions(6_000),
+        signal: controller.signal,
+      });
+      const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
+        ? raw
+        : `<!-- KECO_TABLE_PLAN ${raw} -->`);
+      const matched = extracted.tablePlans.find((plan) => (
+        plan.table.toLocaleLowerCase() === requiredTable.table.toLocaleLowerCase()
+      ));
+      if (!matched) return { plans: [], warning: extracted.warning ?? `No usable plan returned for ${requiredTable.table}.` };
+      return {
+        plans: [{
+          ...matched,
+          table: requiredTable.table,
+          ...(requiredTable.purpose ? { purpose: requiredTable.purpose } : {}),
+          ...(requiredTable.fields ? { fields: [...requiredTable.fields] } : {}),
+        }],
+        warning: null,
+      };
+    } catch (error) {
+      return { plans: [], warning: error instanceof Error ? error.message : `Repair failed for ${requiredTable.table}.` };
+    }
+  })));
+  unlink();
+  const matched = repairs.flatMap(({ plans }) => plans);
+  const warnings = repairs.map(({ warning }) => warning).filter((warning): warning is string => Boolean(warning));
   return {
-    tablePlans: matched.length > 0 ? matched : extracted.tablePlans,
-    warning: null,
+    tablePlans: matched,
+    warning: warnings.length > 0 ? warnings.join(' ').slice(0, 300) : null,
   };
 }
 
