@@ -6,6 +6,7 @@ import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { ChatMessage } from '@/lib/agent/types';
 import type { GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 import {
+  GDD_MAP_OUTPUT_SIZES,
   gddMapBriefArraySchema,
   gddMapStyleContractSchema,
   rawGddMapBriefArraySchema,
@@ -103,7 +104,8 @@ function stylePrompt(style: GddMapStyleContract | null): string {
   return style ? JSON.stringify(style) : 'No pinned Art Style snapshot is available. Keep the map direction internally consistent and describe it explicitly.';
 }
 
-const mapBriefJsonShape = '[{"title":"...","mapType":"world|region|level|settlement|interior|other","sourceHeading":"exact Markdown heading","purpose":"...","spatialLayout":"...","regions":["..."],"routes":["..."],"landmarks":["..."],"gameplayRequirements":["..."],"visualDescription":"...","outputSize":"512x512|688x384|384x688","priority":0,"createMapDescription":"..."}]';
+const mapOutputSizeOptions = GDD_MAP_OUTPUT_SIZES.join('|');
+const mapBriefJsonShape = `[{"title":"...","mapType":"world|region|level|settlement|interior|other","sourceHeading":"exact Markdown heading","purpose":"...","spatialLayout":"...","regions":["..."],"routes":["..."],"landmarks":["..."],"gameplayRequirements":["..."],"visualDescription":"...","outputSize":"${mapOutputSizeOptions}","priority":0,"createMapDescription":"..."}]`;
 
 export function buildGddMapBriefMessages(
   markdown: string,
@@ -120,7 +122,7 @@ export function buildGddMapBriefMessages(
         'Every sourceHeading must exactly match a Markdown heading in the supplied GDD. Never invent headings, locations, routes, landmarks, or gameplay requirements.',
         'Return [] when there is no explicit map. Return no more than twelve candidates; priority is an integer where higher means more important.',
         'Every map object must include every field shown in the required shape. regions, routes, landmarks, and gameplayRequirements must be JSON arrays of plain strings, never arrays of objects.',
-        'Use one of outputSize: 512x512, 688x384, 384x688. createMapDescription must be one complete provider-independent top-down image description, with no URLs, credentials, provider names, API commands, or dynamic UI text.',
+        `Use one of outputSize: ${GDD_MAP_OUTPUT_SIZES.join(', ')}. createMapDescription must be one complete provider-independent top-down image description, with no URLs, credentials, provider names, API commands, or dynamic UI text.`,
         `Required JSON shape: ${mapBriefJsonShape}`,
         `Shared pinned Art Style contract for every map: ${stylePrompt(style)}`,
       ].join('\n'),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DIRECT_MAP_PROFILE_VALUES } from '@/features/create-map/model/directMapSchema';
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const dangerousKeys = new Set(['__proto__', 'prototype', 'constructor']);
@@ -40,6 +41,7 @@ export type GddMapStyleContract = z.infer<typeof gddMapStyleContractSchema>;
 export const gddMapTypeSchema = z.enum([
   'world', 'region', 'level', 'settlement', 'interior', 'other',
 ]);
+export const GDD_MAP_OUTPUT_SIZES = DIRECT_MAP_PROFILE_VALUES;
 
 const rawMapBriefSchema = z.object({
   // Some providers include an ID even though it is not authoritative. The
@@ -57,7 +59,7 @@ const rawMapBriefSchema = z.object({
   landmarks: z.array(boundedText(500)).max(40),
   gameplayRequirements: z.array(boundedText(700)).max(30),
   visualDescription: boundedText(2_000),
-  outputSize: z.enum(['512x512', '688x384', '384x688']),
+  outputSize: z.enum(GDD_MAP_OUTPUT_SIZES),
   priority: z.number().finite().int().min(-1_000).max(1_000),
   createMapDescription: boundedText(2_000),
 }).strict();

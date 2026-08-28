@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
+import { DIRECT_MAP_PROFILE_VALUES } from '@/features/create-map/model/directMapSchema';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260811020000_create_map_v3_direct_image.sql');
 const sql = fs.readFileSync(migrationPath, 'utf8');
@@ -8,8 +9,30 @@ const collisionMigrationPath = path.join(process.cwd(), 'supabase/migrations/202
 const collisionSql = fs.readFileSync(collisionMigrationPath, 'utf8');
 const repairMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260813010000_repair_create_map_v3_payload_validator.sql');
 const repairSql = fs.readFileSync(repairMigrationPath, 'utf8');
+const nativeSizesMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260829010000_expand_create_map_v3_native_sizes.sql');
+const nativeSizesSql = fs.readFileSync(nativeSizesMigrationPath, 'utf8');
+const edgeFunctionPath = path.join(process.cwd(), 'supabase/functions/pixellab-map/direct-map.ts');
+const edgeFunctionSource = fs.readFileSync(edgeFunctionPath, 'utf8');
 
 describe('Create Map V3 direct-image migration', () => {
+  it('expands the validator to every native profile and generalizes collision-grid dimensions', () => {
+    for (const profile of DIRECT_MAP_PROFILE_VALUES) {
+      const [width, height] = profile.split('x');
+      expect(nativeSizesSql).toContain(`(${width}, ${height})`);
+      expect(edgeFunctionSource).toContain(`"${profile}"`);
+    }
+    for (const path of ['map,width', 'map,height', 'size,width', 'size,height', 'mapImage,width', 'mapImage,height']) {
+      const [object, field] = path.split(',');
+      expect(nativeSizesSql).toMatch(new RegExp(`jsonb_typeof\\(p_(?:plan|scene) #> '\\{${object},${field}\\}'\\) is distinct from 'number'`, 'i'));
+    }
+    expect(nativeSizesSql).toMatch(/map and scene dimensions must be integers/i);
+    expect(nativeSizesSql).toMatch(/v_columns \* 8 <> \(p_scene #>> '\{size,width\}'\)::integer/i);
+    expect(nativeSizesSql).toMatch(/v_rows \* 8 <> \(p_scene #>> '\{size,height\}'\)::integer/i);
+    expect(nativeSizesSql).not.toMatch(/v_columns, v_rows\) not in/i);
+    expect(nativeSizesSql).not.toMatch(/drop table|truncate|delete from public\.map_/i);
+    expect(nativeSizesSql).toMatch(/notify pgrst, 'reload schema'/i);
+  });
+
   it('repairs both legacy and already wrapped V3 validators without replacing retained data', () => {
     expect(repairSql).toMatch(/to_regprocedure\('public\.map_validate_v3_payload_without_collision_grid\(jsonb,jsonb\)'\)/i);
     expect(repairSql).toMatch(/alter function public\.map_validate_v3_payload\(jsonb, jsonb\)[\s\S]+rename to map_validate_v3_payload_without_collision_grid/i);

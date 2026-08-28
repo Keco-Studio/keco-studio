@@ -6,14 +6,16 @@ import {
   createEmptyCollisionGrid,
   setCollisionCell,
 } from '@/features/create-map/model/directMapCollisionGrid';
+import { DIRECT_MAP_PROFILES } from '@/features/create-map/model/directMapSchema';
 import { resolveDirectMapCollisionPhase } from '@/features/create-map/hooks/useDirectMapCollisionGrid';
 
 describe('Direct Map collision grid', () => {
-  it.each([
-    [512, 512, 64, 64],
-    [688, 384, 86, 48],
-    [384, 688, 48, 86],
-  ])('creates an exact 8px grid for %ix%i', (width, height, columns, rows) => {
+  it.each(DIRECT_MAP_PROFILES.map(({ width, height }) => [
+    width,
+    height,
+    width / 8,
+    height / 8,
+  ]))('creates an exact 8px grid for %ix%i', (width, height, columns, rows) => {
     const grid = createEmptyCollisionGrid(width, height, 'a'.repeat(64));
     expect(grid).toMatchObject({ version: 1, cellSize: 8, columns, rows });
     expect(grid.cells).toHaveLength(columns * rows);
@@ -32,6 +34,7 @@ describe('Direct Map collision grid', () => {
   it('rejects invalid dimensions, counts, values, and hashes', () => {
     const valid = createEmptyCollisionGrid(512, 512, 'c'.repeat(64));
     expect(DirectMapCollisionGridSchema.safeParse({ ...valid, columns: 65 }).success).toBe(false);
+    expect(DirectMapCollisionGridSchema.safeParse({ ...valid, columns: 87 }).success).toBe(false);
     expect(DirectMapCollisionGridSchema.safeParse({ ...valid, cells: valid.cells.slice(1) }).success).toBe(false);
     expect(DirectMapCollisionGridSchema.safeParse({ ...valid, cells: [...valid.cells.slice(1), 2] }).success).toBe(false);
     expect(DirectMapCollisionGridSchema.safeParse({ ...valid, imageSha256: 'C'.repeat(64) }).success).toBe(false);

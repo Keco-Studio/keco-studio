@@ -1,11 +1,30 @@
 import { z } from 'zod';
 import { DirectMapCollisionGridSchema } from './directMapCollisionGrid';
 
-export const DIRECT_MAP_PROFILES = [
-  { width: 512, height: 512 },
-  { width: 688, height: 384 },
-  { width: 384, height: 688 },
+export const DIRECT_MAP_PROFILE_VALUES = [
+  '256x256',
+  '384x384',
+  '512x512',
+  '512x288',
+  '512x320',
+  '512x384',
+  '576x384',
+  '624x416',
+  '640x320',
+  '688x384',
+  '288x512',
+  '320x512',
+  '384x512',
+  '384x576',
+  '416x624',
+  '320x640',
+  '384x688',
 ] as const;
+
+export const DIRECT_MAP_PROFILES = DIRECT_MAP_PROFILE_VALUES.map((value) => {
+  const [width, height] = value.split('x').map(Number);
+  return { width, height };
+});
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const ExactDescriptionSchema = z.string().min(1).max(2_000)

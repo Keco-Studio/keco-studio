@@ -13,7 +13,11 @@ export type ResolvedDirectMapReferences = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
-const PROFILES = new Set(["512x512", "688x384", "384x688"]);
+const DIRECT_MAP_NATIVE_PROFILES = new Set([
+  "256x256", "384x384", "512x512",
+  "512x288", "512x320", "512x384", "576x384", "624x416", "640x320", "688x384",
+  "288x512", "320x512", "384x512", "384x576", "416x624", "320x640", "384x688",
+]);
 const STYLE_COPY = new Set(["color_palette", "outline", "detail", "shading"]);
 
 function record(value: unknown): Record<string, unknown> {
@@ -90,7 +94,7 @@ export function directMapProviderArguments(
   const params = asset.generationParams;
   const width = params.width;
   const height = params.height;
-  if (!Number.isInteger(width) || !Number.isInteger(height) || !PROFILES.has(`${width}x${height}`)) capabilityMissing("Unsupported direct map image profile");
+  if (!Number.isInteger(width) || !Number.isInteger(height) || !DIRECT_MAP_NATIVE_PROFILES.has(`${width}x${height}`)) capabilityMissing("Unsupported direct map image profile");
   if (params.noBackground !== false) capabilityMissing("Direct map images require an opaque background");
   if (typeof asset.prompt !== "string") capabilityMissing("Direct map prompt is invalid");
 

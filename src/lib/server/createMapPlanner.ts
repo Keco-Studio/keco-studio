@@ -9,6 +9,7 @@ import {
 } from '@/features/create-map/model/mapPlanSchema';
 import {
   containsUnsafeDescriptionContent,
+  DIRECT_MAP_PROFILE_VALUES,
   DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
   DIRECT_MAP_PROFILES,
   validateMapPlanV3,
@@ -24,6 +25,8 @@ export const DIRECT_MAP_MAX_ATTEMPTS = 2;
 
 const CREATE_MAP_LLM_MODEL = 'deepseek-v4-flash';
 const CREATE_MAP_LLM_BASE_URL = 'https://api.deepseek.com';
+const DIRECT_MAP_PROFILE_WIDTHS = [...new Set(DIRECT_MAP_PROFILES.map(({ width }) => width))];
+const DIRECT_MAP_PROFILE_HEIGHTS = [...new Set(DIRECT_MAP_PROFILES.map(({ height }) => height))];
 
 /**
  * Resolve the planner-only LLM configuration for each request. The generic
@@ -224,8 +227,8 @@ export const CREATE_DIRECT_MAP_PLAN_TOOL: OpenAITool = {
         map: {
           type: 'object',
           properties: {
-            width: { type: 'integer', enum: [512, 688, 384] },
-            height: { type: 'integer', enum: [512, 384, 688] },
+            width: { type: 'integer', enum: DIRECT_MAP_PROFILE_WIDTHS },
+            height: { type: 'integer', enum: DIRECT_MAP_PROFILE_HEIGHTS },
           },
           required: ['width', 'height'],
           additionalProperties: false,
@@ -625,7 +628,7 @@ export async function createMapPlanV3(
         'Write the final PixelLab create_image_pro description in English as one complete scene description.',
         'The final description must cover camera and top-down projection, composition, terrain, routes, landmarks, buildings, vegetation, lighting, palette, pixel-art treatment, and exclusions.',
         'Do not include URLs, data URIs, credentials, provider instructions, PixelLab, MCP, API commands, or dynamic Keco UI text in the description.',
-        'Use exactly one supported profile: 512x512, 688x384, or 384x688.',
+        `Use exactly one supported profile: ${DIRECT_MAP_PROFILE_VALUES.join(', ')}.`,
         `Call ${DIRECT_MAP_TOOL_NAME} with the complete plan.`,
       ].join(' '),
     },

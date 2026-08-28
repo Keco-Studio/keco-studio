@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   createEmptyMapSceneV3,
+  DIRECT_MAP_PROFILES,
   validateMapPlanV3,
   validateMapSceneV3,
 } from '@/features/create-map/model/directMapSchema';
@@ -31,6 +32,12 @@ describe('direct map V3 schemas', () => {
 
   it('accepts a direct Pro map plan without rewriting description', () => {
     const plan = makeValidMapPlanV3();
+
+    expect(validateMapPlanV3(plan)).toEqual({ success: true, data: plan });
+  });
+
+  it.each(DIRECT_MAP_PROFILES)('accepts native profile $width x $height', ({ width, height }) => {
+    const plan = makeValidMapPlanV3({ map: { width, height } });
 
     expect(validateMapPlanV3(plan)).toEqual({ success: true, data: plan });
   });
