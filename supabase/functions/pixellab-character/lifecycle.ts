@@ -74,7 +74,11 @@ export async function runCharacterLifecycle(
     if (providerStatus(result) !== "completed") throw new PixelLabCharacterError("validation_failed", "Provider result is not complete", 409);
     try { return await dependencies.validateAndPersist(state, result); }
     catch (error) {
-      await dependencies.transition("generating", "failed", { expectedAttemptCount: state.attemptCount, lastErrorCode: "validation_failed" });
+      // Provider/storage outages are transient. Keep the paid job generating so
+      // the next advance can poll and validate the same provider result again.
+      if (!(error instanceof PixelLabCharacterError) || error.code !== "pixellab_upstream") {
+        await dependencies.transition("generating", "failed", { expectedAttemptCount: state.attemptCount, lastErrorCode: "validation_failed" });
+      }
       throw error;
     }
   }
