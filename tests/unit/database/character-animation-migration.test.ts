@@ -6,6 +6,10 @@ const migrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20260827010000_character_animation_mcp.sql',
 );
+const prepareRepairMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260828083000_fix_character_prepare_status_ambiguity.sql',
+);
 
 describe('character animation MCP migration', () => {
   it('creates project-owned character assets and durable generation attempts', () => {
@@ -101,6 +105,23 @@ describe('character animation MCP migration', () => {
     expect(sql).toMatch(/alter table public\.character_generation_attempts enable row level security/i);
     expect(sql).toMatch(/revoke all on public\.character_assets, public\.character_generation_attempts from public, anon, authenticated/i);
     expect(sql).toMatch(/grant select on public\.character_assets, public\.character_generation_attempts to authenticated/i);
+  });
+
+  it('preserves secure RPC contracts and qualifies asset fields in the forward generation repair', () => {
+    const sql = fs.readFileSync(prepareRepairMigrationPath, 'utf8');
+
+    expect(sql).toMatch(
+      /create or replace function public\.prepare_character_asset_generation\(\s*p_asset_id uuid, p_expected_save_version bigint,\s*p_generation_id uuid, p_plan_fingerprint text\s*\)[\s\S]+returns table \(generation_attempt_id uuid, status text, attempt_count integer\)[\s\S]+security definer\s+set search_path = ''/i,
+    );
+    expect(sql).toMatch(
+      /update public\.character_assets as asset[\s\S]+where asset\.id = p_asset_id and asset\.status = 'draft'/i,
+    );
+    expect(sql).not.toMatch(/where id = p_asset_id and status = 'draft'/i);
+    expect(sql).toMatch(
+      /create or replace function public\.transition_character_generation\(\s*p_attempt_id uuid, p_expected_status text, p_next_status text,[\s\S]+p_has_transparency boolean, p_metadata jsonb\s*\)[\s\S]+returns table \(generation_attempt_id uuid, status text, attempt_count integer\)[\s\S]+security definer\s+set search_path = ''/i,
+    );
+    expect(sql).toMatch(/else asset\.status end,[\s\S]+else asset\.latest_generation_attempt_id end[\s\S]+where asset\.id = v_attempt\.character_asset_id/i);
+    expect(sql).not.toMatch(/else status end/i);
   });
 });
 
