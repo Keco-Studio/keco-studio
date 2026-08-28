@@ -216,7 +216,7 @@ jobs:
         with:
           version: 2.90.0
 
-      - name: Deploy MCP Edge Function
+      - name: Deploy MCP and PixelLab Edge Functions
         env:
           PROD_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_PROD }}
           GENERAL_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -258,6 +258,8 @@ jobs:
           fi
           supabase secrets set MCP_CODEC_SECRET="$MCP_CODEC_SECRET" \
             --project-ref "$PROJECT_REF"
+          supabase functions deploy pixellab-map --no-verify-jwt --project-ref "$PROJECT_REF"
+          supabase functions deploy pixellab-character --no-verify-jwt --project-ref "$PROJECT_REF"
           supabase functions deploy mcp --no-verify-jwt --project-ref "$PROJECT_REF"
 
 

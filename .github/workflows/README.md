@@ -58,7 +58,9 @@ Production evidence is scanned only after an observed evidence file exists.
 
 The account-scoped MCP endpoint is additive. The deployment dependency order is
 database migrations, Vercel OAuth metadata and consent handling, production
-codec health check, and then `supabase functions deploy mcp --no-verify-jwt`.
+codec health check, and then the `pixellab-map`, `pixellab-character`, and `mcp`
+Edge Functions in that order. Every function deployment uses `--no-verify-jwt`;
+the functions enforce their own service and user authorization.
 The workflow pins `supabase/setup-cli@v1` to Supabase CLI `2.90.0`; retain that
 pin for the account rollout.
 
