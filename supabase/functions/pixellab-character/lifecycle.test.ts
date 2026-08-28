@@ -128,6 +128,19 @@ Deno.test("keeps a generating job retryable when output storage is temporarily u
   assertEquals(test.transitions, []);
 });
 
+Deno.test("allows validation recovery for a failed attempt with a provider job", async () => {
+  const test = fixture({
+    status: "failed", lastErrorCode: "validation_failed", providerJobId: "provider-character",
+    metadata: { providerCharacterId: "provider-character" },
+  });
+  test.dependencies.poll = async () => ({ structuredContent: {
+    status: "completed", character_id: "provider-character",
+    rotations: [{ direction: "south", image_url: "https://cdn.example.test/south.png" }],
+  } });
+
+  assertEquals(await runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), { status: "ready" });
+});
+
 Deno.test("animation poll follows the requested direction instead of the completed character status", async () => {
   const test = fixture({
     status: "generating", providerJobId: "provider-character", sourceProviderCharacterId: "provider-character", sourceFacing: "left",

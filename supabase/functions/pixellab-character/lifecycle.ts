@@ -68,7 +68,8 @@ export async function runCharacterLifecycle(
     return { assetId: state.assetId, status };
   }
   if (input.operation === "validate") {
-    if (state.status !== "generating") throw new PixelLabCharacterError("pixellab_invalid_response", "Character generation is not ready for validation", 409);
+    const recovery = state.status === "failed" && state.lastErrorCode === "validation_failed" && Boolean(state.providerJobId);
+    if (state.status !== "generating" && !recovery) throw new PixelLabCharacterError("pixellab_invalid_response", "Character generation is not ready for validation", 409);
     if (!state.providerJobId) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider job is missing", 409);
     const result = await dependencies.poll(capability, state.providerJobId);
     if (providerStatus(result) !== "completed") throw new PixelLabCharacterError("validation_failed", "Provider result is not complete", 409);
