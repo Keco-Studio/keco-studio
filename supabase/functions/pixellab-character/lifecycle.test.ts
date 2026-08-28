@@ -116,6 +116,18 @@ Deno.test("poll only reports completion and validate performs persistence separa
   assertEquals(await runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), { status: "ready" });
 });
 
+Deno.test("keeps a generating job retryable when output storage is temporarily unavailable", async () => {
+  const test = fixture({ status: "generating", providerJobId: "provider-character", metadata: { providerCharacterId: "provider-character" } });
+  test.dependencies.poll = async () => ({ structuredContent: {
+    status: "completed", character_id: "provider-character",
+    rotations: [{ direction: "south", image_url: "https://cdn.example.test/south.png" }],
+  } });
+  test.dependencies.validateAndPersist = async () => { throw new PixelLabCharacterError("pixellab_upstream"); };
+
+  await assertRejects(() => runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), PixelLabCharacterError);
+  assertEquals(test.transitions, []);
+});
+
 Deno.test("animation poll follows the requested direction instead of the completed character status", async () => {
   const test = fixture({
     status: "generating", providerJobId: "provider-character", sourceProviderCharacterId: "provider-character", sourceFacing: "left",
