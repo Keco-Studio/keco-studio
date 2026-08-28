@@ -79,4 +79,21 @@ describe("production paid-generation Edge Function deployment", () => {
       productionJob.indexOf("supabase functions deploy pixellab-character"),
     );
   });
+
+  it("keeps the PixelLab provider secret synchronized without clearing it when CI is not configured", () => {
+    const productionJob = workflowJob("deploy-mcp-function");
+
+    expect(productionJob).toContain(
+      "PIXELLAB_TOKEN: ${{ secrets.PIXELLAB_API_TOKEN }}",
+    );
+    expect(productionJob).toContain(
+      'supabase secrets set PIXELLAB_API_TOKEN="$PIXELLAB_TOKEN"',
+    );
+    expect(productionJob).toContain(
+      "PIXELLAB_API_TOKEN GitHub secret is not configured; retaining the existing Supabase secret",
+    );
+    expect(
+      productionJob.indexOf('supabase secrets set PIXELLAB_API_TOKEN="$PIXELLAB_TOKEN"'),
+    ).toBeLessThan(productionJob.indexOf("supabase functions deploy pixellab-character"));
+  });
 });

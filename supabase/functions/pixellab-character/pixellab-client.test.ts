@@ -67,6 +67,29 @@ Deno.test("rejects stale or incompatible live animation schemas", async () => {
   assertEquals(error.code, "pixellab_capability_missing");
 });
 
+Deno.test("retries transient capability discovery failures before submitting", async () => {
+  const tools = [
+    tool("create_character", { description: { type: "string" }, mode: { type: "string" } }, ["description"]),
+    tool("get_character", { character_id: { type: "string" } }, ["character_id"]),
+  ];
+  let calls = 0;
+  const client = new PixelLabCharacterClient("token", async () => {
+    calls += 1;
+    if (calls === 1) throw new TypeError("temporary network failure");
+    return mcpResponse({ tools });
+  });
+
+  const capability = await client.discover("character");
+  assertEquals(capability.operation, "create_character");
+  assertEquals(calls, 2);
+});
+
+Deno.test("maps provider authentication HTTP failures separately from outages", async () => {
+  const client = new PixelLabCharacterClient("token", async () => new Response("unauthorized", { status: 401 }));
+  const error = await assertRejects(() => client.listTools(), PixelLabCharacterError);
+  assertEquals(error.code, "pixellab_not_configured");
+});
+
 Deno.test("maps Keco plans to pro character and single-direction V3 animation arguments", () => {
   assertEquals(characterArguments({
     schemaVersion: 1, kind: "character", name: "Scout", description: "A forest scout",

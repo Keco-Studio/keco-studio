@@ -223,6 +223,7 @@ jobs:
           PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF_PROD }}
           MCP_CODEC_SECRET: ${{ secrets.MCP_CODEC_SECRET }}
           SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PIXELLAB_TOKEN: ${{ secrets.PIXELLAB_API_TOKEN }}
         run: |
           if [ -z "$PROJECT_REF" ]; then
             echo "::error::SUPABASE_PROJECT_REF_PROD is required"
@@ -264,6 +265,12 @@ jobs:
           supabase secrets set MCP_CODEC_SECRET="$MCP_CODEC_SECRET" \
             KECO_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
             --project-ref "$PROJECT_REF"
+          if [ -n "$PIXELLAB_TOKEN" ]; then
+            supabase secrets set PIXELLAB_API_TOKEN="$PIXELLAB_TOKEN" \
+              --project-ref "$PROJECT_REF"
+          else
+            echo "::warning::PIXELLAB_API_TOKEN GitHub secret is not configured; retaining the existing Supabase secret"
+          fi
           supabase functions deploy pixellab-map --no-verify-jwt --project-ref "$PROJECT_REF"
           supabase functions deploy pixellab-character --no-verify-jwt --project-ref "$PROJECT_REF"
           supabase functions deploy mcp --no-verify-jwt --project-ref "$PROJECT_REF"

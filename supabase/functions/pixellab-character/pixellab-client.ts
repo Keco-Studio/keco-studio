@@ -2,6 +2,8 @@ import { PixelLabCharacterError, type CharacterCapability, type CharacterAssetPl
 import { providerErrorText } from "./provider-response.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
+const CAPABILITY_DISCOVERY_ATTEMPTS = 3;
+const CAPABILITY_DISCOVERY_RETRY_MS = [150, 450];
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -33,6 +35,9 @@ export class PixelLabCharacterClient {
     try {
       response = await this.fetcher(MCP_URL, { method: "POST", headers: { authorization: `Bearer ${this.token}`, accept: "application/json, text/event-stream", "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method: name === "tools/list" ? "tools/list" : "tools/call", params: name === "tools/list" ? {} : { name, arguments: params } }) });
     } catch { throw new PixelLabCharacterError("pixellab_upstream"); }
+    if (response.status === 401 || response.status === 403) {
+      throw new PixelLabCharacterError("pixellab_not_configured", "PixelLab authentication failed");
+    }
     if (response.status === 429) throw new PixelLabCharacterError("pixellab_rate_limited");
     if (!response.ok) throw new PixelLabCharacterError("pixellab_upstream");
     const payload = parsePayload(await response.text());
@@ -45,7 +50,19 @@ export class PixelLabCharacterClient {
     return payload;
   }
   async listTools(): Promise<Record<string, unknown>[]> {
-    const payload = await this.mcp("tools/list", {});
+    let payload: Record<string, unknown> | undefined;
+    for (let attempt = 0; attempt < CAPABILITY_DISCOVERY_ATTEMPTS; attempt += 1) {
+      try {
+        payload = await this.mcp("tools/list", {});
+        break;
+      } catch (error) {
+        const retryable = error instanceof PixelLabCharacterError
+          && (error.code === "pixellab_upstream" || error.code === "pixellab_rate_limited");
+        if (!retryable || attempt === CAPABILITY_DISCOVERY_ATTEMPTS - 1) throw error;
+        await new Promise((resolve) => setTimeout(resolve, CAPABILITY_DISCOVERY_RETRY_MS[attempt]));
+      }
+    }
+    if (!payload) throw new PixelLabCharacterError("pixellab_upstream");
     const tools = (payload.result as Record<string, unknown> | undefined)?.tools;
     if (!Array.isArray(tools)) throw new PixelLabCharacterError("pixellab_invalid_response");
     return tools.filter((tool): tool is Record<string, unknown> => Boolean(tool && typeof tool === "object"));
