@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { DIRECT_MAP_PROFILE_VALUES } from '@/features/create-map/model/directMapSchema';
 import { makeValidMapPlanV2, makeValidMapPlanV3 } from './fixtures';
 
 const completeLlmNonStreaming = jest.fn();
@@ -258,7 +259,7 @@ describe('Create Map V3 planner', () => {
     const candidate = {
       ...makeValidMapPlanV3(),
       schemaVersion: 2,
-      map: { width: 512, height: 384 },
+      map: { width: 640, height: 448 },
       references: [{ assetId: INVENTED_REFERENCE_ID }],
       styleReference: { assetId: INVENTED_REFERENCE_ID },
       generation: {
@@ -281,7 +282,7 @@ describe('Create Map V3 planner', () => {
     expect(normalizeDirectMapPlanCandidate(candidate, selection)).toEqual({
       ...candidate,
       schemaVersion: 3,
-      map: { width: 512, height: 512 },
+      map: { width: 624, height: 416 },
       references: selection.references,
       styleReference: null,
       generation: {
@@ -325,7 +326,7 @@ describe('Create Map V3 planner', () => {
     expect(completeLlmNonStreaming).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({
         role: 'system',
-        content: expect.stringContaining('final PixelLab create_image_pro description'),
+        content: expect.stringContaining(DIRECT_MAP_PROFILE_VALUES.join(', ')),
       }),
     ]), expect.objectContaining({ temperature: 0, thinking: 'disabled' }));
   });

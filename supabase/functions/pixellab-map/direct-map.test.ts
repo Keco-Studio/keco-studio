@@ -69,6 +69,21 @@ Deno.test("accepts the live create_image_pro schema with optional generation fie
   assertEquals(args.style_copy, ["color_palette"]);
 });
 
+Deno.test("forwards every native direct-map profile unchanged", () => {
+  for (const profile of [
+    "256x256", "384x384", "512x512",
+    "512x288", "512x320", "512x384", "576x384", "624x416", "640x320", "688x384",
+    "288x512", "320x512", "384x512", "384x576", "416x624", "320x640", "384x688",
+  ]) {
+    const [width, height] = profile.split("x").map(Number);
+    const args = directMapProviderArguments(CAPABILITY, {
+      prompt: "Top-down pixel art map.",
+      generationParams: { width, height, noBackground: false },
+    }, { references: [], style: null });
+    assertEquals({ width: args.width, height: args.height }, { width, height });
+  }
+});
+
 Deno.test("rejects unsupported dimensions and incomplete live schemas", () => {
   const asset = { prompt: "prompt", generationParams: { width: 640, height: 480, noBackground: false } };
   const error = assertThrows(() => directMapProviderArguments(CAPABILITY, asset, { references: [], style: null }), PixelLabMapError);

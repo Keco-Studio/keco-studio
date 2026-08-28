@@ -61,6 +61,8 @@ describe('GDD map brief compiler', () => {
     expect(result[0].styleContract?.sourceArtStyleVersion).toBe(2);
     expect(buildGddMapBriefMessages('# World Map', result[0].styleContract)[0].content).toContain('Do not infer a map');
     expect(buildGddMapBriefMessages('# World Map', result[0].styleContract)[0].content).toContain('"mapType":"world|region|level|settlement|interior|other"');
+    expect(buildGddMapBriefMessages('# World Map', result[0].styleContract)[0].content).toContain('624x416');
+    expect(buildGddMapBriefMessages('# World Map', result[0].styleContract)[0].content).toContain('384x688');
     expect(buildGddMapBriefMessages('# World Map', result[0].styleContract)[0].content).toContain('arrays of plain strings');
   });
 

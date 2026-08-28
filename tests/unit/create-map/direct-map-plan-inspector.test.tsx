@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DirectMapPlanInspector } from '@/features/create-map/components/DirectMapPlanInspector';
+import { DIRECT_MAP_PROFILE_VALUES } from '@/features/create-map/model/directMapSchema';
 import { makeValidMapPlanV3 } from './fixtures';
 
 jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
@@ -39,9 +40,10 @@ describe('DirectMapPlanInspector', () => {
       plan: makeValidMapPlanV3(), issues: [], onChange: jest.fn(),
     }));
 
-    expect(markup).toContain('512 × 512');
-    expect(markup).toContain('688 × 384');
-    expect(markup).toContain('384 × 688');
+    for (const profile of DIRECT_MAP_PROFILE_VALUES) {
+      expect(markup).toContain(profile.replace('x', ' × '));
+    }
+    expect(markup.match(/<option/g)).toHaveLength(DIRECT_MAP_PROFILE_VALUES.length);
     expect(markup).toContain(`${makeValidMapPlanV3().description.length} / 2000`);
     expect(markup).toContain('Seed');
     expect(markup).not.toContain('Tile size');

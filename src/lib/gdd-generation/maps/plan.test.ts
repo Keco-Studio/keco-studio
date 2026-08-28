@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import type { GddMapBrief } from './contracts';
+import { GDD_MAP_OUTPUT_SIZES, type GddMapBrief } from './contracts';
 import { fingerprintMapPlanV3, mapPlanFromGddBrief, mapSceneFromGddBrief } from './plan';
 
 const brief = (outputSize: GddMapBrief['outputSize']): GddMapBrief => ({
@@ -10,7 +10,7 @@ const brief = (outputSize: GddMapBrief['outputSize']): GddMapBrief => ({
 });
 
 describe('GDD map plan materialization', () => {
-  it.each(['512x512', '688x384', '384x688'] as const)('creates a valid V3 plan for %s', (outputSize) => {
+  it.each(GDD_MAP_OUTPUT_SIZES)('creates a valid V3 plan for %s', (outputSize) => {
     const plan = mapPlanFromGddBrief(brief(outputSize));
     expect(plan.schemaVersion).toBe(3);
     expect(`${plan.map.width}x${plan.map.height}`).toBe(outputSize);
