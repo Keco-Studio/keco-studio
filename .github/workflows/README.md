@@ -61,6 +61,10 @@ database migrations, Vercel OAuth metadata and consent handling, production
 codec health check, and then the `pixellab-map`, `pixellab-character`, and `mcp`
 Edge Functions in that order. Every function deployment uses `--no-verify-jwt`;
 the functions enforce their own service and user authorization.
+The production workflow publishes the same repository service-role secret to
+Vercel as `SUPABASE_SERVICE_ROLE_KEY` and to Supabase as
+`KECO_SERVICE_ROLE_KEY` before deploying the Edge Functions. Keep those writes
+paired so trusted Vercel-to-Edge calls cannot drift to different credentials.
 The workflow pins `supabase/setup-cli@v1` to Supabase CLI `2.90.0`; retain that
 pin for the account rollout.
 

@@ -34,5 +34,28 @@
 - [x] Add `supabase functions deploy pixellab-character --no-verify-jwt --project-ref "$PROJECT_REF"` before the MCP deployment.
 - [x] Run the focused Jest contract test, API typecheck, and repository formatting/lint checks relevant to the changed files.
 - [x] Review the final diff and create one commit.
-- [ ] Push, open a PR, wait for all checks, merge, and wait for the merge commit workflows.
-- [ ] Refresh the installed Keco plugin from merged `main` and verify real character/map prepare calls through MCP.
+- [x] Push, open a PR, wait for all checks, merge, and wait for the merge commit workflows.
+- [x] Refresh the installed Keco plugin from merged `main` and verify real character/map prepare calls through MCP.
+
+---
+
+### Task 2: Synchronize Trusted Service Authorization
+
+The first production retest reached `pixellab-character` but returned
+`authorization_failed`. The Vercel caller and the Edge Function had no workflow
+contract that guaranteed they used the same service-role credential.
+
+**Files:**
+
+- Modify: `.github/workflows/deploy-vercel.yml`
+- Modify: `.github/workflows/README.md`
+- Modify: `tests/unit/mcp/pixellab-function-deployment.test.ts`
+
+- [x] Sync the repository `SUPABASE_SERVICE_ROLE_KEY` secret to the production
+      Vercel environment before building the application.
+- [x] Sync the same value to Supabase as `KECO_SERVICE_ROLE_KEY` before deploying
+      either PixelLab Edge Function.
+- [x] Extend the static deployment contract test to require both synchronized
+      targets and their ordering.
+- [x] Verify locally and deliver the repair as one follow-up commit.
+- [ ] Repeat production deployment, plugin refresh, and real MCP prepare calls.
