@@ -1,6 +1,6 @@
 {
   "name": "keco",
-  "version": "0.4.0+codex.20260824051940",
+  "version": "0.4.0+codex.20260827130209",
   "description": "Manage Keco game design systems, evaluate GDDs, create maps, build project data, import images, and develop Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"
@@ -27,6 +27,7 @@
       "Run an EDD game evaluation with Art Style 50 + Player Fun 50, playtest evidence, risk gates, and a stage decision.",
       "Generate a top-down PixelLab tileset and map-object pack for my Godot scene.",
       "Create and bind a new Keco Game Design System.",
+      "Generate a project GDD from its bound Keco Game Design System.",
       "Create a complete Keco V3 map and review its fee before generation."
     ],
     "brandColor": "#0F766E",
