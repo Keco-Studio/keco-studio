@@ -245,7 +245,7 @@ describe('gameDesignSystemService version and job behavior', () => {
     }));
     const supabase = {
       from: jest.fn((table: string) => table === 'game_design_system_versions'
-        ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }
+        ? { select: () => ({ eq: () => ({ limit: async () => ({ data: [], error: null }) }) }) }
         : { select: () => ({ eq: () => ({ maybeSingle }) }) }),
       rpc,
     };
@@ -264,11 +264,11 @@ describe('gameDesignSystemService version and job behavior', () => {
   });
 
   it('returns a sanitized generation replay handle', async () => {
-    const maybeSingle = jest.fn(async () => ({
-      data: { system_id: 'generated-system', id: 'generated-version', rules: { mustNotLeak: true } },
+    const limit = jest.fn(async () => ({
+      data: [{ system_id: 'generated-system', id: 'generated-version', rules: { mustNotLeak: true } }],
       error: null,
     }));
-    const select = jest.fn((_columns: string) => ({ eq: () => ({ maybeSingle }) }));
+    const select = jest.fn((_columns: string) => ({ eq: () => ({ limit }) }));
     const from = jest.fn(() => ({ select }));
 
     const output = await getGameDesignSystemVersionByGenerationJobId({ from } as never, 'job-1');
@@ -307,6 +307,12 @@ describe('gameDesignSystemService version and job behavior', () => {
               return { data: { system_id: system.id, id: originalVersion.id }, error: null };
             }
             return { data: originalVersion, error: null };
+          },
+          limit: async () => {
+            if (columns === 'system_id,id' && column === 'generation_job_id') {
+              return { data: [{ system_id: system.id, id: originalVersion.id }], error: null };
+            }
+            return { data: [originalVersion], error: null };
           },
         }),
       }),
@@ -701,5 +707,23 @@ describe('gameDesignSystemService version and job behavior', () => {
       versionLimit: 50,
     })).resolves.toMatchObject({ id: 'system-1', versions: [] });
     expect(limit).toHaveBeenCalledWith(50);
+  });
+
+  it('loads one generation output version without singular-response 406s', async () => {
+    const limit = jest.fn(async (_count: number) => ({
+      data: [
+        { system_id: 'system-1', id: 'version-new' },
+        { system_id: 'system-1', id: 'version-old' },
+      ],
+      error: null,
+    }));
+    const eq = jest.fn(() => ({ limit }));
+    const select = jest.fn(() => ({ eq }));
+
+    await expect(getGameDesignSystemVersionByGenerationJobId(
+      { from: () => ({ select }) } as never,
+      'generation-job-1',
+    )).resolves.toEqual({ systemId: 'system-1', versionId: 'version-new' });
+    expect(limit).toHaveBeenCalledWith(1);
   });
 });

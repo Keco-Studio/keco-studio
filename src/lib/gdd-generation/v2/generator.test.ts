@@ -270,6 +270,38 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.tablePlanWarning).toBeNull();
   });
 
+  it('repairs each missing guided table independently', async () => {
+    const guidedTables = ['Wastes', 'Dangers', 'Upgrades', 'Zones', 'HUD_Elements', 'Audio_Events'];
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: guidedTables.map((table) => ({
+          table,
+          purpose: `Defines ${table}.`,
+          fields: ['id', 'name'],
+        })),
+      },
+    };
+    const complete = jest.fn(async (messages: ChatMessage[]) => {
+      if (complete.mock.calls.length === 1) return '# GDD\n\n## Core Loop\nBody.';
+      const userContent = typeof messages[1]!.content === 'string' ? messages[1]!.content : '';
+      const match = /Required tables: \[\{"table":"([^"]+)"/.exec(userContent);
+      const table = match?.[1] ?? 'Unknown';
+      return `<!-- KECO_TABLE_PLAN ${JSON.stringify([{
+        table,
+        purpose: `Defines ${table}.`,
+        fields: ['id', 'name'],
+        rows: [{ name: `${table} row`, values: { id: `${table}-1`, name: `${table} row` } }],
+      }])} -->`;
+    });
+
+    const result = await generateGddMarkdownV2(guidedInput, complete as never);
+
+    expect(complete).toHaveBeenCalledTimes(7);
+    expect(result.tablePlans.map((plan) => plan.table)).toEqual(guidedTables);
+  });
+
   it('rejects a guided GDD when the missing table repair produces no usable plan', async () => {
     const guidedInput: GddGenerationRequestV2 = {
       ...input,
