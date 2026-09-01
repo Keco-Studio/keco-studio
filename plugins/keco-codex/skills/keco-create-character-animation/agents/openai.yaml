@@ -1,0 +1,4 @@
+interface:
+  display_name: "Keco Character and Animation"
+  short_description: "Create verified PixelLab character PNGs and animation spritesheets through Keco."
+  default_prompt: "Use $keco-create-character-animation to create a Keco character or animation spritesheet with paid confirmation and read-back verification."

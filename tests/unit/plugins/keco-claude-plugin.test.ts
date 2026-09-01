@@ -20,6 +20,7 @@ const codexInteractionContractPath = path.join(
 const SKILLS = [
   'keco-build-tables-from-document',
   'keco-create-map',
+  'keco-create-character-animation',
   'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
   'keco-import-local-assets',

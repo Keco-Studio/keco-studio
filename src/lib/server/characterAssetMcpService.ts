@@ -106,6 +106,8 @@ export type CharacterAssetMcpErrorCode =
   | 'CHARACTER_CONFIRMATION_EXPIRED'
   | 'CHARACTER_CONFIRMATION_MISMATCH'
   | 'CHARACTER_GENERATION_BLOCKED'
+  | 'CHARACTER_SUBMISSION_UNKNOWN'
+  | 'CHARACTER_PROVIDER_JOB_FAILED'
   | 'SOURCE_CHARACTER_UNAVAILABLE'
   | 'PROVIDER_CAPABILITY_MISSING'
   | 'PROVIDER_AUTHENTICATION_FAILED'
@@ -124,6 +126,8 @@ const PUBLIC_MESSAGES: Record<CharacterAssetMcpErrorCode, string> = {
   CHARACTER_CONFIRMATION_EXPIRED: 'The character asset generation confirmation has expired.',
   CHARACTER_CONFIRMATION_MISMATCH: 'The character asset generation confirmation does not match the current request.',
   CHARACTER_GENERATION_BLOCKED: 'Character asset generation is blocked and cannot be retried safely.',
+  CHARACTER_SUBMISSION_UNKNOWN: 'The provider submission outcome is unknown; retrying may incur duplicate billing.',
+  CHARACTER_PROVIDER_JOB_FAILED: 'PixelLab reported that the character or animation job failed.',
   SOURCE_CHARACTER_UNAVAILABLE: 'The source character is unavailable or has changed.',
   PROVIDER_CAPABILITY_MISSING: 'The required PixelLab character capability is unavailable.',
   PROVIDER_AUTHENTICATION_FAILED: 'The PixelLab character provider is not configured correctly.',
@@ -185,9 +189,11 @@ function mapError(error: unknown): never {
   if (code === 'KM422') throw new CharacterAssetMcpError('SOURCE_CHARACTER_UNAVAILABLE');
   if (code === 'P0002' || code === 'PGRST116') throw new CharacterAssetMcpError('CHARACTER_ASSET_NOT_FOUND');
   if (code === 'pixellab_capability_missing') throw new CharacterAssetMcpError('PROVIDER_CAPABILITY_MISSING');
-  if (code === 'pixellab_not_configured' || code === 'pixellab_authentication_failed') throw new CharacterAssetMcpError('PROVIDER_AUTHENTICATION_FAILED');
+  if (code === 'pixellab_not_configured' || code === 'pixellab_authentication_failed' || code === 'authorization_failed') throw new CharacterAssetMcpError('PROVIDER_AUTHENTICATION_FAILED');
   if (code === 'pixellab_rate_limited') throw new CharacterAssetMcpError('PROVIDER_RATE_LIMITED');
   if (code === 'pixellab_quota_exceeded') throw new CharacterAssetMcpError('PROVIDER_QUOTA_EXCEEDED');
+  if (code === 'pixellab_submit_outcome_unknown') throw new CharacterAssetMcpError('CHARACTER_SUBMISSION_UNKNOWN');
+  if (code === 'provider_job_failed') throw new CharacterAssetMcpError('CHARACTER_PROVIDER_JOB_FAILED');
   if (code === 'validation_failed' || code === 'pixellab_invalid_response') throw new CharacterAssetMcpError('INVALID_PROVIDER_OUTPUT');
   throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
 }

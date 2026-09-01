@@ -27,6 +27,7 @@ const ENTRY_SKILLS = [
   'keco-develop-godot-slice-v2',
   'keco-evaluate-gdd',
   'keco-evaluate-game',
+  'keco-create-character-animation',
   'keco-import-local-assets',
   'keco-manage-game-design-system',
   'pixellab-map-assets',
