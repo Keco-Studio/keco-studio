@@ -91,6 +91,20 @@ Deno.test("maps provider authentication HTTP failures separately from outages", 
   assertEquals(error.code, "pixellab_not_configured");
 });
 
+Deno.test("retries transient background-job failures with backoff", async () => {
+  let calls = 0;
+  const delays: number[] = [];
+  const client = new PixelLabCharacterClient("token", async () => {
+    calls += 1;
+    if (calls === 1) return new Response("temporarily unavailable", { status: 503 });
+    return new Response(JSON.stringify({ id: "job", status: "completed" }), { status: 200 });
+  }, async (ms) => { delays.push(ms); });
+
+  assertEquals(await client.getBackgroundJob("job"), { id: "job", status: "completed" });
+  assertEquals(calls, 2);
+  assertEquals(delays, [250]);
+});
+
 Deno.test("maps Keco plans to pro character and single-direction V3 animation arguments", () => {
   assertEquals(characterArguments({
     schemaVersion: 1, kind: "character", name: "Scout", description: "A forest scout",

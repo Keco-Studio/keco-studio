@@ -28,7 +28,28 @@ export async function runCharacterLifecycle(
   }
 
   const semantic = state.plan.kind;
-  const capability = await dependencies.discover(semantic);
+  // Submission needs live capability discovery. Polling and validation should
+  // reuse the operation/schema captured when the paid job was submitted so a
+  // transient tools/list outage cannot strand an otherwise valid provider job.
+  let capability: CharacterCapability;
+  const savedPollOperation = state.metadata?.pollOperation;
+  const savedPollSchemaFingerprint = state.metadata?.pollSchemaFingerprint;
+  const canReusePollCapability = (input.operation === "poll" || input.operation === "validate")
+    && (savedPollOperation === "get_character" || savedPollOperation === "get_background_job")
+    && typeof savedPollSchemaFingerprint === "string";
+  if (canReusePollCapability) {
+    capability = {
+      semantic,
+      operation: semantic === "character" ? "create_character" : "animate_character",
+      pollOperation: savedPollOperation,
+      schemaFingerprint: "",
+      pollSchemaFingerprint: savedPollSchemaFingerprint,
+      inputSchema: {},
+      pollInputSchema: {},
+    };
+  } else {
+    capability = await dependencies.discover(semantic);
+  }
   if (input.operation === "submit" || input.operation === "retry") {
     if (!Number.isSafeInteger(input.expectedAttemptCount) || input.expectedAttemptCount !== state.attemptCount) throw new PixelLabCharacterError("authorization_failed", "Expected attempt count is required", 403);
     const from = input.operation === "retry" ? state.status : "planned";

@@ -121,6 +121,21 @@ Deno.test("poll only reports completion and validate performs persistence separa
   assertEquals(await runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), { status: "ready" });
 });
 
+Deno.test("reuses persisted polling capability without rediscovering tools", async () => {
+  const test = fixture({
+    status: "generating", providerJobId: "provider-character",
+    metadata: { providerCharacterId: "provider-character", pollOperation: "get_character", pollSchemaFingerprint: capability.pollSchemaFingerprint },
+  });
+  let discoveries = 0;
+  test.dependencies.discover = async () => { discoveries += 1; return capability; };
+  test.dependencies.poll = async () => ({ structuredContent: { status: "processing" } });
+
+  assertEquals(await runCharacterLifecycle({ operation: "poll" }, test.state, test.dependencies), {
+    assetId: IDS.assetId, status: "processing",
+  });
+  assertEquals(discoveries, 0);
+});
+
 Deno.test("keeps a generating job retryable when output storage is temporarily unavailable", async () => {
   const test = fixture({ status: "generating", providerJobId: "provider-character", metadata: { providerCharacterId: "provider-character" } });
   test.dependencies.poll = async () => ({ structuredContent: {

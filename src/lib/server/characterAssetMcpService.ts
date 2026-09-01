@@ -192,6 +192,31 @@ function mapError(error: unknown): never {
   throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
 }
 
+/**
+ * Supabase FunctionsHttpError keeps the Edge Function response on `context`.
+ * Decode only the stable provider code; never forward the response body or
+ * provider diagnostics to the MCP client.
+ */
+export async function mapCharacterAssetFunctionError(error: unknown): Promise<never> {
+  let providerCode: string | undefined;
+  if (error && typeof error === 'object' && 'context' in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context && typeof context === 'object') {
+      try {
+        const responseLike = context as { clone?: () => { json: () => Promise<unknown> }; json?: () => Promise<unknown> };
+        const reader = responseLike.clone ? responseLike.clone() : responseLike;
+        if (typeof reader.json !== 'function') throw new Error('missing response body');
+        const payload = await reader.json() as { code?: unknown };
+        if (typeof payload?.code === 'string') providerCode = payload.code;
+      } catch {
+        // Fall through to the generic, safe mapping below.
+      }
+    }
+  }
+  if (providerCode) mapError({ code: providerCode });
+  mapError(error);
+}
+
 function assertWriter(role: ProjectRole): void {
   if (role !== 'admin' && role !== 'editor') throw new CharacterAssetMcpError('PROJECT_WRITE_FORBIDDEN');
 }
@@ -298,7 +323,7 @@ function defaultBackend(supabase: SupabaseClient, userId: string): CharacterAsse
       const { error } = await serviceClient().functions.invoke('pixellab-character', {
         body: { operation: 'capabilities', projectId, kind, actorUserId: userId },
       });
-      if (error) mapError(error);
+      if (error) await mapCharacterAssetFunctionError(error);
     },
     async prepareGeneration(input) {
       const { data, error } = await supabase.rpc('prepare_character_asset_generation', {
@@ -320,7 +345,7 @@ function defaultBackend(supabase: SupabaseClient, userId: string): CharacterAsse
       const { data, error } = await serviceClient().functions.invoke('pixellab-character', {
         body: { operation, ...input, actorUserId: userId },
       });
-      if (error) mapError(error);
+      if (error) await mapCharacterAssetFunctionError(error);
       return data;
     },
   };
