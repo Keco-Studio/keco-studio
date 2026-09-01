@@ -1,16 +1,48 @@
 # Slice Planning Document Contract
 
-The repository follows the existing Superpowers convention. The user-facing
-documents for one Slice are exactly:
+The Keco Project owns the canonical user-facing planning documents. Put them
+under one planning root using actual folders:
+
+```text
+<planning-root>/
+|-- roadmap                  document
+|-- spec/                    folder
+|   `-- <slice-id>           document
+`-- plan/                    folder
+    `-- <slice-id>           document
+```
+
+`spec` and `plan` are literal Keco child folders whose `parentFolderId` is the
+planning root ID. They are not prefixes in a document name. A document named
+`spec/<slice-id>` or `plan/<slice-id>` directly under the planning root is an
+invalid flat layout and must never be created. Use the same bare `<slice-id>`
+document name in both folders. The spec is the stable product and acceptance
+description. The plan is the ordered implementation checklist and the only user-facing progress record.
+
+Mirror the accepted canonical documents into the repository's existing
+Superpowers layout:
 
 ```text
 docs/superpowers/specs/<slice-id>-design.md
 docs/superpowers/plans/<slice-id>.md
 ```
 
-Use the same `<slice-id>` in both names. The spec is the stable product and
-acceptance description. The plan is the ordered implementation checklist and is
-the only user-facing progress record.
+The repository paths are mirrors, not a substitute for the Keco folder
+hierarchy.
+
+## Folder And Write Rules
+
+1. Read `list_project_structure` and resolve one planning root by stable ID.
+2. Reuse only exact direct child folders named `spec` and `plan`. If either is
+   missing, create it with `create_folder` and the planning root ID as
+   `parentFolderId`.
+3. Read `list_project_structure` again and record the returned root, spec, and
+   plan folder IDs. Stop on duplicates, wrong parents, or an ambiguous root.
+4. Create each bare `<slice-id>` spec with `folderId` set to the spec folder ID,
+   and each same-named plan with `folderId` set to the plan folder ID.
+5. Read the structure back again. Continue only when every document's
+   `folderId` matches its intended folder and no generated document name
+   contains `/`.
 
 ## Document Rules
 
@@ -43,7 +75,8 @@ paired revision and the Git change history.
 
 ## Multi-Slice Roadmap
 
-For more than one Slice, the roadmap is another ordinary plan in:
+For more than one Slice, create the `roadmap` document directly in the Keco
+planning root and mirror it as an ordinary repository plan in:
 
 ```text
 docs/superpowers/plans/<roadmap-id>.md
@@ -51,7 +84,7 @@ docs/superpowers/plans/<roadmap-id>.md
 
 It contains one checkbox per Slice and links each item to its paired spec and
 plan. Mark a Slice checked only after its plan is complete and internal runtime
-verification succeeds.
+verification succeeds. Do not place `roadmap` inside either child folder.
 
 ## Internal Evidence
 

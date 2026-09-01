@@ -12,7 +12,7 @@ Recency or the latest timestamp is supporting evidence, not a selector alone. Wh
 
 After accepting the source, read the complete content needed for decomposition. Do not infer that a document is development input from its display name alone.
 
-Before `WRITE_SPEC`, resolve the canonical Keco Project by stable project ID and discover the folder that owns slice planning documents. Read folder metadata and representative documents from the fresh project structure; never assume a folder name or use a folder from another project. Record `kecoProjectId`, `kecoFolderId`, folder name, document IDs, and revisions in `SourceSnapshot` and `RunContext`. A missing or ambiguous folder is a pre-write blocker.
+Before `WRITE_SPEC`, resolve the canonical Keco Project by stable project ID and discover the planning root that owns Slice documents. Read fresh folder metadata and representative documents; never use a folder from another project or infer hierarchy from `/` in a document name. Under that root, resolve exactly one direct child folder named `spec` and exactly one named `plan`. Reuse them when present; after planning preflight, create a missing child with `create_folder(parentFolderId: <planning-root-id>)` and read the structure back. Record `kecoProjectId`, the planning root `kecoFolderId`, `kecoSpecFolderId`, `kecoPlanFolderId`, folder names, document IDs, and revisions in `SourceSnapshot` and `RunContext`. An ambiguous root, duplicate child, wrong parent, or failed read-back is a pre-write blocker.
 
 ## DataPlan
 

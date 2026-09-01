@@ -37,12 +37,18 @@ interaction:
 documents:
   kecoFolderId: existing-folder-uuid
   kecoFolderName: discovered-project-folder-name
+  kecoSpecFolderId: direct-child-spec-folder-uuid
+  kecoPlanFolderId: direct-child-plan-folder-uuid
   kecoDocumentIds:
     roadmap: null
     spec: null
     plan: null
     status: null
     evalReport: null
+  kecoDocumentNames:
+    roadmap: roadmap
+    spec: <sliceId>
+    plan: <sliceId>
   localMirrorRoot: docs/superpowers
   localMirrorPaths:
     specPath: docs/superpowers/specs/<sliceId>-design.md
@@ -56,7 +62,18 @@ evolution:
   discoveryEvidence: []
   noCompatibleTarget: false
 ```
-The write token is null until the semantic source decision, roadmap read-back, Keco Project identity, compatible Keco folder, EvalSpec, SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and state tokens are execution state, not guesses.
+`kecoFolderId` is the planning root. `kecoSpecFolderId` and
+`kecoPlanFolderId` must identify its actual direct child folders named `spec`
+and `plan`; they must differ from the root and from each other. The Slice spec
+and plan use the bare `sliceId` as their document name and the corresponding
+child folder ID. A name such as `spec/<sliceId>` or `plan/<sliceId>` is invalid
+because it is still one flat document.
+
+The write token is null until the semantic source decision, roadmap and folder
+read-back, Keco Project identity, compatible Keco planning hierarchy, EvalSpec,
+SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and
+`sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and
+state tokens are execution state, not guesses.
 
 The `interaction` block is required for new runs and must pass `scripts/validate_interaction_checkpoint.py` when paused or resumed. Legacy version 2 RunContext files without an `interaction` block remain readable and valid. When present, `interaction.checkpoint.runId` must equal the containing `RunContext.runId`.
 
@@ -68,7 +85,15 @@ Every resource or table change records one `evolution.strategy`. `reuse_exact` a
 
 ## Plan, State, And Evidence Ownership
 
-`SlicePlan` is the approved static scope in `docs/superpowers/plans/<sliceId>.md`. It owns tasks, files, dependencies, evaluation IDs, RED/GREEN commands, and review requirements; a scope or acceptance change creates a new plan revision. Current task completion is marked directly in the plan's Markdown checkboxes (`- [ ]` / `- [x]`). `RunContext`, `status.json`, `TaskResult`, `TaskReview`, and `EvalReport` are internal machine evidence; they own the active stage, write lease, repair iteration, recovery state, command output, changed files, read-back, hashes, screenshots, and runtime evidence.
+`SlicePlan` is the approved static scope in the Keco `plan/<sliceId>` document;
+`docs/superpowers/plans/<sliceId>.md` is its local mirror. It owns tasks, files,
+dependencies, evaluation IDs, RED/GREEN commands, and review requirements; a
+scope or acceptance change creates a new plan revision. Current task completion
+is marked directly in the plan's Markdown checkboxes (`- [ ]` / `- [x]`).
+`RunContext`, `status.json`, `TaskResult`, `TaskReview`, and `EvalReport` are
+internal machine evidence; they own the active stage, write lease, repair
+iteration, recovery state, command output, changed files, read-back, hashes,
+screenshots, and runtime evidence.
 
 Order `SlicePlan.tasks` topologically so every dependency appears before its dependent task. That order is also the default execution order. Execute one visible task at a time from top to bottom; do not silently complete a later task while an earlier task is `pending` or `in_progress`.
 
