@@ -15,6 +15,16 @@ function facing(state: AuthorizedCharacterAttempt): "front" | "back" | "left" | 
   return state.plan.kind === "character" ? state.plan.facing : state.sourceFacing ?? "front";
 }
 
+function outputMaterialized(state: AuthorizedCharacterAttempt, provider: Record<string, unknown>): boolean {
+  if (state.plan.kind === "character") {
+    const direction = facing(state) === "front" ? "south" : facing(state) === "back" ? "north" : facing(state) === "left" ? "west" : "east";
+    return Boolean(characterResult(provider, direction)?.imageUrl);
+  }
+  const direction = facing(state) === "front" ? "south" : facing(state) === "back" ? "north" : facing(state) === "left" ? "west" : "east";
+  const result = animationResult(provider, state.plan.name, direction);
+  return Boolean(result && (result.imageUrl || result.frameUrls.length || result.frameData.length));
+}
+
 export async function runCharacterLifecycle(
   input: { operation: LifecycleOperation; expectedAttemptCount?: number; acknowledgeDuplicateBilling?: boolean },
   state: AuthorizedCharacterAttempt,
@@ -88,6 +98,10 @@ export async function runCharacterLifecycle(
     const status = state.plan.kind === "animation" && capability.pollOperation === "get_character"
       ? animationResult(result, state.plan.name, facing(state) === "front" ? "south" : facing(state) === "back" ? "north" : facing(state) === "left" ? "west" : "east")?.status ?? "processing"
       : providerStatus(result);
+    // PixelLab can report a completed job before the directional image/sheet
+    // is materialized. Keep polling the same paid job instead of turning this
+    // transient window into a terminal validation failure.
+    if (status === "completed" && !outputMaterialized(state, result)) return { assetId: state.assetId, status: "processing" };
     if (status === "failed" && state.status === "generating") {
       await dependencies.transition("generating", "failed", {
         expectedAttemptCount: state.attemptCount,
