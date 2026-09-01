@@ -339,6 +339,10 @@ Deno.test("summarizes provider response structure without retaining provider val
       "structuredContent.character_id",
     ],
     textLabels: ["animations", "id", "other", "south", "status"],
+    textShapes: [
+      "0:animations:empty", "0:id:text", "0:status:status", "2:other:empty",
+      "4:south:url",
+    ],
     statusTokens: ["completed"],
     urlCount: 1,
   });

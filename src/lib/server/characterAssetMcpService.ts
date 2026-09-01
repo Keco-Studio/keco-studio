@@ -248,6 +248,7 @@ function generationResult(generation: PublicCharacterGeneration) {
 type ProviderResponseDiagnostics = {
   keyPaths: string[];
   textLabels: string[];
+  textShapes: string[];
   statusTokens: string[];
   urlCount: number;
 };
@@ -264,6 +265,7 @@ const PROVIDER_DIAGNOSTIC_LABELS = new Set([
   'url', 'west',
 ]);
 const PROVIDER_DIAGNOSTIC_PATH = /^(?:[A-Za-z][A-Za-z0-9_-]{0,63}|<other>)(?:(?:\[\])?\.(?:[A-Za-z][A-Za-z0-9_-]{0,63}|<other>)|\[\])*$/;
+const PROVIDER_DIAGNOSTIC_SHAPE = /^\d{1,2}:[A-Za-z0-9_<>-]{1,64}:(?:url|direction|status|number|text|empty)$/;
 
 function safeProviderDiagnostics(value: unknown): ProviderResponseDiagnostics | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -271,11 +273,14 @@ function safeProviderDiagnostics(value: unknown): ProviderResponseDiagnostics | 
   if (!Array.isArray(row.keyPaths) || row.keyPaths.length > 200
     || !row.keyPaths.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_PATH.test(entry))
     || !Array.isArray(row.textLabels) || !row.textLabels.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_LABELS.has(entry))
+    || !Array.isArray(row.textShapes) || row.textShapes.length > 200
+    || !row.textShapes.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_SHAPE.test(entry))
     || !Array.isArray(row.statusTokens) || !row.statusTokens.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_STATUSES.has(entry))
     || !Number.isSafeInteger(row.urlCount) || Number(row.urlCount) < 0) return null;
   return {
     keyPaths: row.keyPaths as string[],
     textLabels: row.textLabels as string[],
+    textShapes: row.textShapes as string[],
     statusTokens: row.statusTokens as string[],
     urlCount: Number(row.urlCount),
   };
