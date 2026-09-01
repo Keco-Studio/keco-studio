@@ -75,7 +75,7 @@ Deno.test("submits V3 animation only from the verified source provider character
     sourceProviderCharacterId: "provider-character",
     sourceFacing: "left",
   });
-  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_background_job" });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_character" });
   test.dependencies.submit = async (_capability, args) => {
     test.submissions.push(args);
     return { structuredContent: { job_ids: ["animation-job"], animation_group_id: "animation-group" } };
@@ -87,34 +87,10 @@ Deno.test("submits V3 animation only from the verified source provider character
     character_id: "provider-character", action_description: "Walk steadily", animation_name: "walk_left",
     directions: ["west"], mode: "v3", frame_count: 6, keep_first_frame: false,
   }]);
-  assertEquals(test.transitions.at(-1)?.details.providerJobId, "animation-job");
+  assertEquals(test.transitions.at(-1)?.details.providerJobId, "provider-character");
   assertEquals(test.transitions.at(-1)?.details.metadata, {
-    providerCharacterId: "provider-character", pollOperation: "get_background_job",
+    providerCharacterId: "provider-character", pollOperation: "get_character",
     pollSchemaFingerprint: capability.pollSchemaFingerprint,
-  });
-});
-
-Deno.test("blocks an animation submission that returns only the source character id", async () => {
-  const sourceCharacterId = "1cda5f96-24e7-449f-9340-da93ac9225d5";
-  const test = fixture({
-    plan: {
-      schemaVersion: 1, kind: "animation", name: "walk_left",
-      sourceCharacterAssetId: IDS.assetId, sourceCharacterSha256: "d".repeat(64),
-      motionDescription: "Walk steadily", frameWidth: 96, frameHeight: 96,
-      frameCount: 6, fps: 10, loop: true,
-    },
-    sourceProviderCharacterId: sourceCharacterId,
-  });
-  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_background_job" });
-  test.dependencies.submit = async () => ({ structuredContent: { character_id: sourceCharacterId } });
-
-  const error = await assertRejects(
-    () => runCharacterLifecycle({ operation: "submit", expectedAttemptCount: 0 }, test.state, test.dependencies),
-    PixelLabCharacterError,
-  );
-  assertEquals(error.code, "pixellab_submit_outcome_unknown");
-  assertEquals(test.transitions.at(-1), {
-    from: "queued", to: "blocked", details: { expectedAttemptCount: 1, lastErrorCode: "pixellab_submit_outcome_unknown" },
   });
 });
 

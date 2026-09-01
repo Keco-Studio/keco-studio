@@ -1,5 +1,5 @@
 import { animationArguments, characterArguments, type PixelLabCharacterClient } from "./pixellab-client.ts";
-import { animationResult, characterResult, providerAnimationJobId, providerCharacterId, providerStatus } from "./provider-response.ts";
+import { animationResult, characterResult, providerCharacterId, providerStatus } from "./provider-response.ts";
 import { PixelLabCharacterError, type AuthorizedCharacterAttempt, type CharacterCapability, type LifecycleOperation } from "./types.ts";
 
 type Dependencies = {
@@ -51,7 +51,10 @@ export async function runCharacterLifecycle(
     capability = {
       semantic,
       operation: semantic === "character" ? "create_character" : "animate_character",
-      pollOperation: savedPollOperation,
+      // Animation V3 is bound to the source character and is retrieved via
+      // get_character. Older attempts persisted get_background_job here;
+      // recover those checkpoints without creating a new paid submission.
+      pollOperation: semantic === "animation" ? "get_character" : savedPollOperation,
       schemaFingerprint: "",
       pollSchemaFingerprint: savedPollSchemaFingerprint,
       inputSchema: {},
@@ -71,13 +74,11 @@ export async function runCharacterLifecycle(
         ? characterArguments(state.plan)
         : animationArguments(state.plan, state.sourceProviderCharacterId ?? "", facing(state));
       const result = await dependencies.submit(capability, args);
-      const providerId = semantic === "animation"
-        ? providerAnimationJobId(result, state.sourceProviderCharacterId ?? undefined)
-        : providerCharacterId(result);
+      // V3 animation jobs are bound to the ready source character and are
+      // polled through get_character. Persist that verified identity rather
+      // than interpreting the submission acknowledgement as a separate job.
+      const providerId = semantic === "animation" ? state.sourceProviderCharacterId : providerCharacterId(result);
       if (!providerId) {
-        if (semantic === "animation") {
-          throw new PixelLabCharacterError("pixellab_submit_outcome_unknown", "Provider animation job identity is missing");
-        }
         throw new PixelLabCharacterError("pixellab_invalid_response", "Provider character identity is missing");
       }
       await dependencies.transition("queued", "generating", {
@@ -90,7 +91,7 @@ export async function runCharacterLifecycle(
       });
       return { assetId: state.assetId, status: "generating" };
     } catch (error) {
-      if (error instanceof PixelLabCharacterError && error.code !== "pixellab_upstream" && error.code !== "pixellab_submit_outcome_unknown") {
+      if (error instanceof PixelLabCharacterError && error.code !== "pixellab_upstream") {
         await dependencies.transition("queued", "failed", { expectedAttemptCount: state.attemptCount + 1, lastErrorCode: error.code });
         throw error;
       }

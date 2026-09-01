@@ -83,7 +83,11 @@ export class PixelLabCharacterClient {
     if (!compatible(tool, required) || !compatible(poll, ["character_id"])) throw new PixelLabCharacterError("pixellab_capability_missing");
     const inputSchema = tool!.inputSchema as Record<string, unknown>;
     const pollInputSchema = poll!.inputSchema as Record<string, unknown>;
-    return { semantic, operation, pollOperation: semantic === "animation" ? "get_background_job" : "get_character", schemaFingerprint: await fingerprint(inputSchema), pollSchemaFingerprint: await fingerprint(pollInputSchema), inputSchema, pollInputSchema };
+    // PixelLab V3 animation results are attached to the source character and
+    // are retrieved through get_character, rather than the generic REST
+    // background-jobs endpoint. Keep the live capability aligned with the
+    // documented animate_character + get_character contract.
+    return { semantic, operation, pollOperation: "get_character", schemaFingerprint: await fingerprint(inputSchema), pollSchemaFingerprint: await fingerprint(pollInputSchema), inputSchema, pollInputSchema };
   }
   async callTool(name: string, arguments_: Record<string, unknown>): Promise<Record<string, unknown>> { return (await this.mcp(name, arguments_)).result as Record<string, unknown>; }
   async getBackgroundJob(jobId: string): Promise<Record<string, unknown>> {

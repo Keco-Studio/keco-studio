@@ -51,7 +51,7 @@ Deno.test("discovers exact character and V3 animation tools with get_character p
     operation: "create_character", poll: "get_character",
   });
   assertEquals({ operation: animation.operation, poll: animation.pollOperation }, {
-    operation: "animate_character", poll: "get_background_job",
+    operation: "animate_character", poll: "get_character",
   });
   assertEquals(character.schemaFingerprint.length, 64);
   assertEquals(animation.schemaFingerprint.length, 64);
