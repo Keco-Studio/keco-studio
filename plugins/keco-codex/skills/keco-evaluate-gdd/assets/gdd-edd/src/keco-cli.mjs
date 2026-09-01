@@ -1,8 +1,9 @@
-import { access, mkdir, readFile, realpath } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { formatEvaluationScore, evaluateCase } from './evaluate-case.mjs';
 import { createScoreBaseline, formatBaseline, formatComparison, runScoreComparison } from './eval-sampling.mjs';
+import { DEFAULT_OUTPUT_BRANCH, DEFAULT_OUTPUT_REPOSITORY, DEFAULT_OUTPUT_RUNS_PATH, publishRun } from './git-publisher.mjs';
 
 const SAFE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const fail = (message) => { throw new Error(message); };
@@ -85,6 +86,11 @@ export function parseKecoOptions(argv = []) {
     runs: 3,
     force: false,
     port: 0,
+    outputRepository: DEFAULT_OUTPUT_REPOSITORY,
+    outputBranch: DEFAULT_OUTPUT_BRANCH,
+    outputRunsPath: DEFAULT_OUTPUT_RUNS_PATH,
+    outputCheckout: undefined,
+    autoPush: true,
   };
   const values = {
     '--manifest': 'manifestPath',
@@ -94,10 +100,15 @@ export function parseKecoOptions(argv = []) {
     '--model': 'model',
     '--runs': 'runs',
     '--port': 'port',
+    '--output-repo': 'outputRepository',
+    '--output-branch': 'outputBranch',
+    '--output-runs-path': 'outputRunsPath',
+    '--output-checkout': 'outputCheckout',
   };
   for (let index = 1; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--force') parsed.force = true;
+    else if (argument === '--no-push') parsed.autoPush = false;
     else {
       const equals = argument.indexOf('=');
       const name = equals === -1 ? argument : argument.slice(0, equals);
@@ -142,6 +153,16 @@ export async function runKecoCli(options = {}) {
   const parsed = parseKecoOptions(options.argv || []);
   const loaded = await (options.manifestLoader || loadKecoManifest)(parsed.manifestPath, { workspaceRoot: parsed.workspaceRoot });
   const runRoot = await resolveRunRoot(loaded.workspaceRoot, parsed.runRoot, loaded.evalCase.id);
+  await writeFile(join(runRoot, 'manifest.json'), `${JSON.stringify({
+    ...loaded.manifest,
+    evaluation: { mode: parsed.mode, provider: parsed.provider, requestedModel: parsed.model || null },
+    output: {
+      repository: parsed.outputRepository,
+      branch: parsed.outputBranch,
+      runsPath: parsed.outputRunsPath,
+      autoPush: parsed.autoPush,
+    },
+  }, null, 2)}\n`, 'utf8');
   const common = {
     evalCase: loaded.evalCase,
     provider: parsed.provider,
@@ -171,6 +192,19 @@ export async function runKecoCli(options = {}) {
       ? await (options.createBaseline || createScoreBaseline)(sampling)
       : await (options.compareBaseline || runScoreComparison)(sampling);
     output = parsed.mode === 'baseline' ? formatBaseline(result) : formatComparison(result);
+  }
+  if (options.publish !== false) {
+    const publicationId = result?.evaluationId || `${loaded.evalCase.id}-${parsed.mode}-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`;
+    const published = await (options.publisher || publishRun)({
+      sourceRoot: runRoot,
+      repository: parsed.outputRepository,
+      branch: parsed.outputBranch,
+      runsPath: parsed.outputRunsPath,
+      evaluationId: publicationId,
+      checkoutPath: parsed.outputCheckout,
+      push: parsed.autoPush,
+    });
+    result = { ...result, publication: published, publicationId };
   }
   (options.write || console.log)(output);
   return result;

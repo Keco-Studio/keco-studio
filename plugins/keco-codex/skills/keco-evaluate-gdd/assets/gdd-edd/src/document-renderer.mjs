@@ -58,7 +58,7 @@ function renderProgression({ evalCase, execution, evaluationId, documents, asset
 
 - Evaluation ID: ${evaluationId}
 - Eval Case: ${evalCase.id}
-- Goal: ${audit.goal || 'Generate human-reviewable evaluation documents from a fixed GDD and rubric'}
+- Goal: ${audit.goal || 'Generate human-reviewable evaluation documents from the selected GDD and rubric'}
 - Provider: ${execution.provider}
 - Requested model: ${execution.requestedModel}
 - Observed model: ${execution.observedModel || 'Not provided by CLI events'}

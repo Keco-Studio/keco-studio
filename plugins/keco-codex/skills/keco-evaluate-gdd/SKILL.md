@@ -1,6 +1,6 @@
 ---
 name: keco-evaluate-gdd
-description: Use when a user asks to score or evaluate an existing Keco GDD document with EDD, collect human ratings, create an AI score baseline, or compare current GDD scores with a baseline; not for runtime game evaluation, playtests, GDD rewriting, implementation planning, or document summaries.
+description: Use when a user asks to score or evaluate a Keco or explicitly supplied local GDD with EDD, collect human ratings, create an AI score baseline, or compare current GDD scores with a baseline; not for runtime game evaluation, playtests, GDD rewriting, implementation planning, or document summaries.
 ---
 
 # Evaluate Keco GDD
@@ -11,12 +11,23 @@ Before expensive or mutating work, summarize Goal, Source, Scope, Success, and N
 
 ## Boundary
 
-- Resolve one existing Keco GDD and read its complete current content with `read_document`.
+- Resolve exactly one GDD source for this run and read its complete current content. For a Keco source, resolve one project/document and verify the supplied document ID; for a local source, require an explicit repository-relative snapshot path. Never default to a historical or project-specific GDD.
 - You must not modify, update, rewrite, or annotate the source GDD.
 - Treat the GDD as design intent only: no Godot, no runtime, no playtest, and no implementation claims.
 - Route evaluation of a build, gameplay Slice, milestone, or runtime behavior to `keco-evaluate-game`.
 - Keep local engine documents and JSON as temporary machine artifacts. Do not present Progression or Problem as additional results.
 - Create or update exactly one independent Keco report document only when the user asks to persist or write back the report. Read it back after every write. Never store a report inside the GDD.
+
+## Run Output Repository
+
+Every run has a unique `evaluation-id` and publishes its artifacts to the independent `edd-repo` Git repository, not to the source project:
+
+```text
+git@github.com:Keco-Studio/edd-repo.git
+  docs/gdd-edd/runs/<evaluation-id>/
+```
+
+The Runner creates a clean checkout, copies the manifest, progress, result, evidence, problem, and baseline artifacts, commits them, and pushes to `main` by default. It rejects an existing run, dirty or locally-ahead checkouts, path traversal, and non-fast-forward updates; it never force-pushes. Use `--no-push` only for an explicitly requested dry run. `--output-repo`, `--output-branch`, `--output-runs-path`, and `--output-checkout` provide explicit overrides. Git credentials must come from the existing SSH agent, credential helper, or GitHub CLI and must never be written into artifacts.
 
 ## Select Mode
 
@@ -54,7 +65,7 @@ Pass the candidate JSON on standard input. Correct validation failures before re
 
 Use the bundled reference engine at `assets/gdd-edd/` and its Keco adapter `assets/gdd-edd/src/keco-cli.mjs`.
 
-1. Create a temporary workspace. Stage the complete GDD plus the bundled prompt, rubric, and result template as files inside that workspace.
+1. Create a temporary workspace. Stage the complete selected GDD plus the bundled prompt, rubric, and result template as files inside that workspace.
 2. Create a manifest matching [references/workflow-contract.md](references/workflow-contract.md). Copy the exact Keco IDs and state token; never invent or increment them.
 3. Run the selected command from `assets/gdd-edd/`:
 
@@ -67,6 +78,7 @@ npm run eval:compare -- --manifest <manifest> --workspace-root <workspace> --run
 For `evaluate`, keep the returned local Web server running while human ratings are collected. With zero valid human ratings, label the report provisional and do not emit a combined total. After ratings arrive, read the updated Result and render the same report as human-combined. Stop the server when collection is finished or the user stops the task.
 
 For `baseline` and `compare`, sampling must remain sequential. Do not launch the Web, create a human session, or turn differences into a quality gate.
+After artifacts are written and read back, publish the run with the default EDD repository publisher. Record destination, branch, evaluation-id, commit, and push result in Progress. A clone, commit, or push failure preserves the local run and is a blocker; never silently write results into `keco-studio`.
 
 ## Report And Write Back
 
