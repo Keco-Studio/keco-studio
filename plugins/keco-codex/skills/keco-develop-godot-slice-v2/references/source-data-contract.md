@@ -12,7 +12,7 @@ Recency or the latest timestamp is supporting evidence, not a selector alone. Wh
 
 After accepting the source, read the complete content needed for decomposition. Do not infer that a document is development input from its display name alone.
 
-Before `WRITE_SPEC`, resolve the canonical Keco Project by stable project ID and discover the folder that owns slice planning documents. Read folder metadata and representative documents from the fresh project structure; never assume a folder name or use a folder from another project. Record `kecoProjectId`, `kecoFolderId`, folder name, document IDs, and revisions in `SourceSnapshot` and `RunContext`. A missing or ambiguous folder is a pre-write blocker.
+Before `WRITE_SPEC`, resolve the canonical Keco Project by stable project ID. User-facing Slice planning documents are repository files under `docs/superpowers/specs/` and `docs/superpowers/plans/`; do not create a Keco document named `spec/<sliceId>` or `plan/<sliceId>`, and do not require a Keco planning folder for them. Discover a Keco folder only when the selected Slice needs Keco data or internal runtime evidence, and record its identity separately in `SourceSnapshot` and `RunContext`.
 
 ## DataPlan
 
