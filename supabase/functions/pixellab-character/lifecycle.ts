@@ -136,7 +136,7 @@ export async function runCharacterLifecycle(
       // Provider/storage outages are transient. Keep the paid job generating so
       // the next advance can poll and validate the same provider result again.
       if (!(error instanceof PixelLabCharacterError) || error.code !== "pixellab_upstream") {
-        await dependencies.transition("generating", "failed", {
+        await dependencies.transition(state.status, "failed", {
           expectedAttemptCount: state.attemptCount,
           lastErrorCode: "validation_failed",
           metadata: state.plan.kind === "animation"
