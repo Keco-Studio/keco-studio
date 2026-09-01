@@ -7,9 +7,9 @@ jest.mock('next/image', () => ({
   default: ({ alt = '' }: { alt?: string }) =>
     React.createElement('img', { alt }),
 }));
-jest.mock('@/assets/images/folderIcon.svg', () => 'folderIcon.svg', { virtual: true });
+jest.mock('@/assets/images/FolderCloseIcon.svg', () => 'FolderCloseIcon.svg', { virtual: true });
 jest.mock('@/assets/images/table.svg', () => 'table.svg', { virtual: true });
-jest.mock('@/assets/images/LibraryBookIcon.svg', () => 'LibraryBookIcon.svg', {
+jest.mock('@/assets/images/paper.svg', () => 'paper.svg', {
   virtual: true,
 });
 jest.mock('@/components/libraries/AddLibraryMenu.module.css', () =>

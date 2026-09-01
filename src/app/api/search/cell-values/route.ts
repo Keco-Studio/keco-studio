@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
 
-type Params = {
-  searchParams?: Record<string, string | string[] | undefined>;
+type CellSearchRow = {
+  project_id?: string;
+  library_id?: string;
+  library_name?: string;
+  asset_id?: string;
+  asset_name?: string;
+  field_id?: string;
+  field_label?: string;
+  value_snippet?: string;
+  asset_updated_at?: string | null;
+  project_name?: string | null;
+  folder_name?: string | null;
 };
 
 export const GET = withAuth(async function GET(
@@ -33,39 +43,86 @@ export const GET = withAuth(async function GET(
     );
   }
 
-  const results = Array.isArray(data) ? data : [];
-  if (includeScript || results.length === 0) {
-    return NextResponse.json({ results });
+  const results = (Array.isArray(data) ? data : []) as CellSearchRow[];
+  if (results.length === 0) {
+    return NextResponse.json({ results: [] });
   }
 
   const libraryIds = [...new Set(results.flatMap((result) => {
-    const value = (result as { library_id?: unknown }).library_id;
+    const value = result.library_id;
     return typeof value === 'string' && value ? [value] : [];
   }))];
   if (libraryIds.length === 0) {
     return NextResponse.json({ results: [] });
   }
 
-  const { data: studioLibraries, error: libraryError } = await supabase
+  const { data: libraryRows, error: libraryError } = await supabase
     .from('libraries')
-    .select('id')
-    .in('id', libraryIds)
-    .or('document_export_type.is.null,document_export_type.neq.script');
+    .select('id, project_id, folder_id, document_export_type')
+    .in('id', libraryIds);
 
   if (libraryError) {
-    console.error('[GET /api/search/cell-values] Library isolation failed:', libraryError);
+    console.error('[GET /api/search/cell-values] Library enrichment failed:', libraryError);
     return NextResponse.json(
       { error: 'Cell value search failed' },
       { status: 400 }
     );
   }
 
-  const studioLibraryIds = new Set((studioLibraries ?? []).map((library) => library.id));
-  return NextResponse.json({
-    results: results.filter((result) => (
-      studioLibraryIds.has((result as { library_id?: string }).library_id ?? '')
-    )),
-  });
+  const projectIds = [...new Set((libraryRows ?? []).flatMap((row) => {
+    const id = row.project_id;
+    return typeof id === 'string' && id ? [id] : [];
+  }))];
+  const folderIds = [...new Set((libraryRows ?? []).flatMap((row) => {
+    const id = row.folder_id;
+    return typeof id === 'string' && id ? [id] : [];
+  }))];
+
+  const [{ data: projectRows }, { data: folderRows }] = await Promise.all([
+    projectIds.length
+      ? supabase.from('projects').select('id, name').in('id', projectIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    folderIds.length
+      ? supabase.from('folders').select('id, name').in('id', folderIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+  ]);
+
+  const projectNameById = new Map(
+    (projectRows ?? []).map((row) => [String(row.id), String(row.name ?? '')])
+  );
+  const folderNameById = new Map(
+    (folderRows ?? []).map((row) => [String(row.id), String(row.name ?? '')])
+  );
+
+  const libraryMeta = new Map<
+    string,
+    { projectName: string; folderName: string; isScript: boolean }
+  >();
+  for (const row of libraryRows ?? []) {
+    libraryMeta.set(String(row.id), {
+      projectName: projectNameById.get(String(row.project_id ?? '')) ?? '',
+      folderName: row.folder_id ? (folderNameById.get(String(row.folder_id)) ?? '') : '',
+      isScript: row.document_export_type === 'script',
+    });
+  }
+
+  const enriched = results
+    .filter((result) => {
+      const meta = libraryMeta.get(String(result.library_id ?? ''));
+      if (!meta) return false;
+      if (includeScript) return true;
+      return !meta.isScript;
+    })
+    .map((result) => {
+      const meta = libraryMeta.get(String(result.library_id ?? ''));
+      return {
+        ...result,
+        project_name: meta?.projectName ?? '',
+        folder_name: meta?.folderName ?? '',
+      };
+    });
+
+  return NextResponse.json({ results: enriched });
 }, {
   unauthorizedResponse: () =>
     NextResponse.json({ error: 'unauthorized' }, { status: 401 }),

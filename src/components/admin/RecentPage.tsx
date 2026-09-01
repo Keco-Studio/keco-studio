@@ -19,6 +19,7 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 import tableIcon from '@/assets/images/table.svg';
 import paperIcon from '@/assets/images/paper.svg';
 import moreOptionsIcon from '@/assets/images/moreOptionsIcon.svg';
+import recentEmptyIcon from '@/assets/images/nav-icons/computer.svg';
 import styles from './RecentPage.module.css';
 
 type RecentPageProps = {
@@ -216,13 +217,23 @@ export function RecentPage({ projectId }: RecentPageProps) {
   return (
     <div className={styles.page} data-testid="recent-page">
       {visits.length === 0 ? (
-        <div className={styles.empty}>
-          No recent tables or documents yet. Open a table or document to see it here.
+        <div className={styles.empty} data-testid="recent-empty-state">
+          <Image
+            src={recentEmptyIcon}
+            alt=""
+            width={88}
+            height={88}
+            className={styles.emptyIcon}
+            priority
+          />
+          <p className={styles.emptyText}>
+            No recent tables or documents yet. Open a table or document to see it here.
+          </p>
         </div>
       ) : isLoading ? (
-        <div className={styles.empty}>Loading recent items...</div>
+        <div className={styles.emptyMessage}>Loading recent items...</div>
       ) : items.length === 0 ? (
-        <div className={styles.empty}>
+        <div className={styles.emptyMessage}>
           Recent tables or documents are no longer available in this project.
         </div>
       ) : viewMode === 'grid' ? (

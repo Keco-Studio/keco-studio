@@ -104,13 +104,13 @@ describe('LeftNav wiring', () => {
 
     expect(controls.slice(1, 7)).toEqual([
       'Keco 101',
-      'Studio',
-      'Simulation',
+      'Libraries',
+      'Simulator',
       'Script',
-      'Create Map',
-      'Game Design System',
+      'Map',
+      'System',
     ]);
-    expect(markup).toContain('aria-label="Create Map" aria-current="page"');
+    expect(markup).toContain('aria-label="Map" aria-current="page"');
   });
 
   it('keeps simulation navigation and collapse behavior', () => {

@@ -224,7 +224,7 @@ async function openReferenceModalOnCell(
     await openControl.click({ force: true });
   }
   await expect(modal).toBeVisible({ timeout: 15000 });
-  await expect(modal.getByText('APPLY REFERENCE', { exact: true })).toBeVisible();
+  await expect(modal.getByText('Apply Reference', { exact: true })).toBeVisible();
   return modal;
 }
 

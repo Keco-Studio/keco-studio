@@ -24,6 +24,8 @@ interface MediaFileUploadProps {
   onChange: (value: MediaFileMetadata | null) => void;
   disabled?: boolean;
   fieldType?: 'image' | 'file' | 'multimedia' | 'audio';
+  /** Table cells use icon-only centered layout for all upload field types. */
+  inTableCell?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
   // Optional parent-controlled toast, such as LibraryAssetsTable's TableToast.
@@ -35,6 +37,7 @@ export function MediaFileUpload({
   onChange,
   disabled,
   fieldType = 'image',
+  inTableCell = false,
   onFocus,
   onBlur,
   onShowToast,
@@ -296,8 +299,14 @@ export function MediaFileUpload({
     };
   }, [value]);
 
+  const isTableCellLayout = inTableCell;
+
+  const emptyUploadAriaLabel = uploading ? uploadProgress : uploadLabel;
+
   return (
-    <div className={styles.container}>
+    <div
+      className={`${styles.container} ${isTableCellLayout ? styles.containerTableCell : ''}`}
+    >
       <input
         ref={fileInputRef}
         type="file"
@@ -309,14 +318,14 @@ export function MediaFileUpload({
         onBlur={onBlur}
       />
 
-      {!value && fieldType === 'image' && (
+      {!value && isTableCellLayout && (
         <button
           type="button"
           onClick={handleChooseFile}
           disabled={disabled || uploading}
-          className={styles.imageUploadPlaceholder}
-          aria-label={uploading ? uploadProgress : 'Upload image'}
-          title={uploading ? uploadProgress : 'Upload image'}
+          className={`${styles.imageUploadPlaceholder} ${styles.imageUploadPlaceholderTable}`}
+          aria-label={emptyUploadAriaLabel}
+          title={emptyUploadAriaLabel}
         >
           <Image
             src={assetFileUploadIcon}
@@ -328,7 +337,26 @@ export function MediaFileUpload({
         </button>
       )}
 
-      {!value && fieldType !== 'image' && (
+      {!value && !isTableCellLayout && fieldType === 'image' && (
+        <button
+          type="button"
+          onClick={handleChooseFile}
+          disabled={disabled || uploading}
+          className={styles.imageUploadPlaceholder}
+          aria-label={emptyUploadAriaLabel}
+          title={emptyUploadAriaLabel}
+        >
+          <Image
+            src={assetFileUploadIcon}
+            alt=""
+            width={20}
+            height={20}
+            className={`${styles.imageUploadIcon} icon-20`}
+          />
+        </button>
+      )}
+
+      {!value && !isTableCellLayout && fieldType !== 'image' && (
         <button
           type="button"
           onClick={handleChooseFile}
@@ -341,8 +369,14 @@ export function MediaFileUpload({
       )}
 
       {value && (
-        <div className={styles.uploadedFileContainer}>
-          <div className={styles.fileInfoClickable} onClick={handleView} title="Click to view">
+        <div
+          className={`${styles.uploadedFileContainer} ${isTableCellLayout ? styles.uploadedFileContainerTableCell : ''}`}
+        >
+          <div
+            className={`${styles.fileInfoClickable} ${isTableCellLayout ? styles.fileInfoClickableTableCell : ''}`}
+            onClick={handleView}
+            title="Click to view"
+          >
             {fieldType === 'image' && isImageFile(value.fileType) ? (
               <div className={styles.imageThumbnail}>
                 <Image
@@ -363,23 +397,27 @@ export function MediaFileUpload({
                 <Image src={assetFileIcon} alt="" width={16} height={16} className="icon-16" />
               </div>
             )}
-            <Tooltip
-              title={value.fileName}
-              placement="topLeft"
-              mouseEnterDelay={0.5}
-              getPopupContainer={getTooltipPopupContainer}
-            >
-              <span ref={fileNameRef} className={styles.uploadedFileName}>{value.fileName}</span>
-            </Tooltip>
+            {!isTableCellLayout && (
+              <Tooltip
+                title={value.fileName}
+                placement="topLeft"
+                mouseEnterDelay={0.5}
+                getPopupContainer={getTooltipPopupContainer}
+              >
+                <span ref={fileNameRef} className={styles.uploadedFileName}>{value.fileName}</span>
+              </Tooltip>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={handleReplace}
-            disabled={disabled || uploading}
-            className={styles.replaceButton}
-          >
-            replace
-          </button>
+          {!isTableCellLayout && (
+            <button
+              type="button"
+              onClick={handleReplace}
+              disabled={disabled || uploading}
+              className={styles.replaceButton}
+            >
+              replace
+            </button>
+          )}
         </div>
       )}
 

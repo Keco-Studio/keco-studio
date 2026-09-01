@@ -27,6 +27,7 @@ import { materializeTableResources } from '@/lib/gdd-generation/tableResources';
 import { GddGenerationValidationError, type GddGenerationInput, type GeneratedGdd } from '@/lib/gddGeneration';
 import type { GddGenerationJob } from '@/lib/services/gddGenerationService';
 import type { ReviewV2 } from './v2/contracts';
+import { GddV2ResourceRecoveryError } from './v2/generator';
 
 const generationInput: GddGenerationInput = {
   projectId: '11111111-1111-4111-8111-111111111111',
@@ -407,6 +408,40 @@ describe('GDD generation worker', () => {
     expect(persistV2).not.toHaveBeenCalled();
     expect(retry).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', leaseError.message, 5);
     jest.useRealTimers();
+  });
+
+  it('fails exhausted v2 resource recovery errors without retrying', async () => {
+    const generateV2 = jest.fn(async () => {
+      throw new GddV2ResourceRecoveryError('GDD is missing required guided tables after one repair pass: SeasonsWeather.');
+    });
+    const retry = jest.fn(async () => 'queued' as const);
+    const fail = jest.fn(async () => undefined);
+    const v2Job = {
+      ...job,
+      input: {
+        contractVersion: 2, mode: 'quick', projectId: generationInput.projectId,
+        versionId: generationInput.versionId,
+      },
+    } as GddGenerationJob;
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
+      heartbeat: jest.fn(async () => undefined),
+      revalidateContext: jest.fn(async () => undefined),
+      generateV2: generateV2 as never,
+      persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
+      generate: jest.fn(async () => generated),
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
+      retry,
+      fail,
+    })).resolves.toBe('failed');
+
+    expect(fail).toHaveBeenCalledWith(
+      expect.anything(),
+      'job-1',
+      'worker-1',
+      expect.stringContaining('SeasonsWeather'),
+    );
+    expect(retry).not.toHaveBeenCalled();
   });
 
   it('forwards generated dialogue plans to atomic v2 persistence', async () => {

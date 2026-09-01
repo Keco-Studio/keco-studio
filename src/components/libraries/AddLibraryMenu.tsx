@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import folderIcon from '@/assets/images/folderIcon.svg';
+import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import tableIcon from '@/assets/images/table.svg';
-import LibraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
+import paperIcon from '@/assets/images/paper.svg';
 import styles from './AddLibraryMenu.module.css';
 
 type AddLibraryMenuProps = {
@@ -91,27 +91,24 @@ export function AddLibraryMenu({
 
     const anchorRect = anchorElement.getBoundingClientRect();
     const menuElement = menuRef.current;
-
     const gap = 4;
+
     menuElement.style.position = 'fixed';
 
-    // Prefer opening below for topbar-style anchors; fall back to side placement.
-    const preferBelow = anchorRect.bottom + menuElement.offsetHeight + gap < window.innerHeight;
-    if (preferBelow && anchorRect.top < 80) {
-      menuElement.style.top = `${anchorRect.bottom + gap}px`;
-      menuElement.style.left = `${Math.max(8, anchorRect.right - menuElement.offsetWidth)}px`;
-    } else {
-      menuElement.style.left = `${anchorRect.right + gap}px`;
-      menuElement.style.top = `${anchorRect.top}px`;
+    let left = anchorRect.right - menuElement.offsetWidth;
+    if (left < 8) left = 8;
+    if (left + menuElement.offsetWidth > window.innerWidth) {
+      left = Math.max(8, window.innerWidth - menuElement.offsetWidth - 8);
     }
 
-    const menuRect = menuElement.getBoundingClientRect();
-    if (menuRect.right > window.innerWidth) {
-      menuElement.style.left = `${anchorRect.left - menuRect.width - gap}px`;
+    let top = anchorRect.bottom + gap;
+    if (top + menuElement.offsetHeight > window.innerHeight) {
+      top = anchorRect.top - menuElement.offsetHeight - gap;
     }
-    if (menuRect.bottom > window.innerHeight) {
-      menuElement.style.top = `${window.innerHeight - menuRect.height - 8}px`;
-    }
+    if (top < 8) top = 8;
+
+    menuElement.style.left = `${left}px`;
+    menuElement.style.top = `${top}px`;
   }, [open, anchorElement]);
 
   if (!open) return null;
@@ -122,7 +119,7 @@ export function AddLibraryMenu({
     <div ref={menuRef} className={styles.menu} role="menu">
       {onCreateFolder && (
         <button type="button" className={styles.menuItem} onClick={onCreateFolder} role="menuitem">
-          <Image src={folderIcon} alt="" width={16} height={16} className={styles.menuIcon} />
+          <Image src={FolderCloseIcon} alt="" width={16} height={16} className={styles.menuIcon} />
           <span>Create new folder</span>
         </button>
       )}
@@ -134,7 +131,7 @@ export function AddLibraryMenu({
       )}
       {onCreateDocument && (
         <button type="button" className={styles.menuItem} onClick={onCreateDocument} role="menuitem">
-          <Image src={LibraryBookIcon} alt="" width={16} height={16} className={styles.menuIcon} />
+          <Image src={paperIcon} alt="" width={16} height={16} className={styles.menuIcon} />
           <span>Create new document</span>
         </button>
       )}

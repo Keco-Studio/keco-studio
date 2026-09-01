@@ -49,8 +49,8 @@ describe('Keco 101 product navigation', () => {
     expect(source).toContain('aria-label="Keco 101"');
     expect(source).toContain("navigate('keco101')");
     const keco101 = source.indexOf('aria-label="Keco 101"');
-    const studio = source.indexOf('aria-label="Studio"');
-    const gameDesignSystem = source.indexOf('aria-label="Game Design System"');
+    const studio = source.indexOf('aria-label="Libraries"');
+    const gameDesignSystem = source.indexOf('aria-label="System"');
     expect(keco101).toBeGreaterThan(-1);
     expect(studio).toBeGreaterThan(keco101);
     expect(gameDesignSystem).toBeGreaterThan(studio);

@@ -108,20 +108,24 @@
 }
 
 .shareButton {
-  padding: 0.25rem 0.75rem;
+  padding: 7px 16px;
   height: 30px;
-  border-radius: 0.5rem;
-  border: 1px solid #BCBCBC;
-  color: #000;
+  border-radius: 7px;
+  border: none;
+  color: #ffffff;
   font-size: 1rem;
   font-weight: 400;
   cursor: pointer;
-  transition: all 0.2s;
-  background-color: #fff;
+  transition: background-color 0.2s;
+  background-color: #0B99FF;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5.25px;
+  box-sizing: border-box;
 }
 
 .shareButton:hover {
-  background: #BCBCBC;
-  border-color: #BCBCBC;
+  background-color: #0a8ae6;
 }
 

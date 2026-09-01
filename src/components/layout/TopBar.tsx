@@ -30,6 +30,7 @@ import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import searchIcon from "@/assets/images/searchIcon.svg";
 import closeIcon from '@/assets/images/closeIcon32.svg';
+import findCellContentIcon from '@/assets/images/findCellContentIcon.png';
 import { useSidebarProjects } from './hooks/useSidebarProjects';
 import { useSidebarFoldersLibraries } from './hooks/useSidebarFoldersLibraries';
 import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
@@ -66,34 +67,52 @@ function CellContentIcon({
   size?: number;
   withBackground?: boolean;
 }) {
-  const stroke = withBackground ? '#0B99FF' : 'currentColor';
+  // Result rows: plugin icon on light-blue circle (Figma)
+  if (withBackground) {
+    const glyph = Math.round(size * 0.53); // ~16px inside 30px
+    return (
+      <span className={styles.cellSearchHitIconBadge} style={{ width: size, height: size }}>
+        <Image
+          src={findCellContentIcon}
+          alt=""
+          width={glyph}
+          height={glyph}
+          className={styles.cellSearchHitIconImg}
+          aria-hidden
+        />
+      </span>
+    );
+  }
+
+  // Tab: icon.24.plugin.png (Find or replace cell content)
   return (
-    <svg
+    <Image
+      src={findCellContentIcon}
+      alt=""
       width={size}
       height={size}
-      viewBox={withBackground ? '0 0 30 30' : '8 7.5 14 14.5'}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      {withBackground ? (
-        <rect width="30" height="30" rx="15" fill="#0B99FF" fillOpacity="0.08" />
-      ) : null}
-      <path
-        d="M9.25 8.5H13.4C14.1 8.5 14.78 8.78 15.25 9.25C15.72 9.72 16 10.4 16 11.1V21.25C16 20.72 15.79 20.21 15.41 19.84C15.04 19.47 14.53 19.25 14 19.25H9.25V8.5Z"
-        stroke={stroke}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M20.75 8.5H16.6C15.9 8.5 15.22 8.78 14.75 9.25C14.28 9.72 14 10.4 14 11.1V21.25C14 20.72 14.21 20.21 14.59 19.84C14.96 19.47 15.47 19.25 16 19.25H20.75V8.5Z"
-        stroke={stroke}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      className={styles.cellSearchTabIconImg}
+      aria-hidden
+    />
+  );
+}
+
+function CellHitLocationLabel({
+  fieldLabel,
+  libraryName,
+}: {
+  fieldLabel: string;
+  libraryName?: string;
+}) {
+  const name = String(fieldLabel ?? '').trim();
+  const lib = String(libraryName ?? '').trim();
+  const title = name && lib ? `${name} (${lib})` : name || lib;
+  return (
+    <div className={styles.cellSearchHitLocation} title={title}>
+      {name ? <span className={styles.cellSearchHitName}>{name}</span> : null}
+      {name && lib ? ' ' : null}
+      {lib ? <span className={styles.cellSearchHitLibraryParen}>({lib})</span> : null}
+    </div>
   );
 }
 
@@ -254,6 +273,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     projectId: string;
     libraryId: string;
     libraryName: string;
+    projectName: string;
+    folderName: string;
     assetId: string;
     assetName: string;
     fieldId: string;
@@ -348,6 +369,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           projectId: String(r.project_id ?? r.projectId ?? ''),
           libraryId: String(r.library_id ?? r.libraryId ?? ''),
           libraryName: String(r.library_name ?? r.libraryName ?? ''),
+          projectName: String(r.project_name ?? r.projectName ?? ''),
+          folderName: String(r.folder_name ?? r.folderName ?? ''),
           assetId: String(r.asset_id ?? r.assetId ?? ''),
           assetName: String(r.asset_name ?? r.assetName ?? ''),
           fieldId: String(r.field_id ?? r.fieldId ?? ''),
@@ -790,6 +813,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             projectId: String(r.project_id ?? r.projectId ?? ''),
             libraryId: String(r.library_id ?? r.libraryId ?? ''),
             libraryName: String(r.library_name ?? r.libraryName ?? ''),
+            projectName: String(r.project_name ?? r.projectName ?? ''),
+            folderName: String(r.folder_name ?? r.folderName ?? ''),
             assetId: String(r.asset_id ?? r.assetId ?? ''),
             assetName: String(r.asset_name ?? r.assetName ?? ''),
             fieldId: String(r.field_id ?? r.fieldId ?? ''),
@@ -1677,7 +1702,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                   : styles.searchResultSectionLabel
               }
             >
-              {searchFilter === 'cell' ? 'Results' : 'RESULT'}
+              results
             </div>
             <div
               className={`${styles.searchDropdownInner} ${
@@ -1707,12 +1732,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                             <CellContentIcon size={30} />
                           </span>
                           <div className={styles.cellSearchHitMeta}>
-                            <div
-                              className={styles.cellSearchHitFieldLabel}
-                              title={hit.fieldLabel}
-                            >
-                              {hit.fieldLabel}
-                            </div>
+                            <CellHitLocationLabel
+                              fieldLabel={hit.fieldLabel}
+                              libraryName={hit.libraryName}
+                            />
                             <div className={styles.cellSearchHitValue}>
                               &quot;
                               {highlightCellValue(

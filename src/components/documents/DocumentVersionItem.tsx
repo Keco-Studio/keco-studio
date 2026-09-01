@@ -6,7 +6,7 @@ import Image from 'next/image';
 import type { DocumentVersionSummary } from '@/lib/documents/documentVersionService';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import visionItemIcon1 from '@/assets/images/VisionItemIcon1.svg';
-import visionItemCurrentIcon from '@/assets/images/VisionItemCurrentIcon.svg';
+import visionItemCurrentIcon from '@/assets/images/ViisionItemIcon2.svg';
 import visionItemAgentIcon from '@/assets/images/VisionItemAgentIcon.svg';
 import versionRestoreIcon from '@/assets/images/VersionRestoreIcon.svg';
 import versionItemRestoreIcon from '@/assets/images/VersionItemRestoreIcon.svg';

@@ -132,12 +132,41 @@
 .modal :global(.ant-select-lg .ant-select-selector) {
   height: 2rem !important;
   padding: 0 0.75rem !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
 .modal :global(.ant-select-lg .ant-select-selection-item),
 .modal :global(.ant-select-lg .ant-select-selection-placeholder) {
   line-height: 1.875rem !important;
   font-size: 0.875rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Role dropdown chevron: 12×12, vertically centered (matches Figma) */
+.modal :global(.ant-select-arrow) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: 0 !important;
+  top: 50% !important;
+  inset-inline-end: 12px !important;
+  transform: translateY(-50%) !important;
+  color: #21272a !important;
+}
+
+.modal :global(.ant-select-arrow .anticon) {
+  display: none !important;
+}
+
+.roleSelectArrow {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 /* Ensure primary button uses brand blue */
