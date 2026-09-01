@@ -137,7 +137,7 @@ FORBIDDEN_RUNTIME_KEYS = {
 
 Reject those keys at the plan root and task level with the error `plan contains runtime or evidence state`. Keep the existing required task checks unchanged. Do not reject document frontmatter `status` because it remains a legacy document lifecycle field validated by `validate_slice_documents.py`; only JSON execution plans and task bodies are subject to the new rule.
 
-Update both BuildPlan references to state that execution IDs, checkpoint state, and evidence are sidecars, not plan fields. Update both V2 orchestration and slice-document references to state that task completion is read from `status.json`, while `plan.md` remains the approved scope.
+Update both BuildPlan references to state that execution IDs, checkpoint state, and evidence are sidecars, not plan fields. Update both V2 orchestration and slice-document references to state that task completion is marked by Markdown checkboxes in `docs/superpowers/plans/<slice-id>.md`; runtime status remains internal evidence.
 
 - [ ] **Step 3: Run the boundary tests**
 

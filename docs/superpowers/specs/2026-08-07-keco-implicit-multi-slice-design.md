@@ -2,7 +2,7 @@
 
 ## Goal
 
-Allow Keco Godot Slice V2 to activate implicitly for development requests, discover a semantically relevant source document without requiring a fixed name, decompose its ideas into multiple small Slices, and execute them sequentially with Superpowers-style plans stored authoritatively in a Keco Project Folder.
+Allow Keco Godot Slice V2 to activate implicitly for development requests, discover a semantically relevant source document without requiring a fixed name, decompose its ideas into multiple small Slices, and execute them sequentially with one clear Superpowers-style spec/plan pair per Slice.
 
 ## Scope
 
@@ -12,21 +12,17 @@ This change applies to Keco-driven Godot development requests that require persi
 
 V2 becomes an implicit, document-driven orchestration entry point. The source document is selected by semantic discovery: read the current Keco Project document summaries, use the single clearly relevant candidate, and ask when candidates tie. The source document name is not fixed to `Feedback` or any other label.
 
-The matching Keco Project contains a semantically discovered planning Folder. Its authoritative document set is:
+The repository uses the existing Superpowers planning directories. Its user-facing document set is:
 
 ```text
-slice-index / roadmap
-slice-001 spec
-slice-001 plan
-slice-001 status
-slice-001 eval-report
-slice-002 spec
-slice-002 plan
-slice-002 status
-slice-002 eval-report
+docs/superpowers/specs/<slice-id>-design.md
+docs/superpowers/plans/<slice-id>.md
 ```
 
-The roadmap records the source document, candidate Slices, priority, dependencies, allowed files, current Slice, and aggregate status. Each Slice keeps its own spec, bite-sized plan, status ledger, and final evaluation report. Local repository documents are validated mirrors only.
+For multiple Slices, the roadmap is another plan in `docs/superpowers/plans/`.
+Each Slice keeps one paired spec and plan; the plan checklist is the progress
+view. Status, evaluation, and collaboration evidence remain internal machine
+artifacts rather than additional user-maintained documents.
 
 ## Execution Flow
 
@@ -37,7 +33,12 @@ INTAKE -> SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> WRITE_ROADMAP
   -> REPAIR (max 3) -> FINAL_VERIFY -> UPDATE_ROADMAP -> NEXT_SLICE
 ```
 
-The roadmap is written and read back before Slice execution. Each Slice plan uses Superpowers-style tasks with exact files, dependencies, RED verification, minimal implementation, GREEN verification, and review evidence. The process executes all independent/ordered Slices sequentially. A Slice that remains unsuccessful after three repair iterations updates its status and eval-report, marks the roadmap paused, and stops the run for user direction; it is not silently skipped.
+The roadmap plan is written before Slice execution. Each Slice plan uses
+checkbox tasks with exact files, dependencies, RED verification, minimal
+implementation, and GREEN verification. The process executes all independent
+or ordered Slices sequentially. A Slice that remains unsuccessful after three
+repair iterations is marked paused in internal evidence and the roadmap plan,
+then stops for user direction; it is not silently skipped.
 
 ## Source Discovery
 
@@ -51,7 +52,11 @@ PixelLab generates art resources only. Godot remains responsible for map layout,
 
 ## Status Contract
 
-The roadmap aggregates Slice states such as `planned`, `in_progress`, `completed`, `paused`, and `superseded`. Each Slice status records task-level progress and repair iterations. A Slice is complete only when all tasks are complete and a read-back eval-report exists. The final report distinguishes `passed`, `partial`, `failed`, and `blocked_before_write`.
+The roadmap checkbox is the visible Slice state: unchecked means planned or in
+progress, and checked means completed. Internal projections may retain
+`planned`, `in_progress`, `completed`, `paused`, `superseded`, `evalResult`, and
+repair data. A Slice is complete only when all plan tasks are checked and the
+internal verification passes.
 
 ## Failure and Safety Rules
 
@@ -63,4 +68,4 @@ The roadmap aggregates Slice states such as `planned`, `in_progress`, `completed
 
 ## Verification
 
-Add contract tests for implicit invocation, semantic source discovery, roadmap and per-Slice document structure, sequential execution, three-repair pause behavior, and V1/V2 routing. Run Skill validation, plugin validation, focused Jest tests, and reinstall the cache-busted plugin in both WSL and Windows before reporting completion.
+Add contract tests for implicit invocation, semantic source discovery, roadmap and per-Slice document structure, sequential execution, three-repair pause behavior, and V1/V2 routing. Run Skill validation, plugin validation, and the focused plugin Jest tests before reporting completion.

@@ -125,14 +125,33 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'utf8',
     );
 
-    expect(orchestration).toContain('Slice Checklist');
+    expect(orchestration).toContain('User-Facing Layout');
     expect(orchestration).toContain('- [ ]');
     expect(orchestration).toContain('- [x]');
-    expect(orchestration).toContain('Task Checklist');
+    expect(orchestration).toContain('Checklist Task Contract');
     expect(orchestration).toMatch(/- \[ \] task-001:/);
-    expect(orchestration).toMatch(/Keco(?:'s|’s) read-back plan is authoritative/i);
+    expect(orchestration).toMatch(/checkbox in `plan\.md` is the user-facing mark/i);
     expect(skill).toMatch(/roadmap[\s\S]{0,180}checklist/i);
     expect(skill).toMatch(/Slice[\s\S]{0,180}plan[\s\S]{0,180}checklist/i);
+  });
+
+  it('uses the repository Superpowers specs/plans layout as the user-facing Slice source of truth', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const orchestration = readFileSync(
+      path.join(skillRoot, 'references', 'multi-slice-orchestration.md'),
+      'utf8',
+    );
+    const documents = readFileSync(
+      path.join(skillRoot, 'references', 'slice-document-contract.md'),
+      'utf8',
+    );
+
+    expect(skill).toMatch(/docs\/superpowers\/specs[\s\S]*docs\/superpowers\/plans/i);
+    expect(orchestration).toMatch(/specs\/<slice-id>-design\.md[\s\S]*plans\/<slice-id>\.md/i);
+    expect(orchestration).toMatch(/checkbox[\s\S]*plan\.md|plan\.md[\s\S]*checkbox/i);
+    expect(documents).toMatch(/user-facing[\s\S]*spec[\s\S]*plan/i);
+    expect(documents).toMatch(/status\.json[\s\S]*internal|internal[\s\S]*status\.json/i);
+    expect(documents).not.toMatch(/docs\/keco-godot-slices\/<slice-id>\/\s*spec\.md/i);
   });
 
   it('keeps V2 as the canonical workflow for document-driven Godot creation', () => {
@@ -151,15 +170,14 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(skill).toMatch(/write token/i);
     expect(skill).toMatch(/blocked_before_write/);
     expect(skill).toMatch(/independent review/i);
-    expect(skill).not.toMatch(/superpowers/i);
+    expect(skill).toMatch(/Superpowers layout/i);
     expect(skill).toMatch(/bundled|self-contained/i);
     expect(skill).toMatch(/already consistent[\s\S]*without asking|without asking[\s\S]*already consistent/i);
     expect(skill).toMatch(/unresolved ambiguity[\s\S]*zero writes|zero writes[\s\S]*unresolved ambiguity/i);
     expect(skill).toMatch(/multiple independent[\s\S]*not[\s\S]*ambiguity/i);
     expect(skill).toMatch(/planning-document preflight[\s\S]*execution preflight/i);
-    expect(skill).toMatch(/spec\.md[\s\S]*plan\.md[\s\S]*status\.json[\s\S]*eval-report\.json/i);
-    expect(skill).toMatch(/matching Keco Project[\s\S]*create_document\(projectId, folderId/i);
-    expect(skill).toMatch(/local mirror[\s\S]*never as the only copy|never as the only copy[\s\S]*local mirror/i);
+    expect(skill).toMatch(/docs\/superpowers\/specs[\s\S]*docs\/superpowers\/plans/i);
+    expect(skill).toMatch(/status\.json[\s\S]*internal|internal[\s\S]*status\.json/i);
     expect(skill).toMatch(/validate_slice_documents\.py/);
     expect(metadata).toMatch(/allow_implicit_invocation: true/);
   });
@@ -258,21 +276,20 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(tileset).toMatch(/topdown-15[\s\S]*platformer-16[\s\S]*isometric-atlas/i);
     expect(tileset).toMatch(/do not infer|never infer/i);
     const sliceDocuments = readFileSync(path.join(skillRoot, 'references', 'slice-document-contract.md'), 'utf8');
-    expect(sliceDocuments).toMatch(/docs\/keco-godot-slices[\s\S]*spec\.md[\s\S]*plan\.md[\s\S]*status\.json/i);
-    expect(sliceDocuments).toMatch(/latest[\s\S]*superseded[\s\S]*completed/i);
-    expect(sliceDocuments).toMatch(/Keco documents are authoritative[\s\S]*create_document\(projectId, folderId[\s\S]*read_document/i);
-    expect(sliceDocuments).toMatch(/no compatible folder[\s\S]*blocked_before_write/i);
-    expect(sliceDocuments).toMatch(/checkpoint[\s\S]{0,240}plan confirmation[\s\S]{0,240}development writes[\s\S]{0,240}(?:blocked|partial)[\s\S]{0,240}completion/i);
-    expect(sliceDocuments).not.toMatch(/After every ledger stage, update the Keco status document/i);
+    expect(sliceDocuments).toMatch(/docs\/superpowers\/specs[\s\S]*docs\/superpowers\/plans/i);
+    expect(sliceDocuments).toMatch(/only user-facing progress record/i);
+    expect(sliceDocuments).toMatch(/internal machine evidence/i);
+    expect(sliceDocuments).toMatch(/status\.json[\s\S]*internal|internal[\s\S]*status\.json/i);
     const sliceDecision = readFileSync(path.join(skillRoot, 'references', 'slice-decision.md'), 'utf8');
     expect(sliceDecision).toMatch(/consistent[\s\S]*without[\s\S]*confirmation/i);
     expect(sliceDecision).toMatch(/awaiting_user_confirmation[\s\S]*zero-write/i);
     const orchestration = readFileSync(path.join(skillRoot, 'references', 'orchestration-contract.md'), 'utf8');
-    expect(orchestration).toMatch(/specPath[\s\S]*planPath[\s\S]*statusPath/i);
+    expect(orchestration).toMatch(/specPath[\s\S]*docs\/superpowers\/specs[\s\S]*planPath[\s\S]*docs\/superpowers\/plans/i);
+    expect(orchestration).toMatch(/statusPath[\s\S]*internal[\s\S]*status\.json/i);
     expect(orchestration).toMatch(/kecoFolderId[\s\S]*kecoDocumentIds[\s\S]*localMirrorRoot/i);
     expect(orchestration).toMatch(/evolution[\s\S]*reuse_exact[\s\S]*create_new/i);
     expect(orchestration).toMatch(/SlicePlan[\s\S]{0,200}approved static scope/i);
-    expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
+    expect(orchestration).toMatch(/task completion[\s\S]{0,220}Markdown checkboxes/i);
     expect(orchestration).toMatch(/interaction:[\s\S]{0,480}blockedAt[\s\S]{0,240}resumeFrom/i);
     expect(orchestration).toMatch(/legacy[\s\S]{0,240}without[\s\S]{0,160}interaction/i);
     expect(orchestration).toMatch(/topological|dependency order/i);
@@ -281,8 +298,8 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(orchestration).toMatch(/Revise, revalidate, and topologically reorder the plan/i);
     expect(orchestration).toMatch(/Use `taskTransition` only when[\s\S]{0,400}every dependency[\s\S]{0,120}already complete/i);
     expect(orchestration).toMatch(/discoveredDuring[\s\S]{0,120}canInline[\s\S]{0,160}planImpact/i);
-    expect(sliceDocuments).toMatch(/plan\.md[\s\S]{0,200}does not own task progress/i);
-    expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i);
+    expect(sliceDocuments).toMatch(/only user-facing progress record/i);
+    expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}internal/i);
   });
 
   it('ships the multi-Slice roadmap and recovery contract', () => {
@@ -292,13 +309,12 @@ describe('Keco Godot Slice V2 skill contract', () => {
 
     const multiSlice = readFileSync(multiSlicePath, 'utf8');
     expect(multiSlice).toMatch(/roadmap[\s\S]*dependencies[\s\S]*priority/i);
-    expect(multiSlice).toMatch(/NEXT_SLICE[\s\S]*completed/i);
+    expect(multiSlice).toMatch(/CHECK_PLAN[\s\S]*NEXT_SLICE/i);
     expect(multiSlice).toMatch(/three|3[\s\S]*paused[\s\S]*user/i);
-    expect(multiSlice).toMatch(/all planned[\s\S]*Slices[\s\S]*sequentially[\s\S]*dependencies[\s\S]*complete/i);
+    expect(multiSlice).toMatch(/multiple Slices[\s\S]*dependency order/i);
     expect(multiSlice).toMatch(/priority[\s\S]*tie-breaker/i);
-    expect(multiSlice).toMatch(/third failed repair iteration[\s\S]*persist[\s\S]*evidence[\s\S]*status[\s\S]*eval-report/i);
-    expect(multiSlice).toMatch(/third failed repair iteration[\s\S]*roadmap[\s\S]*paused[\s\S]*NEXT_SLICE[\s\S]*clear[\s\S]*ask[\s\S]*user/i);
-    expect(multiSlice).toMatch(/status: planned\|in_progress\|completed\|failed\|blocked[\s\S]*evalResult: passed\|partial\|failed\|blocked_before_write/i);
+    expect(multiSlice).toMatch(/third failure[\s\S]*internal evidence[\s\S]*paused[\s\S]*ask the user/i);
+    expect(multiSlice).toMatch(/internal roadmap projection[\s\S]*status[\s\S]*evalResult/i);
   });
 
   it('builds deterministic Godot SpriteFrames resources and rejects bad frame geometry', () => {

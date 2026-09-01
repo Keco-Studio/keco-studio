@@ -2,7 +2,13 @@
 
 **Date:** 2026-08-27
 
-**Status:** Approved
+**Status:** Approved for the internal execution/evidence architecture
+
+> User-facing Slice planning follows the newer paired-document convention:
+> `docs/superpowers/specs/<slice-id>-design.md` and
+> `docs/superpowers/plans/<slice-id>.md`. Any `status`, `EvalReport`, or mirror
+> paths described below are machine-generated internal evidence, not additional
+> planning documents that users must create or edit.
 
 **Scope:** Keco MCP Slice lifecycle operations, the existing
 `keco-develop-godot-slice-v2` Claude and Codex Skills, deterministic runtime

@@ -2,6 +2,11 @@
 
 **Date:** 2026-08-10
 
+> This document defines the internal execution/evidence boundary. The current
+> user-facing Slice progress source is the checkbox list in
+> `docs/superpowers/plans/<slice-id>.md`; status and EvalReport artifacts below
+> are machine-owned sidecars, not extra planning documents.
+
 ## Problem
 
 The Keco Skills enforce strong source, write, provenance, and evidence gates, but their user-facing interaction is too close to the internal execution ledger. Current runs can expose mixed-language headings, raw MCP/tool detail, RunContext fields, write tokens, and execution-stage state before the user has a concise understanding of the intended outcome.
@@ -19,7 +24,7 @@ The same interaction contract must be shipped in `plugins/keco-codex/` and `plug
 - Preserve technical identifiers, tool names, field names, IDs, enum values, and raw source quotations.
 - Add a concise intent summary before expensive or mutating work.
 - Keep `BuildPlan` and `SlicePlan` static and reviewable.
-- Keep execution progress and recovery state in RunState/RunContext/status artifacts.
+- Keep execution progress and recovery state in RunState/RunContext/status artifacts; expose only the concise plan checkbox state to users.
 - Keep command output, read-back, hashes, screenshots, and runtime evaluations in evidence artifacts.
 - Standardize safe blockers with a concrete action and resumable checkpoint.
 - Resume after a recovered external dependency without repeating settled questions when source, plan, identity, and workspace revisions are unchanged.
@@ -72,7 +77,7 @@ TaskResult / Verification / EvalReport evidence and proof
 
 After user approval, a plan revision is immutable. A changed scope or acceptance interpretation creates a new revision and invalidates only affected run stages.
 
-Plans do not contain current task status, API key/OAuth state, write tokens, temporary MCP connection data, run IDs, retry counters, command output, screenshots, read-back results, or runtime logs.
+Plans do not contain API key/OAuth state, write tokens, temporary MCP connection data, run IDs, retry counters, command output, screenshots, read-back results, or runtime logs. The user-facing Slice plan may contain only its `- [ ]` / `- [x]` task markers for progress.
 
 ### Run state
 
