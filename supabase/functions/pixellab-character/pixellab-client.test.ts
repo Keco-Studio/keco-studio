@@ -9,6 +9,7 @@ import {
   providerAnimationJobId,
   characterResult,
   providerCharacterId,
+  providerResponseDiagnostics,
   providerStatus,
 } from "./provider-response.ts";
 import { PixelLabCharacterError } from "./types.ts";
@@ -221,6 +222,42 @@ Deno.test("parses PixelLab completed rotations from human-readable MCP text", ()
     characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44",
     imageUrl: "https://cdn.example.test/south.png?t=1",
   });
+});
+
+Deno.test("summarizes provider response structure without retaining provider values", () => {
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "animations:",
+      "  walk:",
+      "    south: https://cdn.example.test/private.png?token=secret",
+    ].join("\n") }],
+    structuredContent: {
+      character_id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      animations: [{ directions: [{ direction: "south", frames: ["private-frame-data"] }] }],
+    },
+  };
+
+  const diagnostics = providerResponseDiagnostics(result);
+
+  assertEquals(diagnostics, {
+    keyPaths: [
+      "content", "content[].text", "content[].type", "structuredContent",
+      "structuredContent.animations", "structuredContent.animations[].directions",
+      "structuredContent.animations[].directions[].direction",
+      "structuredContent.animations[].directions[].frames",
+      "structuredContent.character_id",
+    ],
+    textLabels: ["animations", "id", "other", "south", "status"],
+    statusTokens: ["completed"],
+    urlCount: 1,
+  });
+  const serialized = JSON.stringify(diagnostics);
+  assertEquals(serialized.includes("2ba78163"), false);
+  assertEquals(serialized.includes("cdn.example"), false);
+  assertEquals(serialized.includes("secret"), false);
+  assertEquals(serialized.includes("private-frame-data"), false);
 });
 
 Deno.test("maps explicit provider quota and rate errors to stable codes", async () => {

@@ -41,6 +41,64 @@ function textLeaves(value: unknown): string[] {
   return values(value).filter((item): item is string => typeof item === "string");
 }
 
+export type ProviderResponseDiagnostics = {
+  keyPaths: string[];
+  textLabels: string[];
+  statusTokens: string[];
+  urlCount: number;
+};
+
+const DIAGNOSTIC_LABELS = new Set([
+  "animation", "animations", "animation_name", "character", "character_id",
+  "direction", "directions", "display_name", "east", "error", "frame",
+  "frame_count", "frames", "group", "group_id", "id", "image", "images",
+  "name", "north", "south", "spritesheet", "spritesheet_url", "status", "type",
+  "url", "west",
+]);
+
+/**
+ * Describe a provider response for internal debugging without retaining IDs,
+ * URLs, prompt text, frame bytes, or any other provider values.
+ */
+export function providerResponseDiagnostics(value: unknown): ProviderResponseDiagnostics {
+  const keyPaths = new Set<string>();
+  const visit = (item: unknown, path: string): void => {
+    if (Array.isArray(item)) {
+      for (const child of item.slice(0, 20)) visit(child, `${path}[]`);
+      return;
+    }
+    if (!item || typeof item !== "object") return;
+    for (const [rawKey, child] of Object.entries(item as Record<string, unknown>).slice(0, 100)) {
+      const key = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(rawKey) ? rawKey : "<other>";
+      const childPath = path ? `${path}.${key}` : key;
+      keyPaths.add(childPath);
+      visit(child, childPath);
+    }
+  };
+  visit(value, "");
+
+  const textLabels = new Set<string>();
+  const statusTokens = new Set<string>();
+  let urlCount = 0;
+  for (const text of textLeaves(value)) {
+    urlCount += text.match(/https:\/\/[^\s<>"']+/gi)?.length ?? 0;
+    for (const match of text.matchAll(/^\s*([^:\r\n]{1,64})\s*:/gm)) {
+      const normalized = match[1].trim().toLowerCase().replace(/[ -]+/g, "_");
+      textLabels.add(DIAGNOSTIC_LABELS.has(normalized) ? normalized : "other");
+    }
+    for (const match of text.matchAll(/\b(completed|complete|ready|succeeded|success|processing|generating|pending|queued|failed|error|cancelled|canceled)\b/gi)) {
+      statusTokens.add(match[1].toLowerCase());
+    }
+  }
+
+  return {
+    keyPaths: [...keyPaths].sort().slice(0, 200),
+    textLabels: [...textLabels].sort(),
+    statusTokens: [...statusTokens].sort(),
+    urlCount,
+  };
+}
+
 export function providerCharacterId(value: unknown): string | null {
   for (const item of values(value)) {
     if (typeof item !== "string") continue;
