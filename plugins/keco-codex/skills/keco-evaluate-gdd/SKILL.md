@@ -1,6 +1,6 @@
 ---
 name: keco-evaluate-gdd
-description: Use when a user asks to score or evaluate a Keco or explicitly supplied local GDD with EDD, collect human ratings, create an AI score baseline, or compare current GDD scores with a baseline; not for runtime game evaluation, playtests, GDD rewriting, implementation planning, or document summaries.
+description: Use when a user asks to score or evaluate a Keco GDD document or an explicitly supplied local GDD with EDD, collect human ratings, create an AI score baseline, or compare current GDD scores with a baseline; not for runtime game evaluation, playtests, GDD rewriting, implementation planning, or document summaries.
 ---
 
 # Evaluate Keco GDD
@@ -44,7 +44,7 @@ If a request asks to score and also rewrite, modify, recommend changes, or creat
 
 ## Resolve And Read
 
-1. Resolve exactly one Keco project and one existing Keco GDD. Verify a supplied document ID belongs to the project. Ask one focused question only when multiple current documents remain equally plausible.
+1. Resolve exactly one Keco project and one existing Keco GDD document. Verify a supplied document ID belongs to the project. Ask one focused question only when multiple current documents remain equally plausible.
 2. Call `read_document` for the current GDD. If full read falls back to an outline, continue with mode `heading` and then mode `lines` until every section and the complete document have been read.
 3. Retain the project ID, document ID, title, `token.epoch`, and `token.revision`. Both state values may be `0`. Do not score an excerpt, summary, stale state, or partial read.
 4. Read [references/rubric.md](references/rubric.md). Apply `experience goal -> design response -> GDD evidence` to `experienceValue`, `gameplaySystems`, and `contentPresentation` without double-counting evidence.

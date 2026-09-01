@@ -232,19 +232,13 @@ async function configureReferenceModalPicker(
   modal: Locator,
   page: Page,
   sourceLibraryName: string,
-  notesColumnName: string,
+  _notesColumnName?: string,
 ): Promise<void> {
+  // Apply Reference shows one library Select; all fields appear as table columns.
   await modal.locator('.ant-select').first().click();
   await page
     .locator('.ant-select-item-option')
     .filter({ hasText: sourceLibraryName })
-    .first()
-    .click();
-
-  await modal.locator('.ant-select').nth(1).click();
-  await page
-    .locator('.ant-select-item-option')
-    .filter({ hasText: notesColumnName })
     .first()
     .click();
   await page.waitForTimeout(500);
@@ -257,9 +251,8 @@ async function assertReferenceModalListShows(
 ): Promise<void> {
   await modal.getByPlaceholder('Search').fill(snippet);
   await page.waitForTimeout(800);
-  await modal.getByRole('button', { name: 'List view', exact: true }).click();
   await expect(
-    modal.locator('[class*="assetListRow"]').filter({ hasText: snippet }).first(),
+    modal.locator('tbody tr').filter({ hasText: snippet }).first(),
   ).toBeVisible({ timeout: 15000 });
 }
 
@@ -277,7 +270,7 @@ async function linkReferenceToSourceCell(
   await assertReferenceModalListShows(modal, page, sourceValueSnippet);
 
   const sourceAssetRow = modal
-    .locator('[class*="assetListRow"]')
+    .locator('tbody tr')
     .filter({ hasText: sourceValueSnippet })
     .first();
   await sourceAssetRow.click();
@@ -463,8 +456,9 @@ test.describe('Table cell search and replace', () => {
     const replaceToken = `refreplaced${stamp}`;
     const notesColumn = 'Notes';
     const refColumn = 'SourceRef';
-    const sourceValueText = `Source ${findToken} text`;
-    const sourceAssetName = `CSR Source ${stamp}`;
+    // Apply Reference uses the library's primary (first) field for displayValue —
+    // put the token in the asset name so picker + sync match the table UI.
+    const sourceAssetName = `CSR Source ${findToken}`;
     const consumerAssetName = `CSR Consumer ${stamp}`;
 
     const projectPage = new ProjectPage(page);
@@ -485,7 +479,7 @@ test.describe('Table cell search and replace', () => {
     await openLibraryTable(page, sourceLibraryName);
     await libraryPage.addColumnFromTableSchemaEntry(sourceLibraryName, notesColumn, 'String');
     await page.waitForTimeout(1500);
-    await createAssetWithNotes(page, sourceAssetName, sourceValueText, notesColumn);
+    await createAssetWithNotes(page, sourceAssetName, 'static notes', notesColumn);
 
     await libraryPage.navigateBackToProject();
     await libraryPage.waitForPageLoad();
@@ -535,7 +529,7 @@ test.describe('Table cell search and replace', () => {
     await configureReferenceModalPicker(modalAfterReplace, page, sourceLibraryName, notesColumn);
     await assertReferenceModalListShows(modalAfterReplace, page, replaceToken);
     await expect(
-      modalAfterReplace.locator('[class*="assetListRow"]').filter({ hasText: findToken }),
+      modalAfterReplace.locator('tbody tr').filter({ hasText: findToken }),
     ).toHaveCount(0);
     await modalAfterReplace.getByRole('button', { name: /^cancel$/i }).click();
   });

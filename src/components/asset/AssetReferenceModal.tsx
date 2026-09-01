@@ -237,12 +237,33 @@ export function AssetReferenceModal({
 
     ids.forEach((assetId) => {
       const vals = valuesByAsset[assetId] || {};
-      const displayValue = getReferencePickerDisplayValue(vals, primaryFieldId);
-      if (!hasNonEmptyDisplayValue(displayValue)) return;
+      let displayValue = getReferencePickerDisplayValue(vals, primaryFieldId);
+      let fieldId = primaryFieldId;
+      let label = fieldLabel;
+
+      // Match table UI: if the primary field is empty, fall back to the first
+      // non-empty field, then the asset name.
+      if (!hasNonEmptyDisplayValue(displayValue)) {
+        for (const field of libraryFields) {
+          const candidate = getReferencePickerDisplayValue(vals, field.id);
+          if (hasNonEmptyDisplayValue(candidate)) {
+            displayValue = candidate;
+            fieldId = field.id;
+            label = field.label || 'Column';
+            break;
+          }
+        }
+      }
+      if (!hasNonEmptyDisplayValue(displayValue)) {
+        const assetName = assetRows.find((row) => row.id === assetId)?.name?.trim();
+        if (!assetName) return;
+        displayValue = assetName;
+      }
+
       allSelections.push({
         assetId,
-        fieldId: primaryFieldId,
-        fieldLabel,
+        fieldId,
+        fieldLabel: label,
         displayValue,
       });
     });

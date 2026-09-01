@@ -16,7 +16,7 @@ describe('navigation branding and folder create controls', () => {
       expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*font-size:\s*16px;/s);
       expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*font-weight:\s*700;/s);
       expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*line-height:\s*100%;/s);
-      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*text-transform:\s*capitalize;/s);
+      expect(source).toMatch(/(?:brandTitle|brandText)\b[^}]*text-transform:\s*lowercase;/s);
       expect(source).toMatch(/(?:brandSubtitle|sidebarBrand p)\b[^}]*color:\s*(?:#5B74A7|var\(--branding-theme-secondary-text,\s*#5B74A7\));/s);
     }
   });

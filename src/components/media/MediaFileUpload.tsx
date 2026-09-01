@@ -375,7 +375,8 @@ export function MediaFileUpload({
           <div
             className={`${styles.fileInfoClickable} ${isTableCellLayout ? styles.fileInfoClickableTableCell : ''}`}
             onClick={handleView}
-            title="Click to view"
+            title={value.fileName}
+            aria-label={value.fileName}
           >
             {fieldType === 'image' && isImageFile(value.fileType) ? (
               <div className={styles.imageThumbnail}>
