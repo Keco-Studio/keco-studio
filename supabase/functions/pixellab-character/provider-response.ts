@@ -72,6 +72,7 @@ function textLeaves(value: unknown): string[] {
 export type ProviderResponseDiagnostics = {
   keyPaths: string[];
   textLabels: string[];
+  textShapes: string[];
   statusTokens: string[];
   urlCount: number;
 };
@@ -95,6 +96,7 @@ const DIAGNOSTIC_STATUSES = new Set([
 export function providerResponseDiagnostics(value: unknown): ProviderResponseDiagnostics {
   const keyPaths = new Set<string>();
   const textLabels = new Set<string>();
+  const textShapes = new Set<string>();
   const statusTokens = new Set<string>();
   let urlCount = 0;
   const visit = (item: unknown, path: string): void => {
@@ -118,6 +120,26 @@ export function providerResponseDiagnostics(value: unknown): ProviderResponseDia
 
   for (const text of textLeaves(value)) {
     urlCount += text.match(/https:\/\/[^\s<>"']+/gi)?.length ?? 0;
+    if (!/[\r\n]/.test(text)) continue;
+    for (const rawLine of text.split(/\r?\n/).slice(0, 100)) {
+      const indent = Math.min(rawLine.match(/^\s*/)?.[0].length ?? 0, 99);
+      const line = rawLine.trim().replace(/^[-*]\s+/, "");
+      if (!line) continue;
+      const match = line.match(/^([^:|>\/]{1,160})\s*[:=]\s*(.*)$/);
+      if (match) {
+        const label = match[1].trim().toLowerCase().replace(/[ -]+/g, "_");
+        const safeLabel = DIAGNOSTIC_LABELS.has(label) ? label : "other";
+        const rawValue = match[2].trim().replace(/["']/g, "");
+        const valueKind = /(?:https?:\/\/|data:image\/)/i.test(rawValue) ? "url"
+          : DIAGNOSTIC_STATUSES.has(rawValue.toLowerCase()) ? "status"
+          : /^(?:south|east|north|west|south-east|south-west|north-east|north-west)$/i.test(rawValue) ? "direction"
+          : /^-?\d+(?:\.\d+)?$/.test(rawValue) ? "number"
+          : rawValue ? "text" : "empty";
+        textShapes.add(`${indent}:${safeLabel}:${valueKind}`);
+      } else if (/^(?:south|east|north|west|south-east|south-west|north-east|north-west)$/i.test(line)) {
+        textShapes.add(`${indent}:direction:direction`);
+      }
+    }
     for (const match of text.matchAll(/^\s*([^:\r\n]{1,64})\s*:/gm)) {
       const normalized = match[1].trim().toLowerCase().replace(/[ -]+/g, "_");
       textLabels.add(DIAGNOSTIC_LABELS.has(normalized) ? normalized : "other");
@@ -130,6 +152,7 @@ export function providerResponseDiagnostics(value: unknown): ProviderResponseDia
   return {
     keyPaths: [...keyPaths].sort().slice(0, 200),
     textLabels: [...textLabels].sort(),
+    textShapes: [...textShapes].sort().slice(0, 200),
     statusTokens: [...statusTokens].sort(),
     urlCount,
   };

@@ -159,7 +159,7 @@ Deno.test("includes safe diagnostics when animation is completed but output is n
         "structuredContent.animations[].directions[].direction", "structuredContent.animations[].directions[].status",
         "structuredContent.animations[].display_name", "structuredContent.character_id", "structuredContent.status",
       ],
-      textLabels: [], statusTokens: ["completed"], urlCount: 0,
+      textLabels: [], textShapes: [], statusTokens: ["completed"], urlCount: 0,
     },
   });
 });
@@ -213,7 +213,7 @@ Deno.test("persists safe diagnostics when animation output validation fails", as
   await assertRejects(() => runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), PixelLabCharacterError);
   assertEquals((test.transitions.at(-1)?.details.metadata as Record<string, unknown>).providerDiagnostics, {
     keyPaths: ["structuredContent", "structuredContent.animations", "structuredContent.animations[].directions", "structuredContent.animations[].directions[].direction", "structuredContent.animations[].directions[].status", "structuredContent.animations[].display_name", "structuredContent.character_id", "structuredContent.status"],
-    textLabels: [], statusTokens: ["completed"], urlCount: 0,
+    textLabels: [], textShapes: [], statusTokens: ["completed"], urlCount: 0,
   });
 });
 
@@ -251,7 +251,7 @@ Deno.test("animation poll follows the requested direction instead of the complet
         "structuredContent.animations[].display_name",
         "structuredContent.character_id", "structuredContent.status",
       ],
-      textLabels: [], statusTokens: ["completed", "processing"], urlCount: 0,
+      textLabels: [], textShapes: [], statusTokens: ["completed", "processing"], urlCount: 0,
     },
   });
 });

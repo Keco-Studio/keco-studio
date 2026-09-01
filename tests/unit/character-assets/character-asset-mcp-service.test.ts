@@ -292,6 +292,7 @@ describe('character asset MCP service', () => {
     const providerDiagnostics = {
       keyPaths: ['content', 'content[].text'],
       textLabels: ['animations', 'status'],
+      textShapes: ['0:status:status'],
       statusTokens: ['completed'],
       urlCount: 6,
     };
