@@ -1,5 +1,5 @@
 import { animationArguments, characterArguments, type PixelLabCharacterClient } from "./pixellab-client.ts";
-import { animationResult, characterResult, providerCharacterId, providerStatus } from "./provider-response.ts";
+import { animationResult, characterResult, providerCharacterId, providerResponseDiagnostics, providerStatus } from "./provider-response.ts";
 import { PixelLabCharacterError, type AuthorizedCharacterAttempt, type CharacterCapability, type LifecycleOperation } from "./types.ts";
 
 type Dependencies = {
@@ -117,7 +117,9 @@ export async function runCharacterLifecycle(
         metadata: state.metadata,
       });
     }
-    return { assetId: state.assetId, status };
+    return state.plan.kind === "animation" && status === "processing"
+      ? { assetId: state.assetId, status, providerDiagnostics: providerResponseDiagnostics(result) }
+      : { assetId: state.assetId, status };
   }
   if (input.operation === "validate") {
     const recovery = state.status === "failed" && state.lastErrorCode === "validation_failed" && Boolean(state.providerJobId);

@@ -284,6 +284,33 @@ describe('character asset MCP service', () => {
     expect(domain.invokeProvider.mock.calls.map(([operation]) => operation)).toEqual(['poll', 'validate']);
   });
 
+  it('returns only safe provider diagnostics for a processing animation poll', async () => {
+    const domain = backend();
+    domain.readGeneration
+      .mockResolvedValueOnce(generation('generating', animationPlan))
+      .mockResolvedValueOnce(generation('generating', animationPlan));
+    const providerDiagnostics = {
+      keyPaths: ['content', 'content[].text'],
+      textLabels: ['animations', 'status'],
+      statusTokens: ['completed'],
+      urlCount: 6,
+    };
+    domain.invokeProvider.mockResolvedValueOnce({ status: 'processing', providerDiagnostics });
+    const service = createCharacterAssetMcpService(
+      { userId: IDS.userId, supabase: {} as never },
+      { backend: domain, fingerprintPlan: () => fingerprint },
+    );
+
+    await expect(service.advanceGeneration({
+      projectId: IDS.projectId,
+      assetId: IDS.assetId,
+      attemptId: IDS.attemptId,
+      generationId: IDS.generationId,
+      planFingerprint: fingerprint,
+    })).resolves.toMatchObject({ status: 'generating', providerDiagnostics });
+    expect(domain.invokeProvider.mock.calls.map(([operation]) => operation)).toEqual(['poll']);
+  });
+
   it('revalidates a failed attempt with an existing provider job without retrying paid submission', async () => {
     const domain = backend();
     const failed = generation('failed');

@@ -192,6 +192,17 @@ Deno.test("animation poll follows the requested direction instead of the complet
   } });
   assertEquals(await runCharacterLifecycle({ operation: "poll" }, test.state, test.dependencies), {
     assetId: IDS.assetId, status: "processing",
+    providerDiagnostics: {
+      keyPaths: [
+        "structuredContent", "structuredContent.animations",
+        "structuredContent.animations[].directions",
+        "structuredContent.animations[].directions[].direction",
+        "structuredContent.animations[].directions[].status",
+        "structuredContent.animations[].display_name",
+        "structuredContent.character_id", "structuredContent.status",
+      ],
+      textLabels: [], statusTokens: ["completed", "processing"], urlCount: 0,
+    },
   });
 });
 

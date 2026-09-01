@@ -245,6 +245,42 @@ function generationResult(generation: PublicCharacterGeneration) {
   return { ...generation };
 }
 
+type ProviderResponseDiagnostics = {
+  keyPaths: string[];
+  textLabels: string[];
+  statusTokens: string[];
+  urlCount: number;
+};
+
+const PROVIDER_DIAGNOSTIC_STATUSES = new Set([
+  'completed', 'complete', 'ready', 'succeeded', 'success', 'processing',
+  'generating', 'pending', 'queued', 'failed', 'error', 'cancelled', 'canceled',
+]);
+const PROVIDER_DIAGNOSTIC_LABELS = new Set([
+  'animation', 'animations', 'animation_name', 'character', 'character_id',
+  'direction', 'directions', 'display_name', 'east', 'error', 'frame',
+  'frame_count', 'frames', 'group', 'group_id', 'id', 'image', 'images', 'name',
+  'north', 'other', 'south', 'spritesheet', 'spritesheet_url', 'status', 'type',
+  'url', 'west',
+]);
+const PROVIDER_DIAGNOSTIC_PATH = /^(?:[A-Za-z][A-Za-z0-9_-]{0,63}|<other>)(?:(?:\[\])?\.(?:[A-Za-z][A-Za-z0-9_-]{0,63}|<other>)|\[\])*$/;
+
+function safeProviderDiagnostics(value: unknown): ProviderResponseDiagnostics | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (!Array.isArray(row.keyPaths) || row.keyPaths.length > 200
+    || !row.keyPaths.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_PATH.test(entry))
+    || !Array.isArray(row.textLabels) || !row.textLabels.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_LABELS.has(entry))
+    || !Array.isArray(row.statusTokens) || !row.statusTokens.every((entry) => typeof entry === 'string' && PROVIDER_DIAGNOSTIC_STATUSES.has(entry))
+    || !Number.isSafeInteger(row.urlCount) || Number(row.urlCount) < 0) return null;
+  return {
+    keyPaths: row.keyPaths as string[],
+    textLabels: row.textLabels as string[],
+    statusTokens: row.statusTokens as string[],
+    urlCount: Number(row.urlCount),
+  };
+}
+
 type AssetRow = {
   id: string; project_id: string; save_version: number; status: AssetStatus; plan: unknown;
 };
@@ -480,10 +516,14 @@ export function createCharacterAssetMcpService(
         const state = await backend.readGeneration(input);
         assertStateIdentity(state, input, fingerprintPlan);
         const providerInput = { ...input };
+        let providerDiagnostics: ProviderResponseDiagnostics | null = null;
         if (state.generation.status === 'queued') {
           await backend.invokeProvider('resolve_unknown', { ...providerInput, acknowledgeDuplicateBilling: true });
         } else if (state.generation.status === 'generating') {
           const result = await backend.invokeProvider('poll', providerInput);
+          providerDiagnostics = safeProviderDiagnostics(
+            result && typeof result === 'object' ? (result as { providerDiagnostics?: unknown }).providerDiagnostics : null,
+          );
           if (result && typeof result === 'object' && (result as { status?: unknown }).status === 'completed') {
             await backend.invokeProvider('validate', providerInput);
           }
@@ -494,7 +534,10 @@ export function createCharacterAssetMcpService(
           // Revalidate that same job instead of forcing a duplicate paid retry.
           await backend.invokeProvider('validate', providerInput);
         }
-        return generationResult((await backend.readGeneration(input)).generation);
+        return {
+          ...generationResult((await backend.readGeneration(input)).generation),
+          ...(providerDiagnostics ? { providerDiagnostics } : {}),
+        };
       } catch (error) { mapError(error); }
     },
   };
