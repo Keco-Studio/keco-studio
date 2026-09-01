@@ -1245,6 +1245,9 @@
   transform: translateY(-50%);
   margin-left: 0;
   z-index: 2;
+  /* Container must not steal clicks from the folder title; the button re-enables
+     pointer-events on row hover / selected (see .folderAddLibButton). */
+  pointer-events: none;
 }
 
 .tree :global(.ant-tree-node-content-wrapper) [data-folder-row] .itemMain {
