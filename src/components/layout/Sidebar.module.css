@@ -1239,14 +1239,16 @@
 }
 
 .tree :global(.ant-tree-treenode:has([data-folder-row])) .itemActions {
-  position: absolute;
-  right: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 0;
-  z-index: 2;
-  /* Container must not steal clicks from the folder title; the button re-enables
-     pointer-events on row hover / selected (see .folderAddLibButton). */
+  /* Stay in normal flex flow so the title hit-target never sits under the + button.
+     Absolute overlay caused Playwright (and users) to miss folder name clicks when
+     the selected/hovered + button re-enabled pointer-events. */
+  position: static;
+  transform: none;
+  right: auto;
+  top: auto;
+  margin-left: auto;
+  z-index: auto;
+  flex-shrink: 0;
   pointer-events: none;
 }
 
@@ -1256,7 +1258,7 @@
 }
 
 .tree :global(.ant-tree-node-content-wrapper) [data-folder-row] .itemText {
-  padding-right: 2rem;
+  padding-right: 0.5rem;
 }
 
 .item {

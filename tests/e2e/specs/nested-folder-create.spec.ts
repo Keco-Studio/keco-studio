@@ -73,14 +73,15 @@ test.describe('nested folder creation', () => {
     await expect(grandchildItem).toBeVisible({ timeout: 15_000 });
 
     const grandchildPath = new URL(page.url()).pathname;
-    await rootItem.locator(`[title="${rootName}"]`).click();
+    // Click the left side of the title so the folder-actions control cannot intercept.
+    await rootItem.locator(`[title="${rootName}"]`).click({ position: { x: 8, y: 8 } });
     await page.waitForURL(
       (url) => url.pathname !== grandchildPath && /\/folder\/[^/]+$/.test(url.pathname),
       { timeout: 15_000 }
     );
 
     const rootPath = new URL(page.url()).pathname;
-    await grandchildItem.locator(`[title="${grandchildName}"]`).click();
+    await grandchildItem.locator(`[title="${grandchildName}"]`).click({ position: { x: 8, y: 8 } });
     await page.waitForURL(
       (url) => url.pathname !== rootPath && /\/folder\/[^/]+$/.test(url.pathname),
       { timeout: 15_000 }
