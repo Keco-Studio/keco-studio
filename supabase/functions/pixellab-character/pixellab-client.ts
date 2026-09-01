@@ -5,6 +5,8 @@ const MCP_URL = "https://api.pixellab.ai/mcp";
 const API_URL = "https://api.pixellab.ai/v2";
 const CAPABILITY_DISCOVERY_ATTEMPTS = 3;
 const CAPABILITY_DISCOVERY_RETRY_MS = [150, 450];
+const BACKGROUND_JOB_ATTEMPTS = 3;
+const BACKGROUND_JOB_RETRY_MS = [250, 750];
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -28,7 +30,11 @@ function compatible(tool: Record<string, unknown> | undefined, required: string[
 }
 
 export class PixelLabCharacterClient {
-  constructor(private readonly token: string, private readonly fetcher: typeof fetch = fetch) {
+  constructor(
+    private readonly token: string,
+    private readonly fetcher: typeof fetch = fetch,
+    private readonly sleeper: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  ) {
     if (!token) throw new PixelLabCharacterError("pixellab_not_configured");
   }
   private async mcp(name: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -60,7 +66,7 @@ export class PixelLabCharacterClient {
         const retryable = error instanceof PixelLabCharacterError
           && (error.code === "pixellab_upstream" || error.code === "pixellab_rate_limited");
         if (!retryable || attempt === CAPABILITY_DISCOVERY_ATTEMPTS - 1) throw error;
-        await new Promise((resolve) => setTimeout(resolve, CAPABILITY_DISCOVERY_RETRY_MS[attempt]));
+        await this.sleeper(CAPABILITY_DISCOVERY_RETRY_MS[attempt]);
       }
     }
     if (!payload) throw new PixelLabCharacterError("pixellab_upstream");
@@ -81,20 +87,36 @@ export class PixelLabCharacterClient {
   }
   async callTool(name: string, arguments_: Record<string, unknown>): Promise<Record<string, unknown>> { return (await this.mcp(name, arguments_)).result as Record<string, unknown>; }
   async getBackgroundJob(jobId: string): Promise<Record<string, unknown>> {
-    let response: Response;
-    try {
-      response = await this.fetcher(`${API_URL}/background-jobs/${encodeURIComponent(jobId)}`, {
-        method: "GET", headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
-      });
-    } catch { throw new PixelLabCharacterError("pixellab_upstream"); }
-    if (response.status === 401 || response.status === 403) throw new PixelLabCharacterError("pixellab_not_configured", "PixelLab authentication failed");
-    if (response.status === 429) throw new PixelLabCharacterError("pixellab_rate_limited");
-    if (!response.ok) throw new PixelLabCharacterError("pixellab_upstream");
-    try {
-      const value = await response.json();
-      if (!value || typeof value !== "object") throw new Error();
-      return value as Record<string, unknown>;
-    } catch { throw new PixelLabCharacterError("pixellab_invalid_response"); }
+    for (let attempt = 0; attempt < BACKGROUND_JOB_ATTEMPTS; attempt += 1) {
+      let response: Response;
+      try {
+        response = await this.fetcher(`${API_URL}/background-jobs/${encodeURIComponent(jobId)}`, {
+          method: "GET", headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
+        });
+      } catch {
+        if (attempt === BACKGROUND_JOB_ATTEMPTS - 1) throw new PixelLabCharacterError("pixellab_upstream");
+        await this.sleeper(BACKGROUND_JOB_RETRY_MS[attempt]);
+        continue;
+      }
+      if (response.status === 401 || response.status === 403) throw new PixelLabCharacterError("pixellab_not_configured", "PixelLab authentication failed");
+      if (response.status === 429) {
+        if (attempt === BACKGROUND_JOB_ATTEMPTS - 1) throw new PixelLabCharacterError("pixellab_rate_limited");
+        await this.sleeper(BACKGROUND_JOB_RETRY_MS[attempt]);
+        continue;
+      }
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        if (attempt === BACKGROUND_JOB_ATTEMPTS - 1) throw new PixelLabCharacterError("pixellab_upstream");
+        await this.sleeper(BACKGROUND_JOB_RETRY_MS[attempt]);
+        continue;
+      }
+      if (!response.ok) throw new PixelLabCharacterError("pixellab_upstream");
+      try {
+        const value = await response.json();
+        if (!value || typeof value !== "object") throw new Error();
+        return value as Record<string, unknown>;
+      } catch { throw new PixelLabCharacterError("pixellab_invalid_response"); }
+    }
+    throw new PixelLabCharacterError("pixellab_upstream");
   }
 }
 

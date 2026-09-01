@@ -6,6 +6,7 @@ jest.mock('@/lib/services/authorizationService', () => ({ getUserProjectRole: je
 
 import {
   CharacterAssetMcpError,
+  mapCharacterAssetFunctionError,
   createCharacterAssetMcpService,
   type CharacterAssetMcpBackend,
   type CharacterAssetWorkspace,
@@ -309,6 +310,14 @@ describe('character asset MCP service', () => {
   it('does not expose arbitrary internal error messages', () => {
     expect(new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE', 'Bearer secret-value').message)
       .toBe('The character asset service is temporarily unavailable.');
+  });
+
+  it('decodes provider error codes from Supabase FunctionsHttpError responses', async () => {
+    const response = new Response(JSON.stringify({ error: 'temporary provider outage', code: 'pixellab_rate_limited' }), { status: 429 });
+    await expect(mapCharacterAssetFunctionError({ context: response }))
+      .rejects.toMatchObject({ code: 'PROVIDER_RATE_LIMITED' });
+    await expect(mapCharacterAssetFunctionError({ context: new Response(JSON.stringify({ code: 'pixellab_quota_exceeded' })) }))
+      .rejects.toMatchObject({ code: 'PROVIDER_QUOTA_EXCEEDED' });
   });
 
   it('binds confirmation tokens to purpose, attempt, and expiry', () => {
