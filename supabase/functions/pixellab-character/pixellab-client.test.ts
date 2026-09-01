@@ -310,6 +310,24 @@ Deno.test("parses bare spritesheet URL lines under a direction heading", () => {
   assertEquals(animationResult(result, "walk", "east")?.imageUrl, "https://cdn.example.test/east.png");
 });
 
+Deno.test("preserves direction context for multiline text under directional keys", () => {
+  const result = {
+    structuredContent: {
+      status: "completed",
+      character_id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      animations: [{
+        name: "walk",
+        directions: {
+          south: "spritesheet: https://cdn.example.test/south.png",
+          east: "spritesheet: https://cdn.example.test/east.png",
+        },
+      }],
+    },
+  };
+  assertEquals(animationResult(result, "walk", "south")?.imageUrl, "https://cdn.example.test/south.png");
+  assertEquals(animationResult(result, "walk", "east")?.imageUrl, "https://cdn.example.test/east.png");
+});
+
 Deno.test("parses markdown link and numbered spritesheet lines per direction", () => {
   const result = {
     content: [{ type: "text", text: [

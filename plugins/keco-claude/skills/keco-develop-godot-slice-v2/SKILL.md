@@ -98,7 +98,7 @@ Read [references/source-data-contract.md](references/source-data-contract.md), [
 
 ## Completion Contract
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_task_evidence.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_delivery_policy.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_snapshot.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_slice_documents.py`, and focused tests before claiming completion. Report implementation, acceptance, and release readiness separately. `manual_required` may complete implementation but blocks release when the locked policy requires it.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate_task_evidence.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_eval_report.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_delivery_policy.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/validate_snapshot.py`, and focused tests before claiming completion. The legacy `${CLAUDE_PLUGIN_ROOT}/scripts/validate_slice_documents.py` checker is only for old `<slice-id>/spec.md` bundles; do not create those sidecars for the new Superpowers layout. Validate new Slice progress from the paired spec/plan metadata and Markdown checkboxes. Report implementation, acceptance, and release readiness separately. `manual_required` may complete implementation but blocks release when the locked policy requires it.
 
 ## Common Rationalizations
 

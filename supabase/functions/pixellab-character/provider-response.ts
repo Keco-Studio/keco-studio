@@ -323,7 +323,7 @@ function hasAnimationOutput(row: Record<string, unknown>): boolean { return Bool
 function animationRecords(value: unknown, context: { animationName?: string; direction?: string; animationGroupId?: string } = {}): Record<string, unknown>[] {
   if (typeof value === "string") {
     if (/^[\s]*[\[{]/.test(value)) { try { return animationRecords(JSON.parse(value), context); } catch { /* text */ } }
-    return textRecords(value).map((row) => ({ ...row, ...(context.animationName ? { __animationName: context.animationName } : {}), ...(context.animationGroupId ? { __animationGroupId: context.animationGroupId } : {}) }));
+    return textRecords(value).map((row) => ({ ...row, ...(context.animationName ? { __animationName: context.animationName } : {}), ...(context.direction ? { direction: context.direction } : {}), ...(context.animationGroupId ? { __animationGroupId: context.animationGroupId } : {}) }));
   }
   if (Array.isArray(value)) return value.flatMap((item) => animationRecords(item, context));
   if (!value || typeof value !== "object") return [];
