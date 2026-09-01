@@ -75,7 +75,7 @@ Deno.test("submits V3 animation only from the verified source provider character
     sourceProviderCharacterId: "provider-character",
     sourceFacing: "left",
   });
-  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_background_job" });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_character" });
   test.dependencies.submit = async (_capability, args) => {
     test.submissions.push(args);
     return { structuredContent: { job_ids: ["animation-job"], animation_group_id: "animation-group" } };
@@ -87,9 +87,9 @@ Deno.test("submits V3 animation only from the verified source provider character
     character_id: "provider-character", action_description: "Walk steadily", animation_name: "walk_left",
     directions: ["west"], mode: "v3", frame_count: 6, keep_first_frame: false,
   }]);
-  assertEquals(test.transitions.at(-1)?.details.providerJobId, "animation-job");
+  assertEquals(test.transitions.at(-1)?.details.providerJobId, "provider-character");
   assertEquals(test.transitions.at(-1)?.details.metadata, {
-    providerCharacterId: "provider-character", pollOperation: "get_background_job",
+    providerCharacterId: "provider-character", pollOperation: "get_character",
     pollSchemaFingerprint: capability.pollSchemaFingerprint,
   });
 });

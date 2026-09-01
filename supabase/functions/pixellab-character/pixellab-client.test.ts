@@ -51,7 +51,7 @@ Deno.test("discovers exact character and V3 animation tools with get_character p
     operation: "create_character", poll: "get_character",
   });
   assertEquals({ operation: animation.operation, poll: animation.pollOperation }, {
-    operation: "animate_character", poll: "get_background_job",
+    operation: "animate_character", poll: "get_character",
   });
   assertEquals(character.schemaFingerprint.length, 64);
   assertEquals(animation.schemaFingerprint.length, 64);
@@ -170,6 +170,18 @@ Deno.test("extracts an animation job id from an unlabeled MCP submission id", ()
     }],
   };
   assertEquals(providerAnimationJobId(result), "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd");
+});
+
+Deno.test("does not use the source character id as an unlabeled animation job id", () => {
+  const sourceCharacterId = "1cda5f96-24e7-449f-9340-da93ac9225d5";
+  const animationJobId = "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd";
+  const result = {
+    structuredContent: {
+      character_id: sourceCharacterId,
+      message: `Animation request accepted ${animationJobId}`,
+    },
+  };
+  assertEquals(providerAnimationJobId(result, sourceCharacterId), animationJobId);
 });
 
 Deno.test("parses JSON embedded in MCP text content", () => {
