@@ -162,6 +162,16 @@ Deno.test("extracts a background job id from quoted MCP text arrays", () => {
   assertEquals(providerAnimationJobId(result), "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd");
 });
 
+Deno.test("extracts an animation job id from an unlabeled MCP submission id", () => {
+  const result = {
+    content: [{
+      type: "text",
+      text: "Animation request accepted\nacaee1a2-8cd8-4e56-89c8-3dca32b60dbd",
+    }],
+  };
+  assertEquals(providerAnimationJobId(result), "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd");
+});
+
 Deno.test("parses JSON embedded in MCP text content", () => {
   const result = {
     content: [{ type: "text", text: JSON.stringify({
