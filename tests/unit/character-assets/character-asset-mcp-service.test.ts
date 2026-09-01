@@ -318,6 +318,12 @@ describe('character asset MCP service', () => {
       .rejects.toMatchObject({ code: 'PROVIDER_RATE_LIMITED' });
     await expect(mapCharacterAssetFunctionError({ context: new Response(JSON.stringify({ code: 'pixellab_quota_exceeded' })) }))
       .rejects.toMatchObject({ code: 'PROVIDER_QUOTA_EXCEEDED' });
+    await expect(mapCharacterAssetFunctionError({ context: new Response(JSON.stringify({ code: 'pixellab_submit_outcome_unknown' })) }))
+      .rejects.toMatchObject({ code: 'CHARACTER_SUBMISSION_UNKNOWN' });
+    await expect(mapCharacterAssetFunctionError({ context: new Response(JSON.stringify({ code: 'provider_job_failed' })) }))
+      .rejects.toMatchObject({ code: 'CHARACTER_PROVIDER_JOB_FAILED' });
+    await expect(mapCharacterAssetFunctionError({ context: new Response(JSON.stringify({ code: 'authorization_failed' })) }))
+      .rejects.toMatchObject({ code: 'PROVIDER_AUTHENTICATION_FAILED' });
   });
 
   it('binds confirmation tokens to purpose, attempt, and expiry', () => {

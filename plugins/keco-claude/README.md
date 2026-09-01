@@ -28,6 +28,7 @@ scripts/                            deterministic validators (one shared copy)
 skills/
   keco-build-tables-from-document/  documents -> new Keco tables
   keco-create-map/                   complete persisted V3 map + paid confirmation
+  keco-create-character-animation/   PixelLab character PNGs and animation spritesheets
   keco-develop-godot-slice/         one bounded, evaluated Godot slice (V1)
   keco-develop-godot-slice-v2/      document-driven multi-Slice workflow (canonical)
   keco-manage-game-design-system/   manage GDS data and generate project GDDs
