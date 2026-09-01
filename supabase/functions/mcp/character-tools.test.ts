@@ -40,6 +40,13 @@ Deno.test("character tools call the app route and remove unsafe provider fields"
   assertEquals(result.structuredContent, { ok: true, assetId: IDS.assetId, status: "planned", confirmationToken: "signed", feeNotice: "Paid job." });
 });
 
+Deno.test("character tools retain safe provider diagnostics in poll results", async () => {
+  const target = server(); const providerDiagnostics = { keyPaths: ["content", "content[].text"], textLabels: ["animations", "status"], statusTokens: ["completed"], urlCount: 1 };
+  registerCharacterTools(target.value, project, { callApp: async () => ({ assetId: IDS.assetId, status: "generating", providerDiagnostics, providerPayload: "must remove" }) });
+  const result = await target.tools.find((tool) => tool.name === "advance_character_asset_generation")!.handler({ assetId: IDS.assetId, attemptId: IDS.attemptId, generationId: IDS.generationId, planFingerprint: fingerprint });
+  assertEquals(result.structuredContent, { ok: true, assetId: IDS.assetId, status: "generating", providerDiagnostics });
+});
+
 Deno.test("character draft schemas enforce V3 animation frame bounds", () => {
   const target = server(); registerCharacterTools(target.value, account, { callApp: async () => ({}) });
   const create = target.tools.find((tool) => tool.name === "create_character_asset_draft")!;

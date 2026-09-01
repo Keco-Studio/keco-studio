@@ -255,6 +255,14 @@ Deno.test("animation poll reports a failed PixelLab background job", async () =>
   }]);
 });
 
+Deno.test("animation poll fails when the requested direction reports provider failure", async () => {
+  const test = fixture({ status: "generating", providerJobId: "provider-character", sourceProviderCharacterId: "provider-character", sourceFacing: "front", plan: { schemaVersion: 1, kind: "animation", name: "walk", sourceCharacterAssetId: IDS.assetId, sourceCharacterSha256: "d".repeat(64), motionDescription: "Walk steadily", frameWidth: 96, frameHeight: 96, frameCount: 6, fps: 10, loop: true } });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_character" });
+  test.dependencies.poll = async () => ({ structuredContent: { status: "completed", character_id: "provider-character", animations: [{ display_name: "walk", directions: [{ direction: "south", status: "failed", error: "render failed" }] }] } });
+  assertEquals(await runCharacterLifecycle({ operation: "poll" }, test.state, test.dependencies), { assetId: IDS.assetId, status: "failed" });
+  assertEquals(test.transitions.at(-1), { from: "generating", to: "failed", details: { expectedAttemptCount: 0, lastErrorCode: "provider_job_failed", metadata: test.state.metadata } });
+});
+
 Deno.test("resolve_unknown blocks after the safety window without a second paid call", async () => {
   const test = fixture({ status: "queued", updatedAt: "2026-08-27T00:00:00.000Z" });
   const result = await runCharacterLifecycle({ operation: "resolve_unknown", acknowledgeDuplicateBilling: true }, test.state, test.dependencies);

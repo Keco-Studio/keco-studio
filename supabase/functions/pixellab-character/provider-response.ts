@@ -31,8 +31,8 @@ function records(value: unknown): Record<string, unknown>[] {
 function textRecords(text: string): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const match = line.match(/^\s*(south|east|north|west|south-east|south-west|north-east|north-west)\s*:\s*(https:\/\/\S+)/i);
-    if (match) rows.push({ direction: match[1].toLowerCase(), image_url: match[2].replace(/[),.;]+$/, "") });
+    const match = line.match(/^\s*(?:(?:([^:|>\/]{1,160})\s*[|>\/ ]\s*))?(south|east|north|west|south-east|south-west|north-east|north-west)\s*[:=]\s*((?:https?:\/\/|data:image\/)[^\s<>\"]+)/i);
+    if (match) rows.push({ ...(match[1] ? { animation_name: match[1].trim() } : {}), direction: match[2].toLowerCase(), image_url: match[3].replace(/[),.;]+$/, "") });
   }
   return rows;
 }
@@ -207,12 +207,12 @@ export function providerStatus(value: unknown): ProviderStatus {
 
 function imageUrl(value: unknown): string | null {
   if (typeof value === "string") {
-    const match = value.match(/https:\/\/[^\s<>"']+/i);
+    const match = value.match(/(?:https?:\/\/|data:image\/)[^\s<>"']+/i);
     return match?.[0]?.replace(/[),.;]+$/, "") ?? null;
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof child === "string" && /^https:\/\//.test(child) && /url|image|download|sheet|sprite/i.test(key)) return child;
+    if (typeof child === "string" && /^(?:https?:\/\/|data:image\/)/i.test(child) && /url|image|download|sheet|sprite/i.test(key)) return child;
   }
   for (const child of Object.values(value as Record<string, unknown>)) { const found = imageUrl(child); if (found) return found; }
   return null;
@@ -231,28 +231,60 @@ export function characterResult(value: unknown, direction: string): { characterI
 export function animationResult(value: unknown, animationName: string, direction: string): {
   characterId: string | null; animationGroupId: string | null; imageUrl: string | null; frameUrls: string[]; frameData: string[]; frameCount: number; status: string;
 } | null {
-  const root = record(value);
-  const payload = record(root.last_response ?? value);
   const characterId = providerCharacterId(value);
-  const all = records(payload);
-  const parent = all.find((row) => String(row.display_name ?? row.animation_name ?? row.name ?? "").toLowerCase() === animationName.toLowerCase());
-  const candidates = parent ? records(parent) : all;
-  const selected = candidates.find((row) => String(row.direction ?? "").toLowerCase() === direction.toLowerCase())
-    ?? (Array.isArray(payload.images) ? payload : null);
+  const all = animationRecords(value);
+  const matching = all.filter((row) => String(row.direction ?? "").toLowerCase() === direction.toLowerCase());
+  const named = matching.filter((row) => String(row.__animationName ?? row.display_name ?? row.animation_name ?? row.name ?? "").toLowerCase() === animationName.toLowerCase());
+  const hasDirectionalRows = all.some((row) => typeof row.direction === "string");
+  const selected = named[0] ?? matching[0] ?? (!hasDirectionalRows ? all.find((row) => hasAnimationOutput(row)) : undefined);
   if (!selected) return null;
-  const rawFrames = Array.isArray(selected.frames) ? selected.frames : Array.isArray(payload.images) ? payload.images : [];
-  const frameUrls = rawFrames.map(imageUrl).filter((url): url is string => Boolean(url));
+  const rawFrames = frameValues(selected);
+  const frameUrls = rawFrames.map(imageUrl).filter((url): url is string => typeof url === "string" && !/^data:image\//i.test(url));
   const frameData = rawFrames.map((frame) => {
+    if (typeof frame === "string" && /^data:image\//i.test(frame)) return frame;
     if (!frame || typeof frame !== "object") return null;
     const row = frame as Record<string, unknown>;
-    return typeof row.base64 === "string" ? row.base64 : typeof row.data === "string" && !row.data.startsWith("http") ? row.data : null;
+    return typeof row.base64 === "string" ? row.base64 : typeof row.data === "string" && !/^https?:\/\//i.test(row.data) ? row.data : null;
   }).filter((data): data is string => Boolean(data));
   return {
-    characterId, animationGroupId: typeof selected.group_id === "string" ? selected.group_id : typeof parent?.group_id === "string" ? parent.group_id : null,
+    characterId, animationGroupId: typeof selected.group_id === "string" ? selected.group_id : typeof selected.__animationGroupId === "string" ? selected.__animationGroupId : null,
     imageUrl: imageUrl(selected), frameUrls, frameData,
-    frameCount: Number(selected.frame_count ?? selected.frames_count ?? frameUrls.length ?? 0),
-    status: providerStatus(selected === payload ? value : selected),
+    frameCount: Number(selected.frame_count ?? selected.frames_count ?? selected.frameCount ?? (frameUrls.length || frameData.length || 0)),
+    status: providerStatus(selected) === "processing" && providerStatus(value) !== "processing" ? providerStatus(value) : providerStatus(selected),
   };
+}
+
+const DIRECTIONS = new Set(["south", "east", "north", "west", "south-east", "south-west", "north-east", "north-west"]);
+function frameValues(row: Record<string, unknown>): unknown[] {
+  for (const key of ["frames", "images", "frame_urls", "frameUrls"]) if (Array.isArray(row[key])) return row[key] as unknown[];
+  return [];
+}
+function hasAnimationOutput(row: Record<string, unknown>): boolean { return Boolean(imageUrl(row) || frameValues(row).length); }
+function animationRecords(value: unknown, context: { animationName?: string; direction?: string; animationGroupId?: string } = {}): Record<string, unknown>[] {
+  if (typeof value === "string") {
+    if (/^[\s]*[\[{]/.test(value)) { try { return animationRecords(JSON.parse(value), context); } catch { /* text */ } }
+    return textRecords(value).map((row) => ({ ...row, ...(context.animationName ? { __animationName: context.animationName } : {}), ...(context.animationGroupId ? { __animationGroupId: context.animationGroupId } : {}) }));
+  }
+  if (Array.isArray(value)) return value.flatMap((item) => animationRecords(item, context));
+  if (!value || typeof value !== "object") return [];
+  const row = value as Record<string, unknown>;
+  const ownName = typeof row.display_name === "string" ? row.display_name : typeof row.animation_name === "string" ? row.animation_name : typeof row.name === "string" ? row.name : context.animationName;
+  const ownDirection = typeof row.direction === "string" ? row.direction : context.direction;
+  const ownGroupId = typeof row.group_id === "string" ? row.group_id : context.animationGroupId;
+  const output: Record<string, unknown>[] = [];
+  const withContext = (child: unknown, childContext: { animationName?: string; direction?: string; animationGroupId?: string }) => output.push(...animationRecords(child, childContext));
+  if (row.directions && typeof row.directions === "object") {
+    if (Array.isArray(row.directions)) withContext(row.directions, { animationName: ownName, animationGroupId: ownGroupId });
+    else for (const [key, child] of Object.entries(row.directions as Record<string, unknown>)) withContext(child, { animationName: ownName, animationGroupId: ownGroupId, direction: DIRECTIONS.has(key.toLowerCase()) ? key.toLowerCase() : undefined });
+  }
+  const candidate = { ...row, ...(ownName ? { __animationName: ownName } : {}), ...(ownDirection ? { direction: ownDirection } : {}), ...(ownGroupId ? { __animationGroupId: ownGroupId } : {}) };
+  if (hasAnimationOutput(candidate) || (ownDirection && typeof row.status === "string")) output.push(candidate);
+  for (const [key, child] of Object.entries(row)) {
+    if (key === "directions" || key === "frames" || key === "images") continue;
+    if (child && typeof child === "object") withContext(child, { animationName: ownName, animationGroupId: ownGroupId, direction: DIRECTIONS.has(key.toLowerCase()) ? key.toLowerCase() : ownDirection });
+    else if (typeof child === "string" && /(?:spritesheet|sheet|frame|image|download|url)/i.test(key)) output.push({ ...candidate, [key]: child });
+  }
+  return output;
 }
 
 export function providerErrorText(value: unknown): string {
