@@ -36,11 +36,18 @@ function textRecords(text: string): Record<string, unknown>[] {
     const normalized = value.trim().toLowerCase().replace(/[ _]+/g, "-");
     return DIRECTIONS.has(normalized) ? normalized : undefined;
   };
-  const image = (value: string): string | undefined => value.match(/(?:https?:\/\/|data:image\/)[^\s<>"']+/i)?.[0]?.replace(/[),.;\\]+$/, "");
+  const image = (value: string): string | undefined => value.match(/(?:https?:\/\/|data:image\/)[^\s<>"')\]]+/i)?.[0]?.replace(/[),.;\\]+$/, "");
   for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim().replace(/^[-*]\s+/, "");
+    const line = rawLine.trim().replace(/^[-*]\s+/, "").replace(/^\d{1,3}[.)]\s+/, "");
     if (!line) continue;
-    const keyValue = line.match(/^([^:|>\/]{1,160})\s*[:=]\s*(.*)$/);
+    // A bare or bracketed URL line has no usable label: the key/value pattern
+    // would split it at the scheme colon and drop the address. Match the URL
+    // against the whole line first and keep the surrounding direction context.
+    const lineImage = image(line);
+    // Strip URLs and markdown links before reading the label so a scheme colon
+    // is never mistaken for the key/value separator.
+    const withoutImages = line.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/(?:https?:\/\/|data:image\/)[^\s<>"')\]]+/gi, "").trim();
+    const keyValue = withoutImages.match(/^([^:|>\/]{1,160})\s*[:=]\s*(.*)$/);
     const key = keyValue?.[1].trim().toLowerCase().replace(/[ -]+/g, "_") ?? "";
     const value = keyValue?.[2]?.trim() ?? "";
     const keyDirection = direction(key);
@@ -52,10 +59,12 @@ function textRecords(text: string): Record<string, unknown>[] {
       if (valueDirection) currentDirection = valueDirection;
       else if (value && !image(value)) currentAnimationName = value.replace(/^['"]|['"]$/g, "");
     } else if (!keyValue) {
-      const standalone = direction(line);
+      // A direction can label its own row inline, e.g. `east [spritesheet](url)`.
+      const bare = withoutImages || line;
+      const standalone = direction(bare) ?? direction(bare.match(/^[A-Za-z-]+/)?.[0] ?? "");
       if (standalone) currentDirection = standalone;
     }
-    const imageUrl = image(value || line);
+    const imageUrl = lineImage;
     if (imageUrl) rows.push({
       ...(currentAnimationName ? { animation_name: currentAnimationName } : {}),
       ...(currentDirection ? { direction: currentDirection } : {}),
@@ -334,6 +343,10 @@ function animationRecords(value: unknown, context: { animationName?: string; dir
     if (key === "directions" || key === "frames" || key === "images") continue;
     if (child && typeof child === "object") withContext(child, { animationName: ownName, animationGroupId: ownGroupId, direction: DIRECTIONS.has(key.toLowerCase()) ? key.toLowerCase() : ownDirection });
     else if (typeof child === "string" && /(?:spritesheet|sheet|frame|image|download|url)/i.test(key)) output.push({ ...candidate, [key]: child });
+    // MCP transports carry the whole directional listing as free text under a
+    // neutral key such as `text`. Parse it so each direction keeps its own row
+    // instead of collapsing to the first URL in the response.
+    else if (typeof child === "string" && /[\r\n]/.test(child)) withContext(child, { animationName: ownName, animationGroupId: ownGroupId, direction: DIRECTIONS.has(key.toLowerCase()) ? key.toLowerCase() : undefined });
   }
   return output;
 }
