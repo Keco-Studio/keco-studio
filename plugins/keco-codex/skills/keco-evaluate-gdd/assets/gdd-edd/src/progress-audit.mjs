@@ -64,7 +64,7 @@ export function renderFailureProgression(input) {
 
 - Evaluation ID: ${input.evaluationId}
 - Eval Case: ${input.evalCase.id}
-- Goal: Generate human-reviewable evaluation documents from a fixed GDD and rubric
+- Goal: Generate human-reviewable evaluation documents from the selected GDD and rubric
 - Provider: ${input.provider}
 - Requested model: ${input.requestedModel || 'local-default'}
 - Observed model: ${input.observedModel || 'Execution failed; not obtained'}

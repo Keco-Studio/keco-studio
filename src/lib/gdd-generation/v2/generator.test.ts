@@ -270,6 +270,50 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.tablePlanWarning).toBeNull();
   });
 
+  it('canonicalizes a sole compatible guided table repair when the model renames the table', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: [{
+          table: 'SeasonsWeather',
+          purpose: 'Defines seasonal and weather effects.',
+          fields: ['season', 'weather', 'encounter_modifiers', 'pickup_modifiers', 'shelter_effects'],
+        }],
+      },
+    };
+    const plan = {
+      table: 'Seasons & Weather',
+      purpose: 'Model-generated wording that is canonicalized.',
+      fields: ['season', 'weather', 'encounter_modifiers', 'pickup_modifiers', 'shelter_effects'],
+      rows: [{
+        name: 'spring-any',
+        values: {
+          season: 'Spring',
+          weather: 'Any',
+          encounter_modifiers: 'Park x1.4',
+          pickup_modifiers: 'None',
+          shelter_effects: 'Resolve by weather',
+        },
+      }],
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1
+        ? '# GDD\n\n## Systems\nWeather and seasons.'
+        : `<!-- KECO_TABLE_PLAN ${JSON.stringify([plan])} -->`
+    ));
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([{
+      ...plan,
+      table: 'SeasonsWeather',
+      purpose: 'Defines seasonal and weather effects.',
+      fields: ['season', 'weather', 'encounter_modifiers', 'pickup_modifiers', 'shelter_effects'],
+    }]);
+    expect(result.review.repairRound).toBe(1);
+  });
+
   it('repairs each missing guided table independently', async () => {
     const guidedTables = ['Wastes', 'Dangers', 'Upgrades', 'Zones', 'HUD_Elements', 'Audio_Events'];
     const guidedInput: GddGenerationRequestV2 = {

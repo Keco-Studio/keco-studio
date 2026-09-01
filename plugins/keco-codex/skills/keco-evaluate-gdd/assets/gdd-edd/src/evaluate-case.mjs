@@ -53,9 +53,9 @@ export async function evaluateCase(options = {}) {
   const requestedModel = options.model || (provider === 'claude' ? 'sonnet' : 'local-default');
   const startedAt = new Date().toISOString();
   const audit = {
-    goal: 'Generate human-reviewable evaluation documents from a fixed GDD and rubric',
+    goal: 'Generate human-reviewable evaluation documents from the selected GDD and rubric',
     evidence: null,
-    events: [{ component: 'Node', action: 'Load Eval Case and fixed inputs', status: 'completed', detail: `${evalCase.id}; fixed assets read and hashed` }],
+    events: [{ component: 'Node', action: 'Load selected GDD and evaluation inputs', status: 'completed', detail: `${evalCase.id}; selected assets read and hashed` }],
     nextAction: 'Review Result and share the human rating link',
   };
   let app;

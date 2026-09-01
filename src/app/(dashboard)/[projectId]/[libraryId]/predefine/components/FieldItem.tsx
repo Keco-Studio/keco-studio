@@ -496,7 +496,8 @@ export function FieldItem({
                       label: (lib as any).folder_name ? `${lib.name} (${(lib as any).folder_name})` : lib.name,
                       value: lib.id,
                     }))}
-                    maxTagCount="responsive"
+                    maxTagCount={2}
+                    maxTagPlaceholder={(omitted) => `+${omitted.length}`}
                     className={styles.referenceSelect}
                   />
                   {(field.referenceLibraries ?? []).length === 0 && !loadingLibraries && (

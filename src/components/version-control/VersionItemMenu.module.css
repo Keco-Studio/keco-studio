@@ -57,7 +57,7 @@
 }
 
 .menuItem:hover {
-  background: #f8fafc;
+  background: var(--keco-blue-tint-soft);
 }
 
 .deleteItem {
@@ -65,6 +65,6 @@
 }
 
 .deleteItem:hover {
-  background: #fef2f2;
+  background: var(--keco-blue-tint-soft);
 }
 

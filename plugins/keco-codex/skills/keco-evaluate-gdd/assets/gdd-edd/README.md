@@ -1,6 +1,6 @@
 # Keco GDD EDD Engine
 
-This bundled engine ports the reference GDD EDD workflow into a generic Keco manifest adapter. It supports one AI evaluation with a human rating Web, AI-only baseline sampling, and baseline comparison.
+This bundled engine ports the reference GDD EDD workflow into a generic Keco manifest adapter. It supports one AI evaluation with a human rating Web, AI-only baseline sampling, and baseline comparison. Each invocation publishes its run artifacts to the independent EDD repository by default.
 
 Node.js 20 or newer is required.
 
@@ -23,6 +23,13 @@ Compare current AI-only samples with the saved baseline:
 ```bash
 npm run eval:compare -- --manifest <case.json> --workspace-root <workspace> --run-root <run-root> --runs 3
 ```
+
+Publishing defaults to `git@github.com:Keco-Studio/edd-repo.git`, branch `version4`, under
+`docs/gdd-edd/runs/<evaluation-id>/`. Use `--no-push` to stage the run locally
+without a commit or push. `--output-repo`, `--output-branch`,
+`--output-runs-path`, and `--output-checkout` override the destination. The
+publisher refuses an existing run, dirty checkouts, local commits ahead of the
+remote, non-fast-forward updates, and path traversal. It never force-pushes.
 
 Use `--provider codex|claude`, `--model <model-id>`, and `--runs <2-20>` as needed. Baseline creation refuses overwrite unless `--force` is supplied.
 

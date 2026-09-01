@@ -158,7 +158,7 @@ export function EditColumnModal({
     }
   }, [open]);
 
-  // Click outside to close the modal (but does not close when clicking on the overlay of the Alert dialog)
+  // Click outside or Escape to close the modal (but does not close when clicking on the overlay of the Alert dialog)
   useEffect(() => {
     if (!open) return;
 
@@ -182,9 +182,17 @@ export function EditColumnModal({
       onClose();
     };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !showOverwriteConfirm) {
+        onClose();
+      }
+    };
+
     window.addEventListener('mousedown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('mousedown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [open, onClose, showOverwriteConfirm]);
 
@@ -549,29 +557,7 @@ export function EditColumnModal({
   const modalContent = (
     <div ref={modalRef} className={styles.popup} style={style}>
       <div className={styles.header}>
-        <h2 className={styles.title}>EDIT COLUMN</h2>
-        <button
-          type="button"
-          className={styles.closeBtn}
-          onClick={onClose}
-          aria-label="Close"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M12 4L4 12M4 4l8 8"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+        <h2 className={styles.title}>Edit Column</h2>
       </div>
       {/* Same as AddColumnModal: the top part is scrollable, the bottom button is fixed */}
       <div className={`${styles.body} ${styles.scrollBody}`}>
@@ -633,6 +619,7 @@ export function EditColumnModal({
             listHeight={204}
             popupRender={(originNode) => (
               <div className={styles.dataTypeDropdown}>
+                <div className={styles.dropdownContextHint}>Column</div>
                 <div className={styles.dataTypeSearchWrap}>
                   <span className={styles.dataTypeSearchIcon} aria-hidden>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1047,7 +1034,15 @@ export function EditColumnModal({
                 label: lib.name,
                 value: lib.id,
               }))}
-              maxTagCount="responsive"
+              maxTagCount={2}
+              maxTagPlaceholder={(omitted) => (
+                <span
+                  className={styles.maxTagOverflow}
+                  title={omitted.map((item) => String(item.label ?? item.value)).join(', ')}
+                >
+                  +{omitted.length}
+                </span>
+              )}
               open={referenceDropdownOpen}
               onOpenChange={(openDropdown) => {
                 setReferenceDropdownOpen(openDropdown);
@@ -1058,6 +1053,7 @@ export function EditColumnModal({
               }}
               popupRender={() => (
                 <div className={styles.referenceDropdown}>
+                  <div className={styles.dropdownContextHint}>Library</div>
                   <div className={styles.referenceDropdownContent}>
                     <Input
                       allowClear

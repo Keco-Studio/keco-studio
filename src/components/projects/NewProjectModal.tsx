@@ -6,10 +6,8 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { createProject, checkProjectNameExists } from '@/lib/services/projectService';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
-import projectIcon from '@/assets/images/projectIcon52.svg';
 import closeIcon from '@/assets/images/closeIcon32.svg';
 import dialog from '@/components/shared/FormDialog.module.css';
-import styles from './NewProjectModal.module.css';
 
 type NewProjectModalProps = {
   open: boolean;
@@ -90,11 +88,8 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
 
         <div className={dialog.divider}></div>
 
-        <div className={dialog.nameContainer}>
-          <div className={styles.iconWrapper}>
-            <Image src={projectIcon} alt="Project icon" width={52} height={52} className="icon-52" />
-          </div>
-          <div className={dialog.nameInputContainer}>
+        <div className={`${dialog.nameContainer} ${dialog.nameContainerNoIcon}`}>
+          <div className={`${dialog.nameInputContainer} ${dialog.nameInputContainerFull}`}>
             <label htmlFor="project-name" className={dialog.nameLabel}>Project Name</label>
           <input
             id="project-name"

@@ -282,10 +282,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       <Image
                         src={getFieldTypeIcon(property.dataType as any)}
                         alt={property.dataType}
-                        width={16}
-                        height={16}
-                        className="icon-16"
-                        style={{ marginRight: 4 }}
+                        width={12}
+                        height={12}
+                        className="icon-12"
                       />
                       {getTypeBadgeLabel(property)}
                     </div>
@@ -334,10 +333,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       <Image
                         src={getFieldTypeIcon(property.dataType as any)}
                         alt={property.dataType}
-                        width={16}
-                        height={16}
-                        className="icon-16"
-                        style={{ marginRight: 4 }}
+                        width={12}
+                        height={12}
+                        className="icon-12"
                       />
                       {getTypeBadgeLabel(property)}
                     </span>
@@ -364,10 +362,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       <Image
                         src={getFieldTypeIcon(property.dataType as any)}
                         alt={property.dataType}
-                        width={16}
-                        height={16}
-                        className="icon-16"
-                        style={{ marginRight: 4 }}
+                        width={12}
+                        height={12}
+                        className="icon-12"
                       />
                       {getTypeBadgeLabel(property)}
                     </span>
@@ -393,10 +390,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       <Image
                         src={getFieldTypeIcon(property.dataType as any)}
                         alt={property.dataType}
-                        width={16}
-                        height={16}
-                        className="icon-16"
-                        style={{ marginRight: 4 }}
+                        width={12}
+                        height={12}
+                        className="icon-12"
                       />
                       {getTypeBadgeLabel(property)}
                     </span>
@@ -438,10 +434,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                         <Image
                           src={getFieldTypeIcon(property.dataType as any)}
                           alt={property.dataType}
-                          width={16}
-                          height={16}
-                          className="icon-16"
-                          style={{ marginRight: 4 }}
+                          width={12}
+                          height={12}
+                          className="icon-12"
                         />
                         {getTypeBadgeLabel(property)}
                       </span>
@@ -480,10 +475,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       <Image
                         src={getFieldTypeIcon(property.dataType as any)}
                         alt={property.dataType}
-                        width={16}
-                        height={16}
-                        className="icon-16"
-                        style={{ marginRight: 4 }}
+                        width={12}
+                        height={12}
+                        className="icon-12"
                       />
                       {getTypeBadgeLabel(property)}
                     </span>
@@ -517,23 +511,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
             }
 
             const inputValue = localTextValues[property.key] ?? displayValue;
-            const isStringType = property.dataType === 'string';
             return (
               <div key={property.id} className={styles.detailDrawerField}>
                 <div className={styles.detailDrawerFieldHeader}>
                   <label className={styles.detailDrawerLabel}>{property.name}</label>
-                  <span className={
-                    isStringType
-                      ? `${styles.detailDrawerTypeBadge} ${styles.detailDrawerTypeBadgeString}`
-                      : styles.detailDrawerTypeBadge
-                  }>
+                  <span className={styles.detailDrawerTypeBadge}>
                     <Image
                       src={getFieldTypeIcon(property.dataType as any)}
                       alt={property.dataType}
-                      width={16}
-                      height={16}
-                      className="icon-16"
-                      style={{ marginRight: 4 }}
+                      width={12}
+                      height={12}
+                      className="icon-12"
                     />
                     {getTypeBadgeLabel(property)}
                   </span>

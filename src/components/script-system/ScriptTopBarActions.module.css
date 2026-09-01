@@ -11,21 +11,29 @@
 .shareButton {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  height: 32px;
-  padding: 0.5rem 16px;
+  justify-content: center;
+  gap: 5.25px;
+  height: 30px;
+  padding: 7px 16px;
   border: none;
-  border-radius: 0.5rem;
-  background: #0b99ff14;
-  color: #0b99ff;
+  border-radius: 7px;
+  background: #0B99FF;
+  color: #ffffff;
   font-size: 1rem;
   font-weight: 400;
   cursor: pointer;
   transition: background-color 0.2s;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.shareButton img {
+  display: block;
+  flex-shrink: 0;
 }
 
 .shareButton:hover {
-  background: #0b99ff22;
+  background: #0a8ae6;
 }
 
 .iconButton {

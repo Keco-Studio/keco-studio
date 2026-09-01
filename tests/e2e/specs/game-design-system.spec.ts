@@ -809,7 +809,7 @@ test.describe('Game Design System real workflow', () => {
     await login.expectLoginSuccess();
 
     await page.goto('/game-design-systems');
-    await expect(page.getByRole('button', { name: 'Game Design System', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('button', { name: 'System', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('tab', { name: /My Systems/ })).toBeVisible();
     await page.getByRole('tab', { name: /Official/ }).click();
     await expect(page.getByText('No official systems yet.', { exact: true })).toBeVisible();
@@ -822,11 +822,11 @@ test.describe('Game Design System real workflow', () => {
     await expectNoDocumentOverflow(page);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByRole('button', { name: 'Game Design System', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'System', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Show system library' })).toBeVisible();
     await page.getByRole('button', { name: 'Show system library' }).click();
     await expect(page.getByRole('complementary', { name: 'Game Design System library' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Game Design System', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'System', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Close system library' }).click({ position: { x: 320, y: 20 } });
     await expectNoDocumentOverflow(page);
   });

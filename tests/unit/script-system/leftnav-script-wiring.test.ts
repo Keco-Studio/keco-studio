@@ -20,11 +20,11 @@ describe('Keco Script LeftNav wiring', () => {
 
   it('LeftNav includes Script control between Simulation and Game Design System', () => {
     const source = read('src/components/layout/LeftNav.tsx');
-    expect(source).toContain("aria-label=\"Script\"");
-    expect(source).toContain('/script-system');
-    const sim = source.indexOf("aria-label=\"Simulation\"");
-    const script = source.indexOf("aria-label=\"Script\"");
-    const gameDesignSystem = source.indexOf("aria-label=\"Game Design System\"");
+    expect(source).toContain('aria-label="Script"');
+    expect(source).toContain("navigate('script')");
+    const sim = source.indexOf('aria-label="Simulator"');
+    const script = source.indexOf('aria-label="Script"');
+    const gameDesignSystem = source.indexOf('aria-label="System"');
     expect(sim).toBeGreaterThan(-1);
     expect(script).toBeGreaterThan(sim);
     expect(gameDesignSystem).toBeGreaterThan(script);

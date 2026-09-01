@@ -511,7 +511,7 @@ export function AssetReferenceSelector({
       {showDropdown && !disabled && (
         <div ref={dropdownRef} className={styles.dropdown}>
           <div className={styles.dropdownHeader}>
-            <span className={styles.dropdownHeaderText}>APPLY REFERENCE</span>
+            <span className={styles.dropdownHeaderText}>Apply Reference</span>
             <button
               className={styles.closeButton}
               onClick={() => {

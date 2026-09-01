@@ -7,6 +7,12 @@
   justify-content: center;
 }
 
+.containerTableCell {
+  width: auto;
+  align-items: center;
+  justify-content: center;
+}
+
 .fileInput {
   display: none;
 }
@@ -66,6 +72,25 @@
 .imageUploadPlaceholder:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.imageUploadPlaceholderTable {
+  width: 20px;
+  height: 20px;
+}
+
+.uploadedFileContainerTableCell {
+  width: auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  height: auto;
+  justify-content: center;
+}
+
+.fileInfoClickableTableCell {
+  flex: 0 0 auto;
+  justify-content: center;
 }
 
 .uploadButton:disabled {

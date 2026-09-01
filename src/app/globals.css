@@ -13,6 +13,13 @@
   --font-roboto: 'Roboto', sans-serif;
   --font-nunito: 'Nunito', sans-serif;
   --font-pixer: 'Pixer', sans-serif;
+  /* Shared selection / hover tokens (sidebar, table, menus) */
+  --keco-blue: #0b99ff;
+  /* Soft blue fill — readable on white surfaces (table cells, menus) */
+  --keco-blue-tint: #e6f4ff;
+  /* 8% blue overlay — good on tinted/sidebar surfaces */
+  --keco-blue-tint-soft: #0b99ff14;
+  --keco-row-hover-bg: #f8fafc;
 }
 
 /* Pixer font declaration */
@@ -185,4 +192,18 @@ body {
   /* 36px */
   height: 3rem !important;
   /* 48px */
+}
+
+/* Popup / context / dropdown menus: match sidebar selection tint */
+.ant-dropdown-menu-item:hover,
+.ant-dropdown-menu-submenu-title:hover,
+.ant-dropdown-menu-item-active,
+.ant-dropdown-menu-submenu-title-active,
+.ant-dropdown-menu-item-selected {
+  background-color: var(--keco-blue-tint-soft) !important;
+}
+
+.ant-dropdown .ant-dropdown-menu-item:hover,
+.ant-dropdown .ant-dropdown-menu-submenu-title:hover {
+  background-color: var(--keco-blue-tint-soft) !important;
 }

@@ -47,34 +47,25 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         
-        // Calculate horizontal position
-        // Position menu at the right edge of the element with a gap
-        let newX = bounds.right + 8;
-        
-        // Check if menu would go off-screen to the right
-        if (newX + menuWidth > viewportWidth) {
-          // Position menu to the left of the element instead
-          newX = bounds.left - menuWidth - 8;
-          
-          // If still off-screen, position at the left edge of viewport
-          if (newX < 0) {
-            newX = 8;
-          }
+        // Calculate horizontal position — dropdown style below anchor (three-dot triggers)
+        let newX = bounds.right - menuWidth;
+        if (newX < 8) {
+          newX = 8;
         }
-        
-        // Calculate vertical position
-        // Default: align with top of element
-        let newY = bounds.top;
-        
-        // Check if menu would go off-screen at the bottom
+        if (newX + menuWidth > viewportWidth) {
+          newX = Math.max(8, viewportWidth - menuWidth - 8);
+        }
+
+        // Default: open below the anchor with a small gap
+        let newY = bounds.bottom + 4;
+
+        // If menu would go off-screen at the bottom, open above the anchor
         if (newY + menuHeight > viewportHeight) {
-          // Position menu to align with bottom of element (menu appears above)
-          newY = bounds.bottom - menuHeight;
-          
-          // If still off-screen at the top, position at the top edge of viewport
-          if (newY < 0) {
-            newY = 8;
-          }
+          newY = bounds.top - menuHeight - 4;
+        }
+
+        if (newY < 8) {
+          newY = 8;
         }
         
         setPosition({ x: newX, y: newY });
@@ -290,31 +281,6 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'library') {
-      if (isDerivedLibrary) {
-        return (
-          <>
-            {showEditButton && (
-              <button
-                className={styles.menuItem}
-                onClick={() => handleAction('rename')}
-              >
-                Rename
-              </button>
-            )}
-            {showDeleteButton && (
-              <>
-                <div className={styles.separator} />
-                <button
-                  className={`${styles.menuItem} ${styles.deleteItem}`}
-                  onClick={() => handleAction('delete')}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </>
-        );
-      }
       // Library: Version history, separator, Library info (admin only), Duplicate, Move to... (admin only), separator, Delete (admin only)
       return (
         <>

@@ -26,7 +26,11 @@ import {
 import { compileGddMapBriefs } from './maps/compiler';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
 import type { ResourceChangeSummary } from './resourceEvolution';
-import { generateGddMarkdownV2, GddV2GenerationValidationError } from './v2/generator';
+import {
+  generateGddMarkdownV2,
+  GddV2GenerationValidationError,
+  GddV2ResourceRecoveryError,
+} from './v2/generator';
 import {
   claimGddGenerationJob,
   failGddGenerationJob,
@@ -115,6 +119,7 @@ function isPermanentError(error: unknown): boolean {
   if (
     error instanceof GddGenerationValidationError
     || error instanceof GddV2GenerationValidationError
+    || error instanceof GddV2ResourceRecoveryError
     || error instanceof GddJobContextInvalidError
   ) return true;
   // Soft-strip orphan REFs when table plans are missing; prefer repair in the

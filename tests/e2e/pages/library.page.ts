@@ -790,7 +790,7 @@ export class LibraryPage {
     await expect(toggle).toBeVisible({ timeout: 15000 });
 
     if (await sidebar.isVisible().catch(() => false)) {
-      await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await expect(sidebar.getByText('Version History')).toBeVisible({ timeout: 5000 });
       await this.dismissVisibleAntTooltips();
       return;
     }
@@ -808,7 +808,7 @@ export class LibraryPage {
     }
 
     await expect(sidebar).toBeVisible({ timeout: 10000 });
-    await expect(sidebar.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+    await expect(sidebar.getByText('Version History')).toBeVisible({ timeout: 5000 });
     await this.dismissVisibleAntTooltips();
   }
 

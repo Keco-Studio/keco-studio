@@ -83,7 +83,7 @@ export function VersionControlSidebar({
       <div className={styles.sidebar} data-testid="library-version-history-sidebar">
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>VERSION HISTORY</h2>
+          <h2 className={styles.title}>Version History</h2>
           <div className={styles.headerActions}>
             <button
               className={styles.addButton}

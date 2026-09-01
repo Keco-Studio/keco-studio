@@ -29,16 +29,16 @@
 }
 
 .menuItem:hover {
-  background-color: #f5f5f5;
+  background-color: var(--keco-blue-tint-soft);
 }
 
 .menuItem:active {
-  background-color: #e8e8e8;
+  background-color: var(--keco-blue-tint-soft);
 }
 
 .menuItem:focus {
   outline: none;
-  background-color: #f5f5f5;
+  background-color: var(--keco-blue-tint-soft);
 }
 
 .deleteItem {
@@ -46,12 +46,12 @@
 }
 
 .deleteItem:hover {
-  background-color: #0B99FF14;
+  background-color: var(--keco-blue-tint-soft);
   color: #AA052C;
 }
 
 .deleteItem:active {
-  background-color: #0B99FF14;
+  background-color: var(--keco-blue-tint-soft);
 }
 
 .separator {
