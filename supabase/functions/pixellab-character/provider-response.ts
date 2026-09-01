@@ -100,6 +100,14 @@ export function providerAnimationJobId(value: unknown): string | null {
     const match = text.match(/(?:background[_ -]?job[_ -]?ids?|job[_ -]?ids?)\s*[:=]\s*(?:[\[({]\s*)?["']?([A-Za-z0-9][A-Za-z0-9_-]{7,})["']?/i);
     if (match) return match[1];
   }
+  // Some MCP transports return a short acknowledgement followed by the job
+  // UUID without a field label. The submission response contains no character
+  // output yet, so accepting the embedded UUID is unambiguous here and keeps
+  // the paid attempt resumable for polling.
+  for (const text of textLeaves(value)) {
+    const embedded = text.match(EMBEDDED_UUID_PATTERN);
+    if (embedded) return embedded[0];
+  }
   return null;
 }
 
