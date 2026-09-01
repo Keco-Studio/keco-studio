@@ -2,6 +2,13 @@ import { MAX_PNG_BYTES, packHorizontal } from "./png.ts";
 import { PixelLabCharacterError } from "./types.ts";
 
 async function download(url: string, fetcher: typeof fetch): Promise<Uint8Array> {
+  if (/^data:image\/(?:png|webp);base64,/i.test(url)) {
+    try {
+      const bytes = Uint8Array.from(atob(url.slice(url.indexOf(",") + 1)), (char) => char.charCodeAt(0));
+      if (!bytes.byteLength || bytes.byteLength > MAX_PNG_BYTES) throw new Error();
+      return bytes;
+    } catch { throw new PixelLabCharacterError("pixellab_invalid_response", "Provider image data is invalid", 422); }
+  }
   let parsed: URL;
   try { parsed = new URL(url); } catch { throw new PixelLabCharacterError("pixellab_invalid_response", "Provider image URL is invalid", 422); }
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider image URL is invalid", 422);

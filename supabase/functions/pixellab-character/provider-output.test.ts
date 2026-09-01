@@ -26,3 +26,8 @@ Deno.test("packs separate provider frames left-to-right when no spritesheet exis
   assertEquals({ width: image.width, height: image.height }, { width: 6, height: 1 });
   assertEquals(Array.from(image.data).filter((_value, index) => index % 4 === 0), [10, 10, 20, 20, 30, 30]);
 });
+
+Deno.test("decodes a bounded data URL spritesheet without network access", async () => {
+  const bytes = await downloadProviderOutput({ imageUrl: "data:image/png;base64,AAECAwQ=", frameUrls: [] }, async () => { throw new Error("network must not be used for data URLs"); });
+  assertEquals([...bytes], [0, 1, 2, 3, 4]);
+});

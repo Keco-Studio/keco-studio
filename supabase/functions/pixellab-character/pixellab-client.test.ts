@@ -224,6 +224,26 @@ Deno.test("parses PixelLab completed rotations from human-readable MCP text", ()
   });
 });
 
+Deno.test("parses animation direction maps and data URL spritesheets", () => {
+  const result = { structuredContent: { status: "completed", character_id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animations: [{ name: "walk", directions: { south: { status: "completed", spritesheet_url: "data:image/png;base64,AAAA", frame_count: 6 } } }] } };
+  assertEquals(animationResult(result, "walk", "south"), { characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animationGroupId: null, imageUrl: "data:image/png;base64,AAAA", frameUrls: [], frameData: [], frameCount: 6, status: "completed" });
+});
+
+Deno.test("parses string and data URL animation frames", () => {
+  const result = { structuredContent: { character_id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animations: [{ animation_name: "idle", directions: [{ direction: "south", status: "ready", frames: ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"], frame_count: 2 }] }] } };
+  assertEquals(animationResult(result, "idle", "south"), { characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animationGroupId: null, imageUrl: null, frameUrls: [], frameData: ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"], frameCount: 2, status: "completed" });
+});
+
+Deno.test("parses nested last_response and inherits completed status for a direction", () => {
+  const result = { result: { last_response: { character: { id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44" }, animations: [{ display_name: "run", directions: [{ direction: "east", spritesheet: "https://cdn.example.test/run.png" }] }], status: "completed" } } };
+  assertEquals(animationResult(result, "run", "east"), { characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animationGroupId: null, imageUrl: "https://cdn.example.test/run.png", frameUrls: [], frameData: [], frameCount: 0, status: "completed" });
+});
+
+Deno.test("does not use a different direction as the requested animation output", () => {
+  const result = { structuredContent: { status: "completed", character_id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animations: [{ display_name: "walk", directions: [{ direction: "east", status: "completed", spritesheet_url: "https://cdn.example.test/east.png" }] }] } };
+  assertEquals(animationResult(result, "walk", "south"), null);
+});
+
 Deno.test("summarizes provider response structure without retaining provider values", () => {
   const result = {
     content: [{ type: "text", text: [
