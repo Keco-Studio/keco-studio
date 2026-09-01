@@ -57,7 +57,12 @@ function textRecords(text: string): Record<string, unknown>[] {
       if (valueDirection) currentDirection = valueDirection;
     } else if (key === "name" || key === "display_name" || key === "animation_name") {
       if (valueDirection) currentDirection = valueDirection;
-      else if (value && !image(value)) currentAnimationName = value.replace(/^['"]|['"]$/g, "");
+      else if (value && !image(value)) {
+        currentAnimationName = value.replace(/^['"]|['"]$/g, "");
+        // A new named block starts here; a direction inherited from an earlier
+        // block (e.g. character rotations) must not label this block's rows.
+        currentDirection = undefined;
+      }
     } else if (!keyValue) {
       // A direction can label its own row inline, e.g. `east [spritesheet](url)`.
       const bare = withoutImages || line;
@@ -295,8 +300,15 @@ export function animationResult(value: unknown, animationName: string, direction
   const all = animationRecords(value);
   const matching = all.filter((row) => String(row.direction ?? "").toLowerCase() === direction.toLowerCase());
   const named = matching.filter((row) => String(row.__animationName ?? row.display_name ?? row.animation_name ?? row.name ?? "").toLowerCase() === animationName.toLowerCase());
+  const namedWithoutDirectionConflict = all.filter((row) => {
+    const rowName = String(row.__animationName ?? row.display_name ?? row.animation_name ?? row.name ?? "").toLowerCase();
+    const rowDirection = String(row.direction ?? "").toLowerCase();
+    return rowName === animationName.toLowerCase() &&
+      (!rowDirection || rowDirection === direction.toLowerCase()) &&
+      hasAnimationOutput(row);
+  });
   const hasDirectionalRows = all.some((row) => typeof row.direction === "string");
-  const selected = named[0] ?? matching[0] ?? (!hasDirectionalRows ? all.find((row) => hasAnimationOutput(row)) : undefined);
+  const selected = namedWithoutDirectionConflict[0] ?? named[0] ?? matching[0] ?? (!hasDirectionalRows ? all.find((row) => hasAnimationOutput(row)) : undefined);
   if (!selected) return null;
   const rawFrames = frameValues(selected);
   const frameUrls = rawFrames.map(imageUrl).filter((url): url is string => typeof url === "string" && !/^data:image\//i.test(url));

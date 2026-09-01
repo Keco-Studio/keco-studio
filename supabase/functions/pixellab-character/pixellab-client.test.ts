@@ -328,6 +328,34 @@ Deno.test("preserves direction context for multiline text under directional keys
   assertEquals(animationResult(result, "walk", "east")?.imageUrl, "https://cdn.example.test/east.png");
 });
 
+Deno.test("selects the animation spritesheet over character rotation stills", () => {
+  // Mirrors the live get_character text layout captured in provider
+  // diagnostics: character rotations come first as direction-labelled URLs,
+  // then a flat animations section carries the actual spritesheet.
+  const result = {
+    content: [{ type: "text", text: [
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "name: Cat",
+      "status: completed",
+      "rotations:",
+      "  south: https://cdn.example.test/rot-south.png",
+      "  east: https://cdn.example.test/rot-east.png",
+      "  north: https://cdn.example.test/rot-north.png",
+      "  west: https://cdn.example.test/rot-west.png",
+      "animations: 1 animation(s)",
+      "name: walk",
+      "group: 7f3a2c10-95a1-4a67-9d1c-0a4a4be4d100",
+      "directions: [south]",
+      "spritesheet: https://cdn.example.test/walk-sheet.png",
+      "status: completed",
+    ].join("\n") }],
+    isError: false,
+  };
+  assertEquals(animationResult(result, "walk", "south")?.imageUrl, "https://cdn.example.test/walk-sheet.png");
+  // The character validation path must still see the rotation stills.
+  assertEquals(characterResult(result, "south")?.imageUrl, "https://cdn.example.test/rot-south.png");
+});
+
 Deno.test("parses markdown link and numbered spritesheet lines per direction", () => {
   const result = {
     content: [{ type: "text", text: [
