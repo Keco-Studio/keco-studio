@@ -3,6 +3,7 @@ import type { ProviderStatus } from "./types.ts";
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const UUID_PATTERN = new RegExp(`^${UUID}$`, "i");
 const EMBEDDED_UUID_PATTERN = new RegExp(`\\b${UUID}\\b`, "i");
+const EMBEDDED_UUIDS_PATTERN = new RegExp(UUID, "gi");
 
 function values(value: unknown): unknown[] {
   if (Array.isArray(value)) return value.flatMap(values);
@@ -75,7 +76,9 @@ function stringIds(value: unknown): string[] {
 }
 
 /** PixelLab animation submission returns one background job per requested direction. */
-export function providerAnimationJobId(value: unknown): string | null {
+export function providerAnimationJobId(value: unknown, excludedId?: string): string | null {
+  const excluded = excludedId?.toLowerCase();
+  const usable = (candidate: string): string | null => candidate.toLowerCase() === excluded ? null : candidate;
   const visit = (item: unknown): string | null => {
     if (Array.isArray(item)) {
       for (const child of item) { const found = visit(child); if (found) return found; }
@@ -84,7 +87,8 @@ export function providerAnimationJobId(value: unknown): string | null {
     if (!item || typeof item !== "object") return null;
     for (const [key, child] of Object.entries(item as Record<string, unknown>)) {
       if (/^(background[_-]?job[_-]?ids?|job[_-]?ids?)$/i.test(key)) {
-        const found = stringIds(child)[0]; if (found) return found;
+        const found = stringIds(child).map(usable).find((entry): entry is string => Boolean(entry));
+        if (found) return found;
       }
       const nested = visit(child); if (nested) return nested;
     }
@@ -98,15 +102,19 @@ export function providerAnimationJobId(value: unknown): string | null {
     // field label plus a quoted/unquoted identifier without depending on the
     // exact surrounding serialization.
     const match = text.match(/(?:background[_ -]?job[_ -]?ids?|job[_ -]?ids?)\s*[:=]\s*(?:[\[({]\s*)?["']?([A-Za-z0-9][A-Za-z0-9_-]{7,})["']?/i);
-    if (match) return match[1];
+    if (!match) continue;
+    const candidate = usable(match[1]);
+    if (candidate) return candidate;
   }
   // Some MCP transports return a short acknowledgement followed by the job
   // UUID without a field label. The submission response contains no character
   // output yet, so accepting the embedded UUID is unambiguous here and keeps
   // the paid attempt resumable for polling.
   for (const text of textLeaves(value)) {
-    const embedded = text.match(EMBEDDED_UUID_PATTERN);
-    if (embedded) return embedded[0];
+    for (const embedded of text.matchAll(EMBEDDED_UUIDS_PATTERN)) {
+      const candidate = usable(embedded[0]);
+      if (candidate) return candidate;
+    }
   }
   return null;
 }

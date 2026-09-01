@@ -71,8 +71,15 @@ export async function runCharacterLifecycle(
         ? characterArguments(state.plan)
         : animationArguments(state.plan, state.sourceProviderCharacterId ?? "", facing(state));
       const result = await dependencies.submit(capability, args);
-      const providerId = semantic === "animation" ? providerAnimationJobId(result) : providerCharacterId(result);
-      if (!providerId) throw new PixelLabCharacterError("pixellab_invalid_response", "Provider character identity is missing");
+      const providerId = semantic === "animation"
+        ? providerAnimationJobId(result, state.sourceProviderCharacterId ?? undefined)
+        : providerCharacterId(result);
+      if (!providerId) {
+        if (semantic === "animation") {
+          throw new PixelLabCharacterError("pixellab_submit_outcome_unknown", "Provider animation job identity is missing");
+        }
+        throw new PixelLabCharacterError("pixellab_invalid_response", "Provider character identity is missing");
+      }
       await dependencies.transition("queued", "generating", {
         expectedAttemptCount: state.attemptCount + 1,
         providerOperation: capability.operation, providerJobId: providerId,
@@ -83,7 +90,7 @@ export async function runCharacterLifecycle(
       });
       return { assetId: state.assetId, status: "generating" };
     } catch (error) {
-      if (error instanceof PixelLabCharacterError && error.code !== "pixellab_upstream") {
+      if (error instanceof PixelLabCharacterError && error.code !== "pixellab_upstream" && error.code !== "pixellab_submit_outcome_unknown") {
         await dependencies.transition("queued", "failed", { expectedAttemptCount: state.attemptCount + 1, lastErrorCode: error.code });
         throw error;
       }

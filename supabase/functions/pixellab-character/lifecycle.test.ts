@@ -94,6 +94,30 @@ Deno.test("submits V3 animation only from the verified source provider character
   });
 });
 
+Deno.test("blocks an animation submission that returns only the source character id", async () => {
+  const sourceCharacterId = "1cda5f96-24e7-449f-9340-da93ac9225d5";
+  const test = fixture({
+    plan: {
+      schemaVersion: 1, kind: "animation", name: "walk_left",
+      sourceCharacterAssetId: IDS.assetId, sourceCharacterSha256: "d".repeat(64),
+      motionDescription: "Walk steadily", frameWidth: 96, frameHeight: 96,
+      frameCount: 6, fps: 10, loop: true,
+    },
+    sourceProviderCharacterId: sourceCharacterId,
+  });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_background_job" });
+  test.dependencies.submit = async () => ({ structuredContent: { character_id: sourceCharacterId } });
+
+  const error = await assertRejects(
+    () => runCharacterLifecycle({ operation: "submit", expectedAttemptCount: 0 }, test.state, test.dependencies),
+    PixelLabCharacterError,
+  );
+  assertEquals(error.code, "pixellab_submit_outcome_unknown");
+  assertEquals(test.transitions.at(-1), {
+    from: "queued", to: "blocked", details: { expectedAttemptCount: 1, lastErrorCode: "pixellab_submit_outcome_unknown" },
+  });
+});
+
 Deno.test("blocks an ambiguous paid submission outcome and never automatically resubmits it", async () => {
   const test = fixture();
   test.dependencies.submit = async () => { throw new PixelLabCharacterError("pixellab_upstream"); };
