@@ -136,6 +136,34 @@ Deno.test("does not fail a completed job when character output is not materializ
   assertEquals(test.transitions, []);
 });
 
+Deno.test("includes safe diagnostics when animation is completed but output is not materialized", async () => {
+  const test = fixture({
+    status: "generating", providerJobId: "provider-character", sourceProviderCharacterId: "provider-character", sourceFacing: "left",
+    plan: {
+      schemaVersion: 1, kind: "animation", name: "walk_left", sourceCharacterAssetId: IDS.assetId,
+      sourceCharacterSha256: "d".repeat(64), motionDescription: "Walk steadily", frameWidth: 96,
+      frameHeight: 96, frameCount: 6, fps: 10, loop: true,
+    },
+  });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_character" });
+  test.dependencies.poll = async () => ({ structuredContent: {
+    status: "completed", character_id: "provider-character",
+    animations: [{ display_name: "walk_left", directions: [{ direction: "west", status: "completed" }] }],
+  } });
+
+  assertEquals(await runCharacterLifecycle({ operation: "poll" }, test.state, test.dependencies), {
+    assetId: IDS.assetId, status: "processing",
+    providerDiagnostics: {
+      keyPaths: [
+        "structuredContent", "structuredContent.animations", "structuredContent.animations[].directions",
+        "structuredContent.animations[].directions[].direction", "structuredContent.animations[].directions[].status",
+        "structuredContent.animations[].display_name", "structuredContent.character_id", "structuredContent.status",
+      ],
+      textLabels: [], statusTokens: ["completed"], urlCount: 0,
+    },
+  });
+});
+
 Deno.test("reuses persisted polling capability without rediscovering tools", async () => {
   const test = fixture({
     status: "generating", providerJobId: "provider-character",

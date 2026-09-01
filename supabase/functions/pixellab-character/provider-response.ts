@@ -55,6 +55,10 @@ const DIAGNOSTIC_LABELS = new Set([
   "name", "north", "south", "spritesheet", "spritesheet_url", "status", "type",
   "url", "west",
 ]);
+const DIAGNOSTIC_STATUSES = new Set([
+  "completed", "complete", "ready", "succeeded", "success", "processing",
+  "generating", "pending", "queued", "failed", "error", "cancelled", "canceled",
+]);
 
 /**
  * Describe a provider response for internal debugging without retaining IDs,
@@ -62,6 +66,9 @@ const DIAGNOSTIC_LABELS = new Set([
  */
 export function providerResponseDiagnostics(value: unknown): ProviderResponseDiagnostics {
   const keyPaths = new Set<string>();
+  const textLabels = new Set<string>();
+  const statusTokens = new Set<string>();
+  let urlCount = 0;
   const visit = (item: unknown, path: string): void => {
     if (Array.isArray(item)) {
       for (const child of item.slice(0, 20)) visit(child, `${path}[]`);
@@ -72,14 +79,15 @@ export function providerResponseDiagnostics(value: unknown): ProviderResponseDia
       const key = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(rawKey) ? rawKey : "<other>";
       const childPath = path ? `${path}.${key}` : key;
       keyPaths.add(childPath);
+      if (rawKey.toLowerCase() === "status" && typeof child === "string") {
+        const normalized = child.toLowerCase();
+        if (DIAGNOSTIC_STATUSES.has(normalized)) statusTokens.add(normalized);
+      }
       visit(child, childPath);
     }
   };
   visit(value, "");
 
-  const textLabels = new Set<string>();
-  const statusTokens = new Set<string>();
-  let urlCount = 0;
   for (const text of textLeaves(value)) {
     urlCount += text.match(/https:\/\/[^\s<>"']+/gi)?.length ?? 0;
     for (const match of text.matchAll(/^\s*([^:\r\n]{1,64})\s*:/gm)) {

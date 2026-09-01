@@ -109,7 +109,11 @@ export async function runCharacterLifecycle(
     // PixelLab can report a completed job before the directional image/sheet
     // is materialized. Keep polling the same paid job instead of turning this
     // transient window into a terminal validation failure.
-    if (status === "completed" && !outputMaterialized(state, result)) return { assetId: state.assetId, status: "processing" };
+    if (status === "completed" && !outputMaterialized(state, result)) {
+      return state.plan.kind === "animation"
+        ? { assetId: state.assetId, status: "processing", providerDiagnostics: providerResponseDiagnostics(result) }
+        : { assetId: state.assetId, status: "processing" };
+    }
     if (status === "failed" && state.status === "generating") {
       await dependencies.transition("generating", "failed", {
         expectedAttemptCount: state.attemptCount,
