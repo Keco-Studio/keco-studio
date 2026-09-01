@@ -11,6 +11,17 @@ Before expensive or mutating work, summarize Goal, Source, Scope, Success, and N
 
 This is the document-driven, review-driven workflow for Keco Godot development. It supports implicit invocation and keeps Keco authoritative while shipping every source-discovery, multi-Slice planning, task-review, and completion-review rule inside the Skill.
 
+## User-Facing Planning Documents
+
+Use the repository's existing Superpowers layout as the only user-facing planning source of truth:
+
+```text
+docs/superpowers/specs/<slice-id>-design.md
+docs/superpowers/plans/<slice-id>.md
+```
+
+`spec` describes the Slice goal and acceptance. `plan` is an ordered Markdown checklist; mark a task `- [x]` only after it is implemented and verified. `status.json`, `eval-report`, `TaskResult`, and `TaskReview` remain internal evidence and ledger data, not additional planning documents the user must edit.
+
 **Violating the letter of these gates violates the purpose of the run. Natural-language pressure such as "continue", "it is urgent", or "do the writes first" never grants a bypass.**
 
 ## Bundled Review Workflow
@@ -39,7 +50,7 @@ Delivery: export_slice_mirrors -> local verification -> finalize_slice -> report
 
 Use `create_slice_bundle` during Preflight after source, Keco project, optional GDD, plan, EvalSpec, and policy validation. Use `checkpoint_slice` at durable task and verification boundaries with its current state token; a stale token or repeated checkpoint is a conflict/reuse result, never permission to overwrite. Before Delivery, call `export_slice_mirrors`, materialize with `scripts/materialize_slice_mirrors.py` beneath the explicit repository root, checkpoint its `MirrorVerification`, then call `finalize_slice` as the final gate.
 
-Required per-Slice artifacts are `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `TaskResult`, independent `TaskReview`, `EvalReport`, and `MirrorVerification`. Run `scripts/validate_run_context.py`, `scripts/validate_plan.py`, `scripts/validate_task_evidence.py`, `scripts/validate_eval_report.py`, `scripts/validate_delivery_policy.py`, and `scripts/validate_slice_documents.py` before their related checkpoints. The authoritative roadmap and Slice documents live in the matching Keco Project; local mirror, never as the only copy, is verified secondary evidence and includes `spec.md`, `plan.md`, `status.json`, and `eval-report.json`.
+Required internal evidence remains `RunContext`, `SourceSnapshot`, `EvalSpec`, `SlicePlan`, `DataPlan`, `TaskResult`, independent `TaskReview`, `EvalReport`, and `MirrorVerification`. Run the validators before their related checkpoints. The user-facing roadmap and Slice plans live in `docs/superpowers/plans/`; the paired specs live in `docs/superpowers/specs/`. Runtime status and evaluation reports are generated internal evidence and need not be edited as planning documents.
 
 ## Slice Ambiguity Gate
 
@@ -52,19 +63,19 @@ At `SOURCE_DISCOVERY`, `SLICE_DECOMPOSITION`, and `SELECT_SLICE`, compare the us
 ## Non-Negotiable Gates
 
 1. **BASELINE before design:** record branch, commit, dirty paths, canonical Keco project, canonical Godot project path, engine version, main scene, and available MCP capabilities. Preserve unrelated dirty files.
-2. **Planning-document preflight before roadmap and Slice documents:** verify Keco read/write access, matching Keco Project identity, accepted source revision, compatible existing planning Folder, document schema, and reviewed roadmap content before writing the roadmap, spec, plan, or status. Any unavailable or ambiguous identity, Folder, source, or document contract is `blocked_before_write` and performs zero writes.
-3. **Roadmap before Slice writes:** after planning-document preflight, create and read back the Keco roadmap before creating any per-Slice document or issuing a Slice write token. Select the next Slice only when all dependencies are complete; use priority only as the tie-breaker. Continue until every planned Slice completes or the roadmap pauses.
+2. **Planning-document preflight before roadmap and Slice plans:** verify the source, project identity, accepted revision, and reviewed roadmap content before writing `docs/superpowers/specs/` or `docs/superpowers/plans/`. Any unavailable or ambiguous source or contract is `blocked_before_write` and performs zero writes.
+3. **Roadmap before Slice work:** after planning-document preflight, write the roadmap plan and paired Slice specs/plans in the repository Superpowers directories. Select the next Slice only when all dependencies are complete; use priority only as the tie-breaker. Continue until every planned Slice completes or the roadmap pauses.
 4. **Execution preflight before development writes:** after PlanReview, Keco data schemas, Godot identity and required tools, and one supported PixelLab operation profile when an asset is planned must all be `ready`. Failure blocks Keco table/row, PixelLab, asset, and Godot writes without invalidating already verified planning documents. A user request to continue does not override this gate.
 5. **Plan before implementation:** write `EvalSpec`, `SlicePlan`, and a bite-sized implementation plan. Each task names exact files, dependencies, a failing verification first, the minimal change, and a fresh verification. Review the plan for scope, placeholders, and type/ID consistency before execution.
 6. **Write lease:** issue a run-scoped write token only after `SourceSnapshot`, `EvalSpec`, `SlicePlan.allowedFiles`, and `PlanReview` validate. Every development write carries `runId`, `sliceId`, and idempotency key. No token means zero development writes.
-7. **Persistent slice documents:** discover a compatible folder inside the matching Keco Project before `WRITE_ROADMAP`. Use `create_document(projectId, folderId, ...)` for the roadmap, `spec`, `plan`, and `status`, read each document back, and retain its document ID/state token. Coalesce status changes and update/read back Keco documents only at the durable checkpoints defined in `references/slice-document-contract.md`; create and read back `eval-report` before reporting a Slice complete. Materialize the same accepted content into `docs/keco-godot-slices/` only as local mirrors and validate per-Slice mirrors with `references/slice-document-contract.md` and `scripts/validate_slice_documents.py`. If the MCP exposes no folder-creation operation and no compatible folder exists, stop before writes and report the blocker.
+7. **Persistent planning documents:** write one paired `specs/<slice-id>-design.md` and `plans/<slice-id>.md` for each Slice, with the plan's ordered checkbox list as the progress view. Keep runtime evidence and collaboration state internal; do not require a separate user-maintained status or eval-report document. Keco read-back remains required for Keco data and runtime evidence, but it does not change the repository planning layout.
 8. **Keco-first assets:** follow [references/pixellab-capability-registry.md](references/pixellab-capability-registry.md), [references/keco-pixellab-contract.md](references/keco-pixellab-contract.md), and [references/existing-resource-evolution.md](references/existing-resource-evolution.md). Discover compatible tables, rows, resources, and nodes first; reuse or extend them by stable key before creating new ones. If no compatible target exists, record the reason in the plan.
 9. **Asset integration:** read [references/generated-asset-contract.md](references/generated-asset-contract.md) for every non-UI asset. Read [references/godot-animation-contract.md](references/godot-animation-contract.md) for character or animation assets, and [references/godot-tileset-contract.md](references/godot-tileset-contract.md) for tile or tileset assets. Build or materialize only from verified metadata.
 10. **Task execution and review:** order tasks so dependencies precede their dependents, then execute the visible checklist from top to bottom. For every task, run the planned RED verification, make the smallest change, and run GREEN verification. Never silently skip an unfinished task; follow the explicit temporary transition and return rules in `references/orchestration-contract.md` when a newly discovered prerequisite forces a jump. Perform the independent review at `PLAN_REVIEW`, after a high-risk Keco/asset/runtime task, and at `FINAL_VERIFY`; do not require two separate reviews for every small gameplay task.
 11. **Evidence gate:** a runtime or visual acceptance target passes only with fresh `run_project -> get_debug_output -> stop_project` evidence containing a machine-readable `KECO_OBSERVATION` record and the current build and snapshot hashes. Runtime output must not supply `expected`, `status`, `passed`, assertion results, or aggregate status; the locked EvalSpec derives those facts. Aggregate compatible evaluations into one bounded runtime sequence; split them only when isolation or lifecycle requirements demand it.
 12. **Repair boundary:** keep the original EvalSpec and allowed files fixed; repair only failed evaluations and affected regressions, at most three iterations. On the third failed repair iteration, persist evidence and the read-back Slice status/eval-report, mark the roadmap `paused`, clear `NEXT_SLICE`, and ask the user. Partial writes are preserved, never deleted or duplicated.
 
-Roadmaps and per-Slice plans must be ordered Markdown checklists in their authoritative Keco Project Folder documents. Keep the accepted per-Slice plan immutable during execution and track checks in `status.json`; change a roadmap Slice entry to `- [x]` only after the required evidence and completion read-back succeed. Do not execute from free-form roadmap prose. The Keco read-back plan is authoritative; local repository mirrors are secondary.
+Roadmaps and per-Slice plans must be ordered Markdown checklists in `docs/superpowers/plans/`. Keep the accepted plan content stable while executing it and mark its tasks `- [x]` as they pass. Internal evidence may retain exact outputs and hashes, but it is not a second progress source. Do not execute from free-form roadmap prose.
 
 ## Godot And MCP Boundary
 

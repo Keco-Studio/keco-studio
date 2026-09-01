@@ -44,7 +44,7 @@ Skills reference the shared scripts as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py`
 | `validate_run_context.py` | minimum V2 run ledger; accepts `implicit-v2` / `explicit-v2` |
 | `validate_plan.py` | reviewable task plan; accepts `true`/`required` and `false`/`optional` |
 | `validate_eval_report.py` | completion evidence before a report may claim `passed` |
-| `validate_slice_documents.py` | dated spec/plan/status/eval-report set for one Slice |
+| `validate_slice_documents.py` | compatibility validator for legacy Slice status/eval-report evidence |
 | `validate_generated_asset_package.py` | hashes, PNG geometry, animation and tileset metadata |
 | `build_spriteframes_resource.py` | deterministic Godot 4 `SpriteFrames` `.tres` |
 | `export_keco_snapshot.py` | deterministic Godot JSON snapshot from a fresh Keco read-back |

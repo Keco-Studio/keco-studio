@@ -43,12 +43,12 @@ documents:
     plan: null
     status: null
     evalReport: null
-  localMirrorRoot: docs/keco-godot-slices/<sliceId>
+  localMirrorRoot: docs/superpowers
   localMirrorPaths:
-    specPath: docs/keco-godot-slices/<sliceId>/spec.md
-    planPath: docs/keco-godot-slices/<sliceId>/plan.md
-    statusPath: docs/keco-godot-slices/<sliceId>/status.json
-    evalReportPath: docs/keco-godot-slices/<sliceId>/eval-report.json
+    specPath: docs/superpowers/specs/<sliceId>-design.md
+    planPath: docs/superpowers/plans/<sliceId>.md
+    statusPath: internal/<sliceId>/status.json
+    evalReportPath: internal/<sliceId>/eval-report.json
 evolution:
   strategy: reuse_exact|extend_compatible|migrate_additive|create_new
   targetTableId: null
@@ -68,7 +68,7 @@ Every resource or table change records one `evolution.strategy`. `reuse_exact` a
 
 ## Plan, State, And Evidence Ownership
 
-`SlicePlan` is the approved static scope. It owns tasks, files, dependencies, evaluation IDs, RED/GREEN commands, and review requirements; a scope or acceptance change creates a new plan revision. Current task completion comes from `status.json`, while `RunContext` owns the active stage, write lease, repair iteration, and recovery state. `TaskResult`, `TaskReview`, and `EvalReport` own command output, changed files, read-back, hashes, screenshots, and runtime evidence.
+`SlicePlan` is the approved static scope in `docs/superpowers/plans/<sliceId>.md`. It owns tasks, files, dependencies, evaluation IDs, RED/GREEN commands, and review requirements; a scope or acceptance change creates a new plan revision. Current task completion is marked directly in the plan's Markdown checkboxes (`- [ ]` / `- [x]`). `RunContext`, `status.json`, `TaskResult`, `TaskReview`, and `EvalReport` are internal machine evidence; they own the active stage, write lease, repair iteration, recovery state, command output, changed files, read-back, hashes, screenshots, and runtime evidence.
 
 Order `SlicePlan.tasks` topologically so every dependency appears before its dependent task. That order is also the default execution order. Execute one visible task at a time from top to bottom; do not silently complete a later task while an earlier task is `pending` or `in_progress`.
 
@@ -78,7 +78,7 @@ Apply prerequisite discoveries in this order:
 2. Revise, revalidate, and topologically reorder the plan when scope, acceptance, `allowedFiles`, task identity, or dependencies change.
 3. Use `taskTransition` only when the prerequisite was discovered during execution, cannot be kept inside the current task, already exists later in the approved plan, changes none of those plan boundaries, and every dependency of each temporary task is already complete.
 
-Record this transition in `status.json` before the jump:
+Record this transition in the internal `status.json` before the jump:
 
 ```yaml
 taskTransition:

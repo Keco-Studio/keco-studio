@@ -13,7 +13,7 @@
 - Keep Keco-first persistence, provider capability discovery, write-token gates, and `KECO_EVAL` runtime evidence unchanged.
 - Do not infer Godot terrain mappings when provider metadata does not define the layout.
 - Reuse or additively extend compatible existing Keco tables, asset rows, Godot resources, and nodes before creating parallel replacements.
-- Persist every slice under `docs/keco-godot-slices/<slice-id>/` with dated spec, plan, status, latest/supersession state, and completion evidence.
+- Persist each Slice's user-facing documents as `docs/superpowers/specs/<slice-id>-design.md` and `docs/superpowers/plans/<slice-id>.md`; keep status and completion evidence internal.
 - Do not touch the existing untracked `scripts/__pycache__/` directory.
 
 ---
@@ -94,7 +94,7 @@
 - Modify: `plugins/keco/skills/keco-develop-godot-slice-v2/SKILL.md`
 
 **Interfaces:**
-- Consumes: a target Godot project folder containing `docs/keco-godot-slices/<slice-id>/spec.md`, `plan.md`, `status.json`, and an optional completed `eval-report.json`.
+- Consumes: a target Godot project folder containing the paired `docs/superpowers/specs/<slice-id>-design.md` and `docs/superpowers/plans/<slice-id>.md`; runtime status and evaluation evidence are internal sidecars.
 - Produces: validated ISO dates, `latest`/`status`/`completed` consistency, supersession links, task progress, and document frontmatter bound to one slice ID.
 
 - [ ] Add a test that creates a valid slice directory and rejects a completed slice without an eval report or a stale document marked latest.

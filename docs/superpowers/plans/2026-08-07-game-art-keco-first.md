@@ -58,5 +58,5 @@
 
 - [x] Discover the canonical Keco project and an existing compatible folder before `WRITE_SPEC`.
 - [x] Create `spec`, `plan`, `status`, and final `eval-report` as Keco documents with `folderId`; retain returned document IDs and state tokens.
-- [x] Read back every Keco document after create/update and keep local `docs/keco-godot-slices/<sliceId>/` only as a validated mirror.
+- [x] Read back every Keco document after create/update; keep runtime evidence internal and maintain the user-facing Slice spec/plan under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 - [x] Block before writes when no suitable Keco folder exists because the exposed MCP has no folder-creation operation.

@@ -330,11 +330,31 @@ describe('Keco Claude plugin skill contracts', () => {
     expect(skill).toContain('references/slice-decision.md');
     expect(skill).toMatch(/RunContext[\s\S]{0,200}writeToken[\s\S]{0,200}sliceDecision/i);
     expect(orchestration).toMatch(/SlicePlan[\s\S]{0,200}approved static scope/i);
-    expect(orchestration).toMatch(/task completion[\s\S]{0,160}status\.json/i);
+    expect(orchestration).toMatch(/task completion[\s\S]{0,220}Markdown checkboxes/i);
+    expect(orchestration).toMatch(/specPath[\s\S]*docs\/superpowers\/specs[\s\S]*planPath[\s\S]*docs\/superpowers\/plans/i);
+    expect(orchestration).toMatch(/statusPath[\s\S]*internal[\s\S]*status\.json/i);
     expect(orchestration).toMatch(/interaction:[\s\S]{0,480}blockedAt[\s\S]{0,240}resumeFrom/i);
     expect(orchestration).toMatch(/legacy[\s\S]{0,240}without[\s\S]{0,160}interaction/i);
-    expect(sliceDocuments).toMatch(/plan\.md[\s\S]{0,200}does not own task progress/i);
-    expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}evidence/i);
+    expect(sliceDocuments).toMatch(/only user-facing progress record/i);
+    expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}internal/i);
+  });
+
+  it('uses the repository Superpowers specs/plans layout as the user-facing Slice source of truth', () => {
+    const skill = readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'SKILL.md'), 'utf8');
+    const orchestration = readFileSync(
+      path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', 'multi-slice-orchestration.md'),
+      'utf8',
+    );
+    const documents = readFileSync(
+      path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', 'slice-document-contract.md'),
+      'utf8',
+    );
+    expect(skill).toMatch(/docs\/superpowers\/specs[\s\S]*docs\/superpowers\/plans/i);
+    expect(orchestration).toMatch(/specs\/<slice-id>-design\.md[\s\S]*plans\/<slice-id>\.md/i);
+    expect(orchestration).toMatch(/checkbox[\s\S]*plan\.md|plan\.md[\s\S]*checkbox/i);
+    expect(documents).toMatch(/user-facing[\s\S]*spec[\s\S]*plan/i);
+    expect(documents).toMatch(/status\.json[\s\S]*internal|internal[\s\S]*status\.json/i);
+    expect(documents).not.toMatch(/docs\/keco-godot-slices\/<slice-id>\/\s*spec\.md/i);
   });
 
   it('never hard-codes a PixelLab tool the registry records as unavailable', () => {
