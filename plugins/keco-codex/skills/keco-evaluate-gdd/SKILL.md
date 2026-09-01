@@ -27,7 +27,7 @@ git@github.com:Keco-Studio/edd-repo.git
   docs/gdd-edd/runs/<evaluation-id>/
 ```
 
-The Runner creates a clean checkout, copies the manifest, progress, result, evidence, problem, and baseline artifacts, commits them, and pushes to `main` by default. It rejects an existing run, dirty or locally-ahead checkouts, path traversal, and non-fast-forward updates; it never force-pushes. Use `--no-push` only for an explicitly requested dry run. `--output-repo`, `--output-branch`, `--output-runs-path`, and `--output-checkout` provide explicit overrides. Git credentials must come from the existing SSH agent, credential helper, or GitHub CLI and must never be written into artifacts.
+The Runner creates a clean checkout, copies the manifest, progress, result, evidence, problem, and baseline artifacts, commits them, and pushes to `version4` by default (the current default branch of `edd-repo`). It rejects an existing run, dirty or locally-ahead checkouts, path traversal, and non-fast-forward updates; it never force-pushes. Use `--no-push` only for an explicitly requested dry run. `--output-repo`, `--output-branch`, `--output-runs-path`, and `--output-checkout` provide explicit overrides. Git credentials must come from the existing SSH agent, credential helper, or GitHub CLI and must never be written into artifacts.
 
 ## Select Mode
 

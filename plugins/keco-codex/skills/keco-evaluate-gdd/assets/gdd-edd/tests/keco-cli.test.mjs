@@ -72,13 +72,13 @@ test('parses evaluate, baseline, and compare without implicit pass/fail gates', 
   assert.deepEqual(parseKecoOptions(['evaluate', '--manifest', 'case.json']), {
     mode: 'evaluate', manifestPath: 'case.json', workspaceRoot: undefined, runRoot: undefined,
     provider: 'codex', model: undefined, runs: 3, force: false, port: 0,
-    outputRepository: 'git@github.com:Keco-Studio/edd-repo.git', outputBranch: 'main',
+    outputRepository: 'git@github.com:Keco-Studio/edd-repo.git', outputBranch: 'version4',
     outputRunsPath: 'docs/gdd-edd/runs', outputCheckout: undefined, autoPush: true,
   });
   assert.deepEqual(parseKecoOptions(['baseline', '--manifest=case.json', '--provider', 'claude', '--model=sonnet', '--runs=5', '--force']), {
     mode: 'baseline', manifestPath: 'case.json', workspaceRoot: undefined, runRoot: undefined,
     provider: 'claude', model: 'sonnet', runs: 5, force: true, port: 0,
-    outputRepository: 'git@github.com:Keco-Studio/edd-repo.git', outputBranch: 'main',
+    outputRepository: 'git@github.com:Keco-Studio/edd-repo.git', outputBranch: 'version4',
     outputRunsPath: 'docs/gdd-edd/runs', outputCheckout: undefined, autoPush: true,
   });
   assert.deepEqual(parseKecoOptions(['evaluate', '--manifest=case.json', '--no-push', '--output-repo', 'repo', '--output-branch=develop', '--output-runs-path', 'runs', '--output-checkout', '/tmp/checkout']).autoPush, false);

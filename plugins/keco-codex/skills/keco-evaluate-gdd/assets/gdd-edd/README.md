@@ -24,7 +24,7 @@ Compare current AI-only samples with the saved baseline:
 npm run eval:compare -- --manifest <case.json> --workspace-root <workspace> --run-root <run-root> --runs 3
 ```
 
-Publishing defaults to `git@github.com:Keco-Studio/edd-repo.git`, branch `main`, under
+Publishing defaults to `git@github.com:Keco-Studio/edd-repo.git`, branch `version4`, under
 `docs/gdd-edd/runs/<evaluation-id>/`. Use `--no-push` to stage the run locally
 without a commit or push. `--output-repo`, `--output-branch`,
 `--output-runs-path`, and `--output-checkout` override the destination. The

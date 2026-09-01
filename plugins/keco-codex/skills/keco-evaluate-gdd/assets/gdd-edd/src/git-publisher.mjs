@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 const SAFE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const DEFAULT_REPOSITORY = 'git@github.com:Keco-Studio/edd-repo.git';
-const DEFAULT_BRANCH = 'main';
+const DEFAULT_BRANCH = 'version4';
 const DEFAULT_RUNS_PATH = 'docs/gdd-edd/runs';
 const EXCLUDED_NAMES = new Set(['.git', 'node_modules', 'data']);
 
