@@ -154,20 +154,6 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(documents).not.toMatch(/docs\/keco-godot-slices\/<slice-id>\/\s*spec\.md/i);
   });
 
-  it('keeps Keco folders out of the user-facing spec and plan path contract', () => {
-    const sourceData = readFileSync(
-      path.join(skillRoot, 'references', 'source-data-contract.md'),
-      'utf8',
-    );
-
-    expect(sourceData.toLowerCase()).toContain('user-facing slice planning documents');
-    expect(sourceData).toContain('docs/superpowers/specs/');
-    expect(sourceData).toContain('docs/superpowers/plans/');
-    expect(sourceData.toLowerCase()).toContain('discover a keco folder only when');
-    expect(sourceData.toLowerCase()).toContain('keco data or internal runtime evidence');
-    expect(sourceData.toLowerCase()).not.toContain('discover the folder that owns slice planning documents');
-  });
-
   it('keeps V2 as the canonical workflow for document-driven Godot creation', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     expect(skill).toMatch(/V2 is the canonical creation workflow for Keco-driven Godot development/i);
@@ -267,8 +253,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(sourceData).toMatch(/exactly one[\s\S]*clearly dominant[\s\S]*(?:auto-select|automatically select)/i);
     expect(sourceData).toMatch(/tied candidates[\s\S]*one focused question[\s\S]*zero writes/i);
     expect(sourceData).toMatch(/never automatically delete/i);
-    expect(sourceData).toMatch(/canonical Keco Project[\s\S]*User-facing Slice planning documents[\s\S]*docs\/superpowers\/specs/i);
-    expect(sourceData).toMatch(/Discover a Keco folder only when[\s\S]*internal runtime evidence/i);
+    expect(sourceData).toMatch(/canonical Keco Project[\s\S]*kecoFolderId[\s\S]*pre-write blocker/i);
     const evalContract = readFileSync(path.join(skillRoot, 'references', 'eval-contract.md'), 'utf8');
     expect(evalContract).toMatch(/Create EvalSpec before any Keco, PixelLab, or Godot write/i);
     const reviewWorkflow = readFileSync(path.join(skillRoot, 'references', 'review-workflow.md'), 'utf8');
