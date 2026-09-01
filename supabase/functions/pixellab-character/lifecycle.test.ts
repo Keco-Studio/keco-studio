@@ -204,6 +204,19 @@ Deno.test("allows validation recovery for a failed attempt with a provider job",
   assertEquals(await runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), { status: "ready" });
 });
 
+Deno.test("persists safe diagnostics when animation output validation fails", async () => {
+  const test = fixture({ status: "generating", providerJobId: "provider-character", sourceProviderCharacterId: "provider-character", sourceFacing: "front", plan: { schemaVersion: 1, kind: "animation", name: "walk", sourceCharacterAssetId: IDS.assetId, sourceCharacterSha256: "d".repeat(64), motionDescription: "Walk steadily", frameWidth: 96, frameHeight: 96, frameCount: 6, fps: 10, loop: true } });
+  test.dependencies.discover = async () => ({ ...capability, semantic: "animation", operation: "animate_character", pollOperation: "get_character" });
+  const provider = { structuredContent: { status: "completed", character_id: "provider-character", animations: [{ display_name: "walk", directions: [{ direction: "south", status: "completed" }] }] } };
+  test.dependencies.poll = async () => provider;
+  test.dependencies.validateAndPersist = async () => { throw new PixelLabCharacterError("pixellab_invalid_response"); };
+  await assertRejects(() => runCharacterLifecycle({ operation: "validate" }, test.state, test.dependencies), PixelLabCharacterError);
+  assertEquals((test.transitions.at(-1)?.details.metadata as Record<string, unknown>).providerDiagnostics, {
+    keyPaths: ["structuredContent", "structuredContent.animations", "structuredContent.animations[].directions", "structuredContent.animations[].directions[].direction", "structuredContent.animations[].directions[].status", "structuredContent.animations[].display_name", "structuredContent.character_id", "structuredContent.status"],
+    textLabels: [], statusTokens: ["completed"], urlCount: 0,
+  });
+});
+
 Deno.test("animation poll follows the requested direction instead of the completed character status", async () => {
   const test = fixture({
     status: "generating", providerJobId: "provider-character", sourceProviderCharacterId: "provider-character", sourceFacing: "left",
