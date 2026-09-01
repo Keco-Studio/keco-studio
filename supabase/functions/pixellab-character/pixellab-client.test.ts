@@ -152,6 +152,16 @@ Deno.test("extracts the first PixelLab background job from an animation submissi
   assertEquals(providerAnimationJobId(result), "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd");
 });
 
+Deno.test("extracts a background job id from quoted MCP text arrays", () => {
+  const result = {
+    content: [{
+      type: "text",
+      text: "background_job_ids: [\"acaee1a2-8cd8-4e56-89c8-3dca32b60dbd\"]",
+    }],
+  };
+  assertEquals(providerAnimationJobId(result), "acaee1a2-8cd8-4e56-89c8-3dca32b60dbd");
+});
+
 Deno.test("parses JSON embedded in MCP text content", () => {
   const result = {
     content: [{ type: "text", text: JSON.stringify({

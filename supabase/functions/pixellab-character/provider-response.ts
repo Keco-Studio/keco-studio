@@ -93,7 +93,11 @@ export function providerAnimationJobId(value: unknown): string | null {
   const structured = visit(value);
   if (structured) return structured;
   for (const text of textLeaves(value)) {
-    const match = text.match(/(?:background[_ -]?job[_ -]?ids?|job[_ -]?ids?)\s*[:=]\s*\[?\s*([0-9a-f]{8}-[0-9a-f-]{27})/i);
+    // MCP text responses may render arrays using JSON or Python-style quotes,
+    // and some provider versions use a singular `*_job_id` field. Accept the
+    // field label plus a quoted/unquoted identifier without depending on the
+    // exact surrounding serialization.
+    const match = text.match(/(?:background[_ -]?job[_ -]?ids?|job[_ -]?ids?)\s*[:=]\s*(?:[\[({]\s*)?["']?([A-Za-z0-9][A-Za-z0-9_-]{7,})["']?/i);
     if (match) return match[1];
   }
   return null;
