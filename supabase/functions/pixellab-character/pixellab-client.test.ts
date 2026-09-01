@@ -224,6 +224,75 @@ Deno.test("parses PixelLab completed rotations from human-readable MCP text", ()
   });
 });
 
+Deno.test("parses nested human-readable animation directions and spritesheets", () => {
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "animations:",
+      "  name: walk",
+      "  directions:",
+      "    south:",
+      "      spritesheet: https://cdn.example.test/south.png",
+      "    east:",
+      "      spritesheet: https://cdn.example.test/east.png",
+    ].join("\n") }],
+  };
+  assertEquals(animationResult(result, "walk", "south"), {
+    characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+    animationGroupId: null,
+    imageUrl: "https://cdn.example.test/south.png",
+    frameUrls: [],
+    frameData: [],
+    frameCount: 0,
+    status: "completed",
+  });
+});
+
+Deno.test("parses direction values before a later spritesheet URL", () => {
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "animations:",
+      "  name: walk",
+      "  group:",
+      "    direction: south",
+      "    spritesheet: https://cdn.example.test/south.png",
+    ].join("\n") }],
+  };
+  assertEquals(animationResult(result, "walk", "south")?.imageUrl, "https://cdn.example.test/south.png");
+});
+
+Deno.test("parses direction metadata that follows a spritesheet URL", () => {
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "animations:",
+      "  name: walk",
+      "  group:",
+      "    spritesheet: https://cdn.example.test/south.png",
+      "    direction: south",
+    ].join("\n") }],
+  };
+  assertEquals(animationResult(result, "walk", "south")?.imageUrl, "https://cdn.example.test/south.png");
+});
+
+Deno.test("parses standalone direction labels before a spritesheet URL", () => {
+  const result = {
+    content: [{ type: "text", text: [
+      "status: completed",
+      "id: 2ba78163-4be1-4e3f-8433-b2df9dddbb44",
+      "animations:",
+      "  name: walk",
+      "  south",
+      "  spritesheet: https://cdn.example.test/south.png",
+    ].join("\n") }],
+  };
+  assertEquals(animationResult(result, "walk", "south")?.imageUrl, "https://cdn.example.test/south.png");
+});
+
 Deno.test("parses animation direction maps and data URL spritesheets", () => {
   const result = { structuredContent: { status: "completed", character_id: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animations: [{ name: "walk", directions: { south: { status: "completed", spritesheet_url: "data:image/png;base64,AAAA", frame_count: 6 } } }] } };
   assertEquals(animationResult(result, "walk", "south"), { characterId: "2ba78163-4be1-4e3f-8433-b2df9dddbb44", animationGroupId: null, imageUrl: "data:image/png;base64,AAAA", frameUrls: [], frameData: [], frameCount: 6, status: "completed" });

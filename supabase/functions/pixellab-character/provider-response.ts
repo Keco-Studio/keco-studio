@@ -30,9 +30,37 @@ function records(value: unknown): Record<string, unknown>[] {
 // parsers used by structured responses.
 function textRecords(text: string): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const match = line.match(/^\s*(?:(?:([^:|>\/]{1,160})\s*[|>\/ ]\s*))?(south|east|north|west|south-east|south-west|north-east|north-west)\s*[:=]\s*((?:https?:\/\/|data:image\/)[^\s<>\"]+)/i);
-    if (match) rows.push({ ...(match[1] ? { animation_name: match[1].trim() } : {}), direction: match[2].toLowerCase(), image_url: match[3].replace(/[),.;]+$/, "") });
+  let currentDirection: string | undefined;
+  let currentAnimationName: string | undefined;
+  const direction = (value: string): string | undefined => {
+    const normalized = value.trim().toLowerCase().replace(/[ _]+/g, "-");
+    return DIRECTIONS.has(normalized) ? normalized : undefined;
+  };
+  const image = (value: string): string | undefined => value.match(/(?:https?:\/\/|data:image\/)[^\s<>"']+/i)?.[0]?.replace(/[),.;\\]+$/, "");
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim().replace(/^[-*]\s+/, "");
+    if (!line) continue;
+    const keyValue = line.match(/^([^:|>\/]{1,160})\s*[:=]\s*(.*)$/);
+    const key = keyValue?.[1].trim().toLowerCase().replace(/[ -]+/g, "_") ?? "";
+    const value = keyValue?.[2]?.trim() ?? "";
+    const keyDirection = direction(key);
+    const valueDirection = direction(value.replace(/["']/g, ""));
+    if (keyDirection) currentDirection = keyDirection;
+    else if (key === "direction" || key === "directions" || key === "facing") {
+      if (valueDirection) currentDirection = valueDirection;
+    } else if (key === "name" || key === "display_name" || key === "animation_name") {
+      if (valueDirection) currentDirection = valueDirection;
+      else if (value && !image(value)) currentAnimationName = value.replace(/^['"]|['"]$/g, "");
+    } else if (!keyValue) {
+      const standalone = direction(line);
+      if (standalone) currentDirection = standalone;
+    }
+    const imageUrl = image(value || line);
+    if (imageUrl) rows.push({
+      ...(currentAnimationName ? { animation_name: currentAnimationName } : {}),
+      ...(currentDirection ? { direction: currentDirection } : {}),
+      image_url: imageUrl,
+    });
   }
   return rows;
 }
