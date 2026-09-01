@@ -434,8 +434,8 @@ export function TableHeader({
                     <Image
                       src={libraryAssetTableSelectIcon}
                       alt=""
-                      width={16}
-                      height={16}
+                      width={11}
+                      height={11}
                       className={styles.enumSelectIcon}
                     />
                   </div>
@@ -486,7 +486,7 @@ export function TableHeader({
               transform: 'translateX(-100%)',
             }}
           >
-            <div className={styles.headerContextMenuLabel}>OPTION</div>
+            <div className={styles.headerContextMenuLabel}>option</div>
             <button
               type="button"
               className={styles.headerContextMenuButton}

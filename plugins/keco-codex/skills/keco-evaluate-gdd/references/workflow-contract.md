@@ -54,3 +54,7 @@ Stage inputs in one temporary workspace and use a version 1 manifest:
 All input paths must be relative files inside `workspaceRoot`. Reject absolute paths, `..` escapes, missing files, and symlinks that resolve outside the workspace. `epoch` and `revision` are non-negative integers and may equal `0`.
 
 The source GDD remains read-only. Temporary Progression, Problem, Result, raw evidence, Web state, baseline JSON, and manifests are engine artifacts. The only Keco write allowed by this skill is one explicitly requested independent EDD score report document.
+
+## Output Repository Contract
+
+Run artifacts are versioned in the independent repository `git@github.com:Keco-Studio/edd-repo.git`, not in the source project repository. The default destination is `version4/docs/gdd-edd/runs/<evaluation-id>/` (the current default branch). The publisher must create a unique safe ID, use a clean checkout with fast-forward-only synchronization, copy run artifacts while excluding `.git`, `node_modules`, local Web state, credentials, and temporary files, then create one commit and push by default. `--no-push` is the explicit dry-run override; repository, branch, path, and checkout may be overridden. Existing runs, dirty checkouts, local commits ahead of remote, and path traversal are hard failures. Never force-push, reset, or overwrite unrelated changes. The source GDD and source project working tree are never modified by publication.

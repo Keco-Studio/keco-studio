@@ -264,9 +264,18 @@ async function repairMissingTablePlans(
       const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
         ? raw
         : `<!-- KECO_TABLE_PLAN ${raw} -->`);
-      const matched = extracted.tablePlans.find((plan) => (
+      const exact = extracted.tablePlans.find((plan) => (
         plan.table.toLocaleLowerCase() === requiredTable.table.toLocaleLowerCase()
       ));
+      // A targeted repair asks for exactly one table. If the model changes only
+      // the table name while preserving the guided field contract, canonicalize
+      // it instead of discarding an otherwise usable plan.
+      const compatibleSingle = !exact
+        && extracted.tablePlans.length === 1
+        && (!requiredTable.fields || sameStringList(extracted.tablePlans[0]!.fields, requiredTable.fields))
+        ? extracted.tablePlans[0]
+        : undefined;
+      const matched = exact ?? compatibleSingle;
       if (!matched) return { plans: [], warning: extracted.warning ?? `No usable plan returned for ${requiredTable.table}.` };
       return {
         plans: [{

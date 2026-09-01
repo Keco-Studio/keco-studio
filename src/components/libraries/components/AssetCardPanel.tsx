@@ -59,7 +59,6 @@ export function AssetCardPanel({
   position,
   details,
   loading,
-  onClose,
   onMouseEnter,
   onMouseLeave,
   onLibraryClick,
@@ -114,14 +113,6 @@ export function AssetCardPanel({
                   </button>
                 </div>
               </div>
-              <button
-                type="button"
-                className={styles.assetCardInlineClose}
-                onClick={onClose}
-                aria-label="Close"
-              >
-                ×
-              </button>
             </div>
           ) : null}
         </div>

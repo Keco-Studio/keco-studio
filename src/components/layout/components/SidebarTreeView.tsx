@@ -357,40 +357,24 @@ export function SidebarTreeView({
     if (isLeaf || !key) return null;
 
     if (key.startsWith('folder-')) {
-      if (!expanded) {
-        return (
-          <div className={styles.folderSwitcherIcons}>
-            <Image
-              src={FolderCloseIcon}
-              alt="Closed folder"
-              width={24}
-              height={24}
-              className={`icon-24 ${styles.folderSwitcherBase}`}
-            />
-            <Image
-              src={folderCollapseIcon}
-              alt="Collapse"
-              width={8}
-              height={14}
-              className={styles.folderSwitcherHover}
-            />
-          </div>
-        );
-      }
+      const children = data?.children ?? node?.children ?? [];
+      const isEmpty = !Array.isArray(children) || children.length === 0;
+      const showClosedFolder = isEmpty || !expanded;
+
       return (
         <div className={styles.folderSwitcherIcons}>
           <Image
-            src={FolderOpenIcon}
-            alt="Open folder"
+            src={showClosedFolder ? FolderCloseIcon : FolderOpenIcon}
+            alt={showClosedFolder ? 'Closed folder' : 'Open folder'}
             width={24}
             height={24}
             className={`icon-24 ${styles.folderSwitcherBase}`}
           />
           <Image
-            src={folderExpandIcon}
-            alt="Expand"
-            width={14}
-            height={8}
+            src={expanded && !isEmpty ? folderCollapseIcon : folderExpandIcon}
+            alt={expanded && !isEmpty ? 'Collapse folder' : 'Expand folder'}
+            width={expanded && !isEmpty ? 14 : 14}
+            height={expanded && !isEmpty ? 8 : 8}
             className={styles.folderSwitcherHover}
           />
         </div>

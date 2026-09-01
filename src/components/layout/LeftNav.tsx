@@ -25,11 +25,11 @@ import styles from './LeftNav.module.css';
 function IconGrid({ active }: { active: boolean }) {
   const stroke = active ? 'currentColor' : '#111';
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-      <rect x="1" y="1" width="6" height="6" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
-      <rect x="11" y="1" width="6" height="6" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
-      <rect x="1" y="11" width="6" height="6" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
-      <rect x="11" y="11" width="6" height="6" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+      <rect x="1.5" y="1.5" width="6.5" height="6.5" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
+      <rect x="12" y="1.5" width="6.5" height="6.5" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
+      <rect x="1.5" y="12" width="6.5" height="6.5" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
+      <rect x="12" y="12" width="6.5" height="6.5" rx="1" fill="none" stroke={stroke} strokeWidth="1.5" />
     </svg>
   );
 }
@@ -48,9 +48,9 @@ function IconBolt({ active }: { active: boolean }) {
 
 function IconSpeechBubble({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
       <path
-        d="M3 4.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 15 4.5v5a1.5 1.5 0 0 1-1.5 1.5H7.5L4.5 14.5V11H4.5A1.5 1.5 0 0 1 3 9.5v-5z"
+        d="M3.5 5a1.5 1.5 0 0 1 1.5-1.5h10A1.5 1.5 0 0 1 16.5 5v5.5a1.5 1.5 0 0 1-1.5 1.5H8.5L5 16.5V12H5A1.5 1.5 0 0 1 3.5 10.5V5z"
         fill={active ? 'currentColor' : 'none'}
         stroke="currentColor"
         strokeWidth="1.5"
@@ -86,9 +86,9 @@ function IconArchive({ active }: { active: boolean }) {
 
 function IconBook({ active }: { active: boolean }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
       <path
-        d="M9 5.2C7.7 4.1 6 3.5 4.2 3.5H2.5v9.8h1.7c1.8 0 3.5.6 4.8 1.7"
+        d="M10 5.8C8.6 4.6 6.7 3.9 4.7 3.9H2.8v10.9h1.9c2 0 3.9.7 5.3 1.9"
         fill={active ? 'currentColor' : 'none'}
         stroke="currentColor"
         strokeWidth="1.5"
@@ -96,7 +96,7 @@ function IconBook({ active }: { active: boolean }) {
         strokeLinejoin="round"
       />
       <path
-        d="M9 5.2c1.3-1.1 3-1.7 4.8-1.7h1.7v9.8h-1.7c-1.8 0-3.5.6-4.8 1.7V5.2z"
+        d="M10 5.8c1.4-1.2 3.3-1.9 5.3-1.9h1.9v10.9h-1.9c-2 0-3.9.7-5.3 1.9V5.8z"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
@@ -202,25 +202,34 @@ export function LeftNav({ userId }: { userId?: string }) {
           aria-current={onKeco101 ? 'page' : undefined}
           onClick={() => navigate('keco101')}
         >
-          <IconBook active={onKeco101} />
+          <span className={styles.iconWrap}>
+            <IconBook active={onKeco101} />
+          </span>
+          <span className={styles.label}>101</span>
         </button>
         <button
           type="button"
           className={`${styles.item} ${onStudio ? styles.itemActive : ''}`}
-          aria-label="Studio"
+          aria-label="Libraries"
           aria-current={onStudio ? 'page' : undefined}
           onClick={() => navigate('studio')}
         >
-          <IconGrid active={onStudio} />
+          <span className={styles.iconWrap}>
+            <IconGrid active={onStudio} />
+          </span>
+          <span className={styles.label}>Libraries</span>
         </button>
         <button
           type="button"
           className={`${styles.item} ${onSimulation ? styles.itemActive : ''}`}
-          aria-label="Simulation"
+          aria-label="Simulator"
           aria-current={onSimulation ? 'page' : undefined}
           onClick={() => navigate('simulation')}
         >
-          <IconBolt active={onSimulation} />
+          <span className={styles.iconWrap}>
+            <IconBolt active={onSimulation} />
+          </span>
+          <span className={styles.label}>Simulator</span>
         </button>
         <button
           type="button"
@@ -229,31 +238,40 @@ export function LeftNav({ userId }: { userId?: string }) {
           aria-current={onScript ? 'page' : undefined}
           onClick={() => navigate('script')}
         >
-          <IconSpeechBubble active={onScript} />
+          <span className={styles.iconWrap}>
+            <IconSpeechBubble active={onScript} />
+          </span>
+          <span className={styles.label}>Script</span>
         </button>
         <button
           type="button"
           className={`${styles.item} ${onCreateMap ? styles.itemActive : ''}`}
-          aria-label="Create Map"
+          aria-label="Map"
           aria-current={onCreateMap ? 'page' : undefined}
           onClick={() => navigate('createMap')}
         >
-          <IconAlign active={onCreateMap} />
+          <span className={styles.iconWrap}>
+            <IconAlign active={onCreateMap} />
+          </span>
+          <span className={styles.label}>Map</span>
         </button>
         <button
           type="button"
           className={`${styles.item} ${onGameDesignSystem ? styles.itemActive : ''}`}
-          aria-label="Game Design System"
+          aria-label="System"
           aria-current={onGameDesignSystem ? 'page' : undefined}
           onClick={() => navigate('gameDesignSystem')}
         >
-          <IconArchive active={onGameDesignSystem} />
+          <span className={styles.iconWrap}>
+            <IconArchive active={onGameDesignSystem} />
+          </span>
+          <span className={styles.label}>System</span>
         </button>
       </div>
       <div className={styles.footer}>
         <button
           type="button"
-          className={styles.item}
+          className={styles.collapseButton}
           aria-label="Collapse navigation"
           onClick={() => setCollapsedPersist(true)}
         >

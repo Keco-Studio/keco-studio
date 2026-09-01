@@ -9,10 +9,12 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import projectPreviewListLibraryIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
 import projectPreviewListLibraryActiveIcon from "@/assets/images/projectPreviewListLibraryActiveIcon.svg";
+import projectPreviewListDocumentIcon from "@/assets/images/projectPreviewListDocumentIcon.svg";
+import projectPreviewListDocumentActiveIcon from "@/assets/images/projectPreviewListDocumentActiveIcon.svg";
 import folderIcon from "@/assets/images/projectPreviewListFolderIcon.svg";
-import paperIcon from "@/assets/images/paper.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
-import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
+import { requestLibraryContextMenu } from '@/components/libraries/libraryContextMenuRequest';
+import type { ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryListView.module.css';
 
 type LibraryWithAssetCount = Library & {
@@ -64,12 +66,6 @@ export function LibraryListView({
   const { userProfile } = useAuth();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    type: 'library' | 'folder';
-    id: string;
-  } | null>(null);
 
   // Combine the folder's resources into a single list with type discriminators.
   const items: ListItem[] = [
@@ -100,13 +96,9 @@ export function LibraryListView({
 
   const handleMoreClick = (itemId: string, itemType: 'library' | 'folder', e: React.MouseEvent) => {
     e.stopPropagation();
-    const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setContextMenu({
-      x: buttonRect.left - 180,
-      y: buttonRect.bottom + 4,
-      type: itemType,
-      id: itemId,
-    });
+    if (itemType === 'library') {
+      requestLibraryContextMenu(itemId, e.currentTarget as HTMLElement);
+    }
   };
 
   const handleRowContextMenu = (
@@ -114,27 +106,10 @@ export function LibraryListView({
     itemType: 'library' | 'folder',
     e: React.MouseEvent,
   ) => {
-    if (itemType !== 'folder') return;
+    if (itemType !== 'library') return;
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      type: itemType,
-      id: itemId,
-    });
-  };
-
-  const handleContextMenuAction = (action: ContextMenuAction) => {
-    if (!contextMenu) return;
-    
-    if (contextMenu.type === 'library' && onLibraryAction) {
-      onLibraryAction(contextMenu.id, action);
-    } else if (contextMenu.type === 'folder' && onFolderAction) {
-      onFolderAction(contextMenu.id, action);
-    }
-    
-    setContextMenu(null);
+    requestLibraryContextMenu(itemId, e.currentTarget as HTMLElement);
   };
 
   // Helper function to get user initial (first character) - consistent with TopBar
@@ -163,7 +138,7 @@ export function LibraryListView({
               const isLibrary = item.type === 'library';
               const isDocument = item.type === 'document';
               const iconSrc = isDocument
-                ? paperIcon
+                ? (isHovered ? projectPreviewListDocumentActiveIcon : projectPreviewListDocumentIcon)
                 : isLibrary
                 ? (isHovered ? projectPreviewListLibraryActiveIcon : projectPreviewListLibraryIcon)
                 : folderIcon;
@@ -173,9 +148,11 @@ export function LibraryListView({
                 key={item.id}
                 className={`${styles.tableRow} ${selectedItemId === item.id ? styles.tableRowSelected : ''}`}
                 onClick={() => handleRowClick(item)}
-                onContextMenu={item.type === 'document'
-                  ? undefined
-                  : (e) => handleRowContextMenu(item.id, item.type, e)}
+                onContextMenu={
+                  item.type === 'library'
+                    ? (e) => handleRowContextMenu(item.id, item.type, e)
+                    : undefined
+                }
                 onMouseEnter={() => setHoveredItemId(item.id)}
                 onMouseLeave={() => setHoveredItemId(null)}
               >
@@ -185,9 +162,9 @@ export function LibraryListView({
                       <Image
                         src={iconSrc}
                         alt={item.type === 'folder' ? 'Folder' : isDocument ? 'Document' : 'Library'}
-                        width={isDocument ? 20 : 36}
-                        height={isDocument ? 20 : 36}
-                        className={`${isDocument ? 'icon-20' : 'icon-36'} ${styles.libraryIcon}`}
+                        width={36}
+                        height={36}
+                        className={`icon-36 ${styles.libraryIcon}`}
                       />
                     </span>
                     <span className={styles.libraryName}>{item.name}</span>
@@ -229,7 +206,7 @@ export function LibraryListView({
                   <div className={styles.actionButtons}>
                     {item.type !== 'document' && (
                       <button
-                        className={`${styles.actionButton} ${contextMenu?.id === item.id ? styles.actionButtonActive : ''}`}
+                        className={styles.actionButton}
                         onClick={(e) => handleMoreClick(item.id, item.type, e)}
                         aria-label="More options"
                       >
@@ -247,17 +224,6 @@ export function LibraryListView({
           </tbody>
         </table>
       </div>
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          type={contextMenu.type}
-          onClose={() => setContextMenu(null)}
-          onAction={handleContextMenuAction}
-          userRole={userRole}
-          isProjectOwner={isProjectOwner}
-        />
-      )}
     </>
   );
 }

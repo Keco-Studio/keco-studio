@@ -102,12 +102,16 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
         ) {
           const mediaValue = newRowData[property.key] as MediaFileMetadata | null | undefined;
           return (
-            <td key={property.id} className={styles.editCell}>
+            <td
+              key={property.id}
+              className={`${styles.editCell} ${styles.editCellMediaUpload}`}
+            >
               <MediaFileUpload
                 value={mediaValue || null}
                 onChange={(value) => handleMediaFileChange(property.key, value)}
                 disabled={isSaving || userRole === 'viewer'}
                 fieldType={property.dataType}
+                inTableCell
               />
             </td>
           );

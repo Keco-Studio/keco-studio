@@ -18,14 +18,15 @@
 .modal {
   background: white;
   border-radius: 0.5rem;
-  width: 37rem;
+  /* Match document Insert reference modal + Figma ~Fill columns */
+  width: min(560px, calc(100vw - 32px));
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
   flex-shrink: 0;
   position: relative;
-  border: 1px solid rgba(11, 153, 255, 0.35);
+  border: 1px solid #e2e8f0;
   box-sizing: border-box;
   font-family: 'Roboto', sans-serif;
 }
@@ -35,18 +36,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.25rem;
-  background: rgba(11, 153, 255, 0.08);
+  background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   border-radius: calc(0.5rem - 1px) calc(0.5rem - 1px) 0 0;
 }
 
 .title {
   font-family: 'Roboto', sans-serif;
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 700;
   color: #0f172a;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none;
+  letter-spacing: 0;
   margin: 0;
 }
 
@@ -180,6 +181,155 @@
   border-radius: 1.25rem;
   height: 38px;
   font-family: 'Roboto', sans-serif;
+  font-size: 0.875rem;
+}
+
+.librarySelect {
+  width: 100%;
+}
+
+.librarySelect :global(.ant-select-selector) {
+  border-radius: 0.625rem !important;
+  background: #ffffff !important;
+  min-height: 2.25rem !important;
+}
+
+.selectOptionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.selectOptionText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.tableWrap {
+  /* Match document Insert reference table (~6 visible rows) */
+  height: 200px;
+  flex: none;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #ffffff;
+}
+
+.refTable {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-family: 'Roboto', sans-serif;
+  font-size: 0.875rem;
+}
+
+.refTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fafafa;
+  color: #121619;
+  font-family: 'Roboto', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 110%;
+  letter-spacing: 0;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.refTable tbody td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid #eef1f4;
+  color: #0f172a;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refTable tbody tr {
+  cursor: pointer;
+  background: #ffffff;
+}
+
+.refTable tbody tr:hover {
+  background: #f8fafc;
+}
+
+.rowSelected,
+.refTable tbody tr.rowSelected {
+  background: var(--keco-blue-tint, #e6f4ff) !important;
+}
+
+.checkCol {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  text-align: center;
+}
+
+.fieldCol {
+  /* Figma: table column Fill → 87.2px */
+  width: 87px;
+  min-width: 87px;
+  max-width: 87px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fieldHeaderLabel {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.refBadge {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: #0B99FF;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.nameText,
+.cellText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.loading,
+.emptyMessage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 10rem;
+  color: #64748b;
   font-size: 0.875rem;
 }
 

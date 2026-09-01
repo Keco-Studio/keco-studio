@@ -266,11 +266,10 @@ describe('document-derived sidebar tree', () => {
           onClose: jest.fn(),
         })
       );
-      expect(markup).toContain('Rename');
+      expect(markup).toContain('Version history');
+      expect(markup).toContain('Library info');
+      expect(markup).toContain('Duplicate');
       expect(markup).toContain('Delete');
-      expect(markup).not.toContain('Library info');
-      expect(markup).not.toContain('Export');
-      expect(markup).not.toContain('Duplicate');
       expect(markup).not.toContain('Move to...');
     } finally {
       if (originalDocument === undefined) {

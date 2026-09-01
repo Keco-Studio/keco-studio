@@ -285,7 +285,10 @@ test.describe('New data types (array/audio/video)', () => {
       buffer: Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x21', 'binary'),
     });
 
-    await expect(cell).toContainText('sample.mp3', { timeout: 30000 });
+    // Table cells are icon-only; assert uploaded file via accessible name.
+    const uploadedAudio = cell.locator('[class*="fileInfoClickable"]');
+    await expect(uploadedAudio).toBeVisible({ timeout: 30000 });
+    await expect(uploadedAudio).toHaveAttribute('aria-label', 'sample.mp3');
 
     // Assert preview behavior by verifying window.open is called (more stable than popup event).
     await page.evaluate(() => {
@@ -298,7 +301,7 @@ test.describe('New data types (array/audio/video)', () => {
       }) as typeof window.open;
     });
 
-    await cell.locator('[class*="fileInfoClickable"]').click();
+    await uploadedAudio.click();
     await expect
       .poll(
         async () =>
@@ -325,7 +328,10 @@ test.describe('New data types (array/audio/video)', () => {
       buffer: Buffer.from('00000018667479706d70343200000000', 'hex'),
     });
 
-    await expect(cell).toContainText('sample.mp4', { timeout: 30000 });
+    // Table cells are icon-only; assert uploaded file via accessible name.
+    const uploadedVideo = cell.locator('[class*="fileInfoClickable"]');
+    await expect(uploadedVideo).toBeVisible({ timeout: 30000 });
+    await expect(uploadedVideo).toHaveAttribute('aria-label', 'sample.mp4');
 
     // Assert preview behavior by verifying window.open is called (more stable than popup event).
     await page.evaluate(() => {
@@ -338,7 +344,7 @@ test.describe('New data types (array/audio/video)', () => {
       }) as typeof window.open;
     });
 
-    await cell.locator('[class*="fileInfoClickable"]').click();
+    await uploadedVideo.click();
     await expect
       .poll(
         async () =>

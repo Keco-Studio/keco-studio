@@ -412,6 +412,8 @@ jobs:
 
       - name: Deploy Project Artifacts to Vercel
         run: |
+          # --archive=tgz uploads one tarball instead of per-file API calls
+          # (avoids free-tier api-upload-free 5000/day limit).
           if [[ "${{ steps.env.outputs.is_prod }}" == "true" ]]; then
             # Production deployment (main branch)
             echo "🚀 Deploying to Production environment..."

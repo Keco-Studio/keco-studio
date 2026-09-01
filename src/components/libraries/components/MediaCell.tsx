@@ -192,12 +192,15 @@ const MediaCellComponent: React.FC<MediaCellProps> = ({
     >
       {isFirstColumn && onViewAssetDetail ? (
         <div className={styles.cellContent}>
-          <div className={styles.mediaFileUploadContainer}>
+          <div
+          className={`${styles.mediaFileUploadContainer} ${styles.mediaFileUploadContainerCentered}`}
+        >
             <MediaFileUpload
               value={value || null}
               onChange={onChange}
               disabled={isSaving || userRole === 'viewer'}
               fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
+              inTableCell
               onFocus={() => onCellFocus(row.id, property.key)}
               onBlur={onCellBlur}
               onShowToast={onShowToast}
@@ -216,17 +219,20 @@ const MediaCellComponent: React.FC<MediaCellProps> = ({
           </button>
         </div>
       ) : (
-        <div className={styles.mediaFileUploadContainer}>
-          <MediaFileUpload
-            value={value || null}
-            onChange={onChange}
-            disabled={isSaving || userRole === 'viewer'}
-            fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
-            onFocus={() => onCellFocus(row.id, property.key)}
-            onBlur={onCellBlur}
-            onShowToast={onShowToast}
-          />
-        </div>
+          <div
+            className={`${styles.mediaFileUploadContainer} ${styles.mediaFileUploadContainerCentered}`}
+          >
+            <MediaFileUpload
+              value={value || null}
+              onChange={onChange}
+              disabled={isSaving || userRole === 'viewer'}
+              fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
+              inTableCell
+              onFocus={() => onCellFocus(row.id, property.key)}
+              onBlur={onCellBlur}
+              onShowToast={onShowToast}
+            />
+          </div>
       )}
       {/* Show expand icon for cell selection - always render, CSS controls visibility */}
       <div

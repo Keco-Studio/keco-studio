@@ -122,7 +122,7 @@
 }
 
 .currentName {
-  color: #ff4d8d;
+  color: #0b99ff;
 }
 
 .historyName {
@@ -223,7 +223,7 @@
 }
 
 .menuItem:hover {
-  background: #f8fafc;
+  background: var(--keco-blue-tint-soft);
 }
 
 .deleteItem {
@@ -231,7 +231,7 @@
 }
 
 .deleteItem:hover {
-  background: #fef2f2;
+  background: var(--keco-blue-tint-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -473,7 +473,7 @@ export function AddColumnModal({
     >
       <div className={styles.header}>
         <h2 id="add-column-title" className={styles.title}>
-          ADD COLUMN
+          Add Column
         </h2>
         <button
           type="button"
@@ -554,6 +554,7 @@ export function AddColumnModal({
             listHeight={204}
             popupRender={(originNode) => (
               <div className={styles.dataTypeDropdown}>
+                <div className={styles.dropdownContextHint}>Column</div>
                 <div className={styles.dataTypeSearchWrap}>
                   <span className={styles.dataTypeSearchIcon} aria-hidden>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -969,7 +970,15 @@ export function AddColumnModal({
                 label: lib.name,
                 value: lib.id,
               }))}
-              maxTagCount="responsive"
+              maxTagCount={2}
+              maxTagPlaceholder={(omitted) => (
+                <span
+                  className={styles.maxTagOverflow}
+                  title={omitted.map((item) => String(item.label ?? item.value)).join(', ')}
+                >
+                  +{omitted.length}
+                </span>
+              )}
               open={referenceDropdownOpen}
               onOpenChange={(openDropdown) => {
                 setReferenceDropdownOpen(openDropdown);
@@ -980,6 +989,7 @@ export function AddColumnModal({
               }}
               popupRender={() => (
                 <div className={styles.referenceDropdown}>
+                  <div className={styles.dropdownContextHint}>Library</div>
                   <div className={styles.referenceDropdownContent}>
                     <Input
                       allowClear

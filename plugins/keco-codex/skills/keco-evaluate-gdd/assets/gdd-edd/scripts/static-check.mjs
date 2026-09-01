@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
-const [template, prompt, rubric, schema, evaluator, renderer, progressAudit, sampling, kecoCli] = await Promise.all([
+const [template, prompt, rubric, schema, evaluator, renderer, progressAudit, sampling, kecoCli, gitPublisher] = await Promise.all([
   'templates/result-template.md',
   'templates/gdd-evaluation.md',
   'templates/rubric.md',
@@ -13,13 +13,14 @@ const [template, prompt, rubric, schema, evaluator, renderer, progressAudit, sam
   'src/progress-audit.mjs',
   'src/eval-sampling.mjs',
   'src/keco-cli.mjs',
+  'src/git-publisher.mjs',
 ].map(read));
 const packageJson = JSON.parse(await read('package.json'));
 const sourceFiles = [
   'src/scoring.mjs', 'src/server.mjs', 'src/eval-case.mjs', 'src/ai-evaluator.mjs',
   'src/document-renderer.mjs', 'src/progress-audit.mjs', 'src/eval-statistics.mjs',
   'src/eval-baseline-store.mjs', 'src/eval-sampling.mjs', 'src/evaluate-case.mjs',
-  'src/keco-cli.mjs', 'public/index.html',
+  'src/keco-cli.mjs', 'src/git-publisher.mjs', 'public/index.html',
 ];
 const sources = await Promise.all(sourceFiles.map(read));
 
@@ -55,11 +56,15 @@ assert.doesNotMatch(sampling, /REGRESSION|PASS|FAIL/);
 assert.match(kecoCli, /workspaceRoot/);
 assert.match(kecoCli, /epoch/);
 assert.match(kecoCli, /evaluate.*baseline.*compare/s);
+assert.match(kecoCli, /no-push/);
+assert.match(kecoCli, /outputRepository/);
+assert.match(gitPublisher, /edd-repo\.git/);
 assert.equal(packageJson.scripts.eval, 'node src/keco-cli.mjs evaluate');
 assert.equal(packageJson.scripts['eval:baseline'], 'node src/keco-cli.mjs baseline');
 assert.equal(packageJson.scripts['eval:compare'], 'node src/keco-cli.mjs compare');
 assert.doesNotMatch(evaluator, /PAWS_SOURCE/);
 assert.doesNotMatch(sources.join('\n'), /evaluate-paws/);
+assert.doesNotMatch(sources.join('\n'), /fixed GDD/i);
 assert.doesNotMatch(sources.join('\n'), /aiCoreScore|aiExperienceScore|coreAverage|experienceAverage/);
 assert.doesNotMatch(sources.join('\n'), /admin-test-token|ngrok_[A-Za-z0-9]+/);
 

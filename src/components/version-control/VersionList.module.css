@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.625rem;
-  padding-top: 1.5rem;
+  padding-top: 0.5rem;
   /* Reserve bottom space for the last version's action panel so it is not clipped by the viewport */
   padding-bottom: 120px;
   position: relative;

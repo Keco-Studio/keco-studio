@@ -1,7 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { ClockCircleOutlined, SettingOutlined } from '@ant-design/icons';
+import clockIcon from '@/assets/images/nav-icons/clock.svg';
+import settingsIcon from '@/assets/images/nav-icons/settings-outline.svg';
 import styles from '../Sidebar.module.css';
 
 type SidebarProjectQuickNavProps = {
@@ -26,7 +28,14 @@ export function SidebarProjectQuickNav({ projectId }: SidebarProjectQuickNavProp
         data-testid="sidebar-recent-nav"
         onClick={() => router.push(`/${projectId}/recent`)}
       >
-        <ClockCircleOutlined className={styles.projectQuickNavIcon} aria-hidden />
+        <Image
+          src={clockIcon}
+          alt=""
+          width={24}
+          height={24}
+          className={`icon-24 ${styles.projectQuickNavIcon}`}
+          aria-hidden
+        />
         <span>Recent</span>
       </button>
       <button
@@ -36,7 +45,14 @@ export function SidebarProjectQuickNav({ projectId }: SidebarProjectQuickNavProp
         data-testid="sidebar-admin-nav"
         onClick={() => router.push(`/${projectId}/admin`)}
       >
-        <SettingOutlined className={styles.projectQuickNavIcon} aria-hidden />
+        <Image
+          src={settingsIcon}
+          alt=""
+          width={24}
+          height={24}
+          className={`icon-24 ${styles.projectQuickNavIcon}`}
+          aria-hidden
+        />
         <span>Settings</span>
       </button>
     </nav>
