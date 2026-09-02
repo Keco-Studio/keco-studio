@@ -1,12 +1,30 @@
 # Multi-Slice Orchestration
 
 Use this plan when one accepted GDD or feedback source contains more than one
-independently deliverable development idea. User-facing artifacts follow the
-repository Superpowers layout; runtime ledgers remain internal.
+independently deliverable development idea. Canonical user-facing artifacts
+live in the Keco planning hierarchy; repository mirrors use the Superpowers
+layout and runtime ledgers remain internal.
 
 ## User-Facing Layout
 
-Create one paired document for each Slice:
+Create one paired document for each Slice in two actual Keco child folders:
+
+```text
+<planning-root>/
+|-- roadmap
+|-- spec/
+|   |-- <slice-id-1>
+|   `-- <slice-id-2>
+`-- plan/
+    |-- <slice-id-1>
+    `-- <slice-id-2>
+```
+
+The names `spec` and `plan` identify folders, never document-name prefixes.
+Create Slice documents with the bare `<slice-id>` name and the corresponding
+folder ID. In particular, do not create flat documents named
+`spec/<slice-id>` or `plan/<slice-id>` under the planning root. Mirror each pair
+locally as:
 
 ```text
 docs/superpowers/specs/<slice-id>-design.md
@@ -30,7 +48,8 @@ which creates a new dated pair.
 
 ## Roadmap Plan
 
-When there are multiple Slices, use one normal plan document as the roadmap:
+When there are multiple Slices, create one normal `roadmap` plan document
+directly in the Keco planning root and mirror it at:
 
 ```text
 docs/superpowers/plans/<roadmap-id>.md
@@ -53,6 +72,12 @@ The internal roadmap projection may retain machine fields such as
 `status: planned|in_progress|completed|failed|blocked`, `evalResult`, and
 `repairIteration`; those fields are generated ledger state, not extra planning
 documents.
+
+Before writing any Slice document, read back the planning root and require one
+exact direct child `spec` folder and one exact direct child `plan` folder. After
+writing, read back again and require every spec document's `folderId` to equal
+the spec folder ID and every plan document's `folderId` to equal the plan folder
+ID. A slash in a generated document name is a structural failure, not a folder.
 
 ## Sequential Execution
 
