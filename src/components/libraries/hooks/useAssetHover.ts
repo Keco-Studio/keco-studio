@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, startTransition } from 'react';
 
 export type AssetHoverDetails = {
   name?: string;
@@ -14,6 +14,12 @@ export type AssetHoverDetails = {
 type HoverReferenceSelection = {
   fieldLabel?: string | null;
   displayValue?: string | null;
+};
+
+type AssetCardState = {
+  assetId: string;
+  position: { x: number; y: number };
+  details: AssetHoverDetails;
 };
 
 const PANEL_WIDTH = 220;
@@ -55,11 +61,54 @@ function formatDisplayValue(raw: unknown): string {
   return String(raw);
 }
 
+function buildInitialDetailsFromSelections(
+  selections?: HoverReferenceSelection[]
+): AssetHoverDetails | null {
+  if (!selections?.length) return null;
+
+  const selectedCells = selections
+    .map((selection) => ({
+      fieldLabel: (selection.fieldLabel || 'Field').trim() || 'Field',
+      displayValue: (selection.displayValue || '').trim(),
+    }))
+    .filter((cell) => cell.displayValue !== '');
+
+  if (selectedCells.length === 0) return null;
+
+  return {
+    name: selectedCells[0].displayValue,
+    firstColumnLabel: selectedCells[0].fieldLabel,
+    selectedCells,
+  };
+}
+
+function computePanelPosition(element: HTMLDivElement): { x: number; y: number } | null {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return null;
+
+  const spacing = 10;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let x = rect.right + spacing;
+  let y = rect.top;
+
+  if (x + PANEL_WIDTH > vw) {
+    x = rect.left - PANEL_WIDTH - spacing;
+    if (x < 0) x = spacing;
+  }
+  if (y + PANEL_HEIGHT > vh) {
+    y = vh - PANEL_HEIGHT - spacing;
+    if (y < 0) y = spacing;
+  }
+
+  return { x, y };
+}
+
 export function useAssetHover(supabase: any): {
   hoveredAssetId: string | null;
   setHoveredAssetId: React.Dispatch<React.SetStateAction<string | null>>;
   hoveredAssetDetails: AssetHoverDetails | null;
-  loadingAssetDetails: boolean;
   hoveredAvatarPosition: { x: number; y: number } | null;
   /** Open (or toggle) the reference card from a click on a reference pill/icon. */
   handleAvatarMouseEnter: (
@@ -73,45 +122,40 @@ export function useAssetHover(supabase: any): {
   avatarRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   setAssetCardRef: (el: HTMLElement | null) => void;
 } {
-  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
-  const [hoveredAssetDetails, setHoveredAssetDetails] = useState<AssetHoverDetails | null>(null);
-  const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
-  const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
+  const [cardState, setCardState] = useState<AssetCardState | null>(null);
   const avatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const assetCardRef = useRef<HTMLElement | null>(null);
   const openTriggerRef = useRef<HTMLElement | null>(null);
+  const detailsCacheRef = useRef(new Map<string, AssetHoverDetails>());
+  const fetchGenerationRef = useRef(0);
 
   const dismissCard = useCallback(() => {
-    setHoveredAssetId(null);
-    setHoveredAssetDetails(null);
-    setHoveredAvatarPosition(null);
+    setCardState(null);
     openTriggerRef.current = null;
   }, []);
 
-  useEffect(() => {
-    if (!hoveredAssetId) {
-      setHoveredAssetDetails(null);
-      setHoveredAvatarPosition(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadAssetDetails = async () => {
+  const loadAssetDetails = useCallback(
+    async (assetId: string, generation: number) => {
       if (!supabase) return;
-      setLoadingAssetDetails(true);
+
       try {
         const { data, error } = await supabase
           .from('library_assets')
           .select('id, name, library_id, libraries(name)')
-          .eq('id', hoveredAssetId)
+          .eq('id', assetId)
           .single();
 
         if (error) throw error;
-        if (cancelled) return;
+        if (generation !== fetchGenerationRef.current) return;
 
         if (!data) {
-          setHoveredAssetDetails({ sourceLibraryDeleted: true });
+          const deletedDetails: AssetHoverDetails = { sourceLibraryDeleted: true };
+          detailsCacheRef.current.set(assetId, deletedDetails);
+          startTransition(() => {
+            setCardState((prev) =>
+              prev?.assetId === assetId ? { ...prev, details: deletedDetails } : prev
+            );
+          });
           return;
         }
 
@@ -127,7 +171,7 @@ export function useAssetHover(supabase: any): {
           .order('order_index', { ascending: true })
           .limit(12);
 
-        if (cancelled) return;
+        if (generation !== fetchGenerationRef.current) return;
 
         const displayFields = ((fieldDefs as Array<{
           id: string;
@@ -144,10 +188,10 @@ export function useAssetHover(supabase: any): {
           const { data: valueRows } = await supabase
             .from('library_asset_values')
             .select('field_id, value_json')
-            .eq('asset_id', hoveredAssetId)
+            .eq('asset_id', assetId)
             .in('field_id', fieldIds);
 
-          if (cancelled) return;
+          if (generation !== fetchGenerationRef.current) return;
 
           for (const row of (valueRows as Array<{ field_id: string; value_json: unknown }> | null) ?? []) {
             valueByFieldId.set(row.field_id, row.value_json);
@@ -166,35 +210,59 @@ export function useAssetHover(supabase: any): {
           selectedCells.push({ fieldLabel: 'Name', displayValue: fallbackName });
         }
 
-        setHoveredAssetDetails({
+        const nextDetails: AssetHoverDetails = {
           sourceLibraryDeleted,
           name: selectedCells[0]?.displayValue || fallbackName,
           libraryName: librariesRow?.name ?? '',
           libraryId: data.library_id,
           firstColumnLabel: selectedCells[0]?.fieldLabel || 'Name',
           selectedCells,
+        };
+
+        detailsCacheRef.current.set(assetId, nextDetails);
+        startTransition(() => {
+          setCardState((prev) =>
+            prev?.assetId === assetId ? { ...prev, details: nextDetails } : prev
+          );
         });
       } catch (error) {
-        if (cancelled) return;
+        if (generation !== fetchGenerationRef.current) return;
         console.error('Failed to load asset details:', error);
-        setHoveredAssetDetails({ sourceLibraryDeleted: true });
-      } finally {
-        if (!cancelled) setLoadingAssetDetails(false);
+        const fallbackDetails: AssetHoverDetails = { sourceLibraryDeleted: true };
+        startTransition(() => {
+          setCardState((prev) =>
+            prev?.assetId === assetId
+              ? { ...prev, details: prev.details ?? fallbackDetails }
+              : prev
+          );
+        });
       }
-    };
+    },
+    [supabase]
+  );
 
-    void loadAssetDetails();
+  useEffect(() => {
+    const assetId = cardState?.assetId;
+    if (!assetId) return;
+
+    if (detailsCacheRef.current.has(assetId)) return;
+
+    const generation = ++fetchGenerationRef.current;
+    const frameId = requestAnimationFrame(() => {
+      void loadAssetDetails(assetId, generation);
+    });
+
     return () => {
-      cancelled = true;
+      cancelAnimationFrame(frameId);
     };
-  }, [hoveredAssetId, supabase]);
+  }, [cardState?.assetId, loadAssetDetails]);
 
   const setAssetCardRef = useCallback((el: HTMLElement | null) => {
     assetCardRef.current = el;
   }, []);
 
   useEffect(() => {
-    if (!hoveredAssetId) return;
+    if (!cardState?.assetId) return;
 
     const handleMouseDown = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -215,62 +283,53 @@ export function useAssetHover(supabase: any): {
       window.removeEventListener('mousedown', handleMouseDown, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [dismissCard, hoveredAssetId]);
-
-  const updatePositionForElement = useCallback((element: HTMLDivElement) => {
-    const rect = element.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return;
-
-    const spacing = 10;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    let x = rect.right + spacing;
-    let y = rect.top;
-
-    if (x + PANEL_WIDTH > vw) {
-      x = rect.left - PANEL_WIDTH - spacing;
-      if (x < 0) x = spacing;
-    }
-    if (y + PANEL_HEIGHT > vh) {
-      y = vh - PANEL_HEIGHT - spacing;
-      if (y < 0) y = spacing;
-    }
-
-    setHoveredAvatarPosition({ x, y });
-  }, []);
+  }, [cardState?.assetId, dismissCard]);
 
   const handleAvatarMouseEnter = useCallback((
     assetId: string,
     element: HTMLDivElement,
-    _selections?: HoverReferenceSelection[]
+    selections?: HoverReferenceSelection[]
   ) => {
     if (avatarRefs.current.get(assetId) !== element) {
       avatarRefs.current.set(assetId, element);
     }
     openTriggerRef.current = element;
 
-    // Clicking the same open trigger toggles the card closed.
-    if (hoveredAssetId === assetId) {
+    if (cardState?.assetId === assetId) {
       dismissCard();
       return;
     }
 
-    updatePositionForElement(element);
-    setHoveredAssetId(assetId);
-  }, [dismissCard, hoveredAssetId, updatePositionForElement]);
+    const position = computePanelPosition(element);
+    if (!position) return;
 
-  // Hover leave is intentionally a no-op: the card is click-triggered.
+    const cachedDetails = detailsCacheRef.current.get(assetId);
+    const details =
+      cachedDetails ??
+      buildInitialDetailsFromSelections(selections) ??
+      ({ name: 'Untitled' } satisfies AssetHoverDetails);
+
+    setCardState({ assetId, position, details });
+  }, [cardState?.assetId, dismissCard]);
+
   const handleAvatarMouseLeave = useCallback(() => {}, []);
   const handleAssetCardMouseEnter = useCallback(() => {}, []);
   const handleAssetCardMouseLeave = useCallback(() => {}, []);
 
+  const setHoveredAssetId = useCallback((value: React.SetStateAction<string | null>) => {
+    setCardState((prev) => {
+      const nextId = typeof value === 'function' ? value(prev?.assetId ?? null) : value;
+      if (!nextId) return null;
+      if (prev?.assetId === nextId) return prev;
+      return prev ? { ...prev, assetId: nextId } : null;
+    });
+  }, []);
+
   return {
-    hoveredAssetId,
+    hoveredAssetId: cardState?.assetId ?? null,
     setHoveredAssetId,
-    hoveredAssetDetails,
-    loadingAssetDetails,
-    hoveredAvatarPosition,
+    hoveredAssetDetails: cardState?.details ?? null,
+    hoveredAvatarPosition: cardState?.position ?? null,
     handleAvatarMouseEnter,
     handleAvatarMouseLeave,
     handleAssetCardMouseEnter,

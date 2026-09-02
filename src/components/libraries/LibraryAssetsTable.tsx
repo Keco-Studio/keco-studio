@@ -319,7 +319,6 @@ export function LibraryAssetsTable({
     hoveredAssetId,
     setHoveredAssetId,
     hoveredAssetDetails,
-    loadingAssetDetails,
     hoveredAvatarPosition,
     handleAvatarMouseEnter,
     handleAvatarMouseLeave,
@@ -1108,7 +1107,6 @@ export function LibraryAssetsTable({
           selectedCells: hoveredAssetDetails.selectedCells,
           sourceLibraryDeleted: hoveredAssetDetails.sourceLibraryDeleted,
         } : null}
-        loading={loadingAssetDetails}
         onClose={() => setHoveredAssetId(null)}
         onMouseEnter={handleAssetCardMouseEnter}
         onMouseLeave={handleAssetCardMouseLeave}

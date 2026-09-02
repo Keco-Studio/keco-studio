@@ -1,7 +1,6 @@
 'use client';
 
 import { createPortal } from 'react-dom';
-import { Spin } from 'antd';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type AssetCardDetails = {
@@ -19,7 +18,6 @@ export type AssetCardPanelProps = {
   position: { x: number; y: number };
   assetId: string | null;
   details: AssetCardDetails | null;
-  loading: boolean;
   onClose: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -58,7 +56,6 @@ export function AssetCardPanel({
   visible,
   position,
   details,
-  loading,
   onMouseEnter,
   onMouseLeave,
   onLibraryClick,
@@ -83,11 +80,7 @@ export function AssetCardPanel({
         onMouseLeave={onMouseLeave}
       >
         <div className={styles.assetCardContent}>
-          {loading ? (
-            <div className={styles.assetCardLoading}>
-              <Spin size="small" />
-            </div>
-          ) : details?.sourceLibraryDeleted ? (
+          {details?.sourceLibraryDeleted ? (
             <div className={styles.assetCardDeletedMessage}>
               The source library has been deleted.
             </div>
@@ -100,18 +93,20 @@ export function AssetCardPanel({
                     <span className={styles.assetCardKvValue}>{cell.displayValue || '-'}</span>
                   </div>
                 ))}
-                <div className={styles.assetCardKvRow}>
-                  <span className={styles.assetCardKvLabel}>From</span>
-                  <button
-                    type="button"
-                    className={styles.assetCardFromLink}
-                    onClick={() => onLibraryClick?.(details.libraryId)}
-                    disabled={!onLibraryClick}
-                  >
-                    <span>{details.libraryName || 'Library'}</span>
-                    <ExternalLinkIcon />
-                  </button>
-                </div>
+                {details.libraryId ? (
+                  <div className={styles.assetCardKvRow}>
+                    <span className={styles.assetCardKvLabel}>From</span>
+                    <button
+                      type="button"
+                      className={styles.assetCardFromLink}
+                      onClick={() => onLibraryClick?.(details.libraryId)}
+                      disabled={!onLibraryClick}
+                    >
+                      <span>{details.libraryName || 'Library'}</span>
+                      <ExternalLinkIcon />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

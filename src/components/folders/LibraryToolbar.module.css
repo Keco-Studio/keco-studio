@@ -107,25 +107,3 @@
   gap: 0.5rem;
 }
 
-.shareButton {
-  padding: 7px 16px;
-  height: 30px;
-  border-radius: 7px;
-  border: none;
-  color: #ffffff;
-  font-size: 1rem;
-  font-weight: 400;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  background-color: #0B99FF;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5.25px;
-  box-sizing: border-box;
-}
-
-.shareButton:hover {
-  background-color: #0a8ae6;
-}
-
