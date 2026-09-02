@@ -180,13 +180,22 @@ const policySchema = z.object({
     .length(4).refine((value) => new Set(value).size === value.length),
   runtimeEvidenceFreshness: z.literal("current_build_and_snapshot"),
   maximumRepairs: z.literal(3),
-  releaseOrder: z.tuple([
-    z.literal("implementation"),
-    z.literal("runtime_verification"),
-    z.literal("acceptance"),
-    z.literal("mirrors"),
-    z.literal("package"),
-  ]),
+  releaseOrder: z.array(z.enum([
+    "implementation",
+    "runtime_verification",
+    "acceptance",
+    "mirrors",
+    "package",
+  ])).length(5).refine(
+    (value) => value.every((item, index) => item === [
+      "implementation",
+      "runtime_verification",
+      "acceptance",
+      "mirrors",
+      "package",
+    ][index]),
+    "Release order must follow implementation, runtime verification, acceptance, mirrors, package.",
+  ),
   manualReviewBlocksRelease: z.literal(true),
 }).strict();
 
