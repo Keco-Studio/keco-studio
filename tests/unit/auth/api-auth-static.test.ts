@@ -13,6 +13,9 @@ const SERVICE_AUTH_API_ROUTES = new Set([
 const CRON_AUTH_API_ROUTES = new Set([
   'src/app/api/internal/game-design-system-worker/route.ts',
 ]);
+const WEBHOOK_AUTH_API_ROUTES = new Set([
+  'src/app/api/webhooks/stripe/route.ts',
+]);
 
 function routeFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
@@ -51,9 +54,20 @@ describe('API authentication boundaries', () => {
       .filter((path) => !PUBLIC_API_ROUTES.has(path))
       .filter((path) => !SERVICE_AUTH_API_ROUTES.has(path))
       .filter((path) => !CRON_AUTH_API_ROUTES.has(path))
+      .filter((path) => !WEBHOOK_AUTH_API_ROUTES.has(path))
       .filter((path) => !readFileSync(join(process.cwd(), path), 'utf8').includes('withAuth'));
 
     expect(routesWithoutSharedBoundary).toEqual([]);
+  });
+
+  it('keeps Stripe webhooks behind signature verification', () => {
+    for (const path of WEBHOOK_AUTH_API_ROUTES) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8');
+      expect(source).toContain('stripe-signature');
+      expect(source).toContain('constructEvent');
+      expect(source).toContain('getStripeWebhookSecret');
+      expect(source).toMatch(/Missing Stripe signature[\s\S]+status:\s*400/);
+    }
   });
 
   it('keeps the internal MCP codec behind constant-time service authentication', () => {
