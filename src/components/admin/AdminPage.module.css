@@ -342,3 +342,45 @@
   color: #b91c1c;
   font-size: 0.875rem;
 }
+
+.checkoutPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.checkoutHint {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.checkoutButton {
+  height: 2.25rem;
+  border: none;
+  border-radius: 0.625rem;
+  background: #0b99ff;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.checkoutButton:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.checkoutButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.checkoutError {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.8125rem;
+}

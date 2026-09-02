@@ -122,10 +122,13 @@ describe('Recent / Admin sidebar wiring', () => {
     const collaborators = read('src/app/(dashboard)/[projectId]/admin/collaborators/page.tsx');
     const recent = read('src/app/(dashboard)/[projectId]/recent/page.tsx');
     const legacy = read('src/app/(dashboard)/[projectId]/collaborators/page.tsx');
+    const adminSettings = read('src/components/admin/AdminSettingsPage.tsx');
     expect(settings).toContain('AdminSettingsPage');
     expect(collaborators).toContain('AdminCollaboratorsPage');
     expect(recent).toContain('RecentPage');
     expect(legacy).toContain('/admin/collaborators');
+    expect(adminSettings).toContain('StripeCheckoutPanel');
+    expect(adminSettings).toContain('Billing');
   });
 
   it('treats admin and recent as special project routes', () => {
