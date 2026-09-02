@@ -202,6 +202,16 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "limit",
     "cursor",
   ]);
+  const createSlice = tools.find((tool) => tool.name === "create_slice_bundle")!;
+  const deliveryPolicy = (createSlice.inputSchema.properties ?? {})
+    .deliveryPolicy as {
+      properties?: Record<string, { items?: unknown }>;
+    };
+  // Tool hosts accept homogeneous array schemas; fixed order remains enforced by Zod.
+  assertEquals(
+    Array.isArray(deliveryPolicy.properties?.releaseOrder?.items),
+    false,
+  );
   const createUpload = tools.find((tool) =>
     tool.name === "create_image_upload"
   )!;

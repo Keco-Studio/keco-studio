@@ -314,6 +314,23 @@ Deno.test("Slice tools expose strict project, viewer, and account surfaces", () 
     false,
   );
   assertEquals(
+    project.tools.find((tool) => tool.name === "create_slice_bundle")!.config
+      .inputSchema.safeParse({
+        ...createInput(),
+        deliveryPolicy: {
+          ...createInput().deliveryPolicy,
+          releaseOrder: [
+            "runtime_verification",
+            "implementation",
+            "acceptance",
+            "mirrors",
+            "package",
+          ],
+        },
+      }).success,
+    false,
+  );
+  assertEquals(
     project.tools.find((tool) => tool.name === "checkpoint_slice")!.config
       .inputSchema.safeParse({
         ...checkpointInput(),
