@@ -6,6 +6,8 @@ This file is self-contained. It gives the skill deterministic plan, task, and co
 
 Before implementation, write a plan with exact files, task dependencies, evaluation IDs, RED command, GREEN command, and review points. Run `scripts/validate_plan.py`. Reject placeholders, unknown dependencies, missing evaluations, or tasks without commands. Review scope and allowed files once before issuing the write token.
 
+For a GDD-driven plan, also run `scripts/validate_gdd_coverage.py`. Review in the reverse direction: every normative GDD requirement has a cited source, an authorized status, and a reciprocal Slice/Task/Eval mapping or a real deferred, blocked, or user-confirmation state. An AI proposal without an accepted GDD amendment or patch reference is a pre-write blocker.
+
 ## Task RED/GREEN
 
 For each task:
