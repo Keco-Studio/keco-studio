@@ -1239,26 +1239,39 @@
 }
 
 .tree :global(.ant-tree-treenode:has([data-folder-row])) .itemActions {
-  /* Stay in normal flex flow so the title hit-target never sits under the + button.
-     Absolute overlay caused Playwright (and users) to miss folder name clicks when
-     the selected/hovered + button re-enabled pointer-events. */
-  position: static;
-  transform: none;
-  right: auto;
-  top: auto;
-  margin-left: auto;
-  z-index: auto;
-  flex-shrink: 0;
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+  z-index: 2;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Container never steals title clicks; button re-enables on hover/selected. */
   pointer-events: none;
+}
+
+.tree :global(.ant-tree-node-content-wrapper) [data-folder-row] {
+  /* Keep title text out from under the absolute + control */
+  padding-right: 2rem;
+  box-sizing: border-box;
 }
 
 .tree :global(.ant-tree-node-content-wrapper) [data-folder-row] .itemMain {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
 }
 
 .tree :global(.ant-tree-node-content-wrapper) [data-folder-row] .itemText {
-  padding-right: 0.5rem;
+  /* Hit box follows the label, not the full row, so short names stay clickable */
+  display: block;
+  width: auto;
+  max-width: 100%;
+  padding-right: 0;
 }
 
 .item {

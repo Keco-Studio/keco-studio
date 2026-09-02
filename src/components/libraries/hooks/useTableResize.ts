@@ -112,22 +112,9 @@ function applyRowHeightToRow(row: HTMLTableRowElement, height: number) {
   });
 }
 
-function clampPairedColumnWidths(
-  startLeft: number,
-  startRight: number,
-  delta: number,
-  minLeft: number,
-  minRight: number,
-): { left: number; right: number } {
-  const total = startLeft + startRight;
-  const left = Math.max(minLeft, Math.min(startLeft + delta, total - minRight));
-  return { left, right: total - left };
-}
-
 type ColumnResizeSession = {
   table: HTMLTableElement;
   columnKey: string;
-  columnIndex: number;
   startX: number;
   startWidths: Record<string, number>;
   pendingWidths: Record<string, number>;
@@ -190,7 +177,6 @@ export function useTableResize(libraryId: string | undefined, columnKeys: readon
       columnResizeRef.current = {
         table,
         columnKey,
-        columnIndex,
         startX: clientX,
         startWidths: mergedWidths,
         pendingWidths: mergedWidths,
@@ -234,31 +220,15 @@ export function useTableResize(libraryId: string | undefined, columnKeys: readon
 
       const keys = columnKeysRef.current;
       const delta = e.clientX - ref.startX;
-      const leftKey = ref.columnKey;
-      const rightKey = keys[ref.columnIndex + 1];
-
-      let nextWidths: Record<string, number>;
-
-      if (rightKey) {
-        const { left, right } = clampPairedColumnWidths(
-          ref.startWidths[leftKey],
-          ref.startWidths[rightKey],
-          delta,
-          getMinColWidth(leftKey),
-          getMinColWidth(rightKey),
-        );
-        nextWidths = {
-          ...ref.startWidths,
-          [leftKey]: left,
-          [rightKey]: right,
-        };
-      } else {
-        const left = Math.max(getMinColWidth(leftKey), ref.startWidths[leftKey] + delta);
-        nextWidths = {
-          ...ref.startWidths,
-          [leftKey]: left,
-        };
-      }
+      const columnKey = ref.columnKey;
+      const nextWidth = Math.max(
+        getMinColWidth(columnKey),
+        ref.startWidths[columnKey] + delta,
+      );
+      const nextWidths = {
+        ...ref.startWidths,
+        [columnKey]: nextWidth,
+      };
 
       if (recordsEqual(ref.pendingWidths, nextWidths)) return;
 

@@ -6,6 +6,10 @@ import { SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
+import {
+  getLibraryAssetsWithProperties,
+  getLibrarySchema,
+} from '@/lib/services/libraryAssetsService';
 import assetRefBookIcon from '@/assets/images/assetRefBookIcon.svg';
 import assetRefExpandIcon from '@/assets/images/assetRefExpandIcon.svg';
 import assetRefMenuGridIcon from '@/assets/images/assetRefMenuGridIcon.svg';
@@ -119,85 +123,52 @@ export function AssetReferenceSelector({
     const loadAssets = async () => {
       setLoading(true);
       try {
-        // First, get the first column field definition for this library
-        const { data: fieldDefs, error: fieldError } = await supabase
-          .from('library_field_definitions')
-          .select('id, label, order_index')
-          .eq('library_id', selectedLibraryId)
-          .order('order_index', { ascending: true })
-          .limit(1);
+        const [{ properties }, loadedAssets] = await Promise.all([
+          getLibrarySchema(supabase, selectedLibraryId),
+          getLibraryAssetsWithProperties(supabase, selectedLibraryId),
+        ]);
 
-        if (fieldError) throw fieldError;
+        const firstField = properties[0] ?? null;
+        const firstFieldId = firstField?.id ?? null;
+        const firstFieldLabel = firstField?.name ?? 'Name';
 
-        const firstField = fieldDefs && fieldDefs.length > 0 ? fieldDefs[0] : null;
-        const firstFieldId = firstField?.id || null;
-        const firstFieldLabel = firstField?.label || 'Name';
-        
         setFirstColumnFieldId(firstFieldId);
         setFirstColumnLabel(firstFieldLabel);
 
-        // Load all assets
-        const { data: assetsData, error: assetsError } = await supabase
-          .from('library_assets')
-          .select('id, name, library_id')
-          .eq('library_id', selectedLibraryId);
-
-        if (assetsError) throw assetsError;
-
-        if (!assetsData || assetsData.length === 0) {
+        if (loadedAssets.length === 0) {
           setAssets([]);
           setFilteredAssets([]);
           setLoading(false);
           return;
         }
 
-        // Get all asset values for these assets
-        const assetIds = assetsData.map(a => a.id);
-        const { data: valuesData, error: valuesError } = await supabase
-          .from('library_asset_values')
-          .select('asset_id, field_id, value_json')
-          .in('asset_id', assetIds);
-
-        if (valuesError) throw valuesError;
-
-        // Build a map of asset values
-        const assetValuesMap = new Map<string, Map<string, any>>();
-        (valuesData || []).forEach((v) => {
-          if (!assetValuesMap.has(v.asset_id)) {
-            assetValuesMap.set(v.asset_id, new Map());
-          }
-          assetValuesMap.get(v.asset_id)!.set(v.field_id, v.value_json);
-        });
-
-        // Filter out assets that have all empty values and add first column value
-        const assetsWithData = assetsData
+        const assetsWithData = loadedAssets
           .map((asset) => {
-            const assetValues = assetValuesMap.get(asset.id);
-            const flatValues = assetValues
-              ? Object.fromEntries(assetValues.entries())
-              : {};
+            const flatValues = asset.propertyValues;
             const firstColumnValue = firstFieldId
               ? getReferencePickerDisplayValue(flatValues, firstFieldId)
               : '';
 
             return {
-              ...asset,
-              library_name: libraries.find((lib) => lib.id === asset.library_id)?.name,
+              id: asset.id,
+              name: asset.name,
+              library_id: asset.libraryId,
+              library_name: libraries.find((lib) => lib.id === asset.libraryId)?.name,
               firstColumnValue,
+              flatValues,
             };
           })
           .filter((asset) => {
-            const assetValues = assetValuesMap.get(asset.id);
-            const flatValues = assetValues
-              ? Object.fromEntries(assetValues.entries())
-              : {};
-            if (!assetHasAnyNonEmptyDisplayValue(flatValues)) return false;
+            if (!assetHasAnyNonEmptyDisplayValue(asset.flatValues)) return false;
             if (!firstFieldId) return false;
-            return hasNonEmptyDisplayValue(assetValues?.get(firstFieldId));
-          });
+            return hasNonEmptyDisplayValue(
+              getReferencePickerDisplayValue(asset.flatValues, firstFieldId)
+            );
+          })
+          .map(({ flatValues: _flatValues, ...asset }) => asset);
 
         assetsWithData.sort((a, b) => a.firstColumnValue.localeCompare(b.firstColumnValue));
-        
+
         setAssets(assetsWithData);
         setFilteredAssets(assetsWithData);
       } catch (error) {
