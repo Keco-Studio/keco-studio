@@ -6,6 +6,10 @@ import { Input, Select, Checkbox, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
+import {
+  getLibraryAssetsWithProperties,
+  getLibrarySchema,
+} from '@/lib/services/libraryAssetsService';
 import assetRefBookIcon from '@/assets/images/assetRefBookIcon.svg';
 import {
   normalizeReferenceSelections,
@@ -108,60 +112,40 @@ export function AssetReferenceModal({
     const load = async () => {
       setLoading(true);
       try {
-        const { data: fieldDefs, error: fieldError } = await supabase
-          .from('library_field_definitions')
-          .select('id, library_id, label, order_index')
-          .eq('library_id', selectedLibraryId)
-          .order('order_index', { ascending: true });
+        const [{ properties }, assets] = await Promise.all([
+          getLibrarySchema(supabase, selectedLibraryId),
+          getLibraryAssetsWithProperties(supabase, selectedLibraryId),
+        ]);
 
-        if (fieldError) throw fieldError;
-        const fields = (fieldDefs || []) as FieldDefinition[];
+        const fields: FieldDefinition[] = properties.map((property) => ({
+          id: property.id,
+          library_id: selectedLibraryId,
+          label: property.name,
+          order_index: property.orderIndex,
+        }));
         setLibraryFields(fields);
 
-        const { data: assetsData, error: assetsError } = await supabase
-          .from('library_assets')
-          .select('id, name, library_id')
-          .eq('library_id', selectedLibraryId);
-
-        if (assetsError) throw assetsError;
-
-        if (!assetsData || assetsData.length === 0) {
+        if (assets.length === 0) {
           setAssetRows([]);
           setValuesByAsset({});
           return;
         }
 
-        const assetIds = assetsData.map((a) => a.id);
-        const { data: valuesData, error: valuesError } = await supabase
-          .from('library_asset_values')
-          .select('asset_id, field_id, value_json')
-          .in('asset_id', assetIds);
-
-        if (valuesError) throw valuesError;
-
-        const assetValuesMap = new Map<string, Map<string, unknown>>();
-        (valuesData || []).forEach((v) => {
-          if (!assetValuesMap.has(v.asset_id)) {
-            assetValuesMap.set(v.asset_id, new Map());
-          }
-          assetValuesMap.get(v.asset_id)!.set(v.field_id, v.value_json);
-        });
-
         const libName = libraries.find((lib) => lib.id === selectedLibraryId)?.name;
 
         const flatValues: Record<string, Record<string, unknown>> = {};
-        assetValuesMap.forEach((m, assetId) => {
-          flatValues[assetId] = Object.fromEntries(m.entries());
-        });
+        for (const asset of assets) {
+          flatValues[asset.id] = asset.propertyValues;
+        }
 
-        const rows = assetsData
+        const rows = assets
+          .filter((asset) => assetHasAnyNonEmptyDisplayValue(asset.propertyValues))
           .map((asset) => ({
             id: asset.id,
             name: asset.name,
-            library_id: asset.library_id,
+            library_id: asset.libraryId,
             library_name: libName,
-          }))
-          .filter((asset) => assetHasAnyNonEmptyDisplayValue(flatValues[asset.id] ?? {}));
+          }));
 
         setAssetRows(rows);
         setValuesByAsset(flatValues);

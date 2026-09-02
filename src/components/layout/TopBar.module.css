@@ -864,22 +864,6 @@
   border-color: #1677ff;
 }
 
-.documentShareButton {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
-  background: #eff6ff;
-  color: #0b99ff;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.documentShareButton:hover {
-  background: #e0efff;
-}
-
 .topbarPillButton {
   display: inline-flex;
   align-items: center;

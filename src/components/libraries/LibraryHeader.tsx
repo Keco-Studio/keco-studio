@@ -21,10 +21,10 @@ import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { useLibraryDataOptional } from '@/lib/contexts/LibraryDataContext';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { ShareButton } from '@/components/shared/ShareButton';
 import styles from './LibraryHeader.module.css';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
 import libraryHeadVersionClick from '@/assets/images/libraryHeadVersionClick.svg';
-import libraryHeadShareIcon from '@/assets/images/libraryHeadShareIcon.svg';
 
 interface LibraryHeaderProps {
   libraryId: string;
@@ -133,16 +133,7 @@ export function LibraryHeader({
         />
         {/* Share Button */}
         <div className={styles.shareSection}>
-          <button
-            className={styles.shareButton}
-            onClick={() => setShowInviteModal(true)}
-            >
-              <Image src={libraryHeadShareIcon}
-                alt="Share"
-                width={20} height={20} className="icon-20"
-              />
-              Share
-          </button>
+          <ShareButton onClick={() => setShowInviteModal(true)} />
         </div>
 
         <Dropdown

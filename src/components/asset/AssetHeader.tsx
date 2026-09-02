@@ -21,6 +21,7 @@ import { prependLocalUserWhenCollaborating } from '@/components/collaboration/co
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
+import { ShareButton } from '@/components/shared/ShareButton';
 import styles from './AssetHeader.module.css';
 import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadExpandCollaborators from '@/assets/images/libraryHeadExpandCollaborators.svg';
@@ -325,12 +326,7 @@ export function AssetHeader({
 
         {/* Share Button */}
         <div className={styles.shareSection}>
-          <button
-            className={styles.shareButton}
-            onClick={() => setShowInviteModal(true)}
-          >
-            Share
-          </button>
+          <ShareButton onClick={() => setShowInviteModal(true)} />
           {/* {userRole === 'admin' && (
             <button className={styles.adminRoleLabel}>
               {getRoleText(userRole)}

@@ -69,34 +69,6 @@
   padding-left: 0.75rem;
 }
 
-.shareButton {
-  padding: 7px 16px;
-  border: none;
-  border-radius: 7px;
-  background: #0B99FF;
-  color: #ffffff;
-  font-size: 1rem;
-  font-weight: 400;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 5.25px;
-  height: 30px;
-  line-height: 1;
-  box-sizing: border-box;
-}
-
-.shareButton:hover {
-  background: #0a8ae6;
-}
-
-.shareButton img {
-  display: block;
-  flex-shrink: 0;
-}
-
 /* Members Section */
 .membersSection {
   position: relative;

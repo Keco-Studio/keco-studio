@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import { PresenceMembersStack } from '@/components/collaboration/PresenceMembersStack';
@@ -12,7 +11,7 @@ import {
   requestScriptFlowChartToggle,
   type ScriptFlowChartStateDetail,
 } from '@/lib/script-system/flowChartTopBarEvents';
-import libraryHeadShareIcon from '@/assets/images/libraryHeadShareIcon.svg';
+import { ShareButton } from '@/components/shared/ShareButton';
 import styles from './ScriptTopBarActions.module.css';
 
 export type ScriptTopBarActionsProps = {
@@ -96,22 +95,7 @@ export function ScriptTopBarActions({
         />
       ) : null}
 
-      <button
-        type="button"
-        className={styles.shareButton}
-        aria-label="Share"
-        title="Share"
-        onClick={() => setShowInviteModal(true)}
-      >
-        <Image
-          src={libraryHeadShareIcon}
-          alt=""
-          width={20}
-          height={20}
-          className="icon-20"
-        />
-        Share
-      </button>
+      <ShareButton onClick={() => setShowInviteModal(true)} />
 
       {showFlowChartToggle ? (
         <Tooltip

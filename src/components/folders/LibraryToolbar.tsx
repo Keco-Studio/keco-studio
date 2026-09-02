@@ -7,6 +7,7 @@ import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
+import { ShareButton } from '@/components/shared/ShareButton';
 import styles from './LibraryToolbar.module.css';
 
 type LibraryToolbarProps = {
@@ -127,12 +128,7 @@ export function LibraryToolbar({
       {/* Share Button */}
       {showShare ? (
         <div className={styles.shareSection}>
-          <button
-            className={styles.shareButton}
-            onClick={() => setShowInviteModal(true)}
-          >
-            Share
-          </button>
+          <ShareButton onClick={() => setShowInviteModal(true)} />
         </div>
       ) : null}
 

@@ -13,6 +13,7 @@ import { DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
 import dialog from '@/components/shared/FormDialog.module.css';
+import { ShareButton } from '@/components/shared/ShareButton';
 import homeMorehorizontalIcon from '@/assets/images/homeMorehorizontalIcon.svg';
 import homeQuestionIcon from '@/assets/images/homeQuestionIcon.svg';
 import homeMessageIcon from '@/assets/images/loginMessageIcon.svg';
@@ -1333,15 +1334,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               emptyViewingMessage="No one else is currently viewing this document"
             />
           ) : null}
-          <button
-            type="button"
-            className={styles.documentShareButton}
-            aria-label="Share"
-            title="Share"
-            onClick={() => setShowInviteModal(true)}
-          >
-            Share
-          </button>
+          <ShareButton onClick={() => setShowInviteModal(true)} />
           <Dropdown
             menu={{
               items: documentExportItems,
