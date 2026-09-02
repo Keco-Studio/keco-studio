@@ -7,6 +7,14 @@ import path from 'node:path';
 const repositoryRoot = process.cwd();
 const skillRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-develop-godot-slice-v2');
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function writePngHeader(filePath: string, width: number, height: number): void {
   const header = Buffer.alloc(24);
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(header, 0);
@@ -189,6 +197,8 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'references/godot-mcp-contract.md',
       'references/ab-matrix.md',
       'references/source-data-contract.md',
+      'references/gdd-coverage-contract.md',
+      'references/gdd-change-contract.md',
       'references/eval-contract.md',
       'references/review-workflow.md',
       'references/slice-decision.md',
@@ -201,6 +211,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'scripts/validate_run_context.py',
       'scripts/validate_plan.py',
       'scripts/validate_eval_report.py',
+      'scripts/validate_gdd_coverage.py',
       'scripts/validate_delivery_policy.py',
       'scripts/export_keco_snapshot.py',
       'scripts/validate_snapshot.py',
@@ -826,6 +837,129 @@ describe('Keco Godot Slice V2 skill contract', () => {
       );
       expect(result.status).toBe(0);
       expect(result.stdout).toMatch(/"ok": true/);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('validates GDD coverage mappings and authorized additions', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-gdd-coverage-'));
+    const validator = path.join(skillRoot, 'scripts', 'validate_gdd_coverage.py');
+    const base = {
+      version: 1,
+      source: { project: 'test8-24', document: 'game-gdd', revision: 10, contentHash: 'sha256:' + 'a'.repeat(64) },
+      completeness: { sourceSnapshot: 'read-back-20260902', reviewMethod: 'full-document manual cross-check', reviewedSections: ['1', '2', '3', '4', '5', '6', '7'] },
+      slices: [
+        { sliceId: 'slice-current', status: 'planned' },
+        { sliceId: 'slice-followup', status: 'planned' },
+      ],
+      tasks: [{ taskId: 'task-current', sliceId: 'slice-current', requirementIds: ['gdd-1'] }],
+      evaluations: [{ evalId: 'eval-current', sliceId: 'slice-current', requirementIds: ['gdd-1'] }],
+      requirements: [{
+        requirementId: 'gdd-1', classification: 'normative', authorization: 'gdd',
+        sourceLocation: '一、项目概览', sourceQuote: '原文规则', status: 'evaluated',
+        sliceIds: ['slice-current'], taskIds: ['task-current'], evalIds: ['eval-current'],
+      }],
+    };
+    const withHash = (value: Record<string, unknown>) => ({ ...value, inventoryHash: `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}` });
+    const baseWithHash = withHash(base);
+    try {
+      const validPath = path.join(tempRoot, 'valid.json');
+      writeFileSync(validPath, JSON.stringify(baseWithHash));
+      const valid = spawnSync('python3', [validator, validPath], { encoding: 'utf8' });
+      expect(valid.status).toBe(0);
+      expect(valid.stdout).toMatch(/"ok": true/);
+
+      const unmappedPath = path.join(tempRoot, 'unmapped.json');
+      writeFileSync(unmappedPath, JSON.stringify(withHash({
+        ...base,
+        requirements: [...base.requirements, {
+          requirementId: 'gdd-2', classification: 'normative', authorization: 'gdd',
+          sourceLocation: '五、玩法机制', sourceQuote: '未分配规则', status: 'planned',
+          sliceIds: [], taskIds: [], evalIds: [],
+        }],
+      })));
+      const unmapped = spawnSync('python3', [validator, unmappedPath], { encoding: 'utf8' });
+      expect(unmapped.status).toBe(1);
+      expect(unmapped.stderr).toMatch(/normative requirement.*mapping/i);
+
+      const deferredPath = path.join(tempRoot, 'deferred.json');
+      writeFileSync(deferredPath, JSON.stringify(withHash({
+        ...base,
+        requirements: [...base.requirements, {
+          requirementId: 'gdd-3', classification: 'normative', authorization: 'gdd',
+          sourceLocation: '七、概率体系', sourceQuote: '延期规则', status: 'deferred',
+          deferredToSlice: 'slice-followup', sliceIds: [], taskIds: [], evalIds: [],
+        }],
+      })));
+      expect(spawnSync('python3', [validator, deferredPath], { encoding: 'utf8' }).status).toBe(0);
+
+      const unauthorizedPath = path.join(tempRoot, 'unauthorized.json');
+      writeFileSync(unauthorizedPath, JSON.stringify(withHash({
+        ...base,
+        requirements: [...base.requirements, {
+          requirementId: 'guardian', classification: 'normative', authorization: 'proposal',
+          sourceLocation: '未找到 GDD 原文', sourceQuote: 'AI 新增猫类型', status: 'planned',
+          sliceIds: ['slice-current'], taskIds: ['task-current'], evalIds: ['eval-current'],
+        }],
+      })));
+      const unauthorized = spawnSync('python3', [validator, unauthorizedPath], { encoding: 'utf8' });
+      expect(unauthorized.status).toBe(1);
+      expect(unauthorized.stderr).toMatch(/authorization|proposal/i);
+
+      const acceptedPatchPath = path.join(tempRoot, 'accepted-patch.json');
+      writeFileSync(acceptedPatchPath, JSON.stringify(withHash({
+        ...base,
+        requirements: [...base.requirements, {
+          requirementId: 'approved-extra', classification: 'normative', authorization: 'accepted_patch',
+          sourceLocation: '五、玩法机制', sourceQuote: '扩展规则', status: 'planned',
+          sliceIds: ['slice-current'], taskIds: ['task-current'], evalIds: ['eval-current'],
+        }],
+      })));
+      const acceptedPatch = spawnSync('python3', [validator, acceptedPatchPath], { encoding: 'utf8' });
+      expect(acceptedPatch.status).toBe(1);
+      expect(acceptedPatch.stderr).toMatch(/patchReference/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requires requirement references when a plan opts into GDD coverage', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-plan-gdd-'));
+    try {
+      const planPath = path.join(tempRoot, 'plan.json');
+      writeFileSync(planPath, JSON.stringify({
+        gddRequirementIds: ['gdd-1'],
+        tasks: [{
+          id: 'task-01', files: ['scripts/game.gd'], dependsOn: [], servesEvaluations: ['eval-01'],
+          red: { command: 'pytest tests/red.py', expected: 'fails' },
+          green: { command: 'pytest tests/green.py', expected: 'passes' },
+          review: { spec: 'required', quality: 'required' },
+        }],
+      }));
+      const result = spawnSync('python3', [path.join(skillRoot, 'scripts', 'validate_plan.py'), planPath], { encoding: 'utf8' });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/servesRequirements/i);
+      const requiredMode = spawnSync('python3', [path.join(skillRoot, 'scripts', 'validate_plan.py'), '--require-gdd', planPath], { encoding: 'utf8' });
+      expect(requiredMode.status).toBe(1);
+      expect(requiredMode.stderr).toMatch(/coverage mode|GDD/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requires requirement references when an eval report opts into GDD coverage', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-eval-gdd-'));
+    try {
+      const reportPath = path.join(tempRoot, 'report.json');
+      writeFileSync(reportPath, JSON.stringify({
+        version: 2, runId: 'run-01', sliceId: 'slice-01', status: 'partial',
+        snapshotHash: null, gddRequirementIds: ['gdd-1'], runtimeBatches: [], changedFiles: [], manualRequirements: [],
+        evaluations: [{ evalId: 'eval-01', status: 'manual_required', evidence: [] }],
+      }));
+      const result = spawnSync('python3', [path.join(skillRoot, 'scripts', 'validate_eval_report.py'), reportPath], { encoding: 'utf8' });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/requirementIds/i);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
