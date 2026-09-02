@@ -205,11 +205,24 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
   const createSlice = tools.find((tool) => tool.name === "create_slice_bundle")!;
   const deliveryPolicy = (createSlice.inputSchema.properties ?? {})
     .deliveryPolicy as {
-      properties?: Record<string, { items?: unknown }>;
+      type?: string;
+      properties?: Record<string, { type?: string; items?: unknown; minItems?: number; maxItems?: number }>;
     };
+  assertEquals(deliveryPolicy.type, "object");
+  const releaseOrder = deliveryPolicy.properties?.releaseOrder;
+  assertEquals(releaseOrder?.type, "array");
+  assertEquals(releaseOrder?.minItems, 5);
+  assertEquals(releaseOrder?.maxItems, 5);
+  assertEquals((releaseOrder?.items as { enum?: string[] })?.enum, [
+    "implementation",
+    "runtime_verification",
+    "acceptance",
+    "mirrors",
+    "package",
+  ]);
   // Tool hosts accept homogeneous array schemas; fixed order remains enforced by Zod.
   assertEquals(
-    Array.isArray(deliveryPolicy.properties?.releaseOrder?.items),
+    Array.isArray(releaseOrder?.items),
     false,
   );
   const createUpload = tools.find((tool) =>
