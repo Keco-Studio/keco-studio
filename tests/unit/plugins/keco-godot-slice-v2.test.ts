@@ -857,7 +857,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
       evaluations: [{ evalId: 'eval-current', sliceId: 'slice-current', requirementIds: ['gdd-1'] }],
       requirements: [{
         requirementId: 'gdd-1', classification: 'normative', authorization: 'gdd',
-        sourceLocation: '一、项目概览', sourceQuote: '原文规则', status: 'evaluated',
+        sourceLocation: 'section-1', sourceQuote: 'normative rule', status: 'evaluated',
         sliceIds: ['slice-current'], taskIds: ['task-current'], evalIds: ['eval-current'],
       }],
     };
@@ -875,7 +875,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
         ...base,
         requirements: [...base.requirements, {
           requirementId: 'gdd-2', classification: 'normative', authorization: 'gdd',
-          sourceLocation: '五、玩法机制', sourceQuote: '未分配规则', status: 'planned',
+          sourceLocation: 'section-5', sourceQuote: 'unmapped rule', status: 'planned',
           sliceIds: [], taskIds: [], evalIds: [],
         }],
       })));
@@ -888,7 +888,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
         ...base,
         requirements: [...base.requirements, {
           requirementId: 'gdd-3', classification: 'normative', authorization: 'gdd',
-          sourceLocation: '七、概率体系', sourceQuote: '延期规则', status: 'deferred',
+          sourceLocation: 'section-7', sourceQuote: 'deferred rule', status: 'deferred',
           deferredToSlice: 'slice-followup', sliceIds: [], taskIds: [], evalIds: [],
         }],
       })));
@@ -899,7 +899,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
         ...base,
         requirements: [...base.requirements, {
           requirementId: 'guardian', classification: 'normative', authorization: 'proposal',
-          sourceLocation: '未找到 GDD 原文', sourceQuote: 'AI 新增猫类型', status: 'planned',
+          sourceLocation: 'no GDD citation', sourceQuote: 'AI-added cat type', status: 'planned',
           sliceIds: ['slice-current'], taskIds: ['task-current'], evalIds: ['eval-current'],
         }],
       })));
@@ -912,7 +912,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
         ...base,
         requirements: [...base.requirements, {
           requirementId: 'approved-extra', classification: 'normative', authorization: 'accepted_patch',
-          sourceLocation: '五、玩法机制', sourceQuote: '扩展规则', status: 'planned',
+          sourceLocation: 'section-5', sourceQuote: 'extension rule', status: 'planned',
           sliceIds: ['slice-current'], taskIds: ['task-current'], evalIds: ['eval-current'],
         }],
       })));
