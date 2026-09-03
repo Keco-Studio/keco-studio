@@ -641,6 +641,16 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
   let specFolderId = '';
   let planFolderId = '';
 
+  function eventV2(eventType: string, payload: Record<string, unknown>) {
+    return {
+      eventId: crypto.randomUUID(),
+      eventType,
+      payload,
+      inputHash: hashJson(payload),
+      outputHash: hashJson({ eventType, payload }),
+    };
+  }
+
   beforeAll(async () => {
     fx = await buildProjectFixture();
     const root = await fx.svc.from('folders').insert({
@@ -715,8 +725,22 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       const encoded = normalizeMarkdown(`# ${kind} ${sliceId}\n- [ ] ${sliceId}\n`);
       return { kind, disposition: 'create', folderId, name, repositoryPath, documentId: crypto.randomUUID(), markdown: encoded.markdown, yjsState: encoded.yjsStateBase64 };
     };
+    let roadmapBinding = roadmap;
+    if (!roadmapBinding) {
+      const existing = await fx.svc.from('documents')
+        .select('id,content,collab_epoch,collab_revision')
+        .eq('project_id', fx.projectId).eq('folder_id', planningRootId).eq('name', 'roadmap')
+        .maybeSingle();
+      if (existing.error) throw new Error(`read V2 roadmap failed: ${existing.error.message}`);
+      roadmapBinding = existing.data ? {
+        kind: 'roadmap', disposition: 'bind', folderId: planningRootId, name: 'roadmap',
+        repositoryPath: 'docs/superpowers/roadmap.md', documentId: existing.data.id,
+        expectedEpoch: existing.data.collab_epoch, expectedRevision: existing.data.collab_revision,
+        contentHash: `sha256:${createHash('sha256').update(existing.data.content).digest('hex')}`,
+      } : createBinding('roadmap', planningRootId, 'roadmap', 'docs/superpowers/roadmap.md');
+    }
     const documentBindings = [
-      roadmap ?? createBinding('roadmap', planningRootId, 'roadmap', 'docs/superpowers/roadmap.md'),
+      roadmapBinding,
       createBinding('spec', specFolderId, sliceId, `docs/superpowers/specs/${sliceId}-design.md`),
       createBinding('plan', planFolderId, sliceId, `docs/superpowers/plans/${sliceId}.md`),
     ];
@@ -765,12 +789,12 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
   it('rejects same-actor independent review and a fourth repair across fresh keys', async () => {
     const bundle = await createV2Bundle();
     const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
-      event('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
-      event('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/main.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+      eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/main.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
     ]);
     expect(prerequisites.error).toBeNull();
     let token = String(row(prerequisites.data).stateToken);
-    const resultEvent = event('task_result', {
+    const resultEvent = eventV2('task_result', {
       schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'), attemptId: crypto.randomUUID(),
       phase: 'green', operation: { kind: 'command', command: 'test green' }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
       exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('1'), stderrSummary: '', stderrHash: hash('2'),
@@ -779,18 +803,18 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     const result = await checkpointV2(bundle.runId, token, [resultEvent]);
     expect(result.error).toBeNull();
     token = String(row(result.data).stateToken);
-    const forged = await checkpointV2(bundle.runId, token, [event('task_review', {
+    const forged = await checkpointV2(bundle.runId, token, [eventV2('task_review', {
       schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'),
       taskResultIds: [resultEvent.eventId], reviewedFiles: [], reviewerType: 'agent', reviewerId: fx.editor.id,
       requestedLevel: 'independent_actor', verdict: 'accepted', specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
     })]);
     expect(forged.error?.message).toContain('SLICE_REVIEW_LEVEL_INVALID');
     for (let iteration = 1; iteration <= 3; iteration += 1) {
-      const repaired = await checkpointV2(bundle.runId, token, [event('repair_transition', { reason: `repair ${iteration}`, failedEvaluationIds: ['eval-1'] })]);
+      const repaired = await checkpointV2(bundle.runId, token, [eventV2('repair_transition', { reason: `repair ${iteration}`, failedEvaluationIds: ['eval-1'] })]);
       expect(repaired.error).toBeNull();
       token = String(row(repaired.data).stateToken);
     }
-    const fourth = await checkpointV2(bundle.runId, token, [event('repair_transition', { reason: 'repair 4', failedEvaluationIds: ['eval-1'] })]);
+    const fourth = await checkpointV2(bundle.runId, token, [eventV2('repair_transition', { reason: 'repair 4', failedEvaluationIds: ['eval-1'] })]);
     expect(fourth.error?.message).toContain('SLICE_REPAIR_LIMIT');
   });
 });
