@@ -66,10 +66,24 @@ const SLICE_READ_TOOL_NAMES = ["export_slice_mirrors"];
 const SLICE_WRITE_TOOL_NAMES = [
   "create_slice_bundle",
   "checkpoint_slice",
+  "prepare_delivery",
   "finalize_slice",
 ];
-const CHARACTER_READ_TOOL_NAMES = ["list_character_assets", "read_character_asset", "get_character_asset_generation"];
-const CHARACTER_TOOL_NAMES = ["list_character_assets", "read_character_asset", "create_character_asset_draft", "update_character_asset_draft", "prepare_character_asset_generation", "start_character_asset_generation", "get_character_asset_generation", "advance_character_asset_generation"];
+const CHARACTER_READ_TOOL_NAMES = [
+  "list_character_assets",
+  "read_character_asset",
+  "get_character_asset_generation",
+];
+const CHARACTER_TOOL_NAMES = [
+  "list_character_assets",
+  "read_character_asset",
+  "create_character_asset_draft",
+  "update_character_asset_draft",
+  "prepare_character_asset_generation",
+  "start_character_asset_generation",
+  "get_character_asset_generation",
+  "advance_character_asset_generation",
+];
 
 const context = {
   mode: "project",
@@ -202,23 +216,31 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     "limit",
     "cursor",
   ]);
-  const createSlice = tools.find((tool) => tool.name === "create_slice_bundle")!;
+  const createSlice = tools.find((tool) =>
+    tool.name === "create_slice_bundle"
+  )!;
   const deliveryPolicy = (createSlice.inputSchema.properties ?? {})
     .deliveryPolicy as {
       type?: string;
-      properties?: Record<string, { type?: string; items?: unknown; minItems?: number; maxItems?: number }>;
+      properties?: Record<
+        string,
+        { type?: string; items?: unknown; minItems?: number; maxItems?: number }
+      >;
     };
   assertEquals(deliveryPolicy.type, "object");
   const releaseOrder = deliveryPolicy.properties?.releaseOrder;
   assertEquals(releaseOrder?.type, "array");
-  assertEquals(releaseOrder?.minItems, 5);
-  assertEquals(releaseOrder?.maxItems, 5);
+  assertEquals(releaseOrder?.minItems, 8);
+  assertEquals(releaseOrder?.maxItems, 8);
   assertEquals((releaseOrder?.items as { enum?: string[] })?.enum, [
     "implementation",
     "runtime_verification",
     "acceptance",
-    "mirrors",
+    "manual_review",
     "package",
+    "roadmap_completion",
+    "mirrors",
+    "seal",
   ]);
   // Tool hosts accept homogeneous array schemas; fixed order remains enforced by Zod.
   assertEquals(

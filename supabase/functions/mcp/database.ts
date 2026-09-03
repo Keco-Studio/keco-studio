@@ -16,10 +16,16 @@ const FIELD_CONFLICT_OPERATIONS = new Set([
 
 const SLICE_OPERATIONS = new Set([
   "mcp_create_slice_bundle",
+  "mcp_create_slice_bundle_v2",
   "mcp_read_slice_run",
+  "mcp_read_slice_run_contract_version",
   "mcp_checkpoint_slice",
+  "mcp_checkpoint_slice_v2",
+  "mcp_prepare_slice_delivery_v2",
   "mcp_finalize_slice",
+  "mcp_finalize_slice_v2",
   "mcp_export_slice_mirrors",
+  "mcp_export_slice_mirrors_v2",
 ]);
 
 function isTableMaintenancePrecondition(message: unknown): boolean {
@@ -53,7 +59,8 @@ export async function rpc<T>(
     ? "PROJECT_ACCESS_REVOKED"
     : error.code === "22023" && SLICE_OPERATIONS.has(name)
     ? "SLICE_CONTRACT_INVALID"
-    : error.code === "PT409" && name === "mcp_finalize_slice"
+    : error.code === "PT409" &&
+        (name === "mcp_finalize_slice" || name === "mcp_finalize_slice_v2")
     ? "SLICE_MIRROR_MISMATCH"
     : preconditionFailed
     ? "FIELD_VALIDATION_FAILED"

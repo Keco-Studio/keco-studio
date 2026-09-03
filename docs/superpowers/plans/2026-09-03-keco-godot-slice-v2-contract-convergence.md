@@ -179,7 +179,7 @@ git commit -m "feat(db): add Slice contract version 2 lifecycle"
 - Consumes: Task 1 validation and Task 2 RPC names.
 - Produces: stable public tool schemas with `contractVersion: 2`, `SourceProfile`, three `documentBindings`, `documentProgress`, `prepare_delivery`, verified review output, and stored-version dispatch for resume/read/export/finalize.
 
-- [ ] **Step 1: Write failing Zod/handler tests**
+- [x] **Step 1: Write failing Zod/handler tests**
 
 Test all canonical cases through tool invocation, assert public tool names remain stable, V2 calls only `_v2` RPCs, absent-version create is rejected after cutover, legacy stored runs call V1 checkpoint/export/finalize, and V1 output has `legacyLayout: true` without V2 guarantees.
 
@@ -188,13 +188,13 @@ expect(rpcCalls.at(-1)?.name).toBe('mcp_create_slice_bundle_v2');
 expect(legacyRead.structuredContent).toMatchObject({ contractVersion: 1, legacyLayout: true });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp/slice-contracts.test.ts supabase/functions/mcp/slice-tools.test.ts supabase/functions/mcp/server.test.ts`
 
 Expected: FAIL on V2 schemas, `_v2` dispatch, `prepare_delivery`, and legacy metadata.
 
-- [ ] **Step 3: Implement minimal schema and handler changes**
+- [x] **Step 3: Implement minimal schema and handler changes**
 
 Export reusable schemas from `slice-v2-contract.ts`; encode Markdown only for `create`/`update`; bind all content hashes and revisions; validate plan/eval in both directions; derive effective review claims from trusted request context; reject `KECO_EVAL` for V2; dispatch continuations from stored `contractVersion`; add `prepare_delivery` to server write allowlists.
 
@@ -204,7 +204,7 @@ const rpcName = run.contractVersion === 2
   : 'mcp_checkpoint_slice';
 ```
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp/slice-contracts.test.ts supabase/functions/mcp/slice-tools.test.ts supabase/functions/mcp/server.test.ts`
 
