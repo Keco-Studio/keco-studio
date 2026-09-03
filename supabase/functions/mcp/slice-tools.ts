@@ -68,7 +68,7 @@ const assertionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("equals"),
     path: jsonPointer,
     expected: z.unknown(),
-  }).strict(),
+  }).strict().refine((value) => Object.hasOwn(value, "expected"), "Equals assertions require an expected value."),
   z.object({
     assertionId: identifier,
     kind: z.literal("range"),

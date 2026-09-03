@@ -694,6 +694,25 @@ Deno.test("Slice schemas reject upper-case evidence IDs and bind task evidence t
   ]);
 });
 
+Deno.test("V2 schemas require complete evaluation fields and equals expectations", () => {
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext([], {}));
+  const create = registered.tools.find((tool) => tool.name === "create_slice_bundle")!;
+  const input = v2CreateInput();
+  const missingExpected = structuredClone(input);
+  delete (missingExpected.evalSpec.evaluations[0].assertions[0] as Record<string, unknown>).expected;
+  assertEquals(create.config.inputSchema.safeParse(missingExpected).success, false);
+  const missingHash = structuredClone(input);
+  delete (missingHash.evalSpec.evaluations[0] as Record<string, unknown>).buildHash;
+  assertEquals(create.config.inputSchema.safeParse(missingHash).success, false);
+  const invalidManual = structuredClone(input);
+  (invalidManual.evalSpec.evaluations[0] as Record<string, unknown>).manualRequired = "yes";
+  assertEquals(create.config.inputSchema.safeParse(invalidManual).success, false);
+  const unknownEvalField = structuredClone(input);
+  (unknownEvalField.evalSpec.evaluations[0] as Record<string, unknown>).extra = true;
+  assertEquals(create.config.inputSchema.safeParse(unknownEvalField).success, false);
+});
+
 Deno.test("finalize encodes deterministic status, roadmap, and EvalReport projections", async () => {
   const calls: RpcCall[] = [];
   const registered = recordingServer();

@@ -215,6 +215,10 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
     plan = value["plan"]
     eval_spec = value["evalSpec"]
+    plan_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "nonGddRationale", "inventoryHash", "requirementIds", "planRevision", "allowedFiles", "tasks"}
+    eval_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "inventoryHash", "requirementIds", "evaluations"}
+    if set(plan) - plan_keys or set(eval_spec) - eval_keys:
+        return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
     allowed = plan.get("allowedFiles")
     tasks = plan.get("tasks")
     if (
@@ -286,6 +290,7 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     for evaluation in evaluations:
         if (
             not _record(evaluation)
+            or bool(set(evaluation) - {"evalId", "servedByTasks", "buildHash", "snapshotHash", "assertions", "manualRequired"})
             or not isinstance(evaluation.get("evalId"), str)
             or not IDENTIFIER_RE.fullmatch(evaluation["evalId"])
             or evaluation["evalId"] in eval_ids
@@ -293,7 +298,15 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             or any(item not in task_ids for item in evaluation["servedByTasks"])
             or not isinstance(evaluation.get("assertions"), list)
             or not evaluation["assertions"]
+            or not _valid_hash(evaluation.get("buildHash"))
+            or not _valid_hash(evaluation.get("snapshotHash"))
+            or ("manualRequired" in evaluation and not isinstance(evaluation["manualRequired"], bool))
         ):
+            return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+        try:
+            for assertion in evaluation["assertions"]:
+                _validate_assertion(assertion)
+        except ValueError:
             return _decision(False, "SLICE_EVAL_BINDING_INVALID")
         eval_ids.add(evaluation["evalId"])
         reverse[evaluation["evalId"]] = set(evaluation["servedByTasks"])

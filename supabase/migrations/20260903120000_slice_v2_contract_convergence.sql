@@ -794,6 +794,12 @@ begin
     ) then
     raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
   end if;
+  if exists (select 1 from jsonb_object_keys(p_plan_data) as key where key not in ('schemaVersion', 'coverageMode', 'sourceProfileHash', 'nonGddRationale', 'inventoryHash', 'requirementIds', 'planRevision', 'allowedFiles', 'tasks')) then
+    raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
+  end if;
+  if exists (select 1 from jsonb_object_keys(p_eval_spec) as key where key not in ('schemaVersion', 'coverageMode', 'sourceProfileHash', 'inventoryHash', 'requirementIds', 'evaluations')) then
+    raise exception 'SLICE_EVAL_BINDING_INVALID' using errcode = '22023';
+  end if;
   if jsonb_typeof(p_eval_spec->'evaluations') is distinct from 'array'
     or jsonb_array_length(p_eval_spec->'evaluations') not between 1 and 100
     or (p_plan_data->>'coverageMode' = 'gdd' and (
@@ -820,8 +826,9 @@ begin
         or jsonb_array_length(evaluation->'servedByTasks') = 0
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end)) <>
            (select count(distinct task_id) from jsonb_array_elements_text(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end) as task_id)
-        or evaluation->>'buildHash' !~ '^sha256:[a-f0-9]{64}$'
-        or evaluation->>'snapshotHash' !~ '^sha256:[a-f0-9]{64}$'
+        or evaluation->>'buildHash' is null or evaluation->>'buildHash' !~ '^sha256:[a-f0-9]{64}$'
+        or evaluation->>'snapshotHash' is null or evaluation->>'snapshotHash' !~ '^sha256:[a-f0-9]{64}$'
+        or (evaluation ? 'manualRequired' and jsonb_typeof(evaluation->'manualRequired') is distinct from 'boolean')
         or jsonb_typeof(evaluation->'assertions') <> 'array'
         or jsonb_array_length(evaluation->'assertions') not between 1 and 100
         or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion where jsonb_typeof(assertion) <> 'object' or nullif(assertion->>'assertionId', '') is null)
@@ -832,6 +839,7 @@ begin
           where assertion->>'assertionId' is null or assertion->>'assertionId' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
             or assertion->>'kind' is null or assertion->>'kind' not in ('equals', 'range', 'subset', 'roundtrip')
             or (assertion->>'kind' in ('equals', 'range', 'subset') and (assertion->>'path' is null or assertion->>'path' !~ '^$|^(/([^~/]|~[01])*)*$'))
+            or (assertion->>'kind' = 'equals' and not (assertion ? 'expected'))
             or (assertion->>'kind' = 'roundtrip' and (assertion->>'beforePath' is null or assertion->>'beforePath' !~ '^$|^(/([^~/]|~[01])*)*$' or assertion->>'afterPath' is null or assertion->>'afterPath' !~ '^$|^(/([^~/]|~[01])*)*$' or jsonb_typeof(assertion->'markerPaths') is distinct from 'array' or jsonb_array_length(assertion->'markerPaths') not between 1 and 20))
             or (assertion->>'kind' = 'range' and (
               not (assertion ? 'minimum') and not (assertion ? 'maximum')

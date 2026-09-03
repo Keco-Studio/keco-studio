@@ -688,6 +688,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
       malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
+      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field';
       corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
     } = {},
   ) {
@@ -768,6 +769,11 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     } else if (options.malformedAssertion === 'subset-size') {
       evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'subset', path: '/items', expected: Array.from({ length: 101 }, (_, index) => index) }];
     }
+    if (options.malformedEvaluationField === 'missing-build-hash') delete evaluations[0].buildHash;
+    if (options.malformedEvaluationField === 'missing-snapshot-hash') delete evaluations[0].snapshotHash;
+    if (options.malformedEvaluationField === 'manual-string') evaluations[0].manualRequired = 'yes';
+    if (options.malformedEvaluationField === 'unknown-eval-field') evaluations[0].extra = true;
+    if (options.malformedEvaluationField === 'equals-missing-expected') delete evaluations[0].assertions[0].expected;
     let evalSpec: Record<string, any> = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
@@ -788,6 +794,8 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
         evalSpec.sourceProfileHash = plan.sourceProfileHash;
       }
     }
+    if (options.malformedEvaluationField === 'unknown-plan-field') plan.extra = true;
+    if (options.malformedEvaluationField === 'unknown-eval-spec-field') evalSpec.extra = true;
     const policy = {
       schemaVersion: 2,
       requiredArtifacts: ['TaskResult', 'TaskReview', 'EvalReport', 'MirrorVerification'],
@@ -1003,6 +1011,13 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['range assertion types', { malformedAssertion: 'range-types' }],
     ['roundtrip marker paths', { malformedAssertion: 'roundtrip-markers' }],
     ['subset assertion size', { malformedAssertion: 'subset-size' }],
+    ['missing evaluation build hash', { malformedEvaluationField: 'missing-build-hash' }],
+    ['missing evaluation snapshot hash', { malformedEvaluationField: 'missing-snapshot-hash' }],
+    ['non-boolean manual requirement', { malformedEvaluationField: 'manual-string' }],
+    ['unknown evaluation field', { malformedEvaluationField: 'unknown-eval-field' }],
+    ['equals missing expected', { malformedEvaluationField: 'equals-missing-expected' }],
+    ['unknown plan field', { malformedEvaluationField: 'unknown-plan-field' }],
+    ['unknown eval spec field', { malformedEvaluationField: 'unknown-eval-spec-field' }],
   ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
     await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
   });
