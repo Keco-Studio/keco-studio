@@ -1,0 +1,59 @@
+{
+  "contextId": "codex:simple-document-slice:control:sample-4",
+  "caseId": "simple-document-slice",
+  "scenarioClass": "simple_non_gdd",
+  "variant": "control",
+  "sample": 4,
+  "provider": "codex",
+  "runtime": "codex-cli 0.152.1",
+  "model": "codex-default",
+  "rawOutputPath": "/home/hetu/project/keco-studio/tests/fixtures/plugins/keco-godot-skill-v2-eval-results/raw/simple-document-slice/control/sample-4.json",
+  "prompt": "A user supplied one ordinary Keco design document, its stable ID and revision are unambiguous, and asks for one bounded Godot Slice today. The document is not a GDD and has no Requirement Inventory. A producer says the GDD checklist is mandatory for every run and asks you to block until one is authored, although the source rationale and allowed files are already complete. Decide the next workflow action now.",
+  "systemPrompt": "You are participating in a measured Keco Godot Slice V2 behavior evaluation.\n\nNo repository Skill guidance is supplied for this control run.\n\nReturn only one JSON object. verdict must be one short snake_case value, actions must be an array of short snake_case values, and rationale must be one sentence. Do not call tools or modify files.",
+  "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a06616-a48f-79f1-9c4c-11ca816d84da\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 3/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 4/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 5/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Falling back from WebSockets to HTTPS transport. stream disconnected before completion: tls handshake eof\"}}\n",
+  "stderr": "Reading additional input from stdin...\n2026-09-03T07:06:00.333637Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n2026-09-03T07:06:05.411446Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n2026-09-03T07:06:10.637528Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n2026-09-03T07:06:16.097378Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n2026-09-03T07:06:21.855982Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n2026-09-03T07:06:28.412426Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n2026-09-03T07:06:36.690120Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: tls handshake eof, url: wss://api.openai.com/v1/responses\n",
+  "exitCode": 0,
+  "signal": null,
+  "timedOut": true,
+  "durationMs": 45026,
+  "parsed": {
+    "response": {
+      "text": "{\"type\":\"thread.started\",\"thread_id\":\"01a06616-a48f-79f1-9c4c-11ca816d84da\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 3/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 4/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 5/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Falling back from WebSockets to HTTPS transport. stream disconnected before completion: tls handshake eof\"}}"
+    },
+    "envelope": {
+      "type": "item.completed",
+      "item": {
+        "id": "item_0",
+        "type": "error",
+        "message": "Falling back from WebSockets to HTTPS transport. stream disconnected before completion: tls handshake eof"
+      }
+    },
+    "textResponse": true
+  },
+  "parseError": null,
+  "response": {
+    "text": "{\"type\":\"thread.started\",\"thread_id\":\"01a06616-a48f-79f1-9c4c-11ca816d84da\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 3/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 4/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"error\",\"message\":\"Reconnecting... 5/5 (stream disconnected before completion: tls handshake eof)\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Falling back from WebSockets to HTTPS transport. stream disconnected before completion: tls handshake eof\"}}"
+  },
+  "assertions": [
+    {
+      "path": "verdict",
+      "operator": "equals",
+      "value": "proceed_without_gdd_coverage",
+      "passed": false
+    },
+    {
+      "path": "actions",
+      "operator": "includes",
+      "value": "bind_document_source_profile",
+      "passed": false
+    },
+    {
+      "path": "actions",
+      "operator": "includes",
+      "value": "skip_gdd_only_checks",
+      "passed": false
+    }
+  ],
+  "flagged": false,
+  "manualReview": "not_required"
+}

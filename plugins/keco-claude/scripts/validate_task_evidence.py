@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate deterministic TaskResult and independent TaskReview artifacts."""
+"""Validate deterministic TaskResult and review-level-bound TaskReview artifacts."""
 from __future__ import annotations
 
 import argparse

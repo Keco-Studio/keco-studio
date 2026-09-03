@@ -15,7 +15,10 @@ DEFAULT_CANDIDATES = (
     Path(__file__).parent.parent / "skills" / "keco-develop-godot-slice-v2" / "references" / "default-delivery-policy.json",
 )
 REQUIRED_ARTIFACTS = ("TaskResult", "TaskReview", "EvalReport", "MirrorVerification")
-RELEASE_ORDER = ("implementation", "runtime_verification", "acceptance", "mirrors", "package")
+RELEASE_ORDER = (
+    "implementation", "runtime_verification", "acceptance", "manual_review",
+    "package", "roadmap_completion", "mirrors", "seal",
+)
 
 
 def canonical_json(value: Any) -> str:
@@ -39,13 +42,11 @@ def validate(policy: Any) -> dict[str, Any]:
     }
     if set(policy) != expected_keys:
         fail("delivery policy contains unsupported or missing keys")
-    if policy["schemaVersion"] != 1:
+    if policy["schemaVersion"] != 2:
         fail("delivery policy schemaVersion is not recognized")
     artifacts = policy["requiredArtifacts"]
-    if not isinstance(artifacts, list) or len(set(artifacts)) != len(artifacts):
-        fail("requiredArtifacts must be a unique array")
-    if any(not isinstance(item, str) for item in artifacts) or not set(REQUIRED_ARTIFACTS).issubset(artifacts):
-        fail("delivery policy omits a mandatory artifact")
+    if artifacts != list(REQUIRED_ARTIFACTS):
+        fail("requiredArtifacts must preserve the canonical order")
     if policy["runtimeEvidenceFreshness"] != "current_build_and_snapshot":
         fail("delivery policy weakens runtime evidence freshness")
     repairs = policy["maximumRepairs"]

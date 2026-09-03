@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "rawEvidenceRequired": true,
+  "manualReviewStates": ["not_required", "pending", "reviewed"],
+  "flagConditions": ["provider_error", "response_not_json", "response_contract_mismatch", "ambiguous_automated_match"],
+  "passRequirements": {
+    "minimumRealResponsesPerVariant": 5,
+    "currentSkillAssertionRate": 1,
+    "requireAllFlaggedReviewed": true,
+    "requireRawOutputForEveryRealResponse": true
+  },
+  "reviewInstructions": "Read the complete raw provider response for every flagged sample. Mark reviewed only after recording whether the automated disposition matches the response; a fixture count or dry-run plan is never evidence."
+}

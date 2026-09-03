@@ -4,10 +4,10 @@ Keco is the authoritative store for generated assets and provenance. PixelLab is
 
 ## Operation adapter
 
-Read [pixellab-capability-registry.md](pixellab-capability-registry.md). At `PREFLIGHT`, list the live PixelLab MCP tools and record an `operationProfile`. Keep official provider capability, endpoint, transport tool, and compatibility as separate fields. Never call an operation by memory, label an official capability as legacy, or silently substitute an unsupported tool. Map the AssetPlan to the live schema, including prompt/description, dimensions, transparency/background behavior, reference paths, frames, directions, and tile constraints.
+Read the PixelLab capability registry selected by the main Skill. At `PREFLIGHT`, list the live PixelLab MCP tools and record an `operationProfile`. Keep official provider capability, endpoint, transport tool, and compatibility as separate fields. Never call an operation by memory, label an official capability as legacy, or silently substitute an unsupported tool. Map the AssetPlan to the live schema, including prompt/description, dimensions, transparency/background behavior, reference paths, frames, directions, and tile constraints.
 
 ```yaml
-assetKind: ui|image|effect|character|character-rotation|animation|edit|tile|tileset
+assetKind: one canonical value from the PixelLab capability registry
 providerCapability: official capability key
 officialEndpoint: POST /v2/...
 transport: mcp

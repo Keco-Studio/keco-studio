@@ -19,8 +19,8 @@ def validate_gdd_binding(report: dict, inventory_path: pathlib.Path | None) -> s
     source = report.get("gddSource")
     if not isinstance(ids, list) or not ids or any(not isinstance(item, str) or not item.strip() for item in ids) or len(ids) != len(set(ids)):
         return "gddRequirementIds must be a non-empty unique string array"
-    if not isinstance(source, dict) or source.get("project") != "test8-24" or source.get("document") != "game-gdd" or type(source.get("revision")) is not int or source["revision"] < 0 or not isinstance(source.get("contentHash"), str) or not isinstance(source.get("inventoryHash"), str):
-        return "gddSource must identify test8-24/game-gdd and its inventory hash"
+    if not isinstance(source, dict) or not isinstance(source.get("project"), str) or not source["project"].strip() or not isinstance(source.get("document"), str) or not source["document"].strip() or type(source.get("revision")) is not int or source["revision"] < 0 or not isinstance(source.get("contentHash"), str) or not isinstance(source.get("inventoryHash"), str):
+        return "gddSource must identify a project/document and its inventory hash"
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", source["contentHash"]) or not re.fullmatch(r"sha256:[0-9a-f]{64}", source["inventoryHash"]):
         return "gddSource hashes must use sha256 format"
     if inventory_path is None:

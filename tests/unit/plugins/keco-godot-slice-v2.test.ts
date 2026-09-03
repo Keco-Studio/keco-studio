@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
@@ -29,7 +29,378 @@ function sha256(filePath: string): string {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
+function treeDigest(root: string): string {
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(filePath);
+      else files.push(path.relative(root, filePath).replaceAll(path.sep, '/') + '\0' + sha256(filePath));
+    }
+  };
+  visit(root);
+  return createHash('sha256').update(files.sort().join('\n')).digest('hex');
+}
+
+function markdownFiles(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
+    const entryPath = path.join(root, entry.name);
+    return entry.isDirectory() ? markdownFiles(entryPath) : entry.name.endsWith('.md') ? [entryPath] : [];
+  });
+}
+
+function normalizedPlatformSkill(value: string): string {
+  return value
+    .replace(/^description:.*$/m, 'description: <platform trigger>')
+    .replaceAll('${CLAUDE_PLUGIN_ROOT}/scripts/', 'scripts/')
+    .replaceAll('../../references/pixellab-capability-registry.md', 'references/pixellab-capability-registry.md');
+}
+
+const mirrorScript = path.join(skillRoot, 'scripts', 'materialize_slice_mirrors.py');
+const mirrorJournal = '.keco-slice-mirror-journal.json';
+
+function mirrorFixture(tempRoot: string) {
+  const root = path.join(tempRoot, 'repository');
+  mkdirSync(root);
+  const paths = [
+    'docs/superpowers/roadmap.md',
+    'docs/superpowers/specs/slice-1-design.md',
+    'docs/superpowers/plans/slice-1.md',
+  ];
+  const kinds = ['roadmap', 'spec', 'plan'];
+  const originals = paths.map((relative, index) => {
+    const target = path.join(root, relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    const content = `original-${index}\n`;
+    writeFileSync(target, content);
+    return content;
+  });
+  const files = paths.map((repositoryPath, index) => {
+    const content = `replacement-${index}\n`;
+    return {
+      kind: kinds[index],
+      repositoryPath,
+      documentId: `${index + 1}1111111-1111-4111-8111-111111111111`,
+      folderId: `${index + 4}1111111-1111-4111-8111-111111111111`,
+      epoch: 1,
+      revision: 2,
+      byteCount: Buffer.byteLength(content),
+      sha256: `sha256:${createHash('sha256').update(content).digest('hex')}`,
+      content,
+    };
+  });
+  const manifest = {
+    ok: true,
+    schemaVersion: 2,
+    canonicalizationVersion: 1,
+    contractVersion: 2,
+    runId: '71111111-1111-4111-8111-111111111111',
+    stateToken: '81111111-1111-4111-8111-111111111111',
+    currentSequence: 8,
+    preparedSequence: 7,
+    files,
+    manifestHash: `sha256:${createHash('sha256').update(canonicalJson(files)).digest('hex')}`,
+  };
+  const manifestPath = path.join(tempRoot, 'manifest.json');
+  const allowedPath = path.join(tempRoot, 'allowed.json');
+  const output = path.join(tempRoot, 'mirror-verification.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(allowedPath, JSON.stringify({ allowedFiles: paths }));
+  return { root, paths, originals, files, manifestPath, allowedPath, output };
+}
+
+function runMirror(
+  fixture: ReturnType<typeof mirrorFixture>,
+  fault?: string,
+  restoreFault = false,
+) {
+  return spawnSync('python3', [
+    mirrorScript,
+    '--manifest', fixture.manifestPath,
+    '--repository-root', fixture.root,
+    '--allowed-files', fixture.allowedPath,
+    '--output', fixture.output,
+  ], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ...(fault ? { KECO_MIRROR_TEST_FAULT: fault } : {}),
+      ...(restoreFault ? { KECO_MIRROR_TEST_RESTORE_FAULT: '1' } : {}),
+    },
+  });
+}
+
 describe('Keco Godot Slice V2 skill contract', () => {
+  it('matches the installed Codex cache for the released Slice V2 tree', () => {
+    const manifest = JSON.parse(readFileSync(path.join(repositoryRoot, 'plugins/keco-codex/.codex-plugin/plugin.json'), 'utf8')) as { version: string };
+    const installedRoot = path.join(process.env.CODEX_HOME || '/home/hetu/.codex', 'plugins/cache/keco-studio/keco', manifest.version);
+    const repositorySkill = path.join(repositoryRoot, 'plugins/keco-codex/skills/keco-develop-godot-slice-v2');
+    const installedSkill = path.join(installedRoot, 'skills/keco-develop-godot-slice-v2');
+    // CI runners do not necessarily have the locally installed plugin cache.
+    // When present, enforce exact repository/cache parity.
+    if (!existsSync(installedSkill)) return;
+    expect(treeDigest(installedSkill)).toBe(treeDigest(repositorySkill));
+  });
+  it('keeps the main Skill as a concise V2 router with conditional references', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    expect(skill.split('\n').length).toBeLessThanOrEqual(110);
+    expect(skill).not.toContain('```yaml');
+    expect(skill).toMatch(/contractVersion\s*:\s*2/i);
+    expect(skill).toMatch(/SourceProfile[\s\S]*gdd[\s\S]*feedback[\s\S]*document[\s\S]*table[\s\S]*user_idea/i);
+    expect(skill).toMatch(/kind[^a-z0-9]+gdd[\s\S]{0,320}gdd-coverage-contract\.md/i);
+    expect(skill).toMatch(/asset[\s\S]{0,320}generated-asset-contract\.md/i);
+    expect(skill).toMatch(/animation[\s\S]{0,320}godot-animation-contract\.md/i);
+    expect(skill).toMatch(/tileset[\s\S]{0,320}godot-tileset-contract\.md/i);
+  });
+
+  it('documents the immutable V2 delivery sequence and verified review levels', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    expect(skill).toMatch(/implementation_complete[\s\S]{0,180}prepare_delivery[\s\S]{0,180}export_slice_mirrors[\s\S]{0,180}materialize[\s\S]{0,180}MirrorVerification[\s\S]{0,180}(?:delivery|finalize_slice)/i);
+    expect(skill).toMatch(/same.actor[\s\S]{0,180}(?:never|cannot)[\s\S]{0,120}independent_actor/i);
+    expect(skill).toMatch(/separate_context[\s\S]{0,180}trusted/i);
+    expect(skill).toMatch(/exactly three[\s\S]{0,180}roadmap[\s\S]{0,180}spec[\s\S]{0,180}plan/i);
+    expect(skill).not.toMatch(/independent TaskReview|independent review/i);
+  });
+
+  it('contains no project identity and confines KECO_EVAL to explicit legacy adapters', () => {
+    const roots = [
+      skillRoot,
+      path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2'),
+    ];
+    for (const root of roots) {
+      const sources = markdownFiles(root).map(file => readFileSync(file, 'utf8'));
+      expect(sources.join('\n')).not.toMatch(/test8-24|game-gdd/i);
+      for (const line of sources.flatMap(source => source.split('\n')).filter(line => line.includes('KECO_EVAL'))) {
+        expect(line).toMatch(/legacy/i);
+      }
+    }
+  });
+
+  it('keeps Codex and Claude Skill behavior identical after platform normalization', () => {
+    const codex = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const claude = readFileSync(
+      path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2', 'SKILL.md'),
+      'utf8',
+    );
+    expect(normalizedPlatformSkill(claude)).toBe(normalizedPlatformSkill(codex));
+    for (const reference of [
+      'orchestration-contract.md', 'review-workflow.md', 'default-delivery-policy.json',
+      'multi-slice-orchestration.md', 'slice-document-contract.md', 'source-data-contract.md',
+      'eval-contract.md', 'godot-mcp-contract.md', 'gdd-coverage-contract.md', 'gdd-change-contract.md',
+      'godot-animation-contract.md', 'godot-tileset-contract.md', 'generated-asset-contract.md',
+      'keco-pixellab-contract.md', 'ab-matrix.md',
+    ]) {
+      expect(readFileSync(path.join(skillRoot, 'references', reference))).toEqual(readFileSync(path.join(
+        repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2', 'references', reference,
+      )));
+    }
+    expect(readFileSync(path.join(skillRoot, 'references', 'pixellab-capability-registry.md'))).toEqual(readFileSync(path.join(
+      repositoryRoot, 'plugins', 'keco-claude', 'references', 'pixellab-capability-registry.md',
+    )));
+    for (const script of ['build_spriteframes_resource.py', 'export_keco_snapshot.py', 'validate_generated_asset_package.py']) {
+      expect(readFileSync(path.join(skillRoot, 'scripts', script))).toEqual(readFileSync(path.join(
+        repositoryRoot, 'plugins', 'keco-claude', 'scripts', script,
+      )));
+    }
+  });
+
+  it('uses the complete V2 release order in the bundled default policy', () => {
+    const policy = JSON.parse(readFileSync(path.join(skillRoot, 'references', 'default-delivery-policy.json'), 'utf8'));
+    expect(policy.releaseOrder).toEqual([
+      'implementation', 'runtime_verification', 'acceptance', 'manual_review',
+      'package', 'roadmap_completion', 'mirrors', 'seal',
+    ]);
+  });
+  it.each(['before_staging', 'after_first_replacement', 'during_readback'])(
+    'restores every mirror target after handled %s failure',
+    fault => {
+      const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-mirror-'));
+      try {
+        const fixture = mirrorFixture(tempRoot);
+        const result = runMirror(fixture, fault);
+        expect(result.status).toBe(1);
+        fixture.paths.forEach((relative, index) => {
+          expect(readFileSync(path.join(fixture.root, relative), 'utf8')).toBe(fixture.originals[index]);
+        });
+        expect(existsSync(fixture.output)).toBe(false);
+        expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('recovers a durable journal before processing the next manifest', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-crash-'));
+    try {
+      const fixture = mirrorFixture(tempRoot);
+      const crashed = runMirror(fixture, 'after_journal_fsync');
+      expect(crashed.status).not.toBe(0);
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(true);
+      expect(existsSync(fixture.output)).toBe(false);
+      const recovered = runMirror(fixture);
+      expect(recovered.status).toBe(0);
+      fixture.paths.forEach((relative, index) => {
+        expect(readFileSync(path.join(fixture.root, relative), 'utf8')).toBe(fixture.files[index].content);
+      });
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+      expect(JSON.parse(readFileSync(fixture.output, 'utf8'))).toMatchObject({
+        artifactType: 'MirrorVerification',
+        manifestHash: JSON.parse(readFileSync(fixture.manifestPath, 'utf8')).manifestHash,
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reports recoverable partial state without MirrorVerification when restore fails', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-partial-'));
+    try {
+      const fixture = mirrorFixture(tempRoot);
+      const partial = runMirror(fixture, 'after_first_replacement', true);
+      expect(partial.status).toBe(2);
+      expect(JSON.parse(partial.stdout)).toMatchObject({
+        ok: false,
+        status: 'partial',
+        reasonCode: 'SLICE_MIRROR_RECOVERY_REQUIRED',
+        affectedPaths: expect.arrayContaining([fixture.paths[0]]),
+      });
+      expect(existsSync(fixture.output)).toBe(false);
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(true);
+      expect(runMirror(fixture).status).toBe(0);
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('preflights the complete batch and rejects symlinked parents before replacement', () => {
+    for (const mode of ['disallowed', 'symlink'] as const) {
+      const tempRoot = mkdtempSync(path.join(os.tmpdir(), `keco-slice-v2-${mode}-`));
+      try {
+        const fixture = mirrorFixture(tempRoot);
+        if (mode === 'disallowed') {
+          writeFileSync(fixture.allowedPath, JSON.stringify({ allowedFiles: fixture.paths.slice(0, 2) }));
+        } else {
+          const outside = path.join(tempRoot, 'outside');
+          mkdirSync(outside);
+          rmSync(path.join(fixture.root, 'docs'), { recursive: true });
+          symlinkSync(outside, path.join(fixture.root, 'docs'), 'dir');
+        }
+        const result = runMirror(fixture);
+        expect(result.status).toBe(1);
+        expect(existsSync(fixture.output)).toBe(false);
+        expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+        if (mode === 'disallowed') {
+          fixture.paths.forEach((relative, index) => {
+            expect(readFileSync(path.join(fixture.root, relative), 'utf8')).toBe(fixture.originals[index]);
+          });
+        }
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('matches the canonical V2 conformance corpus in both Python runtimes', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-contract-'));
+    const canonicalManifest = readFileSync(path.join(repositoryRoot, 'contracts', 'keco-slice-v2', 'contract-manifest.json'));
+    const corpus = JSON.parse(
+      readFileSync(path.join(repositoryRoot, 'contracts', 'keco-slice-v2', 'conformance-cases.json'), 'utf8'),
+    ) as { cases: Array<{ id: string; boundary: string; input: unknown; expected: unknown }> };
+    const runtimes = [
+      { references: path.join(skillRoot, 'references'), scripts: path.join(skillRoot, 'scripts') },
+      {
+        references: path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2', 'references'),
+        scripts: path.join(repositoryRoot, 'plugins', 'keco-claude', 'scripts'),
+      },
+    ];
+    try {
+      for (const runtime of runtimes) {
+        expect(readFileSync(path.join(runtime.references, 'contract-manifest.json'))).toEqual(canonicalManifest);
+        const validator = path.join(runtime.scripts, 'validate_contract_case.py');
+        for (const testCase of corpus.cases) {
+          const input = path.join(tempRoot, `${testCase.id}.json`);
+          writeFileSync(input, JSON.stringify(testCase.input));
+          const result = spawnSync('python3', [validator, testCase.boundary, input], { encoding: 'utf8' });
+          expect({ id: testCase.id, status: result.status, stderr: result.stderr }).toEqual({
+            id: testCase.id,
+            status: 0,
+            stderr: '',
+          });
+          expect(JSON.parse(result.stdout)).toEqual(testCase.expected);
+        }
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('validates reciprocal V2 Plan and EvalSpec for every non-GDD source profile', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-preflight-'));
+    const hash = (character: string) => `sha256:${character.repeat(64)}`;
+    const common = {
+      schemaVersion: 1,
+      contractVersion: 2,
+      kecoProjectId: '11111111-1111-4111-8111-111111111111',
+      capturedAt: '2026-09-03T00:00:00Z',
+      sourceHash: hash('a'),
+      selectionEvidence: [],
+    };
+    const profiles = [
+      { ...common, kind: 'feedback', documentId: '22222222-2222-4222-8222-222222222222', epoch: 0, revision: 1, contentHash: hash('b') },
+      { ...common, kind: 'document', documentId: '22222222-2222-4222-8222-222222222222', epoch: 0, revision: 1, contentHash: hash('b') },
+      { ...common, kind: 'table', tableId: '22222222-2222-4222-8222-222222222222', schemaHash: hash('b'), rowIds: [], rowHashes: {}, contentHash: hash('c') },
+      { ...common, kind: 'user_idea', requestHash: hash('b'), requestExcerpt: 'Add a bounded shelter interaction.' },
+    ];
+    const validator = path.join(skillRoot, 'scripts', 'validate_plan.py');
+    try {
+      for (const profile of profiles) {
+        const sourceProfileHash = `sha256:${createHash('sha256').update(canonicalJson(profile)).digest('hex')}`;
+        const plan = {
+          schemaVersion: 2,
+          coverageMode: 'non_gdd',
+          sourceProfileHash,
+          nonGddRationale: 'The selected source directly authorizes this Slice.',
+          planRevision: hash('d'),
+          allowedFiles: ['game/main.gd'],
+          tasks: [{
+            id: 'task-1', files: ['game/main.gd'], dependsOn: [], servesEvaluations: ['eval-1'],
+            red: { command: 'test red', expected: 'fails' }, green: { command: 'test green', expected: 'passes' },
+            review: { minimumLevel: 'self' }, sourceMappings: ['source-1'],
+          }],
+        };
+        const evalSpec = {
+          schemaVersion: 2,
+          coverageMode: 'non_gdd',
+          sourceProfileHash,
+          evaluations: [{
+            evalId: 'eval-1', servedByTasks: ['task-1'], buildHash: hash('e'), snapshotHash: hash('f'),
+            assertions: [{ assertionId: 'ready', kind: 'equals', path: '/ready', expected: true }],
+          }],
+        };
+        const profilePath = path.join(tempRoot, `${profile.kind}-profile.json`);
+        const planPath = path.join(tempRoot, `${profile.kind}-plan.json`);
+        const evalPath = path.join(tempRoot, `${profile.kind}-eval.json`);
+        writeFileSync(profilePath, JSON.stringify(profile));
+        writeFileSync(planPath, JSON.stringify(plan));
+        writeFileSync(evalPath, JSON.stringify(evalSpec));
+        const valid = spawnSync('python3', [validator, planPath, '--eval-spec', evalPath, '--source-profile', profilePath], { encoding: 'utf8' });
+        expect({ kind: profile.kind, status: valid.status, stderr: valid.stderr }).toEqual({ kind: profile.kind, status: 0, stderr: '' });
+
+        writeFileSync(evalPath, JSON.stringify({
+          ...evalSpec,
+          evaluations: [{ ...evalSpec.evaluations[0], servedByTasks: ['task-other'] }],
+        }));
+        const invalid = spawnSync('python3', [validator, planPath, '--eval-spec', evalPath, '--source-profile', profilePath], { encoding: 'utf8' });
+        expect(invalid.status).toBe(1);
+        expect(invalid.stderr).toMatch(/SLICE_EVAL_BINDING_INVALID/);
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('produces the shared contract fixture outcomes through the Python CLI', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-fixtures-'));
     const evaluator = path.join(skillRoot, 'scripts', 'evaluate_runtime_observations.py');
@@ -62,7 +433,13 @@ describe('Keco Godot Slice V2 skill contract', () => {
           ...(item.legacy ? { status: item.runtimeStatus, expected: item.runtimeExpected } : {}),
         };
         writeFileSync(debug, `${item.legacy ? 'KECO_EVAL' : 'KECO_OBSERVATION'} ${JSON.stringify(runtime)}\n`);
-        const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+        const result = spawnSync('python3', [
+          evaluator,
+          '--eval-spec', spec,
+          '--debug-output', debug,
+          '--output', output,
+          ...(item.legacy ? ['--legacy'] : []),
+        ], { encoding: 'utf8' });
         expect({ id, exitCode: result.status, stderr: result.stderr }).toEqual({ id, exitCode: 0, stderr: '' });
         const evaluated = JSON.parse(readFileSync(output, 'utf8')).evaluations[0];
         expect({ id, status: evaluated.status, reasonCode: evaluated.reasonCodes[0] }).toEqual({
@@ -94,12 +471,53 @@ describe('Keco Godot Slice V2 skill contract', () => {
         status: 'passed', expected: { guardianRoundtrip: true },
         actual: { catType: 'sickly' }, errors: [],
       })}\n`);
-      const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+      const rejected = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+      expect(rejected.status).toBe(1);
+      expect(rejected.stderr).toMatch(/legacy|KECO_EVAL/i);
+      const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output, '--legacy'], { encoding: 'utf8' });
       expect(result.status).toBe(0);
       expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
         status: 'failed',
         evaluations: [{ status: 'failed', reasonCodes: ['ACTUAL_PATH_MISSING'] }],
       });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('evaluates a V2 EvalSpec only from KECO_OBSERVATION evidence', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-runtime-'));
+    const evaluator = path.join(skillRoot, 'scripts', 'evaluate_runtime_observations.py');
+    const hash = (character: string) => `sha256:${character.repeat(64)}`;
+    try {
+      const spec = path.join(tempRoot, 'eval-spec.json');
+      const debug = path.join(tempRoot, 'debug.txt');
+      const output = path.join(tempRoot, 'result.json');
+      writeFileSync(spec, JSON.stringify({
+        schemaVersion: 2,
+        coverageMode: 'non_gdd',
+        sourceProfileHash: hash('a'),
+        evaluations: [{
+          evalId: 'eval-1',
+          servedByTasks: ['task-1'],
+          buildHash: hash('b'),
+          snapshotHash: hash('c'),
+          assertions: [{ assertionId: 'ready', kind: 'equals', path: '/ready', expected: true }],
+        }],
+      }));
+      writeFileSync(debug, `KECO_OBSERVATION ${JSON.stringify({
+        schemaVersion: 1,
+        runId: 'run-1',
+        sliceId: 'slice-1',
+        evalId: 'eval-1',
+        buildHash: hash('b'),
+        snapshotHash: hash('c'),
+        actual: { ready: true },
+        errors: [],
+      })}\n`);
+      const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+      expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' });
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({ status: 'passed' });
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -172,12 +590,12 @@ describe('Keco Godot Slice V2 skill contract', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const metadata = readFileSync(path.join(skillRoot, 'agents', 'openai.yaml'), 'utf8');
     expect(skill).toMatch(/^---\nname: keco-develop-godot-slice-v2\n/);
-    expect(skill).toMatch(/document-driven[\s\S]*implicit/i);
+    expect(skill).toMatch(/implicit[\s\S]*document-driven|document-driven[\s\S]*implicit/i);
     expect(skill).not.toContain('explicitly selects `$keco-develop-godot-slice-v2`');
     expect(skill).toMatch(/Preflight[\s\S]*Implementation[\s\S]*Verification[\s\S]*Delivery/);
     expect(skill).toMatch(/write token/i);
     expect(skill).toMatch(/blocked_before_write/);
-    expect(skill).toMatch(/independent review/i);
+    expect(skill).toMatch(/effective review level/i);
     expect(skill).toMatch(/Superpowers layout/i);
     expect(skill).toMatch(/bundled|self-contained/i);
     expect(skill).toMatch(/already consistent[\s\S]*without asking|without asking[\s\S]*already consistent/i);
@@ -220,6 +638,9 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'scripts/validate_slice_documents.py',
       'scripts/validate_task_evidence.py',
       'scripts/materialize_slice_mirrors.py',
+      'scripts/validate_slice_decomposition.py',
+      'scripts/validate_contract_case.py',
+      'references/contract-manifest.json',
     ];
     for (const file of files) expect(existsSync(path.join(skillRoot, file))).toBe(true);
     const assets = readFileSync(path.join(skillRoot, 'references', 'keco-pixellab-contract.md'), 'utf8');
@@ -266,9 +687,9 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(sourceData).toMatch(/never automatically delete/i);
     expect(sourceData).toMatch(/canonical Keco Project[\s\S]*kecoFolderId[\s\S]*pre-write blocker/i);
     const evalContract = readFileSync(path.join(skillRoot, 'references', 'eval-contract.md'), 'utf8');
-    expect(evalContract).toMatch(/Create EvalSpec before any Keco, PixelLab, or Godot write/i);
+    expect(evalContract).toMatch(/Create EvalSpec before any Keco, PixelLab, or Godot development write/i);
     const reviewWorkflow = readFileSync(path.join(skillRoot, 'references', 'review-workflow.md'), 'utf8');
-    expect(reviewWorkflow).toMatch(/Plan validation[\s\S]*Task RED\/GREEN[\s\S]*Independent completion review/i);
+    expect(reviewWorkflow).toMatch(/Plan validation[\s\S]*Task RED\/GREEN[\s\S]*Verified completion review/i);
     expect(reviewWorkflow).not.toMatch(/superpowers/i);
     const generatedAssets = readFileSync(path.join(skillRoot, 'references', 'generated-asset-contract.md'), 'utf8');
     expect(generatedAssets).toMatch(/canonical asset/i);
@@ -313,6 +734,97 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(sliceDocuments).toMatch(/TaskResult[\s\S]{0,160}EvalReport[\s\S]{0,160}internal/i);
   });
 
+  it('rejects template-only multi-Slice decomposition and accepts substantive pairs', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-decomposition-'));
+    const validator = path.join(skillRoot, 'scripts', 'validate_slice_decomposition.py');
+    const source = {
+      project: 'test8-24', document: 'game-gdd', revision: 10,
+      contentHash: 'sha256:' + 'a'.repeat(64),
+    };
+    const templateSpec = (sliceId: string, requirementId: string) => `# ${sliceId}\n\n` +
+      `sliceId: ${sliceId}\nrequirementIds: ${requirementId}\n\n` +
+      '## Scope\nImplement the bounded slice from the accepted GDD.\n\n' +
+      '## Acceptance\nThe planned slice is ready for implementation.\n';
+    const templatePlan = (sliceId: string, taskId: string, evalId: string) => `# ${sliceId}\n\n` +
+      `sliceId: ${sliceId}\ntaskIds: ${taskId}\nevalIds: ${evalId}\n\n` +
+      '- [ ] Read and validate requirements\n' +
+      '- [ ] Implement tasks (deferred; planning-only test)\n' +
+      '- [ ] Run mapped evaluations (planned)\n' +
+      '- [ ] Independent review of reciprocal GDD coverage\n';
+    const substantiveSpec = (sliceId: string, requirementId: string, objective: string, scope: string, acceptance: string) => `# ${sliceId}\n\n` +
+      `sliceId: ${sliceId}\nrequirementIds: ${requirementId}\n\n` +
+      `## Objective\n${objective}\n\n## Scope\n${scope}\n\n## Acceptance\n${acceptance}\n\n` +
+      '## Exclusions\nWeather effects remain in a later slice.\n';
+    const substantivePlan = (sliceId: string, requirementId: string, taskId: string, evalId: string, file: string, red: string, green: string, task: string) => `# ${sliceId}\n\n` +
+      `sliceId: ${sliceId}\nrequirementIds: ${requirementId}\nevalIds: ${evalId}\n\n` +
+      `- [ ] ${taskId}: ${task}\n  - Files: ${file}\n  - RED: ${red}\n  - GREEN: ${green}\n  - Serves requirements: ${requirementId}\n  - Evaluation: ${evalId}\n`;
+    const writePair = (name: string, spec: string, plan: string) => {
+      const specPath = path.join(tempRoot, `${name}.spec.md`);
+      const planPath = path.join(tempRoot, `${name}.plan.md`);
+      writeFileSync(specPath, spec);
+      writeFileSync(planPath, plan);
+      return { specPath, planPath };
+    };
+    try {
+      const templateA = writePair('slice-a', templateSpec('slice-a', 'gdd-a'), templatePlan('slice-a', 'task-a', 'eval-a'));
+      const templateB = writePair('slice-b', templateSpec('slice-b', 'gdd-b'), templatePlan('slice-b', 'task-b', 'eval-b'));
+      const invalidPath = path.join(tempRoot, 'invalid.json');
+      writeFileSync(invalidPath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...templateA },
+        { sliceId: 'slice-b', requirementIds: ['gdd-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...templateB },
+      ] }));
+      const invalid = spawnSync('python3', [validator, invalidPath], { encoding: 'utf8' });
+      expect(invalid.status).toBe(1);
+      expect(invalid.stderr).toMatch(/objective|template|substantive|task/i);
+
+      const pairA = writePair('real-a', substantiveSpec('slice-a', 'gdd-a', 'Persist gathered materials for shelter construction.', 'Add the material inventory state and the shelter construction action.', 'With zero materials construction is rejected; after collecting one bundle, construction succeeds and consumes it.'), substantivePlan('slice-a', 'gdd-a', 'task-a', 'eval-a', 'scripts/materials.gd', 'pytest tests/materials_red.py', 'pytest tests/materials_green.py', 'Track material collection and consumption'));
+      const pairB = writePair('real-b', substantiveSpec('slice-b', 'gdd-b', 'Allow a cat to take up long-term residence in a built shelter.', 'Add residency eligibility and the return-home transition.', 'A weak or high-bond cat remains after return; an ineligible cat does not become resident.'), substantivePlan('slice-b', 'gdd-b', 'task-b', 'eval-b', 'scripts/residency.gd', 'pytest tests/residency_red.py', 'pytest tests/residency_green.py', 'Apply residency eligibility on return'));
+      const validPath = path.join(tempRoot, 'valid.json');
+      writeFileSync(validPath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+        { sliceId: 'slice-b', requirementIds: ['gdd-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...pairB },
+      ] }));
+      const valid = spawnSync('python3', [validator, validPath], { encoding: 'utf8' });
+      expect(valid.status).toBe(0);
+      expect(valid.stdout).toMatch(/"ok": true/);
+
+      const singlePath = path.join(tempRoot, 'single.json');
+      writeFileSync(singlePath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+      ] }));
+      const single = spawnSync('python3', [validator, singlePath], { encoding: 'utf8' });
+      expect(single.status).toBe(1);
+      expect(single.stderr).toMatch(/at least two|multiple slices/i);
+
+      const missingGreenPath = path.join(tempRoot, 'missing-green.json');
+      writeFileSync(missingGreenPath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+        { sliceId: 'slice-b', requirementIds: ['gdd-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...{
+          ...pairB,
+          planPath: path.join(tempRoot, 'missing-green.plan.md'),
+        } },
+      ] }));
+      writeFileSync(path.join(tempRoot, 'missing-green.plan.md'), readFileSync(pairB.planPath, 'utf8').replace(/\n\s*-\s*GREEN:.*$/m, ''));
+      const missingGreen = spawnSync('python3', [validator, missingGreenPath], { encoding: 'utf8' });
+      expect(missingGreen.status).toBe(1);
+      expect(missingGreen.stderr).toMatch(/each task|RED.*GREEN|GREEN.*RED/i);
+
+      const duplicatePath = path.join(tempRoot, 'semantic-duplicate.json');
+      const duplicateSpec = substantiveSpec('slice-b', 'gdd-b', 'Persist collected materials for shelter building.', 'Add material inventory state and the shelter building action.', 'With zero materials building is rejected; after collecting one bundle, building succeeds and consumes it.');
+      const duplicatePlan = substantivePlan('slice-b', 'gdd-b', 'task-b', 'eval-b', 'scripts/materials_alt.gd', 'pytest tests/materials_red_alt.py', 'pytest tests/materials_green_alt.py', 'Track gathered materials and consume them during building');
+      const duplicatePair = writePair('semantic-duplicate', duplicateSpec, duplicatePlan);
+      writeFileSync(duplicatePath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+        { sliceId: 'slice-b', requirementIds: ['gdd-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...duplicatePair },
+      ] }));
+      const duplicate = spawnSync('python3', [validator, duplicatePath], { encoding: 'utf8' });
+      expect(duplicate.status).toBe(1);
+      expect(duplicate.stderr).toMatch(/duplicate|similar|substant/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('ships the multi-Slice roadmap and recovery contract', () => {
     const multiSlicePath = path.join(skillRoot, 'references', 'multi-slice-orchestration.md');
     expect(existsSync(multiSlicePath)).toBe(true);
@@ -320,7 +832,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
 
     const multiSlice = readFileSync(multiSlicePath, 'utf8');
     expect(multiSlice).toMatch(/roadmap[\s\S]*dependencies[\s\S]*priority/i);
-    expect(multiSlice).toMatch(/CHECK_PLAN[\s\S]*NEXT_SLICE/i);
+    expect(multiSlice).toMatch(/IMPLEMENTATION_COMPLETE[\s\S]*PREPARE_DELIVERY[\s\S]*DELIVERY_SEAL[\s\S]*NEXT_SLICE/i);
     expect(multiSlice).toMatch(/three|3[\s\S]*paused[\s\S]*user/i);
     expect(multiSlice).toMatch(/multiple Slices[\s\S]*dependency order/i);
     expect(multiSlice).toMatch(/priority[\s\S]*tie-breaker/i);
@@ -610,10 +1122,66 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
-  it('keeps the pressure scenarios as reviewable fixtures', () => {
-    const fixture = JSON.parse(readFileSync(path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-evals.json'), 'utf8')) as { cases: unknown[]; invocation: string };
-    expect(fixture.invocation).toBe('$keco-develop-godot-slice-v2');
-    expect(fixture.cases).toHaveLength(10);
+  it('plans executable pressure evaluations without treating fixture counts as evidence', () => {
+    const harness = path.join(repositoryRoot, 'scripts', 'evaluate-keco-slice-v2-skill.mjs');
+    const definitionPath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-evals.json');
+    const rubricPath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-eval-rubric.json');
+    expect({ harness: existsSync(harness), rubric: existsSync(rubricPath) }).toEqual({ harness: true, rubric: true });
+    const fixture = JSON.parse(readFileSync(definitionPath, 'utf8')) as {
+      schemaVersion: number;
+      skill: string;
+      providers: string[];
+      minimumSamplesPerVariant: number;
+      variants: Array<{ id: string; guidance: string }>;
+      cases: Array<{ id: string; scenarioClass: string; assertions: unknown[] }>;
+    };
+    const rubric = JSON.parse(readFileSync(rubricPath, 'utf8')) as Record<string, unknown>;
+    expect(fixture).toMatchObject({
+      schemaVersion: 2,
+      skill: 'keco-develop-godot-slice-v2',
+      providers: ['codex', 'claude'],
+      minimumSamplesPerVariant: 5,
+    });
+    expect(new Set(fixture.cases.map(item => item.scenarioClass))).toEqual(new Set([
+      'simple_non_gdd', 'gdd_coverage', 'multi_slice_resume', 'ambiguous_decomposition',
+      'capability_unavailable', 'out_of_scope_file', 'missing_runtime_observation',
+      'legacy_self_report', 'forged_review_level', 'stale_state', 'fourth_repair',
+      'mirror_partial_failure',
+    ]));
+    expect(fixture.cases.every(item => item.assertions.length > 0)).toBe(true);
+    expect(fixture.variants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'control', guidance: 'none' }),
+      expect.objectContaining({ id: 'current_skill', guidance: 'repository_skill' }),
+    ]));
+    expect(rubric).toMatchObject({
+      schemaVersion: 1,
+      manualReviewStates: expect.arrayContaining(['not_required', 'pending', 'reviewed']),
+      rawEvidenceRequired: true,
+    });
+
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-skill-eval-'));
+    try {
+      const output = path.join(tempRoot, 'dry-run.json');
+      const dry = spawnSync(process.execPath, [
+        harness, '--provider', 'codex', '--samples', '5', '--output', output, '--dry-run',
+      ], { cwd: repositoryRoot, encoding: 'utf8' });
+      expect({ status: dry.status, stderr: dry.stderr }).toEqual({ status: 0, stderr: '' });
+      const result = JSON.parse(readFileSync(output, 'utf8')) as {
+        status: string;
+        passed: boolean;
+        plannedInvocations: Array<{ contextId: string; rawOutputPath: string; provider: string; runtime: string; model: string }>;
+        evidenceSummary: { realResponses: number };
+      };
+      expect(result).toMatchObject({ status: 'dry_run', passed: false, evidenceSummary: { realResponses: 0 } });
+      expect(result.plannedInvocations).toHaveLength(fixture.cases.length * fixture.variants.length * 5);
+      expect(new Set(result.plannedInvocations.map(item => item.contextId)).size).toBe(result.plannedInvocations.length);
+      expect(result.plannedInvocations.every(item => item.rawOutputPath && item.provider === 'codex' && item.runtime && item.model)).toBe(true);
+      expect(spawnSync(process.execPath, [
+        harness, '--provider', 'codex', '--samples', '4', '--output', output, '--dry-run',
+      ], { cwd: repositoryRoot, encoding: 'utf8' }).status).toBe(1);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('rejects unsafe run contexts and incomplete plans', () => {

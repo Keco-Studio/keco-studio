@@ -16,14 +16,14 @@ For each task:
 2. Make the smallest change serving the named evaluation.
 3. Run the named GREEN command and record output and changed files.
 
-Persist strict TaskResult facts and run `scripts/validate_task_evidence.py` with the current RunContext and SlicePlan. TaskReview is an independent accepted/rejected verdict bound to the same plan revision and exact changed-file after-byte digests. Never persist credentials or unlimited command output.
+Persist strict TaskResult facts and run `scripts/validate_task_evidence.py` with the current RunContext and SlicePlan. TaskReview is an accepted/rejected verdict bound to the same plan revision, exact TaskResult IDs, and changed-file after-byte digests. The database stores only the effective verified level: `self`, trusted `separate_context`, or `independent_actor` from a different authenticated actor. A same-actor review can never be `independent_actor`, and an untrusted context cannot claim `separate_context`. Never persist credentials or unlimited command output.
 
 Do not turn a clean parse, a generated asset, or a startup log into a behavioral pass. If RED cannot be observed because a service is unavailable, mark the task blocked instead of inventing a failure.
 
-## Independent completion review
+## Verified completion review
 
-At `FINAL_VERIFY`, use a fresh context or a separate reviewer pass when available. Give it the plan, changed-file list, report, and test output. Ask for two verdicts in one pass: (1) requirements/evidence compliance and (2) regression or scope risk. Fix Critical/Important findings before reporting `passed`; record Minor findings as residual risks. Small tasks do not need two reviews each.
+At `FINAL_VERIFY`, use a fresh context or a separate authenticated reviewer when available. Give it the plan, changed-file list, report, and test output. Ask for two verdicts in one pass: (1) requirements/evidence compliance and (2) regression or scope risk. Record the database-derived level without strengthening it. Fix Critical/Important findings before reporting `passed`; record Minor findings as residual risks. Small tasks do not need two reviews each.
 
 ## Delivery policy
 
-Validate an optional project `delivery-policy.json` with `scripts/validate_delivery_policy.py`; otherwise use the versioned bundled default and record its canonical digest. A project policy may be stricter but cannot omit TaskResult, TaskReview, EvalReport, MirrorVerification, current build/snapshot freshness, the five release gates, the three-repair ceiling, or manual-review blocking. Do not parse or compile `AGENTS.md` as policy.
+Validate an optional project `delivery-policy.json` with `scripts/validate_delivery_policy.py`; otherwise use the versioned bundled default and record its canonical digest. A project policy may be stricter but cannot omit TaskResult, TaskReview, EvalReport, MirrorVerification, current build/snapshot freshness, the ordered implementation/runtime/acceptance/manual-review/package/roadmap/mirror/seal gates, the three-repair ceiling, or manual-review blocking. Do not parse or compile `AGENTS.md` as policy.

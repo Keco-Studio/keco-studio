@@ -1,0 +1,253 @@
+{
+  "contractVersion": 2,
+  "cases": [
+    {
+      "id": "valid-document-source",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "document",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "documentId": "22222222-2222-4222-8222-222222222222",
+        "epoch": 1,
+        "revision": 2,
+        "contentHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "valid-feedback-source",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "feedback",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "documentId": "22222222-2222-4222-8222-222222222222",
+        "epoch": 1,
+        "revision": 2,
+        "contentHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "valid-gdd-source",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "gdd",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "documentId": "22222222-2222-4222-8222-222222222222",
+        "epoch": 1,
+        "revision": 2,
+        "contentHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "requirementInventoryHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "valid-table-source",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "table",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "tableId": "22222222-2222-4222-8222-222222222222",
+        "schemaHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "rowIds": ["33333333-3333-4333-8333-333333333333"],
+        "rowHashes": { "33333333-3333-4333-8333-333333333333": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+        "contentHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "invalid-table-row-hash-coverage",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "table",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "tableId": "22222222-2222-4222-8222-222222222222",
+        "schemaHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "rowIds": ["33333333-3333-4333-8333-333333333333"],
+        "rowHashes": {},
+        "contentHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_SOURCE_PROFILE_INVALID" }
+    },
+    {
+      "id": "valid-user-idea-source",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "user_idea",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "requestHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "requestExcerpt": "Add a bounded shelter placement interaction."
+      },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "invalid-gdd-without-inventory",
+      "boundary": "sourceProfile",
+      "input": {
+        "schemaVersion": 1,
+        "contractVersion": 2,
+        "kind": "gdd",
+        "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+        "capturedAt": "2026-09-03T00:00:00Z",
+        "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionEvidence": [],
+        "documentId": "22222222-2222-4222-8222-222222222222",
+        "epoch": 1,
+        "revision": 2,
+        "contentHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_SOURCE_PROFILE_INVALID" }
+    },
+    {
+      "id": "valid-non-gdd-plan-eval",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-1"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["source-1"] }] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-1"], "buildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "snapshotHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
+      },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "gdd-inventory-mapping-mismatch",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "gdd", "inventoryHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "requirementIds": ["gdd-1"], "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-1"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["gdd-1"] }] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "gdd", "inventoryHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requirementIds": ["gdd-1"], "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-1"], "buildHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "snapshotHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_EVAL_BINDING_INVALID" }
+    },
+    {
+      "id": "unsafe-parent-path",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["../escape.gd"], "tasks": [{ "id": "task-1", "files": ["../escape.gd"], "dependsOn": [], "servesEvaluations": ["eval-1"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["source-1"] }] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-1"], "buildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "snapshotHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_PLAN_SCOPE_INVALID" }
+    },
+    {
+      "id": "unsafe-absolute-path",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["/tmp/escape.gd"], "tasks": [] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [] }
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_PLAN_SCOPE_INVALID" }
+    },
+    {
+      "id": "missing-allowed-files",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "tasks": [] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [] }
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_PLAN_SCOPE_INVALID" }
+    },
+    {
+      "id": "ghost-evaluation",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-ghost"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["source-1"] }] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-1"], "buildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "snapshotHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_EVAL_BINDING_INVALID" }
+    },
+    {
+      "id": "missing-reverse-evaluation-mapping",
+      "boundary": "planEval",
+      "input": {
+        "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-1"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["source-1"] }] },
+        "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-other"], "buildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "snapshotHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_EVAL_BINDING_INVALID" }
+    },
+    {
+      "id": "wrong-document-folder",
+      "boundary": "documentBindings",
+      "input": {
+        "sliceId": "movement",
+        "planningRootId": "11111111-1111-4111-8111-111111111111",
+        "specFolderId": "22222222-2222-4222-8222-222222222222",
+        "planFolderId": "33333333-3333-4333-8333-333333333333",
+        "documentBindings": [
+          { "kind": "roadmap", "disposition": "create", "folderId": "11111111-1111-4111-8111-111111111111", "name": "roadmap", "repositoryPath": "docs/superpowers/roadmap.md", "markdown": "# Roadmap" },
+          { "kind": "spec", "disposition": "create", "folderId": "33333333-3333-4333-8333-333333333333", "name": "movement", "repositoryPath": "docs/superpowers/specs/movement-design.md", "markdown": "# Spec" },
+          { "kind": "plan", "disposition": "create", "folderId": "33333333-3333-4333-8333-333333333333", "name": "movement", "repositoryPath": "docs/superpowers/plans/movement.md", "markdown": "# Plan" }
+        ]
+      },
+      "expected": { "accepted": false, "reasonCode": "SLICE_DOCUMENT_PLACEMENT_INVALID" }
+    },
+    {
+      "id": "forged-independent-review",
+      "boundary": "review",
+      "input": { "requestedLevel": "independent_actor", "taskResultActor": "11111111-1111-4111-8111-111111111111", "reviewActor": "11111111-1111-4111-8111-111111111111" },
+      "expected": { "accepted": false, "reasonCode": "SLICE_REVIEW_LEVEL_INVALID" }
+    },
+    {
+      "id": "untrusted-separate-context",
+      "boundary": "review",
+      "input": { "requestedLevel": "separate_context", "taskResultActor": "11111111-1111-4111-8111-111111111111", "reviewActor": "11111111-1111-4111-8111-111111111111", "taskExecutionContext": "exec-a", "reviewExecutionContext": "exec-b" },
+      "expected": { "accepted": false, "reasonCode": "SLICE_REVIEW_LEVEL_INVALID" }
+    },
+    {
+      "id": "legacy-runtime-prefix",
+      "boundary": "runtimeEvidence",
+      "input": { "contractVersion": 2, "prefix": "KECO_EVAL" },
+      "expected": { "accepted": false, "reasonCode": "SLICE_RUNTIME_EVIDENCE_INVALID" }
+    },
+    {
+      "id": "current-runtime-prefix",
+      "boundary": "runtimeEvidence",
+      "input": { "contractVersion": 2, "prefix": "KECO_OBSERVATION" },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "legacy-adapter-prefix",
+      "boundary": "runtimeEvidence",
+      "input": { "contractVersion": 1, "prefix": "KECO_EVAL", "legacyAdapter": true },
+      "expected": { "accepted": true, "reasonCode": null }
+    },
+    {
+      "id": "stale-state-token",
+      "boundary": "state",
+      "input": { "expectedStateToken": "11111111-1111-4111-8111-111111111111", "currentStateToken": "22222222-2222-4222-8222-222222222222" },
+      "expected": { "accepted": false, "reasonCode": "SLICE_STATE_CONFLICT" }
+    },
+    {
+      "id": "fourth-repair",
+      "boundary": "repair",
+      "input": { "repairCount": 3, "requestedTransitions": 1 },
+      "expected": { "accepted": false, "reasonCode": "SLICE_REPAIR_LIMIT" }
+    }
+  ]
+}

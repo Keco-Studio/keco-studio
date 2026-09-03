@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -13,6 +16,342 @@ OBSERVATION_KEYS = {
     "schemaVersion", "runId", "sliceId", "evalId", "buildHash",
     "snapshotHash", "actual", "errors",
 }
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.IGNORECASE)
+IDENTIFIER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
+
+
+def _manifest_path() -> Path:
+    root = Path(__file__).resolve().parent.parent
+    candidates = (
+        root / "references" / "contract-manifest.json",
+        root / "skills" / "keco-develop-godot-slice-v2" / "references" / "contract-manifest.json",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise ValueError("Slice V2 contract manifest is missing")
+
+
+def load_contract_manifest() -> dict[str, Any]:
+    value = json.loads(_manifest_path().read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or value.get("contractVersion") != 2:
+        raise ValueError("Slice V2 contract manifest is invalid")
+    return value
+
+
+def _decision(accepted: bool, reason_code: str) -> dict[str, Any]:
+    return {"accepted": accepted, "reasonCode": None if accepted else reason_code}
+
+
+def _record(value: Any) -> bool:
+    return isinstance(value, dict)
+
+
+def _exact_keys(value: dict[str, Any], keys: set[str]) -> bool:
+    return set(value) == keys
+
+
+def _strings(value: Any, *, allow_empty: bool = False) -> bool:
+    return (
+        isinstance(value, list)
+        and (allow_empty or bool(value))
+        and all(isinstance(item, str) and bool(item) for item in value)
+        and len(value) == len(set(value))
+    )
+
+
+def safe_repository_path(value: Any) -> bool:
+    if not isinstance(value, str) or not 0 < len(value) <= 500:
+        return False
+    if value.startswith(("/", "\\")) or "\\" in value or re.match(r"^[A-Za-z]:", value):
+        return False
+    return all(segment not in {"", ".", ".."} for segment in value.split("/"))
+
+
+def _timestamp(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return True
+    except ValueError:
+        return False
+
+
+def _source_profile(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    reason = "SLICE_SOURCE_PROFILE_INVALID"
+    if not _record(value):
+        return _decision(False, reason)
+    common = {"schemaVersion", "contractVersion", "kind", "kecoProjectId", "capturedAt", "sourceHash", "selectionEvidence"}
+    if (
+        value.get("schemaVersion") != 1
+        or value.get("contractVersion") != 2
+        or value.get("kind") not in manifest["sourceProfileKinds"]
+        or not isinstance(value.get("kecoProjectId"), str)
+        or not UUID_RE.fullmatch(value["kecoProjectId"])
+        or not _timestamp(value.get("capturedAt"))
+        or not _valid_hash(value.get("sourceHash"))
+        or not isinstance(value.get("selectionEvidence"), list)
+        or any(not _record(item) for item in value["selectionEvidence"])
+    ):
+        return _decision(False, reason)
+    kind = value["kind"]
+    if kind in manifest["documentBackedKinds"]:
+        extra = {"documentId", "epoch", "revision", "contentHash"}
+        if kind == "gdd":
+            extra.add("requirementInventoryHash")
+        if (
+            not _exact_keys(value, common | extra)
+            or not isinstance(value.get("documentId"), str)
+            or not UUID_RE.fullmatch(value["documentId"])
+            or type(value.get("epoch")) is not int
+            or value["epoch"] < 0
+            or type(value.get("revision")) is not int
+            or value["revision"] < 0
+            or not _valid_hash(value.get("contentHash"))
+            or (kind == "gdd" and not _valid_hash(value.get("requirementInventoryHash")))
+        ):
+            return _decision(False, reason)
+        return _decision(True, reason)
+    if kind == "table":
+        row_ids = value.get("rowIds")
+        row_hashes = value.get("rowHashes")
+        if (
+            not _exact_keys(value, common | {"tableId", "schemaHash", "rowIds", "rowHashes", "contentHash"})
+            or not isinstance(value.get("tableId"), str)
+            or not UUID_RE.fullmatch(value["tableId"])
+            or not _valid_hash(value.get("schemaHash"))
+            or not _strings(row_ids, allow_empty=True)
+            or any(not UUID_RE.fullmatch(item) for item in row_ids)
+            or not isinstance(row_hashes, dict)
+            or set(row_hashes) != set(row_ids)
+            or any(not _valid_hash(item) for item in row_hashes.values())
+            or not _valid_hash(value.get("contentHash"))
+        ):
+            return _decision(False, reason)
+        return _decision(True, reason)
+    if (
+        not _exact_keys(value, common | {"requestHash", "requestExcerpt"})
+        or not _valid_hash(value.get("requestHash"))
+        or not isinstance(value.get("requestExcerpt"), str)
+        or not value["requestExcerpt"].strip()
+        or len(value["requestExcerpt"]) > 4000
+    ):
+        return _decision(False, reason)
+    return _decision(True, reason)
+
+
+def _document_bindings(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    reason = "SLICE_DOCUMENT_PLACEMENT_INVALID"
+    if not _record(value):
+        return _decision(False, reason)
+    slice_id = value.get("sliceId")
+    roots = [value.get("planningRootId"), value.get("specFolderId"), value.get("planFolderId")]
+    bindings = value.get("documentBindings")
+    if (
+        not isinstance(slice_id, str)
+        or not IDENTIFIER_RE.fullmatch(slice_id)
+        or any(not isinstance(item, str) or not UUID_RE.fullmatch(item) for item in roots)
+        or roots[1] == roots[2]
+        or not isinstance(bindings, list)
+        or len(bindings) != 3
+    ):
+        return _decision(False, reason)
+    folders = {"roadmap": roots[0], "spec": roots[1], "plan": roots[2]}
+    paths = {
+        "roadmap": manifest["canonicalPaths"]["roadmap"],
+        "spec": f'{manifest["canonicalPaths"]["specPrefix"]}{slice_id}{manifest["canonicalPaths"]["specSuffix"]}',
+        "plan": f'{manifest["canonicalPaths"]["planPrefix"]}{slice_id}{manifest["canonicalPaths"]["planSuffix"]}',
+    }
+    seen: set[str] = set()
+    for item in bindings:
+        if not _record(item):
+            return _decision(False, reason)
+        kind = item.get("kind")
+        disposition = item.get("disposition")
+        base = {"kind", "disposition", "folderId", "name", "repositoryPath"}
+        if (
+            kind not in manifest["documentKinds"]
+            or kind in seen
+            or disposition not in manifest["documentDispositions"]
+            or item.get("folderId") != folders[kind]
+            or item.get("name") != ("roadmap" if kind == "roadmap" else slice_id)
+            or item.get("repositoryPath") != paths[kind]
+        ):
+            return _decision(False, reason)
+        if disposition == "create":
+            valid = _exact_keys(item, base | {"markdown"}) and isinstance(item.get("markdown"), str)
+        elif disposition == "bind":
+            valid = (
+                _exact_keys(item, base | {"documentId", "expectedEpoch", "expectedRevision", "contentHash"})
+                and isinstance(item.get("documentId"), str)
+                and bool(UUID_RE.fullmatch(item["documentId"]))
+                and type(item.get("expectedEpoch")) is int
+                and item["expectedEpoch"] >= 0
+                and type(item.get("expectedRevision")) is int
+                and item["expectedRevision"] >= 0
+                and _valid_hash(item.get("contentHash"))
+            )
+        else:
+            valid = (
+                _exact_keys(item, base | {"documentId", "expectedEpoch", "expectedRevision", "priorContentHash", "markdown"})
+                and isinstance(item.get("documentId"), str)
+                and bool(UUID_RE.fullmatch(item["documentId"]))
+                and type(item.get("expectedEpoch")) is int
+                and item["expectedEpoch"] >= 0
+                and type(item.get("expectedRevision")) is int
+                and item["expectedRevision"] >= 0
+                and _valid_hash(item.get("priorContentHash"))
+                and isinstance(item.get("markdown"), str)
+            )
+        if not valid:
+            return _decision(False, reason)
+        seen.add(kind)
+    return _decision(True, reason)
+
+
+def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    if not _record(value) or not _record(value.get("plan")) or not _record(value.get("evalSpec")):
+        return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    plan = value["plan"]
+    eval_spec = value["evalSpec"]
+    plan_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "nonGddRationale", "inventoryHash", "requirementIds", "planRevision", "allowedFiles", "tasks"}
+    eval_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "inventoryHash", "requirementIds", "evaluations"}
+    if set(plan) - plan_keys or set(eval_spec) - eval_keys:
+        return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    allowed = plan.get("allowedFiles")
+    tasks = plan.get("tasks")
+    if (
+        plan.get("schemaVersion") != 2
+        or not _strings(allowed)
+        or any(not safe_repository_path(item) for item in allowed)
+        or not isinstance(tasks, list)
+        or not tasks
+    ):
+        return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    if plan.get("coverageMode") == "gdd":
+        if not _strings(plan.get("requirementIds")) or not _valid_hash(plan.get("inventoryHash")) or "nonGddRationale" in plan:
+            return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    elif (
+        plan.get("coverageMode") != "non_gdd"
+        or not isinstance(plan.get("nonGddRationale"), str)
+        or not plan["nonGddRationale"].strip()
+        or not _valid_hash(plan.get("sourceProfileHash"))
+        or "requirementIds" in plan
+        or "inventoryHash" in plan
+    ):
+        return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    task_ids: set[str] = set()
+    owned: set[str] = set()
+    for task in tasks:
+        if (
+            not _record(task)
+            or not isinstance(task.get("id"), str)
+            or not IDENTIFIER_RE.fullmatch(task["id"])
+            or task["id"] in task_ids
+            or not _strings(task.get("files"))
+            or any(item not in allowed for item in task["files"])
+            or not _strings(task.get("dependsOn"), allow_empty=True)
+            or any(item == task["id"] or item not in task_ids for item in task["dependsOn"])
+            or not _strings(task.get("servesEvaluations"))
+            or not _record(task.get("red"))
+            or task["red"].get("expected") != "fails"
+            or not isinstance(task["red"].get("command"), str)
+            or not task["red"]["command"].strip()
+            or not _record(task.get("green"))
+            or task["green"].get("expected") != "passes"
+            or not isinstance(task["green"].get("command"), str)
+            or not task["green"]["command"].strip()
+            or not _record(task.get("review"))
+            or task["review"].get("minimumLevel") not in manifest["reviewLevels"]
+            or not _strings(task.get("sourceMappings"))
+        ):
+            return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+        task_ids.add(task["id"])
+        owned.update(task["files"])
+    if any(item not in owned for item in allowed):
+        return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    evaluations = eval_spec.get("evaluations")
+    if (
+        eval_spec.get("schemaVersion") != 2
+        or eval_spec.get("coverageMode") != plan.get("coverageMode")
+        or (plan.get("coverageMode") == "non_gdd" and eval_spec.get("sourceProfileHash") != plan.get("sourceProfileHash"))
+        or not isinstance(evaluations, list)
+        or not evaluations
+    ):
+        return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+    if plan.get("coverageMode") == "gdd" and (
+        eval_spec.get("inventoryHash") != plan.get("inventoryHash")
+        or eval_spec.get("requirementIds") != plan.get("requirementIds")
+    ):
+        return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+    eval_ids: set[str] = set()
+    reverse: dict[str, set[str]] = {}
+    for evaluation in evaluations:
+        if (
+            not _record(evaluation)
+            or bool(set(evaluation) - {"evalId", "servedByTasks", "buildHash", "snapshotHash", "assertions", "manualRequired"})
+            or not isinstance(evaluation.get("evalId"), str)
+            or not IDENTIFIER_RE.fullmatch(evaluation["evalId"])
+            or evaluation["evalId"] in eval_ids
+            or not _strings(evaluation.get("servedByTasks"))
+            or any(item not in task_ids for item in evaluation["servedByTasks"])
+            or not isinstance(evaluation.get("assertions"), list)
+            or not evaluation["assertions"]
+            or not _valid_hash(evaluation.get("buildHash"))
+            or not _valid_hash(evaluation.get("snapshotHash"))
+            or ("manualRequired" in evaluation and not isinstance(evaluation["manualRequired"], bool))
+        ):
+            return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+        try:
+            for assertion in evaluation["assertions"]:
+                _validate_assertion(assertion)
+        except ValueError:
+            return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+        eval_ids.add(evaluation["evalId"])
+        reverse[evaluation["evalId"]] = set(evaluation["servedByTasks"])
+    for task in tasks:
+        for eval_id in task["servesEvaluations"]:
+            if eval_id not in eval_ids or task["id"] not in reverse[eval_id]:
+                return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+    for eval_id, serving_tasks in reverse.items():
+        for task_id in serving_tasks:
+            task = next(item for item in tasks if item["id"] == task_id)
+            if eval_id not in task["servesEvaluations"]:
+                return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+    return _decision(True, "SLICE_EVAL_BINDING_INVALID")
+
+
+def validate_contract_case(boundary: str, value: Any) -> dict[str, Any]:
+    manifest = load_contract_manifest()
+    if boundary == "sourceProfile":
+        return _source_profile(value, manifest)
+    if boundary == "documentBindings":
+        return _document_bindings(value, manifest)
+    if boundary == "planEval":
+        return _plan_eval(value, manifest)
+    if boundary == "review":
+        reason = "SLICE_REVIEW_LEVEL_INVALID"
+        if not _record(value) or value.get("requestedLevel") not in manifest["reviewLevels"]:
+            return _decision(False, reason)
+        if value["requestedLevel"] == "independent_actor":
+            return _decision(isinstance(value.get("taskResultActor"), str) and isinstance(value.get("reviewActor"), str) and value["taskResultActor"] != value["reviewActor"], reason)
+        if value["requestedLevel"] == "separate_context":
+            return _decision(value.get("trustedContext") is True and isinstance(value.get("taskExecutionContext"), str) and isinstance(value.get("reviewExecutionContext"), str) and value["taskExecutionContext"] != value["reviewExecutionContext"], reason)
+        return _decision(True, reason)
+    if boundary == "runtimeEvidence":
+        valid = _record(value) and (
+            (value.get("contractVersion") == 2 and value.get("prefix") == manifest["runtimePrefixes"]["current"] and value.get("legacyAdapter") is not True)
+            or (value.get("contractVersion") == 1 and value.get("prefix") == manifest["runtimePrefixes"]["legacy"] and value.get("legacyAdapter") is True)
+        )
+        return _decision(valid, "SLICE_RUNTIME_EVIDENCE_INVALID")
+    if boundary == "state":
+        valid = _record(value) and isinstance(value.get("expectedStateToken"), str) and value.get("expectedStateToken") == value.get("currentStateToken")
+        return _decision(valid, "SLICE_STATE_CONFLICT")
+    if boundary == "repair":
+        valid = _record(value) and type(value.get("repairCount")) is int and type(value.get("requestedTransitions")) is int and value["repairCount"] >= 0 and value["requestedTransitions"] > 0 and value["repairCount"] + value["requestedTransitions"] <= manifest["maximumRepairs"]
+        return _decision(valid, "SLICE_REPAIR_LIMIT")
+    raise ValueError(f"unsupported Slice V2 contract boundary: {boundary}")
 
 
 def canonical_json(value: Any) -> str:
