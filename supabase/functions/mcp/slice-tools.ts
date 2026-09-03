@@ -559,7 +559,10 @@ const eventSchema = z.discriminatedUnion("eventType", [
   z.object({
     eventId: uuid,
     eventType: z.literal("runtime_observation"),
-    payload: z.object({ observation: runtimeObservationSchema }).strict(),
+    payload: z.object({
+      prefix: z.literal("KECO_OBSERVATION").default("KECO_OBSERVATION"),
+      observation: runtimeObservationSchema,
+    }).strict(),
   }).strict(),
   z.object({
     eventId: uuid,
@@ -1294,14 +1297,20 @@ function registerSliceToolSet(
               : spec;
             return evaluateObservation(runtimeSpec, event.payload.observation);
           });
-        const events = await Promise.all(input.events.map(async (event) => ({
-          ...event,
-          inputHash: await sha256Canonical(event.payload),
-          outputHash: await sha256Canonical({
-            eventType: event.eventType,
-            payload: event.payload,
-          }),
-        })));
+        const events = await Promise.all(input.events.map(async (event) => {
+          const payload = event.eventType === "runtime_observation"
+            ? { ...event.payload, prefix: "KECO_OBSERVATION" as const }
+            : event.payload;
+          return {
+            ...event,
+            payload,
+            inputHash: await sha256Canonical(payload),
+            outputHash: await sha256Canonical({
+              eventType: event.eventType,
+              payload,
+            }),
+          };
+        }));
         const documentProgress = await Promise.all(
           requestedDocumentProgress.map(encodeProgress),
         );

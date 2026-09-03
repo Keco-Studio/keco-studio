@@ -829,10 +829,29 @@ begin
            (select count(distinct assertion->>'assertionId') from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion)
         or exists (
           select 1 from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion
-          where assertion->>'assertionId' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
-            or assertion->>'kind' not in ('equals', 'range', 'subset', 'roundtrip')
-            or (assertion->>'kind' in ('equals', 'range', 'subset') and nullif(assertion->>'path', '') is null)
-            or (assertion->>'kind' = 'roundtrip' and (nullif(assertion->>'beforePath', '') is null or nullif(assertion->>'afterPath', '') is null or jsonb_typeof(assertion->'markerPaths') is distinct from 'array' or jsonb_array_length(assertion->'markerPaths') = 0))
+          where assertion->>'assertionId' is null or assertion->>'assertionId' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
+            or assertion->>'kind' is null or assertion->>'kind' not in ('equals', 'range', 'subset', 'roundtrip')
+            or (assertion->>'kind' in ('equals', 'range', 'subset') and (assertion->>'path' is null or assertion->>'path' !~ '^$|^(/([^~/]|~[01])*)*$'))
+            or (assertion->>'kind' = 'roundtrip' and (assertion->>'beforePath' is null or assertion->>'beforePath' !~ '^$|^(/([^~/]|~[01])*)*$' or assertion->>'afterPath' is null or assertion->>'afterPath' !~ '^$|^(/([^~/]|~[01])*)*$' or jsonb_typeof(assertion->'markerPaths') is distinct from 'array' or jsonb_array_length(assertion->'markerPaths') not between 1 and 20))
+            or (assertion->>'kind' = 'range' and (
+              not (assertion ? 'minimum') and not (assertion ? 'maximum')
+              or (assertion ? 'minimum' and jsonb_typeof(assertion->'minimum') is distinct from 'number')
+              or (assertion ? 'maximum' and jsonb_typeof(assertion->'maximum') is distinct from 'number')
+              or jsonb_typeof(assertion->'minimumInclusive') is distinct from 'boolean'
+              or jsonb_typeof(assertion->'maximumInclusive') is distinct from 'boolean'
+              or ((assertion ? 'minimum') and (assertion ? 'maximum') and (assertion->>'minimum')::numeric > (assertion->>'maximum')::numeric)
+            ))
+            or (assertion->>'kind' = 'subset' and (
+              not (assertion ? 'expected')
+              or jsonb_typeof(assertion->'expected') not in ('array', 'object')
+              or (jsonb_typeof(assertion->'expected') = 'array' and jsonb_array_length(assertion->'expected') > 100)
+              or (jsonb_typeof(assertion->'expected') = 'object' and (select count(*) from jsonb_object_keys(assertion->'expected')) > 100)
+            ))
+            or (assertion->>'kind' = 'roundtrip' and exists (
+              select 1 from jsonb_array_elements_text(case when jsonb_typeof(assertion->'markerPaths') = 'array' then assertion->'markerPaths' else '[]'::jsonb end) as marker
+              where marker !~ '^$|^(/([^~/]|~[01])*)*$'
+            ))
+            or (assertion->>'kind' = 'roundtrip' and (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(assertion->'markerPaths') = 'array' then assertion->'markerPaths' else '[]'::jsonb end)) <> (select count(distinct marker) from jsonb_array_elements_text(case when jsonb_typeof(assertion->'markerPaths') = 'array' then assertion->'markerPaths' else '[]'::jsonb end) as marker))
             or exists (
               select 1 from jsonb_object_keys(assertion) as key
               where (assertion->>'kind' = 'equals' and key not in ('assertionId', 'kind', 'path', 'expected'))

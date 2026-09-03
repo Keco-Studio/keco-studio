@@ -1182,6 +1182,8 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
   >)[0];
   assertEquals(progress.contentHash, await sha256Utf8(String(progress.markdown)));
   assertEquals(typeof progress.yjsState, "string");
+  const events = calls.at(-1)?.parameters.p_events as Array<Record<string, unknown>>;
+  assertEquals((events[0].payload as Record<string, unknown>).prefix, "KECO_OBSERVATION");
 });
 
 Deno.test("stored contract identity rejects silent upgrades and downgrades", async () => {

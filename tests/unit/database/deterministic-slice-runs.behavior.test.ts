@@ -687,7 +687,8 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       missingSourceMappings?: boolean;
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
-      corpusCase?: string;
+      malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
+      corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
     } = {},
   ) {
     const runId = crypto.randomUUID();
@@ -731,7 +732,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       sourceMappings: options.gddMismatch ? [requirementIds[index]] : ['source-1'],
     }));
     if (options.missingSourceMappings) delete tasks[0].sourceMappings;
-    const plan = options.gddMismatch ? {
+    let plan: Record<string, any> = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
       inventoryHash: hash('7'),
@@ -756,7 +757,18 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       assertions: [{ assertionId: `ready-${index + 1}`, kind: 'equals', path: '/ready', expected: true }],
     }));
     if (options.malformedEvaluation) evaluations[0].assertions = [];
-    const evalSpec = options.gddMismatch ? {
+    if (options.malformedAssertion === 'missing-kind') {
+      evaluations[0].assertions = [{ assertionId: 'check-1' }];
+    } else if (options.malformedAssertion === 'range-order') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'range', path: '/ready', minimum: 4, maximum: 2, minimumInclusive: true, maximumInclusive: true }];
+    } else if (options.malformedAssertion === 'range-types') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'range', path: '/ready', minimum: 'low', minimumInclusive: true, maximumInclusive: 'yes' }];
+    } else if (options.malformedAssertion === 'roundtrip-markers') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'roundtrip', beforePath: '/before', afterPath: '/after', markerPaths: ['/a', '/a'] }];
+    } else if (options.malformedAssertion === 'subset-size') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'subset', path: '/items', expected: Array.from({ length: 101 }, (_, index) => index) }];
+    }
+    let evalSpec: Record<string, any> = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
       inventoryHash: options.gddMismatch === 'inventory' ? hash('8') : hash('7'),
@@ -768,15 +780,13 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       sourceProfileHash: hashJson(sourceProfile),
       evaluations,
     };
-    if (options.corpusCase === 'unsafe-parent-path') {
-      plan.allowedFiles = ['../escape.gd'];
-      tasks[0].files = ['../escape.gd'];
-    } else if (options.corpusCase === 'missing-allowed-files') {
-      delete (plan as Record<string, unknown>).allowedFiles;
-    } else if (options.corpusCase === 'ghost-evaluation') {
-      tasks[0].servesEvaluations = ['eval-ghost'];
-    } else if (options.corpusCase === 'missing-reverse-evaluation-mapping') {
-      evaluations[0].servedByTasks = ['task-other'];
+    if (options.corpusInput) {
+      plan = structuredClone(options.corpusInput.plan);
+      evalSpec = structuredClone(options.corpusInput.evalSpec);
+      if (plan.coverageMode === 'non_gdd') {
+        plan.sourceProfileHash = hashJson(sourceProfile);
+        evalSpec.sourceProfileHash = plan.sourceProfileHash;
+      }
     }
     const policy = {
       schemaVersion: 2,
@@ -988,20 +998,26 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['missing source mappings', { missingSourceMappings: true }],
     ['duplicate evaluation IDs', { taskIds: ['task-1', 'task-2'], duplicateEvalId: true }],
     ['malformed evaluation assertions', { malformedEvaluation: true }],
+    ['assertion missing kind', { malformedAssertion: 'missing-kind' }],
+    ['range assertion order', { malformedAssertion: 'range-order' }],
+    ['range assertion types', { malformedAssertion: 'range-types' }],
+    ['roundtrip marker paths', { malformedAssertion: 'roundtrip-markers' }],
+    ['subset assertion size', { malformedAssertion: 'subset-size' }],
   ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
     await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
   });
 
   it('drives SQL plan/eval rejection cases from the canonical conformance corpus', async () => {
     const corpus = JSON.parse(readFileSync('contracts/keco-slice-v2/conformance-cases.json', 'utf8')) as {
-      cases: Array<{ id: string; boundary: string; expected: { accepted: boolean; reasonCode: string | null } }>;
+      cases: Array<{ id: string; boundary: string; input: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> }; expected: { accepted: boolean; reasonCode: string | null } }>;
     };
     const sqlCases = corpus.cases.filter(testCase =>
       testCase.boundary === 'planEval' && !testCase.expected.accepted &&
-      ['unsafe-parent-path', 'missing-allowed-files', 'ghost-evaluation', 'missing-reverse-evaluation-mapping'].includes(testCase.id));
-    expect(sqlCases).toHaveLength(4);
+      testCase.input.plan.coverageMode === 'non_gdd' &&
+      (testCase.expected.reasonCode === 'SLICE_PLAN_SCOPE_INVALID' || testCase.expected.reasonCode === 'SLICE_EVAL_BINDING_INVALID'));
+    expect(sqlCases.length).toBeGreaterThanOrEqual(4);
     for (const testCase of sqlCases) {
-      await expect(createV2Bundle(undefined, { corpusCase: testCase.id })).rejects.toThrow(testCase.expected.reasonCode!);
+      await expect(createV2Bundle(undefined, { corpusInput: testCase.input })).rejects.toThrow(testCase.expected.reasonCode!);
     }
   });
 
