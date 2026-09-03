@@ -681,6 +681,11 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       taskIds?: string[];
       gddMismatch?: 'inventory' | 'requirements';
       includeRoadmapSlice?: boolean;
+      duplicateTaskId?: boolean;
+      unknownDependency?: boolean;
+      missingSourceMappings?: boolean;
+      duplicateEvalId?: boolean;
+      malformedEvaluation?: boolean;
     } = {},
   ) {
     const runId = crypto.randomUUID();
@@ -714,15 +719,16 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       contentHash: hash('b'),
     };
     const tasks = taskIds.map((id, index) => ({
-      id,
+      id: options.duplicateTaskId && index === 1 ? taskIds[0] : id,
       files: [`game/task-${index + 1}.gd`],
-      dependsOn: index === 0 ? [] : [taskIds[index - 1]],
+      dependsOn: options.unknownDependency && index === 1 ? ['task-missing'] : index === 0 ? [] : [taskIds[index - 1]],
       servesEvaluations: [`eval-${index + 1}`],
       red: { command: `test red ${id}`, expected: 'fails' },
       green: { command: `test green ${id}`, expected: 'passes' },
       review: { minimumLevel: 'self' },
       sourceMappings: options.gddMismatch ? [requirementIds[index]] : ['source-1'],
     }));
+    if (options.missingSourceMappings) delete tasks[0].sourceMappings;
     const plan = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
@@ -741,12 +747,13 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       tasks,
     };
     const evaluations = taskIds.map((id, index) => ({
-      evalId: `eval-${index + 1}`,
+      evalId: options.duplicateEvalId && index === 1 ? 'eval-1' : `eval-${index + 1}`,
       servedByTasks: [id],
       buildHash: hash('d'),
       snapshotHash: hash('e'),
       assertions: [{ assertionId: `ready-${index + 1}`, kind: 'equals', path: '/ready', expected: true }],
     }));
+    if (options.malformedEvaluation) evaluations[0].assertions = [];
     const evalSpec = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
@@ -944,6 +951,17 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     expect(fourth.error?.message).toContain('SLICE_REPAIR_LIMIT');
   });
 
+  it('requires explicit KECO_OBSERVATION provenance on V2 runtime events', async () => {
+    const bundle = await createV2Bundle();
+    const missingPrefix = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('runtime_observation', { observation: {
+        schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, evalId: 'eval-1',
+        buildHash: hash('d'), snapshotHash: hash('e'), actual: { ready: true }, errors: [],
+      } }),
+    ]);
+    expect(missingPrefix.error?.message).toContain('SLICE_RUNTIME_EVIDENCE_INVALID');
+  });
+
   it.each(['inventory', 'requirements'] as const)(
     'rejects a GDD %s mismatch between the plan and EvalSpec',
     async mismatch => {
@@ -951,6 +969,16 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
         .rejects.toThrow(/SLICE_EVAL_BINDING_INVALID/);
     },
   );
+
+  it.each([
+    ['duplicate task IDs', { taskIds: ['task-1', 'task-2'], duplicateTaskId: true }],
+    ['unknown dependencies', { taskIds: ['task-1', 'task-2'], unknownDependency: true }],
+    ['missing source mappings', { missingSourceMappings: true }],
+    ['duplicate evaluation IDs', { taskIds: ['task-1', 'task-2'], duplicateEvalId: true }],
+    ['malformed evaluation assertions', { malformedEvaluation: true }],
+  ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
+    await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
+  });
 
   it('gates plan checkbox transitions on accepted evidence, review, dependencies, bytes, and hashes', async () => {
     const bundle = await createV2Bundle(undefined, { taskIds: ['task-1', 'task-2'] });
@@ -1016,7 +1044,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     const resultEvent = taskResultV2(bundle, 'task-1');
     const result = await checkpointV2(bundle.runId, String(row(prerequisites.data).stateToken), [resultEvent]);
     expect(result.error).toBeNull();
-    const runtime = eventV2('runtime_observation', { observation: {
+    const runtime = eventV2('runtime_observation', { prefix: 'KECO_OBSERVATION', observation: {
       schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, evalId: 'eval-1',
       buildHash: hash('d'), snapshotHash: hash('e'), actual: { ready: true }, errors: [],
     } });

@@ -120,7 +120,7 @@ begin
   if exists (
     select 1 from jsonb_array_elements(p_events) as submitted
     where submitted->>'eventType' = 'runtime_observation'
-      and coalesce(submitted->'payload'->>'prefix', 'KECO_OBSERVATION') <> 'KECO_OBSERVATION'
+      and submitted->'payload'->>'prefix' is distinct from 'KECO_OBSERVATION'
   ) then
     raise exception 'SLICE_RUNTIME_EVIDENCE_INVALID' using errcode = '22023';
   end if;
@@ -707,20 +707,83 @@ begin
     )) then
     raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
   end if;
+  -- Keep the database boundary equivalent to the V2 plan validator for task
+  -- identity, dependency ordering, and provenance mappings.
+  if (select count(*) from jsonb_array_elements(p_plan_data->'tasks') as task) <>
+     (select count(distinct task->>'id') from jsonb_array_elements(p_plan_data->'tasks') as task)
+    or exists (
+      select 1 from jsonb_array_elements(p_plan_data->'tasks') with ordinality as current(value, position)
+      cross join jsonb_array_elements_text(case when jsonb_typeof(current.value->'dependsOn') = 'array' then current.value->'dependsOn' else '[]'::jsonb end) as dependency
+      where dependency = current.value->>'id' or not exists (
+        select 1 from jsonb_array_elements(p_plan_data->'tasks') with ordinality as declared(value, position)
+        where declared.position < current.position and declared.value->>'id' = dependency
+      )
+    )
+    or exists (
+      select 1 from jsonb_array_elements(p_plan_data->'tasks') as task
+      where jsonb_typeof(task->'sourceMappings') is distinct from 'array'
+        or jsonb_array_length(task->'sourceMappings') = 0
+        or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end)) <>
+           (select count(distinct source_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id)
+        or exists (select 1 from jsonb_object_keys(task) as key where key not in ('id', 'files', 'dependsOn', 'servesEvaluations', 'red', 'green', 'review', 'sourceMappings'))
+    ) then
+    raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation
+    where jsonb_typeof(evaluation->'assertions') is distinct from 'array'
+      or jsonb_array_length(evaluation->'assertions') not between 1 and 100
+  ) then
+    raise exception 'SLICE_EVAL_BINDING_INVALID' using errcode = '22023';
+  end if;
   if exists (
       select 1 from jsonb_array_elements(p_plan_data->'tasks') as task
       where nullif(task->>'id', '') is null
-        or jsonb_typeof(task->'files') <> 'array'
+        or task->>'id' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
+        or jsonb_typeof(task->'files') is distinct from 'array'
         or jsonb_array_length(task->'files') = 0
         or exists (select 1 from jsonb_array_elements_text(task->'files') as file where not (p_plan_data->'allowedFiles' ? file))
-        or jsonb_typeof(task->'servesEvaluations') <> 'array'
+        or jsonb_typeof(task->'dependsOn') is distinct from 'array'
+        or exists (
+          select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'dependsOn') = 'array' then task->'dependsOn' else '[]'::jsonb end) as dependency
+          where dependency !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
+        )
+        or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'dependsOn') = 'array' then task->'dependsOn' else '[]'::jsonb end)) <>
+           (select count(distinct dependency) from jsonb_array_elements_text(case when jsonb_typeof(task->'dependsOn') = 'array' then task->'dependsOn' else '[]'::jsonb end) as dependency)
+        or exists (
+          select 1
+          from jsonb_array_elements(p_plan_data->'tasks') with ordinality as current(value, position)
+          cross join jsonb_array_elements_text(case when jsonb_typeof(current.value->'dependsOn') = 'array' then current.value->'dependsOn' else '[]'::jsonb end) as dependency
+          where current.value = task
+            and (dependency = current.value->>'id' or not exists (
+              select 1 from jsonb_array_elements(p_plan_data->'tasks') with ordinality as declared(value, position)
+              where declared.position < current.position and declared.value->>'id' = dependency
+            ))
+        )
+        or jsonb_typeof(task->'servesEvaluations') is distinct from 'array'
         or jsonb_array_length(task->'servesEvaluations') = 0
+        or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end) as eval_id where eval_id !~ '^[a-z0-9][a-z0-9._-]{0,99}$')
+        or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end)) <>
+           (select count(distinct eval_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end) as eval_id)
+        or jsonb_typeof(task->'sourceMappings') <> 'array'
+        or jsonb_array_length(task->'sourceMappings') = 0
+        or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id where source_id !~ '^[a-z0-9][a-z0-9._-]{0,99}$')
+        or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end)) <>
+           (select count(distinct source_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id)
         or task->'red'->>'expected' <> 'fails'
         or nullif(btrim(task->'red'->>'command'), '') is null
         or task->'green'->>'expected' <> 'passes'
         or nullif(btrim(task->'green'->>'command'), '') is null
         or task->'review'->>'minimumLevel' not in ('self', 'separate_context', 'independent_actor')
+        or jsonb_typeof(task->'red') is distinct from 'object'
+        or exists (select 1 from jsonb_object_keys(task->'red') as key where key not in ('command', 'expected'))
+        or jsonb_typeof(task->'green') is distinct from 'object'
+        or exists (select 1 from jsonb_object_keys(task->'green') as key where key not in ('command', 'expected'))
+        or jsonb_typeof(task->'review') is distinct from 'object'
+        or exists (select 1 from jsonb_object_keys(task->'review') as key where key <> 'minimumLevel')
     )
+    or (select count(*) from jsonb_array_elements(p_plan_data->'tasks') as task) <>
+       (select count(distinct task->>'id') from jsonb_array_elements(p_plan_data->'tasks') as task)
     or exists (
       select 1 from jsonb_array_elements_text(p_plan_data->'allowedFiles') as allowed_file
       where not exists (
@@ -747,6 +810,33 @@ begin
           where evaluation->>'evalId' = eval_id and served_task = task->>'id'
         )
     )
+    or exists (
+      select 1 from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation
+      where jsonb_typeof(evaluation) <> 'object'
+        or exists (select 1 from jsonb_object_keys(evaluation) as key where key not in ('evalId', 'servedByTasks', 'buildHash', 'snapshotHash', 'assertions', 'manualRequired'))
+        or nullif(evaluation->>'evalId', '') is null
+        or evaluation->>'evalId' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
+        or jsonb_typeof(evaluation->'servedByTasks') <> 'array'
+        or jsonb_array_length(evaluation->'servedByTasks') = 0
+        or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end)) <>
+           (select count(distinct task_id) from jsonb_array_elements_text(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end) as task_id)
+        or evaluation->>'buildHash' !~ '^sha256:[a-f0-9]{64}$'
+        or evaluation->>'snapshotHash' !~ '^sha256:[a-f0-9]{64}$'
+        or jsonb_typeof(evaluation->'assertions') <> 'array'
+        or jsonb_array_length(evaluation->'assertions') not between 1 and 100
+        or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion where jsonb_typeof(assertion) <> 'object' or nullif(assertion->>'assertionId', '') is null)
+        or (select count(*) from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion) <>
+           (select count(distinct assertion->>'assertionId') from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion)
+        or exists (
+          select 1 from jsonb_array_elements(case when jsonb_typeof(evaluation->'assertions') = 'array' then evaluation->'assertions' else '[]'::jsonb end) as assertion
+          where assertion->>'assertionId' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
+            or assertion->>'kind' not in ('equals', 'range', 'subset', 'roundtrip')
+            or (assertion->>'kind' in ('equals', 'range', 'subset') and nullif(assertion->>'path', '') is null)
+            or (assertion->>'kind' = 'roundtrip' and (nullif(assertion->>'beforePath', '') is null or nullif(assertion->>'afterPath', '') is null or jsonb_typeof(assertion->'markerPaths') is distinct from 'array' or jsonb_array_length(assertion->'markerPaths') = 0))
+        )
+    )
+    or (select count(*) from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation) <>
+       (select count(distinct evaluation->>'evalId') from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation)
     or exists (
       select 1 from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation
       cross join jsonb_array_elements_text(evaluation->'servedByTasks') as task_id
