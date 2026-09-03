@@ -2,10 +2,19 @@
 
 Load `contract-manifest.json` and run `scripts/validate_contract_case.py` for contract-version-2 boundary and conformance checks.
 
-## RunContext
+## SourceProfile And RunContext
+
+Every new run has `contractVersion: 2` and exactly one canonical SourceProfile
+of kind `gdd`, `feedback`, `document`, `table`, or `user_idea`. Document kinds
+bind project/document IDs, epoch, revision, and content hash; table kinds bind
+the table/schema and selected row hashes; user ideas bind the request hash and
+bounded excerpt. The run stores the profile and `sourceProfileHash`. A material
+source change creates a successor run and never silently upgrades or rewrites
+the accepted contract.
 
 ```yaml
 version: 2
+contractVersion: 2
 runId: stable-run-id
 mode: implicit-v2|explicit-v2
 kecoProjectId: uuid
@@ -45,16 +54,16 @@ documents:
     roadmap: null
     spec: null
     plan: null
-    status: null
-    evalReport: null
   kecoDocumentNames:
     roadmap: roadmap
     spec: <sliceId>
     plan: <sliceId>
   localMirrorRoot: docs/superpowers
   localMirrorPaths:
+    roadmapPath: docs/superpowers/roadmap.md
     specPath: docs/superpowers/specs/<sliceId>-design.md
     planPath: docs/superpowers/plans/<sliceId>.md
+  internalPaths:
     statusPath: internal/<sliceId>/status.json
     evalReportPath: internal/<sliceId>/eval-report.json
 evolution:
@@ -77,11 +86,11 @@ SlicePlan, and PlanReview gates pass. It is scoped to this `runId` and
 `sliceId`; never reuse it across runs or Slices. Keco folder/document IDs and
 state tokens are execution state, not guesses.
 
-The `interaction` block is required for new runs and must pass `scripts/validate_interaction_checkpoint.py` when paused or resumed. Legacy version 2 RunContext files without an `interaction` block remain readable and valid. When present, `interaction.checkpoint.runId` must equal the containing `RunContext.runId`.
+The `interaction` block is required for new runs and must pass `scripts/validate_interaction_checkpoint.py` when paused or resumed. Legacy RunContext files without an `interaction` block remain readable only under their stored V1 contract. When present, `interaction.checkpoint.runId` must equal the containing `RunContext.runId`.
 
 ## Artifact Ledger
 
-The four user-visible phases are Preflight, Implementation, Verification, and Delivery. Preflight uses `create_slice_bundle`; durable task, review, observation, repair, and mirror events use `checkpoint_slice`; Delivery verifies an `export_slice_mirrors` manifest locally before `finalize_slice`. A later action may consume only an accepted artifact with unchanged input revisions and the current opaque state token. A stale token, repeated event, or changed selected document invalidates the affected stage rather than overwriting it.
+The four user-visible phases are Preflight, Implementation, Verification, and Delivery. Preflight uses `create_slice_bundle`; durable task, review, observation, and repair events use `checkpoint_slice`. Delivery is strictly `implementation_complete -> prepare_delivery -> export_slice_mirrors -> materialize -> MirrorVerification checkpoint -> delivery seal`. `prepare_delivery` is the last planning-document mutation. Export and `finalize_slice(delivery)` are read-only with respect to roadmap/spec/plan. A later action may consume only an accepted artifact with unchanged input revisions and the current opaque state token. A stale token, repeated event, or changed selected document invalidates the affected stage rather than overwriting it.
 
 Every resource or table change records one `evolution.strategy`. `reuse_exact` and `extend_compatible` are preferred; `migrate_additive` preserves existing IDs while adding compatible fields or rows. `create_new` requires `noCompatibleTarget: true` or an explicit isolation requirement, with discovery evidence recorded. An ambiguous target keeps the write token null and performs zero writes.
 
@@ -145,4 +154,4 @@ review:
 
 `TaskResult` is a strict schema-versioned artifact bound to one run, Slice, task, plan revision, and attempt. It records one command or MCP operation, phase, timestamps, exit/timeout/cancellation facts, bounded redacted stdout/stderr summaries plus SHA-256 digests, changed-file before/after digests, and expected/observed outcome. RED must observe the approved failure and GREEN the approved pass.
 
-`TaskReview` is independent evidence. It binds exact TaskResult IDs and current plan revision, records an accepted/rejected verdict and bounded findings, and lists exact after-byte SHA-256 digests reviewed. A missing review, unknown key, secret-bearing summary, or review of different bytes blocks completion.
+`TaskReview` binds exact TaskResult IDs and current plan revision, records an accepted/rejected verdict and bounded findings, and lists exact after-byte SHA-256 digests reviewed. Its effective level is database-derived: `self`, `separate_context` only with trusted context identity, or `independent_actor` only when the authenticated reviewer differs from the TaskResult actor. A missing review, forged level, unknown key, secret-bearing summary, or review of different bytes blocks completion.

@@ -396,21 +396,21 @@ git commit -m "feat(slice): make mirror batches crash recoverable"
 - Consumes: all executable V2 interfaces from Tasks 1-6.
 - Produces: concise main Skill containing routing, SourceProfile selection, four phases, stop conditions, conditional references, and completion commands; platform differences are limited to script-root/call syntax.
 
-- [ ] **Step 1: Record documentation RED assertions**
+- [x] **Step 1: Record documentation RED assertions**
 
 Test main-file size/section budget, conditional GDD and asset loading, V2 lifecycle sequence, no hard-coded identity, no new-run `KECO_EVAL`, no independent self-review claim, exactly three canonical mirrors, and normalized Codex/Claude parity.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
 Expected: FAIL on stale event name, delivery order, duplicated schema prose, and remaining runtime prefixes.
 
-- [ ] **Step 3: Rewrite the main Skills and conditional references**
+- [x] **Step 3: Rewrite the main Skills and conditional references**
 
 Keep main files as routers; move enforceable detail to the manifest and focused references. Replace all V2 examples with `KECO_OBSERVATION`, describe explicit legacy adapter, effective review levels, SourceProfile selection, V2 document bindings, preparation/export/seal order, and recovery journal handling. Preserve the useful substantive-decomposition additions without their hard-coded source assumption.
 
-- [ ] **Step 4: Run GREEN and source scans**
+- [x] **Step 4: Run GREEN and source scans**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
@@ -418,7 +418,7 @@ Run: `rg -n 'KECO_EVAL|test8-24|game-gdd|independent TaskReview' plugins/keco-{c
 
 Expected: tests PASS; any `KECO_EVAL` hit is explicitly labeled legacy-only and no hard-coded identity/false independence remains.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/keco-codex/skills/keco-develop-godot-slice-v2 plugins/keco-claude/skills/keco-develop-godot-slice-v2 plugins/keco-claude/scripts tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts

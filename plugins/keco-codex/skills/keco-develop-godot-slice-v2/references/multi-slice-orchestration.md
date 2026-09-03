@@ -40,19 +40,27 @@ an ordered Markdown checklist and is the only task progress view:
 ```
 
 Change each item to `- [x]` only after its implementation and verification pass.
+
+Before writing any pair, create a decomposition bundle for all planned Slices
+and run `scripts/validate_slice_decomposition.py`. Every pair must contain a
+Slice-specific objective, scope, acceptance behavior, concrete files, and
+RED/GREEN commands. A coverage mapping or a checklist that only says
+`Implement tasks` is not a decomposition. Re-run this gate at `PLAN_REVIEW`.
 Do not create a second user-maintained status document for the same Slice.
 
-The spec/plan pair carries the visible Slice revision and source GDD revision.
-Checking tasks does not change the revision; changing scope or acceptance does,
-which creates a new dated pair.
+The stable spec/plan pair carries the visible plan revision and bound source
+identity. Checking tasks does not change the plan revision. A material scope,
+acceptance, source, or allowed-file change creates an explicit successor run
+and updates the stable documents with optimistic concurrency; document history
+preserves the previous bytes.
 
 ## Roadmap Plan
 
-When there are multiple Slices, create one normal `roadmap` plan document
-directly in the Keco planning root and mirror it at:
+When there are multiple Slices, create one `roadmap` document directly in the
+Keco planning root and mirror it at:
 
 ```text
-docs/superpowers/plans/<roadmap-id>.md
+docs/superpowers/roadmap.md
 ```
 
 It lists every Slice and its dependency order:
@@ -65,8 +73,10 @@ It lists every Slice and its dependency order:
 ```
 
 Preserve source order as evidence, schedule completed dependencies first, then
-priority as the tie-breaker, then stable `sliceId`. A Slice is complete when its plan is fully
-checked and the required internal verification has passed.
+priority as the tie-breaker, then stable `sliceId`. A Slice is implementation-
+complete when its plan is fully checked and required internal verification has
+passed. `prepare_delivery` then checks its roadmap item with the expected
+epoch/revision before the three-file mirror export.
 
 The internal roadmap projection may retain machine fields such as
 `status: planned|in_progress|completed|failed|blocked`, `evalResult`, and
@@ -85,7 +95,8 @@ ID. A slash in a generated document name is a structural failure, not a folder.
 SOURCE_DISCOVERY -> SLICE_DECOMPOSITION -> ROADMAP_PLAN
   -> SELECT_NEXT_SLICE -> WRITE_SPEC -> WRITE_PLAN -> PLAN_REVIEW
   -> EXECUTION_PREFLIGHT -> EXECUTE_CHECKLIST -> TASK_REVIEW -> RUNTIME_EVAL
-  -> REPAIR -> FINAL_VERIFY -> CHECK_PLAN -> NEXT_SLICE
+  -> REPAIR -> FINAL_VERIFY -> IMPLEMENTATION_COMPLETE -> PREPARE_DELIVERY
+  -> EXPORT_MIRRORS -> MIRROR_VERIFICATION -> DELIVERY_SEAL -> NEXT_SLICE
 ```
 
 Do not ask for confirmation between unambiguous Slices. Ask only when source,
@@ -100,10 +111,11 @@ output and file hashes, but the checkbox in `plan.md` is the user-facing mark.
 ## Repair And Resume
 
 Keep the accepted spec and plan scope fixed during repair. Rerun only failed
-checks and affected regressions, for at most three repair iterations. After the
-third failure, preserve internal evidence, mark the roadmap Slice as `paused`,
-and ask the user; do not silently skip it.
+checks and affected regressions, for at most three repair transitions. A fourth
+transition is rejected even after replay, a new idempotency key, or resume.
+After the third failure, preserve internal evidence, mark the roadmap Slice as
+`paused`, and ask the user; do not silently skip it.
 
 When resuming, re-read the source, paired spec, plan, and current code revision.
-If the source or accepted plan changed, create a new revision instead of
-mutating the old scope.
+If the source or accepted plan changed materially, create a successor run and
+new plan revision instead of mutating the old scope.

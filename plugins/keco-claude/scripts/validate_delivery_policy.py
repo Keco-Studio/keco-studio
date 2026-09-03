@@ -15,7 +15,10 @@ DEFAULT_CANDIDATES = (
     Path(__file__).parent.parent / "skills" / "keco-develop-godot-slice-v2" / "references" / "default-delivery-policy.json",
 )
 REQUIRED_ARTIFACTS = ("TaskResult", "TaskReview", "EvalReport", "MirrorVerification")
-RELEASE_ORDER = ("implementation", "runtime_verification", "acceptance", "mirrors", "package")
+RELEASE_ORDER = (
+    "implementation", "runtime_verification", "acceptance", "manual_review",
+    "package", "roadmap_completion", "mirrors", "seal",
+)
 
 
 def canonical_json(value: Any) -> str:

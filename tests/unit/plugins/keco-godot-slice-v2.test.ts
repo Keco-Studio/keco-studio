@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
@@ -27,6 +27,20 @@ function writePngHeader(filePath: string, width: number, height: number): void {
 
 function sha256(filePath: string): string {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+}
+
+function markdownFiles(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
+    const entryPath = path.join(root, entry.name);
+    return entry.isDirectory() ? markdownFiles(entryPath) : entry.name.endsWith('.md') ? [entryPath] : [];
+  });
+}
+
+function normalizedPlatformSkill(value: string): string {
+  return value
+    .replace(/^description:.*$/m, 'description: <platform trigger>')
+    .replaceAll('${CLAUDE_PLUGIN_ROOT}/scripts/', 'scripts/')
+    .replaceAll('../../references/pixellab-capability-registry.md', 'references/pixellab-capability-registry.md');
 }
 
 const mirrorScript = path.join(skillRoot, 'scripts', 'materialize_slice_mirrors.py');
@@ -104,6 +118,76 @@ function runMirror(
 }
 
 describe('Keco Godot Slice V2 skill contract', () => {
+  it('keeps the main Skill as a concise V2 router with conditional references', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    expect(skill.split('\n').length).toBeLessThanOrEqual(110);
+    expect(skill).not.toContain('```yaml');
+    expect(skill).toMatch(/contractVersion\s*:\s*2/i);
+    expect(skill).toMatch(/SourceProfile[\s\S]*gdd[\s\S]*feedback[\s\S]*document[\s\S]*table[\s\S]*user_idea/i);
+    expect(skill).toMatch(/kind[^a-z0-9]+gdd[\s\S]{0,320}gdd-coverage-contract\.md/i);
+    expect(skill).toMatch(/asset[\s\S]{0,320}generated-asset-contract\.md/i);
+    expect(skill).toMatch(/animation[\s\S]{0,320}godot-animation-contract\.md/i);
+    expect(skill).toMatch(/tileset[\s\S]{0,320}godot-tileset-contract\.md/i);
+  });
+
+  it('documents the immutable V2 delivery sequence and verified review levels', () => {
+    const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    expect(skill).toMatch(/implementation_complete[\s\S]{0,180}prepare_delivery[\s\S]{0,180}export_slice_mirrors[\s\S]{0,180}materialize[\s\S]{0,180}MirrorVerification[\s\S]{0,180}(?:delivery|finalize_slice)/i);
+    expect(skill).toMatch(/same.actor[\s\S]{0,180}(?:never|cannot)[\s\S]{0,120}independent_actor/i);
+    expect(skill).toMatch(/separate_context[\s\S]{0,180}trusted/i);
+    expect(skill).toMatch(/exactly three[\s\S]{0,180}roadmap[\s\S]{0,180}spec[\s\S]{0,180}plan/i);
+    expect(skill).not.toMatch(/independent TaskReview|independent review/i);
+  });
+
+  it('contains no project identity and confines KECO_EVAL to explicit legacy adapters', () => {
+    const roots = [
+      skillRoot,
+      path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2'),
+    ];
+    for (const root of roots) {
+      const sources = markdownFiles(root).map(file => readFileSync(file, 'utf8'));
+      expect(sources.join('\n')).not.toMatch(/test8-24|game-gdd/i);
+      for (const line of sources.flatMap(source => source.split('\n')).filter(line => line.includes('KECO_EVAL'))) {
+        expect(line).toMatch(/legacy/i);
+      }
+    }
+  });
+
+  it('keeps Codex and Claude Skill behavior identical after platform normalization', () => {
+    const codex = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
+    const claude = readFileSync(
+      path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2', 'SKILL.md'),
+      'utf8',
+    );
+    expect(normalizedPlatformSkill(claude)).toBe(normalizedPlatformSkill(codex));
+    for (const reference of [
+      'orchestration-contract.md', 'review-workflow.md', 'default-delivery-policy.json',
+      'multi-slice-orchestration.md', 'slice-document-contract.md', 'source-data-contract.md',
+      'eval-contract.md', 'godot-mcp-contract.md', 'gdd-coverage-contract.md', 'gdd-change-contract.md',
+      'godot-animation-contract.md', 'godot-tileset-contract.md', 'generated-asset-contract.md',
+      'keco-pixellab-contract.md', 'ab-matrix.md',
+    ]) {
+      expect(readFileSync(path.join(skillRoot, 'references', reference))).toEqual(readFileSync(path.join(
+        repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-develop-godot-slice-v2', 'references', reference,
+      )));
+    }
+    expect(readFileSync(path.join(skillRoot, 'references', 'pixellab-capability-registry.md'))).toEqual(readFileSync(path.join(
+      repositoryRoot, 'plugins', 'keco-claude', 'references', 'pixellab-capability-registry.md',
+    )));
+    for (const script of ['build_spriteframes_resource.py', 'export_keco_snapshot.py', 'validate_generated_asset_package.py']) {
+      expect(readFileSync(path.join(skillRoot, 'scripts', script))).toEqual(readFileSync(path.join(
+        repositoryRoot, 'plugins', 'keco-claude', 'scripts', script,
+      )));
+    }
+  });
+
+  it('uses the complete V2 release order in the bundled default policy', () => {
+    const policy = JSON.parse(readFileSync(path.join(skillRoot, 'references', 'default-delivery-policy.json'), 'utf8'));
+    expect(policy.releaseOrder).toEqual([
+      'implementation', 'runtime_verification', 'acceptance', 'manual_review',
+      'package', 'roadmap_completion', 'mirrors', 'seal',
+    ]);
+  });
   it.each(['before_staging', 'after_first_replacement', 'during_readback'])(
     'restores every mirror target after handled %s failure',
     fault => {
@@ -483,12 +567,12 @@ describe('Keco Godot Slice V2 skill contract', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     const metadata = readFileSync(path.join(skillRoot, 'agents', 'openai.yaml'), 'utf8');
     expect(skill).toMatch(/^---\nname: keco-develop-godot-slice-v2\n/);
-    expect(skill).toMatch(/document-driven[\s\S]*implicit/i);
+    expect(skill).toMatch(/implicit[\s\S]*document-driven|document-driven[\s\S]*implicit/i);
     expect(skill).not.toContain('explicitly selects `$keco-develop-godot-slice-v2`');
     expect(skill).toMatch(/Preflight[\s\S]*Implementation[\s\S]*Verification[\s\S]*Delivery/);
     expect(skill).toMatch(/write token/i);
     expect(skill).toMatch(/blocked_before_write/);
-    expect(skill).toMatch(/independent review/i);
+    expect(skill).toMatch(/effective review level/i);
     expect(skill).toMatch(/Superpowers layout/i);
     expect(skill).toMatch(/bundled|self-contained/i);
     expect(skill).toMatch(/already consistent[\s\S]*without asking|without asking[\s\S]*already consistent/i);
@@ -580,9 +664,9 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(sourceData).toMatch(/never automatically delete/i);
     expect(sourceData).toMatch(/canonical Keco Project[\s\S]*kecoFolderId[\s\S]*pre-write blocker/i);
     const evalContract = readFileSync(path.join(skillRoot, 'references', 'eval-contract.md'), 'utf8');
-    expect(evalContract).toMatch(/Create EvalSpec before any Keco, PixelLab, or Godot write/i);
+    expect(evalContract).toMatch(/Create EvalSpec before any Keco, PixelLab, or Godot development write/i);
     const reviewWorkflow = readFileSync(path.join(skillRoot, 'references', 'review-workflow.md'), 'utf8');
-    expect(reviewWorkflow).toMatch(/Plan validation[\s\S]*Task RED\/GREEN[\s\S]*Independent completion review/i);
+    expect(reviewWorkflow).toMatch(/Plan validation[\s\S]*Task RED\/GREEN[\s\S]*Verified completion review/i);
     expect(reviewWorkflow).not.toMatch(/superpowers/i);
     const generatedAssets = readFileSync(path.join(skillRoot, 'references', 'generated-asset-contract.md'), 'utf8');
     expect(generatedAssets).toMatch(/canonical asset/i);
@@ -692,7 +776,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
 
     const multiSlice = readFileSync(multiSlicePath, 'utf8');
     expect(multiSlice).toMatch(/roadmap[\s\S]*dependencies[\s\S]*priority/i);
-    expect(multiSlice).toMatch(/CHECK_PLAN[\s\S]*NEXT_SLICE/i);
+    expect(multiSlice).toMatch(/IMPLEMENTATION_COMPLETE[\s\S]*PREPARE_DELIVERY[\s\S]*DELIVERY_SEAL[\s\S]*NEXT_SLICE/i);
     expect(multiSlice).toMatch(/three|3[\s\S]*paused[\s\S]*user/i);
     expect(multiSlice).toMatch(/multiple Slices[\s\S]*dependency order/i);
     expect(multiSlice).toMatch(/priority[\s\S]*tie-breaker/i);

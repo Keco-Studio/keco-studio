@@ -16,7 +16,7 @@ GENERIC_LINES = (
     "read and validate requirements",
     "implement tasks",
     "run mapped evaluations",
-    "independent review of reciprocal gdd coverage",
+    "review reciprocal gdd coverage",
     "planning-only test",
 )
 ID_TOKEN_RE = re.compile(r"\b(?:slice|task|eval|gdd)[-_][a-z0-9._-]+\b", re.I)
