@@ -1,17 +1,15 @@
 # Endless Runner Core Slice
 
-> **Notation:** The Keco project name appears as `\u9177\u8DD1` so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
-
 ## Goal
 
-Deliver the first playable 2D side-scrolling endless-runner slice for the Keco project `\u9177\u8DD1`.
+Deliver the first playable 2D side-scrolling endless-runner slice for the Keco project `Cool Run`.
 
 ## Source
 
 - Source profile: `user_idea`
-- Keco project: `\u9177\u8DD1`
+- Keco project: `Cool Run`
 - Keco project ID: `4f3d0616-05f4-42f5-91e4-46300ab29b30`
-- Godot project path: `/mnt/e/GodotProjects/\u9177\u8DD1`
+- Godot project path: `/mnt/e/GodotProjects/cool-run`
 - Source excerpt: automatic running, jumping, obstacles, score, collision game-over, restart
 - No authoritative GDD or feedback document exists in the selected Keco project.
 

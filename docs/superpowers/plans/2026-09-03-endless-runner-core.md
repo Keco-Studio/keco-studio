@@ -1,10 +1,8 @@
 # Endless Runner Core Implementation Plan
 
-> **Notation:** The Keco project name appears as `\u9177\u8DD1` so tracked files stay free of Chinese characters, as the CI `only-english-characters` check requires.
-
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the first playable 2D side-scrolling endless-runner slice in `/mnt/e/GodotProjects/\u9177\u8DD1`.
+**Goal:** Build the first playable 2D side-scrolling endless-runner slice in `/mnt/e/GodotProjects/cool-run`.
 
 **Architecture:** A `Main` Node2D owns the game state, score, obstacle spawning, and world motion. A `Player` CharacterBody2D owns jump physics and emits collision intent; `Obstacle` owns its own movement and cleanup; `HUD` owns presentation and touch input. Visual nodes use procedural drawing behind a replaceable `ArtProvider` boundary.
 
@@ -14,7 +12,7 @@
 
 ## Global Constraints
 
-- Godot project path is `/mnt/e/GodotProjects/\u9177\u8DD1` and is currently empty.
+- Godot project path is `/mnt/e/GodotProjects/cool-run` and is currently empty.
 - The target viewport is `960x540`, with horizontal aspect preserved when resized.
 - The approved state machine is `READY -> RUNNING -> GAME_OVER`.
 - The only gameplay input actions are `jump` (`Space`, `W`, Up Arrow) and `restart` (`R`).
@@ -35,14 +33,14 @@
 ### Task 1: Create the Godot project contract
 
 **Files:**
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/project.godot`
+- Create: `/mnt/e/GodotProjects/cool-run/project.godot`
 
 **Interfaces:**
 - Produces the `jump` and `restart` input actions and sets `run/main_scene` to `res://scenes/main.tscn`.
 
 - [ ] **Step 1: Write the project configuration**
 
-  Set `config/name` to `\u9177\u8DD1`, `run/main_scene` to `res://scenes/main.tscn`, `display/window/size/viewport_width` to `960`, `display/window/size/viewport_height` to `540`, and stretch mode to `canvas_items`.
+  Set `config/name` to `Cool Run`, `run/main_scene` to `res://scenes/main.tscn`, `display/window/size/viewport_width` to `960`, `display/window/size/viewport_height` to `540`, and stretch mode to `canvas_items`.
 
 - [ ] **Step 2: Add input actions**
 
@@ -50,7 +48,7 @@
 
 - [ ] **Step 3: Run the static project check**
 
-  Run: `godot --headless --path /mnt/e/GodotProjects/\u9177\u8DD1 --editor --quit`
+  Run: `godot --headless --path /mnt/e/GodotProjects/cool-run --editor --quit`
 
   Expected: exit code `0`; no parse error or missing project setting.
 
@@ -61,9 +59,9 @@
 ### Task 2: Add procedural art and reusable gameplay scenes
 
 **Files:**
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/scripts/art_provider.gd`
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/scripts/player.gd`
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/scripts/obstacle.gd`
+- Create: `/mnt/e/GodotProjects/cool-run/scripts/art_provider.gd`
+- Create: `/mnt/e/GodotProjects/cool-run/scripts/player.gd`
+- Create: `/mnt/e/GodotProjects/cool-run/scripts/obstacle.gd`
 
 **Interfaces:**
 - `ArtProvider.draw_player(canvas: CanvasItem, rect: Rect2)` and `ArtProvider.draw_obstacle(canvas: CanvasItem, rect: Rect2)` draw fallback visuals.
@@ -84,7 +82,7 @@
 
 - [ ] **Step 4: Run static parsing**
 
-  Run: `godot --headless --path /mnt/e/GodotProjects/\u9177\u8DD1 --editor --quit`
+  Run: `godot --headless --path /mnt/e/GodotProjects/cool-run --editor --quit`
 
   Expected: exit code `0`; all three scripts parse.
 
@@ -95,8 +93,8 @@
 ### Task 3: Build the main scene and game state loop
 
 **Files:**
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/scenes/main.tscn`
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/scripts/main.gd`
+- Create: `/mnt/e/GodotProjects/cool-run/scenes/main.tscn`
+- Create: `/mnt/e/GodotProjects/cool-run/scripts/main.gd`
 
 **Interfaces:**
 - `Main` exposes `enum GameState { READY, RUNNING, GAME_OVER }`, `func start_run()`, `func end_run()`, `func restart_run()`, and `func spawn_obstacle()`.
@@ -120,7 +118,7 @@
 
 - [ ] **Step 5: Run a headless launch check**
 
-  Run: `timeout 8s godot --headless --path /mnt/e/GodotProjects/\u9177\u8DD1 --quit-after 5`
+  Run: `timeout 8s godot --headless --path /mnt/e/GodotProjects/cool-run --quit-after 5`
 
   Expected: process exits without parser/runtime errors and logs the main scene entering `READY`.
 
@@ -131,8 +129,8 @@
 ### Task 4: Add HUD and touch controls
 
 **Files:**
-- Create: `/mnt/e/GodotProjects/\u9177\u8DD1/scripts/hud.gd`
-- Modify: `/mnt/e/GodotProjects/\u9177\u8DD1/scenes/main.tscn`
+- Create: `/mnt/e/GodotProjects/cool-run/scripts/hud.gd`
+- Modify: `/mnt/e/GodotProjects/cool-run/scenes/main.tscn`
 
 **Interfaces:**
 - `HUD` emits `jump_requested` and `restart_requested`.
@@ -152,7 +150,7 @@
 
 - [ ] **Step 4: Run manual runtime checks**
 
-  Run: `godot --path /mnt/e/GodotProjects/\u9177\u8DD1`
+  Run: `godot --path /mnt/e/GodotProjects/cool-run`
 
   Verify: the first Space/W/Up press starts and jumps, the touch jump button behaves identically, collision freezes the scene, and both R and the restart button reset score and obstacles.
 
@@ -170,13 +168,13 @@
 
 - [ ] **Step 1: Run static validation**
 
-  Run: `godot --headless --path /mnt/e/GodotProjects/\u9177\u8DD1 --editor --quit`
+  Run: `godot --headless --path /mnt/e/GodotProjects/cool-run --editor --quit`
 
   Expected: exit code `0` with no script, scene, or input-action errors.
 
 - [ ] **Step 2: Run fresh runtime verification**
 
-  Launch with `godot --path /mnt/e/GodotProjects/\u9177\u8DD1`, exercise start, jump, clear, collision, score, keyboard restart, and touch restart, then capture `KECO_OBSERVATION` output.
+  Launch with `godot --path /mnt/e/GodotProjects/cool-run`, exercise start, jump, clear, collision, score, keyboard restart, and touch restart, then capture `KECO_OBSERVATION` output.
 
 - [ ] **Step 3: Run the stability pass**
 
