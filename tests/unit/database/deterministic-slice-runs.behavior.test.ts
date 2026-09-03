@@ -688,7 +688,8 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
       malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
-      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version' | 'missing-plan-revision' | 'missing-red-expected' | 'missing-green-expected' | 'missing-review-level' | 'missing-source-hash' | 'missing-selection-evidence' | 'invalid-selection-evidence' | 'oversized-selection-evidence' | 'missing-document-content-hash' | 'missing-policy-release-order' | 'missing-policy-required-artifacts' | 'missing-policy-runtime-freshness' | 'unknown-policy-field';
+      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version' | 'missing-plan-revision' | 'missing-red-expected' | 'missing-green-expected' | 'missing-review-level' | 'missing-source-hash' | 'missing-selection-evidence' | 'invalid-selection-evidence' | 'oversized-selection-evidence' | 'missing-document-content-hash' | 'missing-policy-release-order' | 'missing-policy-required-artifacts' | 'missing-policy-runtime-freshness' | 'unknown-policy-field' | 'minimum-review-level' | 'invalid-captured-at' | 'invalid-document-id' | 'invalid-table-id' | 'negative-epoch' | 'non-integer-revision' | 'row-hashes-mismatch' | 'policy-schema-string' | 'policy-repairs-string' | 'policy-manual-string';
+      sourceKind?: 'table';
       malformedArray?: 'allowed-files-number' | 'task-files-boolean' | 'depends-on-number' | 'serves-evaluations-boolean' | 'source-mappings-number' | 'served-by-tasks-boolean' | 'marker-paths-number';
       corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
     } = {},
@@ -723,6 +724,23 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       revision: 1,
       contentHash: hash('b'),
     };
+    if (options.sourceKind === 'table') {
+      const rowId = crypto.randomUUID();
+      sourceProfile = {
+        schemaVersion: 1, contractVersion: 2, kind: 'table', kecoProjectId: fx.projectId,
+        capturedAt: '2026-09-03T00:00:00Z', sourceHash: hash('a'), selectionEvidence: [],
+        tableId: crypto.randomUUID(), schemaHash: hash('c'), rowIds: [rowId], rowHashes: { [rowId]: hash('d') }, contentHash: hash('b'),
+      };
+    }
+    if (options.malformedEvaluationField === 'invalid-captured-at') sourceProfile.capturedAt = 'not-a-timestamp';
+    if (options.malformedEvaluationField === 'invalid-document-id') sourceProfile.documentId = 'not-a-uuid';
+    if (options.malformedEvaluationField === 'invalid-table-id') sourceProfile = { ...sourceProfile, kind: 'table', tableId: 'not-a-uuid', schemaHash: hash('c'), rowIds: [], rowHashes: {}, contentHash: hash('b') };
+    if (options.malformedEvaluationField === 'negative-epoch') sourceProfile.epoch = -1;
+    if (options.malformedEvaluationField === 'non-integer-revision') sourceProfile.revision = 1.5;
+    if (options.malformedEvaluationField === 'row-hashes-mismatch') {
+      const rowId = crypto.randomUUID();
+      sourceProfile = { ...sourceProfile, kind: 'table', tableId: crypto.randomUUID(), schemaHash: hash('c'), rowIds: [rowId], rowHashes: { [crypto.randomUUID()]: hash('d') }, contentHash: hash('b') };
+    }
     const tasks = taskIds.map((id, index) => ({
       id: options.duplicateTaskId && index === 1 ? taskIds[0] : id,
       files: [`game/task-${index + 1}.gd`],
@@ -838,6 +856,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     if (options.malformedEvaluationField === 'missing-policy-required-artifacts') delete policy.requiredArtifacts;
     if (options.malformedEvaluationField === 'missing-policy-runtime-freshness') delete policy.runtimeEvidenceFreshness;
     if (options.malformedEvaluationField === 'unknown-policy-field') policy.extra = true;
+    if (options.malformedEvaluationField === 'minimum-review-level') policy.minimumReviewLevel = 'self';
+    if (options.malformedEvaluationField === 'policy-schema-string') policy.schemaVersion = '2';
+    if (options.malformedEvaluationField === 'policy-repairs-string') policy.maximumRepairs = '3';
+    if (options.malformedEvaluationField === 'policy-manual-string') policy.manualReviewBlocksRelease = 'true';
     const createBinding = (kind: 'roadmap' | 'spec' | 'plan', folderId: string, name: string, repositoryPath: string) => {
       const body = kind === 'plan'
         ? `# Plan ${sliceId}\n${taskIds.map(id => `- [ ] ${id}: execute ${id}`).join('\n')}\n`
@@ -1073,8 +1095,22 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['missing RED expected outcome', { malformedEvaluationField: 'missing-red-expected' }],
     ['missing GREEN expected outcome', { malformedEvaluationField: 'missing-green-expected' }],
     ['missing review level', { malformedEvaluationField: 'missing-review-level' }],
+    ['invalid capturedAt', { malformedEvaluationField: 'invalid-captured-at' }],
+    ['invalid documentId', { malformedEvaluationField: 'invalid-document-id' }],
+    ['invalid tableId', { malformedEvaluationField: 'invalid-table-id' }],
+    ['negative epoch', { malformedEvaluationField: 'negative-epoch' }],
+    ['non-integer revision', { malformedEvaluationField: 'non-integer-revision' }],
+    ['rowHashes key mismatch', { malformedEvaluationField: 'row-hashes-mismatch' }],
+    ['policy schemaVersion string', { malformedEvaluationField: 'policy-schema-string' }],
+    ['policy maximumRepairs string', { malformedEvaluationField: 'policy-repairs-string' }],
+    ['policy manualReviewBlocksRelease string', { malformedEvaluationField: 'policy-manual-string' }],
+    ['undefined minimumReviewLevel', { malformedEvaluationField: 'minimum-review-level' }],
   ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
     await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING|SOURCE_PROFILE)_INVALID|Invalid Slice delivery policy/);
+  });
+
+  it('accepts a complete table SourceProfile and V2 delivery policy control', async () => {
+    await expect(createV2Bundle(undefined, { sourceKind: 'table' })).resolves.toBeDefined();
   });
 
   it.each([

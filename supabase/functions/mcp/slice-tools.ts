@@ -330,7 +330,12 @@ const v2PolicySchema = z.object({
   requiredArtifacts: z.array(
     z.enum(["TaskResult", "TaskReview", "EvalReport", "MirrorVerification"]),
   )
-    .length(4).refine((value) => new Set(value).size === value.length),
+    .length(4).refine(
+      (value) => value.every((item, index) =>
+        item === ["TaskResult", "TaskReview", "EvalReport", "MirrorVerification"][index]
+      ),
+      "requiredArtifacts must preserve the canonical order.",
+    ),
   runtimeEvidenceFreshness: z.literal("current_build_and_snapshot"),
   maximumRepairs: z.literal(3),
   releaseOrder: z.array(z.enum([
@@ -359,8 +364,6 @@ const v2PolicySchema = z.object({
     "Release order must follow the Slice V2 delivery lifecycle.",
   ),
   manualReviewBlocksRelease: z.literal(true),
-  minimumReviewLevel: z.enum(["self", "separate_context", "independent_actor"])
-    .optional(),
 }).strict();
 const documentBindingBase = {
   kind: z.enum(["roadmap", "spec", "plan"]),

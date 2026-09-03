@@ -711,6 +711,14 @@ Deno.test("V2 schemas require complete evaluation fields and equals expectations
   const unknownEvalField = structuredClone(input);
   (unknownEvalField.evalSpec.evaluations[0] as Record<string, unknown>).extra = true;
   assertEquals(create.config.inputSchema.safeParse(unknownEvalField).success, false);
+  const undefinedPolicyField = structuredClone(input);
+  (undefinedPolicyField.deliveryPolicy as Record<string, unknown>).minimumReviewLevel = "self";
+  assertEquals(create.config.inputSchema.safeParse(undefinedPolicyField).success, false);
+  const reorderedArtifacts = structuredClone(input);
+  (reorderedArtifacts.deliveryPolicy as Record<string, unknown>).requiredArtifacts = [
+    "TaskReview", "TaskResult", "EvalReport", "MirrorVerification",
+  ];
+  assertEquals(create.config.inputSchema.safeParse(reorderedArtifacts).success, false);
 });
 
 Deno.test("finalize encodes deterministic status, roadmap, and EvalReport projections", async () => {

@@ -52,6 +52,22 @@ as $$
     and p_path not like '%//%'
 $$;
 
+create or replace function public.keco_slice_v2_valid_timestamp(p_value text)
+returns boolean
+language plpgsql immutable
+set search_path = ''
+as $$
+begin
+  if p_value is null or p_value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' then
+    return false;
+  end if;
+  perform p_value::pg_catalog.timestamptz;
+  return true;
+exception when others then
+  return false;
+end;
+$$;
+
 create or replace function public.keco_slice_v2_normalize_checkboxes(p_markdown text)
 returns text
 language sql immutable
@@ -650,33 +666,55 @@ begin
     raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
   end if;
   if public.keco_slice_json_hash(p_source_profile) is distinct from p_source_profile_hash
-    or p_source_profile->>'contractVersion' is distinct from '2'
-    or p_source_profile->>'schemaVersion' is distinct from '1'
-    or p_source_profile->>'kind' is null
+    or jsonb_typeof(p_source_profile->'contractVersion') is distinct from 'number'
+    or p_source_profile->'contractVersion' is distinct from '2'::jsonb
+    or jsonb_typeof(p_source_profile->'schemaVersion') is distinct from 'number'
+    or p_source_profile->'schemaVersion' is distinct from '1'::jsonb
+    or jsonb_typeof(p_source_profile->'kind') is distinct from 'string'
     or p_source_profile->>'kind' not in ('gdd', 'feedback', 'table', 'document', 'user_idea')
-    or (p_source_profile->>'kecoProjectId')::uuid is distinct from p_project_id
-    or p_source_profile->>'capturedAt' is null
-    or p_source_profile->>'sourceHash' is null or p_source_profile->>'sourceHash' !~ '^sha256:[a-f0-9]{64}$'
+    or jsonb_typeof(p_source_profile->'kecoProjectId') is distinct from 'string'
+    or p_source_profile->>'kecoProjectId' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    or p_source_profile->>'kecoProjectId' is distinct from p_project_id::text
+    or jsonb_typeof(p_source_profile->'capturedAt') is distinct from 'string'
+    or p_source_profile->>'capturedAt' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$'
+    or not public.keco_slice_v2_valid_timestamp(p_source_profile->>'capturedAt')
+    or jsonb_typeof(p_source_profile->'sourceHash') is distinct from 'string'
+    or p_source_profile->>'sourceHash' !~ '^sha256:[a-f0-9]{64}$'
     or jsonb_typeof(p_source_profile->'selectionEvidence') is distinct from 'array'
     or jsonb_array_length(case when jsonb_typeof(p_source_profile->'selectionEvidence') = 'array' then p_source_profile->'selectionEvidence' else '[]'::jsonb end) > 100
     or exists (
       select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'selectionEvidence') = 'array' then p_source_profile->'selectionEvidence' else '[]'::jsonb end) as evidence
       where jsonb_typeof(evidence) is distinct from 'object'
     )
-    or (p_source_profile->>'kind' = 'gdd' and (p_source_profile->>'requirementInventoryHash' is null or p_source_profile->>'requirementInventoryHash' !~ '^sha256:[a-f0-9]{64}$'))
+    or (p_source_profile->>'kind' = 'gdd' and (
+      jsonb_typeof(p_source_profile->'requirementInventoryHash') is distinct from 'string'
+      or p_source_profile->>'requirementInventoryHash' !~ '^sha256:[a-f0-9]{64}$'
+    ))
     or (p_source_profile->>'kind' in ('gdd', 'feedback', 'document') and (
-      p_source_profile->>'documentId' is null
-      or p_source_profile->>'contentHash' is null or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
-      or p_source_profile->>'epoch' is null
-      or p_source_profile->>'revision' is null
+      jsonb_typeof(p_source_profile->'documentId') is distinct from 'string'
+      or p_source_profile->>'documentId' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      or jsonb_typeof(p_source_profile->'contentHash') is distinct from 'string'
+      or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
+      or jsonb_typeof(p_source_profile->'epoch') is distinct from 'number'
+      or (case when jsonb_typeof(p_source_profile->'epoch') = 'number' then (p_source_profile->>'epoch')::numeric else null end) is null
+      or (case when jsonb_typeof(p_source_profile->'epoch') = 'number' then (p_source_profile->>'epoch')::numeric else null end) < 0
+      or mod((case when jsonb_typeof(p_source_profile->'epoch') = 'number' then (p_source_profile->>'epoch')::numeric else null end), 1) <> 0
+      or jsonb_typeof(p_source_profile->'revision') is distinct from 'number'
+      or (case when jsonb_typeof(p_source_profile->'revision') = 'number' then (p_source_profile->>'revision')::numeric else null end) is null
+      or (case when jsonb_typeof(p_source_profile->'revision') = 'number' then (p_source_profile->>'revision')::numeric else null end) < 0
+      or mod((case when jsonb_typeof(p_source_profile->'revision') = 'number' then (p_source_profile->>'revision')::numeric else null end), 1) <> 0
     ))
     or (p_source_profile->>'kind' = 'table' and (
-      p_source_profile->>'tableId' is null
-      or p_source_profile->>'schemaHash' is null or p_source_profile->>'schemaHash' !~ '^sha256:[a-f0-9]{64}$'
-      or p_source_profile->>'contentHash' is null or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
+      jsonb_typeof(p_source_profile->'tableId') is distinct from 'string'
+      or p_source_profile->>'tableId' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      or jsonb_typeof(p_source_profile->'schemaHash') is distinct from 'string'
+      or p_source_profile->>'schemaHash' !~ '^sha256:[a-f0-9]{64}$'
+      or jsonb_typeof(p_source_profile->'contentHash') is distinct from 'string'
+      or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
     ))
     or (p_source_profile->>'kind' = 'user_idea' and (
-      p_source_profile->>'requestHash' is null or p_source_profile->>'requestHash' !~ '^sha256:[a-f0-9]{64}$'
+      jsonb_typeof(p_source_profile->'requestHash') is distinct from 'string'
+      or p_source_profile->>'requestHash' !~ '^sha256:[a-f0-9]{64}$'
       or nullif(btrim(p_source_profile->>'requestExcerpt'), '') is null
       or length(p_source_profile->>'requestExcerpt') > 4000
     )) then
@@ -694,18 +732,33 @@ begin
   if p_source_profile->>'kind' = 'table' and (
     jsonb_typeof(p_source_profile->'rowIds') is distinct from 'array'
     or jsonb_array_length(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) > 1000
-    or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id where jsonb_typeof(row_id) is distinct from 'string' or row_id #>> '{}' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+    or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id where jsonb_typeof(row_id) is distinct from 'string' or row_id #>> '{}' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
     or (select count(*) from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end)) <> (select count(distinct row_id) from jsonb_array_elements_text(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id)
     or jsonb_typeof(p_source_profile->'rowHashes') is distinct from 'object'
     or (select count(*) from jsonb_object_keys(case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end)) <> jsonb_array_length(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end)
-    or exists (select 1 from jsonb_each(case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end) as item where item.value #>> '{}' !~ '^sha256:[a-f0-9]{64}$')
+    or exists (
+      select 1 from jsonb_object_keys(case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end) as key
+      where not exists (
+        select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id
+        where row_id #>> '{}' = key
+      )
+    )
+    or exists (
+      select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id
+      where not (case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end ? (row_id #>> '{}'))
+    )
+    or exists (select 1 from jsonb_each(case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end) as item where jsonb_typeof(item.value) is distinct from 'string' or item.value #>> '{}' !~ '^sha256:[a-f0-9]{64}$')
   ) then
     raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
   end if;
-  if p_plan_data->>'schemaVersion' is distinct from '2'
-    or p_eval_spec->>'schemaVersion' is distinct from '2'
+  if jsonb_typeof(p_plan_data->'schemaVersion') is distinct from 'number'
+    or p_plan_data->'schemaVersion' is distinct from '2'::jsonb
+    or jsonb_typeof(p_eval_spec->'schemaVersion') is distinct from 'number'
+    or p_eval_spec->'schemaVersion' is distinct from '2'::jsonb
     or p_plan_data->>'coverageMode' is null
     or p_eval_spec->>'coverageMode' is null
+    or jsonb_typeof(p_plan_data->'coverageMode') is distinct from 'string'
+    or jsonb_typeof(p_eval_spec->'coverageMode') is distinct from 'string'
     or p_plan_data->>'coverageMode' not in ('gdd', 'non_gdd')
     or p_eval_spec->>'coverageMode' not in ('gdd', 'non_gdd')
     or p_plan_data->>'coverageMode' is distinct from p_eval_spec->>'coverageMode'
@@ -931,12 +984,19 @@ begin
     ) then
     raise exception 'SLICE_EVAL_BINDING_INVALID' using errcode = '22023';
   end if;
-  if p_delivery_policy->>'schemaVersion' is distinct from '2'
+  if jsonb_typeof(p_delivery_policy) is distinct from 'object'
+    or jsonb_typeof(p_delivery_policy->'schemaVersion') is distinct from 'number'
+    or p_delivery_policy->'schemaVersion' is distinct from '2'::jsonb
+    or jsonb_typeof(p_delivery_policy->'releaseOrder') is distinct from 'array'
     or p_delivery_policy->'releaseOrder' is distinct from '["implementation","runtime_verification","acceptance","manual_review","package","roadmap_completion","mirrors","seal"]'::jsonb
+    or jsonb_typeof(p_delivery_policy->'requiredArtifacts') is distinct from 'array'
     or p_delivery_policy->'requiredArtifacts' is distinct from '["TaskResult","TaskReview","EvalReport","MirrorVerification"]'::jsonb
+    or jsonb_typeof(p_delivery_policy->'runtimeEvidenceFreshness') is distinct from 'string'
     or p_delivery_policy->>'runtimeEvidenceFreshness' is distinct from 'current_build_and_snapshot'
-    or coalesce((p_delivery_policy->>'maximumRepairs')::integer, -1) <> 3
-    or coalesce((p_delivery_policy->>'manualReviewBlocksRelease')::boolean, false) is not true
+    or jsonb_typeof(p_delivery_policy->'maximumRepairs') is distinct from 'number'
+    or p_delivery_policy->'maximumRepairs' is distinct from '3'::jsonb
+    or jsonb_typeof(p_delivery_policy->'manualReviewBlocksRelease') is distinct from 'boolean'
+    or p_delivery_policy->'manualReviewBlocksRelease' is distinct from 'true'::jsonb
     or exists (select 1 from jsonb_object_keys(p_delivery_policy) as key where key not in ('schemaVersion', 'requiredArtifacts', 'runtimeEvidenceFreshness', 'maximumRepairs', 'releaseOrder', 'manualReviewBlocksRelease')) then
     raise exception 'Invalid Slice delivery policy' using errcode = '22023';
   end if;
