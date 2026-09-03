@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   RLS_DB_TESTS_ENABLED,
@@ -632,5 +633,641 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
       .select('id').eq('id', bundle.runId);
     expect(viewerRead.error).toBeNull();
     expect(viewerRead.data).toEqual([{ id: bundle.runId }]);
+  });
+});
+
+describeDb('Slice contract version 2 real Postgres behavior', () => {
+  let fx: ProjectFixture;
+  let planningRootId = '';
+  let specFolderId = '';
+  let planFolderId = '';
+
+  function eventV2(eventType: string, payload: Record<string, unknown>) {
+    return {
+      eventId: crypto.randomUUID(),
+      eventType,
+      payload,
+      inputHash: hashJson(payload),
+      outputHash: hashJson({ eventType, payload }),
+    };
+  }
+
+  beforeAll(async () => {
+    fx = await buildProjectFixture();
+    const root = await fx.svc.from('folders').insert({
+      project_id: fx.projectId,
+      name: `slice-v2-${fx.suffix}`,
+      updated_by: fx.owner.id,
+    }).select('id').single();
+    if (root.error || !root.data) throw new Error(`create V2 planning root failed: ${root.error?.message}`);
+    planningRootId = String(root.data.id);
+    const children = await fx.svc.from('folders').insert(['spec', 'plan'].map(name => ({
+      project_id: fx.projectId,
+      parent_folder_id: planningRootId,
+      name,
+      updated_by: fx.owner.id,
+    }))).select('id,name');
+    if (children.error || !children.data) throw new Error(`create V2 child folders failed: ${children.error?.message}`);
+    specFolderId = String(children.data.find(item => item.name === 'spec')?.id);
+    planFolderId = String(children.data.find(item => item.name === 'plan')?.id);
+  });
+
+  afterAll(async () => {
+    if (fx) await teardownProjectFixture(fx);
+  });
+
+  async function createV2Bundle(
+    roadmap?: Record<string, unknown>,
+    options: {
+      taskIds?: string[];
+      gddMismatch?: 'inventory' | 'requirements';
+      includeRoadmapSlice?: boolean;
+      duplicateTaskId?: boolean;
+      unknownDependency?: boolean;
+      missingSourceMappings?: boolean;
+      duplicateEvalId?: boolean;
+      malformedEvaluation?: boolean;
+      malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
+      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version' | 'missing-plan-revision' | 'missing-red-expected' | 'missing-green-expected' | 'missing-review-level' | 'missing-source-hash' | 'missing-selection-evidence' | 'invalid-selection-evidence' | 'oversized-selection-evidence' | 'missing-document-content-hash' | 'missing-policy-release-order' | 'missing-policy-required-artifacts' | 'missing-policy-runtime-freshness' | 'unknown-policy-field' | 'minimum-review-level' | 'invalid-captured-at' | 'invalid-document-id' | 'invalid-table-id' | 'negative-epoch' | 'non-integer-revision' | 'row-hashes-mismatch' | 'policy-schema-string' | 'policy-repairs-string' | 'policy-manual-string';
+      sourceKind?: 'table';
+      malformedArray?: 'allowed-files-number' | 'task-files-boolean' | 'depends-on-number' | 'serves-evaluations-boolean' | 'source-mappings-number' | 'served-by-tasks-boolean' | 'marker-paths-number';
+      corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
+    } = {},
+  ) {
+    const runId = crypto.randomUUID();
+    const sliceId = `slice-${runId.slice(0, 8)}`;
+    const taskIds = options.taskIds ?? ['task-1'];
+    const requirementIds = taskIds.map((_, index) => `req-${index + 1}`);
+    let sourceProfile: Record<string, any> = options.gddMismatch ? {
+      schemaVersion: 1,
+      contractVersion: 2,
+      kind: 'gdd',
+      kecoProjectId: fx.projectId,
+      capturedAt: '2026-09-03T00:00:00Z',
+      sourceHash: hash('a'),
+      selectionEvidence: [],
+      documentId: crypto.randomUUID(),
+      epoch: 0,
+      revision: 1,
+      contentHash: hash('b'),
+      requirementInventoryHash: hash('7'),
+    } : {
+      schemaVersion: 1,
+      contractVersion: 2,
+      kind: 'document',
+      kecoProjectId: fx.projectId,
+      capturedAt: '2026-09-03T00:00:00Z',
+      sourceHash: hash('a'),
+      selectionEvidence: [],
+      documentId: crypto.randomUUID(),
+      epoch: 0,
+      revision: 1,
+      contentHash: hash('b'),
+    };
+    if (options.sourceKind === 'table') {
+      const rowId = crypto.randomUUID();
+      sourceProfile = {
+        schemaVersion: 1, contractVersion: 2, kind: 'table', kecoProjectId: fx.projectId,
+        capturedAt: '2026-09-03T00:00:00Z', sourceHash: hash('a'), selectionEvidence: [],
+        tableId: crypto.randomUUID(), schemaHash: hash('c'), rowIds: [rowId], rowHashes: { [rowId]: hash('d') }, contentHash: hash('b'),
+      };
+    }
+    if (options.malformedEvaluationField === 'invalid-captured-at') sourceProfile.capturedAt = 'not-a-timestamp';
+    if (options.malformedEvaluationField === 'invalid-document-id') sourceProfile.documentId = 'not-a-uuid';
+    if (options.malformedEvaluationField === 'invalid-table-id') sourceProfile = { ...sourceProfile, kind: 'table', tableId: 'not-a-uuid', schemaHash: hash('c'), rowIds: [], rowHashes: {}, contentHash: hash('b') };
+    if (options.malformedEvaluationField === 'negative-epoch') sourceProfile.epoch = -1;
+    if (options.malformedEvaluationField === 'non-integer-revision') sourceProfile.revision = 1.5;
+    if (options.malformedEvaluationField === 'row-hashes-mismatch') {
+      const rowId = crypto.randomUUID();
+      sourceProfile = { ...sourceProfile, kind: 'table', tableId: crypto.randomUUID(), schemaHash: hash('c'), rowIds: [rowId], rowHashes: { [crypto.randomUUID()]: hash('d') }, contentHash: hash('b') };
+    }
+    const tasks = taskIds.map((id, index) => ({
+      id: options.duplicateTaskId && index === 1 ? taskIds[0] : id,
+      files: [`game/task-${index + 1}.gd`],
+      dependsOn: options.unknownDependency && index === 1 ? ['task-missing'] : index === 0 ? [] : [taskIds[index - 1]],
+      servesEvaluations: [`eval-${index + 1}`],
+      red: { command: `test red ${id}`, expected: 'fails' },
+      green: { command: `test green ${id}`, expected: 'passes' },
+      review: { minimumLevel: 'self' },
+      sourceMappings: options.gddMismatch ? [requirementIds[index]] : ['source-1'],
+    }));
+    if (options.missingSourceMappings) delete tasks[0].sourceMappings;
+    let plan: Record<string, any> = options.gddMismatch ? {
+      schemaVersion: 2,
+      coverageMode: 'gdd',
+      inventoryHash: hash('7'),
+      requirementIds,
+      planRevision: hash('c'),
+      allowedFiles: tasks.map(task => task.files[0]),
+      tasks,
+    } : {
+      schemaVersion: 2,
+      coverageMode: 'non_gdd',
+      sourceProfileHash: hashJson(sourceProfile),
+      nonGddRationale: 'The selected document directly authorizes this Slice.',
+      planRevision: hash('c'),
+      allowedFiles: tasks.map(task => task.files[0]),
+      tasks,
+    };
+    const evaluations = taskIds.map((id, index) => ({
+      evalId: options.duplicateEvalId && index === 1 ? 'eval-1' : `eval-${index + 1}`,
+      servedByTasks: [id],
+      buildHash: hash('d'),
+      snapshotHash: hash('e'),
+      assertions: [{ assertionId: `ready-${index + 1}`, kind: 'equals', path: '/ready', expected: true }],
+    }));
+    if (options.malformedEvaluation) evaluations[0].assertions = [];
+    if (options.malformedAssertion === 'missing-kind') {
+      evaluations[0].assertions = [{ assertionId: 'check-1' }];
+    } else if (options.malformedAssertion === 'range-order') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'range', path: '/ready', minimum: 4, maximum: 2, minimumInclusive: true, maximumInclusive: true }];
+    } else if (options.malformedAssertion === 'range-types') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'range', path: '/ready', minimum: 'low', minimumInclusive: true, maximumInclusive: 'yes' }];
+    } else if (options.malformedAssertion === 'roundtrip-markers') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'roundtrip', beforePath: '/before', afterPath: '/after', markerPaths: ['/a', '/a'] }];
+    } else if (options.malformedAssertion === 'subset-size') {
+      evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'subset', path: '/items', expected: Array.from({ length: 101 }, (_, index) => index) }];
+    }
+    if (options.malformedEvaluationField === 'missing-build-hash') delete evaluations[0].buildHash;
+    if (options.malformedEvaluationField === 'missing-snapshot-hash') delete evaluations[0].snapshotHash;
+    if (options.malformedEvaluationField === 'manual-string') evaluations[0].manualRequired = 'yes';
+    if (options.malformedEvaluationField === 'unknown-eval-field') evaluations[0].extra = true;
+    if (options.malformedEvaluationField === 'equals-missing-expected') delete evaluations[0].assertions[0].expected;
+    let evalSpec: Record<string, any> = options.gddMismatch ? {
+      schemaVersion: 2,
+      coverageMode: 'gdd',
+      inventoryHash: options.gddMismatch === 'inventory' ? hash('8') : hash('7'),
+      requirementIds: options.gddMismatch === 'requirements' ? ['req-other'] : requirementIds,
+      evaluations,
+    } : {
+      schemaVersion: 2,
+      coverageMode: 'non_gdd',
+      sourceProfileHash: hashJson(sourceProfile),
+      evaluations,
+    };
+    if (options.corpusInput) {
+      plan = structuredClone(options.corpusInput.plan);
+      evalSpec = structuredClone(options.corpusInput.evalSpec);
+      if (plan.coverageMode === 'gdd') {
+        sourceProfile.kind = 'gdd';
+        sourceProfile.requirementInventoryHash = plan.inventoryHash;
+      } else {
+        plan.sourceProfileHash = hashJson(sourceProfile);
+        evalSpec.sourceProfileHash = plan.sourceProfileHash;
+      }
+    }
+    if (options.malformedEvaluationField === 'unknown-plan-field') plan.extra = true;
+    if (options.malformedEvaluationField === 'unknown-eval-spec-field') evalSpec.extra = true;
+    if (options.malformedEvaluationField === 'missing-source-contract-version') delete sourceProfile.contractVersion;
+    if (options.malformedEvaluationField === 'missing-source-schema-version') delete sourceProfile.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-source-hash') delete sourceProfile.sourceHash;
+    if (options.malformedEvaluationField === 'missing-selection-evidence') delete sourceProfile.selectionEvidence;
+    if (options.malformedEvaluationField === 'invalid-selection-evidence') sourceProfile.selectionEvidence = [1];
+    if (options.malformedEvaluationField === 'oversized-selection-evidence') sourceProfile.selectionEvidence = Array.from({ length: 101 }, () => ({}));
+    if (options.malformedEvaluationField === 'missing-document-content-hash') delete sourceProfile.contentHash;
+    if (options.malformedEvaluationField === 'missing-plan-schema-version') delete plan.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-plan-coverage-mode') delete plan.coverageMode;
+    if (options.malformedEvaluationField === 'missing-plan-revision') delete plan.planRevision;
+    if (options.malformedEvaluationField === 'missing-red-expected') delete tasks[0].red.expected;
+    if (options.malformedEvaluationField === 'missing-green-expected') delete tasks[0].green.expected;
+    if (options.malformedEvaluationField === 'missing-review-level') delete tasks[0].review.minimumLevel;
+    if (options.malformedEvaluationField === 'missing-eval-schema-version') delete evalSpec.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-eval-coverage-mode') delete evalSpec.coverageMode;
+    if (options.malformedArray === 'allowed-files-number') plan.allowedFiles = ['game/task-1.gd', 1];
+    if (options.malformedArray === 'task-files-boolean') tasks[0].files = ['game/task-1.gd', false];
+    if (options.malformedArray === 'depends-on-number') tasks[0].dependsOn = [1];
+    if (options.malformedArray === 'serves-evaluations-boolean') tasks[0].servesEvaluations = [true];
+    if (options.malformedArray === 'source-mappings-number') tasks[0].sourceMappings = [1];
+    if (options.malformedArray === 'served-by-tasks-boolean') evaluations[0].servedByTasks = [false];
+    if (options.malformedArray === 'marker-paths-number') evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'roundtrip', beforePath: '/before', afterPath: '/after', markerPaths: [1] }];
+    if (plan.coverageMode === 'non_gdd' && ['missing-source-hash', 'missing-selection-evidence', 'invalid-selection-evidence', 'oversized-selection-evidence', 'missing-document-content-hash'].includes(options.malformedEvaluationField ?? '')) {
+      plan.sourceProfileHash = hashJson(sourceProfile);
+      evalSpec.sourceProfileHash = plan.sourceProfileHash;
+    }
+    const policy = {
+      schemaVersion: 2,
+      requiredArtifacts: ['TaskResult', 'TaskReview', 'EvalReport', 'MirrorVerification'],
+      runtimeEvidenceFreshness: 'current_build_and_snapshot', maximumRepairs: 3,
+      releaseOrder: ['implementation', 'runtime_verification', 'acceptance', 'manual_review', 'package', 'roadmap_completion', 'mirrors', 'seal'],
+      manualReviewBlocksRelease: true,
+    };
+    if (options.malformedEvaluationField === 'missing-policy-schema-version') delete policy.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-policy-release-order') delete policy.releaseOrder;
+    if (options.malformedEvaluationField === 'missing-policy-required-artifacts') delete policy.requiredArtifacts;
+    if (options.malformedEvaluationField === 'missing-policy-runtime-freshness') delete policy.runtimeEvidenceFreshness;
+    if (options.malformedEvaluationField === 'unknown-policy-field') policy.extra = true;
+    if (options.malformedEvaluationField === 'minimum-review-level') policy.minimumReviewLevel = 'self';
+    if (options.malformedEvaluationField === 'policy-schema-string') policy.schemaVersion = '2';
+    if (options.malformedEvaluationField === 'policy-repairs-string') policy.maximumRepairs = '3';
+    if (options.malformedEvaluationField === 'policy-manual-string') policy.manualReviewBlocksRelease = 'true';
+    const createBinding = (kind: 'roadmap' | 'spec' | 'plan', folderId: string, name: string, repositoryPath: string) => {
+      const body = kind === 'plan'
+        ? `# Plan ${sliceId}\n${taskIds.map(id => `- [ ] ${id}: execute ${id}`).join('\n')}\n`
+        : `# ${kind} ${sliceId}\n- [ ] ${sliceId}: deliver ${sliceId}\n`;
+      const encoded = normalizeMarkdown(body);
+      return { kind, disposition: 'create', folderId, name, repositoryPath, documentId: crypto.randomUUID(), markdown: encoded.markdown, yjsState: encoded.yjsStateBase64 };
+    };
+    let roadmapBinding = roadmap;
+    if (!roadmapBinding) {
+      const existing = await fx.svc.from('documents')
+        .select('id,content,collab_epoch,collab_revision')
+        .eq('project_id', fx.projectId).eq('folder_id', planningRootId).eq('name', 'roadmap')
+        .maybeSingle();
+      if (existing.error) throw new Error(`read V2 roadmap failed: ${existing.error.message}`);
+      if (existing.data && options.includeRoadmapSlice) {
+        const encoded = normalizeMarkdown(`${existing.data.content}\n- [ ] ${sliceId}: deliver ${sliceId}\n`);
+        roadmapBinding = {
+          kind: 'roadmap', disposition: 'update', folderId: planningRootId, name: 'roadmap',
+          repositoryPath: 'docs/superpowers/roadmap.md', documentId: existing.data.id,
+          expectedEpoch: existing.data.collab_epoch, expectedRevision: existing.data.collab_revision,
+          priorContentHash: `sha256:${createHash('sha256').update(existing.data.content).digest('hex')}`,
+          markdown: encoded.markdown, yjsState: encoded.yjsStateBase64,
+        };
+      } else {
+        roadmapBinding = existing.data ? {
+          kind: 'roadmap', disposition: 'bind', folderId: planningRootId, name: 'roadmap',
+          repositoryPath: 'docs/superpowers/roadmap.md', documentId: existing.data.id,
+          expectedEpoch: existing.data.collab_epoch, expectedRevision: existing.data.collab_revision,
+          contentHash: `sha256:${createHash('sha256').update(existing.data.content).digest('hex')}`,
+        } : createBinding('roadmap', planningRootId, 'roadmap', 'docs/superpowers/roadmap.md');
+      }
+    }
+    const documentBindings = [
+      roadmapBinding,
+      createBinding('spec', specFolderId, sliceId, `docs/superpowers/specs/${sliceId}-design.md`),
+      createBinding('plan', planFolderId, sliceId, `docs/superpowers/plans/${sliceId}.md`),
+    ];
+    const args = {
+      p_project_id: fx.projectId, p_run_id: runId, p_planning_root_id: planningRootId,
+      p_slice_id: sliceId, p_source_profile: sourceProfile, p_source_profile_hash: hashJson(sourceProfile),
+      p_plan_data: plan, p_plan_hash: hashJson(plan), p_eval_spec: evalSpec, p_eval_spec_hash: hashJson(evalSpec),
+      p_delivery_policy: policy, p_delivery_policy_hash: hashJson(policy), p_document_bindings: documentBindings,
+      p_supersedes_run_id: null, p_idempotency_key: `create-v2:${runId}`, p_input_hash: hash('f'),
+    };
+    const created = await fx.editor.client.rpc('mcp_create_slice_bundle_v2', args);
+    if (created.error) throw new Error(`create V2 bundle failed: ${created.error.code} ${created.error.message}`);
+    return { runId, sliceId, args, result: row(created.data) };
+  }
+
+  async function checkpointV2(
+    runId: string,
+    token: string,
+    events: Array<Record<string, unknown>>,
+    options: {
+      documentProgress?: Array<Record<string, unknown>> | null;
+      computedEvaluations?: Array<Record<string, unknown>>;
+    } = {},
+  ) {
+    const key = `checkpoint-v2:${crypto.randomUUID()}`;
+    return fx.editor.client.rpc('mcp_checkpoint_slice_v2', {
+      p_project_id: fx.projectId, p_run_id: runId, p_expected_state_token: token,
+      p_events: events, p_artifacts: [], p_document_progress: options.documentProgress ?? null,
+      p_idempotency_key: key, p_input_hash: hash('9'), p_computed_evaluations: options.computedEvaluations ?? [],
+    });
+  }
+
+  function taskResultV2(
+    bundle: { runId: string; sliceId: string },
+    taskId: string,
+  ) {
+    return eventV2('task_result', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId, planRevision: hash('c'), attemptId: crypto.randomUUID(),
+      phase: 'green', operation: { kind: 'command', command: `test green ${taskId}` }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
+      exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('1'), stderrSummary: '', stderrHash: hash('2'),
+      changedFiles: [], expectedOutcome: 'passes', observedOutcome: 'passed', status: 'completed', concerns: [], artifactIds: [],
+    });
+  }
+
+  function taskReviewV2(
+    bundle: { runId: string; sliceId: string },
+    taskId: string,
+    resultEventId: string,
+  ) {
+    return eventV2('task_review', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId, planRevision: hash('c'),
+      taskResultIds: [resultEventId], reviewedFiles: [], reviewerType: 'agent', reviewerId: fx.editor.id,
+      requestedLevel: 'self', verdict: 'accepted', specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
+    });
+  }
+
+  function documentProgress(
+    kind: 'roadmap' | 'plan',
+    document: Record<string, unknown>,
+    markdown: string,
+    contentHash?: string,
+  ) {
+    const encoded = normalizeMarkdown(markdown);
+    return {
+      ...(kind === 'plan' ? { kind } : {}),
+      documentId: document.documentId,
+      expectedEpoch: document.epoch,
+      expectedRevision: document.revision,
+      priorContentHash: document.contentHash,
+      markdown: encoded.markdown,
+      yjsState: encoded.yjsStateBase64,
+      contentHash: contentHash ?? `sha256:${createHash('sha256').update(encoded.markdown).digest('hex')}`,
+    };
+  }
+
+  function bindingMarkdown(
+    bundle: { args: Record<string, unknown> },
+    kind: 'roadmap' | 'plan',
+  ): string {
+    const bindings = bundle.args.p_document_bindings as Array<Record<string, unknown>>;
+    return String(bindings.find(binding => binding.kind === kind)?.markdown);
+  }
+
+  function setChecked(markdown: string, taskId: string, checked: boolean): string {
+    return markdown.split('\n').map(line =>
+      line.includes(`${taskId}:`)
+        ? line.replace(/\[[ xX]\]/, checked ? '[x]' : '[ ]')
+        : line
+    ).join('\n');
+  }
+
+  it('creates same-name spec and plan in distinct folders and binds the roadmap for a second Slice', async () => {
+    const first = await createV2Bundle();
+    const documents = first.result.documents as Record<string, Record<string, unknown>>;
+    const second = await createV2Bundle({
+      kind: 'roadmap', disposition: 'bind', folderId: planningRootId, name: 'roadmap',
+      repositoryPath: 'docs/superpowers/roadmap.md', documentId: documents.roadmap.documentId,
+      expectedEpoch: documents.roadmap.epoch, expectedRevision: documents.roadmap.revision,
+      contentHash: documents.roadmap.contentHash,
+    });
+    const secondDocuments = second.result.documents as Record<string, Record<string, unknown>>;
+    expect(secondDocuments.roadmap.documentId).toBe(documents.roadmap.documentId);
+    const pairs = await fx.svc.from('documents').select('name,folder_id').in('id', [
+      secondDocuments.spec.documentId, secondDocuments.plan.documentId,
+    ]);
+    expect(pairs.error).toBeNull();
+    expect(pairs.data).toEqual(expect.arrayContaining([
+      { name: second.sliceId, folder_id: specFolderId },
+      { name: second.sliceId, folder_id: planFolderId },
+    ]));
+  });
+
+  it('rejects same-actor independent review and a fourth repair across fresh keys', async () => {
+    const bundle = await createV2Bundle();
+    const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/task-1.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(prerequisites.error).toBeNull();
+    let token = String(row(prerequisites.data).stateToken);
+    const resultEvent = eventV2('task_result', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'), attemptId: crypto.randomUUID(),
+      phase: 'green', operation: { kind: 'command', command: 'test green task-1' }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
+      exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('1'), stderrSummary: '', stderrHash: hash('2'),
+      changedFiles: [], expectedOutcome: 'passes', observedOutcome: 'passed', status: 'completed', concerns: [], artifactIds: [],
+    });
+    const result = await checkpointV2(bundle.runId, token, [resultEvent]);
+    expect(result.error).toBeNull();
+    token = String(row(result.data).stateToken);
+    const forged = await checkpointV2(bundle.runId, token, [eventV2('task_review', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'),
+      taskResultIds: [resultEvent.eventId], reviewedFiles: [], reviewerType: 'agent', reviewerId: fx.editor.id,
+      requestedLevel: 'independent_actor', verdict: 'accepted', specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
+    })]);
+    expect(forged.error?.message).toContain('SLICE_REVIEW_LEVEL_INVALID');
+    for (let iteration = 1; iteration <= 3; iteration += 1) {
+      const repaired = await checkpointV2(bundle.runId, token, [eventV2('repair_transition', { reason: `repair ${iteration}`, failedEvaluationIds: ['eval-1'] })]);
+      expect(repaired.error).toBeNull();
+      token = String(row(repaired.data).stateToken);
+    }
+    const fourth = await checkpointV2(bundle.runId, token, [eventV2('repair_transition', { reason: 'repair 4', failedEvaluationIds: ['eval-1'] })]);
+    expect(fourth.error?.message).toContain('SLICE_REPAIR_LIMIT');
+  });
+
+  it('requires explicit KECO_OBSERVATION provenance on V2 runtime events', async () => {
+    const bundle = await createV2Bundle();
+    const missingPrefix = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('runtime_observation', { observation: {
+        schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, evalId: 'eval-1',
+        buildHash: hash('d'), snapshotHash: hash('e'), actual: { ready: true }, errors: [],
+      } }),
+    ]);
+    expect(missingPrefix.error?.message).toContain('SLICE_RUNTIME_EVIDENCE_INVALID');
+  });
+
+  it.each(['inventory', 'requirements'] as const)(
+    'rejects a GDD %s mismatch between the plan and EvalSpec',
+    async mismatch => {
+      await expect(createV2Bundle(undefined, { gddMismatch: mismatch }))
+        .rejects.toThrow(/SLICE_EVAL_BINDING_INVALID/);
+    },
+  );
+
+  it.each([
+    ['duplicate task IDs', { taskIds: ['task-1', 'task-2'], duplicateTaskId: true }],
+    ['unknown dependencies', { taskIds: ['task-1', 'task-2'], unknownDependency: true }],
+    ['missing source mappings', { missingSourceMappings: true }],
+    ['duplicate evaluation IDs', { taskIds: ['task-1', 'task-2'], duplicateEvalId: true }],
+    ['malformed evaluation assertions', { malformedEvaluation: true }],
+    ['assertion missing kind', { malformedAssertion: 'missing-kind' }],
+    ['range assertion order', { malformedAssertion: 'range-order' }],
+    ['range assertion types', { malformedAssertion: 'range-types' }],
+    ['roundtrip marker paths', { malformedAssertion: 'roundtrip-markers' }],
+    ['subset assertion size', { malformedAssertion: 'subset-size' }],
+    ['missing evaluation build hash', { malformedEvaluationField: 'missing-build-hash' }],
+    ['missing evaluation snapshot hash', { malformedEvaluationField: 'missing-snapshot-hash' }],
+    ['non-boolean manual requirement', { malformedEvaluationField: 'manual-string' }],
+    ['unknown evaluation field', { malformedEvaluationField: 'unknown-eval-field' }],
+    ['equals missing expected', { malformedEvaluationField: 'equals-missing-expected' }],
+    ['unknown plan field', { malformedEvaluationField: 'unknown-plan-field' }],
+    ['unknown eval spec field', { malformedEvaluationField: 'unknown-eval-spec-field' }],
+    ['missing source contract version', { malformedEvaluationField: 'missing-source-contract-version' }],
+    ['missing source schema version', { malformedEvaluationField: 'missing-source-schema-version' }],
+    ['missing source hash', { malformedEvaluationField: 'missing-source-hash' }],
+    ['missing selection evidence', { malformedEvaluationField: 'missing-selection-evidence' }],
+    ['invalid selection evidence element', { malformedEvaluationField: 'invalid-selection-evidence' }],
+    ['oversized selection evidence', { malformedEvaluationField: 'oversized-selection-evidence' }],
+    ['missing document content hash', { malformedEvaluationField: 'missing-document-content-hash' }],
+    ['missing plan schema version', { malformedEvaluationField: 'missing-plan-schema-version' }],
+    ['missing plan coverage mode', { malformedEvaluationField: 'missing-plan-coverage-mode' }],
+    ['missing eval schema version', { malformedEvaluationField: 'missing-eval-schema-version' }],
+    ['missing eval coverage mode', { malformedEvaluationField: 'missing-eval-coverage-mode' }],
+    ['missing policy schema version', { malformedEvaluationField: 'missing-policy-schema-version' }],
+    ['missing policy release order', { malformedEvaluationField: 'missing-policy-release-order' }],
+    ['missing policy required artifacts', { malformedEvaluationField: 'missing-policy-required-artifacts' }],
+    ['missing policy runtime freshness', { malformedEvaluationField: 'missing-policy-runtime-freshness' }],
+    ['unknown policy field', { malformedEvaluationField: 'unknown-policy-field' }],
+    ['missing plan revision', { malformedEvaluationField: 'missing-plan-revision' }],
+    ['missing RED expected outcome', { malformedEvaluationField: 'missing-red-expected' }],
+    ['missing GREEN expected outcome', { malformedEvaluationField: 'missing-green-expected' }],
+    ['missing review level', { malformedEvaluationField: 'missing-review-level' }],
+    ['invalid capturedAt', { malformedEvaluationField: 'invalid-captured-at' }],
+    ['invalid documentId', { malformedEvaluationField: 'invalid-document-id' }],
+    ['invalid tableId', { malformedEvaluationField: 'invalid-table-id' }],
+    ['negative epoch', { malformedEvaluationField: 'negative-epoch' }],
+    ['non-integer revision', { malformedEvaluationField: 'non-integer-revision' }],
+    ['rowHashes key mismatch', { malformedEvaluationField: 'row-hashes-mismatch' }],
+    ['policy schemaVersion string', { malformedEvaluationField: 'policy-schema-string' }],
+    ['policy maximumRepairs string', { malformedEvaluationField: 'policy-repairs-string' }],
+    ['policy manualReviewBlocksRelease string', { malformedEvaluationField: 'policy-manual-string' }],
+    ['undefined minimumReviewLevel', { malformedEvaluationField: 'minimum-review-level' }],
+  ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
+    await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING|SOURCE_PROFILE)_INVALID|Invalid Slice delivery policy/);
+  });
+
+  it('accepts a complete table SourceProfile and V2 delivery policy control', async () => {
+    await expect(createV2Bundle(undefined, { sourceKind: 'table' })).resolves.toBeDefined();
+  });
+
+  it.each([
+    ['allowedFiles number', 'allowed-files-number'],
+    ['task files boolean', 'task-files-boolean'],
+    ['dependsOn number', 'depends-on-number'],
+    ['servesEvaluations boolean', 'serves-evaluations-boolean'],
+    ['sourceMappings number', 'source-mappings-number'],
+    ['servedByTasks boolean', 'served-by-tasks-boolean'],
+    ['roundtrip marker path number', 'marker-paths-number'],
+  ] as const)('rejects SQL-invalid non-string %s at the V2 RPC boundary', async (_label, malformedArray) => {
+    await expect(createV2Bundle(undefined, { malformedArray })).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
+  });
+
+  it('drives SQL plan/eval rejection cases from the canonical conformance corpus', async () => {
+    const corpus = JSON.parse(readFileSync('contracts/keco-slice-v2/conformance-cases.json', 'utf8')) as {
+      cases: Array<{ id: string; boundary: string; input: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> }; expected: { accepted: boolean; reasonCode: string | null } }>;
+    };
+    const sqlCases = corpus.cases.filter(testCase => testCase.boundary === 'planEval');
+    expect(sqlCases).toHaveLength(7);
+    for (const testCase of sqlCases) {
+      const result = createV2Bundle(undefined, { corpusInput: testCase.input });
+      if (testCase.expected.accepted) {
+        await expect(result).resolves.toBeDefined();
+      } else {
+        await expect(result).rejects.toThrow(testCase.expected.reasonCode!);
+      }
+    }
+  });
+
+  it('gates plan checkbox transitions on accepted evidence, review, dependencies, bytes, and hashes', async () => {
+    const bundle = await createV2Bundle(undefined, { taskIds: ['task-1', 'task-2'] });
+    const documents = bundle.result.documents as Record<string, Record<string, unknown>>;
+    const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/task-1.gd', 'game/task-2.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(prerequisites.error).toBeNull();
+    let token = String(row(prerequisites.data).stateToken);
+    const initialPlan = bindingMarkdown(bundle, 'plan');
+
+    const secondResult = taskResultV2(bundle, 'task-2');
+    const secondAccepted = await checkpointV2(bundle.runId, token, [secondResult]);
+    expect(secondAccepted.error).toBeNull();
+    token = String(row(secondAccepted.data).stateToken);
+    const secondReviewed = await checkpointV2(bundle.runId, token, [taskReviewV2(bundle, 'task-2', secondResult.eventId)]);
+    expect(secondReviewed.error).toBeNull();
+    token = String(row(secondReviewed.data).stateToken);
+    const dependencyViolation = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('4') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-2', true))] });
+    expect(dependencyViolation.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const firstResult = taskResultV2(bundle, 'task-1');
+    const firstAccepted = await checkpointV2(bundle.runId, token, [firstResult]);
+    expect(firstAccepted.error).toBeNull();
+    token = String(row(firstAccepted.data).stateToken);
+    const missingReview = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('5') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-1', true))] });
+    expect(missingReview.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const firstReviewed = await checkpointV2(bundle.runId, token, [taskReviewV2(bundle, 'task-1', firstResult.eventId)]);
+    expect(firstReviewed.error).toBeNull();
+    token = String(row(firstReviewed.data).stateToken);
+    const byteMutation = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('6') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(setChecked(initialPlan, 'task-1', true), 'task-2', true).replace('Plan', 'Mutated plan'))] });
+    expect(byteMutation.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const forgedHash = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('7') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(setChecked(initialPlan, 'task-1', true), 'task-2', true), hash('9'))] });
+    expect(forgedHash.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const accepted = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('8') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(setChecked(initialPlan, 'task-1', true), 'task-2', true))] });
+    expect(accepted.error).toBeNull();
+    expect((row(accepted.data).documents as Record<string, Record<string, unknown>>).plan.revision).toBe(2);
+  });
+
+  it('enforces implementation_complete, prepare_delivery, export order and freezes documents', async () => {
+    const bundle = await createV2Bundle(undefined, { includeRoadmapSlice: true });
+    let documents = bundle.result.documents as Record<string, Record<string, unknown>>;
+    const initialPlan = bindingMarkdown(bundle, 'plan');
+    const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/task-1.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(prerequisites.error).toBeNull();
+    const resultEvent = taskResultV2(bundle, 'task-1');
+    const result = await checkpointV2(bundle.runId, String(row(prerequisites.data).stateToken), [resultEvent]);
+    expect(result.error).toBeNull();
+    const runtime = eventV2('runtime_observation', { prefix: 'KECO_OBSERVATION', observation: {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, evalId: 'eval-1',
+      buildHash: hash('d'), snapshotHash: hash('e'), actual: { ready: true }, errors: [],
+    } });
+    const ready = await checkpointV2(bundle.runId, String(row(result.data).stateToken), [
+      taskReviewV2(bundle, 'task-1', resultEvent.eventId),
+      runtime,
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('3') }),
+    ], {
+      documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-1', true))],
+      computedEvaluations: [{
+        evalId: 'eval-1', status: 'passed', manualRequired: false,
+        assertions: [{ assertionId: 'ready-1', status: 'passed', reasonCode: 'OK', actual: true }],
+        reasonCodes: [],
+      }],
+    });
+    expect(ready.error).toBeNull();
+    documents = row(ready.data).documents as Record<string, Record<string, unknown>>;
+
+    const beforeImplementation = await fx.viewer.client.rpc('mcp_export_slice_mirrors_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId,
+    });
+    expect(beforeImplementation.error?.message).toContain('SLICE_MIRROR_INVALID');
+    const implementation = await fx.editor.client.rpc('mcp_finalize_slice_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId, p_expected_state_token: row(ready.data).stateToken,
+      p_requested_terminal_intent: 'implementation_complete', p_mirror_verification_event_id: null,
+      p_mirror_manifest_hash: null, p_idempotency_key: `implementation-v2:${bundle.runId}`, p_input_hash: hash('4'),
+    });
+    expect(implementation.error).toBeNull();
+    const roadmapMarkdown = setChecked(bindingMarkdown(bundle, 'roadmap'), bundle.sliceId, true);
+    const stalePrepare = await fx.editor.client.rpc('mcp_prepare_slice_delivery_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId, p_expected_state_token: row(implementation.data).stateToken,
+      p_roadmap_progress: { ...documentProgress('roadmap', documents.roadmap, roadmapMarkdown), expectedRevision: 99 },
+      p_idempotency_key: `prepare-stale:${bundle.runId}`, p_input_hash: hash('5'),
+    });
+    expect(stalePrepare.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+    const prepared = await fx.editor.client.rpc('mcp_prepare_slice_delivery_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId, p_expected_state_token: row(implementation.data).stateToken,
+      p_roadmap_progress: documentProgress('roadmap', documents.roadmap, roadmapMarkdown),
+      p_idempotency_key: `prepare-v2:${bundle.runId}`, p_input_hash: hash('6'),
+    });
+    expect(prepared.error).toBeNull();
+    documents = row(prepared.data).documents as Record<string, Record<string, unknown>>;
+    const exported = await fx.viewer.client.rpc('mcp_export_slice_mirrors_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId,
+    });
+    expect(exported.error).toBeNull();
+    const manifest = row(exported.data);
+    expect(manifest).toMatchObject({
+      schemaVersion: 2,
+      contractVersion: 2,
+      currentSequence: manifest.preparedSequence,
+    });
+    expect(manifest.files).toHaveLength(3);
+    expect(manifest.manifestHash).toBe(hashJson(manifest.files));
+
+    const postPrepare = await checkpointV2(bundle.runId, String(row(prepared.data).stateToken), [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('9') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-1', true))] });
+    expect(postPrepare.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+    const events = await fx.svc.from('keco_slice_run_events').select('event_type,sequence')
+      .eq('run_id', bundle.runId).in('event_type', ['implementation_completed', 'delivery_prepared']).order('sequence');
+    expect(events.error).toBeNull();
+    expect(events.data?.map(item => item.event_type)).toEqual(['implementation_completed', 'delivery_prepared']);
   });
 });

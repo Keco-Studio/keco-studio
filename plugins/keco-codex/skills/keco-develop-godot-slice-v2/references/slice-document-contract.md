@@ -19,16 +19,27 @@ invalid flat layout and must never be created. Use the same bare `<slice-id>`
 document name in both folders. The spec is the stable product and acceptance
 description. The plan is the ordered implementation checklist and the only user-facing progress record.
 
-Mirror the accepted canonical documents into the repository's existing
-Superpowers layout:
+Mirror exactly the accepted canonical roadmap, spec, and plan into the
+repository's Superpowers layout:
 
 ```text
+docs/superpowers/roadmap.md
 docs/superpowers/specs/<slice-id>-design.md
 docs/superpowers/plans/<slice-id>.md
 ```
 
 The repository paths are mirrors, not a substitute for the Keco folder
 hierarchy.
+
+## Substantive content
+
+For a multi-Slice decomposition, each paired spec and plan must carry its own
+objective, bounded scope, acceptance behavior, concrete task/file list, and
+RED/GREEN verification. Shared metadata and coverage IDs are not sufficient.
+Before the first spec write and again at `PLAN_REVIEW`, package the pairs in a
+decomposition bundle and run `scripts/validate_slice_decomposition.py`. The
+validator normalizes IDs and dates and rejects template-only siblings, generic
+`Implement tasks` checklists, and plans without concrete files or commands.
 
 ## Folder And Write Rules
 
@@ -67,24 +78,36 @@ task progress only changes checkboxes in the accepted plan.
 
 ## Versioning
 
-Put the visible `revision` and source GDD revision in the spec/plan metadata.
-Checkbox updates do not create a new revision. A changed goal, scope, or
-acceptance creates a new dated spec/plan pair and leaves the previous pair as
-history. Internal hashes may confirm exact bytes, but users only need the
-paired revision and the Git change history.
+Put the visible plan revision and SourceProfile identity in spec/plan metadata.
+Checkbox updates do not create a new plan revision. A changed goal, scope,
+acceptance, source, or allowed-file set creates a successor run and updates the
+same stable document identities with optimistic epoch/revision checks. Keco
+document history and Git retain the prior bytes; do not create dated duplicate
+documents.
 
 ## Multi-Slice Roadmap
 
-For more than one Slice, create the `roadmap` document directly in the Keco
-planning root and mirror it as an ordinary repository plan in:
+Create or bind the `roadmap` document directly in the Keco planning root and
+mirror it at:
 
 ```text
-docs/superpowers/plans/<roadmap-id>.md
+docs/superpowers/roadmap.md
 ```
 
 It contains one checkbox per Slice and links each item to its paired spec and
-plan. Mark a Slice checked only after its plan is complete and internal runtime
-verification succeeds. Do not place `roadmap` inside either child folder.
+plan. `prepare_delivery` is the only operation that marks the current Slice
+checked, after implementation, runtime, acceptance, manual-review policy, and
+package gates pass. Do not place `roadmap` inside either child folder.
+
+## Mirror And Seal
+
+After `prepare_delivery`, export exactly roadmap, spec, and plan. Fully preflight
+the batch, stage and fsync all bytes, persist the recovery journal, replace all
+targets, and read all targets back before producing `MirrorVerification`. A
+handled failure restores and verifies every pre-run hash. A failed restore
+returns `SLICE_MIRROR_RECOVERY_REQUIRED` with the durable journal; the next run
+recovers it before accepting another manifest. Delivery seal never edits these
+documents.
 
 ## Internal Evidence
 

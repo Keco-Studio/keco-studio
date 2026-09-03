@@ -1,0 +1,53 @@
+{
+  "contractVersion": 2,
+  "artifactSchemaVersions": {
+    "sourceProfile": 1,
+    "slicePlan": 2,
+    "evalSpec": 2,
+    "taskResult": 2,
+    "taskReview": 2,
+    "mirrorManifest": 2,
+    "mirrorVerification": 2
+  },
+  "sourceProfileKinds": ["gdd", "feedback", "table", "document", "user_idea"],
+  "documentBackedKinds": ["gdd", "feedback", "document"],
+  "coverageModes": ["gdd", "non_gdd"],
+  "documentKinds": ["roadmap", "spec", "plan"],
+  "documentDispositions": ["create", "bind", "update"],
+  "reviewLevels": ["self", "separate_context", "independent_actor"],
+  "runtimePrefixes": {
+    "current": "KECO_OBSERVATION",
+    "legacy": "KECO_EVAL"
+  },
+  "maximumRepairs": 3,
+  "releaseOrder": [
+    "implementation",
+    "runtime_verification",
+    "acceptance",
+    "manual_review",
+    "package",
+    "roadmap_completion",
+    "mirrors",
+    "seal"
+  ],
+  "canonicalPaths": {
+    "roadmap": "docs/superpowers/roadmap.md",
+    "specPrefix": "docs/superpowers/specs/",
+    "specSuffix": "-design.md",
+    "planPrefix": "docs/superpowers/plans/",
+    "planSuffix": ".md"
+  },
+  "reasonCodes": [
+    "SLICE_SOURCE_PROFILE_INVALID",
+    "SLICE_DOCUMENT_PLACEMENT_INVALID",
+    "SLICE_DOCUMENT_CONFLICT",
+    "SLICE_PLAN_SCOPE_INVALID",
+    "SLICE_EVAL_BINDING_INVALID",
+    "SLICE_REVIEW_LEVEL_INVALID",
+    "SLICE_RUNTIME_EVIDENCE_INVALID",
+    "SLICE_STATE_CONFLICT",
+    "SLICE_REPAIR_LIMIT",
+    "SLICE_MIRROR_INVALID",
+    "SLICE_MIRROR_RECOVERY_REQUIRED"
+  ]
+}

@@ -1,8 +1,8 @@
 # Source, Data, And Snapshot Contract
 
-## Source priority
+## SourceProfile and priority
 
-Resolve material conflicts in this order: current user instruction, newest explicit Keco feedback, current GDD goals and acceptance criteria, Keco table values, then current Godot behavior. Record document revisions, table IDs, field IDs, row IDs, Git commit, branch, dirty paths, Godot version, main scene, canonical path, and addon status in `SourceSnapshot`. If a selected revision changes, invalidate the ledger and restart at `BASELINE`.
+Select exactly one version-2 `SourceProfile`: `gdd`, `feedback`, `document`, `table`, or `user_idea`. A document profile records project/document IDs, epoch, revision, and content hash; a table profile records table ID, schema hash, row IDs/hashes, and content hash; a user idea records the request hash and bounded excerpt. Every profile records project ID, capture time, selection evidence, and canonical `sourceProfileHash`. Resolve material conflicts in this order: current user instruction, newest explicit Keco feedback, current GDD goals and acceptance criteria, Keco table values, then current Godot behavior. Record repository and Godot identity in `SourceSnapshot`. If selected source identity changes, create an explicit successor run rather than mutating the accepted run.
 
 ## Semantic source document discovery
 
@@ -22,4 +22,4 @@ Maintain separate development records: `Development Slices` keyed by `Slice ID`,
 
 ## Snapshot
 
-Export only fresh Keco read-back into deterministic JSON with schema version, project identity, capture time, source revisions, sorted tables, per-file hashes, and aggregate hash. Validate with the existing snapshot scripts before implementation. Generated snapshot files are read-only; never update Keco from edited local JSON. The running Godot project must report the loaded aggregate hash in each `KECO_EVAL` record.
+Export only fresh Keco read-back into deterministic JSON with schema version, project identity, capture time, source revisions, sorted tables, per-file hashes, and aggregate hash. Validate with the existing snapshot scripts before implementation. Generated snapshot files are read-only; never update Keco from edited local JSON. The running Godot project must report the loaded aggregate hash in each `KECO_OBSERVATION` record.

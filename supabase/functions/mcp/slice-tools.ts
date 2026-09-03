@@ -12,6 +12,7 @@ import {
   evaluateObservation,
   sha256Canonical,
 } from "./slice-contracts.ts";
+import { validateSliceV2ContractCase } from "./slice-v2-contract.ts";
 
 type ProjectContextResolver = (
   projectId: string,
@@ -67,7 +68,7 @@ const assertionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("equals"),
     path: jsonPointer,
     expected: z.unknown(),
-  }).strict(),
+  }).strict().refine((value) => Object.hasOwn(value, "expected"), "Equals assertions require an expected value."),
   z.object({
     assertionId: identifier,
     kind: z.literal("range"),
@@ -187,16 +188,227 @@ const policySchema = z.object({
     "mirrors",
     "package",
   ])).length(5).refine(
-    (value) => value.every((item, index) => item === [
-      "implementation",
-      "runtime_verification",
-      "acceptance",
-      "mirrors",
-      "package",
-    ][index]),
+    (value) =>
+      value.every((item, index) =>
+        item === [
+          "implementation",
+          "runtime_verification",
+          "acceptance",
+          "mirrors",
+          "package",
+        ][index]
+      ),
     "Release order must follow implementation, runtime verification, acceptance, mirrors, package.",
   ),
   manualReviewBlocksRelease: z.literal(true),
+}).strict();
+
+const sourceProfileCommon = {
+  schemaVersion: z.literal(1),
+  contractVersion: z.literal(2),
+  kecoProjectId: uuid,
+  capturedAt: timestamp,
+  sourceHash: sha256,
+  selectionEvidence: z.array(boundedJsonObject).max(100),
+};
+const sourceProfileSchema = z.discriminatedUnion("kind", [
+  z.object({
+    ...sourceProfileCommon,
+    kind: z.literal("gdd"),
+    documentId: uuid,
+    epoch: z.number().int().nonnegative(),
+    revision: z.number().int().nonnegative(),
+    contentHash: sha256,
+    requirementInventoryHash: sha256,
+  }).strict(),
+  z.object({
+    ...sourceProfileCommon,
+    kind: z.literal("feedback"),
+    documentId: uuid,
+    epoch: z.number().int().nonnegative(),
+    revision: z.number().int().nonnegative(),
+    contentHash: sha256,
+  }).strict(),
+  z.object({
+    ...sourceProfileCommon,
+    kind: z.literal("document"),
+    documentId: uuid,
+    epoch: z.number().int().nonnegative(),
+    revision: z.number().int().nonnegative(),
+    contentHash: sha256,
+  }).strict(),
+  z.object({
+    ...sourceProfileCommon,
+    kind: z.literal("table"),
+    tableId: uuid,
+    schemaHash: sha256,
+    rowIds: z.array(uuid).max(1000).refine((value) =>
+      new Set(value).size === value.length
+    ),
+    rowHashes: z.record(uuid, sha256),
+    contentHash: sha256,
+  }).strict(),
+  z.object({
+    ...sourceProfileCommon,
+    kind: z.literal("user_idea"),
+    requestHash: sha256,
+    requestExcerpt: z.string().trim().min(1).max(4000),
+  }).strict(),
+]).superRefine((value, context) => {
+  if (
+    value.kind === "table" &&
+    (Object.keys(value.rowHashes).length !== value.rowIds.length ||
+      Object.keys(value.rowHashes).some((rowId) => !value.rowIds.includes(rowId)))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Table row hashes must cover exactly the selected row IDs.",
+    });
+  }
+});
+const v2EvaluationSchema = evaluationSchema.extend({
+  servedByTasks: z.array(identifier).min(1).max(100).refine((value) =>
+    new Set(value).size === value.length
+  ),
+}).strict();
+const v2EvalSpecSchema = z.object({
+  schemaVersion: z.literal(2),
+  coverageMode: z.enum(["gdd", "non_gdd"]),
+  sourceProfileHash: sha256.optional(),
+  inventoryHash: sha256.optional(),
+  requirementIds: z.array(identifier).min(1).max(1000).optional(),
+  evaluations: z.array(v2EvaluationSchema).min(1).max(100),
+}).strict().superRefine((value, context) => {
+  if (
+    new Set(value.evaluations.map((item) => item.evalId)).size !==
+      value.evaluations.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Evaluation IDs must be unique.",
+    });
+  }
+  if (value.coverageMode === "gdd") {
+    if (
+      !value.inventoryHash || !value.requirementIds || value.sourceProfileHash
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "GDD evaluation coverage is incomplete.",
+      });
+    }
+  } else if (
+    !value.sourceProfileHash || value.inventoryHash || value.requirementIds
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Non-GDD evaluation coverage is invalid.",
+    });
+  }
+});
+const v2PlanTaskSchema = planTaskSchema.omit({ review: true }).extend({
+  review: z.object({
+    minimumLevel: z.enum(["self", "separate_context", "independent_actor"]),
+  }).strict(),
+  sourceMappings: z.array(identifier).min(1).max(1000).refine((value) =>
+    new Set(value).size === value.length
+  ),
+}).strict();
+const v2PlanSchema = z.object({
+  schemaVersion: z.literal(2),
+  coverageMode: z.enum(["gdd", "non_gdd"]),
+  sourceProfileHash: sha256.optional(),
+  nonGddRationale: z.string().trim().min(1).max(4000).optional(),
+  inventoryHash: sha256.optional(),
+  requirementIds: z.array(identifier).min(1).max(1000).optional(),
+  planRevision: sha256,
+  allowedFiles: z.array(relativePath).min(1).max(500),
+  tasks: z.array(v2PlanTaskSchema).min(1).max(100),
+}).strict();
+const v2PolicySchema = z.object({
+  schemaVersion: z.literal(2),
+  requiredArtifacts: z.array(
+    z.enum(["TaskResult", "TaskReview", "EvalReport", "MirrorVerification"]),
+  )
+    .length(4).refine(
+      (value) => value.every((item, index) =>
+        item === ["TaskResult", "TaskReview", "EvalReport", "MirrorVerification"][index]
+      ),
+      "requiredArtifacts must preserve the canonical order.",
+    ),
+  runtimeEvidenceFreshness: z.literal("current_build_and_snapshot"),
+  maximumRepairs: z.literal(3),
+  releaseOrder: z.array(z.enum([
+    "implementation",
+    "runtime_verification",
+    "acceptance",
+    "manual_review",
+    "package",
+    "roadmap_completion",
+    "mirrors",
+    "seal",
+  ])).length(8).refine(
+    (value) =>
+      value.every((item, index) =>
+        item === [
+          "implementation",
+          "runtime_verification",
+          "acceptance",
+          "manual_review",
+          "package",
+          "roadmap_completion",
+          "mirrors",
+          "seal",
+        ][index]
+      ),
+    "Release order must follow the Slice V2 delivery lifecycle.",
+  ),
+  manualReviewBlocksRelease: z.literal(true),
+}).strict();
+const documentBindingBase = {
+  kind: z.enum(["roadmap", "spec", "plan"]),
+  folderId: uuid,
+  name: z.string().trim().min(1).max(200),
+  repositoryPath: relativePath,
+};
+const documentBindingSchema = z.discriminatedUnion("disposition", [
+  z.object({
+    ...documentBindingBase,
+    disposition: z.literal("create"),
+    markdown: z.string(),
+  }).strict(),
+  z.object({
+    ...documentBindingBase,
+    disposition: z.literal("bind"),
+    documentId: uuid,
+    expectedEpoch: z.number().int().nonnegative(),
+    expectedRevision: z.number().int().nonnegative(),
+    contentHash: sha256,
+  }).strict(),
+  z.object({
+    ...documentBindingBase,
+    disposition: z.literal("update"),
+    documentId: uuid,
+    expectedEpoch: z.number().int().nonnegative(),
+    expectedRevision: z.number().int().nonnegative(),
+    priorContentHash: sha256,
+    markdown: z.string(),
+  }).strict(),
+]);
+const documentProgressSchema = z.object({
+  kind: z.literal("plan"),
+  documentId: uuid,
+  expectedEpoch: z.number().int().nonnegative(),
+  expectedRevision: z.number().int().nonnegative(),
+  priorContentHash: sha256,
+  markdown: z.string(),
+}).strict();
+const roadmapProgressSchema = z.object({
+  documentId: uuid,
+  expectedEpoch: z.number().int().nonnegative(),
+  expectedRevision: z.number().int().nonnegative(),
+  priorContentHash: sha256,
+  markdown: z.string(),
 }).strict();
 
 const runtimeObservationSchema = z.object({
@@ -313,6 +525,8 @@ const taskReviewPayloadSchema = z.object({
   ).max(500),
   reviewerType: z.enum(["agent", "human"]),
   reviewerId: identifier,
+  requestedLevel: z.enum(["self", "separate_context", "independent_actor"])
+    .optional(),
   verdict: z.enum(["accepted", "rejected"]),
   specificationFindings: z.array(safeSummary).max(50),
   qualityFindings: z.array(safeSummary).max(50),
@@ -348,7 +562,10 @@ const eventSchema = z.discriminatedUnion("eventType", [
   z.object({
     eventId: uuid,
     eventType: z.literal("runtime_observation"),
-    payload: z.object({ observation: runtimeObservationSchema }).strict(),
+    payload: z.object({
+      prefix: z.literal("KECO_OBSERVATION").default("KECO_OBSERVATION"),
+      observation: runtimeObservationSchema,
+    }).strict(),
   }).strict(),
   z.object({
     eventId: uuid,
@@ -395,7 +612,7 @@ const artifactSchema = z.object({
 }).strict();
 
 const projectionSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   implementationStatus: z.enum([
     "pending",
     "in_progress",
@@ -432,9 +649,19 @@ const documentIdentitySchema = z.object({
   epoch: z.number().int().nonnegative(),
   revision: z.number().int().nonnegative(),
 }).strict();
+const v2DocumentIdentitySchema = documentIdentitySchema.extend({
+  folderId: uuid,
+  contentHash: sha256,
+}).strict();
 const documentMapSchema = z.record(z.string(), documentIdentitySchema)
   .superRefine((value, context) => {
-    const allowed = new Set(["roadmap", "spec", "plan", "status", "evalReport"]);
+    const allowed = new Set([
+      "roadmap",
+      "spec",
+      "plan",
+      "status",
+      "evalReport",
+    ]);
     if (
       Object.keys(value).length < 3 || Object.keys(value).length > 5 ||
       Object.keys(value).some((key) => !allowed.has(key))
@@ -457,25 +684,52 @@ const createResponseSchema = z.object({
   ...mutationResponseBase,
   documents: documentMapSchema,
 }).strict();
+const v2DocumentMapSchema = z.object({
+  roadmap: v2DocumentIdentitySchema,
+  spec: v2DocumentIdentitySchema,
+  plan: v2DocumentIdentitySchema,
+}).strict();
+const v2MutationResponseBase = {
+  ...mutationResponseBase,
+  contractVersion: z.literal(2),
+  legacyLayout: z.literal(false),
+};
+const v2CreateResponseSchema = z.object({
+  ...v2MutationResponseBase,
+  documents: v2DocumentMapSchema,
+}).strict();
 const checkpointResponseSchema = z.object({
   ...mutationResponseBase,
   repairCount: z.number().int().min(0).max(3),
-  computedEvaluations: z.array(z.object({
-    evalId: identifier,
-    status: z.enum(["passed", "failed", "manual_required"]),
-    manualRequired: z.boolean(),
-    assertions: z.array(z.object({
-      assertionId: identifier,
-      status: z.enum(["passed", "failed"]),
-      actual: z.unknown().optional(),
-      reasonCode: identifier,
-    }).passthrough()).max(100),
-    reasonCodes: z.array(identifier).max(100),
-  }).strict()).max(50).default([]),
+  computedEvaluations: z.array(
+    z.object({
+      evalId: identifier,
+      status: z.enum(["passed", "failed", "manual_required"]),
+      manualRequired: z.boolean(),
+      assertions: z.array(
+        z.object({
+          assertionId: identifier,
+          status: z.enum(["passed", "failed"]),
+          actual: z.unknown().optional(),
+          reasonCode: identifier,
+        }).passthrough(),
+      ).max(100),
+      reasonCodes: z.array(identifier).max(100),
+    }).strict(),
+  ).max(50).default([]),
+}).strict();
+const v2CheckpointResponseSchema = checkpointResponseSchema.extend({
+  contractVersion: z.literal(2),
+  legacyLayout: z.literal(false),
+  documents: v2DocumentMapSchema,
 }).strict();
 const finalizeResponseSchema = z.object({
   ...mutationResponseBase,
   documents: documentMapSchema,
+}).strict();
+const v2FinalizeResponseSchema = finalizeResponseSchema.extend({
+  contractVersion: z.literal(2),
+  documents: v2DocumentMapSchema,
 }).strict();
 const readRunSchema = z.object({
   runId: uuid,
@@ -489,17 +743,39 @@ const readRunSchema = z.object({
   projection: projectionSchema,
   documents: documentMapSchema,
   facts: z.object({
-    tasks: z.array(z.object({
-      status: z.string(),
-      resultAccepted: z.boolean().optional(),
-      reviewAccepted: z.boolean().optional(),
-    }).strict()).max(100),
+    tasks: z.array(
+      z.object({
+        status: z.string(),
+        resultAccepted: z.boolean().optional(),
+        reviewAccepted: z.boolean().optional(),
+      }).strict(),
+    ).max(100),
     evaluations: z.array(z.object({ status: z.string() }).strict()).max(100),
     manualRequired: z.boolean(),
     policyBlocked: z.boolean(),
     mirrorsVerified: z.boolean(),
     packageReady: z.boolean(),
   }).strict(),
+}).strict();
+const v2ReadRunSchema = readRunSchema.omit({
+  plan: true,
+  evalSpec: true,
+  deliveryPolicy: true,
+  documents: true,
+}).extend({
+  contractVersion: z.literal(2).optional(),
+  legacyLayout: z.literal(false).optional(),
+  plan: v2PlanSchema,
+  evalSpec: v2EvalSpecSchema,
+  deliveryPolicy: v2PolicySchema,
+  documents: v2DocumentMapSchema,
+}).strict();
+const runVersionSchema = z.object({
+  contractVersion: z.union([z.literal(1), z.literal(2)]),
+  legacyLayout: z.boolean(),
+  planningRootId: uuid.nullable(),
+  sourceProfileHash: sha256.nullable(),
+  deliveryPrepared: z.boolean(),
 }).strict();
 const exportResponseSchema = z.object({
   schemaVersion: z.literal(1),
@@ -526,6 +802,46 @@ const exportResponseSchema = z.object({
   if (
     new Set(value.files.map((file) => file.kind)).size !== value.files.length
   ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Export kinds must be unique.",
+    });
+  }
+  for (const file of value.files) {
+    if (utf8ByteLength(file.content) !== file.byteCount) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Export byte count is invalid.",
+      });
+    }
+  }
+});
+const v2ExportResponseSchema = z.object({
+  schemaVersion: z.literal(2),
+  canonicalizationVersion: z.literal(1),
+  contractVersion: z.literal(2),
+  runId: uuid,
+  stateToken: uuid,
+  currentSequence: z.number().int().positive(),
+  preparedSequence: z.number().int().positive(),
+  files: z.array(
+    z.object({
+      kind: z.enum(["roadmap", "spec", "plan"]),
+      repositoryPath: relativePath,
+      documentId: uuid,
+      folderId: uuid,
+      epoch: z.number().int().nonnegative(),
+      revision: z.number().int().nonnegative(),
+      byteCount: z.number().int().nonnegative().max(
+        MAX_DOCUMENT_MARKDOWN_BYTES,
+      ),
+      sha256,
+      content: z.string(),
+    }).strict(),
+  ).length(3),
+  manifestHash: sha256,
+}).strict().superRefine((value, context) => {
+  if (new Set(value.files.map((file) => file.kind)).size !== 3) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Export kinds must be unique.",
@@ -600,8 +916,60 @@ function withoutIdempotency(
   return rest;
 }
 
+function requireAcceptedContract(
+  decision: ReturnType<typeof validateSliceV2ContractCase>,
+): void {
+  if (!decision.accepted) {
+    throw new McpDomainError(
+      "SLICE_CONTRACT_INVALID",
+      `The Slice request failed ${decision.reasonCode}.`,
+    );
+  }
+}
+
+async function readRunContractVersion(
+  context: ProjectMcpRequestContext,
+  projectId: string,
+  runId: string,
+  requestedVersion: 1 | 2 | undefined,
+): Promise<z.infer<typeof runVersionSchema>> {
+  const identity = parseTrusted(
+    runVersionSchema,
+    await rpc<unknown>(context, "mcp_read_slice_run_contract_version", {
+      p_project_id: projectId,
+      p_run_id: runId,
+    }),
+  );
+  const effectiveRequestedVersion = requestedVersion ?? 1;
+  if (identity.contractVersion !== effectiveRequestedVersion) {
+    throw new McpDomainError(
+      "SLICE_STATE_CONFLICT",
+      "The requested Slice contract version does not match the stored run.",
+    );
+  }
+  return identity;
+}
+
+async function encodeProgress<T extends { markdown: string }>(
+  progress: T,
+): Promise<
+  T & {
+    yjsState: string;
+    contentHash: string;
+  }
+> {
+  ensureMarkdown(progress.markdown);
+  const encoded = await encodeDocumentMarkdown(progress.markdown);
+  return {
+    ...progress,
+    markdown: encoded.markdown,
+    yjsState: encoded.yjsStateBase64,
+    contentHash: await sha256Utf8(encoded.markdown),
+  };
+}
+
 function validateEventBindings(
-  run: z.infer<typeof readRunSchema>,
+  run: z.infer<typeof readRunSchema> | z.infer<typeof v2ReadRunSchema>,
   events: z.infer<typeof eventSchema>[],
 ): void {
   const taskIds = new Set(run.plan.tasks.map((task) => task.id));
@@ -619,13 +987,16 @@ function validateEventBindings(
       }
       continue;
     }
-    if (event.eventType !== "task_result" && event.eventType !== "task_review") {
+    if (
+      event.eventType !== "task_result" && event.eventType !== "task_review"
+    ) {
       continue;
     }
     const payload = event.payload;
     if (
       payload.runId !== run.runId || payload.sliceId !== run.sliceId ||
-      payload.planRevision !== run.plan.planRevision || !taskIds.has(payload.taskId)
+      payload.planRevision !== run.plan.planRevision ||
+      !taskIds.has(payload.taskId)
     ) {
       throw new McpDomainError(
         "SLICE_CONTRACT_INVALID",
@@ -678,9 +1049,9 @@ function serverComparableEvaluation(
     evalId: evaluation.evalId,
     status: evaluation.status,
     manualRequired: evaluation.manualRequired,
-    assertions: evaluation.assertions.map(({ expected: _expected, ...assertion }) =>
-      assertion
-    ),
+    assertions: evaluation.assertions.map((
+      { expected: _expected, ...assertion },
+    ) => assertion),
     reasonCodes: evaluation.reasonCodes,
   };
 }
@@ -694,34 +1065,58 @@ function registerSliceToolSet(
   const shape = projectShape(fixed === null);
   const createSchema = z.object({
     ...shape,
+    contractVersion: z.literal(2),
     runId: uuid,
-    folderId: uuid,
+    planningRootId: uuid,
     sliceId,
-    plan: planSchema,
-    evalSpec: evalSpecSchema,
-    deliveryPolicy: policySchema,
-    documents: z.array(
-      z.object({
-        kind: z.enum(["roadmap", "spec", "plan", "status"]),
-        name: z.string().trim().min(1).max(200),
-        repositoryPath: relativePath,
-        markdown: z.string(),
-      }).strict(),
-    ).min(3).max(4),
+    sourceProfile: sourceProfileSchema,
+    sourceProfileHash: sha256,
+    plan: v2PlanSchema,
+    evalSpec: v2EvalSpecSchema,
+    deliveryPolicy: v2PolicySchema,
+    documentBindings: z.array(documentBindingSchema).length(3),
+    supersedesRunId: uuid.optional(),
     idempotencyKey,
   }).strict().superRefine((value, context) => {
-    if (
-      new Set(value.documents.map((item) => item.kind)).size !==
-        value.documents.length
-    ) {
+    const sourceDecision = validateSliceV2ContractCase(
+      "sourceProfile",
+      value.sourceProfile,
+    );
+    const planDecision = validateSliceV2ContractCase("planEval", {
+      plan: value.plan,
+      evalSpec: value.evalSpec,
+    });
+    const specFolderId = value.documentBindings.find((item) =>
+      item.kind === "spec"
+    )?.folderId;
+    const planFolderId = value.documentBindings.find((item) =>
+      item.kind === "plan"
+    )?.folderId;
+    const bindingDecision = validateSliceV2ContractCase("documentBindings", {
+      sliceId: value.sliceId,
+      planningRootId: value.planningRootId,
+      specFolderId,
+      planFolderId,
+      documentBindings: value.documentBindings,
+    });
+    for (const decision of [sourceDecision, planDecision, bindingDecision]) {
+      if (!decision.accepted) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            `Slice V2 contract rejected the request with ${decision.reasonCode}.`,
+        });
+      }
+    }
+    if (value.plan.coverageMode !== value.evalSpec.coverageMode) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Document kinds must be unique.",
+        message: "Plan and EvalSpec coverage modes must match.",
       });
     }
     if (
-      new Set(value.documents.map((item) => item.repositoryPath)).size !==
-        value.documents.length
+      new Set(value.documentBindings.map((item) => item.repositoryPath))
+        .size !== 3
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -738,32 +1133,59 @@ function registerSliceToolSet(
     }, async (input: z.infer<typeof createSchema>) => {
       try {
         const context = await contextFor(input, fixed, resolver);
-        const documents = await Promise.all(
-          input.documents.map(async (document) => {
-            ensureMarkdown(document.markdown);
-            const encoded = await encodeDocumentMarkdown(document.markdown);
-            return {
-              ...document,
-              documentId: crypto.randomUUID(),
-              markdown: encoded.markdown,
-              yjsState: encoded.yjsStateBase64,
-            };
+        const projectId = requestedProjectId(input, fixed);
+        requireAcceptedContract(
+          validateSliceV2ContractCase("sourceProfile", input.sourceProfile),
+        );
+        requireAcceptedContract(validateSliceV2ContractCase("planEval", {
+          plan: input.plan,
+          evalSpec: input.evalSpec,
+        }));
+        if (
+          input.sourceProfile.kecoProjectId !== projectId ||
+          await sha256Canonical(input.sourceProfile) !== input.sourceProfileHash
+        ) {
+          throw new McpDomainError(
+            "SLICE_CONTRACT_INVALID",
+            "The SourceProfile identity or hash does not match the requested project.",
+          );
+        }
+        const documentBindings = await Promise.all(
+          input.documentBindings.map(async (binding) => {
+            if (binding.disposition === "bind") return binding;
+            ensureMarkdown(binding.markdown);
+            const encoded = await encodeDocumentMarkdown(binding.markdown);
+            return binding.disposition === "create"
+              ? {
+                ...binding,
+                documentId: crypto.randomUUID(),
+                markdown: encoded.markdown,
+                yjsState: encoded.yjsStateBase64,
+              }
+              : {
+                ...binding,
+                markdown: encoded.markdown,
+                yjsState: encoded.yjsStateBase64,
+              };
           }),
         );
         const data = parseTrusted(
-          createResponseSchema,
-          await rpc<unknown>(context, "mcp_create_slice_bundle", {
-            p_project_id: requestedProjectId(input, fixed),
+          v2CreateResponseSchema,
+          await rpc<unknown>(context, "mcp_create_slice_bundle_v2", {
+            p_project_id: projectId,
             p_run_id: input.runId,
-            p_folder_id: input.folderId,
+            p_planning_root_id: input.planningRootId,
             p_slice_id: input.sliceId,
+            p_source_profile: input.sourceProfile,
+            p_source_profile_hash: input.sourceProfileHash,
             p_plan_data: input.plan,
             p_plan_hash: await sha256Canonical(input.plan),
             p_eval_spec: input.evalSpec,
             p_eval_spec_hash: await sha256Canonical(input.evalSpec),
             p_delivery_policy: input.deliveryPolicy,
             p_delivery_policy_hash: await sha256Canonical(input.deliveryPolicy),
-            p_documents: documents,
+            p_document_bindings: documentBindings,
+            p_supersedes_run_id: input.supersedesRunId ?? null,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
@@ -787,10 +1209,12 @@ function registerSliceToolSet(
 
   const checkpointSchema = z.object({
     ...shape,
+    contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
     runId: uuid,
     stateToken: uuid,
     events: z.array(eventSchema).min(1).max(50),
     artifacts: z.array(artifactSchema).max(50).default([]),
+    documentProgress: z.array(documentProgressSchema).max(1).default([]),
     idempotencyKey,
   }).strict().superRefine((value, context) => {
     if (
@@ -834,14 +1258,29 @@ function registerSliceToolSet(
       try {
         const context = await contextFor(input, fixed, resolver);
         const projectId = requestedProjectId(input, fixed);
-        const run = parseTrusted(
-          readRunSchema,
-          await rpc<unknown>(context, "mcp_read_slice_run", {
-            p_project_id: projectId,
-            p_run_id: input.runId,
-          }),
+        const identity = await readRunContractVersion(
+          context,
+          projectId,
+          input.runId,
+          input.contractVersion,
         );
+        const rawRun = await rpc<unknown>(context, "mcp_read_slice_run", {
+          p_project_id: projectId,
+          p_run_id: input.runId,
+        });
+        const run = identity.contractVersion === 2
+          ? parseTrusted(v2ReadRunSchema, rawRun)
+          : parseTrusted(readRunSchema, rawRun);
         validateEventBindings(run, input.events);
+        const requestedDocumentProgress = input.documentProgress ?? [];
+        if (
+          identity.contractVersion === 1 && requestedDocumentProgress.length > 0
+        ) {
+          throw new McpDomainError(
+            "SLICE_CONTRACT_INVALID",
+            "Legacy Slice runs do not support version-2 document progress.",
+          );
+        }
         const computedEvaluations = input.events
           .filter((event) => event.eventType === "runtime_observation")
           .map((event) => {
@@ -854,30 +1293,57 @@ function registerSliceToolSet(
                 "Runtime evidence references an unknown evaluation.",
               );
             }
-            return evaluateObservation(spec, event.payload.observation);
+            const runtimeSpec = "servedByTasks" in spec
+              ? (({ servedByTasks: _ignored, ...evaluation }) => evaluation)(
+                spec,
+              )
+              : spec;
+            return evaluateObservation(runtimeSpec, event.payload.observation);
           });
-        const events = await Promise.all(input.events.map(async (event) => ({
-          ...event,
-          inputHash: await sha256Canonical(event.payload),
-          outputHash: await sha256Canonical({
-            eventType: event.eventType,
-            payload: event.payload,
-          }),
-        })));
+        const events = await Promise.all(input.events.map(async (event) => {
+          const payload = event.eventType === "runtime_observation"
+            ? { ...event.payload, prefix: "KECO_OBSERVATION" as const }
+            : event.payload;
+          return {
+            ...event,
+            payload,
+            inputHash: await sha256Canonical(payload),
+            outputHash: await sha256Canonical({
+              eventType: event.eventType,
+              payload,
+            }),
+          };
+        }));
+        const documentProgress = await Promise.all(
+          requestedDocumentProgress.map(encodeProgress),
+        );
+        const rpcName = identity.contractVersion === 2
+          ? "mcp_checkpoint_slice_v2"
+          : "mcp_checkpoint_slice";
         const data = parseTrusted(
-          checkpointResponseSchema,
-          await rpc<unknown>(context, "mcp_checkpoint_slice", {
+          identity.contractVersion === 2
+            ? v2CheckpointResponseSchema
+            : checkpointResponseSchema,
+          await rpc<unknown>(context, rpcName, {
             p_project_id: projectId,
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
             p_events: events,
-            p_computed_evaluations: computedEvaluations.map(serverComparableEvaluation),
+            p_computed_evaluations: computedEvaluations.map(
+              serverComparableEvaluation,
+            ),
             p_artifacts: input.artifacts,
+            ...(identity.contractVersion === 2
+              ? { p_document_progress: documentProgress }
+              : {}),
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
         );
         return toolSuccess("Slice checkpoint accepted.", {
+          ...(identity.contractVersion === 1
+            ? { contractVersion: 1, legacyLayout: true }
+            : {}),
           ...data,
         });
       } catch (error) {
@@ -886,8 +1352,47 @@ function registerSliceToolSet(
     });
   }
 
+  const prepareSchema = z.object({
+    ...shape,
+    contractVersion: z.literal(2),
+    runId: uuid,
+    stateToken: uuid,
+    roadmapProgress: roadmapProgressSchema,
+    idempotencyKey,
+  }).strict();
+  if (options.writes) {
+    server.registerTool("prepare_delivery", {
+      description:
+        "Validate release gates and apply the final authoritative roadmap checkbox update before mirror export.",
+      inputSchema: prepareSchema,
+      annotations: writeAnnotations,
+    }, async (input: z.infer<typeof prepareSchema>) => {
+      try {
+        const context = await contextFor(input, fixed, resolver);
+        const projectId = requestedProjectId(input, fixed);
+        await readRunContractVersion(context, projectId, input.runId, 2);
+        const roadmapProgress = await encodeProgress(input.roadmapProgress);
+        const data = parseTrusted(
+          v2FinalizeResponseSchema,
+          await rpc<unknown>(context, "mcp_prepare_slice_delivery_v2", {
+            p_project_id: projectId,
+            p_run_id: input.runId,
+            p_expected_state_token: input.stateToken,
+            p_roadmap_progress: roadmapProgress,
+            p_idempotency_key: input.idempotencyKey,
+            p_input_hash: await sha256Canonical(withoutIdempotency(input)),
+          }),
+        );
+        return toolSuccess("Slice delivery prepared.", data);
+      } catch (error) {
+        return toolFailure(error);
+      }
+    });
+  }
+
   const finalizeSchema = z.object({
     ...shape,
+    contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
     runId: uuid,
     stateToken: uuid,
     requestedTerminalIntent: z.enum(["implementation_complete", "delivery"]),
@@ -909,12 +1414,36 @@ function registerSliceToolSet(
       }).strict(),
     ).max(4).default([]),
     idempotencyKey,
-  }).strict().refine(
-    (value) =>
-      new Set(value.documents.map((item) => item.documentId)).size ===
-        value.documents.length,
-    "Final documents must be unique.",
-  );
+  }).strict().superRefine((value, context) => {
+    if (
+      new Set(value.documents.map((item) => item.documentId)).size !==
+        value.documents.length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Final documents must be unique.",
+      });
+    }
+    if (
+      value.contractVersion === 2 &&
+      (value.documents.length > 0 || value.evalReport)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Version-2 finalization cannot mutate canonical documents.",
+      });
+    }
+    if (
+      value.contractVersion === 2 &&
+      value.requestedTerminalIntent === "implementation_complete" &&
+      value.mirrorVerification
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Implementation completion precedes mirror verification.",
+      });
+    }
+  });
   if (options.writes) {
     server.registerTool("finalize_slice", {
       description:
@@ -925,6 +1454,30 @@ function registerSliceToolSet(
       try {
         const context = await contextFor(input, fixed, resolver);
         const projectId = requestedProjectId(input, fixed);
+        const identity = await readRunContractVersion(
+          context,
+          projectId,
+          input.runId,
+          input.contractVersion,
+        );
+        if (identity.contractVersion === 2) {
+          const data = parseTrusted(
+            v2FinalizeResponseSchema,
+            await rpc<unknown>(context, "mcp_finalize_slice_v2", {
+              p_project_id: projectId,
+              p_run_id: input.runId,
+              p_expected_state_token: input.stateToken,
+              p_requested_terminal_intent: input.requestedTerminalIntent,
+              p_mirror_verification_event_id:
+                input.mirrorVerification?.eventId ?? null,
+              p_mirror_manifest_hash: input.mirrorVerification?.manifestHash ??
+                null,
+              p_idempotency_key: input.idempotencyKey,
+              p_input_hash: await sha256Canonical(withoutIdempotency(input)),
+            }),
+          );
+          return toolSuccess("Slice finalization completed.", data);
+        }
         const run = parseTrusted(
           readRunSchema,
           await rpc<unknown>(context, "mcp_read_slice_run", {
@@ -937,58 +1490,77 @@ function registerSliceToolSet(
           ...run,
           projection: { schemaVersion: 1 as const, ...projection },
         };
-        const documents = input.requestedTerminalIntent === "implementation_complete"
-          ? await Promise.all(
-          input.documents.map(async (document) => {
-            const kind = Object.entries(run.documents).find(([, identity]) =>
-              identity.documentId === document.documentId
-            )?.[0];
-            const markdown = kind === "roadmap" || kind === "status"
-              ? renderProjectionDocument(kind, projectionRun)
-              : document.markdown;
-            ensureMarkdown(markdown);
-            const encoded = await encodeDocumentMarkdown(markdown);
-            return {
-              ...document,
-              markdown: encoded.markdown,
-              yjsState: encoded.yjsStateBase64,
-            };
-          }),
-        ) : [];
-        const evalReportMarkdown = renderProjectionDocument("evalReport", projectionRun);
-        const evalReport = input.requestedTerminalIntent === "implementation_complete"
-          ? await encodeDocumentMarkdown(evalReportMarkdown)
-          : null;
+        const documents =
+          input.requestedTerminalIntent === "implementation_complete"
+            ? await Promise.all(
+              input.documents.map(async (document) => {
+                const kind = Object.entries(run.documents).find((
+                  [, identity],
+                ) => identity.documentId === document.documentId)?.[0];
+                const markdown = kind === "roadmap" || kind === "status"
+                  ? renderProjectionDocument(kind, projectionRun)
+                  : document.markdown;
+                ensureMarkdown(markdown);
+                const encoded = await encodeDocumentMarkdown(markdown);
+                return {
+                  ...document,
+                  markdown: encoded.markdown,
+                  yjsState: encoded.yjsStateBase64,
+                };
+              }),
+            )
+            : [];
+        const evalReportMarkdown = renderProjectionDocument(
+          "evalReport",
+          projectionRun,
+        );
+        const evalReport =
+          input.requestedTerminalIntent === "implementation_complete"
+            ? await encodeDocumentMarkdown(evalReportMarkdown)
+            : null;
         const data = parseTrusted(
           finalizeResponseSchema,
           await rpc<unknown>(context, "mcp_finalize_slice", {
             p_project_id: projectId,
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
-            p_documents: input.requestedTerminalIntent === "implementation_complete" ? [
-              ...documents,
-              {
-                ...input.evalReport!,
-                kind: "evalReport",
-                markdown: evalReport!.markdown,
-                yjsState: evalReport!.yjsStateBase64,
-              },
-            ] : [],
+            p_documents:
+              input.requestedTerminalIntent === "implementation_complete"
+                ? [
+                  ...documents,
+                  {
+                    ...input.evalReport!,
+                    kind: "evalReport",
+                    markdown: evalReport!.markdown,
+                    yjsState: evalReport!.yjsStateBase64,
+                  },
+                ]
+                : [],
             p_requested_terminal_intent: input.requestedTerminalIntent,
-            p_mirror_verification_event_id: input.mirrorVerification?.eventId ?? null,
-            p_mirror_manifest_hash: input.mirrorVerification?.manifestHash ?? null,
+            p_mirror_verification_event_id: input.mirrorVerification?.eventId ??
+              null,
+            p_mirror_manifest_hash: input.mirrorVerification?.manifestHash ??
+              null,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
         );
-        return toolSuccess("Slice finalization completed.", data);
+        return toolSuccess("Slice finalization completed.", {
+          contractVersion: 1,
+          legacyLayout: true,
+          ...data,
+        });
       } catch (error) {
         return toolFailure(error);
       }
     });
   }
 
-  const exportSchema = z.object({ ...shape, runId: uuid }).strict();
+  const exportSchema = z.object({
+    ...shape,
+    contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+    runId: uuid,
+  }).strict();
   if (options.reads) {
     server.registerTool("export_slice_mirrors", {
       description:
@@ -998,13 +1570,23 @@ function registerSliceToolSet(
     }, async (input: z.infer<typeof exportSchema>) => {
       try {
         const context = await contextFor(input, fixed, resolver);
-        const data = parseTrusted(
-          exportResponseSchema,
-          await rpc<unknown>(context, "mcp_export_slice_mirrors", {
-            p_project_id: requestedProjectId(input, fixed),
-            p_run_id: input.runId,
-          }),
+        const projectId = requestedProjectId(input, fixed);
+        const identity = await readRunContractVersion(
+          context,
+          projectId,
+          input.runId,
+          input.contractVersion,
         );
+        const rpcName = identity.contractVersion === 2
+          ? "mcp_export_slice_mirrors_v2"
+          : "mcp_export_slice_mirrors";
+        const rawExport = await rpc<unknown>(context, rpcName, {
+          p_project_id: projectId,
+          p_run_id: input.runId,
+        });
+        const data = identity.contractVersion === 2
+          ? parseTrusted(v2ExportResponseSchema, rawExport)
+          : parseTrusted(exportResponseSchema, rawExport);
         for (const file of data.files) {
           if (await sha256Utf8(file.content) !== file.sha256) {
             throw new McpDomainError(
@@ -1015,6 +1597,9 @@ function registerSliceToolSet(
         }
         return toolSuccess("Slice mirror manifest exported.", {
           ok: true,
+          ...(identity.contractVersion === 1
+            ? { contractVersion: 1, legacyLayout: true }
+            : {}),
           ...data,
         });
       } catch (error) {

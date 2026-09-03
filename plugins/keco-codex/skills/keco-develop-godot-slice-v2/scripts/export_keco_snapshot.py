@@ -383,6 +383,15 @@ def _safe_output_path(value: str) -> Path:
     output = Path(value).expanduser().resolve()
     if output == Path(output.anchor) or output == Path.home().resolve():
         raise SnapshotError(f"refusing broad output directory: {output}")
+    if output.exists():
+        if not output.is_dir():
+            raise SnapshotError(f"output path is not a directory: {output}")
+        # The directory is replaced wholesale, so only refresh a directory that
+        # is empty or is itself a previous snapshot.
+        if any(output.iterdir()) and not (output / "manifest.json").is_file():
+            raise SnapshotError(
+                f"refusing to replace a non-empty directory that is not a snapshot: {output}"
+            )
     return output
 
 

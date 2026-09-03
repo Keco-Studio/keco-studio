@@ -8,7 +8,7 @@ Every parent asset has a stable `assetKey`, `assetKind`, provider capability, pr
 
 ```yaml
 assetKey: player
-assetKind: one canonical value from ../../../references/pixellab-capability-registry.md
+assetKind: one canonical value from the loaded PixelLab capability registry
 provider:
   capability: animate-text-pro
   transportTool: live-tool-name

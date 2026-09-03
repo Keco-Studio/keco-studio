@@ -71,6 +71,7 @@ const WRITE_TOOLS = new Set([
   "advance_map_generation",
   "create_slice_bundle",
   "checkpoint_slice",
+  "prepare_delivery",
   "finalize_slice",
   "create_character_asset_draft",
   "update_character_asset_draft",
@@ -246,7 +247,9 @@ export async function createProbeServer(
     const includeMapWrites = await registerAccountTools(server, context);
     registerGdsTools(server, context);
     registerMapTools(server, context, { includeWrites: includeMapWrites });
-    registerCharacterTools(server, context, { includeWrites: includeMapWrites });
+    registerCharacterTools(server, context, {
+      includeWrites: includeMapWrites,
+    });
     registerResources(server, context);
     registerPrompts(server, context);
   } else {

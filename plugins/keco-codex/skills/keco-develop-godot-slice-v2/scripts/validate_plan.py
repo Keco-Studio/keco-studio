@@ -8,6 +8,8 @@ import re
 import subprocess
 import sys
 
+from slice_contract import sha256_canonical, validate_contract_case
+
 
 # Matched as whole words so ordinary paths and prose (for example a file named
 # `todo_list.gd`) are not mistaken for an unfinished plan.
@@ -50,8 +52,8 @@ def validate_gdd_binding(plan: dict, inventory_path: pathlib.Path | None) -> str
     source = plan.get("gddSource")
     if not isinstance(ids, list) or not ids or any(not isinstance(item, str) or not item.strip() for item in ids) or len(ids) != len(set(ids)):
         return "gddRequirementIds must be a non-empty unique string array"
-    if not isinstance(source, dict) or source.get("project") != "test8-24" or source.get("document") != "game-gdd" or type(source.get("revision")) is not int or not isinstance(source.get("contentHash"), str) or not isinstance(source.get("inventoryHash"), str):
-        return "gddSource must identify test8-24/game-gdd and its inventory hash"
+    if not isinstance(source, dict) or not isinstance(source.get("project"), str) or not source["project"].strip() or not isinstance(source.get("document"), str) or not source["document"].strip() or type(source.get("revision")) is not int or not isinstance(source.get("contentHash"), str) or not isinstance(source.get("inventoryHash"), str):
+        return "gddSource must identify a project/document and its inventory hash"
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", source["contentHash"]) or not re.fullmatch(r"sha256:[0-9a-f]{64}", source["inventoryHash"]):
         return "gddSource hashes must use sha256 format"
     if inventory_path is None:
@@ -79,17 +81,92 @@ def validate_gdd_binding(plan: dict, inventory_path: pathlib.Path | None) -> str
     return None
 
 
+def read_object(path: pathlib.Path, label: str) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid {label}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"invalid {label}: root must be an object")
+    return value
+
+
+def validate_v2_plan(plan: dict, args: argparse.Namespace) -> int:
+    if args.eval_spec is None or args.source_profile is None:
+        print("Slice V2 plan requires --eval-spec and --source-profile", file=sys.stderr)
+        return 1
+    try:
+        eval_spec = read_object(args.eval_spec, "EvalSpec")
+        source_profile = read_object(args.source_profile, "SourceProfile")
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    source_decision = validate_contract_case("sourceProfile", source_profile)
+    if not source_decision["accepted"]:
+        print(source_decision["reasonCode"], file=sys.stderr)
+        return 1
+    profile_hash = sha256_canonical(source_profile)
+    if source_profile["kind"] == "gdd":
+        if args.inventory is None:
+            print("GDD SourceProfile requires --inventory", file=sys.stderr)
+            return 1
+        try:
+            inventory = read_object(args.inventory, "coverage inventory")
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        unsigned = dict(inventory)
+        actual_hash = unsigned.pop("inventoryHash", None)
+        expected_hash = sha256_canonical(unsigned)
+        coverage_validator = pathlib.Path(__file__).with_name("validate_gdd_coverage.py")
+        if (
+            subprocess.run([sys.executable, str(coverage_validator), str(args.inventory)], capture_output=True).returncode != 0
+            or actual_hash != expected_hash
+            or source_profile.get("requirementInventoryHash") != expected_hash
+            or plan.get("inventoryHash") != expected_hash
+            or eval_spec.get("inventoryHash") != expected_hash
+        ):
+            print("GDD inventory does not match SourceProfile, plan, and EvalSpec", file=sys.stderr)
+            return 1
+    else:
+        if args.require_gdd:
+            print("--require-gdd cannot be used with a non-GDD SourceProfile", file=sys.stderr)
+            return 1
+        if plan.get("sourceProfileHash") != profile_hash or eval_spec.get("sourceProfileHash") != profile_hash:
+            print("SLICE_SOURCE_PROFILE_INVALID", file=sys.stderr)
+            return 1
+    decision = validate_contract_case("planEval", {"plan": plan, "evalSpec": eval_spec})
+    if not decision["accepted"]:
+        print(decision["reasonCode"], file=sys.stderr)
+        return 1
+    if FORBIDDEN_RUNTIME_KEYS.intersection(plan) or any(
+        isinstance(task, dict) and FORBIDDEN_RUNTIME_KEYS.intersection(task)
+        for task in plan.get("tasks", [])
+    ):
+        print("plan contains runtime or evidence state", file=sys.stderr)
+        return 1
+    if PLACEHOLDER_RE.search(json.dumps(plan, ensure_ascii=False).lower()):
+        print("plan contains a placeholder", file=sys.stderr)
+        return 1
+    print(json.dumps({"ok": True, "contractVersion": 2, "taskCount": len(plan["tasks"])}, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=pathlib.Path)
     parser.add_argument("--require-gdd", action="store_true")
     parser.add_argument("--inventory", type=pathlib.Path)
+    parser.add_argument("--eval-spec", type=pathlib.Path)
+    parser.add_argument("--source-profile", type=pathlib.Path)
     args = parser.parse_args()
     try:
         plan = json.loads(args.path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"invalid plan: {exc}", file=sys.stderr)
         return 2
+    if isinstance(plan, dict) and plan.get("schemaVersion") == 2:
+        return validate_v2_plan(plan, args)
     tasks = plan.get("tasks") if isinstance(plan, dict) else None
     if not isinstance(tasks, list) or not tasks:
         print("plan must contain a non-empty tasks array", file=sys.stderr)

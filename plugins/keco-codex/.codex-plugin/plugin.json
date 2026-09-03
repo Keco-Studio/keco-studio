@@ -1,6 +1,6 @@
 {
   "name": "keco",
-  "version": "0.4.0+codex.20260828203649",
+  "version": "0.4.0+codex.20260903110823",
   "description": "Manage Keco game design systems, evaluate GDDs, create maps, build project data, import images, and develop Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"

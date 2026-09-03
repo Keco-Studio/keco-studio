@@ -15,7 +15,22 @@ from pathlib import Path
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SAFE_LAYOUTS = {"topdown-15", "topdown-17", "platformer-16", "isometric-atlas"}
-ASSET_KINDS = {"character", "animation", "rotation", "tile", "tileset", "texture", "cutout", "image", "edit"}
+# Canonical assetKind vocabulary. Must stay in sync with
+# references/pixellab-capability-registry.md, which is the single source of
+# truth shared by every skill in this plugin.
+ASSET_KINDS = {
+    "animation",
+    "character",
+    "character-rotation",
+    "cutout",
+    "edit",
+    "effect",
+    "image",
+    "texture",
+    "tile",
+    "tileset",
+    "ui",
+}
 
 
 def png_dimensions(path: Path) -> tuple[int, int]:

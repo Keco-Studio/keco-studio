@@ -329,6 +329,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     ...ACCOUNT_WRITE_TOOL_NAMES,
     "create_slice_bundle",
     "checkpoint_slice",
+    "prepare_delivery",
     "finalize_slice",
     ...GDS_TOOL_NAMES,
     ...MAP_TOOL_NAMES,
