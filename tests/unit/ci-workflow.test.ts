@@ -144,6 +144,7 @@ describe('CI workflow gates', () => {
     expect(deployJob).toContain('.vercel/.env.${{ steps.env.outputs.environment }}.local');
     expect(deployJob).toContain('STRIPE_SECRET_KEY is missing from');
     expect(deployJob).toContain('STRIPE_WEBHOOK_SECRET is missing from');
+    expect(deployJob).toContain('vercel env add "$name" preview "" --force --yes');
   });
 
   it('isolates Supabase ports for every Playwright shard', () => {

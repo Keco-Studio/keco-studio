@@ -398,26 +398,32 @@ jobs:
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           TARGET_ENV="${{ steps.env.outputs.environment }}"
+          # vercel@59.10 preview env add prompts for Git branch in CI unless we pass
+          # an empty third arg (all Preview branches) and --yes.
+          sync_vercel_env() {
+            local name="$1"
+            local value="$2"
+            if [ "$TARGET_ENV" = "preview" ]; then
+              printf '%s' "$value" | vercel env add "$name" preview "" --force --yes --token="$VERCEL_TOKEN"
+            else
+              printf '%s' "$value" | vercel env add "$name" "$TARGET_ENV" --force --yes --token="$VERCEL_TOKEN"
+            fi
+          }
           if [ -n "$STRIPE_SECRET_KEY" ]; then
-            printf '%s' "$STRIPE_SECRET_KEY" | \
-              vercel env add STRIPE_SECRET_KEY "$TARGET_ENV" --force \
-                --token=${{ secrets.VERCEL_TOKEN }}
+            sync_vercel_env STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
           else
             echo "::warning::STRIPE_SECRET_KEY GitHub secret is unset; using the existing Vercel environment value"
           fi
           if [ -n "$STRIPE_WEBHOOK_SECRET" ]; then
-            printf '%s' "$STRIPE_WEBHOOK_SECRET" | \
-              vercel env add STRIPE_WEBHOOK_SECRET "$TARGET_ENV" --force \
-                --token=${{ secrets.VERCEL_TOKEN }}
+            sync_vercel_env STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
           else
             echo "::warning::STRIPE_WEBHOOK_SECRET GitHub secret is unset; using the existing Vercel environment value"
           fi
           if [ -n "$NEXT_PUBLIC_SITE_URL" ]; then
-            printf '%s' "$NEXT_PUBLIC_SITE_URL" | \
-              vercel env add NEXT_PUBLIC_SITE_URL "$TARGET_ENV" --force \
-                --token=${{ secrets.VERCEL_TOKEN }}
+            sync_vercel_env NEXT_PUBLIC_SITE_URL "$NEXT_PUBLIC_SITE_URL"
           elif [[ "${{ steps.env.outputs.is_prod }}" == "true" ]]; then
             echo "::warning::NEXT_PUBLIC_SITE_URL is unset; Stripe success/cancel redirects may use the request origin"
           fi
