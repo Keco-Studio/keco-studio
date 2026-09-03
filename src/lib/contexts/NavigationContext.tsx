@@ -699,6 +699,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       return nextBreadcrumbs;
     }
 
+    if (currentProjectId && pathname?.startsWith(`/${currentProjectId}/billing`)) {
+      nextBreadcrumbs.push({
+        label: 'Billing',
+        path: `/${currentProjectId}/billing`,
+      });
+      return nextBreadcrumbs;
+    }
+
     if (currentProjectId && pathname?.startsWith(`/${currentProjectId}/recent`)) {
       nextBreadcrumbs.push({
         label: 'Recent',

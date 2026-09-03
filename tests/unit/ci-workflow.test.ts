@@ -139,6 +139,14 @@ describe('CI workflow gates', () => {
     );
   });
 
+  it('verifies Stripe is present in the Vercel environment before building', () => {
+    expect(deployJob).toContain('Verify Stripe Checkout environment');
+    expect(deployJob).toContain('.vercel/.env.${{ steps.env.outputs.environment }}.local');
+    expect(deployJob).toContain('STRIPE_SECRET_KEY is missing from');
+    expect(deployJob).toContain('STRIPE_WEBHOOK_SECRET is missing from');
+    expect(deployJob).toContain('vercel env add "$name" preview "" --force --yes');
+  });
+
   it('isolates Supabase ports for every Playwright shard', () => {
     expect(playwrightWorkflow).toContain('supabaseApiPort:');
     expect(playwrightWorkflow).toContain('supabaseDbPort:');

@@ -395,7 +395,7 @@ async function recoverMissingDialoguePlans(
   markdown: string,
   dependencies: Required<GddV2GeneratorDependencies>,
   signal?: AbortSignal,
-): Promise<DialoguePlan[]> {
+): Promise<{ plans: DialoguePlan[]; warning: string | null }> {
   const raw = await dependencies.complete([{
     role: 'system',
     content: [
@@ -415,18 +415,22 @@ async function recoverMissingDialoguePlans(
   });
   const events = parseDialogueRecoveryEvents(raw);
   if (events.length === 0) {
-    throw new GddV2ResourceRecoveryError(
-      'Narrative GDD produced no dialogue scene resources after one recovery pass.',
-    );
+    return {
+      plans: [],
+      warning: 'Narrative GDD produced no dialogue scene resources after one recovery pass.',
+    };
   }
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
   try {
-    return await Promise.all(events.map((event) => runWithSlot(() => dependencies.planScene(
+    return {
+      plans: await Promise.all(events.map((event) => runWithSlot(() => dependencies.planScene(
       { event, gddContext: plannerContext(markdown) },
       { complete: dependencies.complete },
       { signal: controller.signal },
-    ))));
+      )))),
+      warning: null,
+    };
   } finally {
     unlink();
   }
@@ -502,19 +506,22 @@ export async function generateGddMarkdownV2(
   }
 
   let dialoguePlans = generated.dialoguePlans;
+  let dialoguePlanWarning: string | null = null;
   if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
     repairRound = Math.max(repairRound, 1);
-    dialoguePlans = await recoverMissingDialoguePlans(
+    const recovered = await recoverMissingDialoguePlans(
       normalized.markdown,
       dependencies,
       runtime.signal,
     );
+    dialoguePlans = recovered.plans;
+    dialoguePlanWarning = recovered.warning;
   }
 
   return {
     ...normalized,
     dialoguePlans,
-    dialoguePlanWarning: null,
+    dialoguePlanWarning,
     review: reviewSchema.parse({
       version: 2,
       summary: repairRound > 0

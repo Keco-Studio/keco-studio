@@ -225,7 +225,7 @@ describe('document collaboration React boundary', () => {
     });
   });
 
-  it('shows derived Script sync failures while keeping successful sync quiet', async () => {
+  it('shows actionable derived Script sync failures while keeping races and successes quiet', async () => {
     const { getScriptDocumentSyncPresentation } = await import(
       '@/components/documents/useDocumentCollaboration'
     );
@@ -241,10 +241,10 @@ describe('document collaboration React boundary', () => {
       tone: 'warning',
       label: expect.stringContaining('Regenerate the conversation'),
     });
-    expect(getScriptDocumentSyncPresentation('conflict')).toMatchObject({
-      visible: true,
-      tone: 'warning',
-      label: expect.stringContaining('newer document edit'),
+    expect(getScriptDocumentSyncPresentation('conflict')).toEqual({
+      visible: false,
+      label: '',
+      tone: 'neutral',
     });
     expect(getScriptDocumentSyncPresentation('error')).toMatchObject({
       visible: true,

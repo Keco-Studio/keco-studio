@@ -13,6 +13,10 @@ const reconciliationSql = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260820010000_gdd_map_artifact_reconciliation.sql'),
   'utf8',
 );
+const acceptedSubmissionRecoveryPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260903010000_gdd_map_accepted_submission_recovery.sql',
+);
 
 describe('GDD map generation migration', () => {
   it('adds bounded child artifacts and parent partial-success states', () => {
@@ -64,6 +68,26 @@ describe('GDD map generation migration', () => {
     expect(reconciliationSql).toMatch(/v_asset_status <> 'ready'/i);
     expect(reconciliationSql).toMatch(/status = 'ready'[\s\S]*phase = 'ready'/i);
     expect(reconciliationSql).toMatch(/grant execute on function public\.reconcile_gdd_map_artifact[\s\S]*service_role/i);
+  });
+
+  it('recovers timed-out submissions that already have a durable provider job', () => {
+    expect(fs.existsSync(acceptedSubmissionRecoveryPath)).toBe(true);
+    const recoverySql = fs.existsSync(acceptedSubmissionRecoveryPath)
+      ? fs.readFileSync(acceptedSubmissionRecoveryPath, 'utf8')
+      : '';
+    expect(recoverySql).toMatch(/create or replace function public\.reconcile_gdd_map_artifact/i);
+    expect(recoverySql).toMatch(/v_asset_status = 'generating'[\s\S]*v_provider_job_id/i);
+    expect(recoverySql).toMatch(/status = 'queued'[\s\S]*phase = 'polling'/i);
+    expect(recoverySql).toMatch(/v_asset_status = 'queued'[\s\S]*interval '2 minutes'/i);
+    expect(recoverySql).toMatch(/status = 'queued'[\s\S]*phase = 'submitting'[\s\S]*interval '15 seconds'/i);
+    expect(recoverySql).toMatch(/status = 'blocked'[\s\S]*phase = 'blocked'/i);
+    expect(recoverySql).toMatch(/attempt_count\s*=\s*least\([\s\S]*max_attempts\s*-\s*1/i);
+    expect(recoverySql).toMatch(/status = 'waiting_for_maps'/i);
+    const reconcile = recoverySql.match(/create or replace function public\.reconcile_gdd_map_artifact[\s\S]*?\$\$;/i)?.[0] ?? '';
+    expect(reconcile.indexOf('pg_advisory_xact_lock')).toBeLessThan(reconcile.indexOf('for update'));
+    const finish = recoverySql.match(/create or replace function public\.finish_gdd_map_artifact[\s\S]*?revoke all on function public\.finish_gdd_map_artifact/i)?.[0] ?? '';
+    expect(finish).toMatch(/pg_advisory_xact_lock/i);
+    expect(finish.indexOf('pg_advisory_xact_lock')).toBeLessThan(finish.indexOf('update public.gdd_map_artifacts'));
   });
 
   it('serializes project generation starts and reuses identical active jobs', () => {

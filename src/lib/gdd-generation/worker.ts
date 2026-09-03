@@ -52,6 +52,8 @@ type WorkerDependencies = {
   fail: typeof failGddGenerationJob;
 };
 
+const GDD_GENERATION_DEADLINE_MS = 90_000;
+
 function tableSeriesSeed(job: Pick<GddGenerationJob, 'project_id' | 'design_system_id'>): string {
   return `${job.project_id}:${job.design_system_id}`;
 }
@@ -402,6 +404,9 @@ async function runWithLeaseHeartbeat<T>(
   const controller = new AbortController();
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
+  const deadline = setTimeout(() => {
+    controller.abort(new Error('GDD generation deadline exceeded.'));
+  }, GDD_GENERATION_DEADLINE_MS);
   const timer = setInterval(() => {
     pendingHeartbeat = pendingHeartbeat
       .then(() => heartbeat(input.serviceClient, input.job.id, input.workerId, 'generating'))
@@ -413,16 +418,32 @@ async function runWithLeaseHeartbeat<T>(
   try {
     let generated: T;
     try {
-      generated = await generate(controller.signal);
+      const generation = generate(controller.signal);
+      generated = await Promise.race([
+        generation,
+        new Promise<T>((_, reject) => {
+          controller.signal.addEventListener('abort', () => {
+            reject(controller.signal.reason ?? new Error('GDD generation was aborted.'));
+          }, { once: true });
+        }),
+      ]);
     } catch (error) {
       if (heartbeatFailure) throw heartbeatFailure;
       throw error;
     }
-    await pendingHeartbeat;
+    await Promise.race([
+      pendingHeartbeat,
+      new Promise<void>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(controller.signal.reason ?? new Error('GDD generation was aborted.'));
+        }, { once: true });
+      }),
+    ]);
     if (heartbeatFailure) throw heartbeatFailure;
     return generated;
   } finally {
     clearInterval(timer);
+    clearTimeout(deadline);
   }
 }
 
