@@ -335,7 +335,7 @@ git commit -m "feat(slice): gate progress and delivery preparation"
 - Consumes: post-`prepare_delivery` V2 export with exactly roadmap/spec/plan and verified hashes.
 - Produces: journaled all-or-restore materialization and `MirrorVerification` only after complete read-back; exit result includes `partial` and journal path only when restoration itself cannot complete.
 
-- [ ] **Step 1: Add failing fault-injection tests**
+- [x] **Step 1: Add failing fault-injection tests**
 
 Use temporary repository roots and injected failures before staging, after journal fsync, after first replacement, and during read-back. Assert original hashes are restored, partial batches emit no verification, symlinked parents are rejected, and a later invocation recovers the journal before validating a new manifest.
 
@@ -344,23 +344,23 @@ expect(readFileSync(firstTarget)).toBe(originalFirst);
 expect(existsSync(verificationPath)).toBe(false);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
 Expected: FAIL because current per-file atomic writes can leave a partial batch and have no recovery journal.
 
-- [ ] **Step 3: Implement preflight, staging, journal, restore, and recovery**
+- [x] **Step 3: Implement preflight, staging, journal, restore, and recovery**
 
 Preflight every entry and target first; stage and fsync bytes on the target filesystem; persist a bounded journal with target/prior/staged/backup identities; rename with retained backups; read back the whole batch; emit verification and clean up only after success. On handled failure restore and verify all prior states; on startup recover any existing journal before accepting the supplied manifest.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
 Expected: PASS for success, rollback, crash-resume, containment, and partial-output cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/materialize_slice_mirrors.py plugins/keco-claude/scripts/materialize_slice_mirrors.py tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts

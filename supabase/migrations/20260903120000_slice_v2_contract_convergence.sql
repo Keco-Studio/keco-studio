@@ -348,7 +348,7 @@ begin
     'preparedSequence', (
       select max(sequence) from public.keco_slice_run_events
       where run_id = p_run_id and event_type = 'delivery_prepared'
-    ), 'files', v_files, 'manifestHash', public.keco_slice_hash(v_files::text)
+    ), 'files', v_files, 'manifestHash', public.keco_slice_json_hash(v_files)
   );
 end;
 $$;

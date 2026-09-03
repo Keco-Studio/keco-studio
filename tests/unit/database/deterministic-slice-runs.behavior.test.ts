@@ -1063,7 +1063,14 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       p_project_id: fx.projectId, p_run_id: bundle.runId,
     });
     expect(exported.error).toBeNull();
-    expect(row(exported.data).files).toHaveLength(3);
+    const manifest = row(exported.data);
+    expect(manifest).toMatchObject({
+      schemaVersion: 2,
+      contractVersion: 2,
+      currentSequence: manifest.preparedSequence,
+    });
+    expect(manifest.files).toHaveLength(3);
+    expect(manifest.manifestHash).toBe(hashJson(manifest.files));
 
     const postPrepare = await checkpointV2(bundle.runId, String(row(prepared.data).stateToken), [
       eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('9') }),

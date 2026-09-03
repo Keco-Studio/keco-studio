@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
@@ -29,7 +29,172 @@ function sha256(filePath: string): string {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
+const mirrorScript = path.join(skillRoot, 'scripts', 'materialize_slice_mirrors.py');
+const mirrorJournal = '.keco-slice-mirror-journal.json';
+
+function mirrorFixture(tempRoot: string) {
+  const root = path.join(tempRoot, 'repository');
+  mkdirSync(root);
+  const paths = [
+    'docs/superpowers/roadmap.md',
+    'docs/superpowers/specs/slice-1-design.md',
+    'docs/superpowers/plans/slice-1.md',
+  ];
+  const kinds = ['roadmap', 'spec', 'plan'];
+  const originals = paths.map((relative, index) => {
+    const target = path.join(root, relative);
+    mkdirSync(path.dirname(target), { recursive: true });
+    const content = `original-${index}\n`;
+    writeFileSync(target, content);
+    return content;
+  });
+  const files = paths.map((repositoryPath, index) => {
+    const content = `replacement-${index}\n`;
+    return {
+      kind: kinds[index],
+      repositoryPath,
+      documentId: `${index + 1}1111111-1111-4111-8111-111111111111`,
+      folderId: `${index + 4}1111111-1111-4111-8111-111111111111`,
+      epoch: 1,
+      revision: 2,
+      byteCount: Buffer.byteLength(content),
+      sha256: `sha256:${createHash('sha256').update(content).digest('hex')}`,
+      content,
+    };
+  });
+  const manifest = {
+    ok: true,
+    schemaVersion: 2,
+    canonicalizationVersion: 1,
+    contractVersion: 2,
+    runId: '71111111-1111-4111-8111-111111111111',
+    stateToken: '81111111-1111-4111-8111-111111111111',
+    currentSequence: 8,
+    preparedSequence: 7,
+    files,
+    manifestHash: `sha256:${createHash('sha256').update(canonicalJson(files)).digest('hex')}`,
+  };
+  const manifestPath = path.join(tempRoot, 'manifest.json');
+  const allowedPath = path.join(tempRoot, 'allowed.json');
+  const output = path.join(tempRoot, 'mirror-verification.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(allowedPath, JSON.stringify({ allowedFiles: paths }));
+  return { root, paths, originals, files, manifestPath, allowedPath, output };
+}
+
+function runMirror(
+  fixture: ReturnType<typeof mirrorFixture>,
+  fault?: string,
+  restoreFault = false,
+) {
+  return spawnSync('python3', [
+    mirrorScript,
+    '--manifest', fixture.manifestPath,
+    '--repository-root', fixture.root,
+    '--allowed-files', fixture.allowedPath,
+    '--output', fixture.output,
+  ], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ...(fault ? { KECO_MIRROR_TEST_FAULT: fault } : {}),
+      ...(restoreFault ? { KECO_MIRROR_TEST_RESTORE_FAULT: '1' } : {}),
+    },
+  });
+}
+
 describe('Keco Godot Slice V2 skill contract', () => {
+  it.each(['before_staging', 'after_first_replacement', 'during_readback'])(
+    'restores every mirror target after handled %s failure',
+    fault => {
+      const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-mirror-'));
+      try {
+        const fixture = mirrorFixture(tempRoot);
+        const result = runMirror(fixture, fault);
+        expect(result.status).toBe(1);
+        fixture.paths.forEach((relative, index) => {
+          expect(readFileSync(path.join(fixture.root, relative), 'utf8')).toBe(fixture.originals[index]);
+        });
+        expect(existsSync(fixture.output)).toBe(false);
+        expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('recovers a durable journal before processing the next manifest', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-crash-'));
+    try {
+      const fixture = mirrorFixture(tempRoot);
+      const crashed = runMirror(fixture, 'after_journal_fsync');
+      expect(crashed.status).not.toBe(0);
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(true);
+      expect(existsSync(fixture.output)).toBe(false);
+      const recovered = runMirror(fixture);
+      expect(recovered.status).toBe(0);
+      fixture.paths.forEach((relative, index) => {
+        expect(readFileSync(path.join(fixture.root, relative), 'utf8')).toBe(fixture.files[index].content);
+      });
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+      expect(JSON.parse(readFileSync(fixture.output, 'utf8'))).toMatchObject({
+        artifactType: 'MirrorVerification',
+        manifestHash: JSON.parse(readFileSync(fixture.manifestPath, 'utf8')).manifestHash,
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reports recoverable partial state without MirrorVerification when restore fails', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-partial-'));
+    try {
+      const fixture = mirrorFixture(tempRoot);
+      const partial = runMirror(fixture, 'after_first_replacement', true);
+      expect(partial.status).toBe(2);
+      expect(JSON.parse(partial.stdout)).toMatchObject({
+        ok: false,
+        status: 'partial',
+        reasonCode: 'SLICE_MIRROR_RECOVERY_REQUIRED',
+        affectedPaths: expect.arrayContaining([fixture.paths[0]]),
+      });
+      expect(existsSync(fixture.output)).toBe(false);
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(true);
+      expect(runMirror(fixture).status).toBe(0);
+      expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('preflights the complete batch and rejects symlinked parents before replacement', () => {
+    for (const mode of ['disallowed', 'symlink'] as const) {
+      const tempRoot = mkdtempSync(path.join(os.tmpdir(), `keco-slice-v2-${mode}-`));
+      try {
+        const fixture = mirrorFixture(tempRoot);
+        if (mode === 'disallowed') {
+          writeFileSync(fixture.allowedPath, JSON.stringify({ allowedFiles: fixture.paths.slice(0, 2) }));
+        } else {
+          const outside = path.join(tempRoot, 'outside');
+          mkdirSync(outside);
+          rmSync(path.join(fixture.root, 'docs'), { recursive: true });
+          symlinkSync(outside, path.join(fixture.root, 'docs'), 'dir');
+        }
+        const result = runMirror(fixture);
+        expect(result.status).toBe(1);
+        expect(existsSync(fixture.output)).toBe(false);
+        expect(existsSync(path.join(fixture.root, mirrorJournal))).toBe(false);
+        if (mode === 'disallowed') {
+          fixture.paths.forEach((relative, index) => {
+            expect(readFileSync(path.join(fixture.root, relative), 'utf8')).toBe(fixture.originals[index]);
+          });
+        }
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('matches the canonical V2 conformance corpus in both Python runtimes', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-contract-'));
     const canonicalManifest = readFileSync(path.join(repositoryRoot, 'contracts', 'keco-slice-v2', 'contract-manifest.json'));

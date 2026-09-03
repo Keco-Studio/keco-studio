@@ -152,6 +152,7 @@ describe('Slice contract version 2 convergence migration', () => {
     expect(v2Sql).toMatch(/event_type = 'delivery_prepared'/i);
     expect(v2Sql).toMatch(/event_type = 'mirror_verification'/i);
     expect(v2Sql).toMatch(/v_event_type := 'finalized'/i);
+    expect(v2Sql).toMatch(/'manifestHash', public\.keco_slice_json_hash\(v_files\)/i);
   });
 
   it('binds each plan checkbox transition to accepted evidence and its dependencies', () => {
