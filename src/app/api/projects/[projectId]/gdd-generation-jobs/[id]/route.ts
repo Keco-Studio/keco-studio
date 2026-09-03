@@ -13,7 +13,7 @@ import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGddJob, shouldWakeGddGenerationJob } from '@/lib/gdd-generation/worker';
 import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 type Params = { params: Promise<{ projectId: string; id: string }> };
 const scheduledQueuedJobs = new Set<string>();
