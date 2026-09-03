@@ -55,7 +55,7 @@
 - Produces: `SLICE_CONTRACT_VERSION`, bounded reason codes, profile kinds, review levels, release order, canonical document paths, `validateSliceV2ContractCase(boundary, value): ContractDecision`, and shared cases shaped as `{ id, boundary, input, expected: { accepted, reasonCode } }`.
 - Consumed by: Tasks 2-4 and 7-8.
 
-- [ ] **Step 1: Write failing manifest and conformance tests**
+- [x] **Step 1: Write failing manifest and conformance tests**
 
 Add table-driven tests proving valid GDD/non-GDD profiles and the required invalid cases: parent traversal, absolute path, missing `allowedFiles`, ghost evaluation, reverse mapping omission, wrong folder, forged review level, legacy prefix, stale token, fourth repair, and manual acceptance.
 
@@ -66,13 +66,13 @@ for (const testCase of corpus.cases) {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp/slice-v2-contract.test.ts`
 
 Expected: FAIL because `slice-v2-contract.ts` and canonical manifest/corpus do not exist.
 
-- [ ] **Step 3: Implement the canonical contract loader and pure validators**
+- [x] **Step 3: Implement the canonical contract loader and pure validators**
 
 Implement strict exact-key profile validation, safe repository path validation, plan/evaluation reciprocity, ordered dependency validation, review-level restrictions, observation prefix rules, and stable `SLICE_*` reason codes. Keep detailed diagnostics separate from the public code.
 
@@ -83,13 +83,13 @@ export type ContractDecision =
 export function validateSliceV2ContractCase(boundary: ContractBoundary, input: unknown): ContractDecision;
 ```
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp/slice-v2-contract.test.ts`
 
 Expected: PASS for every canonical case with no reason-code disagreement.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add contracts/keco-slice-v2 supabase/functions/mcp/slice-v2-contract.ts supabase/functions/mcp/slice-v2-contract.test.ts tests/fixtures/plugins/keco-slice-contract-cases.json
