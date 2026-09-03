@@ -650,8 +650,9 @@ begin
     raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
   end if;
   if public.keco_slice_json_hash(p_source_profile) is distinct from p_source_profile_hash
-    or p_source_profile->>'contractVersion' <> '2'
-    or p_source_profile->>'schemaVersion' <> '1'
+    or p_source_profile->>'contractVersion' is distinct from '2'
+    or p_source_profile->>'schemaVersion' is distinct from '1'
+    or p_source_profile->>'kind' is null
     or p_source_profile->>'kind' not in ('gdd', 'feedback', 'table', 'document', 'user_idea')
     or (p_source_profile->>'kecoProjectId')::uuid is distinct from p_project_id
     or p_source_profile->>'sourceHash' !~ '^sha256:[a-f0-9]{64}$'
@@ -674,14 +675,22 @@ begin
     )) then
     raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
   end if;
-  if p_plan_data->>'schemaVersion' <> '2'
-    or p_eval_spec->>'schemaVersion' <> '2'
+  if p_plan_data->>'schemaVersion' is distinct from '2'
+    or p_eval_spec->>'schemaVersion' is distinct from '2'
+    or p_plan_data->>'coverageMode' is null
+    or p_eval_spec->>'coverageMode' is null
+    or p_plan_data->>'coverageMode' not in ('gdd', 'non_gdd')
+    or p_eval_spec->>'coverageMode' not in ('gdd', 'non_gdd')
     or p_plan_data->>'coverageMode' is distinct from p_eval_spec->>'coverageMode'
     or public.keco_slice_json_hash(p_plan_data) is distinct from p_plan_hash
     or public.keco_slice_json_hash(p_eval_spec) is distinct from p_eval_spec_hash
     or public.keco_slice_json_hash(p_delivery_policy) is distinct from p_delivery_policy_hash
     or jsonb_typeof(p_plan_data->'allowedFiles') is distinct from 'array'
     or jsonb_array_length(p_plan_data->'allowedFiles') not between 1 and 500
+    or exists (
+      select 1 from jsonb_array_elements(case when jsonb_typeof(p_plan_data->'allowedFiles') = 'array' then p_plan_data->'allowedFiles' else '[]'::jsonb end) as item
+      where jsonb_typeof(item) is distinct from 'string'
+    )
     or exists (
       select 1 from jsonb_array_elements_text(p_plan_data->'allowedFiles') as file
       where not public.keco_slice_v2_safe_path(file)
@@ -723,6 +732,10 @@ begin
       select 1 from jsonb_array_elements(p_plan_data->'tasks') as task
       where jsonb_typeof(task->'sourceMappings') is distinct from 'array'
         or jsonb_array_length(task->'sourceMappings') = 0
+        or exists (
+          select 1 from jsonb_array_elements(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as item
+          where jsonb_typeof(item) is distinct from 'string'
+        )
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end)) <>
            (select count(distinct source_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id)
         or exists (select 1 from jsonb_object_keys(task) as key where key not in ('id', 'files', 'dependsOn', 'servesEvaluations', 'red', 'green', 'review', 'sourceMappings'))
@@ -742,8 +755,10 @@ begin
         or task->>'id' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
         or jsonb_typeof(task->'files') is distinct from 'array'
         or jsonb_array_length(task->'files') = 0
+        or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(task->'files') = 'array' then task->'files' else '[]'::jsonb end) as item where jsonb_typeof(item) is distinct from 'string')
         or exists (select 1 from jsonb_array_elements_text(task->'files') as file where not (p_plan_data->'allowedFiles' ? file))
         or jsonb_typeof(task->'dependsOn') is distinct from 'array'
+        or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(task->'dependsOn') = 'array' then task->'dependsOn' else '[]'::jsonb end) as item where jsonb_typeof(item) is distinct from 'string')
         or exists (
           select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'dependsOn') = 'array' then task->'dependsOn' else '[]'::jsonb end) as dependency
           where dependency !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
@@ -762,11 +777,13 @@ begin
         )
         or jsonb_typeof(task->'servesEvaluations') is distinct from 'array'
         or jsonb_array_length(task->'servesEvaluations') = 0
+        or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end) as item where jsonb_typeof(item) is distinct from 'string')
         or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end) as eval_id where eval_id !~ '^[a-z0-9][a-z0-9._-]{0,99}$')
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end)) <>
            (select count(distinct eval_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'servesEvaluations') = 'array' then task->'servesEvaluations' else '[]'::jsonb end) as eval_id)
         or jsonb_typeof(task->'sourceMappings') <> 'array'
         or jsonb_array_length(task->'sourceMappings') = 0
+        or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as item where jsonb_typeof(item) is distinct from 'string')
         or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id where source_id !~ '^[a-z0-9][a-z0-9._-]{0,99}$')
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end)) <>
            (select count(distinct source_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id)
@@ -824,6 +841,7 @@ begin
         or evaluation->>'evalId' !~ '^[a-z0-9][a-z0-9._-]{0,99}$'
         or jsonb_typeof(evaluation->'servedByTasks') <> 'array'
         or jsonb_array_length(evaluation->'servedByTasks') = 0
+        or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end) as item where jsonb_typeof(item) is distinct from 'string')
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end)) <>
            (select count(distinct task_id) from jsonb_array_elements_text(case when jsonb_typeof(evaluation->'servedByTasks') = 'array' then evaluation->'servedByTasks' else '[]'::jsonb end) as task_id)
         or evaluation->>'buildHash' is null or evaluation->>'buildHash' !~ '^sha256:[a-f0-9]{64}$'
@@ -841,6 +859,7 @@ begin
             or (assertion->>'kind' in ('equals', 'range', 'subset') and (assertion->>'path' is null or assertion->>'path' !~ '^$|^(/([^~/]|~[01])*)*$'))
             or (assertion->>'kind' = 'equals' and not (assertion ? 'expected'))
             or (assertion->>'kind' = 'roundtrip' and (assertion->>'beforePath' is null or assertion->>'beforePath' !~ '^$|^(/([^~/]|~[01])*)*$' or assertion->>'afterPath' is null or assertion->>'afterPath' !~ '^$|^(/([^~/]|~[01])*)*$' or jsonb_typeof(assertion->'markerPaths') is distinct from 'array' or jsonb_array_length(assertion->'markerPaths') not between 1 and 20))
+            or (assertion->>'kind' = 'roundtrip' and exists (select 1 from jsonb_array_elements(case when jsonb_typeof(assertion->'markerPaths') = 'array' then assertion->'markerPaths' else '[]'::jsonb end) as item where jsonb_typeof(item) is distinct from 'string'))
             or (assertion->>'kind' = 'range' and (
               not (assertion ? 'minimum') and not (assertion ? 'maximum')
               or (assertion ? 'minimum' and jsonb_typeof(assertion->'minimum') is distinct from 'number')
@@ -882,7 +901,7 @@ begin
     ) then
     raise exception 'SLICE_EVAL_BINDING_INVALID' using errcode = '22023';
   end if;
-  if p_delivery_policy->>'schemaVersion' <> '2'
+  if p_delivery_policy->>'schemaVersion' is distinct from '2'
     or p_delivery_policy->'releaseOrder' <> '["implementation","runtime_verification","acceptance","manual_review","package","roadmap_completion","mirrors","seal"]'::jsonb
     or coalesce((p_delivery_policy->>'maximumRepairs')::integer, -1) <> 3
     or coalesce((p_delivery_policy->>'manualReviewBlocksRelease')::boolean, false) is not true then

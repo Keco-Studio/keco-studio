@@ -688,7 +688,8 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
       malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
-      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field';
+      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version';
+      malformedArray?: 'allowed-files-number' | 'task-files-boolean' | 'depends-on-number' | 'serves-evaluations-boolean' | 'source-mappings-number' | 'served-by-tasks-boolean' | 'marker-paths-number';
       corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
     } = {},
   ) {
@@ -799,6 +800,19 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     }
     if (options.malformedEvaluationField === 'unknown-plan-field') plan.extra = true;
     if (options.malformedEvaluationField === 'unknown-eval-spec-field') evalSpec.extra = true;
+    if (options.malformedEvaluationField === 'missing-source-contract-version') delete sourceProfile.contractVersion;
+    if (options.malformedEvaluationField === 'missing-source-schema-version') delete sourceProfile.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-plan-schema-version') delete plan.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-plan-coverage-mode') delete plan.coverageMode;
+    if (options.malformedEvaluationField === 'missing-eval-schema-version') delete evalSpec.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-eval-coverage-mode') delete evalSpec.coverageMode;
+    if (options.malformedArray === 'allowed-files-number') plan.allowedFiles = ['game/task-1.gd', 1];
+    if (options.malformedArray === 'task-files-boolean') tasks[0].files = ['game/task-1.gd', false];
+    if (options.malformedArray === 'depends-on-number') tasks[0].dependsOn = [1];
+    if (options.malformedArray === 'serves-evaluations-boolean') tasks[0].servesEvaluations = [true];
+    if (options.malformedArray === 'source-mappings-number') tasks[0].sourceMappings = [1];
+    if (options.malformedArray === 'served-by-tasks-boolean') evaluations[0].servedByTasks = [false];
+    if (options.malformedArray === 'marker-paths-number') evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'roundtrip', beforePath: '/before', afterPath: '/after', markerPaths: [1] }];
     const policy = {
       schemaVersion: 2,
       requiredArtifacts: ['TaskResult', 'TaskReview', 'EvalReport', 'MirrorVerification'],
@@ -806,6 +820,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       releaseOrder: ['implementation', 'runtime_verification', 'acceptance', 'manual_review', 'package', 'roadmap_completion', 'mirrors', 'seal'],
       manualReviewBlocksRelease: true,
     };
+    if (options.malformedEvaluationField === 'missing-policy-schema-version') delete policy.schemaVersion;
     const createBinding = (kind: 'roadmap' | 'spec' | 'plan', folderId: string, name: string, repositoryPath: string) => {
       const body = kind === 'plan'
         ? `# Plan ${sliceId}\n${taskIds.map(id => `- [ ] ${id}: execute ${id}`).join('\n')}\n`
@@ -1021,8 +1036,27 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['equals missing expected', { malformedEvaluationField: 'equals-missing-expected' }],
     ['unknown plan field', { malformedEvaluationField: 'unknown-plan-field' }],
     ['unknown eval spec field', { malformedEvaluationField: 'unknown-eval-spec-field' }],
+    ['missing source contract version', { malformedEvaluationField: 'missing-source-contract-version' }],
+    ['missing source schema version', { malformedEvaluationField: 'missing-source-schema-version' }],
+    ['missing plan schema version', { malformedEvaluationField: 'missing-plan-schema-version' }],
+    ['missing plan coverage mode', { malformedEvaluationField: 'missing-plan-coverage-mode' }],
+    ['missing eval schema version', { malformedEvaluationField: 'missing-eval-schema-version' }],
+    ['missing eval coverage mode', { malformedEvaluationField: 'missing-eval-coverage-mode' }],
+    ['missing policy schema version', { malformedEvaluationField: 'missing-policy-schema-version' }],
   ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
-    await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
+    await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING|SOURCE_PROFILE)_INVALID|Invalid Slice delivery policy/);
+  });
+
+  it.each([
+    ['allowedFiles number', 'allowed-files-number'],
+    ['task files boolean', 'task-files-boolean'],
+    ['dependsOn number', 'depends-on-number'],
+    ['servesEvaluations boolean', 'serves-evaluations-boolean'],
+    ['sourceMappings number', 'source-mappings-number'],
+    ['servedByTasks boolean', 'served-by-tasks-boolean'],
+    ['roundtrip marker path number', 'marker-paths-number'],
+  ] as const)('rejects SQL-invalid non-string %s at the V2 RPC boundary', async (_label, malformedArray) => {
+    await expect(createV2Bundle(undefined, { malformedArray })).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
   });
 
   it('drives SQL plan/eval rejection cases from the canonical conformance corpus', async () => {
