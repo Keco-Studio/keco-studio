@@ -52,6 +52,27 @@ as $$
     and p_path not like '%//%'
 $$;
 
+create or replace function public.keco_slice_v2_normalize_checkboxes(p_markdown text)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select regexp_replace(coalesce(p_markdown, ''), '\[[xX ]\]', '[ ]', 'g')
+$$;
+
+create or replace function public.keco_slice_v2_plan_checkboxes(p_markdown text)
+returns table(task_id text, checked boolean)
+language sql immutable
+set search_path = ''
+as $$
+  select matches[2], lower(matches[1]) = 'x'
+  from regexp_matches(
+    regexp_replace(coalesce(p_markdown, ''), '<BlockAnchor id="[^"]+" />', '', 'g'),
+    '^[[:space:]]*[-*+][[:space:]]+\[([ xX])\][[:space:]]+([a-z0-9][a-z0-9._-]{0,99})([[:space:]]|:|$)',
+    'gn'
+  ) as matches
+$$;
+
 create or replace function public.mcp_checkpoint_slice_v2(
   p_project_id uuid,
   p_run_id uuid,
@@ -74,6 +95,12 @@ declare
   v_result jsonb;
   v_document public.documents%rowtype;
   v_progress jsonb;
+  v_task jsonb;
+  v_task_id text;
+  v_latest_result_event_id uuid;
+  v_latest_result_payload jsonb;
+  v_latest_review_level text;
+  v_latest_review_payload jsonb;
   v_trusted_context boolean := coalesce(current_setting('keco.execution_context_trusted', true), '') = 'on';
   v_execution_context text := nullif(current_setting('keco.execution_context_id', true), '');
 begin
@@ -85,6 +112,10 @@ begin
   end if;
   if v_run.state_token <> p_expected_state_token then
     raise exception 'SLICE_STATE_CONFLICT' using errcode = 'KS410';
+  end if;
+  if v_run.delivery_prepared_at is not null
+    and coalesce(p_document_progress, '[]'::jsonb) <> '[]'::jsonb then
+    raise exception 'SLICE_DOCUMENT_CONFLICT' using errcode = 'PT409';
   end if;
   if exists (
     select 1 from jsonb_array_elements(p_events) as submitted
@@ -153,13 +184,14 @@ begin
   end loop;
 
   if p_document_progress is not null then
-    if jsonb_typeof(p_document_progress) <> 'array' then
+    if jsonb_typeof(p_document_progress) <> 'array'
+      or jsonb_array_length(p_document_progress) > 1 then
       raise exception 'SLICE_DOCUMENT_CONFLICT' using errcode = '22023';
     end if;
     for v_progress in select value from jsonb_array_elements(p_document_progress) loop
       if v_progress->>'kind' <> 'plan'
         or v_progress->>'documentId' is distinct from v_run.document_ids->'plan'->>'documentId'
-        or v_progress->>'contentHash' is null then
+        or public.keco_slice_hash(v_progress->>'markdown') is distinct from v_progress->>'contentHash' then
         raise exception 'SLICE_DOCUMENT_CONFLICT' using errcode = '22023';
       end if;
       select * into v_document from public.documents
@@ -169,10 +201,80 @@ begin
         or v_document.collab_revision <> (v_progress->>'expectedRevision')::integer
         or public.keco_slice_hash(v_document.content) is distinct from v_progress->>'priorContentHash'
         or public.keco_slice_v2_normalize_checkboxes(v_document.content) is distinct from public.keco_slice_v2_normalize_checkboxes(v_progress->>'markdown')
-        or (length(v_progress->>'markdown') - length(replace(lower(v_progress->>'markdown'), '[x]', ''))) <
-           (length(v_document.content) - length(replace(lower(v_document.content), '[x]', ''))) then
+        or (select count(*) from public.keco_slice_v2_plan_checkboxes(v_document.content)) <>
+           jsonb_array_length(v_run.plan_data->'tasks')
+        or (select count(*) from public.keco_slice_v2_plan_checkboxes(v_progress->>'markdown')) <>
+           jsonb_array_length(v_run.plan_data->'tasks')
+        or (select count(distinct task_id) from public.keco_slice_v2_plan_checkboxes(v_document.content)) <>
+           jsonb_array_length(v_run.plan_data->'tasks')
+        or (select count(distinct task_id) from public.keco_slice_v2_plan_checkboxes(v_progress->>'markdown')) <>
+           jsonb_array_length(v_run.plan_data->'tasks')
+        or exists (
+          select 1 from jsonb_array_elements(v_run.plan_data->'tasks') as task
+          where not exists (
+            select 1 from public.keco_slice_v2_plan_checkboxes(v_document.content) as old_checkbox
+            where old_checkbox.task_id = task->>'id'
+          ) or not exists (
+            select 1 from public.keco_slice_v2_plan_checkboxes(v_progress->>'markdown') as new_checkbox
+            where new_checkbox.task_id = task->>'id'
+          )
+        )
+        or exists (
+          select 1 from public.keco_slice_v2_plan_checkboxes(v_document.content) as old_checkbox
+          where old_checkbox.checked and not exists (
+            select 1 from public.keco_slice_v2_plan_checkboxes(v_progress->>'markdown') as new_checkbox
+            where new_checkbox.task_id = old_checkbox.task_id and new_checkbox.checked
+          )
+        ) then
         raise exception 'SLICE_DOCUMENT_CONFLICT' using errcode = 'PT409';
       end if;
+      for v_task in select value from jsonb_array_elements(v_run.plan_data->'tasks') loop
+        v_task_id := v_task->>'id';
+        if exists (
+          select 1 from public.keco_slice_v2_plan_checkboxes(v_progress->>'markdown') as new_checkbox
+          where new_checkbox.task_id = v_task_id and new_checkbox.checked
+        ) and not exists (
+          select 1 from public.keco_slice_v2_plan_checkboxes(v_document.content) as old_checkbox
+          where old_checkbox.task_id = v_task_id and old_checkbox.checked
+        ) then
+          v_latest_result_event_id := null;
+          v_latest_result_payload := null;
+          select event_id, payload into v_latest_result_event_id, v_latest_result_payload
+          from public.keco_slice_run_events
+          where run_id = p_run_id and event_type = 'task_result'
+            and payload->>'taskId' = v_task_id
+            and payload->>'planRevision' = v_run.plan_data->>'planRevision'
+          order by sequence desc limit 1;
+          v_latest_review_level := null;
+          v_latest_review_payload := null;
+          select effective_review_level, payload
+          into v_latest_review_level, v_latest_review_payload
+          from public.keco_slice_run_events
+          where run_id = p_run_id and event_type = 'task_review'
+            and payload->>'taskId' = v_task_id
+            and payload->>'planRevision' = v_run.plan_data->>'planRevision'
+          order by sequence desc limit 1;
+          if v_latest_result_event_id is null
+            or v_latest_result_payload->>'status' is distinct from 'completed'
+            or v_latest_review_payload->>'verdict' is distinct from 'accepted'
+            or not (v_latest_review_payload->'taskResultIds' ? v_latest_result_event_id::text)
+            or (case coalesce(v_latest_review_level, '')
+                  when 'self' then 1 when 'separate_context' then 2
+                  when 'independent_actor' then 3 else 0 end) <
+               (case v_task->'review'->>'minimumLevel'
+                  when 'self' then 1 when 'separate_context' then 2
+                  when 'independent_actor' then 3 else 4 end)
+            or exists (
+              select 1 from jsonb_array_elements_text(v_task->'dependsOn') as dependency(task_id)
+              where not exists (
+                select 1 from public.keco_slice_v2_plan_checkboxes(v_progress->>'markdown') as dependency_checkbox
+                where dependency_checkbox.task_id = dependency.task_id and dependency_checkbox.checked
+              )
+            ) then
+            raise exception 'SLICE_DOCUMENT_CONFLICT' using errcode = 'PT409';
+          end if;
+        end if;
+      end loop;
       perform public.assert_document_snapshot_payload(v_progress->>'yjsState', v_progress->>'markdown');
       update public.documents set content = v_progress->>'markdown', yjs_state = v_progress->>'yjsState',
         collab_epoch = collab_epoch + 1, collab_revision = collab_revision + 1,
@@ -452,7 +554,25 @@ begin
   if not found or v_document.collab_epoch <> (p_roadmap_progress->>'expectedEpoch')::integer
     or v_document.collab_revision <> (p_roadmap_progress->>'expectedRevision')::integer
     or public.keco_slice_hash(v_document.content) is distinct from p_roadmap_progress->>'priorContentHash'
-    or public.keco_slice_v2_normalize_checkboxes(v_document.content) is distinct from public.keco_slice_v2_normalize_checkboxes(p_roadmap_progress->>'markdown') then
+    or public.keco_slice_hash(p_roadmap_progress->>'markdown') is distinct from p_roadmap_progress->>'contentHash'
+    or public.keco_slice_v2_normalize_checkboxes(v_document.content) is distinct from public.keco_slice_v2_normalize_checkboxes(p_roadmap_progress->>'markdown')
+    or not exists (
+      select 1 from public.keco_slice_v2_plan_checkboxes(v_document.content) as old_checkbox
+      where old_checkbox.task_id = v_run.slice_id and not old_checkbox.checked
+    )
+    or not exists (
+      select 1 from public.keco_slice_v2_plan_checkboxes(p_roadmap_progress->>'markdown') as new_checkbox
+      where new_checkbox.task_id = v_run.slice_id and new_checkbox.checked
+    )
+    or exists (
+      select 1 from public.keco_slice_v2_plan_checkboxes(v_document.content) as old_checkbox
+      join public.keco_slice_v2_plan_checkboxes(p_roadmap_progress->>'markdown') as new_checkbox using (task_id)
+      where old_checkbox.checked and not new_checkbox.checked
+    )
+    or (select count(*)
+        from public.keco_slice_v2_plan_checkboxes(v_document.content) as old_checkbox
+        join public.keco_slice_v2_plan_checkboxes(p_roadmap_progress->>'markdown') as new_checkbox using (task_id)
+        where not old_checkbox.checked and new_checkbox.checked) <> 1 then
     raise exception 'SLICE_DOCUMENT_CONFLICT' using errcode = 'PT409';
   end if;
   perform public.assert_document_snapshot_payload(p_roadmap_progress->>'yjsState', p_roadmap_progress->>'markdown');
@@ -480,14 +600,6 @@ begin
   values (v_actor, 'prepare_slice_delivery_v2', p_idempotency_key, v_request_hash, v_result);
   return v_result;
 end;
-$$;
-
-create or replace function public.keco_slice_v2_normalize_checkboxes(p_markdown text)
-returns text
-language sql immutable
-set search_path = ''
-as $$
-  select regexp_replace(coalesce(p_markdown, ''), '\\[[xX ]\\]', '[ ]', 'g')
 $$;
 
 create or replace function public.mcp_create_slice_bundle_v2(
@@ -621,6 +733,10 @@ begin
   end if;
   if jsonb_typeof(p_eval_spec->'evaluations') <> 'array'
     or jsonb_array_length(p_eval_spec->'evaluations') not between 1 and 100
+    or (p_plan_data->>'coverageMode' = 'gdd' and (
+      p_eval_spec->>'inventoryHash' is distinct from p_plan_data->>'inventoryHash'
+      or p_eval_spec->'requirementIds' is distinct from p_plan_data->'requirementIds'
+    ))
     or exists (
       select 1 from jsonb_array_elements(p_plan_data->'tasks') as task
       cross join jsonb_array_elements_text(task->'servesEvaluations') as eval_id
@@ -768,6 +884,7 @@ $$;
 
 revoke all on function public.keco_slice_v2_safe_path(text) from public, anon, authenticated;
 revoke all on function public.keco_slice_v2_normalize_checkboxes(text) from public, anon, authenticated;
+revoke all on function public.keco_slice_v2_plan_checkboxes(text) from public, anon, authenticated;
 revoke all on function public.mcp_create_slice_bundle_v2(uuid,uuid,uuid,text,jsonb,text,jsonb,text,jsonb,text,jsonb,text,jsonb,uuid,text,text) from public, anon;
 revoke all on function public.mcp_checkpoint_slice_v2(uuid,uuid,uuid,jsonb,jsonb,jsonb,text,text,jsonb) from public, anon;
 revoke all on function public.mcp_prepare_slice_delivery_v2(uuid,uuid,uuid,jsonb,text,text) from public, anon;

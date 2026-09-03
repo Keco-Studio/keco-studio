@@ -276,7 +276,7 @@ Run: `rg -n 'test8-24|game-gdd' plugins/keco-{codex,claude}/skills/keco-develop-
 
 Expected: tests PASS; scan returns only explicit negative regression assertions or no reusable-contract hits.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/contract-manifest.json plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/contract-manifest.json plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts plugins/keco-claude/scripts tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts
@@ -296,27 +296,27 @@ git commit -m "feat(slice): converge offline contract validation"
 - Consumes: accepted TaskResult/TaskReview state and V2 document identities.
 - Produces: `checkpoint_slice.documentProgress` with checkbox-only updates and `prepare_delivery` as the final roadmap checkbox mutation before export.
 
-- [ ] **Step 1: Add failing progress/order tests**
+- [x] **Step 1: Add failing progress/order tests**
 
 Test unchecked-body normalization, dependency-gated checkbox transitions, immutable non-checkbox bytes, concurrent roadmap revision conflicts, export-before-prepare rejection, post-prepare document mutation rejection, and the exact sequence `implementation_complete -> prepare_delivery -> export`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp/slice-tools.test.ts && npx jest --runInBand tests/unit/database/deterministic-slice-runs-migration.test.ts`
 
 Expected: FAIL on missing progress/preparation contract.
 
-- [ ] **Step 3: Implement progress and preparation gates**
+- [x] **Step 3: Implement progress and preparation gates**
 
 Compare accepted normalized plan bytes, permit only eligible `- [ ]` to `- [x]`, bind revisions and hashes, update roadmap once with optimistic concurrency in `prepare_delivery`, and make export read-only and delivery seal mutation-free.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp/slice-tools.test.ts && npx jest --runInBand tests/unit/database/deterministic-slice-runs-migration.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add supabase/functions/mcp/slice-tools.ts supabase/functions/mcp/slice-tools.test.ts supabase/migrations/20260903120000_slice_v2_contract_convergence.sql tests/unit/database/deterministic-slice-runs-migration.test.ts tests/unit/database/deterministic-slice-runs.behavior.test.ts

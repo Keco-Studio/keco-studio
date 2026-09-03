@@ -1158,6 +1158,14 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
   )!.handler({
     ...checkpointInput(),
     contractVersion: 2,
+    documentProgress: [{
+      kind: "plan",
+      documentId: IDS.documents[2],
+      expectedEpoch: 0,
+      expectedRevision: 1,
+      priorContentHash: hash("3"),
+      markdown: "# Plan\r\n- [x] task-1\r\n",
+    }],
   });
   assertEquals(
     result.isError,
@@ -1169,6 +1177,11 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
     "mcp_read_slice_run",
     "mcp_checkpoint_slice_v2",
   ]);
+  const progress = (calls.at(-1)?.parameters.p_document_progress as Array<
+    Record<string, unknown>
+  >)[0];
+  assertEquals(progress.contentHash, await sha256Utf8(String(progress.markdown)));
+  assertEquals(typeof progress.yjsState, "string");
 });
 
 Deno.test("stored contract identity rejects silent upgrades and downgrades", async () => {

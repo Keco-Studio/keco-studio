@@ -675,10 +675,32 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     if (fx) await teardownProjectFixture(fx);
   });
 
-  async function createV2Bundle(roadmap?: Record<string, unknown>) {
+  async function createV2Bundle(
+    roadmap?: Record<string, unknown>,
+    options: {
+      taskIds?: string[];
+      gddMismatch?: 'inventory' | 'requirements';
+      includeRoadmapSlice?: boolean;
+    } = {},
+  ) {
     const runId = crypto.randomUUID();
     const sliceId = `slice-${runId.slice(0, 8)}`;
-    const sourceProfile = {
+    const taskIds = options.taskIds ?? ['task-1'];
+    const requirementIds = taskIds.map((_, index) => `req-${index + 1}`);
+    const sourceProfile = options.gddMismatch ? {
+      schemaVersion: 1,
+      contractVersion: 2,
+      kind: 'gdd',
+      kecoProjectId: fx.projectId,
+      capturedAt: '2026-09-03T00:00:00Z',
+      sourceHash: hash('a'),
+      selectionEvidence: [],
+      documentId: crypto.randomUUID(),
+      epoch: 0,
+      revision: 1,
+      contentHash: hash('b'),
+      requirementInventoryHash: hash('7'),
+    } : {
       schemaVersion: 1,
       contractVersion: 2,
       kind: 'document',
@@ -691,28 +713,51 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       revision: 1,
       contentHash: hash('b'),
     };
-    const plan = {
+    const tasks = taskIds.map((id, index) => ({
+      id,
+      files: [`game/task-${index + 1}.gd`],
+      dependsOn: index === 0 ? [] : [taskIds[index - 1]],
+      servesEvaluations: [`eval-${index + 1}`],
+      red: { command: `test red ${id}`, expected: 'fails' },
+      green: { command: `test green ${id}`, expected: 'passes' },
+      review: { minimumLevel: 'self' },
+      sourceMappings: options.gddMismatch ? [requirementIds[index]] : ['source-1'],
+    }));
+    const plan = options.gddMismatch ? {
+      schemaVersion: 2,
+      coverageMode: 'gdd',
+      inventoryHash: hash('7'),
+      requirementIds,
+      planRevision: hash('c'),
+      allowedFiles: tasks.map(task => task.files[0]),
+      tasks,
+    } : {
       schemaVersion: 2,
       coverageMode: 'non_gdd',
       sourceProfileHash: hashJson(sourceProfile),
       nonGddRationale: 'The selected document directly authorizes this Slice.',
       planRevision: hash('c'),
-      allowedFiles: ['game/main.gd'],
-      tasks: [{
-        id: 'task-1', files: ['game/main.gd'], dependsOn: [], servesEvaluations: ['eval-1'],
-        red: { command: 'test red', expected: 'fails' },
-        green: { command: 'test green', expected: 'passes' },
-        review: { minimumLevel: 'self' }, sourceMappings: ['source-1'],
-      }],
+      allowedFiles: tasks.map(task => task.files[0]),
+      tasks,
     };
-    const evalSpec = {
+    const evaluations = taskIds.map((id, index) => ({
+      evalId: `eval-${index + 1}`,
+      servedByTasks: [id],
+      buildHash: hash('d'),
+      snapshotHash: hash('e'),
+      assertions: [{ assertionId: `ready-${index + 1}`, kind: 'equals', path: '/ready', expected: true }],
+    }));
+    const evalSpec = options.gddMismatch ? {
+      schemaVersion: 2,
+      coverageMode: 'gdd',
+      inventoryHash: options.gddMismatch === 'inventory' ? hash('8') : hash('7'),
+      requirementIds: options.gddMismatch === 'requirements' ? ['req-other'] : requirementIds,
+      evaluations,
+    } : {
       schemaVersion: 2,
       coverageMode: 'non_gdd',
       sourceProfileHash: hashJson(sourceProfile),
-      evaluations: [{
-        evalId: 'eval-1', servedByTasks: ['task-1'], buildHash: hash('d'), snapshotHash: hash('e'),
-        assertions: [{ assertionId: 'ready', kind: 'equals', path: '/ready', expected: true }],
-      }],
+      evaluations,
     };
     const policy = {
       schemaVersion: 2,
@@ -722,7 +767,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       manualReviewBlocksRelease: true,
     };
     const createBinding = (kind: 'roadmap' | 'spec' | 'plan', folderId: string, name: string, repositoryPath: string) => {
-      const encoded = normalizeMarkdown(`# ${kind} ${sliceId}\n- [ ] ${sliceId}\n`);
+      const body = kind === 'plan'
+        ? `# Plan ${sliceId}\n${taskIds.map(id => `- [ ] ${id}: execute ${id}`).join('\n')}\n`
+        : `# ${kind} ${sliceId}\n- [ ] ${sliceId}: deliver ${sliceId}\n`;
+      const encoded = normalizeMarkdown(body);
       return { kind, disposition: 'create', folderId, name, repositoryPath, documentId: crypto.randomUUID(), markdown: encoded.markdown, yjsState: encoded.yjsStateBase64 };
     };
     let roadmapBinding = roadmap;
@@ -732,12 +780,23 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
         .eq('project_id', fx.projectId).eq('folder_id', planningRootId).eq('name', 'roadmap')
         .maybeSingle();
       if (existing.error) throw new Error(`read V2 roadmap failed: ${existing.error.message}`);
-      roadmapBinding = existing.data ? {
-        kind: 'roadmap', disposition: 'bind', folderId: planningRootId, name: 'roadmap',
-        repositoryPath: 'docs/superpowers/roadmap.md', documentId: existing.data.id,
-        expectedEpoch: existing.data.collab_epoch, expectedRevision: existing.data.collab_revision,
-        contentHash: `sha256:${createHash('sha256').update(existing.data.content).digest('hex')}`,
-      } : createBinding('roadmap', planningRootId, 'roadmap', 'docs/superpowers/roadmap.md');
+      if (existing.data && options.includeRoadmapSlice) {
+        const encoded = normalizeMarkdown(`${existing.data.content}\n- [ ] ${sliceId}: deliver ${sliceId}\n`);
+        roadmapBinding = {
+          kind: 'roadmap', disposition: 'update', folderId: planningRootId, name: 'roadmap',
+          repositoryPath: 'docs/superpowers/roadmap.md', documentId: existing.data.id,
+          expectedEpoch: existing.data.collab_epoch, expectedRevision: existing.data.collab_revision,
+          priorContentHash: `sha256:${createHash('sha256').update(existing.data.content).digest('hex')}`,
+          markdown: encoded.markdown, yjsState: encoded.yjsStateBase64,
+        };
+      } else {
+        roadmapBinding = existing.data ? {
+          kind: 'roadmap', disposition: 'bind', folderId: planningRootId, name: 'roadmap',
+          repositoryPath: 'docs/superpowers/roadmap.md', documentId: existing.data.id,
+          expectedEpoch: existing.data.collab_epoch, expectedRevision: existing.data.collab_revision,
+          contentHash: `sha256:${createHash('sha256').update(existing.data.content).digest('hex')}`,
+        } : createBinding('roadmap', planningRootId, 'roadmap', 'docs/superpowers/roadmap.md');
+      }
     }
     const documentBindings = [
       roadmapBinding,
@@ -756,13 +815,80 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     return { runId, sliceId, args, result: row(created.data) };
   }
 
-  async function checkpointV2(runId: string, token: string, events: Array<Record<string, unknown>>) {
+  async function checkpointV2(
+    runId: string,
+    token: string,
+    events: Array<Record<string, unknown>>,
+    options: {
+      documentProgress?: Array<Record<string, unknown>> | null;
+      computedEvaluations?: Array<Record<string, unknown>>;
+    } = {},
+  ) {
     const key = `checkpoint-v2:${crypto.randomUUID()}`;
     return fx.editor.client.rpc('mcp_checkpoint_slice_v2', {
       p_project_id: fx.projectId, p_run_id: runId, p_expected_state_token: token,
-      p_events: events, p_artifacts: [], p_document_progress: null,
-      p_idempotency_key: key, p_input_hash: hash('9'), p_computed_evaluations: [],
+      p_events: events, p_artifacts: [], p_document_progress: options.documentProgress ?? null,
+      p_idempotency_key: key, p_input_hash: hash('9'), p_computed_evaluations: options.computedEvaluations ?? [],
     });
+  }
+
+  function taskResultV2(
+    bundle: { runId: string; sliceId: string },
+    taskId: string,
+  ) {
+    return eventV2('task_result', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId, planRevision: hash('c'), attemptId: crypto.randomUUID(),
+      phase: 'green', operation: { kind: 'command', command: `test green ${taskId}` }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
+      exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('1'), stderrSummary: '', stderrHash: hash('2'),
+      changedFiles: [], expectedOutcome: 'passes', observedOutcome: 'passed', status: 'completed', concerns: [], artifactIds: [],
+    });
+  }
+
+  function taskReviewV2(
+    bundle: { runId: string; sliceId: string },
+    taskId: string,
+    resultEventId: string,
+  ) {
+    return eventV2('task_review', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId, planRevision: hash('c'),
+      taskResultIds: [resultEventId], reviewedFiles: [], reviewerType: 'agent', reviewerId: fx.editor.id,
+      requestedLevel: 'self', verdict: 'accepted', specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
+    });
+  }
+
+  function documentProgress(
+    kind: 'roadmap' | 'plan',
+    document: Record<string, unknown>,
+    markdown: string,
+    contentHash?: string,
+  ) {
+    const encoded = normalizeMarkdown(markdown);
+    return {
+      ...(kind === 'plan' ? { kind } : {}),
+      documentId: document.documentId,
+      expectedEpoch: document.epoch,
+      expectedRevision: document.revision,
+      priorContentHash: document.contentHash,
+      markdown: encoded.markdown,
+      yjsState: encoded.yjsStateBase64,
+      contentHash: contentHash ?? `sha256:${createHash('sha256').update(encoded.markdown).digest('hex')}`,
+    };
+  }
+
+  function bindingMarkdown(
+    bundle: { args: Record<string, unknown> },
+    kind: 'roadmap' | 'plan',
+  ): string {
+    const bindings = bundle.args.p_document_bindings as Array<Record<string, unknown>>;
+    return String(bindings.find(binding => binding.kind === kind)?.markdown);
+  }
+
+  function setChecked(markdown: string, taskId: string, checked: boolean): string {
+    return markdown.split('\n').map(line =>
+      line.includes(`${taskId}:`)
+        ? line.replace(/\[[ xX]\]/, checked ? '[x]' : '[ ]')
+        : line
+    ).join('\n');
   }
 
   it('creates same-name spec and plan in distinct folders and binds the roadmap for a second Slice', async () => {
@@ -790,13 +916,13 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     const bundle = await createV2Bundle();
     const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
       eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
-      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/main.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/task-1.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
     ]);
     expect(prerequisites.error).toBeNull();
     let token = String(row(prerequisites.data).stateToken);
     const resultEvent = eventV2('task_result', {
       schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'), attemptId: crypto.randomUUID(),
-      phase: 'green', operation: { kind: 'command', command: 'test green' }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
+      phase: 'green', operation: { kind: 'command', command: 'test green task-1' }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
       exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('1'), stderrSummary: '', stderrHash: hash('2'),
       changedFiles: [], expectedOutcome: 'passes', observedOutcome: 'passed', status: 'completed', concerns: [], artifactIds: [],
     });
@@ -816,5 +942,136 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     }
     const fourth = await checkpointV2(bundle.runId, token, [eventV2('repair_transition', { reason: 'repair 4', failedEvaluationIds: ['eval-1'] })]);
     expect(fourth.error?.message).toContain('SLICE_REPAIR_LIMIT');
+  });
+
+  it.each(['inventory', 'requirements'] as const)(
+    'rejects a GDD %s mismatch between the plan and EvalSpec',
+    async mismatch => {
+      await expect(createV2Bundle(undefined, { gddMismatch: mismatch }))
+        .rejects.toThrow(/SLICE_EVAL_BINDING_INVALID/);
+    },
+  );
+
+  it('gates plan checkbox transitions on accepted evidence, review, dependencies, bytes, and hashes', async () => {
+    const bundle = await createV2Bundle(undefined, { taskIds: ['task-1', 'task-2'] });
+    const documents = bundle.result.documents as Record<string, Record<string, unknown>>;
+    const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/task-1.gd', 'game/task-2.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(prerequisites.error).toBeNull();
+    let token = String(row(prerequisites.data).stateToken);
+    const initialPlan = bindingMarkdown(bundle, 'plan');
+
+    const secondResult = taskResultV2(bundle, 'task-2');
+    const secondAccepted = await checkpointV2(bundle.runId, token, [secondResult]);
+    expect(secondAccepted.error).toBeNull();
+    token = String(row(secondAccepted.data).stateToken);
+    const secondReviewed = await checkpointV2(bundle.runId, token, [taskReviewV2(bundle, 'task-2', secondResult.eventId)]);
+    expect(secondReviewed.error).toBeNull();
+    token = String(row(secondReviewed.data).stateToken);
+    const dependencyViolation = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('4') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-2', true))] });
+    expect(dependencyViolation.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const firstResult = taskResultV2(bundle, 'task-1');
+    const firstAccepted = await checkpointV2(bundle.runId, token, [firstResult]);
+    expect(firstAccepted.error).toBeNull();
+    token = String(row(firstAccepted.data).stateToken);
+    const missingReview = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('5') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-1', true))] });
+    expect(missingReview.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const firstReviewed = await checkpointV2(bundle.runId, token, [taskReviewV2(bundle, 'task-1', firstResult.eventId)]);
+    expect(firstReviewed.error).toBeNull();
+    token = String(row(firstReviewed.data).stateToken);
+    const byteMutation = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('6') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(setChecked(initialPlan, 'task-1', true), 'task-2', true).replace('Plan', 'Mutated plan'))] });
+    expect(byteMutation.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const forgedHash = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('7') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(setChecked(initialPlan, 'task-1', true), 'task-2', true), hash('9'))] });
+    expect(forgedHash.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+
+    const accepted = await checkpointV2(bundle.runId, token, [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('8') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(setChecked(initialPlan, 'task-1', true), 'task-2', true))] });
+    expect(accepted.error).toBeNull();
+    expect((row(accepted.data).documents as Record<string, Record<string, unknown>>).plan.revision).toBe(2);
+  });
+
+  it('enforces implementation_complete, prepare_delivery, export order and freezes documents', async () => {
+    const bundle = await createV2Bundle(undefined, { includeRoadmapSlice: true });
+    let documents = bundle.result.documents as Record<string, Record<string, unknown>>;
+    const initialPlan = bindingMarkdown(bundle, 'plan');
+    const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      eventV2('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      eventV2('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/task-1.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(prerequisites.error).toBeNull();
+    const resultEvent = taskResultV2(bundle, 'task-1');
+    const result = await checkpointV2(bundle.runId, String(row(prerequisites.data).stateToken), [resultEvent]);
+    expect(result.error).toBeNull();
+    const runtime = eventV2('runtime_observation', { observation: {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, evalId: 'eval-1',
+      buildHash: hash('d'), snapshotHash: hash('e'), actual: { ready: true }, errors: [],
+    } });
+    const ready = await checkpointV2(bundle.runId, String(row(result.data).stateToken), [
+      taskReviewV2(bundle, 'task-1', resultEvent.eventId),
+      runtime,
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('3') }),
+    ], {
+      documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-1', true))],
+      computedEvaluations: [{
+        evalId: 'eval-1', status: 'passed', manualRequired: false,
+        assertions: [{ assertionId: 'ready-1', status: 'passed', reasonCode: 'OK', actual: true }],
+        reasonCodes: [],
+      }],
+    });
+    expect(ready.error).toBeNull();
+    documents = row(ready.data).documents as Record<string, Record<string, unknown>>;
+
+    const beforeImplementation = await fx.viewer.client.rpc('mcp_export_slice_mirrors_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId,
+    });
+    expect(beforeImplementation.error?.message).toContain('SLICE_MIRROR_INVALID');
+    const implementation = await fx.editor.client.rpc('mcp_finalize_slice_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId, p_expected_state_token: row(ready.data).stateToken,
+      p_requested_terminal_intent: 'implementation_complete', p_mirror_verification_event_id: null,
+      p_mirror_manifest_hash: null, p_idempotency_key: `implementation-v2:${bundle.runId}`, p_input_hash: hash('4'),
+    });
+    expect(implementation.error).toBeNull();
+    const roadmapMarkdown = setChecked(bindingMarkdown(bundle, 'roadmap'), bundle.sliceId, true);
+    const stalePrepare = await fx.editor.client.rpc('mcp_prepare_slice_delivery_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId, p_expected_state_token: row(implementation.data).stateToken,
+      p_roadmap_progress: { ...documentProgress('roadmap', documents.roadmap, roadmapMarkdown), expectedRevision: 99 },
+      p_idempotency_key: `prepare-stale:${bundle.runId}`, p_input_hash: hash('5'),
+    });
+    expect(stalePrepare.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+    const prepared = await fx.editor.client.rpc('mcp_prepare_slice_delivery_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId, p_expected_state_token: row(implementation.data).stateToken,
+      p_roadmap_progress: documentProgress('roadmap', documents.roadmap, roadmapMarkdown),
+      p_idempotency_key: `prepare-v2:${bundle.runId}`, p_input_hash: hash('6'),
+    });
+    expect(prepared.error).toBeNull();
+    documents = row(prepared.data).documents as Record<string, Record<string, unknown>>;
+    const exported = await fx.viewer.client.rpc('mcp_export_slice_mirrors_v2', {
+      p_project_id: fx.projectId, p_run_id: bundle.runId,
+    });
+    expect(exported.error).toBeNull();
+    expect(row(exported.data).files).toHaveLength(3);
+
+    const postPrepare = await checkpointV2(bundle.runId, String(row(prepared.data).stateToken), [
+      eventV2('delivery_check', { gate: 'package', status: 'passed', evidenceHash: hash('9') }),
+    ], { documentProgress: [documentProgress('plan', documents.plan, setChecked(initialPlan, 'task-1', true))] });
+    expect(postPrepare.error?.message).toContain('SLICE_DOCUMENT_CONFLICT');
+    const events = await fx.svc.from('keco_slice_run_events').select('event_type,sequence')
+      .eq('run_id', bundle.runId).in('event_type', ['implementation_completed', 'delivery_prepared']).order('sequence');
+    expect(events.error).toBeNull();
+    expect(events.data?.map(item => item.event_type)).toEqual(['implementation_completed', 'delivery_prepared']);
   });
 });

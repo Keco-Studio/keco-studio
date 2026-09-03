@@ -154,6 +154,21 @@ describe('Slice contract version 2 convergence migration', () => {
     expect(v2Sql).toMatch(/v_event_type := 'finalized'/i);
   });
 
+  it('binds each plan checkbox transition to accepted evidence and its dependencies', () => {
+    expect(v2Sql).toMatch(/function public\.keco_slice_v2_plan_checkboxes/i);
+    expect(v2Sql).toMatch(/task->'dependsOn'/i);
+    expect(v2Sql).toMatch(/event_type = 'task_result'[\s\S]+v_latest_result_payload->>'status' is distinct from 'completed'/i);
+    expect(v2Sql).toMatch(/event_type = 'task_review'[\s\S]+verdict'[\s\S]+accepted/i);
+    expect(v2Sql).toMatch(/effective_review_level/i);
+    expect(v2Sql).toMatch(/public\.keco_slice_hash\(v_progress->>'markdown'\)[\s\S]+v_progress->>'contentHash'/i);
+    expect(v2Sql).toMatch(/delivery_prepared_at is not null[\s\S]+SLICE_DOCUMENT_CONFLICT/i);
+  });
+
+  it('requires reciprocal GDD inventory and requirement identity in SQL', () => {
+    expect(v2Sql).toMatch(/p_eval_spec->>'inventoryHash' is distinct from p_plan_data->>'inventoryHash'/i);
+    expect(v2Sql).toMatch(/p_eval_spec->'requirementIds' is distinct from p_plan_data->'requirementIds'/i);
+  });
+
   it('keeps the repair ceiling durable in V2', () => {
     expect(v2Sql).toMatch(/repair_count >= 3[\s\S]+SLICE_REPAIR_LIMIT/i);
     expect(v2Sql).toMatch(/state_token <> p_expected_state_token[\s\S]+SLICE_STATE_CONFLICT/i);
