@@ -833,6 +833,13 @@ begin
             or assertion->>'kind' not in ('equals', 'range', 'subset', 'roundtrip')
             or (assertion->>'kind' in ('equals', 'range', 'subset') and nullif(assertion->>'path', '') is null)
             or (assertion->>'kind' = 'roundtrip' and (nullif(assertion->>'beforePath', '') is null or nullif(assertion->>'afterPath', '') is null or jsonb_typeof(assertion->'markerPaths') is distinct from 'array' or jsonb_array_length(assertion->'markerPaths') = 0))
+            or exists (
+              select 1 from jsonb_object_keys(assertion) as key
+              where (assertion->>'kind' = 'equals' and key not in ('assertionId', 'kind', 'path', 'expected'))
+                 or (assertion->>'kind' = 'range' and key not in ('assertionId', 'kind', 'path', 'minimum', 'maximum', 'minimumInclusive', 'maximumInclusive'))
+                 or (assertion->>'kind' = 'subset' and key not in ('assertionId', 'kind', 'path', 'expected'))
+                 or (assertion->>'kind' = 'roundtrip' and key not in ('assertionId', 'kind', 'beforePath', 'afterPath', 'markerPaths'))
+            )
         )
     )
     or (select count(*) from jsonb_array_elements(p_eval_spec->'evaluations') as evaluation) <>
