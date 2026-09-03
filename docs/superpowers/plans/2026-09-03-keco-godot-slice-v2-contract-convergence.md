@@ -439,17 +439,17 @@ git commit -m "docs(slice): converge version 2 skill behavior"
 - Consumes: converged Skill and corpus.
 - Produces: CLI harness that runs at least five fresh contexts per wording variant plus no-new-guidance control, stores raw output/runtime/model/scoring, and reports per-scenario variance without treating fixture counts as success.
 
-- [ ] **Step 1: Add failing harness contract tests**
+- [x] **Step 1: Add failing harness contract tests**
 
 Assert evaluation definitions contain the 12 required scenario classes, explicit behavioral rubric assertions, fresh-context count, control prompt, raw-output path, model/runtime identity, and manual-review state. Assert a static array length alone cannot return `passed`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
 Expected: FAIL because the existing file is a static keyword fixture without execution evidence.
 
-- [ ] **Step 3: Implement the evaluator**
+- [x] **Step 3: Implement the evaluator**
 
 Support `--provider codex|claude`, `--samples 5`, `--output`, and `--dry-run`; start a fresh process/context per sample, retain raw response and exit metadata, score only evidence-backed rubric checks, and require manual disposition for every flagged sample.
 
@@ -468,7 +468,9 @@ Run: `node scripts/evaluate-keco-slice-v2-skill.mjs --provider claude --samples 
 
 Expected: Jest PASS; provider runs produce reviewed raw evidence. If authentication/model access is unavailable, retain dry-run validation and record the exact external dependency error without claiming AC 13 passed.
 
-- [ ] **Step 5: Commit**
+Observed in this environment: Jest and dry-run pass. Claude OAuth is authenticated but repeated fresh-context batches are timing out under local provider throughput; Codex OAuth is authenticated but every attempted call fails with `tls handshake eof` while connecting to `api.openai.com`. Raw stdout/stderr and timeout metadata are retained under `tests/fixtures/plugins/keco-godot-skill-v2-eval-results/raw/`; AC 13 remains unclaimed until five fresh samples per scenario and variant complete with reviewed evidence.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/evaluate-keco-slice-v2-skill.mjs tests/fixtures/plugins/keco-godot-skill-v2-evals.json tests/fixtures/plugins/keco-godot-skill-v2-eval-rubric.json tests/fixtures/plugins/keco-godot-skill-v2-eval-results tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts

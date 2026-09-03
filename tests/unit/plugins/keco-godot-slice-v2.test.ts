@@ -1066,10 +1066,66 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
-  it('keeps the pressure scenarios as reviewable fixtures', () => {
-    const fixture = JSON.parse(readFileSync(path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-evals.json'), 'utf8')) as { cases: unknown[]; invocation: string };
-    expect(fixture.invocation).toBe('$keco-develop-godot-slice-v2');
-    expect(fixture.cases).toHaveLength(10);
+  it('plans executable pressure evaluations without treating fixture counts as evidence', () => {
+    const harness = path.join(repositoryRoot, 'scripts', 'evaluate-keco-slice-v2-skill.mjs');
+    const definitionPath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-evals.json');
+    const rubricPath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-eval-rubric.json');
+    expect({ harness: existsSync(harness), rubric: existsSync(rubricPath) }).toEqual({ harness: true, rubric: true });
+    const fixture = JSON.parse(readFileSync(definitionPath, 'utf8')) as {
+      schemaVersion: number;
+      skill: string;
+      providers: string[];
+      minimumSamplesPerVariant: number;
+      variants: Array<{ id: string; guidance: string }>;
+      cases: Array<{ id: string; scenarioClass: string; assertions: unknown[] }>;
+    };
+    const rubric = JSON.parse(readFileSync(rubricPath, 'utf8')) as Record<string, unknown>;
+    expect(fixture).toMatchObject({
+      schemaVersion: 2,
+      skill: 'keco-develop-godot-slice-v2',
+      providers: ['codex', 'claude'],
+      minimumSamplesPerVariant: 5,
+    });
+    expect(new Set(fixture.cases.map(item => item.scenarioClass))).toEqual(new Set([
+      'simple_non_gdd', 'gdd_coverage', 'multi_slice_resume', 'ambiguous_decomposition',
+      'capability_unavailable', 'out_of_scope_file', 'missing_runtime_observation',
+      'legacy_self_report', 'forged_review_level', 'stale_state', 'fourth_repair',
+      'mirror_partial_failure',
+    ]));
+    expect(fixture.cases.every(item => item.assertions.length > 0)).toBe(true);
+    expect(fixture.variants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'control', guidance: 'none' }),
+      expect.objectContaining({ id: 'current_skill', guidance: 'repository_skill' }),
+    ]));
+    expect(rubric).toMatchObject({
+      schemaVersion: 1,
+      manualReviewStates: expect.arrayContaining(['not_required', 'pending', 'reviewed']),
+      rawEvidenceRequired: true,
+    });
+
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-skill-eval-'));
+    try {
+      const output = path.join(tempRoot, 'dry-run.json');
+      const dry = spawnSync(process.execPath, [
+        harness, '--provider', 'codex', '--samples', '5', '--output', output, '--dry-run',
+      ], { cwd: repositoryRoot, encoding: 'utf8' });
+      expect({ status: dry.status, stderr: dry.stderr }).toEqual({ status: 0, stderr: '' });
+      const result = JSON.parse(readFileSync(output, 'utf8')) as {
+        status: string;
+        passed: boolean;
+        plannedInvocations: Array<{ contextId: string; rawOutputPath: string; provider: string; runtime: string; model: string }>;
+        evidenceSummary: { realResponses: number };
+      };
+      expect(result).toMatchObject({ status: 'dry_run', passed: false, evidenceSummary: { realResponses: 0 } });
+      expect(result.plannedInvocations).toHaveLength(fixture.cases.length * fixture.variants.length * 5);
+      expect(new Set(result.plannedInvocations.map(item => item.contextId)).size).toBe(result.plannedInvocations.length);
+      expect(result.plannedInvocations.every(item => item.rawOutputPath && item.provider === 'codex' && item.runtime && item.model)).toBe(true);
+      expect(spawnSync(process.execPath, [
+        harness, '--provider', 'codex', '--samples', '4', '--output', output, '--dry-run',
+      ], { cwd: repositoryRoot, encoding: 'utf8' }).status).toBe(1);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('rejects unsafe run contexts and incomplete plans', () => {

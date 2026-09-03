@@ -276,6 +276,22 @@ describe('Keco Claude plugin packaging', () => {
 });
 
 describe('Keco Claude plugin skill contracts', () => {
+  it('declares Claude as a real fresh-context Slice V2 evaluation provider', () => {
+    const definitions = readJson<{
+      providers: string[];
+      minimumSamplesPerVariant: number;
+      variants: Array<{ id: string; guidance: string }>;
+    }>('tests/fixtures/plugins/keco-godot-skill-v2-evals.json');
+    expect(definitions).toMatchObject({
+      providers: ['codex', 'claude'],
+      minimumSamplesPerVariant: 5,
+      variants: expect.arrayContaining([
+        expect.objectContaining({ id: 'control', guidance: 'none' }),
+        expect.objectContaining({ id: 'current_skill', guidance: 'repository_skill' }),
+      ]),
+    });
+  });
+
   it('ships the synchronized local image import routing and workflow contract', () => {
     const claudeSkill = readFileSync(path.join(skillsRoot, 'keco-import-local-assets', 'SKILL.md'));
     const codexSkill = readFileSync(
