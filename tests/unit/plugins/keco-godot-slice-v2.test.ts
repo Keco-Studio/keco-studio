@@ -786,6 +786,39 @@ describe('Keco Godot Slice V2 skill contract', () => {
       const valid = spawnSync('python3', [validator, validPath], { encoding: 'utf8' });
       expect(valid.status).toBe(0);
       expect(valid.stdout).toMatch(/"ok": true/);
+
+      const singlePath = path.join(tempRoot, 'single.json');
+      writeFileSync(singlePath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+      ] }));
+      const single = spawnSync('python3', [validator, singlePath], { encoding: 'utf8' });
+      expect(single.status).toBe(1);
+      expect(single.stderr).toMatch(/at least two|multiple slices/i);
+
+      const missingGreenPath = path.join(tempRoot, 'missing-green.json');
+      writeFileSync(missingGreenPath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+        { sliceId: 'slice-b', requirementIds: ['gdd-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...{
+          ...pairB,
+          planPath: path.join(tempRoot, 'missing-green.plan.md'),
+        } },
+      ] }));
+      writeFileSync(path.join(tempRoot, 'missing-green.plan.md'), readFileSync(pairB.planPath, 'utf8').replace(/\n\s*-\s*GREEN:.*$/m, ''));
+      const missingGreen = spawnSync('python3', [validator, missingGreenPath], { encoding: 'utf8' });
+      expect(missingGreen.status).toBe(1);
+      expect(missingGreen.stderr).toMatch(/each task|RED.*GREEN|GREEN.*RED/i);
+
+      const duplicatePath = path.join(tempRoot, 'semantic-duplicate.json');
+      const duplicateSpec = substantiveSpec('slice-b', 'gdd-b', 'Persist collected materials for shelter building.', 'Add material inventory state and the shelter building action.', 'With zero materials building is rejected; after collecting one bundle, building succeeds and consumes it.');
+      const duplicatePlan = substantivePlan('slice-b', 'gdd-b', 'task-b', 'eval-b', 'scripts/materials_alt.gd', 'pytest tests/materials_red_alt.py', 'pytest tests/materials_green_alt.py', 'Track gathered materials and consume them during building');
+      const duplicatePair = writePair('semantic-duplicate', duplicateSpec, duplicatePlan);
+      writeFileSync(duplicatePath, JSON.stringify({ version: 1, source, slices: [
+        { sliceId: 'slice-a', requirementIds: ['gdd-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pairA },
+        { sliceId: 'slice-b', requirementIds: ['gdd-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...duplicatePair },
+      ] }));
+      const duplicate = spawnSync('python3', [validator, duplicatePath], { encoding: 'utf8' });
+      expect(duplicate.status).toBe(1);
+      expect(duplicate.stderr).toMatch(/duplicate|similar|substant/i);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

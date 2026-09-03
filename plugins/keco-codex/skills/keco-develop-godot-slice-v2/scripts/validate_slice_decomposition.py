@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate that a multi-Slice bundle contains substantive, distinct plans."""
 import argparse
+import difflib
 import hashlib
 import json
 import pathlib
@@ -23,6 +24,7 @@ ID_TOKEN_RE = re.compile(r"\b(?:slice|task|eval|gdd)[-_][a-z0-9._-]+\b", re.I)
 DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 TASK_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+([^:]+):\s*(.+?)\s*$", re.M)
 HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$", re.M)
+STOP_WORDS = {"the", "a", "an", "and", "or", "to", "of", "for", "in", "on", "with", "from", "this", "that", "slice", "task", "plan"}
 
 
 def fail(message: str) -> int:
@@ -89,6 +91,23 @@ def plan_fingerprint(plan: str) -> str:
     return substantive_text("\n".join(lines))
 
 
+def semantic_tokens(value: str) -> set[str]:
+    normalized = substantive_text(value)
+    return {token for token in re.findall(r"[a-z0-9]+", normalized) if token not in STOP_WORDS and len(token) > 2}
+
+
+def materially_similar(left: str, right: str) -> bool:
+    left_tokens = semantic_tokens(left)
+    right_tokens = semantic_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    jaccard = len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+    sequence = difflib.SequenceMatcher(None, " ".join(sorted(left_tokens)), " ".join(sorted(right_tokens))).ratio()
+    # A small amount of wording variation must not hide a plan that keeps the
+    # same actors, state transitions, files, and verification shape.
+    return jaccard >= 0.68 or sequence >= 0.82
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", type=pathlib.Path, help="decomposition bundle JSON")
@@ -106,11 +125,12 @@ def main() -> int:
             not SOURCE_HASH_RE.fullmatch(str(source.get("contentHash", "")))):
         return fail("decomposition source must identify a project/document with revision and contentHash")
     items = payload.get("slices")
-    if not isinstance(items, list) or not items:
-        return fail("decomposition bundle requires a non-empty slices array")
+    if not isinstance(items, list) or len(items) < 2:
+        return fail("decomposition bundle requires at least two Slices for a multi-Slice plan")
 
     seen: set[str] = set()
     fingerprints: dict[str, str] = {}
+    fingerprint_texts: dict[str, str] = {}
     for item in items:
         if not isinstance(item, dict):
             return fail("each decomposition Slice must be an object")
@@ -161,8 +181,11 @@ def main() -> int:
                 return fail(f"{slice_id} contains a template-only task description")
         if not re.search(r"^\s*-\s*files?\s*:\s*\S+", plan, re.I | re.M):
             return fail(f"{slice_id} plan must name concrete files")
-        if not re.search(r"^\s*-\s*(?:red|green)\s*:\s*\S+", plan, re.I | re.M):
-            return fail(f"{slice_id} plan must include RED/GREEN verification commands")
+        for index, task in enumerate(tasks):
+            end = tasks[index + 1].start() if index + 1 < len(tasks) else len(plan)
+            task_block = plan[task.start():end]
+            if not re.search(r"^\s*-\s*RED\s*:\s*\S+", task_block, re.I | re.M) or not re.search(r"^\s*-\s*GREEN\s*:\s*\S+", task_block, re.I | re.M):
+                return fail(f"{slice_id} every task must include both RED and GREEN verification commands")
         fingerprint = substantive_text("\n".join(parsed.values())) + "\n" + plan_fingerprint(plan)
         if len(fingerprint) < 80:
             return fail(f"{slice_id} has insufficient Slice-specific content")
@@ -170,7 +193,11 @@ def main() -> int:
         if digest in fingerprints.values():
             other = next(key for key, value in fingerprints.items() if value == digest)
             return fail(f"Slices {other} and {slice_id} are template duplicates after ID normalization")
+        for other, other_fingerprint in fingerprint_texts.items():
+            if materially_similar(fingerprint, other_fingerprint):
+                return fail(f"Slices {other} and {slice_id} are materially duplicate by semantic similarity")
         fingerprints[slice_id] = digest
+        fingerprint_texts[slice_id] = fingerprint
 
     print(json.dumps({"ok": True, "sliceCount": len(items), "distinctContent": len(fingerprints)}, sort_keys=True))
     return 0
