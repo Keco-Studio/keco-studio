@@ -688,7 +688,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
       malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
-      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version' | 'missing-plan-revision' | 'missing-red-expected' | 'missing-green-expected' | 'missing-review-level';
+      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version' | 'missing-plan-revision' | 'missing-red-expected' | 'missing-green-expected' | 'missing-review-level' | 'missing-source-hash' | 'missing-selection-evidence' | 'invalid-selection-evidence' | 'oversized-selection-evidence' | 'missing-document-content-hash' | 'missing-policy-release-order' | 'missing-policy-required-artifacts' | 'missing-policy-runtime-freshness' | 'unknown-policy-field';
       malformedArray?: 'allowed-files-number' | 'task-files-boolean' | 'depends-on-number' | 'serves-evaluations-boolean' | 'source-mappings-number' | 'served-by-tasks-boolean' | 'marker-paths-number';
       corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
     } = {},
@@ -802,6 +802,11 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     if (options.malformedEvaluationField === 'unknown-eval-spec-field') evalSpec.extra = true;
     if (options.malformedEvaluationField === 'missing-source-contract-version') delete sourceProfile.contractVersion;
     if (options.malformedEvaluationField === 'missing-source-schema-version') delete sourceProfile.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-source-hash') delete sourceProfile.sourceHash;
+    if (options.malformedEvaluationField === 'missing-selection-evidence') delete sourceProfile.selectionEvidence;
+    if (options.malformedEvaluationField === 'invalid-selection-evidence') sourceProfile.selectionEvidence = [1];
+    if (options.malformedEvaluationField === 'oversized-selection-evidence') sourceProfile.selectionEvidence = Array.from({ length: 101 }, () => ({}));
+    if (options.malformedEvaluationField === 'missing-document-content-hash') delete sourceProfile.contentHash;
     if (options.malformedEvaluationField === 'missing-plan-schema-version') delete plan.schemaVersion;
     if (options.malformedEvaluationField === 'missing-plan-coverage-mode') delete plan.coverageMode;
     if (options.malformedEvaluationField === 'missing-plan-revision') delete plan.planRevision;
@@ -817,6 +822,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     if (options.malformedArray === 'source-mappings-number') tasks[0].sourceMappings = [1];
     if (options.malformedArray === 'served-by-tasks-boolean') evaluations[0].servedByTasks = [false];
     if (options.malformedArray === 'marker-paths-number') evaluations[0].assertions = [{ assertionId: 'check-1', kind: 'roundtrip', beforePath: '/before', afterPath: '/after', markerPaths: [1] }];
+    if (plan.coverageMode === 'non_gdd' && ['missing-source-hash', 'missing-selection-evidence', 'invalid-selection-evidence', 'oversized-selection-evidence', 'missing-document-content-hash'].includes(options.malformedEvaluationField ?? '')) {
+      plan.sourceProfileHash = hashJson(sourceProfile);
+      evalSpec.sourceProfileHash = plan.sourceProfileHash;
+    }
     const policy = {
       schemaVersion: 2,
       requiredArtifacts: ['TaskResult', 'TaskReview', 'EvalReport', 'MirrorVerification'],
@@ -825,6 +834,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       manualReviewBlocksRelease: true,
     };
     if (options.malformedEvaluationField === 'missing-policy-schema-version') delete policy.schemaVersion;
+    if (options.malformedEvaluationField === 'missing-policy-release-order') delete policy.releaseOrder;
+    if (options.malformedEvaluationField === 'missing-policy-required-artifacts') delete policy.requiredArtifacts;
+    if (options.malformedEvaluationField === 'missing-policy-runtime-freshness') delete policy.runtimeEvidenceFreshness;
+    if (options.malformedEvaluationField === 'unknown-policy-field') policy.extra = true;
     const createBinding = (kind: 'roadmap' | 'spec' | 'plan', folderId: string, name: string, repositoryPath: string) => {
       const body = kind === 'plan'
         ? `# Plan ${sliceId}\n${taskIds.map(id => `- [ ] ${id}: execute ${id}`).join('\n')}\n`
@@ -1042,11 +1055,20 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['unknown eval spec field', { malformedEvaluationField: 'unknown-eval-spec-field' }],
     ['missing source contract version', { malformedEvaluationField: 'missing-source-contract-version' }],
     ['missing source schema version', { malformedEvaluationField: 'missing-source-schema-version' }],
+    ['missing source hash', { malformedEvaluationField: 'missing-source-hash' }],
+    ['missing selection evidence', { malformedEvaluationField: 'missing-selection-evidence' }],
+    ['invalid selection evidence element', { malformedEvaluationField: 'invalid-selection-evidence' }],
+    ['oversized selection evidence', { malformedEvaluationField: 'oversized-selection-evidence' }],
+    ['missing document content hash', { malformedEvaluationField: 'missing-document-content-hash' }],
     ['missing plan schema version', { malformedEvaluationField: 'missing-plan-schema-version' }],
     ['missing plan coverage mode', { malformedEvaluationField: 'missing-plan-coverage-mode' }],
     ['missing eval schema version', { malformedEvaluationField: 'missing-eval-schema-version' }],
     ['missing eval coverage mode', { malformedEvaluationField: 'missing-eval-coverage-mode' }],
     ['missing policy schema version', { malformedEvaluationField: 'missing-policy-schema-version' }],
+    ['missing policy release order', { malformedEvaluationField: 'missing-policy-release-order' }],
+    ['missing policy required artifacts', { malformedEvaluationField: 'missing-policy-required-artifacts' }],
+    ['missing policy runtime freshness', { malformedEvaluationField: 'missing-policy-runtime-freshness' }],
+    ['unknown policy field', { malformedEvaluationField: 'unknown-policy-field' }],
     ['missing plan revision', { malformedEvaluationField: 'missing-plan-revision' }],
     ['missing RED expected outcome', { malformedEvaluationField: 'missing-red-expected' }],
     ['missing GREEN expected outcome', { malformedEvaluationField: 'missing-green-expected' }],

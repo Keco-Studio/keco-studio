@@ -655,24 +655,51 @@ begin
     or p_source_profile->>'kind' is null
     or p_source_profile->>'kind' not in ('gdd', 'feedback', 'table', 'document', 'user_idea')
     or (p_source_profile->>'kecoProjectId')::uuid is distinct from p_project_id
-    or p_source_profile->>'sourceHash' !~ '^sha256:[a-f0-9]{64}$'
-    or jsonb_typeof(p_source_profile->'selectionEvidence') <> 'array'
-    or (p_source_profile->>'kind' = 'gdd' and p_source_profile->>'requirementInventoryHash' !~ '^sha256:[a-f0-9]{64}$')
+    or p_source_profile->>'capturedAt' is null
+    or p_source_profile->>'sourceHash' is null or p_source_profile->>'sourceHash' !~ '^sha256:[a-f0-9]{64}$'
+    or jsonb_typeof(p_source_profile->'selectionEvidence') is distinct from 'array'
+    or jsonb_array_length(case when jsonb_typeof(p_source_profile->'selectionEvidence') = 'array' then p_source_profile->'selectionEvidence' else '[]'::jsonb end) > 100
+    or exists (
+      select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'selectionEvidence') = 'array' then p_source_profile->'selectionEvidence' else '[]'::jsonb end) as evidence
+      where jsonb_typeof(evidence) is distinct from 'object'
+    )
+    or (p_source_profile->>'kind' = 'gdd' and (p_source_profile->>'requirementInventoryHash' is null or p_source_profile->>'requirementInventoryHash' !~ '^sha256:[a-f0-9]{64}$'))
     or (p_source_profile->>'kind' in ('gdd', 'feedback', 'document') and (
       p_source_profile->>'documentId' is null
-      or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
+      or p_source_profile->>'contentHash' is null or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
       or p_source_profile->>'epoch' is null
       or p_source_profile->>'revision' is null
     ))
     or (p_source_profile->>'kind' = 'table' and (
       p_source_profile->>'tableId' is null
-      or p_source_profile->>'schemaHash' !~ '^sha256:[a-f0-9]{64}$'
-      or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
+      or p_source_profile->>'schemaHash' is null or p_source_profile->>'schemaHash' !~ '^sha256:[a-f0-9]{64}$'
+      or p_source_profile->>'contentHash' is null or p_source_profile->>'contentHash' !~ '^sha256:[a-f0-9]{64}$'
     ))
     or (p_source_profile->>'kind' = 'user_idea' and (
-      p_source_profile->>'requestHash' !~ '^sha256:[a-f0-9]{64}$'
+      p_source_profile->>'requestHash' is null or p_source_profile->>'requestHash' !~ '^sha256:[a-f0-9]{64}$'
       or nullif(btrim(p_source_profile->>'requestExcerpt'), '') is null
+      or length(p_source_profile->>'requestExcerpt') > 4000
     )) then
+    raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from jsonb_object_keys(p_source_profile) as key
+    where (p_source_profile->>'kind' = 'gdd' and key not in ('schemaVersion', 'contractVersion', 'kind', 'kecoProjectId', 'capturedAt', 'sourceHash', 'selectionEvidence', 'documentId', 'epoch', 'revision', 'contentHash', 'requirementInventoryHash'))
+       or (p_source_profile->>'kind' in ('feedback', 'document') and key not in ('schemaVersion', 'contractVersion', 'kind', 'kecoProjectId', 'capturedAt', 'sourceHash', 'selectionEvidence', 'documentId', 'epoch', 'revision', 'contentHash'))
+       or (p_source_profile->>'kind' = 'table' and key not in ('schemaVersion', 'contractVersion', 'kind', 'kecoProjectId', 'capturedAt', 'sourceHash', 'selectionEvidence', 'tableId', 'schemaHash', 'rowIds', 'rowHashes', 'contentHash'))
+       or (p_source_profile->>'kind' = 'user_idea' and key not in ('schemaVersion', 'contractVersion', 'kind', 'kecoProjectId', 'capturedAt', 'sourceHash', 'selectionEvidence', 'requestHash', 'requestExcerpt'))
+  ) then
+    raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
+  end if;
+  if p_source_profile->>'kind' = 'table' and (
+    jsonb_typeof(p_source_profile->'rowIds') is distinct from 'array'
+    or jsonb_array_length(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) > 1000
+    or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id where jsonb_typeof(row_id) is distinct from 'string' or row_id #>> '{}' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+    or (select count(*) from jsonb_array_elements(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end)) <> (select count(distinct row_id) from jsonb_array_elements_text(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end) as row_id)
+    or jsonb_typeof(p_source_profile->'rowHashes') is distinct from 'object'
+    or (select count(*) from jsonb_object_keys(case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end)) <> jsonb_array_length(case when jsonb_typeof(p_source_profile->'rowIds') = 'array' then p_source_profile->'rowIds' else '[]'::jsonb end)
+    or exists (select 1 from jsonb_each(case when jsonb_typeof(p_source_profile->'rowHashes') = 'object' then p_source_profile->'rowHashes' else '{}'::jsonb end) as item where item.value #>> '{}' !~ '^sha256:[a-f0-9]{64}$')
+  ) then
     raise exception 'SLICE_SOURCE_PROFILE_INVALID' using errcode = '22023';
   end if;
   if p_plan_data->>'schemaVersion' is distinct from '2'
@@ -905,9 +932,12 @@ begin
     raise exception 'SLICE_EVAL_BINDING_INVALID' using errcode = '22023';
   end if;
   if p_delivery_policy->>'schemaVersion' is distinct from '2'
-    or p_delivery_policy->'releaseOrder' <> '["implementation","runtime_verification","acceptance","manual_review","package","roadmap_completion","mirrors","seal"]'::jsonb
+    or p_delivery_policy->'releaseOrder' is distinct from '["implementation","runtime_verification","acceptance","manual_review","package","roadmap_completion","mirrors","seal"]'::jsonb
+    or p_delivery_policy->'requiredArtifacts' is distinct from '["TaskResult","TaskReview","EvalReport","MirrorVerification"]'::jsonb
+    or p_delivery_policy->>'runtimeEvidenceFreshness' is distinct from 'current_build_and_snapshot'
     or coalesce((p_delivery_policy->>'maximumRepairs')::integer, -1) <> 3
-    or coalesce((p_delivery_policy->>'manualReviewBlocksRelease')::boolean, false) is not true then
+    or coalesce((p_delivery_policy->>'manualReviewBlocksRelease')::boolean, false) is not true
+    or exists (select 1 from jsonb_object_keys(p_delivery_policy) as key where key not in ('schemaVersion', 'requiredArtifacts', 'runtimeEvidenceFreshness', 'maximumRepairs', 'releaseOrder', 'manualReviewBlocksRelease')) then
     raise exception 'Invalid Slice delivery policy' using errcode = '22023';
   end if;
   select id into v_spec_folder_id from public.folders
