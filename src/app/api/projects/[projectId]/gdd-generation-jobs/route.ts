@@ -18,7 +18,7 @@ import {
 } from '@/lib/services/gddGenerationService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 type Params = { params: Promise<{ projectId: string }> };
 

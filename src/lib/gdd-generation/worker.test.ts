@@ -410,42 +410,61 @@ describe('GDD generation worker', () => {
     jest.useRealTimers();
   });
 
-  it('requeues a structured generation that exceeds its hard deadline', async () => {
+  it.each([
+    ['quick', 120_000, undefined],
+    ['professional', 270_000, undefined],
+    ['quick', 150_000, '150000'],
+  ] as const)('requeues a hanging %s generation only after its %i ms deadline', async (mode, deadlineMs, override) => {
+    const previousDeadline = process.env.GDD_GENERATION_DEADLINE_MS;
+    if (override) process.env.GDD_GENERATION_DEADLINE_MS = override;
+    else delete process.env.GDD_GENERATION_DEADLINE_MS;
     jest.useFakeTimers();
-    let observedSignal: AbortSignal | undefined;
-    const generateV2 = jest.fn(async (
-      _input: unknown,
-      _dependencies: unknown,
-      runtime: { signal?: AbortSignal } | undefined,
-    ) => {
-      observedSignal = runtime?.signal;
-      return new Promise<never>(() => undefined);
-    });
-    const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
-    const v2Job = {
-      ...job,
-      input: { contractVersion: 2, mode: 'quick', projectId: generationInput.projectId, versionId: generationInput.versionId },
-    } as GddGenerationJob;
+    try {
+      let observedSignal: AbortSignal | undefined;
+      let settled = false;
+      const generateV2 = jest.fn(async (
+        _input: unknown,
+        _dependencies: unknown,
+        runtime: { signal?: AbortSignal } | undefined,
+      ) => {
+        observedSignal = runtime?.signal;
+        return new Promise<never>(() => undefined);
+      });
+      const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+      const v2Job = {
+        ...job,
+        input: { contractVersion: 2, mode, projectId: generationInput.projectId, versionId: generationInput.versionId },
+      } as GddGenerationJob;
 
-    const resultPromise = processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
-      heartbeat: jest.fn(async () => undefined),
-      revalidateContext: jest.fn(async () => undefined),
-      generate: jest.fn(async () => generated),
-      generateV2: generateV2 as never,
-      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
-      persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
-      retry,
-      fail: jest.fn(async (..._args: unknown[]) => undefined),
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(observedSignal).toBeDefined();
+      const resultPromise = processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
+        heartbeat: jest.fn(async () => undefined),
+        revalidateContext: jest.fn(async () => undefined),
+        generate: jest.fn(async () => generated),
+        generateV2: generateV2 as never,
+        persist: jest.fn(async () => persistedGdd('unused', 'unused')),
+        persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
+        retry,
+        fail: jest.fn(async (..._args: unknown[]) => undefined),
+      }).finally(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(observedSignal).toBeDefined();
 
-    await jest.advanceTimersByTimeAsync(90_000);
-    await expect(resultPromise).resolves.toBe('queued');
-    expect(observedSignal?.aborted).toBe(true);
-    expect(retry).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', expect.stringMatching(/deadline|timed out/i), 5);
-    jest.useRealTimers();
+      await jest.advanceTimersByTimeAsync(deadlineMs - 1);
+      expect(settled).toBe(false);
+      expect(observedSignal?.aborted).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(1);
+      await expect(resultPromise).resolves.toBe('queued');
+      expect(observedSignal?.aborted).toBe(true);
+      expect(retry).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', expect.stringMatching(/deadline|timed out/i), 5);
+    } finally {
+      if (previousDeadline === undefined) delete process.env.GDD_GENERATION_DEADLINE_MS;
+      else process.env.GDD_GENERATION_DEADLINE_MS = previousDeadline;
+      jest.useRealTimers();
+    }
   });
 
   it('fails exhausted v2 resource recovery errors without retrying', async () => {
