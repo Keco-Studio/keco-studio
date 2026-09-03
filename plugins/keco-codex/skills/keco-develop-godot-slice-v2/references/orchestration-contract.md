@@ -1,5 +1,7 @@
 # V2 Orchestration Contract
 
+Load `contract-manifest.json` and run `scripts/validate_contract_case.py` for contract-version-2 boundary and conformance checks.
+
 ## RunContext
 
 ```yaml

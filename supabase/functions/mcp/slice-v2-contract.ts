@@ -74,9 +74,13 @@ function validateSourceProfile(value: unknown): ContractDecision {
     return { accepted: true, reasonCode: null };
   }
   if (value.kind === "table") {
+    const rowIds = value.rowIds;
+    const rowHashes = value.rowHashes;
     if (!exactKeys(value, [...common, "tableId", "schemaHash", "rowIds", "rowHashes", "contentHash"]) ||
       typeof value.tableId !== "string" || !UUID_RE.test(value.tableId) || typeof value.schemaHash !== "string" || !HASH_RE.test(value.schemaHash) ||
-      !strings(value.rowIds, true) || !record(value.rowHashes) || Object.values(value.rowHashes).some((hash) => typeof hash !== "string" || !HASH_RE.test(hash)) ||
+      !strings(rowIds, true) || rowIds.some((id) => !UUID_RE.test(id)) || !record(rowHashes) ||
+      Object.keys(rowHashes).length !== rowIds.length || Object.keys(rowHashes).some((id) => !rowIds.includes(id)) ||
+      Object.values(rowHashes).some((hash) => typeof hash !== "string" || !HASH_RE.test(hash)) ||
       typeof value.contentHash !== "string" || !HASH_RE.test(value.contentHash)) return reject("SLICE_SOURCE_PROFILE_INVALID");
     return { accepted: true, reasonCode: null };
   }
@@ -160,6 +164,11 @@ function validatePlanEval(value: unknown): ContractDecision {
   if (evalSpec.schemaVersion !== 2 || evalSpec.coverageMode !== plan.coverageMode ||
     (plan.coverageMode === "non_gdd" && evalSpec.sourceProfileHash !== plan.sourceProfileHash) ||
     !Array.isArray(evalSpec.evaluations) || evalSpec.evaluations.length === 0) return reject("SLICE_EVAL_BINDING_INVALID");
+  if (
+    plan.coverageMode === "gdd" &&
+    (evalSpec.inventoryHash !== plan.inventoryHash ||
+      JSON.stringify(evalSpec.requirementIds) !== JSON.stringify(plan.requirementIds))
+  ) return reject("SLICE_EVAL_BINDING_INVALID");
   const evalIds = new Set<string>();
   const reverse = new Map<string, Set<string>>();
   for (const evaluation of evalSpec.evaluations) {

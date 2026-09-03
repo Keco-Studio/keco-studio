@@ -39,8 +39,8 @@ def main() -> int:
     if not isinstance(payload, dict) or payload.get("version") != 1:
         return fail("coverage inventory version must be 1")
     source = payload.get("source")
-    if not isinstance(source, dict) or source.get("project") != "test8-24" or source.get("document") != "game-gdd":
-        return fail("coverage source must be test8-24/game-gdd")
+    if not isinstance(source, dict) or not isinstance(source.get("project"), str) or not source["project"].strip() or not isinstance(source.get("document"), str) or not source["document"].strip():
+        return fail("coverage source must identify a non-empty project and document")
     if type(source.get("revision")) is not int or source["revision"] < 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", str(source.get("contentHash", ""))):
         return fail("coverage source needs a revision and sha256 contentHash")
     completeness = payload.get("completeness")

@@ -35,6 +35,7 @@ const SCRIPTS = [
   'export_keco_snapshot.py',
   'materialize_slice_mirrors.py',
   'slice_contract.py',
+  'validate_contract_case.py',
   'validate_delivery_policy.py',
   'validate_eval_report.py',
   'validate_gdd_coverage.py',
@@ -42,6 +43,7 @@ const SCRIPTS = [
   'validate_interaction_checkpoint.py',
   'validate_plan.py',
   'validate_run_context.py',
+  'validate_slice_decomposition.py',
   'validate_slice_documents.py',
   'validate_snapshot.py',
   'validate_task_evidence.py',
@@ -555,10 +557,10 @@ describe('Keco Claude plugin validators', () => {
 
   it('keeps shared deterministic delivery scripts and contracts byte-identical', () => {
     const codexRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-develop-godot-slice-v2');
-    for (const name of ['validate_task_evidence.py', 'validate_delivery_policy.py', 'materialize_slice_mirrors.py', 'validate_eval_report.py', 'validate_gdd_coverage.py', 'validate_run_context.py', 'validate_slice_documents.py']) {
+    for (const name of ['validate_task_evidence.py', 'validate_delivery_policy.py', 'materialize_slice_mirrors.py', 'validate_eval_report.py', 'validate_gdd_coverage.py', 'validate_run_context.py', 'validate_slice_decomposition.py', 'validate_slice_documents.py']) {
       expect(readFileSync(path.join(scriptsRoot, name))).toEqual(readFileSync(path.join(codexRoot, 'scripts', name)));
     }
-    for (const name of ['orchestration-contract.md', 'gdd-coverage-contract.md', 'gdd-change-contract.md', 'eval-contract.md', 'godot-mcp-contract.md', 'slice-document-contract.md', 'review-workflow.md', 'default-delivery-policy.json']) {
+    for (const name of ['orchestration-contract.md', 'gdd-coverage-contract.md', 'gdd-change-contract.md', 'eval-contract.md', 'godot-mcp-contract.md', 'slice-document-contract.md', 'review-workflow.md', 'default-delivery-policy.json', 'contract-manifest.json']) {
       expect(readFileSync(path.join(skillsRoot, 'keco-develop-godot-slice-v2', 'references', name))).toEqual(readFileSync(path.join(codexRoot, 'references', name)));
     }
   });

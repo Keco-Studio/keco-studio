@@ -254,7 +254,18 @@ const sourceProfileSchema = z.discriminatedUnion("kind", [
     requestHash: sha256,
     requestExcerpt: z.string().trim().min(1).max(4000),
   }).strict(),
-]);
+]).superRefine((value, context) => {
+  if (
+    value.kind === "table" &&
+    (Object.keys(value.rowHashes).length !== value.rowIds.length ||
+      Object.keys(value.rowHashes).some((rowId) => !value.rowIds.includes(rowId)))
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Table row hashes must cover exactly the selected row IDs.",
+    });
+  }
+});
 const v2EvaluationSchema = evaluationSchema.extend({
   servedByTasks: z.array(identifier).min(1).max(100).refine((value) =>
     new Set(value).size === value.length

@@ -210,7 +210,7 @@ Run: `deno test --config supabase/functions/mcp/deno.json supabase/functions/mcp
 
 Expected: PASS with V1 and V2 dispatch cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add supabase/functions/mcp/database.ts supabase/functions/mcp/slice-contracts.ts supabase/functions/mcp/slice-contracts.test.ts supabase/functions/mcp/slice-tools.ts supabase/functions/mcp/slice-tools.test.ts supabase/functions/mcp/server.ts supabase/functions/mcp/server.test.ts
@@ -241,7 +241,7 @@ git commit -m "feat(mcp): dispatch stable Slice tools by contract version"
 - Consumes: canonical manifest/corpus and TS decision shape from Task 1.
 - Produces: Python `validate_contract_case(boundary, input) -> {accepted, reasonCode}`, complete V2 plan/Eval validation, generic SourceProfile validation, explicit `--legacy` runtime adapter, and substantive two-or-more Slice validation.
 
-- [ ] **Step 1: Extend Jest/Python RED cases**
+- [x] **Step 1: Extend Jest/Python RED cases**
 
 Execute the canonical corpus through both Deno and Python, asserting the exact same decision. Add decomposition fixtures for one Slice, missing either RED or GREEN, ID mismatch, generic tasks, and semantically similar siblings with reported IDs/sections.
 
@@ -249,13 +249,13 @@ Execute the canonical corpus through both Deno and Python, asserting the exact s
 expect(JSON.parse(probe.stdout)).toEqual(testCase.expected);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
 Expected: FAIL on missing Python contract runner and the existing hard-coded/incomplete decomposition behavior.
 
-- [ ] **Step 3: Implement Python parity**
+- [x] **Step 3: Implement Python parity**
 
 Load manifest constants, reject unsafe paths and missing/extra fields, enforce file ownership and bidirectional Eval mappings, condition GDD coverage by SourceProfile, require at least two substantive Slice pairs, compare normalized section token sets using a deterministic similarity threshold, and keep `KECO_EVAL` parsing behind explicit `--legacy` only.
 
@@ -268,7 +268,7 @@ def validate_contract_case(boundary: str, value: object) -> dict[str, object]:
         return {"accepted": False, "reasonCode": error.reason_code}
 ```
 
-- [ ] **Step 4: Run GREEN and parity scan**
+- [x] **Step 4: Run GREEN and parity scan**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
