@@ -688,7 +688,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
       malformedAssertion?: 'missing-kind' | 'range-order' | 'range-types' | 'roundtrip-markers' | 'subset-size';
-      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version';
+      malformedEvaluationField?: 'missing-build-hash' | 'missing-snapshot-hash' | 'manual-string' | 'unknown-eval-field' | 'equals-missing-expected' | 'unknown-plan-field' | 'unknown-eval-spec-field' | 'missing-source-contract-version' | 'missing-source-schema-version' | 'missing-plan-schema-version' | 'missing-plan-coverage-mode' | 'missing-eval-schema-version' | 'missing-eval-coverage-mode' | 'missing-policy-schema-version' | 'missing-plan-revision' | 'missing-red-expected' | 'missing-green-expected' | 'missing-review-level';
       malformedArray?: 'allowed-files-number' | 'task-files-boolean' | 'depends-on-number' | 'serves-evaluations-boolean' | 'source-mappings-number' | 'served-by-tasks-boolean' | 'marker-paths-number';
       corpusInput?: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> };
     } = {},
@@ -804,6 +804,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     if (options.malformedEvaluationField === 'missing-source-schema-version') delete sourceProfile.schemaVersion;
     if (options.malformedEvaluationField === 'missing-plan-schema-version') delete plan.schemaVersion;
     if (options.malformedEvaluationField === 'missing-plan-coverage-mode') delete plan.coverageMode;
+    if (options.malformedEvaluationField === 'missing-plan-revision') delete plan.planRevision;
+    if (options.malformedEvaluationField === 'missing-red-expected') delete tasks[0].red.expected;
+    if (options.malformedEvaluationField === 'missing-green-expected') delete tasks[0].green.expected;
+    if (options.malformedEvaluationField === 'missing-review-level') delete tasks[0].review.minimumLevel;
     if (options.malformedEvaluationField === 'missing-eval-schema-version') delete evalSpec.schemaVersion;
     if (options.malformedEvaluationField === 'missing-eval-coverage-mode') delete evalSpec.coverageMode;
     if (options.malformedArray === 'allowed-files-number') plan.allowedFiles = ['game/task-1.gd', 1];
@@ -1043,6 +1047,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['missing eval schema version', { malformedEvaluationField: 'missing-eval-schema-version' }],
     ['missing eval coverage mode', { malformedEvaluationField: 'missing-eval-coverage-mode' }],
     ['missing policy schema version', { malformedEvaluationField: 'missing-policy-schema-version' }],
+    ['missing plan revision', { malformedEvaluationField: 'missing-plan-revision' }],
+    ['missing RED expected outcome', { malformedEvaluationField: 'missing-red-expected' }],
+    ['missing GREEN expected outcome', { malformedEvaluationField: 'missing-green-expected' }],
+    ['missing review level', { malformedEvaluationField: 'missing-review-level' }],
   ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
     await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING|SOURCE_PROFILE)_INVALID|Invalid Slice delivery policy/);
   });

@@ -682,6 +682,8 @@ begin
     or p_plan_data->>'coverageMode' not in ('gdd', 'non_gdd')
     or p_eval_spec->>'coverageMode' not in ('gdd', 'non_gdd')
     or p_plan_data->>'coverageMode' is distinct from p_eval_spec->>'coverageMode'
+    or p_plan_data->>'planRevision' is null
+    or p_plan_data->>'planRevision' !~ '^sha256:[a-f0-9]{64}$'
     or public.keco_slice_json_hash(p_plan_data) is distinct from p_plan_hash
     or public.keco_slice_json_hash(p_eval_spec) is distinct from p_eval_spec_hash
     or public.keco_slice_json_hash(p_delivery_policy) is distinct from p_delivery_policy_hash
@@ -787,10 +789,11 @@ begin
         or exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id where source_id !~ '^[a-z0-9][a-z0-9._-]{0,99}$')
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end)) <>
            (select count(distinct source_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id)
-        or task->'red'->>'expected' <> 'fails'
+        or task->'red'->>'expected' is distinct from 'fails'
         or nullif(btrim(task->'red'->>'command'), '') is null
-        or task->'green'->>'expected' <> 'passes'
+        or task->'green'->>'expected' is distinct from 'passes'
         or nullif(btrim(task->'green'->>'command'), '') is null
+        or task->'review'->>'minimumLevel' is null
         or task->'review'->>'minimumLevel' not in ('self', 'separate_context', 'independent_actor')
         or jsonb_typeof(task->'red') is distinct from 'object'
         or exists (select 1 from jsonb_object_keys(task->'red') as key where key not in ('command', 'expected'))
