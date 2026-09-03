@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   RLS_DB_TESTS_ENABLED,
@@ -686,6 +687,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       missingSourceMappings?: boolean;
       duplicateEvalId?: boolean;
       malformedEvaluation?: boolean;
+      corpusCase?: string;
     } = {},
   ) {
     const runId = crypto.randomUUID();
@@ -766,6 +768,16 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       sourceProfileHash: hashJson(sourceProfile),
       evaluations,
     };
+    if (options.corpusCase === 'unsafe-parent-path') {
+      plan.allowedFiles = ['../escape.gd'];
+      tasks[0].files = ['../escape.gd'];
+    } else if (options.corpusCase === 'missing-allowed-files') {
+      delete (plan as Record<string, unknown>).allowedFiles;
+    } else if (options.corpusCase === 'ghost-evaluation') {
+      tasks[0].servesEvaluations = ['eval-ghost'];
+    } else if (options.corpusCase === 'missing-reverse-evaluation-mapping') {
+      evaluations[0].servedByTasks = ['task-other'];
+    }
     const policy = {
       schemaVersion: 2,
       requiredArtifacts: ['TaskResult', 'TaskReview', 'EvalReport', 'MirrorVerification'],
@@ -978,6 +990,19 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     ['malformed evaluation assertions', { malformedEvaluation: true }],
   ] as const)('rejects SQL-invalid %s at the V2 RPC boundary', async (_label, options) => {
     await expect(createV2Bundle(undefined, options)).rejects.toThrow(/SLICE_(PLAN_SCOPE|EVAL_BINDING)_INVALID/);
+  });
+
+  it('drives SQL plan/eval rejection cases from the canonical conformance corpus', async () => {
+    const corpus = JSON.parse(readFileSync('contracts/keco-slice-v2/conformance-cases.json', 'utf8')) as {
+      cases: Array<{ id: string; boundary: string; expected: { accepted: boolean; reasonCode: string | null } }>;
+    };
+    const sqlCases = corpus.cases.filter(testCase =>
+      testCase.boundary === 'planEval' && !testCase.expected.accepted &&
+      ['unsafe-parent-path', 'missing-allowed-files', 'ghost-evaluation', 'missing-reverse-evaluation-mapping'].includes(testCase.id));
+    expect(sqlCases).toHaveLength(4);
+    for (const testCase of sqlCases) {
+      await expect(createV2Bundle(undefined, { corpusCase: testCase.id })).rejects.toThrow(testCase.expected.reasonCode!);
+    }
   });
 
   it('gates plan checkbox transitions on accepted evidence, review, dependencies, bytes, and hashes', async () => {

@@ -680,7 +680,7 @@ begin
     or public.keco_slice_json_hash(p_plan_data) is distinct from p_plan_hash
     or public.keco_slice_json_hash(p_eval_spec) is distinct from p_eval_spec_hash
     or public.keco_slice_json_hash(p_delivery_policy) is distinct from p_delivery_policy_hash
-    or jsonb_typeof(p_plan_data->'allowedFiles') <> 'array'
+    or jsonb_typeof(p_plan_data->'allowedFiles') is distinct from 'array'
     or jsonb_array_length(p_plan_data->'allowedFiles') not between 1 and 500
     or exists (
       select 1 from jsonb_array_elements_text(p_plan_data->'allowedFiles') as file
@@ -794,7 +794,7 @@ begin
     ) then
     raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
   end if;
-  if jsonb_typeof(p_eval_spec->'evaluations') <> 'array'
+  if jsonb_typeof(p_eval_spec->'evaluations') is distinct from 'array'
     or jsonb_array_length(p_eval_spec->'evaluations') not between 1 and 100
     or (p_plan_data->>'coverageMode' = 'gdd' and (
       p_eval_spec->>'inventoryHash' is distinct from p_plan_data->>'inventoryHash'
