@@ -491,21 +491,21 @@ git commit -m "test(slice): add real skill pressure evaluations"
 - Consumes: completed Tasks 1-8.
 - Produces: bumped release/cachebuster metadata, installed-cache reinstall parity, final test evidence, commit range, AC matrix, and residual-risk record.
 
-- [ ] **Step 1: Add failing repository/installed digest checks**
+- [x] **Step 1: Add failing repository/installed digest checks**
 
 Hash the released Slice V2 Skill tree deterministically, compare Codex/Claude normalized content, and compare repository Codex files with the installed plugin tree selected by plugin version/cachebuster.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
 Expected: FAIL because release metadata and installed cache still point at the previous content.
 
-- [ ] **Step 3: Bump metadata and run the repository-supported reinstall/cachebuster flow**
+- [x] **Step 3: Bump metadata and run the repository-supported reinstall/cachebuster flow**
 
 Use the existing plugin release script discovered from repository documentation. Do not hand-edit installed cache files; the source manifest and marketplace entry remain authoritative.
 
-- [ ] **Step 4: Run focused and global verification**
+- [x] **Step 4: Run focused and global verification**
 
 Run: `npx jest --runInBand tests/unit/plugins/keco-godot-slice-v2.test.ts tests/unit/plugins/keco-claude-plugin.test.ts`
 
@@ -523,7 +523,7 @@ Run: `git diff --check HEAD^..HEAD`
 
 Expected: all environment-independent suites PASS; external-environment failures are itemized with exact command and error.
 
-- [ ] **Step 5: Review all 14 acceptance criteria and commit release metadata**
+- [x] **Step 5: Review all 14 acceptance criteria and commit release metadata**
 
 For each AC, record concrete file/test/command evidence. Review changed files for scope, legacy compatibility, contract naming, document mutation order, and user-owned diff preservation.
 
@@ -541,7 +541,7 @@ git commit -m "chore(plugin): release Slice V2 contract convergence"
 - Consumes: all prior task commits and verification logs.
 - Produces: exact implementation commit list/range, AC 1-14 evidence matrix, command pass/fail totals, environment-blocked items, legacy compatibility statement, final status, and residual risks.
 
-- [ ] **Step 1: Verify commit and worktree boundaries**
+- [x] **Step 1: Verify commit and worktree boundaries**
 
 Run: `git log --oneline 3be56da4..HEAD`
 
@@ -551,14 +551,14 @@ Run: `git diff 3be56da4..HEAD --name-only | rg '^(tmp/|docs/superpowers/specs/20
 
 Expected: only task commits are listed; `tmp/` and the authoritative spec are absent from implementation diffs; unrelated user changes remain present and uncommitted unless explicitly integrated by a named task.
 
-- [ ] **Step 2: Re-run the final focused matrix**
+- [x] **Step 2: Re-run the final focused matrix**
 
 Run all Task 9 commands once more against the final HEAD and count suites/tests/skips/failures from actual output.
 
-- [ ] **Step 3: Apply verification-before-completion review**
+- [x] **Step 3: Apply verification-before-completion review**
 
 Confirm no completion claim relies on stale output, skipped database/provider checks are named, no pending required task remains, and every AC cites fresh evidence.
 
-- [ ] **Step 4: Deliver the requested report**
+- [x] **Step 4: Deliver the requested report**
 
 Report commit range/list, numbered AC matrix, commands and counts, unrun items with environment reasons, legacy behavior, exact `git status --short`, and known residual risks.
