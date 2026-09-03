@@ -107,7 +107,7 @@ git commit -m "feat(slice): define version 2 contract corpus"
 - Consumes: manifest reason codes and lifecycle order from Task 1.
 - Produces: additive columns `contract_version`, `planning_root_id`, `source_profile`, `source_profile_hash`, `supersedes_run_id`, trusted event context/review fields, and RPCs `mcp_create_slice_bundle_v2`, `mcp_checkpoint_slice_v2`, `mcp_prepare_slice_delivery_v2`, `mcp_export_slice_mirrors_v2`, `mcp_finalize_slice_v2`.
 
-- [ ] **Step 1: Write failing migration shape tests**
+- [x] **Step 1: Write failing migration shape tests**
 
 Assert explicit `_v2` functions/grants, version-1 backfill, per-document placement identity, review actor derivation, progress normalization, `prepare_delivery`, post-prepare export, and delivery seal without document update.
 
@@ -117,13 +117,13 @@ expect(sql).toMatch(/contract_version[^;]+default 1/si);
 expect(sql).toMatch(/created_by is distinct from v_actor[\s\S]+independent_actor/i);
 ```
 
-- [ ] **Step 2: Run migration RED**
+- [x] **Step 2: Run migration RED**
 
 Run: `npx jest --runInBand tests/unit/database/deterministic-slice-runs-migration.test.ts`
 
 Expected: FAIL on missing V2 columns/functions and trust/order assertions.
 
-- [ ] **Step 3: Write failing real-database lifecycle tests**
+- [x] **Step 3: Write failing real-database lifecycle tests**
 
 Cover three-folder bundle creation, same bare spec/plan name, second-Slice roadmap bind, all-or-nothing conflict, each non-GDD preflight, GDD inventory requirement, plan checkbox-only progress, same-actor review rejection, stale roadmap/state conflicts, manual policy block, and fourth repair rejection after replay/resume.
 
@@ -132,13 +132,13 @@ const fourth = await fx.editor.client.rpc('mcp_checkpoint_slice_v2', repairArgs(
 expect(fourth.error?.message).toContain('SLICE_REPAIR_LIMIT');
 ```
 
-- [ ] **Step 4: Run database RED when local Supabase is available**
+- [x] **Step 4: Run database RED when local Supabase is available**
 
 Run: `RUN_RLS_DB_TESTS=1 npx jest --runInBand tests/unit/database/deterministic-slice-runs.behavior.test.ts`
 
 Expected: FAIL because V2 functions are absent. If local Supabase/auth is unavailable, record the exact connection error and continue with deterministic SQL tests.
 
-- [ ] **Step 5: Implement additive SQL**
+- [x] **Step 5: Implement additive SQL**
 
 Validate project ownership, direct-child `spec`/`plan` folders, binding disposition preconditions, canonical names/paths, source-profile hash, plan/eval reciprocity, actor/context-derived review level, exact event order, repair ceiling, checkbox-only plan progress, optimistic roadmap completion, and mirror/seal freshness in transactions. Leave all V1 functions and legacy columns intact.
 
@@ -149,7 +149,7 @@ create or replace function public.mcp_prepare_slice_delivery_v2(
 ) returns jsonb language plpgsql security definer set search_path = '';
 ```
 
-- [ ] **Step 6: Run GREEN**
+- [x] **Step 6: Run GREEN**
 
 Run: `npx jest --runInBand tests/unit/database/deterministic-slice-runs-migration.test.ts`
 
@@ -157,7 +157,7 @@ Run when available: `RUN_RLS_DB_TESTS=1 npx jest --runInBand tests/unit/database
 
 Expected: deterministic suite PASS; database suite PASS or a recorded environment-only skip/failure.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add supabase/migrations/20260903120000_slice_v2_contract_convergence.sql tests/unit/database/deterministic-slice-runs-migration.test.ts tests/unit/database/deterministic-slice-runs.behavior.test.ts

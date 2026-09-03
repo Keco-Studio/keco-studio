@@ -3,6 +3,8 @@ import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 
 const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20260827090000_deterministic_slice_runs.sql'), 'utf8');
+const v2Path = path.join(process.cwd(), 'supabase/migrations/20260903120000_slice_v2_contract_convergence.sql');
+const v2Sql = fs.readFileSync(v2Path, 'utf8');
 
 describe('deterministic Slice run migration', () => {
   it('creates project-owned runs, append-only events, artifacts, and private replay requests', () => {
@@ -94,5 +96,66 @@ describe('deterministic Slice run migration', () => {
     }
     expect(sql).toMatch(/security definer set search_path = ''/i);
     expect(sql).not.toMatch(/p_(?:actor|user)_id/i);
+  });
+});
+
+describe('Slice contract version 2 convergence migration', () => {
+  it('adds versioned source, planning-root, and successor identity without rewriting legacy runs', () => {
+    expect(v2Sql).toMatch(/add column if not exists contract_version integer not null default 1/i);
+    expect(v2Sql).toMatch(/add column if not exists planning_root_id uuid/i);
+    expect(v2Sql).toMatch(/add column if not exists source_profile jsonb/i);
+    expect(v2Sql).toMatch(/add column if not exists source_profile_hash text/i);
+    expect(v2Sql).toMatch(/add column if not exists supersedes_run_id uuid/i);
+    expect(v2Sql).toMatch(/where contract_version is null[\s\S]+contract_version = 1/i);
+    expect(v2Sql).not.toMatch(/drop (?:function|column|table)/i);
+  });
+
+  it('exposes explicit additive V2 RPCs while retaining every legacy RPC', () => {
+    for (const name of [
+      'mcp_create_slice_bundle_v2',
+      'mcp_checkpoint_slice_v2',
+      'mcp_prepare_slice_delivery_v2',
+      'mcp_export_slice_mirrors_v2',
+      'mcp_finalize_slice_v2',
+    ]) {
+      expect(v2Sql).toMatch(new RegExp(`function public\\.${name}`, 'i'));
+      expect(v2Sql).toMatch(new RegExp(`grant execute on function public\\.${name}`, 'i'));
+    }
+    expect(sql).toMatch(/function public\.mcp_create_slice_bundle\(/i);
+    expect(sql).toMatch(/function public\.mcp_checkpoint_slice\(/i);
+    expect(sql).toMatch(/function public\.mcp_finalize_slice\(/i);
+  });
+
+  it('validates typed folder placement and persists complete V2 document identities', () => {
+    expect(v2Sql).toMatch(/parent_folder_id = p_planning_root_id[\s\S]+name = 'spec'/i);
+    expect(v2Sql).toMatch(/parent_folder_id = p_planning_root_id[\s\S]+name = 'plan'/i);
+    expect(v2Sql).toMatch(/v_binding->>'folderId'/i);
+    expect(v2Sql).toMatch(/v_binding->>'disposition' not in \('create', 'bind', 'update'\)/i);
+    expect(v2Sql).toMatch(/'folderId'[\s\S]+'contentHash'/i);
+    expect(v2Sql).toMatch(/docs\/superpowers\/specs\/[\s\S]+-design\.md/i);
+    expect(v2Sql).toMatch(/docs\/superpowers\/plans\//i);
+  });
+
+  it('derives trusted review levels and rejects forged independence', () => {
+    expect(v2Sql).toMatch(/v_latest_result_actor/i);
+    expect(v2Sql).toMatch(/v_latest_result_actor = v_actor[\s\S]+SLICE_REVIEW_LEVEL_INVALID/i);
+    expect(v2Sql).toMatch(/keco\.execution_context_trusted/i);
+    expect(v2Sql).toMatch(/'effectiveLevel'/i);
+  });
+
+  it('makes prepare_delivery the final document mutation before export and seal', () => {
+    expect(v2Sql).toMatch(/mcp_prepare_slice_delivery_v2[\s\S]+update public\.documents/i);
+    const exportBody = v2Sql.match(/function public\.mcp_export_slice_mirrors_v2[\s\S]+?\$\$;/i)?.[0] ?? '';
+    const finalizeBody = v2Sql.match(/function public\.mcp_finalize_slice_v2[\s\S]+?\$\$;/i)?.[0] ?? '';
+    expect(exportBody).not.toMatch(/update public\.documents/i);
+    expect(finalizeBody).not.toMatch(/update public\.documents/i);
+    expect(v2Sql).toMatch(/event_type = 'delivery_prepared'/i);
+    expect(v2Sql).toMatch(/event_type = 'mirror_verification'/i);
+    expect(v2Sql).toMatch(/v_event_type := 'finalized'/i);
+  });
+
+  it('keeps the repair ceiling durable in V2', () => {
+    expect(v2Sql).toMatch(/repair_count >= 3[\s\S]+SLICE_REPAIR_LIMIT/i);
+    expect(v2Sql).toMatch(/state_token <> p_expected_state_token[\s\S]+SLICE_STATE_CONFLICT/i);
   });
 });

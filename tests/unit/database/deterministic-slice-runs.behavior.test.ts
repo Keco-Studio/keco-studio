@@ -634,3 +634,163 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
     expect(viewerRead.data).toEqual([{ id: bundle.runId }]);
   });
 });
+
+describeDb('Slice contract version 2 real Postgres behavior', () => {
+  let fx: ProjectFixture;
+  let planningRootId = '';
+  let specFolderId = '';
+  let planFolderId = '';
+
+  beforeAll(async () => {
+    fx = await buildProjectFixture();
+    const root = await fx.svc.from('folders').insert({
+      project_id: fx.projectId,
+      name: `slice-v2-${fx.suffix}`,
+      updated_by: fx.owner.id,
+    }).select('id').single();
+    if (root.error || !root.data) throw new Error(`create V2 planning root failed: ${root.error?.message}`);
+    planningRootId = String(root.data.id);
+    const children = await fx.svc.from('folders').insert(['spec', 'plan'].map(name => ({
+      project_id: fx.projectId,
+      parent_folder_id: planningRootId,
+      name,
+      updated_by: fx.owner.id,
+    }))).select('id,name');
+    if (children.error || !children.data) throw new Error(`create V2 child folders failed: ${children.error?.message}`);
+    specFolderId = String(children.data.find(item => item.name === 'spec')?.id);
+    planFolderId = String(children.data.find(item => item.name === 'plan')?.id);
+  });
+
+  afterAll(async () => {
+    if (fx) await teardownProjectFixture(fx);
+  });
+
+  async function createV2Bundle(roadmap?: Record<string, unknown>) {
+    const runId = crypto.randomUUID();
+    const sliceId = `slice-${runId.slice(0, 8)}`;
+    const sourceProfile = {
+      schemaVersion: 1,
+      contractVersion: 2,
+      kind: 'document',
+      kecoProjectId: fx.projectId,
+      capturedAt: '2026-09-03T00:00:00Z',
+      sourceHash: hash('a'),
+      selectionEvidence: [],
+      documentId: crypto.randomUUID(),
+      epoch: 0,
+      revision: 1,
+      contentHash: hash('b'),
+    };
+    const plan = {
+      schemaVersion: 2,
+      coverageMode: 'non_gdd',
+      sourceProfileHash: hashJson(sourceProfile),
+      nonGddRationale: 'The selected document directly authorizes this Slice.',
+      planRevision: hash('c'),
+      allowedFiles: ['game/main.gd'],
+      tasks: [{
+        id: 'task-1', files: ['game/main.gd'], dependsOn: [], servesEvaluations: ['eval-1'],
+        red: { command: 'test red', expected: 'fails' },
+        green: { command: 'test green', expected: 'passes' },
+        review: { minimumLevel: 'self' }, sourceMappings: ['source-1'],
+      }],
+    };
+    const evalSpec = {
+      schemaVersion: 2,
+      coverageMode: 'non_gdd',
+      sourceProfileHash: hashJson(sourceProfile),
+      evaluations: [{
+        evalId: 'eval-1', servedByTasks: ['task-1'], buildHash: hash('d'), snapshotHash: hash('e'),
+        assertions: [{ assertionId: 'ready', kind: 'equals', path: '/ready', expected: true }],
+      }],
+    };
+    const policy = {
+      schemaVersion: 2,
+      requiredArtifacts: ['TaskResult', 'TaskReview', 'EvalReport', 'MirrorVerification'],
+      runtimeEvidenceFreshness: 'current_build_and_snapshot', maximumRepairs: 3,
+      releaseOrder: ['implementation', 'runtime_verification', 'acceptance', 'manual_review', 'package', 'roadmap_completion', 'mirrors', 'seal'],
+      manualReviewBlocksRelease: true,
+    };
+    const createBinding = (kind: 'roadmap' | 'spec' | 'plan', folderId: string, name: string, repositoryPath: string) => {
+      const encoded = normalizeMarkdown(`# ${kind} ${sliceId}\n- [ ] ${sliceId}\n`);
+      return { kind, disposition: 'create', folderId, name, repositoryPath, documentId: crypto.randomUUID(), markdown: encoded.markdown, yjsState: encoded.yjsStateBase64 };
+    };
+    const documentBindings = [
+      roadmap ?? createBinding('roadmap', planningRootId, 'roadmap', 'docs/superpowers/roadmap.md'),
+      createBinding('spec', specFolderId, sliceId, `docs/superpowers/specs/${sliceId}-design.md`),
+      createBinding('plan', planFolderId, sliceId, `docs/superpowers/plans/${sliceId}.md`),
+    ];
+    const args = {
+      p_project_id: fx.projectId, p_run_id: runId, p_planning_root_id: planningRootId,
+      p_slice_id: sliceId, p_source_profile: sourceProfile, p_source_profile_hash: hashJson(sourceProfile),
+      p_plan_data: plan, p_plan_hash: hashJson(plan), p_eval_spec: evalSpec, p_eval_spec_hash: hashJson(evalSpec),
+      p_delivery_policy: policy, p_delivery_policy_hash: hashJson(policy), p_document_bindings: documentBindings,
+      p_supersedes_run_id: null, p_idempotency_key: `create-v2:${runId}`, p_input_hash: hash('f'),
+    };
+    const created = await fx.editor.client.rpc('mcp_create_slice_bundle_v2', args);
+    if (created.error) throw new Error(`create V2 bundle failed: ${created.error.code} ${created.error.message}`);
+    return { runId, sliceId, args, result: row(created.data) };
+  }
+
+  async function checkpointV2(runId: string, token: string, events: Array<Record<string, unknown>>) {
+    const key = `checkpoint-v2:${crypto.randomUUID()}`;
+    return fx.editor.client.rpc('mcp_checkpoint_slice_v2', {
+      p_project_id: fx.projectId, p_run_id: runId, p_expected_state_token: token,
+      p_events: events, p_artifacts: [], p_document_progress: null,
+      p_idempotency_key: key, p_input_hash: hash('9'), p_computed_evaluations: [],
+    });
+  }
+
+  it('creates same-name spec and plan in distinct folders and binds the roadmap for a second Slice', async () => {
+    const first = await createV2Bundle();
+    const documents = first.result.documents as Record<string, Record<string, unknown>>;
+    const second = await createV2Bundle({
+      kind: 'roadmap', disposition: 'bind', folderId: planningRootId, name: 'roadmap',
+      repositoryPath: 'docs/superpowers/roadmap.md', documentId: documents.roadmap.documentId,
+      expectedEpoch: documents.roadmap.epoch, expectedRevision: documents.roadmap.revision,
+      contentHash: documents.roadmap.contentHash,
+    });
+    const secondDocuments = second.result.documents as Record<string, Record<string, unknown>>;
+    expect(secondDocuments.roadmap.documentId).toBe(documents.roadmap.documentId);
+    const pairs = await fx.svc.from('documents').select('name,folder_id').in('id', [
+      secondDocuments.spec.documentId, secondDocuments.plan.documentId,
+    ]);
+    expect(pairs.error).toBeNull();
+    expect(pairs.data).toEqual(expect.arrayContaining([
+      { name: second.sliceId, folder_id: specFolderId },
+      { name: second.sliceId, folder_id: planFolderId },
+    ]));
+  });
+
+  it('rejects same-actor independent review and a fourth repair across fresh keys', async () => {
+    const bundle = await createV2Bundle();
+    const prerequisites = await checkpointV2(bundle.runId, String(bundle.result.stateToken), [
+      event('plan_accepted', { planRevision: hash('c'), acceptedAt: '2026-09-03T00:00:00Z' }),
+      event('write_lease', { leaseId: crypto.randomUUID(), allowedFiles: ['game/main.gd'], acquiredAt: '2026-09-03T00:00:00Z', expiresAt: '2026-09-04T00:00:00Z' }),
+    ]);
+    expect(prerequisites.error).toBeNull();
+    let token = String(row(prerequisites.data).stateToken);
+    const resultEvent = event('task_result', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'), attemptId: crypto.randomUUID(),
+      phase: 'green', operation: { kind: 'command', command: 'test green' }, startedAt: '2026-09-03T00:00:00Z', endedAt: '2026-09-03T00:00:01Z',
+      exitCode: 0, timedOut: false, cancelled: false, stdoutSummary: '', stdoutHash: hash('1'), stderrSummary: '', stderrHash: hash('2'),
+      changedFiles: [], expectedOutcome: 'passes', observedOutcome: 'passed', status: 'completed', concerns: [], artifactIds: [],
+    });
+    const result = await checkpointV2(bundle.runId, token, [resultEvent]);
+    expect(result.error).toBeNull();
+    token = String(row(result.data).stateToken);
+    const forged = await checkpointV2(bundle.runId, token, [event('task_review', {
+      schemaVersion: 1, runId: bundle.runId, sliceId: bundle.sliceId, taskId: 'task-1', planRevision: hash('c'),
+      taskResultIds: [resultEvent.eventId], reviewedFiles: [], reviewerType: 'agent', reviewerId: fx.editor.id,
+      requestedLevel: 'independent_actor', verdict: 'accepted', specificationFindings: [], qualityFindings: [], requiredFollowUp: [],
+    })]);
+    expect(forged.error?.message).toContain('SLICE_REVIEW_LEVEL_INVALID');
+    for (let iteration = 1; iteration <= 3; iteration += 1) {
+      const repaired = await checkpointV2(bundle.runId, token, [event('repair_transition', { reason: `repair ${iteration}`, failedEvaluationIds: ['eval-1'] })]);
+      expect(repaired.error).toBeNull();
+      token = String(row(repaired.data).stateToken);
+    }
+    const fourth = await checkpointV2(bundle.runId, token, [event('repair_transition', { reason: 'repair 4', failedEvaluationIds: ['eval-1'] })]);
+    expect(fourth.error?.message).toContain('SLICE_REPAIR_LIMIT');
+  });
+});
