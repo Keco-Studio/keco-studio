@@ -433,9 +433,11 @@ jobs:
 
       - name: Verify Stripe Checkout environment
         run: |
-          ENV_FILE=".env.${{ steps.env.outputs.environment }}.local"
+          # `vercel pull` writes under `.vercel/`, not the project root.
+          ENV_FILE=".vercel/.env.${{ steps.env.outputs.environment }}.local"
           if [ ! -s "$ENV_FILE" ]; then
             echo "::error::Vercel environment file was not pulled: $ENV_FILE"
+            ls -la .vercel 2>/dev/null || true
             exit 1
           fi
           if ! grep -Eq '^STRIPE_SECRET_KEY=("[^"]+"|[^"[:space:]]+)$' "$ENV_FILE"; then
