@@ -136,7 +136,8 @@ describe('Keco Godot Slice V2 skill contract', () => {
     const installedRoot = path.join(process.env.CODEX_HOME || '/home/hetu/.codex', 'plugins/cache/keco-studio/keco', manifest.version);
     const repositorySkill = path.join(repositoryRoot, 'plugins/keco-codex/skills/keco-develop-godot-slice-v2');
     const installedSkill = path.join(installedRoot, 'skills/keco-develop-godot-slice-v2');
-    expect(existsSync(installedSkill)).toBe(true);
+    // CI runners do not necessarily have the locally installed plugin cache.
+    // When present, enforce exact repository/cache parity.
     if (!existsSync(installedSkill)) return;
     expect(treeDigest(installedSkill)).toBe(treeDigest(repositorySkill));
   });

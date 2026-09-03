@@ -1,6 +1,6 @@
 ---
 name: keco-develop-godot-slice-v2
-description: Use when a user asks to plan, implement, continue, or evaluate Godot development driven by Keco project documents, GDDs, feedback, tables, or development ideas, including decomposition, multiple Slices, persistent planning documents, asset provenance, resource evolution, TileMap integration, or runtime evaluation. Not for explicit legacy V1 runs, Keco-only tables, standalone assets, analysis-only work, or Godot-only debugging.
+description: Use when a user asks to plan, implement, continue, or evaluate Godot development driven by Keco project documents, GDDs, feedback, tables, or development ideas, including multiple Slices, persistent Keco planning documents, asset provenance, resource evolution, TileMap integration, or runtime evaluation. V2 takes precedence over a bounded simple Slice. Not for user-selected legacy V1 runs, Keco-only tables, standalone assets, analysis-only work, or Godot-only debugging.
 ---
 
 # Keco Godot Slice V2
@@ -11,7 +11,7 @@ V2 is the canonical creation workflow for Keco-driven Godot development and uses
 
 ## Routing
 
-- Use V2 for Keco-driven Godot planning, implementation, continuation, per-Slice evaluation, multi-Slice work, typed assets, or TileMap integration. Do not route document-driven Godot creation to V1.
+- Use V2 for Keco-driven Godot planning, implementation, continuation, per-Slice evaluation, multi-Slice work, typed assets, or TileMap integration. V2 takes precedence over a bounded simple Slice for document-driven work; do not route document-driven Godot creation to V1.
 - Route Keco-only new tables to `keco-build-tables-from-document`, standalone assets to their asset Skill, and a 100-point milestone score to `keco-evaluate-game`.
 - Honor an explicitly selected applicable Skill. Never silently upgrade a stored V1 run.
 
