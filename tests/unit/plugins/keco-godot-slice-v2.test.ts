@@ -29,6 +29,19 @@ function sha256(filePath: string): string {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
+function treeDigest(root: string): string {
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(filePath);
+      else files.push(path.relative(root, filePath).replaceAll(path.sep, '/') + '\0' + sha256(filePath));
+    }
+  };
+  visit(root);
+  return createHash('sha256').update(files.sort().join('\n')).digest('hex');
+}
+
 function markdownFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
     const entryPath = path.join(root, entry.name);
@@ -118,6 +131,15 @@ function runMirror(
 }
 
 describe('Keco Godot Slice V2 skill contract', () => {
+  it('matches the installed Codex cache for the released Slice V2 tree', () => {
+    const manifest = JSON.parse(readFileSync(path.join(repositoryRoot, 'plugins/keco-codex/.codex-plugin/plugin.json'), 'utf8')) as { version: string };
+    const installedRoot = path.join(process.env.CODEX_HOME || '/home/hetu/.codex', 'plugins/cache/keco-studio/keco', manifest.version);
+    const repositorySkill = path.join(repositoryRoot, 'plugins/keco-codex/skills/keco-develop-godot-slice-v2');
+    const installedSkill = path.join(installedRoot, 'skills/keco-develop-godot-slice-v2');
+    expect(existsSync(installedSkill)).toBe(true);
+    if (!existsSync(installedSkill)) return;
+    expect(treeDigest(installedSkill)).toBe(treeDigest(repositorySkill));
+  });
   it('keeps the main Skill as a concise V2 router with conditional references', () => {
     const skill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
     expect(skill.split('\n').length).toBeLessThanOrEqual(110);
