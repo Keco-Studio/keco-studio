@@ -696,7 +696,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     const sliceId = `slice-${runId.slice(0, 8)}`;
     const taskIds = options.taskIds ?? ['task-1'];
     const requirementIds = taskIds.map((_, index) => `req-${index + 1}`);
-    const sourceProfile = options.gddMismatch ? {
+    let sourceProfile: Record<string, any> = options.gddMismatch ? {
       schemaVersion: 1,
       contractVersion: 2,
       kind: 'gdd',
@@ -789,7 +789,10 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     if (options.corpusInput) {
       plan = structuredClone(options.corpusInput.plan);
       evalSpec = structuredClone(options.corpusInput.evalSpec);
-      if (plan.coverageMode === 'non_gdd') {
+      if (plan.coverageMode === 'gdd') {
+        sourceProfile.kind = 'gdd';
+        sourceProfile.requirementInventoryHash = plan.inventoryHash;
+      } else {
         plan.sourceProfileHash = hashJson(sourceProfile);
         evalSpec.sourceProfileHash = plan.sourceProfileHash;
       }
@@ -1026,13 +1029,15 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     const corpus = JSON.parse(readFileSync('contracts/keco-slice-v2/conformance-cases.json', 'utf8')) as {
       cases: Array<{ id: string; boundary: string; input: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> }; expected: { accepted: boolean; reasonCode: string | null } }>;
     };
-    const sqlCases = corpus.cases.filter(testCase =>
-      testCase.boundary === 'planEval' && !testCase.expected.accepted &&
-      testCase.input.plan.coverageMode === 'non_gdd' &&
-      (testCase.expected.reasonCode === 'SLICE_PLAN_SCOPE_INVALID' || testCase.expected.reasonCode === 'SLICE_EVAL_BINDING_INVALID'));
-    expect(sqlCases.length).toBeGreaterThanOrEqual(4);
+    const sqlCases = corpus.cases.filter(testCase => testCase.boundary === 'planEval');
+    expect(sqlCases).toHaveLength(7);
     for (const testCase of sqlCases) {
-      await expect(createV2Bundle(undefined, { corpusInput: testCase.input })).rejects.toThrow(testCase.expected.reasonCode!);
+      const result = createV2Bundle(undefined, { corpusInput: testCase.input });
+      if (testCase.expected.accepted) {
+        await expect(result).resolves.toBeDefined();
+      } else {
+        await expect(result).rejects.toThrow(testCase.expected.reasonCode!);
+      }
     }
   });
 
