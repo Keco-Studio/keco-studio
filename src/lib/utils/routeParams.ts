@@ -11,6 +11,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'collaborators',
   'admin',
   'recent',
+  'billing',
   'settings',
   'members',
   'projects',

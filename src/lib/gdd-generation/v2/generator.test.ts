@@ -465,6 +465,19 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });
 
+  it('completes a narrative GDD when recovery finds no concrete dialogue scenes', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'A narrative adventure about rebuilding a coastal town.',
+      rules: { ...input.rules, genres: ['Narrative adventure'] },
+    };
+    const complete = jest.fn(async () => '[]');
+    const result = await generateGddMarkdownV2(narrativeInput, complete);
+
+    expect(result.dialoguePlans).toEqual([]);
+    expect(result.dialoguePlanWarning).toMatch(/no dialogue scene resources/i);
+  });
+
   it('runs at most three scene planners concurrently and preserves encounter order', async () => {
     let active = 0;
     let maxActive = 0;

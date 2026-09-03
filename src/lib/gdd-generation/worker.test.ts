@@ -410,12 +410,50 @@ describe('GDD generation worker', () => {
     jest.useRealTimers();
   });
 
+  it('requeues a structured generation that exceeds its hard deadline', async () => {
+    jest.useFakeTimers();
+    let observedSignal: AbortSignal | undefined;
+    const generateV2 = jest.fn(async (
+      _input: unknown,
+      _dependencies: unknown,
+      runtime: { signal?: AbortSignal } | undefined,
+    ) => {
+      observedSignal = runtime?.signal;
+      return new Promise<never>(() => undefined);
+    });
+    const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+    const v2Job = {
+      ...job,
+      input: { contractVersion: 2, mode: 'quick', projectId: generationInput.projectId, versionId: generationInput.versionId },
+    } as GddGenerationJob;
+
+    const resultPromise = processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: v2Job }, {
+      heartbeat: jest.fn(async () => undefined),
+      revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated),
+      generateV2: generateV2 as never,
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
+      persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
+      retry,
+      fail: jest.fn(async (..._args: unknown[]) => undefined),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(observedSignal).toBeDefined();
+
+    await jest.advanceTimersByTimeAsync(90_000);
+    await expect(resultPromise).resolves.toBe('queued');
+    expect(observedSignal?.aborted).toBe(true);
+    expect(retry).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', expect.stringMatching(/deadline|timed out/i), 5);
+    jest.useRealTimers();
+  });
+
   it('fails exhausted v2 resource recovery errors without retrying', async () => {
     const generateV2 = jest.fn(async () => {
       throw new GddV2ResourceRecoveryError('GDD is missing required guided tables after one repair pass: SeasonsWeather.');
     });
     const retry = jest.fn(async () => 'queued' as const);
-    const fail = jest.fn(async () => undefined);
+    const fail = jest.fn(async (..._args: unknown[]) => undefined);
     const v2Job = {
       ...job,
       input: {

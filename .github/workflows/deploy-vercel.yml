@@ -391,6 +391,37 @@ jobs:
             vercel env add CRON_SECRET production --force \
               --token=${{ secrets.VERCEL_TOKEN }}
 
+      - name: Sync Stripe Checkout secrets
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          TARGET_ENV="${{ steps.env.outputs.environment }}"
+          if [ -n "$STRIPE_SECRET_KEY" ]; then
+            printf '%s' "$STRIPE_SECRET_KEY" | \
+              vercel env add STRIPE_SECRET_KEY "$TARGET_ENV" --force \
+                --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            echo "::warning::STRIPE_SECRET_KEY GitHub secret is unset; using the existing Vercel environment value"
+          fi
+          if [ -n "$STRIPE_WEBHOOK_SECRET" ]; then
+            printf '%s' "$STRIPE_WEBHOOK_SECRET" | \
+              vercel env add STRIPE_WEBHOOK_SECRET "$TARGET_ENV" --force \
+                --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            echo "::warning::STRIPE_WEBHOOK_SECRET GitHub secret is unset; using the existing Vercel environment value"
+          fi
+          if [ -n "$NEXT_PUBLIC_SITE_URL" ]; then
+            printf '%s' "$NEXT_PUBLIC_SITE_URL" | \
+              vercel env add NEXT_PUBLIC_SITE_URL "$TARGET_ENV" --force \
+                --token=${{ secrets.VERCEL_TOKEN }}
+          elif [[ "${{ steps.env.outputs.is_prod }}" == "true" ]]; then
+            echo "::warning::NEXT_PUBLIC_SITE_URL is unset; Stripe success/cancel redirects may use the request origin"
+          fi
+
       # Pull Vercel environment variables based on deployment environment
       # This will automatically use the correct Supabase config (Production or Preview)
       # from Vercel Dashboard based on the environment determined above
@@ -399,6 +430,22 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Verify Stripe Checkout environment
+        run: |
+          ENV_FILE=".env.${{ steps.env.outputs.environment }}.local"
+          if [ ! -s "$ENV_FILE" ]; then
+            echo "::error::Vercel environment file was not pulled: $ENV_FILE"
+            exit 1
+          fi
+          if ! grep -Eq '^STRIPE_SECRET_KEY=("[^"]+"|[^"[:space:]]+)$' "$ENV_FILE"; then
+            echo "::error::STRIPE_SECRET_KEY is missing from $ENV_FILE. Set it in Vercel or the STRIPE_SECRET_KEY GitHub secret."
+            exit 1
+          fi
+          if ! grep -Eq '^STRIPE_WEBHOOK_SECRET=("[^"]+"|[^"[:space:]]+)$' "$ENV_FILE"; then
+            echo "::error::STRIPE_WEBHOOK_SECRET is missing from $ENV_FILE. Set it in Vercel or the STRIPE_WEBHOOK_SECRET GitHub secret."
+            exit 1
+          fi
 
       - name: Build Project Artifacts
         run: |

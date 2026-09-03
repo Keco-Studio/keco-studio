@@ -127,11 +127,9 @@ export function getScriptDocumentSyncPresentation(
         tone: 'warning',
       };
     case 'conflict':
-      return {
-        visible: true,
-        label: 'Document saved, but a newer document edit prevented its table and conversion from syncing. Regenerate the conversation before editing derived data.',
-        tone: 'warning',
-      };
+      // Transient race with a newer local/remote edit; the next durable save re-syncs.
+      // Do not surface this on the document — it reads as a hard failure during typing.
+      return { visible: false, label: '', tone: 'neutral' };
     case 'error':
       return {
         visible: true,

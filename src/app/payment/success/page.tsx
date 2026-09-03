@@ -11,7 +11,7 @@ export default async function PaymentSuccessPage({
   const params = await searchParams;
   const projectId =
     typeof params.project_id === 'string' ? params.project_id : null;
-  const returnHref = projectId ? `/${projectId}/admin` : '/projects';
+  const returnHref = projectId ? `/${projectId}/billing` : '/projects';
 
   return (
     <main className={styles.page}>
@@ -22,7 +22,7 @@ export default async function PaymentSuccessPage({
         the secure webhook updates your billing record.
       </p>
       <Link href={returnHref} className={styles.link}>
-        {projectId ? 'Return to settings' : 'Return to projects'}
+        {projectId ? 'Return to billing' : 'Return to projects'}
       </Link>
     </main>
   );

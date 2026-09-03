@@ -899,6 +899,16 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     router.push('/mcp');
   };
 
+  const handleBillingNavigation = () => {
+    setShowUserMenu(false);
+    if (!currentProjectId) {
+      showErrorToast('Open a project to manage billing');
+      router.push('/projects');
+      return;
+    }
+    router.push(`/${currentProjectId}/billing`);
+  };
+
   const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
   const isDocumentDetail = !!currentDocumentId;
@@ -908,6 +918,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/recent`);
   const onAdminPage =
     !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/admin`);
+  const onBillingPage =
+    !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/billing`);
   const isProjectRootPage =
     !!currentProjectId &&
     !currentFolderId &&
@@ -916,6 +928,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     !isPredefine &&
     !onRecentPage &&
     !onAdminPage &&
+    !onBillingPage &&
     !isDocumentDetail;
   const isFolderPage =
     !!currentProjectId && !!currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
@@ -1449,6 +1462,22 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       );
     }
 
+    if (onBillingPage && currentProjectId) {
+      return (
+        <LibraryToolbar
+          mode="admin"
+          title="Billing"
+          onCreateFolder={handleTopbarCreateFolder}
+          onCreateLibrary={handleTopbarCreateLibrary}
+          onCreateDocument={handleTopbarCreateDocument}
+          onImportTable={handleTopbarImportTable}
+          onImportDocument={handleTopbarImportDocument}
+          userRole={userRole as CollaboratorRole | null}
+          projectId={currentProjectId}
+        />
+      );
+    }
+
     if ((isProjectRootPage || isFolderPage) && currentProjectId) {
       const lastBreadcrumb = displayBreadcrumbs[displayBreadcrumbs.length - 1];
       const title = lastBreadcrumb?.label;
@@ -1856,6 +1885,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </button>
           {showUserMenu && (
             <div className={styles.userMenu}>
+              <button
+                type="button"
+                className={styles.userMenuItem}
+                onClick={handleBillingNavigation}
+                data-testid="user-menu-billing"
+              >
+                Billing
+              </button>
               <button
                 type="button"
                 className={styles.userMenuItem}
