@@ -288,6 +288,8 @@ def _validate_plan_json(plan_json: dict[str, object]) -> bool:
     common = {"schemaVersion", "coverageMode", "planRevision", "allowedFiles", "tasks", "technicalContract"}
     if coverage == "gdd":
         expected_keys = common | {"inventoryHash", "requirementIds"}
+        if "sourceProfileHash" in plan_json:
+            expected_keys.add("sourceProfileHash")
     elif coverage == "non_gdd":
         expected_keys = common | {"sourceProfileHash", "nonGddRationale"}
     else:
@@ -298,6 +300,8 @@ def _validate_plan_json(plan_json: dict[str, object]) -> bool:
         return False
     if coverage == "gdd":
         if not SOURCE_HASH_RE.fullmatch(str(plan_json.get("inventoryHash", ""))):
+            return False
+        if "sourceProfileHash" in plan_json and not SOURCE_HASH_RE.fullmatch(str(plan_json["sourceProfileHash"])):
             return False
         requirements = plan_json.get("requirementIds")
         if not isinstance(requirements, list) or not requirements or len(requirements) != len(set(requirements)) or any(not isinstance(item, str) or not item.strip() for item in requirements):
