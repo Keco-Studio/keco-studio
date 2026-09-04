@@ -18,6 +18,7 @@ OBSERVATION_KEYS = {
 }
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.IGNORECASE)
 IDENTIFIER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
+JSON_POINTER_RE = re.compile(r"^(?:/(?:[^~/]|~[01])*)+$")
 
 
 def _manifest_path() -> Path:
@@ -387,7 +388,7 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         if not _strings(task.get("produces"), allow_empty=True) or any(item not in valid_produces for item in task["produces"]):
             return _technical_failure()
         verification = task.get("verification")
-        if not _record(verification) or set(verification) != {"assertions", "observationPaths"} or not _strings(verification.get("assertions")) or not _strings(verification.get("observationPaths")):
+        if not _record(verification) or set(verification) != {"assertions", "observationPaths"} or not _strings(verification.get("assertions")) or not _strings(verification.get("observationPaths")) or any(not JSON_POINTER_RE.fullmatch(path) for path in verification.get("observationPaths", [])):
             return _technical_failure()
         consumed.update(task["consumes"])
         produced.update(task["produces"])

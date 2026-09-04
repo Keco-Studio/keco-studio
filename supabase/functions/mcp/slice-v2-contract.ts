@@ -23,6 +23,7 @@ type JsonRecord = Record<string, unknown>;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,99}$/;
+const JSON_POINTER_RE = /^(?:\/(?:[^~\/]|~[01])*)+$/;
 const CONCRETE_VAGUE_RE = /\b(?:any|tbd|todo)\b|as\s+needed|handle\s+normally/i;
 
 function record(value: unknown): value is JsonRecord {
@@ -228,7 +229,7 @@ function validatePlanEval(value: unknown): ContractDecision {
   if (Object.keys(plan).some((key) => !planKeys.includes(key)) || Object.keys(evalSpec).some((key) => !evalKeys.includes(key))) {
     return reject("SLICE_PLAN_SCOPE_INVALID");
   }
-  if (plan.schemaVersion !== 2 || !strings(plan.allowedFiles) || plan.allowedFiles.some((path) => !isSafeRepositoryPath(path)) ||
+  if (plan.schemaVersion !== 2 || typeof plan.planRevision !== "string" || !HASH_RE.test(plan.planRevision) || !strings(plan.allowedFiles) || plan.allowedFiles.some((path) => !isSafeRepositoryPath(path)) ||
     !Array.isArray(plan.tasks) || plan.tasks.length === 0 || new Set(plan.allowedFiles).size !== plan.allowedFiles.length) {
     return reject("SLICE_PLAN_SCOPE_INVALID");
   }
@@ -282,7 +283,8 @@ function validatePlanEval(value: unknown): ContractDecision {
       !strings(task.consumes, true) || task.consumes.some((id) => !validConsumes.has(id)) ||
       !strings(task.produces, true) || task.produces.some((id) => !validProduces.has(id)) ||
       !record(task.verification) || !exactKeys(task.verification, ["assertions", "observationPaths"]) ||
-      !strings(task.verification.assertions) || !strings(task.verification.observationPaths)) {
+      !strings(task.verification.assertions) || !strings(task.verification.observationPaths) ||
+      (task.verification.observationPaths as string[]).some((path) => !JSON_POINTER_RE.test(path))) {
       return reject("SLICE_TECHNICAL_CONTRACT_INVALID");
     }
     for (const id of task.consumes) consumed.add(id);
