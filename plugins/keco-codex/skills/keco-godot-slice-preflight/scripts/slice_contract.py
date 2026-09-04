@@ -218,7 +218,7 @@ def _concrete_text(value: Any) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
     lowered = value.strip().lower()
-    return not any(token in lowered for token in ("any", "tbd", "todo", "as needed", "handle normally"))
+    return re.search(r"\b(?:any|tbd|todo)\b|as\s+needed|handle\s+normally", lowered) is None
 
 
 def _boundary(value: Any) -> bool:
@@ -227,22 +227,34 @@ def _boundary(value: Any) -> bool:
     text = value.strip()
     if text.lower() == "unbounded":
         return True
-    # Numeric ranges use one or more comparisons, for example `0 < speed <= 240`.
-    numeric = re.compile(r"[A-Za-z0-9_.\s<>=+-]+")
-    if numeric.fullmatch(text) and re.search(r"\d", text) and re.search(r"(?:<=|>=|<|>|==)", text):
+    number = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
+    identifier = r"[A-Za-z_][A-Za-z0-9_.-]*"
+    operand = rf"(?:{number}|{identifier})"
+    comparison = rf"{operand}\s*(?:<=|>=|==|<|>)\s*{operand}"
+    increasing_range = rf"{number}\s*(?:<|<=)\s*{identifier}\s*(?:<|<=)\s*{number}"
+    decreasing_range = rf"{number}\s*(?:>|>=)\s*{identifier}\s*(?:>|>=)\s*{number}"
+    # A single comparison or a monotonic numeric range is valid. This rejects
+    # malformed chains such as `1 < < 2` and contradictory operand order.
+    if re.fullmatch(comparison, text) or re.fullmatch(increasing_range, text) or re.fullmatch(decreasing_range, text):
         return True
     if "|" in text:
         # Enum and finite-set boundaries are intentionally textual, but every member
         # must be concrete and free of whitespace-only separators.
         members = [item.strip() for item in text.split("|")]
         return len(members) > 1 and all(re.fullmatch(r"[A-Za-z0-9_.-]+", item) for item in members)
-    if len(text) >= 3 and text[0] == text[-1] and text[0] in "[{":
+    if len(text) >= 3 and ((text[0], text[-1]) in (("[", "]"), ("{", "}"))):
         members = [item.strip() for item in text[1:-1].split(",")]
-        return len(members) > 0 and all(item and item.lower() not in {"any", "none"} for item in members)
+        member = re.compile(r"(?:[A-Za-z0-9_.-]+|'[^'\n]+'|\"[^\"\n]+\")")
+        return bool(members) and len(members) == len(set(members)) and all(member.fullmatch(item) for item in members)
     return False
 
 
-def _technical_contract(value: Any, task_ids: set[str], eval_ids: set[str]) -> bool:
+def _technical_contract(
+    value: Any,
+    task_ids: set[str],
+    eval_ids: set[str],
+    source_mapping_ids: set[str],
+) -> bool:
     if not _record(value):
         return False
     sections = ("inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance")
@@ -262,6 +274,7 @@ def _technical_contract(value: Any, task_ids: set[str], eval_ids: set[str]) -> b
         "acceptance": ({"id", "behavior", "sourceMappings", "evalIds"}, lambda row: (
             _concrete_text(row.get("behavior"))
             and _strings(row.get("sourceMappings"))
+            and all(item in source_mapping_ids for item in row.get("sourceMappings", []))
             and _strings(row.get("evalIds"))
             and all(item in eval_ids for item in row.get("evalIds", []))
         )),
@@ -342,12 +355,16 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         owned.update(task["files"])
     if any(item not in owned for item in allowed):
         return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
-    technical_missing = not _record(plan.get("technicalContract"))
+    if not _record(plan.get("technicalContract")):
+        return _technical_failure()
     eval_values = eval_spec.get("evaluations")
     known_eval_ids = {
         item.get("evalId") for item in eval_values if isinstance(item, dict) and isinstance(item.get("evalId"), str)
     } if isinstance(eval_values, list) else set()
-    if not technical_missing and not _technical_contract(plan["technicalContract"], task_ids, known_eval_ids):
+    source_mapping_ids = {mapping for task in tasks for mapping in task["sourceMappings"]}
+    if plan.get("coverageMode") == "gdd":
+        source_mapping_ids.update(plan.get("requirementIds", []))
+    if not _technical_contract(plan["technicalContract"], task_ids, known_eval_ids, source_mapping_ids):
         return _technical_failure()
     technical = plan.get("technicalContract", {})
     technical_by_kind = {section: {row["id"] for row in technical.get(section, [])} for section in ("inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance")}
@@ -356,8 +373,6 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     consumed: set[str] = set()
     produced: set[str] = set()
     for task in tasks:
-        if technical_missing:
-            continue
         if set(task) != task_keys or not _strings(task.get("consumes"), allow_empty=True) or any(item not in valid_consumes for item in task["consumes"]):
             return _technical_failure()
         if not _strings(task.get("produces"), allow_empty=True) or any(item not in valid_produces for item in task["produces"]):
@@ -408,6 +423,13 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             return _decision(False, "SLICE_EVAL_BINDING_INVALID")
         eval_ids.add(evaluation["evalId"])
         reverse[evaluation["evalId"]] = set(evaluation["servedByTasks"])
+    acceptance_eval_ids = {
+        eval_id
+        for row in plan["technicalContract"]["acceptance"]
+        for eval_id in row["evalIds"]
+    }
+    if acceptance_eval_ids != eval_ids:
+        return _technical_failure()
     for task in tasks:
         for eval_id in task["servesEvaluations"]:
             if eval_id not in eval_ids or task["id"] not in reverse[eval_id]:
@@ -417,8 +439,6 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             task = next(item for item in tasks if item["id"] == task_id)
             if eval_id not in task["servesEvaluations"]:
                 return _decision(False, "SLICE_EVAL_BINDING_INVALID")
-    if technical_missing:
-        return _technical_failure()
     return _decision(True, "SLICE_EVAL_BINDING_INVALID")
 
 

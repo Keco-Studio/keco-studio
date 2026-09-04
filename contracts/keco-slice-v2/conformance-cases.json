@@ -144,7 +144,7 @@
         "plan": { "schemaVersion": 2, "coverageMode": "gdd", "inventoryHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "requirementIds": ["gdd-1"], "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-1"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["gdd-1"] }] },
         "evalSpec": { "schemaVersion": 2, "coverageMode": "gdd", "inventoryHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requirementIds": ["gdd-1"], "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-1"], "buildHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "snapshotHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
       },
-      "expected": { "accepted": false, "reasonCode": "SLICE_EVAL_BINDING_INVALID" }
+      "expected": { "accepted": false, "reasonCode": "SLICE_TECHNICAL_CONTRACT_INVALID" }
     },
     {
       "id": "unsafe-parent-path",
@@ -180,7 +180,7 @@
         "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-ghost"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["source-1"] }] },
         "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-1"], "buildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "snapshotHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
       },
-      "expected": { "accepted": false, "reasonCode": "SLICE_EVAL_BINDING_INVALID" }
+      "expected": { "accepted": false, "reasonCode": "SLICE_TECHNICAL_CONTRACT_INVALID" }
     },
     {
       "id": "missing-reverse-evaluation-mapping",
@@ -189,7 +189,7 @@
         "plan": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "nonGddRationale": "Accepted document request.", "planRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "allowedFiles": ["game/main.gd"], "tasks": [{ "id": "task-1", "files": ["game/main.gd"], "dependsOn": [], "servesEvaluations": ["eval-1"], "red": { "command": "test red", "expected": "fails" }, "green": { "command": "test green", "expected": "passes" }, "review": { "minimumLevel": "self" }, "sourceMappings": ["source-1"] }] },
         "evalSpec": { "schemaVersion": 2, "coverageMode": "non_gdd", "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evaluations": [{ "evalId": "eval-1", "servedByTasks": ["task-other"], "buildHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "snapshotHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "assertions": [{ "assertionId": "assert-1", "kind": "equals", "path": "/ready", "expected": true }] }] }
       },
-      "expected": { "accepted": false, "reasonCode": "SLICE_EVAL_BINDING_INVALID" }
+      "expected": { "accepted": false, "reasonCode": "SLICE_TECHNICAL_CONTRACT_INVALID" }
     },
     {
       "id": "valid-technical-contract",

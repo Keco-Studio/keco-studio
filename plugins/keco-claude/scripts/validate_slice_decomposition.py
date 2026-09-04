@@ -287,7 +287,7 @@ def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], p
             return f"invalid {json_name} technical rows"
         markdown_ids = []
         for row in rows:
-            markdown_id = row[next(iter(row))]
+            markdown_id = row[next(iter(row))].strip("`")
             markdown_ids.append(markdown_id)
         json_ids = [item.get("id") for item in expected_rows if isinstance(item, dict)]
         if markdown_ids != json_ids:

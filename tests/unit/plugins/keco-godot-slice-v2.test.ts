@@ -465,6 +465,55 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
+  it('rejects malformed technical boundaries and incomplete acceptance reciprocity', () => {
+    const corpus = JSON.parse(
+      readFileSync(path.join(repositoryRoot, 'contracts', 'keco-slice-v2', 'conformance-cases.json'), 'utf8'),
+    ) as { cases: Array<{ id: string; boundary: string; input: any }> };
+    const valid = corpus.cases.find(testCase => testCase.id === 'valid-technical-contract');
+    expect(valid).toBeDefined();
+    if (!valid) return;
+    const variants = [
+      {
+        id: 'malformed-boundary',
+        mutate: (input: any) => { input.plan.technicalContract.parameters[0].bounds = '1 < < 2'; },
+      },
+      {
+        id: 'uncited-eval',
+        mutate: (input: any) => {
+          input.evalSpec.evaluations.push({ ...input.evalSpec.evaluations[0], evalId: 'eval-2' });
+        },
+      },
+      {
+        id: 'unmapped-acceptance-source',
+        mutate: (input: any) => { input.plan.technicalContract.acceptance[0].sourceMappings = ['source-ghost']; },
+      },
+      {
+        id: 'missing-contract-before-eval',
+        mutate: (input: any) => { delete input.plan.technicalContract; input.evalSpec = {}; },
+      },
+    ];
+    const runtimes = [
+      path.join(phaseRoots.preflight, 'scripts', 'validate_contract_case.py'),
+      path.join(repositoryRoot, 'plugins', 'keco-claude', 'scripts', 'validate_contract_case.py'),
+    ];
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-technical-'));
+    try {
+      for (const runtime of runtimes) {
+        for (const variant of variants) {
+          const input = structuredClone(valid.input);
+          variant.mutate(input);
+          const inputPath = path.join(tempRoot, `${variant.id}-${path.basename(path.dirname(runtime))}.json`);
+          writeFileSync(inputPath, JSON.stringify(input));
+          const result = spawnSync('python3', [runtime, 'planEval', inputPath], { encoding: 'utf8' });
+          expect(result.status).toBe(0);
+          expect(JSON.parse(result.stdout)).toEqual({ accepted: false, reasonCode: 'SLICE_TECHNICAL_CONTRACT_INVALID' });
+        }
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('validates reciprocal V2 Plan and EvalSpec for every non-GDD source profile', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-preflight-'));
     const hash = (character: string) => `sha256:${character.repeat(64)}`;
