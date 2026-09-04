@@ -820,7 +820,7 @@ begin
         )
         or (select count(*) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end)) <>
            (select count(distinct source_id) from jsonb_array_elements_text(case when jsonb_typeof(task->'sourceMappings') = 'array' then task->'sourceMappings' else '[]'::jsonb end) as source_id)
-        or exists (select 1 from jsonb_object_keys(task) as key where key not in ('id', 'files', 'dependsOn', 'servesEvaluations', 'red', 'green', 'review', 'sourceMappings'))
+        or exists (select 1 from jsonb_object_keys(task) as key where key not in ('id', 'files', 'dependsOn', 'servesEvaluations', 'red', 'green', 'review', 'sourceMappings', 'consumes', 'produces', 'verification'))
     ) then
     raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
   end if;
@@ -894,7 +894,7 @@ begin
     ) then
     raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
   end if;
-  if exists (select 1 from jsonb_object_keys(p_plan_data) as key where key not in ('schemaVersion', 'coverageMode', 'sourceProfileHash', 'nonGddRationale', 'inventoryHash', 'requirementIds', 'planRevision', 'allowedFiles', 'tasks')) then
+  if exists (select 1 from jsonb_object_keys(p_plan_data) as key where key not in ('schemaVersion', 'coverageMode', 'sourceProfileHash', 'nonGddRationale', 'inventoryHash', 'requirementIds', 'planRevision', 'allowedFiles', 'tasks', 'technicalContract')) then
     raise exception 'SLICE_PLAN_SCOPE_INVALID' using errcode = '22023';
   end if;
   if exists (select 1 from jsonb_object_keys(p_eval_spec) as key where key not in ('schemaVersion', 'coverageMode', 'sourceProfileHash', 'inventoryHash', 'requirementIds', 'evaluations')) then
@@ -1000,6 +1000,12 @@ begin
     or exists (select 1 from jsonb_object_keys(p_delivery_policy) as key where key not in ('schemaVersion', 'requiredArtifacts', 'runtimeEvidenceFreshness', 'maximumRepairs', 'releaseOrder', 'manualReviewBlocksRelease')) then
     raise exception 'Invalid Slice delivery policy' using errcode = '22023';
   end if;
+
+  -- Technical contract validation is deliberately before any document insert,
+  -- update, or lease-like lifecycle write. The additive migration that defines
+  -- this helper is applied immediately after this convergence migration.
+  perform public.keco_slice_v2_validate_technical_contract(p_plan_data, p_eval_spec);
+
   select id into v_spec_folder_id from public.folders
     where project_id = p_project_id and parent_folder_id = p_planning_root_id and name = 'spec';
   if not found then raise exception 'SLICE_DOCUMENT_PLACEMENT_INVALID' using errcode = '22023'; end if;
