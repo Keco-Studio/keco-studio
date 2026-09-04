@@ -36,23 +36,23 @@ describe('buildScriptFlowGraph', () => {
       expect.objectContaining({ from: 'Start', to: 'Stable', optionText: 'Fortify - stable route' }),
       expect.objectContaining({ from: 'Start', to: 'Loyal', optionText: 'Answer empress - loyal route' }),
     ]));
-    expect(g.nodes.find((node) => node.id === 'Stable')?.label).toBe('剧情 2');
+    expect(g.nodes.find((node) => node.id === 'Stable')?.label).toBe('\u5267\u60c5 2');
     expect(g.nodes.find((node) => node.id === 'Stable')?.label)
       .not.toBe('Fortify - stable route');
   });
 
-  it('keeps 场景 and 人物 lists in the opening chapter until the first choice', () => {
+  it('keeps \u573a\u666f and \u4eba\u7269 lists in the opening chapter until the first choice', () => {
     const g = buildScriptFlowGraph([
-      { Label: 'Start', Type: '4', Content: '场景：深夜便利店。' },
-      { Label: '', Type: '4', Content: '人物：路人（林野）、学生（小雨）' },
-      { Label: '', Type: '4', Content: '场景：凌晨无人便利店。冷柜嗡嗡响。' },
+      { Label: 'Start', Type: '4', Content: '\u573a\u666f：\u6df1\u591c\u4fbf\u5229\u5e97。' },
+      { Label: '', Type: '4', Content: '\u4eba\u7269：\u8def\u4eba（\u6797\u91ce）、\u5b66\u751f（\u5c0f\u96e8）' },
+      { Label: '', Type: '4', Content: '\u573a\u666f：\u51cc\u6668\u65e0\u4eba\u4fbf\u5229\u5e97。\u51b7\u67dc\u55e1\u55e1\u54cd。' },
       {
-        Label: '', Type: '1', Name: 'You', Content: '你好。',
-        Option0: '主动搭话', Option0_Next: 'Jump Talk',
-        Option1: '沉默不打扰', Option1_Next: 'Jump Watch',
+        Label: '', Type: '1', Name: 'You', Content: '\u4f60\u597d。',
+        Option0: '\u4e3b\u52a8\u642d\u8bdd', Option0_Next: 'Jump Talk',
+        Option1: '\u6c89\u9ed8\u4e0d\u6253\u6270', Option1_Next: 'Jump Watch',
       },
-      { Label: 'Talk', Type: '1', Content: '也在买东西吗？' },
-      { Label: 'Watch', Type: '3', Content: '你站在货架后看着。' },
+      { Label: 'Talk', Type: '1', Content: '\u4e5f\u5728\u4e70\u4e1c\u897f\u5417？' },
+      { Label: 'Watch', Type: '3', Content: '\u4f60\u7ad9\u5728\u8d27\u67b6\u540e\u770b\u7740。' },
     ]);
 
     expect(g.nodes.map((node) => [node.id, node.rowIndexes])).toEqual([
@@ -60,155 +60,155 @@ describe('buildScriptFlowGraph', () => {
       ['Talk', [4]],
       ['Watch', [5]],
     ]);
-    expect(g.nodes[0]?.label).toBe('深夜便利店');
-    expect(g.nodes.map((node) => node.label)).not.toContain('人物介绍');
+    expect(g.nodes[0]?.label).toBe('\u6df1\u591c\u4fbf\u5229\u5e97');
+    expect(g.nodes.map((node) => node.label)).not.toContain('\u4eba\u7269\u4ecb\u7ecd');
   });
 
-  it('uses a short location title for 场景： setting rows instead of full prose or Node labels', () => {
+  it('uses a short location title for \u573a\u666f： setting rows instead of full prose or Node labels', () => {
     const g = buildScriptFlowGraph([
       {
         Label: 'Start', Type: '4',
-        Content: '场景：幸福邻里超市内，上午。店员忙碌。',
+        Content: '\u573a\u666f：\u5e78\u798f\u90bb\u91cc\u8d85\u5e02\u5185，\u4e0a\u5348。\u5e97\u5458\u5fd9\u788c。',
         Option0: 'Visit aunt', Option0_Next: 'Jump Node35',
       },
       {
         Label: 'Node35', Type: '4',
-        Content: '场景：次日，陈阿姨家中。阳光透过窗户洒在老式的红木家具上。',
+        Content: '\u573a\u666f：\u6b21\u65e5，\u9648\u963f\u59e8\u5bb6\u4e2d。\u9633\u5149\u900f\u8fc7\u7a97\u6237\u6d12\u5728\u8001\u5f0f\u7684\u7ea2\u6728\u5bb6\u5177\u4e0a。',
       },
     ]);
 
-    expect(g.nodes.find((node) => node.id === 'Start')?.label).toBe('幸福邻里超市内');
-    expect(g.nodes.find((node) => node.id === 'Node35')?.label).toBe('陈阿姨家中');
-    expect(g.nodes.map((node) => node.label).join('\n')).not.toMatch(/场景：/);
+    expect(g.nodes.find((node) => node.id === 'Start')?.label).toBe('\u5e78\u798f\u90bb\u91cc\u8d85\u5e02\u5185');
+    expect(g.nodes.find((node) => node.id === 'Node35')?.label).toBe('\u9648\u963f\u59e8\u5bb6\u4e2d');
+    expect(g.nodes.map((node) => node.label).join('\n')).not.toMatch(/\u573a\u666f：/);
   });
 
   it('retitles copied scene paragraphs on a persisted graph from chapter content', () => {
     const rows = [
-      { Content: '场景：幸福邻里超市内，上午。店员忙碌。' },
-      { Content: '场景：次日，陈阿姨家中。阳光透过窗户洒在老式的红木家具上。' },
+      { Content: '\u573a\u666f：\u5e78\u798f\u90bb\u91cc\u8d85\u5e02\u5185，\u4e0a\u5348。\u5e97\u5458\u5fd9\u788c。' },
+      { Content: '\u573a\u666f：\u6b21\u65e5，\u9648\u963f\u59e8\u5bb6\u4e2d。\u9633\u5149\u900f\u8fc7\u7a97\u6237\u6d12\u5728\u8001\u5f0f\u7684\u7ea2\u6728\u5bb6\u5177\u4e0a。' },
     ];
     const retitled = retitleFlowGraph({
       nodes: [
-        { id: 'Start', label: '场景：幸福邻里超市内，上午。店员忙碌。', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Node35', label: '小林来了，快坐。', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Start', label: '\u573a\u666f：\u5e78\u798f\u90bb\u91cc\u8d85\u5e02\u5185，\u4e0a\u5348。\u5e97\u5458\u5fd9\u788c。', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Node35', label: '\u5c0f\u6797\u6765\u4e86，\u5feb\u5750。', rowIndex: 1, rowIndexes: [1] },
       ],
       edges: [],
     }, rows);
 
     expect(retitled.nodes.map((node) => node.label)).toEqual([
-      '幸福邻里超市内',
-      '陈阿姨家中',
+      '\u5e78\u798f\u90bb\u91cc\u8d85\u5e02\u5185',
+      '\u9648\u963f\u59e8\u5bb6\u4e2d',
     ]);
   });
 
   it('keeps AI chapter summaries and does not copy option text onto nodes', () => {
     const retitled = retitleFlowGraph({
       nodes: [
-        { id: 'Start', label: '剧情 1', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Store', label: '凌晨两点，无人便利店', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Start', label: '\u5267\u60c5 1', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Store', label: '\u51cc\u6668\u4e24\u70b9，\u65e0\u4eba\u4fbf\u5229\u5e97', rowIndex: 1, rowIndexes: [1] },
         { id: 'Talk', label: 'Branch 3', rowIndex: 2, rowIndexes: [2] },
-        { id: 'Merge', label: '剧情 7', rowIndex: 3, rowIndexes: [3] },
+        { id: 'Merge', label: '\u5267\u60c5 7', rowIndex: 3, rowIndexes: [3] },
       ],
       edges: [
         { from: 'Start', to: 'Store' },
-        { from: 'Store', to: 'Talk', optionText: 'A选项 (主动搭话)', optionIndex: 0 },
+        { from: 'Store', to: 'Talk', optionText: 'A\u9009\u9879 (\u4e3b\u52a8\u642d\u8bdd)', optionIndex: 0 },
         { from: 'Talk', to: 'Merge' },
-        { from: 'Store', to: 'Merge', optionText: 'B选项 (沉默不打扰)', optionIndex: 1 },
+        { from: 'Store', to: 'Merge', optionText: 'B\u9009\u9879 (\u6c89\u9ed8\u4e0d\u6253\u6270)', optionIndex: 1 },
       ],
     }, [
-      { Content: '开场旁白。' },
-      { Content: '场景：凌晨两点，无人便利店。灯还亮着。' },
-      { Content: '你好。' },
-      { Content: '两人一起离开。' },
+      { Content: '\u5f00\u573a\u65c1\u767d。' },
+      { Content: '\u573a\u666f：\u51cc\u6668\u4e24\u70b9，\u65e0\u4eba\u4fbf\u5229\u5e97。\u706f\u8fd8\u4eae\u7740。' },
+      { Content: '\u4f60\u597d。' },
+      { Content: '\u4e24\u4eba\u4e00\u8d77\u79bb\u5f00。' },
     ]);
 
     expect(retitled.nodes.map((node) => node.label)).toEqual([
-      '开场',
-      '无人便利店',
+      '\u5f00\u573a',
+      '\u65e0\u4eba\u4fbf\u5229\u5e97',
       'Branch 3',
-      '汇合',
+      '\u6c47\u5408',
     ]);
-    expect(retitled.nodes.map((node) => node.label)).not.toContain('主动搭话');
+    expect(retitled.nodes.map((node) => node.label)).not.toContain('\u4e3b\u52a8\u642d\u8bdd');
   });
 
   it('does not copy rain-stop choices onto chapter nodes', () => {
     const retitled = retitleFlowGraph({
       nodes: [
-        { id: 'Start', label: '开场', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Rain', label: '暴雨突袭的街边公交亭', rowIndex: 1, rowIndexes: [1] },
-        { id: 'Talk', label: '分支 3', rowIndex: 2, rowIndexes: [2] },
-        { id: 'Umbrella', label: '分支 4', rowIndex: 3, rowIndexes: [3] },
-        { id: 'Comfort', label: '分支 5', rowIndex: 4, rowIndexes: [4] },
-        { id: 'Watch', label: '分支 6', rowIndex: 5, rowIndexes: [5] },
+        { id: 'Start', label: '\u5f00\u573a', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Rain', label: '\u66b4\u96e8\u7a81\u88ad\u7684\u8857\u8fb9\u516c\u4ea4\u4ead', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Talk', label: '\u5206\u652f 3', rowIndex: 2, rowIndexes: [2] },
+        { id: 'Umbrella', label: '\u5206\u652f 4', rowIndex: 3, rowIndexes: [3] },
+        { id: 'Comfort', label: '\u5206\u652f 5', rowIndex: 4, rowIndexes: [4] },
+        { id: 'Watch', label: '\u5206\u652f 6', rowIndex: 5, rowIndexes: [5] },
       ],
       edges: [
         { from: 'Start', to: 'Rain' },
-        { from: 'Rain', to: 'Talk', optionText: '主动搭话', optionIndex: 0 },
-        { from: 'Rain', to: 'Watch', optionText: '沉默旁观', optionIndex: 1 },
-        { from: 'Talk', to: 'Umbrella', optionText: '主动借伞', optionIndex: 0 },
-        { from: 'Talk', to: 'Comfort', optionText: '温柔宽慰', optionIndex: 1 },
+        { from: 'Rain', to: 'Talk', optionText: '\u4e3b\u52a8\u642d\u8bdd', optionIndex: 0 },
+        { from: 'Rain', to: 'Watch', optionText: '\u6c89\u9ed8\u65c1\u89c2', optionIndex: 1 },
+        { from: 'Talk', to: 'Umbrella', optionText: '\u4e3b\u52a8\u501f\u4f1e', optionIndex: 0 },
+        { from: 'Talk', to: 'Comfort', optionText: '\u6e29\u67d4\u5bbd\u6170', optionIndex: 1 },
       ],
     }, [
-      { Content: '人物：路人（林野）、学生（小雨）' },
-      { Content: '场景：暴雨突袭的街边公交亭。' },
-      { Content: '你好，也在躲雨吗？' },
-      { Content: '他把伞递过去。' },
-      { Content: '别着急，雨很快会停。' },
-      { Content: '他站在亭外看雨。' },
+      { Content: '\u4eba\u7269：\u8def\u4eba（\u6797\u91ce）、\u5b66\u751f（\u5c0f\u96e8）' },
+      { Content: '\u573a\u666f：\u66b4\u96e8\u7a81\u88ad\u7684\u8857\u8fb9\u516c\u4ea4\u4ead。' },
+      { Content: '\u4f60\u597d，\u4e5f\u5728\u8eb2\u96e8\u5417？' },
+      { Content: '\u4ed6\u628a\u4f1e\u9012\u8fc7\u53bb。' },
+      { Content: '\u522b\u7740\u6025，\u96e8\u5f88\u5feb\u4f1a\u505c。' },
+      { Content: '\u4ed6\u7ad9\u5728\u4ead\u5916\u770b\u96e8。' },
     ]);
 
     expect(retitled.nodes.map((node) => node.label)).toEqual([
-      '人物介绍',
-      '暴雨突袭的街边公交亭',
-      '分支 3',
-      '分支 4',
-      '分支 5',
-      '分支 6',
+      '\u4eba\u7269\u4ecb\u7ecd',
+      '\u66b4\u96e8\u7a81\u88ad\u7684\u8857\u8fb9\u516c\u4ea4\u4ead',
+      '\u5206\u652f 3',
+      '\u5206\u652f 4',
+      '\u5206\u652f 5',
+      '\u5206\u652f 6',
     ]);
-    expect(retitled.nodes.map((node) => node.label).join('\n')).not.toMatch(/主动搭话|沉默旁观|主动借伞|温柔宽慰/);
+    expect(retitled.nodes.map((node) => node.label).join('\n')).not.toMatch(/\u4e3b\u52a8\u642d\u8bdd|\u6c89\u9ed8\u65c1\u89c2|\u4e3b\u52a8\u501f\u4f1e|\u6e29\u67d4\u5bbd\u6170/);
   });
 
   it('folds persisted heading-only setup nodes into the first real chapter', () => {
     const graph = displayScriptFlowGraph({
       nodes: [
-        { id: 'Night', label: '深夜便利店', rowIndex: 0, rowIndexes: [0] },
-        { id: 'Cast', label: '人物介绍', rowIndex: 1, rowIndexes: [1] },
-        { id: 'Store', label: '无人便利店', rowIndex: 2, rowIndexes: [2, 3] },
-        { id: 'Talk', label: '主动询问', rowIndex: 4, rowIndexes: [4] },
+        { id: 'Night', label: '\u6df1\u591c\u4fbf\u5229\u5e97', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Cast', label: '\u4eba\u7269\u4ecb\u7ecd', rowIndex: 1, rowIndexes: [1] },
+        { id: 'Store', label: '\u65e0\u4eba\u4fbf\u5229\u5e97', rowIndex: 2, rowIndexes: [2, 3] },
+        { id: 'Talk', label: '\u4e3b\u52a8\u8be2\u95ee', rowIndex: 4, rowIndexes: [4] },
       ],
       edges: [
         { from: 'Night', to: 'Cast' },
         { from: 'Cast', to: 'Store' },
-        { from: 'Store', to: 'Talk', optionText: '主动搭话', optionIndex: 0 },
+        { from: 'Store', to: 'Talk', optionText: '\u4e3b\u52a8\u642d\u8bdd', optionIndex: 0 },
       ],
     }, [
-      { Content: '场景：深夜便利店。' },
-      { Content: '人物：路人（林野）、学生（小雨）' },
-      { Content: '场景：凌晨无人便利店。' },
-      { Content: '灯还亮着。' },
-      { Content: '你好，买东西吗？' },
+      { Content: '\u573a\u666f：\u6df1\u591c\u4fbf\u5229\u5e97。' },
+      { Content: '\u4eba\u7269：\u8def\u4eba（\u6797\u91ce）、\u5b66\u751f（\u5c0f\u96e8）' },
+      { Content: '\u573a\u666f：\u51cc\u6668\u65e0\u4eba\u4fbf\u5229\u5e97。' },
+      { Content: '\u706f\u8fd8\u4eae\u7740。' },
+      { Content: '\u4f60\u597d，\u4e70\u4e1c\u897f\u5417？' },
     ]);
 
     expect(graph.nodes.map((node) => node.rowIndexes)).toEqual([[0, 1, 2, 3], [4]]);
     expect(graph.nodes).toHaveLength(2);
     expect(graph.edges).toEqual([
-      { from: 'Store', to: 'Talk', optionText: '主动搭话', optionIndex: 0 },
+      { from: 'Store', to: 'Talk', optionText: '\u4e3b\u52a8\u642d\u8bdd', optionIndex: 0 },
     ]);
   });
 
-  it('keeps an AI chapter summary instead of replacing it with 台词 or the option', () => {
+  it('keeps an AI chapter summary instead of replacing it with \u53f0\u8bcd or the option', () => {
     const retitled = retitleFlowGraph({
       nodes: [
-        { id: 'Talk', label: '雨中借伞', rowIndex: 0, rowIndexes: [0] },
+        { id: 'Talk', label: '\u96e8\u4e2d\u501f\u4f1e', rowIndex: 0, rowIndexes: [0] },
       ],
       edges: [
-        { from: 'Rain', to: 'Talk', optionText: '主动借伞', optionIndex: 0 },
+        { from: 'Rain', to: 'Talk', optionText: '\u4e3b\u52a8\u501f\u4f1e', optionIndex: 0 },
       ],
     }, [
-      { Content: '他把伞递过去，雨水顺着伞骨往下滴。' },
+      { Content: '\u4ed6\u628a\u4f1e\u9012\u8fc7\u53bb，\u96e8\u6c34\u987a\u7740\u4f1e\u9aa8\u5f80\u4e0b\u6ef4。' },
     ]);
 
-    expect(retitled.nodes[0]?.label).toBe('雨中借伞');
+    expect(retitled.nodes[0]?.label).toBe('\u96e8\u4e2d\u501f\u4f1e');
   });
 
 
@@ -220,7 +220,7 @@ describe('buildScriptFlowGraph', () => {
     expect(g.nodes.map((n) => n.id)).toEqual(['Start', 'End']);
     expect(g.nodes[0]).toMatchObject({
       id: 'Start',
-      label: '开场',
+      label: '\u5f00\u573a',
       speaker: 'Guide',
       rowIndex: 0,
     });

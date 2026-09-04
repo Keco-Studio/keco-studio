@@ -121,7 +121,7 @@ export async function summarizePlotTitlesWithAi(
         accepted.set(chapter.id, title);
         continue;
       }
-      rejected.push({ id: chapter.id, title: title || chapter.title?.trim() || '剧情' });
+      rejected.push({ id: chapter.id, title: title || chapter.title?.trim() || '\u5267\u60c5' });
     }
   }
   return accepted;

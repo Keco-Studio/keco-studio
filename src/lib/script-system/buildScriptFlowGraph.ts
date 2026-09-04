@@ -280,7 +280,7 @@ export function retitleFlowGraph(
       const currentIsProse = (!isGenericPlotTitle(current) && isCopiedPlotTitle(current, contents))
         || titleCopiesIncomingOption(current, incoming?.optionText)
         || /[。！？]/.test(current)
-        || current.startsWith('场景')
+        || current.startsWith('\u573a\u666f')
         || current.startsWith('Scene');
       if (currentIsProse) return { ...node, label: summarized };
       if (isGenericPlotTitle(current) && !isGenericPlotTitle(summarized)) {

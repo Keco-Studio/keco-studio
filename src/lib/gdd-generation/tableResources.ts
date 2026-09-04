@@ -223,7 +223,7 @@ function normalizeTableRefName(value: string): string {
 function isInternalDialogueTable(resource: GeneratedTableResource): boolean {
   const key = normalizeTableRefName(resource.table).replace(/[\s_-]+/g, '');
   return /^(?:dialogue|conversation)(?:node|event)s?(?:table)?$/.test(key)
-    || /^对话(?:节点|事件)(?:表)?$/.test(key);
+    || /^\u5bf9\u8bdd(?:\u8282\u70b9|\u4e8b\u4ef6)(?:\u8868)?$/.test(key);
 }
 
 export function listTableRefNames(markdown: string): string[] {

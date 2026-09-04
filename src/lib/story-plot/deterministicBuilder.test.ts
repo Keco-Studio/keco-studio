@@ -31,7 +31,7 @@ describe('deterministic plot grouping', () => {
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes[0]?.title).toBe('开场');
+    expect(result.nodes[0]?.title).toBe('\u5f00\u573a');
   });
 
 
@@ -78,7 +78,7 @@ describe('deterministic plot grouping', () => {
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('剧情 2');
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('\u5267\u60c5 2');
     expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
       .not.toBe('Tell the truth');
   });
@@ -97,16 +97,16 @@ describe('deterministic plot grouping', () => {
         node({
           label: 'Aunt',
           type: 'scene',
-          content: '场景：次日，陈阿姨家中。阳光透过窗户洒在老式的红木家具上，墙上挂着泛黄的全家福。',
+          content: '\u573a\u666f：\u6b21\u65e5，\u9648\u963f\u59e8\u5bb6\u4e2d。\u9633\u5149\u900f\u8fc7\u7a97\u6237\u6d12\u5728\u8001\u5f0f\u7684\u7ea2\u6728\u5bb6\u5177\u4e0a，\u5899\u4e0a\u6302\u7740\u6cdb\u9ec4\u7684\u5168\u5bb6\u798f。',
         }),
       ],
     };
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes.find((plot) => plot.id === 'Aunt')?.title).toBe('陈阿姨家中');
+    expect(result.nodes.find((plot) => plot.id === 'Aunt')?.title).toBe('\u9648\u963f\u59e8\u5bb6\u4e2d');
     expect(result.nodes.find((plot) => plot.id === 'Aunt')?.title)
-      .not.toMatch(/^场景：/);
+      .not.toMatch(/^\u573a\u666f：/);
   });
 
   it('keeps the opening scene, character list, and first decision in one plot node', () => {
@@ -114,17 +114,17 @@ describe('deterministic plot grouping', () => {
       version: 1,
       entryLabel: 'Start',
       nodes: [
-        node({ label: 'Start', type: 'scene', content: '场景：深夜便利店。', next: 'Cast' }),
-        node({ label: 'Cast', type: 'scene', content: '人物：路人（林野）、学生（小雨）', next: 'Store' }),
+        node({ label: 'Start', type: 'scene', content: '\u573a\u666f：\u6df1\u591c\u4fbf\u5229\u5e97。', next: 'Cast' }),
+        node({ label: 'Cast', type: 'scene', content: '\u4eba\u7269：\u8def\u4eba（\u6797\u91ce）、\u5b66\u751f（\u5c0f\u96e8）', next: 'Store' }),
         node({
-          label: 'Store', type: 'dialogue', content: '灯还亮着。',
+          label: 'Store', type: 'dialogue', content: '\u706f\u8fd8\u4eae\u7740。',
           options: [
-            { text: '主动搭话', target: 'Talk', commands: [], sourceRefs: [ref] },
-            { text: '沉默不打扰', target: 'Watch', commands: [], sourceRefs: [ref] },
+            { text: '\u4e3b\u52a8\u642d\u8bdd', target: 'Talk', commands: [], sourceRefs: [ref] },
+            { text: '\u6c89\u9ed8\u4e0d\u6253\u6270', target: 'Watch', commands: [], sourceRefs: [ref] },
           ],
         }),
-        node({ label: 'Talk', type: 'dialogue', content: '也在买东西吗？' }),
-        node({ label: 'Watch', type: 'narration', content: '你站在货架后看着。' }),
+        node({ label: 'Talk', type: 'dialogue', content: '\u4e5f\u5728\u4e70\u4e1c\u897f\u5417？' }),
+        node({ label: 'Watch', type: 'narration', content: '\u4f60\u7ad9\u5728\u8d27\u67b6\u540e\u770b\u7740。' }),
       ],
     };
 
@@ -133,7 +133,7 @@ describe('deterministic plot grouping', () => {
     expect(result.nodes.find((plot) => plot.id === 'Start')?.storyNodeIds)
       .toEqual(['Start', 'Cast', 'Store']);
     expect(result.nodes.map((plot) => plot.id)).toEqual(['Start', 'Talk', 'Watch']);
-    expect(result.nodes[0]?.title).toBe('深夜便利店');
+    expect(result.nodes[0]?.title).toBe('\u6df1\u591c\u4fbf\u5229\u5e97');
   });
 
   it('uses a stable branch fallback when the target content only repeats the option', () => {
@@ -151,7 +151,7 @@ describe('deterministic plot grouping', () => {
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('剧情 2');
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('\u5267\u60c5 2');
     expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
       .not.toBe('Tell the truth');
   });

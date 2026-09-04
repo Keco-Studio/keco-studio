@@ -29,7 +29,7 @@ describe('script plot title route', () => {
 
   it('returns summarized titles', async () => {
     summarizeLibraryPlotTitles.mockResolvedValueOnce({
-      titles: { Talk: '雨中借伞' },
+      titles: { Talk: '\u96e8\u4e2d\u501f\u4f1e' },
       plotPlan: null,
     });
     const response = await POST(new NextRequest('http://localhost/api/script-plot-titles', {
@@ -41,6 +41,6 @@ describe('script plot title route', () => {
     }) as never, undefined as never);
     const payload = await response.json();
     expect(response.status).toBe(200);
-    expect(payload.titles).toEqual({ Talk: '雨中借伞' });
+    expect(payload.titles).toEqual({ Talk: '\u96e8\u4e2d\u501f\u4f1e' });
   });
 });

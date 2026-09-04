@@ -45,7 +45,7 @@ function plannerMessages(input: { event: DialogueSceneEvent; gddContext: string 
       'Use the scene event and preceding GDD text as the only design evidence.',
       'Write full spoken lines and actionable player choices. Keep branch outcomes consistent with the established scene.',
       'When the scene event has choices, preserve every choice label verbatim and write a complete explicit branch for each choice.',
-      'Use this importable branch syntax inside content: O1: <choice text> (Jump O1), then O1 branch [O1 | <short place or event title>], optional longer 场景： setting line, branch dialogue, (Jump Oend), and finally Oend merge [Oend | <short merge title>]. Use O2, O3, and so on for later choices.',
+      'Use this importable branch syntax inside content: O1: <choice text> (Jump O1), then O1 branch [O1 | <short place or event title>], optional longer \u573a\u666f： setting line, branch dialogue, (Jump Oend), and finally Oend merge [Oend | <short merge title>]. Use O2, O3, and so on for later choices.',
       'The text after each | must be a concise chapter title (about 4–12 Chinese characters when possible), never a full scene-setting paragraph.',
       'Never represent a player choice only as a Markdown bullet or prose. Every event choice must appear on its own exact O-numbered option row with a Jump target.',
       'When the scene event has no choices, set hasChoices to false and branchSummary to an empty array.',
@@ -177,7 +177,7 @@ function isChoiceDeclarationLine(content: string, offset: number): boolean {
   const lineEnd = content.indexOf('\n', offset);
   const line = content.slice(lineStart, lineEnd < 0 ? content.length : lineEnd).trim();
   return /^O\d+\s*[：:]/i.test(line)
-    || /^(?:Branch|分支)\s*[\d一二三四五六七八九十百零〇两]+\s*[：:]\s*(?:Choose|选择)/i.test(line)
+    || /^(?:Branch|\u5206\u652f)\s*[\d\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24]+\s*[：:]\s*(?:Choose|\u9009\u62e9)/i.test(line)
     || /^(?:[-*+]\s+)?(?:\(?\d{1,3}[)）.]|[（(]\s*[A-Za-z]{1,3}\d{0,3}\s*[)）])\s*/.test(line);
 }
 

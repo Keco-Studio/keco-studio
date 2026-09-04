@@ -43,8 +43,8 @@ describe('story plot grouping prompt', () => {
     }]);
     expect(messages[0].content).toMatch(/summarize/i);
     expect(messages[0].content).toMatch(/option text/i);
-    expect(messages[0].content).toMatch(/场景/);
-    expect(messages[0].content).toMatch(/分支 3/);
-    expect(messages[0].content).toMatch(/人物介绍/);
+    expect(messages[0].content).toMatch(/\u573a\u666f/);
+    expect(messages[0].content).toMatch(/\u5206\u652f 3/);
+    expect(messages[0].content).toMatch(/\u4eba\u7269\u4ecb\u7ecd/);
   });
 });

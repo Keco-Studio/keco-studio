@@ -148,7 +148,7 @@ describe('GDD table resources', () => {
         name: 'ch1_entry',
         values: {
           nodeId: 'ch1_entry',
-          dialogue: '林伯：你就是新来的店主？',
+          dialogue: '\u6797\u4f2f：\u4f60\u5c31\u662f\u65b0\u6765\u7684\u5e97\u4e3b？',
           choices: ['ch1_entry_choice_a', 'ch1_entry_choice_b'],
         },
       }],
@@ -190,29 +190,29 @@ describe('GDD table resources', () => {
     const result = convertMarkdownTablesToPlans([
       '# GDD',
       '',
-      '## 6.2 生态区类型',
+      '## 6.2 \u751f\u6001\u533a\u7c7b\u578b',
       '',
-      '| 生态区 | 特征 | 资源产出 | 主要威胁 |',
+      '| \u751f\u6001\u533a | \u7279\u5f81 | \u8d44\u6e90\u4ea7\u51fa | \u4e3b\u8981\u5a01\u80c1 |',
       '| --- | --- | --- | --- |',
-      '| 翠绿平原 | 温和气候，水源充足 | 食物 3-5 | 狼群（低威胁） |',
+      '| \u7fe0\u7eff\u5e73\u539f | \u6e29\u548c\u6c14\u5019，\u6c34\u6e90\u5145\u8db3 | \u98df\u7269 3-5 | \u72fc\u7fa4（\u4f4e\u5a01\u80c1） |',
     ].join('\n'));
 
     expect(result.tablePlans).toEqual([{
-      table: '生态区类型',
+      table: '\u751f\u6001\u533a\u7c7b\u578b',
       purpose: 'Imported from a Markdown table in the generated GDD.',
-      fields: ['生态区', '特征', '资源产出', '主要威胁'],
+      fields: ['\u751f\u6001\u533a', '\u7279\u5f81', '\u8d44\u6e90\u4ea7\u51fa', '\u4e3b\u8981\u5a01\u80c1'],
       rows: [{
-        name: '翠绿平原',
+        name: '\u7fe0\u7eff\u5e73\u539f',
         values: {
-          生态区: '翠绿平原',
-          特征: '温和气候，水源充足',
-          资源产出: '食物 3-5',
-          主要威胁: '狼群（低威胁）',
+          \u751f\u6001\u533a: '\u7fe0\u7eff\u5e73\u539f',
+          \u7279\u5f81: '\u6e29\u548c\u6c14\u5019，\u6c34\u6e90\u5145\u8db3',
+          \u8d44\u6e90\u4ea7\u51fa: '\u98df\u7269 3-5',
+          \u4e3b\u8981\u5a01\u80c1: '\u72fc\u7fa4（\u4f4e\u5a01\u80c1）',
         },
       }],
     }]);
-    expect(result.markdown).toContain('<!-- KECO_TABLE_REF 生态区类型 -->');
-    expect(result.markdown).not.toContain('| 生态区 |');
+    expect(result.markdown).toContain('<!-- KECO_TABLE_REF \u751f\u6001\u533a\u7c7b\u578b -->');
+    expect(result.markdown).not.toContain('| \u751f\u6001\u533a |');
   });
 
   it('strips a redundant table title line before KECO_TABLE_REF markers', () => {

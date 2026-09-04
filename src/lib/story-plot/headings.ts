@@ -20,7 +20,7 @@ export function isStoryPlotHeading(content: string): boolean {
     || SCENE_SETTING_PREFIX.test(title);
 }
 
-/** True chapter break: ending / flashback / act. Not a 场景 or 人物 list. */
+/** True chapter break: ending / flashback / act. Not a scene-setting or character list. */
 export function isPlotSectionBreak(content: string): boolean {
   const title = stripOuterChineseBrackets(content.trim());
   if (!title) return false;
@@ -60,7 +60,7 @@ function optionBeatKeys(optionText: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Show the player's choice, not the script's A选项 / A1分支 wrapper. */
+/** Show the player's choice, not the script's option/branch wrapper label. */
 export function displayChoiceLabel(text: string): string {
   const trimmed = text.replace(/\s+/g, ' ').trim();
   if (!trimmed) return '';
@@ -83,8 +83,8 @@ function characterIntroTitle(contents: string[]): string | undefined {
 }
 function isTimeOnlyClause(value: string): boolean {
   const trimmed = value.replace(/\s+/g, '').trim();
-  return /^(?:凌晨|清晨|早晨|上午|中午|下午|傍晚|晚上|夜里|深夜|次日|翌日)?\d{0,2}(?:点(?:\d{0,2}分)?)?$/.test(trimmed)
-    && !/(店|家|亭|屋|房|街|路|城|镇|村|园|馆|院|厅|室)/.test(trimmed);
+  return /^(?:\u51cc\u6668|\u6e05\u6668|\u65e9\u6668|\u4e0a\u5348|\u4e2d\u5348|\u4e0b\u5348|\u508d\u665a|\u665a\u4e0a|\u591c\u91cc|\u6df1\u591c|\u6b21\u65e5|\u7fcc\u65e5)?\d{0,2}(?:\u70b9(?:\d{0,2}\u5206)?)?$/.test(trimmed)
+    && !/(\u5e97|\u5bb6|\u4ead|\u5c4b|\u623f|\u8857|\u8def|\u57ce|\u9547|\u6751|\u56ed|\u9986|\u9662|\u5385|\u5ba4)/.test(trimmed);
 }
 
 function scenePlaceName(contents: string[]): string | undefined {
@@ -106,7 +106,7 @@ function fallbackTitle(context: PlotTitleContext): string {
   return `\u5267\u60c5 ${context.plotIndex + 1}`;
 }
 
-/** Structural fallback only. Character lists are 人物介绍, not 开场. */
+/** Structural fallback only. Character lists use a cast-intro title, not Opening. */
 export function summarizePlotTitle(contents: string[], context: PlotTitleContext): string {
   if (context.isMerge) return '\u6c47\u5408';
   const characters = characterIntroTitle(contents);
@@ -223,7 +223,7 @@ export function readFlowRowContent(row: Record<string, string> | undefined): str
   const direct = String(row.Content ?? row.content ?? '').trim();
   if (direct) return direct;
   const match = Object.entries(row).find(([key, value]) => (
-    String(value).trim() && /content|内容|dialogue/i.test(key)
+    String(value).trim() && /content|\u5185\u5bb9|dialogue/i.test(key)
   ));
   return String(match?.[1] ?? '').trim();
 }
