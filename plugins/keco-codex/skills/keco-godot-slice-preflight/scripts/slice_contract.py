@@ -210,12 +210,82 @@ def _document_bindings(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     return _decision(True, reason)
 
 
+def _technical_failure() -> dict[str, Any]:
+    return _decision(False, "SLICE_TECHNICAL_CONTRACT_INVALID")
+
+
+def _concrete_text(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    lowered = value.strip().lower()
+    return not any(token in lowered for token in ("any", "tbd", "todo", "as needed", "handle normally"))
+
+
+def _boundary(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip() or not _concrete_text(value):
+        return False
+    text = value.strip()
+    if text.lower() == "unbounded":
+        return True
+    # Numeric ranges use one or more comparisons, for example `0 < speed <= 240`.
+    numeric = re.compile(r"[A-Za-z0-9_.\s<>=+-]+")
+    if numeric.fullmatch(text) and re.search(r"\d", text) and re.search(r"(?:<=|>=|<|>|==)", text):
+        return True
+    if "|" in text:
+        # Enum and finite-set boundaries are intentionally textual, but every member
+        # must be concrete and free of whitespace-only separators.
+        members = [item.strip() for item in text.split("|")]
+        return len(members) > 1 and all(re.fullmatch(r"[A-Za-z0-9_.-]+", item) for item in members)
+    if len(text) >= 3 and text[0] == text[-1] and text[0] in "[{":
+        members = [item.strip() for item in text[1:-1].split(",")]
+        return len(members) > 0 and all(item and item.lower() not in {"any", "none"} for item in members)
+    return False
+
+
+def _technical_contract(value: Any, task_ids: set[str], eval_ids: set[str]) -> bool:
+    if not _record(value):
+        return False
+    sections = ("inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance")
+    if set(value) != set(sections) or any(not isinstance(value.get(section), list) or not value[section] for section in sections):
+        return False
+    row_specs = {
+        "inputs": ({"id", "name", "source", "type", "required", "constraints", "default"}, lambda row: (
+            isinstance(row.get("required"), bool)
+            and _boundary(row.get("constraints"))
+            and _concrete_text(row.get("default"))
+        )),
+        "outputs": ({"id", "name", "type", "shape", "guarantees"}, lambda row: all(_concrete_text(row.get(key)) for key in ("shape", "guarantees"))),
+        "parameters": ({"id", "name", "type", "bounds", "boundaryBehavior"}, lambda row: _boundary(row.get("bounds")) and _concrete_text(row.get("boundaryBehavior"))),
+        "interfaces": ({"id", "provider", "consumer", "operation", "protocol"}, lambda row: all(_concrete_text(row.get(key)) for key in ("provider", "consumer", "operation", "protocol"))),
+        "errors": ({"id", "condition", "detection", "response", "observable"}, lambda row: all(_concrete_text(row.get(key)) for key in ("condition", "detection", "response", "observable"))),
+        "invariants": ({"id", "state", "rule"}, lambda row: all(_concrete_text(row.get(key)) for key in ("state", "rule"))),
+        "acceptance": ({"id", "behavior", "sourceMappings", "evalIds"}, lambda row: (
+            _concrete_text(row.get("behavior"))
+            and _strings(row.get("sourceMappings"))
+            and _strings(row.get("evalIds"))
+            and all(item in eval_ids for item in row.get("evalIds", []))
+        )),
+    }
+    technical_ids: set[str] = set()
+    for section in sections:
+        keys, extra = row_specs[section]
+        for row in value[section]:
+            if not _record(row) or set(row) != keys or not isinstance(row.get("id"), str) or not IDENTIFIER_RE.fullmatch(row["id"]) or row["id"] in technical_ids:
+                return False
+            if not all(_concrete_text(row.get(key)) for key in keys - {"id", "required", "constraints", "bounds", "sourceMappings", "evalIds"}):
+                return False
+            if not extra(row):
+                return False
+            technical_ids.add(row["id"])
+    return True
+
+
 def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     if not _record(value) or not _record(value.get("plan")) or not _record(value.get("evalSpec")):
         return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
     plan = value["plan"]
     eval_spec = value["evalSpec"]
-    plan_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "nonGddRationale", "inventoryHash", "requirementIds", "planRevision", "allowedFiles", "tasks"}
+    plan_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "nonGddRationale", "inventoryHash", "requirementIds", "planRevision", "allowedFiles", "tasks", "technicalContract"}
     eval_keys = {"schemaVersion", "coverageMode", "sourceProfileHash", "inventoryHash", "requirementIds", "evaluations"}
     if set(plan) - plan_keys or set(eval_spec) - eval_keys:
         return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
@@ -243,6 +313,7 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
     task_ids: set[str] = set()
     owned: set[str] = set()
+    task_keys = {"id", "files", "dependsOn", "servesEvaluations", "red", "green", "review", "sourceMappings", "consumes", "produces", "verification"}
     for task in tasks:
         if (
             not _record(task)
@@ -271,6 +342,33 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         owned.update(task["files"])
     if any(item not in owned for item in allowed):
         return _decision(False, "SLICE_PLAN_SCOPE_INVALID")
+    technical_missing = not _record(plan.get("technicalContract"))
+    eval_values = eval_spec.get("evaluations")
+    known_eval_ids = {
+        item.get("evalId") for item in eval_values if isinstance(item, dict) and isinstance(item.get("evalId"), str)
+    } if isinstance(eval_values, list) else set()
+    if not technical_missing and not _technical_contract(plan["technicalContract"], task_ids, known_eval_ids):
+        return _technical_failure()
+    technical = plan.get("technicalContract", {})
+    technical_by_kind = {section: {row["id"] for row in technical.get(section, [])} for section in ("inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance")}
+    valid_consumes = technical_by_kind["inputs"] | technical_by_kind["parameters"] | technical_by_kind["interfaces"] | technical_by_kind["invariants"]
+    valid_produces = technical_by_kind["outputs"] | technical_by_kind["interfaces"] | technical_by_kind["errors"] | technical_by_kind["invariants"] | technical_by_kind["acceptance"]
+    consumed: set[str] = set()
+    produced: set[str] = set()
+    for task in tasks:
+        if technical_missing:
+            continue
+        if set(task) != task_keys or not _strings(task.get("consumes"), allow_empty=True) or any(item not in valid_consumes for item in task["consumes"]):
+            return _technical_failure()
+        if not _strings(task.get("produces"), allow_empty=True) or any(item not in valid_produces for item in task["produces"]):
+            return _technical_failure()
+        verification = task.get("verification")
+        if not _record(verification) or set(verification) != {"assertions", "observationPaths"} or not _strings(verification.get("assertions")) or not _strings(verification.get("observationPaths")):
+            return _technical_failure()
+        consumed.update(task["consumes"])
+        produced.update(task["produces"])
+    if not valid_consumes <= consumed or not valid_produces <= produced:
+        return _technical_failure()
     evaluations = eval_spec.get("evaluations")
     if (
         eval_spec.get("schemaVersion") != 2
@@ -319,6 +417,8 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             task = next(item for item in tasks if item["id"] == task_id)
             if eval_id not in task["servesEvaluations"]:
                 return _decision(False, "SLICE_EVAL_BINDING_INVALID")
+    if technical_missing:
+        return _technical_failure()
     return _decision(True, "SLICE_EVAL_BINDING_INVALID")
 
 

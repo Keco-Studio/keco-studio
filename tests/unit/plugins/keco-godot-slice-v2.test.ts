@@ -493,10 +493,22 @@ describe('Keco Godot Slice V2 skill contract', () => {
           nonGddRationale: 'The selected source directly authorizes this Slice.',
           planRevision: hash('d'),
           allowedFiles: ['game/main.gd'],
+          technicalContract: {
+            inputs: [{ id: 'input-command', name: 'command', source: 'selected source', type: 'enum', required: true, constraints: 'move_up|move_down', default: 'none' }],
+            outputs: [{ id: 'output-position', name: 'position', type: 'Vector2', shape: '{x:number,y:number}', guarantees: 'bounded by arena' }],
+            parameters: [{ id: 'parameter-speed', name: 'speed', type: 'number', bounds: '0 < speed <= 240', boundaryBehavior: 'reject invalid values' }],
+            interfaces: [{ id: 'interface-movement', provider: 'PlayerController', consumer: 'ArenaState', operation: 'move(command): MoveResult', protocol: 'synchronous and deterministic' }],
+            errors: [{ id: 'error-invalid-command', condition: 'command is outside enum', detection: 'input validation', response: 'ignore and emit diagnostic', observable: 'position unchanged and error logged' }],
+            invariants: [{ id: 'invariant-position', state: 'movement transition', rule: 'position remains within arena bounds' }],
+            acceptance: [{ id: 'acceptance-move', behavior: 'valid command moves player', sourceMappings: ['source-1'], evalIds: ['eval-1'] }],
+          },
           tasks: [{
             id: 'task-1', files: ['game/main.gd'], dependsOn: [], servesEvaluations: ['eval-1'],
             red: { command: 'test red', expected: 'fails' }, green: { command: 'test green', expected: 'passes' },
             review: { minimumLevel: 'self' }, sourceMappings: ['source-1'],
+            consumes: ['input-command', 'parameter-speed', 'interface-movement', 'invariant-position'],
+            produces: ['output-position', 'interface-movement', 'error-invalid-command', 'invariant-position', 'acceptance-move'],
+            verification: { assertions: ['invalid command leaves position unchanged'], observationPaths: ['/player/position'] },
           }],
         };
         const evalSpec = {
