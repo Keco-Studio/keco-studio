@@ -9,14 +9,14 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
 describe('document state reset broadcaster', () => {
   it('sends an Agent reset on the private document channel and cleans it up', async () => {
-    const send = jest.fn(async () => ({ status: 'ok' }));
+    const httpSend = jest.fn(async () => ({ success: true }));
     const unsubscribe = jest.fn(async () => 'ok');
     const channel = {
       subscribe(callback: (status: string) => void) {
         callback('SUBSCRIBED');
         return channel;
       },
-      send,
+      httpSend,
       unsubscribe,
     } as unknown as RealtimeChannel;
     const removeChannel = jest.fn(async () => 'ok');
@@ -44,30 +44,26 @@ describe('document state reset broadcaster', () => {
       config: { private: true, broadcast: { self: false } },
     });
     expect(setAuth).toHaveBeenCalledWith('caller-token');
-    expect(send).toHaveBeenCalledWith({
-      type: 'broadcast',
-      event: 'document-state-reset',
-      payload: {
-        v: 1,
-        documentId: DOCUMENT_ID,
-        epoch: 3,
-        revision: 5,
-        reason: 'agent',
-        updatedAt: '2026-07-15T00:01:00.000Z',
-      },
+    expect(httpSend).toHaveBeenCalledWith('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 5,
+      reason: 'agent',
+      updatedAt: '2026-07-15T00:01:00.000Z',
     });
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(removeChannel).toHaveBeenCalledWith(channel);
   });
 
   it('sends a normalization reset with the committed token', async () => {
-    const send = jest.fn(async () => ({ status: 'ok' }));
+    const httpSend = jest.fn(async () => ({ success: true }));
     const channel = {
       subscribe(callback: (status: string) => void) {
         callback('SUBSCRIBED');
         return channel;
       },
-      send,
+      httpSend,
       unsubscribe: jest.fn(async () => 'ok'),
     } as unknown as RealtimeChannel;
     const client = {
@@ -94,17 +90,13 @@ describe('document state reset broadcaster', () => {
 
     await broadcastDocumentStateReset(client, state, 'normalization');
 
-    expect(send).toHaveBeenCalledWith({
-      type: 'broadcast',
-      event: 'document-state-reset',
-      payload: {
-        v: 1,
-        documentId: DOCUMENT_ID,
-        epoch: 4,
-        revision: 8,
-        reason: 'normalization',
-        updatedAt: '2026-07-17T01:00:00.000Z',
-      },
+    expect(httpSend).toHaveBeenCalledWith('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 4,
+      revision: 8,
+      reason: 'normalization',
+      updatedAt: '2026-07-17T01:00:00.000Z',
     });
   });
 });

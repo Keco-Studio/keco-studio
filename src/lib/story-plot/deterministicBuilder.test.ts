@@ -31,7 +31,7 @@ describe('deterministic plot grouping', () => {
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes[0]?.title).toBe('EndingA：Hero“Silence”（Clock tower）');
+    expect(result.nodes[0]?.title).toBe('开场');
   });
 
 
@@ -63,7 +63,7 @@ describe('deterministic plot grouping', () => {
     });
   });
 
-  it('names a branch by its outcome instead of repeating the choice text', () => {
+  it('does not name a branch after the choice text', () => {
     const document: StoryDocument = {
       version: 1,
       entryLabel: 'Decision',
@@ -78,10 +78,62 @@ describe('deterministic plot grouping', () => {
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
-      .toBe('The alliance fractures after the confession.');
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('剧情 2');
     expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
       .not.toBe('Tell the truth');
+  });
+
+  it('names a scene-setting branch with a short location title, not the full prose', () => {
+    const document: StoryDocument = {
+      version: 1,
+      entryLabel: 'Decision',
+      nodes: [
+        node({
+          label: 'Decision', type: 'dialogue', content: 'Where will you go?',
+          options: [
+            { text: 'Visit Aunt Chen', target: 'Aunt', commands: [], sourceRefs: [ref] },
+          ],
+        }),
+        node({
+          label: 'Aunt',
+          type: 'scene',
+          content: '场景：次日，陈阿姨家中。阳光透过窗户洒在老式的红木家具上，墙上挂着泛黄的全家福。',
+        }),
+      ],
+    };
+
+    const result = buildDeterministicStoryPlotPlan(document);
+
+    expect(result.nodes.find((plot) => plot.id === 'Aunt')?.title).toBe('陈阿姨家中');
+    expect(result.nodes.find((plot) => plot.id === 'Aunt')?.title)
+      .not.toMatch(/^场景：/);
+  });
+
+  it('keeps the opening scene, character list, and first decision in one plot node', () => {
+    const document: StoryDocument = {
+      version: 1,
+      entryLabel: 'Start',
+      nodes: [
+        node({ label: 'Start', type: 'scene', content: '场景：深夜便利店。', next: 'Cast' }),
+        node({ label: 'Cast', type: 'scene', content: '人物：路人（林野）、学生（小雨）', next: 'Store' }),
+        node({
+          label: 'Store', type: 'dialogue', content: '灯还亮着。',
+          options: [
+            { text: '主动搭话', target: 'Talk', commands: [], sourceRefs: [ref] },
+            { text: '沉默不打扰', target: 'Watch', commands: [], sourceRefs: [ref] },
+          ],
+        }),
+        node({ label: 'Talk', type: 'dialogue', content: '也在买东西吗？' }),
+        node({ label: 'Watch', type: 'narration', content: '你站在货架后看着。' }),
+      ],
+    };
+
+    const result = buildDeterministicStoryPlotPlan(document);
+
+    expect(result.nodes.find((plot) => plot.id === 'Start')?.storyNodeIds)
+      .toEqual(['Start', 'Cast', 'Store']);
+    expect(result.nodes.map((plot) => plot.id)).toEqual(['Start', 'Talk', 'Watch']);
+    expect(result.nodes[0]?.title).toBe('深夜便利店');
   });
 
   it('uses a stable branch fallback when the target content only repeats the option', () => {
@@ -99,7 +151,9 @@ describe('deterministic plot grouping', () => {
 
     const result = buildDeterministicStoryPlotPlan(document);
 
-    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('Branch 2');
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title).toBe('剧情 2');
+    expect(result.nodes.find((plot) => plot.id === 'Truth')?.title)
+      .not.toBe('Tell the truth');
   });
 
 

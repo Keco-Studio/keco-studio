@@ -168,6 +168,91 @@ describe('planDialogueScene', () => {
     expect(complete).toHaveBeenCalledTimes(2);
   });
 
+  it('removes duplicate importable choice rows instead of claiming no choices are missing', async () => {
+    const duplicated = {
+      ...validPlan,
+      content: validPlan.content.replace(
+        'O2: Leave (Jump O2)',
+        'O2: Leave (Jump O2)\nO1: Show the letter (Jump O1)',
+      ),
+    };
+    const complete = jest.fn(async () => JSON.stringify(duplicated));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\\nScene.' }, { complete }))
+      .resolves.toEqual(validPlan);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat bracketed branch dialogue as extra player choices', async () => {
+    const withBranchDialogue = {
+      ...validPlan,
+      content: validPlan.content.replace(
+        'Guide: You may enter.',
+        'Guide: You may enter.\n【分支选择：陈阿姨，我确实没经验。您和爷爷做了这么多年邻居，能教教我吗】\n【分支选择：我会用业绩证明自己。一周内让超市营业额提升20%】\n【分支选择：这是我的超市，我自己会想办法.】',
+      ),
+    };
+    const complete = jest.fn(async () => JSON.stringify(withBranchDialogue));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\\nScene.' }, { complete }))
+      .resolves.toEqual(withBranchDialogue);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat numbered dialogue alternatives inside a branch as top-level choices', async () => {
+    const withNestedAlternatives = {
+      ...validPlan,
+      content: validPlan.content.replace(
+        'Guide: You may enter.',
+        [
+          'Guide: You may enter.',
+          '选项：',
+          '1. 阿姨好！我们刚开张，货还没上齐，但您需要什么我尽量找',
+          '2. 有卖的，您看看需要什么',
+          '3. 刚开张，很多东西还没到，您改天再来吧',
+          'Guide: The customer considers the answer.',
+        ].join('\n'),
+      ),
+    };
+    const complete = jest.fn(async () => JSON.stringify(withNestedAlternatives));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\\nScene.' }, { complete }))
+      .resolves.toEqual(withNestedAlternatives);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('canonicalizes choice rows when the model adds punctuation to the labels', async () => {
+    const punctuationEvent: DialogueSceneEvent = {
+      ...event,
+      chapterKey: 'princess-secret',
+      title: 'Princess Secret',
+      choices: ['Ask why he hid it', 'Ask about the chamber of commerce', 'Promise to protect him'],
+    };
+    const punctuated = {
+      ...validPlan,
+      chapterKey: 'princess-secret',
+      title: 'Princess Secret',
+      content: [
+        'Hero: Tell me what happened.',
+        'O1: Ask why he hid it? (Jump O1)',
+        'O2: Ask about the chamber of commerce. (Jump O2)',
+        'O3: Promise to protect him! (Jump O3)',
+        'O1 branch [O1 | The hidden truth]',
+        'O2 branch [O2 | The chamber records]',
+        'O3 branch [O3 | A promise is made]',
+      ].join('\n'),
+      branchSummary: punctuationEvent.choices,
+    };
+    const complete = jest.fn(async () => JSON.stringify(punctuated));
+
+    const plan = await planDialogueScene({ event: punctuationEvent, gddContext: '# GDD\nScene.' }, { complete });
+    expect(plan).toEqual(expect.objectContaining({
+      content: expect.stringContaining('O1: Ask why he hid it (Jump O1)'),
+    }));
+    expect(plan.content).toContain('O2: Ask about the chamber of commerce (Jump O2)');
+    expect(plan.content).toContain('O3: Promise to protect him (Jump O3)');
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes markdown choice rows for multilingual scene choices before validation', async () => {
     const multilingualEvent: DialogueSceneEvent = {
       ...event,

@@ -1,6 +1,7 @@
 import {
   applyInlineTableResourceReferences,
   coerceTableRowInput,
+  convertMarkdownTablesToPlans,
   extractTablePlanMarker,
   materializeTableResources,
   normalizeTablePlans,
@@ -136,6 +137,82 @@ describe('GDD table resources', () => {
       const jsx = paragraph?.children?.filter((child) => child.type === 'mdxJsxTextElement') ?? [];
       expect(jsx).toHaveLength(2);
     }).not.toThrow();
+  });
+
+  it('does not inline internal dialogue-node rows into the GDD body', () => {
+    const plan = normalizeTablePlans([{
+      table: 'DialogueNodes',
+      purpose: 'Derived dialogue graph nodes.',
+      fields: ['nodeId', 'dialogue', 'choices'],
+      rows: [{
+        name: 'ch1_entry',
+        values: {
+          nodeId: 'ch1_entry',
+          dialogue: '林伯：你就是新来的店主？',
+          choices: ['ch1_entry_choice_a', 'ch1_entry_choice_b'],
+        },
+      }],
+    }])[0]!;
+    const [resource] = materializeTableResources('system-1', [plan]);
+    const markdown = applyInlineTableResourceReferences(
+      '# GDD\n\n<!-- KECO_TABLE_REF DialogueNodes -->',
+      [resource!],
+    );
+
+    expect(markdown).not.toContain('<ResourceReference');
+    expect(markdown).not.toContain('ch1_entry');
+    expect(markdown).not.toContain('KECO_TABLE_REF');
+  });
+
+  it('keeps ordinary table references while suppressing internal dialogue tables', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([
+      {
+        table: 'Dialogue Events',
+        purpose: 'Compiler dialogue graph.',
+        fields: ['nodeId', 'dialogue'],
+        rows: [{ name: 'entry', values: { nodeId: 'entry', dialogue: 'Hello.' } }],
+      },
+      {
+        table: 'Products',
+        purpose: 'Catalog.',
+        fields: ['name'],
+        rows: [{ name: 'Milk', values: { name: 'Milk' } }],
+      },
+    ]));
+    const markdown = applyInlineTableResourceReferences('# GDD\nBody.', resources);
+
+    expect(markdown).toContain('fallbackLabel="Milk"');
+    expect(markdown).not.toContain('fallbackLabel="entry"');
+    expect(markdown).not.toContain('Dialogue Events');
+  });
+
+  it('converts Markdown tables into Keco plans and inline references', () => {
+    const result = convertMarkdownTablesToPlans([
+      '# GDD',
+      '',
+      '## 6.2 生态区类型',
+      '',
+      '| 生态区 | 特征 | 资源产出 | 主要威胁 |',
+      '| --- | --- | --- | --- |',
+      '| 翠绿平原 | 温和气候，水源充足 | 食物 3-5 | 狼群（低威胁） |',
+    ].join('\n'));
+
+    expect(result.tablePlans).toEqual([{
+      table: '生态区类型',
+      purpose: 'Imported from a Markdown table in the generated GDD.',
+      fields: ['生态区', '特征', '资源产出', '主要威胁'],
+      rows: [{
+        name: '翠绿平原',
+        values: {
+          生态区: '翠绿平原',
+          特征: '温和气候，水源充足',
+          资源产出: '食物 3-5',
+          主要威胁: '狼群（低威胁）',
+        },
+      }],
+    }]);
+    expect(result.markdown).toContain('<!-- KECO_TABLE_REF 生态区类型 -->');
+    expect(result.markdown).not.toContain('| 生态区 |');
   });
 
   it('strips a redundant table title line before KECO_TABLE_REF markers', () => {

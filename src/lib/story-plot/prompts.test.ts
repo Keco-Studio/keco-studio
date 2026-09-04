@@ -41,7 +41,10 @@ describe('story plot grouping prompt', () => {
         { text: 'Right route', targetNodeId: 'Right' },
       ],
     }]);
-    expect(messages[0].content).toMatch(/outcome/i);
-    expect(messages[0].content).toMatch(/must not.*option text/i);
+    expect(messages[0].content).toMatch(/summarize/i);
+    expect(messages[0].content).toMatch(/option text/i);
+    expect(messages[0].content).toMatch(/场景/);
+    expect(messages[0].content).toMatch(/分支 3/);
+    expect(messages[0].content).toMatch(/人物介绍/);
   });
 });

@@ -34,6 +34,7 @@ import {
   STORY_PLOT_GROUPING_TOOL,
   buildStoryPlotGroupingMessages,
 } from '@/lib/story-plot/prompts';
+import { retitleStoryPlotPlanWithAi } from '@/lib/story-plot/titleSummarizer';
 import type { StoryPlotPlan } from '@/lib/story-plot/schema';
 import {
   applyAiBranchPatch,
@@ -909,10 +910,16 @@ async function resolvePlotPlan(
       budget,
       0
     );
-    return buildStoryPlotPlanFromGrouping(document, parseModelJson(raw));
+    return await retitleStoryPlotPlanWithAi(document, buildStoryPlotPlanFromGrouping(document, parseModelJson(raw)), (
+      messages,
+      tool,
+    ) => completeStoryPlanLlm(messages, tool, 'Plot Planner', 1, options, budget, 0));
   } catch (error) {
     if (options.signal?.aborted) throw error;
-    return fallback();
+    return await retitleStoryPlotPlanWithAi(document, fallback(), (
+      messages,
+      tool,
+    ) => completeStoryPlanLlm(messages, tool, 'Plot Planner', 1, options, budget, 0));
   }
 }
 

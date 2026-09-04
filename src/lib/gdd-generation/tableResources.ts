@@ -215,6 +215,17 @@ function normalizeTableRefName(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }
 
+/**
+ * Dialogue graph tables are persistence/compiler inputs, not user-facing GDD
+ * content. Their rows contain node ids, full dialogue, and choice arrays, so
+ * projecting them as inline table-row references produces noisy gray cards.
+ */
+function isInternalDialogueTable(resource: GeneratedTableResource): boolean {
+  const key = normalizeTableRefName(resource.table).replace(/[\s_-]+/g, '');
+  return /^(?:dialogue|conversation)(?:node|event)s?(?:table)?$/.test(key)
+    || /^对话(?:节点|事件)(?:表)?$/.test(key);
+}
+
 export function listTableRefNames(markdown: string): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
@@ -226,6 +237,162 @@ export function listTableRefNames(markdown: string): string[] {
     names.push(name.replace(/\s+/g, ' ').trim());
   }
   return names;
+}
+
+const MARKDOWN_TABLE_SEPARATOR = /^:?-{3,}:?$/;
+
+function splitMarkdownTableRow(line: string): string[] {
+  let text = line.trim();
+  if (text.startsWith('|')) text = text.slice(1);
+  if (text.endsWith('|') && !text.endsWith('\\|')) text = text.slice(0, -1);
+  const cells: string[] = [];
+  let current = '';
+  let escaped = false;
+  for (const character of text) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+    } else if (character === '\\') {
+      escaped = true;
+    } else if (character === '|') {
+      cells.push(current.trim());
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+  if (escaped) current += '\\';
+  cells.push(current.trim());
+  return cells;
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.includes('|') && splitMarkdownTableRow(trimmed).length > 1;
+}
+
+function parseMarkdownTableCell(value: string): unknown {
+  const trimmed = value.trim();
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (/^(?:true|false)$/i.test(trimmed)) return trimmed.toLocaleLowerCase() === 'true';
+  return trimmed;
+}
+
+function markdownTableHeading(lines: string[], tableStart: number): string | undefined {
+  for (let index = tableStart - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line) continue;
+    const heading = /^(?:#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (!heading) return undefined;
+    return heading[1]!
+      .replace(/^\d+(?:\.\d+)*\s*/, '')
+      .trim();
+  }
+  return undefined;
+}
+
+function uniqueMarkdownTableName(
+  candidate: string,
+  usedNames: Set<string>,
+  fallbackIndex: number,
+): string {
+  const base = candidate.trim() || `Table ${fallbackIndex}`;
+  let name = base;
+  let suffix = 2;
+  while (usedNames.has(normalizeTableRefName(name))) {
+    name = `${base} ${suffix}`;
+    suffix += 1;
+  }
+  usedNames.add(normalizeTableRefName(name));
+  return name;
+}
+
+function normalizeMarkdownTableField(value: string): string {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+}
+
+function matchingTableGuidance(
+  fields: string[],
+  guidance: ReadonlyArray<{ table?: string; purpose?: string; fields?: string[] }>,
+): { table: string; purpose?: string; fields?: string[] } | undefined {
+  return guidance.find((candidate): candidate is { table: string; purpose?: string; fields: string[] } => (
+    typeof candidate.table === 'string'
+    && Array.isArray(candidate.fields)
+    && candidate.fields.length === fields.length
+    && candidate.fields.every((field, index) => (
+      normalizeMarkdownTableField(field) === normalizeMarkdownTableField(fields[index] ?? '')
+    ))
+  ));
+}
+
+/** Convert accidental Markdown data tables into first-class Keco table plans. */
+export function convertMarkdownTablesToPlans(
+  markdown: string,
+  existingPlans: GeneratedTablePlan[] = [],
+  guidance: ReadonlyArray<{ table?: string; purpose?: string; fields?: string[] }> = [],
+): { markdown: string; tablePlans: GeneratedTablePlan[] } {
+  const lines = markdown.split(/\r?\n/);
+  const usedNames = new Set(existingPlans.map((plan) => normalizeTableRefName(plan.table)));
+  const tablePlans: GeneratedTablePlan[] = [];
+  const output: string[] = [];
+  let tableIndex = 0;
+
+  for (let index = 0; index < lines.length;) {
+    const header = lines[index];
+    const separator = lines[index + 1];
+    if (
+      typeof header === 'string'
+      && typeof separator === 'string'
+      && isMarkdownTableRow(header)
+      && isMarkdownTableRow(separator)
+    ) {
+      const fields = splitMarkdownTableRow(header);
+      const separatorCells = splitMarkdownTableRow(separator);
+      if (
+        fields.length > 0
+        && fields.length === separatorCells.length
+        && separatorCells.every((cell) => MARKDOWN_TABLE_SEPARATOR.test(cell.replace(/\s+/g, '')))
+        && fields.every(Boolean)
+      ) {
+        const rows: GeneratedTableRow[] = [];
+        let end = index + 2;
+        while (end < lines.length && isMarkdownTableRow(lines[end]!)) {
+          const cells = splitMarkdownTableRow(lines[end]!);
+          if (cells.length !== fields.length) break;
+          const rowValues = Object.fromEntries(fields.map((field, fieldIndex) => [
+            field,
+            parseMarkdownTableCell(cells[fieldIndex] ?? ''),
+          ]));
+          const nameFieldIndex = fields.findIndex((field) => /(?:^|[_\s-])(name|title|label)(?:$|[_\s-])/i.test(field));
+          const rowName = cells[nameFieldIndex >= 0 ? nameFieldIndex : 0] || `Row ${rows.length + 1}`;
+          rows.push({ name: rowName, values: rowValues });
+          end += 1;
+        }
+        if (rows.length > 0) {
+          tableIndex += 1;
+          const guided = matchingTableGuidance(fields, guidance);
+          const table = uniqueMarkdownTableName(
+            guided?.table ?? markdownTableHeading(lines, index) ?? '',
+            usedNames,
+            tableIndex,
+          );
+          tablePlans.push({
+            table,
+            purpose: guided?.purpose ?? 'Imported from a Markdown table in the generated GDD.',
+            fields: guided?.fields ? [...guided.fields] : fields,
+            rows,
+          });
+          output.push(`<!-- KECO_TABLE_REF ${table} -->`);
+          index = end;
+          continue;
+        }
+      }
+    }
+    output.push(lines[index]!);
+    index += 1;
+  }
+
+  return { markdown: output.join('\n'), tablePlans };
 }
 
 /** Replace body KECO_TABLE_REF markers with toolbar-style ResourceReference chips. */
@@ -290,8 +457,9 @@ function replaceInlineTableResourceReferences(
   }
 
   const prepared = stripRedundantTableTitlesBeforeMarkers(markdown, resources);
+  const visibleResources = resources.filter((resource) => !isInternalDialogueTable(resource));
   const byName = new Map(
-    resources.map((resource) => [normalizeTableRefName(resource.table), resource] as const),
+    visibleResources.map((resource) => [normalizeTableRefName(resource.table), resource] as const),
   );
   const seen = new Set<string>();
   let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
@@ -304,7 +472,7 @@ function replaceInlineTableResourceReferences(
     return renderTableResourceReferences([resource]);
   });
 
-  const missing = resources.filter((resource) => !seen.has(normalizeTableRefName(resource.table)));
+  const missing = visibleResources.filter((resource) => !seen.has(normalizeTableRefName(resource.table)));
   if (missing.length > 0) {
     const appendix = [
       '',

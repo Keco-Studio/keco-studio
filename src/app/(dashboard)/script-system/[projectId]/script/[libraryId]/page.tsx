@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -16,6 +16,16 @@ import { ScriptSplitView } from '@/components/script-system/ScriptSplitView';
 import { showErrorToast } from '@/lib/utils/toast';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { buildPersistedPlotGraph } from '@/lib/script-system/buildPersistedPlotGraph';
+import {
+  displayScriptFlowGraph,
+  type FlowGraph,
+} from '@/lib/script-system/buildScriptFlowGraph';
+import {
+  applyFlowGraphTitles,
+  chaptersFromScriptView,
+  flowGraphNeedsAiTitles,
+} from '@/lib/script-system/plotTitleDisplay';
+import { summarizeScriptPlotTitlesClient } from '@/lib/script-system/scriptPlotTitleClient';
 
 function assetRowsToFlowRecords(
   rows: AssetRow[],
@@ -179,14 +189,80 @@ export default function ScriptLibraryPage() {
     () => buildPersistedPlotGraph(library?.plot_plan, assetRows.length),
     [assetRows.length, library?.plot_plan]
   );
+  const baseGraph = useMemo(
+    () => displayScriptFlowGraph(persistedGraph, flowRows),
+    [flowRows, persistedGraph]
+  );
+  const needsAiTitles = useMemo(
+    () => flowGraphNeedsAiTitles(baseGraph, assetRows, flowRows, scriptColumns.contentKey),
+    [assetRows, baseGraph, flowRows, scriptColumns.contentKey]
+  );
+  const titleWaitKey = `${libraryId}:${baseGraph.nodes.map((node) => `${node.id}:${node.rowIndexes.join('.')}`).join('|')}`;
+  const [aiReady, setAiReady] = useState<{ key: string; graph: FlowGraph } | null>(null);
+  const dataReady =
+    canRender &&
+    !schemaLoading &&
+    !assetsLoading &&
+    !libraryLoading &&
+    assetsSchemaSettled;
 
-  if (
-    !canRender ||
-    schemaLoading ||
-    assetsLoading ||
-    libraryLoading ||
-    !assetsSchemaSettled
-  ) {
+  useEffect(() => {
+    if (!dataReady || !needsAiTitles) return;
+    let cancelled = false;
+    let attempts = 0;
+    let graph = baseGraph;
+    const run = () => {
+      attempts += 1;
+      const chapters = chaptersFromScriptView(
+        graph,
+        assetRows,
+        flowRows,
+        scriptColumns.contentKey,
+      );
+      summarizeScriptPlotTitlesClient({ projectId, libraryId, chapters })
+        .then((result) => {
+          if (cancelled) return;
+          graph = applyFlowGraphTitles(
+            graph,
+            result.titles,
+            assetRows,
+            flowRows,
+            scriptColumns.contentKey,
+          );
+          if (!flowGraphNeedsAiTitles(graph, assetRows, flowRows, scriptColumns.contentKey)) {
+            setAiReady({ key: titleWaitKey, graph });
+            return;
+          }
+          if (attempts < 3) run();
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (attempts < 3) run();
+        });
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    assetRows,
+    baseGraph,
+    dataReady,
+    flowRows,
+    libraryId,
+    needsAiTitles,
+    projectId,
+    scriptColumns.contentKey,
+    titleWaitKey,
+  ]);
+
+  const openingGraph = !needsAiTitles
+    ? baseGraph
+    : aiReady?.key === titleWaitKey
+      ? aiReady.graph
+      : null;
+
+  if (!dataReady || !openingGraph) {
     return null;
   }
 
@@ -196,7 +272,7 @@ export default function ScriptLibraryPage() {
       rows={assetRows}
       scriptColumns={scriptColumns}
       flowRows={flowRows}
-      persistedGraph={persistedGraph}
+      persistedGraph={openingGraph}
       supabase={supabase}
       projectId={projectId}
       sourceDocumentId={sourceDocumentId}

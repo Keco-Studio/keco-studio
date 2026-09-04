@@ -57,6 +57,50 @@ describe('FlowChartPanel', () => {
     expect(markup).toContain('data-flow-edge-label=');
   });
 
+  it('shows the choice beat on edges, not A选项 wrappers', () => {
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={{
+          nodes: [
+            { id: 'Store', label: '凌晨无人便利店', rowIndex: 0, rowIndexes: [0] },
+            { id: 'Talk', label: '雨中询问', rowIndex: 1, rowIndexes: [1] },
+          ],
+          edges: [{
+            from: 'Store',
+            to: 'Talk',
+            optionIndex: 0,
+            optionText: 'A选项（主动搭话）',
+          }],
+        }}
+        selectedPlotNodeId="Store"
+        onSelectPlotNode={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('主动搭话');
+    expect(markup).not.toContain('A选项');
+  });
+
+  it('keeps placeholder chapter names visible until they are replaced', () => {
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={{
+          nodes: [
+            { id: 'Start', label: '人物介绍', rowIndex: 0, rowIndexes: [0] },
+            { id: 'Talk', label: '剧情 3', rowIndex: 1, rowIndexes: [1] },
+          ],
+          edges: [{ from: 'Start', to: 'Talk', optionText: '主动搭话', optionIndex: 0 }],
+        }}
+        selectedPlotNodeId="Talk"
+        onSelectPlotNode={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('人物介绍');
+    expect(markup).toContain('主动搭话');
+    expect(markup).toContain('剧情 3');
+  });
+
   it('wraps long option labels onto multiple tspans', () => {
     const graph: FlowGraph = {
       nodes: [

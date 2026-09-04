@@ -192,7 +192,7 @@ type Handler = (message: { payload: unknown }) => void | Promise<void>;
 
 class FakeChannel {
   readonly handlers = new Map<string, Handler>();
-  readonly send = jest.fn(async () => ({ status: 'ok' }));
+  readonly httpSend = jest.fn(async (_event: string, _payload?: unknown) => ({ success: true }));
   readonly unsubscribe = jest.fn(async () => 'ok');
   subscribeCallback: ((status: string, error?: Error) => void) | null = null;
 
@@ -415,29 +415,25 @@ describe('DocumentCollaborationSession', () => {
     await jest.advanceTimersByTimeAsync(100);
 
     const replacement = harness.channels[1]!;
-    const sentEvents = replacement.send.mock.calls.map(([message]) => message.event);
+    const sentEvents = replacement.httpSend.mock.calls.map(([event]) => event);
     expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
     expect(sentEvents).toEqual([
       'yjs-update',
       'yjs-sync-request',
       'yjs-awareness',
     ]);
-    expect(replacement.send).toHaveBeenCalledWith(
+    expect(replacement.httpSend).toHaveBeenCalledWith(
+      'yjs-sync-request',
       expect.objectContaining({
-        event: 'yjs-sync-request',
-        payload: expect.objectContaining({
-          requesterId: USER_ID,
-          stateVectorBase64: expect.any(String),
-        }),
+        requesterId: USER_ID,
+        stateVectorBase64: expect.any(String),
       })
     );
-    expect(replacement.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: 'yjs-awareness',
-        payload: expect.objectContaining({ updateBase64: expect.any(String) }),
-      })
+    expect(replacement.httpSend).toHaveBeenCalledWith(
+      'yjs-awareness',
+      expect.objectContaining({ updateBase64: expect.any(String) })
     );
-    expect(replacement.send.mock.invocationCallOrder.at(-1)).toBeLessThan(
+    expect(replacement.httpSend.mock.invocationCallOrder.at(-1)).toBeLessThan(
       reconnectedReady.mock.invocationCallOrder[0]!
     );
     expect(harness.session.status).toBe('ready');
@@ -452,9 +448,9 @@ describe('DocumentCollaborationSession', () => {
 
     const replacement = harness.channels[1]!;
     expect(
-      replacement.send.mock.calls.some(
-        ([message]) =>
-          message.event === 'yjs-sync-request' || message.event === 'yjs-awareness'
+      replacement.httpSend.mock.calls.some(
+        ([event]) =>
+          event === 'yjs-sync-request' || event === 'yjs-awareness'
       )
     ).toBe(false);
     expect(harness.session.status).toBe('ready');
@@ -482,7 +478,7 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.status).toBe('legacy-view');
     expect(harness.session.doc).toBe(doc);
     expect(harness.session.awareness).toBe(awareness);
-    expect(harness.channels[1]!.send).not.toHaveBeenCalled();
+    expect(harness.channels[1]!.httpSend).not.toHaveBeenCalled();
 
     harness.channels[1]!.emitStatus('CHANNEL_ERROR', new Error('socket closed again'));
     await jest.advanceTimersByTimeAsync(99);
@@ -491,7 +487,7 @@ describe('DocumentCollaborationSession', () => {
 
     expect(harness.channelFactory).toHaveBeenCalledTimes(3);
     expect(harness.session.status).toBe('legacy-view');
-    expect(harness.channels[2]!.send).not.toHaveBeenCalled();
+    expect(harness.channels[2]!.httpSend).not.toHaveBeenCalled();
   });
 
   it('keeps a higher-epoch reconnect catch-up syncing until the new binding attaches', async () => {
@@ -532,9 +528,9 @@ describe('DocumentCollaborationSession', () => {
       const harness = makeHarness({
         configureChannel: (channel, index) => {
           if (index !== 1) return;
-          channel.send.mockImplementation(async (message) => {
-            if (message.event === failedEvent) throw new Error(`${failedEvent} offline`);
-            return { status: 'ok' };
+          channel.httpSend.mockImplementation(async (event) => {
+            if (event === failedEvent) throw new Error(`${failedEvent} offline`);
+            return { success: true };
           });
         },
       });
@@ -550,16 +546,14 @@ describe('DocumentCollaborationSession', () => {
       harness.session.attachBinding();
       await jest.advanceTimersByTimeAsync(0);
 
-      expect(harness.channels[1]!.send).toHaveBeenCalledWith(
-        expect.objectContaining({ event: failedEvent })
-      );
+      expect(harness.channels[1]!.httpSend).toHaveBeenCalledWith(failedEvent, expect.any(Object));
       expect(harness.session.status).toBe('degraded');
       expect(jest.getTimerCount()).toBe(timerCountBeforeBinding + 1);
     }
   );
 
   it('starts a new hydration when a higher epoch replaces a doc with sync pending', async () => {
-    let resolveOldSync!: (value: { status: string }) => void;
+    let resolveOldSync!: (value: { success: boolean }) => void;
     let syncRequests = 0;
     const replacement = {
       ...collaborativeState(),
@@ -570,14 +564,14 @@ describe('DocumentCollaborationSession', () => {
     const harness = makeHarness({
       configureChannel: (channel, index) => {
         if (index !== 0) return;
-        channel.send.mockImplementation((message) => {
-          if (message.event === 'yjs-sync-request') {
+        channel.httpSend.mockImplementation((event) => {
+          if (event === 'yjs-sync-request') {
             syncRequests += 1;
             if (syncRequests === 1) {
               return new Promise((resolve) => { resolveOldSync = resolve; });
             }
           }
-          return Promise.resolve({ status: 'ok' });
+          return Promise.resolve({ success: true });
         });
       },
     });
@@ -609,18 +603,16 @@ describe('DocumentCollaborationSession', () => {
     expect(syncRequests).toBe(2);
     expect(harness.session.status).toBe('ready');
     await expect(connecting).resolves.toBeUndefined();
-    const awarenessCallsAfterNewHydration = harness.channel.send.mock.calls.filter(
-      ([message]) => message.event === 'yjs-awareness'
+    const awarenessCallsAfterNewHydration = harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-awareness'
     ).length;
 
-    resolveOldSync({ status: 'ok' });
+    resolveOldSync({ success: true });
     await jest.advanceTimersByTimeAsync(0);
 
     expect(harness.session.status).toBe('ready');
     expect(syncRequests).toBe(2);
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-awareness'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-awareness'
       )
     ).toHaveLength(awarenessCallsAfterNewHydration);
     expect(syncListener.mock.calls.filter(([synced]) => synced)).toHaveLength(1);
@@ -660,11 +652,11 @@ describe('DocumentCollaborationSession', () => {
     const harness = makeHarness({
       configureChannel: (channel, index) => {
         if (index === 0) return;
-        channel.send.mockImplementation(async (message) => {
-          if (index <= 6 && message.event === 'yjs-sync-request') {
+        channel.httpSend.mockImplementation(async (event) => {
+          if (index <= 6 && event === 'yjs-sync-request') {
             throw new Error('replacement sync offline');
           }
-          return { status: 'ok' };
+          return { success: true };
         });
       },
     });
@@ -997,19 +989,19 @@ describe('DocumentCollaborationSession', () => {
     let finishSend!: () => void;
     const legacy = { ...collaborativeState(), mode: 'legacy' as const, yjsStateBase64: null };
     const harness = makeHarness({ state: legacy });
-    harness.channel.send.mockImplementationOnce(
+    harness.channel.httpSend.mockImplementationOnce(
       () => new Promise<{ status: string }>((resolve) => {
-        finishSend = () => resolve({ status: 'ok' });
+        finishSend = () => resolve({ success: true });
       })
     );
 
     const connecting = harness.session.connect();
     const connectionResult = connecting.catch((error: unknown) => error);
-    for (let attempt = 0; attempt < 10 && harness.channel.send.mock.calls.length === 0; attempt += 1) {
+    for (let attempt = 0; attempt < 10 && harness.channel.httpSend.mock.calls.length === 0; attempt += 1) {
       await Promise.resolve();
     }
     expect(harness.gateway.initialize).toHaveBeenCalled();
-    expect(harness.channel.send).toHaveBeenCalled();
+    expect(harness.channel.httpSend).toHaveBeenCalled();
     await harness.session.destroy();
     finishSend();
 
@@ -1033,19 +1025,19 @@ describe('DocumentCollaborationSession', () => {
   });
 
   it('waits for one initial sync and awareness flight before becoming ready', async () => {
-    let resolveSync!: (value: { status: string }) => void;
-    let resolveAwareness!: (value: { status: string }) => void;
+    let resolveSync!: (value: { success: boolean }) => void;
+    let resolveAwareness!: (value: { success: boolean }) => void;
     const harness = makeHarness({
       configureChannel: (channel, index) => {
         if (index !== 0) return;
-        channel.send.mockImplementation((message) => {
-          if (message.event === 'yjs-sync-request') {
+        channel.httpSend.mockImplementation((event) => {
+          if (event === 'yjs-sync-request') {
             return new Promise((resolve) => { resolveSync = resolve; });
           }
-          if (message.event === 'yjs-awareness') {
+          if (event === 'yjs-awareness') {
             return new Promise((resolve) => { resolveAwareness = resolve; });
           }
-          return Promise.resolve({ status: 'ok' });
+          return Promise.resolve({ success: true });
         });
       },
     });
@@ -1063,8 +1055,8 @@ describe('DocumentCollaborationSession', () => {
     for (
       let attempt = 0;
       attempt < 10 &&
-        !harness.channel.send.mock.calls.some(([message]) =>
-          message.event === 'yjs-sync-request'
+        !harness.channel.httpSend.mock.calls.some(([event]) =>
+          event === 'yjs-sync-request'
         );
       attempt += 1
     ) {
@@ -1076,17 +1068,16 @@ describe('DocumentCollaborationSession', () => {
     expect(statuses).not.toContain('ready');
     expect(syncListener).not.toHaveBeenCalledWith(true);
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-sync-request'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-sync-request'
       )
     ).toHaveLength(1);
 
-    resolveSync({ status: 'ok' });
+    resolveSync({ success: true });
     for (
       let attempt = 0;
       attempt < 10 &&
-        !harness.channel.send.mock.calls.some(([message]) =>
-          message.event === 'yjs-awareness'
+        !harness.channel.httpSend.mock.calls.some(([event]) =>
+          event === 'yjs-awareness'
         );
       attempt += 1
     ) {
@@ -1096,12 +1087,11 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.status).toBe('syncing');
     expect(connectOutcome).toBe('pending');
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-awareness'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-awareness'
       )
     ).toHaveLength(1);
 
-    resolveAwareness({ status: 'ok' });
+    resolveAwareness({ success: true });
     await jest.advanceTimersByTimeAsync(0);
 
     expect(harness.session.status).toBe('ready');
@@ -1114,11 +1104,11 @@ describe('DocumentCollaborationSession', () => {
     const harness = makeHarness({
       configureChannel: (channel, index) => {
         if (index !== 0) return;
-        channel.send.mockImplementation((message) => {
-          if (message.event === 'yjs-sync-request') {
+        channel.httpSend.mockImplementation((event) => {
+          if (event === 'yjs-sync-request') {
             return new Promise((_resolve, reject) => { rejectSync = reject; });
           }
-          return Promise.resolve({ status: 'ok' });
+          return Promise.resolve({ success: true });
         });
       },
     });
@@ -1136,8 +1126,8 @@ describe('DocumentCollaborationSession', () => {
     for (
       let attempt = 0;
       attempt < 10 &&
-        !harness.channel.send.mock.calls.some(([message]) =>
-          message.event === 'yjs-sync-request'
+        !harness.channel.httpSend.mock.calls.some(([event]) =>
+          event === 'yjs-sync-request'
         );
       attempt += 1
     ) {
@@ -1155,13 +1145,11 @@ describe('DocumentCollaborationSession', () => {
     expect(connectOutcome).toBe('pending');
     expect(jest.getTimerCount()).toBe(timerCountBeforeFailure + 1);
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-sync-request'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-sync-request'
       )
     ).toHaveLength(1);
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-awareness'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-awareness'
       )
     ).toHaveLength(0);
 
@@ -1171,19 +1159,19 @@ describe('DocumentCollaborationSession', () => {
   it.each(['resolve', 'reject'])(
     'ignores a stale hydration send that %s after the channel reconnects',
     async (settlement) => {
-      let resolveOldSync!: (value: { status: string }) => void;
+      let resolveOldSync!: (value: { success: boolean }) => void;
       let rejectOldSync!: (error: Error) => void;
       const harness = makeHarness({
         configureChannel: (channel, index) => {
           if (index !== 0) return;
-          channel.send.mockImplementation((message) => {
-            if (message.event === 'yjs-sync-request') {
+          channel.httpSend.mockImplementation((event) => {
+            if (event === 'yjs-sync-request') {
               return new Promise((resolve, reject) => {
                 resolveOldSync = resolve;
                 rejectOldSync = reject;
               });
             }
-            return Promise.resolve({ status: 'ok' });
+            return Promise.resolve({ success: true });
           });
         },
       });
@@ -1196,8 +1184,8 @@ describe('DocumentCollaborationSession', () => {
       for (
         let attempt = 0;
         attempt < 10 &&
-          !harness.channel.send.mock.calls.some(([message]) =>
-            message.event === 'yjs-sync-request'
+          !harness.channel.httpSend.mock.calls.some(([event]) =>
+          event === 'yjs-sync-request'
           );
         attempt += 1
       ) {
@@ -1210,13 +1198,12 @@ describe('DocumentCollaborationSession', () => {
       expect(harness.session.status).toBe('ready');
       const readyCount = statuses.filter((status) => status === 'ready').length;
       const trueSyncCount = syncListener.mock.calls.filter(([synced]) => synced).length;
-      const replacementAwarenessCalls = harness.channels[1]!.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-awareness'
+      const replacementAwarenessCalls = harness.channels[1]!.httpSend.mock.calls.filter(([event]) => event === 'yjs-awareness'
       ).length;
       const timerCountAfterReconnect = jest.getTimerCount();
 
       if (settlement === 'resolve') {
-        resolveOldSync({ status: 'ok' });
+        resolveOldSync({ success: true });
       } else {
         rejectOldSync(new Error('stale sync failed'));
       }
@@ -1230,8 +1217,7 @@ describe('DocumentCollaborationSession', () => {
         trueSyncCount
       );
       expect(
-        harness.channels[1]!.send.mock.calls.filter(
-          ([message]) => message.event === 'yjs-awareness'
+        harness.channels[1]!.httpSend.mock.calls.filter(([event]) => event === 'yjs-awareness'
         )
       ).toHaveLength(replacementAwarenessCalls);
     }
@@ -1240,19 +1226,19 @@ describe('DocumentCollaborationSession', () => {
   it.each(['resolve', 'reject'])(
     'rejects connect immediately when destroyed with hydration send pending, then ignores %s',
     async (settlement) => {
-      let resolveSync!: (value: { status: string }) => void;
+      let resolveSync!: (value: { success: boolean }) => void;
       let rejectSync!: (error: Error) => void;
       const harness = makeHarness({
         configureChannel: (channel, index) => {
           if (index !== 0) return;
-          channel.send.mockImplementation((message) => {
-            if (message.event === 'yjs-sync-request') {
+          channel.httpSend.mockImplementation((event) => {
+            if (event === 'yjs-sync-request') {
               return new Promise((resolve, reject) => {
                 resolveSync = resolve;
                 rejectSync = reject;
               });
             }
-            return Promise.resolve({ status: 'ok' });
+            return Promise.resolve({ success: true });
           });
         },
       });
@@ -1267,8 +1253,8 @@ describe('DocumentCollaborationSession', () => {
       for (
         let attempt = 0;
         attempt < 10 &&
-          !harness.channel.send.mock.calls.some(([message]) =>
-            message.event === 'yjs-sync-request'
+          !harness.channel.httpSend.mock.calls.some(([event]) =>
+          event === 'yjs-sync-request'
           );
         attempt += 1
       ) {
@@ -1280,7 +1266,7 @@ describe('DocumentCollaborationSession', () => {
       const outcomeImmediatelyAfterDestroy = connectOutcome;
 
       if (settlement === 'resolve') {
-        resolveSync({ status: 'ok' });
+        resolveSync({ success: true });
       } else {
         rejectSync(new Error('late hydration failure'));
       }
@@ -1372,24 +1358,19 @@ describe('DocumentCollaborationSession', () => {
     harness.session.doc.getMap('local').set('value', 1);
     await jest.advanceTimersByTimeAsync(75);
     expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
-    expect(harness.channel.send).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'yjs-update' })
-    );
+    expect(harness.channel.httpSend).not.toHaveBeenCalledWith('yjs-update', expect.any(Object));
 
     const pending = harness.gateway.appendUpdates.mock.calls[0]![1];
     resolveAppend({ acceptedIds: pending.updates.map((update) => update.id) });
     await Promise.resolve();
     await Promise.resolve();
-    expect(harness.channel.send).toHaveBeenCalledWith(
+    expect(harness.channel.httpSend).toHaveBeenCalledWith(
+      'yjs-update',
       expect.objectContaining({
-        type: 'broadcast',
-        event: 'yjs-update',
-        payload: expect.objectContaining({
-          v: 1,
-          documentId: DOCUMENT_ID,
-          epoch: 2,
-          updateId: pending.updates[0]!.id,
-        }),
+        v: 1,
+        documentId: DOCUMENT_ID,
+        epoch: 2,
+        updateId: pending.updates[0]!.id,
       })
     );
   });
@@ -1546,8 +1527,7 @@ describe('DocumentCollaborationSession', () => {
 
     expect(append).toHaveBeenCalledTimes(2);
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-update'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-update'
       )
     ).toHaveLength(2);
   });
@@ -1584,8 +1564,7 @@ describe('DocumentCollaborationSession', () => {
     await jest.advanceTimersByTimeAsync(0);
 
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-update'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-update'
       )
     ).toHaveLength(0);
     await jest.advanceTimersByTimeAsync(2_000);
@@ -1631,12 +1610,11 @@ describe('DocumentCollaborationSession', () => {
     });
 
     const appendOrder = harness.gateway.appendUpdates.mock.invocationCallOrder[0]!;
-    const responseCall = harness.channel.send.mock.calls.find(
-      ([message]) => message.event === 'yjs-sync-response'
+    const responseCall = harness.channel.httpSend.mock.calls.find(([event]) => event === 'yjs-sync-response'
     );
     expect(responseCall).toBeDefined();
-    const responseOrder = harness.channel.send.mock.invocationCallOrder[
-      harness.channel.send.mock.calls.indexOf(responseCall!)
+    const responseOrder = harness.channel.httpSend.mock.invocationCallOrder[
+      harness.channel.httpSend.mock.calls.indexOf(responseCall!)
     ]!;
     expect(appendOrder).toBeLessThan(responseOrder);
   });
@@ -1674,9 +1652,9 @@ describe('DocumentCollaborationSession', () => {
       await connectReady(harness.session);
       const timerCountBeforeFailure = jest.getTimerCount();
       if (failureMode === 'throw') {
-        harness.channel.send.mockRejectedValueOnce(new Error('send offline'));
+        harness.channel.httpSend.mockRejectedValueOnce(new Error('send offline'));
       } else {
-        harness.channel.send.mockResolvedValueOnce({ status: 'error' });
+        harness.channel.httpSend.mockResolvedValueOnce({ success: false, error: 'error' });
       }
       harness.session.doc.getMap('local').set('send-failure', failureMode);
 
@@ -1705,9 +1683,9 @@ describe('DocumentCollaborationSession', () => {
 
     expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
     expect(
-      harness.channel.send.mock.calls.some(([message]) => message.event === 'yjs-awareness')
+      harness.channel.httpSend.mock.calls.some(([event]) => event === 'yjs-awareness')
     ).toBe(false);
-    expect(harness.channel.send).not.toHaveBeenCalled();
+    expect(harness.channel.httpSend).not.toHaveBeenCalled();
   });
 
   it('exposes pending local durability for the browser unload guard', async () => {
@@ -1982,16 +1960,14 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.status).toBe('syncing');
     expect(harness.session.doc).not.toBe(oldDoc);
     expect(reload).toHaveBeenCalledTimes(1);
-    const syncCallsBeforeBinding = harness.channel.send.mock.calls.filter(
-      ([message]) => message.event === 'yjs-sync-request'
+    const syncCallsBeforeBinding = harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-sync-request'
     ).length;
     harness.session.attachBinding();
     harness.session.attachBinding();
     await jest.advanceTimersByTimeAsync(0);
     expect(harness.session.status).toBe('ready');
     expect(
-      harness.channel.send.mock.calls.filter(
-        ([message]) => message.event === 'yjs-sync-request'
+      harness.channel.httpSend.mock.calls.filter(([event]) => event === 'yjs-sync-request'
       )
     ).toHaveLength(syncCallsBeforeBinding + 1);
     expect(harness.session.token).toEqual({ epoch: 3, revision: 1 });
@@ -2238,24 +2214,20 @@ describe('DocumentCollaborationSession', () => {
     expect(
       harness.gateway.appendUpdates.mock.invocationCallOrder[0]
     ).toBeLessThan(harness.gateway.replace.mock.invocationCallOrder[0]!);
-    const resetCall = harness.channel.send.mock.calls.find(
-      ([message]) => message.event === 'document-state-reset'
+    const resetCall = harness.channel.httpSend.mock.calls.find(([event]) => event === 'document-state-reset'
     );
     expect(resetCall).toEqual([
+      'document-state-reset',
       expect.objectContaining({
-        type: 'broadcast',
-        event: 'document-state-reset',
-        payload: expect.objectContaining({
-          documentId: DOCUMENT_ID,
-          epoch: 3,
-          revision: 5,
-          reason: 'restore',
-        }),
+        documentId: DOCUMENT_ID,
+        epoch: 3,
+        revision: 5,
+        reason: 'restore',
       }),
     ]);
     expect(harness.gateway.replace.mock.invocationCallOrder[0]).toBeLessThan(
-      harness.channel.send.mock.invocationCallOrder[
-        harness.channel.send.mock.calls.indexOf(resetCall!)
+      harness.channel.httpSend.mock.invocationCallOrder[
+        harness.channel.httpSend.mock.calls.indexOf(resetCall!)
       ]!
     );
     expect(reload).toHaveBeenCalledTimes(1);
@@ -2312,12 +2284,9 @@ describe('DocumentCollaborationSession', () => {
     await harness.session.destroy();
 
     expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
-    expect(harness.channel.send).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'broadcast',
-        event: 'yjs-update',
-        payload: expect.objectContaining({ documentId: DOCUMENT_ID, epoch: 2 }),
-      })
+    expect(harness.channel.httpSend).toHaveBeenCalledWith(
+      'yjs-update',
+      expect.objectContaining({ documentId: DOCUMENT_ID, epoch: 2 })
     );
   });
 
@@ -2326,18 +2295,16 @@ describe('DocumentCollaborationSession', () => {
     await connectReady(harness.session);
     const awareness = harness.session.awareness as unknown as awarenessProtocol.Awareness;
     awareness.setLocalState({ user: { id: USER_ID } });
-    harness.channel.send.mockClear();
+    harness.channel.httpSend.mockClear();
 
     await harness.session.destroy();
     await harness.session.destroy();
 
     expect(harness.removeChannel).toHaveBeenCalledTimes(1);
     expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
-    expect(harness.channel.send).toHaveBeenCalledTimes(1);
-    expect(harness.channel.send).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'yjs-awareness' })
-    );
-    expect(harness.channel.send.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(harness.channel.httpSend).toHaveBeenCalledTimes(1);
+    expect(harness.channel.httpSend).toHaveBeenCalledWith('yjs-awareness', expect.any(Object));
+    expect(harness.channel.httpSend.mock.invocationCallOrder[0]).toBeLessThan(
       harness.channel.unsubscribe.mock.invocationCallOrder[0]!
     );
     expect(awareness.getLocalState()).toBeNull();
@@ -2348,8 +2315,8 @@ describe('DocumentCollaborationSession', () => {
   it('bounds awareness departure and never fails destroy when its send stalls', async () => {
     const harness = makeHarness();
     await connectReady(harness.session);
-    harness.channel.send.mockClear();
-    harness.channel.send.mockImplementationOnce(() => new Promise(() => undefined));
+    harness.channel.httpSend.mockClear();
+    harness.channel.httpSend.mockImplementationOnce(() => new Promise(() => undefined));
 
     const destroying = harness.session.destroy();
     await jest.advanceTimersByTimeAsync(250);
