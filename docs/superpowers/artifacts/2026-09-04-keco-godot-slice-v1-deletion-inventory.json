@@ -1,0 +1,17 @@
+{
+  "artifactType": "V1DeletionInventory",
+  "schemaVersion": 1,
+  "contractVersion": 2,
+  "entries": [
+    {"path":"plugins/keco-codex/skills/keco-develop-godot-slice/","reason":"obsolete V1 skill and Codex adapter; no historical read requirement","action":"delete"},
+    {"path":"plugins/keco-claude/skills/keco-develop-godot-slice/","reason":"obsolete V1 skill and Claude route","action":"delete"},
+    {"path":"plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_slice_documents.py","reason":"V1-only legacy status/eval validator has no remaining consumer","action":"delete"},
+    {"path":"plugins/keco-claude/scripts/validate_slice_documents.py","reason":"V1-only legacy status/eval validator has no remaining consumer","action":"delete"},
+    {"path":"KECO_EVAL --legacy adapter","reason":"V2 no longer carries a V1 runtime adapter","action":"remove"},
+    {"path":"V1-only routing, prompts, fixtures, and tests","reason":"new work must be V2-only","action":"remove"},
+    {"path":"MirrorManifest schemaVersion 1 materialization branch","reason":"legacy mirror layout was V1-only and V1 history does not need to remain readable","action":"remove"},
+    {"path":"supabase/migrations/*historical*","reason":"historical migrations are explicitly out of scope","action":"retain"},
+    {"path":"keco-evaluate-game EDD logic","reason":"independent workflow explicitly preserved","action":"retain"},
+    {"path":"tmp/","reason":"user dirty work is unrelated","action":"retain"}
+  ]
+}

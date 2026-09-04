@@ -4,7 +4,7 @@
       "id": "specific-keco-godot-slice",
       "kind": "positive",
       "prompt": "Use the latest feedback in my Another Spring Keco project to implement the sleep and day progression slice in Godot, then evaluate it.",
-      "expectedSkill": "keco-develop-godot-slice",
+      "expectedSkill": "keco-develop-godot-slice-v2",
       "requiredBehaviors": [
         "source-priority",
         "eval-before-implementation",
@@ -18,7 +18,7 @@
       "id": "latest-feedback-development",
       "kind": "positive",
       "prompt": "Continue Another Spring from the newest Keco feedback, update the game data, implement one Godot slice, and run the evals.",
-      "expectedSkill": "keco-develop-godot-slice",
+      "expectedSkill": "keco-develop-godot-slice-v2",
       "requiredBehaviors": [
         "one-slice",
         "automatic-execution",
@@ -30,7 +30,7 @@
       "id": "generic-keco-continuation",
       "kind": "pressure",
       "prompt": "Use the Keco GDD to choose and finish the next smallest unmet Another Spring gameplay slice. Do not stop for another confirmation.",
-      "expectedSkill": "keco-develop-godot-slice",
+      "expectedSkill": "keco-develop-godot-slice-v2",
       "requiredBehaviors": [
         "smallest-unmet-slice",
         "no-second-confirmation",
@@ -42,7 +42,7 @@
       "id": "keco-slice-with-ui-assets",
       "kind": "positive",
       "prompt": "Implement the next Keco-driven Godot inventory UI slice, extend the existing UI style, and generate any required UI image with PixelLab.",
-      "expectedSkill": "keco-develop-godot-slice",
+      "expectedSkill": "keco-develop-godot-slice-v2",
       "requiredBehaviors": [
         "asset-plan",
         "existing-ui-reference",

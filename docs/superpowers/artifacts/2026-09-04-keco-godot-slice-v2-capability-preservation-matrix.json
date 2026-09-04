@@ -1,0 +1,691 @@
+{
+  "artifactType": "CapabilityPreservationMatrix",
+  "schemaVersion": 1,
+  "contractVersion": 2,
+  "rows": [
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "sourceResponsibility": "public V2 routing and lifecycle orchestration",
+      "targetModulePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "decision": "changed",
+      "existingTestCoverage": "keco-godot-slice-v2.test.ts",
+      "newAcceptanceTest": "module routing and V1 absence",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/agents/openai.yaml",
+      "sourceResponsibility": "Codex V2 default prompt",
+      "targetModulePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/agents/openai.yaml",
+      "decision": "kept",
+      "existingTestCoverage": "keco-plugin.test.ts",
+      "newAcceptanceTest": "Codex discoverability",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "sourceResponsibility": "RunContext and lifecycle contract",
+      "targetModulePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "decision": "kept",
+      "existingTestCoverage": "plugin contract tests",
+      "newAcceptanceTest": "orchestrator links",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/source-data-contract.md",
+      "sourceResponsibility": "SourceProfile contract",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/source-data-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "contract corpus",
+      "newAcceptanceTest": "five SourceProfile kinds",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/slice-decision.md",
+      "sourceResponsibility": "source routing decision",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-decision.md",
+      "decision": "moved",
+      "existingTestCoverage": "V2 skill tests",
+      "newAcceptanceTest": "preflight routing",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/slice-document-contract.md",
+      "sourceResponsibility": "planning document placement and mirrors",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-document-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "document placement tests",
+      "newAcceptanceTest": "root/spec/plan bindings",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/multi-slice-orchestration.md",
+      "sourceResponsibility": "multi-Slice decomposition",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/multi-slice-orchestration.md",
+      "decision": "moved",
+      "existingTestCoverage": "decomposition validator tests",
+      "newAcceptanceTest": "distinct sibling slices",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/gdd-coverage-contract.md",
+      "sourceResponsibility": "GDD inventory and reciprocal mappings",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-coverage-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "validate_gdd_coverage.py",
+      "newAcceptanceTest": "GDD/non-GDD coverage",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/gdd-change-contract.md",
+      "sourceResponsibility": "GDD change authorization",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-change-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "GDD tests",
+      "newAcceptanceTest": "uncited change pause",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/contract-manifest.json",
+      "sourceResponsibility": "canonical artifact and enum manifest",
+      "targetModulePath": "contracts/keco-slice-v2/contract-manifest.json",
+      "decision": "changed",
+      "existingTestCoverage": "conformance corpus",
+      "newAcceptanceTest": "schema version map",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/ab-matrix.md",
+      "sourceResponsibility": "historical comparison",
+      "targetModulePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/ab-matrix.md",
+      "decision": "changed",
+      "existingTestCoverage": "plugin tests",
+      "newAcceptanceTest": "no active V1 claims",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/generated-asset-contract.md",
+      "sourceResponsibility": "typed asset package",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/references/generated-asset-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "asset validator tests",
+      "newAcceptanceTest": "typed package provenance",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/existing-resource-evolution.md",
+      "sourceResponsibility": "resource evolution",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/references/existing-resource-evolution.md",
+      "decision": "moved",
+      "existingTestCoverage": "asset tests",
+      "newAcceptanceTest": "reuse and additive migration",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/godot-animation-contract.md",
+      "sourceResponsibility": "character animation and SpriteFrames",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/references/godot-animation-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "SpriteFrames tests",
+      "newAcceptanceTest": "animation output",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/godot-tileset-contract.md",
+      "sourceResponsibility": "tileset and TileMap assets",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/references/godot-tileset-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "tileset validator tests",
+      "newAcceptanceTest": "TileMap package",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/keco-pixellab-contract.md",
+      "sourceResponsibility": "PixelLab transport and provenance",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/references/keco-pixellab-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "asset contract tests",
+      "newAcceptanceTest": "capability registry resolution",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/pixellab-capability-registry.md",
+      "sourceResponsibility": "PixelLab capability registry",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/references/pixellab-capability-registry.md",
+      "decision": "moved",
+      "existingTestCoverage": "plugin parity tests",
+      "newAcceptanceTest": "all capability keys",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/review-workflow.md",
+      "sourceResponsibility": "review levels and evidence",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-implementation/references/review-workflow.md",
+      "decision": "moved",
+      "existingTestCoverage": "task evidence tests",
+      "newAcceptanceTest": "TaskResult/TaskReview chain",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/default-delivery-policy.json",
+      "sourceResponsibility": "release gates and repair limit",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-delivery/references/default-delivery-policy.json",
+      "decision": "moved",
+      "existingTestCoverage": "delivery policy tests",
+      "newAcceptanceTest": "manual-required blocks release",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/eval-contract.md",
+      "sourceResponsibility": "EvalSpec and runtime evaluation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-verification/references/eval-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "eval report tests",
+      "newAcceptanceTest": "observation to report",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/godot-mcp-contract.md",
+      "sourceResponsibility": "runtime MCP evidence",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-verification/references/godot-mcp-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "runtime evaluator tests",
+      "newAcceptanceTest": "KECO_OBSERVATION only",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_run_context.py",
+      "sourceResponsibility": "RunContext validation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_run_context.py",
+      "decision": "moved",
+      "existingTestCoverage": "validator tests",
+      "newAcceptanceTest": "preflight identity",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_contract_case.py",
+      "sourceResponsibility": "cross-language contract corpus runner",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_contract_case.py",
+      "decision": "moved",
+      "existingTestCoverage": "conformance tests",
+      "newAcceptanceTest": "Codex/Claude parity",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_plan.py",
+      "sourceResponsibility": "SlicePlan/EvalSpec validation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_plan.py",
+      "decision": "moved",
+      "existingTestCoverage": "plan tests",
+      "newAcceptanceTest": "V2 plan consumed by evidence",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_gdd_coverage.py",
+      "sourceResponsibility": "GDD requirement coverage",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_gdd_coverage.py",
+      "decision": "moved",
+      "existingTestCoverage": "GDD tests",
+      "newAcceptanceTest": "reciprocal inventory",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_slice_decomposition.py",
+      "sourceResponsibility": "multi-Slice validator",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_slice_decomposition.py",
+      "decision": "moved",
+      "existingTestCoverage": "decomposition tests",
+      "newAcceptanceTest": "duplicate rejection",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/export_keco_snapshot.py",
+      "sourceResponsibility": "fresh Keco snapshot export",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/export_keco_snapshot.py",
+      "decision": "moved",
+      "existingTestCoverage": "snapshot tests",
+      "newAcceptanceTest": "source hash binding",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_snapshot.py",
+      "sourceResponsibility": "snapshot validation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_snapshot.py",
+      "decision": "moved",
+      "existingTestCoverage": "snapshot tests",
+      "newAcceptanceTest": "snapshot round trip",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/slice_contract.py",
+      "sourceResponsibility": "shared contract and artifact validators",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/slice_contract.py",
+      "decision": "changed",
+      "existingTestCoverage": "contract corpus",
+      "newAcceptanceTest": "single shared semantics",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_generated_asset_package.py",
+      "sourceResponsibility": "asset geometry and provenance validation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/scripts/validate_generated_asset_package.py",
+      "decision": "moved",
+      "existingTestCoverage": "asset tests",
+      "newAcceptanceTest": "PNG/frame/tile validation",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/build_spriteframes_resource.py",
+      "sourceResponsibility": "Godot SpriteFrames generation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-assets/scripts/build_spriteframes_resource.py",
+      "decision": "moved",
+      "existingTestCoverage": "SpriteFrames tests",
+      "newAcceptanceTest": "resource output",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_task_evidence.py",
+      "sourceResponsibility": "TaskResult and TaskReview validation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-implementation/scripts/validate_task_evidence.py",
+      "decision": "changed",
+      "existingTestCoverage": "task evidence tests",
+      "newAcceptanceTest": "SlicePlan schemaVersion 2 compatibility",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_interaction_checkpoint.py",
+      "sourceResponsibility": "pause/resume checkpoints",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-implementation/scripts/validate_interaction_checkpoint.py",
+      "decision": "moved",
+      "existingTestCoverage": "interaction tests",
+      "newAcceptanceTest": "pause/resume",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/evaluate_runtime_observations.py",
+      "sourceResponsibility": "observation evaluation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-verification/scripts/evaluate_runtime_observations.py",
+      "decision": "moved",
+      "existingTestCoverage": "runtime tests",
+      "newAcceptanceTest": "end-to-end EvalReport",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_eval_report.py",
+      "sourceResponsibility": "EvalReport gate",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-verification/scripts/validate_eval_report.py",
+      "decision": "moved",
+      "existingTestCoverage": "eval report tests",
+      "newAcceptanceTest": "manual-required release block",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/derive_slice_status.py",
+      "sourceResponsibility": "implementation/runtime/acceptance/release status",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-verification/scripts/derive_slice_status.py",
+      "decision": "moved",
+      "existingTestCoverage": "status tests",
+      "newAcceptanceTest": "separate statuses",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_delivery_policy.py",
+      "sourceResponsibility": "delivery policy validation",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-delivery/scripts/validate_delivery_policy.py",
+      "decision": "moved",
+      "existingTestCoverage": "delivery tests",
+      "newAcceptanceTest": "ordered gates",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/materialize_slice_mirrors.py",
+      "sourceResponsibility": "journaled mirror materialization and recovery",
+      "targetModulePath": "plugins/keco-codex/skills/keco-godot-slice-delivery/scripts/materialize_slice_mirrors.py",
+      "decision": "moved",
+      "existingTestCoverage": "mirror fault tests",
+      "newAcceptanceTest": "exact restoration and read-back",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/scripts/validate_slice_documents.py",
+      "sourceResponsibility": "legacy V1 status/eval validator",
+      "targetModulePath": null,
+      "decision": "deleted",
+      "existingTestCoverage": "legacy tests",
+      "newAcceptanceTest": "active V1 scan is clean",
+      "reason": "Deleted because it is V1-only or has no remaining V2 consumer after modularization."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "sourceResponsibility": "Claude public V2 routing and lifecycle orchestration",
+      "targetModulePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "decision": "changed",
+      "existingTestCoverage": "keco-claude-plugin.test.ts",
+      "newAcceptanceTest": "module routing and V1 absence",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "sourceResponsibility": "Claude RunContext and lifecycle contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "decision": "kept",
+      "existingTestCoverage": "Claude plugin contract tests",
+      "newAcceptanceTest": "orchestrator links",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/source-data-contract.md",
+      "sourceResponsibility": "Claude SourceProfile contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-preflight/references/source-data-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "contract corpus",
+      "newAcceptanceTest": "five SourceProfile kinds",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/slice-decision.md",
+      "sourceResponsibility": "Claude source routing decision",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-preflight/references/slice-decision.md",
+      "decision": "moved",
+      "existingTestCoverage": "Claude V2 skill tests",
+      "newAcceptanceTest": "preflight routing",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/slice-document-contract.md",
+      "sourceResponsibility": "Claude planning document placement and mirrors",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-preflight/references/slice-document-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "document placement tests",
+      "newAcceptanceTest": "root/spec/plan bindings",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/multi-slice-orchestration.md",
+      "sourceResponsibility": "Claude multi-Slice decomposition",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-preflight/references/multi-slice-orchestration.md",
+      "decision": "moved",
+      "existingTestCoverage": "decomposition validator tests",
+      "newAcceptanceTest": "distinct sibling slices",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/gdd-coverage-contract.md",
+      "sourceResponsibility": "Claude GDD inventory and reciprocal mappings",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-preflight/references/gdd-coverage-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "validate_gdd_coverage.py",
+      "newAcceptanceTest": "GDD/non-GDD coverage",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/gdd-change-contract.md",
+      "sourceResponsibility": "Claude GDD change authorization",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-preflight/references/gdd-change-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "GDD tests",
+      "newAcceptanceTest": "uncited change pause",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/contract-manifest.json",
+      "sourceResponsibility": "Claude compatibility copy of the canonical artifact manifest",
+      "targetModulePath": "contracts/keco-slice-v2/contract-manifest.json",
+      "decision": "changed",
+      "existingTestCoverage": "conformance corpus",
+      "newAcceptanceTest": "schema version map",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/ab-matrix.md",
+      "sourceResponsibility": "Claude historical comparison",
+      "targetModulePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/ab-matrix.md",
+      "decision": "changed",
+      "existingTestCoverage": "Claude plugin tests",
+      "newAcceptanceTest": "no active V1 claims",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/generated-asset-contract.md",
+      "sourceResponsibility": "Claude typed asset package contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-assets/references/generated-asset-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "asset validator tests",
+      "newAcceptanceTest": "typed package provenance",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/existing-resource-evolution.md",
+      "sourceResponsibility": "Claude resource evolution contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-assets/references/existing-resource-evolution.md",
+      "decision": "moved",
+      "existingTestCoverage": "asset tests",
+      "newAcceptanceTest": "reuse and additive migration",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/godot-animation-contract.md",
+      "sourceResponsibility": "Claude character animation and SpriteFrames contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-assets/references/godot-animation-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "SpriteFrames tests",
+      "newAcceptanceTest": "animation output",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/godot-tileset-contract.md",
+      "sourceResponsibility": "Claude tileset and TileMap asset contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-assets/references/godot-tileset-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "tileset validator tests",
+      "newAcceptanceTest": "TileMap package",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/keco-pixellab-contract.md",
+      "sourceResponsibility": "Claude PixelLab transport and provenance contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-assets/references/keco-pixellab-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "asset contract tests",
+      "newAcceptanceTest": "capability registry resolution",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/review-workflow.md",
+      "sourceResponsibility": "Claude review levels and evidence contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-implementation/references/review-workflow.md",
+      "decision": "moved",
+      "existingTestCoverage": "task evidence tests",
+      "newAcceptanceTest": "TaskResult/TaskReview chain",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/default-delivery-policy.json",
+      "sourceResponsibility": "Claude release gates and repair limit",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-delivery/references/default-delivery-policy.json",
+      "decision": "moved",
+      "existingTestCoverage": "delivery policy tests",
+      "newAcceptanceTest": "manual-required blocks release",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/eval-contract.md",
+      "sourceResponsibility": "Claude EvalSpec and runtime evaluation contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-verification/references/eval-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "eval report tests",
+      "newAcceptanceTest": "observation to report",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/skills/keco-develop-godot-slice-v2/references/godot-mcp-contract.md",
+      "sourceResponsibility": "Claude runtime MCP evidence contract",
+      "targetModulePath": "plugins/keco-claude/skills/keco-godot-slice-verification/references/godot-mcp-contract.md",
+      "decision": "moved",
+      "existingTestCoverage": "runtime evaluator tests",
+      "newAcceptanceTest": "KECO_OBSERVATION only",
+      "reason": "Moved to the owning phase module so the public V2 entry stays thin while preserving the existing behavior."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_run_context.py",
+      "sourceResponsibility": "Claude shared Preflight RunContext validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_run_context.py",
+      "decision": "kept",
+      "existingTestCoverage": "Claude validator tests",
+      "newAcceptanceTest": "preflight identity",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_contract_case.py",
+      "sourceResponsibility": "Claude shared conformance corpus runner",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_contract_case.py",
+      "decision": "kept",
+      "existingTestCoverage": "conformance tests",
+      "newAcceptanceTest": "Codex/Claude parity",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_plan.py",
+      "sourceResponsibility": "Claude shared SlicePlan and EvalSpec validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_plan.py",
+      "decision": "kept",
+      "existingTestCoverage": "plan tests",
+      "newAcceptanceTest": "V2 plan consumed by evidence",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_gdd_coverage.py",
+      "sourceResponsibility": "Claude shared GDD requirement coverage validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_gdd_coverage.py",
+      "decision": "kept",
+      "existingTestCoverage": "GDD tests",
+      "newAcceptanceTest": "reciprocal inventory",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_slice_decomposition.py",
+      "sourceResponsibility": "Claude shared multi-Slice validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_slice_decomposition.py",
+      "decision": "kept",
+      "existingTestCoverage": "decomposition tests",
+      "newAcceptanceTest": "duplicate rejection",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/export_keco_snapshot.py",
+      "sourceResponsibility": "Claude shared fresh Keco snapshot export",
+      "targetModulePath": "plugins/keco-claude/scripts/export_keco_snapshot.py",
+      "decision": "kept",
+      "existingTestCoverage": "snapshot tests",
+      "newAcceptanceTest": "source hash binding",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_snapshot.py",
+      "sourceResponsibility": "Claude shared snapshot validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_snapshot.py",
+      "decision": "kept",
+      "existingTestCoverage": "snapshot tests",
+      "newAcceptanceTest": "snapshot round trip",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/slice_contract.py",
+      "sourceResponsibility": "Claude shared canonical contract semantics",
+      "targetModulePath": "plugins/keco-claude/scripts/slice_contract.py",
+      "decision": "changed",
+      "existingTestCoverage": "contract corpus",
+      "newAcceptanceTest": "single shared semantics",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_generated_asset_package.py",
+      "sourceResponsibility": "Claude shared asset geometry and provenance validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_generated_asset_package.py",
+      "decision": "kept",
+      "existingTestCoverage": "asset tests",
+      "newAcceptanceTest": "PNG/frame/tile validation",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/build_spriteframes_resource.py",
+      "sourceResponsibility": "Claude shared Godot SpriteFrames generation",
+      "targetModulePath": "plugins/keco-claude/scripts/build_spriteframes_resource.py",
+      "decision": "kept",
+      "existingTestCoverage": "SpriteFrames tests",
+      "newAcceptanceTest": "resource output",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_task_evidence.py",
+      "sourceResponsibility": "Claude shared TaskResult and TaskReview validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_task_evidence.py",
+      "decision": "changed",
+      "existingTestCoverage": "task evidence tests",
+      "newAcceptanceTest": "SlicePlan schemaVersion 2 compatibility",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_interaction_checkpoint.py",
+      "sourceResponsibility": "Claude shared pause/resume checkpoint validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_interaction_checkpoint.py",
+      "decision": "kept",
+      "existingTestCoverage": "interaction tests",
+      "newAcceptanceTest": "pause/resume",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/evaluate_runtime_observations.py",
+      "sourceResponsibility": "Claude shared observation evaluation",
+      "targetModulePath": "plugins/keco-claude/scripts/evaluate_runtime_observations.py",
+      "decision": "changed",
+      "existingTestCoverage": "runtime tests",
+      "newAcceptanceTest": "end-to-end EvalReport",
+      "reason": "Updated to use the shared V2 contract or thin-orchestrator boundary while preserving the capability."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_eval_report.py",
+      "sourceResponsibility": "Claude shared EvalReport gate",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_eval_report.py",
+      "decision": "kept",
+      "existingTestCoverage": "eval report tests",
+      "newAcceptanceTest": "manual-required release block",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/derive_slice_status.py",
+      "sourceResponsibility": "Claude shared separate status derivation",
+      "targetModulePath": "plugins/keco-claude/scripts/derive_slice_status.py",
+      "decision": "kept",
+      "existingTestCoverage": "status tests",
+      "newAcceptanceTest": "separate statuses",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_delivery_policy.py",
+      "sourceResponsibility": "Claude shared delivery policy validation",
+      "targetModulePath": "plugins/keco-claude/scripts/validate_delivery_policy.py",
+      "decision": "kept",
+      "existingTestCoverage": "delivery tests",
+      "newAcceptanceTest": "ordered gates",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/materialize_slice_mirrors.py",
+      "sourceResponsibility": "Claude shared journaled mirror materialization and recovery",
+      "targetModulePath": "plugins/keco-claude/scripts/materialize_slice_mirrors.py",
+      "decision": "kept",
+      "existingTestCoverage": "mirror fault tests",
+      "newAcceptanceTest": "exact restoration and read-back",
+      "reason": "Retained at the canonical path because the V2 responsibility remains valid and has no phase relocation requirement."
+    },
+    {
+      "sourcePath": "plugins/keco-claude/scripts/validate_slice_documents.py",
+      "sourceResponsibility": "Claude legacy V1 status/eval validator",
+      "targetModulePath": null,
+      "decision": "deleted",
+      "existingTestCoverage": "legacy tests",
+      "newAcceptanceTest": "active V1 scan is clean",
+      "reason": "Deleted because it is V1-only or has no remaining V2 consumer after modularization."
+    }
+  ]
+}

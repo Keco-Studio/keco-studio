@@ -1,0 +1,250 @@
+{
+  "artifactType": "SliceV2EndToEndFixture",
+  "schemaVersion": 1,
+  "contractVersion": 2,
+  "runContext": {
+    "version": 2,
+    "runId": "run-1",
+    "mode": "implicit-v2",
+    "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+    "godotProjectPath": "/games/shelter",
+    "sliceId": "slice-001",
+    "allowedFiles": [
+      "game/main.gd"
+    ],
+    "iteration": 0,
+    "planRevision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "sourceProfile": {
+    "schemaVersion": 1,
+    "contractVersion": 2,
+    "kind": "user_idea",
+    "kecoProjectId": "11111111-1111-4111-8111-111111111111",
+    "capturedAt": "2026-09-04T00:00:00Z",
+    "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "selectionEvidence": [],
+    "requestHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "requestExcerpt": "Add a bounded shelter placement interaction."
+  },
+  "slicePlan": {
+    "schemaVersion": 2,
+    "coverageMode": "non_gdd",
+    "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "nonGddRationale": "The accepted direct request authorizes this bounded interaction.",
+    "planRevision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "allowedFiles": [
+      "game/main.gd"
+    ],
+    "tasks": [
+      {
+        "id": "task-1",
+        "files": [
+          "game/main.gd"
+        ],
+        "dependsOn": [],
+        "servesEvaluations": [
+          "eval-1"
+        ],
+        "red": {
+          "command": "python3 tests/red.py",
+          "expected": "fails"
+        },
+        "green": {
+          "command": "python3 tests/green.py",
+          "expected": "passes"
+        },
+        "review": {
+          "minimumLevel": "self"
+        },
+        "sourceMappings": [
+          "request"
+        ]
+      }
+    ]
+  },
+  "evalSpec": {
+    "schemaVersion": 2,
+    "coverageMode": "non_gdd",
+    "sourceProfileHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "evaluations": [
+      {
+        "evalId": "eval-1",
+        "servedByTasks": [
+          "task-1"
+        ],
+        "buildHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "snapshotHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "assertions": [
+          {
+            "assertionId": "assert-1",
+            "kind": "equals",
+            "path": "/ready",
+            "expected": true
+          }
+        ]
+      }
+    ]
+  },
+  "taskResult": {
+    "eventId": "22222222-2222-4222-8222-222222222222",
+    "eventType": "task_result",
+    "payload": {
+      "schemaVersion": 2,
+      "runId": "run-1",
+      "sliceId": "slice-001",
+      "taskId": "task-1",
+      "planRevision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "attemptId": "33333333-3333-4333-8333-333333333333",
+      "phase": "green",
+      "operation": {
+        "kind": "command",
+        "command": "python3 tests/green.py"
+      },
+      "startedAt": "2026-09-04T00:00:00Z",
+      "endedAt": "2026-09-04T00:00:01Z",
+      "exitCode": 0,
+      "timedOut": false,
+      "cancelled": false,
+      "stdoutSummary": "passed",
+      "stdoutHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stderrSummary": "",
+      "stderrHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "changedFiles": [
+        {
+          "path": "game/main.gd",
+          "beforeHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "afterHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ],
+      "expectedOutcome": "passes",
+      "observedOutcome": "passed",
+      "status": "completed",
+      "concerns": [],
+      "artifactIds": []
+    }
+  },
+  "taskReview": {
+    "eventId": "44444444-4444-4444-8444-444444444444",
+    "eventType": "task_review",
+    "payload": {
+      "schemaVersion": 2,
+      "runId": "run-1",
+      "sliceId": "slice-001",
+      "taskId": "task-1",
+      "planRevision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "taskResultIds": [
+        "22222222-2222-4222-8222-222222222222"
+      ],
+      "reviewedFiles": [
+        {
+          "path": "game/main.gd",
+          "hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      ],
+      "reviewerType": "agent",
+      "reviewerId": "reviewer-1",
+      "verdict": "accepted",
+      "specificationFindings": [],
+      "qualityFindings": [],
+      "requiredFollowUp": []
+    }
+  },
+  "runtimeObservation": {
+    "schemaVersion": 1,
+    "runId": "run-1",
+    "sliceId": "slice-001",
+    "evalId": "eval-1",
+    "buildHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "snapshotHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "actual": {
+      "ready": true
+    },
+    "errors": []
+  },
+  "evalReport": {
+    "version": 2,
+    "runId": "run-1",
+    "sliceId": "slice-001",
+    "status": "passed",
+    "snapshotHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "runtimeBatches": [
+      {
+        "batchId": "batch-1",
+        "evaluationIds": [
+          "eval-1"
+        ],
+        "runtimeSequence": [
+          "run_project",
+          "get_debug_output",
+          "stop_project"
+        ],
+        "splitReason": null
+      }
+    ],
+    "changedFiles": [
+      "game/main.gd"
+    ],
+    "manualRequirements": []
+  },
+  "mirrorManifest": {
+    "schemaVersion": 2,
+    "canonicalizationVersion": 1,
+    "contractVersion": 2,
+    "runId": "run-1",
+    "stateToken": "state-1",
+    "preparedSequence": 1,
+    "currentSequence": 1,
+    "files": [
+      {
+        "kind": "roadmap",
+        "repositoryPath": "docs/superpowers/roadmap.md",
+        "documentId": "doc-roadmap",
+        "folderId": "folder-roadmap",
+        "epoch": 0,
+        "revision": 1,
+        "byteCount": 11,
+        "sha256": "sha256:adce91dcf9ebf52a1c1a58a8506ce818470f38233e1415a2645e292ebd1296ac",
+        "content": "roadmap-v2\n"
+      },
+      {
+        "kind": "spec",
+        "repositoryPath": "docs/superpowers/specs/slice-001-design.md",
+        "documentId": "doc-spec",
+        "folderId": "folder-spec",
+        "epoch": 0,
+        "revision": 1,
+        "byteCount": 8,
+        "sha256": "sha256:e8b4d80495e790651661a3d7905e77600612c3db4dbf5ade7a292d843fe2b17d",
+        "content": "spec-v2\n"
+      },
+      {
+        "kind": "plan",
+        "repositoryPath": "docs/superpowers/plans/slice-001.md",
+        "documentId": "doc-plan",
+        "folderId": "folder-plan",
+        "epoch": 0,
+        "revision": 1,
+        "byteCount": 8,
+        "sha256": "sha256:bd2d6d92de25d307bd44e15ae4aa76c98d4831e887b71f59bc342b3476c743fa",
+        "content": "plan-v2\n"
+      }
+    ],
+    "manifestHash": "sha256:ca9c6fb9ba01261ca7be2fa73241826e0c232728d14e704de8e54e4c30004970"
+  },
+  "mirrorVerification": {
+    "schemaVersion": 2,
+    "verified": true
+  },
+  "delivery": {
+    "status": "ready",
+    "gates": [
+      "implementation",
+      "runtime_verification",
+      "acceptance",
+      "package",
+      "roadmap_completion",
+      "mirrors",
+      "seal"
+    ]
+  }
+}

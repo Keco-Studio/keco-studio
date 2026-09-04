@@ -216,9 +216,7 @@ export function validateSliceV2ContractCase(boundary: ContractBoundary, value: u
   if (boundary === "review") return validateReview(value);
   if (boundary === "runtimeEvidence") {
     if (!record(value)) return reject("SLICE_RUNTIME_EVIDENCE_INVALID");
-    const valid = value.contractVersion === 2
-      ? value.prefix === manifestJson.runtimePrefixes.current && value.legacyAdapter !== true
-      : value.contractVersion === 1 && value.prefix === manifestJson.runtimePrefixes.legacy && value.legacyAdapter === true;
+    const valid = value.contractVersion === 2 && value.prefix === manifestJson.runtimePrefixes.current && value.legacyAdapter !== true;
     return valid ? { accepted: true, reasonCode: null } : reject("SLICE_RUNTIME_EVIDENCE_INVALID");
   }
   if (boundary === "state") {

@@ -5,7 +5,6 @@ import path from 'node:path';
 const repositoryRoot = process.cwd();
 const pluginRoot = path.join(repositoryRoot, 'plugins', 'keco-codex');
 const skillRoot = path.join(pluginRoot, 'skills', 'keco-build-tables-from-document');
-const godotSkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice');
 const godotV2SkillRoot = path.join(pluginRoot, 'skills', 'keco-develop-godot-slice-v2');
 const gameEvaluationSkillRoot = path.join(pluginRoot, 'skills', 'keco-evaluate-game');
 const gddEvaluationSkillRoot = path.join(pluginRoot, 'skills', 'keco-evaluate-gdd');
@@ -23,8 +22,12 @@ const claudeInteractionContractPath = path.join(
 const ENTRY_SKILLS = [
   'keco-build-tables-from-document',
   'keco-create-map',
-  'keco-develop-godot-slice',
   'keco-develop-godot-slice-v2',
+  'keco-godot-slice-preflight',
+  'keco-godot-slice-assets',
+  'keco-godot-slice-implementation',
+  'keco-godot-slice-verification',
+  'keco-godot-slice-delivery',
   'keco-evaluate-gdd',
   'keco-evaluate-game',
   'keco-create-character-animation',
@@ -152,10 +155,9 @@ describe('Keco Codex plugin contract', () => {
 
   it('keeps Godot skill discovery descriptions mutually exclusive', () => {
     const mapAssets = readSkillDescription(pixelLabMapSkillRoot);
-    const godotV1 = readSkillDescription(godotSkillRoot);
     const godotV2 = readSkillDescription(godotV2SkillRoot);
 
-    for (const description of [mapAssets, godotV1, godotV2]) {
+    for (const description of [mapAssets, godotV2]) {
       expect(description).toMatch(/^Use when /);
       expect(description.length).toBeLessThan(500);
     }
@@ -165,19 +167,13 @@ describe('Keco Codex plugin contract', () => {
     expect(mapAssets).toMatch(/broader Keco-driven Godot slices/i);
     expect(mapAssets).not.toMatch(/Use automatically|Trigger on|Keco-first registration|authoritative export/i);
 
-    expect(godotV2).toMatch(/Godot development driven by Keco project documents/i);
-    expect(godotV2).toMatch(/multiple slices[\s\S]*persistent Keco planning documents[\s\S]*resource evolution/i);
-    expect(godotV2).toMatch(/Not for user-selected legacy V1 runs/i);
-    expect(godotV2).not.toMatch(/supports implicit routing|without requiring the Skill name/i);
-
-    expect(godotV1).toMatch(/explicitly selects the legacy keco-develop-godot-slice workflow/i);
-    expect(godotV1).toMatch(/one bounded Keco-driven Godot gameplay slice/i);
-    expect(godotV1).toMatch(/Not for implicit routing/i);
+    expect(godotV2).toMatch(/Godot.*Slice/i);
+    expect(godotV2).toMatch(/only active Godot Slice workflow/i);
+    expect(godotV2).toMatch(/multiple-Slice|multi-Slice/i);
   });
 
-  it('advertises implicit document-driven multi-Slice orchestration while retaining bounded V1', () => {
+  it('advertises implicit document-driven multi-Slice orchestration', () => {
     const manifest = readJson<{ interface: { defaultPrompt: string[] } }>('plugins/keco-codex/.codex-plugin/plugin.json');
-    const v1Skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
     const v2Skill = readFileSync(path.join(godotV2SkillRoot, 'SKILL.md'), 'utf8');
     const v2Metadata = readFileSync(path.join(godotV2SkillRoot, 'agents', 'openai.yaml'), 'utf8');
 
@@ -185,9 +181,9 @@ describe('Keco Codex plugin contract', () => {
       expect.stringMatching(/Keco project document[\s\S]*ordered Godot slices[\s\S]*execute/i),
     ]));
     expect(v2Skill).toMatch(/implicit[\s\S]*document-driven|document-driven[\s\S]*implicit/i);
-    expect(v2Skill).toMatch(/V2 takes precedence[\s\S]*bounded simple Slice/i);
+    expect(v2Skill).toMatch(/only active Godot Slice workflow/i);
     expect(v2Metadata).toMatch(/allow_implicit_invocation: true/);
-    expect(v1Skill).toMatch(/one (?:bounded |gameplay )?slice/i);
+    expect(existsSync(path.join(pluginRoot, 'skills', 'keco-godot-slice-preflight', 'SKILL.md'))).toBe(true);
   });
 
   it('advertises full EDD game evaluation separately from Slice development', () => {
@@ -356,7 +352,8 @@ describe('Keco Codex plugin contract', () => {
     }>('tests/fixtures/plugins/keco-godot-skill-evals.json');
 
     expect(evaluations.cases).toHaveLength(8);
-    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice')).toHaveLength(4);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice')).toHaveLength(0);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-develop-godot-slice-v2')).toHaveLength(4);
     expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-build-tables-from-document')).toHaveLength(1);
     expect(evaluations.cases.filter((item) => item.expectedSkill === 'none')).toHaveLength(3);
     expect(evaluations.baselineObservation.missingContracts).toEqual(
@@ -585,119 +582,10 @@ describe('Keco Codex plugin contract', () => {
     );
   });
 
-  it('ships one bounded Keco-to-Godot orchestration Skill', () => {
-    const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
-    const agentMetadata = readFileSync(path.join(godotSkillRoot, 'agents', 'openai.yaml'), 'utf8');
-    const dataPlan = readFileSync(path.join(godotSkillRoot, 'references', 'data-plan.md'), 'utf8');
-
-    expect(skill).toMatch(/^---\nname: keco-develop-godot-slice\n/);
-    expect(skill).toMatch(/^description: Use when[^\n]*Godot[^\n]*Keco project/m);
-    expect(skill).toMatch(/CONNECT[\s\S]*DISCOVER[\s\S]*DEFINE_EVALS[\s\S]*IMPLEMENT[\s\S]*EVALUATE_RUNTIME/);
-    expect(skill).toMatch(/without (?:a second|additional) confirmation/i);
-    expect(skill).toMatch(/three repair iterations/i);
-    expect(skill).toMatch(/one (?:bounded |gameplay )?slice/i);
-    expect(skill).toMatch(/never (?:automatically )?delete/i);
-    expect(skill).toMatch(/snapshot[^\n]*hash/i);
-    expect(skill).toMatch(/runtime[^\n]*evidence/i);
-    expect(skill).toMatch(/successful Keco write[\s\S]{0,180}read all affected tables again/i);
-    expect(dataPlan).toMatch(/plan-local field key[\s\S]{0,180}semantic field label/i);
-    expect(dataPlan).toMatch(/never send plan-local keys or field UUIDs/i);
-    expect(dataPlan).toMatch(/first `upsert_table_rows` batch[\s\S]{0,120}`reuseEmpty: true`/i);
-    expect(dataPlan).toMatch(/later batches[\s\S]{0,80}`false`/i);
-
-    for (const reference of [
-      'source-priority.md',
-      'data-plan.md',
-      'slice-plan.md',
-      'eval-spec.md',
-      'godot-mcp-policy.md',
-      'recovery-policy.md',
-    ]) {
-      expect(existsSync(path.join(godotSkillRoot, 'references', reference))).toBe(true);
-      expect(skill).toContain(`references/${reference}`);
-    }
-
-    for (const script of ['export_keco_snapshot.py', 'validate_snapshot.py']) {
-      expect(existsSync(path.join(godotSkillRoot, 'scripts', script))).toBe(true);
-      expect(skill).toContain(`scripts/${script}`);
-    }
-
-    expect(agentMetadata).toMatch(/default_prompt: "Use \$keco-develop-godot-slice/);
-    expect(agentMetadata).toMatch(/value: "keco"/);
-    expect(agentMetadata).toMatch(/value: "godot"/);
-    expect(agentMetadata).toMatch(/allow_implicit_invocation: true/);
-  });
-
-  it('limits Godot orchestration to the installed fourteen-tool MCP contract', () => {
-    const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
-    const policy = readFileSync(path.join(godotSkillRoot, 'references', 'godot-mcp-policy.md'), 'utf8');
-    const evalSpec = readFileSync(path.join(godotSkillRoot, 'references', 'eval-spec.md'), 'utf8');
-    const sequence = policy.match(/## Deterministic Evaluation Sequence[\s\S]*?```text\n([\s\S]*?)```/)?.[1];
-
-    expect(sequence).toBeDefined();
-    expect(sequence).toMatch(/run_project[\s\S]*get_debug_output[\s\S]*stop_project/);
-
-    for (const tool of [
-      'get_godot_version',
-      'get_project_info',
-      'list_projects',
-      'launch_editor',
-      'create_scene',
-      'add_node',
-      'load_sprite',
-      'save_scene',
-      'run_project',
-      'stop_project',
-      'get_debug_output',
-      'export_mesh_library',
-      'get_uid',
-      'update_project_uids',
-    ]) {
-      expect(policy).toContain(tool);
-    }
-
-    for (const unavailable of [
-      'godot_exec',
-      'godot_runtime_state',
-      'godot_game_time',
-      'godot_editor_edit',
-    ]) {
-      expect(sequence).not.toContain(unavailable);
-      expect(skill).toMatch(new RegExp(`Do not call or assume[\\s\\S]*${unavailable}`));
-    }
-
-    expect(policy).toMatch(/repository editing tools for text files/i);
-    expect(policy).toMatch(/KECO_EVAL/);
-    expect(evalSpec).toMatch(/no input injection, runtime-state query, time-step control, or screenshot tool/i);
-    expect(evalSpec).toMatch(/manualRequired: true|manual_required/i);
-  });
-
-  it('plans slice-owned UI assets through PixelLab while preserving the existing style', () => {
-    const skill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
-    const assetPlan = readFileSync(path.join(godotSkillRoot, 'references', 'asset-plan.md'), 'utf8');
-    const agentMetadata = readFileSync(path.join(godotSkillRoot, 'agents', 'openai.yaml'), 'utf8');
-
-    expect(skill).toMatch(/DESIGN_DATA[\s\S]*DESIGN_ASSETS[\s\S]*EXPORT_SNAPSHOT/);
-    expect(skill).toMatch(/GENERATE_ASSETS[\s\S]*PERSIST_ASSETS[\s\S]*EXPORT_SNAPSHOT/);
-    expect(skill).toContain('references/asset-plan.md');
-    expect(skill).toMatch(/standalone asset generation/i);
-    expect(assetPlan).toMatch(/create_s_xl_image_pro/);
-    expect(assetPlan).toMatch(/extend-existing-ui[\s\S]*reference/i);
-    expect(assetPlan).toMatch(/new-ui[\s\S]*existing UI/i);
-    expect(assetPlan).toMatch(/API key[\s\S]*(?:environment|MCP configuration)/i);
-    expect(assetPlan).toMatch(/provenance/i);
-    expect(assetPlan).toMatch(/UI Assets/);
-    expect(assetPlan).toMatch(/create_image_upload[\s\S]*HTTP `PUT`[\s\S]*complete_image_upload[\s\S]*update_table_row/i);
-    expect(assetPlan).toMatch(/query_table_rows[\s\S]*before[\s\S]*EXPORT_SNAPSHOT/i);
-    expect(assetPlan).toMatch(/verified `image` object/i);
-    expect(assetPlan).toMatch(/manualRequired|manual_required/);
-    expect(agentMetadata).toMatch(/value: "pixellab"/);
-  });
-
   it('keeps Godot MCP external and routes overlapping work explicitly', () => {
     const mcp = readJson<{ mcpServers: Record<string, unknown> }>('plugins/keco-codex/.mcp.json');
     const tableSkill = readFileSync(path.join(skillRoot, 'SKILL.md'), 'utf8');
-    const godotSkill = readFileSync(path.join(godotSkillRoot, 'SKILL.md'), 'utf8');
+    const godotSkill = readFileSync(path.join(godotV2SkillRoot, 'SKILL.md'), 'utf8');
 
     expect(mcp.mcpServers).not.toHaveProperty('godot');
     expect(mcp.mcpServers).not.toHaveProperty('pixellab');

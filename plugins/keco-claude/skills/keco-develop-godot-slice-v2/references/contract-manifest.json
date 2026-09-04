@@ -7,17 +7,44 @@
     "taskResult": 2,
     "taskReview": 2,
     "mirrorManifest": 2,
-    "mirrorVerification": 2
+    "mirrorVerification": 2,
+    "evalReport": 2,
+    "kecoSnapshot": 1,
+    "interactionCheckpoint": 1
   },
-  "sourceProfileKinds": ["gdd", "feedback", "table", "document", "user_idea"],
-  "documentBackedKinds": ["gdd", "feedback", "document"],
-  "coverageModes": ["gdd", "non_gdd"],
-  "documentKinds": ["roadmap", "spec", "plan"],
-  "documentDispositions": ["create", "bind", "update"],
-  "reviewLevels": ["self", "separate_context", "independent_actor"],
+  "sourceProfileKinds": [
+    "gdd",
+    "feedback",
+    "table",
+    "document",
+    "user_idea"
+  ],
+  "documentBackedKinds": [
+    "gdd",
+    "feedback",
+    "document"
+  ],
+  "coverageModes": [
+    "gdd",
+    "non_gdd"
+  ],
+  "documentKinds": [
+    "roadmap",
+    "spec",
+    "plan"
+  ],
+  "documentDispositions": [
+    "create",
+    "bind",
+    "update"
+  ],
+  "reviewLevels": [
+    "self",
+    "separate_context",
+    "independent_actor"
+  ],
   "runtimePrefixes": {
-    "current": "KECO_OBSERVATION",
-    "legacy": "KECO_EVAL"
+    "current": "KECO_OBSERVATION"
   },
   "maximumRepairs": 3,
   "releaseOrder": [

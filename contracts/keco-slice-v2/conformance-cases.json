@@ -232,10 +232,10 @@
       "expected": { "accepted": true, "reasonCode": null }
     },
     {
-      "id": "legacy-adapter-prefix",
+      "id": "retired-runtime-prefix",
       "boundary": "runtimeEvidence",
       "input": { "contractVersion": 1, "prefix": "KECO_EVAL", "legacyAdapter": true },
-      "expected": { "accepted": true, "reasonCode": null }
+      "expected": { "accepted": false, "reasonCode": "SLICE_RUNTIME_EVIDENCE_INVALID" }
     },
     {
       "id": "stale-state-token",
