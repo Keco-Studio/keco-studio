@@ -42,8 +42,10 @@ describe('Keco Script split view wiring', () => {
     expect(source).toContain('ScriptSplitView');
     expect(source).toContain('summarizeScriptPlotTitlesClient');
     expect(source).toContain('openingGraph');
-    expect(source).toContain('!openingGraph');
-    expect(source).not.toMatch(/setAiReady\(\s*\{\s*key:\s*titleWaitKey,\s*graph:\s*baseGraph/);
+    expect(source).toContain('baseGraph');
+    // Do not block the VN + Flow chart panes on AI title summarization.
+    expect(source).not.toContain('!openingGraph');
+    expect(source).toContain('openingKey');
     expect(source).not.toContain('LibraryAssetsTable');
   });
 

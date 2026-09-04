@@ -211,6 +211,9 @@ export default function ScriptLibraryPage() {
     let cancelled = false;
     let attempts = 0;
     let graph = baseGraph;
+    const finish = (next: FlowGraph) => {
+      if (!cancelled) setAiReady({ key: titleWaitKey, graph: next });
+    };
     const run = () => {
       attempts += 1;
       const chapters = chaptersFromScriptView(
@@ -230,14 +233,16 @@ export default function ScriptLibraryPage() {
             scriptColumns.contentKey,
           );
           if (!flowGraphNeedsAiTitles(graph, assetRows, flowRows, scriptColumns.contentKey)) {
-            setAiReady({ key: titleWaitKey, graph });
+            finish(graph);
             return;
           }
           if (attempts < 3) run();
+          else finish(graph);
         })
         .catch(() => {
           if (cancelled) return;
           if (attempts < 3) run();
+          else finish(baseGraph);
         });
     };
     run();
@@ -256,18 +261,18 @@ export default function ScriptLibraryPage() {
     titleWaitKey,
   ]);
 
-  const openingGraph = !needsAiTitles
-    ? baseGraph
-    : aiReady?.key === titleWaitKey
-      ? aiReady.graph
-      : null;
+  // Always open the split view on the deterministic graph. AI titles refresh in
+  // place when ready so missing LLM credentials cannot blank the Flow chart.
+  const openingGraph = aiReady?.key === titleWaitKey ? aiReady.graph : baseGraph;
+  const openingKey = aiReady?.key === titleWaitKey ? `titled:${titleWaitKey}` : `base:${titleWaitKey}`;
 
-  if (!dataReady || !openingGraph) {
+  if (!dataReady) {
     return null;
   }
 
   return (
     <ScriptSplitView
+      key={openingKey}
       libraryId={libraryId}
       rows={assetRows}
       scriptColumns={scriptColumns}
