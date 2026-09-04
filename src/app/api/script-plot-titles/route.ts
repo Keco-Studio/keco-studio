@@ -48,6 +48,19 @@ export const POST = withAuth(async function POST(request, _context, { supabase }
     if (mapped.status >= 500) {
       console.error('[script-plot-titles] failed', error);
     }
-    return NextResponse.json({ code: mapped.code, error: mapped.message }, { status: mapped.status });
+    const clientErrors: Record<string, string> = {
+      NOT_FOUND: 'Library not found',
+      FORBIDDEN: 'Forbidden',
+      INVALID_LIBRARY: 'Library is not a script',
+      TITLE_SUMMARY_FAILED: 'Failed to summarize chapter titles',
+      SAVE_FAILED: 'Failed to save chapter titles',
+    };
+    return NextResponse.json(
+      {
+        code: mapped.code,
+        error: clientErrors[mapped.code] ?? 'Failed to summarize chapter titles',
+      },
+      { status: mapped.status },
+    );
   }
 });
