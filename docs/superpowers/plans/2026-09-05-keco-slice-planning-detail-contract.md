@@ -80,7 +80,7 @@ task-001 -> task-002 -> task-003 -> task-004 -> task-005 -> task-006 -> task-007
 
 ## Task Checklist
 
-### Task 001: Add Canonical Spec and Plan Templates
+### Task 1: Add Canonical Spec and Plan Templates
 
 **Files:**
 - Create: `contracts/keco-slice-v2/spec-template.md`
@@ -138,7 +138,7 @@ git add contracts/keco-slice-v2/spec-template.md contracts/keco-slice-v2/plan-te
 git commit -m "feat(slice): add technical planning templates"
 ```
 
-### Task 002: Extend the Python SlicePlan Contract
+### Task 2: Extend the Python SlicePlan Contract
 
 **Files:**
 - Modify: `plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/slice_contract.py:_plan_eval`
@@ -183,7 +183,7 @@ git add plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/slice_contr
 git commit -m "feat(slice): validate technical plan contract in Python"
 ```
 
-### Task 003: Parse and Cross-Validate Spec/Plan Markdown
+### Task 3: Parse and Cross-Validate Spec/Plan Markdown
 
 **Files:**
 - Modify: `plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_slice_decomposition.py:sections, main`
@@ -231,7 +231,7 @@ git add plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_sl
 git commit -m "feat(slice): enforce Markdown plan decomposition contract"
 ```
 
-### Task 004: Add TypeScript and MCP Zod Enforcement
+### Task 4: Add TypeScript and MCP Zod Enforcement
 
 **Files:**
 - Modify: `supabase/functions/mcp/slice-v2-contract.ts:validatePlanEval`
@@ -290,7 +290,7 @@ git add supabase/functions/mcp/slice-v2-contract.ts supabase/functions/mcp/slice
 git commit -m "feat(mcp): enforce Slice technical contract schema"
 ```
 
-### Task 005: Gate SQL Before Lease and Document Writes
+### Task 5: Gate SQL Before Lease and Document Writes
 
 **Files:**
 - Create: `supabase/migrations/20260905100000_slice_v2_technical_contract.sql`
@@ -328,7 +328,7 @@ git add supabase/migrations/20260905100000_slice_v2_technical_contract.sql supab
 git commit -m "feat(db): gate Slice technical contract before writes"
 ```
 
-### Task 006: Synchronize Manifest, Corpus, and Plugin Mirrors
+### Task 6: Synchronize Manifest, Corpus, and Plugin Mirrors
 
 **Files:**
 - Modify: `contracts/keco-slice-v2/contract-manifest.json`
@@ -370,7 +370,7 @@ git add contracts/keco-slice-v2/contract-manifest.json contracts/keco-slice-v2/c
 git commit -m "test(slice): converge technical contract corpus and mirrors"
 ```
 
-### Task 007: Integrate the New Gate and Run Full Verification
+### Task 7: Integrate the New Gate and Run Full Verification
 
 **Files:**
 - Modify: `plugins/keco-codex/skills/keco-godot-slice-preflight/SKILL.md`
