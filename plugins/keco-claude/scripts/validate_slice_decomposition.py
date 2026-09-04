@@ -598,6 +598,11 @@ def main() -> int:
                         plan_eval_ids.extend(row["evalIds"])
             if not isinstance(bundle_eval_ids, list) or list(dict.fromkeys(plan_eval_ids)) != bundle_eval_ids:
                 return fail(f"{slice_id} Eval IDs differ from paired plan JSON")
+            plan_task_ids = [task.get("id") for task in plan_json.get("tasks", []) if isinstance(task, dict)]
+            if item.get("taskIds") != plan_task_ids:
+                return fail(f"{slice_id} task IDs differ from paired plan JSON")
+            if plan_json.get("coverageMode") == "gdd" and item.get("requirementIds") != plan_json.get("requirementIds"):
+                return fail(f"{slice_id} requirement IDs differ from paired plan JSON")
 
         declared = re.search(r"^\s*sliceId\s*:\s*([^\s]+)\s*$", spec, re.I | re.M)
         if declared and declared.group(1) != slice_id:
