@@ -55,6 +55,14 @@ Deno.test("canonical Slice V2 corpus has stable cross-layer decisions", () => {
     "retired-runtime-prefix",
     "stale-state-token",
     "fourth-repair",
+    "valid-technical-contract",
+    "technical-missing-output-shape",
+    "technical-vague-parameter-boundary",
+    "technical-duplicate-id",
+    "technical-unknown-task-consumption",
+    "technical-unowned-row",
+    "technical-task-verification-mismatch",
+    "technical-unknown-acceptance-eval",
   ]);
   for (const testCase of corpus.cases) {
     requiredCases.delete(testCase.id);

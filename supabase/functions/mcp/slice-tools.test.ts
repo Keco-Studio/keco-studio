@@ -963,6 +963,56 @@ function v2CreateInput() {
       nonGddRationale: "The selected document directly authorizes this Slice.",
       planRevision: hash("d"),
       allowedFiles: ["game/cats.gd"],
+      technicalContract: {
+        inputs: [{
+          id: "input-command",
+          name: "command",
+          source: "player input",
+          type: "enum",
+          required: true,
+          constraints: "up|down",
+          default: "none",
+        }],
+        outputs: [{
+          id: "output-position",
+          name: "position",
+          type: "Vector2",
+          shape: "{x:number,y:number}",
+          guarantees: "bounded",
+        }],
+        parameters: [{
+          id: "parameter-speed",
+          name: "speed",
+          type: "number",
+          bounds: "0 < speed <= 240",
+          boundaryBehavior: "reject invalid values",
+        }],
+        interfaces: [{
+          id: "interface-movement",
+          provider: "Player",
+          consumer: "Arena",
+          operation: "move",
+          protocol: "synchronous",
+        }],
+        errors: [{
+          id: "error-invalid-command",
+          condition: "invalid command",
+          detection: "validation",
+          response: "ignore",
+          observable: "logged",
+        }],
+        invariants: [{
+          id: "invariant-position",
+          state: "movement",
+          rule: "position bounded",
+        }],
+        acceptance: [{
+          id: "acceptance-move",
+          behavior: "moves",
+          sourceMappings: ["source-1"],
+          evalIds: ["eval-1"],
+        }],
+      },
       tasks: [{
         id: "task-1",
         files: ["game/cats.gd"],
@@ -972,6 +1022,23 @@ function v2CreateInput() {
         green: { command: "test green", expected: "passes" },
         review: { minimumLevel: "self" },
         sourceMappings: ["source-1"],
+        consumes: [
+          "input-command",
+          "parameter-speed",
+          "interface-movement",
+          "invariant-position",
+        ],
+        produces: [
+          "output-position",
+          "interface-movement",
+          "error-invalid-command",
+          "invariant-position",
+          "acceptance-move",
+        ],
+        verification: {
+          assertions: ["position remains bounded"],
+          observationPaths: ["/player/position"],
+        },
       }],
     },
     evalSpec: {
@@ -1064,6 +1131,27 @@ Deno.test("stable Slice tools expose V2 creation and delivery preparation schema
     create.config.inputSchema.safeParse(createInput()).success,
     false,
   );
+});
+
+Deno.test("V2 Zod parsing rejects incomplete technical contract fields before handler execution", () => {
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext([], {}));
+  const schema = registered.tools.find((tool) => tool.name === "create_slice_bundle")!.config.inputSchema;
+  const missingContract = structuredClone(v2CreateInput()) as Record<string, unknown>;
+  delete (missingContract.plan as Record<string, unknown>).technicalContract;
+  assertEquals(schema.safeParse(missingContract).success, false);
+
+  const unknownTechnicalKey = structuredClone(v2CreateInput()) as Record<string, unknown>;
+  (unknownTechnicalKey.plan as Record<string, unknown>).technicalContract = {
+    ...(unknownTechnicalKey.plan as Record<string, unknown>).technicalContract as Record<string, unknown>,
+    unknown: [],
+  };
+  assertEquals(schema.safeParse(unknownTechnicalKey).success, false);
+
+  const missingVerification = structuredClone(v2CreateInput()) as Record<string, unknown>;
+  const task = ((missingVerification.plan as Record<string, unknown>).tasks as Array<Record<string, unknown>>)[0];
+  delete task.verification;
+  assertEquals(schema.safeParse(missingVerification).success, false);
 });
 
 Deno.test("V2 creation encodes mutable bindings and dispatches only to the V2 RPC", async () => {

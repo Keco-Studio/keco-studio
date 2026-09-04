@@ -120,6 +120,102 @@ const evalSpecSchema = z.object({
   "Evaluation IDs must be unique.",
 );
 
+const technicalIdentifier = z.string().regex(
+  /^[a-z0-9][a-z0-9._-]{0,99}$/,
+);
+const concreteText = z.string().trim().min(1).max(4000).refine(
+  (value) => !(/\b(?:any|tbd|todo)\b|as\s+needed|handle\s+normally/i.test(value)),
+  "Technical descriptions must be concrete.",
+);
+const boundaryExpression = concreteText.refine((value) => {
+  if (value.toLowerCase() === "unbounded") return true;
+  const number = "-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+  const name = "[A-Za-z_][A-Za-z0-9_.-]*";
+  const operand = `(?:${number}|${name})`;
+  if (new RegExp(`^${operand}\\s*(?:<=|>=|==|<|>)\\s*${operand}$`).test(value)) return true;
+  if (new RegExp(`^${number}\\s*(?:<|<=)\\s*${name}\\s*(?:<|<=)\\s*${number}$`).test(value)) return true;
+  if (new RegExp(`^${number}\\s*(?:>|>=)\\s*${name}\\s*(?:>|>=)\\s*${number}$`).test(value)) return true;
+  if (value.includes("|")) {
+    const members = value.split("|").map((item) => item.trim());
+    return members.length > 1 && members.every((item) => /^[A-Za-z0-9_.-]+$/.test(item));
+  }
+  if (value.length >= 3 && ((value.startsWith("[") && value.endsWith("]")) || (value.startsWith("{") && value.endsWith("}")))) {
+    const members = value.slice(1, -1).split(",").map((item) => item.trim());
+    const member = /^(?:[A-Za-z0-9_.-]+|'[^'\n]+'|"[^"\n]+")$/;
+    return members.length > 0 && new Set(members).size === members.length && members.every((item) => member.test(item));
+  }
+  return false;
+}, "Technical boundaries must use a concrete comparison, range, finite set, or unbounded.");
+const uniqueTechnicalIds = <T extends { id: string }>(value: T[]) =>
+  new Set(value.map((item) => item.id)).size === value.length;
+const uniqueStrings = (value: string[]) => new Set(value).size === value.length;
+const inputContractSchema = z.object({
+  id: technicalIdentifier,
+  name: concreteText,
+  source: concreteText,
+  type: concreteText,
+  required: z.boolean(),
+  constraints: boundaryExpression,
+  default: concreteText,
+}).strict();
+const outputContractSchema = z.object({
+  id: technicalIdentifier,
+  name: concreteText,
+  type: concreteText,
+  shape: concreteText,
+  guarantees: concreteText,
+}).strict();
+const parameterContractSchema = z.object({
+  id: technicalIdentifier,
+  name: concreteText,
+  type: concreteText,
+  bounds: boundaryExpression,
+  boundaryBehavior: concreteText,
+}).strict();
+const interfaceContractSchema = z.object({
+  id: technicalIdentifier,
+  provider: concreteText,
+  consumer: concreteText,
+  operation: concreteText,
+  protocol: concreteText,
+}).strict();
+const errorContractSchema = z.object({
+  id: technicalIdentifier,
+  condition: concreteText,
+  detection: concreteText,
+  response: concreteText,
+  observable: concreteText,
+}).strict();
+const invariantContractSchema = z.object({
+  id: technicalIdentifier,
+  state: concreteText,
+  rule: concreteText,
+}).strict();
+const acceptanceContractSchema = z.object({
+  id: technicalIdentifier,
+  behavior: concreteText,
+  sourceMappings: z.array(technicalIdentifier).min(1).max(1000).refine(uniqueStrings),
+  evalIds: z.array(technicalIdentifier).min(1).max(1000).refine(uniqueStrings),
+}).strict();
+const technicalContractSchema = z.object({
+  inputs: z.array(inputContractSchema).min(1).max(100),
+  outputs: z.array(outputContractSchema).min(1).max(100),
+  parameters: z.array(parameterContractSchema).min(1).max(100),
+  interfaces: z.array(interfaceContractSchema).min(1).max(100),
+  errors: z.array(errorContractSchema).min(1).max(100),
+  invariants: z.array(invariantContractSchema).min(1).max(100),
+  acceptance: z.array(acceptanceContractSchema).min(1).max(100),
+}).strict().superRefine((value, context) => {
+  const allRows = Object.values(value).flat();
+  if (!uniqueTechnicalIds(allRows)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Technical IDs must be globally unique." });
+  }
+});
+const verificationSchema = z.object({
+  assertions: z.array(z.string().trim().min(1).max(4000)).min(1).max(100),
+  observationPaths: z.array(jsonPointer).min(1).max(100),
+}).strict();
+
 const commandSchema = z.object({
   command: z.string().trim().min(1).max(1000),
   expected: z.enum(["fails", "passes"]),
@@ -309,6 +405,9 @@ const v2PlanTaskSchema = planTaskSchema.omit({ review: true }).extend({
   sourceMappings: z.array(identifier).min(1).max(1000).refine((value) =>
     new Set(value).size === value.length
   ),
+  consumes: z.array(technicalIdentifier).max(1000).refine(uniqueStrings),
+  produces: z.array(technicalIdentifier).max(1000).refine(uniqueStrings),
+  verification: verificationSchema,
 }).strict();
 const v2PlanSchema = z.object({
   schemaVersion: z.literal(2),
@@ -319,8 +418,43 @@ const v2PlanSchema = z.object({
   requirementIds: z.array(identifier).min(1).max(1000).optional(),
   planRevision: sha256,
   allowedFiles: z.array(relativePath).min(1).max(500),
+  technicalContract: technicalContractSchema,
   tasks: z.array(v2PlanTaskSchema).min(1).max(100),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const taskIds = new Set(value.tasks.map((task) => task.id));
+  if (taskIds.size !== value.tasks.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Task IDs must be unique." });
+  }
+  const technical = value.technicalContract;
+  const byKind = Object.fromEntries(Object.entries(technical).map(([kind, rows]) => [kind, new Set(rows.map((row) => row.id))])) as Record<string, Set<string>>;
+  const validConsumes = new Set([...byKind.inputs, ...byKind.parameters, ...byKind.interfaces, ...byKind.invariants]);
+  const validProduces = new Set([...byKind.outputs, ...byKind.interfaces, ...byKind.errors, ...byKind.invariants, ...byKind.acceptance]);
+  const requiredProduces = new Set([...validProduces].filter((id) => !byKind.acceptance.has(id)));
+  const consumed = new Set<string>();
+  const produced = new Set<string>();
+  for (const task of value.tasks) {
+    if (task.files.some((file) => !value.allowedFiles.includes(file))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Every task file must be present in allowedFiles." });
+    }
+    if (task.dependsOn.some((id) => id === task.id || !taskIds.has(id))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Task dependencies must reference another accepted task." });
+    }
+    for (const id of task.consumes) consumed.add(id);
+    for (const id of task.produces) produced.add(id);
+    if (task.consumes.some((id) => !validConsumes.has(id)) || task.produces.some((id) => !validProduces.has(id))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Task technical references must point to declared rows." });
+    }
+  }
+  if ([...validConsumes].some((id) => !consumed.has(id)) || [...requiredProduces].some((id) => !produced.has(id))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Every technical row must be consumed or produced by a task." });
+  }
+  const sourceMappingIds = value.coverageMode === "gdd"
+    ? new Set(value.requirementIds ?? [])
+    : new Set(value.tasks.flatMap((task) => task.sourceMappings));
+  if (technical.acceptance.some((row) => row.sourceMappings.some((id) => !sourceMappingIds.has(id)))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Acceptance source mappings must reference declared source mappings." });
+  }
+});
 const v2PolicySchema = z.object({
   schemaVersion: z.literal(2),
   requiredArtifacts: z.array(

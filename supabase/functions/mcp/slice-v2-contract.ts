@@ -23,6 +23,7 @@ type JsonRecord = Record<string, unknown>;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,99}$/;
+const CONCRETE_VAGUE_RE = /\b(?:any|tbd|todo)\b|as\s+needed|handle\s+normally/i;
 
 function record(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -38,6 +39,95 @@ function strings(value: unknown, allowEmpty = false): value is string[] {
   return Array.isArray(value) && (allowEmpty || value.length > 0) &&
     value.every((item) => typeof item === "string" && item.length > 0) &&
     new Set(value).size === value.length;
+}
+
+function concreteText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 &&
+    !CONCRETE_VAGUE_RE.test(value.trim());
+}
+
+function boundary(value: unknown): value is string {
+  if (!concreteText(value)) return false;
+  const text = value.trim();
+  if (text.toLowerCase() === "unbounded") return true;
+  const number = "-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+  const identifier = "[A-Za-z_][A-Za-z0-9_.-]*";
+  const operand = `(?:${number}|${identifier})`;
+  const comparison = new RegExp(`^${operand}\\s*(?:<=|>=|==|<|>)\\s*${operand}$`);
+  const increasingRange = new RegExp(`^${number}\\s*(?:<|<=)\\s*${identifier}\\s*(?:<|<=)\\s*${number}$`);
+  const decreasingRange = new RegExp(`^${number}\\s*(?:>|>=)\\s*${identifier}\\s*(?:>|>=)\\s*${number}$`);
+  if (comparison.test(text) || increasingRange.test(text) || decreasingRange.test(text)) return true;
+  if (text.includes("|")) {
+    const members = text.split("|").map((item) => item.trim());
+    return members.length > 1 && members.every((item) => /^[A-Za-z0-9_.-]+$/.test(item));
+  }
+  if (text.length >= 3 && ((text.startsWith("[") && text.endsWith("]")) || (text.startsWith("{") && text.endsWith("}")))) {
+    const members = text.slice(1, -1).split(",").map((item) => item.trim());
+    const member = /^(?:[A-Za-z0-9_.-]+|'[^'\n]+'|"[^"\n]+")$/;
+    return members.length > 0 && new Set(members).size === members.length && members.every((item) => member.test(item));
+  }
+  return false;
+}
+
+function technicalContractValid(
+  value: unknown,
+  taskIds: Set<string>,
+  evalIds: Set<string>,
+  sourceMappingIds: Set<string>,
+): boolean {
+  if (!record(value)) return false;
+  const sections = ["inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance"] as const;
+  if (!exactKeys(value, [...sections]) || sections.some((section) => !Array.isArray(value[section]) || value[section].length === 0)) return false;
+  const rowSpecs: Record<typeof sections[number], string[]> = {
+    inputs: ["id", "name", "source", "type", "required", "constraints", "default"],
+    outputs: ["id", "name", "type", "shape", "guarantees"],
+    parameters: ["id", "name", "type", "bounds", "boundaryBehavior"],
+    interfaces: ["id", "provider", "consumer", "operation", "protocol"],
+    errors: ["id", "condition", "detection", "response", "observable"],
+    invariants: ["id", "state", "rule"],
+    acceptance: ["id", "behavior", "sourceMappings", "evalIds"],
+  };
+  const technicalIds = new Set<string>();
+  for (const section of sections) {
+    for (const item of value[section] as unknown[]) {
+      if (!record(item) || !exactKeys(item, rowSpecs[section]) || typeof item.id !== "string" || !ID_RE.test(item.id) || technicalIds.has(item.id)) return false;
+      const textKeys = rowSpecs[section].filter((key) => !["id", "required", "constraints", "bounds", "sourceMappings", "evalIds"].includes(key));
+      if (textKeys.some((key) => !concreteText(item[key]))) return false;
+      if (section === "inputs" && (typeof item.required !== "boolean" || !boundary(item.constraints) || !concreteText(item.default))) return false;
+      if (section === "parameters" && (!boundary(item.bounds) || !concreteText(item.boundaryBehavior))) return false;
+      if (section === "acceptance" && (!strings(item.sourceMappings) || item.sourceMappings.some((id) => !sourceMappingIds.has(id)) || !strings(item.evalIds) || item.evalIds.some((id) => !evalIds.has(id)))) return false;
+      technicalIds.add(item.id);
+    }
+  }
+  return true;
+}
+
+function validJsonPointer(value: unknown): value is string {
+  return typeof value === "string" && (value === "" || (value.startsWith("/") && !/~(?:[^01]|$)/.test(value)));
+}
+
+function validAssertion(value: unknown): boolean {
+  if (!record(value) || typeof value.assertionId !== "string" || !ID_RE.test(value.assertionId) || typeof value.kind !== "string") return false;
+  if (value.kind === "equals" || value.kind === "subset") {
+    return exactKeys(value, ["assertionId", "kind", "path", "expected"]) && validJsonPointer(value.path);
+  }
+  if (value.kind === "range") {
+    const keys = ["assertionId", "kind", "path", "minimumInclusive", "maximumInclusive"];
+    if ("minimum" in value) keys.push("minimum");
+    if ("maximum" in value) keys.push("maximum");
+    const minimum = value.minimum;
+    const maximum = value.maximum;
+    const validMinimum = minimum === undefined || (typeof minimum === "number" && Number.isFinite(minimum));
+    const validMaximum = maximum === undefined || (typeof maximum === "number" && Number.isFinite(maximum));
+    return exactKeys(value, keys) && validJsonPointer(value.path) && typeof value.minimumInclusive === "boolean" && typeof value.maximumInclusive === "boolean" &&
+      (minimum !== undefined || maximum !== undefined) && validMinimum && validMaximum &&
+      (minimum === undefined || maximum === undefined || minimum <= maximum);
+  }
+  if (value.kind === "roundtrip") {
+    return exactKeys(value, ["assertionId", "kind", "beforePath", "afterPath", "markerPaths"]) && validJsonPointer(value.beforePath) && validJsonPointer(value.afterPath) &&
+      strings(value.markerPaths) && value.markerPaths.every(validJsonPointer);
+  }
+  return false;
 }
 
 export function isSafeRepositoryPath(value: unknown): value is string {
@@ -133,6 +223,11 @@ function validatePlanEval(value: unknown): ContractDecision {
   if (!record(value) || !record(value.plan) || !record(value.evalSpec)) return reject("SLICE_PLAN_SCOPE_INVALID");
   const plan = value.plan;
   const evalSpec = value.evalSpec;
+  const planKeys = ["schemaVersion", "coverageMode", "sourceProfileHash", "nonGddRationale", "inventoryHash", "requirementIds", "planRevision", "allowedFiles", "tasks", "technicalContract"];
+  const evalKeys = ["schemaVersion", "coverageMode", "sourceProfileHash", "inventoryHash", "requirementIds", "evaluations"];
+  if (Object.keys(plan).some((key) => !planKeys.includes(key)) || Object.keys(evalSpec).some((key) => !evalKeys.includes(key))) {
+    return reject("SLICE_PLAN_SCOPE_INVALID");
+  }
   if (plan.schemaVersion !== 2 || !strings(plan.allowedFiles) || plan.allowedFiles.some((path) => !isSafeRepositoryPath(path)) ||
     !Array.isArray(plan.tasks) || plan.tasks.length === 0 || new Set(plan.allowedFiles).size !== plan.allowedFiles.length) {
     return reject("SLICE_PLAN_SCOPE_INVALID");
@@ -161,6 +256,40 @@ function validatePlanEval(value: unknown): ContractDecision {
     task.files.forEach((path) => ownedFiles.add(path));
   }
   if (allowedFiles.some((path) => !ownedFiles.has(path))) return reject("SLICE_PLAN_SCOPE_INVALID");
+
+  // Validate the technical contract before EvalSpec reciprocity so malformed
+  // technical rows receive the canonical technical reason code.
+  const rawEvaluations = evalSpec.evaluations;
+  const knownEvalIds = new Set<string>();
+  if (Array.isArray(rawEvaluations)) {
+    for (const evaluation of rawEvaluations) {
+      if (record(evaluation) && typeof evaluation.evalId === "string") knownEvalIds.add(evaluation.evalId);
+    }
+  }
+  const sourceMappingIds = plan.coverageMode === "gdd"
+    ? new Set(Array.isArray(plan.requirementIds) ? plan.requirementIds.filter((id): id is string => typeof id === "string") : [])
+    : new Set(tasks.flatMap((task) => record(task) && Array.isArray(task.sourceMappings) ? task.sourceMappings.filter((id): id is string => typeof id === "string") : []));
+  if (!technicalContractValid(plan.technicalContract, taskIds, knownEvalIds, sourceMappingIds)) return reject("SLICE_TECHNICAL_CONTRACT_INVALID");
+  const technical = plan.technicalContract as JsonRecord;
+  const technicalByKind = Object.fromEntries(["inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance"].map((section) => [section, new Set((technical[section] as JsonRecord[]).map((row) => row.id as string))])) as Record<string, Set<string>>;
+  const validConsumes = new Set([...technicalByKind.inputs, ...technicalByKind.parameters, ...technicalByKind.interfaces, ...technicalByKind.invariants]);
+  const validProduces = new Set([...technicalByKind.outputs, ...technicalByKind.interfaces, ...technicalByKind.errors, ...technicalByKind.invariants, ...technicalByKind.acceptance]);
+  const requiredProduces = new Set([...validProduces].filter((id) => !technicalByKind.acceptance.has(id)));
+  const consumed = new Set<string>();
+  const produced = new Set<string>();
+  for (const task of tasks as JsonRecord[]) {
+    if (!exactKeys(task, ["id", "files", "dependsOn", "servesEvaluations", "red", "green", "review", "sourceMappings", "consumes", "produces", "verification"]) ||
+      !strings(task.consumes, true) || task.consumes.some((id) => !validConsumes.has(id)) ||
+      !strings(task.produces, true) || task.produces.some((id) => !validProduces.has(id)) ||
+      !record(task.verification) || !exactKeys(task.verification, ["assertions", "observationPaths"]) ||
+      !strings(task.verification.assertions) || !strings(task.verification.observationPaths)) {
+      return reject("SLICE_TECHNICAL_CONTRACT_INVALID");
+    }
+    for (const id of task.consumes) consumed.add(id);
+    for (const id of task.produces) produced.add(id);
+  }
+  if (![...validConsumes].every((id) => consumed.has(id)) || ![...requiredProduces].every((id) => produced.has(id))) return reject("SLICE_TECHNICAL_CONTRACT_INVALID");
+
   if (evalSpec.schemaVersion !== 2 || evalSpec.coverageMode !== plan.coverageMode ||
     (plan.coverageMode === "non_gdd" && evalSpec.sourceProfileHash !== plan.sourceProfileHash) ||
     !Array.isArray(evalSpec.evaluations) || evalSpec.evaluations.length === 0) return reject("SLICE_EVAL_BINDING_INVALID");
@@ -172,8 +301,12 @@ function validatePlanEval(value: unknown): ContractDecision {
   const evalIds = new Set<string>();
   const reverse = new Map<string, Set<string>>();
   for (const evaluation of evalSpec.evaluations) {
-    if (!record(evaluation) || typeof evaluation.evalId !== "string" || !ID_RE.test(evaluation.evalId) || evalIds.has(evaluation.evalId) ||
-      !strings(evaluation.servedByTasks) || evaluation.servedByTasks.some((id) => !taskIds.has(id)) || !Array.isArray(evaluation.assertions) || evaluation.assertions.length === 0) {
+    if (!record(evaluation) || Object.keys(evaluation).some((key) => !["evalId", "servedByTasks", "buildHash", "snapshotHash", "assertions", "manualRequired"].includes(key)) ||
+      typeof evaluation.evalId !== "string" || !ID_RE.test(evaluation.evalId) || evalIds.has(evaluation.evalId) ||
+      !strings(evaluation.servedByTasks) || evaluation.servedByTasks.some((id) => !taskIds.has(id)) || !Array.isArray(evaluation.assertions) || evaluation.assertions.length === 0 ||
+      typeof evaluation.buildHash !== "string" || !HASH_RE.test(evaluation.buildHash) || typeof evaluation.snapshotHash !== "string" || !HASH_RE.test(evaluation.snapshotHash) ||
+      ("manualRequired" in evaluation && typeof evaluation.manualRequired !== "boolean") ||
+      !evaluation.assertions.every(validAssertion) || new Set(evaluation.assertions.map((assertion) => record(assertion) ? assertion.assertionId : "")).size !== evaluation.assertions.length) {
       return reject("SLICE_EVAL_BINDING_INVALID");
     }
     evalIds.add(evaluation.evalId);
@@ -190,6 +323,11 @@ function validatePlanEval(value: unknown): ContractDecision {
       if (!(task.servesEvaluations as string[]).includes(evalId)) return reject("SLICE_EVAL_BINDING_INVALID");
     }
   }
+  const acceptanceEvalIds = new Set<string>();
+  for (const row of technical.acceptance as JsonRecord[]) {
+    for (const evalId of row.evalIds as string[]) acceptanceEvalIds.add(evalId);
+  }
+  if (acceptanceEvalIds.size !== evalIds.size || [...acceptanceEvalIds].some((id) => !evalIds.has(id))) return reject("SLICE_TECHNICAL_CONTRACT_INVALID");
   return { accepted: true, reasonCode: null };
 }
 
