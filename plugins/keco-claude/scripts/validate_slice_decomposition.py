@@ -26,7 +26,7 @@ DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 TASK_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+([^:]+):\s*(.+?)\s*$", re.M)
 HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$", re.M)
 STOP_WORDS = {"the", "a", "an", "and", "or", "to", "of", "for", "in", "on", "with", "from", "this", "that", "slice", "task", "plan"}
-PLACEHOLDER_RE = re.compile(r"(?<![a-z0-9_-])(?:tbd|todo|implement later|fill in details|add appropriate|as needed|handle normally)(?![a-z0-9_-])", re.I)
+PLACEHOLDER_RE = re.compile(r"(?<![a-z0-9_-])(?:any|tbd|todo|implement later|fill in details|add appropriate|as needed|handle normally)(?![a-z0-9_-])", re.I)
 TECHNICAL_TABLES = {
     "inputs": ("inputid", "name", "source", "type", "required", "constraints", "default"),
     "outputs": ("outputid", "name", "type", "shape", "guarantees"),
@@ -91,8 +91,13 @@ def _cell_key(value: str) -> str:
     return _heading_key(value).replace(" ", "")
 
 
+def _strip_code(value: str) -> str:
+    """Normalize inline Markdown code spans without changing their contents."""
+    return re.sub(r"`([^`]*)`", r"\1", value).strip()
+
+
 def _concrete(value: str) -> bool:
-    return bool(value.strip()) and not PLACEHOLDER_RE.search(value)
+    return bool(_strip_code(value)) and not PLACEHOLDER_RE.search(_strip_code(value))
 
 
 def _split_row(line: str) -> list[str]:
@@ -113,14 +118,27 @@ def _split_row(line: str) -> list[str]:
 
 
 def _boundary(value: str) -> bool:
-    text = value.strip()
+    text = _strip_code(value)
     if not _concrete(text):
         return False
     if text.lower() == "unbounded":
         return True
-    if re.fullmatch(r"[A-Za-z0-9_.\s<>=+|{},\[\]-]+", text) and ("|" in text or re.search(r"\d", text) and re.search(r"(?:<=|>=|<|>|==)", text)):
+    number = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
+    identifier = r"[A-Za-z_][A-Za-z0-9_.-]*"
+    operand = rf"(?:{number}|{identifier})"
+    comparison = rf"{operand}\s*(?:<=|>=|==|<|>)\s*{operand}"
+    increasing = rf"{number}\s*(?:<|<=)\s*{identifier}\s*(?:<|<=)\s*{number}"
+    decreasing = rf"{number}\s*(?:>|>=)\s*{identifier}\s*(?:>|>=)\s*{number}"
+    if re.fullmatch(comparison, text) or re.fullmatch(increasing, text) or re.fullmatch(decreasing, text):
         return True
-    return len(text) >= 3 and text[0] in "[{" and text[-1] in "]}" and "," in text
+    if "|" in text:
+        members = [item.strip() for item in text.split("|")]
+        return len(members) > 1 and all(re.fullmatch(r"[A-Za-z0-9_.-]+", item) for item in members)
+    if len(text) >= 3 and (text[0], text[-1]) in (("[", "]"), ("{", "}")):
+        members = [item.strip() for item in text[1:-1].split(",")]
+        member = re.compile(r"(?:[A-Za-z0-9_.-]+|'[^'\n]+'|\"[^\"\n]+\")")
+        return bool(members) and len(members) == len(set(members)) and all(member.fullmatch(item) for item in members)
+    return False
 
 
 def _parse_table(text: str, expected: tuple[str, ...], label: str) -> list[dict[str, str]]:
@@ -156,17 +174,17 @@ def _parse_table(text: str, expected: tuple[str, ...], label: str) -> list[dict[
 
 
 def _list_value(value: str) -> list[str]:
-    value = value.strip()
+    value = _strip_code(value)
     if value.lower() in {"none", "-", "n/a"}:
         return []
-    value = value.strip("`")
-    return [item.strip().strip("`") for item in re.split(r"\s*,\s*|\s*;\s*", value) if item.strip()]
+    return [_strip_code(item) for item in re.split(r"\s*,\s*|\s*;\s*", value) if item.strip()]
 
 
 def _command_value(value: str, expected: str) -> dict[str, str]:
+    value = _strip_code(value)
     match = re.match(r"(.+?)\s*\(\s*expected\s*:\s*(fails|passes)\s*\)\s*$", value, re.I)
     if match:
-        return {"command": match.group(1).strip(), "expected": match.group(2).lower()}
+        return {"command": _strip_code(match.group(1)), "expected": match.group(2).lower()}
     return {"command": value.strip(), "expected": expected}
 
 
@@ -244,12 +262,86 @@ def parse_markdown_contract(markdown: str, *, kind: str) -> dict[str, object]:
             task["review"] = {"minimumLevel": minimum}
             tasks.append(task)
         result["tasks"] = tasks
+        constraints = parsed_sections["execution constraints"]
+        allowed_matches = re.findall(r"^\s*-\s*allowedFiles\s*:\s*(.+?)\s*$", constraints, re.I | re.M)
+        if len(allowed_matches) != 1:
+            raise ValueError("execution constraints must declare allowedFiles exactly once")
+        allowed_files = _list_value(allowed_matches[0])
+        if not allowed_files:
+            raise ValueError("execution constraints allowedFiles must be non-empty")
+        result["allowedFiles"] = allowed_files
     return result
 
 
 def _canonical_hash(value: object) -> str:
     encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_plan_json(plan_json: dict[str, object]) -> bool:
+    """Apply the same exact task/technical shape required by SlicePlan V2."""
+    try:
+        from slice_contract import _technical_contract
+    except ImportError:
+        return False
+    coverage = plan_json.get("coverageMode")
+    common = {"schemaVersion", "coverageMode", "planRevision", "allowedFiles", "tasks", "technicalContract"}
+    if coverage == "gdd":
+        expected_keys = common | {"inventoryHash", "requirementIds"}
+    elif coverage == "non_gdd":
+        expected_keys = common | {"sourceProfileHash", "nonGddRationale"}
+    else:
+        return False
+    if set(plan_json) != expected_keys or plan_json.get("schemaVersion") != 2:
+        return False
+    allowed = plan_json.get("allowedFiles")
+    if not isinstance(allowed, list) or not allowed or len(allowed) != len(set(allowed)):
+        return False
+    if any(not isinstance(path, str) or not path.strip() or path.startswith(("/", "\\")) or any(segment in {"", ".", ".."} for segment in path.split("/")) for path in allowed):
+        return False
+    tasks = plan_json.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        return False
+    task_keys = {"id", "files", "dependsOn", "servesEvaluations", "red", "green", "review", "sourceMappings", "consumes", "produces", "verification"}
+    task_ids: list[str] = []
+    source_mappings: set[str] = set()
+    eval_ids: set[str] = set()
+    for task in tasks:
+        if not isinstance(task, dict) or set(task) != task_keys:
+            return False
+        task_id = task.get("id")
+        if not isinstance(task_id, str) or not ID_RE.fullmatch(task_id) or task_id in task_ids:
+            return False
+        task_ids.append(task_id)
+        for field in ("files", "dependsOn", "servesEvaluations", "sourceMappings", "consumes", "produces"):
+            values = task.get(field)
+            if not isinstance(values, list) or len(values) != len(set(values)) or any(not isinstance(item, str) or not item.strip() for item in values):
+                return False
+        if any(path not in allowed for path in task["files"]):
+            return False
+        if any(dep not in task_ids[:-1] for dep in task["dependsOn"]):
+            return False
+        source_mappings.update(task["sourceMappings"])
+        eval_ids.update(task["servesEvaluations"])
+        for command, expected in (("red", "fails"), ("green", "passes")):
+            value = task.get(command)
+            if not isinstance(value, dict) or set(value) != {"command", "expected"} or value.get("expected") != expected or not isinstance(value.get("command"), str) or not value["command"].strip():
+                return False
+        review = task.get("review")
+        if not isinstance(review, dict) or set(review) != {"minimumLevel"} or review.get("minimumLevel") not in {"self", "separate_context", "independent_actor"}:
+            return False
+        verification = task.get("verification")
+        if not isinstance(verification, dict) or set(verification) != {"assertions", "observationPaths"}:
+            return False
+        if not isinstance(verification["assertions"], list) or not verification["assertions"] or any(not isinstance(item, str) or not item.strip() for item in verification["assertions"]):
+            return False
+        if not isinstance(verification["observationPaths"], list) or not verification["observationPaths"] or any(not isinstance(item, str) or not item.startswith("/") for item in verification["observationPaths"]):
+            return False
+    if set().union(*(set(task["files"]) for task in tasks)) != set(allowed):
+        return False
+    if not _technical_contract(plan_json.get("technicalContract"), set(task_ids), eval_ids, source_mappings | set(plan_json.get("requirementIds", []))):
+        return False
+    return True
 
 
 def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], plan_json: dict[str, object], source_profile: dict[str, object]) -> str | None:
@@ -264,8 +356,16 @@ def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], p
     if plan_json.get("planRevision") != identity.get("planrevision") or (plan_identity.get("planrevision") is not None and plan_json.get("planRevision") != plan_identity.get("planrevision")):
         return "Markdown planRevision does not match plan JSON"
     profile_hash = _canonical_hash(source_profile)
-    if plan_json.get("sourceProfileHash") != profile_hash and plan_json.get("coverageMode") == "non_gdd":
+    if plan_json.get("coverageMode") == "non_gdd" and plan_json.get("sourceProfileHash") != profile_hash:
         return "plan JSON sourceProfileHash does not match source profile"
+    spec_sources = identity.get("sourcemappings")
+    plan_sources = plan_identity.get("sourcemappings")
+    if plan_sources is not None and spec_sources is not None and plan_sources != spec_sources:
+        return "Markdown source mappings differ between Spec and Plan"
+    declared_sources = set(_list_value(spec_sources)) if isinstance(spec_sources, str) else set()
+    task_sources = {value for task in plan.get("tasks", []) if isinstance(task, dict) for value in task.get("sourceMappings", [])}
+    if declared_sources and declared_sources != task_sources:
+        return "Plan tasks do not cover Spec source mappings"
     spec_tables = spec.get("tables", {})
     technical = plan_json.get("technicalContract")
     if not isinstance(technical, dict):
@@ -275,7 +375,7 @@ def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], p
         "inputs": {"inputid": "id"},
         "outputs": {"outputid": "id"},
         "parameters": {"parameterid": "id", "allowed range or enum": "bounds", "boundary behavior": "boundaryBehavior"},
-        "interfaces": {"interfaceid": "id", "operation/signature": "operation", "protocol or data contract": "protocol"},
+        "interfaces": {"interfaceid": "id", "operation signature": "operation", "protocol or data contract": "protocol"},
         "errors": {"errorid": "id", "observable result": "observable"},
         "invariants": {"invariantid": "id", "state or transition": "state", "invariant": "rule"},
         "acceptance": {"acceptanceid": "id", "sourcemapping": "sourceMappings", "evalid": "evalIds"},
@@ -287,7 +387,7 @@ def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], p
             return f"invalid {json_name} technical rows"
         markdown_ids = []
         for row in rows:
-            markdown_id = row[next(iter(row))].strip("`")
+            markdown_id = _strip_code(row[next(iter(row))])
             markdown_ids.append(markdown_id)
         json_ids = [item.get("id") for item in expected_rows if isinstance(item, dict)]
         if markdown_ids != json_ids:
@@ -300,16 +400,18 @@ def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], p
             for column, value in row.items():
                 key = mapping.get(column, column)
                 if key in {"sourceMappings", "evalIds"}:
-                    normalized[key] = [value.strip("`")]
+                    normalized[key] = _list_value(value)
                 elif key == "required":
                     normalized[key] = value.strip("`").lower() in {"yes", "true", "required"}
                 else:
-                    normalized[key] = value.strip("`")
+                    normalized[key] = _strip_code(value)
             for key, value in normalized.items():
                 if key in expected and expected[key] != value:
                     return f"Markdown {json_name} technical fields differ from plan JSON"
             if json_name == "acceptance":
-                if row["sourceMapping"] not in expected.get("sourceMappings", []) or row["evalId"] not in expected.get("evalIds", []):
+                source_mappings = _list_value(row["sourcemapping"])
+                acceptance_evals = _list_value(row["evalid"])
+                if source_mappings != expected.get("sourceMappings") or acceptance_evals != expected.get("evalIds"):
                     return "acceptance mapping does not match source/Eval contract"
     tasks = plan.get("tasks", [])
     json_tasks = plan_json.get("tasks", [])
@@ -326,7 +428,12 @@ def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], p
         if any(dep not in task_ids[:index] for dep in task.get("dependsOn", [])):
             return "task dependencies must point to earlier tasks"
     allowed = plan_json.get("allowedFiles", [])
+    markdown_allowed = plan.get("allowedFiles", [])
+    if markdown_allowed != allowed:
+        return "Markdown allowedFiles differ from plan JSON"
     owned = {file for task in tasks if isinstance(task, dict) for file in task.get("files", [])}
+    if any(file not in allowed for file in owned):
+        return "task files must be a subset of allowedFiles"
     if any(file not in owned for file in allowed):
         return "allowed file is not owned by a Markdown task"
     return None
@@ -426,10 +533,22 @@ def main() -> int:
                 return fail(f"{slice_id} V2 structured artifacts are unreadable: {exc}")
             if not isinstance(plan_json, dict) or not isinstance(source_profile, dict):
                 return fail(f"{slice_id} V2 structured artifacts must be objects")
-            if isinstance(source_profile.get("revision"), int) and source.get("revision") != source_profile.get("revision"):
+            try:
+                from slice_contract import validate_contract_case
+                profile_decision = validate_contract_case("sourceProfile", source_profile)
+            except (ImportError, ValueError, TypeError):
+                profile_decision = {"accepted": False, "reasonCode": "SLICE_SOURCE_PROFILE_INVALID"}
+            if profile_decision.get("accepted") is not True:
+                return fail(f"{slice_id} SourceProfile is invalid: {profile_decision.get('reasonCode', 'SLICE_SOURCE_PROFILE_INVALID')}")
+            if not _validate_plan_json(plan_json):
+                return fail(f"{slice_id} SlicePlan JSON has invalid technical/task schema")
+            if "revision" in source_profile and source.get("revision") != source_profile.get("revision"):
                 return fail(f"{slice_id} source revision does not match SourceProfile")
-            if isinstance(source_profile.get("contentHash"), str) and source.get("contentHash") != source_profile.get("contentHash"):
+            if "contentHash" in source_profile and source.get("contentHash") != source_profile.get("contentHash"):
                 return fail(f"{slice_id} source content hash does not match SourceProfile")
+            for source_key, profile_key in (("project", "project"), ("document", "document")):
+                if profile_key in source_profile and source_profile.get(profile_key) != source.get(source_key):
+                    return fail(f"{slice_id} source {source_key} does not match SourceProfile")
             try:
                 parsed_spec = parse_markdown_contract(spec, kind="spec")
                 parsed_plan = parse_markdown_contract(plan, kind="plan")
