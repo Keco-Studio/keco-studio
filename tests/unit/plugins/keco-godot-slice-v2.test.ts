@@ -305,7 +305,31 @@ describe('Keco Godot Slice V2 skill contract', () => {
       const canonical = readFileSync(path.join(canonicalRoot, relative));
       expect(readFileSync(path.join(codexRoot, relative))).toEqual(canonical);
       expect(readFileSync(path.join(claudeRoot, relative))).toEqual(canonical);
-      for (const heading of headings) expect(canonical.toString()).toMatch(new RegExp(`^#{2,3} ${heading}$`, 'm'));
+      const text = canonical.toString();
+      const positions = headings.map(heading => {
+        const match = text.match(new RegExp(`^#{2,3} ${heading}$`, 'm'));
+        expect(match).not.toBeNull();
+        return match ? text.indexOf(match[0]) : -1;
+      });
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      if (relative === 'spec-template.md') {
+        expect(text).toMatch(/\| inputId \| name \| source \| type \| required \| constraints \| default \|/);
+        expect(text).toMatch(/\| outputId \| name \| type \| shape \| guarantees \|/);
+        expect(text).toMatch(/\| parameterId \| name \| type \| allowed range or enum \| boundary behavior \|/);
+        expect(text).toMatch(/\| interfaceId \| provider \| consumer \| operation\/signature \| protocol or data contract \|/);
+        expect(text).toMatch(/\| errorId \| condition \| detection \| response \| observable result \|/);
+        expect(text).toMatch(/\| invariantId \| state or transition \| invariant \|/);
+        expect(text).toMatch(/\| acceptanceId \| behavior \| sourceMapping \| evalId \|/);
+      } else {
+        for (const label of ['Files', 'Consumes', 'Produces', 'Depends on', 'Source mappings', 'Serves evaluations', 'RED:', 'GREEN:', 'Verification:', 'Review:']) {
+          expect(text).toContain(label);
+        }
+        expect(text).toMatch(/````text\n```text[\s\S]*```\n````/);
+      }
+      for (const moduleRoot of [codexRoot, claudeRoot]) {
+        const skill = readFileSync(path.join(moduleRoot, '..', 'SKILL.md'), 'utf8');
+        expect(skill).toContain(`- [${relative}](references/${relative})`);
+      }
     }
   });
 
