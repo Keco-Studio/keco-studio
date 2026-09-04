@@ -1016,6 +1016,33 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
+  it('requires paired structured artifacts for V2 decomposition bundles', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-decomposition-artifacts-'));
+    const validator = moduleFile('scripts/validate_slice_decomposition.py');
+    const source = {
+      project: 'artifact-check', document: 'gdd', revision: 1,
+      contentHash: 'sha256:' + 'a'.repeat(64),
+    };
+    const pair = { specContent: '# Slice\nsliceId: slice-a\n', planContent: '# Plan\nsliceId: slice-a\n' };
+    const bundlePath = path.join(tempRoot, 'bundle.json');
+    writeFileSync(bundlePath, JSON.stringify({
+      version: 1,
+      contractVersion: 2,
+      source,
+      slices: [
+        { sliceId: 'slice-a', requirementIds: ['source-a'], taskIds: ['task-a'], evalIds: ['eval-a'], ...pair },
+        { sliceId: 'slice-b', requirementIds: ['source-b'], taskIds: ['task-b'], evalIds: ['eval-b'], ...pair },
+      ],
+    }));
+    try {
+      const result = spawnSync('python3', [validator, bundlePath], { encoding: 'utf8' });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/planJsonPath.*sourceProfilePath/i);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('ships the multi-Slice roadmap and recovery contract', () => {
     const multiSlicePath = moduleFile('references/multi-slice-orchestration.md');
     expect(existsSync(multiSlicePath)).toBe(true);
