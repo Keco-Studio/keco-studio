@@ -154,7 +154,7 @@ begin
     end if;
     for v_item in select jsonb_array_elements_text(v_task->'dependsOn') loop
       if v_item = v_task->>'id' or not public.keco_slice_v2_contract_identifier(v_item)
-        or v_item <> any(v_task_ids[1:array_position(v_task_ids, v_task->>'id') - 1]) then
+        or not (v_item = any(v_task_ids[1:array_position(v_task_ids, v_task->>'id') - 1])) then
         raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
       end if;
     end loop;
