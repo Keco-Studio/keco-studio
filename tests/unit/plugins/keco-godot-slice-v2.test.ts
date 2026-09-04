@@ -286,6 +286,29 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
+  it('keeps canonical Spec and Plan templates byte-identical in both preflight modules', () => {
+    const canonicalRoot = path.join(repositoryRoot, 'contracts', 'keco-slice-v2');
+    const codexRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-godot-slice-preflight', 'references');
+    const claudeRoot = path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-godot-slice-preflight', 'references');
+    const requiredHeadings: Record<string, string[]> = {
+      'spec-template.md': [
+        'Slice Identity', 'Objective', 'Scope', 'Technical Contract', 'Inputs', 'Outputs',
+        'Parameters & Boundaries', 'Module Interfaces', 'Error & Exception Scenarios',
+        'State & Invariants', 'Acceptance Mapping', 'Out of Scope',
+      ],
+      'plan-template.md': [
+        'Implementation Strategy', 'Dependency Graph', 'Risk Register', 'Execution Constraints',
+        'Task Checklist', 'Delivery Checklist',
+      ],
+    };
+    for (const [relative, headings] of Object.entries(requiredHeadings)) {
+      const canonical = readFileSync(path.join(canonicalRoot, relative));
+      expect(readFileSync(path.join(codexRoot, relative))).toEqual(canonical);
+      expect(readFileSync(path.join(claudeRoot, relative))).toEqual(canonical);
+      for (const heading of headings) expect(canonical.toString()).toMatch(new RegExp(`^#{2,3} ${heading}$`, 'm'));
+    }
+  });
+
   it('uses the complete V2 release order in the bundled default policy', () => {
     const policy = JSON.parse(readFileSync(moduleFile('references/default-delivery-policy.json'), 'utf8'));
     expect(policy.releaseOrder).toEqual([

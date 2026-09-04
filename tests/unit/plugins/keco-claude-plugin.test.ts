@@ -609,6 +609,17 @@ describe('Keco Claude plugin validators', () => {
     }
   });
 
+  it('keeps canonical Spec and Plan templates byte-identical in both preflight modules', () => {
+    const canonicalRoot = path.join(repositoryRoot, 'contracts', 'keco-slice-v2');
+    const codexRoot = path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-godot-slice-preflight', 'references');
+    const claudeRoot = path.join(pluginRoot, 'skills', 'keco-godot-slice-preflight', 'references');
+    for (const relative of ['spec-template.md', 'plan-template.md']) {
+      const canonical = readFileSync(path.join(canonicalRoot, relative));
+      expect(readFileSync(path.join(codexRoot, relative))).toEqual(canonical);
+      expect(readFileSync(path.join(claudeRoot, relative))).toEqual(canonical);
+    }
+  });
+
   it('validates task evidence, policy gates, and atomic mirror provenance', () => {
     const hash = (character: string) => `sha256:${character.repeat(64)}`;
     const planRevision = hash('1');

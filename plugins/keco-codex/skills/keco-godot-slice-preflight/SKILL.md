@@ -18,6 +18,8 @@ Own SourceProfile selection, source hashes, planning-root and direct-child folde
 - [source-data-contract.md](references/source-data-contract.md)
 - [slice-decision.md](references/slice-decision.md)
 - [slice-document-contract.md](references/slice-document-contract.md)
+- [spec-template.md](references/spec-template.md)
+- [plan-template.md](references/plan-template.md)
 - [multi-slice-orchestration.md](references/multi-slice-orchestration.md)
 - [gdd-coverage-contract.md](references/gdd-coverage-contract.md)
 - [gdd-change-contract.md](references/gdd-change-contract.md)
