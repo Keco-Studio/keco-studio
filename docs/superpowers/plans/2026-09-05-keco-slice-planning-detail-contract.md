@@ -149,7 +149,7 @@ git commit -m "feat(slice): add technical planning templates"
 
 **Interfaces:**
 - Consumes: `plan`, `evalSpec`, and `sourceProfile` JSON; canonical manifest limits.
-- Produces: `validate_contract_case("planEval", value)` returning `{accepted: boolean, reasonCode: string | null}` and CLI support for `--plan-json`, `--eval-spec`, `--source-profile` cross-checking.
+- Produces: `validate_contract_case("planEval", value)` returning `{accepted: boolean, reasonCode: string | null}` and the existing CLI's `--eval-spec`/`--source-profile` cross-checking for every new or materially updated V2 plan.
 
 - [ ] **Step 1: Write failing corpus cases**
 
@@ -166,7 +166,7 @@ Add `_technical_contract(value: Any, task_ids: set[str], eval_ids: set[str]) -> 
 
 In `_plan_eval`, include `technicalContract` in the exact plan key set, validate it before reciprocal Eval mapping, collect all technical IDs, require each input/parameter/interface/invariant ID in at least one `tasks[].consumes` or `technicalContract.acceptance` mapping, and require each output/interface/error/invariant/acceptance ID in at least one `tasks[].produces` or acceptance mapping. Extend each task's exact key set with `consumes`, `produces`, and `verification`, where `verification` has non-empty `assertions` and `observationPaths` arrays. Return the technical reason code for only these new failures.
 
-In `validate_plan.py`, pass the new artifact paths unchanged to `validate_v2_plan`, print the stable reason code on stderr, and keep legacy invocation behavior for callers that do not request the new V2 cross-document gate.
+In `validate_plan.py`, pass the new artifact paths unchanged to `validate_v2_plan`, print the stable reason code on stderr, and require the technical contract whenever the input declares `schemaVersion: 2`; historical fixtures remain readable through their existing non-mutating readers rather than a bypass inside the V2 validator.
 
 - [ ] **Step 4: Run Python tests to verify the contract**
 
@@ -312,7 +312,7 @@ Expected: FAIL because the current SQL V2 wrapper validates scope and lifecycle 
 
 - [ ] **Step 3: Implement the transactional SQL gate**
 
-Create immutable helper functions for bounded text, lower-case identifiers, JSON array uniqueness, numeric/enum/set boundaries, and JSON-pointer paths. Add `keco_slice_v2_validate_technical_contract(p_plan jsonb, p_eval_spec jsonb, p_spec_markdown text, p_plan_markdown text) returns void` that raises `SLICE_TECHNICAL_CONTRACT_INVALID` on the first stable failure. Call it in the V2 create/accept path before generating `writeToken` or invoking document inserts/updates. Validate all task arrays, dependency order, allowed-file ownership, acceptance/source/Eval reciprocity, and exact Markdown projection inside the same transaction. Leave existing V1 rows readable by checking `contract_version = 2` only at the new gate.
+Create immutable helper functions for bounded text, lower-case identifiers, JSON array uniqueness, numeric/enum/set boundaries, and JSON-pointer paths. Add `keco_slice_v2_validate_technical_contract(p_plan jsonb, p_eval_spec jsonb) returns void` that raises `SLICE_TECHNICAL_CONTRACT_INVALID` on the first stable failure. Call it in the V2 create/accept path before generating `writeToken` or invoking document inserts/updates. Validate all structured task arrays, dependency order, allowed-file ownership, acceptance/source/Eval reciprocity, and the already-computed Markdown binding hashes inside the same transaction; full Markdown parsing and JSON projection comparison remain in the preflight validator before this SQL call. Leave existing V1 rows readable by checking `contract_version = 2` only at the new gate.
 
 The migration must be additive, use `create or replace function`, preserve `search_path = ''`, bound loops and JSON array lengths to manifest limits, and never repair malformed input.
 
