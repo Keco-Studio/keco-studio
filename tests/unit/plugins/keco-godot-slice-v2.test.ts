@@ -508,6 +508,16 @@ describe('Keco Godot Slice V2 skill contract', () => {
           expect(result.status).toBe(0);
           expect(JSON.parse(result.stdout)).toEqual({ accepted: false, reasonCode: 'SLICE_TECHNICAL_CONTRACT_INVALID' });
         }
+
+        const acceptanceOwned = structuredClone(valid.input);
+        acceptanceOwned.plan.tasks[0].produces = acceptanceOwned.plan.tasks[0].produces.filter(
+          (id: string) => id !== 'acceptance-move',
+        );
+        const acceptanceOwnedPath = path.join(tempRoot, `acceptance-owned-${path.basename(path.dirname(runtime))}.json`);
+        writeFileSync(acceptanceOwnedPath, JSON.stringify(acceptanceOwned));
+        const acceptanceOwnedResult = spawnSync('python3', [runtime, 'planEval', acceptanceOwnedPath], { encoding: 'utf8' });
+        expect(acceptanceOwnedResult.status).toBe(0);
+        expect(JSON.parse(acceptanceOwnedResult.stdout)).toEqual({ accepted: true, reasonCode: null });
       }
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });

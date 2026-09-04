@@ -306,6 +306,7 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     tasks = plan.get("tasks")
     if (
         plan.get("schemaVersion") != 2
+        or not _valid_hash(plan.get("planRevision"))
         or not _strings(allowed)
         or any(not safe_repository_path(item) for item in allowed)
         or not isinstance(tasks, list)
@@ -361,15 +362,23 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     known_eval_ids = {
         item.get("evalId") for item in eval_values if isinstance(item, dict) and isinstance(item.get("evalId"), str)
     } if isinstance(eval_values, list) else set()
-    source_mapping_ids = {mapping for task in tasks for mapping in task["sourceMappings"]}
-    if plan.get("coverageMode") == "gdd":
-        source_mapping_ids.update(plan.get("requirementIds", []))
+    # GDD acceptance claims must point at authoritative requirement inventory
+    # rows. Non-GDD plans have no requirement inventory, so their task-level
+    # source mappings are the only available source binding.
+    source_mapping_ids = (
+        set(plan.get("requirementIds", []))
+        if plan.get("coverageMode") == "gdd"
+        else {mapping for task in tasks for mapping in task["sourceMappings"]}
+    )
     if not _technical_contract(plan["technicalContract"], task_ids, known_eval_ids, source_mapping_ids):
         return _technical_failure()
     technical = plan.get("technicalContract", {})
     technical_by_kind = {section: {row["id"] for row in technical.get(section, [])} for section in ("inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance")}
     valid_consumes = technical_by_kind["inputs"] | technical_by_kind["parameters"] | technical_by_kind["interfaces"] | technical_by_kind["invariants"]
+    # Acceptance rows own their acceptance IDs; task production is optional for
+    # those IDs. All other output-side rows still require task ownership.
     valid_produces = technical_by_kind["outputs"] | technical_by_kind["interfaces"] | technical_by_kind["errors"] | technical_by_kind["invariants"] | technical_by_kind["acceptance"]
+    required_produces = valid_produces - technical_by_kind["acceptance"]
     consumed: set[str] = set()
     produced: set[str] = set()
     for task in tasks:
@@ -382,7 +391,7 @@ def _plan_eval(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             return _technical_failure()
         consumed.update(task["consumes"])
         produced.update(task["produces"])
-    if not valid_consumes <= consumed or not valid_produces <= produced:
+    if not valid_consumes <= consumed or not required_produces <= produced:
         return _technical_failure()
     evaluations = eval_spec.get("evaluations")
     if (
