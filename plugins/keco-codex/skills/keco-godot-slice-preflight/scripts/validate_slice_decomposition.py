@@ -294,6 +294,17 @@ def _validate_plan_json(plan_json: dict[str, object]) -> bool:
         return False
     if set(plan_json) != expected_keys or plan_json.get("schemaVersion") != 2:
         return False
+    if not SOURCE_HASH_RE.fullmatch(str(plan_json.get("planRevision", ""))):
+        return False
+    if coverage == "gdd":
+        if not SOURCE_HASH_RE.fullmatch(str(plan_json.get("inventoryHash", ""))):
+            return False
+        requirements = plan_json.get("requirementIds")
+        if not isinstance(requirements, list) or not requirements or len(requirements) != len(set(requirements)) or any(not isinstance(item, str) or not item.strip() for item in requirements):
+            return False
+    else:
+        if not SOURCE_HASH_RE.fullmatch(str(plan_json.get("sourceProfileHash", ""))) or not isinstance(plan_json.get("nonGddRationale"), str) or not plan_json["nonGddRationale"].strip():
+            return False
     allowed = plan_json.get("allowedFiles")
     if not isinstance(allowed, list) or not allowed or len(allowed) != len(set(allowed)):
         return False
@@ -317,6 +328,8 @@ def _validate_plan_json(plan_json: dict[str, object]) -> bool:
             values = task.get(field)
             if not isinstance(values, list) or len(values) != len(set(values)) or any(not isinstance(item, str) or not item.strip() for item in values):
                 return False
+        if not task["files"] or not task["servesEvaluations"] or not task["sourceMappings"]:
+            return False
         if any(path not in allowed for path in task["files"]):
             return False
         if any(dep not in task_ids[:-1] for dep in task["dependsOn"]):
@@ -339,7 +352,18 @@ def _validate_plan_json(plan_json: dict[str, object]) -> bool:
             return False
     if set().union(*(set(task["files"]) for task in tasks)) != set(allowed):
         return False
-    if not _technical_contract(plan_json.get("technicalContract"), set(task_ids), eval_ids, source_mappings | set(plan_json.get("requirementIds", []))):
+    technical = plan_json.get("technicalContract")
+    if not _technical_contract(technical, set(task_ids), eval_ids, source_mappings | set(plan_json.get("requirementIds", []))):
+        return False
+    technical_by_kind = {section: {row["id"] for row in technical[section]} for section in ("inputs", "outputs", "parameters", "interfaces", "errors", "invariants", "acceptance")}
+    valid_consumes = technical_by_kind["inputs"] | technical_by_kind["parameters"] | technical_by_kind["interfaces"] | technical_by_kind["invariants"]
+    valid_produces = technical_by_kind["outputs"] | technical_by_kind["interfaces"] | technical_by_kind["errors"] | technical_by_kind["invariants"] | technical_by_kind["acceptance"]
+    required_produces = valid_produces - technical_by_kind["acceptance"]
+    consumed = {value for task in tasks for value in task["consumes"]}
+    produced = {value for task in tasks for value in task["produces"]}
+    if any(value not in valid_consumes for value in consumed) or any(value not in valid_produces for value in produced):
+        return False
+    if not valid_consumes <= consumed or not required_produces <= produced:
         return False
     return True
 
