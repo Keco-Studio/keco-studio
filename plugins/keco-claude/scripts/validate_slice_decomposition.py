@@ -438,6 +438,19 @@ def main() -> int:
             mismatch = compare_markdown_to_plan(parsed_spec, parsed_plan, plan_json, source_profile)
             if mismatch:
                 return fail(f"{slice_id} {mismatch}")
+            bundle_eval_ids = item.get("evalIds")
+            plan_eval_ids = []
+            if isinstance(plan_json.get("tasks"), list):
+                for task in plan_json["tasks"]:
+                    if isinstance(task, dict) and isinstance(task.get("servesEvaluations"), list):
+                        plan_eval_ids.extend(task["servesEvaluations"])
+            technical_plan = plan_json.get("technicalContract")
+            if isinstance(technical_plan, dict) and isinstance(technical_plan.get("acceptance"), list):
+                for row in technical_plan["acceptance"]:
+                    if isinstance(row, dict) and isinstance(row.get("evalIds"), list):
+                        plan_eval_ids.extend(row["evalIds"])
+            if not isinstance(bundle_eval_ids, list) or list(dict.fromkeys(plan_eval_ids)) != bundle_eval_ids:
+                return fail(f"{slice_id} Eval IDs differ from paired plan JSON")
 
         declared = re.search(r"^\s*sliceId\s*:\s*([^\s]+)\s*$", spec, re.I | re.M)
         if declared and declared.group(1) != slice_id:
