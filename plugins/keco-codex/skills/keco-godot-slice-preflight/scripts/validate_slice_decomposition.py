@@ -7,6 +7,7 @@ import json
 import pathlib
 import re
 import sys
+from typing import Any
 
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
@@ -25,6 +26,18 @@ DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 TASK_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s+([^:]+):\s*(.+?)\s*$", re.M)
 HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$", re.M)
 STOP_WORDS = {"the", "a", "an", "and", "or", "to", "of", "for", "in", "on", "with", "from", "this", "that", "slice", "task", "plan"}
+PLACEHOLDER_RE = re.compile(r"(?<![a-z0-9_-])(?:tbd|todo|implement later|fill in details|add appropriate|as needed|handle normally)(?![a-z0-9_-])", re.I)
+TECHNICAL_TABLES = {
+    "inputs": ("inputid", "name", "source", "type", "required", "constraints", "default"),
+    "outputs": ("outputid", "name", "type", "shape", "guarantees"),
+    "parameters boundaries": ("parameterid", "name", "type", "allowed range or enum", "boundary behavior"),
+    "module interfaces": ("interfaceid", "provider", "consumer", "operation signature", "protocol or data contract"),
+    "error exception scenarios": ("errorid", "condition", "detection", "response", "observable result"),
+    "state invariants": ("invariantid", "state or transition", "invariant"),
+    "acceptance mapping": ("acceptanceid", "behavior", "sourcemapping", "evalid"),
+}
+SPEC_REQUIRED = ("slice identity", "objective", "scope", "technical contract", "acceptance mapping", "out of scope")
+PLAN_REQUIRED = ("implementation strategy", "dependency graph", "risk register", "execution constraints", "task checklist", "delivery checklist")
 
 
 def fail(message: str) -> int:
@@ -67,6 +80,256 @@ def sections(markdown: str) -> dict[str, str]:
         end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
         result[heading] = markdown[match.end():end].strip()
     return result
+
+
+def _heading_key(value: str) -> str:
+    value = re.sub(r"[^a-z0-9 ]", " ", value.lower())
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _cell_key(value: str) -> str:
+    return _heading_key(value).replace(" ", "")
+
+
+def _concrete(value: str) -> bool:
+    return bool(value.strip()) and not PLACEHOLDER_RE.search(value)
+
+
+def _split_row(line: str) -> list[str]:
+    body = line.strip().strip("|")
+    cells: list[str] = []
+    current: list[str] = []
+    code = False
+    for char in body:
+        if char == "`":
+            code = not code
+        if char == "|" and not code:
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    cells.append("".join(current).strip())
+    return cells
+
+
+def _boundary(value: str) -> bool:
+    text = value.strip()
+    if not _concrete(text):
+        return False
+    if text.lower() == "unbounded":
+        return True
+    if re.fullmatch(r"[A-Za-z0-9_.\s<>=+|{},\[\]-]+", text) and ("|" in text or re.search(r"\d", text) and re.search(r"(?:<=|>=|<|>|==)", text)):
+        return True
+    return len(text) >= 3 and text[0] in "[{" and text[-1] in "]}" and "," in text
+
+
+def _parse_table(text: str, expected: tuple[str, ...], label: str) -> list[dict[str, str]]:
+    lines = text.splitlines()
+    candidates = []
+    for index, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            continue
+        if index + 1 >= len(lines) or not lines[index + 1].lstrip().startswith("|"):
+            continue
+        cells = _split_row(line)
+        separator = _split_row(lines[index + 1])
+        if len(cells) != len(expected) or len(separator) != len(expected) or any(not re.fullmatch(r":?-{3,}:?", item) for item in separator):
+            if _heading_key(label) in text.lower():
+                raise ValueError(f"malformed {label} table")
+            continue
+        if tuple(_cell_key(item) for item in cells) != tuple(_cell_key(item) for item in expected):
+            raise ValueError(f"malformed {label} table columns")
+        rows = []
+        cursor = index + 2
+        while cursor < len(lines) and lines[cursor].lstrip().startswith("|"):
+            row = _split_row(lines[cursor])
+            if len(row) != len(expected) or any(not item for item in row):
+                raise ValueError(f"malformed {label} table row")
+            rows.append(dict(zip(expected, row)))
+            cursor += 1
+        if not rows:
+            raise ValueError(f"empty {label} table")
+        candidates.extend(rows)
+    if not candidates:
+        raise ValueError(f"missing {label} table")
+    return candidates
+
+
+def _list_value(value: str) -> list[str]:
+    value = value.strip()
+    if value.lower() in {"none", "-", "n/a"}:
+        return []
+    value = value.strip("`")
+    return [item.strip().strip("`") for item in re.split(r"\s*,\s*|\s*;\s*", value) if item.strip()]
+
+
+def _command_value(value: str, expected: str) -> dict[str, str]:
+    match = re.match(r"(.+?)\s*\(\s*expected\s*:\s*(fails|passes)\s*\)\s*$", value, re.I)
+    if match:
+        return {"command": match.group(1).strip(), "expected": match.group(2).lower()}
+    return {"command": value.strip(), "expected": expected}
+
+
+def parse_markdown_contract(markdown: str, *, kind: str) -> dict[str, object]:
+    """Return normalized sections, tables, task blocks, and identity metadata."""
+    matches = list(HEADING_RE.finditer(markdown))
+    parsed_sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        key = _heading_key(match.group(1))
+        if key in parsed_sections:
+            raise ValueError(f"duplicate {kind} section: {key}")
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
+        parsed_sections[key] = markdown[match.end():end].strip()
+    required = SPEC_REQUIRED if kind == "spec" else PLAN_REQUIRED
+    for required_key in required:
+        # Technical Contract is a container for the seven required subheadings;
+        # its own body may therefore be empty while its children are populated.
+        has_children = required_key == "technical contract" and any(name in TECHNICAL_TABLES for name in parsed_sections)
+        if required_key not in parsed_sections or (not parsed_sections[required_key].strip() and not has_children):
+            raise ValueError(f"missing or empty {kind} section: {required_key}")
+    identity: dict[str, str] = {}
+    # Metadata may live in a Slice Identity section or in the historical
+    # frontmatter-like preamble; both describe the same visible contract.
+    for match in re.finditer(r"^\s*-?\s*([A-Za-z][A-Za-z ]*):\s*`?([^`\n]+?)`?\s*$", markdown, re.M):
+        identity[_heading_key(match.group(1)).replace(" ", "")] = match.group(2).strip()
+    result: dict[str, object] = {"sections": parsed_sections, "identity": identity, "tables": {}}
+    if kind == "spec":
+        tables: dict[str, list[dict[str, str]]] = {}
+        for section, columns in TECHNICAL_TABLES.items():
+            section_text = parsed_sections.get(section)
+            if section_text is None:
+                raise ValueError(f"missing or empty spec section: {section}")
+            tables[section] = _parse_table(section_text, columns, section)
+            for row in tables[section]:
+                if any(not _concrete(value) for value in row.values()):
+                    raise ValueError(f"placeholder or empty value in {section} table")
+            if section == "inputs" and any(not row["default"].strip() for row in tables[section]):
+                raise ValueError("inputs require an explicit default")
+            if section == "parameters boundaries" and any(not _boundary(row["allowed range or enum"]) for row in tables[section]):
+                raise ValueError("parameters require a concrete boundary")
+        result["tables"] = tables
+    else:
+        task_matches = list(re.finditer(r"^\s*-\s*\[[ xX]\]\s+([^:]+):\s*(.+?)\s*$", parsed_sections["task checklist"], re.M))
+        if not task_matches:
+            raise ValueError("plan task checklist needs checkbox tasks")
+        tasks: list[dict[str, object]] = []
+        checklist = parsed_sections["task checklist"]
+        for index, match in enumerate(task_matches):
+            end = task_matches[index + 1].start() if index + 1 < len(task_matches) else len(checklist)
+            block = checklist[match.start():end]
+            task_id = match.group(1).strip().strip("`")
+            task: dict[str, object] = {"id": task_id, "description": match.group(2).strip()}
+            fields: dict[str, str] = {}
+            for field_match in re.finditer(r"^\s+-\s*([^:]+):\s*(.*?)\s*$", block, re.M):
+                fields[_heading_key(field_match.group(1))] = field_match.group(2).strip()
+            required_fields = ("files", "consumes", "produces", "depends on", "source mappings", "serves evaluations", "red", "green", "verification", "review")
+            missing = [field for field in required_fields if field not in fields or not fields[field]]
+            if missing:
+                raise ValueError(f"task {task_id} missing field: {missing[0]}")
+            task["files"] = _list_value(fields["files"])
+            task["consumes"] = _list_value(fields["consumes"])
+            task["produces"] = _list_value(fields["produces"])
+            task["dependsOn"] = _list_value(fields["depends on"])
+            task["sourceMappings"] = _list_value(fields["source mappings"])
+            task["servesEvaluations"] = _list_value(fields["serves evaluations"])
+            task["red"] = _command_value(fields["red"], "fails")
+            task["green"] = _command_value(fields["green"], "passes")
+            verification = fields["verification"]
+            paths = re.findall(r"/[A-Za-z0-9_./-]+", verification)
+            if "observation paths" in fields:
+                paths = _list_value(fields["observation paths"])
+            task["verification"] = {"assertions": [verification], "observationPaths": paths or []}
+            review = fields["review"].lower()
+            minimum = "independent_actor" if "independent" in review else "separate_context" if "separate" in review else "self"
+            task["review"] = {"minimumLevel": minimum}
+            tasks.append(task)
+        result["tasks"] = tasks
+    return result
+
+
+def _canonical_hash(value: object) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def compare_markdown_to_plan(spec: dict[str, object], plan: dict[str, object], plan_json: dict[str, object], source_profile: dict[str, object]) -> str | None:
+    """Return the first stable failure message, or None when every field matches."""
+    identity = spec.get("identity", {})
+    plan_identity = plan.get("identity", {})
+    slice_id = identity.get("sliceid")
+    if not isinstance(slice_id, str) or (plan_identity.get("sliceid") is not None and slice_id != plan_identity.get("sliceid")):
+        return "Markdown sliceId does not match paired plan"
+    if plan_json.get("schemaVersion") != 2:
+        return "V2 plan JSON must have schemaVersion 2"
+    if plan_json.get("planRevision") != identity.get("planrevision") or (plan_identity.get("planrevision") is not None and plan_json.get("planRevision") != plan_identity.get("planrevision")):
+        return "Markdown planRevision does not match plan JSON"
+    profile_hash = _canonical_hash(source_profile)
+    if plan_json.get("sourceProfileHash") != profile_hash and plan_json.get("coverageMode") == "non_gdd":
+        return "plan JSON sourceProfileHash does not match source profile"
+    spec_tables = spec.get("tables", {})
+    technical = plan_json.get("technicalContract")
+    if not isinstance(technical, dict):
+        return "plan JSON technicalContract is missing"
+    table_map = {"inputs": "inputs", "outputs": "outputs", "parameters boundaries": "parameters", "module interfaces": "interfaces", "error exception scenarios": "errors", "state invariants": "invariants", "acceptance mapping": "acceptance"}
+    table_fields = {
+        "inputs": {"inputid": "id"},
+        "outputs": {"outputid": "id"},
+        "parameters": {"parameterid": "id", "allowed range or enum": "bounds", "boundary behavior": "boundaryBehavior"},
+        "interfaces": {"interfaceid": "id", "operation/signature": "operation", "protocol or data contract": "protocol"},
+        "errors": {"errorid": "id", "observable result": "observable"},
+        "invariants": {"invariantid": "id", "state or transition": "state", "invariant": "rule"},
+        "acceptance": {"acceptanceid": "id", "sourcemapping": "sourceMappings", "evalid": "evalIds"},
+    }
+    for markdown_name, json_name in table_map.items():
+        rows = spec_tables.get(markdown_name, [])
+        expected_rows = technical.get(json_name, [])
+        if not isinstance(expected_rows, list):
+            return f"invalid {json_name} technical rows"
+        markdown_ids = []
+        for row in rows:
+            markdown_id = row[next(iter(row))]
+            markdown_ids.append(markdown_id)
+        json_ids = [item.get("id") for item in expected_rows if isinstance(item, dict)]
+        if markdown_ids != json_ids:
+            return f"Markdown {json_name} technical IDs differ from plan JSON"
+        mapping = table_fields[json_name]
+        for row, expected in zip(rows, expected_rows):
+            if not isinstance(expected, dict):
+                return f"invalid {json_name} technical rows"
+            normalized: dict[str, object] = {}
+            for column, value in row.items():
+                key = mapping.get(column, column)
+                if key in {"sourceMappings", "evalIds"}:
+                    normalized[key] = [value.strip("`")]
+                elif key == "required":
+                    normalized[key] = value.strip("`").lower() in {"yes", "true", "required"}
+                else:
+                    normalized[key] = value.strip("`")
+            for key, value in normalized.items():
+                if key in expected and expected[key] != value:
+                    return f"Markdown {json_name} technical fields differ from plan JSON"
+            if json_name == "acceptance":
+                if row["sourceMapping"] not in expected.get("sourceMappings", []) or row["evalId"] not in expected.get("evalIds", []):
+                    return "acceptance mapping does not match source/Eval contract"
+    tasks = plan.get("tasks", [])
+    json_tasks = plan_json.get("tasks", [])
+    if not isinstance(tasks, list) or not isinstance(json_tasks, list) or len(tasks) != len(json_tasks):
+        return "Markdown task fields differ from plan JSON"
+    task_fields = ("id", "files", "consumes", "produces", "dependsOn", "sourceMappings", "servesEvaluations", "red", "green", "verification", "review")
+    for markdown_task, json_task in zip(tasks, json_tasks):
+        if not isinstance(json_task, dict) or any(markdown_task.get(field) != json_task.get(field) for field in task_fields):
+            return "Markdown task fields differ from plan JSON"
+    task_ids = [task.get("id") for task in tasks if isinstance(task, dict)]
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            return "invalid Markdown task"
+        if any(dep not in task_ids[:index] for dep in task.get("dependsOn", [])):
+            return "task dependencies must point to earlier tasks"
+    allowed = plan_json.get("allowedFiles", [])
+    owned = {file for task in tasks if isinstance(task, dict) for file in task.get("files", [])}
+    if any(file not in owned for file in allowed):
+        return "allowed file is not owned by a Markdown task"
+    return None
 
 
 def substantive_text(value: str) -> str:
@@ -131,6 +394,7 @@ def main() -> int:
     seen: set[str] = set()
     fingerprints: dict[str, str] = {}
     fingerprint_texts: dict[str, str] = {}
+    strict_bundle = payload.get("contractVersion") == 2
     for item in items:
         if not isinstance(item, dict):
             return fail("each decomposition Slice must be an object")
@@ -147,6 +411,33 @@ def main() -> int:
         plan = read_document(args.path, item, "planContent", "planPath")
         if spec is None or plan is None:
             return fail(f"{slice_id} must provide readable spec and plan content")
+
+        # V2 pairs bind the Markdown to the exact structured plan and source
+        # profile used by preflight. Version-1 bundles without these paths stay
+        # on the historical read-only checks for compatibility.
+        item_v2 = strict_bundle or "planJsonPath" in item or "sourceProfilePath" in item or item.get("contractVersion") == 2
+        if item_v2:
+            if not isinstance(item.get("planJsonPath"), str) or not isinstance(item.get("sourceProfilePath"), str):
+                return fail(f"{slice_id} V2 decomposition requires planJsonPath and sourceProfilePath")
+            try:
+                plan_json = json.loads((args.path.parent / item["planJsonPath"]).resolve().read_text(encoding="utf-8"))
+                source_profile = json.loads((args.path.parent / item["sourceProfilePath"]).resolve().read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                return fail(f"{slice_id} V2 structured artifacts are unreadable: {exc}")
+            if not isinstance(plan_json, dict) or not isinstance(source_profile, dict):
+                return fail(f"{slice_id} V2 structured artifacts must be objects")
+            if isinstance(source_profile.get("revision"), int) and source.get("revision") != source_profile.get("revision"):
+                return fail(f"{slice_id} source revision does not match SourceProfile")
+            if isinstance(source_profile.get("contentHash"), str) and source.get("contentHash") != source_profile.get("contentHash"):
+                return fail(f"{slice_id} source content hash does not match SourceProfile")
+            try:
+                parsed_spec = parse_markdown_contract(spec, kind="spec")
+                parsed_plan = parse_markdown_contract(plan, kind="plan")
+            except ValueError as exc:
+                return fail(f"{slice_id} {exc}")
+            mismatch = compare_markdown_to_plan(parsed_spec, parsed_plan, plan_json, source_profile)
+            if mismatch:
+                return fail(f"{slice_id} {mismatch}")
 
         declared = re.search(r"^\s*sliceId\s*:\s*([^\s]+)\s*$", spec, re.I | re.M)
         if declared and declared.group(1) != slice_id:
