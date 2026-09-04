@@ -45,7 +45,8 @@ function plannerMessages(input: { event: DialogueSceneEvent; gddContext: string 
       'Use the scene event and preceding GDD text as the only design evidence.',
       'Write full spoken lines and actionable player choices. Keep branch outcomes consistent with the established scene.',
       'When the scene event has choices, preserve every choice label verbatim and write a complete explicit branch for each choice.',
-      'Use this importable branch syntax inside content: O1: <choice text> (Jump O1), then O1 branch [O1 | <branch scene>], branch dialogue, (Jump Oend), and finally Oend merge [Oend | <merge scene>]. Use O2, O3, and so on for later choices.',
+      'Use this importable branch syntax inside content: O1: <choice text> (Jump O1), then O1 branch [O1 | <short place or event title>], optional longer \u573a\u666f： setting line, branch dialogue, (Jump Oend), and finally Oend merge [Oend | <short merge title>]. Use O2, O3, and so on for later choices.',
+      'The text after each | must be a concise chapter title (about 4–12 Chinese characters when possible), never a full scene-setting paragraph.',
       'Never represent a player choice only as a Markdown bullet or prose. Every event choice must appear on its own exact O-numbered option row with a Jump target.',
       'When the scene event has no choices, set hasChoices to false and branchSummary to an empty array.',
     ].join('\n'),
@@ -94,29 +95,44 @@ function normalizeChoiceText(value: string): string {
     .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, '')
     .replace(/^\s*O\d+\s*[：:]\s*/i, '')
     .replace(/\s*[（(]\s*Jump\s+O\d+(?:\s+(?:branch|merge))?\s*[）)]\s*$/i, '')
+    // Models commonly punctuate a choice label as a sentence. The scene event
+    // owns the canonical label, so trim only terminal punctuation before
+    // matching and rewriting the row.
+    .replace(/[.!?！？。．…]+\s*$/, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function normalizeChoiceRows(plan: DialoguePlan, event: DialogueSceneEvent): DialoguePlan {
   if (event.choices.length === 0 || !plan.hasChoices) return plan;
-  const segmentedChoiceCount = segmentStorySource(plan.content, `gdd-dialogue:${event.chapterKey}`).segments
-    .filter((segment) => segment.kind === 'choice_text').length;
-  if (segmentedChoiceCount === event.choices.length) return plan;
+  const segmentedChoices = choiceSegmentsBeforeBranches(plan.content, event.chapterKey)
+    .map((segment) => segment.text);
+  // Preserve parser-supported natural branch syntax when labels are already
+  // exact. Rows with punctuation or other harmless formatting still go
+  // through the canonical O-numbered rewrite below.
+  if (segmentedChoices.length === event.choices.length
+    && segmentedChoices.every((choice) => event.choices.includes(choice))) return plan;
   const lines = plan.content.split('\n');
   const matched = new Set<number>();
+  const importableOptionRow = /^O\d+\s*[：:]\s*.+\s+\(Jump\s+O\d+(?:\s+(?:branch|merge))?\)\s*$/i;
   let firstContentLine = -1;
   const normalizedChoices = event.choices.map(normalizeChoiceText);
   const normalizedLines = lines.map((line) => normalizeChoiceText(line));
-  const rewritten = lines.map((line, index) => {
+  const rewritten = lines.flatMap((line, index) => {
     const text = normalizedLines[index];
     if (text && firstContentLine < 0 && !/^O\d+\s*[：:]/i.test(line.trim())) firstContentLine = index;
     const choiceIndex = normalizedChoices.findIndex((choice, candidateIndex) => (
       !matched.has(candidateIndex) && choice === text
     ));
-    if (choiceIndex < 0) return line;
+    if (choiceIndex < 0) {
+      // A model can repeat an otherwise valid O-numbered row. Once every
+      // expected label has been matched, discard only the duplicate importable
+      // row; ordinary dialogue that happens to repeat a label is preserved.
+      if (importableOptionRow.test(line.trim()) && normalizedChoices.includes(text)) return [];
+      return [line];
+    }
     matched.add(choiceIndex);
-    return `O${choiceIndex + 1}: ${event.choices[choiceIndex]} (Jump O${choiceIndex + 1})`;
+    return [`O${choiceIndex + 1}: ${event.choices[choiceIndex]} (Jump O${choiceIndex + 1})`];
   });
 
   const missing = event.choices
@@ -132,12 +148,43 @@ function normalizeChoiceRows(plan: DialoguePlan, event: DialogueSceneEvent): Dia
     : { ...plan, content: rewritten.join('\n') };
 }
 
+function choiceSegmentsBeforeBranches(content: string, chapterKey: string) {
+  const source = segmentStorySource(content, `gdd-dialogue:${chapterKey}`);
+  const firstExplicitBranchOffset = source.segments
+    .filter((segment) => segment.kind === 'branch_marker')
+    .map((segment) => lineStartOffset(content, segment.start))
+    .find((offset) => isExplicitBranchLine(content, offset));
+  return source.segments.filter((segment) => (
+    segment.kind === 'choice_text'
+    && (firstExplicitBranchOffset === undefined || segment.start < firstExplicitBranchOffset)
+    && isChoiceDeclarationLine(content, segment.start)
+  ));
+}
+
+function lineStartOffset(content: string, offset: number): number {
+  return content.lastIndexOf('\n', offset - 1) + 1;
+}
+
+function isExplicitBranchLine(content: string, offset: number): boolean {
+  const lineStart = lineStartOffset(content, offset);
+  const lineEnd = content.indexOf('\n', lineStart);
+  const line = content.slice(lineStart, lineEnd < 0 ? content.length : lineEnd).trim();
+  return /^(?:[A-Za-z][A-Za-z0-9_-]{0,63}|\d{1,3})\s+(?:branch|merge)\s*[【[]/i.test(line);
+}
+
+function isChoiceDeclarationLine(content: string, offset: number): boolean {
+  const lineStart = lineStartOffset(content, offset);
+  const lineEnd = content.indexOf('\n', offset);
+  const line = content.slice(lineStart, lineEnd < 0 ? content.length : lineEnd).trim();
+  return /^O\d+\s*[：:]/i.test(line)
+    || /^(?:Branch|\u5206\u652f)\s*[\d\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u96f6〇\u4e24]+\s*[：:]\s*(?:Choose|\u9009\u62e9)/i.test(line)
+    || /^(?:[-*+]\s+)?(?:\(?\d{1,3}[)）.]|[（(]\s*[A-Za-z]{1,3}\d{0,3}\s*[)）])\s*/.test(line);
+}
+
 function validateChoices(plan: DialoguePlan, event: DialogueSceneEvent): void {
   const expectedHasChoices = event.choices.length > 0;
-  const source = segmentStorySource(plan.content, `gdd-dialogue:${event.chapterKey}`);
-  const detectedChoices = source.segments
-    .filter((segment) => segment.kind === 'choice_text')
-    .map((segment) => segment.text);
+  const detectedChoices = choiceSegmentsBeforeBranches(plan.content, event.chapterKey)
+    .map((segment) => normalizeChoiceText(segment.text));
   if (plan.hasChoices !== expectedHasChoices) {
     throw new GddDialoguePlanningValidationError(
       `Dialogue plan hasChoices must be ${expectedHasChoices} for scene ${event.chapterKey}.`,
@@ -156,12 +203,29 @@ function validateChoices(plan: DialoguePlan, event: DialogueSceneEvent): void {
       `Dialogue plan must contain exactly ${event.choices.length} branch summaries.`,
     );
   }
-  const missingChoices = event.choices.filter(
-    (choice) => !detectedChoices.includes(choice),
-  );
-  if (missingChoices.length > 0 || detectedChoices.length !== event.choices.length) {
+  const normalizedExpectedChoices = event.choices.map(normalizeChoiceText);
+  const expectedCounts = new Map<string, number>();
+  for (const choice of normalizedExpectedChoices) {
+    expectedCounts.set(choice, (expectedCounts.get(choice) ?? 0) + 1);
+  }
+  const detectedCounts = new Map<string, number>();
+  for (const choice of detectedChoices) {
+    detectedCounts.set(choice, (detectedCounts.get(choice) ?? 0) + 1);
+  }
+  const missingChoices = event.choices.filter((choice, index) => {
+    const key = normalizedExpectedChoices[index]!;
+    return (detectedCounts.get(key) ?? 0) < (expectedCounts.get(key) ?? 0);
+  });
+  const extraChoices = [...detectedCounts.entries()]
+    .filter(([choice, count]) => count > (expectedCounts.get(choice) ?? 0))
+    .flatMap(([choice, count]) => Array.from({ length: count - (expectedCounts.get(choice) ?? 0) }, () => choice));
+  if (missingChoices.length > 0 || extraChoices.length > 0 || detectedChoices.length !== event.choices.length) {
+    const details = [
+      `missing: ${missingChoices.join(', ') || 'none'}`,
+      `extra: ${extraChoices.join(', ') || 'none'}`,
+    ].join('; ');
     throw new GddDialoguePlanningValidationError(
-      `Dialogue content must preserve exactly the scene choices in importable option rows; missing: ${missingChoices.join(', ') || 'none'}.`,
+      `Dialogue content must preserve exactly the scene choices in importable option rows; ${details}.`,
     );
   }
 

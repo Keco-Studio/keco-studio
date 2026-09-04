@@ -1,7 +1,7 @@
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import type { StoryPlotEdge, StoryPlotNode, StoryPlotPlan } from './schema';
 import { validateStoryPlotPlan } from './validator';
-import { isStoryPlotHeading, storyPlotHeadingTitle } from './headings';
+import { isPlotSectionBreak, summarizePlotTitle } from './headings';
 
 export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryPlotPlan {
   const indexByStoryId = new Map(document.nodes.map((node, index) => [node.label, index]));
@@ -47,7 +47,7 @@ export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryP
   document.nodes.forEach((node) => {
     if (foldableDecisionIds.has(node.label)) return;
     if (
-      (node.type === 'scene' && isStoryPlotHeading(node.content))
+      (node.type === 'scene' && isPlotSectionBreak(node.content))
       || Boolean(explicitEndingTitle(node.content))
       || node.options.length > 0
       || optionByTarget.has(node.label)
@@ -66,28 +66,17 @@ export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryP
     const storyNodes = collectPlotPath(first.label);
     const plotIndex = nodes.length;
     const optionTitle = optionByTarget.get(first.label)?.text;
-    const endingTitle = storyNodes.map((node) => explicitEndingTitle(node.content)).find(Boolean);
-    const decisionTitle = first.options.length > 0
-      ? `\u51b3\u7b56\u70b9：${compactTitle(first.content)}`
-      : '';
-    const headingTitle = storyPlotHeadingTitle(first.content);
-    const lastStoryNode = storyNodes.at(-1);
-    const mergeTitle = (incomingCount.get(first.label) ?? 0) > 1
-      ? lastStoryNode && !lastStoryNode.next && lastStoryNode.options.length === 0
-        ? '\u6700\u7ec8\u6c47\u805a'
-        : '\u5267\u60c5\u6c47\u805a'
-      : '';
-    const outcomeTitle = storyNodes
-      .map((node) => branchOutcomeTitle(node.content))
-      .find((title) => title && normalizeTitle(title) !== normalizeTitle(optionTitle ?? ''));
     nodes.push({
       id: first.label,
-      title: headingTitle
-        || endingTitle
-        || outcomeTitle
-        || decisionTitle
-        || mergeTitle
-        || (optionTitle ? `Branch ${plotIndex + 1}` : `\u5267\u60c5 ${plotIndex + 1}`),
+      title: summarizePlotTitle(
+        storyNodes.map((node) => node.content),
+        {
+          optionText: optionTitle,
+          isEntry: first.label === document.entryLabel && !optionTitle,
+          isMerge: (incomingCount.get(first.label) ?? 0) > 1,
+          plotIndex,
+        },
+      ),
       storyNodeIds: storyNodes.map((node) => node.label),
     });
   }
@@ -165,25 +154,8 @@ export function buildDeterministicStoryPlotPlan(document: StoryDocument): StoryP
   }, document.nodes.map((node) => node.label));
 }
 
-function compactTitle(value: string): string {
-  const text = value.replace(/\s+/g, ' ').trim();
-  return text.length > 18 ? `${text.slice(0, 18)}...` : text;
-}
-
-function branchOutcomeTitle(value: string): string {
-  const text = value
-    .replace(/^\s*(?:\[[^\]]+\]|【[^】]+】)\s*/u, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!text || /^(?:decision|choice|option|branch)$/i.test(text)) return '';
-  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
-}
-
-function normalizeTitle(value: string): string {
-  return value.toLocaleLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
-}
-
 function explicitEndingTitle(value: string): string {
   const match = /(?:【\s*)?\u7ed3\u5c40(?:[A-Za-z0-9\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]*)?\s*[：:]\s*([^】—\-（(\n]+)/.exec(value);
   return match?.[1]?.trim() ?? '';
 }
+

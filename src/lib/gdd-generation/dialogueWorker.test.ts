@@ -53,7 +53,7 @@ describe('dialogue generation worker', () => {
     } as any);
     expect(result).toBe('completed');
     expect(resolveStoryForImport).toHaveBeenCalledWith('Edited dialogue', expect.objectContaining({
-      skipSemanticAuditAfterValidation: true, enableAiPlotPlanning: false,
+      skipSemanticAuditAfterValidation: true, enableAiPlotPlanning: true,
     }));
     expect(importStoryDocument).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       projectId: 'project-1', userId: 'user-1', folderId: null,

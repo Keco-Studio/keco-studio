@@ -168,6 +168,91 @@ describe('planDialogueScene', () => {
     expect(complete).toHaveBeenCalledTimes(2);
   });
 
+  it('removes duplicate importable choice rows instead of claiming no choices are missing', async () => {
+    const duplicated = {
+      ...validPlan,
+      content: validPlan.content.replace(
+        'O2: Leave (Jump O2)',
+        'O2: Leave (Jump O2)\nO1: Show the letter (Jump O1)',
+      ),
+    };
+    const complete = jest.fn(async () => JSON.stringify(duplicated));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\\nScene.' }, { complete }))
+      .resolves.toEqual(validPlan);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat bracketed branch dialogue as extra player choices', async () => {
+    const withBranchDialogue = {
+      ...validPlan,
+      content: validPlan.content.replace(
+        'Guide: You may enter.',
+        'Guide: You may enter.\n【\u5206\u652f\u9009\u62e9：\u9648\u963f\u59e8，\u6211\u786e\u5b9e\u6ca1\u7ecf\u9a8c。\u60a8\u548c\u7237\u7237\u505a\u4e86\u8fd9\u4e48\u591a\u5e74\u90bb\u5c45，\u80fd\u6559\u6559\u6211\u5417】\n【\u5206\u652f\u9009\u62e9：\u6211\u4f1a\u7528\u4e1a\u7ee9\u8bc1\u660e\u81ea\u5df1。\u4e00\u5468\u5185\u8ba9\u8d85\u5e02\u8425\u4e1a\u989d\u63d0\u534720%】\n【\u5206\u652f\u9009\u62e9：\u8fd9\u662f\u6211\u7684\u8d85\u5e02，\u6211\u81ea\u5df1\u4f1a\u60f3\u529e\u6cd5.】',
+      ),
+    };
+    const complete = jest.fn(async () => JSON.stringify(withBranchDialogue));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\\nScene.' }, { complete }))
+      .resolves.toEqual(withBranchDialogue);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat numbered dialogue alternatives inside a branch as top-level choices', async () => {
+    const withNestedAlternatives = {
+      ...validPlan,
+      content: validPlan.content.replace(
+        'Guide: You may enter.',
+        [
+          'Guide: You may enter.',
+          '\u9009\u9879：',
+          '1. \u963f\u59e8\u597d！\u6211\u4eec\u521a\u5f00\u5f20，\u8d27\u8fd8\u6ca1\u4e0a\u9f50，\u4f46\u60a8\u9700\u8981\u4ec0\u4e48\u6211\u5c3d\u91cf\u627e',
+          '2. \u6709\u5356\u7684，\u60a8\u770b\u770b\u9700\u8981\u4ec0\u4e48',
+          '3. \u521a\u5f00\u5f20，\u5f88\u591a\u4e1c\u897f\u8fd8\u6ca1\u5230，\u60a8\u6539\u5929\u518d\u6765\u5427',
+          'Guide: The customer considers the answer.',
+        ].join('\n'),
+      ),
+    };
+    const complete = jest.fn(async () => JSON.stringify(withNestedAlternatives));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\\nScene.' }, { complete }))
+      .resolves.toEqual(withNestedAlternatives);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('canonicalizes choice rows when the model adds punctuation to the labels', async () => {
+    const punctuationEvent: DialogueSceneEvent = {
+      ...event,
+      chapterKey: 'princess-secret',
+      title: 'Princess Secret',
+      choices: ['Ask why he hid it', 'Ask about the chamber of commerce', 'Promise to protect him'],
+    };
+    const punctuated = {
+      ...validPlan,
+      chapterKey: 'princess-secret',
+      title: 'Princess Secret',
+      content: [
+        'Hero: Tell me what happened.',
+        'O1: Ask why he hid it? (Jump O1)',
+        'O2: Ask about the chamber of commerce. (Jump O2)',
+        'O3: Promise to protect him! (Jump O3)',
+        'O1 branch [O1 | The hidden truth]',
+        'O2 branch [O2 | The chamber records]',
+        'O3 branch [O3 | A promise is made]',
+      ].join('\n'),
+      branchSummary: punctuationEvent.choices,
+    };
+    const complete = jest.fn(async () => JSON.stringify(punctuated));
+
+    const plan = await planDialogueScene({ event: punctuationEvent, gddContext: '# GDD\nScene.' }, { complete });
+    expect(plan).toEqual(expect.objectContaining({
+      content: expect.stringContaining('O1: Ask why he hid it (Jump O1)'),
+    }));
+    expect(plan.content).toContain('O2: Ask about the chamber of commerce (Jump O2)');
+    expect(plan.content).toContain('O3: Promise to protect him (Jump O3)');
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes markdown choice rows for multilingual scene choices before validation', async () => {
     const multilingualEvent: DialogueSceneEvent = {
       ...event,

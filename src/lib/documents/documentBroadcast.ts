@@ -37,9 +37,10 @@ export async function sendDocumentUpdated(
   channel: RealtimeChannel,
   payload: DocumentUpdatedPayload
 ): Promise<void> {
-  await channel.send({
-    type: 'broadcast',
-    event: DOCUMENT_UPDATED_EVENT,
-    payload,
-  });
+  // Prefer httpSend over channel.send(): send() falls back to REST with a
+  // deprecation warning when the socket cannot push.
+  const result = await channel.httpSend(DOCUMENT_UPDATED_EVENT, payload);
+  if (result.success === false) {
+    throw new Error(`Document updated broadcast failed: ${result.error}`);
+  }
 }

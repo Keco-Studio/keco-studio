@@ -68,10 +68,10 @@ export const STUDIO_PLANS: readonly StudioPlan[] = [
     id: 'plan-studio',
     label: 'Studio',
     description: 'Built for teams and studios',
-    amountCents: 4900,
+    amountCents: 5000,
     currency: 'usd',
     kind: 'subscription',
-    priceLabel: '$49/month',
+    priceLabel: '$50/month',
     creditsLabel: '170 agent credits included',
     features: [
       { label: 'Priority processing', included: true },

@@ -243,7 +243,7 @@ export async function processClaimedDialogueJob(
         const resolved = await dependencies.resolve(content, {
           sourceId: job.document_id,
           skipSemanticAuditAfterValidation: true,
-          enableAiPlotPlanning: false,
+          enableAiPlotPlanning: true,
         });
         await dependencies.updateSnapshot(serviceClient, job, resolved, existingScriptId);
       } catch (error) {
@@ -263,7 +263,7 @@ export async function processClaimedDialogueJob(
         const resolved = await dependencies.resolve(content, {
           sourceId: job.document_id,
           skipSemanticAuditAfterValidation: true,
-          enableAiPlotPlanning: false,
+          enableAiPlotPlanning: true,
         });
         const ownerId = await dependencies.resolveOwner(serviceClient, job);
         const result = await dependencies.importStory(serviceClient, {

@@ -3,6 +3,7 @@ import { completeLlm, streamLlm, type StreamLlmOptions } from '@/lib/agent/llm-c
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import { reviewSchema, type GddGenerationRequestV2, type ReviewV2 } from './contracts';
 import {
+  convertMarkdownTablesToPlans,
   extractTablePlanMarker,
   listTableRefNames,
   tablePlanShapeExample,
@@ -207,7 +208,11 @@ function escapeNumericLessThanInProse(markdown: string): string {
   }).join('\n');
 }
 
-function normalizeGeneratedMarkdown(raw: string, projectName: string): {
+function normalizeGeneratedMarkdown(
+  raw: string,
+  projectName: string,
+  tableGuidance: GddGenerationRequestV2['rules']['tableGuidance'] = [],
+): {
   markdown: string;
   tablePlans: GeneratedTablePlan[];
   tablePlanWarning: string | null;
@@ -220,12 +225,13 @@ function normalizeGeneratedMarkdown(raw: string, projectName: string): {
   if (/^#{1,6}[ \t]+.+$/.test(markdown.split(/\r?\n/).at(-1) ?? '')) {
     throw new GddV2GenerationValidationError('Model returned an incomplete heading at the end of the GDD.');
   }
+  const converted = convertMarkdownTablesToPlans(markdown, extracted.tablePlans, tableGuidance);
   const result = {
-    tablePlans: extracted.tablePlans,
+    tablePlans: [...extracted.tablePlans, ...converted.tablePlans],
     tablePlanWarning: extracted.warning,
   };
-  if (/^#(?!#)[ \t]+\S/m.test(markdown)) return { markdown, ...result };
-  return { markdown: `# ${projectName} Game Design Document\n\n${markdown}`, ...result };
+  if (/^#(?!#)[ \t]+\S/m.test(converted.markdown)) return { markdown: converted.markdown, ...result };
+  return { markdown: `# ${projectName} Game Design Document\n\n${converted.markdown}`, ...result };
 }
 
 async function repairMissingTablePlans(
@@ -272,7 +278,7 @@ async function repairMissingTablePlans(
       // it instead of discarding an otherwise usable plan.
       const compatibleSingle = !exact
         && extracted.tablePlans.length === 1
-        && (!requiredTable.fields || sameStringList(extracted.tablePlans[0]!.fields, requiredTable.fields))
+        && (!requiredTable.fields || sameFieldShape(extracted.tablePlans[0]!.fields, requiredTable.fields))
         ? extracted.tablePlans[0]
         : undefined;
       const matched = exact ?? compatibleSingle;
@@ -301,6 +307,16 @@ async function repairMissingTablePlans(
 
 function sameStringList(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeGuidedFieldKey(value: string): string {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+}
+
+function sameFieldShape(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => (
+    normalizeGuidedFieldKey(value) === normalizeGuidedFieldKey(right[index]!)
+  ));
 }
 
 type RequiredTableGuidance = { table: string; purpose: string; fields: string[] };
@@ -461,7 +477,7 @@ export async function generateGddMarkdownV2(
     }
   }
 
-  let normalized = normalizeGeneratedMarkdown(generated.raw, input.projectName);
+  let normalized = normalizeGeneratedMarkdown(generated.raw, input.projectName, input.rules.tableGuidance);
   let repairRound = 0;
   const refNames = listTableRefNames(normalized.markdown);
   const missingGuidance = missingGuidedTables(input, normalized.tablePlans);

@@ -35,20 +35,18 @@ export async function broadcastDocumentStateReset(
       });
     });
 
-    const result = await channel.send({
-      type: 'broadcast',
-      event: 'document-state-reset',
-      payload: {
-        v: 1,
-        documentId: state.documentId,
-        epoch: state.token.epoch,
-        revision: state.token.revision,
-        reason,
-        updatedAt: state.updatedAt,
-      },
+    // Prefer httpSend over channel.send(): send() falls back to REST with a
+    // deprecation warning when the socket cannot push.
+    const result = await channel.httpSend('document-state-reset', {
+      v: 1,
+      documentId: state.documentId,
+      epoch: state.token.epoch,
+      revision: state.token.revision,
+      reason,
+      updatedAt: state.updatedAt,
     });
-    if (result !== 'ok' && (result as { status?: string })?.status !== 'ok') {
-      throw new Error(`Document reset broadcast failed: ${String(result)}`);
+    if (result.success === false) {
+      throw new Error(`Document reset broadcast failed: ${result.error}`);
     }
   } finally {
     await channel.unsubscribe();

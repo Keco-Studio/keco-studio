@@ -57,6 +57,50 @@ describe('FlowChartPanel', () => {
     expect(markup).toContain('data-flow-edge-label=');
   });
 
+  it('shows the choice beat on edges, not A\u9009\u9879 wrappers', () => {
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={{
+          nodes: [
+            { id: 'Store', label: '\u51cc\u6668\u65e0\u4eba\u4fbf\u5229\u5e97', rowIndex: 0, rowIndexes: [0] },
+            { id: 'Talk', label: '\u96e8\u4e2d\u8be2\u95ee', rowIndex: 1, rowIndexes: [1] },
+          ],
+          edges: [{
+            from: 'Store',
+            to: 'Talk',
+            optionIndex: 0,
+            optionText: 'A\u9009\u9879（\u4e3b\u52a8\u642d\u8bdd）',
+          }],
+        }}
+        selectedPlotNodeId="Store"
+        onSelectPlotNode={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('\u4e3b\u52a8\u642d\u8bdd');
+    expect(markup).not.toContain('A\u9009\u9879');
+  });
+
+  it('keeps placeholder chapter names visible until they are replaced', () => {
+    const markup = renderToStaticMarkup(
+      <FlowChartPanel
+        graph={{
+          nodes: [
+            { id: 'Start', label: '\u4eba\u7269\u4ecb\u7ecd', rowIndex: 0, rowIndexes: [0] },
+            { id: 'Talk', label: '\u5267\u60c5 3', rowIndex: 1, rowIndexes: [1] },
+          ],
+          edges: [{ from: 'Start', to: 'Talk', optionText: '\u4e3b\u52a8\u642d\u8bdd', optionIndex: 0 }],
+        }}
+        selectedPlotNodeId="Talk"
+        onSelectPlotNode={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('\u4eba\u7269\u4ecb\u7ecd');
+    expect(markup).toContain('\u4e3b\u52a8\u642d\u8bdd');
+    expect(markup).toContain('\u5267\u60c5 3');
+  });
+
   it('wraps long option labels onto multiple tspans', () => {
     const graph: FlowGraph = {
       nodes: [

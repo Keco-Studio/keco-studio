@@ -1,7 +1,13 @@
 import { parseJumpTarget } from './parseJumpTarget';
 import {
+  isCopiedPlotTitle,
+  isGenericPlotTitle,
+  isPlotSectionBreak,
   isStoryPlotHeading,
-  storyPlotHeadingTitle,
+  isUsablePlotTitle,
+  readFlowRowContent,
+  summarizePlotTitle,
+  titleCopiesIncomingOption,
 } from '@/lib/story-plot/headings';
 
 export type FlowGraphNode = {
@@ -58,7 +64,7 @@ export function buildScriptFlowGraph(rows: Array<Record<string, string>>): FlowG
   rows.forEach((row, index) => {
     const label = (row.Label ?? '').trim();
     const content = (row.Content ?? '').trim();
-    if (isStoryPlotHeading(content) || (label && targetLabels.has(label))) {
+    if (isPlotSectionBreak(content) || (label && targetLabels.has(label))) {
       boundaries.add(index);
     }
   });
@@ -75,22 +81,19 @@ export function buildScriptFlowGraph(rows: Array<Record<string, string>>): FlowG
       : `Plot${nodeIndex + 1}`;
     while (usedIds.has(id)) id = `Plot${nodeIndex + 1}_${usedIds.size + 1}`;
     usedIds.add(id);
-    const content = (firstRow.Content ?? '').trim();
-    const outcomeContent = rowIndexes
-      .map((index) => (rows[index]?.Content ?? '').trim())
-      .find(Boolean);
     const optionTitle = sourceLabel ? optionTextByTarget.get(sourceLabel) : undefined;
-    const normalizeTitle = (value: string) => value
-      .toLocaleLowerCase()
-      .replace(/[\s\p{P}\p{S}]+/gu, '');
-    const differsFromOption = (value: string | undefined) => Boolean(
-      value && normalizeTitle(value) !== normalizeTitle(optionTitle ?? '')
+    const incoming = sourceLabel
+      ? [...optionTextByTarget.entries()].filter(([target]) => target === sourceLabel).length
+      : 0;
+    const title = summarizePlotTitle(
+      rowIndexes.map((index) => (rows[index]?.Content ?? '').trim()),
+      {
+        optionText: optionTitle,
+        isEntry: nodeIndex === 0 && !optionTitle,
+        isMerge: incoming > 1,
+        plotIndex: nodeIndex,
+      },
     );
-    const headingTitle = storyPlotHeadingTitle(content);
-    const title = (differsFromOption(headingTitle) ? headingTitle : undefined)
-      || (differsFromOption(outcomeContent) ? outcomeContent : undefined)
-      || (differsFromOption(sourceLabel) ? sourceLabel : undefined)
-      || (optionTitle ? `Branch ${nodeIndex + 1}` : `\u5267\u60c5 ${nodeIndex + 1}`);
     const speaker = rowIndexes
       .map((index) => (rows[index]?.Name ?? '').trim())
       .find(Boolean);
@@ -164,5 +167,126 @@ export function buildScriptFlowGraph(rows: Array<Record<string, string>>): FlowG
     }
   });
 
+  return coalesceThinLinearPlotNodes({ nodes, edges }, rows);
+}
+
+function isSetupFragment(
+  node: FlowGraphNode,
+  rows: Array<Record<string, string>>,
+): boolean {
+  const contents = node.rowIndexes
+    .map((rowIndex) => readFlowRowContent(rows[rowIndex]))
+    .filter(Boolean);
+  if (contents.length === 0) return false;
+  return contents.every((line) => isStoryPlotHeading(line) && !isPlotSectionBreak(line));
+}
+
+function rewritePlotEdges(
+  edges: FlowGraphEdge[],
+  removedId: string,
+  keptId: string,
+): FlowGraphEdge[] {
+  const edgeKeys = new Set<string>();
+  return edges.flatMap((edge) => {
+    const rewritten = {
+      ...edge,
+      from: edge.from === removedId ? keptId : edge.from,
+      to: edge.to === removedId ? keptId : edge.to,
+    };
+    if (rewritten.from === rewritten.to) return [];
+    const key = JSON.stringify(rewritten);
+    if (edgeKeys.has(key)) return [];
+    edgeKeys.add(key);
+    return [rewritten];
+  });
+}
+
+/** Fold heading-only setup nodes into the next linear chapter. Keep choice branches split. */
+export function coalesceThinLinearPlotNodes(
+  graph: FlowGraph,
+  rows: Array<Record<string, string>>,
+): FlowGraph {
+  const nodes = graph.nodes.map((node) => ({ ...node, rowIndexes: [...node.rowIndexes] }));
+  let edges = graph.edges.map((edge) => ({ ...edge }));
+
+  while (true) {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const candidate = edges.find((edge) => {
+      if (edge.optionText) return false;
+      const from = nodeById.get(edge.from);
+      const to = nodeById.get(edge.to);
+      if (!from || !to) return false;
+      const fromLastRow = Math.max(...from.rowIndexes);
+      const toFirstRow = Math.min(...to.rowIndexes);
+      if (fromLastRow + 1 !== toFirstRow) return false;
+      const outgoing = edges.filter((item) => item.from === from.id);
+      const incoming = edges.filter((item) => item.to === to.id);
+      if (outgoing.length !== 1 || incoming.length !== 1) return false;
+      if (outgoing.some((item) => item.optionText)) return false;
+      return isSetupFragment(from, rows);
+    });
+    if (!candidate) break;
+
+    const from = nodeById.get(candidate.from)!;
+    const to = nodeById.get(candidate.to)!;
+    to.rowIndexes = [...from.rowIndexes, ...to.rowIndexes].sort((left, right) => left - right);
+    to.rowIndex = to.rowIndexes[0] ?? to.rowIndex;
+    nodes.splice(nodes.indexOf(from), 1);
+    edges = rewritePlotEdges(edges, from.id, to.id);
+  }
+
   return { nodes, edges };
+}
+
+export function displayScriptFlowGraph(
+  persisted: FlowGraph | undefined | null,
+  flowRows: Array<Record<string, string>>,
+): FlowGraph {
+  return retitleFlowGraph(
+    coalesceThinLinearPlotNodes(persisted ?? buildScriptFlowGraph(flowRows), flowRows),
+    flowRows,
+  );
+}
+
+export function retitleFlowGraph(
+  graph: FlowGraph,
+  rows: Array<Record<string, string>>,
+): FlowGraph {
+  const incomingByTarget = new Map<string, { count: number; optionText?: string }>();
+  for (const edge of graph.edges) {
+    const current = incomingByTarget.get(edge.to) ?? { count: 0 };
+    current.count += 1;
+    if (edge.optionText && !current.optionText) current.optionText = edge.optionText;
+    incomingByTarget.set(edge.to, current);
+  }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node, index) => {
+      const contents = node.rowIndexes.map((rowIndex) => readFlowRowContent(rows[rowIndex]));
+      const incoming = incomingByTarget.get(node.id);
+      const summarized = summarizePlotTitle(contents, {
+        optionText: incoming?.optionText,
+        isEntry: index === 0 && !incoming,
+        isMerge: (incoming?.count ?? 0) > 1,
+        plotIndex: index,
+      });
+      const current = node.label.trim();
+      if (!contents.some(Boolean)) return current ? node : { ...node, label: summarized };
+      if (isUsablePlotTitle(current, contents, incoming?.optionText)) return node;
+      if (isUsablePlotTitle(summarized, contents, incoming?.optionText)) {
+        return { ...node, label: summarized };
+      }
+      if (isGenericPlotTitle(current) && isGenericPlotTitle(summarized)) return node;
+      const currentIsProse = (!isGenericPlotTitle(current) && isCopiedPlotTitle(current, contents))
+        || titleCopiesIncomingOption(current, incoming?.optionText)
+        || /[。！？]/.test(current)
+        || current.startsWith('\u573a\u666f')
+        || current.startsWith('Scene');
+      if (currentIsProse) return { ...node, label: summarized };
+      if (isGenericPlotTitle(current) && !isGenericPlotTitle(summarized)) {
+        return { ...node, label: summarized };
+      }
+      return node;
+    }),
+  };
 }

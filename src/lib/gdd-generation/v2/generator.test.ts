@@ -229,7 +229,7 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.review.repairRound).toBe(1);
   });
 
-  it('repairs guided tables when the model writes Markdown tables without resource markers', async () => {
+  it('converts guided Markdown tables into resource plans without a repair call', async () => {
     const guidedInput: GddGenerationRequestV2 = {
       ...input,
       rules: {
@@ -265,8 +265,11 @@ describe('GDD v2 direct Markdown generator', () => {
 
     const result = await generateGddMarkdownV2(guidedInput, complete);
 
+    expect(complete).toHaveBeenCalledTimes(1);
     expect(result.tablePlans).toEqual([plan]);
-    expect(result.review.repairRound).toBe(1);
+    expect(result.markdown).toContain('<!-- KECO_TABLE_REF Wastes -->');
+    expect(result.markdown).not.toContain('| id | name | weight |');
+    expect(result.review.repairRound).toBe(0);
     expect(result.tablePlanWarning).toBeNull();
   });
 
@@ -312,6 +315,46 @@ describe('GDD v2 direct Markdown generator', () => {
       fields: ['season', 'weather', 'encounter_modifiers', 'pickup_modifiers', 'shelter_effects'],
     }]);
     expect(result.review.repairRound).toBe(1);
+  });
+
+  it('canonicalizes a same-name guided table repair when purpose or field casing drifts', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: [{
+          table: 'Choices',
+          purpose: 'Define branching options and their narrative consequences.',
+          fields: ['id', 'text', 'nextNode', 'consequence'],
+        }],
+      },
+    };
+    const repairedPlan = {
+      table: 'Choice Options',
+      purpose: 'Stores branching choices.',
+      fields: ['id', 'text', 'nextnode', 'consequence'],
+      rows: [{
+        name: 'accept',
+        values: { id: 'choice-accept', text: 'Accept', nextnode: 'node-2', consequence: 'Continue.' },
+      }],
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1
+        ? '# GDD\n\n## Choices\nThe player chooses a response.'
+        : `<!-- KECO_TABLE_PLAN ${JSON.stringify([repairedPlan])} -->`
+    ));
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([{
+      table: 'Choices',
+      purpose: 'Define branching options and their narrative consequences.',
+      fields: ['id', 'text', 'nextNode', 'consequence'],
+      rows: [{
+        name: 'accept',
+        values: { id: 'choice-accept', text: 'Accept', nextnode: 'node-2', consequence: 'Continue.' },
+      }],
+    }]);
   });
 
   it('repairs each missing guided table independently', async () => {
