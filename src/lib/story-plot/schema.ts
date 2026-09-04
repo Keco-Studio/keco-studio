@@ -31,18 +31,54 @@ const StoryPlotPlanBaseSchema = z.object({
   edges: z.array(StoryPlotEdgeSchema),
 });
 
-export const StoryPlotPlanSchema = z.union([
-  StoryPlotPlanBaseSchema.extend({ version: z.literal(1) }).strict(),
-  StoryPlotPlanBaseSchema.extend({
-    version: z.literal(2),
-    storyNodeOrder: z.array(IdSchema).min(1),
-  }).strict(),
+const StoryPlotPlanV1Schema = StoryPlotPlanBaseSchema.extend({
+  version: z.literal(1),
+}).strict();
+const StoryPlotPlanV2Schema = StoryPlotPlanBaseSchema.extend({
+  version: z.literal(2),
+  storyNodeOrder: z.array(IdSchema).min(1),
+}).strict();
+
+export const StoryPlotPlanSchema = z.discriminatedUnion('version', [
+  StoryPlotPlanV1Schema,
+  StoryPlotPlanV2Schema,
 ]);
 
-export type StoryPlotNode = z.infer<typeof StoryPlotNodeSchema>;
-export type StoryPlotEdge = z.infer<typeof StoryPlotEdgeSchema>;
-export type StoryPlotPlan = z.infer<typeof StoryPlotPlanSchema>;
+export type StoryPlotNode = {
+  id: string;
+  title: string;
+  storyNodeIds: string[];
+};
+
+export type StoryPlotEdge =
+  | {
+    fromPlotNodeId: string;
+    toPlotNodeId: string;
+    optionText: null;
+    optionIndex: null;
+  }
+  | {
+    fromPlotNodeId: string;
+    toPlotNodeId: string;
+    optionText: string;
+    optionIndex: number;
+  };
+
+export type StoryPlotPlan =
+  | {
+    version: 1;
+    entryPlotNodeId: string;
+    nodes: StoryPlotNode[];
+    edges: StoryPlotEdge[];
+  }
+  | {
+    version: 2;
+    entryPlotNodeId: string;
+    nodes: StoryPlotNode[];
+    edges: StoryPlotEdge[];
+    storyNodeOrder: string[];
+  };
 
 export function parseStoryPlotPlan(value: unknown): StoryPlotPlan {
-  return StoryPlotPlanSchema.parse(value);
+  return StoryPlotPlanSchema.parse(value) as StoryPlotPlan;
 }

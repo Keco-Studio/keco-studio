@@ -56,7 +56,8 @@ function optionBeatKeys(optionText: string | undefined): string[] {
     .replace(/^[A-Za-z]?\d*\s*(?:\u9009\u9879|\u5206\u652f|\u9009\u62e9)\s*/u, '')
     .replace(/^[A-Za-z]\d+\s*[：:]\s*/u, '')
     .trim();
-  return [...new Set([text, inner, stripped].filter(Boolean).map((value) => normalizeTitleKey(value)))]
+  const candidates = [text, inner, stripped].filter((value): value is string => Boolean(value));
+  return [...new Set(candidates.map((value) => normalizeTitleKey(value)))]
     .filter(Boolean);
 }
 
