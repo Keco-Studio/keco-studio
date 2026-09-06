@@ -1178,7 +1178,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       if (testCase.expected.accepted) {
         await expect(result).resolves.toBeDefined();
       } else {
-        const expectedReason = testCase.id === 'gdd-inventory-mapping-mismatch'
+        const expectedReason = testCase.expected.reasonCode === 'SLICE_TECHNICAL_CONTRACT_INVALID'
           ? /SLICE_(TECHNICAL_CONTRACT|EVAL_BINDING)_INVALID/
           : testCase.expected.reasonCode!;
         await expect(result).rejects.toThrow(expectedReason);
