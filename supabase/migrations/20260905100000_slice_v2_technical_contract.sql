@@ -13,12 +13,30 @@ as $$
     and lower(btrim(p_value)) !~ 'handle[[:space:]]+normally'
 $$;
 
+create or replace function public.keco_slice_v2_contract_text(p_value jsonb)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_typeof(p_value) = 'string'
+    and public.keco_slice_v2_contract_text(p_value #>> '{}')
+$$;
+
 create or replace function public.keco_slice_v2_contract_identifier(p_value text)
 returns boolean
 language sql immutable
 set search_path = ''
 as $$
   select p_value is not null and p_value ~ '^[a-z0-9][a-z0-9._-]{0,99}$'
+$$;
+
+create or replace function public.keco_slice_v2_contract_identifier(p_value jsonb)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_typeof(p_value) = 'string'
+    and public.keco_slice_v2_contract_identifier(p_value #>> '{}')
 $$;
 
 create or replace function public.keco_slice_v2_contract_unique_strings(p_value jsonb, p_allow_empty boolean default false)
@@ -46,8 +64,17 @@ returns boolean
 language sql immutable
 set search_path = ''
 as $$
-  select p_value is not null and length(p_value) <= 500
-    and (p_value = '' or p_value ~ '^(/([^~/]|~[01])*)*$')
+  select p_value is not null and length(p_value) between 1 and 500
+    and p_value ~ '^(/([^~/]|~[01])*)+$'
+$$;
+
+create or replace function public.keco_slice_v2_contract_pointer(p_value jsonb)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_typeof(p_value) = 'string'
+    and public.keco_slice_v2_contract_pointer(p_value #>> '{}')
 $$;
 
 create or replace function public.keco_slice_v2_contract_boundary(p_value text)
@@ -62,9 +89,18 @@ as $$
       or btrim(p_value) ~ '^-?(\d+(\.\d*)?|\.\d+)[[:space:]]*(<|<=)[[:space:]]*[A-Za-z_][A-Za-z0-9_.-]*[[:space:]]*(<|<=)[[:space:]]*-?(\d+(\.\d*)?|\.\d+)$'
       or btrim(p_value) ~ '^-?(\d+(\.\d*)?|\.\d+)[[:space:]]*(>|>=)[[:space:]]*[A-Za-z_][A-Za-z0-9_.-]*[[:space:]]*(>|>=)[[:space:]]*-?(\d+(\.\d*)?|\.\d+)$'
       or btrim(p_value) ~ '^[A-Za-z0-9_.-]+([[:space:]]*[|][[:space:]]*[A-Za-z0-9_.-]+)+$'
-      or btrim(p_value) ~ '^\[[A-Za-z0-9_.-]+([,][[:space:]]*[A-Za-z0-9_.-]+)*\]$'
-      or btrim(p_value) ~ '^\{[A-Za-z0-9_.-]+([,][[:space:]]*[A-Za-z0-9_.-]+)*\}$'
+      or btrim(p_value) ~ '^\[(?:[A-Za-z0-9_.-]+|''[^''\n]+''|"[^"\n]+")([,][[:space:]]*(?:[A-Za-z0-9_.-]+|''[^''\n]+''|"[^"\n]+"))*\]$'
+      or btrim(p_value) ~ '^\{(?:[A-Za-z0-9_.-]+|''[^''\n]+''|"[^"\n]+")([,][[:space:]]*(?:[A-Za-z0-9_.-]+|''[^''\n]+''|"[^"\n]+"))*\}$'
     )
+$$;
+
+create or replace function public.keco_slice_v2_contract_boundary(p_value jsonb)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_typeof(p_value) = 'string'
+    and public.keco_slice_v2_contract_boundary(p_value #>> '{}')
 $$;
 
 create or replace function public.keco_slice_v2_validate_technical_contract(
@@ -128,7 +164,7 @@ begin
   end if;
   for v_task in select value from jsonb_array_elements(p_plan->'tasks') loop
     if jsonb_typeof(v_task) is distinct from 'object'
-      or not public.keco_slice_v2_contract_identifier(v_task->>'id')
+      or not public.keco_slice_v2_contract_identifier(v_task->'id')
       or v_task->>'id' = any(v_task_ids) then
       raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
     end if;
@@ -153,7 +189,7 @@ begin
       raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
     end if;
     for v_item in select jsonb_array_elements_text(v_task->'dependsOn') loop
-      if v_item = v_task->>'id' or not public.keco_slice_v2_contract_identifier(v_item)
+      if v_item = v_task->>'id' or not public.keco_slice_v2_contract_identifier(to_jsonb(v_item))
         or not (v_item = any(v_task_ids[1:array_position(v_task_ids, v_task->>'id') - 1])) then
         raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
       end if;
@@ -188,46 +224,46 @@ begin
       if jsonb_typeof(v_row) is distinct from 'object'
         or (select count(*) from jsonb_object_keys(case when jsonb_typeof(v_row) = 'object' then v_row else '{}'::jsonb end)) <> cardinality(v_expected_keys)
         or exists (select 1 from jsonb_object_keys(case when jsonb_typeof(v_row) = 'object' then v_row else '{}'::jsonb end) as key where key <> all(v_expected_keys))
-        or not public.keco_slice_v2_contract_identifier(v_row->>'id')
+        or not public.keco_slice_v2_contract_identifier(v_row->'id')
         or v_row->>'id' = any(v_ids) then
         raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
       end if;
       v_ids := array_append(v_ids, v_row->>'id');
       if v_section = 'inputs' then
-        if not public.keco_slice_v2_contract_text(v_row->>'name')
-          or not public.keco_slice_v2_contract_text(v_row->>'source')
-          or not public.keco_slice_v2_contract_text(v_row->>'type')
+        if not public.keco_slice_v2_contract_text(v_row->'name')
+          or not public.keco_slice_v2_contract_text(v_row->'source')
+          or not public.keco_slice_v2_contract_text(v_row->'type')
           or jsonb_typeof(v_row->'required') is distinct from 'boolean'
-          or not public.keco_slice_v2_contract_boundary(v_row->>'constraints')
-          or not public.keco_slice_v2_contract_text(v_row->>'default') then
+          or not public.keco_slice_v2_contract_boundary(v_row->'constraints')
+          or not public.keco_slice_v2_contract_text(v_row->'default') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
         end if;
       elsif v_section = 'outputs' then
-        if not public.keco_slice_v2_contract_text(v_row->>'name') or not public.keco_slice_v2_contract_text(v_row->>'type')
-          or not public.keco_slice_v2_contract_text(v_row->>'shape') or not public.keco_slice_v2_contract_text(v_row->>'guarantees') then
+        if not public.keco_slice_v2_contract_text(v_row->'name') or not public.keco_slice_v2_contract_text(v_row->'type')
+          or not public.keco_slice_v2_contract_text(v_row->'shape') or not public.keco_slice_v2_contract_text(v_row->'guarantees') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
         end if;
       elsif v_section = 'parameters' then
-        if not public.keco_slice_v2_contract_text(v_row->>'name') or not public.keco_slice_v2_contract_text(v_row->>'type')
-          or not public.keco_slice_v2_contract_boundary(v_row->>'bounds') or not public.keco_slice_v2_contract_text(v_row->>'boundaryBehavior') then
+        if not public.keco_slice_v2_contract_text(v_row->'name') or not public.keco_slice_v2_contract_text(v_row->'type')
+          or not public.keco_slice_v2_contract_boundary(v_row->'bounds') or not public.keco_slice_v2_contract_text(v_row->'boundaryBehavior') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
         end if;
       elsif v_section = 'interfaces' then
-        if not public.keco_slice_v2_contract_text(v_row->>'provider') or not public.keco_slice_v2_contract_text(v_row->>'consumer')
-          or not public.keco_slice_v2_contract_text(v_row->>'operation') or not public.keco_slice_v2_contract_text(v_row->>'protocol') then
+        if not public.keco_slice_v2_contract_text(v_row->'provider') or not public.keco_slice_v2_contract_text(v_row->'consumer')
+          or not public.keco_slice_v2_contract_text(v_row->'operation') or not public.keco_slice_v2_contract_text(v_row->'protocol') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
         end if;
       elsif v_section = 'errors' then
-        if not public.keco_slice_v2_contract_text(v_row->>'condition') or not public.keco_slice_v2_contract_text(v_row->>'detection')
-          or not public.keco_slice_v2_contract_text(v_row->>'response') or not public.keco_slice_v2_contract_text(v_row->>'observable') then
+        if not public.keco_slice_v2_contract_text(v_row->'condition') or not public.keco_slice_v2_contract_text(v_row->'detection')
+          or not public.keco_slice_v2_contract_text(v_row->'response') or not public.keco_slice_v2_contract_text(v_row->'observable') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
         end if;
       elsif v_section = 'invariants' then
-        if not public.keco_slice_v2_contract_text(v_row->>'state') or not public.keco_slice_v2_contract_text(v_row->>'rule') then
+        if not public.keco_slice_v2_contract_text(v_row->'state') or not public.keco_slice_v2_contract_text(v_row->'rule') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
         end if;
       else
-        if not public.keco_slice_v2_contract_text(v_row->>'behavior')
+        if not public.keco_slice_v2_contract_text(v_row->'behavior')
           or not public.keco_slice_v2_contract_unique_strings(v_row->'sourceMappings')
           or not public.keco_slice_v2_contract_unique_strings(v_row->'evalIds') then
           raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
@@ -289,7 +325,7 @@ begin
   end if;
   for v_eval in select value from jsonb_array_elements(p_eval_spec->'evaluations') loop
     v_id := v_eval->>'evalId';
-    if not public.keco_slice_v2_contract_identifier(v_id) or v_id = any(v_eval_ids) then
+    if not public.keco_slice_v2_contract_identifier(v_eval->'evalId') or v_id = any(v_eval_ids) then
       raise exception 'SLICE_TECHNICAL_CONTRACT_INVALID' using errcode = '22023';
     end if;
     v_eval_ids := array_append(v_eval_ids, v_id);
@@ -325,8 +361,12 @@ end;
 $$;
 
 revoke all on function public.keco_slice_v2_contract_text(text) from public, anon, authenticated;
+revoke all on function public.keco_slice_v2_contract_text(jsonb) from public, anon, authenticated;
 revoke all on function public.keco_slice_v2_contract_identifier(text) from public, anon, authenticated;
+revoke all on function public.keco_slice_v2_contract_identifier(jsonb) from public, anon, authenticated;
 revoke all on function public.keco_slice_v2_contract_unique_strings(jsonb, boolean) from public, anon, authenticated;
 revoke all on function public.keco_slice_v2_contract_pointer(text) from public, anon, authenticated;
+revoke all on function public.keco_slice_v2_contract_pointer(jsonb) from public, anon, authenticated;
 revoke all on function public.keco_slice_v2_contract_boundary(text) from public, anon, authenticated;
+revoke all on function public.keco_slice_v2_contract_boundary(jsonb) from public, anon, authenticated;
 revoke all on function public.keco_slice_v2_validate_technical_contract(jsonb, jsonb) from public, anon, authenticated;

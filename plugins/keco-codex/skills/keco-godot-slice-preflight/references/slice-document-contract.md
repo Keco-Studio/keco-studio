@@ -31,6 +31,13 @@ docs/superpowers/plans/<slice-id>.md
 The repository paths are mirrors, not a substitute for the Keco folder
 hierarchy.
 
+For every new or materially updated V2 pair, use the canonical `spec-template.md`
+and `plan-template.md`. Their technical tables are normative: inputs, outputs,
+parameter bounds, interfaces, errors, invariants, acceptance mappings, task
+dependencies, and verification references must match the corresponding JSON
+artifacts exactly. Keco is authoritative; repository Markdown is a validated
+byte-for-byte mirror.
+
 ## Substantive content
 
 For a multi-Slice decomposition, each paired spec and plan must carry its own

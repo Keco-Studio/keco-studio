@@ -47,6 +47,15 @@
     "current": "KECO_OBSERVATION"
   },
   "maximumRepairs": 3,
+  "technicalContract": {
+    "maxCollections": 100,
+    "maxAllowedFiles": 500,
+    "maxFieldLength": 500,
+    "identifierPattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+    "observationPathPattern": "^(/([^~/]|~[01])*)+$",
+    "boundaryClasses": ["comparison", "numeric_range", "enum", "finite_set", "unbounded"],
+    "forbiddenGenericValues": ["any", "tbd", "todo", "as needed", "handle normally"]
+  },
   "releaseOrder": [
     "implementation",
     "runtime_verification",

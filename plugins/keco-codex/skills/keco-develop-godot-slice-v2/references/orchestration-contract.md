@@ -2,6 +2,12 @@
 
 Load `contract-manifest.json` and run `scripts/validate_contract_case.py` for contract-version-2 boundary and conformance checks.
 
+Preflight ordering is mandatory: validate SourceProfile, SlicePlan/EvalSpec,
+paired Spec/Plan Markdown parsing, cross-document identity and mapping equality,
+then multi-Slice distinctness. Technical-contract failures return
+`SLICE_TECHNICAL_CONTRACT_INVALID` before lease acquisition; `writeToken` remains
+`null` and no Keco document is created or updated.
+
 ## SourceProfile And RunContext
 
 Every new run has `contractVersion: 2` and exactly one canonical SourceProfile
