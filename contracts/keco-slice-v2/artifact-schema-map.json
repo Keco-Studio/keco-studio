@@ -1,0 +1,17 @@
+{
+  "contractVersion": 2,
+  "schemaVersion": 1,
+  "artifacts": {
+    "SourceProfile": 1,
+    "SlicePlan": 2,
+    "EvalSpec": 2,
+    "TaskResult": 2,
+    "TaskReview": 2,
+    "EvalReport": 2,
+    "MirrorManifest": 2,
+    "MirrorVerification": 2,
+    "KecoSnapshot": 1,
+    "InteractionCheckpoint": 1
+  },
+  "authority": "contracts/keco-slice-v2/contract-manifest.json"
+}

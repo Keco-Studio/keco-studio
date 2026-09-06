@@ -38,7 +38,6 @@ Deno.test("canonical Slice V2 manifest owns bounded contract values", () => {
   ]);
   assertEquals(manifestJson.runtimePrefixes, {
     current: "KECO_OBSERVATION",
-    legacy: "KECO_EVAL",
   });
   assertEquals(manifestJson.maximumRepairs, 3);
 });
@@ -53,9 +52,17 @@ Deno.test("canonical Slice V2 corpus has stable cross-layer decisions", () => {
     "missing-reverse-evaluation-mapping",
     "wrong-document-folder",
     "forged-independent-review",
-    "legacy-runtime-prefix",
+    "retired-runtime-prefix",
     "stale-state-token",
     "fourth-repair",
+    "valid-technical-contract",
+    "technical-missing-output-shape",
+    "technical-vague-parameter-boundary",
+    "technical-duplicate-id",
+    "technical-unknown-task-consumption",
+    "technical-unowned-row",
+    "technical-task-verification-mismatch",
+    "technical-unknown-acceptance-eval",
   ]);
   for (const testCase of corpus.cases) {
     requiredCases.delete(testCase.id);

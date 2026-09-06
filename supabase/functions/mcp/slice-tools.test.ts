@@ -61,6 +61,12 @@ async function exportFiles() {
     };
   }));
 }
+async function v2ExportFiles() {
+  return (await exportFiles()).slice(0, 3).map((file, index) => ({
+    ...file,
+    folderId: [IDS.folder, IDS.documents[0], IDS.documents[1]][index],
+  }));
+}
 const projection = {
   schemaVersion: 1,
   implementationStatus: "completed",
@@ -122,17 +128,24 @@ const documentMap = Object.fromEntries(kinds.map((kind, index) => [kind, {
   epoch: 0,
   revision: 1,
 }]));
+const v2Documents = {
+  roadmap: { ...documentMap.roadmap, folderId: IDS.folder, contentHash: hash("1") },
+  spec: { ...documentMap.spec, folderId: IDS.documents[0], contentHash: hash("2") },
+  plan: { ...documentMap.plan, folderId: IDS.documents[1], contentHash: hash("3") },
+};
+const v2Seed = v2CreateInput();
 const runResult = {
+  contractVersion: 2,
   runId: IDS.run,
   sliceId: "slice-1",
   stateToken: IDS.state,
   currentSequence: 1,
   repairCount: 0,
-  plan,
-  evalSpec,
-  deliveryPolicy: policy,
+  plan: v2Seed.plan,
+  evalSpec: v2Seed.evalSpec,
+  deliveryPolicy: v2Seed.deliveryPolicy,
   projection,
-  documents: documentMap,
+  documents: v2Documents,
   facts: {
     tasks: [{
       status: "completed",
@@ -180,10 +193,9 @@ function projectContext(
         const response = responses[name] ??
           (name === "mcp_read_slice_run_contract_version"
             ? {
-              contractVersion: 1,
-              legacyLayout: true,
-              planningRootId: null,
-              sourceProfileHash: null,
+              contractVersion: 2,
+              planningRootId: IDS.folder,
+              sourceProfileHash: hash("c"),
               deliveryPrepared: false,
             }
             : undefined);
@@ -221,6 +233,7 @@ function createInput() {
 
 function checkpointInput() {
   return {
+    contractVersion: 2,
     runId: IDS.run,
     stateToken: IDS.state,
     events: [{
@@ -246,6 +259,7 @@ function checkpointInput() {
 
 function finalizeInput() {
   return {
+    contractVersion: 2,
     runId: IDS.run,
     stateToken: IDS.state,
     requestedTerminalIntent: "delivery",
@@ -373,6 +387,7 @@ Deno.test("Slice tools expose strict project, viewer, and account surfaces", () 
   assertEquals(
     reads.tools[0].config.inputSchema.safeParse({
       projectId: IDS.project,
+      contractVersion: 2,
       runId: IDS.run,
     }).success,
     true,
@@ -408,7 +423,6 @@ Deno.test("create_slice_bundle encodes each mutable V2 binding and calls one ato
     ok: true,
     outcome: "created",
     contractVersion: 2,
-    legacyLayout: false,
     runId: IDS.run,
     stateToken: IDS.state,
     currentSequence: 1,
@@ -481,9 +495,10 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
     registered.server,
     projectContext(calls, {
       mcp_read_slice_run: runResult,
-      mcp_checkpoint_slice: {
+      mcp_checkpoint_slice_v2: {
         ok: true,
         outcome: "created",
+        contractVersion: 2,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
@@ -493,7 +508,7 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
           status: "failed",
           manualRequired: false,
           assertions: [{
-            assertionId: "guardian",
+            assertionId: "ready",
             status: "failed",
             expected: true,
             reasonCode: "ACTUAL_PATH_MISSING",
@@ -506,6 +521,7 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
           acceptanceStatus: "failed",
           releaseReadiness: "failed",
         },
+        documents: v2Documents,
       },
     }),
   );
@@ -513,14 +529,13 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
     tool.name === "checkpoint_slice"
   )!.handler(checkpointInput());
   assertEquals(result.isError, undefined);
-  assertEquals(result.structuredContent?.contractVersion, 1);
-  assertEquals(result.structuredContent?.legacyLayout, true);
+  assertEquals(result.structuredContent?.contractVersion, 2);
   assertEquals(result.structuredContent?.computedEvaluations, [{
     evalId: "eval-1",
     status: "failed",
     manualRequired: false,
     assertions: [{
-      assertionId: "guardian",
+      assertionId: "ready",
       status: "failed",
       expected: true,
       reasonCode: "ACTUAL_PATH_MISSING",
@@ -530,7 +545,7 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
   assertEquals(calls.map((call) => call.name), [
     "mcp_read_slice_run_contract_version",
     "mcp_read_slice_run",
-    "mcp_checkpoint_slice",
+    "mcp_checkpoint_slice_v2",
   ]);
   const sentEvents = calls[2].parameters.p_events as Array<
     Record<string, unknown>
@@ -545,7 +560,7 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
     status: "failed",
     manualRequired: false,
     assertions: [{
-      assertionId: "guardian",
+      assertionId: "ready",
       status: "failed",
       reasonCode: "ACTUAL_PATH_MISSING",
       actual: undefined,
@@ -561,7 +576,7 @@ Deno.test("checkpoint stale replay reaches the atomic RPC", async () => {
     stale.server,
     projectContext(staleCalls, {
       mcp_read_slice_run: { ...runResult, stateToken: IDS.nextState },
-      mcp_checkpoint_slice: new Error("stale state"),
+      mcp_checkpoint_slice_v2: new Error("stale state"),
     }),
   );
   const staleResult = await stale.tools.find((tool) =>
@@ -575,7 +590,7 @@ Deno.test("checkpoint stale replay reaches the atomic RPC", async () => {
   assertEquals(staleCalls.map((call) => call.name), [
     "mcp_read_slice_run_contract_version",
     "mcp_read_slice_run",
-    "mcp_checkpoint_slice",
+    "mcp_checkpoint_slice_v2",
   ]);
 });
 
@@ -721,50 +736,32 @@ Deno.test("V2 schemas require complete evaluation fields and equals expectations
   assertEquals(create.config.inputSchema.safeParse(reorderedArtifacts).success, false);
 });
 
-Deno.test("finalize encodes deterministic status, roadmap, and EvalReport projections", async () => {
+Deno.test("finalize uses the V2 RPC and does not mutate canonical documents", async () => {
   const calls: RpcCall[] = [];
   const registered = recordingServer();
   registerSliceTools(
     registered.server,
     projectContext(calls, {
       mcp_read_slice_run: runResult,
-      mcp_finalize_slice: {
+      mcp_finalize_slice_v2: {
         ok: true,
         outcome: "created",
+        contractVersion: 2,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
         projection,
-        documents: {
-          ...documentMap,
-          evalReport: {
-            documentId: "88888888-8888-4888-8888-888888888888",
-            repositoryPath: "docs/slices/eval-report.md",
-            epoch: 0,
-            revision: 1,
-          },
-        },
+        documents: v2Documents,
       },
     }),
   );
-  await registered.tools.find((tool) => tool.name === "finalize_slice")!
+  const finalized = await registered.tools.find((tool) => tool.name === "finalize_slice")!
     .handler(implementationFinalizeInput());
-  const documents = calls[2].parameters.p_documents as Array<
-    Record<string, unknown>
-  >;
-  assertEquals(
-    String(
-      documents.find((document) => document.documentId === IDS.documents[0])!
-        .markdown,
-    ).includes("implementationStatus: completed"),
-    true,
-  );
-  assertEquals(
-    String(
-      documents.find((document) => document.kind === "evalReport")!.markdown,
-    ).includes("releaseReadiness: ready"),
-    true,
-  );
+  assertEquals(finalized.isError, undefined);
+  assertEquals(calls.map((call) => call.name), [
+    "mcp_read_slice_run_contract_version",
+    "mcp_finalize_slice_v2",
+  ]);
 });
 
 Deno.test("finalize returns only strict bounded database results", async () => {
@@ -774,22 +771,15 @@ Deno.test("finalize returns only strict bounded database results", async () => {
     registered.server,
     projectContext(calls, {
       mcp_read_slice_run: runResult,
-      mcp_finalize_slice: {
+      mcp_finalize_slice_v2: {
         ok: true,
         outcome: "created",
+        contractVersion: 2,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
         projection,
-        documents: {
-          ...documentMap,
-          evalReport: {
-            documentId: "88888888-8888-4888-8888-888888888888",
-            repositoryPath: "docs/slices/eval-report.md",
-            epoch: 0,
-            revision: 1,
-          },
-        },
+        documents: v2Documents,
       },
     }),
   );
@@ -797,15 +787,11 @@ Deno.test("finalize returns only strict bounded database results", async () => {
     tool.name === "finalize_slice"
   )!.handler(finalizeInput());
   assertEquals(finalized.isError, undefined);
-  assertEquals(calls.map((call) => call.name).slice(0, 3), [
+  assertEquals(calls.map((call) => call.name).slice(0, 2), [
     "mcp_read_slice_run_contract_version",
-    "mcp_read_slice_run",
-    "mcp_finalize_slice",
+    "mcp_finalize_slice_v2",
   ]);
-  const sent = calls[2].parameters.p_documents as Array<
-    Record<string, unknown>
-  >;
-  assertEquals(sent, []);
+  assertEquals("p_documents" in calls[1].parameters, false);
 });
 
 Deno.test("checkpoint and both finalization phases preserve exact replay inputs", async () => {
@@ -813,27 +799,29 @@ Deno.test("checkpoint and both finalization phases preserve exact replay inputs"
   const response = {
     ok: true,
     outcome: "reused",
+    contractVersion: 2,
     runId: IDS.run,
     stateToken: IDS.nextState,
     currentSequence: 3,
     projection,
     repairCount: 0,
     computedEvaluations: [],
+    documents: v2Documents,
   };
   const registered = recordingServer();
   registerSliceTools(
     registered.server,
     projectContext(calls, {
       mcp_read_slice_run: runResult,
-      mcp_checkpoint_slice: response,
-      mcp_finalize_slice: {
+      mcp_checkpoint_slice_v2: response,
+      mcp_finalize_slice_v2: {
         ok: true,
         outcome: "reused",
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
         projection,
-        documents: documentMap,
+        documents: v2Documents,
       },
     }),
   );
@@ -844,32 +832,34 @@ Deno.test("checkpoint and both finalization phases preserve exact replay inputs"
   await registered.tools.find((tool) => tool.name === "finalize_slice")!
     .handler(finalizeInput());
   assertEquals(
-    calls.filter((call) => call.name === "mcp_checkpoint_slice").length,
+    calls.filter((call) => call.name === "mcp_checkpoint_slice_v2").length,
     1,
   );
   assertEquals(
-    calls.filter((call) => call.name === "mcp_finalize_slice").length,
+    calls.filter((call) => call.name === "mcp_finalize_slice_v2").length,
     2,
   );
   assertEquals(
-    calls.filter((call) => call.name === "mcp_finalize_slice")[1].parameters
-      .p_documents,
-    [],
+    "p_documents" in
+      calls.filter((call) => call.name === "mcp_finalize_slice_v2")[1].parameters,
+    false,
   );
 });
 
 Deno.test("export_slice_mirrors verifies raw UTF-8 content digests", async () => {
-  const files = await exportFiles();
+  const files = await v2ExportFiles();
   const registered = recordingServer();
   registerSliceTools(
     registered.server,
     projectContext([], {
-      mcp_export_slice_mirrors: {
-        schemaVersion: 1,
+      mcp_export_slice_mirrors_v2: {
+        schemaVersion: 2,
         canonicalizationVersion: 1,
+        contractVersion: 2,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
+        preparedSequence: 2,
         files,
         manifestHash: hash("f"),
       },
@@ -878,24 +868,26 @@ Deno.test("export_slice_mirrors verifies raw UTF-8 content digests", async () =>
 
   const exported = await registered.tools.find((tool) =>
     tool.name === "export_slice_mirrors"
-  )!.handler({ runId: IDS.run });
+  )!.handler({ contractVersion: 2, runId: IDS.run });
   assertEquals(exported.isError, undefined);
   assertEquals(exported.structuredContent?.files, files);
 });
 
 Deno.test("export_slice_mirrors rejects a valid-shaped incorrect digest", async () => {
-  const files = await exportFiles();
+  const files = await v2ExportFiles();
   files[0] = { ...files[0], sha256: hash("0") };
   const registered = recordingServer();
   registerSliceTools(
     registered.server,
     projectContext([], {
-      mcp_export_slice_mirrors: {
-        schemaVersion: 1,
+      mcp_export_slice_mirrors_v2: {
+        schemaVersion: 2,
         canonicalizationVersion: 1,
+        contractVersion: 2,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
+        preparedSequence: 2,
         files,
         manifestHash: hash("f"),
       },
@@ -903,7 +895,7 @@ Deno.test("export_slice_mirrors rejects a valid-shaped incorrect digest", async 
   );
   const result = await registered.tools.find((tool) =>
     tool.name === "export_slice_mirrors"
-  )!.handler({ runId: IDS.run });
+  )!.handler({ contractVersion: 2, runId: IDS.run });
   assertEquals(result.isError, true);
   assertMatch(
     JSON.stringify(result.structuredContent),
@@ -912,17 +904,19 @@ Deno.test("export_slice_mirrors rejects a valid-shaped incorrect digest", async 
 });
 
 Deno.test("export_slice_mirrors rejects malformed trusted responses safely", async () => {
-  const files = await exportFiles();
+  const files = await v2ExportFiles();
   const malformed = recordingServer();
   registerSliceTools(
     malformed.server,
     projectContext([], {
-      mcp_export_slice_mirrors: {
-        schemaVersion: 1,
+      mcp_export_slice_mirrors_v2: {
+        schemaVersion: 2,
         canonicalizationVersion: 1,
+        contractVersion: 2,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 3,
+        preparedSequence: 2,
         files: [{ ...files[0], content: "wrong", privateSql: "do not leak" }],
         manifestHash: hash("f"),
       },
@@ -930,7 +924,7 @@ Deno.test("export_slice_mirrors rejects malformed trusted responses safely", asy
   );
   const failed = await malformed.tools.find((tool) =>
     tool.name === "export_slice_mirrors"
-  )!.handler({ runId: IDS.run });
+  )!.handler({ contractVersion: 2, runId: IDS.run });
   assertEquals(failed.isError, true);
   assertMatch(JSON.stringify(failed.structuredContent), /INTERNAL_ERROR/);
   assertEquals(
@@ -969,6 +963,56 @@ function v2CreateInput() {
       nonGddRationale: "The selected document directly authorizes this Slice.",
       planRevision: hash("d"),
       allowedFiles: ["game/cats.gd"],
+      technicalContract: {
+        inputs: [{
+          id: "input-command",
+          name: "command",
+          source: "player input",
+          type: "enum",
+          required: true,
+          constraints: "up|down",
+          default: "none",
+        }],
+        outputs: [{
+          id: "output-position",
+          name: "position",
+          type: "Vector2",
+          shape: "{x:number,y:number}",
+          guarantees: "bounded",
+        }],
+        parameters: [{
+          id: "parameter-speed",
+          name: "speed",
+          type: "number",
+          bounds: "0 < speed <= 240",
+          boundaryBehavior: "reject invalid values",
+        }],
+        interfaces: [{
+          id: "interface-movement",
+          provider: "Player",
+          consumer: "Arena",
+          operation: "move",
+          protocol: "synchronous",
+        }],
+        errors: [{
+          id: "error-invalid-command",
+          condition: "invalid command",
+          detection: "validation",
+          response: "ignore",
+          observable: "logged",
+        }],
+        invariants: [{
+          id: "invariant-position",
+          state: "movement",
+          rule: "position bounded",
+        }],
+        acceptance: [{
+          id: "acceptance-move",
+          behavior: "moves",
+          sourceMappings: ["source-1"],
+          evalIds: ["eval-1"],
+        }],
+      },
       tasks: [{
         id: "task-1",
         files: ["game/cats.gd"],
@@ -978,6 +1022,23 @@ function v2CreateInput() {
         green: { command: "test green", expected: "passes" },
         review: { minimumLevel: "self" },
         sourceMappings: ["source-1"],
+        consumes: [
+          "input-command",
+          "parameter-speed",
+          "interface-movement",
+          "invariant-position",
+        ],
+        produces: [
+          "output-position",
+          "interface-movement",
+          "error-invalid-command",
+          "invariant-position",
+          "acceptance-move",
+        ],
+        verification: {
+          assertions: ["position remains bounded"],
+          observationPaths: ["/player/position"],
+        },
       }],
     },
     evalSpec: {
@@ -1072,13 +1133,33 @@ Deno.test("stable Slice tools expose V2 creation and delivery preparation schema
   );
 });
 
+Deno.test("V2 Zod parsing rejects incomplete technical contract fields before handler execution", () => {
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext([], {}));
+  const schema = registered.tools.find((tool) => tool.name === "create_slice_bundle")!.config.inputSchema;
+  const missingContract = structuredClone(v2CreateInput()) as Record<string, unknown>;
+  delete (missingContract.plan as Record<string, unknown>).technicalContract;
+  assertEquals(schema.safeParse(missingContract).success, false);
+
+  const unknownTechnicalKey = structuredClone(v2CreateInput()) as Record<string, unknown>;
+  (unknownTechnicalKey.plan as Record<string, unknown>).technicalContract = {
+    ...(unknownTechnicalKey.plan as Record<string, unknown>).technicalContract as Record<string, unknown>,
+    unknown: [],
+  };
+  assertEquals(schema.safeParse(unknownTechnicalKey).success, false);
+
+  const missingVerification = structuredClone(v2CreateInput()) as Record<string, unknown>;
+  const task = ((missingVerification.plan as Record<string, unknown>).tasks as Array<Record<string, unknown>>)[0];
+  delete task.verification;
+  assertEquals(schema.safeParse(missingVerification).success, false);
+});
+
 Deno.test("V2 creation encodes mutable bindings and dispatches only to the V2 RPC", async () => {
   const calls: RpcCall[] = [];
   const response = {
     ok: true,
     outcome: "created",
     contractVersion: 2,
-    legacyLayout: false,
     runId: IDS.run,
     stateToken: IDS.state,
     currentSequence: 1,
@@ -1131,7 +1212,6 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
   const v2Run = {
     ...runResult,
     contractVersion: 2,
-    legacyLayout: false,
     plan: v2Plan,
     evalSpec: v2EvalSpec,
     deliveryPolicy: v2Policy,
@@ -1159,7 +1239,6 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
     projectContext(calls, {
       mcp_read_slice_run_contract_version: {
         contractVersion: 2,
-        legacyLayout: false,
         planningRootId: IDS.folder,
         sourceProfileHash: hash("c"),
         deliveryPrepared: false,
@@ -1169,7 +1248,6 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
         ok: true,
         outcome: "created",
         contractVersion: 2,
-        legacyLayout: false,
         runId: IDS.run,
         stateToken: IDS.nextState,
         currentSequence: 2,
@@ -1213,39 +1291,45 @@ Deno.test("V2 continuation dispatch is selected from stored contract identity", 
   assertEquals((events[0].payload as Record<string, unknown>).prefix, "KECO_OBSERVATION");
 });
 
-Deno.test("stored contract identity rejects silent upgrades and downgrades", async () => {
-  for (
-    const [storedVersion, requestedVersion] of [[2, undefined], [1, 2]] as const
-  ) {
-    const calls: RpcCall[] = [];
-    const registered = recordingServer();
-    registerSliceTools(
-      registered.server,
-      projectContext(calls, {
-        mcp_read_slice_run_contract_version: {
-          contractVersion: storedVersion,
-          legacyLayout: storedVersion === 1,
-          planningRootId: storedVersion === 2 ? IDS.folder : null,
-          sourceProfileHash: storedVersion === 2 ? hash("c") : null,
-          deliveryPrepared: false,
-        },
-      }),
-    );
-    const result = await registered.tools.find((tool) =>
-      tool.name === "checkpoint_slice"
-    )!.handler({
-      ...checkpointInput(),
-      contractVersion: requestedVersion,
-    });
-    assertEquals(result.isError, true);
-    assertMatch(
-      JSON.stringify(result.structuredContent),
-      /SLICE_STATE_CONFLICT/,
-    );
-    assertEquals(calls.map((call) => call.name), [
-      "mcp_read_slice_run_contract_version",
-    ]);
+Deno.test("Slice continuation schemas require contractVersion 2", () => {
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext([], {}));
+  const retiredVersion = Number("1");
+  for (const name of ["checkpoint_slice", "finalize_slice", "export_slice_mirrors"]) {
+    const tool = registered.tools.find((candidate) => candidate.name === name)!;
+    const base = name === "checkpoint_slice"
+      ? checkpointInput()
+      : name === "finalize_slice"
+      ? finalizeInput()
+      : { contractVersion: 2, runId: IDS.run };
+    const retiredInput = { ...base, contractVersion: retiredVersion };
+    assertEquals(tool.config.inputSchema.safeParse(retiredInput).success, false);
+    const missing = { ...base };
+    delete (missing as Record<string, unknown>).contractVersion;
+    assertEquals(tool.config.inputSchema.safeParse(missing).success, false);
   }
+});
+
+Deno.test("stored V1 identity is retired before any continuation RPC", async () => {
+  const calls: RpcCall[] = [];
+  const retiredVersion = Number("1");
+  const registered = recordingServer();
+  registerSliceTools(
+    registered.server,
+    projectContext(calls, {
+      mcp_read_slice_run_contract_version: {
+        contractVersion: retiredVersion,
+        planningRootId: null,
+        sourceProfileHash: null,
+        deliveryPrepared: false,
+      },
+    }),
+  );
+  const result = await registered.tools.find((tool) => tool.name === "checkpoint_slice")!
+    .handler(checkpointInput());
+  assertEquals(result.isError, true);
+  assertMatch(JSON.stringify(result.structuredContent), /retired|unsupported/i);
+  assertEquals(calls.map((call) => call.name), ["mcp_read_slice_run_contract_version"]);
 });
 
 Deno.test("prepare, export, and finalize dispatch V2 without canonical document writes", async () => {
@@ -1268,7 +1352,6 @@ Deno.test("prepare, export, and finalize dispatch V2 without canonical document 
   };
   const identity = {
     contractVersion: 2,
-    legacyLayout: false,
     planningRootId: IDS.folder,
     sourceProfileHash: hash("c"),
     deliveryPrepared: false,

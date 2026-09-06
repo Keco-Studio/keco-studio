@@ -7,11 +7,7 @@ import { McpDomainError } from "./errors.ts";
 import { MAX_DOCUMENT_MARKDOWN_BYTES, utf8ByteLength } from "./limits.ts";
 import { scheduleMcpReindex } from "./reindex.ts";
 import { toolFailure, toolSuccess } from "./results.ts";
-import {
-  deriveSliceStatus,
-  evaluateObservation,
-  sha256Canonical,
-} from "./slice-contracts.ts";
+import { evaluateObservation, sha256Canonical } from "./slice-contracts.ts";
 import { validateSliceV2ContractCase } from "./slice-v2-contract.ts";
 
 type ProjectContextResolver = (
@@ -123,6 +119,102 @@ const evalSpecSchema = z.object({
       value.evaluations.length,
   "Evaluation IDs must be unique.",
 );
+
+const technicalIdentifier = z.string().regex(
+  /^[a-z0-9][a-z0-9._-]{0,99}$/,
+);
+const concreteText = z.string().trim().min(1).max(4000).refine(
+  (value) => !(/\b(?:any|tbd|todo)\b|as\s+needed|handle\s+normally/i.test(value)),
+  "Technical descriptions must be concrete.",
+);
+const boundaryExpression = concreteText.refine((value) => {
+  if (value.toLowerCase() === "unbounded") return true;
+  const number = "-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+  const name = "[A-Za-z_][A-Za-z0-9_.-]*";
+  const operand = `(?:${number}|${name})`;
+  if (new RegExp(`^${operand}\\s*(?:<=|>=|==|<|>)\\s*${operand}$`).test(value)) return true;
+  if (new RegExp(`^${number}\\s*(?:<|<=)\\s*${name}\\s*(?:<|<=)\\s*${number}$`).test(value)) return true;
+  if (new RegExp(`^${number}\\s*(?:>|>=)\\s*${name}\\s*(?:>|>=)\\s*${number}$`).test(value)) return true;
+  if (value.includes("|")) {
+    const members = value.split("|").map((item) => item.trim());
+    return members.length > 1 && members.every((item) => /^[A-Za-z0-9_.-]+$/.test(item));
+  }
+  if (value.length >= 3 && ((value.startsWith("[") && value.endsWith("]")) || (value.startsWith("{") && value.endsWith("}")))) {
+    const members = value.slice(1, -1).split(",").map((item) => item.trim());
+    const member = /^(?:[A-Za-z0-9_.-]+|'[^'\n]+'|"[^"\n]+")$/;
+    return members.length > 0 && new Set(members).size === members.length && members.every((item) => member.test(item));
+  }
+  return false;
+}, "Technical boundaries must use a concrete comparison, range, finite set, or unbounded.");
+const uniqueTechnicalIds = <T extends { id: string }>(value: T[]) =>
+  new Set(value.map((item) => item.id)).size === value.length;
+const uniqueStrings = (value: string[]) => new Set(value).size === value.length;
+const inputContractSchema = z.object({
+  id: technicalIdentifier,
+  name: concreteText,
+  source: concreteText,
+  type: concreteText,
+  required: z.boolean(),
+  constraints: boundaryExpression,
+  default: concreteText,
+}).strict();
+const outputContractSchema = z.object({
+  id: technicalIdentifier,
+  name: concreteText,
+  type: concreteText,
+  shape: concreteText,
+  guarantees: concreteText,
+}).strict();
+const parameterContractSchema = z.object({
+  id: technicalIdentifier,
+  name: concreteText,
+  type: concreteText,
+  bounds: boundaryExpression,
+  boundaryBehavior: concreteText,
+}).strict();
+const interfaceContractSchema = z.object({
+  id: technicalIdentifier,
+  provider: concreteText,
+  consumer: concreteText,
+  operation: concreteText,
+  protocol: concreteText,
+}).strict();
+const errorContractSchema = z.object({
+  id: technicalIdentifier,
+  condition: concreteText,
+  detection: concreteText,
+  response: concreteText,
+  observable: concreteText,
+}).strict();
+const invariantContractSchema = z.object({
+  id: technicalIdentifier,
+  state: concreteText,
+  rule: concreteText,
+}).strict();
+const acceptanceContractSchema = z.object({
+  id: technicalIdentifier,
+  behavior: concreteText,
+  sourceMappings: z.array(technicalIdentifier).min(1).max(1000).refine(uniqueStrings),
+  evalIds: z.array(technicalIdentifier).min(1).max(1000).refine(uniqueStrings),
+}).strict();
+const technicalContractSchema = z.object({
+  inputs: z.array(inputContractSchema).min(1).max(100),
+  outputs: z.array(outputContractSchema).min(1).max(100),
+  parameters: z.array(parameterContractSchema).min(1).max(100),
+  interfaces: z.array(interfaceContractSchema).min(1).max(100),
+  errors: z.array(errorContractSchema).min(1).max(100),
+  invariants: z.array(invariantContractSchema).min(1).max(100),
+  acceptance: z.array(acceptanceContractSchema).min(1).max(100),
+}).strict().superRefine((value, context) => {
+  const allRows = Object.values(value).flat();
+  if (!uniqueTechnicalIds(allRows)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Technical IDs must be globally unique." });
+  }
+});
+const verificationSchema = z.object({
+  assertions: z.array(z.string().trim().min(1).max(4000)).min(1).max(100),
+  observationPaths: z.array(jsonPointer).min(1).max(100),
+}).strict();
 
 const commandSchema = z.object({
   command: z.string().trim().min(1).max(1000),
@@ -313,6 +405,9 @@ const v2PlanTaskSchema = planTaskSchema.omit({ review: true }).extend({
   sourceMappings: z.array(identifier).min(1).max(1000).refine((value) =>
     new Set(value).size === value.length
   ),
+  consumes: z.array(technicalIdentifier).max(1000).refine(uniqueStrings),
+  produces: z.array(technicalIdentifier).max(1000).refine(uniqueStrings),
+  verification: verificationSchema,
 }).strict();
 const v2PlanSchema = z.object({
   schemaVersion: z.literal(2),
@@ -323,8 +418,43 @@ const v2PlanSchema = z.object({
   requirementIds: z.array(identifier).min(1).max(1000).optional(),
   planRevision: sha256,
   allowedFiles: z.array(relativePath).min(1).max(500),
+  technicalContract: technicalContractSchema,
   tasks: z.array(v2PlanTaskSchema).min(1).max(100),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const taskIds = new Set(value.tasks.map((task) => task.id));
+  if (taskIds.size !== value.tasks.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Task IDs must be unique." });
+  }
+  const technical = value.technicalContract;
+  const byKind = Object.fromEntries(Object.entries(technical).map(([kind, rows]) => [kind, new Set(rows.map((row) => row.id))])) as Record<string, Set<string>>;
+  const validConsumes = new Set([...byKind.inputs, ...byKind.parameters, ...byKind.interfaces, ...byKind.invariants]);
+  const validProduces = new Set([...byKind.outputs, ...byKind.interfaces, ...byKind.errors, ...byKind.invariants, ...byKind.acceptance]);
+  const requiredProduces = new Set([...validProduces].filter((id) => !byKind.acceptance.has(id)));
+  const consumed = new Set<string>();
+  const produced = new Set<string>();
+  for (const task of value.tasks) {
+    if (task.files.some((file) => !value.allowedFiles.includes(file))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Every task file must be present in allowedFiles." });
+    }
+    if (task.dependsOn.some((id) => id === task.id || !taskIds.has(id))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Task dependencies must reference another accepted task." });
+    }
+    for (const id of task.consumes) consumed.add(id);
+    for (const id of task.produces) produced.add(id);
+    if (task.consumes.some((id) => !validConsumes.has(id)) || task.produces.some((id) => !validProduces.has(id))) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "Task technical references must point to declared rows." });
+    }
+  }
+  if ([...validConsumes].some((id) => !consumed.has(id)) || [...requiredProduces].some((id) => !produced.has(id))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Every technical row must be consumed or produced by a task." });
+  }
+  const sourceMappingIds = value.coverageMode === "gdd"
+    ? new Set(value.requirementIds ?? [])
+    : new Set(value.tasks.flatMap((task) => task.sourceMappings));
+  if (technical.acceptance.some((row) => row.sourceMappings.some((id) => !sourceMappingIds.has(id)))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Acceptance source mappings must reference declared source mappings." });
+  }
+});
 const v2PolicySchema = z.object({
   schemaVersion: z.literal(2),
   requiredArtifacts: z.array(
@@ -680,10 +810,6 @@ const mutationResponseBase = {
   currentSequence: z.number().int().positive(),
   projection: projectionSchema,
 };
-const createResponseSchema = z.object({
-  ...mutationResponseBase,
-  documents: documentMapSchema,
-}).strict();
 const v2DocumentMapSchema = z.object({
   roadmap: v2DocumentIdentitySchema,
   spec: v2DocumentIdentitySchema,
@@ -692,7 +818,6 @@ const v2DocumentMapSchema = z.object({
 const v2MutationResponseBase = {
   ...mutationResponseBase,
   contractVersion: z.literal(2),
-  legacyLayout: z.literal(false),
 };
 const v2CreateResponseSchema = z.object({
   ...v2MutationResponseBase,
@@ -720,7 +845,6 @@ const checkpointResponseSchema = z.object({
 }).strict();
 const v2CheckpointResponseSchema = checkpointResponseSchema.extend({
   contractVersion: z.literal(2),
-  legacyLayout: z.literal(false),
   documents: v2DocumentMapSchema,
 }).strict();
 const finalizeResponseSchema = z.object({
@@ -731,17 +855,18 @@ const v2FinalizeResponseSchema = finalizeResponseSchema.extend({
   contractVersion: z.literal(2),
   documents: v2DocumentMapSchema,
 }).strict();
-const readRunSchema = z.object({
+const v2ReadRunSchema = z.object({
   runId: uuid,
   sliceId,
   stateToken: uuid,
   currentSequence: z.number().int().positive(),
   repairCount: z.number().int().min(0).max(3),
-  plan: planSchema,
-  evalSpec: evalSpecSchema,
-  deliveryPolicy: policySchema,
+  contractVersion: z.literal(2),
+  plan: v2PlanSchema,
+  evalSpec: v2EvalSpecSchema,
+  deliveryPolicy: v2PolicySchema,
   projection: projectionSchema,
-  documents: documentMapSchema,
+  documents: v2DocumentMapSchema,
   facts: z.object({
     tasks: z.array(
       z.object({
@@ -757,65 +882,12 @@ const readRunSchema = z.object({
     packageReady: z.boolean(),
   }).strict(),
 }).strict();
-const v2ReadRunSchema = readRunSchema.omit({
-  plan: true,
-  evalSpec: true,
-  deliveryPolicy: true,
-  documents: true,
-}).extend({
-  contractVersion: z.literal(2).optional(),
-  legacyLayout: z.literal(false).optional(),
-  plan: v2PlanSchema,
-  evalSpec: v2EvalSpecSchema,
-  deliveryPolicy: v2PolicySchema,
-  documents: v2DocumentMapSchema,
-}).strict();
 const runVersionSchema = z.object({
-  contractVersion: z.union([z.literal(1), z.literal(2)]),
-  legacyLayout: z.boolean(),
+  contractVersion: z.number().int(),
   planningRootId: uuid.nullable(),
   sourceProfileHash: sha256.nullable(),
   deliveryPrepared: z.boolean(),
 }).strict();
-const exportResponseSchema = z.object({
-  schemaVersion: z.literal(1),
-  canonicalizationVersion: z.literal(1),
-  runId: uuid,
-  stateToken: uuid,
-  currentSequence: z.number().int().positive(),
-  files: z.array(
-    z.object({
-      kind: z.enum(["roadmap", "spec", "plan", "status", "evalReport"]),
-      repositoryPath: relativePath,
-      documentId: uuid,
-      epoch: z.number().int().nonnegative(),
-      revision: z.number().int().nonnegative(),
-      byteCount: z.number().int().nonnegative().max(
-        MAX_DOCUMENT_MARKDOWN_BYTES,
-      ),
-      sha256,
-      content: z.string(),
-    }).strict(),
-  ).min(3).max(5),
-  manifestHash: sha256,
-}).strict().superRefine((value, context) => {
-  if (
-    new Set(value.files.map((file) => file.kind)).size !== value.files.length
-  ) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Export kinds must be unique.",
-    });
-  }
-  for (const file of value.files) {
-    if (utf8ByteLength(file.content) !== file.byteCount) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Export byte count is invalid.",
-      });
-    }
-  }
-});
 const v2ExportResponseSchema = z.object({
   schemaVersion: z.literal(2),
   canonicalizationVersion: z.literal(1),
@@ -931,7 +1003,7 @@ async function readRunContractVersion(
   context: ProjectMcpRequestContext,
   projectId: string,
   runId: string,
-  requestedVersion: 1 | 2 | undefined,
+  requestedVersion: 2,
 ): Promise<z.infer<typeof runVersionSchema>> {
   const identity = parseTrusted(
     runVersionSchema,
@@ -940,8 +1012,13 @@ async function readRunContractVersion(
       p_run_id: runId,
     }),
   );
-  const effectiveRequestedVersion = requestedVersion ?? 1;
-  if (identity.contractVersion !== effectiveRequestedVersion) {
+  if (identity.contractVersion !== 2) {
+    throw new McpDomainError(
+      "SLICE_CONTRACT_INVALID",
+      "Godot Slice V1 is retired and unsupported by the current MCP runtime.",
+    );
+  }
+  if (identity.contractVersion !== requestedVersion) {
     throw new McpDomainError(
       "SLICE_STATE_CONFLICT",
       "The requested Slice contract version does not match the stored run.",
@@ -969,7 +1046,7 @@ async function encodeProgress<T extends { markdown: string }>(
 }
 
 function validateEventBindings(
-  run: z.infer<typeof readRunSchema> | z.infer<typeof v2ReadRunSchema>,
+  run: z.infer<typeof v2ReadRunSchema>,
   events: z.infer<typeof eventSchema>[],
 ): void {
   const taskIds = new Set(run.plan.tasks.map((task) => task.id));
@@ -1021,25 +1098,6 @@ function validateEventBindings(
       }
     }
   }
-}
-
-function renderProjectionDocument(
-  kind: "roadmap" | "status" | "evalReport",
-  run: z.infer<typeof readRunSchema>,
-): string {
-  const projection = run.projection;
-  return [
-    `# Keco Slice ${kind}`,
-    "schemaVersion: 1",
-    `runId: ${run.runId}`,
-    `sliceId: ${run.sliceId}`,
-    `sequence: ${run.currentSequence}`,
-    `implementationStatus: ${projection.implementationStatus}`,
-    `runtimeVerificationStatus: ${projection.runtimeVerificationStatus}`,
-    `acceptanceStatus: ${projection.acceptanceStatus}`,
-    `releaseReadiness: ${projection.releaseReadiness}`,
-    "",
-  ].join("\n");
 }
 
 function serverComparableEvaluation(
@@ -1209,7 +1267,7 @@ function registerSliceToolSet(
 
   const checkpointSchema = z.object({
     ...shape,
-    contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+    contractVersion: z.literal(2),
     runId: uuid,
     stateToken: uuid,
     events: z.array(eventSchema).min(1).max(50),
@@ -1258,7 +1316,7 @@ function registerSliceToolSet(
       try {
         const context = await contextFor(input, fixed, resolver);
         const projectId = requestedProjectId(input, fixed);
-        const identity = await readRunContractVersion(
+        await readRunContractVersion(
           context,
           projectId,
           input.runId,
@@ -1268,19 +1326,9 @@ function registerSliceToolSet(
           p_project_id: projectId,
           p_run_id: input.runId,
         });
-        const run = identity.contractVersion === 2
-          ? parseTrusted(v2ReadRunSchema, rawRun)
-          : parseTrusted(readRunSchema, rawRun);
+        const run = parseTrusted(v2ReadRunSchema, rawRun);
         validateEventBindings(run, input.events);
         const requestedDocumentProgress = input.documentProgress ?? [];
-        if (
-          identity.contractVersion === 1 && requestedDocumentProgress.length > 0
-        ) {
-          throw new McpDomainError(
-            "SLICE_CONTRACT_INVALID",
-            "Legacy Slice runs do not support version-2 document progress.",
-          );
-        }
         const computedEvaluations = input.events
           .filter((event) => event.eventType === "runtime_observation")
           .map((event) => {
@@ -1293,11 +1341,7 @@ function registerSliceToolSet(
                 "Runtime evidence references an unknown evaluation.",
               );
             }
-            const runtimeSpec = "servedByTasks" in spec
-              ? (({ servedByTasks: _ignored, ...evaluation }) => evaluation)(
-                spec,
-              )
-              : spec;
+            const { servedByTasks: _ignored, ...runtimeSpec } = spec;
             return evaluateObservation(runtimeSpec, event.payload.observation);
           });
         const events = await Promise.all(input.events.map(async (event) => {
@@ -1317,14 +1361,9 @@ function registerSliceToolSet(
         const documentProgress = await Promise.all(
           requestedDocumentProgress.map(encodeProgress),
         );
-        const rpcName = identity.contractVersion === 2
-          ? "mcp_checkpoint_slice_v2"
-          : "mcp_checkpoint_slice";
         const data = parseTrusted(
-          identity.contractVersion === 2
-            ? v2CheckpointResponseSchema
-            : checkpointResponseSchema,
-          await rpc<unknown>(context, rpcName, {
+          v2CheckpointResponseSchema,
+          await rpc<unknown>(context, "mcp_checkpoint_slice_v2", {
             p_project_id: projectId,
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
@@ -1333,19 +1372,12 @@ function registerSliceToolSet(
               serverComparableEvaluation,
             ),
             p_artifacts: input.artifacts,
-            ...(identity.contractVersion === 2
-              ? { p_document_progress: documentProgress }
-              : {}),
+            p_document_progress: documentProgress,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
         );
-        return toolSuccess("Slice checkpoint accepted.", {
-          ...(identity.contractVersion === 1
-            ? { contractVersion: 1, legacyLayout: true }
-            : {}),
-          ...data,
-        });
+        return toolSuccess("Slice checkpoint accepted.", data);
       } catch (error) {
         return toolFailure(error);
       }
@@ -1392,7 +1424,7 @@ function registerSliceToolSet(
 
   const finalizeSchema = z.object({
     ...shape,
-    contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+    contractVersion: z.literal(2),
     runId: uuid,
     stateToken: uuid,
     requestedTerminalIntent: z.enum(["implementation_complete", "delivery"]),
@@ -1425,8 +1457,7 @@ function registerSliceToolSet(
       });
     }
     if (
-      value.contractVersion === 2 &&
-      (value.documents.length > 0 || value.evalReport)
+      value.documents.length > 0 || value.evalReport
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -1434,7 +1465,6 @@ function registerSliceToolSet(
       });
     }
     if (
-      value.contractVersion === 2 &&
       value.requestedTerminalIntent === "implementation_complete" &&
       value.mirrorVerification
     ) {
@@ -1454,102 +1484,28 @@ function registerSliceToolSet(
       try {
         const context = await contextFor(input, fixed, resolver);
         const projectId = requestedProjectId(input, fixed);
-        const identity = await readRunContractVersion(
+        await readRunContractVersion(
           context,
           projectId,
           input.runId,
           input.contractVersion,
         );
-        if (identity.contractVersion === 2) {
-          const data = parseTrusted(
-            v2FinalizeResponseSchema,
-            await rpc<unknown>(context, "mcp_finalize_slice_v2", {
-              p_project_id: projectId,
-              p_run_id: input.runId,
-              p_expected_state_token: input.stateToken,
-              p_requested_terminal_intent: input.requestedTerminalIntent,
-              p_mirror_verification_event_id:
-                input.mirrorVerification?.eventId ?? null,
-              p_mirror_manifest_hash: input.mirrorVerification?.manifestHash ??
-                null,
-              p_idempotency_key: input.idempotencyKey,
-              p_input_hash: await sha256Canonical(withoutIdempotency(input)),
-            }),
-          );
-          return toolSuccess("Slice finalization completed.", data);
-        }
-        const run = parseTrusted(
-          readRunSchema,
-          await rpc<unknown>(context, "mcp_read_slice_run", {
-            p_project_id: projectId,
-            p_run_id: input.runId,
-          }),
-        );
-        const projection = deriveSliceStatus(run.facts);
-        const projectionRun = {
-          ...run,
-          projection: { schemaVersion: 1 as const, ...projection },
-        };
-        const documents =
-          input.requestedTerminalIntent === "implementation_complete"
-            ? await Promise.all(
-              input.documents.map(async (document) => {
-                const kind = Object.entries(run.documents).find((
-                  [, identity],
-                ) => identity.documentId === document.documentId)?.[0];
-                const markdown = kind === "roadmap" || kind === "status"
-                  ? renderProjectionDocument(kind, projectionRun)
-                  : document.markdown;
-                ensureMarkdown(markdown);
-                const encoded = await encodeDocumentMarkdown(markdown);
-                return {
-                  ...document,
-                  markdown: encoded.markdown,
-                  yjsState: encoded.yjsStateBase64,
-                };
-              }),
-            )
-            : [];
-        const evalReportMarkdown = renderProjectionDocument(
-          "evalReport",
-          projectionRun,
-        );
-        const evalReport =
-          input.requestedTerminalIntent === "implementation_complete"
-            ? await encodeDocumentMarkdown(evalReportMarkdown)
-            : null;
         const data = parseTrusted(
-          finalizeResponseSchema,
-          await rpc<unknown>(context, "mcp_finalize_slice", {
+          v2FinalizeResponseSchema,
+          await rpc<unknown>(context, "mcp_finalize_slice_v2", {
             p_project_id: projectId,
             p_run_id: input.runId,
             p_expected_state_token: input.stateToken,
-            p_documents:
-              input.requestedTerminalIntent === "implementation_complete"
-                ? [
-                  ...documents,
-                  {
-                    ...input.evalReport!,
-                    kind: "evalReport",
-                    markdown: evalReport!.markdown,
-                    yjsState: evalReport!.yjsStateBase64,
-                  },
-                ]
-                : [],
             p_requested_terminal_intent: input.requestedTerminalIntent,
-            p_mirror_verification_event_id: input.mirrorVerification?.eventId ??
-              null,
+            p_mirror_verification_event_id:
+              input.mirrorVerification?.eventId ?? null,
             p_mirror_manifest_hash: input.mirrorVerification?.manifestHash ??
               null,
             p_idempotency_key: input.idempotencyKey,
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
         );
-        return toolSuccess("Slice finalization completed.", {
-          contractVersion: 1,
-          legacyLayout: true,
-          ...data,
-        });
+        return toolSuccess("Slice finalization completed.", data);
       } catch (error) {
         return toolFailure(error);
       }
@@ -1558,7 +1514,7 @@ function registerSliceToolSet(
 
   const exportSchema = z.object({
     ...shape,
-    contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+    contractVersion: z.literal(2),
     runId: uuid,
   }).strict();
   if (options.reads) {
@@ -1571,22 +1527,21 @@ function registerSliceToolSet(
       try {
         const context = await contextFor(input, fixed, resolver);
         const projectId = requestedProjectId(input, fixed);
-        const identity = await readRunContractVersion(
+        await readRunContractVersion(
           context,
           projectId,
           input.runId,
           input.contractVersion,
         );
-        const rpcName = identity.contractVersion === 2
-          ? "mcp_export_slice_mirrors_v2"
-          : "mcp_export_slice_mirrors";
-        const rawExport = await rpc<unknown>(context, rpcName, {
+        const rawExport = await rpc<unknown>(
+          context,
+          "mcp_export_slice_mirrors_v2",
+          {
           p_project_id: projectId,
           p_run_id: input.runId,
-        });
-        const data = identity.contractVersion === 2
-          ? parseTrusted(v2ExportResponseSchema, rawExport)
-          : parseTrusted(exportResponseSchema, rawExport);
+          },
+        );
+        const data = parseTrusted(v2ExportResponseSchema, rawExport);
         for (const file of data.files) {
           if (await sha256Utf8(file.content) !== file.sha256) {
             throw new McpDomainError(
@@ -1595,13 +1550,7 @@ function registerSliceToolSet(
             );
           }
         }
-        return toolSuccess("Slice mirror manifest exported.", {
-          ok: true,
-          ...(identity.contractVersion === 1
-            ? { contractVersion: 1, legacyLayout: true }
-            : {}),
-          ...data,
-        });
+        return toolSuccess("Slice mirror manifest exported.", data);
       } catch (error) {
         return toolFailure(error);
       }

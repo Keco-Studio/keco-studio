@@ -7,19 +7,55 @@
     "taskResult": 2,
     "taskReview": 2,
     "mirrorManifest": 2,
-    "mirrorVerification": 2
+    "mirrorVerification": 2,
+    "evalReport": 2,
+    "kecoSnapshot": 1,
+    "interactionCheckpoint": 1
   },
-  "sourceProfileKinds": ["gdd", "feedback", "table", "document", "user_idea"],
-  "documentBackedKinds": ["gdd", "feedback", "document"],
-  "coverageModes": ["gdd", "non_gdd"],
-  "documentKinds": ["roadmap", "spec", "plan"],
-  "documentDispositions": ["create", "bind", "update"],
-  "reviewLevels": ["self", "separate_context", "independent_actor"],
+  "sourceProfileKinds": [
+    "gdd",
+    "feedback",
+    "table",
+    "document",
+    "user_idea"
+  ],
+  "documentBackedKinds": [
+    "gdd",
+    "feedback",
+    "document"
+  ],
+  "coverageModes": [
+    "gdd",
+    "non_gdd"
+  ],
+  "documentKinds": [
+    "roadmap",
+    "spec",
+    "plan"
+  ],
+  "documentDispositions": [
+    "create",
+    "bind",
+    "update"
+  ],
+  "reviewLevels": [
+    "self",
+    "separate_context",
+    "independent_actor"
+  ],
   "runtimePrefixes": {
-    "current": "KECO_OBSERVATION",
-    "legacy": "KECO_EVAL"
+    "current": "KECO_OBSERVATION"
   },
   "maximumRepairs": 3,
+  "technicalContract": {
+    "maxCollections": 100,
+    "maxAllowedFiles": 500,
+    "maxFieldLength": 500,
+    "identifierPattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+    "observationPathPattern": "^(/([^~/]|~[01])*)+$",
+    "boundaryClasses": ["comparison", "numeric_range", "enum", "finite_set", "unbounded"],
+    "forbiddenGenericValues": ["any", "tbd", "todo", "as needed", "handle normally"]
+  },
   "releaseOrder": [
     "implementation",
     "runtime_verification",
@@ -42,6 +78,7 @@
     "SLICE_DOCUMENT_PLACEMENT_INVALID",
     "SLICE_DOCUMENT_CONFLICT",
     "SLICE_PLAN_SCOPE_INVALID",
+    "SLICE_TECHNICAL_CONTRACT_INVALID",
     "SLICE_EVAL_BINDING_INVALID",
     "SLICE_REVIEW_LEVEL_INVALID",
     "SLICE_RUNTIME_EVIDENCE_INVALID",

@@ -11,6 +11,33 @@ import {
 
 jest.setTimeout(120_000);
 
+const technicalGateSql = readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260905100000_slice_v2_technical_contract.sql'),
+  'utf8',
+);
+const convergenceSql = readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20260903120000_slice_v2_contract_convergence.sql'),
+  'utf8',
+);
+
+describe('Slice V2 SQL technical contract gate', () => {
+  it('defines bounded helpers, stable rejection, and transactional V2 wiring', () => {
+    expect(technicalGateSql).toMatch(/create or replace function public\.keco_slice_v2_contract_boundary/i);
+    expect(technicalGateSql).toMatch(/create or replace function public\.keco_slice_v2_validate_technical_contract\(\s*p_plan jsonb,\s*p_eval_spec jsonb/i);
+    expect(technicalGateSql).toMatch(/set search_path = ''/i);
+    expect(technicalGateSql).toMatch(/SLICE_TECHNICAL_CONTRACT_INVALID/g);
+    expect(technicalGateSql).toMatch(/jsonb_array_length\(p_plan->'tasks'\)/i);
+    expect(technicalGateSql).toMatch(/dependsOn/i);
+    expect(technicalGateSql).toMatch(/allowedFiles/i);
+    expect(technicalGateSql).toMatch(/observationPaths/i);
+    expect(convergenceSql).toMatch(/perform public\.keco_slice_v2_validate_technical_contract\(p_plan_data, p_eval_spec\)/i);
+    const gatePosition = convergenceSql.indexOf('perform public.keco_slice_v2_validate_technical_contract');
+    const documentWritePosition = convergenceSql.indexOf('insert into public.documents', gatePosition);
+    expect(gatePosition).toBeGreaterThan(-1);
+    expect(documentWritePosition).toBeGreaterThan(gatePosition);
+  });
+});
+
 const describeDb = RLS_DB_TESTS_ENABLED ? describe : describe.skip;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
@@ -750,8 +777,21 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       green: { command: `test green ${id}`, expected: 'passes' },
       review: { minimumLevel: 'self' },
       sourceMappings: options.gddMismatch ? [requirementIds[index]] : ['source-1'],
+      consumes: ['input-command', 'parameter-speed', 'interface-movement', 'invariant-position'],
+      produces: ['output-position', 'interface-movement', 'error-invalid-command', 'invariant-position', 'acceptance-move'],
+      verification: { assertions: [`verify ${id} output`], observationPaths: ['/ready'] },
     }));
     if (options.missingSourceMappings) delete tasks[0].sourceMappings;
+    const acceptanceSourceMappings = options.gddMismatch ? requirementIds : ['source-1'];
+    const technicalContract = {
+      inputs: [{ id: 'input-command', name: 'command', source: 'player input', type: 'enum', required: true, constraints: 'up|down', default: 'none' }],
+      outputs: [{ id: 'output-position', name: 'position', type: 'Vector2', shape: '{x:number,y:number}', guarantees: 'bounded' }],
+      parameters: [{ id: 'parameter-speed', name: 'speed', type: 'number', bounds: '0 < speed <= 240', boundaryBehavior: 'reject invalid' }],
+      interfaces: [{ id: 'interface-movement', provider: 'PlayerController', consumer: 'ArenaState', operation: 'move(command)', protocol: 'synchronous' }],
+      errors: [{ id: 'error-invalid-command', condition: 'invalid command', detection: 'validation', response: 'ignore', observable: 'logged' }],
+      invariants: [{ id: 'invariant-position', state: 'movement', rule: 'position bounded' }],
+      acceptance: [{ id: 'acceptance-move', behavior: 'moves player', sourceMappings: acceptanceSourceMappings, evalIds: taskIds.map((_, index) => `eval-${index + 1}`) }],
+    };
     let plan: Record<string, any> = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
@@ -759,6 +799,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       requirementIds,
       planRevision: hash('c'),
       allowedFiles: tasks.map(task => task.files[0]),
+      technicalContract,
       tasks,
     } : {
       schemaVersion: 2,
@@ -767,6 +808,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       nonGddRationale: 'The selected document directly authorizes this Slice.',
       planRevision: hash('c'),
       allowedFiles: tasks.map(task => task.files[0]),
+      technicalContract,
       tasks,
     };
     const evaluations = taskIds.map((id, index) => ({
@@ -1130,13 +1172,16 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       cases: Array<{ id: string; boundary: string; input: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> }; expected: { accepted: boolean; reasonCode: string | null } }>;
     };
     const sqlCases = corpus.cases.filter(testCase => testCase.boundary === 'planEval');
-    expect(sqlCases).toHaveLength(7);
+    expect(sqlCases).toHaveLength(15);
     for (const testCase of sqlCases) {
       const result = createV2Bundle(undefined, { corpusInput: testCase.input });
       if (testCase.expected.accepted) {
         await expect(result).resolves.toBeDefined();
       } else {
-        await expect(result).rejects.toThrow(testCase.expected.reasonCode!);
+        const expectedReason = testCase.expected.reasonCode === 'SLICE_TECHNICAL_CONTRACT_INVALID'
+          ? /SLICE_(TECHNICAL_CONTRACT|EVAL_BINDING)_INVALID/
+          : testCase.expected.reasonCode!;
+        await expect(result).rejects.toThrow(expectedReason);
       }
     }
   });

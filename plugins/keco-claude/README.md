@@ -29,8 +29,12 @@ skills/
   keco-build-tables-from-document/  documents -> new Keco tables
   keco-create-map/                   complete persisted V3 map + paid confirmation
   keco-create-character-animation/   PixelLab character PNGs and animation spritesheets
-  keco-develop-godot-slice/         one bounded, evaluated Godot slice (V1)
-  keco-develop-godot-slice-v2/      document-driven multi-Slice workflow (canonical)
+  keco-develop-godot-slice-v2/      thin document-driven orchestration entry
+  keco-godot-slice-preflight/       source, plan, and snapshot gates
+  keco-godot-slice-assets/          typed assets and resource evolution
+  keco-godot-slice-implementation/  RED/GREEN tasks and reviews
+  keco-godot-slice-verification/    runtime observations and EvalReport
+  keco-godot-slice-delivery/        mirrors, recovery, and release seal
   keco-manage-game-design-system/   manage GDS data and generate project GDDs
   pixellab-map-assets/              Keco-first map and art resources
 ```
@@ -46,7 +50,6 @@ Skills reference the shared scripts as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py`
 | `validate_gdd_coverage.py` | GDD requirement inventory and reciprocal Slice/Task/Eval coverage |
 | `validate_slice_decomposition.py` | substantive, distinct multi-Slice spec/plan decomposition |
 | `validate_eval_report.py` | completion evidence before a report may claim `passed` |
-| `validate_slice_documents.py` | compatibility validator for legacy Slice status/eval-report evidence |
 | `validate_generated_asset_package.py` | hashes, PNG geometry, animation and tileset metadata |
 | `build_spriteframes_resource.py` | deterministic Godot 4 `SpriteFrames` `.tres` |
 | `export_keco_snapshot.py` | deterministic Godot JSON snapshot from a fresh Keco read-back |
@@ -80,9 +83,8 @@ Fixes carried into this packaging:
    the skill's own "small tasks do not need two reviews" rule. It now accepts
    both spellings, requires a spec review per task, and requires at least one
    quality review per plan.
-3. V1 hard-required the PixelLab operation `create_s_xl_image_pro`, which the
-   capability registry records as `unavailable`. Both V1 and `pixellab-map-assets`
-   now resolve a live adapter and record `compatibility`.
+3. PixelLab operations resolve through the live capability registry and record
+   `compatibility`.
 4. The A/B matrix claimed V2 was explicit-invocation only, contradicting the
    skill, its metadata, and its tests.
 5. `orchestration-contract.md` and `slice-decision.md` were reachable from
@@ -98,12 +100,10 @@ Fixes carried into this packaging:
    spritesheet, validates `loop`, and binds `--output` to `resourcePath`.
 10. `validate_eval_report.py` reports malformed input instead of raising, and
     requires evidence on every evaluation in a `passed` report.
-11. `validate_slice_documents.py` tolerates blank lines and comments in
-    frontmatter.
-12. `export_keco_snapshot.py` refuses to replace a non-empty directory that is
+11. `export_keco_snapshot.py` refuses to replace a non-empty directory that is
     not itself a previous snapshot.
-13. Scripts and brand assets are stored once instead of duplicated per skill.
-14. All shipped text is ASCII; the manifest carries a clean semver.
+12. Scripts and brand assets are stored once instead of duplicated per skill.
+13. All shipped text is ASCII; the manifest carries a clean semver.
 
 `tests/unit/plugins/keco-claude-plugin.test.ts` covers every packaged Skill,
 including `pixellab-map-assets`, which previously had none, and adds the positive

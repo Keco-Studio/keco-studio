@@ -65,7 +65,7 @@ Deno.test("database maps deterministic Slice SQL states without leaking details"
   ) {
     const context = contextWithError(sqlState, "private Slice SQL detail");
     const mapped = await assertRejects(
-      () => rpc(context, "mcp_checkpoint_slice", {}),
+      () => rpc(context, "mcp_checkpoint_slice_v2", {}),
       McpDomainError,
     );
     assertEquals(mapped.code, expectedCode);
