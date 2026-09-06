@@ -24,7 +24,7 @@ describe('Slice V2 modular architecture', () => {
     expect(existsSync(path.join(claudeSkills, 'keco-develop-godot-slice'))).toBe(false);
     expect(existsSync(path.join(root, 'plugins/keco-claude/scripts/validate_slice_documents.py'))).toBe(false);
     const active = spawnSync('rg', ['-n', 'keco-develop-godot-slice/', 'plugins', 'tests', '--pcre2', '--glob', '!**/keco-godot-slice-v2-end-to-end.json', '--glob', '!**/keco-godot-slice-v2-modules.test.ts', '--glob', '!**/keco-plugin.test.ts'], { encoding: 'utf8' });
-    expect(active.stdout).toBe('');
+    expect(active.stdout ?? '').toBe('');
   });
 
   it('keeps the artifact schema chain explicit', () => {

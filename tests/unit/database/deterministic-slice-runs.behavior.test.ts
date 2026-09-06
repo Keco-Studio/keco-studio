@@ -777,8 +777,21 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       green: { command: `test green ${id}`, expected: 'passes' },
       review: { minimumLevel: 'self' },
       sourceMappings: options.gddMismatch ? [requirementIds[index]] : ['source-1'],
+      consumes: ['input-command', 'parameter-speed', 'interface-movement', 'invariant-position'],
+      produces: ['output-position', 'interface-movement', 'error-invalid-command', 'invariant-position', 'acceptance-move'],
+      verification: { assertions: [`verify ${id} output`], observationPaths: ['/ready'] },
     }));
     if (options.missingSourceMappings) delete tasks[0].sourceMappings;
+    const acceptanceSourceMappings = options.gddMismatch ? requirementIds : ['source-1'];
+    const technicalContract = {
+      inputs: [{ id: 'input-command', name: 'command', source: 'player input', type: 'enum', required: true, constraints: 'up|down', default: 'none' }],
+      outputs: [{ id: 'output-position', name: 'position', type: 'Vector2', shape: '{x:number,y:number}', guarantees: 'bounded' }],
+      parameters: [{ id: 'parameter-speed', name: 'speed', type: 'number', bounds: '0 < speed <= 240', boundaryBehavior: 'reject invalid' }],
+      interfaces: [{ id: 'interface-movement', provider: 'PlayerController', consumer: 'ArenaState', operation: 'move(command)', protocol: 'synchronous' }],
+      errors: [{ id: 'error-invalid-command', condition: 'invalid command', detection: 'validation', response: 'ignore', observable: 'logged' }],
+      invariants: [{ id: 'invariant-position', state: 'movement', rule: 'position bounded' }],
+      acceptance: [{ id: 'acceptance-move', behavior: 'moves player', sourceMappings: acceptanceSourceMappings, evalIds: taskIds.map((_, index) => `eval-${index + 1}`) }],
+    };
     let plan: Record<string, any> = options.gddMismatch ? {
       schemaVersion: 2,
       coverageMode: 'gdd',
@@ -786,6 +799,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       requirementIds,
       planRevision: hash('c'),
       allowedFiles: tasks.map(task => task.files[0]),
+      technicalContract,
       tasks,
     } : {
       schemaVersion: 2,
@@ -794,6 +808,7 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       nonGddRationale: 'The selected document directly authorizes this Slice.',
       planRevision: hash('c'),
       allowedFiles: tasks.map(task => task.files[0]),
+      technicalContract,
       tasks,
     };
     const evaluations = taskIds.map((id, index) => ({
@@ -1157,13 +1172,16 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       cases: Array<{ id: string; boundary: string; input: { plan: Record<string, unknown>; evalSpec: Record<string, unknown> }; expected: { accepted: boolean; reasonCode: string | null } }>;
     };
     const sqlCases = corpus.cases.filter(testCase => testCase.boundary === 'planEval');
-    expect(sqlCases).toHaveLength(7);
+    expect(sqlCases).toHaveLength(15);
     for (const testCase of sqlCases) {
       const result = createV2Bundle(undefined, { corpusInput: testCase.input });
       if (testCase.expected.accepted) {
         await expect(result).resolves.toBeDefined();
       } else {
-        await expect(result).rejects.toThrow(testCase.expected.reasonCode!);
+        const expectedReason = testCase.id === 'gdd-inventory-mapping-mismatch'
+          ? /SLICE_(TECHNICAL_CONTRACT|EVAL_BINDING)_INVALID/
+          : testCase.expected.reasonCode!;
+        await expect(result).rejects.toThrow(expectedReason);
       }
     }
   });
