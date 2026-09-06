@@ -721,7 +721,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
 
   it('evaluates a V2 EvalSpec only from KECO_OBSERVATION evidence', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-runtime-'));
-    const evaluator = path.join(skillRoot, 'scripts', 'evaluate_runtime_observations.py');
+    const evaluator = moduleFile('scripts/evaluate_runtime_observations.py');
     const hash = (character: string) => `sha256:${character.repeat(64)}`;
     try {
       const spec = path.join(tempRoot, 'eval-spec.json');
