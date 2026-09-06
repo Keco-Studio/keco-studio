@@ -13,6 +13,7 @@ import {
   readLeftNavCollapsed,
   writeLeftNavCollapsed,
 } from './leftNavStorage';
+import { IconSpeechBubble } from './navIcons';
 import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import alignCenterIcon from '@/assets/images/simulator/align-center.svg';
 import alignCenterActiveIcon from '@/assets/images/simulator/align-center-active.svg';
@@ -43,20 +44,6 @@ function IconBolt({ active }: { active: boolean }) {
       height={20}
       aria-hidden="true"
     />
-  );
-}
-
-function IconSpeechBubble({ active }: { active: boolean }) {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
-      <path
-        d="M3.5 5a1.5 1.5 0 0 1 1.5-1.5h10A1.5 1.5 0 0 1 16.5 5v5.5a1.5 1.5 0 0 1-1.5 1.5H8.5L5 16.5V12H5A1.5 1.5 0 0 1 3.5 10.5V5z"
-        fill={active ? 'currentColor' : 'none'}
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

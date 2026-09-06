@@ -13,6 +13,7 @@ import {
   type FlowGraphNode,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { placeEdgeLabels } from '@/lib/script-system/flowChartEdgeLabels';
+import { displayChoiceLabel } from '@/lib/story-plot/headings';
 import styles from './ScriptSplitView.module.css';
 
 export type FlowChartPanelProps = {
@@ -252,7 +253,7 @@ export function FlowChartPanel({
       if (!from || !to) return [];
       return [{
         id: `${edge.from}-${edge.to}-${index}`,
-        text: edge.optionText,
+        text: displayChoiceLabel(edge.optionText),
         x: (from.x + to.x) / 2 + NODE_WIDTH / 2,
         y: (from.y + NODE_HEIGHT + to.y) / 2 - 5,
       }];

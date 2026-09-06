@@ -19,8 +19,11 @@ let outboundDispatcher: Dispatcher | null = null;
 export function getOutboundDispatcher(): Dispatcher {
   outboundDispatcher ??= new EnvHttpProxyAgent({
     connectTimeout: 30_000,
-    headersTimeout: 120_000,
-    bodyTimeout: 120_000,
+    // Professional GDD generation may run for up to 270 seconds. Keep the
+    // provider transport alive long enough for the worker deadline to handle
+    // cancellation and retries instead of cutting it off at 120 seconds.
+    headersTimeout: 300_000,
+    bodyTimeout: 300_000,
   });
   return outboundDispatcher;
 }

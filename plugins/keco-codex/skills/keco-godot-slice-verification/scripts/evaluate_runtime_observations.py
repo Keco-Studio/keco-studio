@@ -34,6 +34,7 @@ def main() -> int:
     parser.add_argument("--eval-spec", type=pathlib.Path, required=True)
     parser.add_argument("--debug-output", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--legacy", action="store_true", help="accept the version-1 KECO_EVAL adapter")
     args = parser.parse_args()
     try:
         args.output.unlink(missing_ok=True)

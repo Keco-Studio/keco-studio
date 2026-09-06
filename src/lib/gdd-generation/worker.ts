@@ -52,6 +52,24 @@ type WorkerDependencies = {
   fail: typeof failGddGenerationJob;
 };
 
+const QUICK_GDD_GENERATION_DEADLINE_MS = 120_000;
+const PROFESSIONAL_GDD_GENERATION_DEADLINE_MS = 270_000;
+const MIN_GDD_GENERATION_DEADLINE_MS = 30_000;
+const MAX_GDD_GENERATION_DEADLINE_MS = 270_000;
+
+function gddGenerationDeadlineMs(job: GddGenerationJob): number {
+  const configured = Number(process.env.GDD_GENERATION_DEADLINE_MS);
+  if (
+    Number.isSafeInteger(configured)
+    && configured >= MIN_GDD_GENERATION_DEADLINE_MS
+    && configured <= MAX_GDD_GENERATION_DEADLINE_MS
+  ) return configured;
+  const input = job.input as { contractVersion?: unknown; mode?: unknown };
+  return input.contractVersion === 2 && input.mode === 'professional'
+    ? PROFESSIONAL_GDD_GENERATION_DEADLINE_MS
+    : QUICK_GDD_GENERATION_DEADLINE_MS;
+}
+
 function tableSeriesSeed(job: Pick<GddGenerationJob, 'project_id' | 'design_system_id'>): string {
   return `${job.project_id}:${job.design_system_id}`;
 }
@@ -397,11 +415,15 @@ export async function persistGeneratedGddV2Document(
 async function runWithLeaseHeartbeat<T>(
   input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob },
   heartbeat: typeof heartbeatGddGenerationJob,
+  deadlineMs: number,
   generate: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
+  const deadline = setTimeout(() => {
+    controller.abort(new Error('GDD generation deadline exceeded.'));
+  }, deadlineMs);
   const timer = setInterval(() => {
     pendingHeartbeat = pendingHeartbeat
       .then(() => heartbeat(input.serviceClient, input.job.id, input.workerId, 'generating'))
@@ -413,16 +435,32 @@ async function runWithLeaseHeartbeat<T>(
   try {
     let generated: T;
     try {
-      generated = await generate(controller.signal);
+      const generation = generate(controller.signal);
+      generated = await Promise.race([
+        generation,
+        new Promise<T>((_, reject) => {
+          controller.signal.addEventListener('abort', () => {
+            reject(controller.signal.reason ?? new Error('GDD generation was aborted.'));
+          }, { once: true });
+        }),
+      ]);
     } catch (error) {
       if (heartbeatFailure) throw heartbeatFailure;
       throw error;
     }
-    await pendingHeartbeat;
+    await Promise.race([
+      pendingHeartbeat,
+      new Promise<void>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(controller.signal.reason ?? new Error('GDD generation was aborted.'));
+        }, { once: true });
+      }),
+    ]);
     if (heartbeatFailure) throw heartbeatFailure;
     return generated;
   } finally {
     clearInterval(timer);
+    clearTimeout(deadline);
   }
 }
 
@@ -436,7 +474,7 @@ export async function processClaimedGddJob(
     await dependencies.revalidateContext(serviceClient, job);
     if (isGddGenerationRequestV2(job.input)) {
       if (!dependencies.generateV2 || !dependencies.persistV2) throw new Error('GDD v2 worker dependencies are not configured.');
-      const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, (signal) => (
+      const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, gddGenerationDeadlineMs(job), (signal) => (
         dependencies.generateV2!(job.input as GddGenerationRequestV2, undefined, { signal })
       ));
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
@@ -453,7 +491,12 @@ export async function processClaimedGddJob(
       );
       return persisted.status ?? 'completed';
     }
-    const generated = await runWithLeaseHeartbeat(input, dependencies.heartbeat, () => dependencies.generate(job.input));
+    const generated = await runWithLeaseHeartbeat(
+      input,
+      dependencies.heartbeat,
+      gddGenerationDeadlineMs(job),
+      () => dependencies.generate(job.input),
+    );
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
     const tableResources = materializeTableResources(tableSeriesSeed(job), generated.productionTables);
     const markdown = renderGddMarkdown(generated, { input: job.input, tableResources });

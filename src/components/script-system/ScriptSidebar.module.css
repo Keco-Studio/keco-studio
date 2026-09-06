@@ -247,10 +247,6 @@
   background: var(--script-blue-soft);
 }
 
-.treeRowActive .treeIcon {
-  color: var(--script-blue);
-}
-
 .expandButton {
   display: inline-flex;
   align-items: center;
@@ -283,7 +279,7 @@
 
 .treeItemMain {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   flex: 1;
@@ -311,7 +307,18 @@
 
 .treeIcon {
   display: inline-flex;
-  color: var(--script-ink-350);
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: #111;
+  line-height: 0;
+}
+
+.treeIcon img {
+  width: 24px !important;
+  height: 24px !important;
+  display: block;
 }
 
 .treeLabel {

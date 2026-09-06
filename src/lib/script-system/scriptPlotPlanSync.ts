@@ -20,7 +20,7 @@ function insertedStoryNodeId(rowId: string, used: Set<string>): string {
   return candidate;
 }
 
-function buildLocalProjectionPlotPlan(
+export function buildLocalProjectionPlotPlan(
   rowIds: readonly string[],
   flowRows: Array<Record<string, string>>,
 ): SynchronizedStoryPlotPlan {

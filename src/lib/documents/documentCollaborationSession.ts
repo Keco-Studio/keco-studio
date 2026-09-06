@@ -1497,13 +1497,11 @@ export class DocumentCollaborationSession implements Provider {
       if (!invocationChannel) {
         throw new Error('Document collaboration channel is unavailable');
       }
-      const result = await invocationChannel.send({
-        type: 'broadcast',
-        event,
-        payload,
-      });
-      if (result !== 'ok' && (result as { status?: string })?.status !== 'ok') {
-        throw new Error(`Document collaboration send failed: ${String(result)}`);
+      // Prefer httpSend over channel.send(): send() falls back to REST with a
+      // deprecation warning when the socket cannot push.
+      const result = await invocationChannel.httpSend(event, payload);
+      if (result.success === false) {
+        throw new Error(`Document collaboration send failed: ${result.error}`);
       }
     } catch (error) {
       if (this.closing || this.destroyed) throw error;
@@ -1609,15 +1607,11 @@ export class DocumentCollaborationSession implements Provider {
       ]);
       await Promise.race([
         Promise.resolve(
-          channel.send({
-            type: 'broadcast',
-            event: 'yjs-awareness',
-            payload: {
-              v: 1,
-              documentId: this.documentId,
-              epoch: this.currentToken.epoch,
-              updateBase64: encodeBase64(update),
-            },
+          channel.httpSend('yjs-awareness', {
+            v: 1,
+            documentId: this.documentId,
+            epoch: this.currentToken.epoch,
+            updateBase64: encodeBase64(update),
           })
         ),
         new Promise<void>((resolve) => {

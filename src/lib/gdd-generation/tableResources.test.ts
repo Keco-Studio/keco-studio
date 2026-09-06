@@ -1,6 +1,7 @@
 import {
   applyInlineTableResourceReferences,
   coerceTableRowInput,
+  convertMarkdownTablesToPlans,
   extractTablePlanMarker,
   materializeTableResources,
   normalizeTablePlans,
@@ -136,6 +137,82 @@ describe('GDD table resources', () => {
       const jsx = paragraph?.children?.filter((child) => child.type === 'mdxJsxTextElement') ?? [];
       expect(jsx).toHaveLength(2);
     }).not.toThrow();
+  });
+
+  it('does not inline internal dialogue-node rows into the GDD body', () => {
+    const plan = normalizeTablePlans([{
+      table: 'DialogueNodes',
+      purpose: 'Derived dialogue graph nodes.',
+      fields: ['nodeId', 'dialogue', 'choices'],
+      rows: [{
+        name: 'ch1_entry',
+        values: {
+          nodeId: 'ch1_entry',
+          dialogue: '\u6797\u4f2f：\u4f60\u5c31\u662f\u65b0\u6765\u7684\u5e97\u4e3b？',
+          choices: ['ch1_entry_choice_a', 'ch1_entry_choice_b'],
+        },
+      }],
+    }])[0]!;
+    const [resource] = materializeTableResources('system-1', [plan]);
+    const markdown = applyInlineTableResourceReferences(
+      '# GDD\n\n<!-- KECO_TABLE_REF DialogueNodes -->',
+      [resource!],
+    );
+
+    expect(markdown).not.toContain('<ResourceReference');
+    expect(markdown).not.toContain('ch1_entry');
+    expect(markdown).not.toContain('KECO_TABLE_REF');
+  });
+
+  it('keeps ordinary table references while suppressing internal dialogue tables', () => {
+    const resources = materializeTableResources('system-1', normalizeTablePlans([
+      {
+        table: 'Dialogue Events',
+        purpose: 'Compiler dialogue graph.',
+        fields: ['nodeId', 'dialogue'],
+        rows: [{ name: 'entry', values: { nodeId: 'entry', dialogue: 'Hello.' } }],
+      },
+      {
+        table: 'Products',
+        purpose: 'Catalog.',
+        fields: ['name'],
+        rows: [{ name: 'Milk', values: { name: 'Milk' } }],
+      },
+    ]));
+    const markdown = applyInlineTableResourceReferences('# GDD\nBody.', resources);
+
+    expect(markdown).toContain('fallbackLabel="Milk"');
+    expect(markdown).not.toContain('fallbackLabel="entry"');
+    expect(markdown).not.toContain('Dialogue Events');
+  });
+
+  it('converts Markdown tables into Keco plans and inline references', () => {
+    const result = convertMarkdownTablesToPlans([
+      '# GDD',
+      '',
+      '## 6.2 \u751f\u6001\u533a\u7c7b\u578b',
+      '',
+      '| \u751f\u6001\u533a | \u7279\u5f81 | \u8d44\u6e90\u4ea7\u51fa | \u4e3b\u8981\u5a01\u80c1 |',
+      '| --- | --- | --- | --- |',
+      '| \u7fe0\u7eff\u5e73\u539f | \u6e29\u548c\u6c14\u5019，\u6c34\u6e90\u5145\u8db3 | \u98df\u7269 3-5 | \u72fc\u7fa4（\u4f4e\u5a01\u80c1） |',
+    ].join('\n'));
+
+    expect(result.tablePlans).toEqual([{
+      table: '\u751f\u6001\u533a\u7c7b\u578b',
+      purpose: 'Imported from a Markdown table in the generated GDD.',
+      fields: ['\u751f\u6001\u533a', '\u7279\u5f81', '\u8d44\u6e90\u4ea7\u51fa', '\u4e3b\u8981\u5a01\u80c1'],
+      rows: [{
+        name: '\u7fe0\u7eff\u5e73\u539f',
+        values: {
+          \u751f\u6001\u533a: '\u7fe0\u7eff\u5e73\u539f',
+          \u7279\u5f81: '\u6e29\u548c\u6c14\u5019，\u6c34\u6e90\u5145\u8db3',
+          \u8d44\u6e90\u4ea7\u51fa: '\u98df\u7269 3-5',
+          \u4e3b\u8981\u5a01\u80c1: '\u72fc\u7fa4（\u4f4e\u5a01\u80c1）',
+        },
+      }],
+    }]);
+    expect(result.markdown).toContain('<!-- KECO_TABLE_REF \u751f\u6001\u533a\u7c7b\u578b -->');
+    expect(result.markdown).not.toContain('| \u751f\u6001\u533a |');
   });
 
   it('strips a redundant table title line before KECO_TABLE_REF markers', () => {

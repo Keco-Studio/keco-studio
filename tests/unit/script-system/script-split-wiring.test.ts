@@ -40,6 +40,12 @@ describe('Keco Script split view wiring', () => {
     expect(source).toMatch(/assetsSchemaSettled|schemaFetched|assetsFetched/);
     expect(source).toMatch(/detectScriptColumns|scriptColumns/);
     expect(source).toContain('ScriptSplitView');
+    expect(source).toContain('summarizeScriptPlotTitlesClient');
+    expect(source).toContain('openingGraph');
+    expect(source).toContain('baseGraph');
+    // Do not block the VN + Flow chart panes on AI title summarization.
+    expect(source).not.toContain('!openingGraph');
+    expect(source).toContain('openingKey');
     expect(source).not.toContain('LibraryAssetsTable');
   });
 
@@ -60,6 +66,7 @@ describe('Keco Script split view wiring', () => {
     expect(source).toContain('selectedRows');
     expect(source).toContain('mode="plot-node"');
     expect(source).not.toContain('Show Flow chart');
+    expect(source).not.toContain('summarizeScriptPlotTitlesClient');
   });
 
   it('TopBar Script actions reuse Share and Flow chart toggle', () => {

@@ -119,4 +119,125 @@ describe('GDD map child worker', () => {
       status: 'failed', error: 'PixelLab map request failed (503).',
     }));
   });
+
+  it('reschedules a polling request that exceeds its provider deadline', async () => {
+    jest.useFakeTimers();
+    const invoke = jest.fn(async () => new Promise<Record<string, unknown>>(() => undefined));
+    const reschedule = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+    const finish = jest.fn(async (..._args: unknown[]) => 'failed' as const);
+    const running = processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('polling'),
+    }, { claim: jest.fn(), prepare: jest.fn(), reschedule, finish, invoke } as never);
+
+    await jest.advanceTimersByTimeAsync(120_000);
+    await expect(running).resolves.toBe('queued');
+    expect(reschedule).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      phase: 'polling', error: expect.stringMatching(/timed out|deadline/i),
+    }));
+    expect(finish).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('blocks a submission whose provider response exceeds its deadline', async () => {
+    jest.useFakeTimers();
+    const invoke = jest.fn(async () => new Promise<Record<string, unknown>>(() => undefined));
+    const finish = jest.fn(async (..._args: unknown[]) => 'completed_with_map_failures' as const);
+    const running = processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('submitting'),
+    }, { claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish, invoke } as never);
+
+    await jest.advanceTimersByTimeAsync(120_000);
+    await expect(running).resolves.toBe('blocked');
+    expect(finish).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: 'blocked', error: expect.stringMatching(/timed out|deadline/i),
+    }));
+    jest.useRealTimers();
+  });
+
+  it('resumes polling when a timed-out submission was durably accepted by the provider', async () => {
+    jest.useFakeTimers();
+    const invoke = jest.fn(async () => new Promise<Record<string, unknown>>(() => undefined));
+    const reconcile = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+    const finish = jest.fn();
+    const running = processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('submitting'),
+    }, { claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish, reconcile, invoke } as never);
+
+    await jest.advanceTimersByTimeAsync(120_000);
+    await expect(running).resolves.toBe('queued');
+    expect(reconcile).toHaveBeenCalledWith(expect.anything(), artifact('submitting').id);
+    expect(finish).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('does not resubmit a recovered artifact whose provider job is already running', async () => {
+    const reconcile = jest.fn(async () => 'queued' as const);
+    const invoke = jest.fn();
+
+    await expect(processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('submitting'),
+    }, {
+      claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish: jest.fn(), reconcile, invoke,
+    } as never)).resolves.toBe('queued');
+
+    expect(reconcile).toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not submit again when reconciliation closes an unknown paid outcome', async () => {
+    const reconcile = jest.fn(async () => 'blocked' as const);
+    const invoke = jest.fn();
+
+    await expect(processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('submitting'),
+    }, {
+      claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish: jest.fn(), reconcile, invoke,
+    } as never)).resolves.toBe('blocked');
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('finishes a polling artifact when its final transient attempt fails', async () => {
+    const invoke = jest.fn(async () => {
+      throw new GddMapProviderError('pixellab_upstream', 'PixelLab poll failed.', 503);
+    });
+    const reschedule = jest.fn();
+    const finish = jest.fn(async (..._args: unknown[]) => 'completed_with_map_failures' as const);
+
+    await expect(processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('polling', { attempt_count: 2, max_attempts: 3 }),
+    }, { claim: jest.fn(), prepare: jest.fn(), reschedule, finish, invoke } as never)).resolves.toBe('failed');
+
+    expect(finish).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: 'failed', error: 'PixelLab poll failed.',
+    }));
+    expect(reschedule).not.toHaveBeenCalled();
+  });
+
+  it('finishes a provider job that stays generating beyond the total wait limit', async () => {
+    const invoke = jest.fn(async () => ({ status: 'generating' }));
+    const finish = jest.fn(async (..._args: unknown[]) => 'completed_with_map_failures' as const);
+
+    await expect(processClaimedGddMapArtifactWithDependencies({
+      serviceClient: {} as never,
+      workerId: 'worker',
+      artifact: artifact('polling', { started_at: '2020-01-01T00:00:00.000Z' }),
+    }, { claim: jest.fn(), prepare: jest.fn(), reschedule: jest.fn(), finish, invoke } as never)).resolves.toBe('failed');
+
+    expect(finish).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      status: 'failed', error: expect.stringMatching(/time limit/i),
+    }));
+  });
 });

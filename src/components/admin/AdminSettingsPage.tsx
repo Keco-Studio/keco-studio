@@ -4,17 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RightOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminTabs } from '@/components/admin/AdminTabs';
-import { StripeCheckoutPanel } from '@/components/admin/StripeCheckoutPanel';
 import { EditProjectModal } from '@/components/projects/EditProjectModal';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { ROLE_PERMISSIONS } from '@/lib/types/collaboration';
 import {
+  readBillingPrefs,
   readNotificationPrefs,
   readPrivacyPrefs,
+  writeBillingPrefs,
   writeNotificationPrefs,
   writePrivacyPrefs,
+  type AdminBillingPrefs,
   type AdminNotificationPrefs,
   type AdminPrivacyPrefs,
 } from '@/lib/adminPrefs/storage';
@@ -26,7 +28,7 @@ type AdminSettingsPageProps = {
   projectId: string;
 };
 
-type PrefModal = 'notifications' | 'privacy' | null;
+type PrefModal = 'billing' | 'notifications' | 'privacy' | null;
 
 export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
   const supabase = useSupabase();
@@ -37,7 +39,6 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
   const canEditProfile = userRole === 'admin';
   const canAccessCollaborators = userRole ? ROLE_PERMISSIONS[userRole].canInvite : false;
   const userId = userProfile?.id ?? '';
-  const userEmail = userProfile?.email ?? '';
 
   const projectQuery = useQuery({
     queryKey: ['project', projectId, 'admin-settings'],
@@ -55,16 +56,19 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
 
   const [editOpen, setEditOpen] = useState(false);
   const [prefModal, setPrefModal] = useState<PrefModal>(null);
+  const [billing, setBilling] = useState<AdminBillingPrefs | null>(null);
   const [notifications, setNotifications] = useState<AdminNotificationPrefs | null>(null);
   const [privacy, setPrivacy] = useState<AdminPrivacyPrefs | null>(null);
+  const [draftBilling, setDraftBilling] = useState<AdminBillingPrefs | null>(null);
   const [draftNotifications, setDraftNotifications] = useState<AdminNotificationPrefs | null>(null);
   const [draftPrivacy, setDraftPrivacy] = useState<AdminPrivacyPrefs | null>(null);
 
   useEffect(() => {
     if (!userId) return;
+    setBilling(readBillingPrefs(userId, projectId));
     setNotifications(readNotificationPrefs(userId));
     setPrivacy(readPrivacyPrefs(userId));
-  }, [userId]);
+  }, [projectId, userId]);
 
   const openProfileEditor = useCallback(() => {
     if (!canEditProfile) {
@@ -74,11 +78,27 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
     setEditOpen(true);
   }, [canEditProfile]);
 
+  const paymentEnabled = billing?.paymentEnabled ?? true;
+
   const descriptionPreview = useMemo(() => {
     const text = projectQuery.data?.description?.trim();
     if (!text) return 'No description';
     return text.length > 48 ? `${text.slice(0, 48)}...` : text;
   }, [projectQuery.data?.description]);
+
+  const togglePayment = () => {
+    if (!userId || !billing) return;
+    const next = { ...billing, paymentEnabled: !billing.paymentEnabled };
+    setBilling(next);
+    writeBillingPrefs(userId, projectId, next);
+    showSuccessToast(next.paymentEnabled ? 'Payment details enabled' : 'Payment details disabled');
+  };
+
+  const openBillingEditor = () => {
+    if (!billing) return;
+    setDraftBilling(billing);
+    setPrefModal('billing');
+  };
 
   const openNotifications = () => {
     if (!notifications) return;
@@ -94,6 +114,11 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
 
   const savePrefModal = () => {
     if (!userId) return;
+    if (prefModal === 'billing' && draftBilling) {
+      setBilling(draftBilling);
+      writeBillingPrefs(userId, projectId, draftBilling);
+      showSuccessToast('Payment details saved');
+    }
     if (prefModal === 'notifications' && draftNotifications) {
       setNotifications(draftNotifications);
       writeNotificationPrefs(userId, draftNotifications);
@@ -149,7 +174,32 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
       <section className={styles.section}>
         <h2 className={styles.sectionLabel}>Billing</h2>
         <div className={styles.rows}>
-          <StripeCheckoutPanel projectId={projectId} defaultEmail={userEmail} />
+          <div className={styles.row} role="group" aria-label="Payment details toggle">
+            <div className={styles.rowText}>
+              <span className={styles.rowTitle}>Payment details</span>
+              <span className={styles.rowSubtitle}>
+                Update the payment method and billing address on file.
+              </span>
+            </div>
+            <button
+              type="button"
+              className={`${styles.toggle} ${paymentEnabled ? styles.toggleOn : ''}`}
+              aria-pressed={paymentEnabled}
+              aria-label="Toggle payment details"
+              onClick={togglePayment}
+            >
+              <span className={styles.toggleThumb} />
+            </button>
+          </div>
+          <button type="button" className={styles.row} onClick={openBillingEditor}>
+            <div className={styles.rowText}>
+              <span className={styles.rowTitle}>Payment details</span>
+              <span className={styles.rowSubtitle}>
+                Update the payment method and billing address on file.
+              </span>
+            </div>
+            <span className={styles.rowAction}><RightOutlined /></span>
+          </button>
         </div>
       </section>
 
@@ -209,10 +259,37 @@ export function AdminSettingsPage({ projectId }: AdminSettingsPageProps) {
             onClick={(event) => event.stopPropagation()}
           >
             <h3 id="admin-pref-modal-title" className={styles.modalTitle}>
+              {prefModal === 'billing' && 'Payment details'}
               {prefModal === 'notifications' && 'Alert settings'}
               {prefModal === 'privacy' && 'Data management'}
             </h3>
             <div className={styles.modalBody}>
+              {prefModal === 'billing' && draftBilling && (
+                <>
+                  <label className={styles.fieldLabel}>
+                    Payment method
+                    <input
+                      className={styles.fieldInput}
+                      value={draftBilling.methodLabel}
+                      onChange={(e) =>
+                        setDraftBilling({ ...draftBilling, methodLabel: e.target.value })
+                      }
+                      placeholder="Visa ending in 4242"
+                    />
+                  </label>
+                  <label className={styles.fieldLabel}>
+                    Billing address
+                    <textarea
+                      className={styles.fieldTextarea}
+                      value={draftBilling.billingAddress}
+                      onChange={(e) =>
+                        setDraftBilling({ ...draftBilling, billingAddress: e.target.value })
+                      }
+                      placeholder="Street, city, postal code"
+                    />
+                  </label>
+                </>
+              )}
               {prefModal === 'notifications' && draftNotifications && (
                 <>
                   {(

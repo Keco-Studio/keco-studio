@@ -28,6 +28,9 @@ type MapWorkerDependencies = {
   invoke: typeof invokePixelLabMap;
 };
 
+const MAP_PROVIDER_DEADLINE_MS = 90_000;
+const MAP_PROVIDER_MAX_WAIT_MS = 15 * 60_000;
+
 export class GddMapProviderError extends Error {
   readonly code: string;
   readonly status: number;
@@ -63,7 +66,9 @@ export async function invokePixelLabMap(input: {
   generationId: string;
   gddMapArtifactId: string;
   actorUserId: string;
+  signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
+  const { signal, ...payload } = input;
   const response = await fetch(pixelLabMapUrl(), {
     method: 'POST',
     headers: {
@@ -71,7 +76,8 @@ export async function invokePixelLabMap(input: {
       apikey: serviceRoleToken(),
       'content-type': 'application/json',
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify(payload),
+    signal,
   });
   const body = await response.json().catch(() => ({})) as unknown;
   const record = body && typeof body === 'object' && !Array.isArray(body)
@@ -119,13 +125,16 @@ function providerInput(artifact: GddMapArtifact): Parameters<typeof invokePixelL
 async function invokeWithLeaseHeartbeat(
   input: MapWorkerInput,
   dependencies: MapWorkerDependencies,
-  operation: () => Promise<Record<string, unknown>>,
+  operation: (signal: AbortSignal) => Promise<Record<string, unknown>>,
 ): Promise<Record<string, unknown>> {
-  if (!dependencies.heartbeat) return operation();
+  const controller = new AbortController();
+  const deadline = setTimeout(() => {
+    controller.abort(new Error('PixelLab map provider deadline exceeded.'));
+  }, MAP_PROVIDER_DEADLINE_MS);
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
   const timer = setInterval(() => {
-    if (heartbeatFailure) return;
+    if (!dependencies.heartbeat || heartbeatFailure) return;
     pendingHeartbeat = pendingHeartbeat
       .then(() => dependencies.heartbeat!(input.serviceClient, {
         artifactId: input.artifact.id,
@@ -136,12 +145,28 @@ async function invokeWithLeaseHeartbeat(
       .catch((error) => { heartbeatFailure = error; });
   }, 30_000);
   try {
-    const result = await operation();
-    await pendingHeartbeat;
+    const operationPromise = operation(controller.signal);
+    const result = await Promise.race([
+      operationPromise,
+      new Promise<Record<string, unknown>>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new GddMapProviderError('pixellab_timeout', 'PixelLab map provider deadline exceeded.', 504));
+        }, { once: true });
+      }),
+    ]);
+    await Promise.race([
+      pendingHeartbeat,
+      new Promise<void>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(controller.signal.reason ?? new Error('PixelLab map provider was aborted.'));
+        }, { once: true });
+      }),
+    ]);
     if (heartbeatFailure) throw heartbeatFailure;
     return result;
   } finally {
     clearInterval(timer);
+    clearTimeout(deadline);
   }
 }
 
@@ -165,8 +190,13 @@ async function processClaimedGddMapArtifact(
     return 'queued';
   }
 
+  if (artifact.phase === 'submitting' && dependencies.reconcile) {
+    const reconciled = await dependencies.reconcile(serviceClient, artifact.id);
+    if (reconciled === 'queued' || reconciled === 'ready' || reconciled === 'blocked') return reconciled;
+  }
+
   const operation = providerInput(artifact);
-  const response = await invokeWithLeaseHeartbeat(input, dependencies, () => dependencies.invoke(operation));
+  const response = await invokeWithLeaseHeartbeat(input, dependencies, (signal) => dependencies.invoke({ ...operation, signal }));
   const status = typeof response.status === 'string' ? response.status : null;
   if (artifact.phase === 'submitting') {
     if (status !== 'generating') throw new GddMapProviderError('pixellab_invalid_response', 'PixelLab did not start the map job.', 502);
@@ -180,6 +210,16 @@ async function processClaimedGddMapArtifact(
     }
     if (status === 'failed') {
       await dependencies.finish(serviceClient, { artifactId: artifact.id, workerId, status: 'failed', error: 'PixelLab map generation failed.' });
+      return 'failed';
+    }
+    const startedAt = Date.parse(artifact.started_at ?? '');
+    if (Number.isFinite(startedAt) && Date.now() - startedAt >= MAP_PROVIDER_MAX_WAIT_MS) {
+      await dependencies.finish(serviceClient, {
+        artifactId: artifact.id,
+        workerId,
+        status: 'failed',
+        error: 'PixelLab map generation exceeded the 15 minute time limit.',
+      });
       return 'failed';
     }
     await dependencies.reschedule(serviceClient, { artifactId: artifact.id, workerId, phase: 'polling', delaySeconds: 15 });
@@ -220,19 +260,21 @@ export async function processClaimedGddMapArtifactWithDependencies(
       : error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string'
         ? (error as { code: string }).code
         : '';
-    // The Edge Function may persist the PNG before its response times out.
-    // Reconcile that durable asset before recording a terminal failure.
-    if (artifact.phase === 'validating' && dependencies.reconcile) {
+    // A provider submission or validation may persist durable progress before
+    // its response times out. Reconcile before recording a terminal failure.
+    if ((artifact.phase === 'submitting' || artifact.phase === 'validating') && dependencies.reconcile) {
       try {
-        if (await dependencies.reconcile(serviceClient, artifact.id) === 'ready') return 'ready';
+        const reconciled = await dependencies.reconcile(serviceClient, artifact.id);
+        if (reconciled === 'queued' || reconciled === 'ready' || reconciled === 'blocked') return reconciled;
       } catch {
-        // Preserve the original provider error when no ready asset exists.
+        // Preserve the original provider error when no durable progress exists.
       }
     }
     const retryableSubmission = artifact.phase === 'submitting' && (
       code === 'pixellab_rate_limited'
       || code === 'pixellab_quota_exceeded'
-      || (error instanceof GddMapProviderError && error.status >= 500 && code !== 'pixellab_invalid_response')
+      || (error instanceof GddMapProviderError && error.status >= 500
+        && code !== 'pixellab_invalid_response' && code !== 'pixellab_timeout')
     );
     if (retryableSubmission) {
       if ((artifact.attempt_count ?? 0) + 1 >= (artifact.max_attempts ?? 3)) {
@@ -246,6 +288,10 @@ export async function processClaimedGddMapArtifactWithDependencies(
       return 'blocked';
     }
     if (artifact.phase === 'polling' && error instanceof GddMapProviderError && error.status >= 500) {
+      if ((artifact.attempt_count ?? 0) + 1 >= (artifact.max_attempts ?? 3)) {
+        await dependencies.finish(serviceClient, { artifactId: artifact.id, workerId, status: 'failed', error: message });
+        return 'failed';
+      }
       return (await dependencies.reschedule(serviceClient, { artifactId: artifact.id, workerId, phase: 'polling', delaySeconds: 20, error: message })) ?? 'failed';
     }
     await dependencies.finish(serviceClient, { artifactId: artifact.id, workerId, status: 'failed', error: message });

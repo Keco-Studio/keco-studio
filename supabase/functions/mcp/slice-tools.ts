@@ -823,6 +823,20 @@ const v2CreateResponseSchema = z.object({
   ...v2MutationResponseBase,
   documents: v2DocumentMapSchema,
 }).strict();
+const v2DocumentMapSchema = z.object({
+  roadmap: v2DocumentIdentitySchema,
+  spec: v2DocumentIdentitySchema,
+  plan: v2DocumentIdentitySchema,
+}).strict();
+const v2MutationResponseBase = {
+  ...mutationResponseBase,
+  contractVersion: z.literal(2),
+  legacyLayout: z.literal(false),
+};
+const v2CreateResponseSchema = z.object({
+  ...v2MutationResponseBase,
+  documents: v2DocumentMapSchema,
+}).strict();
 const checkpointResponseSchema = z.object({
   ...mutationResponseBase,
   repairCount: z.number().int().min(0).max(3),
@@ -888,6 +902,46 @@ const runVersionSchema = z.object({
   sourceProfileHash: sha256.nullable(),
   deliveryPrepared: z.boolean(),
 }).strict();
+const v2ExportResponseSchema = z.object({
+  schemaVersion: z.literal(2),
+  canonicalizationVersion: z.literal(1),
+  contractVersion: z.literal(2),
+  runId: uuid,
+  stateToken: uuid,
+  currentSequence: z.number().int().positive(),
+  preparedSequence: z.number().int().positive(),
+  files: z.array(
+    z.object({
+      kind: z.enum(["roadmap", "spec", "plan"]),
+      repositoryPath: relativePath,
+      documentId: uuid,
+      folderId: uuid,
+      epoch: z.number().int().nonnegative(),
+      revision: z.number().int().nonnegative(),
+      byteCount: z.number().int().nonnegative().max(
+        MAX_DOCUMENT_MARKDOWN_BYTES,
+      ),
+      sha256,
+      content: z.string(),
+    }).strict(),
+  ).length(3),
+  manifestHash: sha256,
+}).strict().superRefine((value, context) => {
+  if (new Set(value.files.map((file) => file.kind)).size !== 3) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Export kinds must be unique.",
+    });
+  }
+  for (const file of value.files) {
+    if (utf8ByteLength(file.content) !== file.byteCount) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Export byte count is invalid.",
+      });
+    }
+  }
+});
 const v2ExportResponseSchema = z.object({
   schemaVersion: z.literal(2),
   canonicalizationVersion: z.literal(1),
@@ -1422,6 +1476,44 @@ function registerSliceToolSet(
     });
   }
 
+  const prepareSchema = z.object({
+    ...shape,
+    contractVersion: z.literal(2),
+    runId: uuid,
+    stateToken: uuid,
+    roadmapProgress: roadmapProgressSchema,
+    idempotencyKey,
+  }).strict();
+  if (options.writes) {
+    server.registerTool("prepare_delivery", {
+      description:
+        "Validate release gates and apply the final authoritative roadmap checkbox update before mirror export.",
+      inputSchema: prepareSchema,
+      annotations: writeAnnotations,
+    }, async (input: z.infer<typeof prepareSchema>) => {
+      try {
+        const context = await contextFor(input, fixed, resolver);
+        const projectId = requestedProjectId(input, fixed);
+        await readRunContractVersion(context, projectId, input.runId, 2);
+        const roadmapProgress = await encodeProgress(input.roadmapProgress);
+        const data = parseTrusted(
+          v2FinalizeResponseSchema,
+          await rpc<unknown>(context, "mcp_prepare_slice_delivery_v2", {
+            p_project_id: projectId,
+            p_run_id: input.runId,
+            p_expected_state_token: input.stateToken,
+            p_roadmap_progress: roadmapProgress,
+            p_idempotency_key: input.idempotencyKey,
+            p_input_hash: await sha256Canonical(withoutIdempotency(input)),
+          }),
+        );
+        return toolSuccess("Slice delivery prepared.", data);
+      } catch (error) {
+        return toolFailure(error);
+      }
+    });
+  }
+
   const finalizeSchema = z.object({
     ...shape,
     contractVersion: z.literal(2),
@@ -1505,7 +1597,11 @@ function registerSliceToolSet(
             p_input_hash: await sha256Canonical(withoutIdempotency(input)),
           }),
         );
-        return toolSuccess("Slice finalization completed.", data);
+        return toolSuccess("Slice finalization completed.", {
+          contractVersion: 1,
+          legacyLayout: true,
+          ...data,
+        });
       } catch (error) {
         return toolFailure(error);
       }
@@ -1552,6 +1648,9 @@ function registerSliceToolSet(
         }
         return toolSuccess("Slice mirror manifest exported.", {
           ok: true,
+          ...(identity.contractVersion === 1
+            ? { contractVersion: 1, legacyLayout: true }
+            : {}),
           ...data,
         });
       } catch (error) {

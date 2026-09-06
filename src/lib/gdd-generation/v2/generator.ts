@@ -3,6 +3,7 @@ import { completeLlm, streamLlm, type StreamLlmOptions } from '@/lib/agent/llm-c
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import { reviewSchema, type GddGenerationRequestV2, type ReviewV2 } from './contracts';
 import {
+  convertMarkdownTablesToPlans,
   extractTablePlanMarker,
   listTableRefNames,
   tablePlanShapeExample,
@@ -207,7 +208,11 @@ function escapeNumericLessThanInProse(markdown: string): string {
   }).join('\n');
 }
 
-function normalizeGeneratedMarkdown(raw: string, projectName: string): {
+function normalizeGeneratedMarkdown(
+  raw: string,
+  projectName: string,
+  tableGuidance: GddGenerationRequestV2['rules']['tableGuidance'] = [],
+): {
   markdown: string;
   tablePlans: GeneratedTablePlan[];
   tablePlanWarning: string | null;
@@ -220,12 +225,13 @@ function normalizeGeneratedMarkdown(raw: string, projectName: string): {
   if (/^#{1,6}[ \t]+.+$/.test(markdown.split(/\r?\n/).at(-1) ?? '')) {
     throw new GddV2GenerationValidationError('Model returned an incomplete heading at the end of the GDD.');
   }
+  const converted = convertMarkdownTablesToPlans(markdown, extracted.tablePlans, tableGuidance);
   const result = {
-    tablePlans: extracted.tablePlans,
+    tablePlans: [...extracted.tablePlans, ...converted.tablePlans],
     tablePlanWarning: extracted.warning,
   };
-  if (/^#(?!#)[ \t]+\S/m.test(markdown)) return { markdown, ...result };
-  return { markdown: `# ${projectName} Game Design Document\n\n${markdown}`, ...result };
+  if (/^#(?!#)[ \t]+\S/m.test(converted.markdown)) return { markdown: converted.markdown, ...result };
+  return { markdown: `# ${projectName} Game Design Document\n\n${converted.markdown}`, ...result };
 }
 
 async function repairMissingTablePlans(
@@ -272,7 +278,7 @@ async function repairMissingTablePlans(
       // it instead of discarding an otherwise usable plan.
       const compatibleSingle = !exact
         && extracted.tablePlans.length === 1
-        && (!requiredTable.fields || sameStringList(extracted.tablePlans[0]!.fields, requiredTable.fields))
+        && (!requiredTable.fields || sameFieldShape(extracted.tablePlans[0]!.fields, requiredTable.fields))
         ? extracted.tablePlans[0]
         : undefined;
       const matched = exact ?? compatibleSingle;
@@ -301,6 +307,16 @@ async function repairMissingTablePlans(
 
 function sameStringList(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeGuidedFieldKey(value: string): string {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
+}
+
+function sameFieldShape(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => (
+    normalizeGuidedFieldKey(value) === normalizeGuidedFieldKey(right[index]!)
+  ));
 }
 
 type RequiredTableGuidance = { table: string; purpose: string; fields: string[] };
@@ -395,7 +411,7 @@ async function recoverMissingDialoguePlans(
   markdown: string,
   dependencies: Required<GddV2GeneratorDependencies>,
   signal?: AbortSignal,
-): Promise<DialoguePlan[]> {
+): Promise<{ plans: DialoguePlan[]; warning: string | null }> {
   const raw = await dependencies.complete([{
     role: 'system',
     content: [
@@ -415,18 +431,22 @@ async function recoverMissingDialoguePlans(
   });
   const events = parseDialogueRecoveryEvents(raw);
   if (events.length === 0) {
-    throw new GddV2ResourceRecoveryError(
-      'Narrative GDD produced no dialogue scene resources after one recovery pass.',
-    );
+    return {
+      plans: [],
+      warning: 'Narrative GDD produced no dialogue scene resources after one recovery pass.',
+    };
   }
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
   try {
-    return await Promise.all(events.map((event) => runWithSlot(() => dependencies.planScene(
+    return {
+      plans: await Promise.all(events.map((event) => runWithSlot(() => dependencies.planScene(
       { event, gddContext: plannerContext(markdown) },
       { complete: dependencies.complete },
       { signal: controller.signal },
-    ))));
+      )))),
+      warning: null,
+    };
   } finally {
     unlink();
   }
@@ -457,7 +477,7 @@ export async function generateGddMarkdownV2(
     }
   }
 
-  let normalized = normalizeGeneratedMarkdown(generated.raw, input.projectName);
+  let normalized = normalizeGeneratedMarkdown(generated.raw, input.projectName, input.rules.tableGuidance);
   let repairRound = 0;
   const refNames = listTableRefNames(normalized.markdown);
   const missingGuidance = missingGuidedTables(input, normalized.tablePlans);
@@ -502,19 +522,22 @@ export async function generateGddMarkdownV2(
   }
 
   let dialoguePlans = generated.dialoguePlans;
+  let dialoguePlanWarning: string | null = null;
   if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
     repairRound = Math.max(repairRound, 1);
-    dialoguePlans = await recoverMissingDialoguePlans(
+    const recovered = await recoverMissingDialoguePlans(
       normalized.markdown,
       dependencies,
       runtime.signal,
     );
+    dialoguePlans = recovered.plans;
+    dialoguePlanWarning = recovered.warning;
   }
 
   return {
     ...normalized,
     dialoguePlans,
-    dialoguePlanWarning: null,
+    dialoguePlanWarning,
     review: reviewSchema.parse({
       version: 2,
       summary: repairRound > 0

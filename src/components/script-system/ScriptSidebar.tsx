@@ -1,12 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSidebarProjects } from '@/components/layout/hooks/useSidebarProjects';
 import { useSidebarFoldersLibraries } from '@/components/layout/hooks/useSidebarFoldersLibraries';
 import { useSidebarProjectRole } from '@/components/layout/hooks/useSidebarProjectRole';
+import { IconSpeechBubble } from '@/components/layout/navIcons';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
+import paperIcon from '@/assets/images/paper.svg';
 import { useScriptWorkspaceMembership } from './useScriptWorkspaceMembership';
 import {
   ScriptContextMenu,
@@ -57,45 +60,6 @@ function ChevronDownIcon() {
       aria-hidden
     >
       <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
-
-function DocIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M8 13h8" />
-      <path d="M8 17h6" />
-    </svg>
-  );
-}
-
-function SpeechIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
     </svg>
   );
 }
@@ -505,7 +469,14 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                   )}
                   <div className={styles.treeItemMain}>
                     <span className={styles.treeIcon}>
-                      <DocIcon />
+                      <Image
+                        src={paperIcon}
+                        alt=""
+                        width={24}
+                        height={24}
+                        className="icon-24"
+                        aria-hidden
+                      />
                     </span>
                     {editingKey === docKey ? (
                       <input
@@ -562,7 +533,7 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                             <span className={styles.expandSpacer} />
                             <div className={styles.treeItemMain}>
                               <span className={styles.treeIcon}>
-                                <SpeechIcon />
+                                <IconSpeechBubble size={24} />
                               </span>
                               {editingKey === scriptKey ? (
                                 <input

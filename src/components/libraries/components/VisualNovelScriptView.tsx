@@ -36,6 +36,7 @@ import {
   resolveVisualNovelPresentation,
   type VisualNovelDialogColor,
 } from './visualNovelPresentation';
+import { isCopiedPlotTitle, isGenericPlotTitle } from '@/lib/story-plot/headings';
 import styles from './VisualNovelScriptView.module.css';
 
 export interface ScriptColumns extends ScriptPlayerColumns {
@@ -310,6 +311,14 @@ export function VisualNovelScriptView({
     [mode, playerColumns, rows],
   );
 
+  const chapterTitle = useMemo(() => {
+    const title = branchName?.trim() ?? '';
+    if (!title || !contentKey) return title;
+    const contents = rows.map((row) => String(row.propertyValues[contentKey] ?? '').trim());
+    if (isGenericPlotTitle(title)) return title;
+    return isCopiedPlotTitle(title, contents) ? '' : title;
+  }, [branchName, contentKey, rows]);
+
   const blockByRowId = useMemo(() => {
     const map = new Map<string, ScriptDialogueBlock>();
     if (!editing) return map;
@@ -445,9 +454,9 @@ export function VisualNovelScriptView({
           </Tooltip>
         </div>
       ) : null}
-      {mode === 'plot-node' && branchName ? (
+      {mode === 'plot-node' && chapterTitle ? (
         <div className={styles.branchName} data-testid="script-branch-name">
-          {branchName}
+          {chapterTitle}
         </div>
       ) : null}
       {mode === 'player' ? (
@@ -505,23 +514,30 @@ export function VisualNovelScriptView({
         const isChapterTitle = prevLabel === '*' && label;
 
         if (isChapterTitle) {
+          if (!chapterTitle) {
+            if (!lineContent && !action) return null;
+            return renderEditableOrStaticLine(dialogRowId, typeVal, nameVal, lineContent, action);
+          }
           if (!lineContent && !action) {
-            return renderPartTitle(row.id, label);
+            return renderPartTitle(row.id, chapterTitle);
           }
           return (
             <React.Fragment key={row.id}>
-              {renderPartTitle(`${row.id}-title`, label)}
+              {renderPartTitle(`${row.id}-title`, chapterTitle)}
               {renderEditableOrStaticLine(dialogRowId, typeVal, nameVal, lineContent, action)}
             </React.Fragment>
           );
         }
 
         if (label && !lineContent && !action) {
-          return renderPartTitle(row.id, label);
+          return chapterTitle ? renderPartTitle(row.id, chapterTitle) : null;
         }
 
         if (resolveVisualNovelPresentation(typeVal, nameVal).kind === 'plain' && label) {
-          return renderSceneTitle(row.id, label, lineContent);
+          if (!chapterTitle) {
+            return lineContent ? renderPlainText(row.id, lineContent) : null;
+          }
+          return renderSceneTitle(row.id, chapterTitle, lineContent);
         }
 
         if (!lineContent && !label && !action) {

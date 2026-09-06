@@ -17,7 +17,7 @@ const payload: DocumentUpdatedPayload = {
 
 function channel() {
   return {
-    send: jest.fn().mockResolvedValue('ok'),
+    httpSend: jest.fn().mockResolvedValue({ success: true }),
   } as unknown as RealtimeChannel;
 }
 
@@ -31,11 +31,7 @@ describe('project document channel registry', () => {
     const unregister = registerProjectDocumentChannel(PROJECT_ID, registered);
 
     await expect(broadcastProjectDocumentUpdate(payload)).resolves.toBe(true);
-    expect(registered.send).toHaveBeenCalledWith({
-      type: 'broadcast',
-      event: 'document-updated',
-      payload,
-    });
+    expect(registered.httpSend).toHaveBeenCalledWith('document-updated', payload);
 
     unregister();
   });
@@ -49,9 +45,19 @@ describe('project document channel registry', () => {
     unregisterFirst();
     await broadcastProjectDocumentUpdate(payload);
 
-    expect(first.send).not.toHaveBeenCalled();
-    expect(second.send).toHaveBeenCalledTimes(1);
+    expect(first.httpSend).not.toHaveBeenCalled();
+    expect(second.httpSend).toHaveBeenCalledTimes(1);
     unregisterSecond();
+  });
+
+  it('returns false when the registered channel cannot httpSend', async () => {
+    const registered = {
+      httpSend: jest.fn().mockResolvedValue({ success: false, error: 'offline' }),
+    } as unknown as RealtimeChannel;
+    const unregister = registerProjectDocumentChannel(PROJECT_ID, registered);
+
+    await expect(broadcastProjectDocumentUpdate(payload)).resolves.toBe(false);
+    unregister();
   });
 
   it('notifies local subscribers with the typed payload', () => {

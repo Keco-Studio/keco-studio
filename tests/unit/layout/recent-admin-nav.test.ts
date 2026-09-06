@@ -127,13 +127,26 @@ describe('Recent / Admin sidebar wiring', () => {
     expect(collaborators).toContain('AdminCollaboratorsPage');
     expect(recent).toContain('RecentPage');
     expect(legacy).toContain('/admin/collaborators');
-    expect(adminSettings).toContain('StripeCheckoutPanel');
-    expect(adminSettings).toContain('Billing');
+    expect(adminSettings).toContain('Payment details');
+    expect(adminSettings).toContain('readBillingPrefs');
+    expect(adminSettings).not.toContain('StripeCheckoutPanel');
+  });
+
+  it('hosts billing plans from the avatar menu', () => {
+    const billingPage = read('src/app/(dashboard)/[projectId]/billing/page.tsx');
+    const billingUi = read('src/components/billing/BillingPlansPage.tsx');
+    const topBar = read('src/components/layout/TopBar.tsx');
+    expect(billingPage).toContain('BillingPlansPage');
+    expect(billingUi).toContain('Most popular');
+    expect(billingUi).not.toContain('Top up credits');
+    expect(topBar).toContain('handleBillingNavigation');
+    expect(topBar).toContain('user-menu-billing');
   });
 
   it('treats admin and recent as special project routes', () => {
     const source = read('src/lib/utils/routeParams.ts');
     expect(source).toContain("'admin'");
     expect(source).toContain("'recent'");
+    expect(source).toContain("'billing'");
   });
 });

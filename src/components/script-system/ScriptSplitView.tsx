@@ -29,7 +29,9 @@ import {
   type StoryGraphPreviewShowDetail,
 } from '@/lib/script-system/storyGraphPreviewEvents';
 import {
-  buildScriptFlowGraph,
+  coalesceThinLinearPlotNodes,
+  displayScriptFlowGraph,
+  retitleFlowGraph,
   type FlowGraph,
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { reconcileScriptFlowGraph } from '@/lib/script-system/reconcileScriptFlowGraph';
@@ -115,7 +117,7 @@ export function ScriptSplitView({
   sourceToken,
 }: ScriptSplitViewProps) {
   const initialGraph = useMemo(
-    () => persistedGraph ?? buildScriptFlowGraph(flowRows),
+    () => displayScriptFlowGraph(persistedGraph, flowRows),
     [flowRows, persistedGraph]
   );
   const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
@@ -129,11 +131,11 @@ export function ScriptSplitView({
     graph = initialGraph;
     setGraphState({ libraryId, graph, rowIds });
   } else if (!sameRowIds(graphState.rowIds, rowIds)) {
-    graph = reconcileScriptFlowGraph({
+    graph = retitleFlowGraph(coalesceThinLinearPlotNodes(reconcileScriptFlowGraph({
       graph: graphState.graph,
       previousRows: graphState.rowIds.map((id) => ({ id })),
       rows,
-    });
+    }), flowRows), flowRows);
     setGraphState({ libraryId, graph, rowIds });
   }
   const [graphPreview, setGraphPreview] = useState<StoryGraphPreviewShowDetail | null>(null);

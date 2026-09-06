@@ -180,12 +180,12 @@ test.describe.serial('Conversation player PR regression', () => {
       `/script-system/${projectId}/script/${fixture.libraryId}`,
       { waitUntil: 'domcontentloaded' }
     );
-    // Branch title and dialogue line can share this copy after plot-node labeling;
-    // wait on the branch chip so strict mode does not match multiple nodes.
-    await expect(page.getByTestId('script-branch-name')).toHaveText(
-      'Rain surrounds the old manor.',
-      { timeout: 45_000 },
-    );
+    // Deterministic entry title is Opening; dialogue keeps the seeded line.
+    await expect(page.getByRole('complementary', { name: 'Flow chart' })).toBeVisible({
+      timeout: 45_000,
+    });
+    await expect(page.getByTestId('script-branch-name')).toHaveText('\u5f00\u573a');
+    await expect(page.getByText('Rain surrounds the old manor.')).toBeVisible();
   }
 
   /** Choice buttons only — flow-chart nodes also use role=button with option titles. */

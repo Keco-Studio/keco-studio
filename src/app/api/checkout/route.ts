@@ -38,7 +38,7 @@ const checkoutHandler = async (
     }
 
     const catalogPlan = getStudioPlanById(input.planId);
-    if (!catalogPlan) {
+    if (!catalogPlan || !catalogPlan.checkoutEnabled || catalogPlan.amountCents <= 0) {
       return NextResponse.json({ error: 'Plan not found' }, { status: 400 });
     }
     const plan = applyCheckoutAmountOverride(catalogPlan);
@@ -115,7 +115,9 @@ const checkoutHandler = async (
             ? 'Unable to start checkout'
             : /Could not find the table/i.test(message)
               ? 'Payment tables are missing. Apply the stripe payments migration.'
-              : message,
+              : /STRIPE_SECRET_KEY|Stripe is not configured/i.test(message)
+                ? 'Payments are temporarily unavailable. Stripe is not configured for this environment.'
+                : message,
       },
       { status }
     );

@@ -719,6 +719,44 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
+  it('evaluates a V2 EvalSpec only from KECO_OBSERVATION evidence', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-v2-runtime-'));
+    const evaluator = path.join(skillRoot, 'scripts', 'evaluate_runtime_observations.py');
+    const hash = (character: string) => `sha256:${character.repeat(64)}`;
+    try {
+      const spec = path.join(tempRoot, 'eval-spec.json');
+      const debug = path.join(tempRoot, 'debug.txt');
+      const output = path.join(tempRoot, 'result.json');
+      writeFileSync(spec, JSON.stringify({
+        schemaVersion: 2,
+        coverageMode: 'non_gdd',
+        sourceProfileHash: hash('a'),
+        evaluations: [{
+          evalId: 'eval-1',
+          servedByTasks: ['task-1'],
+          buildHash: hash('b'),
+          snapshotHash: hash('c'),
+          assertions: [{ assertionId: 'ready', kind: 'equals', path: '/ready', expected: true }],
+        }],
+      }));
+      writeFileSync(debug, `KECO_OBSERVATION ${JSON.stringify({
+        schemaVersion: 1,
+        runId: 'run-1',
+        sliceId: 'slice-1',
+        evalId: 'eval-1',
+        buildHash: hash('b'),
+        snapshotHash: hash('c'),
+        actual: { ready: true },
+        errors: [],
+      })}\n`);
+      const result = spawnSync('python3', [evaluator, '--eval-spec', spec, '--debug-output', debug, '--output', output], { encoding: 'utf8' });
+      expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' });
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({ status: 'passed' });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('derives implementation completion separately from manual acceptance', () => {
     const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-slice-status-'));
     try {

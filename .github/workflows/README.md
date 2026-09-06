@@ -92,3 +92,13 @@ Vercel plan does not support the required one-minute Cron frequency. Configure
 the repository secret `GAME_DESIGN_SYSTEM_WORKER_SECRET`; the production deploy
 workflow syncs it to Vercel as `CRON_SECRET`. The worker workflow keeps runs
 non-cancelling so overlapping polls can safely rely on atomic job claims.
+
+Stripe Checkout uses the Vercel environment selected by the deploy workflow. Set
+`STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` either in that Vercel environment
+or as GitHub Actions repository secrets. When GitHub secrets are present they are
+synced before the build; otherwise the workflow preserves values already stored in
+Vercel. Preview sync passes an empty git-branch argument so `vercel env add`
+targets all Preview branches without hanging on the interactive prompt. The
+workflow pulls the environment into `.vercel/.env.<target>.local` and fails
+before build if either value is missing, so a deployment cannot publish a
+checkout route that will always return a Stripe configuration error.

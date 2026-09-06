@@ -41,7 +41,10 @@ describe('story plot grouping prompt', () => {
         { text: 'Right route', targetNodeId: 'Right' },
       ],
     }]);
-    expect(messages[0].content).toMatch(/outcome/i);
-    expect(messages[0].content).toMatch(/must not.*option text/i);
+    expect(messages[0].content).toMatch(/summarize/i);
+    expect(messages[0].content).toMatch(/option text/i);
+    expect(messages[0].content).toMatch(/\u573a\u666f/);
+    expect(messages[0].content).toMatch(/\u5206\u652f 3/);
+    expect(messages[0].content).toMatch(/\u4eba\u7269\u4ecb\u7ecd/);
   });
 });

@@ -50,8 +50,8 @@ jest.mock('@/lib/gdd-generation/worker', () => ({
   shouldWakeGddGenerationJob: (...args: unknown[]) => shouldWakeGddGenerationJob(...args as Parameters<typeof shouldWakeGddGenerationJob>),
 }));
 
-import { POST } from '@/app/api/projects/[projectId]/gdd-generation-jobs/route';
-import { DELETE, GET } from '@/app/api/projects/[projectId]/gdd-generation-jobs/[id]/route';
+import { maxDuration as createJobMaxDuration, POST } from '@/app/api/projects/[projectId]/gdd-generation-jobs/route';
+import { DELETE, GET, maxDuration as pollJobMaxDuration } from '@/app/api/projects/[projectId]/gdd-generation-jobs/[id]/route';
 import { GddActiveJobConflictError } from '@/lib/services/gddGenerationService';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -108,6 +108,11 @@ describe('project GDD generation routes', () => {
         rules: { schemaVersion: 1, genres: [], philosophies: [], suitableFor: 'games', rules: [{ id: 'rule-1', kind: 'principle', title: 'Rule', statement: 'Do it', appliesWhen: 'Always', severity: 'required' }], tableGuidance: [] },
       }],
     });
+  });
+
+  it('keeps request workers alive long enough for the professional generation deadline', () => {
+    expect(createJobMaxDuration).toBe(300);
+    expect(pollJobMaxDuration).toBe(300);
   });
 
   it('rejects viewers from reading a job', async () => {
