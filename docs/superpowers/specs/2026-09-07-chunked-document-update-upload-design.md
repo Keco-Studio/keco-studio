@@ -61,8 +61,10 @@ again because none remains on the server.
   collaborative snapshot size.
 - An upload has at most 64 chunks.
 - An unfinished manifest expires 24 hours after its last accepted activity.
-- Expired rows are deleted opportunistically by upload RPCs and by a bounded
-  cleanup function callable by service maintenance.
+- Expired `uploading` rows are deleted opportunistically by upload RPCs and by
+  a bounded cleanup function callable by service maintenance. Committed
+  manifest rows are retained as idempotency receipts until their document is
+  deleted.
 
 These are decoded byte limits. Base64 length is validated separately before
 decoding so malformed or unexpectedly large request bodies fail early.
@@ -88,11 +90,13 @@ Chunks cascade-delete with their manifest. Neither table permits direct
 authenticated writes or reads. Security-definer RPCs perform project-scoped
 authorization and expose only bounded status metadata, never chunk contents.
 
-The existing `document_yjs_updates.id` is the final idempotency fence. A
-committed manifest may be cleaned up because status can still recognize its
-`id` in the authoritative update table. Before reporting `committed`, the RPC
-checks that row's document, epoch, decoded byte count, and SHA-256 against the
-requested immutable identity; a UUID match alone is insufficient.
+The committed manifest is the durable final idempotency receipt. It must remain
+after normal document compaction deletes the corresponding
+`document_yjs_updates` tail row, and it is deleted only by document cascade.
+Before reporting `committed`, the RPC checks the manifest's document, epoch,
+decoded byte count, and SHA-256 against the requested immutable identity; a
+UUID match alone is insufficient. The existing `document_yjs_updates.id`
+provides an additional fence while the update is still in the tail.
 
 ## RPC Contract
 
@@ -119,7 +123,8 @@ received count but no payload data.
 
 - `uploading` with sorted missing indexes;
 - `ready` when all chunks exist but finalization has not committed;
-- `committed` when `document_yjs_updates` contains the update ID;
+- `committed` when the immutable manifest is marked committed, including after
+  document compaction has removed the corresponding tail row;
 - `expired` when no resumable server manifest remains.
 
 Status is authoritative for recovery after any lost response.
@@ -136,7 +141,7 @@ Status is authoritative for recovery after any lost response.
    manifest.
 6. Canonically base64-encode the reconstructed bytes.
 7. Insert one `document_yjs_updates` row using the manifest ID.
-8. Mark the manifest committed and delete its chunks.
+8. Mark the manifest committed as a durable receipt and delete its chunks.
 
 If the final row already exists with the same document and epoch, finalize
 returns `committed`. An ID collision with another state or payload is rejected.
@@ -213,7 +218,8 @@ not required, so this change does not add a second Realtime protocol event.
 - IndexedDB unavailability is surfaced before starting a chunked upload; the
   editor retains the in-memory pending update and blocks navigation rather than
   claiming durable recovery.
-- Cleanup never deletes a committed `document_yjs_updates` row.
+- Cleanup deletes only expired `uploading` manifests and their chunks. It never
+  deletes a committed manifest or any `document_yjs_updates` row.
 
 ## Verification
 
