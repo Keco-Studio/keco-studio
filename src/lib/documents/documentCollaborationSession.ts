@@ -18,6 +18,7 @@ import type {
   ReplaceDocumentStateInput,
 } from './documentStateTypes';
 import {
+  DocumentAccessError,
   DocumentCollaborationUnavailableError,
   DocumentReadOnlyError,
   DocumentStateConflictError,
@@ -27,6 +28,28 @@ import {
   restoreDocumentYjsBlockIds,
 } from './documentYjsBlockIdentity';
 import { validateSanctionedMdxAstNode } from './sanctionedMdx';
+import {
+  NORMAL_DOCUMENT_UPDATE_MAX_BYTES,
+  createChunkedUpdateManifest,
+  missingChunkIndexes,
+  sha256Hex,
+  sliceChunkedUpdate,
+  type ChunkedDocumentUpdateManifest,
+} from './documentChunkedUpdate';
+import {
+  IndexedDbDocumentUpdateRecoveryStore,
+  DocumentUpdateRecoveryStoreUnavailableError,
+  recoveryRecordKey,
+  type DocumentUpdateRecoveryRecord,
+  type DocumentUpdateRecoveryStore,
+} from './documentUpdateRecoveryStore';
+import type {
+  DocumentYjsUpdateUploadStatus,
+  FinalizeDocumentYjsUpdateUploadResult,
+  PrepareDocumentYjsUpdateUploadResult,
+  PutDocumentYjsUpdateChunkInput,
+  PutDocumentYjsUpdateChunkResult,
+} from './documentStateGateway';
 
 export type DocumentCollaborationRole = 'admin' | 'editor' | 'viewer';
 
@@ -49,6 +72,22 @@ export type DocumentCollaborationGateway = {
       updates: DurableYjsUpdate[];
     }
   ): Promise<{ acceptedIds: string[] }>;
+  prepareUpdateUpload(
+    client: SupabaseClient,
+    manifest: ChunkedDocumentUpdateManifest
+  ): Promise<PrepareDocumentYjsUpdateUploadResult>;
+  putUpdateChunk(
+    client: SupabaseClient,
+    input: PutDocumentYjsUpdateChunkInput
+  ): Promise<PutDocumentYjsUpdateChunkResult>;
+  getUpdateUploadStatus(
+    client: SupabaseClient,
+    manifest: ChunkedDocumentUpdateManifest
+  ): Promise<DocumentYjsUpdateUploadStatus>;
+  finalizeUpdateUpload(
+    client: SupabaseClient,
+    manifest: ChunkedDocumentUpdateManifest
+  ): Promise<FinalizeDocumentYjsUpdateUploadResult>;
   compact(
     client: SupabaseClient,
     input: { documentId: string; expected: DocumentStateToken }
@@ -86,6 +125,10 @@ export type DocumentCollaborationSessionOptions = {
   compactionJitterRatio?: number;
   reconnectBackoffMs?: number;
   reconnectJitterRatio?: number;
+  recoveryStore?: DocumentUpdateRecoveryStore;
+  uploadConcurrency?: number;
+  uploadRetryAttempts?: number;
+  uploadDelay?: (milliseconds: number) => Promise<void>;
   onCompacted?: (
     state: AuthoritativeDocumentState,
     previousMarkdown: string,
@@ -114,6 +157,7 @@ type DocumentStateResetEvent = {
 
 type PendingDurableUpdate = DurableYjsUpdate & {
   bytes: Uint8Array;
+  recovery?: DocumentUpdateRecoveryRecord;
 };
 
 const SYNC_EVENTS: DocumentCollaborationEventName[] = [
@@ -132,6 +176,7 @@ class DocumentChannelTransportError extends Error {
 }
 
 class StaleDocumentChannelOperationError extends Error {}
+class ExpiredDocumentUpdateUploadError extends Error {}
 
 function newUpdateId(): string {
   return globalThis.crypto.randomUUID();
@@ -169,6 +214,10 @@ export class DocumentCollaborationSession implements Provider {
   private readonly compactionJitterRatio: number;
   private readonly reconnectBackoffMs: number;
   private readonly reconnectJitterRatio: number;
+  private readonly recoveryStore: DocumentUpdateRecoveryStore | null;
+  private readonly uploadConcurrency: number;
+  private readonly uploadRetryAttempts: number;
+  private readonly uploadDelay: (milliseconds: number) => Promise<void>;
   private readonly onCompacted?: (
     state: AuthoritativeDocumentState,
     previousMarkdown: string,
@@ -238,6 +287,7 @@ export class DocumentCollaborationSession implements Provider {
     if (
       origin === 'remote' ||
       origin === 'hydrate' ||
+      origin === 'recovery' ||
       this.role === 'viewer' ||
       this.departureInProgress ||
       this.stateReplacementInProgress ||
@@ -302,6 +352,23 @@ export class DocumentCollaborationSession implements Provider {
     this.compactionJitterRatio = options.compactionJitterRatio ?? 0.2;
     this.reconnectBackoffMs = options.reconnectBackoffMs ?? 500;
     this.reconnectJitterRatio = options.reconnectJitterRatio ?? 0.2;
+    this.recoveryStore =
+      options.recoveryStore ??
+      (globalThis.indexedDB
+        ? new IndexedDbDocumentUpdateRecoveryStore(globalThis.indexedDB)
+        : null);
+    this.uploadConcurrency = Math.max(
+      1,
+      Math.min(8, Math.floor(options.uploadConcurrency ?? 3))
+    );
+    this.uploadRetryAttempts = Math.max(
+      1,
+      Math.min(10, Math.floor(options.uploadRetryAttempts ?? 5))
+    );
+    this.uploadDelay =
+      options.uploadDelay ??
+      ((milliseconds) =>
+        new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
     this.onCompacted = options.onCompacted;
     this.onStateReplaced = options.onStateReplaced;
     this.activeDoc = new Y.Doc();
@@ -897,6 +964,8 @@ export class DocumentCollaborationSession implements Provider {
       Y.applyUpdate(this.durableDoc, bytes, 'durable-hydrate');
       Y.applyUpdate(this.doc, bytes, 'hydrate');
     }
+    if (this.recoveryStore) await this.recoverStoredUpdates();
+    if (this.hydrationGeneration !== hydrationGeneration) return;
     const epochRebase = this.pendingEpochRebase;
     this.pendingEpochRebase = null;
     let rebasedUpdate: Uint8Array | null = null;
@@ -993,6 +1062,356 @@ export class DocumentCollaborationSession implements Provider {
     };
   }
 
+  private isPermanentUploadError(error: unknown): boolean {
+    if (error instanceof DocumentReadOnlyError || error instanceof DocumentAccessError) {
+      return true;
+    }
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? (error as { code?: unknown }).code
+        : undefined;
+    return code === '22023' || code === '42501';
+  }
+
+  private async waitForUploadRetry(attempt: number): Promise<void> {
+    const base = Math.min(250 * 2 ** attempt, 5_000);
+    const jitter = base * 0.2 * (Math.random() * 2 - 1);
+    await this.uploadDelay(Math.max(0, Math.round(base + jitter)));
+  }
+
+  private async retryUploadOperation<T>(operation: () => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.uploadRetryAttempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (
+          error instanceof DocumentStateConflictError ||
+          this.isPermanentUploadError(error) ||
+          attempt === this.uploadRetryAttempts - 1
+        ) {
+          throw error;
+        }
+        lastError = error;
+        await this.waitForUploadRetry(attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  private async putRecoveryChunk(
+    record: DocumentUpdateRecoveryRecord,
+    chunks: Uint8Array[],
+    chunkIndex: number
+  ): Promise<void> {
+    const chunk = chunks[chunkIndex]!;
+    const chunkSha256 = await sha256Hex(chunk);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.uploadRetryAttempts; attempt += 1) {
+      try {
+        await this.gateway.putUpdateChunk(this.supabase, {
+          manifest: record,
+          chunkIndex,
+          chunkBase64: encodeBase64(chunk),
+          chunkSha256,
+        });
+        return;
+      } catch (error) {
+        if (
+          error instanceof DocumentStateConflictError ||
+          this.isPermanentUploadError(error)
+        ) {
+          throw error;
+        }
+        lastError = error;
+        try {
+          const state = await this.retryUploadOperation(() =>
+            this.gateway.getUpdateUploadStatus(this.supabase, record)
+          );
+          if (state.status === 'committed' || !state.missingIndexes.includes(chunkIndex)) {
+            return;
+          }
+          if (state.status === 'expired') {
+            throw new ExpiredDocumentUpdateUploadError();
+          }
+        } catch (statusError) {
+          if (
+            statusError instanceof ExpiredDocumentUpdateUploadError ||
+            statusError instanceof DocumentStateConflictError ||
+            this.isPermanentUploadError(statusError)
+          ) {
+            throw statusError;
+          }
+          lastError = statusError;
+        }
+        if (attempt < this.uploadRetryAttempts - 1) {
+          await this.waitForUploadRetry(attempt);
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private async uploadMissingRecoveryChunks(
+    record: DocumentUpdateRecoveryRecord,
+    chunks: Uint8Array[],
+    missingIndexes: number[]
+  ): Promise<void> {
+    let next = 0;
+    const workers = Array.from(
+      { length: Math.min(this.uploadConcurrency, missingIndexes.length) },
+      async () => {
+        while (next < missingIndexes.length) {
+          const index = missingIndexes[next]!;
+          next += 1;
+          await this.putRecoveryChunk(record, chunks, index);
+        }
+      }
+    );
+    await Promise.all(workers);
+  }
+
+  private async finalizeRecoveryUpload(
+    record: DocumentUpdateRecoveryRecord
+  ): Promise<'committed' | 'retry'> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.uploadRetryAttempts; attempt += 1) {
+      try {
+        await this.gateway.finalizeUpdateUpload(this.supabase, record);
+        return 'committed';
+      } catch (error) {
+        if (
+          error instanceof DocumentStateConflictError ||
+          this.isPermanentUploadError(error)
+        ) {
+          throw error;
+        }
+        lastError = error;
+        const state = await this.retryUploadOperation(() =>
+          this.gateway.getUpdateUploadStatus(this.supabase, record)
+        );
+        if (state.status === 'committed') return 'committed';
+        if (state.status === 'expired') {
+          throw new ExpiredDocumentUpdateUploadError();
+        }
+        if (state.status === 'uploading') return 'retry';
+        if (attempt < this.uploadRetryAttempts - 1) {
+          await this.waitForUploadRetry(attempt);
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private async ensureRecoveryUploadCommitted(
+    record: DocumentUpdateRecoveryRecord
+  ): Promise<void> {
+    const chunks = sliceChunkedUpdate(record.bytes);
+    let lastError: unknown;
+    for (let round = 0; round < this.uploadRetryAttempts; round += 1) {
+      try {
+        const prepared = await this.retryUploadOperation(() =>
+          this.gateway.prepareUpdateUpload(this.supabase, record)
+        );
+        if (prepared.status === 'committed') return;
+        let missing = missingChunkIndexes(prepared.receivedIndexes, record.chunkCount);
+        if (missing.length > 0) {
+          await this.uploadMissingRecoveryChunks(record, chunks, missing);
+        }
+        const status = await this.retryUploadOperation(() =>
+          this.gateway.getUpdateUploadStatus(this.supabase, record)
+        );
+        if (status.status === 'committed') return;
+        if (status.status === 'expired') {
+          throw new ExpiredDocumentUpdateUploadError();
+        }
+        missing = status.missingIndexes;
+        if (missing.length > 0) {
+          await this.uploadMissingRecoveryChunks(record, chunks, missing);
+        }
+        if ((await this.finalizeRecoveryUpload(record)) === 'committed') return;
+      } catch (error) {
+        if (
+          error instanceof DocumentStateConflictError ||
+          this.isPermanentUploadError(error)
+        ) {
+          throw error;
+        }
+        lastError = error;
+      }
+      if (round < this.uploadRetryAttempts - 1) {
+        await this.waitForUploadRetry(round);
+      }
+    }
+    throw lastError ?? new Error('Document update upload retry budget was exhausted');
+  }
+
+  private async finishCommittedRecovery(
+    record: DocumentUpdateRecoveryRecord,
+    applyToActive: boolean
+  ): Promise<void> {
+    if (this.closing || this.destroyed) {
+      throw new DocumentCollaborationUnavailableError('Document session is closed');
+    }
+    if (this.currentToken.epoch !== record.epoch) {
+      throw new DocumentStateConflictError('Document collaboration epoch changed', this.currentToken);
+    }
+    const firstApplication = !this.appliedUpdateIds.has(record.updateId);
+    Y.applyUpdate(this.durableDoc, record.bytes, 'durable-local');
+    if (applyToActive) Y.applyUpdate(this.doc, record.bytes, 'recovery');
+    this.appliedUpdateIds.add(record.updateId);
+    if (firstApplication) {
+      this.durableTailCount += 1;
+      this.durableTailBytes += record.bytes.byteLength;
+      this.scheduleCompaction();
+    }
+    await this.requireRecoveryStore().delete(recoveryRecordKey(record));
+  }
+
+  private requireRecoveryStore(): DocumentUpdateRecoveryStore {
+    if (!this.recoveryStore) throw new Error('IndexedDB is unavailable');
+    return this.recoveryStore;
+  }
+
+  private async persistLargePendingUpdate(pending: PendingDurableUpdate): Promise<void> {
+    let record = pending.recovery;
+    if (!record) {
+      const manifest = await createChunkedUpdateManifest(
+        {
+          updateId: pending.id,
+          documentId: this.documentId,
+          userId: this.userId,
+          epoch: this.currentToken.epoch,
+        },
+        pending.bytes
+      );
+      record = {
+        ...manifest,
+        bytes: pending.bytes.slice(),
+        createdAt: new Date().toISOString(),
+      };
+      await this.requireRecoveryStore().put(record);
+      pending.recovery = record;
+    }
+    await this.ensureRecoveryUploadCommitted(record);
+    await this.finishCommittedRecovery(record, false);
+  }
+
+  private async rebaseRecoveryAfterNormalization(
+    record: DocumentUpdateRecoveryRecord
+  ): Promise<void> {
+    const committedBlockIds = captureDocumentYjsBlockIds(this.doc);
+    Y.applyUpdate(this.doc, record.bytes, 'recovery');
+    this.doc.transact(() => {
+      restoreDocumentYjsBlockIds(committedBlockIds);
+    }, 'recovery');
+    const rebasedBytes = Y.encodeStateAsUpdate(
+      this.doc,
+      Y.encodeStateVector(this.durableDoc)
+    );
+    if (rebasedBytes.byteLength === 0) {
+      await this.requireRecoveryStore().delete(recoveryRecordKey(record));
+      return;
+    }
+    const rebasedId = newUpdateId();
+    if (rebasedBytes.byteLength <= NORMAL_DOCUMENT_UPDATE_MAX_BYTES) {
+      await this.gateway.appendUpdates(this.supabase, {
+        documentId: this.documentId,
+        epoch: this.currentToken.epoch,
+        updates: [{ id: rebasedId, updateBase64: encodeBase64(rebasedBytes) }],
+      });
+      Y.applyUpdate(this.durableDoc, rebasedBytes, 'durable-local');
+      this.appliedUpdateIds.add(rebasedId);
+      this.durableTailCount += 1;
+      this.durableTailBytes += rebasedBytes.byteLength;
+      this.scheduleCompaction();
+      await this.requireRecoveryStore().delete(recoveryRecordKey(record));
+      return;
+    }
+    const manifest = await createChunkedUpdateManifest(
+      {
+        updateId: rebasedId,
+        documentId: this.documentId,
+        userId: this.userId,
+        epoch: this.currentToken.epoch,
+      },
+      rebasedBytes
+    );
+    const rebasedRecord: DocumentUpdateRecoveryRecord = {
+      ...manifest,
+      bytes: rebasedBytes.slice(),
+      createdAt: new Date().toISOString(),
+    };
+    await this.requireRecoveryStore().put(rebasedRecord);
+    await this.ensureRecoveryUploadCommitted(rebasedRecord);
+    await this.finishCommittedRecovery(rebasedRecord, false);
+    await this.requireRecoveryStore().delete(recoveryRecordKey(record));
+  }
+
+  private async recoverStoredRecord(
+    record: DocumentUpdateRecoveryRecord
+  ): Promise<void> {
+    if (record.userId !== this.userId || record.documentId !== this.documentId) {
+      throw new Error('Document update recovery record scope is invalid');
+    }
+    if (record.epoch === this.currentToken.epoch) {
+      Y.applyUpdate(this.doc, record.bytes, 'recovery');
+      const status = await this.retryUploadOperation(() =>
+        this.gateway.getUpdateUploadStatus(this.supabase, record)
+      );
+      if (status.status !== 'committed') {
+        await this.ensureRecoveryUploadCommitted(record);
+      }
+      await this.finishCommittedRecovery(record, false);
+      return;
+    }
+    if (
+      this.currentToken.epoch === record.epoch + 1 &&
+      this.pendingState?.epochReason === 'normalization'
+    ) {
+      await this.rebaseRecoveryAfterNormalization(record);
+      return;
+    }
+    throw new DocumentStateConflictError(
+      `Recovered document update belongs to incompatible epoch ${record.epoch}`,
+      this.currentToken
+    );
+  }
+
+  private async recoverStoredUpdates(): Promise<void> {
+    if (this.role === 'viewer') return;
+    let records: DocumentUpdateRecoveryRecord[];
+    try {
+      records = await this.requireRecoveryStore().listForDocument(
+        this.userId,
+        this.documentId
+      );
+    } catch (error) {
+      // Storage availability is enforced before a large upload starts. A normal
+      // document session must remain usable when there is nothing to recover.
+      if (error instanceof DocumentUpdateRecoveryStoreUnavailableError) return;
+      throw error;
+    }
+    for (const record of records) {
+      if (this.closing || this.destroyed) return;
+      try {
+        await this.recoverStoredRecord(record);
+      } catch (error) {
+        if (error instanceof DocumentStateConflictError) {
+          const winner = await this.gateway.readTransport(
+            this.supabase,
+            this.documentId
+          );
+          if (winner.token.epoch > this.currentToken.epoch) {
+            this.replaceActiveDocument(winner);
+            return;
+          }
+        }
+        throw error;
+      }
+    }
+  }
+
   private async persistPendingUpdates(): Promise<void> {
     if (this.persistPromise) return this.persistPromise;
     const persistPromise = (async () => {
@@ -1004,6 +1423,12 @@ export class DocumentCollaborationSession implements Provider {
         try {
           validateSerializedMdxNodes(this.doc.get('root', Y.XmlText));
           this.semanticStateValidator?.();
+          if (pending.bytes.byteLength > NORMAL_DOCUMENT_UPDATE_MAX_BYTES) {
+            await this.persistLargePendingUpdate(pending);
+            if (this.currentToken.epoch !== pendingEpoch) return;
+            if (this.pendingDurable === pending) this.pendingDurable = null;
+            continue;
+          }
           await this.gateway.appendUpdates(this.supabase, {
             documentId: this.documentId,
             epoch: pendingEpoch,
