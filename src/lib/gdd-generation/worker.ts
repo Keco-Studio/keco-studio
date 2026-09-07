@@ -53,9 +53,9 @@ type WorkerDependencies = {
 };
 
 const QUICK_GDD_GENERATION_DEADLINE_MS = 120_000;
-const PROFESSIONAL_GDD_GENERATION_DEADLINE_MS = 270_000;
+const PROFESSIONAL_GDD_GENERATION_DEADLINE_MS = 600_000;
 const MIN_GDD_GENERATION_DEADLINE_MS = 30_000;
-const MAX_GDD_GENERATION_DEADLINE_MS = 270_000;
+const MAX_GDD_GENERATION_DEADLINE_MS = 600_000;
 
 function gddGenerationDeadlineMs(job: GddGenerationJob): number {
   const configured = Number(process.env.GDD_GENERATION_DEADLINE_MS);

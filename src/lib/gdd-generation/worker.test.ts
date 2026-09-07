@@ -412,8 +412,12 @@ describe('GDD generation worker', () => {
 
   it.each([
     ['quick', 120_000, undefined],
-    ['professional', 270_000, undefined],
+    ['professional', 600_000, undefined],
     ['quick', 150_000, '150000'],
+    ['professional', 540_000, '540000'],
+    ['quick', 30_000, '30000'],
+    ['quick', 600_000, '600000'],
+    ['professional', 600_000, '600001'],
   ] as const)('requeues a hanging %s generation only after its %i ms deadline', async (mode, deadlineMs, override) => {
     const previousDeadline = process.env.GDD_GENERATION_DEADLINE_MS;
     if (override) process.env.GDD_GENERATION_DEADLINE_MS = override;

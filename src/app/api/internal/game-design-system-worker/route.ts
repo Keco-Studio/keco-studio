@@ -6,7 +6,7 @@ import { processNextGddJob } from '@/lib/gdd-generation/worker';
 import { processNextDialogueJob } from '@/lib/gdd-generation/dialogueWorker';
 import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
 
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 function authorized(request: Request): boolean {
   const expected = process.env.CRON_SECRET;

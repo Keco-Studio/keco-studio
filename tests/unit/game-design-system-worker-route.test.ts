@@ -11,7 +11,7 @@ jest.mock('@/lib/game-design-system/worker', () => ({ processNextGameDesignSyste
 jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: (...args: unknown[]) => processGdd(...args) }));
 jest.mock('@/lib/gdd-generation/dialogueWorker', () => ({ processNextDialogueJob: (...args: unknown[]) => processDialogue(...args) }));
 
-import { GET } from '@/app/api/internal/game-design-system-worker/route';
+import { GET, maxDuration } from '@/app/api/internal/game-design-system-worker/route';
 
 describe('internal Game Design System worker route dispatch', () => {
   const previousSecret = process.env.CRON_SECRET;
@@ -23,6 +23,10 @@ describe('internal Game Design System worker route dispatch', () => {
 
   afterAll(() => {
     process.env.CRON_SECRET = previousSecret;
+  });
+
+  it('keeps cron workers alive long enough for professional GDD generation and persistence', () => {
+    expect(maxDuration).toBe(800);
   });
 
   it('dispatches both GDS and GDD jobs during one authorized invocation', async () => {

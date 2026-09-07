@@ -111,8 +111,8 @@ describe('project GDD generation routes', () => {
   });
 
   it('keeps request workers alive long enough for the professional generation deadline', () => {
-    expect(createJobMaxDuration).toBe(300);
-    expect(pollJobMaxDuration).toBe(300);
+    expect(createJobMaxDuration).toBe(800);
+    expect(pollJobMaxDuration).toBe(800);
   });
 
   it('rejects viewers from reading a job', async () => {
