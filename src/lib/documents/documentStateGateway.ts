@@ -6,6 +6,14 @@ import {
   mergeYjsState,
 } from './documentContentCodec';
 import {
+  DOCUMENT_UPDATE_CHUNK_BYTES,
+  MAX_DOCUMENT_UPDATE_BYTES,
+  MAX_DOCUMENT_UPDATE_CHUNKS,
+  NORMAL_DOCUMENT_UPDATE_MAX_BYTES,
+  validateChunkIndexes,
+  type ChunkedDocumentUpdateManifest,
+} from './documentChunkedUpdate';
+import {
   DocumentAccessError,
   DocumentReadOnlyError,
   DocumentStateConflictError,
@@ -55,6 +63,27 @@ export type CompactDocumentStateInput = {
   expected: DocumentStateToken;
 };
 
+export type PrepareDocumentYjsUpdateUploadResult = {
+  status: 'uploading' | 'ready' | 'committed';
+  receivedIndexes: number[];
+};
+
+export type PutDocumentYjsUpdateChunkInput = {
+  manifest: ChunkedDocumentUpdateManifest;
+  chunkIndex: number;
+  chunkBase64: string;
+  chunkSha256: string;
+};
+
+export type PutDocumentYjsUpdateChunkResult = { receivedCount: number };
+
+export type DocumentYjsUpdateUploadStatus = {
+  status: 'uploading' | 'ready' | 'committed' | 'expired';
+  missingIndexes: number[];
+};
+
+export type FinalizeDocumentYjsUpdateUploadResult = { status: 'committed' };
+
 type RawDocumentState = {
   head: DocumentStateRow;
   tail: DocumentUpdateRow[];
@@ -84,6 +113,62 @@ function throwMutationError(
     throw new DocumentReadOnlyError();
   }
   throw error;
+}
+
+function validateUploadManifest(manifest: ChunkedDocumentUpdateManifest): void {
+  assertDocumentId(manifest.documentId);
+  if (!isUuid(manifest.updateId) || !isUuid(manifest.userId)) {
+    throw new Error('Invalid document update upload identity');
+  }
+  if (!Number.isSafeInteger(manifest.epoch) || manifest.epoch < 0) {
+    throw new Error('Invalid document collaboration epoch');
+  }
+  if (
+    !Number.isSafeInteger(manifest.totalBytes) ||
+    manifest.totalBytes <= NORMAL_DOCUMENT_UPDATE_MAX_BYTES ||
+    manifest.totalBytes > MAX_DOCUMENT_UPDATE_BYTES ||
+    !Number.isSafeInteger(manifest.chunkCount) ||
+    manifest.chunkCount < 2 ||
+    manifest.chunkCount > MAX_DOCUMENT_UPDATE_CHUNKS ||
+    manifest.chunkCount !== Math.ceil(manifest.totalBytes / DOCUMENT_UPDATE_CHUNK_BYTES) ||
+    !/^[0-9a-f]{64}$/.test(manifest.sha256)
+  ) {
+    throw new Error('Invalid document update upload manifest');
+  }
+}
+
+function uploadRpcArgs(manifest: ChunkedDocumentUpdateManifest) {
+  validateUploadManifest(manifest);
+  return {
+    p_upload_id: manifest.updateId,
+    p_document_id: manifest.documentId,
+    p_epoch: manifest.epoch,
+    p_total_bytes: manifest.totalBytes,
+    p_chunk_count: manifest.chunkCount,
+    p_sha256: manifest.sha256,
+  };
+}
+
+function resultRecord(data: unknown): Record<string, unknown> {
+  if (
+    data === null ||
+    typeof data !== 'object' ||
+    Array.isArray(data)
+  ) {
+    throw new DocumentAccessError('Document update upload returned invalid state');
+  }
+  return Object.fromEntries(Object.entries(data));
+}
+
+function parseUploadIndexes(
+  value: unknown,
+  chunkCount: number
+): number[] {
+  try {
+    return validateChunkIndexes(value, chunkCount);
+  } catch {
+    throw new DocumentAccessError('Document update upload returned invalid indexes');
+  }
 }
 
 function firstRpcRow(data: unknown): DocumentStateRpcRow {
@@ -298,6 +383,102 @@ export async function appendDocumentYjsUpdates(
   return { acceptedIds: input.updates.map((update) => update.id) };
 }
 
+export async function prepareDocumentYjsUpdateUpload(
+  client: SupabaseClient,
+  manifest: ChunkedDocumentUpdateManifest
+): Promise<PrepareDocumentYjsUpdateUploadResult> {
+  const { data, error } = await client.rpc(
+    'prepare_document_yjs_update_upload',
+    uploadRpcArgs(manifest)
+  );
+  if (error) throwMutationError(error, { epoch: manifest.epoch, revision: 0 });
+  const result = resultRecord(data);
+  if (
+    result.status !== 'uploading' &&
+    result.status !== 'ready' &&
+    result.status !== 'committed'
+  ) {
+    throw new DocumentAccessError('Document update upload returned invalid status');
+  }
+  const receivedIndexes = parseUploadIndexes(
+    result.receivedIndexes,
+    manifest.chunkCount
+  );
+  return { status: result.status, receivedIndexes };
+}
+
+export async function putDocumentYjsUpdateChunk(
+  client: SupabaseClient,
+  input: PutDocumentYjsUpdateChunkInput
+): Promise<PutDocumentYjsUpdateChunkResult> {
+  const { manifest } = input;
+  const indexes = validateChunkIndexes([input.chunkIndex], manifest.chunkCount);
+  if (!input.chunkBase64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(input.chunkBase64)) {
+    throw new Error('Invalid document update chunk payload');
+  }
+  if (!/^[0-9a-f]{64}$/.test(input.chunkSha256)) {
+    throw new Error('Invalid document update chunk hash');
+  }
+  const { data, error } = await client.rpc('put_document_yjs_update_chunk', {
+    ...uploadRpcArgs(manifest),
+    p_chunk_index: indexes[0],
+    p_chunk_base64: input.chunkBase64,
+    p_chunk_sha256: input.chunkSha256,
+  });
+  if (error) throwMutationError(error, { epoch: manifest.epoch, revision: 0 });
+  const result = resultRecord(data);
+  const receivedCount = result.receivedCount;
+  if (
+    typeof receivedCount !== 'number' ||
+    !Number.isSafeInteger(receivedCount) ||
+    receivedCount < 0 ||
+    receivedCount > manifest.chunkCount
+  ) {
+    throw new DocumentAccessError('Document update upload returned invalid chunk count');
+  }
+  return { receivedCount };
+}
+
+export async function getDocumentYjsUpdateUploadStatus(
+  client: SupabaseClient,
+  manifest: ChunkedDocumentUpdateManifest
+): Promise<DocumentYjsUpdateUploadStatus> {
+  const { data, error } = await client.rpc(
+    'get_document_yjs_update_upload_status',
+    uploadRpcArgs(manifest)
+  );
+  if (error) throwMutationError(error, { epoch: manifest.epoch, revision: 0 });
+  const result = resultRecord(data);
+  if (
+    result.status !== 'uploading' &&
+    result.status !== 'ready' &&
+    result.status !== 'committed' &&
+    result.status !== 'expired'
+  ) {
+    throw new DocumentAccessError('Document update upload returned invalid status');
+  }
+  return {
+    status: result.status,
+    missingIndexes: parseUploadIndexes(result.missingIndexes, manifest.chunkCount),
+  };
+}
+
+export async function finalizeDocumentYjsUpdateUpload(
+  client: SupabaseClient,
+  manifest: ChunkedDocumentUpdateManifest
+): Promise<FinalizeDocumentYjsUpdateUploadResult> {
+  const { data, error } = await client.rpc(
+    'finalize_document_yjs_update_upload',
+    uploadRpcArgs(manifest)
+  );
+  if (error) throwMutationError(error, { epoch: manifest.epoch, revision: 0 });
+  const result = resultRecord(data);
+  if (result.status !== 'committed') {
+    throw new DocumentAccessError('Document update upload did not commit');
+  }
+  return { status: 'committed' };
+}
+
 export async function compactDocumentState(
   client: SupabaseClient,
   input: CompactDocumentStateInput
@@ -469,6 +650,10 @@ export const documentStateGateway = {
   readTransport: readDocumentTransportState,
   initialize: initializeDocumentState,
   appendUpdates: appendDocumentYjsUpdates,
+  prepareUpdateUpload: prepareDocumentYjsUpdateUpload,
+  putUpdateChunk: putDocumentYjsUpdateChunk,
+  getUpdateUploadStatus: getDocumentYjsUpdateUploadStatus,
+  finalizeUpdateUpload: finalizeDocumentYjsUpdateUpload,
   compact: compactDocumentState,
   normalize: normalizeDocumentState,
   replace: replaceDocumentState,

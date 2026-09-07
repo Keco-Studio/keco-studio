@@ -183,6 +183,26 @@ async function createFixture(): Promise<CollaborationFixture> {
   };
 }
 
+async function createIsolatedCollaborationDocument(
+  fixture: CollaborationFixture,
+  label: string
+): Promise<CollaborationFixture> {
+  const { data, error } = await fixture.owner.client
+    .from('documents')
+    .insert({
+      project_id: fixture.projectId,
+      name: `${label} ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      content: '# Large update acceptance\n\nOwner lane\n',
+      created_by: fixture.owner.userId,
+    })
+    .select('id')
+    .single();
+  if (error || !data?.id) {
+    throw error ?? new Error('Isolated collaboration document was not created');
+  }
+  return { ...fixture, documentId: data.id as string };
+}
+
 function waitForChannelStatus(channel: RealtimeChannel): Promise<string> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
@@ -395,6 +415,18 @@ async function expectDurableFixture(page: Page): Promise<void> {
   });
 }
 
+async function expectExactInsertedPayload(
+  page: Page,
+  marker: string,
+  payload: string
+): Promise<void> {
+  const text = (await page.locator('[contenteditable]').first().textContent()) ?? '';
+  const start = text.indexOf(marker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(text.slice(start, start + payload.length)).toBe(payload);
+  expect(text.indexOf(marker, start + marker.length)).toBe(-1);
+}
+
 type Deferred = {
   promise: Promise<void>;
   resolve: () => void;
@@ -438,7 +470,7 @@ async function waitForDeferred(
 }
 
 test.describe.serial('Document realtime collaboration', () => {
-  test.setTimeout(360_000);
+  test.setTimeout(600_000);
   let fixture: CollaborationFixture;
 
   test.beforeAll(async () => {
@@ -944,6 +976,201 @@ test.describe.serial('Document realtime collaboration', () => {
         ...viewer.realtimeErrors,
       ]).toEqual([]);
     } finally {
+      await Promise.all(contexts.map((context) => context.close()));
+    }
+  });
+
+  test('keeps a large paste invisible until atomic finalize and durable heartbeat', async ({
+    browser,
+  }) => {
+    const isolatedFixture = await createIsolatedCollaborationDocument(fixture, 'Atomic large paste');
+    const owner = await loginAndOpen(browser, users.seedEmpty2, isolatedFixture);
+    const editor = await loginAndOpen(browser, users.seedEmpty3, isolatedFixture);
+    const contexts = [owner.context, editor.context];
+    const putPattern = '**/rest/v1/rpc/put_document_yjs_update_chunk';
+    const middleSeen = createDeferred();
+    const releaseMiddle = createDeferred();
+    const marker = `LARGE-ATOMIC-${Date.now()}-`;
+    const payload = `${marker}${String.fromCodePoint(0x4e2d).repeat(90_000)}`;
+    let uploadId = '';
+    try {
+      await Promise.all([
+        expectDocumentLive(owner.page, 'Live', 150_000),
+        expectDocumentLive(editor.page, 'Live', 150_000),
+      ]);
+      await owner.page.route(putPattern, async (route) => {
+        const body = route.request().postDataJSON() as {
+          p_upload_id?: string;
+          p_chunk_index?: number;
+        };
+        uploadId = body.p_upload_id ?? uploadId;
+        if (body.p_chunk_index === 1) {
+          middleSeen.resolve();
+          await releaseMiddle.promise;
+        }
+        await route.continue();
+      });
+
+      await appendToNode(
+        owner.page,
+        owner.page.locator('[contenteditable="true"] p', { hasText: 'Owner lane' }).first(),
+        payload
+      );
+      await waitForDeferred(middleSeen, 'middle large-update chunk');
+      await editor.page.waitForTimeout(1_000);
+      expect(await editor.page.locator('[contenteditable]').first().innerText()).not.toContain(marker);
+      const beforeFinalize = await fixture.service
+        .from('document_yjs_updates')
+        .select('id')
+        .eq('id', uploadId);
+      expect(beforeFinalize.data).toEqual([]);
+
+      const finalized = owner.page.waitForResponse(
+        (response) =>
+          response.url().includes('/rpc/finalize_document_yjs_update_upload') &&
+          response.ok(),
+        { timeout: 45_000 }
+      );
+      releaseMiddle.resolve();
+      await finalized;
+      await expect
+        .poll(async () => (await editor.page.locator('[contenteditable]').first().innerText()).includes(marker), {
+          timeout: 45_000,
+        })
+        .toBe(true);
+      for (const page of [owner.page, editor.page]) {
+        const paragraph = page.locator('p', { hasText: marker }).first();
+        await expect(paragraph).toBeVisible();
+        await expectExactInsertedPayload(page, marker, payload);
+      }
+
+      await editor.context.setOffline(true);
+      await owner.page.reload({ waitUntil: 'domcontentloaded' });
+      await expectDocumentLive(owner.page, 'Live', 150_000);
+      const reloadedParagraph = owner.page.locator('p', { hasText: marker }).first();
+      await expect(reloadedParagraph).toBeVisible();
+      await expectExactInsertedPayload(owner.page, marker, payload);
+    } finally {
+      releaseMiddle.resolve();
+      await owner.page.unroute(putPattern).catch(() => undefined);
+      await Promise.all(contexts.map((context) => context.close()));
+    }
+  });
+
+  test('reload resumes the same upload and sends only a missing chunk', async ({ browser }) => {
+    const isolatedFixture = await createIsolatedCollaborationDocument(fixture, 'Resumable large paste');
+    const owner = await loginAndOpen(browser, users.seedEmpty2, isolatedFixture);
+    const editor = await loginAndOpen(browser, users.seedEmpty3, isolatedFixture);
+    const contexts = [owner.context, editor.context];
+    const putPattern = '**/rest/v1/rpc/put_document_yjs_update_chunk';
+    const finalizePattern = '**/rest/v1/rpc/finalize_document_yjs_update_upload';
+    const marker = `LARGE-RESUME-${Date.now()}-`;
+    const payload = `${marker}${String.fromCodePoint(0x6587).repeat(90_000)}`;
+    let uploadId = '';
+    let abortedMiddle = 0;
+    try {
+      await Promise.all([
+        expectDocumentLive(owner.page, 'Live', 150_000),
+        expectDocumentLive(editor.page, 'Live', 150_000),
+      ]);
+      await owner.page.route(putPattern, async (route) => {
+        const body = route.request().postDataJSON() as {
+          p_upload_id?: string;
+          p_chunk_index?: number;
+        };
+        uploadId = body.p_upload_id ?? uploadId;
+        if (body.p_chunk_index === 1) {
+          abortedMiddle += 1;
+          await route.abort('failed');
+          return;
+        }
+        await route.continue();
+      });
+      await appendToNode(
+        owner.page,
+        owner.page.locator('[contenteditable="true"] p', { hasText: 'Owner lane' }).first(),
+        payload
+      );
+      await expect
+        .poll(() => abortedMiddle, { timeout: 90_000 })
+        .toBeGreaterThan(0);
+      await expect(owner.page.getByRole('alert').getByText(/connection interrupted/i)).toBeVisible({
+        timeout: 90_000,
+      });
+      expect(uploadId).not.toBe('');
+      expect(await editor.page.locator('[contenteditable]').first().innerText()).not.toContain(marker);
+
+      const storedBeforeReload = await fixture.service
+        .from('document_yjs_update_upload_chunks')
+        .select('chunk_index')
+        .eq('upload_id', uploadId)
+        .order('chunk_index');
+      expect(storedBeforeReload.error).toBeNull();
+      const receivedBeforeReload = (storedBeforeReload.data ?? []).map((row) => row.chunk_index as number);
+      expect(receivedBeforeReload.length).toBeGreaterThan(0);
+      expect(receivedBeforeReload).not.toContain(1);
+
+      await owner.page.unroute(putPattern);
+      const resumedIndexes: number[] = [];
+      const resumedIds: string[] = [];
+      let finalizeCount = 0;
+      await owner.page.route(putPattern, async (route) => {
+        const body = route.request().postDataJSON() as {
+          p_upload_id: string;
+          p_chunk_index: number;
+        };
+        resumedIds.push(body.p_upload_id);
+        resumedIndexes.push(body.p_chunk_index);
+        await route.continue();
+      });
+      await owner.page.route(finalizePattern, async (route) => {
+        finalizeCount += 1;
+        await route.continue();
+      });
+      await owner.page.reload({ waitUntil: 'domcontentloaded' });
+      await expectDocumentLive(owner.page, 'Live', 150_000);
+      await expect
+        .poll(() => finalizeCount, { timeout: 45_000 })
+        .toBe(1);
+      expect(new Set(resumedIds)).toEqual(new Set([uploadId]));
+      expect(new Set(resumedIndexes)).toEqual(new Set([1]));
+      for (const received of receivedBeforeReload) expect(resumedIndexes).not.toContain(received);
+
+      await expect
+        .poll(async () => (await editor.page.locator('[contenteditable]').first().innerText()).includes(marker), {
+          timeout: 45_000,
+        })
+        .toBe(true);
+      const ownerParagraph = owner.page.locator('p', { hasText: marker }).first();
+      const peerParagraph = editor.page.locator('p', { hasText: marker }).first();
+      await expect(ownerParagraph).toBeVisible();
+      await expect(peerParagraph).toBeVisible();
+      await expectExactInsertedPayload(owner.page, marker, payload);
+      await expectExactInsertedPayload(editor.page, marker, payload);
+
+      await owner.page.reload({ waitUntil: 'domcontentloaded' });
+      await expectDocumentLive(owner.page, 'Live', 150_000);
+      const recoveryCount = await owner.page.evaluate(async (expectedUploadId) => {
+        const request = indexedDB.open('keco-document-collaboration', 1);
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const transaction = database.transaction('chunked-update-recovery', 'readonly');
+        const rows = await new Promise<Array<{ updateId?: string }>>((resolve, reject) => {
+          const getAll = transaction.objectStore('chunked-update-recovery').getAll();
+          getAll.onsuccess = () => resolve(getAll.result);
+          getAll.onerror = () => reject(getAll.error);
+        });
+        database.close();
+        return rows.filter((row) => row.updateId === expectedUploadId).length;
+      }, uploadId);
+      expect(recoveryCount).toBe(0);
+    } finally {
+      await Promise.allSettled([
+        owner.page.unroute(putPattern),
+        owner.page.unroute(finalizePattern),
+      ]);
       await Promise.all(contexts.map((context) => context.close()));
     }
   });
