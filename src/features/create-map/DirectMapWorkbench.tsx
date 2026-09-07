@@ -127,10 +127,10 @@ export function DirectMapWorkbench() {
   useEffect(() => {
     if (previousGenerationPhase.current !== 'ready' && generation.phase === 'ready') {
       setChatMessages((current) => {
-        if (current.some((message) => message.text.includes('已经创建好的map') && !message.text.includes('plan'))) {
+        if (current.some((message) => message.text.includes('Here is the created map') && !message.text.includes('plan'))) {
           return current;
         }
-        return [...current, { id: nextMessageId(), role: 'assistant', text: '这是已经创建好的map' }];
+        return [...current, { id: nextMessageId(), role: 'assistant', text: 'Here is the created map' }];
       });
     }
     previousGenerationPhase.current = generation.phase;
@@ -212,8 +212,8 @@ export function DirectMapWorkbench() {
       await savedMaps.refetch();
       setChatMessages((current) => [
         ...current,
-        { id: nextMessageId(), role: 'assistant', text: '好的，已经创建完毕检查' },
-        { id: nextMessageId(), role: 'assistant', text: '这是已经创建好的map plan' },
+        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
+        { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
       ]);
       setViewMode('detail');
       setPlanDetailsOpen(true);
@@ -242,11 +242,11 @@ export function DirectMapWorkbench() {
       draft.install(loaded);
       generation.installRestore(prepared);
       setChatMessages([
-        { id: nextMessageId(), role: 'user', text: `打开地图：${loaded.plan.name}` },
-        { id: nextMessageId(), role: 'assistant', text: '好的，已经创建完毕检查' },
-        { id: nextMessageId(), role: 'assistant', text: '这是已经创建好的map plan' },
+        { id: nextMessageId(), role: 'user', text: `Open map: ${loaded.plan.name}` },
+        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
+        { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
         ...(prepared.scene.mapImage
-          ? [{ id: nextMessageId(), role: 'assistant' as const, text: '这是已经创建好的map' }]
+          ? [{ id: nextMessageId(), role: 'assistant' as const, text: 'Here is the created map' }]
           : []),
       ]);
       setViewMode('detail');
