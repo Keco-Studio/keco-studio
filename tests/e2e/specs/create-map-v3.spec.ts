@@ -765,13 +765,13 @@ test.describe('Create Map V3 mocked workflow', () => {
     expect(backend.lastPlanRequest).toBeNull();
   });
 
-  test('uses optional Document and uploaded content/style references', async ({ page }) => {
+  test('uses uploaded content/style references without a Document picker', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
     await selectProject(page);
     await page.getByRole('button', { name: 'Create map', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Map plan details' })).toBeVisible();
-    await page.getByRole('combobox', { name: 'Document', exact: true }).selectOption(DOCUMENT_ID);
+    await expect(page.getByRole('combobox', { name: 'Document', exact: true })).toHaveCount(0);
     const upload = page.locator('aside[aria-label="Map plan and generation"] input[type="file"]');
     await upload.setInputFiles({ name: 'layout.png', mimeType: 'image/png', buffer: await backend.mapPng });
     await expect(page.getByText('layout.png', { exact: true })).toBeVisible();
@@ -782,16 +782,17 @@ test.describe('Create Map V3 mocked workflow', () => {
     await layoutRow.getByLabel('layout.png reference role').selectOption('layout');
     await layoutRow.getByLabel('layout.png usage').fill('Match the river crossing layout');
     await styleRow.getByLabel('Style').check();
+    await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill('A quiet top-down village market with open paths.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     expect(backend.lastPlanRequest).toMatchObject({
       schemaVersion: 3,
       projectId: PROJECT_ID,
-      documentId: DOCUMENT_ID,
       referenceIds: [backend.references.find((reference) => reference.name === 'layout.png')?.id],
       styleReferenceId: backend.references.find((reference) => reference.name === 'style.png')?.id,
       styleCopy: ['color_palette'],
     });
+    expect(backend.lastPlanRequest?.documentId).toBeFalsy();
     await expect(page.getByText('1 / 4', { exact: true })).toBeVisible();
   });
 

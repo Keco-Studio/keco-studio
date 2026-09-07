@@ -14,6 +14,7 @@ type LibraryToolbarProps = {
   onCreateFolder?: () => void;
   onCreateLibrary?: () => void;
   onCreateDocument?: () => void;
+  onCreateMap?: () => void;
   onImportTable?: () => void;
   onImportDocument?: () => void;
   onSearchChange?: (value: string) => void;
@@ -25,8 +26,9 @@ type LibraryToolbarProps = {
    * - 'folder': Show the same "Create" menu as Recent, scoped to the current folder
    * - 'recent': Show create + share + view toggles
    * - 'admin': Show create only
+   * - 'create-map': Show Create (starts a map) + view toggles
    */
-  mode?: 'project' | 'folder' | 'recent' | 'admin';
+  mode?: 'project' | 'folder' | 'recent' | 'admin' | 'create-map';
   /**
    * Title to display on the left side of the toolbar
    * - For project page: project name
@@ -48,6 +50,7 @@ export function LibraryToolbar({
   onCreateFolder,
   onCreateLibrary,
   onCreateDocument,
+  onCreateMap,
   onImportTable,
   onImportDocument,
   onSearchChange,
@@ -84,6 +87,10 @@ export function LibraryToolbar({
   };
 
   const handleCreateButtonClick = () => {
+    if (mode === 'create-map') {
+      onCreateMap?.();
+      return;
+    }
     setShowAddMenu((open) => !open);
   };
 
@@ -96,7 +103,9 @@ export function LibraryToolbar({
   };
 
   // Match Libraries "+" visibility: admin/editor can open the menu
-  const canCreate = userRole === 'admin' || userRole === 'editor';
+  const canCreate = mode === 'create-map'
+    ? Boolean(onCreateMap)
+    : userRole === 'admin' || userRole === 'editor';
   const showShare = mode === 'project' || mode === 'folder' || mode === 'recent';
   const showViewToggle = mode !== 'admin';
   const showCreateMenu = mode === 'project' || mode === 'folder' || mode === 'recent' || mode === 'admin';

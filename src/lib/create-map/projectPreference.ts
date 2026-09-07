@@ -2,6 +2,8 @@ export type CreateMapProjectPreference = { projectId: string; projectName: strin
 
 const STORAGE_KEY = 'keco.create-map.projectPreference';
 export const CREATE_MAP_PROJECT_EVENT = 'keco-create-map-project';
+export const CREATE_MAP_TOOLBAR_CREATE_EVENT = 'create-map-toolbar-create';
+export const CREATE_MAP_TOOLBAR_VIEW_EVENT = 'create-map-toolbar-view';
 
 export function writeCreateMapProjectPreference(preference: CreateMapProjectPreference) {
   if (typeof window === 'undefined') return;

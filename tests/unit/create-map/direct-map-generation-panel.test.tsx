@@ -33,6 +33,9 @@ describe('DirectMapGenerationPanel', () => {
     const initialMarkup = renderToStaticMarkup(React.createElement(DirectMapGenerationPanel, props));
 
     expect(initialMarkup).not.toContain('Paid PixelLab request');
+    expect(initialMarkup).not.toContain('Complete map PNG');
+    expect(initialMarkup).not.toContain('Not started');
+    expect(initialMarkup).toContain('Generate map');
     render(React.createElement(DirectMapGenerationPanel, props));
     fireEvent.click(screen.getByRole('button', { name: 'Generate map' }));
     expect(screen.getByRole('group', { name: 'Generation cost confirmation' })).toBeTruthy();

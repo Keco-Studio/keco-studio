@@ -93,7 +93,10 @@ export function DirectMapPlanInspector({
       ))}
 
       <label className={styles.fieldLabel}>
-        Seed <span className={styles.optionalLabel}>Optional</span>
+        <span className={styles.seedLabelStack}>
+          <span>Seed</span>
+          <span className={styles.optionalLabel}>Optional</span>
+        </span>
         <input
           className={styles.input}
           type="number"

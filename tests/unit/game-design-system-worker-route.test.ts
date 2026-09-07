@@ -25,8 +25,8 @@ describe('internal Game Design System worker route dispatch', () => {
     process.env.CRON_SECRET = previousSecret;
   });
 
-  it('keeps cron workers alive long enough for professional GDD generation and persistence', () => {
-    expect(maxDuration).toBe(800);
+  it('keeps cron workers within the Vercel hobby maxDuration ceiling', () => {
+    expect(maxDuration).toBe(300);
   });
 
   it('dispatches both GDS and GDD jobs during one authorized invocation', async () => {

@@ -1,12 +1,17 @@
 'use client';
 
-import { ArrowLeftOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
-import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeftOutlined,
+  FilterOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  SendOutlined,
+} from '@ant-design/icons';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   containsUnsafeDescriptionContent,
   DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
 } from '../model/directMapSchema';
-import type { MapSourceOption } from './MapSourcePanel';
 import styles from '../CreateMapWorkbench.module.css';
 
 export type MapChatMessage = {
@@ -18,10 +23,8 @@ export type MapChatMessage = {
 type MapChatPanelProps = {
   mapTitle: string;
   messages: MapChatMessage[];
-  documents: MapSourceOption[];
-  documentId: string;
-  onDocumentChange: (id: string) => void;
   onBack: () => void;
+  onCreate?: () => void;
   onAsk: (prompt: string) => void;
   onGenerate: () => void;
   canAsk: boolean;
@@ -35,10 +38,8 @@ type MapChatPanelProps = {
 export function MapChatPanel({
   mapTitle,
   messages,
-  documents,
-  documentId,
-  onDocumentChange,
   onBack,
+  onCreate,
   onAsk,
   onGenerate,
   canAsk,
@@ -49,19 +50,27 @@ export function MapChatPanel({
   error = null,
 }: MapChatPanelProps) {
   const [draft, setDraft] = useState('');
+  const [query, setQuery] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const draftInvalid = containsUnsafeDescriptionContent(draft);
   const canSend = canAsk
-    && (Boolean(draft.trim()) || Boolean(documentId))
+    && Boolean(draft.trim())
     && !draftInvalid
     && !busy
     && !readOnly;
+
+  const visibleMessages = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return messages;
+    return messages.filter((message) => message.text.toLowerCase().includes(needle));
+  }, [messages, query]);
 
   useEffect(() => {
     const node = listRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [messages, showGenerate]);
+  }, [visibleMessages, showGenerate, filterOpen]);
 
   const submit = () => {
     if (!canSend) return;
@@ -70,6 +79,8 @@ export function MapChatPanel({
     onAsk(prompt);
   };
 
+  const showSearch = filterOpen || messages.length > 0;
+
   return (
     <section className={styles.chatPanel} aria-label="Map conversation">
       <header className={styles.chatHeader}>
@@ -77,6 +88,28 @@ export function MapChatPanel({
           <ArrowLeftOutlined />
         </button>
         <h2 className={styles.chatTitle}>{mapTitle || 'New map'}</h2>
+        <div className={styles.chatHeaderActions}>
+          <button
+            type="button"
+            className={styles.chatHeaderIconButton}
+            aria-label="Create map"
+            title="Create map"
+            disabled={readOnly || !onCreate}
+            onClick={onCreate}
+          >
+            <PlusOutlined />
+          </button>
+          <button
+            type="button"
+            className={styles.chatHeaderIconButton}
+            aria-label="Filter messages"
+            aria-pressed={filterOpen}
+            title="Filter messages"
+            onClick={() => setFilterOpen((open) => !open)}
+          >
+            <FilterOutlined />
+          </button>
+        </div>
       </header>
 
       <div className={styles.chatBody} ref={listRef}>
@@ -85,7 +118,19 @@ export function MapChatPanel({
             Describe the map you want. Keco will create a map plan you can review and generate.
           </p>
         ) : null}
-        {messages.map((message) => (
+        {showSearch ? (
+          <label className={styles.chatSearch}>
+            <SearchOutlined aria-hidden />
+            <input
+              type="search"
+              placeholder="Search messages..."
+              aria-label="Search messages"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        ) : null}
+        {visibleMessages.map((message) => (
           <div
             key={message.id}
             className={message.role === 'user' ? styles.chatBubbleUser : styles.chatBubbleAssistant}
@@ -107,22 +152,6 @@ export function MapChatPanel({
       </div>
 
       <div className={styles.chatComposer}>
-        {documents.length > 0 ? (
-          <label className={styles.chatDocumentSelect}>
-            <span className={styles.srOnly}>Document</span>
-            <select
-              aria-label="Document"
-              value={documentId}
-              disabled={busy || readOnly}
-              onChange={(event) => onDocumentChange(event.target.value)}
-            >
-              <option value="">No document</option>
-              {documents.map((document) => (
-                <option key={document.id} value={document.id}>{document.name}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
         <div className={styles.chatInputBar}>
           <button type="button" className={styles.chatAttachButton} disabled aria-label="Attach" title="Attach">
             <PlusOutlined />

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { buildAgentRulePolicy } from '@/lib/game-design-system/agentPolicy';
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
-import type { GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
+import { inferGddOutputLanguage, type GddGenerationRequestV2 } from '@/lib/gdd-generation/v2/contracts';
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
 import { isGddSchemaUnavailable, safeGddRouteErrorIdentity } from '@/lib/gdd-generation/routeErrors';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
@@ -18,7 +18,7 @@ import {
 } from '@/lib/services/gddGenerationService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 type Params = { params: Promise<{ projectId: string }> };
 
@@ -123,7 +123,16 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
       contractVersion: 2,
       mode: parsed.data.mode,
       ...(parsed.data.creativeBrief ? { creativeBrief: parsed.data.creativeBrief } : {}),
-      language: 'zh-CN',
+      language: parsed.data.creativeBrief?.trim()
+        // The user's brief is authoritative, even when it is short. Pinned
+        // rules and design-system metadata may use a different language.
+        ? inferGddOutputLanguage([parsed.data.creativeBrief])
+        : inferGddOutputLanguage([
+          project.data.name,
+          detail.title,
+          JSON.stringify(version.document),
+          JSON.stringify(version.rules),
+        ]),
       projectId,
       projectName: project.data.name,
       designSystemId: detail.id,

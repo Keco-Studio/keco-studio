@@ -33,7 +33,7 @@ import {
   type MapReferenceRecord,
   type SavedMapSummary,
 } from './services/createMapService';
-import { readCreateMapProjectPreference } from '@/lib/create-map/projectPreference';
+import { readCreateMapProjectPreference, CREATE_MAP_TOOLBAR_CREATE_EVENT } from '@/lib/create-map/projectPreference';
 import styles from './CreateMapWorkbench.module.css';
 
 const INITIAL_DIRECT_PLAN: MapPlanV3 = {
@@ -163,7 +163,7 @@ export function DirectMapWorkbench() {
     setViewMode('browse');
   };
 
-  const enterCreateDetail = () => {
+  const enterCreateDetail = useCallback(() => {
     if (readOnly) return;
     draft.reset();
     generation.reset();
@@ -175,7 +175,15 @@ export function DirectMapWorkbench() {
     setViewMode('detail');
     setPlanDetailsOpen(true);
     setRightOpen(true);
-  };
+  }, [draft, generation, readOnly]);
+
+  useEffect(() => {
+    const onToolbarCreate = () => {
+      enterCreateDetail();
+    };
+    window.addEventListener(CREATE_MAP_TOOLBAR_CREATE_EVENT, onToolbarCreate);
+    return () => window.removeEventListener(CREATE_MAP_TOOLBAR_CREATE_EVENT, onToolbarCreate);
+  }, [enterCreateDetail]);
 
   const createPlan = async (prompt?: string) => {
     if (readOnly) return;
@@ -376,13 +384,11 @@ export function DirectMapWorkbench() {
           <MapChatPanel
             mapTitle={plan.name}
             messages={chatMessages}
-            documents={sources.documents}
-            documentId={documentId}
-            onDocumentChange={setDocumentId}
             onBack={() => {
               setViewMode('browse');
               setPlanDetailsOpen(false);
             }}
+            onCreate={enterCreateDetail}
             onAsk={(prompt) => void createPlan(prompt)}
             onGenerate={() => void generation.generate()}
             canAsk={Boolean(projectId) && !readOnly}

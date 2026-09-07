@@ -28,16 +28,24 @@ import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/cont
 import type { ResourceChangeSummary } from './resourceEvolution';
 import {
   generateGddMarkdownV2,
+  reviewGddMarkdownV2,
   GddV2GenerationValidationError,
   GddV2ResourceRecoveryError,
 } from './v2/generator';
 import {
+  generateProfessionalStage,
+  type ProfessionalCheckpoint,
+  type ProfessionalStage,
+} from './v2/professionalStages';
+import {
   claimGddGenerationJob,
+  checkpointGddGenerationJob,
   failGddGenerationJob,
   heartbeatGddGenerationJob,
   persistCompletedGddGenerationJob,
   retryGddGenerationJob,
   type GddGenerationJob,
+  type GddJobPhase,
   type GddJobStatus,
 } from '@/lib/services/gddGenerationService';
 
@@ -46,16 +54,20 @@ type WorkerDependencies = {
   revalidateContext: typeof revalidateGddJobContext;
   generate: typeof generateGdd;
   generateV2?: typeof generateGddMarkdownV2;
+  generateProfessionalStage?: (...args: any[]) => Promise<any>;
+  reviewV2?: (...args: any[]) => Promise<any>;
   persist: typeof persistGeneratedGddDocument;
   persistV2?: typeof persistGeneratedGddV2Document;
   retry: typeof retryGddGenerationJob;
   fail: typeof failGddGenerationJob;
+  checkpoint?: (...args: any[]) => Promise<boolean>;
 };
 
 const QUICK_GDD_GENERATION_DEADLINE_MS = 120_000;
-const PROFESSIONAL_GDD_GENERATION_DEADLINE_MS = 600_000;
+const PROFESSIONAL_GDD_GENERATION_DEADLINE_MS = 240_000;
 const MIN_GDD_GENERATION_DEADLINE_MS = 30_000;
 const MAX_GDD_GENERATION_DEADLINE_MS = 600_000;
+const MAX_PROFESSIONAL_STAGE_DEADLINE_MS = 240_000;
 
 function gddGenerationDeadlineMs(job: GddGenerationJob): number {
   const configured = Number(process.env.GDD_GENERATION_DEADLINE_MS);
@@ -70,6 +82,16 @@ function gddGenerationDeadlineMs(job: GddGenerationJob): number {
     : QUICK_GDD_GENERATION_DEADLINE_MS;
 }
 
+export function professionalStageDeadlineMs(_job: GddGenerationJob): number {
+  const configured = Number(process.env.GDD_PROFESSIONAL_STAGE_DEADLINE_MS);
+  if (
+    Number.isSafeInteger(configured)
+    && configured >= MIN_GDD_GENERATION_DEADLINE_MS
+    && configured <= MAX_PROFESSIONAL_STAGE_DEADLINE_MS
+  ) return configured;
+  return PROFESSIONAL_GDD_GENERATION_DEADLINE_MS;
+}
+
 function tableSeriesSeed(job: Pick<GddGenerationJob, 'project_id' | 'design_system_id'>): string {
   return `${job.project_id}:${job.design_system_id}`;
 }
@@ -79,10 +101,13 @@ const defaultDependencies: WorkerDependencies = {
   revalidateContext: revalidateGddJobContext,
   generate: generateGdd,
   generateV2: generateGddMarkdownV2,
+  generateProfessionalStage,
+  reviewV2: reviewGddMarkdownV2,
   persist: persistGeneratedGddDocument,
   persistV2: persistGeneratedGddV2Document,
   retry: retryGddGenerationJob,
   fail: failGddGenerationJob,
+  checkpoint: checkpointGddGenerationJob,
 };
 
 export type PersistedGddGeneration = {
@@ -417,16 +442,22 @@ async function runWithLeaseHeartbeat<T>(
   heartbeat: typeof heartbeatGddGenerationJob,
   deadlineMs: number,
   generate: (signal: AbortSignal) => Promise<T>,
+  options: { heartbeatPhase?: GddJobPhase; deadlineMessage?: string } = {},
 ): Promise<T> {
   const controller = new AbortController();
   let heartbeatFailure: unknown;
   let pendingHeartbeat = Promise.resolve();
   const deadline = setTimeout(() => {
-    controller.abort(new Error('GDD generation deadline exceeded.'));
+    controller.abort(new Error(options.deadlineMessage ?? 'GDD generation deadline exceeded.'));
   }, deadlineMs);
   const timer = setInterval(() => {
     pendingHeartbeat = pendingHeartbeat
-      .then(() => heartbeat(input.serviceClient, input.job.id, input.workerId, 'generating'))
+      .then(() => heartbeat(
+        input.serviceClient,
+        input.job.id,
+        input.workerId,
+        options.heartbeatPhase ?? 'generating',
+      ))
       .catch((error) => {
         heartbeatFailure = error;
         controller.abort(error);
@@ -464,14 +495,190 @@ async function runWithLeaseHeartbeat<T>(
   }
 }
 
+const PROFESSIONAL_PHASES = new Set<GddJobPhase>([
+  'collecting',
+  'planning',
+  'generating_core',
+  'generating_systems',
+  'generating_content',
+  'reviewing',
+  'saving',
+]);
+
+function isProfessionalResumableJob(job: GddGenerationJob): job is GddGenerationJob & { input: GddGenerationRequestV2 } {
+  return isGddGenerationRequestV2(job.input)
+    && job.input.mode === 'professional'
+    && PROFESSIONAL_PHASES.has(job.phase);
+}
+
+function professionalCheckpoint(job: GddGenerationJob): ProfessionalCheckpoint {
+  return {
+    blueprint: job.blueprint ?? null,
+    section_drafts: job.section_drafts ?? [],
+    review_report: job.review_report ?? null,
+    repair_round: Number.isSafeInteger(job.repair_round) ? job.repair_round : 0,
+  };
+}
+
+function assembledProfessionalMarkdown(checkpoint: ProfessionalCheckpoint): string {
+  const blueprint = checkpoint.blueprint as { title?: unknown } | null;
+  const title = typeof blueprint?.title === 'string' && blueprint.title.trim()
+    ? blueprint.title.trim()
+    : 'Professional Game Design Document';
+  const drafts = checkpoint.section_drafts
+    .map((draft) => (draft && typeof draft === 'object' && typeof (draft as { markdown?: unknown }).markdown === 'string'
+      ? (draft as { markdown: string }).markdown.trim()
+      : ''))
+    .filter(Boolean);
+  if (drafts.length === 0) throw new GddV2GenerationValidationError('Professional GDD has no section drafts to review.');
+  return `# ${title}\n\n${drafts.join('\n\n')}`;
+}
+
+type ProfessionalReviewReport = {
+  review: unknown;
+  markdown: string;
+  tablePlans: Parameters<typeof materializeTableResources>[1];
+  tablePlanWarning: string | null;
+  dialoguePlans: DialoguePlan[];
+  dialoguePlanWarning: string | null;
+};
+
+function readProfessionalReviewReport(value: unknown): ProfessionalReviewReport {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new GddV2GenerationValidationError('Professional GDD review checkpoint is missing.');
+  }
+  const report = value as Record<string, unknown>;
+  if (typeof report.markdown !== 'string' || !report.markdown.trim()) {
+    throw new GddV2GenerationValidationError('Professional GDD review checkpoint has no Markdown.');
+  }
+  return {
+    review: report.review,
+    markdown: report.markdown,
+    tablePlans: Array.isArray(report.tablePlans) ? report.tablePlans as ProfessionalReviewReport['tablePlans'] : [],
+    tablePlanWarning: typeof report.tablePlanWarning === 'string' ? report.tablePlanWarning : null,
+    dialoguePlans: Array.isArray(report.dialoguePlans) ? report.dialoguePlans as DialoguePlan[] : [],
+    dialoguePlanWarning: typeof report.dialoguePlanWarning === 'string' ? report.dialoguePlanWarning : null,
+  };
+}
+
+async function processProfessionalGddPhase(
+  input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob & { input: GddGenerationRequestV2 } },
+  dependencies: WorkerDependencies,
+): Promise<GddJobStatus> {
+  const { serviceClient, workerId, job } = input;
+  const checkpoint = dependencies.checkpoint ?? checkpointGddGenerationJob;
+  const current = professionalCheckpoint(job);
+  const saveCheckpoint = async (nextPhase: GddJobPhase, values: ProfessionalCheckpoint) => {
+    const saved = await checkpoint(serviceClient, {
+      jobId: job.id,
+      workerId,
+      nextPhase,
+      blueprint: values.blueprint,
+      sectionDrafts: values.section_drafts,
+      reviewReport: values.review_report,
+      repairRound: values.repair_round,
+    });
+    if (!saved) throw new Error('GDD generation job lease was lost while saving a professional checkpoint.');
+    return 'queued' as const;
+  };
+
+  if (job.phase === 'collecting') return saveCheckpoint('planning', current);
+  if (job.phase === 'saving') {
+    if (!dependencies.persistV2) throw new Error('Professional GDD persistence dependency is not configured.');
+    const report = readProfessionalReviewReport(current.review_report);
+    const persisted = await runWithLeaseHeartbeat(
+      input,
+      dependencies.heartbeat,
+      professionalStageDeadlineMs(job),
+      async () => dependencies.persistV2!(
+        serviceClient,
+        job,
+        workerId,
+        report.markdown,
+        report.review,
+        report.tablePlans,
+        report.dialoguePlans,
+      ),
+      {
+        heartbeatPhase: 'saving',
+        deadlineMessage: `Professional GDD stage saving exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
+      },
+    );
+    return persisted.status ?? 'completed';
+  }
+
+  if (job.phase === 'reviewing') {
+    if (!dependencies.reviewV2) throw new Error('Professional GDD review dependency is not configured.');
+    const markdown = assembledProfessionalMarkdown(current);
+    const reviewed = await runWithLeaseHeartbeat(
+      input,
+      dependencies.heartbeat,
+      professionalStageDeadlineMs(job),
+      (signal) => dependencies.reviewV2!(job.input, markdown, {}, { signal }),
+      {
+        heartbeatPhase: 'reviewing',
+        deadlineMessage: `Professional GDD stage reviewing exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
+      },
+    );
+    return saveCheckpoint('saving', {
+      ...current,
+      review_report: {
+        review: reviewed.review,
+        markdown: reviewed.markdown,
+        tablePlans: reviewed.tablePlans,
+        tablePlanWarning: reviewed.tablePlanWarning,
+        dialoguePlans: reviewed.dialoguePlans,
+        dialoguePlanWarning: reviewed.dialoguePlanWarning,
+      },
+      repair_round: reviewed.review.repairRound ?? current.repair_round,
+    });
+  }
+
+  if (!dependencies.generateProfessionalStage) throw new Error('Professional GDD stage dependency is not configured.');
+  const stage = job.phase as ProfessionalStage;
+  const generated = await runWithLeaseHeartbeat(
+    input,
+    dependencies.heartbeat,
+    professionalStageDeadlineMs(job),
+    (signal) => dependencies.generateProfessionalStage!(job.input, stage, current, {}, signal),
+    {
+      heartbeatPhase: job.phase,
+      deadlineMessage: `Professional GDD stage ${job.phase} exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
+    },
+  );
+  const nextPhase: Record<ProfessionalStage, GddJobPhase> = {
+    planning: 'generating_core',
+    generating_core: 'generating_systems',
+    generating_systems: 'generating_content',
+    generating_content: 'reviewing',
+  };
+  return saveCheckpoint(nextPhase[stage], {
+    ...current,
+    blueprint: generated.blueprint,
+    section_drafts: generated.sectionDrafts,
+  });
+}
+
 export async function processClaimedGddJob(
   input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob },
   dependencies: WorkerDependencies = defaultDependencies,
 ): Promise<GddJobStatus> {
   const { serviceClient, workerId, job } = input;
   try {
-    await dependencies.heartbeat(serviceClient, job.id, workerId, 'generating');
+    await dependencies.heartbeat(
+      serviceClient,
+      job.id,
+      workerId,
+      isProfessionalResumableJob(job) ? job.phase : 'generating',
+    );
     await dependencies.revalidateContext(serviceClient, job);
+    if (isProfessionalResumableJob(job)) {
+      return await processProfessionalGddPhase({
+        serviceClient,
+        workerId,
+        job,
+      }, dependencies);
+    }
     if (isGddGenerationRequestV2(job.input)) {
       if (!dependencies.generateV2 || !dependencies.persistV2) throw new Error('GDD v2 worker dependencies are not configured.');
       const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, gddGenerationDeadlineMs(job), (signal) => (

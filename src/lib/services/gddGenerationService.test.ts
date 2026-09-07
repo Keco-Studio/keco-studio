@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import {
   cancelGddGenerationJob,
   claimGddGenerationJob,
+  checkpointGddGenerationJob,
   heartbeatGddMapArtifact,
   reconcileGddMapArtifact,
   createGddGenerationJob,
@@ -69,6 +70,32 @@ describe('gddGenerationService', () => {
     expect(rpc).toHaveBeenCalledWith('claim_gdd_generation_job', {
       p_worker_id: 'worker-1',
       p_lease_seconds: 90,
+    });
+  });
+
+  it('checkpoints resumable phase data through the service-role RPC', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: true, error: null }));
+    const blueprint = { version: 1, title: 'GDD', sections: [], invariants: ['score stays consistent'] };
+    const sectionDrafts = [{ sectionId: 'core', stage: 'core', markdown: '## Core' }];
+
+    await expect(checkpointGddGenerationJob({ rpc } as never, {
+      jobId: 'job-1',
+      workerId: 'worker-1',
+      nextPhase: 'generating_systems',
+      blueprint,
+      sectionDrafts,
+      reviewReport: null,
+      repairRound: 0,
+    })).resolves.toBe(true);
+
+    expect(rpc).toHaveBeenCalledWith('checkpoint_gdd_generation_job', {
+      p_job_id: 'job-1',
+      p_worker_id: 'worker-1',
+      p_next_phase: 'generating_systems',
+      p_blueprint: blueprint,
+      p_section_drafts: sectionDrafts,
+      p_review_report: null,
+      p_repair_round: 0,
     });
   });
 
