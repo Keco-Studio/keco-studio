@@ -2,24 +2,46 @@
 
 ## SourceProfile and priority
 
-Select exactly one version-2 `SourceProfile`: `gdd`, `feedback`, `document`, `table`, or `user_idea`. A document profile records project/document IDs, epoch, revision, and content hash; a table profile records table ID, schema hash, row IDs/hashes, and content hash; a user idea records the request hash and bounded excerpt. Every profile records project ID, capture time, selection evidence, and canonical `sourceProfileHash`. Resolve material conflicts in this order: current user instruction, newest explicit Keco feedback, current GDD goals and acceptance criteria, Keco table values, then current Godot behavior. Record repository and Godot identity in `SourceSnapshot`. If selected source identity changes, create an explicit successor run rather than mutating the accepted run.
+Select exactly one version-2 `SourceProfile`: `gdd`, `feedback`, `document`, `table`,
+or `user_idea`. Document profiles record project/document IDs, epoch, revision,
+and content hash; table profiles record table ID, schema hash, selected row IDs/hashes,
+and content hash; user ideas record request hash and bounded excerpt. Every profile records project ID,
+capture time, selection evidence, and canonical `sourceProfileHash`.
+Resolve material
+conflicts as current user instruction, newest explicit Keco feedback, GDD
+goals/acceptance, Keco table values, then current Godot behavior. Record
+repository and Godot identity in `SourceSnapshot`; an identity change creates a
+successor run.
 
-## Semantic source document discovery
+## Semantic source discovery
 
-Arbitrary source document names are supported. Do not require a fixed `Feedback` name, prefix, date format, or folder label. When the user supplies a stable `documentId`, verify that it belongs to the selected Project and read it in full. When the user supplies only a name, resolve duplicates before continuing. When the user supplies no document identity, call `list_project_structure` and page through `list_documents`, use `semantic_search` with `source: documents` when summaries are insufficient, then rank current candidates by semantic development relevance, user wording, GDD/feedback/requirements content, Project context, and revision evidence.
+Arbitrary source document names are supported: do not require a fixed Feedback
+name, prefix, date, or folder. Verify a supplied ID belongs to the Project and
+read it in full; with only a name, resolve duplicates. With no identity, page
+`list_project_structure`/`list_documents`, use `semantic_search` with `source:
+documents` when needed, and rank by semantic relevance, user wording,
+GDD/feedback/requirements content, Project context, and revision evidence.
+Recency supports but cannot select alone. Exactly one clearly dominant candidate: automatically select and record it.
+Tied candidates require one focused question and zero writes; set
+`sourceDecision: awaiting_user_confirmation` and keep `writeToken: null`. No
+relevant candidate stops before writes. After acceptance, read the complete
+authoritative content needed for decomposition; a display name never establishes
+development input.
 
-Recency or the latest timestamp is supporting evidence, not a selector alone. When exactly one candidate is clearly dominant, automatically select it and record its ID, title, revision, content hash, and selection evidence in `SourceSelection`. For tied candidates, set `sourceDecision: awaiting_user_confirmation`, keep `writeToken: null`, ask one focused question with at most three choices, and perform zero writes. If no relevant candidate exists, report the missing source and stop before writes.
+## Project, data, and snapshot
 
-After accepting the source, read the complete content needed for decomposition. Do not infer that a document is development input from its display name alone.
-
-Before `WRITE_SPEC`, resolve the canonical Keco Project by stable project ID and discover the planning root that owns Slice documents. Read fresh folder metadata and representative documents; never use a folder from another project or infer hierarchy from `/` in a document name. Under that root, resolve exactly one direct child folder named `spec` and exactly one named `plan`. Reuse them when present; after planning preflight, create a missing child with `create_folder(parentFolderId: <planning-root-id>)` and read the structure back. Record `kecoProjectId`, the planning root `kecoFolderId`, `kecoSpecFolderId`, `kecoPlanFolderId`, folder names, document IDs, and revisions in `SourceSnapshot` and `RunContext`. An ambiguous root, duplicate child, wrong parent, or failed read-back is a pre-write blocker.
-
-## DataPlan
-
-Use plan-local lower-case keys, but send only exact semantic field labels across the Keco MCP boundary. Resolve field labels and reference target row UUIDs from fresh schemas before every write. Use stable scalar match keys for every table and row. Discover and reuse compatible existing tables, fields, references, and rows before considering creation; extend schemas additively and upsert by stable key. Never automatically delete tables/fields/rows or destructively change a populated field type. Stop on the first write failure, retain IDs, and re-read before any retry.
-
-Maintain separate development records: `Development Slices` keyed by `Slice ID`, `Evaluation Cases` keyed by `Eval ID`, and `Evaluation Runs` keyed by `Run ID`. Do not put evaluation state into runtime configuration tables.
+Before `WRITE_SPEC`, resolve the canonical Keco Project and planning root by
+stable IDs; record `kecoProjectId`, `kecoFolderId`, `kecoSpecFolderId`, and
+`kecoPlanFolderId`, folder names, document IDs, and revisions, then exactly one direct `spec` and `plan` child. Wrong parent,
+duplicate, ambiguous root, or failed read-back is a pre-write blocker. Use exact semantic field labels,
+stable scalar match keys, compatible-table reuse, additive schema changes,
+and non-destructive writes; never automatically delete or change populated field
+types destructively. Resolve labels and reference UUIDs from fresh schemas before
+each write, upsert by stable key, stop on failure, and reread before retry. Keep
+Development Slices, Evaluation Cases, and Evaluation Runs separate.
 
 ## Snapshot
 
-Export only fresh Keco read-back into deterministic JSON with schema version, project identity, capture time, source revisions, sorted tables, per-file hashes, and aggregate hash. Validate with the existing snapshot scripts before implementation. Generated snapshot files are read-only; never update Keco from edited local JSON. The running Godot project must report the loaded aggregate hash in each `KECO_OBSERVATION` record.
+Export only fresh Keco read-back as deterministic JSON with schema version,
+project/source revisions, sorted tables, per-file and aggregate hashes; validate
+before implementation. Snapshot files are read-only; never update Keco from edited local JSON. Godot reports the aggregate hash in every `KECO_OBSERVATION`.
