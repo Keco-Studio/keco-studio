@@ -24,8 +24,12 @@ jest.mock('@/lib/documents/documentContentCodec', () => ({
 import {
   appendDocumentYjsUpdates,
   compactDocumentState,
+  finalizeDocumentYjsUpdateUpload,
+  getDocumentYjsUpdateUploadStatus,
   initializeDocumentState,
   normalizeDocumentState,
+  prepareDocumentYjsUpdateUpload,
+  putDocumentYjsUpdateChunk,
   readDocumentState,
   readDocumentTransportState,
   replaceDocumentState,
@@ -41,6 +45,16 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const UPDATE_A = '33333333-3333-4333-8333-333333333333';
 const UPDATE_B = '44444444-4444-4444-8444-444444444444';
 const VERSION_ID = '55555555-5555-4555-8555-555555555555';
+const USER_ID = '66666666-6666-4666-8666-666666666666';
+const uploadManifest = {
+  updateId: UPDATE_A,
+  documentId: DOCUMENT_ID,
+  userId: USER_ID,
+  epoch: 2,
+  totalBytes: 262_145,
+  chunkCount: 3,
+  sha256: 'a'.repeat(64),
+};
 
 type ResponseValue = { data: unknown; error: null | { code?: string; message?: string } };
 
@@ -668,5 +682,112 @@ describe('documentStateGateway mutations', () => {
         reason: 'restore',
       })
     ).rejects.toBeInstanceOf(DocumentReadOnlyError);
+  });
+});
+
+describe('documentStateGateway chunked uploads', () => {
+  const rpcArgs = {
+    p_upload_id: UPDATE_A,
+    p_document_id: DOCUMENT_ID,
+    p_epoch: 2,
+    p_total_bytes: 262_145,
+    p_chunk_count: 3,
+    p_sha256: 'a'.repeat(64),
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it.each([
+    ['uploading', [2, 0], [0, 2]],
+    ['ready', [2, 1, 0], [0, 1, 2]],
+    ['committed', [], []],
+  ] as const)('prepares %s manifests with strict sorted indexes', async (status, indexes, expected) => {
+    const { client, calls } = makeSupabase({
+      rpc: { data: { status, receivedIndexes: indexes }, error: null },
+    });
+    await expect(prepareDocumentYjsUpdateUpload(client, uploadManifest)).resolves.toEqual({
+      status,
+      receivedIndexes: expected,
+    });
+    expect(calls).toContainEqual({
+      kind: 'rpc:prepare_document_yjs_update_upload',
+      value: rpcArgs,
+    });
+  });
+
+  it('puts chunks with exact parameters and validates the count', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: { data: { receivedCount: 2 }, error: null },
+    });
+    await expect(putDocumentYjsUpdateChunk(client, {
+      manifest: uploadManifest,
+      chunkIndex: 1,
+      chunkBase64: 'AQI=',
+      chunkSha256: 'b'.repeat(64),
+    })).resolves.toEqual({ receivedCount: 2 });
+    expect(calls).toContainEqual({
+      kind: 'rpc:put_document_yjs_update_chunk',
+      value: {
+        ...rpcArgs,
+        p_chunk_index: 1,
+        p_chunk_base64: 'AQI=',
+        p_chunk_sha256: 'b'.repeat(64),
+      },
+    });
+  });
+
+  it.each(['uploading', 'ready', 'committed', 'expired'] as const)(
+    'parses %s authoritative status',
+    async (status) => {
+      const missingIndexes = status === 'uploading' || status === 'expired' ? [2, 0] : [];
+      const { client, calls } = makeSupabase({
+        rpc: { data: { status, missingIndexes }, error: null },
+      });
+      await expect(getDocumentYjsUpdateUploadStatus(client, uploadManifest)).resolves.toEqual({
+        status,
+        missingIndexes: missingIndexes.length ? [0, 2] : [],
+      });
+      expect(calls).toContainEqual({
+        kind: 'rpc:get_document_yjs_update_upload_status',
+        value: rpcArgs,
+      });
+    }
+  );
+
+  it('finalizes only an explicit committed result', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: { data: { status: 'committed' }, error: null },
+    });
+    await expect(finalizeDocumentYjsUpdateUpload(client, uploadManifest)).resolves.toEqual({
+      status: 'committed',
+    });
+    expect(calls).toContainEqual({
+      kind: 'rpc:finalize_document_yjs_update_upload',
+      value: rpcArgs,
+    });
+  });
+
+  it.each([
+    [{ status: 'unknown', receivedIndexes: [] }, prepareDocumentYjsUpdateUpload],
+    [{ status: 'uploading', receivedIndexes: [0, 0] }, prepareDocumentYjsUpdateUpload],
+    [{ status: 'uploading', missingIndexes: [3] }, getDocumentYjsUpdateUploadStatus],
+    [{ receivedCount: 4 }, (client: SupabaseClient) => putDocumentYjsUpdateChunk(client, {
+      manifest: uploadManifest,
+      chunkIndex: 0,
+      chunkBase64: 'AQI=',
+      chunkSha256: 'b'.repeat(64),
+    })],
+    [{ status: 'ready' }, finalizeDocumentYjsUpdateUpload],
+  ] as const)('rejects malformed RPC response %#', async (data, operation) => {
+    const { client } = makeSupabase({ rpc: { data, error: null } });
+    await expect(operation(client, uploadManifest)).rejects.toBeInstanceOf(DocumentAccessError);
+  });
+
+  it.each([
+    ['PT409', DocumentStateConflictError],
+    ['42501', DocumentReadOnlyError],
+  ] as const)('maps upload RPC %s failures', async (code, ErrorType) => {
+    const { client } = makeSupabase({ rpc: { data: null, error: { code, message: 'failed' } } });
+    await expect(prepareDocumentYjsUpdateUpload(client, uploadManifest)).rejects.toBeInstanceOf(ErrorType);
   });
 });

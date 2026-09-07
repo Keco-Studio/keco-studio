@@ -6,6 +6,16 @@ import {
   encodeBase64,
 } from '@/lib/documents/documentCollaborationProtocol';
 import { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
+import {
+  createChunkedUpdateManifest,
+  sliceChunkedUpdate,
+  type ChunkedDocumentUpdateManifest,
+} from '@/lib/documents/documentChunkedUpdate';
+import {
+  recoveryRecordKey,
+  type DocumentUpdateRecoveryRecord,
+  type DocumentUpdateRecoveryStore,
+} from '@/lib/documents/documentUpdateRecoveryStore';
 import { validateSanctionedMdxAstNode } from '@/lib/documents/sanctionedMdx';
 import type {
   AuthoritativeDocumentState,
@@ -27,6 +37,25 @@ function encodedRoot(text = 'seed'): string {
   const encoded = encodeBase64(Y.encodeStateAsUpdate(doc));
   doc.destroy();
   return encoded;
+}
+
+async function largeRecoveryRecord(
+  epoch = 2,
+  updateId = '99999999-9999-4999-8999-999999999999'
+): Promise<DocumentUpdateRecoveryRecord> {
+  const doc = new Y.Doc();
+  doc.getMap('large-recovery').set('body', `marker:${'中'.repeat(90_000)}`);
+  const bytes = Y.encodeStateAsUpdate(doc);
+  doc.destroy();
+  const manifest = await createChunkedUpdateManifest(
+    { updateId, documentId: DOCUMENT_ID, userId: USER_ID, epoch },
+    bytes
+  );
+  return {
+    ...manifest,
+    bytes,
+    createdAt: '2026-09-07T00:00:00.000Z',
+  };
 }
 
 function collaborativeState(): AuthoritativeDocumentState {
@@ -190,6 +219,31 @@ function setCalloutType(doc: Y.Doc, type: string): void {
 
 type Handler = (message: { payload: unknown }) => void | Promise<void>;
 
+class MemoryRecoveryStore implements DocumentUpdateRecoveryStore {
+  readonly records = new Map<string, DocumentUpdateRecoveryRecord>();
+  readonly events: string[];
+  readonly put = jest.fn(async (record: DocumentUpdateRecoveryRecord) => {
+    this.events.push(`put:${record.updateId}`);
+    this.records.set(recoveryRecordKey(record), { ...record, bytes: record.bytes.slice() });
+  });
+  readonly listForDocument = jest.fn(async (userId: string, documentId: string) =>
+    [...this.records.values()]
+      .filter((record) => record.userId === userId && record.documentId === documentId)
+      .sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt) || left.updateId.localeCompare(right.updateId)
+      )
+      .map((record) => ({ ...record, bytes: record.bytes.slice() }))
+  );
+  readonly delete = jest.fn(async (key: string) => {
+    this.events.push(`delete:${key.split(':').at(-1)}`);
+    this.records.delete(key);
+  });
+
+  constructor(events: string[] = []) {
+    this.events = events;
+  }
+}
+
 class FakeChannel {
   readonly handlers = new Map<string, Handler>();
   readonly httpSend = jest.fn(async (_event: string, _payload?: unknown) => ({ success: true }));
@@ -231,6 +285,27 @@ function makeHarness(overrides: {
   ) => Promise<{ acceptedIds: string[] }>;
   compact?: () => Promise<AuthoritativeDocumentState>;
   replace?: () => Promise<AuthoritativeDocumentState>;
+  recoveryStore?: DocumentUpdateRecoveryStore;
+  uploadConcurrency?: number;
+  uploadRetryAttempts?: number;
+  prepareUpdateUpload?: (
+    manifest: ChunkedDocumentUpdateManifest
+  ) => Promise<{ status: 'uploading' | 'ready' | 'committed'; receivedIndexes: number[] }>;
+  putUpdateChunk?: (input: {
+    manifest: ChunkedDocumentUpdateManifest;
+    chunkIndex: number;
+    chunkBase64: string;
+    chunkSha256: string;
+  }) => Promise<{ receivedCount: number }>;
+  getUpdateUploadStatus?: (
+    manifest: ChunkedDocumentUpdateManifest
+  ) => Promise<{
+    status: 'uploading' | 'ready' | 'committed' | 'expired';
+    missingIndexes: number[];
+  }>;
+  finalizeUpdateUpload?: (
+    manifest: ChunkedDocumentUpdateManifest
+  ) => Promise<{ status: 'committed' }>;
 } = {}) {
   const channels: FakeChannel[] = [];
   const channelStatusAt = (index: number) =>
@@ -265,6 +340,27 @@ function makeHarness(overrides: {
           acceptedIds: input.updates.map((update) => update.id),
         }))
     ),
+    prepareUpdateUpload: jest.fn(async (_client: SupabaseClient, manifest: ChunkedDocumentUpdateManifest) =>
+      overrides.prepareUpdateUpload?.(manifest) ?? {
+        status: 'uploading' as const,
+        receivedIndexes: [],
+      }
+    ),
+    putUpdateChunk: jest.fn(async (_client: SupabaseClient, input: {
+      manifest: ChunkedDocumentUpdateManifest;
+      chunkIndex: number;
+      chunkBase64: string;
+      chunkSha256: string;
+    }) => overrides.putUpdateChunk?.(input) ?? { receivedCount: input.chunkIndex + 1 }),
+    getUpdateUploadStatus: jest.fn(async (_client: SupabaseClient, manifest: ChunkedDocumentUpdateManifest) =>
+      overrides.getUpdateUploadStatus?.(manifest) ?? {
+        status: 'ready' as const,
+        missingIndexes: [],
+      }
+    ),
+    finalizeUpdateUpload: jest.fn(async (_client: SupabaseClient, manifest: ChunkedDocumentUpdateManifest) =>
+      overrides.finalizeUpdateUpload?.(manifest) ?? { status: 'committed' as const }
+    ),
     compact: jest.fn(
       overrides.compact ??
         (async () => ({
@@ -298,6 +394,10 @@ function makeHarness(overrides: {
     compactionJitterRatio: 0,
     reconnectBackoffMs: overrides.reconnectBackoffMs ?? 100,
     reconnectJitterRatio: 0,
+    recoveryStore: overrides.recoveryStore,
+    uploadConcurrency: overrides.uploadConcurrency,
+    uploadRetryAttempts: overrides.uploadRetryAttempts,
+    uploadDelay: async () => undefined,
     onCompacted,
     onStateReplaced,
   });
@@ -2325,4 +2425,228 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
     expect(harness.session.status).toBe('closed');
   });
+
+  it('keeps small updates on append and persists large updates before chunk upload without broadcast', async () => {
+    const events: string[] = [];
+    const recoveryStore = new MemoryRecoveryStore(events);
+    const harness = makeHarness({
+      recoveryStore,
+      prepareUpdateUpload: async (manifest) => {
+        events.push(`prepare:${manifest.updateId}`);
+        return { status: 'uploading', receivedIndexes: [] };
+      },
+    });
+    await connectReady(harness.session);
+    harness.session.doc.getMap('local').set('small', true);
+    await harness.session.flush();
+    expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
+
+    harness.gateway.appendUpdates.mockClear();
+    harness.channel.httpSend.mockClear();
+    harness.session.doc.getMap('large').set('body', `large:${'中'.repeat(90_000)}`);
+    await harness.session.flush();
+
+    expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
+    expect(harness.gateway.putUpdateChunk).toHaveBeenCalledTimes(3);
+    expect(events[0]!.startsWith('put:')).toBe(true);
+    expect(events[1]!.startsWith('prepare:')).toBe(true);
+    expect(events[0]!.slice(4)).toBe(events[1]!.slice(8));
+    expect(recoveryStore.records.size).toBe(0);
+    expect(harness.channel.httpSend.mock.calls.some(([event]) => event === 'yjs-update')).toBe(false);
+  });
+
+  it('uploads only missing chunks with bounded concurrency', async () => {
+    const recoveryStore = new MemoryRecoveryStore();
+    let active = 0;
+    let maximum = 0;
+    const uploaded: number[] = [];
+    let releaseFirstWave!: () => void;
+    const firstWave = new Promise<void>((resolve) => {
+      releaseFirstWave = resolve;
+    });
+    const harness = makeHarness({
+      recoveryStore,
+      uploadConcurrency: 3,
+      prepareUpdateUpload: async () => ({ status: 'uploading', receivedIndexes: [0, 2] }),
+      putUpdateChunk: async ({ chunkIndex }) => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        uploaded.push(chunkIndex);
+        if (maximum === 3) releaseFirstWave();
+        await firstWave;
+        active -= 1;
+        return { receivedCount: uploaded.length + 2 };
+      },
+    });
+    await connectReady(harness.session);
+    harness.session.doc.getMap('large').set('body', '中'.repeat(300_000));
+    await harness.session.flush();
+
+    const chunkCount = harness.gateway.prepareUpdateUpload.mock.calls[0]![1].chunkCount;
+    expect(chunkCount).toBeGreaterThan(3);
+    expect(uploaded.sort((left, right) => left - right)).toEqual(
+      Array.from({ length: chunkCount }, (_, index) => index).filter((index) => index !== 0 && index !== 2)
+    );
+    expect(maximum).toBe(3);
+  });
+
+  it('uses status after a lost put response and never resends the stored chunk', async () => {
+    const received = new Set<number>();
+    const attempts = new Map<number, number>();
+    const harness = makeHarness({
+      recoveryStore: new MemoryRecoveryStore(),
+      putUpdateChunk: async ({ chunkIndex }) => {
+        attempts.set(chunkIndex, (attempts.get(chunkIndex) ?? 0) + 1);
+        received.add(chunkIndex);
+        if (chunkIndex === 1 && attempts.get(chunkIndex) === 1) {
+          throw new Error('response lost');
+        }
+        return { receivedCount: received.size };
+      },
+      getUpdateUploadStatus: async (manifest) => ({
+        status: received.size === manifest.chunkCount ? 'ready' : 'uploading',
+        missingIndexes: Array.from({ length: manifest.chunkCount }, (_, index) => index)
+          .filter((index) => !received.has(index)),
+      }),
+    });
+    await connectReady(harness.session);
+    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    await harness.session.flush();
+
+    expect(attempts.get(1)).toBe(1);
+    expect(harness.gateway.getUpdateUploadStatus).toHaveBeenCalled();
+    expect(harness.gateway.finalizeUpdateUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves a lost finalize response through committed status without duplicate application', async () => {
+    let committed = false;
+    const recoveryStore = new MemoryRecoveryStore();
+    const harness = makeHarness({
+      recoveryStore,
+      finalizeUpdateUpload: async () => {
+        committed = true;
+        throw new Error('finalize response lost');
+      },
+      getUpdateUploadStatus: async () => ({
+        status: committed ? 'committed' : 'ready',
+        missingIndexes: [],
+      }),
+    });
+    await connectReady(harness.session);
+    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    await harness.session.flush();
+
+    expect(harness.gateway.finalizeUpdateUpload).toHaveBeenCalledTimes(1);
+    expect(recoveryStore.delete).toHaveBeenCalledTimes(1);
+    expect(harness.session.hasPendingChanges).toBe(false);
+  });
+
+  it('retains recovery after retry exhaustion and resumes the same upload id', async () => {
+    let failing = true;
+    const ids: string[] = [];
+    const recoveryStore = new MemoryRecoveryStore();
+    const harness = makeHarness({
+      recoveryStore,
+      uploadRetryAttempts: 2,
+      prepareUpdateUpload: async (manifest) => {
+        ids.push(manifest.updateId);
+        return { status: 'uploading', receivedIndexes: [] };
+      },
+      putUpdateChunk: async ({ chunkIndex }) => {
+        if (failing) throw new Error('offline');
+        return { receivedCount: chunkIndex + 1 };
+      },
+      getUpdateUploadStatus: async (manifest) => ({
+        status: failing ? 'uploading' : 'ready',
+        missingIndexes: failing
+          ? Array.from({ length: manifest.chunkCount }, (_, index) => index)
+          : [],
+      }),
+    });
+    await connectReady(harness.session);
+    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    await expect(harness.session.flush()).rejects.toThrow('offline');
+    expect(harness.session.status).toBe('degraded');
+    expect(recoveryStore.records.size).toBe(1);
+
+    failing = false;
+    await harness.session.retry();
+    expect(new Set(ids).size).toBe(1);
+    expect(recoveryStore.records.size).toBe(0);
+    expect(harness.session.hasPendingChanges).toBe(false);
+  });
+
+  it('starts no upload when local recovery persistence fails', async () => {
+    const recoveryStore = new MemoryRecoveryStore();
+    recoveryStore.put.mockRejectedValueOnce(new Error('IndexedDB write failed'));
+    const harness = makeHarness({ recoveryStore });
+    await connectReady(harness.session);
+    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+
+    await expect(harness.session.flush()).rejects.toThrow('IndexedDB write failed');
+    expect(harness.gateway.prepareUpdateUpload).not.toHaveBeenCalled();
+    expect(harness.session.hasPendingChanges).toBe(true);
+  });
+
+  it('recovers a same-epoch committed record before becoming ready and deletes it afterward', async () => {
+    const recoveryStore = new MemoryRecoveryStore();
+    const record = await largeRecoveryRecord();
+    recoveryStore.records.set(recoveryRecordKey(record), record);
+    const harness = makeHarness({
+      recoveryStore,
+      getUpdateUploadStatus: async () => ({ status: 'committed', missingIndexes: [] }),
+    });
+    await connectReady(harness.session);
+
+    expect(harness.session.doc.getMap('large-recovery').get('body')).toBe(
+      `marker:${'中'.repeat(90_000)}`
+    );
+    expect(recoveryStore.records.size).toBe(0);
+    expect(harness.gateway.prepareUpdateUpload).not.toHaveBeenCalled();
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('rebases a large recovered update onto a one-step normalization epoch', async () => {
+    const recoveryStore = new MemoryRecoveryStore();
+    const old = await largeRecoveryRecord(2);
+    recoveryStore.records.set(recoveryRecordKey(old), old);
+    const normalized = {
+      ...collaborativeState(),
+      token: { epoch: 3, revision: 5 },
+      epochReason: 'normalization' as const,
+    };
+    const harness = makeHarness({ state: normalized, recoveryStore });
+    await connectReady(harness.session);
+
+    const newManifest = harness.gateway.prepareUpdateUpload.mock.calls[0]![1];
+    expect(newManifest.epoch).toBe(3);
+    expect(newManifest.updateId).not.toBe(old.updateId);
+    expect(recoveryStore.records.size).toBe(0);
+    expect(harness.session.doc.getMap('large-recovery').get('body')).toBe(
+      `marker:${'中'.repeat(90_000)}`
+    );
+  });
+
+  it.each(['restore', 'agent'] as const)(
+    'retains recovered data and fails closed across an incompatible %s epoch',
+    async (epochReason) => {
+      const recoveryStore = new MemoryRecoveryStore();
+      const old = await largeRecoveryRecord(2);
+      recoveryStore.records.set(recoveryRecordKey(old), old);
+      const replacement = {
+        ...collaborativeState(),
+        token: { epoch: 3, revision: 5 },
+        epochReason,
+      };
+      const harness = makeHarness({ state: replacement, recoveryStore });
+      const connecting = harness.session.connect();
+      await Promise.resolve();
+      harness.session.attachBinding();
+
+      await expect(connecting).rejects.toBeInstanceOf(DocumentStateConflictError);
+      expect(recoveryStore.records.size).toBe(1);
+      expect(harness.gateway.prepareUpdateUpload).not.toHaveBeenCalled();
+      expect(harness.session.status).toBe('error');
+    }
+  );
 });
