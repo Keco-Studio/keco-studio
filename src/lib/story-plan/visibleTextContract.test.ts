@@ -32,6 +32,14 @@ describe('visible story text contract', () => {
     expect(manifest.items.some((item) => item.text === 'Chapter One')).toBe(false);
   });
 
+  it('strips leading stage-direction parentheses from narration while keeping dialogue text', () => {
+    const source = segmentStorySource('【Start｜Opening】\n（Type1・Guide）Begin.', 'fixture');
+    const manifest = buildVisibleTextManifest(source);
+
+    expect(manifest.items.map((item) => item.text)).toEqual(['Begin.']);
+    expect(manifest.items.every((item) => item.text === source.content.slice(item.start, item.end))).toBe(true);
+  });
+
   it('accepts extensions but rejects omissions and any non-identical source text', () => {
     const source = segmentStorySource('Guide: Welcome, traveler.\nThe door opens.', 'fixture');
     const manifest = buildVisibleTextManifest(source);

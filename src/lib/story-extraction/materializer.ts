@@ -9,7 +9,6 @@ import type {
 } from './schema';
 import { resolveProtagonistSpeaker } from './roles';
 import {
-  auditVisibleText,
   buildVisibleTextManifest,
 } from '@/lib/story-plan/visibleTextContract';
 
@@ -152,18 +151,26 @@ export function materializeStoryExtraction(
   }
 
   if (options.enforceVisibleTextContract) {
-    const visibleTextAudit = auditVisibleText(
-      buildVisibleTextManifest(source),
-      extraction.nodes.flatMap((node) => [
-        ...(node.speaker.length > 0 ? [node.speaker] : []),
-        ...(node.content.length > 0 ? [node.content] : []),
-      ]).concat(extraction.choices.map((choice) => choice.text)),
-    );
-    for (const issue of visibleTextAudit.issues) {
-      const requirement = source.segments.find((segment) => segment.id === issue.segmentId);
+    // Walk nodes with their outbound choices so choice text is emitted with its
+    // owner node. Branching graphs place every option at the decision node, so
+    // presence (not source order) is the enforceable materialization contract;
+    // ordered audits remain guidance for the Semantic Auditor prompt.
+    const visibleTextStream: string[] = [];
+    for (const node of extraction.nodes) {
+      if (node.speaker.length > 0) visibleTextStream.push(node.speaker);
+      if (node.content.length > 0) visibleTextStream.push(node.content);
+      for (const choice of choicesByNode.get(node.id) ?? []) {
+        if (choice.text.length > 0) visibleTextStream.push(choice.text);
+      }
+    }
+    const rendered = visibleTextStream.join('\n');
+    const manifest = buildVisibleTextManifest(source);
+    for (const item of manifest.items) {
+      if (rendered.includes(item.text)) continue;
+      const requirement = source.segments.find((segment) => segment.id === item.segmentId);
       push(
         'visible_text_mismatch',
-        `Player-visible source text must appear verbatim: ${JSON.stringify(issue.text)}`,
+        `Player-visible source text must appear verbatim: ${JSON.stringify(item.text)}`,
         requirement ? [requirement.unitId] : [],
         [],
       );

@@ -318,7 +318,10 @@ test.describe('Column operations and double-click rename', () => {
     await expect(projectTrigger).toBeVisible();
     await projectTrigger.click();
     await expect(
-      page.getByRole('menuitemradio').filter({ hasText: newProjectName }).first()
+      page
+        .getByRole('menuitemradio')
+        .locator(`[title="${newProjectName}"]`)
+        .first()
     ).toBeVisible({ timeout: 20000 });
     await page.keyboard.press('Escape').catch(() => {});
 

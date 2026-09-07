@@ -56,15 +56,24 @@ export function buildVisibleTextManifest(
       .sort((left, right) => left.start - right.start || left.end - right.end)
       .flatMap((segment) => {
         const text = visibleTextForSegment(segment);
-        return text === null ? [] : [{
+        if (text === null) return [];
+        let start = segment.start;
+        let end = segment.end;
+        if (text !== segment.text) {
+          const relativeStart = segment.text.indexOf(text);
+          if (relativeStart < 0) return [];
+          start = segment.start + relativeStart;
+          end = start + text.length;
+        }
+        return [{
           id: `${source.sourceId}:${segment.id}`,
           segmentId: segment.id,
           unitId: segment.unitId,
           kind: segment.kind,
           sourceText: segment.text,
           text,
-          start: segment.start,
-          end: segment.end,
+          start,
+          end,
         }];
       }),
   };
@@ -133,6 +142,7 @@ function visibleTextForSegment(segment: SourceSegment): string | null {
   let text = segment.text;
   if (segment.kind === 'narration') {
     text = text
+      .replace(/^[（(][^）)]*[）)]\s*/, '')
       .replace(/\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g, '')
       .replace(/^\s*[-*+]\s+/, '')
       .replace(/[\s,.!;:]*when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)[\s,.!;:]*(?:run|set|execute)?[\s,.!;:]*$/i, '')

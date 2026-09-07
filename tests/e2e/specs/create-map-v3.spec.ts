@@ -840,7 +840,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     backend.failNextValidation = true;
     await loginAndOpen(page, backend);
     await createSavedMap(page);
-    await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+    const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
+    await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
     await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
     await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
     await expect(page.getByText('Generation failed', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -892,7 +893,8 @@ test.describe('Create Map V3 mocked workflow', () => {
     await generateReadyMap(page);
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible({ timeout: 5_000 });
     const prior = backend.readyAssets()[0];
-    await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+    const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
+    await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
     await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toBeVisible();
     await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
     await expect(page.getByText('Map ready', { exact: true })).toBeVisible({ timeout: 10_000 });

@@ -1013,7 +1013,10 @@ async function completeStoryPlanLlm(
   throw new Error('Story import LLM call budget exhausted.');
 }
 
-function parseModelJson(raw: string): unknown {
+function parseModelJson(raw: string | null | undefined): unknown {
+  if (typeof raw !== 'string') {
+    throw new Error('Model output must be one plain JSON object');
+  }
   const trimmed = raw.trim();
   if (!trimmed || trimmed.startsWith('```') || trimmed.endsWith('```')) {
     throw new Error('Model output must be one plain JSON object');

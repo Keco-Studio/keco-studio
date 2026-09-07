@@ -289,6 +289,9 @@ test.describe.serial('Document references smoke', () => {
     await editor.click();
 
     await insertTableReference(page);
+    const projectedTable = page.getByRole('table', { name: TABLE_NAME });
+    await expect(projectedTable).toBeVisible();
+    await expect(projectedTable).toContainText(TABLE_LABEL);
     await expect(page.getByRole('link', { name: TABLE_REFERENCE_NAME }))
       .toHaveText(TABLE_LABEL);
 

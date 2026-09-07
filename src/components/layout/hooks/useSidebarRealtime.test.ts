@@ -164,8 +164,11 @@ function createSupabaseFake() {
 function createHookSetup() {
   const realtime = createSupabaseFake();
   const router = { push: jest.fn() };
+  const projects = [{ id: 'p1' }, { id: 'p2' }];
   const queryClient = {
-    getQueryData: jest.fn(() => [{ id: 'p1' }, { id: 'p2' }]),
+    getQueryData: jest.fn(() => projects),
+    getQueriesData: jest.fn(() => [[['projects', 'user-1'], projects]] as const),
+    setQueriesData: jest.fn(),
     invalidateQueries: jest.fn(async () => undefined),
     refetchQueries: jest.fn(async () => undefined),
     setQueryData: jest.fn(),

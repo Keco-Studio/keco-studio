@@ -189,7 +189,7 @@ describe('ResourceReferenceEditor', () => {
     expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
   });
 
-  it('renders one table-row reference as a plain table without a first-column asset deeplink', () => {
+  it('renders one table-row reference as a projected table with a first-column asset deeplink', () => {
     const resolved = tableReference(TABLE_TARGET, {
       'name-field': 'Ada Lovelace',
       'status-field': null,
@@ -214,8 +214,18 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain('aria-label="Characters"');
     expect(markup).toContain('role="columnheader"');
     expect(markup).toContain('>Ada Lovelace<');
-    expect(markup).not.toContain('href="/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111?asset=22222222-2222-4222-8222-222222222222"');
-    expect(nextLink).toHaveBeenCalledWith('/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111');
+    expect(markup).toContain(
+      'href="/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111?asset=22222222-2222-4222-8222-222222222222"'
+    );
+    expect(markup).toContain(
+      'aria-label="Characters / Ada Lovelace: Ada Lovelace"'
+    );
+    expect(nextLink).toHaveBeenCalledWith(
+      '/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111?asset=22222222-2222-4222-8222-222222222222'
+    );
+    expect(nextLink).toHaveBeenCalledWith(
+      '/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/11111111-1111-4111-8111-111111111111'
+    );
   });
 
   it('renders grouped occurrences as ordered rows and suppresses later projections', () => {
