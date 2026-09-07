@@ -27,4 +27,4 @@ Consolidate only the approved Keco Godot Slice V2 planning prompts and reference
 
 ## Result
 
-The exact Codex corpus is 616 physical lines, 498 non-blank lines, and 3,820 words. Focused plugin suites, 30-case shared conformance across both Python runtimes, Codex/Claude repository parity, installed Codex and Claude cache parity, and canonical template byte checks passed. Provider-backed Skill behavior evaluation remains unrun for the missing harness/provider credentials.
+The exact Codex corpus is 616 physical lines, 500 non-blank lines, and 3,864 words. Focused plugin suites, the shared conformance corpus across both Python runtimes, Codex/Claude repository parity, installed Codex cache parity after the supported cachebuster/reinstall flow, and canonical template byte checks passed. Provider-backed evaluation ran for both providers at the required sample count but failed its behavior gate: Codex returned TLS reconnect text with no scorable JSON, while Claude's current-skill assertion rate was 0.0833 against the fixture contract.

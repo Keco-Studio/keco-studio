@@ -5,9 +5,10 @@ description: Run Keco Godot Slice V2 preflight for source identity, planning doc
 
 # Keco Godot Slice Preflight
 
-Read the [shared interaction contract](../../references/interaction-contract.md)
-before mutating work. It owns user language, intent summary, progress, blockers,
-and resume interaction. Preflight owns SourceProfile selection and hashes,
+Read the [shared interaction contract](../../references/interaction-contract.md) before expensive or mutating work.
+Summarize Goal, Source, Scope, Success, and Next
+in the user's language; keep progress to Completed, Current, Next, and Blocker.
+Machine artifacts retain IDs, hashes, write tokens, raw MCP arguments, and evidence. Preflight owns SourceProfile selection and hashes,
 planning-root/direct-child discovery, roadmap/spec/plan bindings, GDD
 Requirement Inventory, non-GDD rationale, multi-Slice decomposition,
 SlicePlan/EvalSpec validation, repository identity, dirty paths, write-lease

@@ -223,8 +223,8 @@
   ],
   "measurements": {
     "before": {"physicalLines": 736, "nonBlankLines": 568, "words": 5120},
-    "after": {"physicalLines": 616, "nonBlankLines": 498, "words": 3820},
-    "reduction": {"physicalLines": 120, "nonBlankLines": 70, "words": 1300},
+    "after": {"physicalLines": 616, "nonBlankLines": 500, "words": 3864},
+    "reduction": {"physicalLines": 120, "nonBlankLines": 68, "words": 1256},
     "target": {"physicalLines": "571-616", "nonBlankLines": "<=500", "words": "<=4300"}
   },
   "audit": {
@@ -233,7 +233,7 @@
     "codexClaudeMirrorsSynchronized": true,
     "installedCodexCacheParity": true,
     "installedClaudeCacheParity": true,
-    "behaviorEvaluation": "not run: repository evals harness and configured model provider credentials are unavailable",
-    "notes": "Each shortened concern above points to one canonical owner and machine evidence; duplicate phase boilerplate, repeated payload descriptions, and repeated folder examples were removed only where the owner retained the behavior. The follow-up review restored finalize_slice(delivery), source reread/display-name gates, stable document history, and a parseable RunContext example. Final editorial pass retained readable YAML and brought the corpus to the approved upper line bound."
+    "behaviorEvaluation": "completed with both configured providers at 5 samples per 12 cases x 2 variants; Codex produced TLS stream reconnect text with zero scorable JSON (assertion rate 0), and Claude produced valid but fixture-nonconforming JSON (current-skill assertion rate 0.0833), so both provider runs failed the behavior gate",
+    "notes": "Each shortened concern above points to one canonical owner and machine evidence; duplicate phase boilerplate, repeated payload descriptions, and repeated folder examples were removed only where the owner retained the behavior. The follow-up review restored finalize_slice(delivery), source reread/display-name gates, stable document history, and a parseable RunContext example. Final review restored required entry routing/artifact wording, refreshed the installed cache through the supported cachebuster flow, and retained readable prompt prose within the approved targets."
   }
 }
