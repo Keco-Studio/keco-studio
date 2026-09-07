@@ -119,12 +119,17 @@ npm install
 ### 2. Start the local Supabase service
 
 ```bash
-supabase start
-npm run supabase:realtime-pool
+npm run supabase:start
 ```
+
+This runs `supabase start` and then configures the local Realtime authorization pool
+(`db_pool=10`). Prefer this over bare `supabase start` — without the pool step,
+opening documents can show `Connection interrupted; changes are pending` /
+`Document channel channel_error`.
 
 On first run, Docker images will be pulled automatically. This may take several minutes.
 The pool command is local-only and requires Docker; it configures this project's local Realtime container.
+`npm run dev` also runs a soft ensure of the same pool before Next.js starts.
 
 After startup, the terminal will output:
 
@@ -151,11 +156,11 @@ Database migrations are applied automatically when Supabase starts.
 To reset the database and reapply migrations manually:
 
 ```bash
-supabase db reset
-npm run supabase:realtime-pool
+npm run supabase:reset
 ```
 
-Run the local-only pool command after every reset so the Docker Realtime service uses the expected authorization pool size.
+Prefer this over bare `supabase db reset`. The self-host Realtime seed can wipe
+`db_pool`, and the wrapped command restores it automatically.
 
 ---
 
@@ -212,6 +217,21 @@ supabase stop
 * Make sure no other Supabase or PostgreSQL services are running locally
 
 * You can run:
+
+### 2b. Production: `Connection interrupted` / `Document channel channel_error`
+
+Hosted Supabase private channels (document collaboration + project sidebar) authorize
+each join through Realtime's **Database connection pool**. If that pool is too small,
+clients get `CHANNEL_ERROR` / `IncreaseConnectionPool` and the yellow banner appears.
+
+Fix in the **production** Supabase project (not local scripts):
+
+1. Open [Realtime Settings](https://supabase.com/dashboard/project/_/settings/realtime)
+2. Raise **Database connection pool size** (try `20`–`40` first; stay under DB `max_connections`)
+3. Optionally check Realtime Reports for authorization queue timeouts
+4. Deploy the client fix that avoids rejoining healthy document channels on every window focus
+
+Local `npm run supabase:realtime-pool` does **not** change hosted projects.
 
   ```bash
   supabase stop

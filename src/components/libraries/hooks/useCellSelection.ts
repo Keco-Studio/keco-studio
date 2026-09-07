@@ -199,6 +199,116 @@ export function useCellSelection({
       if (selectedCells.has(cellKey) && target.closest('[data-reference-background="true"]')) {
         return;
       }
+
+      // Already the sole selected cell: allow native text selection / partial copy.
+      // Promote to multi-cell rectangle drag only when the pointer enters another cell.
+      const isAlreadySingleSelected =
+        selectedCells.size === 1 && selectedCells.has(cellKey);
+      if (isAlreadySingleSelected) {
+        let promoted = false;
+        let dragFrame: number | null = null;
+
+        const finishCellDrag = () => {
+          if (!isDraggingCellsRef.current) return;
+          isDraggingCellsRef.current = false;
+          if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+          document.body.style.userSelect = '';
+          const allRowsForSelection = getAllRowsForCellSelection();
+          const endCell = dragCurrentCellRef.current || { rowId, propertyKey };
+          const startRowIndex = tableIndexes.rowIndexById.get(rowId) ?? -1;
+          const endRowIndex = tableIndexes.rowIndexById.get(endCell.rowId) ?? -1;
+          const startPropertyIndex = tableIndexes.propertyIndexByKey.get(propertyKey) ?? -1;
+          const endPropertyIndex = tableIndexes.propertyIndexByKey.get(endCell.propertyKey) ?? -1;
+          if (
+            startRowIndex !== -1 &&
+            endRowIndex !== -1 &&
+            startPropertyIndex !== -1 &&
+            endPropertyIndex !== -1
+          ) {
+            const rowStart = Math.min(startRowIndex, endRowIndex);
+            const rowEnd = Math.max(startRowIndex, endRowIndex);
+            const propStart = Math.min(startPropertyIndex, endPropertyIndex);
+            const propEnd = Math.max(startPropertyIndex, endPropertyIndex);
+            const cellsToSelect = new Set<CellKey>();
+            for (let r = rowStart; r <= rowEnd; r++) {
+              const row = allRowsForSelection[r];
+              for (let p = propStart; p <= propEnd; p++) {
+                const property = orderedProperties[p];
+                cellsToSelect.add(`${row.id}-${property.key}`);
+              }
+            }
+            setSelectedCells(cellsToSelect);
+          } else {
+            setSelectedCells(new Set<CellKey>([`${rowId}-${propertyKey}` as CellKey]));
+          }
+          setDragStartCell(null);
+          setDragCurrentCell(null);
+          dragCurrentCellRef.current = null;
+        };
+
+        const dragMoveHandler = (moveEvent: MouseEvent) => {
+          const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+          if (!elementBelow) return;
+          const cellElement = elementBelow.closest('td');
+          if (!cellElement) return;
+          const rowElement = cellElement.closest('tr');
+          if (
+            !rowElement ||
+            rowElement.classList.contains('headerRowTop') ||
+            rowElement.classList.contains('headerRowBottom') ||
+            rowElement.classList.contains('editRow') ||
+            rowElement.classList.contains('addRow')
+          ) {
+            return;
+          }
+          const currentRowId = rowElement.getAttribute('data-row-id');
+          const currentPropertyKey = cellElement.getAttribute('data-property-key');
+          if (!currentRowId || !currentPropertyKey) return;
+
+          const newCell = { rowId: currentRowId, propertyKey: currentPropertyKey };
+          if (newCell.rowId === rowId && newCell.propertyKey === propertyKey) {
+            return;
+          }
+
+          if (!promoted) {
+            promoted = true;
+            window.getSelection()?.removeAllRanges();
+            document.body.style.userSelect = 'none';
+            isDraggingCellsRef.current = true;
+            const startCell = { rowId, propertyKey };
+            setDragStartCell(startCell);
+            setDragCurrentCell(newCell);
+            dragCurrentCellRef.current = newCell;
+            return;
+          }
+
+          if (!isDraggingCellsRef.current) return;
+          const currentCell = dragCurrentCellRef.current;
+          if (currentCell?.rowId === newCell.rowId && currentCell.propertyKey === newCell.propertyKey) {
+            return;
+          }
+          dragCurrentCellRef.current = newCell;
+          if (dragFrame === null) {
+            dragFrame = requestAnimationFrame(() => {
+              dragFrame = null;
+              setDragCurrentCell(dragCurrentCellRef.current);
+            });
+          }
+        };
+
+        const dragEndHandler = () => {
+          document.removeEventListener('mousemove', dragMoveHandler);
+          document.removeEventListener('mouseup', dragEndHandler);
+          if (promoted) {
+            finishCellDrag();
+          }
+        };
+
+        document.addEventListener('mousemove', dragMoveHandler);
+        document.addEventListener('mouseup', dragEndHandler);
+        return;
+      }
+
       // UX fix: switch active cell immediately on mousedown (not waiting for click/mouseup).
       // This matches spreadsheet behavior and avoids stale selection during quick drag interactions.
       if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
@@ -695,6 +805,7 @@ export function useCellSelection({
     hoveredCellForExpand,
     setHoveredCellForExpand,
     expandedTextCell,
+    setExpandedTextCell,
     selectionBounds,
     isFillingCellsRef,
 

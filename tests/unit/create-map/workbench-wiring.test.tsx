@@ -11,6 +11,9 @@ jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
 }));
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
+jest.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
+}));
 jest.mock('@/features/create-map/hooks/useMapSources', () => ({
   useMapSources: () => ({ projects: [], documents: [], isLoading: false, error: null }),
 }));
@@ -19,26 +22,70 @@ jest.mock('@/features/create-map/hooks/useSavedMaps', () => ({
   savedMapSwitchBlocked: () => false,
   useSavedMaps: () => ({ maps: [], isLoading: false, error: null, refetch: jest.fn() }),
 }));
+jest.mock('@/features/create-map/hooks/useMapDraft', () => ({
+  createMapDraftAdapterV3: () => ({}),
+  useMapDraft: () => ({
+    identity: null,
+    status: 'idle',
+    isDirty: false,
+    isValid: true,
+    error: null,
+    create: jest.fn(),
+    reset: jest.fn(),
+    install: jest.fn(),
+    reload: jest.fn(),
+  }),
+}));
+jest.mock('@/features/create-map/hooks/useDirectMapGeneration', () => ({
+  useDirectMapGeneration: () => ({
+    phase: 'idle',
+    asset: null,
+    error: null,
+    boundImage: null,
+    canRetry: false,
+    canResolveUnknown: false,
+    generate: jest.fn(),
+    retry: jest.fn(),
+    resolveUnknownAndRestart: jest.fn(),
+    reset: jest.fn(),
+    prepareRestore: jest.fn(),
+    installRestore: jest.fn(),
+  }),
+}));
+jest.mock('@/features/create-map/hooks/useDirectMapCollisionGrid', () => ({
+  useDirectMapCollisionGrid: () => ({
+    phase: 'idle',
+    error: null,
+    overlayVisible: false,
+    paintMode: false,
+    setOverlayVisible: jest.fn(),
+    setPaintMode: jest.fn(),
+    paintCell: jest.fn(),
+    retry: jest.fn(),
+    clearGrid: jest.fn(),
+  }),
+}));
+jest.mock('@/features/create-map/services/createMapService', () => ({
+  createMapService: () => ({
+    listReferences: async () => [],
+    createPlanV3: jest.fn(),
+    loadSavedMapV3: jest.fn(),
+    uploadReference: jest.fn(),
+  }),
+}));
 
 describe('Create Map V3 direct workbench', () => {
-  it('renders the guided direct map workflow without manual draft controls', () => {
+  it('renders the Map Generator shell with browse and plan controls', () => {
     const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
     expect(markup).toContain('data-testid="create-map-workbench"');
     expect(markup).toContain('data-mode="direct"');
     expect(markup).toContain('data-schema-version="3"');
-    expect(markup).toContain('Description');
+    expect(markup).toContain('Map Generator');
+    expect(markup).toContain('Manage and config game assets for game designers.');
     expect(markup).toContain('Select project');
-    expect(markup).toContain('No document');
-    expect(markup).toContain('Generate map plan');
-    expect(markup).toContain('1 Source');
-    expect(markup).toContain('2 Review plan');
-    expect(markup).toContain('3 Generate');
+    expect(markup).toContain('Saved maps');
     expect(markup).toContain('Local plan');
-    expect(markup).toContain('PixelLab description');
-    expect(markup).toContain('Output profile');
-    expect(markup).toContain('References');
-    expect(markup).toContain('Complete map PNG');
     expect(markup).toContain('Map preview');
     expect(markup).not.toContain('Save draft');
     expect(markup).not.toContain('Prepare map generation');
@@ -66,6 +113,7 @@ describe('Create Map V3 direct workbench', () => {
     expect(direct).toContain('service.loadSavedMapV3(');
     expect(direct).toContain('generation.installRestore(prepared)');
     expect(direct).toContain('<DirectMapCanvas');
+    expect(direct).toContain('<MapChatPanel');
     expect(direct).not.toContain('onOpenLegacyMap');
     expect(direct).not.toContain('map.schemaVersion === 2');
   });
@@ -104,12 +152,13 @@ describe('Create Map V3 direct workbench', () => {
       'utf8'
     );
     const projectChangeStart = workbench.indexOf('const handleProjectChange');
-    const projectChangeEnd = workbench.indexOf('\n\n  const createPlan', projectChangeStart);
+    const projectChangeEnd = workbench.indexOf('\n\n  const enterCreateDetail', projectChangeStart);
     const projectChange = workbench.slice(projectChangeStart, projectChangeEnd);
 
     expect(projectChange).toContain("setDocumentId('')");
     expect(projectChange).toContain('draft.reset()');
     expect(projectChange).toContain('generation.reset()');
+    expect(projectChange).toContain("setViewMode('browse')");
   });
 
   it('opens GDD map deep links and disables mutation controls in viewer mode', () => {

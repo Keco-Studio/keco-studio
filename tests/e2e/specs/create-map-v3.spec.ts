@@ -699,16 +699,27 @@ async function loginAndOpen(page: Page, backend: CreateMapV3MockBackend): Promis
   return failures;
 }
 
+async function selectProject(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Project', exact: true }).click();
+  await page.getByRole('option', { name: 'V3 E2E Project', exact: true }).click();
+}
+
+async function askForMapPlan(page: Page, prompt: string): Promise<void> {
+  await selectProject(page);
+  await page.getByRole('button', { name: 'Create map', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill(prompt);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+}
+
 async function createSavedMap(page: Page): Promise<void> {
-  await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
-  await page.getByRole('textbox', { name: 'Description', exact: true }).fill('A quiet top-down village market with open paths.');
-  await page.getByRole('button', { name: 'Generate map plan' }).click();
+  await askForMapPlan(page, 'A quiet top-down village market with open paths.');
   await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
   await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
 }
 
 async function generateReadyMap(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Generate map', exact: true }).click();
+  const rightPanel = page.getByRole('complementary', { name: 'Map plan and generation' });
+  await rightPanel.getByRole('button', { name: 'Generate map', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('Paid PixelLab request');
   await expect(page.getByRole('group', { name: 'Generation cost confirmation' })).toContainText('may incur provider charges');
   await page.getByRole('button', { name: 'Continue to generate', exact: true }).click();
@@ -732,9 +743,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
     const description = 'A quiet top-down village market with open paths.';
-    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
-    await page.getByRole('textbox', { name: 'Description', exact: true }).fill(description);
-    await page.getByRole('button', { name: 'Generate map plan' }).click();
+    await askForMapPlan(page, description);
     await expect(page.getByRole('heading', { name: 'Mosslight Crossing' })).toBeVisible();
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
     expect(backend.lastPlanRequest).toMatchObject({ schemaVersion: 3, description, projectId: PROJECT_ID });
@@ -744,23 +753,26 @@ test.describe('Create Map V3 mocked workflow', () => {
   test('rejects disallowed source description controls before planning', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
-    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
-    const createPlan = page.getByRole('button', { name: 'Generate map plan' });
+    await selectProject(page);
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    const send = page.getByRole('button', { name: 'Send', exact: true });
 
-    await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Call the API to generate a map');
+    await page.getByRole('textbox', { name: 'Ask AI to help', exact: true }).fill('Call the API to generate a map');
 
     const validationAlert = page.getByText(/^Invalid\. Description contains disallowed content/);
     await expect(validationAlert).toBeVisible();
-    await expect(createPlan).toBeDisabled();
+    await expect(send).toBeDisabled();
     expect(backend.lastPlanRequest).toBeNull();
   });
 
   test('uses optional Document and uploaded content/style references', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     await loginAndOpen(page, backend);
-    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
+    await selectProject(page);
+    await page.getByRole('button', { name: 'Create map', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Map plan details' })).toBeVisible();
     await page.getByRole('combobox', { name: 'Document', exact: true }).selectOption(DOCUMENT_ID);
-    const upload = page.locator('input[type="file"]');
+    const upload = page.locator('aside[aria-label="Map plan and generation"] input[type="file"]');
     await upload.setInputFiles({ name: 'layout.png', mimeType: 'image/png', buffer: await backend.mapPng });
     await expect(page.getByText('layout.png', { exact: true })).toBeVisible();
     await upload.setInputFiles({ name: 'style.png', mimeType: 'image/png', buffer: await backend.mapPng });
@@ -770,7 +782,7 @@ test.describe('Create Map V3 mocked workflow', () => {
     await layoutRow.getByLabel('layout.png reference role').selectOption('layout');
     await layoutRow.getByLabel('layout.png usage').fill('Match the river crossing layout');
     await styleRow.getByLabel('Style').check();
-    await page.getByRole('button', { name: 'Generate map plan' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     expect(backend.lastPlanRequest).toMatchObject({
       schemaVersion: 3,
@@ -786,9 +798,7 @@ test.describe('Create Map V3 mocked workflow', () => {
   test('edits the exact prompt, autosaves, generates, validates, and renders one map image', async ({ page }) => {
     const backend = new CreateMapV3MockBackend();
     const browserFailures = await loginAndOpen(page, backend);
-    await page.getByRole('combobox', { name: 'Project', exact: true }).selectOption(PROJECT_ID);
-    await page.getByRole('textbox', { name: 'Description', exact: true }).fill('A quiet top-down village market with open paths.');
-    await page.getByRole('button', { name: 'Generate map plan' }).click();
+    await askForMapPlan(page, 'A quiet top-down village market with open paths.');
     await expect(page.getByText('All changes saved', { exact: true })).toBeVisible();
     const exactDescription = 'Exact final opaque top-down pixel art map.  Keep this spacing and punctuation.';
     await page.getByLabel('PixelLab description').fill(exactDescription);

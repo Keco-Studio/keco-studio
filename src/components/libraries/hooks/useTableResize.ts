@@ -98,6 +98,7 @@ function applyColumnWidthsToTable(
     const clamped = Math.max(minWidth, width);
     col.style.width = `${clamped}px`;
     col.style.minWidth = `${minWidth}px`;
+    col.style.maxWidth = `${clamped}px`;
   });
 }
 
@@ -324,6 +325,7 @@ export function useTableResize(libraryId: string | undefined, columnKeys: readon
       return {
         width: `${clampedWidth}px`,
         minWidth: `${minWidth}px`,
+        maxWidth: `${clampedWidth}px`,
       };
     },
     [dimensions.columnWidths],

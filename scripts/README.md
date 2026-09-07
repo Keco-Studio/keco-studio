@@ -1,5 +1,27 @@
 # Scripts
 
+## Local Realtime authorization pool
+
+Private document/sidebar channels need local Realtime `db_pool=10`. After
+`supabase start` / `db reset`, the self-host seed can wipe that setting.
+
+Use the wrapped commands (recommended):
+
+```bash
+npm run supabase:start
+npm run supabase:reset
+```
+
+Or ensure manually:
+
+```bash
+npm run supabase:realtime-pool
+npm run supabase:realtime-pool:check
+```
+
+`npm run dev` runs `predev` → `supabase:realtime-pool:ensure`, which soft-fails
+when Docker/Supabase is down or when `NEXT_PUBLIC_SUPABASE_URL` is not local.
+
 ## CI seeding
 
 GitHub Actions Playwright tests do **not** run `npm run seed:api`.

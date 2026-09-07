@@ -124,7 +124,13 @@ function TableReferenceProjection({
                     role="cell"
                     key={field.id}
                   >
-                    {cellDisplayString(row.values[field.id])}
+                    {field.id === schema.fields[0]?.id && reference.href ? (
+                      <Link href={reference.href} aria-label={reference.label}>
+                        {cellDisplayString(row.values[field.id])}
+                      </Link>
+                    ) : (
+                      cellDisplayString(row.values[field.id])
+                    )}
                   </span>
                 ))}
               </span>
@@ -166,9 +172,10 @@ export function ResourceReferenceEditor({
     ? groupReferences.find((reference) => reference?.table)?.table
     : undefined;
   const suppressTableProjection = Boolean(tableSchema && group && !group.isPrimary);
-  // Keep single-row chips (accessible name + asset deeplink) for insert/smoke UX.
-  // Multi-row adjacent groups still collapse into one projected table.
-  const projectAsTable = Boolean(tableSchema && groupKeys.length > 1);
+  // A table-row reference is still a table projection when it is the only row.
+  // Adjacent references from the same library continue to collapse into one
+  // projected table, with secondary occurrences suppressed below.
+  const projectAsTable = Boolean(tableSchema && groupKeys.length > 0);
 
   let reference: React.ReactNode;
   if (!target) {

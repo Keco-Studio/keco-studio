@@ -6,8 +6,12 @@ import {
   invalidateLibraryData,
   invalidateLibrarySchemaData,
   invalidateProjectData,
+  projectsListCacheHasId,
+  removeProjectFromListCache,
   sidebarAssetsKey,
   shouldInvalidateEntityListAfterUpdate,
+  updateProjectsListCache,
+  upsertProjectInListCache,
 } from '@/lib/queryInvalidation';
 const notifyDocumentDerivedLibraryCreated = jest.fn();
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
@@ -38,6 +42,51 @@ describe('query invalidation helpers', () => {
       queryKey: queryKeys.projects(),
       type: 'active',
     });
+  });
+
+  it('updates every projects-list cache via prefix key, not the bare ["projects"] key', () => {
+    const setQueriesData = jest.fn();
+    const getQueriesData = jest.fn(() => [
+      [['projects', 'user-1'], [{ id: 'p1', name: 'Old' }]],
+    ]);
+    const client = {
+      setQueriesData,
+      getQueriesData,
+    };
+
+    upsertProjectInListCache(client as never, {
+      id: 'p2',
+      owner_id: 'user-1',
+      name: 'New',
+      description: null,
+      created_at: '2026-09-07T00:00:00.000Z',
+      updated_at: '2026-09-07T00:00:00.000Z',
+    });
+
+    expect(setQueriesData).toHaveBeenCalledWith(
+      { queryKey: queryKeys.projects() },
+      expect.any(Function)
+    );
+
+    const upsertUpdater = setQueriesData.mock.calls[0][1] as (
+      old: Array<{ id: string; name: string }> | undefined
+    ) => Array<{ id: string; name: string }>;
+    expect(upsertUpdater([{ id: 'p1', name: 'Old' }])).toEqual([
+      expect.objectContaining({ id: 'p2', name: 'New' }),
+      { id: 'p1', name: 'Old' },
+    ]);
+
+    removeProjectFromListCache(client as never, 'p1');
+    const removeUpdater = setQueriesData.mock.calls[1][1] as (
+      old: Array<{ id: string }> | undefined
+    ) => Array<{ id: string }> | undefined;
+    expect(removeUpdater([{ id: 'p1' }, { id: 'p2' }])).toEqual([{ id: 'p2' }]);
+
+    expect(projectsListCacheHasId(client as never, 'p1')).toBe(true);
+    expect(getQueriesData).toHaveBeenCalledWith({ queryKey: queryKeys.projects() });
+
+    updateProjectsListCache(client as never, (old) => old);
+    expect(setQueriesData).toHaveBeenCalledTimes(3);
   });
 
   it('invalidates folder and folder/library collection keys', async () => {

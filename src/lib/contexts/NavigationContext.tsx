@@ -17,6 +17,11 @@ import {
 import { writeSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';
+import {
+  CREATE_MAP_PROJECT_EVENT,
+  readCreateMapProjectPreference,
+  type CreateMapProjectPreference,
+} from '@/lib/create-map/projectPreference';
 import { buildFolderBreadcrumbPath, folderBreadcrumbPathEndsAt, type FolderBreadcrumb, type FolderBreadcrumbSource } from '@/lib/navigation/folderBreadcrumbs';
 import { listFolders } from '@/lib/services/folderService';
 import { listLibraries } from '@/lib/services/libraryService';
@@ -159,6 +164,23 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // script), not Studio folder paths — ignore library.folder_id there.
   const onScriptSystem = isScriptSystemPath(pathname);
   const onCreateMap = isCreateMapPath(pathname);
+  const [createMapProject, setCreateMapProject] = useState<CreateMapProjectPreference | null>(null);
+
+  useEffect(() => {
+    if (!onCreateMap) {
+      setCreateMapProject(null);
+      return;
+    }
+    setCreateMapProject(readCreateMapProjectPreference());
+    const onPreference = (event: Event) => {
+      const detail = (event as CustomEvent<CreateMapProjectPreference>).detail;
+      if (detail?.projectId && detail.projectName) setCreateMapProject(detail);
+      else setCreateMapProject(readCreateMapProjectPreference());
+    };
+    window.addEventListener(CREATE_MAP_PROJECT_EVENT, onPreference);
+    return () => window.removeEventListener(CREATE_MAP_PROJECT_EVENT, onPreference);
+  }, [onCreateMap]);
+
   const currentFolderId = useMemo(() => {
     if (onScriptSystem) return currentFolderIdFromUrl;
     return (
@@ -654,6 +676,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       ];
     }
 
+    if (onCreateMap) {
+      if (createMapProject?.projectName) {
+        nextBreadcrumbs.push({ label: createMapProject.projectName, path: '/create-map' });
+      }
+      nextBreadcrumbs.push({ label: 'Map', path: '/create-map' });
+      return nextBreadcrumbs;
+    }
+
     // Script sidebar tree: Project → Document → Script conversation
     if (onScript) {
       if (currentProjectId) {
@@ -749,11 +779,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return nextBreadcrumbs;
   }, [
     assetName,
+    createMapProject,
     currentAssetId,
     currentDocumentId,
     currentFolderId,
     currentLibraryId,
     currentProjectId,
+    onCreateMap,
     onScriptSystem,
     pathname,
     projectName,

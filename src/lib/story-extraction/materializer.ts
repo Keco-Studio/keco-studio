@@ -8,6 +8,10 @@ import type {
   StoryExtractionNode,
 } from './schema';
 import { resolveProtagonistSpeaker } from './roles';
+import {
+  auditVisibleText,
+  buildVisibleTextManifest,
+} from '@/lib/story-plan/visibleTextContract';
 
 const CHOICE_TRIGGER_PHRASE = /when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)/i;
 
@@ -26,6 +30,7 @@ export type StoryExtractionIssueCode =
   | 'unresolved_target'
   | 'unreachable_node'
   | 'branch_leak'
+  | 'visible_text_mismatch'
   | 'automatic_cycle';
 
 export type StoryExtractionIssue = {
@@ -34,6 +39,10 @@ export type StoryExtractionIssue = {
   unitIds: string[];
   nodeIds: string[];
 };
+
+export interface StoryMaterializationOptions {
+  enforceVisibleTextContract?: boolean;
+}
 
 export class StoryExtractionValidationError extends Error {
   readonly issues: StoryExtractionIssue[];
@@ -48,7 +57,8 @@ export class StoryExtractionValidationError extends Error {
 export function materializeStoryExtraction(
   extraction: StoryExtraction,
   source: SegmentedStorySource,
-  roleMap: RoleMap = {}
+  roleMap: RoleMap = {},
+  options: StoryMaterializationOptions = {}
 ): StoryDocument {
   extraction = normalizeStoryExtraction(extraction, source);
   const issues: StoryExtractionIssue[] = [];
@@ -138,6 +148,25 @@ export function materializeStoryExtraction(
       push('unknown_command', `Source command ${sourceCommand.source} is not assigned`, [unitForCommand(sourceCommand)], []);
     } else if (owners.length > 1) {
       push('duplicate_command', `Source command ${sourceCommand.source} is assigned more than once`, [unitForCommand(sourceCommand)], owners);
+    }
+  }
+
+  if (options.enforceVisibleTextContract) {
+    const visibleTextAudit = auditVisibleText(
+      buildVisibleTextManifest(source),
+      extraction.nodes.flatMap((node) => [
+        ...(node.speaker.length > 0 ? [node.speaker] : []),
+        ...(node.content.length > 0 ? [node.content] : []),
+      ]).concat(extraction.choices.map((choice) => choice.text)),
+    );
+    for (const issue of visibleTextAudit.issues) {
+      const requirement = source.segments.find((segment) => segment.id === issue.segmentId);
+      push(
+        'visible_text_mismatch',
+        `Player-visible source text must appear verbatim: ${JSON.stringify(issue.text)}`,
+        requirement ? [requirement.unitId] : [],
+        [],
+      );
     }
   }
 

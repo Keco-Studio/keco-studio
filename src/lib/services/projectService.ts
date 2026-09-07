@@ -153,7 +153,9 @@ export async function listProjects(
     .from('projects')
     .select('*')
     .in('id', projectIds)
-    .order('created_at', { ascending: true });
+    // Newest first so freshly created projects appear at the top of the
+    // compact sidebar selector (which only shows ~3 rows before scrolling).
+    .order('created_at', { ascending: false });
 
   if (projectsError) {
     console.error('Error fetching projects:', projectsError);

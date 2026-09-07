@@ -47,4 +47,10 @@ describe('sidebar project selector', () => {
     expect(source).toContain('window.setTimeout');
     expect(source).toContain('window.clearTimeout');
   });
+
+  it('scrolls the selected project into the compact 3-row window when opened', () => {
+    expect(source).toContain('selectedOptionRef');
+    expect(source).toContain("scrollIntoView({ block: 'nearest' })");
+    expect(source).toContain('ref={isCurrentProject ? selectedOptionRef : undefined}');
+  });
 });

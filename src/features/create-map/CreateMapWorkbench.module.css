@@ -1,11 +1,12 @@
 .workbench {
-  --create-map-blue: var(--keco-blue, #0b78d0);
-  --create-map-ink: #20262d;
-  --create-map-muted: #687480;
-  --create-map-line: #dce1e6;
+  --create-map-blue: #0b99ff;
+  --create-map-blue-strong: #0b78d0;
+  --create-map-ink: #16325d;
+  --create-map-muted: #5b74a7;
+  --create-map-line: #e2e8f0;
   --create-map-surface: #f3f5f6;
   --create-map-panel: #ffffff;
-  --create-map-control-radius: 7px;
+  --create-map-control-radius: 8px;
 
   position: relative;
   display: grid;
@@ -13,10 +14,15 @@
   min-width: 998px;
   height: 100%;
   min-height: 620px;
-  grid-template-columns: minmax(232px, 260px) minmax(480px, 1fr) minmax(286px, 320px);
+  grid-template-columns: minmax(260px, 300px) minmax(480px, 1fr) minmax(300px, 351px);
   overflow: hidden;
   color: var(--create-map-ink);
   background: var(--create-map-surface);
+  font-family: 'Roboto', sans-serif;
+}
+
+.workbenchBrowse {
+  grid-template-columns: minmax(260px, 300px) minmax(480px, 1fr);
 }
 
 .leftPanel,
@@ -30,9 +36,441 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 44px minmax(0, 1fr);
   overflow: hidden;
   background: #e7eaec;
+}
+
+.brandSection {
+  padding: 18px 16px 8px;
+  border-bottom: 0;
+}
+
+.brandBlock {
+  padding: 0 2px;
+}
+
+.brandTitle {
+  margin: 0;
+  color: #16325d;
+  font-family: Archivo, 'Roboto', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.brandSubtitle {
+  margin: 6px 0 0;
+  color: var(--create-map-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.projectWrap {
+  position: relative;
+  margin: 14px 0 4px;
+}
+
+.projectButton {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1.5px solid #94a3b8;
+  border-radius: 8px;
+  color: #21272a;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.projectButton:hover:not(:disabled) {
+  border-color: #64748b;
+}
+
+.projectButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.projectName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.projectChevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #7d7d7d;
+}
+
+.projectMenu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 220px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--create-map-line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.projectOption,
+.projectOptionSelected {
+  display: block;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.projectOption {
+  color: #334155;
+}
+
+.projectOptionSelected {
+  color: var(--create-map-blue);
+  background: rgba(11, 153, 255, 0.08);
+  font-weight: 600;
+}
+
+.projectEmpty {
+  padding: 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.savedMapsSection {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 8px 16px 16px;
+}
+
+.savedMapsHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.savedMapsHeading {
+  margin: 0;
+  color: #21272a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.savedMapsAddButton {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.savedMapsAddButton:hover:not(:disabled) {
+  color: #0f172a;
+  background: #eef2f7;
+}
+
+.savedMapsAddButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.savedMapsSearch {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #d8dee6;
+  border-radius: 999px;
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.savedMapsSearch input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #21272a;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.chatPanel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  border-top: 1px solid var(--create-map-line);
+}
+
+.chatHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--create-map-line);
+}
+
+.chatBackButton {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #475569;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chatBackButton:hover {
+  background: #eef2f7;
+}
+
+.chatTitle {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatBody {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.chatEmpty {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chatBubbleUser,
+.chatBubbleAssistant {
+  max-width: 92%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chatBubbleUser {
+  align-self: flex-end;
+  color: #fff;
+  background: var(--create-map-blue);
+  border-bottom-right-radius: 4px;
+}
+
+.chatBubbleAssistant {
+  align-self: flex-start;
+  color: #1e293b;
+  background: #f1f5f9;
+  border-bottom-left-radius: 4px;
+}
+
+.chatGenerateButton {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  margin-top: 4px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--create-map-blue);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.chatGenerateButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chatComposer {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--create-map-line);
+  background: #fff;
+}
+
+.chatDocumentSelect select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid #d8dee6;
+  border-radius: 8px;
+  color: #334155;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+
+.chatInputBar {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: end;
+  gap: 8px;
+}
+
+.chatAttachButton,
+.chatSendButton {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chatAttachButton {
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.chatAttachButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chatSendButton {
+  color: #fff;
+  background: var(--create-map-blue);
+}
+
+.chatSendButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chatInput {
+  width: 100%;
+  min-height: 34px;
+  max-height: 96px;
+  padding: 8px 10px;
+  resize: none;
+  border: 1px solid #d8dee6;
+  border-radius: 12px;
+  outline: 0;
+  color: #0f172a;
+  background: #f8fafc;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.chatInput:focus {
+  border-color: var(--create-map-blue);
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(11, 153, 255, 0.14);
+}
+
+.planDetailsHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.planDetailsTitle {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.planDetailsClose {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.planDetailsClose:hover {
+  background: #eef2f7;
+}
+
+.generationFooter {
+  padding: 12px 16px 16px;
+  border-bottom: 1px solid var(--create-map-line);
+}
+
+.generationFooterMeta {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .legacyBackButton {
@@ -62,15 +500,20 @@
 .rightPanel {
   position: relative;
   z-index: 3;
-  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
   background: var(--create-map-panel);
 }
 
 .leftPanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid var(--create-map-line);
 }
 
 .rightPanel {
+  overflow-y: auto;
   border-left: 1px solid var(--create-map-line);
 }
 
@@ -145,24 +588,10 @@
 
 .canvasHeader {
   gap: 12px;
-  padding: 0 18px;
+  justify-content: flex-end;
+  padding: 0 14px;
   border-bottom: 1px solid var(--create-map-line);
   background: rgba(255, 255, 255, 0.96);
-}
-
-.canvasHeader > div:first-child {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.canvasHeader h2 {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .headerActions {
@@ -882,17 +1311,6 @@
 .selectCompact { padding: 0 5px; }
 .inputCompact { width: 100%; padding: 0 7px; }
 
-.versionTag {
-  flex: 0 0 auto;
-  padding: 2px 4px;
-  border: 1px solid #d5dade;
-  border-radius: 4px;
-  color: #68747d;
-  background: #f7f8f9;
-  font-size: 9px;
-  font-weight: 750;
-}
-
 .select,
 .input {
   height: 34px;
@@ -1228,9 +1646,10 @@
 
 .savedMapsList {
   display: grid;
-  gap: 3px;
-  max-height: 260px;
-  margin: 10px 0 0;
+  gap: 6px;
+  flex: 1;
+  max-height: none;
+  margin: 12px 0 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
@@ -1240,13 +1659,13 @@
 .savedMapButtonActive {
   display: grid;
   width: 100%;
-  min-height: 46px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 7px;
+  min-height: 72px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+  padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 10px;
   color: #364049;
   background: transparent;
   font: inherit;
@@ -1259,8 +1678,9 @@
 }
 
 .savedMapButtonActive {
-  border-color: #b8d8f0;
+  border-color: #93c9f5;
   background: #edf6fc;
+  box-shadow: inset 0 0 0 1px rgba(11, 153, 255, 0.12);
 }
 
 .savedMapButton:focus-visible,
@@ -1278,28 +1698,42 @@
 .savedMapCopy {
   display: grid;
   min-width: 0;
-  gap: 1px;
+  gap: 3px;
 }
 
-.savedMapCopy strong,
-.savedMapCopy small {
+.savedMapCopy strong {
   overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.savedMapCopy strong {
+.savedMapDescription {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #6f7a83;
   font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.savedMapCopy small,
 .savedMapMeta {
   color: #6f7a83;
-  font-size: 9px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.savedMapMeta {
-  white-space: nowrap;
+.versionTag {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #0b78d0;
+  background: #e8f3fc;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: lowercase;
 }
 
 .savedMapsState {

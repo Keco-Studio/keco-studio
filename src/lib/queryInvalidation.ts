@@ -1,8 +1,53 @@
 import { isCancelledError, type QueryClient } from '@tanstack/react-query';
+import type { Project } from '@/lib/services/projectService';
 import { queryKeys } from '@/lib/utils/queryKeys';
 
 export const sidebarAssetsKey = (libraryId: string) =>
   ['sidebar-assets', libraryId] as const;
+
+/**
+ * Patch every active/inactive projects-list cache entry.
+ * Real list keys are `['projects', userId]`; prefix match keeps callers
+ * from writing the dead exact key `['projects']`.
+ */
+export function updateProjectsListCache(
+  queryClient: QueryClient,
+  updater: (old: Project[] | undefined) => Project[] | undefined
+): void {
+  queryClient.setQueriesData<Project[]>({ queryKey: queryKeys.projects() }, updater);
+}
+
+/** Prepend (or replace) a project so create/rename UIs update immediately. */
+export function upsertProjectInListCache(
+  queryClient: QueryClient,
+  project: Project
+): void {
+  updateProjectsListCache(queryClient, (old) => {
+    if (!old) return [project];
+    const without = old.filter((item) => item.id !== project.id);
+    return [project, ...without];
+  });
+}
+
+export function removeProjectFromListCache(
+  queryClient: QueryClient,
+  projectId: string
+): void {
+  updateProjectsListCache(queryClient, (old) =>
+    old ? old.filter((item) => item.id !== projectId) : old
+  );
+}
+
+/** True if any cached projects list already contains this id. */
+export function projectsListCacheHasId(
+  queryClient: QueryClient,
+  projectId: string
+): boolean {
+  const entries = queryClient.getQueriesData<Project[]>({
+    queryKey: queryKeys.projects(),
+  });
+  return entries.some(([, data]) => data?.some((project) => project.id === projectId));
+}
 
 export type UpdatableEntityType = 'project' | 'library' | 'folder' | 'asset';
 

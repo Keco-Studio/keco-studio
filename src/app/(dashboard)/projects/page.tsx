@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { listProjects, Project } from '@/lib/services/projectService';
+import { listProjects } from '@/lib/services/projectService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { NewProjectModal } from '@/components/projects/NewProjectModal';
+import { NewProjectModal, type CreatedProjectPayload } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
+import { upsertProjectInListCache } from '@/lib/queryInvalidation';
 import projectEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
@@ -55,14 +56,19 @@ export default function ProjectsPage() {
     };
   }, [loading, projectsError, projects.length, setShowCreateProjectBreadcrumb]);
 
-  const handleCreated = async (projectId: string) => {
+  const handleCreated = async ({ projectId, name, description }: CreatedProjectPayload) => {
+    const now = new Date().toISOString();
+    upsertProjectInListCache(queryClient, {
+      id: projectId,
+      owner_id: userProfile?.id ?? '',
+      name,
+      description,
+      created_at: now,
+      updated_at: now,
+    });
     await queryClient.invalidateQueries({ queryKey: ['projects'] });
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     router.push(`/${projectId}/recent`);
-  };
-
-  const goToProject = (id: string) => {
-    router.push(`/${id}/recent`);
   };
 
   const showEmpty = !loading && !projectsError && projects.length === 0;

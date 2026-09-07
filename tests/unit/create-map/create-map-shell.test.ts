@@ -121,9 +121,11 @@ it('renders the Create Map workbench semantic regions', () => {
   const markup = renderToStaticMarkup(React.createElement(CreateMapWorkbench));
 
   expect(markup).toContain('data-testid="create-map-workbench"');
+  expect(markup).toContain('data-view="browse"');
   expect(markup).toContain('aria-label="Map source and references"');
   expect(markup).toContain('aria-label="Map canvas"');
-  expect(markup).toContain('aria-label="Map plan and generation"');
+  expect(markup).toContain('Map Generator');
+  expect(markup).toContain('Saved maps');
 });
 
 it('stacks the workbench regions into one column below 900px', () => {

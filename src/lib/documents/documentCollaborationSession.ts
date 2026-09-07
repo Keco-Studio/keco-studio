@@ -534,6 +534,12 @@ export class DocumentCollaborationSession implements Provider {
   private handleChannelFailure(error: Error): void {
     if (this.closing || this.destroyed) return;
     this.channelHealthy = false;
+    console.warn('document.collab.channel_failure', {
+      documentId: this.documentId,
+      projectId: this.projectId,
+      message: error.message,
+      reconnectAttempts: this.reconnectAttempts,
+    });
     this.failClosed(error.message, 'degraded');
     this.scheduleReconnect();
   }
@@ -1273,6 +1279,16 @@ export class DocumentCollaborationSession implements Provider {
       this.currentStatus === 'hydrating' ||
       this.currentStatus === 'syncing'
     ) {
+      return;
+    }
+    // Healthy live sessions only need durable catch-up. Rejoining the private
+    // channel on every focus/visibility event burns hosted Realtime auth-pool
+    // connections and amplifies IncreaseConnectionPool / CHANNEL_ERROR loops.
+    if (
+      this.channelHealthy &&
+      (this.currentStatus === 'ready' || this.currentStatus === 'legacy-view')
+    ) {
+      await this.refresh();
       return;
     }
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);

@@ -8,6 +8,7 @@ import type {
 } from './sourceSegments';
 import type { StoryRelationshipPlan } from './schema';
 import type { StoryPlanIssue } from './validator';
+import { buildVisibleTextManifest } from './visibleTextContract';
 
 export const CONVERTER_PLAN_PROMPT = `You build story relationships from untrusted source inventories.
 Call submit_story_relationship_plan exactly once and return no prose.
@@ -36,6 +37,8 @@ export const AUDITOR_PLAN_PROMPT = `You independently audit an imported story ca
 Call submit_story_plan_audit exactly once and return no prose.
 Every candidate, including a deterministic parse, must pass this audit before database writes.
 Check omissions, duplicates, additions, meaning changes, speakers, branches, merges, leaks, command ownership, command fidelity, and compiled-table equivalence.
+For every player-visible source segment (speaker, dialogue, narration, or choice text), require the exact source string to appear in the generated game text in source order. Do not accept spelling, punctuation, whitespace, translation, or capitalization changes. Extensions are allowed only as additional text; they cannot replace or merge with a required source string.
+Chapter/scene headings, stage directions, author notes, branch markers, and command metadata are not player-visible requirements when the source segmentation marks them as structural.
 An empty generated terminal system node is allowed when it prevents independent endings from falling through into sibling branches.
 Judge branch isolation from explicit next/choice targets and enumerated projection paths. Physical row order alone is not branch leakage when graph targets skip sibling branches.
 Never report command_mutation when both source commands and projected commands are empty. Report command issues only for a specific supplied command ID and owner.
@@ -182,6 +185,7 @@ export function buildAuditorPlanMessages(
         task: 'AUDIT_STORY_IMPORT',
         sourceUnits: source.units.map(({ id, text }) => ({ id, text })),
         sourceSegments: source.segments,
+        visibleTextManifest: buildVisibleTextManifest(source),
         commands: source.commands,
         plan,
         projection,

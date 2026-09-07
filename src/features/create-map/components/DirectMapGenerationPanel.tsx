@@ -39,12 +39,9 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
   const unknownSubmission = props.asset?.status === 'queued'
     || (props.asset?.status === 'blocked' && props.asset.lastErrorCode === 'pixellab_submit_outcome_unknown');
   return (
-    <section className={styles.inspectorSection} aria-labelledby="direct-generation-heading">
-      <div className={styles.sectionHeadingRow}>
-        <div>
-          <span className={styles.eyebrow}>3 Generate</span>
-          <h2 id="direct-generation-heading" className={styles.sectionTitleSmall}>Map image</h2>
-        </div>
+    <section className={styles.generationFooter} aria-labelledby="direct-generation-heading">
+      <div className={styles.generationFooterMeta}>
+        <h2 id="direct-generation-heading" className={styles.srOnly}>Map image</h2>
         <span className={styles.generationPhase} data-phase={props.phase}>{PHASE_LABELS[props.phase]}</span>
       </div>
 

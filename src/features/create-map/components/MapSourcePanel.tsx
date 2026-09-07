@@ -1,7 +1,7 @@
-import {
-  containsUnsafeDescriptionContent,
-  DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
-} from '../model/directMapSchema';
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { writeCreateMapProjectPreference } from '@/lib/create-map/projectPreference';
 import styles from '../CreateMapWorkbench.module.css';
 
 export type MapSourceOption = { id: string; name: string };
@@ -10,92 +10,90 @@ type MapSourcePanelProps = {
   versionLabel?: 'V2' | 'V3';
   readOnly?: boolean;
   projects: MapSourceOption[];
-  documents: MapSourceOption[];
-  description: string;
   projectId: string;
-  documentId: string;
-  onDescriptionChange: (value: string) => void;
   onProjectChange: (id: string) => void;
-  onDocumentChange: (id: string) => void;
-  onCreatePlan: () => void;
   busy?: boolean;
   error?: string | null;
 };
 
+function ChevronDownIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export function MapSourcePanel({
-  versionLabel = 'V3',
   readOnly = false,
   projects,
-  documents,
-  description,
   projectId,
-  documentId,
-  onDescriptionChange,
   onProjectChange,
-  onDocumentChange,
-  onCreatePlan,
   busy = false,
   error = null,
 }: MapSourcePanelProps) {
-  const descriptionInvalid = containsUnsafeDescriptionContent(description);
-  const canCreatePlan = Boolean(projectId) && Boolean(documentId || description.trim()) && !descriptionInvalid;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const selected = projects.find((project) => project.id === projectId) ?? null;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!selected) return;
+    writeCreateMapProjectPreference({ projectId: selected.id, projectName: selected.name });
+  }, [selected]);
+
   return (
-    <section className={styles.panelSection} aria-labelledby="map-source-heading">
-      <div className={styles.sectionHeadingRow}>
-        <div>
-          <span className={styles.eyebrow}>1 Source</span>
-          <h1 id="map-source-heading" className={styles.sectionTitle}>Create map</h1>
-        </div>
-        <span className={styles.draftBadge}>{versionLabel}</span>
+    <section className={styles.brandSection} aria-labelledby="map-source-heading">
+      <div className={styles.brandBlock}>
+        <h1 id="map-source-heading" className={styles.brandTitle}>Map Generator</h1>
+        <p className={styles.brandSubtitle}>Manage and config game assets for game designers.</p>
       </div>
 
-      <label className={styles.fieldLabel}>
-        Project
-        <select
-          className={styles.select}
+      <div className={styles.projectWrap} ref={menuRef}>
+        <button
+          type="button"
+          className={styles.projectButton}
           aria-label="Project"
-          value={projectId}
+          aria-haspopup="listbox"
+          aria-expanded={menuOpen}
           disabled={busy || readOnly}
-          onChange={(event) => onProjectChange(event.target.value)}
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          <option value="">Select project</option>
-          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </select>
-      </label>
-
-      <label className={styles.fieldLabel}>
-        Document <span className={styles.optionalLabel}>Optional</span>
-        <select
-          className={styles.select}
-          aria-label="Document"
-          value={documentId}
-          disabled={!projectId || busy || readOnly}
-          onChange={(event) => onDocumentChange(event.target.value)}
-        >
-          <option value="">No document</option>
-          {documents.map((document) => <option key={document.id} value={document.id}>{document.name}</option>)}
-        </select>
-      </label>
-
-      <label className={styles.fieldLabel}>
-        Description <span className={styles.optionalLabel}>Optional with a Document</span>
-        <textarea
-          className={styles.textarea}
-          aria-label="Description"
-          value={description}
-          placeholder="Optional additions or changes to the selected document"
-          aria-invalid={descriptionInvalid || undefined}
-          maxLength={4000}
-          rows={5}
-          disabled={busy || readOnly}
-          onChange={(event) => onDescriptionChange(event.target.value)}
-        />
-      </label>
-      {descriptionInvalid ? <p className={styles.inlineError} role="alert"><strong>Invalid.</strong> {DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE}</p> : null}
-
-      <button type="button" className={styles.primaryButton} disabled={!canCreatePlan || busy || readOnly} onClick={onCreatePlan}>
-        {busy ? 'Working...' : 'Generate map plan'}
-      </button>
+          <span className={styles.projectName}>{selected?.name ?? 'Select project'}</span>
+          <span className={styles.projectChevron}><ChevronDownIcon /></span>
+        </button>
+        {menuOpen ? (
+          <div className={styles.projectMenu} role="listbox" aria-label="Projects">
+            {projects.length === 0 ? (
+              <div className={styles.projectEmpty}>No projects</div>
+            ) : (
+              projects.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  role="option"
+                  aria-selected={project.id === projectId}
+                  className={project.id === projectId ? styles.projectOptionSelected : styles.projectOption}
+                  onClick={() => {
+                    onProjectChange(project.id);
+                    setMenuOpen(false);
+                  }}
+                >
+                  {project.name}
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
       {error ? <p className={styles.inlineError} role="alert">{error}</p> : null}
     </section>
   );

@@ -14,6 +14,7 @@ Keep IDs, hashes, write tokens, raw MCP arguments, and evidence in machine artif
 Use V2 for every new Keco-driven Godot Slice request, including GDD, feedback, table, ordinary document, and direct user idea sources. Routing is implicit and document-driven. The user does not need to name this Skill. Keco remains authoritative. Select exactly one SourceProfile and use contractVersion: 2; no new run routes to a legacy workflow. Do not invoke keco-build-tables-from-document for a Godot Slice, and do not invoke this Skill for Keco-only table creation or Godot work unrelated to Keco. Keco-only tables, standalone assets, and independent EDD scoring keep their existing specialized skills.
 
 SourceProfile kinds are gdd, feedback, document, table, and user_idea. GDD plans load gdd-coverage-contract.md; asset plans load generated-asset-contract.md; animation plans load godot-animation-contract.md; tileset plans load godot-tileset-contract.md.
+When the bound GDD contains a Script, GDD preflight also binds its ordered player-visible `visibleTextManifest`; every manifest string must be emitted verbatim by the game before acceptance.
 
 The selected SourceProfile kind: gdd uses gdd-coverage-contract.md; feedback, document, table, and user_idea use non-GDD rationale.
 

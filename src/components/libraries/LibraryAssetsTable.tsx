@@ -48,6 +48,7 @@ import { VisualNovelScriptView } from './components/VisualNovelScriptView';
 import { ViewerBanner } from './components/ViewerBanner';
 import { StickyHorizontalScrollbar } from './components/StickyHorizontalScrollbar';
 import { buildTableIndexes } from './utils/tableIndexes';
+import { editorContentOverflows, selectionIncludesExpandedRow } from './utils/textCellExpand';
 import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
 import { LibraryAssetDetailDrawerWiring } from './components/LibraryAssetDetailDrawerWiring';
 import styles from './LibraryAssetsTable.module.css';
@@ -216,6 +217,9 @@ export function LibraryAssetsTable({
   // even when mousedown uses preventDefault and native blur does not fire.
   const saveEditedCellRef = useRef<(() => void) | null>(null);
   const editingCellStateRef = useRef<{ rowId: string; propertyKey: string } | null>(null);
+  const afterSaveEditRef = useRef<
+    ((info: { rowId: string; propertyKey: string; editorEl: HTMLSpanElement | null }) => void) | null
+  >(null);
 
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
@@ -379,6 +383,9 @@ export function LibraryAssetsTable({
     setCurrentFocusedCell,
     presenceTracking,
     handleCellFocus,
+    onAfterSaveEdit: (info) => {
+      afterSaveEditRef.current?.(info);
+    },
   });
 
   const {
@@ -542,6 +549,7 @@ export function LibraryAssetsTable({
     hoveredCellForExpand,
     setHoveredCellForExpand,
     expandedTextCell,
+    setExpandedTextCell,
     isFillingCellsRef,
     handleRowSelectionToggle,
     handleCellClick,
@@ -566,6 +574,21 @@ export function LibraryAssetsTable({
       selectionBorderRight: styles.selectionBorderRight,
     },
   });
+
+  // Keep wrapped display after saving long text (edit mode wraps; display defaults to nowrap).
+  afterSaveEditRef.current = ({ rowId, propertyKey, editorEl }) => {
+    if (!editorContentOverflows(editorEl)) return;
+    const cellKey = `${rowId}-${propertyKey}` as CellKey;
+    const selection = selectedCellsRef.current;
+    // Blur from clicking another row: do not steal selection or force expand.
+    if (selection.size > 0 && !selectionIncludesExpandedRow(selection, rowId)) {
+      return;
+    }
+    if (!selection.has(cellKey)) {
+      setSelectedCells(new Set<CellKey>([cellKey]));
+    }
+    setExpandedTextCell({ rowId, propertyKey });
+  };
 
   const { handleCut, handleCopy, handlePaste } = useClipboardOperations({
     dataManager,
@@ -1007,7 +1030,11 @@ export function LibraryAssetsTable({
               setToastMessage={setToastMessage}
               hasCustomRowHeight={hasCustomRowHeight}
               getRowHeightStyle={getRowHeightStyle}
-              startRowResize={startRowResize}
+              startRowResize={(rowId, clientY, rowElement) => {
+                // Expanded rows force height:auto; clear wrap-expand so manual row resize can shrink.
+                setExpandedTextCell(null);
+                startRowResize(rowId, clientY, rowElement);
+              }}
               isResizingRow={isResizingRow}
               getUsersEditingCell={getUsersEditingCell}
               getSelectionBorderClasses={getSelectionBorderClasses}

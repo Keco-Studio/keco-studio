@@ -91,6 +91,9 @@
   },
   "scripts": {
     "dev": "next dev",
+    "predev": "tsx scripts/ensure-local-realtime-pool.ts",
+    "supabase:start": "supabase start && npm run supabase:realtime-pool",
+    "supabase:reset": "supabase db reset && npm run supabase:realtime-pool",
     "dev:lan": "bash scripts/dev-lan.sh",
     "dev:vercel": "vercel dev",
     "dev:vercel:prod": "vercel dev --prod",
@@ -130,6 +133,7 @@
     "seed:api": "tsx scripts/seed-via-api.ts",
     "supabase:realtime-pool": "tsx scripts/configure-local-realtime-pool.ts",
     "supabase:realtime-pool:check": "tsx scripts/configure-local-realtime-pool.ts --check",
+    "supabase:realtime-pool:ensure": "tsx scripts/ensure-local-realtime-pool.ts",
     "probe:import-story": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts",
     "probe:import-story:rainy-five": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts tests/fixtures/import-script/rainy-manor-story.txt --runs=5",
     "probe:mcp-oauth": "tsx scripts/probe-mcp-oauth.ts",

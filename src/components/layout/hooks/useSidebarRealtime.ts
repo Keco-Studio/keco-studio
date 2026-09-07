@@ -4,12 +4,13 @@ import { useEffect, useRef } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
-import type { Project } from '@/lib/services/projectService';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
   invalidateLibraryData,
   invalidateProjectData,
+  projectsListCacheHasId,
+  removeProjectFromListCache,
 } from '@/lib/queryInvalidation';
 import {
   DOCUMENT_UPDATED_EVENT,
@@ -92,13 +93,13 @@ export function useSidebarRealtime({
             (payload.new && 'id' in payload.new ? payload.new.id : null) ||
             (payload.old && 'id' in payload.old ? payload.old.id : null);
 
-          const currentProjects = queryClient.getQueryData<Project[]>(['projects']) || [];
-          const isUserProject = currentProjects.some((p) => p.id === projectId);
+          const isUserProject =
+            typeof projectId === 'string' && projectsListCacheHasId(queryClient, projectId);
 
           if (!isUserProject && payload.eventType !== 'INSERT') return;
 
           await invalidateProjectData(queryClient, {
-            projectId,
+            projectId: typeof projectId === 'string' ? projectId : undefined,
             userProjectList: true,
             refetchActiveProjects: true,
           });
@@ -106,9 +107,7 @@ export function useSidebarRealtime({
           if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
             await invalidateProjectData(queryClient, { projectId: payload.new.id });
           } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
-            queryClient.setQueryData<Project[]>(['projects'], (old) =>
-              old ? old.filter((p) => p.id !== payload.old.id) : []
-            );
+            removeProjectFromListCache(queryClient, payload.old.id);
             if (currentProjectIdRef.current === payload.old.id) {
               router.push('/projects');
             }
