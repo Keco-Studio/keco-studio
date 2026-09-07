@@ -991,7 +991,7 @@ test.describe.serial('Document realtime collaboration', () => {
     const middleSeen = createDeferred();
     const releaseMiddle = createDeferred();
     const marker = `LARGE-ATOMIC-${Date.now()}-`;
-    const payload = `${marker}${'中'.repeat(90_000)}`;
+    const payload = `${marker}${String.fromCodePoint(0x4e2d).repeat(90_000)}`;
     let uploadId = '';
     try {
       await Promise.all([
@@ -1065,7 +1065,7 @@ test.describe.serial('Document realtime collaboration', () => {
     const putPattern = '**/rest/v1/rpc/put_document_yjs_update_chunk';
     const finalizePattern = '**/rest/v1/rpc/finalize_document_yjs_update_upload';
     const marker = `LARGE-RESUME-${Date.now()}-`;
-    const payload = `${marker}${'文'.repeat(90_000)}`;
+    const payload = `${marker}${String.fromCodePoint(0x6587).repeat(90_000)}`;
     let uploadId = '';
     let abortedMiddle = 0;
     try {

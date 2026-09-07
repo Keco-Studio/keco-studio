@@ -44,7 +44,7 @@ async function largeRecoveryRecord(
   updateId = '99999999-9999-4999-8999-999999999999'
 ): Promise<DocumentUpdateRecoveryRecord> {
   const doc = new Y.Doc();
-  doc.getMap('large-recovery').set('body', `marker:${'中'.repeat(90_000)}`);
+  doc.getMap('large-recovery').set('body', `marker:${String.fromCodePoint(0x4e2d).repeat(90_000)}`);
   const bytes = Y.encodeStateAsUpdate(doc);
   doc.destroy();
   const manifest = await createChunkedUpdateManifest(
@@ -2443,7 +2443,7 @@ describe('DocumentCollaborationSession', () => {
 
     harness.gateway.appendUpdates.mockClear();
     harness.channel.httpSend.mockClear();
-    harness.session.doc.getMap('large').set('body', `large:${'中'.repeat(90_000)}`);
+    harness.session.doc.getMap('large').set('body', `large:${String.fromCodePoint(0x4e2d).repeat(90_000)}`);
     await harness.session.flush();
 
     expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
@@ -2479,7 +2479,7 @@ describe('DocumentCollaborationSession', () => {
       },
     });
     await connectReady(harness.session);
-    harness.session.doc.getMap('large').set('body', '中'.repeat(300_000));
+    harness.session.doc.getMap('large').set('body', String.fromCodePoint(0x4e2d).repeat(300_000));
     await harness.session.flush();
 
     const chunkCount = harness.gateway.prepareUpdateUpload.mock.calls[0]![1].chunkCount;
@@ -2510,7 +2510,7 @@ describe('DocumentCollaborationSession', () => {
       }),
     });
     await connectReady(harness.session);
-    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    harness.session.doc.getMap('large').set('body', String.fromCodePoint(0x4e2d).repeat(90_000));
     await harness.session.flush();
 
     expect(attempts.get(1)).toBe(1);
@@ -2533,7 +2533,7 @@ describe('DocumentCollaborationSession', () => {
       }),
     });
     await connectReady(harness.session);
-    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    harness.session.doc.getMap('large').set('body', String.fromCodePoint(0x4e2d).repeat(90_000));
     await harness.session.flush();
 
     expect(harness.gateway.finalizeUpdateUpload).toHaveBeenCalledTimes(1);
@@ -2564,7 +2564,7 @@ describe('DocumentCollaborationSession', () => {
       }),
     });
     await connectReady(harness.session);
-    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    harness.session.doc.getMap('large').set('body', String.fromCodePoint(0x4e2d).repeat(90_000));
     await expect(harness.session.flush()).rejects.toThrow('offline');
     expect(harness.session.status).toBe('degraded');
     expect(recoveryStore.records.size).toBe(1);
@@ -2581,7 +2581,7 @@ describe('DocumentCollaborationSession', () => {
     recoveryStore.put.mockRejectedValueOnce(new Error('IndexedDB write failed'));
     const harness = makeHarness({ recoveryStore });
     await connectReady(harness.session);
-    harness.session.doc.getMap('large').set('body', '中'.repeat(90_000));
+    harness.session.doc.getMap('large').set('body', String.fromCodePoint(0x4e2d).repeat(90_000));
 
     await expect(harness.session.flush()).rejects.toThrow('IndexedDB write failed');
     expect(harness.gateway.prepareUpdateUpload).not.toHaveBeenCalled();
@@ -2599,7 +2599,7 @@ describe('DocumentCollaborationSession', () => {
     await connectReady(harness.session);
 
     expect(harness.session.doc.getMap('large-recovery').get('body')).toBe(
-      `marker:${'中'.repeat(90_000)}`
+      `marker:${String.fromCodePoint(0x4e2d).repeat(90_000)}`
     );
     expect(recoveryStore.records.size).toBe(0);
     expect(harness.gateway.prepareUpdateUpload).not.toHaveBeenCalled();
@@ -2623,7 +2623,7 @@ describe('DocumentCollaborationSession', () => {
     expect(newManifest.updateId).not.toBe(old.updateId);
     expect(recoveryStore.records.size).toBe(0);
     expect(harness.session.doc.getMap('large-recovery').get('body')).toBe(
-      `marker:${'中'.repeat(90_000)}`
+      `marker:${String.fromCodePoint(0x4e2d).repeat(90_000)}`
     );
   });
 
