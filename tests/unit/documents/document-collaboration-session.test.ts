@@ -8,7 +8,6 @@ import {
 import { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
 import {
   createChunkedUpdateManifest,
-  sliceChunkedUpdate,
   type ChunkedDocumentUpdateManifest,
 } from '@/lib/documents/documentChunkedUpdate';
 import {

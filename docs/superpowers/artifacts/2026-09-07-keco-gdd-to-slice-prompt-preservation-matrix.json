@@ -1,0 +1,239 @@
+{
+  "spec": "docs/superpowers/specs/2026-09-07-keco-gdd-to-slice-prompt-consolidation-design.md",
+  "status": "reviewed after consolidation",
+  "baseline": {
+    "codexFiles": 12,
+    "physicalLines": 736,
+    "nonBlankLines": 568,
+    "words": 5120
+  },
+  "entries": [
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "sourceHeading": "Routing and lifecycle / Shared contracts / Completion",
+      "concern": "routing_and_lifecycle",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "survivingTextOrHeading": "Routing and lifecycle",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2.test.ts", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "The entry Skill retains routing, five phase order, applicability, and completion chain; detailed contracts remain in owners."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/ab-matrix.md",
+      "sourceHeading": "Historical comparison note",
+      "concern": "legacy_routing_boundary",
+      "decision": "keep",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/ab-matrix.md",
+      "survivingTextOrHeading": "Historical comparison note",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2.test.ts"],
+      "reason": "The reference is already minimal and records the active V2/V1 boundary."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "sourceHeading": "SourceProfile And RunContext / Artifact Ledger / Plan, State, And Evidence Ownership / Task Contract",
+      "concern": "orchestration_lifecycle_and_write_lease",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "survivingTextOrHeading": "SourceProfile And RunContext, Artifact Ledger, Plan/State/Evidence Ownership, Task Contract",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_run_context.py", "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_contract_case.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Lifecycle, lease, transitions, repair ceiling, and delivery ordering stay owned here; redundant payload prose is replaced by manifest/validator links."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/SKILL.md",
+      "sourceHeading": "References / Scripts",
+      "concern": "preflight_scope_and_conditional_routing",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/SKILL.md",
+      "survivingTextOrHeading": "References and Scripts",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2-modules.test.ts", "tests/unit/plugins/keco-godot-slice-v2.test.ts"],
+      "reason": "Preflight keeps owned capabilities, validators, and conditional reference loading while shared interaction and lifecycle text is linked."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-change-contract.md",
+      "sourceHeading": "GDD Change Contract",
+      "concern": "gdd_amendment_authorization",
+      "decision": "keep",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-change-contract.md",
+      "survivingTextOrHeading": "GDD Change Contract",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_gdd_coverage.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Proposal, approval, accepted patch, reread, and refreshed inventory behavior remains centralized here."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-coverage-contract.md",
+      "sourceHeading": "GDD Coverage And Change Contract / New design proposals",
+      "concern": "requirement_inventory_and_reciprocal_coverage",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-coverage-contract.md",
+      "survivingTextOrHeading": "GDD Coverage And Change Contract",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_gdd_coverage.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Requirement extraction, classifications, hashes, reciprocal mappings, and proposal authorization remain explicit; repeated phase boilerplate is removed."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/multi-slice-orchestration.md",
+      "sourceHeading": "User-Facing Layout / Roadmap Plan / Sequential Execution / Repair And Resume",
+      "concern": "multi_slice_ordering_and_resume",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/multi-slice-orchestration.md",
+      "survivingTextOrHeading": "Roadmap Plan and Repair And Resume",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_slice_decomposition.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Multi-Slice distinctness, dependency ordering, checkpoint/resume, and repair ceiling stay owned here; folder/document details link to slice-document-contract."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/plan-template.md",
+      "sourceHeading": "Entire canonical template",
+      "concern": "canonical_plan_shape",
+      "decision": "keep",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/plan-template.md",
+      "survivingTextOrHeading": "Entire file unchanged",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2-modules.test.ts"],
+      "reason": "Spec requires byte-for-byte preservation."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-decision.md",
+      "sourceHeading": "Slice Decision Contract",
+      "concern": "source_and_slice_ambiguity_decisions",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-decision.md",
+      "survivingTextOrHeading": "Slice Decision Contract",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_run_context.py", "tests/unit/plugins/keco-godot-slice-v2.test.ts"],
+      "reason": "Decision states, zero-write ambiguity, bounded question, and invalidation remain explicit while duplicated routing prose is removed."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-document-contract.md",
+      "sourceHeading": "User-facing layout / Folder And Write Rules / Versioning / Mirror And Seal",
+      "concern": "document_placement_and_mirror_seal",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-document-contract.md",
+      "survivingTextOrHeading": "Folder And Write Rules and Mirror And Seal",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_plan.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Keco folder hierarchy, canonical templates, optimistic revision, mirror recovery, and internal evidence remain owned here."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/source-data-contract.md",
+      "sourceHeading": "SourceProfile and priority / Semantic source document discovery / Snapshot",
+      "concern": "source_identity_and_snapshot",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/source-data-contract.md",
+      "survivingTextOrHeading": "SourceProfile and priority, Semantic source document discovery, Snapshot",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_run_context.py", "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_snapshot.py"],
+      "reason": "Source selection, identity, project/folder discovery, non-destructive data rules, and fresh snapshot requirements remain centralized."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/spec-template.md",
+      "sourceHeading": "Entire canonical template",
+      "concern": "canonical_spec_shape",
+      "decision": "keep",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/spec-template.md",
+      "survivingTextOrHeading": "Entire file unchanged",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2-modules.test.ts"],
+      "reason": "Spec requires byte-for-byte preservation."
+    }
+  ],
+  "removedNormativeStatements": [
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "sourceHeading": "Routing and lifecycle",
+      "concern": "shared_interaction_summary",
+      "decision": "move_to_owner",
+      "canonicalOwnerPath": "plugins/keco-codex/references/interaction-contract.md",
+      "survivingTextOrHeading": "Shared interaction contract",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2.test.ts"],
+      "reason": "Repeated Goal/Source/Scope/Success/Next and progress wording now has one shared owner."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "sourceHeading": "Shared contracts",
+      "concern": "public_phase_order",
+      "decision": "move_to_owner",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/SKILL.md",
+      "survivingTextOrHeading": "Routing and lifecycle five-phase list",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2-modules.test.ts"],
+      "reason": "Phase order is retained in the router; module prose no longer repeats it."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "sourceHeading": "SourceProfile and RunContext",
+      "concern": "run_context_payload_repetition",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/contract-manifest.json",
+      "survivingTextOrHeading": "RunContext manifest and compact YAML boundary",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_run_context.py", "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_contract_case.py"],
+      "reason": "Field authority and validation remain unchanged; only repeated explanatory payload text was compacted."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-develop-godot-slice-v2/references/orchestration-contract.md",
+      "sourceHeading": "Task contract",
+      "concern": "task_evidence_schema_repetition",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-implementation/references/review-workflow.md",
+      "survivingTextOrHeading": "TaskResult and TaskReview evidence contract",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-implementation/scripts/validate_task_evidence.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Orchestration keeps lifecycle binding and review level; detailed evidence validation stays with the implementation owner."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/SKILL.md",
+      "sourceHeading": "Conditional references",
+      "concern": "conditional_reference_loading_repetition",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/SKILL.md",
+      "survivingTextOrHeading": "Conditional references bullet list and loading rule",
+      "machineEnforcement": ["tests/unit/plugins/keco-godot-slice-v2.test.ts", "tests/unit/plugins/keco-godot-slice-v2-modules.test.ts"],
+      "reason": "All links remain reachable; repeated prose descriptions were replaced with the condition-to-reference rule."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-coverage-contract.md",
+      "sourceHeading": "GDD Coverage And Change Contract",
+      "concern": "requirement_extractor_prompt_repetition",
+      "decision": "move_to_owner",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/gdd-coverage-contract.md",
+      "survivingTextOrHeading": "Requirement Inventory and reciprocal mapping paragraphs",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_gdd_coverage.py"],
+      "reason": "Extractor rules remain in the coverage contract; Preflight names the internal responsibility without duplicating its policy."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/multi-slice-orchestration.md",
+      "sourceHeading": "User-Facing Layout",
+      "concern": "document_layout_repetition",
+      "decision": "move_to_owner",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-document-contract.md",
+      "survivingTextOrHeading": "Slice Planning Document Contract",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_slice_decomposition.py", "tests/unit/plugins/keco-godot-slice-v2.test.ts"],
+      "reason": "Multi-Slice keeps distinctness and ordering; canonical folder and mirror placement has one document owner."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/slice-document-contract.md",
+      "sourceHeading": "Mirror And Seal",
+      "concern": "mirror_recovery_repetition",
+      "decision": "shorten",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-delivery/SKILL.md",
+      "survivingTextOrHeading": "Delivery module policy and MirrorVerification gate",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-delivery/scripts/materialize_slice_mirrors.py", "tests/unit/plugins/keco-godot-slice-v2-e2e.test.ts"],
+      "reason": "Document contract retains placement and seal boundary; detailed recovery execution is owned by delivery."
+    },
+    {
+      "sourcePath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/source-data-contract.md",
+      "sourceHeading": "SourceProfile and priority",
+      "concern": "source_identity_repetition",
+      "decision": "move_to_owner",
+      "canonicalOwnerPath": "plugins/keco-codex/skills/keco-godot-slice-preflight/references/source-data-contract.md",
+      "survivingTextOrHeading": "SourceProfile and Semantic source discovery",
+      "machineEnforcement": ["plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_run_context.py", "plugins/keco-codex/skills/keco-godot-slice-preflight/scripts/validate_snapshot.py"],
+      "reason": "Source selection and identity are stated once; main and coverage references only route to this owner."
+    }
+  ],
+  "measurements": {
+    "before": {"physicalLines": 736, "nonBlankLines": 568, "words": 5120},
+    "after": {"physicalLines": 616, "nonBlankLines": 500, "words": 3864},
+    "reduction": {"physicalLines": 120, "nonBlankLines": 68, "words": 1256},
+    "target": {"physicalLines": "571-616", "nonBlankLines": "<=500", "words": "<=4300"}
+  },
+  "audit": {
+    "removedNormativeStatementsReviewed": true,
+    "templateBytesUnchanged": true,
+    "codexClaudeMirrorsSynchronized": true,
+    "installedCodexCacheParity": true,
+    "installedClaudeCacheParity": true,
+    "behaviorEvaluation": "completed with both configured providers at 5 samples per 12 cases x 2 variants; Codex produced TLS stream reconnect text with zero scorable JSON (assertion rate 0), and Claude produced valid but fixture-nonconforming JSON (current-skill assertion rate 0.0833), so both provider runs failed the behavior gate",
+    "notes": "Each shortened concern above points to one canonical owner and machine evidence; duplicate phase boilerplate, repeated payload descriptions, and repeated folder examples were removed only where the owner retained the behavior. The follow-up review restored finalize_slice(delivery), source reread/display-name gates, stable document history, and a parseable RunContext example. Final review restored required entry routing/artifact wording, refreshed the installed cache through the supported cachebuster flow, and retained readable prompt prose within the approved targets."
+  }
+}
