@@ -221,6 +221,22 @@ function stageMessages(
   }];
 }
 
+function blueprintRepairMessages(input: GddGenerationRequestV2, raw: string): ChatMessage[] {
+  return [{
+    role: 'system',
+    content: [
+      'The previous professional GDD blueprint response was not valid JSON.',
+      `Write all human-readable titles and instructions in ${outputLanguage(input)}.`,
+      'Return a corrected JSON object only, with exactly version, title, sections, and invariants.',
+      'Preserve the intended content, but ensure every string is closed and all JSON is syntactically valid.',
+      'Do not return Markdown fences or commentary.',
+    ].join('\n'),
+  }, {
+    role: 'user',
+    content: `Previous blueprint response to repair:\n${raw.slice(0, 16_000)}`,
+  }];
+}
+
 function splitDrafts(
   raw: string,
   blueprint: ProfessionalBlueprint,
@@ -282,8 +298,19 @@ export async function generateProfessionalStage(
       title: input.systemTitle,
       sections: [{ id: 'placeholder', title: 'Planning', stage: 'core', instructions: ['Plan the document.'] }],
       invariants: [],
-    }, []), { ...gddV2LlmOptions(4_000), signal }), signal);
-    return { blueprint: parseBlueprint(raw), sectionDrafts: [] };
+    }, []), { ...gddV2LlmOptions(8_000), signal }), signal);
+    try {
+      return { blueprint: parseBlueprint(raw), sectionDrafts: [] };
+    } catch (initialError) {
+      try {
+        const repairedRaw = await raceWithAbort(complete(blueprintRepairMessages(input, raw), {
+          ...gddV2LlmOptions(4_000), signal,
+        }), signal);
+        return { blueprint: parseBlueprint(repairedRaw), sectionDrafts: [] };
+      } catch {
+        throw initialError;
+      }
+    }
   }
   const savedBlueprint = checkpointBlueprint(checkpoint);
   const previous = previousDrafts(checkpoint);

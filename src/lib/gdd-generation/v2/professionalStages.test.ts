@@ -93,6 +93,17 @@ describe('professional GDD stages', () => {
     }));
   });
 
+  it('repairs one malformed planning response before failing the stage', async () => {
+    const complete = jest.fn(async (..._args: unknown[]) => JSON.stringify(blueprint))
+      .mockResolvedValueOnce('{"version":1,"title":"Test Game GDD","sections":[{"id":"core-loop","title":"Core Loop","stage":"core","instructions":["Define the loop."]}],"invariants":["unterminated')
+      .mockResolvedValueOnce(JSON.stringify(blueprint));
+
+    const result = await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint).toEqual(blueprint);
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
   it('passes the requested output language and full table contract to stage prompts', async () => {
     const complete = jest.fn(async () => JSON.stringify(blueprint));
     await generateProfessionalStage({ ...input, language: 'en-US' }, 'planning', checkpoint(), { complete });
@@ -160,6 +171,15 @@ describe('professional GDD stages', () => {
     expect(prompt).toMatch(/9.?12|at least 9|nine/i);
     expect(prompt).toMatch(/core.*systems.*content/i);
     expect(prompt).toMatch(/concrete|executable/i);
+  });
+
+  it('gives planning enough completion budget for the full blueprint', async () => {
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+    await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const options = calls[0]?.[1] as { maxCompletionTokens?: number } | undefined;
+    expect(options?.maxCompletionTokens).toBeGreaterThanOrEqual(8_000);
   });
 
   it('generates core drafts and preserves drafts from earlier stages', async () => {
