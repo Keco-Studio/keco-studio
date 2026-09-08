@@ -1,4 +1,4 @@
-import { validateSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments } from './sanctionedMdx';
+import { validateSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments, coerceSanctionedMdxBraces } from './sanctionedMdx';
 import { createSanctionedMdxDescriptors } from './sanctionedMdxDescriptors';
 import { DocumentContentValidationError } from './documentStateTypes';
 import {
@@ -69,6 +69,27 @@ describe('resource reference targets', () => {
 });
 
 describe('sanctioned MDX validation', () => {
+  it('escapes literal braces in generated prose without changing code spans', () => {
+    const markdown = [
+      'The payload is {"state":true}; a pseudo-list is {floor: [[x,y] for x in cells]}.',
+      'Use `{"state":true}` as the fixture.',
+      '',
+      '```json',
+      '{"state":true}',
+      '```',
+    ].join('\n');
+
+    expect(coerceSanctionedMdxBraces(markdown)).toBe([
+      'The payload is &#123;"state":true&#125;; a pseudo-list is &#123;floor: [[x,y] for x in cells]&#125;.',
+      'Use `{"state":true}` as the fixture.',
+      '',
+      '```json',
+      '{"state":true}',
+      '```',
+    ].join('\n'));
+    expect(() => validateSanctionedMdx(markdown)).not.toThrow();
+  });
+
   it('derives editor property metadata and validation from the sanctioned registry', () => {
     const Editor = () => null;
     const descriptors = createSanctionedMdxDescriptors(Editor) as Array<{

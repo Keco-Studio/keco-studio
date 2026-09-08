@@ -212,6 +212,63 @@ export function coerceSanctionedMdxHtmlComments(markdown: string): string {
   return next.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
 }
 
+/** Escape literal braces in prose so MDX cannot interpret them as expressions. */
+export function coerceSanctionedMdxBraces(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  let fence: { marker: '`' | '~'; length: number } | null = null;
+  return lines.map((line) => {
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (fenceMatch && fenceMatch[1]![0] === fence.marker && fenceMatch[1]!.length >= fence.length) {
+        fence = null;
+      }
+      return line;
+    }
+    if (fenceMatch) {
+      fence = { marker: fenceMatch[1]![0] as '`' | '~', length: fenceMatch[1]!.length };
+      return line;
+    }
+
+    let inlineTicks = 0;
+    let inTag = false;
+    let jsonBraceDepth = 0;
+    let output = '';
+    for (let index = 0; index < line.length;) {
+      if (line[index] === '`') {
+        let end = index + 1;
+        while (line[end] === '`') end += 1;
+        const runLength = end - index;
+        inlineTicks = inlineTicks === 0 ? runLength : inlineTicks === runLength ? 0 : inlineTicks;
+        output += line.slice(index, end);
+        index = end;
+        continue;
+      }
+      const character = line[index]!;
+      if (inlineTicks === 0 && character === '<') inTag = true;
+      const startsJsonObject = inlineTicks === 0
+        && !inTag
+        && jsonBraceDepth === 0
+        && character === '{'
+        && /^(?:\s*"[^"]+"\s*:|\s*[A-Za-z_$][\w$-]*\s*:)/.test(line.slice(index + 1));
+      if (startsJsonObject) {
+        jsonBraceDepth = 1;
+        output += '&#123;';
+      } else if (inlineTicks === 0 && !inTag && jsonBraceDepth > 0 && character === '{') {
+        jsonBraceDepth += 1;
+        output += '&#123;';
+      } else if (inlineTicks === 0 && !inTag && jsonBraceDepth > 0 && character === '}') {
+        output += '&#125;';
+        jsonBraceDepth -= 1;
+      } else {
+        output += character;
+      }
+      if (inlineTicks === 0 && inTag && character === '>') inTag = false;
+      index += 1;
+    }
+    return output;
+  }).join('\n');
+}
+
 /**
  * MDXEditor may persist resized images as `<img ... />` JSX. Convert those to
  * Markdown image nodes so sanctioned MDX validation and storage stay consistent.
@@ -224,7 +281,7 @@ export function coerceSanctionedMdxImages(markdown: string): string {
 
 /** Normalize document Markdown before parse/validate/encode. */
 export function coerceSanctionedMdx(markdown: string): string {
-  return coerceSanctionedMdxImages(coerceSanctionedMdxHtmlComments(markdown));
+  return coerceSanctionedMdxImages(coerceSanctionedMdxBraces(coerceSanctionedMdxHtmlComments(markdown)));
 }
 
 function visit(node: AstNode, visitor: (node: AstNode) => void): void {
