@@ -436,6 +436,14 @@ export function DirectMapWorkbench() {
 
       {showRightPanel ? (
         <aside className={`${styles.rightPanel} ${rightOpen ? styles.drawerOpen : ''}`} aria-label="Map plan and generation">
+          <button
+            type="button"
+            className={styles.drawerClose}
+            aria-label="Close inspector panel"
+            onClick={() => setRightOpen(false)}
+          >
+            <CloseOutlined />
+          </button>
           <DirectMapPlanInspector
             plan={plan}
             issues={issues}
