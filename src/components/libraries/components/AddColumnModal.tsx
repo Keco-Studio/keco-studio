@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Input, Select, Checkbox } from 'antd';
+import { Input, Select } from 'antd';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
@@ -17,6 +17,7 @@ import {
   getFormulaReferencedFieldNames,
 } from '@/lib/utils/formula';
 import { validateHeaderName } from '@/lib/utils/headerNameValidation';
+import { ReferenceLibrarySelect } from './ReferenceLibrarySelect';
 import styles from './AddColumnModal.module.css';
 
 const DESCRIPTION_MAX = 250;
@@ -71,9 +72,6 @@ export function AddColumnModal({
   const formulaInputRef = useRef<HTMLInputElement | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
-  const [referenceFolderFilter, setReferenceFolderFilter] = useState<'all' | 'root' | string>('all');
-  const [referenceSearch, setReferenceSearch] = useState('');
-  const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [dataTypeSearch, setDataTypeSearch] = useState('');
   const dataTypeSearchRef = useRef<HTMLInputElement>(null);
@@ -271,50 +269,6 @@ export function AddColumnModal({
 
     void loadLibraries();
   }, [open, dataType, projectId, currentLibraryId, supabase]);
-
-  const { librariesWithFolder, librariesWithoutFolder, foldersById } = useMemo(() => {
-    const byId = new Map<string, Folder>();
-    folders.forEach((folder) => {
-      byId.set(folder.id, folder);
-    });
-
-    const withFolder: Library[] = [];
-    const withoutFolder: Library[] = [];
-
-    libraries.forEach((lib) => {
-      if (lib.folder_id && byId.has(lib.folder_id)) {
-        withFolder.push(lib);
-      } else {
-        withoutFolder.push(lib);
-      }
-    });
-
-    return {
-      librariesWithFolder: withFolder,
-      librariesWithoutFolder: withoutFolder,
-      foldersById: byId,
-    };
-  }, [folders, libraries]);
-
-  const filteredReferenceLibraries = useMemo(() => {
-    const keyword = referenceSearch.trim().toLowerCase();
-
-    const base = libraries.filter((lib) => {
-      if (referenceFolderFilter === 'all') return true;
-      if (referenceFolderFilter === 'root') {
-        return !lib.folder_id || !foldersById.has(lib.folder_id);
-      }
-      return lib.folder_id === referenceFolderFilter;
-    });
-
-    if (!keyword) return base;
-
-    return base.filter((lib) => {
-      const name = lib.name.toLowerCase();
-      const folderName = lib.folder_id ? foldersById.get(lib.folder_id)?.name.toLowerCase() ?? '' : '';
-      return name.includes(keyword) || folderName.includes(keyword);
-    });
-  }, [libraries, referenceFolderFilter, referenceSearch, foldersById]);
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -930,192 +884,17 @@ export function AddColumnModal({
           </div>
         )}
         {dataType === 'reference' && (
-          <div className={styles.field}>
-            <label className={styles.label}>
-              Reference libraries<span style={{ color: '#dc2626', marginLeft: 4 }}>*</span>
-            </label>
-            <Select
-              mode="multiple"
-              className={styles.referenceSelect}
-              placeholder="Select libraries to reference"
-              suffixIcon={
-                <svg
-                  width="12"
-                  height="7"
-                  viewBox="0 0 12 7"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M0.75 0.75L5.75 5.75L10.75 0.75"
-                    stroke="#21272A"
-                    style={{
-                      stroke: '#21272A',
-                      strokeOpacity: 1,
-                    }}
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              }
-              value={referenceLibraries}
-              loading={loadingLibraries || loadingFolders}
-              onChange={(values) => {
-                setReferenceLibraries(values as string[]);
-                setError(null);
-              }}
-              getPopupContainer={() => modalRef.current ?? document.body}
-              options={libraries.map((lib) => ({
-                label: lib.name,
-                value: lib.id,
-              }))}
-              maxTagCount={2}
-              maxTagPlaceholder={(omitted) => (
-                <span
-                  className={styles.maxTagOverflow}
-                  title={omitted.map((item) => String(item.label ?? item.value)).join(', ')}
-                >
-                  +{omitted.length}
-                </span>
-              )}
-              open={referenceDropdownOpen}
-              onOpenChange={(openDropdown) => {
-                setReferenceDropdownOpen(openDropdown);
-                if (!openDropdown) {
-                  setReferenceFolderFilter('all');
-                  setReferenceSearch('');
-                }
-              }}
-              popupRender={() => (
-                <div className={styles.referenceDropdown}>
-                  <div className={styles.dropdownContextHint}>Library</div>
-                  <div className={styles.referenceDropdownContent}>
-                    <Input
-                      allowClear
-                      placeholder="Search libraries"
-                      value={referenceSearch}
-                      onChange={(e) => setReferenceSearch(e.target.value)}
-                      className={styles.referenceSearchInput}
-                      prefix={
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z"
-                            stroke="currentColor"
-                            style={{ stroke: 'currentColor', strokeOpacity: 1 }}
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M20.9999 21.0004L16.6499 16.6504"
-                            stroke="currentColor"
-                            style={{ stroke: 'currentColor', strokeOpacity: 1 }}
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      }
-                    />
-                    <div className={styles.referenceFolderTabs}>
-                      <button
-                        type="button"
-                        className={`${styles.referenceFolderTab} ${referenceFolderFilter === 'all' ? styles.referenceFolderTabActive : ''
-                          }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReferenceFolderFilter('all');
-                        }}
-                      >
-                        All folders
-                      </button>
-                      {folders.map((folder) => (
-                        <button
-                          key={folder.id}
-                          type="button"
-                          className={`${styles.referenceFolderTab} ${referenceFolderFilter === folder.id ? styles.referenceFolderTabActive : ''
-                            }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReferenceFolderFilter(folder.id);
-                          }}
-                        >
-                          {folder.name}
-                        </button>
-                      ))}
-                      {librariesWithoutFolder.length > 0 && (
-                        <button
-                          type="button"
-                          className={`${styles.referenceFolderTab} ${referenceFolderFilter === 'root' ? styles.referenceFolderTabActive : ''
-                            }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReferenceFolderFilter('root');
-                          }}
-                        >
-                          No folder
-                        </button>
-                      )}
-                    </div>
-                    <div className={styles.referenceOptionsList}>
-                      {loadingLibraries || loadingFolders ? (
-                        <div className={styles.referenceEmptyHint}>Loading libraries…</div>
-                      ) : filteredReferenceLibraries.length === 0 ? (
-                        <div className={styles.referenceEmptyHint}>No libraries found.</div>
-                      ) : (
-                        filteredReferenceLibraries.map((lib) => {
-                          const checked = referenceLibraries.includes(lib.id);
-                          const folderName =
-                            lib.folder_id && foldersById.get(lib.folder_id)
-                              ? foldersById.get(lib.folder_id)!.name
-                              : librariesWithFolder.length > 0
-                                ? 'No folder'
-                                : '';
-                          return (
-                            <label
-                              key={lib.id}
-                              className={styles.referenceOptionRow}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Checkbox
-                                checked={checked}
-                                onChange={(e) => {
-                                  const isChecked = e.target.checked;
-                                  setReferenceLibraries((prev) => {
-                                    const next = isChecked
-                                      ? [...prev, lib.id]
-                                      : prev.filter((id) => id !== lib.id);
-                                    return Array.from(new Set(next));
-                                  });
-                                  setError(null);
-                                }}
-                              />
-                              <span className={styles.referenceOptionLabel}>{lib.name}</span>
-                              {folderName && (
-                                <span className={styles.referenceOptionFolderTag}>{folderName}</span>
-                              )}
-                            </label>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            />
-            {!loadingLibraries && referenceLibraries.length === 0 && (
-              <span className={styles.hint}>
-                Choose one or more libraries that this column can reference.
-              </span>
-            )}
-          </div>
+          <ReferenceLibrarySelect
+            value={referenceLibraries}
+            onChange={(ids) => {
+              setReferenceLibraries(ids);
+              setError(null);
+            }}
+            libraries={libraries}
+            folders={folders}
+            loading={loadingLibraries || loadingFolders}
+            getPopupContainer={() => modalRef.current ?? document.body}
+          />
         )}
         {error && <div className={styles.errorText}>{error}</div>}
       </div>

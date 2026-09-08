@@ -16,10 +16,8 @@ import type { LibraryVersion } from '@/lib/types/version';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import { VersionList } from './VersionList';
 import { CreateVersionModal } from './CreateVersionModal';
+import { PanelHeader } from '@/components/shared/PanelHeader';
 import styles from './VersionControlSidebar.module.css';
-import Image from 'next/image';
-import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
-import closeIcon from '@/assets/images/VersionBoardClose.svg';
 
 interface VersionControlSidebarProps {
   libraryId: string;
@@ -81,32 +79,13 @@ export function VersionControlSidebar({
   return (
     <>
       <div className={styles.sidebar} data-testid="library-version-history-sidebar">
-        {/* Header */}
-        <div className={styles.header}>
-          <h2 className={styles.title}>Version History</h2>
-          <div className={styles.headerActions}>
-            <button
-              className={styles.addButton}
-              onClick={handleCreateVersion}
-              title="Create new version"
-            >
-              <Image src={libraryAssetTableAddIcon}
-                alt="Add"
-                width={24} height={24} className="icon-24"
-              />
-            </button>
-            <button
-              className={styles.closeButton}
-              onClick={onClose}
-              title="Close"
-            >
-              <Image src={closeIcon}
-                alt="Close"
-                width={24} height={24} className="icon-24"
-              />
-            </button>
-          </div>
-        </div>
+        <PanelHeader
+          title="Version History"
+          onAdd={handleCreateVersion}
+          addLabel="Create new version"
+          onClose={onClose}
+          closeLabel="Close"
+        />
 
         {/* Version List */}
         <div className={styles.content}>

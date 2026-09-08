@@ -14,6 +14,7 @@ import {
 } from '@/lib/script-system/buildScriptFlowGraph';
 import { placeEdgeLabels } from '@/lib/script-system/flowChartEdgeLabels';
 import { displayChoiceLabel } from '@/lib/story-plot/headings';
+import { PanelHeader } from '@/components/shared/PanelHeader';
 import styles from './ScriptSplitView.module.css';
 
 export type FlowChartPanelProps = {
@@ -290,24 +291,19 @@ export function FlowChartPanel({
 
   return (
     <aside className={styles.flowPanel} aria-label="Flow chart">
-      <div className={styles.flowHeader}>
-        <div className={styles.flowTitleGroup}>
-          <h2 className={styles.flowTitle}>Flow chart</h2>
-          {previewNodes.size > 0 ? (
-            <span className={styles.flowPreviewBadge}>Preview</span>
-          ) : null}
-        </div>
-        {onClose ? (
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label="Close flow chart"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        ) : null}
-      </div>
+      <PanelHeader
+        title={
+          <span className={styles.flowTitleGroup}>
+            <span>Flow chart</span>
+            {previewNodes.size > 0 ? (
+              <span className={styles.flowPreviewBadge}>Preview</span>
+            ) : null}
+          </span>
+        }
+        onClose={onClose}
+        closeLabel="Close flow chart"
+        hideClose={!onClose}
+      />
       <div
         ref={bodyRef}
         className={styles.flowBody}

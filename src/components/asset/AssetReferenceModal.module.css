@@ -224,7 +224,7 @@
   border-collapse: collapse;
   table-layout: auto;
   font-family: 'Roboto', sans-serif;
-  font-size: 0.875rem;
+  font-size: 13px;
 }
 
 .refTable thead th {
@@ -235,7 +235,7 @@
   color: #121619;
   font-family: 'Roboto', sans-serif;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 110%;
   letter-spacing: 0;
   text-align: left;

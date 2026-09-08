@@ -24,6 +24,14 @@ function ChevronDownIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 export function MapSourcePanel({
   readOnly = false,
   projects,
@@ -75,21 +83,31 @@ export function MapSourcePanel({
             {projects.length === 0 ? (
               <div className={styles.projectEmpty}>No projects</div>
             ) : (
-              projects.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  role="option"
-                  aria-selected={project.id === projectId}
-                  className={project.id === projectId ? styles.projectOptionSelected : styles.projectOption}
-                  onClick={() => {
-                    onProjectChange(project.id);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {project.name}
-                </button>
-              ))
+              <div className={styles.projectOptions}>
+                {projects.map((project) => {
+                  const selected = project.id === projectId;
+                  return (
+                    <button
+                      key={project.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      className={`${styles.projectOption} ${
+                        selected ? styles.projectOptionSelected : ''
+                      }`}
+                      onClick={() => {
+                        onProjectChange(project.id);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <span className={styles.projectOptionText}>{project.name}</span>
+                      <span className={styles.projectOptionCheck} aria-hidden="true">
+                        {selected ? <CheckIcon /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         ) : null}

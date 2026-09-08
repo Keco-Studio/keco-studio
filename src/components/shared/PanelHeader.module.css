@@ -1,0 +1,97 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 3.25rem;
+  padding: 1rem 1.25rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.titleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle {
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #697384;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.iconButton {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #21272a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.iconButton:hover:not(:disabled) {
+  opacity: 0.7;
+  background-color: rgba(15, 23, 42, 0.06);
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.iconButtonActive {
+  background-color: rgba(15, 23, 42, 0.06);
+  color: #1876dc;
+}
+
+.iconButton:focus-visible {
+  outline: 2px solid #1876dc;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconButton {
+    transition: none;
+  }
+}

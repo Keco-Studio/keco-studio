@@ -11,7 +11,7 @@
 .headerCell {
   padding: 0.75rem 1rem;
   text-align: left;
-  font-size: 0.75rem;
+  font-size: 13px;
   font-weight: 400;
   color: #64748b;
   text-transform: uppercase;
@@ -62,7 +62,7 @@
 
 .cell {
   padding: 0.75rem 1rem;
-  font-size: 0.875rem;
+  font-size: 13px;
   color: #21272A;
 }
 
@@ -86,7 +86,7 @@
 }
 
 .libraryName {
-  font-size: 1rem;
+  font-size: 13px;
   font-weight: 500;
   color: #21272A;
   height: 1.375rem;
@@ -99,13 +99,13 @@
 }
 
 .assetsText {
-  font-size: 1rem;
+  font-size: 13px;
   font-weight: 400;
   color: #64748b;
 }
 
 .dateText {
-  font-size: 1rem;
+  font-size: 13px;
   font-weight: 400;
   color: #64748b;
   text-transform: uppercase;
@@ -170,7 +170,7 @@
 }
 
 .avatarName {
-  font-size: 1rem;
+  font-size: 13px;
   color: #21272A;
   font-weight: 400;
 }

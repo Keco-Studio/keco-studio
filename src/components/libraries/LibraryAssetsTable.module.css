@@ -112,7 +112,9 @@
 .stickyHorizontalScrollbar {
   position: sticky;
   bottom: 0;
-  z-index: 20;
+  /* Keep above sticky table cells (z-index 1–3), but below TopBar chrome (z-index 30)
+     so the proxy track cannot paint over the global search dropdown. */
+  z-index: 5;
   width: 100%;
   height: 10px;
   overflow-x: auto;
@@ -175,7 +177,7 @@
 
 .table {
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 13px;
   table-layout: fixed;
 }
 
@@ -441,7 +443,7 @@
   font-weight: 600;
   border-bottom: 1px solid #e2e8f0;
   color: #0f172a;
-  font-size: 0.875rem;
+  font-size: 13px;
   line-height: 1.4;
   letter-spacing: 0.02em;
   border-right: 1px solid #0000001A;
@@ -454,7 +456,7 @@
   text-align: left;
   border-left: none;
   border-right: none;
-  font-size: 0.875rem;
+  font-size: 13px;
   font-weight: 500;
   color: #475569;
   letter-spacing: 0.05em;
@@ -471,7 +473,7 @@
 
 .propertyHeaderCell {
   text-align: left;
-  font-size: 0.875rem;
+  font-size: 13px;
   font-weight: 500;
   color: #64748b;
   padding: 0 0.5rem;
@@ -646,7 +648,7 @@
   height: 32px;
   padding: 0 0.5rem;
   vertical-align: middle;
-  font-size: 0.875rem;
+  font-size: 13px;
   color: #111827;
   overflow: hidden;
   cursor: pointer;
@@ -985,15 +987,6 @@ td.cellCopy.copyBorderRight:hover {
   color: #1c1d20;
 }
 
-.formulaPanelClose {
-  border: none;
-  background: transparent;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  color: #1f2937;
-}
-
 .formulaPanelBody {
   padding: 10px 12px 8px;
   flex: 1;
@@ -1203,7 +1196,7 @@ td.cellCopy.copyBorderRight:hover {
   text-align: center;
   font-weight: 400;
   color: #64748b;
-  font-size: 0.875rem;
+  font-size: 13px;
   vertical-align: middle;
   position: relative;
   overflow: visible;
@@ -1226,7 +1219,7 @@ td.cellCopy.copyBorderRight:hover {
   height: 32px;
   text-align: center;
   padding: 0 0.5rem;
-  font-size: 0.875rem;
+  font-size: 13px;
   color: #7D7D7D;
   font-weight: 400;
   background: #F5F6F9;
@@ -1436,7 +1429,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .booleanLabel {
-  font-size: 0.875rem;
+  font-size: 13px;
   color: #111827;
   font-weight: 500;
 }
@@ -1460,7 +1453,7 @@ td.cellCopy.copyBorderRight:hover {
 .editInput {
   width: 100%;
   height: 100%;
-  font-size: 0.8125rem;
+  font-size: 13px;
   line-height: 1.4;
   border: none;
   box-shadow: none;
@@ -1555,12 +1548,13 @@ td.cellCopy.copyBorderRight:hover {
 .enumSelectDisplay :global(.ant-select-selection-item) {
   padding: 0 !important;
   line-height: inherit !important;
+  font-size: 13px !important;
 }
 
 .enumSelectDisplay :global(.ant-select-selection-placeholder) {
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 400;
-  font-size: 0.875rem;
+  font-size: 13px;
   line-height: 110%;
   letter-spacing: 0%;
   color: rgba(26, 26, 26, 1) !important;
@@ -1752,7 +1746,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .referenceValueText {
-  font-size: 0.75rem;
+  font-size: 13px;
   line-height: 1;
   color: #111827;
   overflow: hidden;
@@ -2774,50 +2768,6 @@ td.cellCopy.copyBorderRight:hover {
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-.detailDrawerHeader {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
-}
-
-.detailDrawerTitle {
-  margin: 0;
-  font-family: 'Roboto', sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f172a;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detailDrawerClose {
-  width: 2rem;
-  height: 2rem;
-  border: none;
-  background: none;
-  font-size: 1.5rem;
-  line-height: 1;
-  color: #64748b;
-  cursor: pointer;
-  border-radius: 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s, background-color 0.2s;
-}
-
-.detailDrawerClose:hover {
-  color: #0f172a;
-  background-color: rgba(15, 23, 42, 0.06);
 }
 
 .detailDrawerBody {

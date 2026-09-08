@@ -43,8 +43,11 @@ describe('native simulation workbench presentation', () => {
     expect(css).toMatch(/\.sidebarHidden\s*\{/);
     expect(css).not.toMatch(/\.collapseButton\s*\{/);
     expect(css).not.toMatch(/\.sidebarExpand\s*\{/);
-    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1\.5px solid/s);
-    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*8px/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1px solid transparent/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*11px/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*background:\s*rgba\(221,\s*225,\s*230,\s*0\.29\)/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*padding:\s*12px/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*gap:\s*12px/s);
   });
 
   it('keeps workflow navigation without duplicate global controls', () => {

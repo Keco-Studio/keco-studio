@@ -63,11 +63,14 @@ describe('Keco Script LeftNav wiring', () => {
     expect(css).toMatch(/\.sidebarHidden/);
   });
 
-  it('Script project picker matches the bordered select control used by Simulation', () => {
+  it('Script project picker matches the Libraries soft grey selector', () => {
     const css = read('src/components/script-system/ScriptSidebar.module.css');
-    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1\.5px solid/s);
-    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*8px/s);
-    expect(css).toMatch(/\.projectButton\s*\{[^}]*min-height:\s*36px/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border:\s*1px solid transparent/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*border-radius:\s*11px/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*background:\s*rgba\(221,\s*225,\s*230,\s*0\.29\)/s);
+    expect(css).toMatch(/\.projectButton\s*\{[^}]*height:\s*36px/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*padding:\s*12px/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*gap:\s*12px/s);
   });
 
   it('Script delete uses the shared DeleteConfirmDialog like Studio libraries', () => {

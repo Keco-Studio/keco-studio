@@ -62,74 +62,6 @@
   font-family: Arial, Helvetica, sans-serif;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 54px;
-  padding: 8px 6px 8px 8px;
-  border-bottom: 1px solid var(--agent-line);
-  background: var(--agent-nav-bg);
-  gap: 8px;
-  flex-shrink: 0;
-}
-.headerIdentity {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.headerTitleGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.headerTitle {
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: #171e27;
-}
-.scopeLock {
-  font-size: 12px;
-  line-height: 1.2;
-  color: #6f7783;
-  max-width: 165px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.headerActions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-shrink: 0;
-}
-.headerIconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid #cfd6df;
-  background: #fff;
-  color: #697384;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0;
-  border-radius: 10px;
-}
-.headerIconButton:hover:not(:disabled),
-.headerIconButtonActive {
-  border-color: #bdc8d6;
-  background: #f8fafc;
-  color: #1876dc;
-}
-.headerIconButton:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
 .modeToggle {
   display: inline-flex;
   align-items: center;
@@ -454,7 +386,7 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   max-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 .markdownTable th,
 .markdownTable td {
@@ -1449,7 +1381,6 @@ button.assistantStatusRow:hover .assistantStatusChevron {
 }
 
 .launcher:focus-visible,
-.headerIconButton:focus-visible,
 .modeToggle:focus-visible,
 .btn:focus-visible,
 .attachBtn:focus-visible,
@@ -1481,14 +1412,6 @@ button.assistantStatusRow:hover .assistantStatusChevron {
     z-index: 1001;
   }
 
-  .header {
-    padding-inline: 10px 8px;
-  }
-
-  .scopeLock {
-    max-width: 138px;
-  }
-
   .messages {
     padding: 10px;
   }
@@ -1503,10 +1426,6 @@ button.assistantStatusRow:hover .assistantStatusChevron {
 }
 
 @media (max-width: 360px) {
-  .scopeLock {
-    max-width: 88px;
-  }
-
   .modeToggle {
     min-width: 54px;
     padding-inline: 6px;

@@ -10,6 +10,8 @@ import { useSidebarProjectRole } from '@/components/layout/hooks/useSidebarProje
 import { IconSpeechBubble } from '@/components/layout/navIcons';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import paperIcon from '@/assets/images/paper.svg';
+import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
+import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
 import { useScriptWorkspaceMembership } from './useScriptWorkspaceMembership';
 import {
   ScriptContextMenu,
@@ -60,6 +62,24 @@ function ChevronDownIcon() {
       aria-hidden
     >
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }
@@ -392,23 +412,28 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
         </button>
         {projectMenuOpen && projects.length > 0 ? (
           <div className={styles.projectMenu} role="listbox" aria-label="Projects">
-            {projects.map((project) => {
-              const selected = project.id === projectId;
-              return (
-                <button
-                  key={project.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  className={`${styles.projectOption} ${
-                    selected ? styles.projectOptionSelected : ''
-                  }`}
-                  onClick={() => selectProject(project.id, project.name)}
-                >
-                  {project.name}
-                </button>
-              );
-            })}
+            <div className={styles.projectOptions}>
+              {projects.map((project) => {
+                const selected = project.id === projectId;
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={`${styles.projectOption} ${
+                      selected ? styles.projectOptionSelected : ''
+                    }`}
+                    onClick={() => selectProject(project.id, project.name)}
+                  >
+                    <span className={styles.projectOptionText}>{project.name}</span>
+                    <span className={styles.projectOptionCheck} aria-hidden="true">
+                      {selected ? <CheckIcon /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : null}
       </div>
@@ -456,18 +481,26 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                         toggleExpand(doc.documentId);
                       }}
                     >
-                      <span
-                        className={`${styles.expandChevron} ${
-                          expanded ? styles.expandChevronOpen : ''
-                        }`}
-                      >
-                        <ChevronDownIcon />
+                      <span className={styles.switcherIcons}>
+                        <Image
+                          src={paperIcon}
+                          alt=""
+                          width={24}
+                          height={24}
+                          className={`icon-24 ${styles.switcherBase}`}
+                          aria-hidden
+                        />
+                        <Image
+                          src={expanded ? folderCollapseIcon : folderExpandIcon}
+                          alt=""
+                          width={14}
+                          height={expanded ? 8 : 8}
+                          className={styles.switcherHover}
+                          aria-hidden
+                        />
                       </span>
                     </button>
                   ) : (
-                    <span className={styles.expandSpacer} />
-                  )}
-                  <div className={styles.treeItemMain}>
                     <span className={styles.treeIcon}>
                       <Image
                         src={paperIcon}
@@ -478,6 +511,8 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                         aria-hidden
                       />
                     </span>
+                  )}
+                  <div className={styles.treeItemMain}>
                     {editingKey === docKey ? (
                       <input
                         className={styles.renameInput}
@@ -523,18 +558,17 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                       return (
                         <li key={child.id} role="treeitem">
                           <div
-                            className={`${styles.treeRow} ${styles.treeRowChild} ${
+                            className={`${styles.treeRow} ${
                               scriptSelected ? styles.treeRowActive : ''
                             }`}
                             onContextMenu={(e) =>
                               openMenu(e, 'script', child.id, child.name)
                             }
                           >
-                            <span className={styles.expandSpacer} />
+                            <span className={styles.treeIcon}>
+                              <IconSpeechBubble size={24} />
+                            </span>
                             <div className={styles.treeItemMain}>
-                              <span className={styles.treeIcon}>
-                                <IconSpeechBubble size={24} />
-                              </span>
                               {editingKey === scriptKey ? (
                                 <input
                                   className={styles.renameInput}

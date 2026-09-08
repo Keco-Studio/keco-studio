@@ -22,6 +22,14 @@ const config = {
   },
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    // Prefer asset/style stubs before the generic @/ rewrite so Jest never
+    // tries to parse raw SVG/CSS from src/ (breaks PanelHeader and friends).
+    '^@/assets/.*\\.svg$': '<rootDir>/tests/helpers/fileMock.cjs',
+    '^@/.*\\.module\\.css$': '<rootDir>/tests/helpers/styleMock.cjs',
+    '^@/.*\\.(css|less|scss|sass)$': '<rootDir>/tests/helpers/styleMock.cjs',
+    '\\.svg$': '<rootDir>/tests/helpers/fileMock.cjs',
+    '\\.module\\.css$': '<rootDir>/tests/helpers/styleMock.cjs',
+    '\\.(css|less|scss|sass)$': '<rootDir>/tests/helpers/styleMock.cjs',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   transformIgnorePatterns: [

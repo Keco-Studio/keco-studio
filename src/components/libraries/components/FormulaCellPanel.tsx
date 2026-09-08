@@ -1,6 +1,9 @@
 import React from 'react';
+import Image from 'next/image';
 import { Input } from 'antd';
 import { createPortal } from 'react-dom';
+import closeIcon from '@/assets/images/close.svg';
+import { PanelIconButton } from '@/components/shared/PanelHeader';
 import styles from '../LibraryAssetsTable.module.css';
 
 type FormulaCellPanelProps = {
@@ -32,14 +35,9 @@ export function FormulaCellPanel({
     >
       <div className={styles.formulaPanelHeader}>
         <div className={styles.formulaPanelTitle}>CELL FORMULA</div>
-        <button
-          type="button"
-          className={styles.formulaPanelClose}
-          onClick={onClose}
-          aria-label="Close formula panel"
-        >
-          ×
-        </button>
+        <PanelIconButton onClick={onClose} aria-label="Close formula panel" title="Close">
+          <Image src={closeIcon} alt="" width={20} height={20} aria-hidden="true" />
+        </PanelIconButton>
       </div>
       <div className={styles.formulaPanelBody}>
         <div className={styles.formulaPanelLabel}>

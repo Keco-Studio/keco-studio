@@ -89,27 +89,6 @@
   min-height: 0;
 }
 
-.flowHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  height: 52px;
-  min-height: 52px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--script-line-200);
-  background: var(--script-surface-0);
-}
-
-.flowTitle {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--script-ink-900);
-}
 .flowTitleGroup {
   display: flex;
   align-items: center;
@@ -125,23 +104,6 @@
   font-size: 10px;
   font-weight: 700;
   line-height: 1.2;
-}
-
-.iconButton {
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--script-ink-500);
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.iconButton:hover {
-  background: var(--script-surface-3);
-  color: var(--script-ink-900);
 }
 
 .flowBody {
