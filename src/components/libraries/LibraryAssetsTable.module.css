@@ -112,7 +112,9 @@
 .stickyHorizontalScrollbar {
   position: sticky;
   bottom: 0;
-  z-index: 20;
+  /* Keep above sticky table cells (z-index 1–3), but below TopBar chrome (z-index 30)
+     so the proxy track cannot paint over the global search dropdown. */
+  z-index: 5;
   width: 100%;
   height: 10px;
   overflow-x: auto;
@@ -983,15 +985,6 @@ td.cellCopy.copyBorderRight:hover {
   letter-spacing: 0;
   text-transform: uppercase;
   color: #1c1d20;
-}
-
-.formulaPanelClose {
-  border: none;
-  background: transparent;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  color: #1f2937;
 }
 
 .formulaPanelBody {
@@ -2774,50 +2767,6 @@ td.cellCopy.copyBorderRight:hover {
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-.detailDrawerHeader {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
-}
-
-.detailDrawerTitle {
-  margin: 0;
-  font-family: 'Roboto', sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f172a;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detailDrawerClose {
-  width: 2rem;
-  height: 2rem;
-  border: none;
-  background: none;
-  font-size: 1.5rem;
-  line-height: 1;
-  color: #64748b;
-  cursor: pointer;
-  border-radius: 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s, background-color 0.2s;
-}
-
-.detailDrawerClose:hover {
-  color: #0f172a;
-  background-color: rgba(15, 23, 42, 0.06);
 }
 
 .detailDrawerBody {

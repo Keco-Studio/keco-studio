@@ -83,7 +83,7 @@
 }
 
 .valueRow:hover {
-  background: #f8fafc;
+  background: var(--keco-blue-tint-soft);
 }
 
 .valueAvatar {
@@ -133,7 +133,7 @@
   height: 2rem;
   padding: 0 0.75rem;
   border: 1px solid #e2e8f0;
-  border-radius: 999px;
+  border-radius: 8px;
   background: #ffffff;
   color: #111827;
   font-size: 0.75rem;
@@ -150,7 +150,7 @@
   height: 2rem;
   padding: 0 0.75rem;
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   background: #0b99ff;
   color: #ffffff;
   font-size: 0.75rem;

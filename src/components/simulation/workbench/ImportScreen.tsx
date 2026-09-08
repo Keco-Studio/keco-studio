@@ -437,7 +437,7 @@ export function ImportScreen({
   const { selectedProjectId, libraries, folderNameById, loadFields, loadSources } = useSimulationProject();
   const { commitImport } = useSimulationSession();
   const duplicateNames = useMemo(() => duplicateLibraryNames(libraries), [libraries]);
-  const [name, setName] = useState('sumulator111');
+  const [name, setName] = useState('');
   const [selected, setSelected] = useState(emptySelection);
   const [mappings, setMappings] = useState<FieldMappings>(emptyMappings);
   const [schemas, setSchemas] = useState<Record<string, Array<StudioColumnDefinition & { key: string; name: string }>>>({});
@@ -486,6 +486,7 @@ export function ImportScreen({
     setImported(false);
     setActiveRole('characters');
     setDdOpen(null);
+    setName('');
   }, [selectedProjectId]);
 
   const activeLibraryId = selected[activeRole];
@@ -753,7 +754,7 @@ export function ImportScreen({
   const showUnmappedPool = activeLibSelected && !aiMapping;
 
   return (
-    <div style={{ maxWidth: 1100, width: '100%', margin: '0 auto' }}>
+    <div style={{ maxWidth: 1160, width: '100%', margin: '0 auto' }}>
       <h1 style={{
         fontSize: 27,
         fontWeight: 600,
@@ -784,7 +785,15 @@ export function ImportScreen({
         flexWrap: 'wrap',
       }}
       >
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 320, flex: '0 0 auto' }}>
+        <label style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          width: 220,
+          flex: '0 0 220px',
+          boxSizing: 'border-box',
+        }}
+        >
           <span style={{
             fontSize: 11,
             fontWeight: 600,
@@ -798,7 +807,10 @@ export function ImportScreen({
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
+            placeholder="Enter simulator name"
             style={{
+              boxSizing: 'border-box',
+              width: '100%',
               height: 40,
               border: '1px solid var(--simulation-line-200)',
               borderRadius: 10,

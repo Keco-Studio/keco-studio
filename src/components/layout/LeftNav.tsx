@@ -6,15 +6,23 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   getProductNavigationDestination,
   getProductNavigationState,
+  resolveActiveProductProjectId,
 } from '@/lib/create-map/productNavigation';
-import { readScriptProjectPreference } from '@/lib/script-system/projectPreference';
-import { readStudioNavigationPreference } from '@/lib/studio/navigationPreference';
+import { readScriptProjectPreference, writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
+import { readStudioNavigationPreference, writeStudioProjectPreference } from '@/lib/studio/navigationPreference';
 import {
   readLeftNavCollapsed,
   writeLeftNavCollapsed,
 } from './leftNavStorage';
 import { IconSpeechBubble } from './navIcons';
-import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
+import {
+  readSimulationProjectPreference,
+  writeSimulationProjectPreference,
+} from '@/lib/simulation/projectPreference';
+import {
+  readCreateMapProjectPreference,
+  writeCreateMapProjectPreference,
+} from '@/lib/create-map/projectPreference';
 import alignCenterIcon from '@/assets/images/simulator/align-center.svg';
 import alignCenterActiveIcon from '@/assets/images/simulator/align-center-active.svg';
 import archiveIcon from '@/assets/images/simulator/archive.svg';
@@ -143,11 +151,54 @@ export function LeftNav({ userId }: { userId?: string }) {
     item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem' | 'keco101',
   ) => {
     const studioPreference = readStudioNavigationPreference(userId);
-    const destination = getProductNavigationDestination(pathname, item, {
-      scriptProjectId: onScript || item === 'script' ? readScriptProjectPreference()?.projectId : undefined,
-      simulationProjectId: onSimulation ? readSimulationProjectPreference()?.projectId : undefined,
+    const scriptPreference = readScriptProjectPreference();
+    const simulationPreference = readSimulationProjectPreference();
+    const createMapPreference = readCreateMapProjectPreference();
+    const preferenceBundle = {
+      scriptProjectId: scriptPreference?.projectId,
+      simulationProjectId: simulationPreference?.projectId,
       studioProjectId: studioPreference?.projectId,
       studioFileHref: studioPreference?.fileHref,
+      createMapProjectId: createMapPreference?.projectId,
+    };
+    const activeProjectId = resolveActiveProductProjectId(pathname, preferenceBundle);
+    const activeProjectName =
+      (onScript
+        ? scriptPreference?.projectName
+        : onSimulation
+          ? simulationPreference?.projectName
+          : onCreateMap
+            ? createMapPreference?.projectName
+            : undefined) || 'Project';
+
+    // Keep the open project when switching LeftNav products.
+    if (activeProjectId) {
+      if (item === 'script') {
+        writeScriptProjectPreference({
+          projectId: activeProjectId,
+          projectName: activeProjectName,
+        });
+      }
+      if (item === 'simulation') {
+        writeSimulationProjectPreference({
+          projectId: activeProjectId,
+          projectName: activeProjectName,
+        });
+      }
+      if (item === 'studio' && userId) {
+        writeStudioProjectPreference(userId, activeProjectId);
+      }
+      if (item === 'createMap') {
+        writeCreateMapProjectPreference({
+          projectId: activeProjectId,
+          projectName: activeProjectName,
+        });
+      }
+    }
+
+    const destination = getProductNavigationDestination(pathname, item, {
+      ...preferenceBundle,
+      activeProjectId,
     });
 
     if (destination) router.push(destination);

@@ -27,7 +27,8 @@
   min-width: 0;
   min-height: 0;
   height: 100%;
-  padding: 18px 12px 12px;
+  padding: 12px;
+  gap: 12px;
   flex-direction: column;
   overflow: hidden;
   color: var(--script-ink-800);
@@ -53,7 +54,7 @@
 }
 
 .brand {
-  padding: 0 6px 2px;
+  padding: 0 6px 0;
 }
 
 .brandTitle {
@@ -71,50 +72,54 @@
 }
 
 .brandSubtitle {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   color: var(--branding-theme-secondary-text, #5B74A7);
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .projectWrap {
   position: relative;
-  margin: 12px 0 8px;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .projectButton {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 2px;
   width: 100%;
-  min-height: 36px;
-  padding: 0 10px;
-  border: 1.5px solid #94a3b8;
-  border-radius: 8px;
-  background: var(--script-surface-0);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--script-ink-800);
+  height: 36px;
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: rgba(221, 225, 230, 0.29);
+  font-size: 16px;
+  font-weight: 600;
+  color: #7d7d7d;
   cursor: pointer;
   font-family: inherit;
-  line-height: 1.2;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  line-height: 150%;
+  letter-spacing: 0;
+  text-align: left;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .projectButton:hover {
-  border-color: #64748b;
+  background: rgba(221, 225, 230, 0.45);
 }
 
 .projectButton:focus,
 .projectButton:focus-visible {
-  outline: none;
-  border-color: #64748b;
-  box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.22);
+  outline: 2px solid #8ecfff;
+  outline-offset: 2px;
 }
 
 .projectButton[aria-expanded='true'] {
-  border-color: #64748b;
+  background: rgba(221, 225, 230, 0.45);
 }
 
 .projectName {
@@ -124,12 +129,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  color: #7d7d7d;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 150%;
 }
 
 .chevron {
-  color: var(--script-ink-400);
+  color: #3f444a;
   display: inline-flex;
   flex-shrink: 0;
+  font-size: 11px;
 }
 
 .projectMenu {
@@ -137,37 +147,72 @@
   z-index: 50;
   left: 0;
   right: 0;
-  top: calc(100% + 4px);
-  background: #fff;
-  border: 1px solid var(--script-line-200);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  top: calc(100% + 6px);
   padding: 4px;
-  max-height: 220px;
+  border: none;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
+  box-sizing: border-box;
+}
+
+.projectOptions {
+  max-height: 108px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
 .projectOption {
   width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
   border: none;
+  border-radius: 6px;
   background: transparent;
-  color: var(--script-ink-700);
-  border-radius: 8px;
-  height: 34px;
-  padding: 0 10px;
+  color: #22262b;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.25;
   text-align: left;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.projectOption:hover,
+.projectOption:focus-visible {
+  background: #f4f6f8;
+  outline: none;
+}
+
+.projectOptionSelected,
+.projectOptionSelected:hover,
+.projectOptionSelected:focus-visible {
+  background: #e8f5fd;
+  color: #22262b;
+  font-weight: 400;
+}
+
+.projectOptionText {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.projectOptionSelected {
-  background: var(--script-blue-tint);
-  color: var(--script-blue);
-  font-weight: 600;
+.projectOptionCheck {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #1f2328;
+  font-size: 12px;
 }
 
 .nav {

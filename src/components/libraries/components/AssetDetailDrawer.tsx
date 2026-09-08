@@ -10,6 +10,7 @@ import { ReferenceField } from './ReferenceField';
 import { getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import { createPropertyByName, evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from '@/components/libraries/utils/formulaEvaluation';
 import formulaIcon from '@/assets/images/formula.svg';
+import { PanelHeader } from '@/components/shared/PanelHeader';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 
@@ -252,17 +253,11 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
         role="dialog"
         aria-label="Asset detail"
       >
-        <div className={styles.detailDrawerHeader}>
-          <h2 className={styles.detailDrawerTitle}>{titleDisplay}</h2>
-          <button
-            type="button"
-            className={styles.detailDrawerClose}
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
+        <PanelHeader
+          title={titleDisplay}
+          onClose={onClose}
+          closeLabel="Close"
+        />
         <div className={styles.detailDrawerBody}>
           {orderedProperties.map((property) => {
             const value = row.propertyValues[property.key];

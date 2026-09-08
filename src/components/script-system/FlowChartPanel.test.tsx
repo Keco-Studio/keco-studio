@@ -3,6 +3,33 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { FlowGraph } from '@/lib/script-system/buildScriptFlowGraph';
 
 jest.mock('./ScriptSplitView.module.css', () => ({}));
+jest.mock('@/components/shared/PanelHeader.module.css', () => ({
+  header: 'header',
+  identity: 'identity',
+  titleGroup: 'titleGroup',
+  title: 'title',
+  subtitle: 'subtitle',
+  actions: 'actions',
+  iconButton: 'iconButton',
+  iconButtonActive: 'iconButtonActive',
+}));
+jest.mock('@/assets/images/add.svg', () => 'add.svg', { virtual: true });
+jest.mock('@/assets/images/close.svg', () => 'close.svg', { virtual: true });
+jest.mock('next/image', () => {
+  const React = require('react') as typeof import('react');
+  function MockNextImage({
+    src,
+    alt,
+    ...props
+  }: {
+    src: string;
+    alt: string;
+    [key: string]: unknown;
+  }) {
+    return React.createElement('img', { ...props, src, alt });
+  }
+  return MockNextImage;
+});
 
 import {
   calculateFitScale,

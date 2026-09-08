@@ -14,6 +14,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  font-family: 'Roboto', sans-serif;
 }
 
 .header {
@@ -27,6 +28,7 @@
 }
 
 .title {
+  font-family: 'Roboto', sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: #0f172a;
@@ -72,21 +74,26 @@
 }
 
 .label {
-  font-size: 0.875rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
-  color: #334155;
+  color: #000000;
 }
 
 .labelOptional {
-  font-weight: 400;
-  color: #64748b;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #000000;
 }
 
 .input,
 .textarea {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: 0.875rem !important;
+  font-weight: 400;
+  line-height: 1.375rem;
   border: 0.0625rem solid #e2e8f0;
   border-radius: 0.5rem;
   color: #0f172a;
@@ -300,15 +307,30 @@
 
 .dataTypeSelect :global(.ant-select-selector) {
   border-radius: 0.5rem !important;
+  height: 2.25rem !important;
   min-height: 2.25rem !important;
   padding: 0 0.75rem !important;
   background-color: #ffffff !important;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  line-height: 1.375rem !important;
+  box-sizing: border-box !important;
+  align-items: center !important;
 }
 
 .dataTypeSelect :global(.ant-select-selection-item) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  line-height: 1.375rem !important;
+}
+
+.popup :global(.ant-input) {
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  line-height: 1.375rem !important;
 }
 
 .dataTypeDropdown {
@@ -357,6 +379,8 @@
   border: 0.0625rem solid #e2e8f0;
   border-radius: 0.5rem;
   background: #ffffff;
+  box-sizing: border-box;
+  height: 2.25rem;
 }
 
 .dataTypeSearchWrap:focus-within {
@@ -381,22 +405,19 @@
 .dataTypeSearchInput {
   flex: 1;
   width: 100%;
-  height: 2.5rem;
+  height: 100%;
   border: none;
   border-radius: 0.5rem;
-  padding: 0.375rem 0.625rem 0.375rem 2rem;
+  padding: 0 0.625rem 0 2rem;
   font-size: 0.875rem;
   background: transparent;
   color: #0f172a;
   outline: none;
+  box-sizing: border-box;
 }
 
 .dataTypeSearchInput::placeholder {
   color: #94a3b8;
-}
-
-.referenceSelect :global(.ant-select-selector) {
-  background-color: #ffffff !important;
 }
 
 .typeIcon {
@@ -414,7 +435,8 @@
 
 .cancelBtn {
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
   color: #0f172a;
   background: #ffffff;
@@ -431,7 +453,8 @@
 
 .addBtn {
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
   color: #ffffff;
   background: #0B99FF;
@@ -454,118 +477,6 @@
   font-size: 0.75rem;
   color: #dc2626;
   margin-top: 0.25rem;
-}
-
-/* Reference libraries dropdown with search + folder filter */
-.referenceDropdown {
-  display: flex;
-  flex-direction: column;
-  max-height: 25rem;
-  min-height: 12.5rem;
-  /* Keep the whole dropdown panel scrollable to avoid clipping content */
-  overflow-y: auto;
-}
-
-.referenceFolderTabs {
-  padding: 0.25rem 0 0.125rem;
-  display: flex;
-  flex-wrap: wrap;
-  /* gap: 6px; */
-  margin-bottom: 0.25rem;
-  margin-top: 0.25rem;
-}
-
-.referenceFolderTab {
-  border: none;
-  background: transparent;
-  text-align: center;
-  padding: 0.25rem 0.625rem;
-  margin: 0.3125rem 0.3125rem;
-  font-size: 0.875rem;
-  color: #475569;
-  cursor: pointer;
-  border-radius: 62.4375rem;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.referenceFolderTab:hover {
-  background: #e2f2ff;
-  color: #0b99ff;
-}
-
-.referenceFolderTabActive {
-  background: rgba(11, 153, 255, 0.1);
-  color: rgba(11, 153, 255, 1);
-}
-
-.referenceDropdownContent {
-  flex: 1;
-  padding: 0.5rem 0.75rem 0.625rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-
-.referenceSearchInput :global(.ant-input) {
-  border-radius: 62.4375rem;
-}
-
-.referenceSearchInput :global(.ant-input-prefix) {
-  color: #64748b;
-  display: inline-flex;
-  align-items: center;
-}
-
-.referenceSearchInput:global(.ant-input-affix-wrapper-focused) :global(.ant-input-prefix) {
-  color: rgba(11, 153, 255, 1);
-}
-
-.referenceOptionsList {
-  flex: 1;
-  /* Allow scrolling through the full list when many libraries exist */
-  overflow-y: auto;
-  max-height: 13.75rem;
-  padding-right: 0.25rem;
-  margin-top: 0.25rem;
-}
-
-.referenceOptionRow {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.375rem;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: #0f172a;
-}
-
-.referenceOptionRow:hover {
-  background: #f1f5f9;
-}
-
-.referenceOptionLabel {
-  flex: 1;
-  font-size: 1rem;
-  font-weight: 400;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.referenceOptionFolderTag {
-  padding: 0.125rem 0.375rem;
-  border-radius: 62.4375rem;
-  color: rgba(125, 125, 125, 1);
-  font-size: 0.8125rem;
-  flex-shrink: 0;
-}
-
-.referenceEmptyHint {
-  font-size: 0.8rem;
-  color: #94a3b8;
-  padding: 0.5rem 0.25rem;
-  text-align: center;
 }
 
 .confirmOverlay {

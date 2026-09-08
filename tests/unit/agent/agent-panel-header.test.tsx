@@ -19,15 +19,15 @@ jest.mock('next/image', () => {
 jest.mock('@/assets/images/list.svg', () => 'list.svg', { virtual: true });
 jest.mock('@/assets/images/add.svg', () => 'add.svg', { virtual: true });
 jest.mock('@/assets/images/close.svg', () => 'close.svg', { virtual: true });
-jest.mock('@/components/agent/ChatPanel.module.css', () => ({
+jest.mock('@/components/shared/PanelHeader.module.css', () => ({
   header: 'header',
-  headerIdentity: 'headerIdentity',
-  headerTitleGroup: 'headerTitleGroup',
-  headerTitle: 'headerTitle',
-  scopeLock: 'scopeLock',
-  headerActions: 'headerActions',
-  headerIconButton: 'headerIconButton',
-  headerIconButtonActive: 'headerIconButtonActive',
+  identity: 'identity',
+  titleGroup: 'titleGroup',
+  title: 'title',
+  subtitle: 'subtitle',
+  actions: 'actions',
+  iconButton: 'iconButton',
+  iconButtonActive: 'iconButtonActive',
 }));
 
 describe('AgentPanelHeader', () => {

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Spin } from 'antd';
-import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
@@ -20,8 +19,7 @@ import {
   DocumentVersionItem,
   type DocumentVersionListEntry,
 } from './DocumentVersionItem';
-import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
-import closeIcon from '@/assets/images/VersionBoardClose.svg';
+import { PanelHeader } from '@/components/shared/PanelHeader';
 import styles from './DocumentVersionSidebar.module.css';
 
 type DocumentVersionSidebarProps = {
@@ -108,38 +106,14 @@ export function DocumentVersionSidebar({
 
   return (
     <aside className={styles.sidebar} aria-label="Version history">
-      <div className={styles.header}>
-        <h2 className={styles.title}>Version History</h2>
-        <div className={styles.headerActions}>
-          {canMutate && (
-            <button
-              type="button"
-              className={styles.addButton}
-              aria-label="Create version"
-              title="Create version"
-              disabled={!session}
-              onClick={() => setCreateOpen(true)}
-            >
-              <Image
-                src={libraryAssetTableAddIcon}
-                alt=""
-                width={24}
-                height={24}
-                className="icon-24"
-              />
-            </button>
-          )}
-          <button
-            type="button"
-            className={styles.closeButton}
-            onClick={onClose}
-            aria-label="Close version history"
-            title="Close"
-          >
-            <Image src={closeIcon} alt="" width={24} height={24} className="icon-24" />
-          </button>
-        </div>
-      </div>
+      <PanelHeader
+        title="Version History"
+        onAdd={canMutate ? () => setCreateOpen(true) : undefined}
+        addLabel="Create version"
+        addDisabled={!session}
+        onClose={onClose}
+        closeLabel="Close version history"
+      />
 
       <div className={styles.content}>
         {versionsQuery.isLoading && (

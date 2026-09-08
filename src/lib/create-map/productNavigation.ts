@@ -1,6 +1,7 @@
 import { isCreateMapPath } from './isCreateMapPath';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { isKeco101Path } from '@/lib/keco-101/isKeco101Path';
+import { parseRouteParams } from '@/lib/utils/routeParams';
 
 export type ProductNavigationItem =
   | 'studio'
@@ -12,11 +13,14 @@ export type ProductNavigationItem =
 
 export type ProductNavigationState = Record<ProductNavigationItem, boolean>;
 
-type ProductNavigationPreferences = {
+export type ProductNavigationPreferences = {
+  /** Project currently open in the active product; kept when switching products. */
+  activeProjectId?: string;
   scriptProjectId?: string;
   simulationProjectId?: string;
   studioProjectId?: string;
   studioFileHref?: string | null;
+  createMapProjectId?: string;
 };
 
 function isSimulationPath(pathname: string | null): boolean {
@@ -44,6 +48,39 @@ export function getProductNavigationState(pathname: string | null): ProductNavig
   };
 }
 
+/**
+ * Resolve the project that should stay selected when switching LeftNav products.
+ * Prefers the URL project, then the preference for the product that is currently open.
+ */
+export function resolveActiveProductProjectId(
+  pathname: string | null,
+  preferences: ProductNavigationPreferences = {}
+): string | undefined {
+  const state = getProductNavigationState(pathname);
+  const routeProjectId = parseRouteParams(pathname ?? '').projectId ?? undefined;
+
+  if (state.script) {
+    return routeProjectId ?? preferences.scriptProjectId;
+  }
+  if (state.simulation) {
+    return preferences.simulationProjectId;
+  }
+  if (state.createMap) {
+    return preferences.createMapProjectId;
+  }
+  if (state.studio) {
+    return routeProjectId ?? preferences.studioProjectId;
+  }
+
+  return (
+    routeProjectId ??
+    preferences.studioProjectId ??
+    preferences.scriptProjectId ??
+    preferences.simulationProjectId ??
+    preferences.createMapProjectId
+  );
+}
+
 export function getProductNavigationDestination(
   pathname: string | null,
   item: ProductNavigationItem,
@@ -53,26 +90,26 @@ export function getProductNavigationDestination(
 
   if (state[item]) return null;
 
+  const activeProjectId =
+    preferences.activeProjectId ??
+    resolveActiveProductProjectId(pathname, preferences);
+
   if (item === 'studio') {
-    if (preferences.studioProjectId) {
-      const projectPrefix = `/${preferences.studioProjectId}/`;
+    const projectId = activeProjectId ?? preferences.studioProjectId;
+    if (projectId) {
+      const projectPrefix = `/${projectId}/`;
       if (preferences.studioFileHref?.startsWith(projectPrefix)) {
         return preferences.studioFileHref;
       }
-      return `/${preferences.studioProjectId}/recent`;
-    }
-    if (state.script && preferences.scriptProjectId) {
-      return `/${preferences.scriptProjectId}/recent`;
-    }
-    if (state.simulation && preferences.simulationProjectId) {
-      return `/${preferences.simulationProjectId}/recent`;
+      return `/${projectId}/recent`;
     }
     return '/projects';
   }
 
   if (item === 'simulation') return '/simulation-system';
   if (item === 'script') {
-    return preferences.scriptProjectId ? `/script-system/${preferences.scriptProjectId}` : '/script-system';
+    const projectId = activeProjectId ?? preferences.scriptProjectId;
+    return projectId ? `/script-system/${projectId}` : '/script-system';
   }
   if (item === 'gameDesignSystem') return '/game-design-systems';
   if (item === 'keco101') return '/keco-101';

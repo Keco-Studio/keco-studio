@@ -98,6 +98,29 @@ describe('LeftNav wiring', () => {
     ).toBe('/project-1/doc/document-1');
   });
 
+  it('keeps the active project when switching between Script and Simulation', () => {
+    expect(
+      getProductNavigationDestination('/script-system/project-a', 'simulation', {
+        activeProjectId: 'project-a',
+        scriptProjectId: 'project-a',
+        simulationProjectId: 'project-b',
+      })
+    ).toBe('/simulation-system');
+    expect(
+      getProductNavigationDestination('/simulation-system', 'script', {
+        activeProjectId: 'project-b',
+        scriptProjectId: 'project-a',
+        simulationProjectId: 'project-b',
+      })
+    ).toBe('/script-system/project-b');
+    expect(
+      getProductNavigationDestination('/project-a/recent', 'script', {
+        activeProjectId: 'project-a',
+        studioProjectId: 'project-a',
+      })
+    ).toBe('/script-system/project-a');
+  });
+
   it('renders Create Map as the fourth product control with the active page state', () => {
     const markup = renderToStaticMarkup(React.createElement(LeftNav));
     const controls = [...markup.matchAll(/aria-label="([^"]+)"/g)].map((match) => match[1]);
@@ -117,6 +140,10 @@ describe('LeftNav wiring', () => {
     const source = read('src/components/layout/LeftNav.tsx');
     expect(source).toContain('export function LeftNav');
     expect(source).toContain('readLeftNavCollapsed');
+    expect(source).toContain('resolveActiveProductProjectId');
+    expect(source).toContain('writeScriptProjectPreference');
+    expect(source).toContain('writeSimulationProjectPreference');
+    expect(source).toContain('writeStudioProjectPreference');
     expect(getProductNavigationDestination('/projects', 'simulation')).toBe('/simulation-system');
     expect(source).toContain('readStudioNavigationPreference');
   });

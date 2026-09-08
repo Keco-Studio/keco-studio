@@ -64,6 +64,24 @@ function ChevronDownIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 type ContextMenuState = {
   x: number;
   y: number;
@@ -392,23 +410,28 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
         </button>
         {projectMenuOpen && projects.length > 0 ? (
           <div className={styles.projectMenu} role="listbox" aria-label="Projects">
-            {projects.map((project) => {
-              const selected = project.id === projectId;
-              return (
-                <button
-                  key={project.id}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  className={`${styles.projectOption} ${
-                    selected ? styles.projectOptionSelected : ''
-                  }`}
-                  onClick={() => selectProject(project.id, project.name)}
-                >
-                  {project.name}
-                </button>
-              );
-            })}
+            <div className={styles.projectOptions}>
+              {projects.map((project) => {
+                const selected = project.id === projectId;
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={`${styles.projectOption} ${
+                      selected ? styles.projectOptionSelected : ''
+                    }`}
+                    onClick={() => selectProject(project.id, project.name)}
+                  >
+                    <span className={styles.projectOptionText}>{project.name}</span>
+                    <span className={styles.projectOptionCheck} aria-hidden="true">
+                      {selected ? <CheckIcon /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : null}
       </div>

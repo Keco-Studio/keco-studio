@@ -99,7 +99,7 @@ export function ImportDocumentationView({
       </header>
 
       <div className={styles.grid}>
-        <section className={styles.card} aria-label="Select form">
+        <section className={`${styles.card} ${styles.formCard}`} aria-label="Select form">
           <span className={styles.cardLabel}>Select form</span>
           <button
             type="button"
