@@ -6,6 +6,7 @@ import type { ChatMessage } from '@/lib/agent/types';
 import type { StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { GddGenerationRequestV2 } from './contracts';
 import type { DialogueSceneEvent } from './dialogueSceneStream';
+import { compileGameArtStyle } from '@/lib/game-art-style/compiler';
 
 const input: GddGenerationRequestV2 = {
   contractVersion: 2,
@@ -61,6 +62,20 @@ const scenePlan = (event: DialogueSceneEvent) => ({
 });
 
 describe('GDD v2 direct Markdown generator', () => {
+  it('injects the validated Art Style as isolated untrusted rendering data', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## Overview\nBody.');
+    const artStyle = compileGameArtStyle({
+      presetId: 'pixel-art', presetVersion: 2,
+      customization: { direction: 'Sharp monochrome silhouettes.', referenceGames: [], avoid: 'No gradients.' },
+    });
+    await generateGddMarkdownV2({ ...input, mode: 'quick', artStyle }, complete);
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[1].content).toContain('BEGIN_UNTRUSTED_GAME_ART_STYLE_DATA');
+    expect(messages[1].content).toContain('Sharp monochrome silhouettes.');
+    expect(messages[1].content).toContain('concept_only');
+    expect(messages[1].content).toMatch(/Preview subjects.*not project facts/);
+  });
+
   it('generates production Markdown in one completion and removes provenance', async () => {
     const complete = jest.fn(async () => [
       '```markdown',

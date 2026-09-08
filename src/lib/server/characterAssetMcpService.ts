@@ -21,6 +21,52 @@ type ProjectRole = 'admin' | 'editor' | 'viewer';
 type AssetStatus = 'draft' | 'generating' | 'ready' | 'failed' | 'blocked';
 type GenerationStatus = 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'blocked';
 type ProviderOperation = 'submit' | 'retry' | 'poll' | 'validate' | 'resolve_unknown';
+type ReferenceMapping = {
+  assetId: string;
+  role: 'style' | 'source';
+  capability: 'exact' | 'fallback' | 'unavailable';
+  providerField: string | null;
+};
+type ReferenceCompatibility = {
+  status: 'exact' | 'fallback' | 'unavailable';
+  mappings: ReferenceMapping[];
+};
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const REFERENCE_PROVIDER_FIELDS = new Set([
+  'style_reference', 'style_reference_image', 'style_image', 'style_image_url',
+  'source_image', 'source_reference', 'source_image_url',
+]);
+
+export function parseReferenceCompatibility(value: unknown): ReferenceCompatibility {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).some((key) => key !== 'status' && key !== 'mappings')
+    || !['exact', 'fallback', 'unavailable'].includes(String(row.status))
+    || !Array.isArray(row.mappings) || row.mappings.length > 4) {
+    throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
+  }
+  const mappings = row.mappings.map((mapping): ReferenceMapping => {
+    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
+    const item = mapping as Record<string, unknown>;
+    if (Object.keys(item).some((key) => !['assetId', 'role', 'capability', 'providerField'].includes(key))
+      || typeof item.assetId !== 'string' || !UUID_PATTERN.test(item.assetId)
+      || (item.role !== 'style' && item.role !== 'source')
+      || !['exact', 'fallback', 'unavailable'].includes(String(item.capability))
+      || (item.providerField !== null && (typeof item.providerField !== 'string' || !REFERENCE_PROVIDER_FIELDS.has(item.providerField)))
+      || (item.capability === 'exact' ? item.providerField === null : item.providerField !== null)) {
+      throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
+    }
+    return item as ReferenceMapping;
+  });
+  if (new Set(mappings.map((mapping) => mapping.assetId)).size !== mappings.length) {
+    throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
+  }
+  const status = mappings.some((mapping) => mapping.capability === 'unavailable')
+    ? 'unavailable'
+    : mappings.some((mapping) => mapping.capability === 'fallback') ? 'fallback' : 'exact';
+  if (row.status !== status) throw new CharacterAssetMcpError('UPSTREAM_UNAVAILABLE');
+  return { status, mappings };
+}
 
 export type PublicCharacterGeneration = {
   attemptId: string;
@@ -73,7 +119,7 @@ export type CharacterAssetMcpBackend = {
     plan: CharacterAssetPlanV1;
     planFingerprint: string;
   }): Promise<CharacterAssetWorkspace>;
-  preflightProvider(projectId: string, kind: CharacterAssetPlanV1['kind']): Promise<void>;
+  preflightProvider(projectId: string, plan: CharacterAssetPlanV1): Promise<ReferenceCompatibility>;
   prepareGeneration(input: {
     projectId: string;
     assetId: string;
@@ -366,11 +412,15 @@ function defaultBackend(supabase: SupabaseClient, userId: string): CharacterAsse
       if (error) mapError(error);
       return readAsset(input.projectId, input.assetId);
     },
-    async preflightProvider(projectId, kind) {
-      const { error } = await serviceClient().functions.invoke('pixellab-character', {
-        body: { operation: 'capabilities', projectId, kind, actorUserId: userId },
+    async preflightProvider(projectId, plan) {
+      const { data, error } = await serviceClient().functions.invoke('pixellab-character', {
+        body: { operation: 'capabilities', projectId, kind: plan.kind, plan, actorUserId: userId },
       });
       if (error) await mapCharacterAssetFunctionError(error);
+      const value = data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as { referenceCompatibility?: unknown }).referenceCompatibility
+        : null;
+      return parseReferenceCompatibility(value);
     },
     async prepareGeneration(input) {
       const { data, error } = await supabase.rpc('prepare_character_asset_generation', {
@@ -452,7 +502,7 @@ export function createCharacterAssetMcpService(
         await requireWriter(input.projectId);
         const asset = await backend.readAsset(input.projectId, input.assetId);
         if (asset.saveVersion !== input.saveVersion) throw new CharacterAssetMcpError('CHARACTER_ASSET_REVISION_STALE');
-        await backend.preflightProvider(input.projectId, asset.plan.kind);
+        const referenceCompatibility = await backend.preflightProvider(input.projectId, asset.plan);
         const state = await backend.prepareGeneration({ ...input, generationId: makeUuid(), planFingerprint: fingerprintPlan(asset.plan) });
         assertStateIdentity(state, input, fingerprintPlan);
         let purpose: CharacterAssetGenerationConfirmationPurpose;
@@ -465,6 +515,7 @@ export function createCharacterAssetMcpService(
           assetId: state.assetId, attemptId: state.generation.attemptId,
           generationId: state.generation.generationId, planFingerprint: state.generation.planFingerprint,
           attemptCount: state.generation.attemptCount, status: state.generation.status,
+          referenceCompatibility,
           feeNotice: FEE_NOTICE, confirmationPurpose: purpose,
           confirmationExpiresAt: new Date(now() + 10 * 60 * 1000).toISOString(),
           confirmationToken: sign(binding(state, purpose)),

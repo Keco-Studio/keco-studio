@@ -1,6 +1,6 @@
 # Existing Resource Evolution
 
-Every new feature starts with discovery of compatible existing resources. The default operation is `reuse_exact`, then `extend_compatible`, then `migrate_additive`; `create_new` is allowed only when the discovery record proves that no compatible target exists or the user explicitly requests isolation.
+Every new feature starts with discovery of compatible existing resources. The default operation is `reuse_exact`, then `extend_compatible`, then `migrate_additive`, then `derive_from_source`; `create_new` is allowed only when the discovery record proves that no compatible target exists or the user explicitly requests isolation.
 
 The stable key is the join between an existing resource and its next additive revision; resolve it before any write.
 
@@ -27,7 +27,12 @@ Every AssetPlan and SlicePlan records:
 
 ```yaml
 evolution:
-  strategy: reuse_exact|extend_compatible|migrate_additive|create_new
+  strategy: reuse_exact|extend_compatible|migrate_additive|derive_from_source|create_new
+  sourceAssetId: existing-or-null
+  sourceRevisionId: existing-or-null
+  sourceSha256: existing-or-null
+  targetPath: res://generated/player.png
+  providerAdapterDecision: exact|fallback|unavailable
   targetTableId: existing-or-null
   targetResourcePaths: []
   stableMatchKey: Asset Key
@@ -35,5 +40,11 @@ evolution:
   noCompatibleTarget: false
   reason: existing animation resource accepts a new state
 ```
+
+Use `reuse_exact` only when authoritative bytes and runtime compatibility both
+permit direct materialization. Use `derive_from_source` when a stable source
+asset constrains a new output; its source ID, revision, SHA-256, target path,
+adapter decision, and reason are required. `concept_only` and `unclassified`
+images cannot be submitted automatically.
 
 If the target schema, resource type, tile layout, or stable key is ambiguous, set the decision to `awaiting_user_confirmation`, keep the write token null, and perform zero writes.

@@ -11,6 +11,13 @@ Before expensive or mutating work, summarize Goal, Source, Scope, Success, and N
 
 Own run_project -> get_debug_output -> stop_project evidence, KECO_OBSERVATION parsing, locked EvalSpec assertions, current build/snapshot binding, runtime batches, EvalReport, the three-repair ceiling, manual-required blocking, and separate lifecycle statuses.
 
+For generated visual assets, download authoritative Keco bytes, verify their
+SHA-256, and run `tsx scripts/game-art-style/inspectOutput.ts <local-png>`.
+Store its machine-readable observation beside structured visual-review
+assertions. Derive `provenanceStatus` and `visualStyleStatus` separately: a hash
+match never passes visual style, and missing semantic review remains blocked.
+Regenerate only failed assets and record the changed prompt or reference.
+
 ## References
 
 - [eval-contract.md](references/eval-contract.md)

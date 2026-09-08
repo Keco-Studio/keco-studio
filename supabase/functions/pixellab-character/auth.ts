@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { PixelLabCharacterError } from "./types.ts";
+import { PixelLabCharacterError, type CharacterAssetPlan, type ResolvedCharacterReference } from "./types.ts";
 
 function serviceRole(): string { return Deno.env.get("KECO_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""; }
 function clients() {
@@ -8,6 +8,30 @@ function clients() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 export type AuthorizedContext = { serviceClient: SupabaseClient; state: Record<string, unknown> };
+
+export async function resolveCharacterReferences(
+  serviceClient: SupabaseClient,
+  projectId: string,
+  plan: CharacterAssetPlan,
+): Promise<ResolvedCharacterReference[]> {
+  if (plan.kind !== "character" || plan.schemaVersion !== 2 || plan.references.length === 0) return [];
+  const ids = plan.references.map((reference) => reference.assetId);
+  if (new Set(ids).size !== ids.length) throw new PixelLabCharacterError("authorization_failed", "Character references are duplicated", 403);
+  const { data, error } = await serviceClient.from("map_reference_images")
+    .select("id,project_id,storage_path,sha256").eq("project_id", projectId).in("id", ids);
+  if (error || !Array.isArray(data) || data.length !== ids.length) throw new PixelLabCharacterError("authorization_failed", "Character reference binding is invalid", 403);
+  const byId = new Map(data.map((row) => [String(row.id), row]));
+  return await Promise.all(plan.references.map(async (reference) => {
+    const row = byId.get(reference.assetId);
+    const expectedPath = `references/${projectId}/${reference.assetId}/${reference.sha256}.png`;
+    if (!row || row.project_id !== projectId || row.sha256 !== reference.sha256 || row.storage_path !== expectedPath) {
+      throw new PixelLabCharacterError("authorization_failed", "Character reference binding is invalid", 403);
+    }
+    const signed = await serviceClient.storage.from("map-assets").createSignedUrl(expectedPath, 300);
+    if (signed.error || !signed.data?.signedUrl) throw new PixelLabCharacterError("pixellab_upstream", "Character reference delivery is unavailable", 503);
+    return { ...reference, imageUrl: signed.data.signedUrl };
+  }));
+}
 
 /**
  * Older ready character attempts persisted the provider character identity in
@@ -58,12 +82,17 @@ export async function authorizeServiceRequest(request: Request, body: Record<str
     if (!sourceAttempt || sourceAttempt.sha256 !== asset.plan?.sourceCharacterSha256 || !sourceProviderCharacterId) throw new PixelLabCharacterError("authorization_failed", "Source character binding is invalid", 403);
     sourceFacing = source?.plan?.facing;
   }
+  const operation = String(body.operation ?? "");
+  const resolvedReferences = operation === "submit" || operation === "retry"
+    ? await resolveCharacterReferences(serviceClient, projectId, asset.plan as CharacterAssetPlan)
+    : [];
   return { serviceClient, state: {
     serviceClient, projectId, assetId, attemptId, generationId: String(attempt.generation_id),
     planFingerprint: String(attempt.plan_fingerprint), attemptCount: Number(attempt.attempt_count), status: attempt.status,
     lastErrorCode: attempt.last_error_code, providerJobId: attempt.provider_job_id, metadata: attempt.metadata ?? {}, plan: asset.plan,
     sourceProviderCharacterId: asset.kind === "character" && typeof attempt.metadata?.providerCharacterId === "string" ? attempt.metadata.providerCharacterId : sourceProviderCharacterId,
     sourceFacing,
+    resolvedReferences,
     updatedAt: attempt.updated_at,
   } };
 }

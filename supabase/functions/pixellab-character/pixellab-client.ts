@@ -1,4 +1,4 @@
-import { PixelLabCharacterError, type CharacterCapability, type CharacterAssetPlan } from "./types.ts";
+import { PixelLabCharacterError, type CharacterCapability, type CharacterAssetPlan, type ReferenceCompatibility, type ResolvedCharacterReference } from "./types.ts";
 import { providerErrorText } from "./provider-response.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
@@ -124,8 +124,100 @@ export class PixelLabCharacterClient {
   }
 }
 
-export function characterArguments(plan: Extract<CharacterAssetPlan, { kind: "character" }>): Record<string, unknown> {
-  return { description: plan.description, name: plan.name, mode: "pro", size: plan.width, view: plan.perspective === "topdown" ? "high top-down" : plan.perspective === "platformer" ? "side" : "high top-down" };
+function propertyShape(capability: CharacterCapability, field: string): Record<string, unknown> {
+  const properties = capability.inputSchema.properties;
+  return properties && typeof properties === "object" && !Array.isArray(properties)
+    ? ((properties as Record<string, unknown>)[field] as Record<string, unknown> | undefined) ?? {}
+    : {};
+}
+
+function schemaVariants(shape: Record<string, unknown>): Record<string, unknown>[] {
+  const variants = [shape];
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const value = shape[key];
+    if (Array.isArray(value)) variants.push(...value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item))));
+  }
+  return variants;
+}
+
+function acceptsReferenceUrl(shape: Record<string, unknown>): boolean {
+  return schemaVariants(shape).some((variant) => variant.type === "string" || (
+    variant.type === "array"
+    && Boolean(variant.items && typeof variant.items === "object" && !Array.isArray(variant.items))
+    && schemaVariants(variant.items as Record<string, unknown>).some((item) => item.type === "string")
+  ));
+}
+
+function acceptsReferenceUrlArray(shape: Record<string, unknown>): boolean {
+  return schemaVariants(shape).some((variant) => variant.type === "array"
+    && Boolean(variant.items && typeof variant.items === "object" && !Array.isArray(variant.items))
+    && schemaVariants(variant.items as Record<string, unknown>).some((item) => item.type === "string"));
+}
+
+function referenceField(capability: CharacterCapability, role: "style" | "source"): string | null {
+  const properties = capability.inputSchema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return null;
+  const names = Object.keys(properties as Record<string, unknown>);
+  const candidates = role === "style"
+    ? ["style_reference", "style_reference_image", "style_image", "style_image_url"]
+    : ["source_image", "source_reference", "source_image_url"];
+  return candidates.find((candidate) => names.includes(candidate) && acceptsReferenceUrl(propertyShape(capability, candidate))) ?? null;
+}
+
+export function negotiateCharacterReferences(capability: CharacterCapability, references: ResolvedCharacterReference[]): ReferenceCompatibility {
+  const provisional = references.map((reference) => {
+    const field = referenceField(capability, reference.role);
+    if (field) return { assetId: reference.assetId, role: reference.role, capability: "exact" as const, providerField: field };
+    return { assetId: reference.assetId, role: reference.role, capability: reference.required ? "unavailable" as const : "fallback" as const, providerField: null };
+  });
+  const counts = new Map<string, number>();
+  for (const mapping of provisional) if (mapping.providerField) counts.set(mapping.providerField, (counts.get(mapping.providerField) ?? 0) + 1);
+  const mappings = provisional.map((mapping) => {
+    if (!mapping.providerField || (counts.get(mapping.providerField) ?? 0) < 2 || acceptsReferenceUrlArray(propertyShape(capability, mapping.providerField))) return mapping;
+    const reference = references.find((candidate) => candidate.assetId === mapping.assetId)!;
+    return { ...mapping, capability: reference.required ? "unavailable" as const : "fallback" as const, providerField: null };
+  });
+  return {
+    status: mappings.some((mapping) => mapping.capability === "unavailable")
+      ? "unavailable"
+      : mappings.some((mapping) => mapping.capability === "fallback") ? "fallback" : "exact",
+    mappings,
+  };
+}
+
+export function characterArguments(
+  plan: Extract<CharacterAssetPlan, { kind: "character" }>,
+  capability?: CharacterCapability,
+  references: ResolvedCharacterReference[] = [],
+): Record<string, unknown> {
+  const compatibility = capability ? negotiateCharacterReferences(capability, references) : { status: "exact" as const, mappings: [] };
+  if (compatibility.status === "unavailable") throw new PixelLabCharacterError("pixellab_capability_missing", "Required character reference capability is unavailable", 409);
+  const fallback = references.filter((reference) => compatibility.mappings.find((mapping) => mapping.assetId === reference.assetId)?.capability === "fallback");
+  const fallbackDirection = fallback.map((reference) => `Reference direction (${reference.role}): ${reference.usage}`).join("\n");
+  const descriptionBudget = Math.max(0, 2_000 - (fallbackDirection ? fallbackDirection.length + 1 : 0));
+  const args: Record<string, unknown> = {
+    description: fallbackDirection
+      ? `${plan.description.slice(0, descriptionBudget)}\n${fallbackDirection}`
+      : plan.description,
+    name: plan.name,
+    mode: "pro",
+    size: plan.width,
+    view: plan.perspective === "topdown" ? "high top-down" : plan.perspective === "platformer" ? "side" : "high top-down",
+  };
+  for (const mapping of compatibility.mappings) {
+    if (mapping.capability !== "exact" || !mapping.providerField) continue;
+    const reference = references.find((candidate) => candidate.assetId === mapping.assetId)!;
+    const shape = propertyShape(capability!, mapping.providerField);
+    if (acceptsReferenceUrlArray(shape)) {
+      const current = Array.isArray(args[mapping.providerField]) ? args[mapping.providerField] as string[] : [];
+      args[mapping.providerField] = [...current, reference.imageUrl];
+    } else if (args[mapping.providerField] === undefined) {
+      args[mapping.providerField] = reference.imageUrl;
+    } else {
+      throw new PixelLabCharacterError("pixellab_capability_missing", "Provider cannot represent multiple character references", 409);
+    }
+  }
+  return args;
 }
 const facingToDirection = { front: "south", back: "north", left: "west", right: "east" } as const;
 export function animationArguments(plan: Extract<CharacterAssetPlan, { kind: "animation" }>, providerCharacterId: string, facing: keyof typeof facingToDirection): Record<string, unknown> {
