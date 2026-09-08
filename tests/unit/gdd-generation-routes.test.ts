@@ -242,7 +242,7 @@ describe('project GDD generation routes', () => {
       body: JSON.stringify({
         designSystemId: SYSTEM_ID,
         versionId: VERSION_ID,
-        creativeBrief: '请生成冒险闯关游戏 GDD',
+        creativeBrief: '\u8bf7\u751f\u6210\u5192\u9669\u95ef\u5173\u6e38\u620f GDD',
       }),
     }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
 
