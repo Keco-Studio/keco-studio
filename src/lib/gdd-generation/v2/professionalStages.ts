@@ -112,7 +112,9 @@ function parseBlueprint(raw: string): ProfessionalBlueprint {
 function normalizeBlueprintCandidate(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const candidate = value as Record<string, unknown>;
-  const version = candidate.version === '1.0' || candidate.version === '1' ? 1 : candidate.version;
+  const version = typeof candidate.version === 'string' && /^1(?:\.0){0,2}$/.test(candidate.version.trim())
+    ? 1
+    : candidate.version;
   const sections = Array.isArray(candidate.sections)
     ? candidate.sections.map((section, index) => {
       if (!section || typeof section !== 'object' || Array.isArray(section)) return section;
@@ -134,7 +136,18 @@ function normalizeBlueprintCandidate(value: unknown): unknown {
       return { id, title, stage, instructions };
     })
     : candidate.sections;
-  return { ...candidate, version, sections };
+  const invariants = Array.isArray(candidate.invariants)
+    ? candidate.invariants.map((invariant) => {
+      if (typeof invariant === 'string') return invariant;
+      if (!invariant || typeof invariant !== 'object' || Array.isArray(invariant)) return String(invariant);
+      const item = invariant as Record<string, unknown>;
+      for (const key of ['statement', 'text', 'description', 'title']) {
+        if (typeof item[key] === 'string' && item[key].trim()) return item[key];
+      }
+      return JSON.stringify(invariant);
+    })
+    : candidate.invariants;
+  return { ...candidate, version, sections, invariants };
 }
 
 function stageKind(stage: ProfessionalStage): ProfessionalSectionKind | null {

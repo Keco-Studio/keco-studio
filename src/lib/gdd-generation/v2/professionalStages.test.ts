@@ -93,6 +93,26 @@ describe('professional GDD stages', () => {
     }));
   });
 
+  it('normalizes semantic version aliases and object invariants', async () => {
+    const complete = jest.fn(async () => JSON.stringify({
+      version: '1.0.0',
+      title: 'Test Game GDD',
+      sections: [
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'systems', title: 'Systems', stage: 'systems', instructions: ['Define numbers.'] },
+        { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
+      ],
+      invariants: [{ statement: 'Use the same numbers everywhere.' }],
+    }));
+
+    const result = await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint).toEqual(expect.objectContaining({
+      version: 1,
+      invariants: ['Use the same numbers everywhere.'],
+    }));
+  });
+
   it('repairs one malformed planning response before failing the stage', async () => {
     const complete = jest.fn(async (..._args: unknown[]) => JSON.stringify(blueprint))
       .mockResolvedValueOnce('{"version":1,"title":"Test Game GDD","sections":[{"id":"core-loop","title":"Core Loop","stage":"core","instructions":["Define the loop."]}],"invariants":["unterminated')
