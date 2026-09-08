@@ -40,12 +40,14 @@ describe('SavedMapsPanel', () => {
       onRetry={() => undefined}
     />);
 
-    expect(markup).toContain('Saved Maps');
+    expect(markup).toContain('Saved maps');
     expect(markup).toContain('River Town');
     expect(markup).toContain('Adventure');
-    expect(markup).toContain('V3');
+    expect(markup).toContain('v3');
     expect(markup).toContain('dateTime="2026-08-10T01:00:00.000Z"');
     expect(markup).toContain('aria-current="true"');
+    expect(markup).toContain('aria-label="Search saved maps"');
+    expect(markup).toContain('aria-label="Create map"');
   });
 
   it('disables rows while switching would replace active work', () => {

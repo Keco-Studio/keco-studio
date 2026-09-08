@@ -38,25 +38,28 @@ export function DirectMapGenerationPanel(props: DirectMapGenerationPanelProps) {
   const showGenerate = ['idle', 'awaiting-confirmation', 'failed', 'ready'].includes(props.phase);
   const unknownSubmission = props.asset?.status === 'queued'
     || (props.asset?.status === 'blocked' && props.asset.lastErrorCode === 'pixellab_submit_outcome_unknown');
+  const showAssetRow = Boolean(props.asset) || busy || props.phase === 'ready' || props.phase === 'failed' || props.phase === 'blocked';
+  const showPhaseLabel = props.phase !== 'idle' || showAssetRow;
   return (
-    <section className={styles.inspectorSection} aria-labelledby="direct-generation-heading">
-      <div className={styles.sectionHeadingRow}>
-        <div>
-          <span className={styles.eyebrow}>3 Generate</span>
-          <h2 id="direct-generation-heading" className={styles.sectionTitleSmall}>Map image</h2>
+    <section className={styles.generationFooter} aria-labelledby="direct-generation-heading">
+      <h2 id="direct-generation-heading" className={styles.srOnly}>Map image</h2>
+      {showPhaseLabel ? (
+        <div className={styles.generationFooterMeta}>
+          <span className={styles.generationPhase} data-phase={props.phase}>{PHASE_LABELS[props.phase]}</span>
         </div>
-        <span className={styles.generationPhase} data-phase={props.phase}>{PHASE_LABELS[props.phase]}</span>
-      </div>
+      ) : null}
 
-      <div className={styles.singleAssetRow} data-status={props.asset?.status ?? 'idle'}>
-        <span className={styles.assetStatusIcon} aria-hidden>
-          {props.phase === 'ready' ? <CheckCircleOutlined /> : <ThunderboltOutlined />}
-        </span>
-        <span>
-          <strong>Complete map PNG</strong>
-          <small>{props.asset?.width && props.asset.height ? `${props.asset.width} × ${props.asset.height}` : 'Opaque full-map output'}</small>
-        </span>
-      </div>
+      {showAssetRow ? (
+        <div className={styles.singleAssetRow} data-status={props.asset?.status ?? 'idle'}>
+          <span className={styles.assetStatusIcon} aria-hidden>
+            {props.phase === 'ready' ? <CheckCircleOutlined /> : <ThunderboltOutlined />}
+          </span>
+          <span>
+            <strong>Complete map PNG</strong>
+            <small>{props.asset?.width && props.asset.height ? `${props.asset.width} × ${props.asset.height}` : 'Opaque full-map output'}</small>
+          </span>
+        </div>
+      ) : null}
 
       {props.error ? <p className={styles.inlineError} role="alert">{props.error}</p> : null}
       {props.asset?.lastErrorCode ? <code className={styles.errorCode}>{props.asset.lastErrorCode}</code> : null}

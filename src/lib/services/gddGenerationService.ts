@@ -98,6 +98,10 @@ export type GddGenerationJob = {
   generation_series_id: string | null;
   generation_revision: number | null;
   resource_change_summary: ResourceChangeSummary;
+  blueprint: Record<string, unknown> | null;
+  section_drafts: Array<Record<string, unknown>>;
+  review_report: Record<string, unknown> | null;
+  repair_round: number;
   created_at: string;
   updated_at: string;
 };
@@ -140,7 +144,7 @@ export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenera
   };
 }
 
-const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at,generation_series_id,generation_revision,resource_change_summary';
+const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at,generation_series_id,generation_revision,resource_change_summary,blueprint,section_drafts,review_report,repair_round';
 const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,applied_rule_ids,omitted_rule_ids,error,generation_series_id,generation_revision,resource_change_summary';
 const LATEST_PUBLIC_JOB_COLUMNS = `${PUBLIC_JOB_COLUMNS},created_at`;
 const MAP_ARTIFACT_COLUMNS = 'id,gdd_generation_job_id,gdd_document_id,project_id,map_brief_id,title,status,phase,map_project_id,map_revision_id,map_asset_id,error,completed_at,created_at,updated_at';

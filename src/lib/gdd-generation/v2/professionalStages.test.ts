@@ -1,0 +1,212 @@
+import { describe, expect, it, jest } from '@jest/globals';
+import {
+  generateProfessionalStage,
+  type ProfessionalCheckpoint,
+  type ProfessionalBlueprint,
+} from './professionalStages';
+import type { GddGenerationRequestV2 } from './contracts';
+
+const input: GddGenerationRequestV2 = {
+  contractVersion: 2,
+  mode: 'professional',
+  language: 'zh-CN',
+  projectId: 'project-1',
+  projectName: 'Test Game',
+  designSystemId: 'system-1',
+  versionId: 'version-1',
+  versionNumber: 1,
+  systemTitle: 'Test System',
+  rules: {
+    schemaVersion: 1,
+    genres: ['Puzzle'],
+    philosophies: ['Readable rules'],
+    suitableFor: 'Players',
+    rules: [],
+    tableGuidance: [],
+  },
+  designDocument: {
+    gameBackground: 'A test world.',
+    designIntent: 'Test intent.',
+    playerFantasy: 'Test fantasy.',
+    coreLoop: 'Observe and act.',
+    decisionStructure: 'Choose one action.',
+    systemBoundaries: 'Offline only.',
+    progressionEconomy: 'Linear.',
+    contentModel: 'Levels.',
+    difficultyBalance: 'Fair.',
+    experiencePresentation: 'Clear.',
+  },
+  projectSources: [],
+};
+
+const blueprint: ProfessionalBlueprint = {
+  version: 1,
+  title: 'Test Game GDD',
+  sections: [
+    { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+    { id: 'systems', title: 'Systems', stage: 'systems', instructions: ['Define numbers.'] },
+    { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
+  ],
+  invariants: ['Use the same numbers everywhere.'],
+};
+
+function checkpoint(overrides: Partial<ProfessionalCheckpoint> = {}): ProfessionalCheckpoint {
+  return {
+    blueprint: null,
+    section_drafts: [],
+    review_report: null,
+    repair_round: 0,
+    ...overrides,
+  };
+}
+
+describe('professional GDD stages', () => {
+  it('parses a planning blueprint from a JSON-only completion', async () => {
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+
+    const result = await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint).toEqual(blueprint);
+    expect(result.sectionDrafts).toEqual([]);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes common planning aliases returned by the model', async () => {
+    const complete = jest.fn(async () => JSON.stringify({
+      version: '1.0',
+      title: 'Test Game GDD',
+      sections: [
+        { id: 'core-loop', title: 'Core Loop', category: 'core_loop', summary: 'Define the loop.' },
+        { id: 'systems', title: 'Systems', category: 'systems', summary: 'Define numbers.' },
+        { id: 'content', title: 'Content', category: 'content', summary: 'Define content.' },
+      ],
+      invariants: [],
+    }));
+
+    const result = await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint).toEqual(expect.objectContaining({
+      version: 1,
+      title: 'Test Game GDD',
+      sections: blueprint.sections,
+      invariants: [],
+    }));
+  });
+
+  it('passes the requested output language and full table contract to stage prompts', async () => {
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+    await generateProfessionalStage({ ...input, language: 'en-US' }, 'planning', checkpoint(), { complete });
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const firstMessages = calls[0]?.[0] as Array<{ content?: unknown }> | undefined;
+    expect(String(firstMessages?.[0]?.content)).toMatch(/English|en-US|same language/i);
+
+    complete.mockResolvedValueOnce('## Systems\n\nRules and values.');
+    await generateProfessionalStage({ ...input, language: 'en-US' }, 'generating_systems', checkpoint({ blueprint }), { complete });
+    const secondMessages = calls[1]?.[0] as Array<{ content?: unknown }> | undefined;
+    const systemPrompt = String(secondMessages?.[0]?.content);
+    expect(systemPrompt).toMatch(/English|en-US|same language/i);
+    expect(systemPrompt).toContain('KECO_TABLE_PLAN');
+    expect(systemPrompt).toContain('KECO_TABLE_REF');
+    expect(systemPrompt).toMatch(/Do not render Markdown tables|Do not use Markdown tables/i);
+    expect(systemPrompt).toMatch(/at least 3 .*paragraphs/i);
+    expect(systemPrompt).toMatch(/exact heading|exact title|heading.*exact/i);
+  });
+
+  it('normalizes generated section headings to the blueprint titles', async () => {
+    const complete = jest.fn(async () => '## A different heading\n\nThe player observes the board.');
+    const result = await generateProfessionalStage(input, 'generating_core', checkpoint({ blueprint }), { complete });
+
+    expect(result.sectionDrafts[0]?.markdown).toMatch(/^## Core Loop\b/);
+    expect(result.sectionDrafts[0]?.markdown).not.toMatch(/^## A different heading/m);
+  });
+
+  it('keeps subsection headings inside their parent section', async () => {
+    const twoCoreSections: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'core-actions', title: 'Player Actions', stage: 'core', instructions: ['Define actions.'] },
+        ...blueprint.sections.slice(1),
+      ],
+    };
+    const complete = jest.fn(async () => [
+      '## Core Loop',
+      '',
+      'Observe the world.',
+      '',
+      '### Player Actions',
+      '',
+      'Choose, move, and commit.',
+      '',
+      '## Player Actions',
+      '',
+      'Actions resolve against the current state.',
+    ].join('\n'));
+
+    const result = await generateProfessionalStage(input, 'generating_core', checkpoint({ blueprint: twoCoreSections }), { complete });
+
+    expect(result.sectionDrafts).toEqual([
+      expect.objectContaining({ sectionId: 'core-loop', markdown: expect.stringContaining('### Player Actions') }),
+      expect.objectContaining({ sectionId: 'core-actions', markdown: expect.stringContaining('Actions resolve') }),
+    ]);
+  });
+
+  it('asks planning to produce a production-sized blueprint', async () => {
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+    await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+    const planningCalls = complete.mock.calls as unknown as Array<unknown[]>;
+    const messages = planningCalls[0]?.[0] as Array<{ content?: unknown }> | undefined;
+    const prompt = String(messages?.[0]?.content);
+    expect(prompt).toMatch(/9.?12|at least 9|nine/i);
+    expect(prompt).toMatch(/core.*systems.*content/i);
+    expect(prompt).toMatch(/concrete|executable/i);
+  });
+
+  it('generates core drafts and preserves drafts from earlier stages', async () => {
+    const complete = jest.fn(async () => '## Core Loop\n\nThe player observes the board.');
+    const previous = [{ sectionId: 'systems', stage: 'systems' as const, markdown: '## Systems\n\nNumbers.' }];
+
+    const result = await generateProfessionalStage(input, 'generating_core', checkpoint({
+      blueprint,
+      section_drafts: previous,
+    }), { complete });
+
+    expect(result.blueprint).toEqual(blueprint);
+    expect(result.sectionDrafts).toEqual([
+      { sectionId: 'core-loop', stage: 'core', markdown: '## Core Loop\n\nThe player observes the board.' },
+      ...previous,
+    ]);
+  });
+
+  it('replaces drafts for the current stage instead of appending duplicates', async () => {
+    const complete = jest.fn(async () => '## Systems\n\nUpdated numbers.');
+    const previous = [
+      { sectionId: 'core-loop', stage: 'core' as const, markdown: '## Core Loop\n\nCore.' },
+      { sectionId: 'systems', stage: 'systems' as const, markdown: 'Old.' },
+    ];
+
+    const result = await generateProfessionalStage(input, 'generating_systems', checkpoint({
+      blueprint,
+      section_drafts: previous,
+    }), { complete });
+
+    expect(result.sectionDrafts).toEqual([
+      { sectionId: 'core-loop', stage: 'core', markdown: '## Core Loop\n\nCore.' },
+      { sectionId: 'systems', stage: 'systems', markdown: '## Systems\n\nUpdated numbers.' },
+    ]);
+  });
+
+  it('rejects malformed planning JSON and propagates an already-aborted signal', async () => {
+    await expect(generateProfessionalStage(input, 'planning', checkpoint(), {
+      complete: jest.fn(async () => '{bad json}'),
+    })).rejects.toThrow(/blueprint/i);
+
+    const controller = new AbortController();
+    controller.abort(new Error('cancelled'));
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+    await expect(generateProfessionalStage(input, 'planning', checkpoint(), {
+      complete,
+    }, controller.signal)).rejects.toThrow('cancelled');
+    expect(complete).not.toHaveBeenCalled();
+  });
+});

@@ -25,7 +25,7 @@ export type GddGenerationRequestV2 = {
   contractVersion: 2;
   mode: GddGenerationMode;
   creativeBrief?: string;
-  language: 'zh-CN';
+  language: string;
   projectId: string;
   projectName: string;
   designSystemId: string;
@@ -37,6 +37,33 @@ export type GddGenerationRequestV2 = {
   artStyle?: import('@/lib/game-art-style/schema').GameArtStyleSnapshot | null;
   projectSources: GameDesignSourceSnapshot[];
 };
+
+export function inferGddOutputLanguage(values: string[]): 'zh-CN' | 'en-US' {
+  const candidates = values.map((value) => {
+    const han = (value.match(/[\u3400-\u9fff]/g) ?? []).length;
+    const latin = (value.match(/[A-Za-z]/g) ?? []).length;
+    const total = han + latin;
+    return { han, latin, total, dominance: total > 0 ? Math.max(han, latin) / total : 0 };
+  }).filter((candidate) => candidate.total >= 20);
+
+  // Prefer a substantive source segment over JSON keys and short project
+  // labels. This keeps a user's English brief from being outweighed by a
+  // longer localized rules payload.
+  if (candidates.length > 0) {
+    const dominant = candidates.reduce((best, candidate) => (
+      candidate.dominance > best.dominance
+        || (candidate.dominance === best.dominance && candidate.total > best.total)
+        ? candidate
+        : best
+    ));
+    return dominant.han > dominant.latin ? 'zh-CN' : 'en-US';
+  }
+
+  const text = values.join('\n');
+  const han = (text.match(/[\u3400-\u9fff]/g) ?? []).length;
+  const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+  return han > latin ? 'zh-CN' : 'en-US';
+}
 
 export function isGddGenerationRequestV2(value: unknown): value is GddGenerationRequestV2 {
   if (!value || typeof value !== 'object') return false;

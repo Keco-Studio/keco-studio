@@ -2,6 +2,7 @@ import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import type { StoryAuditView } from '@/lib/story-plan/auditView';
 import type { StoryPlanAuditIssue } from '@/lib/story-plan/schema';
 import type { SegmentedStorySource } from '@/lib/story-plan/sourceSegments';
+import { buildVisibleTextManifest } from '@/lib/story-plan/visibleTextContract';
 import type { StoryExtractionIssue } from './materializer';
 import type { StoryContentExtraction, StoryGraphExtraction } from './pipeline';
 
@@ -79,6 +80,8 @@ Call submit_story_plan_audit exactly once and return no prose.
 The supplied auditView is the only candidate source of truth. There are no extraction, document, numeric Type, or compiled-table representations to compare.
 Check every source unit, canonical row, choice, command, structural unit, and canonical path.
 Reject omissions, duplicated or invented content, paraphrasing, wrong speakers, missing choices, false choices, wrong branch ownership, wrong targets, invalid merges, sibling leakage, command changes, wrong command ownership, and unreachable required content.
+For every player-visible source segment (speaker, dialogue, narration, or choice text), require the exact source string to appear in the generated game text in source order. Do not accept spelling, punctuation, whitespace, translation, or capitalization changes. Extensions are allowed only as additional text; they cannot replace or merge with a required source string.
+Chapter/scene headings, stage directions, author notes, branch markers, and command metadata are not player-visible requirements when the source segmentation marks them as structural.
 When the source has an explicit character list, verify that dialogue_primary and dialogue_secondary follow the listed role order and remain consistent for every speaker. Treat shortened names and role aliases as the listed character. Reject collapsing distinct dialogue speakers onto one presentation or changing a speaker's presentation.
 Treat a known character name followed by an action cue and a colon as dialogue by that character, not narration. Parenthetical acting directions attached to a speaker name may be removed from dialogue content and must not become separate visible nodes unless they are standalone prose.
 Visible source content must not be hidden in structuralUnitIds.
@@ -264,6 +267,7 @@ export function buildContentExtractionMessages(
     { role: 'user', content: JSON.stringify({
       task: 'EXTRACT_STORY_CONTENT_INVENTORY', attempt,
       sourceUnits: source.units.map(({ id, text }) => ({ id, text })),
+      visibleTextManifest: buildVisibleTextManifest(source),
       priorIssues,
     }) },
   ];
@@ -307,6 +311,7 @@ export function buildAuditorExtractionMessages(
         text,
         authoritative,
       })),
+      visibleTextManifest: buildVisibleTextManifest(source),
       commands: source.commands.map((command) => ({
         id: command.id,
         source: command.source,

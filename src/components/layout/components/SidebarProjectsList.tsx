@@ -40,6 +40,7 @@ export function SidebarProjectsList({
   const [isSaving, setIsSaving] = useState(false);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+  const selectedOptionRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const skipBlurSaveRef = useRef(false);
   const pendingProjectSelectionRef = useRef<number | null>(null);
@@ -142,6 +143,12 @@ export function SidebarProjectsList({
     };
   }, [cancelPendingProjectSelection, editingProjectId, exitRename, isSelectorOpen]);
 
+  // Keep the active project visible inside the 3-row scroll window.
+  useEffect(() => {
+    if (!isSelectorOpen) return;
+    selectedOptionRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [isSelectorOpen, currentProjectId, projects]);
+
   const selectProject = useCallback(
     (projectId: string) => {
       onProjectClick(projectId);
@@ -198,6 +205,7 @@ export function SidebarProjectsList({
               return (
                 <div
                   key={project.id}
+                  ref={isCurrentProject ? selectedOptionRef : undefined}
                   className={`${styles.projectSelectorOption} ${isCurrentProject ? styles.projectSelectorOptionSelected : ''}`}
                   role="menuitemradio"
                   aria-checked={isCurrentProject}

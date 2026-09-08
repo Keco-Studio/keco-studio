@@ -277,8 +277,17 @@
 .rowTextExpanded .numberCell {
   height: auto;
   min-height: 32px;
-  overflow: visible;
   vertical-align: top;
+}
+
+/* Clip data-cell content so wrap cannot inflate column width.
+   Keep numberCell overflow visible so the row-resize handle (bottom: -3px) stays hittable. */
+.rowTextExpanded .cell {
+  overflow: hidden;
+}
+
+.rowTextExpanded .numberCell {
+  overflow: visible;
 }
 
 .rowTextExpanded.rowCustomHeight,
@@ -292,9 +301,10 @@
 .rowTextExpanded .cellText,
 .cellTextExpanded {
   white-space: normal;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: clip;
   word-break: break-word;
+  overflow-wrap: anywhere;
   line-height: 1.35;
   padding: 0.35rem 0;
 }
@@ -303,15 +313,20 @@
   align-items: flex-start;
 }
 
-/* Editing long text: same wrap metrics as expanded .cellText */
+/* Editing long text: same wrap metrics as expanded .cellText.
+   Higher specificity than .cellText[contenteditable="true"] { white-space: nowrap }. */
 .rowTextExpanded .cell [contenteditable="true"],
-.rowTextExpanded .cellText[contenteditable="true"] {
+.rowTextExpanded .cellText[contenteditable="true"],
+.cellText.cellTextExpanded[contenteditable="true"] {
   height: auto;
   min-height: 0;
   white-space: normal;
-  overflow: visible;
+  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
   text-overflow: clip;
   word-break: break-word;
+  overflow-wrap: anywhere;
   line-height: 1.35;
   padding: 0.35rem 0;
 }
@@ -340,9 +355,17 @@
 }
 
 .table.colsCustom .headerCell:not(.numberColumnHeader),
-.table.colsCustom .propertyHeaderCell:not(.numberColumnHeader),
-.table.colsCustom .cell:not(.numberCell) {
+.table.colsCustom .propertyHeaderCell:not(.numberColumnHeader) {
   min-width: 5rem;
+  /* Do not set max-width on headers — it clips the column-resize handle (right: -3px). */
+}
+
+.table.colsCustom .cell:not(.numberCell) {
+  /* max-width: 0 forces fixed-layout body cells to respect <col> widths instead of
+     nowrap / long unbroken text intrinsic min-content (blocks column shrink). */
+  min-width: 5rem;
+  max-width: 0;
+  overflow: hidden;
 }
 
 .table.colsCustom .numberColumnHeader,
@@ -455,7 +478,8 @@
   border-left: none;
   background: #F9FAFB;
   border-right: 1px solid #DDE1E6;
-  overflow: hidden;
+  /* visible so column-resize handle (right: -3px) is not clipped */
+  overflow: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
   position: relative;
@@ -467,6 +491,8 @@
   justify-content: space-between;
   gap: 4px;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .propertyHeaderMain {
@@ -903,6 +929,14 @@ td.cellCopy.copyBorderRight:hover {
   min-width: 0;
 }
 
+/* Allow substring select/copy once the cell is selected or expanded */
+.cellSelected .cellText,
+.cellMultipleSelected .cellText,
+.cellTextExpanded {
+  user-select: text;
+  cursor: text;
+}
+
 .customFormulaValue {
   color: #7c3aed;
   font-weight: 500;
@@ -1172,6 +1206,7 @@ td.cellCopy.copyBorderRight:hover {
   font-size: 0.875rem;
   vertical-align: middle;
   position: relative;
+  overflow: visible;
 }
 
 /* Number column header in the empty top row. */

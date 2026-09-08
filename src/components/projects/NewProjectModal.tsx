@@ -9,10 +9,17 @@ import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
 import dialog from '@/components/shared/FormDialog.module.css';
 
+export type CreatedProjectPayload = {
+  projectId: string;
+  defaultFolderId: string;
+  name: string;
+  description: string | null;
+};
+
 type NewProjectModalProps = {
   open: boolean;
   onClose: () => void;
-  onCreated: (projectId: string, defaultFolderId: string) => void;
+  onCreated: (payload: CreatedProjectPayload) => void;
 };
 
 export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalProps) {
@@ -34,17 +41,17 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
       setError('Project name is required');
       return;
     }
-    
+
     // Validate name for disallowed characters (emoji, HTML tags, special symbols)
     const validationError = validateName(trimmed);
     if (validationError) {
       setError(validationError);
       return;
     }
-    
+
     setSubmitting(true);
     setError(null);
-    
+
     try {
       // Check if project name already exists before attempting to create
       const exists = await checkProjectNameExists(supabase, trimmed);
@@ -54,12 +61,19 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         return;
       }
 
+      const notes = description.trim() ? description.trim() : null;
+
       // If name doesn't exist, proceed with creation
       const { projectId, defaultFolderId } = await createProject(supabase, {
         name: trimmed,
-        description,
+        description: notes ?? undefined,
       });
-      onCreated(projectId, defaultFolderId);
+      onCreated({
+        projectId,
+        defaultFolderId,
+        name: trimmed,
+        description: notes,
+      });
       setName('');
       setDescription('');
       onClose();

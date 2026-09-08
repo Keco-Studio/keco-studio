@@ -31,15 +31,18 @@ export async function GET(request: Request) {
     { type: 'dialogue', run: processNextDialogueJob },
     { type: 'gdd-map', run: processNextGddMapArtifact },
   ] as const;
+  let gddStageProcessed = false;
   for (let index = 0; index < 4; index += 1) {
     const workerId = `cron-${randomUUID()}`;
     let claimed = false;
     for (let offset = 0; offset < workers.length; offset += 1) {
       const worker = workers[(index + offset) % workers.length];
+      if (worker.type === 'gdd' && gddStageProcessed) continue;
       const result = await worker.run({ serviceClient, workerId });
       if (!result.claimed && offset < workers.length - 1) continue;
       results.push({ type: worker.type, ...result });
       claimed = result.claimed;
+      if (worker.type === 'gdd' && result.claimed) gddStageProcessed = true;
       break;
     }
     if (!claimed && index === 0) break;

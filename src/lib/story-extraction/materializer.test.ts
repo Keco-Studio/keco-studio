@@ -144,6 +144,22 @@ describe('full story extraction materializer', () => {
     expect(() => materialize(value)).toThrow(/not assigned/i);
   });
 
+  it('rejects a player-visible text mutation even when the words remain traceable', () => {
+    const source = segmentStorySource('Guide: Welcome, traveler.', 'strict');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      choices: [],
+      nodes: [{
+        id: 'start', type: 'dialogue', speaker: 'Guide', content: 'Welcome traveler.',
+        sourceUnitIds: ['strict:0'], commandSources: [], nextNodeId: '',
+      }],
+    };
+    expect(() => materializeStoryExtraction(value, source, {}, { enforceVisibleTextContract: true }))
+      .toThrow(/player-visible source text.*verbatim/i);
+  });
+
   it('rejects an orphan component even when it already targets a reachable node', () => {
     const source = segmentStorySource([
       'The story starts.',

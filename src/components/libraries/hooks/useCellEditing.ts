@@ -24,6 +24,7 @@ export function useCellEditing({
   setCurrentFocusedCell,
   presenceTracking,
   handleCellFocus,
+  onAfterSaveEdit,
 }: {
   properties: PropertyConfig[];
   rows: AssetRow[];
@@ -38,6 +39,12 @@ export function useCellEditing({
     updateActiveCell: (assetId: string | null, propertyKey: string | null) => void;
   };
   handleCellFocus: (assetId: string, propertyKey: string) => void;
+  /** Called just before editing state clears after a successful validation/save start. */
+  onAfterSaveEdit?: (info: {
+    rowId: string;
+    propertyKey: string;
+    editorEl: HTMLSpanElement | null;
+  }) => void;
 }) {
   // Edit mode state: track which cell is being edited (rowId and propertyKey)
   const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
@@ -390,6 +397,12 @@ export function useCellEditing({
     const savedValue = valueToSave;
     const savedRowId = editingCell.rowId;
     const savedPropertyKey = editingCell.propertyKey;
+    const editorEl = editingCellRef.current;
+    onAfterSaveEdit?.({
+      rowId: savedRowId,
+      propertyKey: savedPropertyKey,
+      editorEl,
+    });
     setEditingCell(null);
     editingCellInitialValueRef.current = '';
     setTypeValidationError(null); // Clear validation error
@@ -444,6 +457,7 @@ export function useCellEditing({
     setCurrentFocusedCell,
     presenceTracking,
     setIsSaving,
+    onAfterSaveEdit,
   ]);
 
   // Handle double click on cell to start editing (only for editable cell types)

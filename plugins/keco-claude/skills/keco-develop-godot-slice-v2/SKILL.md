@@ -45,6 +45,8 @@ details stay with their phase modules. Exactly three planning documents are boun
 spec, and plan. They are authoritative ordered checklists in Keco and the repository
 Superpowers layout; each Slice plan is an ordered checklist. The router is self-contained
 and uses the bundled contract corpus.
+SourceProfile kinds are gdd, feedback, document, table, and user_idea. GDD plans load gdd-coverage-contract.md; asset plans load generated-asset-contract.md; animation plans load godot-animation-contract.md; tileset plans load godot-tileset-contract.md.
+When the bound GDD contains a Script, GDD preflight also binds its ordered player-visible `visibleTextManifest`; every manifest string must be emitted verbatim by the game before acceptance.
 
 Keep the write token (`writeToken`) null until source, folder, project, planning hierarchy,
 SlicePlan, EvalSpec, and PlanReview gates pass. Unresolved ambiguity is

@@ -7,6 +7,7 @@ import { CellPresenceAvatars } from './CellPresenceAvatars';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 import type { ExpandedTextCell } from '@/components/libraries/utils/textCellExpand';
+import { hasDomTextSelection } from '@/components/libraries/utils/domTextSelection';
 
 export interface TextCellProps {
   row: AssetRow;
@@ -206,6 +207,11 @@ const TextCellComponent: React.FC<TextCellProps> = ({
       target.closest('select') ||
       target.closest(`.${styles.cellExpandIcon}`)
     ) {
+      return;
+    }
+
+    // Drag-selecting text inside the cell should not toggle expand/collapse.
+    if (hasDomTextSelection(typeof window !== 'undefined' ? window.getSelection() : null)) {
       return;
     }
     onTextCellExpandClick(row.id, property.key, measureOverflow());

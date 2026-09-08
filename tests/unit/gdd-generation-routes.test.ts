@@ -110,7 +110,7 @@ describe('project GDD generation routes', () => {
     });
   });
 
-  it('keeps request workers alive long enough for the professional generation deadline', () => {
+  it('keeps request workers within the Vercel hobby maxDuration ceiling', () => {
     expect(createJobMaxDuration).toBe(300);
     expect(pollJobMaxDuration).toBe(300);
   });
@@ -234,6 +234,22 @@ describe('project GDD generation routes', () => {
     expect(body.job).not.toHaveProperty('source_snapshots');
     expect(body.job).not.toHaveProperty('idempotency_key');
     expect(body.job).not.toHaveProperty('lease_owner');
+  });
+
+  it('uses the Chinese user brief language even when the pinned system metadata is English', async () => {
+    await POST(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'request-key-cn' },
+      body: JSON.stringify({
+        designSystemId: SYSTEM_ID,
+        versionId: VERSION_ID,
+        creativeBrief: '\u8bf7\u751f\u6210\u5192\u9669\u95ef\u5173\u6e38\u620f GDD',
+      }),
+    }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
+
+    expect(createGddGenerationJob).toHaveBeenCalledWith(
+      { service: true },
+      expect.objectContaining({ input: expect.objectContaining({ language: 'zh-CN' }) }),
+    );
   });
 
   it('returns the existing bounded job when another project generation is active', async () => {

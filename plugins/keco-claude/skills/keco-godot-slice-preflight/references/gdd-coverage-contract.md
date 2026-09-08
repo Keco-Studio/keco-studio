@@ -19,6 +19,25 @@ GDD plans and EvalSpecs set `coverageMode: gdd`, bind the same `inventoryHash`,
 and contain equal `requirementIds`. Non-GDD profiles bind `sourceProfileHash`
 and `nonGddRationale` instead of GDD fields.
 
+## Player-visible script text fidelity
+
+When the GDD source includes a Script or screenplay, create a
+`visibleTextManifest` from the document's player-visible segments before
+planning a Slice. The manifest is an ordered list of exact source strings for
+speakers, dialogue, narration, and choice text. Each item retains its stable
+source segment ID and source offsets. Chapter/scene headings, stage directions,
+author notes, branch markers, and command metadata are excluded when the source
+parser classifies them as structural.
+
+The generated game must contain every manifest string verbatim and in source
+order. Matching is byte-for-byte at the string level: do not normalize case,
+punctuation, whitespace, quotes, or Unicode forms. Additional game text is
+allowed only as an extension and cannot replace, merge, paraphrase, or split a
+manifest item. A GDD-driven run fails before its write lease is issued when any
+manifest item is missing or altered, and its EvalSpec includes an assertion for
+the complete manifest. Runtime evidence reports the rendered player-visible
+text stream used for this comparison.
+
 ## New design proposals
 
 An AI may propose a feature absent from the GDD, but cannot put it in a formal

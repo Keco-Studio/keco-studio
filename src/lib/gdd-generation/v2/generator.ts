@@ -27,7 +27,7 @@ export type GddV2GeneratorDependencies = {
   planScene?: typeof planDialogueScene;
 };
 
-type GeneratedGddV2 = {
+export type GeneratedGddV2 = {
   markdown: string;
   review: ReviewV2;
   tablePlans: GeneratedTablePlan[];
@@ -50,6 +50,86 @@ export class GddV2ResourceRecoveryError extends Error {
   }
 }
 
+export async function reviewGddMarkdownV2(
+  input: GddGenerationRequestV2,
+  markdown: string,
+  dependencyInput: Completion | GddV2GeneratorDependencies = {},
+  runtime: { signal?: AbortSignal; dialoguePlans?: DialoguePlan[] } = {},
+): Promise<GeneratedGddV2> {
+  const dependencies = resolveDependencies(dependencyInput);
+  let normalized = normalizeGeneratedMarkdown(markdown, input.projectName, input.rules.tableGuidance);
+  let repairRound = 0;
+  const refNames = listTableRefNames(normalized.markdown);
+  const missingGuidance = missingGuidedTables(input, normalized.tablePlans);
+  const requiredTableRepairs = missingGuidance.length > 0
+    ? missingGuidance
+    : normalized.tablePlans.length === 0
+      ? refNames.map((table) => ({ table }))
+      : [];
+  if (requiredTableRepairs.length > 0) {
+    repairRound = 1;
+    const repaired = await repairMissingTablePlans(
+      normalized.markdown,
+      requiredTableRepairs,
+      dependencies.complete,
+      runtime.signal,
+    );
+    if (repaired.tablePlans.length > 0) {
+      normalized = {
+        ...normalized,
+        tablePlans: mergeRepairedTablePlans(
+          normalized.tablePlans,
+          repaired.tablePlans,
+          requiredTableRepairs,
+        ),
+        tablePlanWarning: null,
+      };
+    } else {
+      normalized = {
+        ...normalized,
+        tablePlanWarning: repaired.warning
+          ?? normalized.tablePlanWarning
+          ?? 'KECO_TABLE_REF markers were present but table plan repair failed.',
+      };
+    }
+  }
+
+  const unresolvedGuidance = missingGuidedTables(input, normalized.tablePlans);
+  if (unresolvedGuidance.length > 0) {
+    throw new GddV2ResourceRecoveryError(
+      `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`,
+    );
+  }
+
+  let dialoguePlans = runtime.dialoguePlans ?? [];
+  let dialoguePlanWarning: string | null = null;
+  if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
+    repairRound = Math.max(repairRound, 1);
+    const recovered = await recoverMissingDialoguePlans(
+      normalized.markdown,
+      dependencies,
+      runtime.signal,
+    );
+    dialoguePlans = recovered.plans;
+    dialoguePlanWarning = recovered.warning;
+  }
+
+  return {
+    ...normalized,
+    dialoguePlans,
+    dialoguePlanWarning,
+    review: reviewSchema.parse({
+      version: 2,
+      summary: repairRound > 0
+        ? 'Completed streaming Markdown generation with a resource recovery pass.'
+        : 'Completed streaming Markdown generation with local document and dialogue validation.',
+      status: 'pass',
+      repairRound,
+      issues: [],
+    }),
+  };
+}
+
 export function gddV2LlmOptions(maxCompletionTokens: number): StreamLlmOptions {
   return {
     model: process.env.GDD_GENERATION_LLM_MODEL || process.env.LLM_MODEL || 'deepseek-v4-flash',
@@ -61,7 +141,7 @@ export function gddV2LlmOptions(maxCompletionTokens: number): StreamLlmOptions {
   };
 }
 
-function sourceContext(input: GddGenerationRequestV2): string {
+export function gddV2SourceContext(input: GddGenerationRequestV2): string {
   const sources = input.projectSources.length > 0
     ? input.projectSources.map((source) => [
       `SOURCE ${source.kind.toUpperCase()}: ${source.label}`,
@@ -87,15 +167,28 @@ function sourceContext(input: GddGenerationRequestV2): string {
   ].join('\n\n');
 }
 
+function requestedLanguageLabel(language: string): string {
+  const locale = language.trim();
+  if (/^en(?:[-_]|$)/i.test(locale)) return `English (${locale})`;
+  if (/^zh(?:[-_]|$)/i.test(locale)) return `Simplified Chinese (${locale})`;
+  return `the requested language (${locale || 'the source language'})`;
+}
+
+function languageLengthInstruction(language: string, min: number, max: number): string {
+  return /^zh(?:[-_]|$)/i.test(language.trim())
+    ? `Write ${min.toLocaleString()}-${max.toLocaleString()} readable Chinese characters.`
+    : `Write approximately ${min.toLocaleString()}-${max.toLocaleString()} readable characters in ${requestedLanguageLabel(language)}.`;
+}
+
 function directMarkdownMessages(input: GddGenerationRequestV2): ChatMessage[] {
   const modeRules = input.mode === 'professional'
     ? [
-      'Write 6,000-9,000 readable Chinese characters.',
+      languageLengthInstruction(input.language, 6_000, 9_000),
       'Use 9-12 major sections, with focused subsections where they improve execution clarity.',
       'Include concrete system rules, formulas, balancing tables, boundary cases, worked examples, content differentiation, presentation direction, and narrative design when relevant to this game.',
     ]
     : [
-      'Write 2,500-3,800 readable Chinese characters.',
+      languageLengthInstruction(input.language, 2_500, 3_800),
       'Use 6-8 major sections and prioritize the playable core, key content, important numbers, and presentation direction.',
       'Keep the draft compact, but make every included rule concrete enough to execute.',
     ];
@@ -104,7 +197,7 @@ function directMarkdownMessages(input: GddGenerationRequestV2): ChatMessage[] {
     content: [
       'You are a lead game designer writing a production-useful game design document.',
       'Return the finished GDD as Markdown directly.',
-      'Write natural, professional Simplified Chinese.',
+      `Write natural, professional ${requestedLanguageLabel(input.language)}.`,
       'Do not return JSON. Do not wrap the answer in a Markdown code fence. Do not add commentary before or after the document.',
       ...modeRules,
       'Start with one H1 title. Use Markdown headings, lists, blockquotes, and fenced formula or flow examples only when they improve readability.',
@@ -128,7 +221,7 @@ function directMarkdownMessages(input: GddGenerationRequestV2): ChatMessage[] {
     ].join('\n'),
   }, {
     role: 'user',
-    content: `Write the complete GDD from this frozen context:\n\n${sourceContext(input)}`,
+    content: `Write the complete GDD from this frozen context:\n\n${gddV2SourceContext(input)}`,
   }];
 }
 
@@ -208,6 +301,50 @@ function escapeNumericLessThanInProse(markdown: string): string {
   }).join('\n');
 }
 
+function coerceBareTableMarkers(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const output: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index]!.trim().toLocaleUpperCase() !== 'KECO_TABLE_PLAN') {
+      output.push(lines[index]!);
+      continue;
+    }
+    const readJson = (start: number): { value: unknown; end: number } | null => {
+      let candidate = '';
+      for (let cursor = start; cursor < Math.min(lines.length, start + 200); cursor += 1) {
+        candidate += `${lines[cursor]!.trim()}\n`;
+        try {
+          return { value: JSON.parse(candidate), end: cursor + 1 };
+        } catch {
+          // Continue until the balanced JSON block is complete.
+        }
+      }
+      return null;
+    };
+    const plan = readJson(index + 1);
+    if (!plan) {
+      output.push(lines[index]!);
+      continue;
+    }
+    let end = plan.end;
+    while (end < lines.length && !lines[end]!.trim()) end += 1;
+    let merged: unknown = plan.value;
+    if (lines[end]?.trim().toLocaleUpperCase() === 'KECO_TABLE_REF') {
+      const ref = readJson(end + 1);
+      if (ref && plan.value && typeof plan.value === 'object' && !Array.isArray(plan.value)
+        && ref.value && typeof ref.value === 'object' && !Array.isArray(ref.value)) {
+        const refObject = ref.value as Record<string, unknown>;
+        merged = { ...(plan.value as Record<string, unknown>), rows: refObject.rows ?? [] };
+        end = ref.end;
+      }
+    }
+    const plans = Array.isArray(merged) ? merged : [merged];
+    output.push(`<!-- KECO_TABLE_PLAN ${JSON.stringify(plans)} -->`);
+    index = end - 1;
+  }
+  return output.join('\n');
+}
+
 function normalizeGeneratedMarkdown(
   raw: string,
   projectName: string,
@@ -217,7 +354,7 @@ function normalizeGeneratedMarkdown(
   tablePlans: GeneratedTablePlan[];
   tablePlanWarning: string | null;
 } {
-  const extracted = extractTablePlanMarker(raw);
+  const extracted = extractTablePlanMarker(coerceBareTableMarkers(raw));
   const markdown = escapeNumericLessThanInProse(
     removeProvenanceSections(unwrapMarkdownCodeFence(extracted.markdown)),
   );
@@ -477,77 +614,10 @@ export async function generateGddMarkdownV2(
     }
   }
 
-  let normalized = normalizeGeneratedMarkdown(generated.raw, input.projectName, input.rules.tableGuidance);
-  let repairRound = 0;
-  const refNames = listTableRefNames(normalized.markdown);
-  const missingGuidance = missingGuidedTables(input, normalized.tablePlans);
-  const requiredTableRepairs = missingGuidance.length > 0
-    ? missingGuidance
-    : normalized.tablePlans.length === 0
-      ? refNames.map((table) => ({ table }))
-      : [];
-  if (requiredTableRepairs.length > 0) {
-    repairRound = 1;
-    const repaired = await repairMissingTablePlans(
-      normalized.markdown,
-      requiredTableRepairs,
-      dependencies.complete,
-      runtime.signal,
-    );
-    if (repaired.tablePlans.length > 0) {
-      normalized = {
-        ...normalized,
-        tablePlans: mergeRepairedTablePlans(
-          normalized.tablePlans,
-          repaired.tablePlans,
-          requiredTableRepairs,
-        ),
-        tablePlanWarning: null,
-      };
-    } else {
-      normalized = {
-        ...normalized,
-        tablePlanWarning: repaired.warning
-          ?? normalized.tablePlanWarning
-          ?? 'KECO_TABLE_REF markers were present but table plan repair failed.',
-      };
-    }
-  }
-
-  const unresolvedGuidance = missingGuidedTables(input, normalized.tablePlans);
-  if (unresolvedGuidance.length > 0) {
-    throw new GddV2ResourceRecoveryError(
-      `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`,
-    );
-  }
-
-  let dialoguePlans = generated.dialoguePlans;
-  let dialoguePlanWarning: string | null = null;
-  if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
-    repairRound = Math.max(repairRound, 1);
-    const recovered = await recoverMissingDialoguePlans(
-      normalized.markdown,
-      dependencies,
-      runtime.signal,
-    );
-    dialoguePlans = recovered.plans;
-    dialoguePlanWarning = recovered.warning;
-  }
-
-  return {
-    ...normalized,
-    dialoguePlans,
-    dialoguePlanWarning,
-    review: reviewSchema.parse({
-      version: 2,
-      summary: repairRound > 0
-        ? 'Completed streaming Markdown generation with a resource recovery pass.'
-        : 'Completed streaming Markdown generation with local document and dialogue validation.',
-      status: 'pass',
-      repairRound,
-      issues: [],
-    }),
-  };
+  return reviewGddMarkdownV2(input, generated.raw, dependencies, {
+    signal: runtime.signal,
+    dialoguePlans: generated.dialoguePlans,
+  });
 }
 
 function completionAsStream(complete: Completion): TextStream {

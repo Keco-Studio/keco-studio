@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { hasDomTextSelection } from '../utils/domTextSelection';
 
 /**
  * useClipboardShortcuts - Ctrl/Cmd + X / C / V 
@@ -62,6 +63,10 @@ export function useClipboardShortcuts({
         return;
       }
       if (e.key === 'c' || e.key === 'C') {
+        // Prefer native copy when the user has selected a text substring in a cell.
+        if (hasDomTextSelection(typeof window !== 'undefined' ? window.getSelection() : null)) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         if (hasSelection) onCopy();

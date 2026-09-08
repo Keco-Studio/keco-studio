@@ -8,6 +8,9 @@ import type {
   StoryExtractionNode,
 } from './schema';
 import { resolveProtagonistSpeaker } from './roles';
+import {
+  buildVisibleTextManifest,
+} from '@/lib/story-plan/visibleTextContract';
 
 const CHOICE_TRIGGER_PHRASE = /when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)/i;
 
@@ -26,6 +29,7 @@ export type StoryExtractionIssueCode =
   | 'unresolved_target'
   | 'unreachable_node'
   | 'branch_leak'
+  | 'visible_text_mismatch'
   | 'automatic_cycle';
 
 export type StoryExtractionIssue = {
@@ -34,6 +38,10 @@ export type StoryExtractionIssue = {
   unitIds: string[];
   nodeIds: string[];
 };
+
+export interface StoryMaterializationOptions {
+  enforceVisibleTextContract?: boolean;
+}
 
 export class StoryExtractionValidationError extends Error {
   readonly issues: StoryExtractionIssue[];
@@ -48,7 +56,8 @@ export class StoryExtractionValidationError extends Error {
 export function materializeStoryExtraction(
   extraction: StoryExtraction,
   source: SegmentedStorySource,
-  roleMap: RoleMap = {}
+  roleMap: RoleMap = {},
+  options: StoryMaterializationOptions = {}
 ): StoryDocument {
   extraction = normalizeStoryExtraction(extraction, source);
   const issues: StoryExtractionIssue[] = [];
@@ -138,6 +147,33 @@ export function materializeStoryExtraction(
       push('unknown_command', `Source command ${sourceCommand.source} is not assigned`, [unitForCommand(sourceCommand)], []);
     } else if (owners.length > 1) {
       push('duplicate_command', `Source command ${sourceCommand.source} is assigned more than once`, [unitForCommand(sourceCommand)], owners);
+    }
+  }
+
+  if (options.enforceVisibleTextContract) {
+    // Walk nodes with their outbound choices so choice text is emitted with its
+    // owner node. Branching graphs place every option at the decision node, so
+    // presence (not source order) is the enforceable materialization contract;
+    // ordered audits remain guidance for the Semantic Auditor prompt.
+    const visibleTextStream: string[] = [];
+    for (const node of extraction.nodes) {
+      if (node.speaker.length > 0) visibleTextStream.push(node.speaker);
+      if (node.content.length > 0) visibleTextStream.push(node.content);
+      for (const choice of choicesByNode.get(node.id) ?? []) {
+        if (choice.text.length > 0) visibleTextStream.push(choice.text);
+      }
+    }
+    const rendered = visibleTextStream.join('\n');
+    const manifest = buildVisibleTextManifest(source);
+    for (const item of manifest.items) {
+      if (rendered.includes(item.text)) continue;
+      const requirement = source.segments.find((segment) => segment.id === item.segmentId);
+      push(
+        'visible_text_mismatch',
+        `Player-visible source text must appear verbatim: ${JSON.stringify(item.text)}`,
+        requirement ? [requirement.unitId] : [],
+        [],
+      );
     }
   }
 

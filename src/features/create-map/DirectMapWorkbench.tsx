@@ -8,6 +8,7 @@ import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectM
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
 import { DirectMapCollisionPanel } from './components/DirectMapCollisionPanel';
 import { DirectMapPlanInspector } from './components/DirectMapPlanInspector';
+import { MapChatPanel, type MapChatMessage } from './components/MapChatPanel';
 import { MapReferencePanel } from './components/MapReferencePanel';
 import { MapSourcePanel } from './components/MapSourcePanel';
 import { SavedMapsPanel } from './components/SavedMapsPanel';
@@ -32,6 +33,7 @@ import {
   type MapReferenceRecord,
   type SavedMapSummary,
 } from './services/createMapService';
+import { readCreateMapProjectPreference, CREATE_MAP_TOOLBAR_CREATE_EVENT } from '@/lib/create-map/projectPreference';
 import styles from './CreateMapWorkbench.module.css';
 
 const INITIAL_DIRECT_PLAN: MapPlanV3 = {
@@ -49,6 +51,10 @@ const INITIAL_DIRECT_PLAN: MapPlanV3 = {
     seed: null,
   },
 };
+
+function nextMessageId() {
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export function DirectMapWorkbench() {
   const searchParams = useSearchParams();
@@ -70,9 +76,13 @@ export function DirectMapWorkbench() {
   const [error, setError] = useState<string | null>(null);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'browse' | 'detail'>('browse');
+  const [chatMessages, setChatMessages] = useState<MapChatMessage[]>([]);
+  const [planDetailsOpen, setPlanDetailsOpen] = useState(true);
   const openRequestEpoch = useRef(0);
   const referenceRequestEpoch = useRef(0);
   const openedRequestedMapId = useRef<string | null>(null);
+  const previousGenerationPhase = useRef<string>('idle');
 
   const sources = useMapSources(projectId);
   const savedMaps = useSavedMaps();
@@ -94,6 +104,11 @@ export function DirectMapWorkbench() {
     && !draft.isDirty && draft.status === 'saved' && !busy;
 
   useEffect(() => {
+    const preferred = readCreateMapProjectPreference();
+    if (preferred?.projectId) setProjectId(preferred.projectId);
+  }, []);
+
+  useEffect(() => {
     const requestEpoch = ++referenceRequestEpoch.current;
     setReferenceError(null);
     if (!projectId) {
@@ -108,6 +123,18 @@ export function DirectMapWorkbench() {
       }
     });
   }, [projectId, service]);
+
+  useEffect(() => {
+    if (previousGenerationPhase.current !== 'ready' && generation.phase === 'ready') {
+      setChatMessages((current) => {
+        if (current.some((message) => message.text.includes('Here is the created map') && !message.text.includes('plan'))) {
+          return current;
+        }
+        return [...current, { id: nextMessageId(), role: 'assistant', text: 'Here is the created map' }];
+      });
+    }
+    previousGenerationPhase.current = generation.phase;
+  }, [generation.phase]);
 
   const closeDrawers = useCallback(() => {
     setLeftOpen(false);
@@ -132,18 +159,46 @@ export function DirectMapWorkbench() {
     generation.reset();
     setOpeningMapId(null);
     setError(null);
+    setChatMessages([]);
+    setViewMode('browse');
   };
 
-  const createPlan = async () => {
+  const enterCreateDetail = useCallback(() => {
     if (readOnly) return;
-    const request = description.trim();
+    draft.reset();
+    generation.reset();
+    setPlan(INITIAL_DIRECT_PLAN);
+    setScene(createEmptyMapSceneV3(INITIAL_DIRECT_PLAN));
+    setDescription('');
+    setChatMessages([]);
+    setError(null);
+    setViewMode('detail');
+    setPlanDetailsOpen(true);
+    setRightOpen(true);
+  }, [draft, generation, readOnly]);
+
+  useEffect(() => {
+    const onToolbarCreate = () => {
+      enterCreateDetail();
+    };
+    window.addEventListener(CREATE_MAP_TOOLBAR_CREATE_EVENT, onToolbarCreate);
+    return () => window.removeEventListener(CREATE_MAP_TOOLBAR_CREATE_EVENT, onToolbarCreate);
+  }, [enterCreateDetail]);
+
+  const createPlan = async (prompt?: string) => {
+    if (readOnly) return;
+    const request = (prompt ?? description).trim();
     if (!projectId || (!request && !documentId) || busy) return;
     if (request && containsUnsafeDescriptionContent(request)) {
       setError(DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE);
       return;
     }
+    setDescription(request);
     setOperation('planning');
     setError(null);
+    if (request) {
+      setChatMessages((current) => [...current, { id: nextMessageId(), role: 'user', text: request }]);
+    }
     try {
       const created = await service.createPlanV3(
         request,
@@ -163,6 +218,13 @@ export function DirectMapWorkbench() {
       setScene(nextScene);
       await draft.create(projectId, created.sourceToken, created.plan, nextScene);
       await savedMaps.refetch();
+      setChatMessages((current) => [
+        ...current,
+        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
+        { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
+      ]);
+      setViewMode('detail');
+      setPlanDetailsOpen(true);
       setRightOpen(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create the direct map Plan.');
@@ -187,6 +249,16 @@ export function DirectMapWorkbench() {
       setScene(prepared.scene);
       draft.install(loaded);
       generation.installRestore(prepared);
+      setChatMessages([
+        { id: nextMessageId(), role: 'user', text: `Open map: ${loaded.plan.name}` },
+        { id: nextMessageId(), role: 'assistant', text: 'Done — creation check complete' },
+        { id: nextMessageId(), role: 'assistant', text: 'Here is the created map plan' },
+        ...(prepared.scene.mapImage
+          ? [{ id: nextMessageId(), role: 'assistant' as const, text: 'Here is the created map' }]
+          : []),
+      ]);
+      setViewMode('detail');
+      setPlanDetailsOpen(true);
       closeDrawers();
     } catch (cause) {
       if (savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) {
@@ -267,8 +339,17 @@ export function DirectMapWorkbench() {
             ? { label: 'All changes saved', status: 'saved' }
             : { label: projectId ? 'Local plan, ready to save' : 'Local plan', status: 'local' };
 
+  const showGenerateInChat = Boolean(draft.identity) && ['idle', 'awaiting-confirmation', 'failed', 'ready'].includes(generation.phase);
+  const showRightPanel = viewMode === 'detail' && planDetailsOpen;
+
   return (
-    <main className={styles.workbench} data-testid="create-map-workbench" data-mode="direct" data-schema-version="3">
+    <main
+      className={`${styles.workbench} ${showRightPanel ? '' : styles.workbenchBrowse}`}
+      data-testid="create-map-workbench"
+      data-mode="direct"
+      data-schema-version="3"
+      data-view={viewMode}
+    >
       {(leftOpen || rightOpen) ? (
         <button type="button" className={styles.drawerScrim} aria-label="Close side panels" onClick={closeDrawers} />
       ) : null}
@@ -278,57 +359,68 @@ export function DirectMapWorkbench() {
           <CloseOutlined />
         </button>
         <MapSourcePanel
-          versionLabel="V3"
           projects={sources.projects}
-          documents={sources.documents}
-          description={description}
           projectId={projectId}
-          documentId={documentId}
-          onDescriptionChange={setDescription}
           onProjectChange={handleProjectChange}
-          onDocumentChange={setDocumentId}
-          onCreatePlan={() => void createPlan()}
           readOnly={readOnly}
           busy={busy}
           error={actionError ?? (sources.error instanceof Error ? sources.error.message : null)}
         />
-        <SavedMapsPanel
-          maps={savedMaps.maps}
-          isLoading={savedMaps.isLoading}
-          error={savedMaps.error instanceof Error ? savedMaps.error.message : null}
-          activeMapId={draft.identity?.mapId ?? null}
-          openingMapId={openingMapId}
-          disabled={savedMapSwitchBlocked(draft) || operation === 'planning'}
-          onOpen={(map) => void openSavedMap(map)}
-          onRetry={() => void savedMaps.refetch()}
-        />
-        <MapReferencePanel
-          projectId={projectId}
-          records={references}
-          references={plan.references}
-          styleReference={plan.styleReference}
-          busy={busy || referenceBusy || readOnly}
-          error={referenceError}
-          onReferencesChange={(next) => changePlan({ ...plan, references: next })}
-          onStyleReferenceChange={(next) => changePlan({ ...plan, styleReference: next })}
-          onUpload={(file) => void uploadReference(file)}
-        />
+        {viewMode === 'browse' ? (
+          <SavedMapsPanel
+            maps={savedMaps.maps}
+            isLoading={savedMaps.isLoading}
+            error={savedMaps.error instanceof Error ? savedMaps.error.message : null}
+            activeMapId={draft.identity?.mapId ?? null}
+            openingMapId={openingMapId}
+            projectId={projectId || undefined}
+            disabled={savedMapSwitchBlocked(draft) || operation === 'planning'}
+            onOpen={(map) => void openSavedMap(map)}
+            onRetry={() => void savedMaps.refetch()}
+            onCreate={enterCreateDetail}
+            readOnly={readOnly}
+          />
+        ) : (
+          <MapChatPanel
+            mapTitle={plan.name}
+            messages={chatMessages}
+            onBack={() => {
+              setViewMode('browse');
+              setPlanDetailsOpen(false);
+            }}
+            onCreate={enterCreateDetail}
+            onAsk={(prompt) => void createPlan(prompt)}
+            onGenerate={() => void generation.generate()}
+            canAsk={Boolean(projectId) && !readOnly}
+            canGenerate={canGenerate}
+            showGenerate={showGenerateInChat}
+            busy={busy}
+            readOnly={readOnly}
+            error={actionError}
+          />
+        )}
       </aside>
 
       <section className={styles.directCanvasPanel} aria-label="Map canvas">
         <header className={styles.canvasHeader}>
-          <div>
-            <span className={styles.eyebrow}>Direct image</span>
-            <h2>{plan.name}</h2>
-          </div>
           <div className={styles.headerActions}>
             <button type="button" className={`${styles.miniIconButton} ${styles.mobileOnly}`} aria-label="Open source panel" onClick={() => setLeftOpen(true)}>
               <MenuFoldOutlined />
             </button>
             <div className={styles.saveIndicator} data-status={saveStatus.status}><span aria-hidden />{saveStatus.label}</div>
-            <button type="button" className={`${styles.miniIconButton} ${styles.mobileOnly}`} aria-label="Open inspector panel" onClick={() => setRightOpen(true)}>
-              <SettingOutlined />
-            </button>
+            {viewMode === 'detail' ? (
+              <button
+                type="button"
+                className={styles.miniIconButton}
+                aria-label="Open inspector panel"
+                onClick={() => {
+                  setPlanDetailsOpen(true);
+                  setRightOpen(true);
+                }}
+              >
+                <SettingOutlined />
+              </button>
+            ) : null}
           </div>
         </header>
         <DirectMapCanvas
@@ -342,38 +434,65 @@ export function DirectMapWorkbench() {
         />
       </section>
 
-      <aside className={`${styles.rightPanel} ${rightOpen ? styles.drawerOpen : ''}`} aria-label="Map plan and generation">
-        <button type="button" className={styles.drawerClose} aria-label="Close inspector panel" onClick={() => setRightOpen(false)}>
-          <CloseOutlined />
-        </button>
-        <DirectMapPlanInspector plan={plan} issues={issues} onChange={changePlan} disabled={busy || readOnly} />
-        <DirectMapGenerationPanel
-          phase={generation.phase}
-          asset={generation.asset}
-          error={generation.error}
-          canGenerate={canGenerate}
-          canRetry={generation.canRetry}
-          canResolveUnknown={generation.canResolveUnknown}
-          onGenerate={() => void generation.generate()}
-          onRetry={() => void generation.retry()}
-          onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
-          readOnly={readOnly}
-        />
-        {image ? (
-          <DirectMapCollisionPanel
-            grid={scene.collisionGrid}
-            phase={collision.phase}
-            error={collision.error}
-            overlayVisible={collision.overlayVisible}
-            paintMode={collision.paintMode}
-            onOverlayVisibleChange={collision.setOverlayVisible}
-            onPaintModeChange={collision.setPaintMode}
-            onRetry={() => void collision.retry()}
-            onClear={collision.clearGrid}
+      {showRightPanel ? (
+        <aside className={`${styles.rightPanel} ${rightOpen ? styles.drawerOpen : ''}`} aria-label="Map plan and generation">
+          <button
+            type="button"
+            className={styles.drawerClose}
+            aria-label="Close inspector panel"
+            onClick={() => setRightOpen(false)}
+          >
+            <CloseOutlined />
+          </button>
+          <DirectMapPlanInspector
+            plan={plan}
+            issues={issues}
+            onChange={changePlan}
+            disabled={busy || readOnly}
+            onClose={() => {
+              setPlanDetailsOpen(false);
+              setRightOpen(false);
+            }}
+          />
+          <DirectMapGenerationPanel
+            phase={generation.phase}
+            asset={generation.asset}
+            error={generation.error}
+            canGenerate={canGenerate}
+            canRetry={generation.canRetry}
+            canResolveUnknown={generation.canResolveUnknown}
+            onGenerate={() => void generation.generate()}
+            onRetry={() => void generation.retry()}
+            onResolveUnknown={(acknowledged) => void generation.resolveUnknownAndRestart(acknowledged)}
             readOnly={readOnly}
           />
-        ) : null}
-      </aside>
+          {image ? (
+            <DirectMapCollisionPanel
+              grid={scene.collisionGrid}
+              phase={collision.phase}
+              error={collision.error}
+              overlayVisible={collision.overlayVisible}
+              paintMode={collision.paintMode}
+              onOverlayVisibleChange={collision.setOverlayVisible}
+              onPaintModeChange={collision.setPaintMode}
+              onRetry={() => void collision.retry()}
+              onClear={collision.clearGrid}
+              readOnly={readOnly}
+            />
+          ) : null}
+          <MapReferencePanel
+            projectId={projectId}
+            records={references}
+            references={plan.references}
+            styleReference={plan.styleReference}
+            busy={busy || referenceBusy || readOnly}
+            error={referenceError}
+            onReferencesChange={(next) => changePlan({ ...plan, references: next })}
+            onStyleReferenceChange={(next) => changePlan({ ...plan, styleReference: next })}
+            onUpload={(file) => void uploadReference(file)}
+          />
+        </aside>
+      ) : null}
     </main>
   );
 }

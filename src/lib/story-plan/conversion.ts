@@ -266,7 +266,7 @@ export async function resolveStoryPlanForImport(
         attempt: 1,
         message: 'Validating deterministic source evidence and story graph',
       });
-      const document = materializeStoryExtraction(extraction, source, options.roleMap);
+      const document = materializeStoryExtraction(extraction, source, options.roleMap, { enforceVisibleTextContract: true });
       emit(options, {
         phase: 'table_projection',
         attempt: 1,
@@ -407,7 +407,7 @@ export async function resolveStoryPlanForImport(
           throw new Error('Branch Planner did not produce a playable structure');
         }
         const extraction = buildStoryExtractionFromPlan(candidate.plan, candidate.source);
-        const document = materializeStoryExtraction(extraction, candidate.source, options.roleMap);
+        const document = materializeStoryExtraction(extraction, candidate.source, options.roleMap, { enforceVisibleTextContract: true });
         const plotPlan = buildDeterministicStoryPlotPlan(document);
         const projection = buildStoryAuditProjection(document);
         if (options.skipSemanticAuditAfterValidation) {
@@ -470,7 +470,7 @@ export async function resolveStoryPlanForImport(
         attempt,
         message: `Validating source evidence and story graph (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
       });
-      const document = materializeStoryExtraction(extraction, source, options.roleMap);
+      const document = materializeStoryExtraction(extraction, source, options.roleMap, { enforceVisibleTextContract: true });
       emit(options, {
         phase: 'table_projection',
         attempt,
@@ -613,7 +613,7 @@ async function buildExtractionWithGraphRetries(
         combineStoryExtraction(content, graph),
         source
       );
-      materializeStoryExtraction(normalized, source, options.roleMap);
+      materializeStoryExtraction(normalized, source, options.roleMap, { enforceVisibleTextContract: true });
       return normalized;
     } catch (error) {
       if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
@@ -1013,7 +1013,10 @@ async function completeStoryPlanLlm(
   throw new Error('Story import LLM call budget exhausted.');
 }
 
-function parseModelJson(raw: string): unknown {
+function parseModelJson(raw: string | null | undefined): unknown {
+  if (typeof raw !== 'string') {
+    throw new Error('Model output must be one plain JSON object');
+  }
   const trimmed = raw.trim();
   if (!trimmed || trimmed.startsWith('```') || trimmed.endsWith('```')) {
     throw new Error('Model output must be one plain JSON object');

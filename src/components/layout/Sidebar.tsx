@@ -28,7 +28,6 @@ import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
-import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder, detachLibraryFromDocument } from "@/lib/services/libraryService";
 import { Folder, deleteFolder, duplicateFolder, moveFolderToParent } from "@/lib/services/folderService";
 import {
@@ -83,6 +82,9 @@ import {
   invalidateLibraryAssetsData,
   invalidateLibraryData,
   invalidateProjectData,
+  removeProjectFromListCache,
+  updateProjectsListCache,
+  upsertProjectInListCache,
 } from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
 import { primeLibraryNavigationCache, primeDocumentNavigationCache } from './libraryNavigationCache';
@@ -305,7 +307,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       try {
         if (key.startsWith('project-')) {
           const id = key.replace('project-', '');
-          queryClient.setQueryData<Project[]>(['projects'], (old) => {
+          updateProjectsListCache(queryClient, (old) => {
             if (!old) return old;
             return old.map((project) => (project.id === id ? { ...project, name: trimmed } : project));
           });
@@ -823,9 +825,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           setError(result.error || 'Failed to delete project');
           return;
         }
-        queryClient.setQueryData<Project[]>(['projects'], (oldProjects) =>
-          oldProjects ? oldProjects.filter((p) => p.id !== projectId) : []
-        );
+        removeProjectFromListCache(queryClient, projectId);
         if (currentIds.projectId === projectId) {
           router.push('/projects');
         }
@@ -1207,14 +1207,34 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     handleProjectDeleteViaAPI(projectId);
   };
 
-  const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
+  const handleProjectCreated = async ({
+    projectId,
+    name,
+    description,
+  }: {
+    projectId: string;
+    defaultFolderId: string;
+    name: string;
+    description: string | null;
+  }) => {
     closeProjectModal();
 
-    // Immediately invalidate React Query cache to refresh the sidebar.
+    // Optimistically insert into every `['projects', userId]` cache entry so the
+    // compact selector shows the new project immediately (before refetch).
+    const now = new Date().toISOString();
+    upsertProjectInListCache(queryClient, {
+      id: projectId,
+      owner_id: userId ?? '',
+      name,
+      description,
+      created_at: now,
+      updated_at: now,
+    });
+
     // Mirror projects/page.tsx handleCreated: invalidate both the list and the
     // per-project key so the two creation entry points stay consistent.
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    await queryClient.invalidateQueries({ queryKey: ['projects'] });
+    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     await invalidateProjectData(queryClient, {
       projectId,
       userProjectList: true,

@@ -87,12 +87,7 @@ export function CellEditor({
           e.preventDefault();
           const raw = e.clipboardData?.getData('text/plain') || '';
           const text = raw.split(/\t|\n/)[0] ?? '';
-          const el = e.currentTarget;
-          const sel = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(el);
-          sel?.removeAllRanges();
-          sel?.addRange(range);
+          // Insert at caret / replace only the current selection (not the whole cell).
           document.execCommand('insertText', false, text);
         }}
         onInput={(e) => {

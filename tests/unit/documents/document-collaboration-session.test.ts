@@ -807,29 +807,19 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.status).toBe('ready');
   });
 
-  it('replaces a stale healthy channel and single-flights lifecycle recovery', async () => {
-    let finishUnsubscribe!: () => void;
+  it('keeps a healthy live channel and only catches up on lifecycle recovery', async () => {
     const harness = makeHarness();
     await connectReady(harness.session);
-    harness.channel.unsubscribe.mockImplementationOnce(
-      () => new Promise<string>((resolve) => {
-        finishUnsubscribe = () => resolve('ok');
-      })
-    );
 
     const firstRecovery = harness.session.recoverNow();
     const secondRecovery = harness.session.recoverNow();
-    await Promise.resolve();
-
-    expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
-    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
-    finishUnsubscribe();
     await Promise.all([firstRecovery, secondRecovery]);
 
-    expect(harness.removeChannel).toHaveBeenCalledWith(harness.channel);
-    expect(harness.setAuth).toHaveBeenCalledTimes(2);
-    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
-    expect(harness.gateway.readTransport).toHaveBeenCalledTimes(1);
+    expect(harness.channel.unsubscribe).not.toHaveBeenCalled();
+    expect(harness.removeChannel).not.toHaveBeenCalled();
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+    expect(harness.setAuth).toHaveBeenCalledTimes(1);
+    expect(harness.gateway.readTransport).toHaveBeenCalled();
     expect(harness.session.status).toBe('ready');
   });
 

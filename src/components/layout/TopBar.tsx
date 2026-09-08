@@ -45,6 +45,10 @@ import {
 import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 import { isScriptSystemPath } from '@/lib/script-system/isScriptSystemPath';
 import { isCreateMapPath } from '@/lib/create-map/isCreateMapPath';
+import {
+  CREATE_MAP_TOOLBAR_CREATE_EVENT,
+  CREATE_MAP_TOOLBAR_VIEW_EVENT,
+} from '@/lib/create-map/projectPreference';
 import { ScriptTopBarActions } from '@/components/script-system/ScriptTopBarActions';
 import { readSimulationProjectPreference } from '@/lib/simulation/projectPreference';
 import {
@@ -1098,7 +1102,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const handleTopbarViewModeChange = (mode: 'list' | 'grid') => {
     setLibraryViewMode(mode);
-    if (typeof window !== 'undefined' && currentProjectId) {
+    if (typeof window === 'undefined') return;
+    if (onCreateMap) {
+      window.dispatchEvent(
+        new CustomEvent(CREATE_MAP_TOOLBAR_VIEW_EVENT, { detail: { mode } }),
+      );
+      return;
+    }
+    if (currentProjectId) {
       window.dispatchEvent(
         new CustomEvent('library-toolbar-view-mode-change', {
           detail: {
@@ -1424,6 +1435,19 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           presenceUsers={topbarPresenceUsers}
           isVersionControlOpen={libraryVersionControlOpen}
           onVersionControlToggle={handleTopbarVersionControlToggle}
+        />
+      );
+    }
+
+    if (onCreateMap) {
+      return (
+        <LibraryToolbar
+          mode="create-map"
+          viewMode={libraryViewMode}
+          onViewModeChange={handleTopbarViewModeChange}
+          onCreateMap={() => {
+            window.dispatchEvent(new CustomEvent(CREATE_MAP_TOOLBAR_CREATE_EVENT));
+          }}
         />
       );
     }

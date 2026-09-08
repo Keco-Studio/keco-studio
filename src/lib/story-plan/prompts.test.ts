@@ -180,7 +180,7 @@ describe('two-stage full story extraction prompts', () => {
 
     const source = segmentStorySource('Seven: Choose.\n- Left $trust+=1\nLeft ending.', 'fixture');
     const input = JSON.parse(buildAuditorExtractionMessages(source, auditView)[1].content as string);
-    expect(Object.keys(input).sort()).toEqual(['auditView', 'commands', 'sourceUnits', 'task']);
+    expect(Object.keys(input).sort()).toEqual(['auditView', 'commands', 'sourceUnits', 'task', 'visibleTextManifest']);
     expect(input.auditView).toEqual(auditView);
     expect(input).not.toHaveProperty('extraction');
     expect(input).not.toHaveProperty('document');

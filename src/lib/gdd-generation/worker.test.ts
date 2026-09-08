@@ -410,10 +410,129 @@ describe('GDD generation worker', () => {
     jest.useRealTimers();
   });
 
+  it('advances one professional phase and checkpoints without running the next phase', async () => {
+    const checkpoint = jest.fn(async (..._args: unknown[]) => true);
+    const professionalJob = {
+      ...job,
+      phase: 'collecting',
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN' },
+      blueprint: null,
+      section_drafts: [],
+      review_report: null,
+      repair_round: 0,
+    } as GddGenerationJob;
+    const generateProfessionalStage = jest.fn(async () => ({ blueprint: null, sectionDrafts: [] }));
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: professionalJob }, {
+      heartbeat: jest.fn(async () => undefined),
+      revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated),
+      generateV2: jest.fn(async () => ({ markdown: '# unused', review: { version: 2 as const, summary: 'unused', status: 'pass' as const, issues: [] }, tablePlans: [], dialoguePlans: [], tablePlanWarning: null, dialoguePlanWarning: null })),
+      generateProfessionalStage: generateProfessionalStage as never,
+      reviewV2: jest.fn() as never,
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')),
+      persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
+      checkpoint,
+      retry: jest.fn(async () => 'queued' as const),
+      fail: jest.fn(async () => undefined),
+    })).resolves.toBe('queued');
+
+    expect(generateProfessionalStage).not.toHaveBeenCalled();
+    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      jobId: 'job-1', nextPhase: 'planning', blueprint: null, sectionDrafts: [], reviewReport: null, repairRound: 0,
+    }));
+  });
+
+  it('checkpoints professional generation output and transitions to the next stage', async () => {
+    const checkpoint = jest.fn(async (..._args: unknown[]) => true);
+    const blueprint = { version: 1, title: 'GDD', sections: [{ id: 'core', title: 'Core', stage: 'core', instructions: ['Loop'] }], invariants: [] };
+    const professionalJob = {
+      ...job,
+      phase: 'generating_core',
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN' },
+      blueprint,
+      section_drafts: [],
+      review_report: null,
+      repair_round: 0,
+    } as GddGenerationJob;
+    const draft = { sectionId: 'core', stage: 'core', markdown: '## Core\nLoop.' };
+    const generateProfessionalStage = jest.fn(async (..._args: unknown[]) => ({ blueprint, sectionDrafts: [draft] }));
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: professionalJob }, {
+      heartbeat: jest.fn(async () => undefined), revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated), generateProfessionalStage: generateProfessionalStage as never,
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')), persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
+      checkpoint, retry: jest.fn(async () => 'queued' as const), fail: jest.fn(async () => undefined),
+    })).resolves.toBe('queued');
+
+    expect(generateProfessionalStage).toHaveBeenCalledWith(expect.objectContaining({ mode: 'professional' }), 'generating_core', expect.objectContaining({ blueprint }), {}, expect.any(AbortSignal));
+    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'generating_systems', sectionDrafts: [draft] }));
+  });
+
+  it('reviews and saves professional checkpoints in separate invocations', async () => {
+    const checkpoint = jest.fn(async (..._args: unknown[]) => true);
+    const persistV2 = jest.fn(async () => persistedGdd('document-1', 'GDD'));
+    const report = { version: 2, summary: 'pass', status: 'pass', issues: [], repairRound: 0 };
+    const professionalBase = {
+      ...job,
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN' },
+      blueprint: { version: 1, title: 'GDD', sections: [{ id: 'core', title: 'Core', stage: 'core', instructions: ['Loop'] }], invariants: [] },
+      section_drafts: [{ sectionId: 'core', stage: 'core', markdown: '## Core\nLoop.' }],
+      repair_round: 0,
+    } as GddGenerationJob;
+    const reviewV2 = jest.fn(async () => ({ markdown: '# GDD\n\n## Core\nLoop.', review: report, tablePlans: [], tablePlanWarning: null, dialoguePlans: [], dialoguePlanWarning: null }));
+    const deps = {
+      heartbeat: jest.fn(async () => undefined), revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated), generateProfessionalStage: jest.fn() as never, reviewV2: reviewV2 as never,
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')), persistV2, checkpoint,
+      retry: jest.fn(async () => 'queued' as const), fail: jest.fn(async () => undefined),
+    };
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'reviewing' } as GddGenerationJob }, deps)).resolves.toBe('queued');
+    expect(reviewV2).toHaveBeenCalled();
+    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'saving', reviewReport: expect.objectContaining({ markdown: '# GDD\n\n## Core\nLoop.' }) }));
+    expect(persistV2).not.toHaveBeenCalled();
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'saving', review_report: { review: report, markdown: '# GDD\n\n## Core\nLoop.', tablePlans: [], dialoguePlans: [] } } as GddGenerationJob }, deps)).resolves.toBe('completed');
+    expect(persistV2).toHaveBeenCalled();
+  });
+
+  it('aborts a hanging professional stage at the 240-second bounded deadline', async () => {
+    jest.useFakeTimers();
+    const previous = process.env.GDD_PROFESSIONAL_STAGE_DEADLINE_MS;
+    process.env.GDD_PROFESSIONAL_STAGE_DEADLINE_MS = '240000';
+    try {
+      const professionalJob = {
+        ...job,
+        phase: 'generating_core',
+        input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN' },
+        blueprint: { version: 1, title: 'GDD', sections: [{ id: 'core', title: 'Core', stage: 'core', instructions: ['Loop'] }], invariants: [] },
+        section_drafts: [],
+      } as GddGenerationJob;
+      const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
+      const generateProfessionalStage = jest.fn(async (..._args: unknown[]) => new Promise<never>(() => undefined));
+      const promise = processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: professionalJob }, {
+        heartbeat: jest.fn(async () => undefined), revalidateContext: jest.fn(async () => undefined), generate: jest.fn(async () => generated),
+        generateProfessionalStage: generateProfessionalStage as never, persist: jest.fn(async () => persistedGdd('unused', 'unused')), persistV2: jest.fn(async () => persistedGdd('unused', 'unused')),
+      checkpoint: jest.fn(async (..._args: unknown[]) => true), retry, fail: jest.fn(async () => undefined),
+      });
+      await Promise.resolve(); await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(240_000);
+      await expect(promise).resolves.toBe('queued');
+      expect(retry).toHaveBeenCalledWith(expect.anything(), 'job-1', 'worker-1', 'Professional GDD stage generating_core exceeded its 240-second deadline.', 5);
+    } finally {
+      if (previous === undefined) delete process.env.GDD_PROFESSIONAL_STAGE_DEADLINE_MS;
+      else process.env.GDD_PROFESSIONAL_STAGE_DEADLINE_MS = previous;
+      jest.useRealTimers();
+    }
+  });
+
   it.each([
     ['quick', 120_000, undefined],
-    ['professional', 270_000, undefined],
     ['quick', 150_000, '150000'],
+    ['quick', 30_000, '30000'],
+    ['quick', 600_000, '600000'],
+    ['quick', 120_000, '600001'],
   ] as const)('requeues a hanging %s generation only after its %i ms deadline', async (mode, deadlineMs, override) => {
     const previousDeadline = process.env.GDD_GENERATION_DEADLINE_MS;
     if (override) process.env.GDD_GENERATION_DEADLINE_MS = override;
@@ -471,7 +590,7 @@ describe('GDD generation worker', () => {
     const generateV2 = jest.fn(async () => {
       throw new GddV2ResourceRecoveryError('GDD is missing required guided tables after one repair pass: SeasonsWeather.');
     });
-    const retry = jest.fn(async () => 'queued' as const);
+      const retry = jest.fn(async (..._args: unknown[]) => 'queued' as const);
     const fail = jest.fn(async (..._args: unknown[]) => undefined);
     const v2Job = {
       ...job,

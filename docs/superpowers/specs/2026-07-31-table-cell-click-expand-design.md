@@ -59,7 +59,10 @@ If the row already has a custom `--row-height` from manual resize, expand still 
 
 ### Editing
 
-Double-click to edit is unchanged. Entering edit mode does not require expand. Leaving edit mode does not force expand.
+Double-click to edit is unchanged. Entering edit mode does not require expand.
+Leaving edit mode after saving multi-line / overflowing text keeps the row expanded
+(so wrap remains visible) while the cell stays selected; collapse still follows the
+normal selection-leave / toggle rules. Cancel (Escape) does not force expand.
 
 ## Approach (chosen)
 

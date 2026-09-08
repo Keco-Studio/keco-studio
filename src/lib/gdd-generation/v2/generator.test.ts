@@ -1,6 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 jest.mock('server-only', () => ({}));
-import { generateGddMarkdownV2, GddV2GenerationValidationError } from './generator';
+import { generateGddMarkdownV2, reviewGddMarkdownV2, GddV2GenerationValidationError } from './generator';
+import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import type { ChatMessage } from '@/lib/agent/types';
 import type { StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { GddGenerationRequestV2 } from './contracts';
@@ -139,9 +140,41 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(messages[0].content).toContain('Use 6-8 major sections');
   });
 
+  it('uses the requested language instead of hardcoding Chinese', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## Overview\nBody.');
+
+    await generateGddMarkdownV2({ ...input, language: 'en-US' }, complete);
+
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[0].content).toMatch(/English|en-US/i);
+    expect(messages[0].content).not.toContain('Simplified Chinese');
+  });
+
   it('rejects an empty model response', async () => {
     await expect(generateGddMarkdownV2(input, jest.fn(async () => '   ')))
       .rejects.toBeInstanceOf(GddV2GenerationValidationError);
+  });
+
+  it('coerces bare table marker blocks before MDX persistence', async () => {
+    const bare = [
+      '# GDD',
+      '',
+      '## Systems',
+      'Actions are data-driven.',
+      'KECO_TABLE_PLAN',
+      '{"table":"Actions","fields":["name"],"purpose":"Player actions."}',
+      'KECO_TABLE_REF',
+      '{"table":"Actions","rows":[{"name":"Explore","values":{"name":"Explore"}}]}',
+    ].join('\n');
+
+    const result = await reviewGddMarkdownV2(input, bare);
+
+    expect(result.tablePlans).toEqual([expect.objectContaining({
+      table: 'Actions',
+      fields: ['name'],
+      rows: [expect.objectContaining({ name: 'Explore' })],
+    })]);
+    expect(() => validateSanctionedMdx(result.markdown)).not.toThrow();
   });
 
   it('rejects a response stopped by the provider output limit', async () => {

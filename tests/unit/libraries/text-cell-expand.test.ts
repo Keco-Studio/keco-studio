@@ -1,4 +1,7 @@
+/** @jest-environment jsdom */
+
 import {
+  editorContentOverflows,
   nextExpandedTextCell,
   selectionIncludesExpandedRow,
   type ExpandedTextCell,
@@ -77,5 +80,69 @@ describe('selectionIncludesExpandedRow', () => {
     ).toBe(true);
     expect(selectionIncludesExpandedRow(new Set(['row-2-name']), 'row-1')).toBe(false);
     expect(selectionIncludesExpandedRow(new Set(['row-1-name']), null)).toBe(false);
+  });
+});
+
+describe('editorContentOverflows', () => {
+  function mockEditor(partial: {
+    scrollHeight: number;
+    clientHeight: number;
+    scrollWidth?: number;
+    clientWidth?: number;
+    lineHeight?: string;
+    fontSize?: string;
+    paddingTop?: string;
+    paddingBottom?: string;
+  }): HTMLElement {
+    const el = {
+      scrollHeight: partial.scrollHeight,
+      clientHeight: partial.clientHeight,
+      scrollWidth: partial.scrollWidth ?? 100,
+      clientWidth: partial.clientWidth ?? 100,
+    } as HTMLElement;
+    const styleMap: Record<string, string> = {
+      lineHeight: partial.lineHeight ?? '18.9px',
+      fontSize: partial.fontSize ?? '14px',
+      paddingTop: partial.paddingTop ?? '5.6px',
+      paddingBottom: partial.paddingBottom ?? '5.6px',
+    };
+    jest.spyOn(window, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: () => '',
+      ...styleMap,
+      lineHeight: styleMap.lineHeight,
+      fontSize: styleMap.fontSize,
+      paddingTop: styleMap.paddingTop,
+      paddingBottom: styleMap.paddingBottom,
+    } as CSSStyleDeclaration);
+    return el;
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns false for null', () => {
+    expect(editorContentOverflows(null)).toBe(false);
+  });
+
+  it('returns true when text wraps to more than one line', () => {
+    // one line ≈ 18.9 + 11.2 padding = 30.1; multi-line taller
+    const el = mockEditor({ scrollHeight: 48, clientHeight: 48 });
+    expect(editorContentOverflows(el)).toBe(true);
+  });
+
+  it('returns false for single-line editor height', () => {
+    const el = mockEditor({ scrollHeight: 30, clientHeight: 30 });
+    expect(editorContentOverflows(el)).toBe(false);
+  });
+
+  it('returns true when horizontal overflow exists', () => {
+    const el = mockEditor({
+      scrollHeight: 30,
+      clientHeight: 30,
+      scrollWidth: 200,
+      clientWidth: 100,
+    });
+    expect(editorContentOverflows(el)).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+import { CloseOutlined } from '@ant-design/icons';
 import { DIRECT_MAP_PROFILES, type MapPlanV3, type MapPlanV3Issue } from '../model/directMapSchema';
 import styles from '../CreateMapWorkbench.module.css';
 
@@ -6,22 +7,28 @@ type DirectMapPlanInspectorProps = {
   issues: MapPlanV3Issue[];
   onChange: (plan: MapPlanV3) => void;
   disabled?: boolean;
+  onClose?: () => void;
 };
 
-export function DirectMapPlanInspector({ plan, issues, onChange, disabled = false }: DirectMapPlanInspectorProps) {
+export function DirectMapPlanInspector({
+  plan,
+  issues,
+  onChange,
+  disabled = false,
+  onClose,
+}: DirectMapPlanInspectorProps) {
   const profileValue = `${plan.map.width}x${plan.map.height}`;
   const descriptionIssues = issues.filter((issue) => issue.path[0] === 'description');
 
   return (
     <section className={styles.inspectorSection} aria-labelledby="direct-plan-heading">
-      <div className={styles.sectionHeadingRow}>
-        <div>
-          <span className={styles.eyebrow}>2 Review plan</span>
-          <h2 id="direct-plan-heading" className={styles.sectionTitleSmall}>Map plan</h2>
-        </div>
-        <span className={issues.length > 0 ? styles.issueCount : styles.validCount}>
-          {issues.length > 0 ? `${issues.length} issues` : 'Valid'}
-        </span>
+      <div className={styles.planDetailsHeading}>
+        <h2 id="direct-plan-heading" className={styles.planDetailsTitle}>Map plan details</h2>
+        {onClose ? (
+          <button type="button" className={styles.planDetailsClose} aria-label="Close map plan details" onClick={onClose}>
+            <CloseOutlined />
+          </button>
+        ) : null}
       </div>
 
       <label className={styles.fieldLabel}>
@@ -86,7 +93,10 @@ export function DirectMapPlanInspector({ plan, issues, onChange, disabled = fals
       ))}
 
       <label className={styles.fieldLabel}>
-        Seed <span className={styles.optionalLabel}>Optional</span>
+        <span className={styles.seedLabelStack}>
+          <span>Seed</span>
+          <span className={styles.optionalLabel}>Optional</span>
+        </span>
         <input
           className={styles.input}
           type="number"
