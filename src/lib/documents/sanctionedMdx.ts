@@ -270,6 +270,52 @@ export function coerceSanctionedMdxBraces(markdown: string): string {
 }
 
 /**
+ * Neutralize MDX-only expressions and ESM declarations emitted by generators.
+ * Fenced and inline code remain byte-for-byte unchanged; unsupported source
+ * lines are rendered as code and literal braces as HTML entities.
+ */
+export function coerceSanctionedMdxExpressions(markdown: string): string {
+  const segments = markdown.split(/(`{3,}[\s\S]*?```|~{3,}[\s\S]*?~{3,})/g);
+  return segments.map((segment) => {
+    if (/^(`{3,}|~{3,})/.test(segment)) return segment;
+    return segment.split(/\r?\n/).map((line) => {
+      const esmMatch = /^(\s*)(?:import|export)\b/.exec(line);
+      if (esmMatch) {
+        const indentation = esmMatch[1] ?? '';
+        return `${indentation}\`${line.slice(indentation.length)}\``;
+      }
+
+      let inlineTicks = 0;
+      let inTag = false;
+      let output = '';
+      for (let index = 0; index < line.length; index += 1) {
+        const character = line[index]!;
+        if (character === '`') {
+          let end = index + 1;
+          while (line[end] === '`') end += 1;
+          const runLength = end - index;
+          inlineTicks = inlineTicks === 0 ? runLength : inlineTicks === runLength ? 0 : inlineTicks;
+          output += line.slice(index, end);
+          index = end - 1;
+          continue;
+        }
+        if (inlineTicks === 0 && character === '<') inTag = true;
+        if (inlineTicks === 0 && !inTag && character === '{') output += '&#123;';
+        else if (inlineTicks === 0 && !inTag && character === '}') output += '&#125;';
+        else output += character;
+        if (inlineTicks === 0 && inTag && character === '>') inTag = false;
+      }
+      return output;
+    }).join('\n');
+  }).join('');
+}
+
+/** Normalize generated Markdown before it enters the strict sanctioned parser. */
+export function coerceGeneratedSanctionedMdx(markdown: string): string {
+  return coerceSanctionedMdxExpressions(coerceSanctionedMdx(markdown));
+}
+
+/**
  * MDXEditor may persist resized images as `<img ... />` JSX. Convert those to
  * Markdown image nodes so sanctioned MDX validation and storage stay consistent.
  */

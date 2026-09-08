@@ -48,6 +48,23 @@ function outputLanguage(input: GddGenerationRequestV2): string {
   return `the same language as the requested locale ${locale || 'the source context'}`;
 }
 
+function requestedGameTitle(input: GddGenerationRequestV2): string | null {
+  const brief = input.creativeBrief ?? '';
+  const quoted = brief.match(/[《「"]([^》」"\n]{2,80})[》」"]/);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+  if (/^zh(?:[-_]|$)/i.test(input.language.trim()) && /[\u3400-\u9fff]/.test(input.projectName)) {
+    return input.projectName.trim();
+  }
+  return null;
+}
+
+function isEnglishDominant(markdown: string, input: GddGenerationRequestV2): boolean {
+  if (!/^zh(?:[-_]|$)/i.test(input.language.trim())) return false;
+  const han = (markdown.match(/[\u3400-\u9fff]/g) ?? []).length;
+  const latin = (markdown.match(/[A-Za-z]/g) ?? []).length;
+  return latin >= 80 && latin > Math.max(20, han * 2);
+}
+
 const blueprintSchema = z.object({
   version: z.literal(1),
   title: z.string().trim().min(1).max(200),
@@ -239,6 +256,7 @@ function stageMessages(
     ? drafts.map((draft) => `SECTION ${draft.sectionId}\n${draft.markdown}`).join('\n\n').slice(0, 24_000)
     : 'No earlier section drafts exist.';
   if (stage === 'planning') {
+    const title = requestedGameTitle(input);
     return [{
       role: 'system',
       content: [
@@ -249,6 +267,7 @@ function stageMessages(
         'Produce a production-sized plan with 9-12 sections distributed across core, systems, and content.',
         'Include at least 2 core sections, 3 systems sections, and 3 content sections.',
         'Make every section instruction concrete enough to produce executable design details.',
+        ...(title ? [`The document title is fixed to exactly: ${title}. Do not translate, rename, or replace it.`] : []),
       ].join('\n'),
     }, {
       role: 'user',
@@ -265,7 +284,9 @@ function stageMessages(
       'Keep names and numeric invariants consistent with the blueprint and earlier drafts.',
       'Finish every requested section before stopping. Do not add unrelated headings.',
       'Start every requested section with an exact heading `## <blueprint title>` on its own line; copy each blueprint title verbatim. Use no other section-level headings.',
+      'Use readable Markdown hierarchy: one exact H2 for each requested section, H3 subsections where useful, short paragraphs, bold key points, and numbered or bulleted lists for steps, rules, costs, conditions, and examples. Do not output one uninterrupted wall of prose.',
       'Give each requested section at least 3 substantive paragraphs or equivalent bullet groups, with concrete executable details rather than summaries.',
+      /^zh(?:[-_]|$)/i.test(input.language.trim()) ? 'Chinese-only output: all human-readable headings, labels, bullets, and prose must be Simplified Chinese; keep English only for unavoidable official proper nouns or IDs.' : '',
       stage === 'generating_systems'
         ? `Include concrete system rules, formulas, limits, failure cases, and required Keco table references. The pinned table guidance is: ${JSON.stringify(input.rules.tableGuidance)}. Do not render Markdown tables. Emit valid HTML comments in these exact forms when tabular data is needed: <!-- KECO_TABLE_PLAN ${tablePlanShapeExample} --> and <!-- KECO_TABLE_REF TableName -->. Every plan field must match every row value key, and every plan must have at least one concrete row.`
         : stage === 'generating_content'
@@ -281,6 +302,23 @@ function stageMessages(
       `Earlier drafts:\n${prior}`,
       `Requested sections:\n${sections.map((section) => `${section.id}: ${section.title}\n- ${section.instructions.join('\n- ')}`).join('\n\n')}`,
     ].join('\n\n'),
+  }];
+}
+
+function stageRepairMessages(input: GddGenerationRequestV2, sectionTitles: string[], raw: string): ChatMessage[] {
+  return [{
+    role: 'system',
+    content: [
+      'Repair this professional GDD stage without changing its design facts.',
+      `Write all human-readable Markdown in ${outputLanguage(input)}.`,
+      'Return Markdown only. Do not add commentary or code fences.',
+      'Use one exact H2 heading per requested section, H3 subsections, short paragraphs, bold key points, and numbered or bulleted lists.',
+      /^zh(?:[-_]|$)/i.test(input.language.trim()) ? 'Chinese-only output: do not write English prose or English headings; preserve only official proper nouns and stable IDs.' : '',
+      `Requested section titles: ${sectionTitles.join(', ')}`,
+    ].filter(Boolean).join('\n'),
+  }, {
+    role: 'user',
+    content: `Stage Markdown to repair:\n\n${raw.slice(0, 24_000)}`,
   }];
 }
 
@@ -368,7 +406,9 @@ export async function generateProfessionalStage(
       signal,
     }), signal);
     try {
-      return { blueprint: parseBlueprint(raw), sectionDrafts: [] };
+      const parsed = parseBlueprint(raw);
+      const title = requestedGameTitle(input);
+      return { blueprint: title ? { ...parsed, title } : parsed, sectionDrafts: [] };
     } catch (initialError) {
       try {
         const repairedRaw = await raceWithAbort(complete(blueprintRepairMessages(input, raw), {
@@ -377,7 +417,9 @@ export async function generateProfessionalStage(
           toolName: BLUEPRINT_TOOL_NAME,
           signal,
         }), signal);
-        return { blueprint: parseBlueprint(repairedRaw), sectionDrafts: [] };
+        const repaired = parseBlueprint(repairedRaw);
+        const title = requestedGameTitle(input);
+        return { blueprint: title ? { ...repaired, title } : repaired, sectionDrafts: [] };
       } catch {
         throw initialError;
       }
@@ -386,9 +428,16 @@ export async function generateProfessionalStage(
   const savedBlueprint = checkpointBlueprint(checkpoint);
   const previous = previousDrafts(checkpoint);
   const kind = stageKind(stage)!;
-  const raw = await raceWithAbort(complete(stageMessages(input, stage, savedBlueprint, previous), {
+  let raw = await raceWithAbort(complete(stageMessages(input, stage, savedBlueprint, previous), {
     ...gddV2LlmOptions(8_000), signal,
   }), signal);
+  if (isEnglishDominant(raw, input)) {
+    raw = await raceWithAbort(complete(stageRepairMessages(
+      input,
+      savedBlueprint.sections.filter((section) => section.stage === kind).map((section) => section.title),
+      raw,
+    ), { ...gddV2LlmOptions(8_000), signal }), signal);
+  }
   const generated = splitDrafts(raw, savedBlueprint, kind);
   const replaced = new Map(previous.filter((draft) => draft.stage !== kind).map((draft) => [draft.sectionId, draft]));
   generated.forEach((draft) => replaced.set(draft.sectionId, draft));

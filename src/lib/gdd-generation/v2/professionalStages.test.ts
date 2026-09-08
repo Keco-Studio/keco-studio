@@ -160,6 +160,72 @@ describe('professional GDD stages', () => {
     expect(systemPrompt).toMatch(/Do not render Markdown tables|Do not use Markdown tables/i);
     expect(systemPrompt).toMatch(/at least 3 .*paragraphs/i);
     expect(systemPrompt).toMatch(/exact heading|exact title|heading.*exact/i);
+    expect(systemPrompt).toMatch(/H1|H2|H3|heading hierarchy/i);
+    expect(systemPrompt).toMatch(/bullet|numbered list/i);
+  });
+
+  it('uses the explicit Chinese game title from the creative brief instead of a model title', async () => {
+    const complete = jest.fn(async () => JSON.stringify({
+      ...blueprint,
+      title: 'Adventure 2 - Game Design Document',
+      sections: [
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'systems', title: 'Systems', stage: 'systems', instructions: ['Define values.'] },
+        { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
+      ],
+      invariants: ['Use consistent values.'],
+    }));
+
+    const result = await generateProfessionalStage({
+      ...input,
+      projectName: 'Adventure 2',
+      creativeBrief: 'Game title "Brave Path"; write the game design document.',
+    }, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint?.title).toBe('Brave Path');
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const messages = calls[0]?.[0] as Array<{ content?: unknown }> | undefined;
+    expect(String(messages?.[0]?.content)).toContain('Brave Path');
+    expect(String(messages?.[0]?.content)).toMatch(/Chinese|Simplified/i);
+  });
+
+  it('repairs an English-dominant Chinese stage into structured Chinese Markdown', async () => {
+    const chineseBlueprint: ProfessionalBlueprint = {
+      ...blueprint,
+      title: 'Brave Path',
+      sections: [
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'systems', title: 'Systems', stage: 'systems', instructions: ['Define values.'] },
+        { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
+      ],
+      invariants: ['Use consistent values.'],
+    };
+    const english = `## Core Loop\n\n${'The player explores, fights, grows, and advances through the world. '.repeat(30)}`;
+    const repaired = [
+      '## Core Loop',
+      '',
+      '### Loop Steps',
+      '',
+      '1. Scout the current area.',
+      '2. Choose and resolve an action.',
+      '',
+      '### Completion',
+      '',
+      '- **Goal:** Reach the exit.',
+      '- **Feedback:** Show state changes.',
+    ].join('\n');
+    const complete = jest.fn(async () => repaired).mockResolvedValueOnce(english);
+
+    const result = await generateProfessionalStage({ ...input, language: 'zh-CN' }, 'generating_core', checkpoint({
+      blueprint: chineseBlueprint,
+    }), { complete });
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.sectionDrafts[0]?.markdown).toBe(repaired);
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const repairMessages = calls[1]?.[0] as Array<{ content?: unknown }> | undefined;
+    expect(String(repairMessages?.[0]?.content)).toMatch(/Chinese|Simplified/i);
+    expect(String(repairMessages?.[0]?.content)).toMatch(/H3|bullet|numbered list/i);
   });
 
   it('normalizes generated section headings to the blueprint titles', async () => {
