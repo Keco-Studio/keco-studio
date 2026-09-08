@@ -41,6 +41,10 @@ const validDocument = {
 };
 
 const validOutput = { document: validDocument, rules: validRules };
+const chinese = (...codePoints: number[]) => String.fromCodePoint(...codePoints);
+const bravePath = chinese(0x52c7, 0x95ef, 0x4e4b, 0x8def);
+const roguelike = chinese(0x8089, 0x9e3d, 0x6a21, 0x62df);
+const readableState = chinese(0x53ef, 0x8bfb, 0x72b6, 0x6001);
 
 const artStyle = compileGameArtStyle({
   presetId: 'pixel-art',
@@ -109,6 +113,46 @@ describe('structured Game Design System generation', () => {
     expect(messages[0].content).toContain('"tableGuidance":[{"table":');
     expect(JSON.stringify(messages)).not.toContain('NEVER-IN-MODEL');
     expect(JSON.stringify(messages)).not.toContain('/game-art-styles/');
+  });
+
+  it('requests Simplified Chinese when the normalized GDS input is Chinese', () => {
+    const messages = buildStructuredGenerationMessages({
+      ...input,
+      title: bravePath,
+      genres: [roguelike],
+      philosophies: [readableState],
+      description: `${chinese(0x5355, 0x4eba)}${roguelike}${chinese(0x63a2, 0x9669, 0x6e38, 0x620f)}`,
+    });
+    expect(messages[0].content).toMatch(/Simplified Chinese|Chinese output/i);
+  });
+
+  it('repairs a schema-valid English response when Chinese output was requested', async () => {
+    const chineseOutput = {
+      document: Object.fromEntries(Object.keys(validDocument).map((key) => [key, chinese(0x4e2d, 0x6587, 0x8bbe, 0x8ba1, 0x5185, 0x5bb9)])),
+      rules: {
+        ...validRules,
+        genres: [roguelike],
+        philosophies: [readableState],
+        suitableFor: chinese(0x5355, 0x4eba, 0x73a9, 0x5bb6),
+        rules: [{ ...validRules.rules[0], title: readableState, statement: chinese(0x5c55, 0x793a, 0x51b3, 0x7b56, 0x4fe1, 0x606f, 0x3002) }],
+      },
+    };
+    const complete = jest.fn(async () => complete.mock.calls.length === 1
+      ? JSON.stringify(validOutput)
+      : JSON.stringify(chineseOutput));
+
+    const result = await generateGameDesignSystemOutput({
+      ...input,
+      title: bravePath,
+      genres: [roguelike],
+      philosophies: [readableState],
+      description: `${chinese(0x5355, 0x4eba)}${roguelike}${chinese(0x63a2, 0x9669, 0x6e38, 0x620f)}`,
+    }, complete);
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.document.gameBackground).toContain(chinese(0x4e2d, 0x6587));
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    expect(((calls[1]?.[0] as ChatMessage[])[1]?.content ?? '')).toMatch(/Simplified Chinese|Chinese output/i);
   });
 
   it('includes the compiled Art Style snapshot in the durable input hash', () => {

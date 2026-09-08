@@ -437,6 +437,45 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.tablePlans.map((plan) => plan.table)).toEqual(guidedTables);
   });
 
+  it('accepts a guided table repair with normalized name and reordered fields', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: [{
+          table: 'NPCScripts',
+          purpose: 'Defines NPC dialogue scripts and progression hooks.',
+          fields: ['id', 'npcId', 'line', 'nextNode'],
+        }],
+      },
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1
+        ? '# GDD\n\n## Story\nThe gatekeeper NPC asks for a pass.'
+        : `<!-- KECO_TABLE_PLAN ${JSON.stringify([{
+          table: 'NPC Scripts',
+          purpose: 'Stores dialogue lines.',
+          fields: ['id', 'line', 'nextnode', 'npcid'],
+          rows: [{
+            name: 'gatekeeper-intro',
+            values: { id: 'gatekeeper-intro', line: 'Show your pass.', nextnode: 'gate-open', npcid: 'gatekeeper' },
+          }],
+        }])} -->`
+    ));
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([{
+      table: 'NPCScripts',
+      purpose: 'Defines NPC dialogue scripts and progression hooks.',
+      fields: ['id', 'npcId', 'line', 'nextNode'],
+      rows: [{
+        name: 'gatekeeper-intro',
+        values: { id: 'gatekeeper-intro', line: 'Show your pass.', nextnode: 'gate-open', npcid: 'gatekeeper' },
+      }],
+    }]);
+  });
+
   it('rejects a guided GDD when the missing table repair produces no usable plan', async () => {
     const guidedInput: GddGenerationRequestV2 = {
       ...input,

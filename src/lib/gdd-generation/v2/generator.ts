@@ -60,6 +60,10 @@ export async function reviewGddMarkdownV2(
 ): Promise<GeneratedGddV2> {
   const dependencies = resolveDependencies(dependencyInput);
   let normalized = normalizeGeneratedMarkdown(markdown, input.projectName, input.rules.tableGuidance);
+  normalized = {
+    ...normalized,
+    tablePlans: canonicalizeGuidedTablePlans(normalized.tablePlans, requiredTableGuidance(input)),
+  };
   let repairRound = 0;
   const refNames = listTableRefNames(normalized.markdown);
   const missingGuidance = missingGuidedTables(input, normalized.tablePlans);
@@ -79,10 +83,9 @@ export async function reviewGddMarkdownV2(
     if (repaired.tablePlans.length > 0) {
       normalized = {
         ...normalized,
-        tablePlans: mergeRepairedTablePlans(
-          normalized.tablePlans,
-          repaired.tablePlans,
-          requiredTableRepairs,
+        tablePlans: canonicalizeGuidedTablePlans(
+          mergeRepairedTablePlans(normalized.tablePlans, repaired.tablePlans, requiredTableRepairs),
+          requiredTableGuidance(input),
         ),
         tablePlanWarning: null,
       };
@@ -415,15 +418,17 @@ async function repairMissingTablePlans(
         ? raw
         : `<!-- KECO_TABLE_PLAN ${raw} -->`);
       const exact = extracted.tablePlans.find((plan) => (
-        plan.table.toLocaleLowerCase() === requiredTable.table.toLocaleLowerCase()
+        sameGuidedTableName(plan.table, requiredTable.table)
+        && (!requiredTable.fields || sameFieldShape(plan.fields, requiredTable.fields))
       ));
       // A targeted repair asks for exactly one table. If the model changes only
       // the table name while preserving the guided field contract, canonicalize
       // it instead of discarding an otherwise usable plan.
-      const compatibleSingle = !exact
-        && extracted.tablePlans.length === 1
-        && (!requiredTable.fields || sameFieldShape(extracted.tablePlans[0]!.fields, requiredTable.fields))
-        ? extracted.tablePlans[0]
+      const compatibleCandidates = extracted.tablePlans.filter((plan) => (
+        !requiredTable.fields || sameFieldShape(plan.fields, requiredTable.fields)
+      ));
+      const compatibleSingle = !exact && compatibleCandidates.length === 1
+        ? compatibleCandidates[0]
         : undefined;
       const matched = exact ?? compatibleSingle;
       if (!matched) return { plans: [], warning: extracted.warning ?? `No usable plan returned for ${requiredTable.table}.` };
@@ -449,18 +454,18 @@ async function repairMissingTablePlans(
   };
 }
 
-function sameStringList(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
 function normalizeGuidedFieldKey(value: string): string {
   return value.toLocaleLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
 }
 
 function sameFieldShape(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => (
-    normalizeGuidedFieldKey(value) === normalizeGuidedFieldKey(right[index]!)
-  ));
+  if (left.length !== right.length) return false;
+  const rightKeys = new Set(right.map(normalizeGuidedFieldKey));
+  return left.every((value) => rightKeys.has(normalizeGuidedFieldKey(value)));
+}
+
+function sameGuidedTableName(left: string, right: string): boolean {
+  return normalizeGuidedFieldKey(left) === normalizeGuidedFieldKey(right);
 }
 
 type RequiredTableGuidance = { table: string; purpose: string; fields: string[] };
@@ -482,9 +487,8 @@ function tablePlanMatchesGuidance(
   plan: GeneratedTablePlan,
   guidance: RequiredTableGuidance,
 ): boolean {
-  return plan.table === guidance.table
-    && plan.purpose === guidance.purpose
-    && sameStringList(plan.fields, guidance.fields);
+  return sameGuidedTableName(plan.table, guidance.table)
+    && sameFieldShape(plan.fields, guidance.fields);
 }
 
 function missingGuidedTables(
@@ -494,6 +498,22 @@ function missingGuidedTables(
   return requiredTableGuidance(input).filter((guidance) => (
     !plans.some((plan) => tablePlanMatchesGuidance(plan, guidance))
   ));
+}
+
+function canonicalizeGuidedTablePlans(
+  plans: GeneratedTablePlan[],
+  guidance: RequiredTableGuidance[],
+): GeneratedTablePlan[] {
+  return plans.map((plan) => {
+    const matched = guidance.find((candidate) => tablePlanMatchesGuidance(plan, candidate));
+    if (!matched) return plan;
+    return {
+      ...plan,
+      table: matched.table,
+      purpose: matched.purpose,
+      fields: [...matched.fields],
+    };
+  });
 }
 
 function mergeRepairedTablePlans(
