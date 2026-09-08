@@ -113,6 +113,25 @@ describe('professional GDD stages', () => {
     }));
   });
 
+  it('ignores a top-level tables planning hint while preserving the strict blueprint contract', async () => {
+    const complete = jest.fn(async () => JSON.stringify({
+      version: 1,
+      title: 'Test Game GDD',
+      sections: blueprint.sections,
+      invariants: [],
+      tables: ['LevelLayouts', 'NPCScripts'],
+    }));
+
+    const result = await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint).toEqual(expect.objectContaining({
+      version: 1,
+      title: 'Test Game GDD',
+      sections: blueprint.sections,
+      invariants: [],
+    }));
+  });
+
   it('repairs one malformed planning response before failing the stage', async () => {
     const complete = jest.fn(async (..._args: unknown[]) => JSON.stringify(blueprint))
       .mockResolvedValueOnce('{"version":1,"title":"Test Game GDD","sections":[{"id":"core-loop","title":"Core Loop","stage":"core","instructions":["Define the loop."]}],"invariants":["unterminated')
