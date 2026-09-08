@@ -190,4 +190,22 @@ describe('CI workflow gates', () => {
     );
     expect(deployJob).toContain("needs.migrate-database.result == 'skipped'");
   });
+
+  it('only pushes migrations to remote databases from branch push events', () => {
+    const condition = migrateDatabaseJob.match(
+      /\n    if: \|\n(?<condition>(?: {6}.*\n)+)/
+    )?.groups?.condition;
+
+    expect(condition?.replace(/^ {6}/gm, '').trim()).toBe(
+      [
+        "(github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&",
+        "github.event_name == 'push' && (",
+        "    needs.check-migrations.outputs.has-migrations == 'true' ||",
+        "    github.ref == 'refs/heads/main' ||",
+        "    github.ref == 'refs/heads/master' ||",
+        "    startsWith(github.ref, 'refs/heads/release/')",
+        '  )',
+      ].join('\n')
+    );
+  });
 });
