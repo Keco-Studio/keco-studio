@@ -33,7 +33,7 @@ describe('PanelHeader', () => {
     expect(html).toContain('Version History');
     expect(html).toContain('aria-label="Create new version"');
     expect(html).toContain('aria-label="Close"');
-    expect(html).toContain('src="test-file-stub"');
+    expect(html).toContain('src="/test-file-stub.svg"');
   });
 
   it('can hide add and keep close only', () => {
@@ -43,6 +43,6 @@ describe('PanelHeader', () => {
 
     expect(html).toContain('Asset detail');
     expect(html).toContain('aria-label="Close"');
-    expect(html.match(/src="test-file-stub"/g)).toHaveLength(1);
+    expect(html.match(/src="\/test-file-stub\.svg"/g)).toHaveLength(1);
   });
 });
