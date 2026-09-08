@@ -1,4 +1,4 @@
-import { validateSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments, coerceSanctionedMdxBraces } from './sanctionedMdx';
+import { validateSanctionedMdx, coerceSanctionedMdxImages, coerceSanctionedMdxHtmlComments, coerceSanctionedMdxBraces, coerceSanctionedMdxExpressions } from './sanctionedMdx';
 import { createSanctionedMdxDescriptors } from './sanctionedMdxDescriptors';
 import { DocumentContentValidationError } from './documentStateTypes';
 import {
@@ -87,7 +87,34 @@ describe('sanctioned MDX validation', () => {
       '{"state":true}',
       '```',
     ].join('\n'));
-    expect(() => validateSanctionedMdx(markdown)).not.toThrow();
+    expect(() => validateSanctionedMdx(coerceSanctionedMdxExpressions(markdown))).not.toThrow();
+  });
+
+  it('neutralizes unsupported top-level MDX expressions and ESM without changing fenced code', () => {
+    const markdown = [
+      "import { thing } from 'pkg';",
+      'export const unlocked = true;',
+      'The condition is {state === true}.',
+      '',
+      '```tsx',
+      "import { thing } from 'pkg';",
+      'export const unlocked = true;',
+      '{state === true}',
+      '```',
+    ].join('\n');
+
+    expect(coerceSanctionedMdxExpressions(markdown)).toBe([
+      "`import { thing } from 'pkg';`",
+      '`export const unlocked = true;`',
+      'The condition is &#123;state === true&#125;.',
+      '',
+      '```tsx',
+      "import { thing } from 'pkg';",
+      'export const unlocked = true;',
+      '{state === true}',
+      '```',
+    ].join('\n'));
+    expect(() => validateSanctionedMdx(coerceSanctionedMdxExpressions(markdown))).not.toThrow();
   });
 
   it('derives editor property metadata and validation from the sanctioned registry', () => {

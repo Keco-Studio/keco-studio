@@ -3,7 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
-import { coerceSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+import { coerceGeneratedSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
 import {
   applyInlineTableResourceReferences,
@@ -251,7 +251,7 @@ export async function persistGeneratedGddDocument(
   const withDialogue = dialogueResources.length > 0
     ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
     : withTableRefs;
-  const dialogueMarkdown = coerceSanctionedMdx(withDialogue);
+  const dialogueMarkdown = coerceGeneratedSanctionedMdx(withDialogue);
   validateSanctionedMdx(dialogueMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(dialogueMarkdown);
   const createdAt = new Date().toISOString();
@@ -337,7 +337,7 @@ export async function persistGeneratedGddV2Document(
     sourceHeading: brief.sourceHeading,
     fallbackTitle: brief.title,
   })));
-  const completedMarkdown = coerceSanctionedMdx(decoratedMarkdown);
+  const completedMarkdown = coerceGeneratedSanctionedMdx(decoratedMarkdown);
   validateSanctionedMdx(completedMarkdown);
   const yjsState = await documentContentCodec.markdownToYjsState(completedMarkdown);
 
@@ -685,13 +685,14 @@ export async function processClaimedGddJob(
         dependencies.generateV2!(job.input as GddGenerationRequestV2, undefined, { signal })
       ));
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
-      validateSanctionedMdx(generatedV2.markdown);
+      const normalizedV2Markdown = coerceGeneratedSanctionedMdx(generatedV2.markdown);
+      validateSanctionedMdx(normalizedV2Markdown);
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
       const persisted = await dependencies.persistV2(
         serviceClient,
         job,
         workerId,
-        generatedV2.markdown,
+        normalizedV2Markdown,
         generatedV2.review,
         generatedV2.tablePlans,
         generatedV2.dialoguePlans ?? [],
@@ -706,7 +707,7 @@ export async function processClaimedGddJob(
     );
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
     const tableResources = materializeTableResources(tableSeriesSeed(job), generated.productionTables);
-    const markdown = renderGddMarkdown(generated, { input: job.input, tableResources });
+    const markdown = coerceGeneratedSanctionedMdx(renderGddMarkdown(generated, { input: job.input, tableResources }));
     validateSanctionedMdx(markdown);
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'saving');
     await dependencies.persist(serviceClient, job, workerId, generated, markdown);

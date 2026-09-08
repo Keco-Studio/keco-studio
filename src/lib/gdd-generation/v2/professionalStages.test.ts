@@ -160,6 +160,72 @@ describe('professional GDD stages', () => {
     expect(systemPrompt).toMatch(/Do not render Markdown tables|Do not use Markdown tables/i);
     expect(systemPrompt).toMatch(/at least 3 .*paragraphs/i);
     expect(systemPrompt).toMatch(/exact heading|exact title|heading.*exact/i);
+    expect(systemPrompt).toMatch(/H1|H2|H3|heading hierarchy/i);
+    expect(systemPrompt).toMatch(/bullet|numbered list|项目符号|编号列表/i);
+  });
+
+  it('uses the explicit Chinese game title from the creative brief instead of a model title', async () => {
+    const complete = jest.fn(async () => JSON.stringify({
+      ...blueprint,
+      title: 'Adventure 2 - Game Design Document',
+      sections: [
+        { id: 'core-loop', title: '核心循环', stage: 'core', instructions: ['定义循环。'] },
+        { id: 'systems', title: '系统规则', stage: 'systems', instructions: ['定义数值。'] },
+        { id: 'content', title: '关卡内容', stage: 'content', instructions: ['定义内容。'] },
+      ],
+      invariants: ['使用一致数值。'],
+    }));
+
+    const result = await generateProfessionalStage({
+      ...input,
+      projectName: '冒险闯关2',
+      creativeBrief: '项目名《勇闯之路》，请生成中文游戏设计文档。',
+    }, 'planning', checkpoint(), { complete });
+
+    expect(result.blueprint?.title).toBe('《勇闯之路》游戏设计文档');
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const messages = calls[0]?.[0] as Array<{ content?: unknown }> | undefined;
+    expect(String(messages?.[0]?.content)).toContain('《勇闯之路》游戏设计文档');
+    expect(String(messages?.[0]?.content)).toMatch(/Chinese|中文|简体/i);
+  });
+
+  it('repairs an English-dominant Chinese stage into structured Chinese Markdown', async () => {
+    const chineseBlueprint: ProfessionalBlueprint = {
+      ...blueprint,
+      title: '《勇闯之路》游戏设计文档',
+      sections: [
+        { id: 'core-loop', title: '核心循环', stage: 'core', instructions: ['定义循环。'] },
+        { id: 'systems', title: '系统规则', stage: 'systems', instructions: ['定义数值。'] },
+        { id: 'content', title: '关卡内容', stage: 'content', instructions: ['定义内容。'] },
+      ],
+      invariants: ['使用一致数值。'],
+    };
+    const english = `## Core Loop\n\n${'The player explores, fights, grows, and advances through the world. '.repeat(30)}`;
+    const repaired = [
+      '## 核心循环',
+      '',
+      '### 循环步骤',
+      '',
+      '1. 玩家侦察当前区域。',
+      '2. 玩家选择行动并结算。',
+      '',
+      '### 完成条件',
+      '',
+      '- **目标：** 抵达出口。',
+      '- **反馈：** 显示状态变化。',
+    ].join('\n');
+    const complete = jest.fn(async () => repaired).mockResolvedValueOnce(english);
+
+    const result = await generateProfessionalStage({ ...input, language: 'zh-CN' }, 'generating_core', checkpoint({
+      blueprint: chineseBlueprint,
+    }), { complete });
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.sectionDrafts[0]?.markdown).toBe(repaired);
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const repairMessages = calls[1]?.[0] as Array<{ content?: unknown }> | undefined;
+    expect(String(repairMessages?.[0]?.content)).toMatch(/Chinese|中文|简体/i);
+    expect(String(repairMessages?.[0]?.content)).toMatch(/H3|bullet|numbered list/i);
   });
 
   it('normalizes generated section headings to the blueprint titles', async () => {
