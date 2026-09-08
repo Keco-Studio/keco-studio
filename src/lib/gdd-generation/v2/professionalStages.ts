@@ -51,9 +51,9 @@ function outputLanguage(input: GddGenerationRequestV2): string {
 function requestedGameTitle(input: GddGenerationRequestV2): string | null {
   const brief = input.creativeBrief ?? '';
   const quoted = brief.match(/[《「"]([^》」"\n]{2,80})[》」"]/);
-  if (quoted?.[1]?.trim()) return `\u300a${quoted[1].trim()}\u300b\u6e38\u620f\u8bbe\u8ba1\u6587\u6863`;
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
   if (/^zh(?:[-_]|$)/i.test(input.language.trim()) && /[\u3400-\u9fff]/.test(input.projectName)) {
-    return `\u300a${input.projectName.trim()}\u300b\u6e38\u620f\u8bbe\u8ba1\u6587\u6863`;
+    return input.projectName.trim();
   }
   return null;
 }

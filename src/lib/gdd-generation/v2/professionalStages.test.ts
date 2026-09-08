@@ -169,50 +169,50 @@ describe('professional GDD stages', () => {
       ...blueprint,
       title: 'Adventure 2 - Game Design Document',
       sections: [
-        { id: 'core-loop', title: '\u6838\u5fc3\u5faa\u73af', stage: 'core', instructions: ['\u5b9a\u4e49\u5faa\u73af\u3002'] },
-        { id: 'systems', title: '\u7cfb\u7edf\u89c4\u5219', stage: 'systems', instructions: ['\u5b9a\u4e49\u6570\u503c\u3002'] },
-        { id: 'content', title: '\u5173\u5361\u5185\u5bb9', stage: 'content', instructions: ['\u5b9a\u4e49\u5185\u5bb9\u3002'] },
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'systems', title: 'Systems', stage: 'systems', instructions: ['Define values.'] },
+        { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
       ],
-      invariants: ['\u4f7f\u7528\u4e00\u81f4\u6570\u503c\u3002'],
+      invariants: ['Use consistent values.'],
     }));
 
     const result = await generateProfessionalStage({
       ...input,
-      projectName: '\u5192\u9669\u95ef\u51732',
-      creativeBrief: '\u9879\u76ee\u540d\u300a\u52c7\u95ef\u4e4b\u8def\u300b\uff0c\u8bf7\u751f\u6210\u4e2d\u6587\u6e38\u620f\u8bbe\u8ba1\u6587\u6863\u3002',
+      projectName: 'Adventure 2',
+      creativeBrief: 'Game title "Brave Path"; write the game design document.',
     }, 'planning', checkpoint(), { complete });
 
-    expect(result.blueprint?.title).toBe('\u300a\u52c7\u95ef\u4e4b\u8def\u300b\u6e38\u620f\u8bbe\u8ba1\u6587\u6863');
+    expect(result.blueprint?.title).toBe('Brave Path');
     const calls = complete.mock.calls as unknown as Array<unknown[]>;
     const messages = calls[0]?.[0] as Array<{ content?: unknown }> | undefined;
-    expect(String(messages?.[0]?.content)).toContain('\u300a\u52c7\u95ef\u4e4b\u8def\u300b\u6e38\u620f\u8bbe\u8ba1\u6587\u6863');
+    expect(String(messages?.[0]?.content)).toContain('Brave Path');
     expect(String(messages?.[0]?.content)).toMatch(/Chinese|Simplified/i);
   });
 
   it('repairs an English-dominant Chinese stage into structured Chinese Markdown', async () => {
     const chineseBlueprint: ProfessionalBlueprint = {
       ...blueprint,
-      title: '\u300a\u52c7\u95ef\u4e4b\u8def\u300b\u6e38\u620f\u8bbe\u8ba1\u6587\u6863',
+      title: 'Brave Path',
       sections: [
-        { id: 'core-loop', title: '\u6838\u5fc3\u5faa\u73af', stage: 'core', instructions: ['\u5b9a\u4e49\u5faa\u73af\u3002'] },
-        { id: 'systems', title: '\u7cfb\u7edf\u89c4\u5219', stage: 'systems', instructions: ['\u5b9a\u4e49\u6570\u503c\u3002'] },
-        { id: 'content', title: '\u5173\u5361\u5185\u5bb9', stage: 'content', instructions: ['\u5b9a\u4e49\u5185\u5bb9\u3002'] },
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'systems', title: 'Systems', stage: 'systems', instructions: ['Define values.'] },
+        { id: 'content', title: 'Content', stage: 'content', instructions: ['Define content.'] },
       ],
-      invariants: ['\u4f7f\u7528\u4e00\u81f4\u6570\u503c\u3002'],
+      invariants: ['Use consistent values.'],
     };
     const english = `## Core Loop\n\n${'The player explores, fights, grows, and advances through the world. '.repeat(30)}`;
     const repaired = [
-      '## \u6838\u5fc3\u5faa\u73af',
+      '## Core Loop',
       '',
-      '### \u5faa\u73af\u6b65\u9aa4',
+      '### Loop Steps',
       '',
-      '1. \u73a9\u5bb6\u4fa6\u5bdf\u5f53\u524d\u533a\u57df\u3002',
-      '2. \u73a9\u5bb6\u9009\u62e9\u884c\u52a8\u5e76\u7ed3\u7b97\u3002',
+      '1. Scout the current area.',
+      '2. Choose and resolve an action.',
       '',
-      '### \u5b8c\u6210\u6761\u4ef6',
+      '### Completion',
       '',
-      '- **\u76ee\u6807\uff1a** \u62b5\u8fbe\u51fa\u53e3\u3002',
-      '- **\u53cd\u9988\uff1a** \u663e\u793a\u72b6\u6001\u53d8\u5316\u3002',
+      '- **Goal:** Reach the exit.',
+      '- **Feedback:** Show state changes.',
     ].join('\n');
     const complete = jest.fn(async () => repaired).mockResolvedValueOnce(english);
 
