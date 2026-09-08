@@ -371,6 +371,27 @@ describe('GDD table resources', () => {
     expect(result.warning).toBeNull();
   });
 
+  it('removes a dangling table marker without dropping later GDD sections', () => {
+    const result = extractTablePlanMarker([
+      '# GDD',
+      '<!-- KECO_TABLE_PLAN [{"table":"DoorMechanisms","rows":[{"doorId":"north_gate',
+      '',
+      '## Accessibility',
+      '',
+      'All interactions have keyboard alternatives.',
+    ].join('\n'));
+
+    expect(result.markdown).toBe([
+      '# GDD',
+      '',
+      '## Accessibility',
+      '',
+      'All interactions have keyboard alternatives.',
+    ].join('\n'));
+    expect(result.tablePlans).toEqual([]);
+    expect(result.warning).toMatch(/incomplete/i);
+  });
+
   it('repairs trailing commas and smart quotes in table marker JSON', () => {
     const parsed = parseTablePlanMarkerJson('[{"table":"Skills","purpose":"Actions.","fields":["name",],"rows":[{"name":"Basic","values":{"name":"Basic"},},],},]');
     expect(parsed).toEqual([{

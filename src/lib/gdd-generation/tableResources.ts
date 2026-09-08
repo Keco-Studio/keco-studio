@@ -486,6 +486,7 @@ function replaceInlineTableResourceReferences(
 }
 
 const TABLE_MARKERS = /<!--\s*KECO_TABLE_PLAN\s*([\s\S]*?)\s*-->/gi;
+const DANGLING_TABLE_MARKERS = /<!--\s*KECO_TABLE_PLAN\b[^\r\n]*(?:\r?\n(?!#{1,6}[ \t]+\S)[^\r\n]*)*/gi;
 
 export const tablePlanShapeExample = JSON.stringify([{
   table: 'Skills',
@@ -525,10 +526,16 @@ export function extractTablePlanMarker(raw: string): {
   warning: string | null;
 } {
   const matches = [...raw.matchAll(TABLE_MARKERS)];
-  if (matches.length === 0) return { markdown: raw.trim(), tablePlans: [], warning: null };
-  const markdown = raw.replace(TABLE_MARKERS, '').trim();
+  const withoutCompleteMarkers = raw.replace(TABLE_MARKERS, '');
+  const danglingMatches = [...withoutCompleteMarkers.matchAll(DANGLING_TABLE_MARKERS)];
+  if (matches.length === 0 && danglingMatches.length === 0) {
+    return { markdown: raw.trim(), tablePlans: [], warning: null };
+  }
+  const markdown = withoutCompleteMarkers.replace(DANGLING_TABLE_MARKERS, '').trim();
   const plans = new Map<string, GeneratedTablePlan>();
-  const warnings: string[] = [];
+  const warnings: string[] = danglingMatches.length > 0
+    ? ['Incomplete KECO table plan marker was removed.']
+    : [];
   for (const match of matches) {
     try {
       const value = parseTablePlanMarkerJson(match[1]);
