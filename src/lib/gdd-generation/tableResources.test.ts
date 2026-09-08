@@ -330,6 +330,47 @@ describe('GDD table resources', () => {
     expect(result.warning).toBeNull();
   });
 
+  it('retains valid table markers when another marker is malformed', () => {
+    const clueItems = {
+      table: 'ClueItems',
+      purpose: 'Collectible clues.',
+      fields: ['itemId', 'name'],
+      rows: [{ name: 'Echo shard', values: { itemId: 'clue-1', name: 'Echo shard' } }],
+    };
+    const result = extractTablePlanMarker([
+      '# GDD',
+      '<!-- KECO_TABLE_PLAN [{"table":"NPCScripts","rows":[{"text":"Broken "quote""}]}] -->',
+      `<!-- KECO_TABLE_PLAN ${JSON.stringify([clueItems])} -->`,
+    ].join('\n'));
+
+    expect(result.markdown).toBe('# GDD');
+    expect(result.tablePlans).toEqual([clueItems]);
+    expect(result.warning).toMatch(/not valid JSON/i);
+  });
+
+  it('uses the last valid plan when table markers repeat a table name', () => {
+    const summaryPlan = {
+      table: 'ClueItems',
+      purpose: 'Collectible clues.',
+      fields: ['itemId', 'name'],
+      rows: [{ name: 'Echo shard', values: { itemId: 'clue-1', name: 'Echo shard' } }],
+    };
+    const detailedPlan = {
+      ...summaryPlan,
+      rows: [
+        ...summaryPlan.rows,
+        { name: 'Archive page', values: { itemId: 'clue-2', name: 'Archive page' } },
+      ],
+    };
+    const result = extractTablePlanMarker([
+      `<!-- KECO_TABLE_PLAN ${JSON.stringify([summaryPlan])} -->`,
+      `<!-- KECO_TABLE_PLAN ${JSON.stringify([detailedPlan])} -->`,
+    ].join('\n'));
+
+    expect(result.tablePlans).toEqual([detailedPlan]);
+    expect(result.warning).toBeNull();
+  });
+
   it('repairs trailing commas and smart quotes in table marker JSON', () => {
     const parsed = parseTablePlanMarkerJson('[{"table":"Skills","purpose":"Actions.","fields":["name",],"rows":[{"name":"Basic","values":{"name":"Basic"},},],},]');
     expect(parsed).toEqual([{
