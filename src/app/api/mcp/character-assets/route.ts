@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
-import { CharacterAssetPlanV1Schema } from '@/features/character-assets/model/characterAssetSchema';
+import { CharacterAssetPlanSchema } from '@/features/character-assets/model/characterAssetSchema';
 import type { CharacterAssetPlanV1 } from '@/features/character-assets/model/characterAssetSchema';
 import {
   CharacterAssetMcpError,
@@ -27,11 +27,11 @@ const RequestBody = z.discriminatedUnion('action', [
   z.object({ action: z.literal('read_character_asset'), ...Project, assetId: Uuid }).strict(),
   z.object({
     action: z.literal('create_character_asset_draft'), ...Project,
-    plan: CharacterAssetPlanV1Schema, idempotencyKey: Uuid,
+    plan: CharacterAssetPlanSchema, idempotencyKey: Uuid,
   }).strict(),
   z.object({
     action: z.literal('update_character_asset_draft'), ...Project,
-    assetId: Uuid, saveVersion: z.number().int().nonnegative(), plan: CharacterAssetPlanV1Schema,
+    assetId: Uuid, saveVersion: z.number().int().nonnegative(), plan: CharacterAssetPlanSchema,
   }).strict(),
   z.object({
     action: z.literal('prepare_character_asset_generation'), ...Project,

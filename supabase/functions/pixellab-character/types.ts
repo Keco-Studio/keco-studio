@@ -14,10 +14,29 @@ export type CharacterCapability = {
   pollInputSchema: Record<string, unknown>;
 };
 
+export type ResolvedCharacterReference = {
+  assetId: string;
+  sha256: string;
+  role: "style" | "source";
+  required: boolean;
+  usage: string;
+  imageUrl: string;
+};
+
+export type ReferenceCompatibility = {
+  status: "exact" | "fallback" | "unavailable";
+  mappings: Array<{ assetId: string; role: "style" | "source"; capability: "exact" | "fallback" | "unavailable"; providerField: string | null }>;
+};
+
 export type CharacterAssetPlan = {
   schemaVersion: 1; kind: "character"; name: string; description: string;
   perspective: "topdown" | "platformer" | "isometric"; facing: "front" | "back" | "left" | "right";
   width: number; height: number; transparent: true;
+} | {
+  schemaVersion: 2; kind: "character"; name: string; description: string;
+  perspective: "topdown" | "platformer" | "isometric"; facing: "front" | "back" | "left" | "right";
+  width: number; height: number; transparent: true;
+  references: Array<{ assetId: string; sha256: string; role: "style" | "source"; required: boolean; usage: string }>;
 } | {
   schemaVersion: 1; kind: "animation"; name: string; sourceCharacterAssetId: string;
   sourceCharacterSha256: string; motionDescription: string; frameWidth: number; frameHeight: number;
@@ -31,6 +50,7 @@ export type AuthorizedCharacterAttempt = {
   status: "planned" | "queued" | "generating" | "ready" | "failed" | "blocked";
   lastErrorCode: string | null; providerJobId: string | null;
   metadata: Record<string, unknown>; plan: CharacterAssetPlan;
+  resolvedReferences?: ResolvedCharacterReference[];
   sourceProviderCharacterId: string | null;
   sourceFacing?: "front" | "back" | "left" | "right";
   updatedAt?: string;

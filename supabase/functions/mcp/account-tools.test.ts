@@ -334,6 +334,7 @@ Deno.test("account schemas require projectId except list_projects", async () => 
     ...GDS_TOOL_NAMES,
     ...MAP_TOOL_NAMES,
     ...CHARACTER_TOOL_NAMES,
+    "read_gdd_development_context",
   ]);
   const listProjects = tools.find((tool) => tool.name === "list_projects")!;
   assertEquals(Object.keys(listProjects.inputSchema.properties ?? {}), [

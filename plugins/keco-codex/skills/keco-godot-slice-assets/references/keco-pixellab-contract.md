@@ -6,6 +6,11 @@ Keco is the authoritative store for generated assets and provenance. PixelLab is
 
 Read the PixelLab capability registry selected by the main Skill. At `PREFLIGHT`, list the live PixelLab MCP tools and record an `operationProfile`. Keep official provider capability, endpoint, transport tool, and compatibility as separate fields. Never call an operation by memory, label an official capability as legacy, or silently substitute an unsupported tool. Map the AssetPlan to the live schema, including prompt/description, dimensions, transparency/background behavior, reference paths, frames, directions, and tile constraints.
 
+For every requested reference role, record `exact`, `fallback`, or `unavailable`
+from the live schema. A required `unavailable` reference blocks before the
+planned-to-queued transition and before paid provider submission. A fallback is
+permitted only for a non-required reference with bounded textual direction.
+
 ```yaml
 assetKind: one canonical value from the PixelLab capability registry
 providerCapability: official capability key
@@ -34,6 +39,10 @@ PREFLIGHT PixelLab schema and operationProfile
  -> download authoritative Keco bytes, verify hash, atomically materialize targetPath
  -> Godot import/runtime evaluation
 ```
+
+For GDD-driven work, the operation profile also binds the historical Art Style
+hash returned by `read_gdd_development_context`. Current project GDS bindings
+and GDS preview public paths are not provider asset identities.
 
 The planned row precedes generation. An upload that succeeds but cannot bind to the row is a partial write: retain its image object/path and retry binding without regenerating or uploading a duplicate. Never auto-delete it.
 

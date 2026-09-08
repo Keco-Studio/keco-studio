@@ -14,7 +14,7 @@ import {
   type GddMapArtifactStatus,
 } from '@/lib/services/gddGenerationService';
 import { gddMapBriefSchema, type GddMapBrief } from './contracts';
-import { fingerprintMapPlanV3, mapPlanFromGddBrief, mapSceneFromGddBrief } from './plan';
+import { fingerprintMapPlanV3, mapPlanFromGddBrief, mapSceneFromGddBrief, type GddMapReferenceSelection } from './plan';
 
 type MapWorkerInput = { serviceClient: SupabaseClient; workerId: string; artifact: GddMapArtifact };
 
@@ -26,6 +26,7 @@ type MapWorkerDependencies = {
   heartbeat?: typeof heartbeatGddMapArtifact;
   reconcile?: typeof reconcileGddMapArtifact;
   invoke: typeof invokePixelLabMap;
+  referencesForArtifact?: (artifact: GddMapArtifact) => Promise<GddMapReferenceSelection>;
 };
 
 const MAP_PROVIDER_DEADLINE_MS = 90_000;
@@ -177,8 +178,11 @@ async function processClaimedGddMapArtifact(
   const { serviceClient, workerId, artifact } = input;
   if (artifact.phase === 'planning') {
     const brief = briefForArtifact(artifact);
-    const plan = mapPlanFromGddBrief(brief);
-    const scene = mapSceneFromGddBrief(brief);
+    const references = dependencies.referencesForArtifact
+      ? await dependencies.referencesForArtifact(artifact)
+      : { references: [], styleReference: null };
+    const plan = mapPlanFromGddBrief(brief, references);
+    const scene = mapSceneFromGddBrief(brief, references);
     await dependencies.prepare(serviceClient, {
       artifactId: artifact.id,
       workerId,

@@ -28,6 +28,25 @@ export const CharacterPlanV1Schema = z.object({
   transparent: z.literal(true),
 }).strict();
 
+export const CharacterReferenceSchema = z.object({
+  assetId: z.string().uuid(),
+  sha256: Sha256Schema,
+  role: z.enum(['style', 'source']),
+  required: z.boolean(),
+  usage: z.string().trim().min(1).max(240),
+}).strict();
+
+export const CharacterPlanV2Schema = CharacterPlanV1Schema.omit({ schemaVersion: true }).extend({
+  schemaVersion: z.literal(2),
+  references: z.array(CharacterReferenceSchema).max(4).superRefine((references, context) => {
+    const ids = new Set<string>();
+    for (const [index, reference] of references.entries()) {
+      if (ids.has(reference.assetId)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Character reference asset IDs must be unique', path: [index, 'assetId'] });
+      ids.add(reference.assetId);
+    }
+  }),
+}).strict();
+
 export const AnimationPlanV1Schema = z.object({
   schemaVersion: z.literal(1),
   kind: z.literal('animation'),
@@ -42,8 +61,9 @@ export const AnimationPlanV1Schema = z.object({
   loop: z.boolean(),
 }).strict();
 
-export const CharacterAssetPlanV1Schema = z.discriminatedUnion('kind', [
+export const CharacterAssetPlanSchema = z.union([
   CharacterPlanV1Schema,
+  CharacterPlanV2Schema,
   AnimationPlanV1Schema,
 ]).superRefine((plan, context) => {
   if (plan.kind === 'character' && plan.width !== plan.height) {
@@ -56,14 +76,19 @@ export const CharacterAssetPlanV1Schema = z.discriminatedUnion('kind', [
 });
 
 export type CharacterPlanV1 = z.infer<typeof CharacterPlanV1Schema>;
+export type CharacterPlanV2 = z.infer<typeof CharacterPlanV2Schema>;
 export type AnimationPlanV1 = z.infer<typeof AnimationPlanV1Schema>;
-export type CharacterAssetPlanV1 = z.infer<typeof CharacterAssetPlanV1Schema>;
+export type CharacterAssetPlan = z.infer<typeof CharacterAssetPlanSchema>;
+/** @deprecated Use CharacterAssetPlan; retained for stored V1 callers. */
+export type CharacterAssetPlanV1 = CharacterAssetPlan;
+/** @deprecated Use CharacterAssetPlanSchema; retained for source compatibility. */
+export const CharacterAssetPlanV1Schema = CharacterAssetPlanSchema;
 export type CharacterAssetPlanValidation =
   | { success: true; data: CharacterAssetPlanV1 }
   | { success: false; issues: z.ZodIssue[] };
 
 export function validateCharacterAssetPlanV1(input: unknown): CharacterAssetPlanValidation {
-  const parsed = CharacterAssetPlanV1Schema.safeParse(input);
+  const parsed = CharacterAssetPlanSchema.safeParse(input);
   return parsed.success
     ? { success: true, data: parsed.data }
     : { success: false, issues: parsed.error.issues };
@@ -79,6 +104,6 @@ function canonicalize(value: unknown): string {
 }
 
 export function fingerprintCharacterAssetPlanV1(input: unknown): string {
-  const parsed = CharacterAssetPlanV1Schema.parse(input);
+  const parsed = CharacterAssetPlanSchema.parse(input);
   return createHash('sha256').update(canonicalize(parsed)).digest('hex');
 }

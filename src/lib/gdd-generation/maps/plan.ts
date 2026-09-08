@@ -7,6 +7,8 @@ import {
 } from '@/features/create-map/model/directMapSchema';
 import type { GddMapBrief } from './contracts';
 
+export type GddMapReferenceSelection = Pick<MapPlanV3, 'references' | 'styleReference'>;
+
 function canonicalize(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
@@ -21,15 +23,18 @@ function parseOutputSize(value: GddMapBrief['outputSize']): MapPlanV3['map'] {
   return { width, height };
 }
 
-export function mapPlanFromGddBrief(brief: GddMapBrief): MapPlanV3 {
+export function mapPlanFromGddBrief(
+  brief: GddMapBrief,
+  referenceSelection: GddMapReferenceSelection = { references: [], styleReference: null },
+): MapPlanV3 {
   const plan: MapPlanV3 = {
     schemaVersion: 3,
     name: brief.title,
     summary: brief.purpose,
     map: parseOutputSize(brief.outputSize),
     description: brief.createMapDescription,
-    references: [],
-    styleReference: null,
+    references: referenceSelection.references,
+    styleReference: referenceSelection.styleReference,
     generation: { provider: 'pixellab', operation: 'create_image_pro', noBackground: false, seed: null },
   };
   const result = validateMapPlanV3(plan);
@@ -37,8 +42,8 @@ export function mapPlanFromGddBrief(brief: GddMapBrief): MapPlanV3 {
   return result.data;
 }
 
-export function mapSceneFromGddBrief(brief: GddMapBrief): MapSceneV3 {
-  return createEmptyMapSceneV3(mapPlanFromGddBrief(brief));
+export function mapSceneFromGddBrief(brief: GddMapBrief, referenceSelection?: GddMapReferenceSelection): MapSceneV3 {
+  return createEmptyMapSceneV3(mapPlanFromGddBrief(brief, referenceSelection));
 }
 
 export function fingerprintMapPlanV3(plan: MapPlanV3): string {

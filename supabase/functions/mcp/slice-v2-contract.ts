@@ -142,6 +142,33 @@ function reject(reasonCode: SliceReasonCode): ContractDecision {
   return { accepted: false, reasonCode };
 }
 
+function validateGddDevelopmentContext(value: unknown): boolean {
+  if (!record(value) || !exactKeys(value, ["document", "origin", "artStyleContentHash", "selectedAssets", "warnings"])) return false;
+  const document = value.document;
+  if (!record(document) || !exactKeys(document, ["epoch", "revision", "contentHash"]) ||
+    !Number.isInteger(document.epoch) || (document.epoch as number) < 0 ||
+    !Number.isInteger(document.revision) || (document.revision as number) < 0 ||
+    typeof document.contentHash !== "string" || !HASH_RE.test(document.contentHash)) return false;
+  const origin = value.origin;
+  if (origin !== null && (!record(origin) || !exactKeys(origin, ["generationJobId", "designSystemId", "versionId", "versionContentHash"]) ||
+    typeof origin.generationJobId !== "string" || !UUID_RE.test(origin.generationJobId) ||
+    typeof origin.designSystemId !== "string" || !UUID_RE.test(origin.designSystemId) ||
+    typeof origin.versionId !== "string" || !UUID_RE.test(origin.versionId) ||
+    typeof origin.versionContentHash !== "string" || !HASH_RE.test(origin.versionContentHash))) return false;
+  if (value.artStyleContentHash !== null &&
+    (typeof value.artStyleContentHash !== "string" || !HASH_RE.test(value.artStyleContentHash))) return false;
+  if (!Array.isArray(value.selectedAssets) || value.selectedAssets.length > 200 || value.selectedAssets.some((asset) =>
+    !record(asset) || !exactKeys(asset, ["assetId", "revisionId", "sha256", "intendedRole", "compatibilityStatus", "targetProfileHash"]) ||
+    typeof asset.assetId !== "string" || !UUID_RE.test(asset.assetId) ||
+    (asset.revisionId !== null && (typeof asset.revisionId !== "string" || !UUID_RE.test(asset.revisionId))) ||
+    typeof asset.sha256 !== "string" || !HASH_RE.test(asset.sha256) ||
+    !["runtime_asset", "runtime_candidate", "style_reference", "layout_reference", "concept_only", "unclassified"].includes(asset.intendedRole as string) ||
+    !["compatible", "incompatible", "unknown"].includes(asset.compatibilityStatus as string) ||
+    (asset.targetProfileHash !== null && (typeof asset.targetProfileHash !== "string" || !HASH_RE.test(asset.targetProfileHash))))) return false;
+  return Array.isArray(value.warnings) && value.warnings.length <= 200 && value.warnings.every((warning) =>
+    ["ORIGIN_UNAVAILABLE", "ART_STYLE_UNSUPPORTED", "ASSET_UNAVAILABLE", "IMAGE_UNCLASSIFIED"].includes(warning as string));
+}
+
 function validateSourceProfile(value: unknown): ContractDecision {
   if (!record(value)) return reject("SLICE_SOURCE_PROFILE_INVALID");
   const common = ["schemaVersion", "contractVersion", "kind", "kecoProjectId", "capturedAt", "sourceHash", "selectionEvidence"];
@@ -155,11 +182,15 @@ function validateSourceProfile(value: unknown): ContractDecision {
   }
   if (["gdd", "feedback", "document"].includes(value.kind as string)) {
     const extra = ["documentId", "epoch", "revision", "contentHash"];
-    if (value.kind === "gdd") extra.push("requirementInventoryHash");
+    if (value.kind === "gdd") {
+      extra.push("requirementInventoryHash");
+      if ("developmentContext" in value) extra.push("developmentContext");
+    }
     if (!exactKeys(value, [...common, ...extra]) || typeof value.documentId !== "string" || !UUID_RE.test(value.documentId) ||
       !Number.isInteger(value.epoch) || (value.epoch as number) < 0 || !Number.isInteger(value.revision) || (value.revision as number) < 0 ||
       typeof value.contentHash !== "string" || !HASH_RE.test(value.contentHash) ||
-      (value.kind === "gdd" && (typeof value.requirementInventoryHash !== "string" || !HASH_RE.test(value.requirementInventoryHash)))) {
+      (value.kind === "gdd" && (typeof value.requirementInventoryHash !== "string" || !HASH_RE.test(value.requirementInventoryHash))) ||
+      (value.kind === "gdd" && "developmentContext" in value && !validateGddDevelopmentContext(value.developmentContext))) {
       return reject("SLICE_SOURCE_PROFILE_INVALID");
     }
     return { accepted: true, reasonCode: null };

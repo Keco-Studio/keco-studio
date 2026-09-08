@@ -887,6 +887,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(assets).toMatch(/API key[\s\S]*(?:environment|MCP configuration)/i);
     expect(assets).toMatch(/Generated Assets/);
     expect(assets).toMatch(/assetKind[\s\S]*providerCapability[\s\S]*transportTool[\s\S]*compatibility/i);
+    expect(assets).toMatch(/historical Art Style[\s\S]*read_gdd_development_context/i);
     expect(assets).not.toMatch(/create_s_xl_image_pro` is a legacy/i);
     const capabilityRegistry = readFileSync(moduleFile('references/pixellab-capability-registry.md'), 'utf8');
     expect(capabilityRegistry).toMatch(/generate_image_pixflux[\s\S]*generate_image_bitforge/i);
@@ -935,9 +936,17 @@ describe('Keco Godot Slice V2 skill contract', () => {
     expect(generatedAssets).toMatch(/upload[\s\S]*import[\s\S]*animation/i);
     expect(generatedAssets).toMatch(/credit[\s\S]*job/i);
     expect(generatedAssets).toMatch(/style[\s\S]*reference[\s\S]*edit/i);
+    expect(generatedAssets).toMatch(/inspectOutput\.ts[\s\S]*provenanceStatus[\s\S]*visualStyleStatus/i);
+    expect(generatedAssets).toMatch(/hash[\s\S]*(?:cannot|never)[\s\S]*visual style/i);
     const evolution = readFileSync(moduleFile('references/existing-resource-evolution.md'), 'utf8');
     expect(evolution).toMatch(/reuse[\s\S]*extend[\s\S]*create/i);
     expect(evolution).toMatch(/stable key[\s\S]*existing resource/i);
+    expect(evolution).toMatch(/derive_from_source[\s\S]*source ID[\s\S]*revision[\s\S]*SHA-256[\s\S]*target path[\s\S]*adapter decision/i);
+    const gddCoverage = readFileSync(moduleFile('references/gdd-coverage-contract.md'), 'utf8');
+    expect(gddCoverage).toMatch(/read_gdd_development_context[\s\S]*developmentContext/i);
+    expect(gddCoverage).toMatch(/Never persist `delivery` or a signed URL/i);
+    expect(gddCoverage).toMatch(/64 lowercase hexadecimal[\s\S]*`sha256:<64-hex>`/i);
+    expect(gddCoverage).toMatch(/Never infer the current project[\s\S]*GDS/i);
     const animation = readFileSync(moduleFile('references/godot-animation-contract.md'), 'utf8');
     expect(animation).toMatch(/SpriteFrames[\s\S]*AtlasTexture[\s\S]*AnimatedSprite2D/i);
     expect(animation).toMatch(/frameCount[\s\S]*frameWidth[\s\S]*fps[\s\S]*loop/i);

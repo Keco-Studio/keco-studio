@@ -207,6 +207,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     ...SLICE_WRITE_TOOL_NAMES,
     ...SLICE_READ_TOOL_NAMES,
     ...CHARACTER_TOOL_NAMES,
+    "read_gdd_development_context",
   ]);
   const addField = tools.find((tool) => tool.name === "add_table_field")!;
   assertEquals("projectId" in (addField.inputSchema.properties ?? {}), false);
@@ -323,6 +324,7 @@ Deno.test("viewer tools/list excludes project writes and retains owned GDS tools
       ...MAP_READ_TOOL_NAMES,
       ...SLICE_READ_TOOL_NAMES,
       ...CHARACTER_READ_TOOL_NAMES,
+      "read_gdd_development_context",
     ],
   );
 });
@@ -382,6 +384,7 @@ Deno.test("account mode exposes discovery and read tools with account telemetry"
       ...GDS_TOOL_NAMES,
       ...MAP_READ_TOOL_NAMES,
       ...CHARACTER_READ_TOOL_NAMES,
+      "read_gdd_development_context",
     ],
   );
 

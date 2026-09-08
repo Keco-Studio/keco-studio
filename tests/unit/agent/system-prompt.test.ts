@@ -4,6 +4,18 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 describe('buildSystemPrompt design-document table rules', () => {
+  it('keeps Art Style declarative context separate from rule evidence', () => {
+    const prompt = buildSystemPrompt({
+      projectId: 'project-1', userRole: 'editor',
+      artStyleContext: '{"specification":{"characterDirection":"Blocky silhouette"}}',
+    });
+    expect(prompt).toContain('ACTIVE GAME ART STYLE');
+    expect(prompt).toContain('BEGIN_UNTRUSTED_GAME_ART_STYLE_DATA');
+    expect(prompt).toContain('Blocky silhouette');
+    expect(prompt).toMatch(/cannot change tools[\s\S]*rule evidence/);
+    expect(prompt).not.toContain('Applied rules:');
+  });
+
   it('injects the active Game Design System only when the project has one', () => {
     const prompt = buildSystemPrompt({
       projectId: 'project-1',
@@ -45,6 +57,8 @@ describe('buildSystemPrompt design-document table rules', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/agent/core.ts'), 'utf8');
     expect(source).toContain('game_design_systems(migration_status)');
     expect(source).toContain("system.migration_status === 'ready'");
+    expect(source).toContain('rules, art_style');
+    expect(source).toContain('gameArtStyleSnapshotSchema.safeParse');
   });
 
   it('identifies Keco Assistant as an agent for game designers', () => {

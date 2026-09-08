@@ -110,7 +110,7 @@ export const gameArtStylePresetSchema = z.object({
     id: z.string().trim().min(1).max(120),
     map: gameArtStylePreviewAssetSchema,
     character: gameArtStylePreviewAssetSchema,
-    supporting: z.array(gameArtStylePreviewAssetSchema),
+    supporting: z.array(gameArtStylePreviewAssetSchema).max(8),
   }).strict(),
   specification: gameArtStyleSpecificationSchema,
 }).strict();

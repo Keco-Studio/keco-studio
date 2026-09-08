@@ -27,4 +27,15 @@ describe('GDD map plan materialization', () => {
     const reordered = { generation: first.generation, ...first };
     expect(fingerprintMapPlanV3(reordered)).toBe(fingerprintMapPlanV3(first));
   });
+
+  it('propagates verified reference identities without inventing previews', () => {
+    const selection = {
+      references: [{ assetId: '22222222-2222-4222-8222-222222222222', sha256: 'a'.repeat(64), role: 'layout' as const, usage: 'Copy district placement only.' }],
+      styleReference: { assetId: '33333333-3333-4333-8333-333333333333', sha256: 'b'.repeat(64), copy: ['color_palette' as const, 'outline' as const] },
+    };
+    const plan = mapPlanFromGddBrief(brief('512x512'), selection);
+    expect(plan.references).toEqual(selection.references);
+    expect(plan.styleReference).toEqual(selection.styleReference);
+    expect(mapSceneFromGddBrief(brief('512x512'), selection).size).toEqual(plan.map);
+  });
 });
