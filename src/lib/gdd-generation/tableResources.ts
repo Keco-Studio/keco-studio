@@ -527,31 +527,28 @@ export function extractTablePlanMarker(raw: string): {
   const matches = [...raw.matchAll(TABLE_MARKERS)];
   if (matches.length === 0) return { markdown: raw.trim(), tablePlans: [], warning: null };
   const markdown = raw.replace(TABLE_MARKERS, '').trim();
-  try {
-    const values = matches.map((match) => parseTablePlanMarkerJson(match[1]));
-    if (values.some((value) => !Array.isArray(value))) {
-      throw new Error('Each KECO table plan marker must contain an array.');
+  const plans = new Map<string, GeneratedTablePlan>();
+  const warnings: string[] = [];
+  for (const match of matches) {
+    try {
+      const value = parseTablePlanMarkerJson(match[1]);
+      if (!Array.isArray(value)) {
+        throw new Error('Each KECO table plan marker must contain an array.');
+      }
+      for (const plan of normalizeTablePlans(value)) {
+        plans.set(plan.table.toLocaleLowerCase(), plan);
+      }
+    } catch (error) {
+      warnings.push(error instanceof SyntaxError
+        ? 'KECO table plan marker is not valid JSON.'
+        : (error instanceof Error ? error.message : 'Invalid KECO table plan marker.'));
     }
-    return {
-      markdown,
-      tablePlans: normalizeTablePlans(values.flat()),
-      warning: null,
-    };
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return {
-        markdown,
-        tablePlans: [],
-        warning: 'KECO table plan marker is not valid JSON.',
-      };
-    }
-    const message = error instanceof Error ? error.message : 'Invalid KECO table plan marker.';
-    return {
-      markdown,
-      tablePlans: [],
-      warning: message.slice(0, 300),
-    };
   }
+  return {
+    markdown,
+    tablePlans: [...plans.values()],
+    warning: warnings.length > 0 ? warnings.join(' ').slice(0, 300) : null,
+  };
 }
 
 export function normalizeTablePlans(value: unknown): GeneratedTablePlan[] {

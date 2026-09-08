@@ -201,8 +201,8 @@
 .rosterTable { display: grid; overflow: hidden; background: var(--simulation-surface-0); border: 1px solid var(--simulation-line-200); border-radius: 12px; }
 .rosterRow { display: grid; min-height: 58px; padding: 10px 14px; grid-template-columns: minmax(130px, 1.2fr) 2fr 110px auto; align-items: center; gap: 10px; border-bottom: 1px solid var(--simulation-line-100); }
 .rosterRow:last-child { border-bottom: 0; }
-.rosterRow span { color: var(--simulation-ink-500); font-size: 12px; }
-.rosterRow select { height: 32px; padding: 0 8px; background: #fff; border: 1px solid var(--simulation-line-300); border-radius: 8px; }
+.rosterRow span { color: var(--simulation-ink-500); font-size: 13px; }
+.rosterRow select { height: 32px; padding: 0 8px; background: #fff; border: 1px solid var(--simulation-line-300); border-radius: 8px; font-size: 13px; }
 .rosterRow button { color: var(--simulation-danger); background: transparent; border: 0; cursor: pointer; }
 .flowActions,
 .batchPanel { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

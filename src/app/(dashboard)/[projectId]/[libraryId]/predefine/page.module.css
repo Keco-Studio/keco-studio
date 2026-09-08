@@ -78,14 +78,14 @@
 }
 
 .headerLabel {
-  font-size: 0.875rem;
+  font-size: 13px;
   font-weight: 500;
   color: #64748b;
   width: 395px;
 }
 
 .headerDataType {
-  font-size: 0.875rem;
+  font-size: 13px;
   font-weight: 500;
   color: #64748b;
   min-width: 60px;

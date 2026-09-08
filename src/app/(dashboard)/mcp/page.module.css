@@ -161,7 +161,7 @@
 .tableHeader {
   min-height: 38px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -180,7 +180,7 @@
   align-items: center;
   min-width: 0;
   gap: 10px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
 }
 

@@ -1,6 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
-import { PanelHeader } from '@/components/shared/PanelHeader';
 
 jest.mock('next/image', () => {
   function MockNextImage({
@@ -16,18 +15,8 @@ jest.mock('next/image', () => {
   }
   return MockNextImage;
 });
-jest.mock('@/assets/images/add.svg', () => 'add.svg', { virtual: true });
-jest.mock('@/assets/images/close.svg', () => 'close.svg', { virtual: true });
-jest.mock('@/components/shared/PanelHeader.module.css', () => ({
-  header: 'header',
-  identity: 'identity',
-  titleGroup: 'titleGroup',
-  title: 'title',
-  subtitle: 'subtitle',
-  actions: 'actions',
-  iconButton: 'iconButton',
-  iconButtonActive: 'iconButtonActive',
-}));
+
+import { PanelHeader } from '@/components/shared/PanelHeader';
 
 describe('PanelHeader', () => {
   it('renders title with shared add and close icons', () => {
@@ -44,8 +33,7 @@ describe('PanelHeader', () => {
     expect(html).toContain('Version History');
     expect(html).toContain('aria-label="Create new version"');
     expect(html).toContain('aria-label="Close"');
-    expect(html).toContain('src="add.svg"');
-    expect(html).toContain('src="close.svg"');
+    expect(html).toContain('src="test-file-stub"');
   });
 
   it('can hide add and keep close only', () => {
@@ -55,7 +43,6 @@ describe('PanelHeader', () => {
 
     expect(html).toContain('Asset detail');
     expect(html).toContain('aria-label="Close"');
-    expect(html).not.toContain('src="add.svg"');
-    expect(html).toContain('src="close.svg"');
+    expect(html.match(/src="test-file-stub"/g)).toHaveLength(1);
   });
 });

@@ -40,7 +40,8 @@ describe('document version history UI wiring', () => {
     expect(sidebar).toContain('Modal.confirm');
     expect(sidebar).toContain('selectedVersionId');
     expect(sidebar).toContain('onVersionSelect');
-    expect(sidebar).toContain('aria-label="Create version"');
+    expect(sidebar).toContain('addLabel="Create version"');
+    expect(sidebar).toContain('PanelHeader');
     expect(sidebar).toContain('DocumentVersionItem');
     expect(sidebar).not.toContain('@/lib/services/versionService');
     expect(sidebar).not.toContain('library_versions');

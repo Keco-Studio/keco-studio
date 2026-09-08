@@ -386,7 +386,7 @@ button.assistantStatusRow:hover .assistantStatusChevron {
   max-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 .markdownTable th,
 .markdownTable td {

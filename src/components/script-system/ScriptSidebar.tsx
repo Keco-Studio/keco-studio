@@ -10,6 +10,8 @@ import { useSidebarProjectRole } from '@/components/layout/hooks/useSidebarProje
 import { IconSpeechBubble } from '@/components/layout/navIcons';
 import { writeScriptProjectPreference } from '@/lib/script-system/projectPreference';
 import paperIcon from '@/assets/images/paper.svg';
+import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
+import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
 import { useScriptWorkspaceMembership } from './useScriptWorkspaceMembership';
 import {
   ScriptContextMenu,
@@ -479,18 +481,26 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                         toggleExpand(doc.documentId);
                       }}
                     >
-                      <span
-                        className={`${styles.expandChevron} ${
-                          expanded ? styles.expandChevronOpen : ''
-                        }`}
-                      >
-                        <ChevronDownIcon />
+                      <span className={styles.switcherIcons}>
+                        <Image
+                          src={paperIcon}
+                          alt=""
+                          width={24}
+                          height={24}
+                          className={`icon-24 ${styles.switcherBase}`}
+                          aria-hidden
+                        />
+                        <Image
+                          src={expanded ? folderCollapseIcon : folderExpandIcon}
+                          alt=""
+                          width={14}
+                          height={expanded ? 8 : 8}
+                          className={styles.switcherHover}
+                          aria-hidden
+                        />
                       </span>
                     </button>
                   ) : (
-                    <span className={styles.expandSpacer} />
-                  )}
-                  <div className={styles.treeItemMain}>
                     <span className={styles.treeIcon}>
                       <Image
                         src={paperIcon}
@@ -501,6 +511,8 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                         aria-hidden
                       />
                     </span>
+                  )}
+                  <div className={styles.treeItemMain}>
                     {editingKey === docKey ? (
                       <input
                         className={styles.renameInput}
@@ -546,18 +558,17 @@ export function ScriptSidebar({ projectId }: ScriptSidebarProps) {
                       return (
                         <li key={child.id} role="treeitem">
                           <div
-                            className={`${styles.treeRow} ${styles.treeRowChild} ${
+                            className={`${styles.treeRow} ${
                               scriptSelected ? styles.treeRowActive : ''
                             }`}
                             onContextMenu={(e) =>
                               openMenu(e, 'script', child.id, child.name)
                             }
                           >
-                            <span className={styles.expandSpacer} />
+                            <span className={styles.treeIcon}>
+                              <IconSpeechBubble size={24} />
+                            </span>
                             <div className={styles.treeItemMain}>
-                              <span className={styles.treeIcon}>
-                                <IconSpeechBubble size={24} />
-                              </span>
                               {editingKey === scriptKey ? (
                                 <input
                                   className={styles.renameInput}
