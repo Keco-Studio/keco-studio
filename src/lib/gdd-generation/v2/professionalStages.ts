@@ -112,6 +112,12 @@ function parseBlueprint(raw: string): ProfessionalBlueprint {
 function normalizeBlueprintCandidate(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const candidate = value as Record<string, unknown>;
+  // Some planning responses include a redundant top-level `tables` hint.
+  // Table resources are derived from the pinned table guidance during the
+  // systems/content stages, so this metadata is not part of the blueprint
+  // contract and must not make an otherwise valid blueprint fail validation.
+  const candidateWithoutPlanningHints = { ...candidate };
+  delete candidateWithoutPlanningHints.tables;
   const version = typeof candidate.version === 'string' && /^1(?:\.0){0,2}$/.test(candidate.version.trim())
     ? 1
     : candidate.version;
@@ -147,7 +153,7 @@ function normalizeBlueprintCandidate(value: unknown): unknown {
       return JSON.stringify(invariant);
     })
     : candidate.invariants;
-  return { ...candidate, version, sections, invariants };
+  return { ...candidateWithoutPlanningHints, version, sections, invariants };
 }
 
 function stageKind(stage: ProfessionalStage): ProfessionalSectionKind | null {
