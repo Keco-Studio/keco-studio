@@ -52,7 +52,26 @@
         "epoch": 1,
         "revision": 2,
         "contentHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "requirementInventoryHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        "requirementInventoryHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "developmentContext": {
+          "document": { "epoch": 1, "revision": 2, "contentHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+          "origin": {
+            "generationJobId": "33333333-3333-4333-8333-333333333333",
+            "designSystemId": "44444444-4444-4444-8444-444444444444",
+            "versionId": "55555555-5555-4555-8555-555555555555",
+            "versionContentHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "artStyleContentHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "selectedAssets": [{
+            "assetId": "66666666-6666-4666-8666-666666666666",
+            "revisionId": "77777777-7777-4777-8777-777777777777",
+            "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "intendedRole": "runtime_candidate",
+            "compatibilityStatus": "unknown",
+            "targetProfileHash": null
+          }],
+          "warnings": []
+        }
       },
       "expected": { "accepted": true, "reasonCode": null }
     },

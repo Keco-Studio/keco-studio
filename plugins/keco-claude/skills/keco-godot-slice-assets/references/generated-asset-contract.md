@@ -23,6 +23,12 @@ Use the reference roles precisely:
 - `referenceAssetId`: one specific visual or layout source.
 - `editAssetId`: the one asset being directly modified.
 
+For GDD-driven assets, retain the historical Art Style content hash and compile
+only the category direction needed by the provider. Record reference capability
+as `exact`, `fallback`, or `unavailable`; a required unavailable reference
+blocks before paid submission. Signed delivery URLs are ephemeral transport and
+must not appear in persisted AssetPlan, SlicePlan, or hashes.
+
 ## Upload and import boundary
 
 When the source is a local path, inspect it without printing bytes, upload/import it through the configured MCP bridge, verify the returned asset ID, and only then call animation, edit, reference, or tileset operations. Never pass a local path as if it were a provider asset ID. Never persist upload URLs, upload tokens, API keys, or authorization headers.
@@ -38,6 +44,15 @@ Multi-file outputs use a parent row in the selected asset registry and, when nee
 ## Persistence and recovery
 
 Keep the order `planned row -> provider operation -> temporary validation -> Keco upload -> Keco read-back -> snapshot export -> authoritative download -> Godot materialization`. A partial upload is retained and rebound by ID; it is never deleted or duplicated automatically. A temporary provider download is never copied directly into Godot.
+
+After authoritative download, run
+`tsx scripts/game-art-style/inspectOutput.ts <local-png>` and persist its JSON
+observation. Track `provenanceStatus` and `visualStyleStatus` independently.
+A matching Art Style or source hash can pass provenance only. Semantic palette,
+silhouette, composition, perspective, subject matter, outline behavior, UI
+contrast, and frame consistency need structured visual-review assertions before
+visual style can pass. Regenerate only a failed asset and record the changed
+prompt or reference identity.
 
 ## Presets and capability selection
 

@@ -54,7 +54,7 @@ Deno.test("submits one paid character job and persists provider character identi
   assertEquals(result, { assetId: IDS.assetId, status: "generating" });
   assertEquals(test.submissions, [{ description: "A forest scout", name: "Scout", mode: "pro", size: 96, view: "high top-down" }]);
   assertEquals(test.transitions, [
-    { from: "planned", to: "queued", details: { expectedAttemptCount: 0 } },
+    { from: "planned", to: "queued", details: { expectedAttemptCount: 0, metadata: {} } },
     { from: "queued", to: "generating", details: {
       expectedAttemptCount: 1,
       providerOperation: "create_character", providerJobId: "provider-character",
@@ -62,6 +62,19 @@ Deno.test("submits one paid character job and persists provider character identi
       metadata: { providerCharacterId: "provider-character", pollOperation: "get_character", pollSchemaFingerprint: capability.pollSchemaFingerprint },
     } },
   ]);
+});
+
+Deno.test("blocks required references before the paid queued transition", async () => {
+  const test = fixture({
+    plan: { schemaVersion: 2, kind: "character", name: "Scout", description: "A forest scout", perspective: "topdown", facing: "front", width: 96, height: 96, transparent: true, references: [{ assetId: "55555555-5555-4555-8555-555555555555", sha256: "d".repeat(64), role: "style", required: true, usage: "Match palette." }] },
+    resolvedReferences: [{ assetId: "55555555-5555-4555-8555-555555555555", sha256: "d".repeat(64), role: "style", required: true, usage: "Match palette.", imageUrl: "https://signed.test/reference.png" }],
+  });
+  await assertRejects(
+    () => runCharacterLifecycle({ operation: "submit", expectedAttemptCount: 0 }, test.state, test.dependencies),
+    PixelLabCharacterError,
+  );
+  assertEquals(test.transitions, []);
+  assertEquals(test.submissions, []);
 });
 
 Deno.test("submits V3 animation only from the verified source provider character", async () => {
@@ -103,8 +116,29 @@ Deno.test("blocks an ambiguous paid submission outcome and never automatically r
     PixelLabCharacterError,
   );
   assertEquals(test.transitions.at(-1), {
-    from: "queued", to: "blocked", details: { expectedAttemptCount: 1, lastErrorCode: "pixellab_submit_outcome_unknown" },
+    from: "queued", to: "blocked", details: { expectedAttemptCount: 1, lastErrorCode: "pixellab_submit_outcome_unknown", metadata: {} },
   });
+});
+
+Deno.test("persists reference provenance without signed delivery URLs before an unknown submission outcome", async () => {
+  const reference = { assetId: "55555555-5555-4555-8555-555555555555", sha256: "d".repeat(64), role: "style" as const, required: true, usage: "Match palette." };
+  const test = fixture({
+    plan: { schemaVersion: 2, kind: "character", name: "Scout", description: "A forest scout", perspective: "topdown", facing: "front", width: 96, height: 96, transparent: true, references: [reference] },
+    resolvedReferences: [{ ...reference, imageUrl: "https://signed.test/reference.png" }],
+  });
+  test.dependencies.discover = async () => ({ ...capability, inputSchema: { type: "object", properties: { style_reference: { type: "string" } } } });
+  test.dependencies.submit = async () => { throw new PixelLabCharacterError("pixellab_upstream"); };
+
+  await assertRejects(
+    () => runCharacterLifecycle({ operation: "submit", expectedAttemptCount: 0 }, test.state, test.dependencies),
+    PixelLabCharacterError,
+  );
+
+  const queuedMetadata = test.transitions[0].details.metadata as Record<string, unknown>;
+  const blockedMetadata = test.transitions.at(-1)?.details.metadata as Record<string, unknown>;
+  assertEquals(queuedMetadata, blockedMetadata);
+  assertEquals(queuedMetadata.referenceProvenance, [reference]);
+  assertEquals(JSON.stringify(queuedMetadata).includes("signed.test"), false);
 });
 
 Deno.test("poll only reports completion and validate performs persistence separately", async () => {

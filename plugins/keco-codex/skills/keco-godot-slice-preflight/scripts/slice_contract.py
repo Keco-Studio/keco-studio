@@ -101,6 +101,8 @@ def _source_profile(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
         extra = {"documentId", "epoch", "revision", "contentHash"}
         if kind == "gdd":
             extra.add("requirementInventoryHash")
+            if "developmentContext" in value:
+                extra.add("developmentContext")
         if (
             not _exact_keys(value, common | extra)
             or not isinstance(value.get("documentId"), str)
@@ -111,6 +113,7 @@ def _source_profile(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
             or value["revision"] < 0
             or not _valid_hash(value.get("contentHash"))
             or (kind == "gdd" and not _valid_hash(value.get("requirementInventoryHash")))
+            or (kind == "gdd" and "developmentContext" in value and not _gdd_development_context(value.get("developmentContext")))
         ):
             return _decision(False, reason)
         return _decision(True, reason)
@@ -140,6 +143,52 @@ def _source_profile(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     ):
         return _decision(False, reason)
     return _decision(True, reason)
+
+
+def _gdd_development_context(value: Any) -> bool:
+    if not _record(value) or set(value) != {"document", "origin", "artStyleContentHash", "selectedAssets", "warnings"}:
+        return False
+    document = value.get("document")
+    if (
+        not _record(document)
+        or set(document) != {"epoch", "revision", "contentHash"}
+        or type(document.get("epoch")) is not int
+        or document["epoch"] < 0
+        or type(document.get("revision")) is not int
+        or document["revision"] < 0
+        or not _valid_hash(document.get("contentHash"))
+    ):
+        return False
+    origin = value.get("origin")
+    if origin is not None and (
+        not _record(origin)
+        or set(origin) != {"generationJobId", "designSystemId", "versionId", "versionContentHash"}
+        or any(not isinstance(origin.get(key), str) or not UUID_RE.fullmatch(origin[key]) for key in ("generationJobId", "designSystemId", "versionId"))
+        or not _valid_hash(origin.get("versionContentHash"))
+    ):
+        return False
+    if value.get("artStyleContentHash") is not None and not _valid_hash(value.get("artStyleContentHash")):
+        return False
+    assets = value.get("selectedAssets")
+    if not isinstance(assets, list) or len(assets) > 200:
+        return False
+    roles = {"runtime_asset", "runtime_candidate", "style_reference", "layout_reference", "concept_only", "unclassified"}
+    statuses = {"compatible", "incompatible", "unknown"}
+    for asset in assets:
+        if (
+            not _record(asset)
+            or set(asset) != {"assetId", "revisionId", "sha256", "intendedRole", "compatibilityStatus", "targetProfileHash"}
+            or not isinstance(asset.get("assetId"), str)
+            or not UUID_RE.fullmatch(asset["assetId"])
+            or (asset.get("revisionId") is not None and (not isinstance(asset["revisionId"], str) or not UUID_RE.fullmatch(asset["revisionId"])))
+            or not _valid_hash(asset.get("sha256"))
+            or asset.get("intendedRole") not in roles
+            or asset.get("compatibilityStatus") not in statuses
+            or (asset.get("targetProfileHash") is not None and not _valid_hash(asset["targetProfileHash"]))
+        ):
+            return False
+    warnings = value.get("warnings")
+    return isinstance(warnings, list) and len(warnings) <= 200 and all(item in {"ORIGIN_UNAVAILABLE", "ART_STYLE_UNSUPPORTED", "ASSET_UNAVAILABLE", "IMAGE_UNCLASSIFIED"} for item in warnings)
 
 
 def _document_bindings(value: Any, manifest: dict[str, Any]) -> dict[str, Any]:

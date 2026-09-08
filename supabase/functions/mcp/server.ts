@@ -16,6 +16,7 @@ import { registerGdsTools } from "./gds-tools.ts";
 import { registerMapTools } from "./map-tools.ts";
 import { registerCharacterTools } from "./character-tools.ts";
 import { registerSliceTools } from "./slice-tools.ts";
+import { registerGddContextTools } from "./gdd-context-tools.ts";
 
 const READ_TOOLS = new Set([
   "list_projects",
@@ -36,6 +37,7 @@ const READ_TOOLS = new Set([
   "list_character_assets",
   "read_character_asset",
   "get_character_asset_generation",
+  "read_gdd_development_context",
 ]);
 const WRITE_TOOLS = new Set([
   "create_table",
@@ -262,6 +264,7 @@ export async function createProbeServer(
     registerResources(server, context);
     registerPrompts(server, context);
   }
+  registerGddContextTools(server, context);
 
   return server;
 }

@@ -303,6 +303,29 @@ const sourceProfileCommon = {
   sourceHash: sha256,
   selectionEvidence: z.array(boundedJsonObject).max(100),
 };
+const gddDevelopmentContextEvidenceSchema = z.object({
+  document: z.object({
+    epoch: z.number().int().nonnegative(),
+    revision: z.number().int().nonnegative(),
+    contentHash: sha256,
+  }).strict(),
+  origin: z.object({
+    generationJobId: uuid,
+    designSystemId: uuid,
+    versionId: uuid,
+    versionContentHash: sha256,
+  }).strict().nullable(),
+  artStyleContentHash: sha256.nullable(),
+  selectedAssets: z.array(z.object({
+    assetId: uuid,
+    revisionId: uuid.nullable(),
+    sha256,
+    intendedRole: z.enum(["runtime_asset", "runtime_candidate", "style_reference", "layout_reference", "concept_only", "unclassified"]),
+    compatibilityStatus: z.enum(["compatible", "incompatible", "unknown"]),
+    targetProfileHash: sha256.nullable(),
+  }).strict()).max(200),
+  warnings: z.array(z.enum(["ORIGIN_UNAVAILABLE", "ART_STYLE_UNSUPPORTED", "ASSET_UNAVAILABLE", "IMAGE_UNCLASSIFIED"])).max(200),
+}).strict();
 const sourceProfileSchema = z.discriminatedUnion("kind", [
   z.object({
     ...sourceProfileCommon,
@@ -312,6 +335,7 @@ const sourceProfileSchema = z.discriminatedUnion("kind", [
     revision: z.number().int().nonnegative(),
     contentHash: sha256,
     requirementInventoryHash: sha256,
+    developmentContext: gddDevelopmentContextEvidenceSchema.optional(),
   }).strict(),
   z.object({
     ...sourceProfileCommon,

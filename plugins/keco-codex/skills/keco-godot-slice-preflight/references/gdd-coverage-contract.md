@@ -2,6 +2,19 @@
 
 Use this contract only when `SourceProfile.kind` is `gdd`. The bound document
 ID, epoch, revision, and content hash establish identity; display names do not.
+After reading the Document, call `read_gdd_development_context`. Store its
+sanitized `developmentContext` in SourceProfile: the exact Document token,
+nullable historical origin, nullable Art Style hash, selected stable asset
+identities, intended roles, compatibility results, and resolved warnings.
+Never persist `delivery` or a signed URL.
+Keco DTO digests are 64 lowercase hexadecimal characters. Prefix them once as
+`sha256:<64-hex>` when writing the Slice SourceProfile contract.
+
+An absent origin, unsupported Art Style, `unclassified` image, incompatible
+runtime candidate, or changed context hash is an explicit Slice decision. It
+blocks style-dependent writes until resolved. Never infer the current project
+GDS. A legacy/manual GDD remains readable, but its source decision must be
+recorded before generation.
 Before decomposition create a versioned Requirement Inventory with stable
 `requirementId`, exact source location and quote, classification, and
 authorization. `normative` means behavior to implement or explicitly defer;

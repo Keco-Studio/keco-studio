@@ -1,4 +1,4 @@
-import { animationArguments, characterArguments, type PixelLabCharacterClient } from "./pixellab-client.ts";
+import { animationArguments, characterArguments, negotiateCharacterReferences, type PixelLabCharacterClient } from "./pixellab-client.ts";
 import { animationResult, characterResult, providerCharacterId, providerResponseDiagnostics, providerStatus } from "./provider-response.ts";
 import { PixelLabCharacterError, type AuthorizedCharacterAttempt, type CharacterCapability, type LifecycleOperation } from "./types.ts";
 
@@ -68,11 +68,21 @@ export async function runCharacterLifecycle(
     const from = input.operation === "retry" ? state.status : "planned";
     if (input.operation === "retry" && !["failed", "blocked"].includes(state.status)) throw new PixelLabCharacterError("pixellab_invalid_response", "Character generation is not retryable", 409);
     if (state.status === "blocked" && state.lastErrorCode === "pixellab_submit_outcome_unknown" && !input.acknowledgeDuplicateBilling) throw new PixelLabCharacterError("pixellab_invalid_response", "Retry requires duplicate billing acknowledgement", 409);
-    await dependencies.transition(from, "queued", { expectedAttemptCount: input.expectedAttemptCount });
+    const resolvedReferences = state.resolvedReferences ?? [];
+    const referenceCompatibility = semantic === "character"
+      ? negotiateCharacterReferences(capability, resolvedReferences)
+      : { status: "exact" as const, mappings: [] };
+    const args = semantic === "character"
+      ? characterArguments(state.plan, capability, resolvedReferences)
+      : animationArguments(state.plan, state.sourceProviderCharacterId ?? "", facing(state));
+    const referenceProvenance = resolvedReferences.map(({ assetId, sha256, role, required, usage }) => ({ assetId, sha256, role, required, usage }));
+    const referenceMetadata = resolvedReferences.length > 0 ? { referenceCompatibility, referenceProvenance } : {};
+    const submissionMetadata = { ...state.metadata, ...referenceMetadata };
+    await dependencies.transition(from, "queued", {
+      expectedAttemptCount: input.expectedAttemptCount,
+      metadata: submissionMetadata,
+    });
     try {
-      const args = semantic === "character"
-        ? characterArguments(state.plan)
-        : animationArguments(state.plan, state.sourceProviderCharacterId ?? "", facing(state));
       const result = await dependencies.submit(capability, args);
       // V3 animation jobs are bound to the ready source character and are
       // polled through get_character. Persist that verified identity rather
@@ -86,16 +96,16 @@ export async function runCharacterLifecycle(
         providerOperation: capability.operation, providerJobId: providerId,
         schemaFingerprint: capability.schemaFingerprint,
         metadata: semantic === "animation"
-          ? { providerCharacterId: state.sourceProviderCharacterId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint }
-          : { providerCharacterId: providerId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint },
+          ? { ...submissionMetadata, providerCharacterId: state.sourceProviderCharacterId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint }
+          : { ...submissionMetadata, providerCharacterId: providerId, pollOperation: capability.pollOperation, pollSchemaFingerprint: capability.pollSchemaFingerprint },
       });
       return { assetId: state.assetId, status: "generating" };
     } catch (error) {
       if (error instanceof PixelLabCharacterError && error.code !== "pixellab_upstream") {
-        await dependencies.transition("queued", "failed", { expectedAttemptCount: state.attemptCount + 1, lastErrorCode: error.code });
+        await dependencies.transition("queued", "failed", { expectedAttemptCount: state.attemptCount + 1, lastErrorCode: error.code, metadata: submissionMetadata });
         throw error;
       }
-      await dependencies.transition("queued", "blocked", { expectedAttemptCount: state.attemptCount + 1, lastErrorCode: "pixellab_submit_outcome_unknown" });
+      await dependencies.transition("queued", "blocked", { expectedAttemptCount: state.attemptCount + 1, lastErrorCode: "pixellab_submit_outcome_unknown", metadata: submissionMetadata });
       throw error instanceof PixelLabCharacterError ? error : new PixelLabCharacterError("pixellab_submit_outcome_unknown");
     }
   }

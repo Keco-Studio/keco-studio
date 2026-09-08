@@ -20,6 +20,8 @@ import {
 } from './types';
 import { streamLlm } from './llm-client';
 import { buildSystemPrompt } from './prompts';
+import { buildGddArtStyleContext } from '@/lib/game-art-style/development';
+import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
 import { getToolsForLlmAsync, resolveTool, allTools } from './tools';
 import {
   loadConversationHistory,
@@ -159,6 +161,7 @@ export async function buildAgentSystemContext(
     appliedRuleIds: string[];
   } | undefined;
   let gameDesignPolicy: GameDesignPolicyContext | undefined;
+  let artStyleContext: string | undefined;
 
   try {
     const { data: project } = await ctx.supabase
@@ -200,7 +203,7 @@ export async function buildAgentSystemContext(
   try {
     const { data: binding } = await ctx.supabase
       .from('project_game_design_systems')
-      .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules)')
+      .select('design_system_id,version_id,game_design_systems(migration_status), game_design_system_versions(version_number, rules, art_style)')
       .eq('project_id', ctx.projectId)
       .maybeSingle();
     const row = binding as { design_system_id?: unknown; version_id?: unknown; game_design_systems?: unknown; game_design_system_versions?: unknown } | null;
@@ -216,6 +219,8 @@ export async function buildAgentSystemContext(
         && typeof row.version_id === 'string'
       ) {
         const policy = buildAgentRulePolicy(parseRuleSet(version.rules));
+        const artStyle = gameArtStyleSnapshotSchema.safeParse(version.art_style);
+        artStyleContext = artStyle.success ? buildGddArtStyleContext(artStyle.data) : undefined;
         gameDesignSystem = { version: version.version_number, policyText: policy.text, appliedRuleIds: policy.appliedRuleIds };
         gameDesignPolicy = {
           systemId: row.design_system_id,
@@ -241,6 +246,7 @@ export async function buildAgentSystemContext(
       currentLibraryName,
       userRole: ctx.userRole,
       gameDesignSystem,
+      artStyleContext,
     });
 
   const content = retrievedContextBlock

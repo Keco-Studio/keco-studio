@@ -25,10 +25,20 @@ For kind `gdd`, load `gdd-coverage-contract.md`; asset plans load
 `generated-asset-contract.md`, animation plans load `godot-animation-contract.md`,
 and tileset plans load `godot-tileset-contract.md`.
 
+For every `gdd` source, call `read_gdd_development_context` immediately after
+resolving the Document identity. Pin its Document epoch/revision/content hash,
+historical GDS version/content hash, Art Style hash, and every selected asset
+ID/revision/SHA-256 into SourceProfile evidence. Never substitute
+`read_project_game_design_system`: the current project binding is not GDD
+provenance. Remove all ephemeral delivery URLs before persisting evidence.
+Normalize every returned 64-hex digest to the Slice contract's
+`sha256:<64-hex>` form when constructing SourceProfile evidence.
+
 Run these existing phases in order, loading one module at a time:
 1. Preflight: source identity, planning-root/folder bindings, GDD/non-GDD coverage,
    decomposition, SlicePlan/EvalSpec, repository identity, lease, snapshot.
-2. Assets: PixelLab capability, provenance, resource evolution, typed packages.
+2. Assets: PixelLab capability, historical Art Style, provenance, resource
+   evolution, typed packages, and separate visual-output verification.
 3. Implementation: dependency-ordered RED/GREEN tasks, immutable `allowedFiles`,
    TaskResult/TaskReview, review levels, checkpoints, pause/resume, successors.
 4. Verification: fresh runtime observations, locked EvalSpec, EvalReport, repair

@@ -28,6 +28,23 @@
     "gdd",
     "non_gdd"
   ],
+  "assetEvolutionStrategies": [
+    "reuse_exact",
+    "extend_compatible",
+    "migrate_additive",
+    "derive_from_source",
+    "create_new"
+  ],
+  "assetIntendedRoles": [
+    "runtime_asset",
+    "runtime_candidate",
+    "style_reference",
+    "layout_reference",
+    "concept_only",
+    "unclassified"
+  ],
+  "runtimeCompatibilityStatuses": ["compatible", "incompatible", "unknown"],
+  "visualVerificationStatuses": ["pass", "fail", "blocked"],
   "documentKinds": [
     "roadmap",
     "spec",

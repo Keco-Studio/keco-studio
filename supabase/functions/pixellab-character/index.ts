@@ -1,6 +1,6 @@
 import { bearerToken, jsonResponse, readJsonBody } from "./http.ts";
-import { authorizeProject, authorizeServiceRequest } from "./auth.ts";
-import { PixelLabCharacterClient } from "./pixellab-client.ts";
+import { authorizeProject, authorizeServiceRequest, resolveCharacterReferences } from "./auth.ts";
+import { negotiateCharacterReferences, PixelLabCharacterClient } from "./pixellab-client.ts";
 import { createLifecycleDependencies, runCharacterLifecycle } from "./lifecycle.ts";
 import { persistValidatedCharacterAsset } from "./storage.ts";
 import { animationResult, characterResult } from "./provider-response.ts";
@@ -11,11 +11,19 @@ async function handle(request: Request): Promise<Response> {
   const body = await readJsonBody(request);
   const operation = String(body.operation ?? "");
   if (operation === "capabilities") {
-    await authorizeProject(bearerToken(request), String(body.projectId ?? ""), String(body.actorUserId ?? ""));
+    const projectId = String(body.projectId ?? "");
+    const serviceClient = await authorizeProject(bearerToken(request), projectId, String(body.actorUserId ?? ""));
     const token = Deno.env.get("PIXELLAB_API_TOKEN") ?? "";
     const client = new PixelLabCharacterClient(token);
     const semantic = body.kind === "animation" ? "animation" : "character";
-    return jsonResponse(await client.discover(semantic));
+    const capability = await client.discover(semantic);
+    const plan = body.plan as CharacterAssetPlan | undefined;
+    const references = plan ? await resolveCharacterReferences(serviceClient, projectId, plan) : [];
+    const referenceCompatibility = semantic === "character"
+      ? negotiateCharacterReferences(capability, references)
+      : { status: "exact" as const, mappings: [] };
+    if (referenceCompatibility.status === "unavailable") throw new PixelLabCharacterError("pixellab_capability_missing", "Required character reference capability is unavailable", 409);
+    return jsonResponse({ ...capability, referenceCompatibility });
   }
   const authorized = await authorizeServiceRequest(request, body);
   const token = Deno.env.get("PIXELLAB_API_TOKEN") ?? "";
@@ -29,7 +37,7 @@ async function handle(request: Request): Promise<Response> {
         p_provider_operation: details.providerOperation ?? null, p_provider_transport: "mcp", p_provider_job_id: details.providerJobId ?? null,
         p_provider_schema_fingerprint: details.schemaFingerprint ?? null, p_last_error_code: details.lastErrorCode ?? null,
         p_storage_path: null, p_sha256: null, p_width: null, p_height: null, p_has_transparency: null,
-        p_metadata: details.metadata ?? {},
+        p_metadata: details.metadata ?? state.metadata,
       });
       if (error) throw new PixelLabCharacterError("pixellab_upstream", "Could not persist provider state");
     },

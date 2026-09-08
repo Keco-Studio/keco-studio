@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { resolveGddMapArtifact } from './gddMapArtifactService';
+import { resolveGddMapArtifact, resolveGddMapDevelopmentRecords } from './gddMapArtifactService';
 
 const artifact = {
   id: '11111111-1111-4111-8111-111111111111', title: 'Harbor', status: 'ready', phase: 'ready',
@@ -13,6 +13,15 @@ function queryResult(data: unknown) {
   const secondEq = jest.fn(() => ({ maybeSingle }));
   const firstEq = jest.fn(() => ({ eq: secondEq, maybeSingle }));
   return { select: jest.fn(() => ({ eq: firstEq })), maybeSingle, firstEq, secondEq };
+}
+
+function listQuery(data: unknown) {
+  const builder = {
+    select: jest.fn(() => builder),
+    eq: jest.fn(() => builder),
+    in: jest.fn(async () => ({ data, error: null })),
+  };
+  return builder;
 }
 
 describe('GDD map artifact resolver', () => {
@@ -69,5 +78,27 @@ describe('GDD map artifact resolver', () => {
   it('returns null for a missing or RLS-hidden artifact', async () => {
     const artifactQuery = queryResult(null);
     await expect(resolveGddMapArtifact({ from: () => artifactQuery } as never, 'project-1', artifact.id)).resolves.toBeNull();
+  });
+
+  it('accepts development assets only through an exact project, map, and revision chain', async () => {
+    const rows = {
+      gdd_map_artifacts: [{ ...artifact }],
+      map_revisions: [{ id: artifact.map_revision_id, map_project_id: artifact.map_project_id }],
+      map_projects: [{ id: artifact.map_project_id }],
+      map_assets: [{
+        id: artifact.map_asset_id, map_revision_id: artifact.map_revision_id, status: 'ready',
+        storage_path: 'private.png', sha256: 'a'.repeat(64), width: 512, height: 512, has_transparency: false,
+      }],
+    };
+    const client = { from: (table: keyof typeof rows) => listQuery(rows[table]) };
+    const result = await resolveGddMapDevelopmentRecords(client as never, 'project-1', 'document-1', [artifact.id]);
+    expect(result.get(artifact.id)).toMatchObject({
+      mapProjectId: artifact.map_project_id,
+      asset: { id: artifact.map_asset_id, mapRevisionId: artifact.map_revision_id },
+    });
+
+    const wrongProject = { ...rows, map_projects: [] };
+    const rejected = await resolveGddMapDevelopmentRecords({ from: (table: keyof typeof rows) => listQuery(wrongProject[table]) } as never, 'project-1', 'document-1', [artifact.id]);
+    expect(rejected.get(artifact.id)?.asset).toBeNull();
   });
 });

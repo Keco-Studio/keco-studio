@@ -8,6 +8,7 @@ import {
   CharacterAssetMcpError,
   mapCharacterAssetFunctionError,
   createCharacterAssetMcpService,
+  parseReferenceCompatibility,
   type CharacterAssetMcpBackend,
   type CharacterAssetWorkspace,
   type CharacterGenerationState,
@@ -99,7 +100,7 @@ function backend(): jest.Mocked<CharacterAssetMcpBackend> {
     readAsset: jest.fn(async () => workspace()),
     createDraft: jest.fn(async (input) => workspace(input.plan)),
     updateDraft: jest.fn(async (input) => ({ ...workspace(input.plan), saveVersion: input.saveVersion + 1 })),
-    preflightProvider: jest.fn(async () => undefined),
+    preflightProvider: jest.fn(async () => ({ status: 'exact' as const, mappings: [] })),
     prepareGeneration: jest.fn(async () => generation()),
     readGeneration: jest.fn(async () => generation()),
     invokeProvider: jest.fn(async () => ({ status: 'generating' })),
@@ -107,6 +108,19 @@ function backend(): jest.Mocked<CharacterAssetMcpBackend> {
 }
 
 describe('character asset MCP service', () => {
+  it('accepts only coherent bounded provider reference compatibility', () => {
+    expect(parseReferenceCompatibility({
+      status: 'fallback',
+      mappings: [{ assetId: IDS.assetId, role: 'style', capability: 'fallback', providerField: null }],
+    })).toMatchObject({ status: 'fallback' });
+    expect(() => parseReferenceCompatibility({
+      status: 'exact',
+      mappings: [{ assetId: IDS.assetId, role: 'style', capability: 'fallback', providerField: null }],
+    })).toThrow(CharacterAssetMcpError);
+    expect(() => parseReferenceCompatibility({ status: 'exact', mappings: [], signedUrl: 'https://secret.test' }))
+      .toThrow(CharacterAssetMcpError);
+  });
+
   beforeEach(() => jest.clearAllMocks());
 
   it('requires editor or admin access before creating a draft', async () => {
@@ -185,7 +199,7 @@ describe('character asset MCP service', () => {
       confirmationToken: 'signed-confirmation',
       confirmationPurpose: 'character-submit',
     });
-    expect(domain.preflightProvider).toHaveBeenCalledWith(IDS.projectId, 'character');
+    expect(domain.preflightProvider).toHaveBeenCalledWith(IDS.projectId, characterPlan);
     expect(domain.invokeProvider).not.toHaveBeenCalled();
     expect(sign).toHaveBeenCalledWith(expect.objectContaining({
       purpose: 'character-submit',
@@ -205,7 +219,7 @@ describe('character asset MCP service', () => {
 
     await service.prepareGeneration({ projectId: IDS.projectId, assetId: IDS.assetId, saveVersion: 0 });
 
-    expect(domain.preflightProvider).toHaveBeenCalledWith(IDS.projectId, 'animation');
+    expect(domain.preflightProvider).toHaveBeenCalledWith(IDS.projectId, animationPlan);
     expect(sign).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'animation-submit' }));
   });
 

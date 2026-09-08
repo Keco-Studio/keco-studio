@@ -31,6 +31,21 @@ const ANIMATION: CharacterAssetPlanV1 = {
 };
 
 describe('CharacterAssetPlanV1', () => {
+  it('accepts strict Character Plan V2 references while preserving V1', () => {
+    const v2 = {
+      ...CHARACTER,
+      schemaVersion: 2 as const,
+      references: [{
+        assetId: '22222222-2222-4222-8222-222222222222',
+        sha256: 'b'.repeat(64), role: 'style' as const, required: true,
+        usage: 'Match palette and outline only.',
+      }],
+    };
+    expect(validateCharacterAssetPlanV1(v2)).toEqual({ success: true, data: v2 });
+    expect(validateCharacterAssetPlanV1({ ...v2, references: [...v2.references, v2.references[0]] }).success).toBe(false);
+    expect(validateCharacterAssetPlanV1({ ...v2, references: [{ ...v2.references[0], imageUrl: 'https://example.test/a.png' }] }).success).toBe(false);
+  });
+
   it('accepts strict character and animation plans', () => {
     expect(validateCharacterAssetPlanV1(CHARACTER)).toEqual({ success: true, data: CHARACTER });
     expect(validateCharacterAssetPlanV1(ANIMATION)).toEqual({ success: true, data: ANIMATION });

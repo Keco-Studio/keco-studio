@@ -30,6 +30,7 @@ const mapTools = [
   'get_map_generation',
   'advance_map_generation',
 ].sort();
+const gddContextTools = ['read_gdd_development_context'];
 
 function skillPath(pluginRoot: string, skillName: string): string {
   return path.join(pluginRoot, 'skills', skillName, 'SKILL.md');
@@ -61,13 +62,14 @@ describe('Keco GDS and Create Map plugin skills', () => {
     const serverSources = [
       'supabase/functions/mcp/gds-tools.ts',
       'supabase/functions/mcp/map-tools.ts',
+      'supabase/functions/mcp/gdd-context-tools.ts',
     ].map((pathname) => read(path.join(root, pathname))).join('\n');
     const registered = new Set(
       [...serverSources.matchAll(/(?:registerTool|register)\(\s*["']([a-z0-9_]+)["']/g)]
         .map((match) => match[1]),
     );
 
-    for (const toolName of [...gdsTools, ...mapTools]) {
+    for (const toolName of [...gdsTools, ...mapTools, ...gddContextTools]) {
       expect(registered.has(toolName)).toBe(true);
     }
 
@@ -145,11 +147,16 @@ describe('Keco GDS and Create Map plugin skills', () => {
     const source = read(contracts[0]);
     expect(mentionedTools(source, gdsTools)).toEqual(gdsTools);
     expect(mentionedTools(source, mapTools)).toEqual(mapTools);
+    expect(mentionedTools(source, gddContextTools)).toEqual(gddContextTools);
     expect(source).toMatch(/account[\s\S]{0,240}legacy/i);
     expect(source).toMatch(/MAP_CONFIRMATION_REQUIRED/);
     expect(source).toMatch(/confirmation\s+token[\s\S]{0,160}`attemptCount`/i);
     expect(source).toMatch(/ready[\s\S]{0,160}failed[\s\S]{0,160}blocked/i);
     expect(source).toMatch(/`generate_project_gdd`[\s\S]{0,100}`get_project_gdd_generation`/i);
     expect(source).toMatch(/`output_document_id`[\s\S]{0,120}`read_document`/i);
+    expect(source).toMatch(/historical GDS origin/i);
+    expect(source).toMatch(/never fall back to[\s\S]{0,80}`read_project_game_design_system`/i);
+    expect(source).toMatch(/`intendedRole`[\s\S]{0,160}`runtimeCompatibility`/i);
+    expect(source).toMatch(/`delivery\.imageUrl`[\s\S]{0,160}(?:ephemeral|persist)/i);
   });
 });

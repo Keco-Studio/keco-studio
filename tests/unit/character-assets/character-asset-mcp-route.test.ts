@@ -96,6 +96,16 @@ describe('POST /api/mcp/character-assets', () => {
     expect(service.startGeneration).not.toHaveBeenCalled();
   });
 
+  it('accepts Character Plan V2 reference identities without URL fields', async () => {
+    const v2 = {
+      ...plan,
+      schemaVersion: 2,
+      references: [{ assetId: ids.assetId, sha256: fingerprint, role: 'style', required: true, usage: 'Match palette.' }],
+    };
+    expect((await post({ action: 'create_character_asset_draft', projectId: ids.projectId, plan: v2, idempotencyKey: ids.key })).status).toBe(200);
+    expect((await post({ action: 'create_character_asset_draft', projectId: ids.projectId, plan: { ...v2, references: [{ ...v2.references[0], imageUrl: 'https://example.test/a.png' }] }, idempotencyKey: ids.key })).status).toBe(400);
+  });
+
   it('maps stable service errors without exposing arbitrary messages', async () => {
     service.prepareGeneration.mockRejectedValueOnce(new CharacterAssetMcpError('PROVIDER_RATE_LIMITED'));
     const response = await post({

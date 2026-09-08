@@ -16,6 +16,22 @@ Viewer access exposes Map reads only: `list_maps`, `read_map`, and
 `get_map_generation`. A write tool may be absent when no writable project is
 available. Tool discovery is authoritative.
 
+`read_gdd_development_context` is read-only in both endpoint modes. The account
+endpoint takes `{ projectId, documentId, targetProfile? }`; the project endpoint
+omits `projectId`. It returns the authoritative Document token/content hash,
+nullable historical GDS origin, validated historical Art Style snapshot/hash,
+bounded image inventory, and warnings. Generated map images default to
+`runtime_candidate`, ordinary Markdown and ResourceReference images to
+`unclassified`, and GDS previews to `concept_only`.
+
+The optional strict Godot 4 target profile declares asset kind and measurable
+dimensions, alpha, tile, or frame requirements. `intendedRole` and
+`runtimeCompatibility` are independent. `delivery.imageUrl` is an ephemeral
+five-minute transport URL: never use it as identity or persist it. Stable
+identity is asset ID, revision ID, and SHA-256. Resolve generated provenance
+only through the GDD generation job's historical version; never fall back to
+`read_project_game_design_system` after a rebind or clear.
+
 ## GDS Tools
 
 - `list_game_design_systems`: optional `limit` (1-100) and opaque `cursor`.
@@ -58,6 +74,9 @@ available. Tool discovery is authoritative.
   Terminal states are `completed`, `completed_with_map_failures`, and `failed`.
 - `cancel_project_gdd_generation`: `generationJobId`, plus account `projectId`.
   Use it only to stop the identified active job, then read its persisted result.
+- `read_gdd_development_context`: `documentId`, optional strict
+  `targetProfile`, plus account `projectId`. Read it before GDD-driven game
+  development or asset planning.
 
 For a project GDD, bind the exact GDS version, call `generate_project_gdd`, and
 poll `get_project_gdd_generation`. A queued or running response is not a finished

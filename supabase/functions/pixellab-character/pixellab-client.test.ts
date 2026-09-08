@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   characterArguments,
   animationArguments,
+  negotiateCharacterReferences,
   PixelLabCharacterClient,
 } from "./pixellab-client.ts";
 import {
@@ -123,6 +124,42 @@ Deno.test("maps Keco plans to pro character and single-direction V3 animation ar
     animation_name: "walk_left", directions: ["west"], mode: "v3",
     frame_count: 6, keep_first_frame: false,
   });
+});
+
+Deno.test("negotiates exact, fallback, and unavailable character references from the live schema", () => {
+  const base = {
+    semantic: "character" as const, operation: "create_character" as const,
+    pollOperation: "get_character" as const, schemaFingerprint: "a".repeat(64),
+    pollSchemaFingerprint: "b".repeat(64), pollInputSchema: {},
+  };
+  const refs = [{ assetId: "asset-1", sha256: "c".repeat(64), role: "style" as const, required: true, usage: "Match palette.", imageUrl: "https://signed.test/a.png" }];
+  const exactCapability = { ...base, inputSchema: { type: "object", properties: { style_reference: { type: "string" } } } };
+  assertEquals(negotiateCharacterReferences(exactCapability, refs).status, "exact");
+  assertEquals(characterArguments({ schemaVersion: 2, kind: "character", name: "Scout", description: "Scout", perspective: "topdown", facing: "front", width: 96, height: 96, transparent: true, references: refs.map(({ imageUrl: _, ...reference }) => reference) }, exactCapability, refs).style_reference, refs[0].imageUrl);
+  const noReferencesCapability = { ...base, inputSchema: { type: "object", properties: { description: { type: "string" } } } };
+  assertEquals(negotiateCharacterReferences(noReferencesCapability, [{ ...refs[0], required: false }]).status, "fallback");
+  assertEquals(negotiateCharacterReferences(noReferencesCapability, refs).status, "unavailable");
+  const genericReferenceCapability = { ...base, inputSchema: { type: "object", properties: { reference_image: { type: "string" } } } };
+  assertEquals(negotiateCharacterReferences(genericReferenceCapability, refs).status, "unavailable");
+  const incompatibleStyleCapability = { ...base, inputSchema: { type: "object", properties: { style_reference: { type: "object" } } } };
+  assertEquals(negotiateCharacterReferences(incompatibleStyleCapability, refs).status, "unavailable");
+});
+
+Deno.test("preserves every textual fallback within the provider description bound", () => {
+  const capability = {
+    semantic: "character" as const, operation: "create_character" as const,
+    pollOperation: "get_character" as const, schemaFingerprint: "a".repeat(64),
+    pollSchemaFingerprint: "b".repeat(64), pollInputSchema: {},
+    inputSchema: { type: "object", properties: { description: { type: "string" } } },
+  };
+  const reference = { assetId: "asset-1", sha256: "c".repeat(64), role: "style" as const, required: false, usage: "Keep the exact cool palette.", imageUrl: "https://signed.test/a.png" };
+  const args = characterArguments({
+    schemaVersion: 2, kind: "character", name: "Scout", description: "x".repeat(2_000),
+    perspective: "topdown", facing: "front", width: 96, height: 96, transparent: true,
+    references: [{ assetId: reference.assetId, sha256: reference.sha256, role: reference.role, required: false, usage: reference.usage }],
+  }, capability, [reference]);
+  assertEquals(String(args.description).length, 2_000);
+  assertEquals(String(args.description).endsWith(`Reference direction (style): ${reference.usage}`), true);
 });
 
 Deno.test("parses character IDs, completed rotations, and animation sheets without exposing raw payloads", () => {
