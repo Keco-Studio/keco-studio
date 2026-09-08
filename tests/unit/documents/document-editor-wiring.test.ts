@@ -67,6 +67,13 @@ describe('DocumentEditor collaboration wiring', () => {
     );
   });
 
+  it('skips the duplicate pending editor mount for large markdown', () => {
+    expect(source).toContain('shouldDeferPendingDocumentEditor');
+    expect(source).toMatch(
+      /markdownHasImages\(\s*document\.content\s*\?\?\s*''\s*\)\s*\|\|\s*shouldDeferPendingDocumentEditor\(\s*document\.content\s*\?\?\s*''\s*\)/
+    );
+  });
+
   it('renders fail-closed recovery without stale-copy decisions', () => {
     expect(source).toContain('collaboration.canRetry');
     expect(source).toContain('const [retrying, setRetrying] = useState(false)');

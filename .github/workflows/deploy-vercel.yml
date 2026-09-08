@@ -94,16 +94,17 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Supabase Migrations
     needs: check-migrations
-    # For main and release branches, always run migrations (supabase db push is idempotent
-    # and only applies unapplied migrations)
-    # This ensures migrations can be re-applied even if a previous run failed
+    # Only branch pushes may mutate a shared remote database. Pull requests validate
+    # migrations through the isolated Supabase instances used by Playwright.
+    # Main and release pushes always retry unapplied migrations.
     if: |
-      (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') && (
-        needs.check-migrations.outputs.has-migrations == 'true' ||
-        github.ref == 'refs/heads/main' ||
-        github.ref == 'refs/heads/master' ||
-        startsWith(github.ref, 'refs/heads/release/')
-      )
+      (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
+      github.event_name == 'push' && (
+          needs.check-migrations.outputs.has-migrations == 'true' ||
+          github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/master' ||
+          startsWith(github.ref, 'refs/heads/release/')
+        )
 
     steps:
       - name: Checkout code
@@ -154,28 +155,16 @@ jobs:
               echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
               echo "✅ Using Production Supabase project (general token)"
             fi
-          elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
-            # release branches (including release/**) use the Preview environment
+          else
+            # The job condition limits this path to release branch pushes.
             echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}" >> $GITHUB_OUTPUT
             echo "environment=preview" >> $GITHUB_OUTPUT
-            # Use the dedicated Preview token if configured; otherwise fall back to the general token
             if [ -n "$PREVIEW_TOKEN" ] && [ "$PREVIEW_TOKEN" != "" ]; then
               echo "access-token=$PREVIEW_TOKEN" >> $GITHUB_OUTPUT
               echo "✅ Using Preview Supabase project (release branch, dedicated token)"
             else
               echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
               echo "✅ Using Preview Supabase project (release branch, general token)"
-            fi
-          else
-            # Other cases (PRs, etc.) use the Preview environment
-            echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}" >> $GITHUB_OUTPUT
-            echo "environment=preview" >> $GITHUB_OUTPUT
-            if [ -n "$PREVIEW_TOKEN" ] && [ "$PREVIEW_TOKEN" != "" ]; then
-              echo "access-token=$PREVIEW_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ Using Preview Supabase project (dedicated token)"
-            else
-              echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ Using Preview Supabase project (general token)"
             fi
           fi
 
