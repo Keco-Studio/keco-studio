@@ -221,6 +221,32 @@ describe('professional GDD stages', () => {
     expect(options?.maxCompletionTokens).toBeGreaterThanOrEqual(8_000);
   });
 
+  it('requests planning output through a strict blueprint tool schema', async () => {
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+    await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+
+    const calls = complete.mock.calls as unknown as Array<unknown[]>;
+    const options = calls[0]?.[1] as {
+      toolName?: string;
+      tools?: Array<{ function?: { name?: string; parameters?: Record<string, unknown> } }>;
+    } | undefined;
+    const tool = options?.tools?.[0]?.function;
+
+    expect(options?.toolName).toBe('submit_professional_gdd_blueprint');
+    expect(tool?.name).toBe(options?.toolName);
+    expect(tool?.parameters).toEqual(expect.objectContaining({
+      type: 'object',
+      additionalProperties: false,
+      required: ['version', 'title', 'sections', 'invariants'],
+    }));
+    expect(Object.keys((tool?.parameters?.properties ?? {}) as Record<string, unknown>)).toEqual([
+      'version',
+      'title',
+      'sections',
+      'invariants',
+    ]);
+  });
+
   it('generates core drafts and preserves drafts from earlier stages', async () => {
     const complete = jest.fn(async () => '## Core Loop\n\nThe player observes the board.');
     const previous = [{ sectionId: 'systems', stage: 'systems' as const, markdown: '## Systems\n\nNumbers.' }];

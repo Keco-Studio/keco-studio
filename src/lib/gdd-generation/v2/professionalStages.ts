@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatMessage } from '@/lib/agent/types';
+import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
 import { gddV2LlmOptions, gddV2SourceContext, GddV2GenerationValidationError } from './generator';
 import type { GddGenerationRequestV2 } from './contracts';
@@ -59,6 +59,50 @@ const blueprintSchema = z.object({
   }).strict()).min(1).max(24),
   invariants: z.array(z.string().trim().min(1).max(1_000)).max(40),
 }).strict();
+
+const BLUEPRINT_TOOL_NAME = 'submit_professional_gdd_blueprint';
+const blueprintTool: OpenAITool = {
+  type: 'function',
+  function: {
+    name: BLUEPRINT_TOOL_NAME,
+    description: 'Submit the complete professional GDD blueprint.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['version', 'title', 'sections', 'invariants'],
+      properties: {
+        version: { type: 'integer', enum: [1] },
+        title: { type: 'string', minLength: 1, maxLength: 200 },
+        sections: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 24,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'title', 'stage', 'instructions'],
+            properties: {
+              id: { type: 'string', minLength: 1, maxLength: 120 },
+              title: { type: 'string', minLength: 1, maxLength: 200 },
+              stage: { type: 'string', enum: ['core', 'systems', 'content'] },
+              instructions: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 20,
+                items: { type: 'string', minLength: 1, maxLength: 1_000 },
+              },
+            },
+          },
+        },
+        invariants: {
+          type: 'array',
+          maxItems: 40,
+          items: { type: 'string', minLength: 1, maxLength: 1_000 },
+        },
+      },
+    },
+  },
+};
 
 function abortReason(signal: AbortSignal): unknown {
   return signal.reason ?? new Error('Professional GDD stage was aborted.');
@@ -200,7 +244,7 @@ function stageMessages(
       content: [
         'You are planning a production-useful game design document.',
         `Write all human-readable titles and instructions in ${outputLanguage(input)}.`,
-        'Return JSON only, with exactly version, title, sections, and invariants.',
+        `Call ${BLUEPRINT_TOOL_NAME} with exactly version, title, sections, and invariants.`,
         'Assign every section to exactly one of core, systems, or content.',
         'Produce a production-sized plan with 9-12 sections distributed across core, systems, and content.',
         'Include at least 2 core sections, 3 systems sections, and 3 content sections.',
@@ -246,7 +290,7 @@ function blueprintRepairMessages(input: GddGenerationRequestV2, raw: string): Ch
     content: [
       'The previous professional GDD blueprint response was not valid JSON.',
       `Write all human-readable titles and instructions in ${outputLanguage(input)}.`,
-      'Return a corrected JSON object only, with exactly version, title, sections, and invariants.',
+      `Call ${BLUEPRINT_TOOL_NAME} with a corrected object containing exactly version, title, sections, and invariants.`,
       'Preserve the intended content, but ensure every string is closed and all JSON is syntactically valid.',
       'Do not return Markdown fences or commentary.',
     ].join('\n'),
@@ -317,13 +361,21 @@ export async function generateProfessionalStage(
       title: input.systemTitle,
       sections: [{ id: 'placeholder', title: 'Planning', stage: 'core', instructions: ['Plan the document.'] }],
       invariants: [],
-    }, []), { ...gddV2LlmOptions(8_000), signal }), signal);
+    }, []), {
+      ...gddV2LlmOptions(8_000),
+      tools: [blueprintTool],
+      toolName: BLUEPRINT_TOOL_NAME,
+      signal,
+    }), signal);
     try {
       return { blueprint: parseBlueprint(raw), sectionDrafts: [] };
     } catch (initialError) {
       try {
         const repairedRaw = await raceWithAbort(complete(blueprintRepairMessages(input, raw), {
-          ...gddV2LlmOptions(4_000), signal,
+          ...gddV2LlmOptions(4_000),
+          tools: [blueprintTool],
+          toolName: BLUEPRINT_TOOL_NAME,
+          signal,
         }), signal);
         return { blueprint: parseBlueprint(repairedRaw), sectionDrafts: [] };
       } catch {
