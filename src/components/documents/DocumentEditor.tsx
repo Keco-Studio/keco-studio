@@ -15,6 +15,7 @@ import {
 } from './useDocumentPermissions';
 import { useDocumentCollaboration } from './useDocumentCollaboration';
 import { getDocumentVersionPreview } from '@/lib/documents/documentVersionService';
+import { shouldDeferPendingDocumentEditor } from '@/lib/documents/documentEditorWarmup';
 import { markdownHasImages } from '@/lib/documents/markdownHasImages';
 import { DocumentVersionSidebar } from './DocumentVersionSidebar';
 import {
@@ -411,12 +412,12 @@ function DocumentEditorSession({
                   }}
                 />
               ) : hasBoundCollaboration ||
-                markdownHasImages(document.content ?? '') ? (
+                markdownHasImages(document.content ?? '') ||
+                shouldDeferPendingDocumentEditor(document.content ?? '') ? (
                 // Rebinding after an epoch change must not mount a second editor:
                 // that remount discards the live view and restarts hydration.
-                // Image docs also skip the pending markdown mount: resize
-                // width/height live in Yjs only, so Markdown would paint images
-                // full-width and then shrink when the collaborative editor binds.
+                // Image docs preserve Yjs-only sizing, while large docs avoid
+                // parsing the same Markdown again before the live editor binds.
                 <div className={styles.editorPlaceholder}>{collaboration.label}</div>
               ) : (
                 <MdxDocumentEditor
