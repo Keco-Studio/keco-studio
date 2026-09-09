@@ -10,7 +10,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { EventDataNode } from "antd/es/tree";
 import { Modal } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -86,6 +86,11 @@ import {
   updateProjectsListCache,
   upsertProjectInListCache,
 } from '@/lib/queryInvalidation';
+import {
+  GAME_ASSETS_TREE_KEY,
+  parseGameAssetsCategoryParam,
+  type GameAssetNavCategory,
+} from '@/lib/services/gameAssetsService';
 import styles from "./Sidebar.module.css";
 import { primeLibraryNavigationCache, primeDocumentNavigationCache } from './libraryNavigationCache';
 import {
@@ -122,6 +127,7 @@ type SidebarProps = {
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname(); // Only for pathname === '/projects' (auto-navigate)
+  const searchParams = useSearchParams();
   const {
     currentProjectId,
     currentLibraryId,
@@ -131,6 +137,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     isPredefinePage,
     isLibraryPage,
   } = useNavigation();
+  const isGameAssetsPage =
+    !!currentProjectId && (pathname ?? '').startsWith(`/${currentProjectId}/admin/assets`);
+  const gameAssetsCategory = parseGameAssetsCategoryParam(searchParams?.get('category'));
   const currentIds = useMemo(
     () => ({
       projectId: currentProjectId,
@@ -140,8 +149,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       documentId: currentDocumentId,
       isPredefinePage,
       isLibraryPage,
+      isGameAssetsPage,
+      gameAssetsCategory,
     }),
-    [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, currentDocumentId, isPredefinePage, isLibraryPage]
+    [
+      currentProjectId,
+      currentLibraryId,
+      currentFolderId,
+      currentAssetId,
+      currentDocumentId,
+      isPredefinePage,
+      isLibraryPage,
+      isGameAssetsPage,
+      gameAssetsCategory,
+    ]
   );
   const supabase = useSupabase();
   const queryClient = useQueryClient();
@@ -538,14 +559,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [currentIds.folderId]);
 
-  // Initialize expanded state: expand all folders by default when folder data is loaded
-  // Only set default expansion on first load (when not initialized)
+  // Initialize expanded state: expand folders by default; Assets stays collapsed
   useEffect(() => {
-    if (folders.length > 0 && !hasInitializedExpandedKeys.current) {
-      setExpandedKeys(folders.map((f) => `folder-${f.id}`));
-      hasInitializedExpandedKeys.current = true;
-    }
-  }, [folders]);
+    if (!currentIds.projectId || loadingFolders || hasInitializedExpandedKeys.current) return;
+    setExpandedKeys(folders.map((f) => `folder-${f.id}`));
+    hasInitializedExpandedKeys.current = true;
+  }, [folders, currentIds.projectId, loadingFolders]);
+
+  // Expand Assets only while viewing the assets workspace (default remains collapsed).
+  useEffect(() => {
+    if (!isGameAssetsPage) return;
+    setExpandedKeys((prev) =>
+      prev.includes(GAME_ASSETS_TREE_KEY) ? prev : [...prev, GAME_ASSETS_TREE_KEY]
+    );
+  }, [isGameAssetsPage]);
 
   const expandFolder = useCallback((folderId: string | null | undefined) => {
     if (!folderId) return;
@@ -698,6 +725,22 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
+    if (key === GAME_ASSETS_TREE_KEY || key.startsWith('game-assets-cat-')) {
+      if (!currentIds.projectId) return;
+      const category: GameAssetNavCategory =
+        key === GAME_ASSETS_TREE_KEY
+          ? 'all'
+          : parseGameAssetsCategoryParam(key.replace('game-assets-cat-', ''));
+      const href =
+        category === 'all'
+          ? `/${currentIds.projectId}/admin/assets`
+          : `/${currentIds.projectId}/admin/assets?category=${category}`;
+      setExpandedKeys((prev) =>
+        prev.includes(GAME_ASSETS_TREE_KEY) ? prev : [...prev, GAME_ASSETS_TREE_KEY]
+      );
+      void navigateWithFlush(href);
+      return;
+    }
     if (key.startsWith('folder-')) {
       const id = key.replace('folder-', '');
       // Navigate first so breadcrumbs and the main pane update immediately.

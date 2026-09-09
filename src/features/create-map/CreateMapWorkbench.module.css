@@ -1144,8 +1144,11 @@
 
 .directCanvasFrame {
   position: relative;
+  box-sizing: border-box;
   width: min(100%, 512px);
-  aspect-ratio: var(--direct-map-aspect);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  max-height: min(100%, 720px);
   overflow: hidden;
   border: 1px solid #bfc7cd;
   border-radius: 4px;
@@ -1154,7 +1157,7 @@
 }
 
 .directCanvasFrame[data-orientation='landscape'] {
-  width: min(100%, 688px);
+  width: min(100%, 720px);
 }
 
 .directCanvasFrame[data-orientation='portrait'] {

@@ -17,7 +17,7 @@ export function SidebarProjectQuickNav({ projectId }: SidebarProjectQuickNavProp
   if (!projectId) return null;
 
   const onRecent = (pathname ?? '').startsWith(`/${projectId}/recent`);
-  const onAdmin = (pathname ?? '').startsWith(`/${projectId}/admin`);
+  const onAdmin = (pathname ?? '') === `/${projectId}/admin` || (pathname ?? '').startsWith(`/${projectId}/admin/collaborators`);
 
   return (
     <nav className={styles.projectQuickNav} aria-label="Project shortcuts">

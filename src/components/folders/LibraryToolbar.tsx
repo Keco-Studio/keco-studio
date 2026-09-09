@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Image from 'next/image';
+import { CloudUploadOutlined } from '@ant-design/icons';
 import projectPreviewCreateBtnIcon from "@/assets/images/projectPreviewCreateBtnIcon.svg";
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
@@ -17,6 +18,8 @@ type LibraryToolbarProps = {
   onCreateMap?: () => void;
   onImportTable?: () => void;
   onImportDocument?: () => void;
+  /** When set, shows an Upload button to the left of Create (Assets page). */
+  onUpload?: (files: FileList) => void | Promise<void>;
   onSearchChange?: (value: string) => void;
   viewMode?: 'list' | 'grid';
   onViewModeChange?: (mode: 'list' | 'grid') => void;
@@ -53,6 +56,7 @@ export function LibraryToolbar({
   onCreateMap,
   onImportTable,
   onImportDocument,
+  onUpload,
   onSearchChange,
   viewMode = 'grid',
   onViewModeChange,
@@ -65,6 +69,8 @@ export function LibraryToolbar({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -102,19 +108,59 @@ export function LibraryToolbar({
     };
   };
 
+  const handleUploadClick = () => {
+    if (uploading) return;
+    uploadInputRef.current?.click();
+  };
+
+  const handleUploadChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files?.length || !onUpload) return;
+    setUploading(true);
+    try {
+      await onUpload(files);
+    } finally {
+      setUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
+  };
+
   // Match Libraries "+" visibility: admin/editor can open the menu
   const canCreate = mode === 'create-map'
     ? Boolean(onCreateMap)
     : userRole === 'admin' || userRole === 'editor';
+  const canUpload = Boolean(onUpload) && (userRole === 'admin' || userRole === 'editor');
   const showShare = mode === 'project' || mode === 'folder' || mode === 'recent';
   const showViewToggle = mode !== 'admin';
   const showCreateMenu = mode === 'project' || mode === 'folder' || mode === 'recent' || mode === 'admin';
 
   return (
     <div className={styles.toolbar}>
-      {/* {title && (
-        <h1 className={styles.title}>{title}</h1>
-      )} */}
+      {canUpload ? (
+        <>
+          <button
+            type="button"
+            className={styles.uploadButton}
+            onClick={handleUploadClick}
+            aria-label="Upload"
+            disabled={uploading}
+          >
+            <CloudUploadOutlined className={styles.uploadIcon} aria-hidden />
+            <span className={styles.createButtonText}>
+              {uploading ? 'Uploading…' : 'Upload'}
+            </span>
+          </button>
+          <input
+            ref={uploadInputRef}
+            hidden
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+            onChange={(event) => void handleUploadChange(event)}
+          />
+        </>
+      ) : null}
+
       {canCreate && (
         <button
           ref={setCreateButtonRef}
@@ -133,8 +179,7 @@ export function LibraryToolbar({
           </span>
         </button>
       )}
-      
-      {/* Share Button */}
+
       {showShare ? (
         <div className={styles.shareSection}>
           <ShareButton onClick={() => setShowInviteModal(true)} />
@@ -167,7 +212,6 @@ export function LibraryToolbar({
         </div>
       ) : null}
 
-      {/* Same menu content as Libraries "+" */}
       {showCreateMenu && (
         <AddLibraryMenu
           open={showAddMenu}
@@ -189,7 +233,6 @@ export function LibraryToolbar({
         />
       )}
 
-      {/* Invite Collaborator Modal */}
       {projectId && (
         <InviteCollaboratorModal
           projectId={projectId}
@@ -198,7 +241,6 @@ export function LibraryToolbar({
           open={showInviteModal}
           onClose={() => setShowInviteModal(false)}
           onSuccess={(email: string, message: string, autoAccepted: boolean) => {
-            // Show success message using custom toast
             showSuccessToast(message);
           }}
           title={`Share ${title || 'Project'}..`}
