@@ -31,10 +31,11 @@ function imageContext(
     failPreparationFor?: string;
     missingPaths?: string[];
     registrationErrorCode?: string;
-    reused?: boolean;
+    reused?: boolean | ((registrationCount: number) => boolean);
     mutateRegistrationRow?: (row: Record<string, unknown>) => void;
   } = {},
 ): ProjectMcpRequestContext {
+  let registrationCount = 0;
   const bucket = {
     async createSignedUploadUrl(...args: unknown[]) {
       storageCalls.push({ name: "createSignedUploadUrl", arguments: args });
@@ -109,6 +110,7 @@ function imageContext(
           return { data: null, error: null };
         }
         if (name === "mcp_register_project_game_asset") {
+          registrationCount += 1;
           storageCalls.push({ name, arguments: arguments_ });
           if (options.registrationErrorCode) {
             return {
@@ -136,7 +138,9 @@ function imageContext(
             file_size: input.p_file_size,
             created_at: "2026-09-09T00:00:00.000Z",
             updated_at: "2026-09-09T00:00:00.000Z",
-            reused: options.reused ?? false,
+            reused: typeof options.reused === "function"
+              ? options.reused(registrationCount)
+              : options.reused ?? false,
           };
           options.mutateRegistrationRow?.(row);
           return {
@@ -523,60 +527,47 @@ Deno.test("completion path errors explain image.path provenance", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("Unicode file names survive preparation and completion metadata", async () => {
-  const calls: StorageCall[] = [];
-  const fileName = "\u82f9\u679c.png";
-  const preparedMessage = await callTool(
-    imageContext(calls),
-    "create_image_upload",
-    { fileName, fileType: "image/png", fileSize: 68 },
-  );
-  const prepared = preparedMessage.result?.structuredContent as {
-    image: { path: string; fileName: string };
-  };
-  assertEquals(prepared.image.fileName, fileName);
-  assertMatch(prepared.image.path, /~h[0-9a-f]+$/i);
+Deno.test("image preparation rejects non-printable-ASCII file names", async () => {
+  for (
+    const [tool, arguments_] of [
+      ["create_image_upload", {
+        fileName: "\u82f9\u679c.png",
+        fileType: "image/png",
+        fileSize: 68,
+      }],
+      ["prepare_image_uploads", {
+        files: [{
+          fileName: "\u82f9\u679c.png",
+          fileType: "image/png",
+          fileSize: 68,
+        }],
+      }],
+    ] as const
+  ) {
+    const calls: StorageCall[] = [];
+    const message = await callTool(imageContext(calls), tool, arguments_);
 
-  const completedMessage = await callTool(
-    imageContext(calls),
-    "complete_image_upload",
-    { path: prepared.image.path },
-  );
-  assertEquals(
-    (completedMessage.result?.structuredContent as {
-      image: { fileName: string };
-    }).image.fileName,
-    fileName,
-  );
+    assertEquals(message.result?.isError, true);
+    assertEquals(calls.length, 0);
+  }
 });
 
-Deno.test("maximum-length Unicode file names remain completable", async () => {
-  const fileName = "\u754c".repeat(196) + ".png";
+Deno.test("completion rejects a prepared path that decodes to a Unicode file name", async () => {
   const calls: StorageCall[] = [];
-  const prepared = await callTool(imageContext(calls), "create_image_upload", {
-    fileName,
-    fileType: "image/png",
-    fileSize: 68,
-  });
-  const path = (prepared.result?.structuredContent as {
-    image: { path: string };
-  }).image.path;
-
-  assertEquals(path.length <= 2048, true);
-
-  calls.length = 0;
-  const completed = await callTool(
+  const encodedName = Array.from(
+    new TextEncoder().encode("\u82f9\u679c.png"),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const path = UPLOAD_PATH.replace("hero.png", `~h${encodedName}`);
+  const message = await callTool(
     imageContext(calls),
-    "complete_image_upload",
-    { path },
+    "complete_project_game_asset_uploads",
+    { items: [{ path }] },
   );
-  assertEquals(completed.result?.isError, undefined);
-  assertEquals(
-    (completed.result?.structuredContent as {
-      image: { fileName: string };
-    }).image.fileName,
-    fileName,
-  );
+
+  assertEquals(message.result?.isError, undefined);
+  assertMatch(JSON.stringify(message.result), /FIELD_VALIDATION_FAILED/);
+  assertEquals(calls.length, 0);
 });
 
 Deno.test("complete_project_game_asset_uploads verifies and registers ordered items", async () => {
@@ -652,6 +643,58 @@ Deno.test("complete_project_game_asset_uploads verifies and registers ordered it
     ),
     ["map", "media"],
   );
+});
+
+Deno.test("complete_project_game_asset_uploads sends unsafe SVG dimensions as null int4 arguments", async () => {
+  for (
+    const source of [
+      '<svg width="1.5" height="2"></svg>',
+      '<svg viewBox="0 0 2147483648 2"></svg>',
+    ]
+  ) {
+    const calls: StorageCall[] = [];
+    const content = new TextEncoder().encode(source);
+    const path = UPLOAD_PATH.replace("hero.png", "icon.svg");
+    const message = await callTool(
+      imageContext(calls, {
+        size: content.byteLength,
+        contentType: "image/svg+xml",
+        createdAt: "2026-07-30T08:00:00.000Z",
+      }, content),
+      "complete_project_game_asset_uploads",
+      { items: [{ path }] },
+    );
+
+    const registration = calls.find((call) =>
+      call.name === "mcp_register_project_game_asset"
+    );
+    if (!registration) {
+      throw new Error(
+        `Registration RPC was not called: ${JSON.stringify(calls)}`,
+      );
+    }
+    assertEquals(
+      message.result?.isError,
+      undefined,
+      JSON.stringify(message.result),
+    );
+    assertEquals(
+      registration.arguments[0],
+      {
+        p_project_id: PROJECT_ID,
+        p_name: "icon.svg",
+        p_category: "media",
+        p_mime_type: "image/svg+xml",
+        p_storage_path: path,
+        p_sha256: (registration.arguments[0] as Record<string, unknown>)
+          .p_sha256,
+        p_width: null,
+        p_height: null,
+        p_has_transparency: null,
+        p_file_size: content.byteLength,
+      },
+    );
+  }
 });
 
 Deno.test("complete_project_game_asset_uploads rejects an empty batch", async () => {
@@ -984,29 +1027,82 @@ for (const testCase of malformedRegistrationRows) {
   );
 }
 
-Deno.test("complete_project_game_asset_uploads preserves Unicode file names", async () => {
+Deno.test("printable ASCII names survive preparation and exact completion retry", async () => {
+  for (
+    const fileName of [
+      "hero final.png",
+      "hero+v1!.png",
+      "~hero.png",
+      "-hero.png",
+    ]
+  ) {
+    const calls: StorageCall[] = [];
+    const context = imageContext(calls, undefined, pngBytes(), {
+      reused: (registrationCount) => registrationCount === 2,
+    });
+    const prepared = await callTool(context, "create_image_upload", {
+      fileName,
+      fileType: "image/png",
+      fileSize: 68,
+    });
+    const preparedImage = (prepared.result?.structuredContent as {
+      image: { path: string; fileName: string };
+    }).image;
+    assertEquals(preparedImage.fileName, fileName);
+    if (fileName === "-hero.png") {
+      assertMatch(preparedImage.path, /--hero\.png$/);
+    } else {
+      assertMatch(preparedImage.path, /-~h[0-9a-f]+$/i);
+    }
+
+    const results = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const completed = await callTool(
+        context,
+        "complete_project_game_asset_uploads",
+        { items: [{ path: preparedImage.path }] },
+      );
+      assertEquals(completed.result?.isError, undefined);
+      results.push(
+        (completed.result?.structuredContent as {
+          items: Array<{
+            reused: boolean;
+            image: { fileName: string };
+            asset: { id: string; name: string };
+          }>;
+        }).items[0],
+      );
+    }
+
+    assertEquals(results.map((item) => item.reused), [false, true]);
+    assertEquals(results[0].asset.id, results[1].asset.id);
+    assertEquals(
+      results.map((item) => [item.image.fileName, item.asset.name]),
+      [[fileName, fileName], [fileName, fileName]],
+    );
+    assertEquals(
+      calls.filter((call) => call.name === "mcp_register_project_game_asset")
+        .map((call) => (call.arguments[0] as Record<string, unknown>).p_name),
+      [fileName, fileName],
+    );
+  }
+});
+
+Deno.test("completion remains compatible with existing sanitized image paths", async () => {
   const calls: StorageCall[] = [];
-  const fileName = "\u82f9\u679c.png";
-  const prepared = await callTool(
-    imageContext(calls),
-    "create_image_upload",
-    { fileName, fileType: "image/png", fileSize: 68 },
-  );
-  const path = (prepared.result?.structuredContent as {
-    image: { path: string };
-  }).image.path;
+  const legacyPath = UPLOAD_PATH.replace("hero.png", "hero_final.png");
   const completed = await callTool(
     imageContext(calls),
     "complete_project_game_asset_uploads",
-    { items: [{ path }] },
+    { items: [{ path: legacyPath }] },
   );
 
   assertEquals(completed.result?.isError, undefined);
   const item = (completed.result?.structuredContent as {
     items: Array<{ image: { fileName: string }; asset: { name: string } }>;
   }).items[0];
-  assertEquals(item.image.fileName, fileName);
-  assertEquals(item.asset.name, fileName);
+  assertEquals(item.image.fileName, "hero_final.png");
+  assertEquals(item.asset.name, "hero_final.png");
 });
 
 Deno.test("complete_project_game_asset_uploads accepts prepared leading-hyphen names", async () => {

@@ -60,9 +60,9 @@ const preparedImagePathSchema = z.string().min(1).max(MAX_IMAGE_PATH_CHARS)
     "path must be a prepared Keco image.path, not a local path, file: URI, public URL, or signed URL.",
   );
 const imageFileShape = {
-  fileName: z.string().trim().min(1).max(200).refine(
-    (value) => !/[\\/\u0000-\u001f]/.test(value),
-    "fileName must be a plain file name.",
+  fileName: z.string().min(1).max(200).refine(
+    isPrintableAsciiImageFileName,
+    "fileName must contain only printable ASCII and no path separators.",
   ).describe("A plain local file name, without a directory path."),
   fileType: imageFileType.describe(
     "The supported media type matching fileName.",
@@ -237,6 +237,10 @@ function imageTypeMatchesName(
   );
 }
 
+function isPrintableAsciiImageFileName(fileName: string): boolean {
+  return /^[\x20-\x7e]+$/.test(fileName) && !/[\\/]/.test(fileName);
+}
+
 function sanitizeImageFileName(fileName: string): string {
   const extension = imageExtension(fileName);
   const safe = fileName
@@ -251,16 +255,13 @@ function sanitizeImageFileName(fileName: string): string {
 }
 
 function imagePathFileName(fileName: string): string {
-  // ASCII paths remain backward compatible. The marker is unambiguous because
-  // sanitizeImageFileName replaces a literal tilde in an ASCII source name.
-  return /^[\x20-\x7e]+$/.test(fileName)
-    ? sanitizeImageFileName(fileName)
-    : `~h${
-      Array.from(
-        new TextEncoder().encode(fileName),
-        (byte) => byte.toString(16).padStart(2, "0"),
-      ).join("")
-    }`;
+  const sanitized = sanitizeImageFileName(fileName);
+  return sanitized === fileName ? fileName : `~h${
+    Array.from(
+      new TextEncoder().encode(fileName),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join("")
+  }`;
 }
 
 function uploadedImageFileName(path: string): string | null {
@@ -270,23 +271,26 @@ function uploadedImageFileName(path: string): string | null {
       .exec(leaf)?.[1];
   if (!stored) return null;
   if (!stored.startsWith("~")) return stored;
+  let decoded: string;
   if (stored.startsWith("~h")) {
     const hex = stored.slice(2);
     if (!/^(?:[0-9a-f]{2})+$/i.test(hex)) return null;
     try {
-      return new TextDecoder().decode(
+      decoded = new TextDecoder("utf-8", { fatal: true }).decode(
         Uint8Array.from(hex.match(/../g)!, (pair) => parseInt(pair, 16)),
       );
     } catch {
       return null;
     }
+  } else {
+    try {
+      // Accept paths created before the hex marker was introduced.
+      decoded = decodeURIComponent(stored.slice(1));
+    } catch {
+      return null;
+    }
   }
-  try {
-    // Accept paths created before the hex marker was introduced.
-    return decodeURIComponent(stored.slice(1));
-  } catch {
-    return null;
-  }
+  return isPrintableAsciiImageFileName(decoded) ? decoded : null;
 }
 
 function imageSignatureMatches(
@@ -633,7 +637,12 @@ async function registerProjectGameAsset(
   bytes: Uint8Array,
   category: GameAssetCategory,
 ): Promise<{ reused: boolean; asset: ProjectGameAssetResult }> {
-  const metadata = await inspectVerifiedImage(image.fileType, bytes);
+  const inspected = await inspectVerifiedImage(image.fileType, bytes);
+  const metadata: VerifiedImageMetadata = {
+    ...inspected,
+    width: registrationDimension(inspected.width),
+    height: registrationDimension(inspected.height),
+  };
   const { data, error } = await measureMcpPhase(
     context,
     "database",
@@ -676,6 +685,13 @@ async function registerProjectGameAsset(
     metadata,
     category,
   });
+}
+
+function registrationDimension(value: number | null): number | null {
+  return value !== null && Number.isInteger(value) && value > 0 &&
+      value <= 2_147_483_647
+    ? value
+    : null;
 }
 
 async function createFolder(

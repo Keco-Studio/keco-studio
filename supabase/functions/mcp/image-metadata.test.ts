@@ -1,5 +1,6 @@
 import { assertEquals, assertMatch } from "@std/assert";
 import { encode } from "fast-png";
+import { Deflate, deflate } from "npm:pako@2.2.0";
 import { type ImageFileType, inspectVerifiedImage } from "./image-metadata.ts";
 
 const jpeg1x1 = new Uint8Array([
@@ -152,6 +153,49 @@ function oversizedIhdr() {
   return pngChunk("IHDR", ihdr);
 }
 
+function pngIhdr(
+  width: number,
+  height: number,
+  depth: number,
+  colorType: number,
+) {
+  const ihdr = new Uint8Array(13);
+  writeUint32BE(ihdr, 0, width);
+  writeUint32BE(ihdr, 4, height);
+  ihdr.set([depth, colorType, 0, 0, 0], 8);
+  return pngChunk("IHDR", ihdr);
+}
+
+function repeatedZeroDeflate(uncompressedBytes: number) {
+  const compressor = new Deflate({ level: 9 });
+  const block = new Uint8Array(64 * 1024);
+  let remaining = uncompressedBytes;
+  while (remaining > 0) {
+    const length = Math.min(block.length, remaining);
+    remaining -= length;
+    compressor.push(block.subarray(0, length), remaining === 0);
+  }
+  if (compressor.err) throw new Error(compressor.msg);
+  return compressor.result;
+}
+
+function pngWithScanline(
+  colorType: number,
+  scanline: number[],
+  options: { palette?: number[]; transparency?: number[] } = {},
+) {
+  const chunks = [pngIhdr(1, 1, 8, colorType)];
+  if (options.palette) {
+    chunks.push(pngChunk("PLTE", Uint8Array.from(options.palette)));
+  }
+  if (options.transparency) {
+    chunks.push(pngChunk("tRNS", Uint8Array.from(options.transparency)));
+  }
+  chunks.push(pngChunk("IDAT", deflate(Uint8Array.from([0, ...scanline]))));
+  chunks.push(pngChunk("IEND", new Uint8Array()));
+  return pngFile(chunks);
+}
+
 function webpChunk(type: "VP8X" | "VP8 " | "VP8L", payload: number[]) {
   const padding = payload.length % 2;
   const contentsLength = 4 + 8 + payload.length + padding;
@@ -247,6 +291,85 @@ Deno.test("rejects malformed oversized PNG chunk ordering and CRCs", async () =>
   await assertNullMetadata("image/png", duplicateIhdr);
   await assertNullMetadata("image/png", badCrc);
   await assertNullMetadata("image/png", invalidChunkType);
+});
+
+Deno.test("rejects a 1x1 PNG whose IDAT inflates beyond its exact scanline budget", async () => {
+  const compressedBomb = repeatedZeroDeflate(64 * 1024 * 1024);
+  const bytes = pngFile([
+    pngIhdr(1, 1, 8, 0),
+    pngChunk("IDAT", compressedBomb),
+    pngChunk("IEND", new Uint8Array()),
+  ]);
+
+  assertEquals(bytes.length < 128 * 1024, true);
+  await assertNullMetadata("image/png", bytes);
+});
+
+Deno.test("does not decompress a compressed iCCP bomb while inspecting PNG pixels", async () => {
+  const compressedBomb = repeatedZeroDeflate(64 * 1024 * 1024);
+  const profile = new Uint8Array(5 + compressedBomb.length);
+  profile.set([0x69, 0x63, 0x63, 0x00, 0x00]);
+  profile.set(compressedBomb, 5);
+  const bytes = pngFile([
+    pngIhdr(1, 1, 8, 0),
+    pngChunk("iCCP", profile),
+    pngChunk("IDAT", deflate(Uint8Array.from([0, 7]))),
+    pngChunk("IEND", new Uint8Array()),
+  ]);
+
+  assertEquals(bytes.length < 128 * 1024, true);
+  assertEquals(metadataShape(await inspectVerifiedImage("image/png", bytes)), {
+    width: 1,
+    height: 1,
+    hasTransparency: false,
+  });
+});
+
+Deno.test("detects used and unused grayscale tRNS samples", async () => {
+  const used = pngWithScanline(0, [7], { transparency: [0, 7] });
+  const unused = pngWithScanline(0, [8], { transparency: [0, 7] });
+
+  assertEquals(
+    (await inspectVerifiedImage("image/png", used)).hasTransparency,
+    true,
+  );
+  assertEquals(
+    (await inspectVerifiedImage("image/png", unused)).hasTransparency,
+    false,
+  );
+});
+
+Deno.test("detects used and unused truecolor tRNS samples", async () => {
+  const transparency = [0, 10, 0, 20, 0, 30];
+  const used = pngWithScanline(2, [10, 20, 30], { transparency });
+  const unused = pngWithScanline(2, [10, 20, 31], { transparency });
+
+  assertEquals(
+    (await inspectVerifiedImage("image/png", used)).hasTransparency,
+    true,
+  );
+  assertEquals(
+    (await inspectVerifiedImage("image/png", unused)).hasTransparency,
+    false,
+  );
+});
+
+Deno.test("detects used and unused indexed tRNS palette entries", async () => {
+  const options = {
+    palette: [255, 0, 0, 0, 255, 0],
+    transparency: [255, 0],
+  };
+  const used = pngWithScanline(3, [1], options);
+  const unused = pngWithScanline(3, [0], options);
+
+  assertEquals(
+    (await inspectVerifiedImage("image/png", used)).hasTransparency,
+    true,
+  );
+  assertEquals(
+    (await inspectVerifiedImage("image/png", unused)).hasTransparency,
+    false,
+  );
 });
 
 Deno.test("reports opaque PNG data as non-transparent", async () => {
@@ -524,6 +647,58 @@ Deno.test("accepts SVG decimal exponents and rejects hexadecimal viewBox values"
     hasTransparency: null,
   });
   assertEquals(metadataShape(hexadecimalViewBox), nullMetadata);
+});
+
+Deno.test("normalizes fractional and out-of-int4 SVG attributes to null", async () => {
+  for (
+    const source of [
+      '<svg width="1.5" height="2"></svg>',
+      '<svg width="1e-1" height="2"></svg>',
+      '<svg width="2147483648" height="2"></svg>',
+    ]
+  ) {
+    assertEquals(
+      metadataShape(
+        await inspectVerifiedImage(
+          "image/svg+xml",
+          new TextEncoder().encode(source),
+        ),
+      ),
+      nullMetadata,
+    );
+  }
+
+  assertEquals(
+    metadataShape(
+      await inspectVerifiedImage(
+        "image/svg+xml",
+        new TextEncoder().encode(
+          '<svg width="1e2" height="2e1"></svg>',
+        ),
+      ),
+    ),
+    { width: 100, height: 20, hasTransparency: null },
+  );
+});
+
+Deno.test("normalizes fractional and out-of-int4 SVG viewBox dimensions to null", async () => {
+  for (
+    const source of [
+      '<svg viewBox="0 0 1.5 2"></svg>',
+      '<svg viewBox="0 0 1e-1 2"></svg>',
+      '<svg viewBox="0 0 2147483648 2"></svg>',
+    ]
+  ) {
+    assertEquals(
+      metadataShape(
+        await inspectVerifiedImage(
+          "image/svg+xml",
+          new TextEncoder().encode(source),
+        ),
+      ),
+      nullMetadata,
+    );
+  }
 });
 
 Deno.test("hashes identical bytes deterministically", async () => {

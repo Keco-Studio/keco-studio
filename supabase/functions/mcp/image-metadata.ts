@@ -1,4 +1,5 @@
 import { decode } from "fast-png";
+import { Inflate } from "pako";
 
 export type ImageFileType =
   | "image/png"
@@ -23,6 +24,8 @@ const EMPTY_DIMENSIONS: ImageDimensions = {
 };
 const MAX_SVG_BYTES = 5 * 1024 * 1024;
 const MAX_DECODED_PNG_BYTES = 32 * 1024 * 1024;
+const MAX_PNG_INFLATE_CHUNK_BYTES = 64 * 1024;
+const POSTGRES_INT4_MAX = 2_147_483_647;
 const SVG_NUMBER =
   "[+-]?(?:(?:\\d+(?:\\.\\d*)?)|(?:\\.\\d+))(?:[eE][+-]?\\d+)?";
 const SVG_NUMBER_PATTERN = new RegExp(`^${SVG_NUMBER}$`);
@@ -54,9 +57,8 @@ export async function inspectVerifiedImage(
 function inspectPng(bytes: Uint8Array): ImageDimensions {
   const header = readPngHeader(bytes);
   if (!header) return EMPTY_DIMENSIONS;
-  if (!hasValidPngChunkStructure(bytes, header.colorType)) {
-    return EMPTY_DIMENSIONS;
-  }
+  const chunks = readPngChunks(bytes, header);
+  if (!chunks) return EMPTY_DIMENSIONS;
   if (
     decodedPngBytesExceedLimit(
       header.width,
@@ -72,8 +74,16 @@ function inspectPng(bytes: Uint8Array): ImageDimensions {
     };
   }
 
+  const scanlineBytes = expectedPngScanlineBytes(header);
+  if (
+    scanlineBytes === null ||
+    !hasExactInflatedSize(chunks.idat, scanlineBytes)
+  ) return EMPTY_DIMENSIONS;
+
   try {
-    const decoded = decode(bytes);
+    const decoded = decode(rebuildPngForPixelDecode(bytes, chunks), {
+      checkCrc: true,
+    });
     if (decoded.width !== header.width || decoded.height !== header.height) {
       return EMPTY_DIMENSIONS;
     }
@@ -81,7 +91,11 @@ function inspectPng(bytes: Uint8Array): ImageDimensions {
       return {
         width: decoded.width,
         height: decoded.height,
-        hasTransparency: false,
+        hasTransparency: pngTransparencyFromColorKey(
+          decoded.data,
+          header,
+          chunks,
+        ),
       };
     }
 
@@ -108,6 +122,28 @@ function inspectPng(bytes: Uint8Array): ImageDimensions {
     return EMPTY_DIMENSIONS;
   }
 }
+
+type PngHeader = {
+  width: number;
+  height: number;
+  channels: number;
+  depth: number;
+  colorType: number;
+  interlace: number;
+};
+
+type PngChunk = {
+  data: Uint8Array;
+  framed: Uint8Array;
+};
+
+type PngChunks = {
+  ihdr: PngChunk;
+  palette: PngChunk | null;
+  transparency: PngChunk | null;
+  idat: PngChunk[];
+  iend: PngChunk;
+};
 
 function inspectJpeg(bytes: Uint8Array): ImageDimensions {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
@@ -267,7 +303,8 @@ function inspectSvg(bytes: Uint8Array): ImageDimensions {
   const values = match.slice(1).map(parseSvgNumber);
   if (
     values.some((value) => value === null) ||
-    !isPositiveDimension(values[2]!) || !isPositiveDimension(values[3]!)
+    !isPostgresInt4Dimension(values[2]!) ||
+    !isPostgresInt4Dimension(values[3]!)
   ) {
     return EMPTY_DIMENSIONS;
   }
@@ -336,7 +373,7 @@ function parseSvgDimension(value: string | null): number | null {
   const trimmed = value.trim();
   const numericValue = trimmed.endsWith("px") ? trimmed.slice(0, -2) : trimmed;
   const dimension = parseSvgNumber(numericValue);
-  return dimension !== null && isPositiveDimension(dimension)
+  return dimension !== null && isPostgresInt4Dimension(dimension)
     ? dimension
     : null;
 }
@@ -349,6 +386,10 @@ function parseSvgNumber(value: string): number | null {
 
 function isPositiveDimension(value: number): boolean {
   return Number.isFinite(value) && value > 0;
+}
+
+function isPostgresInt4Dimension(value: number): boolean {
+  return Number.isInteger(value) && value > 0 && value <= POSTGRES_INT4_MAX;
 }
 
 function readUint16BE(bytes: Uint8Array, offset: number): number {
@@ -386,13 +427,7 @@ function matchesAscii(
 
 function readPngHeader(
   bytes: Uint8Array,
-): {
-  width: number;
-  height: number;
-  channels: number;
-  depth: number;
-  colorType: number;
-} | null {
+): PngHeader | null {
   if (
     bytes.length < 33 ||
     !matchesBytes(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) ||
@@ -415,64 +450,276 @@ function readPngHeader(
     bytes[27] !== 0 ||
     (bytes[28] !== 0 && bytes[28] !== 1)
   ) return null;
-  return { width, height, channels, depth, colorType };
+  return {
+    width,
+    height,
+    channels,
+    depth,
+    colorType,
+    interlace: bytes[28],
+  };
 }
 
-function hasValidPngChunkStructure(
+function readPngChunks(
   bytes: Uint8Array,
-  colorType: number,
-): boolean {
+  header: PngHeader,
+): PngChunks | null {
   let offset = 8;
   let sawIhdr = false;
   let sawPlte = false;
+  let sawTransparency = false;
   let sawIdat = false;
   let endedIdat = false;
   let idatDataBytes = 0;
+  let ihdr: PngChunk | null = null;
+  let palette: PngChunk | null = null;
+  let transparency: PngChunk | null = null;
+  const idat: PngChunk[] = [];
 
   while (offset < bytes.length) {
-    if (bytes.length - offset < 12) return false;
+    if (bytes.length - offset < 12) return null;
     const length = readUint32BE(bytes, offset);
     const typeOffset = offset + 4;
     const dataOffset = offset + 8;
-    if (length > bytes.length - dataOffset - 4) return false;
-    if (!isValidPngChunkType(bytes, typeOffset)) return false;
+    if (length > bytes.length - dataOffset - 4) return null;
+    if (!isValidPngChunkType(bytes, typeOffset)) return null;
     const crcOffset = dataOffset + length;
     if (
       readUint32BE(bytes, crcOffset) !== crc32(bytes, typeOffset, length + 4)
     ) {
-      return false;
+      return null;
     }
+    const chunk = {
+      data: bytes.subarray(dataOffset, crcOffset),
+      framed: bytes.subarray(offset, crcOffset + 4),
+    };
 
     if (!sawIhdr) {
       if (length !== 13 || !matchesAscii(bytes, typeOffset, "IHDR")) {
-        return false;
+        return null;
       }
       sawIhdr = true;
+      ihdr = chunk;
     } else if (matchesAscii(bytes, typeOffset, "IHDR")) {
-      return false;
+      return null;
     } else if (matchesAscii(bytes, typeOffset, "PLTE")) {
       if (
-        sawPlte || sawIdat || length === 0 || length % 3 !== 0 || length > 768
+        sawPlte || sawTransparency || sawIdat || length === 0 ||
+        length % 3 !== 0 || length > 768
       ) {
-        return false;
+        return null;
       }
-      if (colorType === 0 || colorType === 4) return false;
+      if (header.colorType === 0 || header.colorType === 4) return null;
+      if (header.colorType === 3 && length / 3 > 2 ** header.depth) return null;
       sawPlte = true;
+      palette = chunk;
+    } else if (matchesAscii(bytes, typeOffset, "tRNS")) {
+      if (
+        sawTransparency || sawIdat ||
+        !validPngTransparencyChunk(header, length, palette)
+      ) return null;
+      sawTransparency = true;
+      transparency = chunk;
     } else if (matchesAscii(bytes, typeOffset, "IDAT")) {
-      if (endedIdat) return false;
+      if (endedIdat || (header.colorType === 3 && !sawPlte)) return null;
       sawIdat = true;
       idatDataBytes += length;
+      idat.push(chunk);
     } else if (matchesAscii(bytes, typeOffset, "IEND")) {
-      return length === 0 && sawIdat && idatDataBytes > 0 &&
-        (colorType !== 3 || sawPlte) && crcOffset + 4 === bytes.length;
+      return length === 0 && sawIdat && idatDataBytes > 0 && ihdr &&
+          (header.colorType !== 3 || sawPlte) &&
+          crcOffset + 4 === bytes.length
+        ? { ihdr, palette, transparency, idat, iend: chunk }
+        : null;
     } else {
       if (sawIdat) endedIdat = true;
-      if (isPngCriticalChunk(bytes[typeOffset])) return false;
+      if (isPngCriticalChunk(bytes[typeOffset])) return null;
     }
 
     offset = crcOffset + 4;
   }
+  return null;
+}
+
+function validPngTransparencyChunk(
+  header: PngHeader,
+  length: number,
+  palette: PngChunk | null,
+): boolean {
+  if (header.colorType === 0) return length === 2;
+  if (header.colorType === 2) return length === 6;
+  if (header.colorType === 3) {
+    return palette !== null && length >= 1 && length <= palette.data.length / 3;
+  }
   return false;
+}
+
+function expectedPngScanlineBytes(header: PngHeader): number | null {
+  if (header.interlace === 0) {
+    return checkedScanlineBytes(
+      header.width,
+      header.height,
+      header.channels,
+      header.depth,
+    );
+  }
+
+  let total = 0;
+  for (
+    const pass of [
+      { x: 0, y: 0, xStep: 8, yStep: 8 },
+      { x: 4, y: 0, xStep: 8, yStep: 8 },
+      { x: 0, y: 4, xStep: 4, yStep: 8 },
+      { x: 2, y: 0, xStep: 4, yStep: 4 },
+      { x: 0, y: 2, xStep: 2, yStep: 4 },
+      { x: 1, y: 0, xStep: 2, yStep: 2 },
+      { x: 0, y: 1, xStep: 1, yStep: 2 },
+    ]
+  ) {
+    if (header.width <= pass.x || header.height <= pass.y) continue;
+    const width = Math.ceil((header.width - pass.x) / pass.xStep);
+    const height = Math.ceil((header.height - pass.y) / pass.yStep);
+    const passBytes = checkedScanlineBytes(
+      width,
+      height,
+      header.channels,
+      header.depth,
+    );
+    if (passBytes === null || total > MAX_DECODED_PNG_BYTES - passBytes) {
+      return null;
+    }
+    total += passBytes;
+  }
+  return total;
+}
+
+function checkedScanlineBytes(
+  width: number,
+  height: number,
+  channels: number,
+  depth: number,
+): number | null {
+  const bytesPerLine = Math.ceil(width * channels * depth / 8);
+  const bytesPerScanline = bytesPerLine + 1;
+  if (bytesPerScanline > Math.floor(MAX_DECODED_PNG_BYTES / height)) {
+    return null;
+  }
+  return bytesPerScanline * height;
+}
+
+function hasExactInflatedSize(
+  idat: readonly PngChunk[],
+  expectedBytes: number,
+): boolean {
+  const inflator = new Inflate({
+    chunkSize: Math.max(
+      1,
+      Math.min(MAX_PNG_INFLATE_CHUNK_BYTES, expectedBytes + 1),
+    ),
+  });
+  let inflatedBytes = 0;
+  let exceeded = false;
+  inflator.onData = (chunk) => {
+    inflatedBytes += (chunk as Uint8Array).byteLength;
+    if (inflatedBytes > expectedBytes) {
+      exceeded = true;
+      throw new RangeError("PNG IDAT exceeded its scanline budget.");
+    }
+  };
+  try {
+    for (const [index, chunk] of idat.entries()) {
+      if (!inflator.push(chunk.data, index === idat.length - 1)) return false;
+    }
+  } catch {
+    return false;
+  }
+  return !exceeded && inflator.err === 0 && inflatedBytes === expectedBytes;
+}
+
+function rebuildPngForPixelDecode(
+  bytes: Uint8Array,
+  chunks: PngChunks,
+): Uint8Array {
+  const framed = [
+    bytes.subarray(0, 8),
+    chunks.ihdr.framed,
+    ...(chunks.palette ? [chunks.palette.framed] : []),
+    ...chunks.idat.map((chunk) => chunk.framed),
+    chunks.iend.framed,
+  ];
+  const result = new Uint8Array(
+    framed.reduce((length, chunk) => length + chunk.byteLength, 0),
+  );
+  let offset = 0;
+  for (const chunk of framed) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
+function pngTransparencyFromColorKey(
+  data: Uint8Array | Uint8ClampedArray | Uint16Array,
+  header: PngHeader,
+  chunks: PngChunks,
+): boolean | null {
+  const transparency = chunks.transparency?.data;
+  if (!transparency) return false;
+  if (header.interlace === 1 && header.depth < 8) return null;
+
+  if (header.colorType === 0) {
+    const transparentSample = readUint16BE(transparency, 0);
+    if (transparentSample >= 2 ** header.depth) return null;
+    if (header.depth >= 8) {
+      return Array.from(data).some((sample) => sample === transparentSample);
+    }
+    return packedPngSamples(data, header).some((sample) =>
+      sample === transparentSample
+    );
+  }
+  if (header.colorType === 2) {
+    const transparent = [
+      readUint16BE(transparency, 0),
+      readUint16BE(transparency, 2),
+      readUint16BE(transparency, 4),
+    ];
+    const maximum = header.depth === 16 ? 65535 : 255;
+    if (transparent.some((sample) => sample > maximum)) return null;
+    for (let offset = 0; offset < data.length; offset += 3) {
+      if (
+        data[offset] === transparent[0] &&
+        data[offset + 1] === transparent[1] &&
+        data[offset + 2] === transparent[2]
+      ) return true;
+    }
+    return false;
+  }
+  if (header.colorType === 3) {
+    const indexes = header.depth === 8
+      ? Array.from(data)
+      : packedPngSamples(data, header);
+    return indexes.some((index) => (transparency[index] ?? 255) < 255);
+  }
+  return null;
+}
+
+function packedPngSamples(
+  data: Uint8Array | Uint8ClampedArray | Uint16Array,
+  header: PngHeader,
+): number[] {
+  const samples: number[] = [];
+  const bytesPerLine = Math.ceil(header.width * header.depth / 8);
+  const mask = (1 << header.depth) - 1;
+  for (let y = 0; y < header.height; y++) {
+    const rowOffset = y * bytesPerLine;
+    for (let x = 0; x < header.width; x++) {
+      const bitOffset = x * header.depth;
+      const byte = data[rowOffset + Math.floor(bitOffset / 8)];
+      const shift = 8 - header.depth - (bitOffset % 8);
+      samples.push((byte >> shift) & mask);
+    }
+  }
+  return samples;
 }
 
 function decodedPngBytesExceedLimit(

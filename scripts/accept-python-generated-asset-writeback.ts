@@ -26,6 +26,7 @@ export type PythonRunner = (
 
 export type AcceptanceAdmin = {
   readAsset(target: CleanupTarget): Promise<JsonRecord | null>;
+  findAssets(projectId: string, storagePath: string): Promise<JsonRecord[]>;
   aggregateAssets(projectId: string): Promise<JsonRecord[]>;
   deleteAsset(target: CleanupTarget): Promise<void>;
   deleteObject(storagePath: string): Promise<void>;
@@ -199,6 +200,14 @@ function createAcceptanceAdmin(supabaseUrl: string, serviceRoleKey: string): Acc
       if (result.error) throw new Error('Authoritative project asset read-back failed.');
       return result.data as JsonRecord | null;
     },
+    async findAssets(projectId, storagePath) {
+      const result = await supabase.from('project_game_assets').select('*')
+        .eq('project_id', projectId).eq('storage_path', storagePath).limit(2);
+      if (result.error || !Array.isArray(result.data)) {
+        throw new Error('Exact acceptance registry lookup failed.');
+      }
+      return result.data as JsonRecord[];
+    },
     async aggregateAssets(projectId) {
       const result = await aggregateProjectGameAssets(supabase, projectId, {
         sign: async () => null,
@@ -258,7 +267,10 @@ function assertAssetMetadata(
       field('name', 'name') !== FILE_NAME || field('category', 'category') !== 'map' ||
       field('status', 'status') !== 'ready' || field('mimeType', 'mime_type') !== 'image/png' ||
       field('sha256', 'sha256') !== expected.sha256 || field('width', 'width') !== 128 ||
-      field('height', 'height') !== 128 || field('fileSize', 'file_size') !== expected.fileSize) {
+      field('height', 'height') !== 128 ||
+      field('hasTransparency', 'has_transparency') !== false ||
+      field('fileSize', 'file_size') !== expected.fileSize ||
+      (snakeCase && field('createdBy', 'created_by') !== expected.storagePath.split('/', 1)[0])) {
     throw new Error('Project asset metadata did not match the generated PNG.');
   }
 }
@@ -298,6 +310,13 @@ export async function runAcceptance(
   let cleanupTarget: CleanupTarget | undefined;
   let acceptanceChecksPassed = false;
   let objectUploaded = false;
+  let registrationAttempted = false;
+  let expectedRegistration: {
+    projectId: string;
+    storagePath: string;
+    fileSize: number;
+    sha256: string;
+  } | undefined;
   let acceptanceAdmin = dependencies.admin;
 
   try {
@@ -368,6 +387,13 @@ export async function runAcceptance(
       projectId: options.projectId,
       items: [{ path: storagePath, category: 'map' }],
     };
+    expectedRegistration = {
+      projectId: options.projectId,
+      storagePath,
+      fileSize: file.fileSize,
+      sha256: digest,
+    };
+    registrationAttempted = true;
     let recoveredAmbiguousCompletion = false;
     let first: JsonRecord;
     try {
@@ -431,7 +457,44 @@ export async function runAcceptance(
   } catch (error) {
     errors.push(safeError(error, 'acceptance', secrets));
   } finally {
-    if (cleanupTarget) {
+    let registryStateResolved = !registrationAttempted;
+    if (registrationAttempted) {
+      try {
+        if (!expectedRegistration) {
+          throw new Error('Expected registration metadata was unavailable.');
+        }
+        acceptanceAdmin ??= createAcceptanceAdmin(options.supabaseUrl, options.serviceRoleKey);
+        const matches = await acceptanceAdmin.findAssets(
+          expectedRegistration.projectId,
+          expectedRegistration.storagePath,
+        );
+        if (matches.length > 1) {
+          throw new Error('Exact acceptance registry lookup was ambiguous.');
+        }
+        if (matches.length === 0) {
+          if (cleanupTarget) {
+            throw new Error('Expected acceptance registry row was missing during cleanup.');
+          }
+        } else {
+          const row = record(matches[0], 'Acceptance cleanup registry row');
+          const assetId = uuid(row.id, 'Acceptance cleanup registry row ID');
+          assertAssetMetadata(row, { ...expectedRegistration, assetId }, true);
+          if (cleanupTarget && cleanupTarget.assetId !== assetId) {
+            throw new Error('Acceptance cleanup registry identity was inconsistent.');
+          }
+          cleanupTarget = {
+            assetId,
+            projectId: expectedRegistration.projectId,
+            storagePath: expectedRegistration.storagePath,
+          };
+        }
+        registryStateResolved = true;
+      } catch (error) {
+        errors.push(safeError(error, 'registry lookup', secrets));
+      }
+    }
+
+    if (registryStateResolved && cleanupTarget) {
       try {
         acceptanceAdmin ??= createAcceptanceAdmin(options.supabaseUrl, options.serviceRoleKey);
         await acceptanceAdmin.deleteAsset(cleanupTarget);
@@ -439,10 +502,11 @@ export async function runAcceptance(
       } catch (error) {
         errors.push(safeError(error, 'registry cleanup', secrets));
       }
-    } else {
+    } else if (registryStateResolved) {
       cleanup.registryRowDeleted = true;
     }
-    if (objectUploaded && storagePath) {
+
+    if (objectUploaded && storagePath && cleanup.registryRowDeleted === true) {
       try {
         acceptanceAdmin ??= createAcceptanceAdmin(options.supabaseUrl, options.serviceRoleKey);
         await acceptanceAdmin.deleteObject(storagePath);
@@ -450,7 +514,7 @@ export async function runAcceptance(
       } catch (error) {
         errors.push(safeError(error, 'storage cleanup', secrets));
       }
-    } else {
+    } else if (!objectUploaded) {
       cleanup.storageObjectDeleted = true;
     }
     if (temporaryDirectory) {

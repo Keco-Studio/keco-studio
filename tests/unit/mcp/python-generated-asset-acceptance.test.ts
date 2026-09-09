@@ -17,6 +17,7 @@ const OBJECT_PATH = `33333333-3333-4333-8333-333333333333/${PROJECT_ID}/python-c
 const SHA256 = '8cae20a8288f46ba7a531c0568a1f7547933433adfebbe955b7877bf80b0a5b9';
 const MCP_URL = 'https://mcp.example.test/functions/v1/mcp';
 const UPLOAD_URL = 'https://storage.example.test/upload?token=signed-secret';
+const ACCEPTANCE_USER_ID = OBJECT_PATH.slice(0, OBJECT_PATH.indexOf('/'));
 
 // A complete IHDR-shaped fixture is sufficient because upload and metadata inspection are external here.
 const GENERATED_PNG = Uint8Array.from([
@@ -106,7 +107,7 @@ function registrationStructuredContent(reused: boolean) {
         sha256: SHA256,
         width: 128,
         height: 128,
-        hasTransparency: true,
+        hasTransparency: false,
         fileSize: GENERATED_PNG.length,
         mimeType: 'image/png',
         createdAt: '2026-09-10T00:00:00.000Z',
@@ -117,23 +118,26 @@ function registrationStructuredContent(reused: boolean) {
 }
 
 function acceptanceAdmin(deletedRows: string[], deletedObjects: string[]): AcceptanceAdmin {
+  const row = {
+    id: ASSET_ID,
+    project_id: PROJECT_ID,
+    created_by: ACCEPTANCE_USER_ID,
+    name: 'python-campus.png',
+    category: 'map',
+    status: 'ready',
+    mime_type: 'image/png',
+    storage_path: OBJECT_PATH,
+    sha256: SHA256,
+    width: 128,
+    height: 128,
+    has_transparency: false,
+    file_size: GENERATED_PNG.length,
+    created_at: '2026-09-10T00:00:00.000Z',
+    updated_at: '2026-09-10T00:00:00.000Z',
+  };
   return {
-    readAsset: async () => ({
-      id: ASSET_ID,
-      project_id: PROJECT_ID,
-      name: 'python-campus.png',
-      category: 'map',
-      status: 'ready',
-      mime_type: 'image/png',
-      storage_path: OBJECT_PATH,
-      sha256: SHA256,
-      width: 128,
-      height: 128,
-      has_transparency: true,
-      file_size: GENERATED_PNG.length,
-      created_at: '2026-09-10T00:00:00.000Z',
-      updated_at: '2026-09-10T00:00:00.000Z',
-    }),
+    readAsset: async () => row,
+    findAssets: async () => [row],
     aggregateAssets: async () => [{
       id: `manual:${ASSET_ID}`,
       projectId: PROJECT_ID,
@@ -274,7 +278,7 @@ describe('Python-generated project asset acceptance', () => {
               sha256: SHA256,
               width: 128,
               height: 128,
-              hasTransparency: true,
+              hasTransparency: false,
               fileSize: GENERATED_PNG.length,
               mimeType: 'image/png',
               createdAt: '2026-09-10T00:00:00.000Z',
@@ -289,6 +293,7 @@ describe('Python-generated project asset acceptance', () => {
     const row = {
       id: ASSET_ID,
       project_id: PROJECT_ID,
+      created_by: ACCEPTANCE_USER_ID,
       name: 'python-campus.png',
       category: 'map',
       status: 'ready',
@@ -297,7 +302,7 @@ describe('Python-generated project asset acceptance', () => {
       sha256: SHA256,
       width: 128,
       height: 128,
-      has_transparency: true,
+      has_transparency: false,
       file_size: GENERATED_PNG.length,
       created_at: '2026-09-10T00:00:00.000Z',
       updated_at: '2026-09-10T00:00:00.000Z',
@@ -307,6 +312,7 @@ describe('Python-generated project asset acceptance', () => {
         order.push('authoritative database read-back');
         return row;
       },
+      findAssets: async () => [row],
       aggregateAssets: async () => {
         order.push('Assets aggregation');
         return [{
@@ -428,6 +434,7 @@ describe('Python-generated project asset acceptance', () => {
     const deletedObjects: string[] = [];
     const admin: AcceptanceAdmin = {
       readAsset: async () => null,
+      findAssets: async () => [],
       aggregateAssets: async () => [],
       deleteAsset: async () => undefined,
       deleteObject: async storagePath => {
@@ -545,6 +552,150 @@ describe('Python-generated project asset acceptance', () => {
     expect(completionArguments[1]).toBe(completionArguments[0]);
     expect(deletedRows).toEqual([`${ASSET_ID}:${PROJECT_ID}:${OBJECT_PATH}`]);
     expect(deletedObjects).toEqual([OBJECT_PATH]);
+  });
+
+  it('cleans the exact committed row and object after both completion responses are lost', async () => {
+    const completionArguments: string[] = [];
+    const deletedRows: string[] = [];
+    const deletedObjects: string[] = [];
+    let lookupCount = 0;
+    const row = {
+      id: ASSET_ID,
+      project_id: PROJECT_ID,
+      created_by: ACCEPTANCE_USER_ID,
+      name: 'python-campus.png',
+      category: 'map',
+      status: 'ready',
+      mime_type: 'image/png',
+      storage_path: OBJECT_PATH,
+      sha256: SHA256,
+      width: 128,
+      height: 128,
+      has_transparency: false,
+      file_size: GENERATED_PNG.length,
+      created_at: '2026-09-10T00:00:00.000Z',
+      updated_at: '2026-09-10T00:00:00.000Z',
+    };
+    const fetchMock = jest.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === UPLOAD_URL) return new Response(null, { status: 200 });
+      const message = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params?: { name?: string; arguments?: Record<string, unknown> };
+      };
+      const prelude = preparedFlowResponse(message);
+      if (prelude) return prelude;
+      if (message.params?.name === 'complete_project_game_asset_uploads') {
+        completionArguments.push(JSON.stringify(message.params.arguments));
+        throw new Error('response lost after registration committed');
+      }
+      throw new Error(`Unexpected MCP call: ${message.method}`);
+    });
+    const admin = {
+      readAsset: async () => null,
+      findAssets: async (projectId: string, storagePath: string) => {
+        lookupCount += 1;
+        expect({ projectId, storagePath }).toEqual({ projectId: PROJECT_ID, storagePath: OBJECT_PATH });
+        return [row];
+      },
+      aggregateAssets: async () => [],
+      deleteAsset: async (target: { assetId: string; projectId: string; storagePath: string }) => {
+        deletedRows.push(`${target.assetId}:${target.projectId}:${target.storagePath}`);
+      },
+      deleteObject: async (storagePath: string) => {
+        deletedObjects.push(storagePath);
+      },
+    };
+
+    const evidence = await runAcceptance({
+      mcpUrl: MCP_URL,
+      accessToken: 'mcp-access-secret',
+      projectId: PROJECT_ID,
+      supabaseUrl: 'https://project.supabase.co',
+      serviceRoleKey: 'service-role-secret',
+    }, {
+      fetchImpl: fetchMock as typeof fetch,
+      pythonRunner: async (_executable, args) => writeFile(args[2], GENERATED_PNG),
+      admin,
+    });
+
+    expect(evidence.passed).toBe(false);
+    expect(completionArguments).toHaveLength(2);
+    expect(completionArguments[1]).toBe(completionArguments[0]);
+    expect(lookupCount).toBe(1);
+    expect(deletedRows).toEqual([`${ASSET_ID}:${PROJECT_ID}:${OBJECT_PATH}`]);
+    expect(deletedObjects).toEqual([OBJECT_PATH]);
+    expect(evidence.cleanup).toEqual({
+      registryRowDeleted: true,
+      storageObjectDeleted: true,
+      temporaryDirectoryRemoved: true,
+    });
+  });
+
+  it('retains the object when post-registration lookup metadata is ambiguous', async () => {
+    const deletedRows: string[] = [];
+    const deletedObjects: string[] = [];
+    const fetchMock = jest.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === UPLOAD_URL) return new Response(null, { status: 200 });
+      const message = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params?: { name?: string };
+      };
+      const prelude = preparedFlowResponse(message);
+      if (prelude) return prelude;
+      if (message.params?.name === 'complete_project_game_asset_uploads') {
+        throw new Error('response lost after registration may have committed');
+      }
+      throw new Error(`Unexpected MCP call: ${message.method}`);
+    });
+    const admin = {
+      readAsset: async () => null,
+      findAssets: async () => [{
+        id: ASSET_ID,
+        project_id: PROJECT_ID,
+        created_by: ACCEPTANCE_USER_ID,
+        name: 'python-campus.png',
+        category: 'map',
+        status: 'ready',
+        mime_type: 'image/png',
+        storage_path: OBJECT_PATH,
+        sha256: '0'.repeat(64),
+        width: 128,
+        height: 128,
+        has_transparency: false,
+        file_size: GENERATED_PNG.length,
+      }],
+      aggregateAssets: async () => [],
+      deleteAsset: async (target: { assetId: string; projectId: string; storagePath: string }) => {
+        deletedRows.push(`${target.assetId}:${target.projectId}:${target.storagePath}`);
+      },
+      deleteObject: async (storagePath: string) => {
+        deletedObjects.push(storagePath);
+      },
+    };
+
+    const evidence = await runAcceptance({
+      mcpUrl: MCP_URL,
+      accessToken: 'mcp-access-secret',
+      projectId: PROJECT_ID,
+      supabaseUrl: 'https://project.supabase.co',
+      serviceRoleKey: 'service-role-secret',
+    }, {
+      fetchImpl: fetchMock as typeof fetch,
+      pythonRunner: async (_executable, args) => writeFile(args[2], GENERATED_PNG),
+      admin,
+    });
+
+    expect(evidence.passed).toBe(false);
+    expect(deletedRows).toEqual([]);
+    expect(deletedObjects).toEqual([]);
+    expect(evidence.cleanup).toEqual({
+      registryRowDeleted: false,
+      storageObjectDeleted: false,
+      temporaryDirectoryRemoved: true,
+    });
+    expect(JSON.stringify(evidence.errors)).toContain('registry lookup');
   });
 
   it('rejects a prepared upload method other than exactly PUT', async () => {
