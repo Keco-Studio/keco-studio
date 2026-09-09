@@ -203,6 +203,7 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
           <td key={property.id} className={styles.editCell}>
             <Input
               type="text"
+              translate="no"
               value={newRowData[property.key] || ''}
               onChange={(e) => {
                 let value = e.target.value;
@@ -256,4 +257,3 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
     </>
   );
 };
-

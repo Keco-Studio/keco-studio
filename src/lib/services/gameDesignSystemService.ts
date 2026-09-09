@@ -802,6 +802,20 @@ export async function getGameDesignSystemGenerationJob(supabase: SupabaseClient,
   return (data as GameDesignSystemGenerationJob | null) ?? null;
 }
 
+export async function findGameDesignSystemGenerationJobByIdempotencyKey(
+  supabase: SupabaseClient,
+  userId: string,
+  idempotencyKey: string,
+): Promise<GameDesignSystemGenerationJob | null> {
+  const { data, error } = await supabase.from('game_design_system_generation_jobs')
+    .select(JOB_COLUMNS)
+    .eq('owner_id', userId)
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as GameDesignSystemGenerationJob | null) ?? null;
+}
+
 export async function claimGameDesignSystemGenerationJob(
   serviceClient: SupabaseClient,
   workerId: string,

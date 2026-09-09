@@ -44,6 +44,7 @@ export function CellEditor({
         ref={editingCellRef}
         className={`${styles.cellText} ${styles.cellTextExpanded}`}
         contentEditable
+        translate="no"
         suppressContentEditableWarning
         onMouseDown={(e) => {
           // Keep mousedown inside the editor so cell drag-select (td onMouseDown)
@@ -58,6 +59,10 @@ export function CellEditor({
         onBlur={(e) => {
           if (!isComposingRef.current) {
             const newValue = e.currentTarget.textContent || '';
+            if (newValue !== lastValidValueRef.current) {
+              e.currentTarget.textContent = lastValidValueRef.current;
+              return;
+            }
             handleSaveEditedCell(newValue);
           }
         }}

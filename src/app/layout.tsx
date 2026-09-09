@@ -8,6 +8,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Keco Studio',
   description: 'Collaborative game design workspace',
+  other: { google: 'notranslate' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

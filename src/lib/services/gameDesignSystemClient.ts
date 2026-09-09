@@ -33,7 +33,8 @@ async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = new Error(
       typeof payload?.error === 'string' ? payload.error : `Request failed (${response.status})`,
-    ) as Error & { code?: string };
+    ) as Error & { code?: string; status?: number };
+    error.status = response.status;
     if (typeof payload?.code === 'string') error.code = payload.code;
     throw error;
   }

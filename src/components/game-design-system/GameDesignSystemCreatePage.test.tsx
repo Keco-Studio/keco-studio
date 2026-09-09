@@ -52,6 +52,7 @@ async function continueToReview(user: ReturnType<typeof userEvent.setup>, { fill
 describe('GameDesignSystemCreatePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.sessionStorage.clear();
     global.fetch = jest.fn(async () => ({
       ok: true,
       json: async () => [{ id: '11111111-1111-4111-8111-111111111111', name: 'Project A' }],
