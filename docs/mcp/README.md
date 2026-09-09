@@ -170,6 +170,41 @@ image field: it returns the verified image object for that table field and does
 not register a project Asset. Provider-managed map, character, and animation
 assets use their own managed workflows and stay outside this completion path.
 
+#### Python Asset Live Acceptance
+
+Run the Python-generated asset acceptance only after the project asset
+registration migration and current MCP Edge Function have been deployed to an
+explicitly approved environment. Select a disposable writable project in that
+environment; never point the acceptance script at a shared endpoint or project
+implicitly.
+
+The invocation requires `KECO_ACCEPTANCE_MCP_URL` and
+`KECO_ACCEPTANCE_PROJECT_ID` to select the deployment and project,
+`MCP_ACCESS_TOKEN` for MCP requests, and `NEXT_PUBLIC_SUPABASE_URL` plus
+`SUPABASE_SERVICE_ROLE_KEY` for acceptance-only authoritative read-back and
+cleanup:
+
+```bash
+node --env-file=.env.local --import tsx scripts/accept-python-generated-asset-writeback.ts \
+  --mcp-url "$KECO_ACCEPTANCE_MCP_URL" \
+  --project-id "$KECO_ACCEPTANCE_PROJECT_ID" \
+  --output /tmp/keco-python-asset-writeback-evidence.json
+```
+
+The evidence file is sanitized and contains only acceptance status, project and
+asset IDs, the Keco object path, SHA-256, dimensions, counts, timestamps, and
+cleanup outcomes. It never contains credentials, signed URLs, upload headers,
+Python source, raw bytes, Base64, public URLs, or local temporary paths. The MCP
+token is used only for MCP requests, and the service-role credential is used
+only for the database read-back, Assets aggregation, and cleanup. The script
+removes only the registry row and storage object created by that run, plus its
+own temporary directory; any cleanup failure makes the acceptance fail.
+
+If registration has an unknown outcome after the PUT, retry
+`complete_project_game_asset_uploads` with the same verified `image.path` and
+identical category before preparing a new target or uploading new bytes. A
+successful exact retry returns the original asset ID with `reused: true`.
+
 ### Single Image
 
 1. Ensure the target table has an `image` field, either in
