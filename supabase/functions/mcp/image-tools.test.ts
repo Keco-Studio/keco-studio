@@ -1,17 +1,22 @@
 import { assertEquals, assertMatch } from "@std/assert";
 import type { ProjectMcpRequestContext } from "./context.ts";
+import { MCP_ERROR_CODES } from "./errors.ts";
 import { handleProtocolRequest } from "./server.ts";
 
+const USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const UPLOAD_PATH =
-  `user-1/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-hero.png`;
+  `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-hero.png`;
 
 type StorageCall = { name: string; arguments: unknown[] };
 
-function pngBytes(size = 68): Uint8Array {
-  const bytes = new Uint8Array(size);
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  return bytes;
+function pngBytes(): Uint8Array {
+  return Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
 }
 
 function imageContext(
@@ -22,7 +27,12 @@ function imageContext(
     createdAt: "2026-07-30T08:00:00.000Z",
   },
   content: Uint8Array = pngBytes(),
-  options: { failPreparationFor?: string; missingPaths?: string[] } = {},
+  options: {
+    failPreparationFor?: string;
+    missingPaths?: string[];
+    registrationErrorCode?: string;
+    reused?: boolean;
+  } = {},
 ): ProjectMcpRequestContext {
   const bucket = {
     async createSignedUploadUrl(...args: unknown[]) {
@@ -71,7 +81,7 @@ function imageContext(
   return {
     mode: "project",
     requestId: crypto.randomUUID(),
-    userId: "user-1",
+    userId: USER_ID,
     projectId: PROJECT_ID,
     role: "editor",
     clientId: null,
@@ -83,7 +93,7 @@ function imageContext(
           return bucket;
         },
       },
-      async rpc(name: string) {
+      async rpc(name: string, ...arguments_: unknown[]) {
         if (name === "mcp_begin_operation") {
           return {
             data: [{
@@ -96,6 +106,40 @@ function imageContext(
         }
         if (name === "mcp_complete_operation") {
           return { data: null, error: null };
+        }
+        if (name === "mcp_register_project_game_asset") {
+          storageCalls.push({ name, arguments: arguments_ });
+          if (options.registrationErrorCode) {
+            return {
+              data: null,
+              error: {
+                code: options.registrationErrorCode,
+                message: "provider detail",
+              },
+            };
+          }
+          const input = arguments_[0] as Record<string, unknown>;
+          return {
+            data: [{
+              id: "33333333-3333-4333-8333-333333333333",
+              project_id: PROJECT_ID,
+              created_by: USER_ID,
+              name: input.p_name,
+              category: input.p_category,
+              status: "ready",
+              mime_type: input.p_mime_type,
+              storage_path: input.p_storage_path,
+              sha256: input.p_sha256,
+              width: input.p_width,
+              height: input.p_height,
+              has_transparency: input.p_has_transparency,
+              file_size: input.p_file_size,
+              created_at: "2026-09-09T00:00:00.000Z",
+              updated_at: "2026-09-09T00:00:00.000Z",
+              reused: options.reused ?? false,
+            }],
+            error: null,
+          };
         }
         throw new Error("Unexpected RPC: " + name);
       },
@@ -163,7 +207,7 @@ Deno.test("create_image_upload returns a project-scoped signed PUT target", asyn
   assertEquals(structured.image.fileType, "image/png");
   assertMatch(
     String(structured.image.path),
-    new RegExp(`^user-1/${PROJECT_ID}/[0-9a-f-]{36}-hero\\.png$`),
+    new RegExp(`^${USER_ID}/${PROJECT_ID}/[0-9a-f-]{36}-hero\\.png$`),
   );
   assertEquals(calls[0], {
     name: "from",
@@ -283,7 +327,7 @@ Deno.test("complete_image_upload rejects paths outside the current project", asy
   const calls: StorageCall[] = [];
   const message = await callTool(imageContext(calls), "complete_image_upload", {
     path:
-      "user-1/33333333-3333-4333-8333-333333333333/22222222-2222-4222-8222-222222222222-hero.png",
+      `${USER_ID}/33333333-3333-4333-8333-333333333333/22222222-2222-4222-8222-222222222222-hero.png`,
   });
 
   assertEquals(message.result?.isError, true);
@@ -530,4 +574,349 @@ Deno.test("maximum-length Unicode file names remain completable", async () => {
     }).image.fileName,
     fileName,
   );
+});
+
+Deno.test("complete_project_game_asset_uploads verifies and registers ordered items", async () => {
+  const calls: StorageCall[] = [];
+  const secondPath = UPLOAD_PATH.replace(
+    "22222222-2222-4222-8222-222222222222-hero.png",
+    "44444444-4444-4444-8444-444444444444-second.png",
+  );
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    {
+      items: [
+        { path: UPLOAD_PATH, category: "map" },
+        { path: secondPath },
+      ],
+    },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const result = message.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+    items: Array<{
+      index: number;
+      ok: boolean;
+      reused: boolean;
+      image: { path: string };
+      asset: Record<string, unknown>;
+    }>;
+  };
+  assertEquals(result.completedCount, 2);
+  assertEquals(result.failedCount, 0);
+  assertEquals(result.items.map((item) => item.index), [0, 1]);
+  assertEquals(result.items.map((item) => item.asset.category), [
+    "map",
+    "media",
+  ]);
+  assertEquals(
+    result.items.every((item) =>
+      typeof item.asset.sha256 === "string" &&
+      /^[a-f0-9]{64}$/.test(item.asset.sha256)
+    ),
+    true,
+  );
+  assertEquals(result.items[0].asset, {
+    id: "33333333-3333-4333-8333-333333333333",
+    projectId: PROJECT_ID,
+    name: "hero.png",
+    category: "map",
+    status: "ready",
+    storagePath: UPLOAD_PATH,
+    sha256: result.items[0].asset.sha256,
+    width: 1,
+    height: 1,
+    hasTransparency: false,
+    fileSize: 68,
+    mimeType: "image/png",
+    createdAt: "2026-09-09T00:00:00.000Z",
+    updatedAt: "2026-09-09T00:00:00.000Z",
+  });
+  assertEquals(result.items.map((item) => item.image.path), [
+    UPLOAD_PATH,
+    secondPath,
+  ]);
+  const registrations = calls.filter((call) =>
+    call.name === "mcp_register_project_game_asset"
+  );
+  assertEquals(registrations.length, 2);
+  assertEquals(
+    registrations.map((call) =>
+      (call.arguments[0] as Record<string, unknown>).p_category
+    ),
+    ["map", "media"],
+  );
+});
+
+Deno.test("complete_project_game_asset_uploads rejects an empty batch", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [] },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("complete_project_game_asset_uploads rejects invalid categories", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH, category: "animation" }] },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("complete_project_game_asset_uploads rejects duplicate paths", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }, { path: UPLOAD_PATH }] },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("complete_project_game_asset_uploads rejects local paths structurally", async () => {
+  for (const path of ["/tmp/hero.png", "C:\\tmp\\hero.png"]) {
+    const calls: StorageCall[] = [];
+    const message = await callTool(
+      imageContext(calls),
+      "complete_project_game_asset_uploads",
+      { items: [{ path }] },
+    );
+
+    assertEquals(message.result?.isError, true);
+    assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+    assertEquals(calls.length, 0);
+  }
+});
+
+Deno.test("complete_project_game_asset_uploads rejects file URIs structurally", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: "file:///tmp/hero.png" }] },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("complete_project_game_asset_uploads rejects public URLs structurally", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    {
+      items: [{
+        path:
+          `https://storage.example/object/public/library-media-files/${UPLOAD_PATH}`,
+      }],
+    },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("complete_project_game_asset_uploads rejects signed URLs structurally", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    {
+      items: [{
+        path: `https://storage.example/upload/${UPLOAD_PATH}?token=signed`,
+      }],
+    },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /Invalid arguments for tool/);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("project_game_asset registration conflict is a public MCP error code", () => {
+  assertEquals(
+    (MCP_ERROR_CODES as readonly string[]).includes(
+      "ASSET_REGISTRATION_CONFLICT",
+    ),
+    true,
+  );
+});
+
+Deno.test("complete_project_game_asset_uploads keeps missing objects item scoped", async () => {
+  const calls: StorageCall[] = [];
+  const missingPath = UPLOAD_PATH.replace(
+    "22222222-2222-4222-8222-222222222222-hero.png",
+    "44444444-4444-4444-8444-444444444444-missing.png",
+  );
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), {
+      missingPaths: [missingPath],
+    }),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }, { path: missingPath }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const result = message.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+    items: Array<Record<string, unknown>>;
+  };
+  assertEquals(result.completedCount, 1);
+  assertEquals(result.failedCount, 1);
+  assertEquals(result.items.map((item) => item.ok), [true, false]);
+  assertMatch(JSON.stringify(result.items[1]), /IMAGE_UPLOAD_NOT_FOUND/);
+});
+
+Deno.test("complete_project_game_asset_uploads normalizes oversized item errors", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, {
+      size: 5 * 1024 * 1024 + 1,
+      contentType: "image/png",
+      createdAt: "2026-07-30T08:00:00.000Z",
+    }),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  assertMatch(JSON.stringify(message.result), /FIELD_VALIDATION_FAILED/);
+  assertEquals(
+    JSON.stringify(message.result).includes("PAYLOAD_TOO_LARGE"),
+    false,
+  );
+  assertEquals(calls.some((call) => call.name === "remove"), true);
+});
+
+Deno.test("complete_project_game_asset_uploads maps KA401 to PROJECT_WRITE_FORBIDDEN", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), {
+      registrationErrorCode: "KA401",
+    }),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  assertMatch(JSON.stringify(message.result), /PROJECT_WRITE_FORBIDDEN/);
+  assertEquals(
+    JSON.stringify(message.result).includes("provider detail"),
+    false,
+  );
+});
+
+Deno.test("complete_project_game_asset_uploads maps KA409 to ASSET_REGISTRATION_CONFLICT", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), {
+      registrationErrorCode: "KA409",
+    }),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  assertMatch(JSON.stringify(message.result), /ASSET_REGISTRATION_CONFLICT/);
+});
+
+Deno.test("complete_project_game_asset_uploads propagates exact retry reuse", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), { reused: true }),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const result = message.result?.structuredContent as {
+    items: Array<{ reused: boolean; asset: { id: string } }>;
+  };
+  assertEquals(result.items[0].reused, true);
+  assertEquals(
+    result.items[0].asset.id,
+    "33333333-3333-4333-8333-333333333333",
+  );
+});
+
+Deno.test("complete_project_game_asset_uploads preserves Unicode file names", async () => {
+  const calls: StorageCall[] = [];
+  const fileName = "\u82f9\u679c.png";
+  const prepared = await callTool(
+    imageContext(calls),
+    "create_image_upload",
+    { fileName, fileType: "image/png", fileSize: 68 },
+  );
+  const path = (prepared.result?.structuredContent as {
+    image: { path: string };
+  }).image.path;
+  const completed = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path }] },
+  );
+
+  assertEquals(completed.result?.isError, undefined);
+  const item = (completed.result?.structuredContent as {
+    items: Array<{ image: { fileName: string }; asset: { name: string } }>;
+  }).items[0];
+  assertEquals(item.image.fileName, fileName);
+  assertEquals(item.asset.name, fileName);
+});
+
+Deno.test("complete_project_game_asset_uploads omits upload credentials and bytes", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: UPLOAD_PATH }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const result = JSON.stringify(message.result?.structuredContent);
+  assertEquals(
+    result.includes("https://storage.example/upload?token=signed"),
+    false,
+  );
+  assertEquals(result.includes("headers"), false);
+  assertEquals(result.includes("bytes"), false);
+  assertEquals(result.includes("iVBOR"), false);
+});
+
+Deno.test("complete_project_game_asset_uploads leaves actor and project matching to verification", async () => {
+  const calls: StorageCall[] = [];
+  const otherActorPath = UPLOAD_PATH.replace(
+    USER_ID,
+    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  );
+  const message = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path: otherActorPath }] },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  assertMatch(JSON.stringify(message.result), /FIELD_VALIDATION_FAILED/);
+  assertEquals(calls.length, 0);
 });

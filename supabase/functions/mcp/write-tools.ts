@@ -13,6 +13,7 @@ import { asPublicMcpError, McpDomainError } from "./errors.ts";
 import { MAX_DOCUMENT_MARKDOWN_BYTES, utf8ByteLength } from "./limits.ts";
 import { scheduleMcpReindex } from "./reindex.ts";
 import { measureMcpPhase } from "./telemetry.ts";
+import { inspectVerifiedImage } from "./image-metadata.ts";
 
 const uuid = z.string().uuid();
 const IMAGE_BUCKET = "library-media-files";
@@ -32,6 +33,29 @@ const imageFileType = z.enum([
   "image/webp",
   "image/svg+xml",
 ]);
+const gameAssetCategory = z.enum([
+  "character",
+  "icon",
+  "ui",
+  "map",
+  "prop",
+  "vfx",
+  "spritesheet",
+  "media",
+]);
+const UUID_PATH_SEGMENT =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const ENCODED_IMAGE_FILE_NAME =
+  "(?:[A-Za-z0-9_][A-Za-z0-9._-]*|~h(?:[0-9a-f]{2})+|~(?:%[0-9a-f]{2}|[A-Za-z0-9._~-])+)";
+const preparedImagePathPattern = new RegExp(
+  `^${UUID_PATH_SEGMENT}/${UUID_PATH_SEGMENT}/${UUID_PATH_SEGMENT}-${ENCODED_IMAGE_FILE_NAME}$`,
+  "i",
+);
+const preparedImagePathSchema = z.string().min(1).max(MAX_IMAGE_PATH_CHARS)
+  .regex(
+    preparedImagePathPattern,
+    "path must be a prepared Keco image.path, not a local path, file: URI, public URL, or signed URL.",
+  );
 const imageFileShape = {
   fileName: z.string().trim().min(1).max(200).refine(
     (value) => !/[\\/\u0000-\u001f]/.test(value),
@@ -228,14 +252,19 @@ function imagePathFileName(fileName: string): string {
   // sanitizeImageFileName replaces a literal tilde in an ASCII source name.
   return /^[\x20-\x7e]+$/.test(fileName)
     ? sanitizeImageFileName(fileName)
-    : `~h${Array.from(new TextEncoder().encode(fileName), (byte) =>
-      byte.toString(16).padStart(2, "0")).join("")}`;
+    : `~h${
+      Array.from(
+        new TextEncoder().encode(fileName),
+        (byte) => byte.toString(16).padStart(2, "0"),
+      ).join("")
+    }`;
 }
 
 function uploadedImageFileName(path: string): string | null {
   const leaf = path.slice(path.lastIndexOf("/") + 1);
-  const stored = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-(.+)$/i
-    .exec(leaf)?.[1];
+  const stored =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-(.+)$/i
+      .exec(leaf)?.[1];
   if (!stored) return null;
   if (!stored.startsWith("~")) return stored;
   if (stored.startsWith("~h")) {
@@ -331,6 +360,24 @@ type UploadDescriptor = {
 };
 type ProvisionalImage = ImageFileInput & { url: string; path: string };
 type VerifiedImage = ProvisionalImage & { uploadedAt: string };
+type VerifiedUpload = { image: VerifiedImage; bytes: Uint8Array };
+type GameAssetCategory = z.infer<typeof gameAssetCategory>;
+type ProjectGameAssetResult = {
+  id: string;
+  projectId: string;
+  name: string;
+  category: GameAssetCategory;
+  status: "ready";
+  storagePath: string;
+  sha256: string;
+  width: number | null;
+  height: number | null;
+  hasTransparency: boolean | null;
+  fileSize: number;
+  mimeType: ImageFileInput["fileType"];
+  createdAt: string;
+  updatedAt: string;
+};
 
 async function prepareImageUpload(
   context: ProjectMcpRequestContext,
@@ -380,10 +427,10 @@ async function prepareImageUpload(
   };
 }
 
-async function completeImageUpload(
+async function verifyImageUpload(
   context: ProjectMcpRequestContext,
   path: string,
-): Promise<VerifiedImage> {
+): Promise<VerifiedUpload> {
   const expectedPrefix = `${context.userId}/${context.projectId}/`;
   const fileName = uploadedImageFileName(path);
   const relativePath = path.startsWith(expectedPrefix)
@@ -481,13 +528,115 @@ async function completeImageUpload(
     );
   }
   return {
-    url: publicUrl,
-    path,
-    fileName,
-    fileSize,
-    fileType: rawFileType as ImageFileInput["fileType"],
-    uploadedAt,
+    image: {
+      url: publicUrl,
+      path,
+      fileName,
+      fileSize,
+      fileType: rawFileType as ImageFileInput["fileType"],
+      uploadedAt,
+    },
+    bytes: imageBytes,
   };
+}
+
+async function completeImageUpload(
+  context: ProjectMcpRequestContext,
+  path: string,
+): Promise<VerifiedImage> {
+  return (await verifyImageUpload(context, path)).image;
+}
+
+function normalizeRegisteredAsset(
+  row: Record<string, unknown> | null,
+): { reused: boolean; asset: ProjectGameAssetResult } {
+  const category = gameAssetCategory.safeParse(row?.category);
+  const mimeType = imageFileType.safeParse(row?.mime_type);
+  const width = row?.width === null ? null : Number(row?.width);
+  const height = row?.height === null ? null : Number(row?.height);
+  const fileSize = Number(row?.file_size);
+  if (
+    !row || typeof row.id !== "string" ||
+    typeof row.project_id !== "string" || typeof row.name !== "string" ||
+    row.status !== "ready" || typeof row.storage_path !== "string" ||
+    typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(row.sha256) ||
+    !category.success || !mimeType.success ||
+    !(width === null || Number.isInteger(width) && width > 0) ||
+    !(height === null || Number.isInteger(height) && height > 0) ||
+    !(row.has_transparency === null ||
+      typeof row.has_transparency === "boolean") ||
+    !Number.isInteger(fileSize) || fileSize < 1 ||
+    typeof row.created_at !== "string" || typeof row.updated_at !== "string"
+  ) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The project asset could not be registered.",
+    );
+  }
+  return {
+    reused: row.reused === true,
+    asset: {
+      id: row.id,
+      projectId: row.project_id,
+      name: row.name,
+      category: category.data,
+      status: "ready",
+      storagePath: row.storage_path,
+      sha256: row.sha256,
+      width,
+      height,
+      hasTransparency: row.has_transparency,
+      fileSize,
+      mimeType: mimeType.data,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    },
+  };
+}
+
+async function registerProjectGameAsset(
+  context: ProjectMcpRequestContext,
+  image: VerifiedImage,
+  bytes: Uint8Array,
+  category: GameAssetCategory,
+): Promise<{ reused: boolean; asset: ProjectGameAssetResult }> {
+  const metadata = await inspectVerifiedImage(image.fileType, bytes);
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () =>
+      await context.supabase.rpc("mcp_register_project_game_asset", {
+        p_project_id: context.projectId,
+        p_name: image.fileName,
+        p_category: category,
+        p_mime_type: image.fileType,
+        p_storage_path: image.path,
+        p_sha256: metadata.sha256,
+        p_width: metadata.width,
+        p_height: metadata.height,
+        p_has_transparency: metadata.hasTransparency,
+        p_file_size: image.fileSize,
+      }),
+  );
+  if (error?.code === "KA401" || error?.code === "42501") {
+    throw new McpDomainError(
+      "PROJECT_WRITE_FORBIDDEN",
+      "Write access is not available for this project.",
+    );
+  }
+  if (error?.code === "KA409" || error?.code === "23505") {
+    throw new McpDomainError(
+      "ASSET_REGISTRATION_CONFLICT",
+      "The uploaded object is already registered with different metadata.",
+    );
+  }
+  if (error) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The project asset could not be registered.",
+    );
+  }
+  return normalizeRegisteredAsset(firstRow(data));
 }
 
 async function createFolder(
@@ -1355,9 +1504,9 @@ function registerWriteToolSet(
     ...projectShape,
     paths: z.array(z.string().trim().min(1).max(MAX_IMAGE_PATH_CHARS)).min(1)
       .max(20).refine(
-      (paths) => new Set(paths).size === paths.length,
-      "paths must be unique.",
-    ),
+        (paths) => new Set(paths).size === paths.length,
+        "paths must be unique.",
+      ),
   }).strict();
   server.registerTool(
     "complete_image_uploads",
@@ -1395,6 +1544,71 @@ function registerWriteToolSet(
         }
         const failedCount = items.filter((item) => !item.ok).length;
         return toolSuccess("Image uploads completed.", {
+          ok: true,
+          completedCount: items.length - failedCount,
+          failedCount,
+          items,
+        });
+      }),
+  );
+
+  const completeProjectGameAssetUploadsSchema = z.object({
+    ...projectShape,
+    items: z.array(
+      z.object({
+        path: preparedImagePathSchema,
+        category: gameAssetCategory.default("media"),
+      }).strict(),
+    ).min(1).max(20).refine(
+      (items) => new Set(items.map((item) => item.path)).size === items.length,
+      "item paths must be unique.",
+    ),
+  }).strict();
+  server.registerTool(
+    "complete_project_game_asset_uploads",
+    {
+      description:
+        "Verify and register 1-20 prepared images in project Assets after their exact bytes were PUT, preserving order. Every path must be an image.path returned by a Keco preparation tool for this user and project. Category defaults to media. Runtime failures are item-scoped; failedCount signals partial failure. Exact retries return the existing asset with reused: true. Signed upload URLs, headers, and bytes are never returned.",
+      inputSchema: completeProjectGameAssetUploadsSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof completeProjectGameAssetUploadsSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        const items = [];
+        for (const [index, item] of input.items.entries()) {
+          try {
+            const verified = await verifyImageUpload(context, item.path);
+            const registered = await registerProjectGameAsset(
+              context,
+              verified.image,
+              verified.bytes,
+              item.category,
+            );
+            items.push({
+              index,
+              ok: true as const,
+              path: item.path,
+              reused: registered.reused,
+              image: verified.image,
+              asset: registered.asset,
+            });
+          } catch (error) {
+            const safe = asPublicMcpError(error);
+            items.push({
+              index,
+              ok: false as const,
+              path: item.path,
+              error: {
+                code: safe.code === "PAYLOAD_TOO_LARGE"
+                  ? "FIELD_VALIDATION_FAILED"
+                  : safe.code,
+                message: safe.message,
+              },
+            });
+          }
+        }
+        const failedCount = items.filter((item) => !item.ok).length;
+        return toolSuccess("Project game asset uploads completed.", {
           ok: true,
           completedCount: items.length - failedCount,
           failedCount,
