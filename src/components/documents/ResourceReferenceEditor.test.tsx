@@ -20,29 +20,29 @@ describe('TableReferenceProjection', () => {
       <TableReferenceProjection
         schema={{
           libraryId: 'library-1',
-          name: '角色表',
+          name: '\u89d2\u8272\u8868',
           href: '/project-1/library-1',
-          fields: [{ id: 'name', label: '名称' }, { id: 'role', label: '身份' }],
-          row: { assetId: 'row-1', name: '林舟', values: { name: '林舟', role: '船长' } },
+          fields: [{ id: 'name', label: '\u540d\u79f0' }, { id: 'role', label: '\u8eab\u4efd' }],
+          row: { assetId: 'row-1', name: '\u6797\u821f', values: { name: '\u6797\u821f', role: '\u8239\u957f' } },
         }}
         references={[{
           key: 'table-row:library-1:row-1:name',
           status: 'available',
-          label: '林舟',
+          label: '\u6797\u821f',
           href: '/project-1/library-1?asset=row-1',
           table: {
             libraryId: 'library-1',
-            name: '角色表',
+            name: '\u89d2\u8272\u8868',
             href: '/project-1/library-1',
-            fields: [{ id: 'name', label: '名称' }, { id: 'role', label: '身份' }],
-            row: { assetId: 'row-1', name: '林舟', values: { name: '林舟', role: '船长' } },
+            fields: [{ id: 'name', label: '\u540d\u79f0' }, { id: 'role', label: '\u8eab\u4efd' }],
+            row: { assetId: 'row-1', name: '\u6797\u821f', values: { name: '\u6797\u821f', role: '\u8239\u957f' } },
           },
         }]}
       />,
     );
 
-    expect(screen.getByRole('link', { name: '角色表' }).getAttribute('href')).toBe('/project-1/library-1');
-    expect(screen.getByText('林舟').closest('a')).toBeNull();
-    expect(screen.getByText('船长').closest('a')).toBeNull();
+    expect(screen.getByRole('link', { name: '\u89d2\u8272\u8868' }).getAttribute('href')).toBe('/project-1/library-1');
+    expect(screen.getByText('\u6797\u821f').closest('a')).toBeNull();
+    expect(screen.getByText('\u8239\u957f').closest('a')).toBeNull();
   });
 });

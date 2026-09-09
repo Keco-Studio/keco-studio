@@ -117,7 +117,7 @@ export function shouldTryBranchPlanner(source: SegmentedStorySource): boolean {
     || segment.kind === 'jump_hint'
   ))) return true;
   const cueCount = source.units.reduce((count, unit) => count + (
-    /\b(?:choose|choice(?:s)?|branch(?:es|ed|ing)?|option(?:s)?|decision(?:s)?|either|if you choose)\b|选择|分支|选项|决定|如果你选择|两条路/i.test(unit.text)
+    /\b(?:choose|choice(?:s)?|branch(?:es|ed|ing)?|option(?:s)?|decision(?:s)?|either|if you choose)\b|\u9009\u62e9|\u5206\u652f|\u9009\u9879|\u51b3\u5b9a|\u5982\u679c\u4f60\u9009\u62e9|\u4e24\u6761\u8def/i.test(unit.text)
       ? 1
       : 0
   ), 0);

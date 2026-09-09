@@ -255,7 +255,7 @@ describe('project GDD generation routes', () => {
   it('uses a Chinese system title when no creative brief overrides the output language', async () => {
     getGameDesignSystemDetail.mockResolvedValueOnce({
       id: SYSTEM_ID,
-      title: '拼图游戏',
+      title: '\u62fc\u56fe\u6e38\u620f',
       migration_status: 'ready',
       versions: [{
         id: VERSION_ID,

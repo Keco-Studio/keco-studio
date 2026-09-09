@@ -302,7 +302,7 @@ describe('professional GDD stages', () => {
     expect(prompt).toMatch(/background|premise|design intent|design philosophy|player experience|player fantasy/i);
     expect(prompt).toMatch(/adaptive|appropriate to the game|choose a title/i);
     expect(prompt).toMatch(/do not use a fixed|without a fixed|not.*fixed template/i);
-    expect(prompt).not.toContain('一、项目概述与设计理念');
+    expect(prompt).not.toContain('\u4e00、\u9879\u76ee\u6982\u8ff0\u4e0e\u8bbe\u8ba1\u7406\u5ff5');
   });
 
   it('repairs a stage when the model demotes planned sections to subsections', async () => {

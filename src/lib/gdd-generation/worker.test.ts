@@ -490,7 +490,7 @@ describe('GDD generation worker', () => {
 
     await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'reviewing' } as GddGenerationJob }, deps)).resolves.toBe('queued');
     expect(reviewV2).toHaveBeenCalled();
-    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'saving', reviewReport: expect.objectContaining({ markdown: '# GDD\n\n## 一、Core\nLoop.' }) }));
+    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'saving', reviewReport: expect.objectContaining({ markdown: '# GDD\n\n## \u4e00、Core\nLoop.' }) }));
     expect(persistV2).not.toHaveBeenCalled();
 
     await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'saving', review_report: { review: report, markdown: '# GDD\n\n## Core\nLoop.', tablePlans: [], dialoguePlans: [] } } as GddGenerationJob }, deps)).resolves.toBe('completed');
@@ -498,7 +498,7 @@ describe('GDD generation worker', () => {
       expect.anything(),
       expect.anything(),
       'worker-1',
-      '# GDD\n\n## 一、Core\nLoop.',
+      '# GDD\n\n## \u4e00、Core\nLoop.',
       report,
       [],
       [],
@@ -513,16 +513,16 @@ describe('GDD generation worker', () => {
       ...job,
       input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN' },
       blueprint: { version: 1, title: 'GDD', sections: [
-        { id: 'overview', title: '雾港概览', stage: 'core', instructions: ['Overview'] },
-        { id: 'loop', title: '核心循环', stage: 'core', instructions: ['Loop'] },
+        { id: 'overview', title: '\u96fe\u6e2f\u6982\u89c8', stage: 'core', instructions: ['Overview'] },
+        { id: 'loop', title: '\u6838\u5fc3\u5faa\u73af', stage: 'core', instructions: ['Loop'] },
       ], invariants: [] },
       section_drafts: [
-        { sectionId: 'overview', stage: 'core', markdown: '## 雾港概览\n\nBackground.\n\n### 设计意图\n\nIntent.' },
-        { sectionId: 'loop', stage: 'core', markdown: '## 核心循环\n\nLoop.' },
+        { sectionId: 'overview', stage: 'core', markdown: '## \u96fe\u6e2f\u6982\u89c8\n\nBackground.\n\n### \u8bbe\u8ba1\u610f\u56fe\n\nIntent.' },
+        { sectionId: 'loop', stage: 'core', markdown: '## \u6838\u5fc3\u5faa\u73af\n\nLoop.' },
       ],
       repair_round: 0,
     } as GddGenerationJob;
-    const reviewV2 = jest.fn(async () => ({ markdown: '# GDD\n\n## 雾港概览\n\nBackground.\n\n### 设计意图\n\nIntent.\n\n## 核心循环\n\nLoop.', review: report, tablePlans: [], tablePlanWarning: null, dialoguePlans: [], dialoguePlanWarning: null }));
+    const reviewV2 = jest.fn(async () => ({ markdown: '# GDD\n\n## \u96fe\u6e2f\u6982\u89c8\n\nBackground.\n\n### \u8bbe\u8ba1\u610f\u56fe\n\nIntent.\n\n## \u6838\u5fc3\u5faa\u73af\n\nLoop.', review: report, tablePlans: [], tablePlanWarning: null, dialoguePlans: [], dialoguePlanWarning: null }));
     const deps = {
       heartbeat: jest.fn(async () => undefined), revalidateContext: jest.fn(async () => undefined),
       generate: jest.fn(async () => generated), generateProfessionalStage: jest.fn() as never, reviewV2: reviewV2 as never,
@@ -534,12 +534,12 @@ describe('GDD generation worker', () => {
 
     expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       nextPhase: 'saving',
-      reviewReport: expect.objectContaining({ markdown: expect.stringContaining('## 一、雾港概览') }),
+      reviewReport: expect.objectContaining({ markdown: expect.stringContaining('## \u4e00、\u96fe\u6e2f\u6982\u89c8') }),
     }));
     const savedReview = (checkpoint.mock.calls[0]?.[1] as { reviewReport?: { markdown?: string } }).reviewReport?.markdown ?? '';
-    expect(savedReview).toContain('## 二、核心循环');
-    expect(savedReview).toContain('### 设计意图');
-    expect(savedReview).not.toContain('## 一、一、雾港概览');
+    expect(savedReview).toContain('## \u4e8c、\u6838\u5fc3\u5faa\u73af');
+    expect(savedReview).toContain('### \u8bbe\u8ba1\u610f\u56fe');
+    expect(savedReview).not.toContain('## \u4e00、\u4e00、\u96fe\u6e2f\u6982\u89c8');
   });
 
   it('aborts a hanging professional stage at the 240-second bounded deadline', async () => {

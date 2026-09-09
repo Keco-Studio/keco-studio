@@ -520,14 +520,14 @@ function professionalCheckpoint(job: GddGenerationJob): ProfessionalCheckpoint {
   };
 }
 
-const chineseChapterNumerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const chineseChapterNumerals = ['', '\u4e00', '\u4e8c', '\u4e09', '\u56db', '\u4e94', '\u516d', '\u4e03', '\u516b', '\u4e5d'];
 
 function chineseChapterNumber(value: number): string {
-  if (value <= 10) return value === 10 ? '十' : chineseChapterNumerals[value]!;
-  if (value < 20) return `十${chineseChapterNumerals[value - 10]}`;
+  if (value <= 10) return value === 10 ? '\u5341' : chineseChapterNumerals[value]!;
+  if (value < 20) return `\u5341${chineseChapterNumerals[value - 10]}`;
   const tens = Math.floor(value / 10);
   const ones = value % 10;
-  return `${chineseChapterNumerals[tens]}十${ones ? chineseChapterNumerals[ones] : ''}`;
+  return `${chineseChapterNumerals[tens]}\u5341${ones ? chineseChapterNumerals[ones] : ''}`;
 }
 
 function numberProfessionalMajorHeadings(markdown: string, language: string): string {
@@ -537,7 +537,7 @@ function numberProfessionalMajorHeadings(markdown: string, language: string): st
     const match = /^##(?!#)[ \t]+(.+?)[ \t]*$/.exec(line);
     if (!match) return line;
     const title = match[1]!.replace(/[ \t]+#+[ \t]*$/, '').trim()
-      .replace(/^(?:[一二三四五六七八九十百千万零〇两]+、|\d+[.)、．][ \t]*)/, '')
+      .replace(/^(?:[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\u96f6〇\u4e24]+、|\d+[.)、．][ \t]*)/, '')
       .trim();
     if (!title) return line;
     chapter += 1;
