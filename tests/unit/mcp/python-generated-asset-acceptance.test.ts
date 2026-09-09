@@ -1,5 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { spawnSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
   inventoryGeneratedPng,
   pythonPixelArtSource,
@@ -30,6 +32,129 @@ function rpcResult(id: number, result: Record<string, unknown>): Response {
 
 function toolResult(id: number, structuredContent: Record<string, unknown>): Response {
   return rpcResult(id, { structuredContent });
+}
+
+function preparedFlowResponse(
+  message: { id: number; method: string; params?: { name?: string } },
+  uploadMethod = 'PUT',
+): Response | undefined {
+  if (message.method === 'initialize') {
+    return rpcResult(message.id, { capabilities: { tools: {} } });
+  }
+  if (message.method === 'tools/list') {
+    return rpcResult(message.id, { tools: [
+      { name: 'list_projects' },
+      { name: 'prepare_image_uploads' },
+      { name: 'complete_project_game_asset_uploads' },
+    ] });
+  }
+  if (message.params?.name === 'list_projects') {
+    return toolResult(message.id, {
+      ok: true,
+      returnedCount: 1,
+      items: [{
+        projectId: PROJECT_ID,
+        name: 'Acceptance project',
+        createdAt: '2026-09-10T00:00:00.000Z',
+        role: 'editor',
+        capabilities: { read: true, create: true, update: true },
+      }],
+    });
+  }
+  if (message.params?.name === 'prepare_image_uploads') {
+    return toolResult(message.id, {
+      ok: true,
+      preparedCount: 1,
+      failedCount: 0,
+      items: [{
+        index: 0,
+        ok: true,
+        file: { fileName: 'python-campus.png', fileType: 'image/png', fileSize: GENERATED_PNG.length },
+        upload: { url: UPLOAD_URL, method: uploadMethod, headers: { 'x-upload-key': 'header-secret' } },
+        image: { path: OBJECT_PATH, fileName: 'python-campus.png' },
+      }],
+    });
+  }
+  return undefined;
+}
+
+function registrationStructuredContent(reused: boolean) {
+  return {
+    ok: true,
+    completedCount: 1,
+    failedCount: 0,
+    items: [{
+      index: 0,
+      ok: true,
+      path: OBJECT_PATH,
+      reused,
+      image: {
+        url: 'https://public.example.test/python-campus.png',
+        path: OBJECT_PATH,
+        fileName: 'python-campus.png',
+        fileSize: GENERATED_PNG.length,
+        fileType: 'image/png',
+        uploadedAt: '2026-09-10T00:00:00.000Z',
+      },
+      asset: {
+        id: ASSET_ID,
+        projectId: PROJECT_ID,
+        name: 'python-campus.png',
+        category: 'map',
+        status: 'ready',
+        storagePath: OBJECT_PATH,
+        sha256: SHA256,
+        width: 128,
+        height: 128,
+        hasTransparency: true,
+        fileSize: GENERATED_PNG.length,
+        mimeType: 'image/png',
+        createdAt: '2026-09-10T00:00:00.000Z',
+        updatedAt: '2026-09-10T00:00:00.000Z',
+      },
+    }],
+  };
+}
+
+function acceptanceAdmin(deletedRows: string[], deletedObjects: string[]): AcceptanceAdmin {
+  return {
+    readAsset: async () => ({
+      id: ASSET_ID,
+      project_id: PROJECT_ID,
+      name: 'python-campus.png',
+      category: 'map',
+      status: 'ready',
+      mime_type: 'image/png',
+      storage_path: OBJECT_PATH,
+      sha256: SHA256,
+      width: 128,
+      height: 128,
+      has_transparency: true,
+      file_size: GENERATED_PNG.length,
+      created_at: '2026-09-10T00:00:00.000Z',
+      updated_at: '2026-09-10T00:00:00.000Z',
+    }),
+    aggregateAssets: async () => [{
+      id: `manual:${ASSET_ID}`,
+      projectId: PROJECT_ID,
+      name: 'python-campus.png',
+      category: 'map',
+      source: 'manual',
+      sourceRef: { kind: 'project_game_assets', id: ASSET_ID },
+      storagePath: OBJECT_PATH,
+      sha256: SHA256,
+      width: 128,
+      height: 128,
+      fileSize: GENERATED_PNG.length,
+      status: 'ready',
+    }],
+    deleteAsset: async target => {
+      deletedRows.push(`${target.assetId}:${target.projectId}:${target.storagePath}`);
+    },
+    deleteObject: async storagePath => {
+      deletedObjects.push(storagePath);
+    },
+  };
 }
 
 describe('Python-generated project asset acceptance', () => {
@@ -373,6 +498,146 @@ describe('Python-generated project asset acceptance', () => {
     expect(deletedObjects).toEqual([OBJECT_PATH]);
     expect(JSON.stringify(evidence)).not.toContain('signed-secret');
     expect(JSON.stringify(evidence)).not.toContain('header-secret');
+  });
+
+  it('recovers a committed registration after its first response is lost', async () => {
+    const completionArguments: string[] = [];
+    const deletedRows: string[] = [];
+    const deletedObjects: string[] = [];
+    let completions = 0;
+    const fetchMock = jest.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === UPLOAD_URL) return new Response(null, { status: 200 });
+      const message = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params?: { name?: string; arguments?: Record<string, unknown> };
+      };
+      const prelude = preparedFlowResponse(message);
+      if (prelude) return prelude;
+      if (message.params?.name === 'complete_project_game_asset_uploads') {
+        completions += 1;
+        completionArguments.push(JSON.stringify(message.params.arguments));
+        if (completions === 1) throw new Error('response lost after registration committed');
+        return toolResult(message.id, registrationStructuredContent(true));
+      }
+      throw new Error(`Unexpected MCP call: ${message.method}`);
+    });
+
+    const evidence = await runAcceptance({
+      mcpUrl: MCP_URL,
+      accessToken: 'mcp-access-secret',
+      projectId: PROJECT_ID,
+      supabaseUrl: 'https://project.supabase.co',
+      serviceRoleKey: 'service-role-secret',
+    }, {
+      fetchImpl: fetchMock as typeof fetch,
+      pythonRunner: async (_executable, args) => writeFile(args[2], GENERATED_PNG),
+      admin: acceptanceAdmin(deletedRows, deletedObjects),
+    });
+
+    expect(evidence).toEqual(expect.objectContaining({
+      passed: true,
+      assetId: ASSET_ID,
+      registration: { insertedCount: 1, sameAssetId: true, replayReused: true },
+      cleanup: { registryRowDeleted: true, storageObjectDeleted: true, temporaryDirectoryRemoved: true },
+    }));
+    expect(completionArguments).toHaveLength(2);
+    expect(completionArguments[1]).toBe(completionArguments[0]);
+    expect(deletedRows).toEqual([`${ASSET_ID}:${PROJECT_ID}:${OBJECT_PATH}`]);
+    expect(deletedObjects).toEqual([OBJECT_PATH]);
+  });
+
+  it('rejects a prepared upload method other than exactly PUT', async () => {
+    let uploadFetches = 0;
+    const deletedObjects: string[] = [];
+    const fetchMock = jest.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === UPLOAD_URL) {
+        uploadFetches += 1;
+        return new Response(null, { status: 200 });
+      }
+      const message = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params?: { name?: string };
+      };
+      const response = preparedFlowResponse(message, 'POST');
+      if (response) return response;
+      throw new Error(`Unexpected MCP call: ${message.method}`);
+    });
+
+    const evidence = await runAcceptance({
+      mcpUrl: MCP_URL,
+      accessToken: 'mcp-access-secret',
+      projectId: PROJECT_ID,
+      supabaseUrl: 'https://project.supabase.co',
+      serviceRoleKey: 'service-role-secret',
+    }, {
+      fetchImpl: fetchMock as typeof fetch,
+      pythonRunner: async (_executable, args) => writeFile(args[2], GENERATED_PNG),
+      admin: acceptanceAdmin([], deletedObjects),
+    });
+
+    expect(evidence.passed).toBe(false);
+    expect(uploadFetches).toBe(0);
+    expect(deletedObjects).toEqual([]);
+  });
+
+  it('redacts an alternate generated output path from evidence', () => {
+    const probe = String.raw`
+      import acceptance from './scripts/accept-python-generated-asset-writeback.ts';
+      const { runAcceptance } = acceptance;
+      let generatedOutputPath = '';
+      const evidence = await runAcceptance({
+        mcpUrl: '${MCP_URL}',
+        accessToken: 'mcp-access-secret',
+        projectId: '${PROJECT_ID}',
+        supabaseUrl: 'https://project.supabase.co',
+        serviceRoleKey: 'service-role-secret',
+      }, {
+        pythonRunner: async (_executable, args) => {
+          generatedOutputPath = args[2];
+          throw new Error('failed to write ' + generatedOutputPath);
+        },
+      });
+      process.stdout.write(JSON.stringify({ generatedOutputPath, evidence }));
+    `;
+    const result = spawnSync(process.execPath, [
+      '--import', 'tsx', '--input-type=module', '--eval', probe,
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, TMPDIR: '/dev/shm' },
+    });
+    const output = JSON.parse(result.stdout) as { generatedOutputPath: string; evidence: unknown };
+
+    expect(result.status).toBe(0);
+    expect(output.generatedOutputPath).toMatch(/^\/dev\/shm\/keco-python-asset-/);
+    expect(JSON.stringify(output.evidence)).not.toContain(output.generatedOutputPath);
+  });
+
+  it('keeps a user-supplied evidence path out of top-level stderr', () => {
+    const outputPath = '/dev/shm/missing-keco-evidence-parent/private-output.json';
+    const result = spawnSync(process.execPath, [
+      '--import', 'tsx',
+      path.join(process.cwd(), 'scripts/accept-python-generated-asset-writeback.ts'),
+      '--mcp-url', MCP_URL,
+      '--project-id', 'invalid-project-id',
+      '--output', outputPath,
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        MCP_ACCESS_TOKEN: 'mcp-access-secret',
+        NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
+        SUPABASE_SERVICE_ROLE_KEY: 'service-role-secret',
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('Acceptance failed.\n');
+    expect(result.stderr).not.toContain(outputPath);
+    expect(result.stderr).not.toContain('private-output.json');
   });
 
 });

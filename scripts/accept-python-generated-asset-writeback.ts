@@ -37,6 +37,7 @@ type AcceptanceOptions = {
   projectId: string;
   supabaseUrl: string;
   serviceRoleKey: string;
+  evidencePath?: string;
 };
 
 type AcceptanceDependencies = {
@@ -272,7 +273,12 @@ export async function runAcceptance(
     storageObjectDeleted: false,
     temporaryDirectoryRemoved: false,
   };
-  const secrets = [options.accessToken, options.serviceRoleKey, pythonPixelArtSource];
+  const secrets = [
+    options.accessToken,
+    options.serviceRoleKey,
+    options.evidencePath ?? '',
+    pythonPixelArtSource,
+  ];
   const evidence: JsonRecord = {
     checkedAt: new Date().toISOString(),
     passed: false,
@@ -301,6 +307,7 @@ export async function runAcceptance(
     if (!UUID.test(options.projectId)) throw new Error('The selected project ID must be a UUID.');
     temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'keco-python-asset-'));
     const outputPath = path.join(temporaryDirectory, FILE_NAME);
+    secrets.push(temporaryDirectory, outputPath);
     await (dependencies.pythonRunner ?? defaultPythonRunner)('python3', ['-c', pythonPixelArtSource, outputPath], {
       env: { PATH: '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' },
     });
@@ -348,6 +355,7 @@ export async function runAcceptance(
     const method = stringValue(upload.method, 'Signed upload method');
     const headers = record(upload.headers, 'Signed upload headers') as Record<string, string>;
     secrets.push(uploadUrl, ...Object.values(headers));
+    if (method !== 'PUT') throw new Error('Signed upload method must be PUT.');
     objectUploaded = true;
     const uploadResponse = await request(uploadUrl, {
       method,
@@ -360,22 +368,35 @@ export async function runAcceptance(
       projectId: options.projectId,
       items: [{ path: storagePath, category: 'map' }],
     };
-    const first = completedItem(
-      await callTool(client, 'complete_project_game_asset_uploads', completionArguments),
-      'Initial registration',
-    );
+    let recoveredAmbiguousCompletion = false;
+    let first: JsonRecord;
+    try {
+      first = completedItem(
+        await callTool(client, 'complete_project_game_asset_uploads', completionArguments),
+        'Initial registration',
+      );
+    } catch {
+      recoveredAmbiguousCompletion = true;
+      first = completedItem(
+        await callTool(client, 'complete_project_game_asset_uploads', completionArguments),
+        'Registration recovery',
+      );
+    }
     const firstAsset = record(first.asset, 'Initial registered asset');
-    if (first.reused !== false) throw new Error('Initial registration unexpectedly reused an asset.');
     const assetId = uuid(firstAsset.id, 'Initial registered asset ID');
     cleanupTarget = { assetId, projectId: options.projectId, storagePath };
     assertAssetMetadata(firstAsset, {
       assetId, projectId: options.projectId, storagePath, fileSize: file.fileSize, sha256: digest,
     }, false);
 
-    const replay = completedItem(
-      await callTool(client, 'complete_project_game_asset_uploads', completionArguments),
-      'Registration replay',
-    );
+    let replay = first;
+    if (!recoveredAmbiguousCompletion || first.reused !== true) {
+      if (first.reused !== false) throw new Error('Initial registration unexpectedly reused an asset.');
+      replay = completedItem(
+        await callTool(client, 'complete_project_game_asset_uploads', completionArguments),
+        'Registration replay',
+      );
+    }
     const replayAsset = record(replay.asset, 'Replay registered asset');
     if (replay.reused !== true || replayAsset.id !== assetId) {
       throw new Error('Registration replay did not reuse the same asset ID.');
@@ -471,7 +492,10 @@ async function main(): Promise<void> {
   if (!options.accessToken) throw new Error('MCP_ACCESS_TOKEN is required.');
   if (!options.supabaseUrl) throw new Error('NEXT_PUBLIC_SUPABASE_URL is required.');
   if (!options.serviceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required.');
-  await replaceEvidenceAtomically(options.output, () => runAcceptance(options));
+  await replaceEvidenceAtomically(options.output, () => runAcceptance({
+    ...options,
+    evidencePath: options.output,
+  }));
   const evidence = JSON.parse(await readFile(options.output, 'utf8')) as JsonRecord;
   process.stdout.write(JSON.stringify({
     passed: evidence.passed === true,
@@ -483,8 +507,8 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1] && path.basename(process.argv[1]) === 'accept-python-generated-asset-writeback.ts') {
-  void main().catch(error => {
-    process.stderr.write(`${error instanceof Error ? error.message : 'Acceptance failed.'}\n`);
+  void main().catch(() => {
+    process.stderr.write('Acceptance failed.\n');
     process.exitCode = 1;
   });
 }
