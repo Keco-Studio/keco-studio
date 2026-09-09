@@ -41,6 +41,8 @@ export type GdsGenerationRecoveryRecord = {
   updatedAt: number;
 };
 
+const STAGES: RecoveryStage[] = ['foundation', 'art-style', 'sources', 'review'];
+
 function utf8ByteLength(value: string): number {
   if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(value).byteLength;
   return encodeURIComponent(value).replace(/%[0-9A-F]{2}/g, 'x').length;
@@ -59,7 +61,8 @@ function isValidRecord(value: unknown, ownerId: string, now: number): value is G
   if (!isRecord(value) || value.version !== GDS_GENERATION_RECOVERY_VERSION || value.ownerId !== ownerId) return false;
   if (value.phase !== 'draft' && value.phase !== 'submitted') return false;
   if (typeof value.updatedAt !== 'number' || !Number.isFinite(value.updatedAt) || value.updatedAt > now || now - value.updatedAt > GDS_GENERATION_RECOVERY_TTL_MS) return false;
-  if (!isRecord(value.form) || typeof value.form.stage !== 'string') return false;
+  if (!isRecord(value.form) || !STAGES.includes(value.form.stage as RecoveryStage)) return false;
+  if (!Array.isArray(value.form.genres) || !Array.isArray(value.form.philosophies) || !Array.isArray(value.form.visualReferences) || !Array.isArray(value.form.references) || !Array.isArray(value.form.referenceGames)) return false;
   if (value.phase === 'submitted') {
     const hasJob = typeof value.jobId === 'string' && value.jobId.length > 0;
     const hasInitialRequest = isRecord(value.request) && typeof value.idempotencyKey === 'string';

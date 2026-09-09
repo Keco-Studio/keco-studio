@@ -111,6 +111,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   const hydratedOwnerRef = useRef<string | null>(null);
   const hydrationInProgressRef = useRef(false);
   const recoveryRequestInProgressRef = useRef(false);
+  const submittedRecoveryRef = useRef(false);
   const stageTabRefs = useRef<Partial<Record<Stage, HTMLButtonElement | null>>>({});
   const invalidVisualReferenceRef = useRef<HTMLInputElement | null>(null);
   const visualReferenceErrorRef = useRef<HTMLDivElement | null>(null);
@@ -161,6 +162,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       if (record.idempotencyKey) submitKey.current = record.idempotencyKey;
       if (record.retryKey) retryKey.current = record.retryKey;
       recoveryRequestInProgressRef.current = record.phase === 'submitted';
+      submittedRecoveryRef.current = record.phase === 'submitted';
       if (record.phase === 'submitted' && record.retryKey && record.retryParentJobId) {
         void retryGameDesignSystemGeneration(record.retryParentJobId, record.retryKey).then((fresh) => {
           setJob(fresh);
@@ -171,7 +173,11 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         void fetchGameDesignSystemGenerationJob(record.jobId).then((fresh) => {
           setJob(fresh);
           recoveryRequestInProgressRef.current = false;
-          if (fresh.status === 'completed') clearGdsGenerationRecovery();
+          if (fresh.status === 'completed' && fresh.design_system_id) {
+            clearGdsGenerationRecovery();
+            if (onCompleted) onCompleted(fresh.design_system_id);
+            else router.push('/game-design-systems?systemId=' + encodeURIComponent(fresh.design_system_id));
+          }
         }).catch((recoveryError) => {
           recoveryRequestInProgressRef.current = false;
           const status = (recoveryError as Error & { status?: number }).status;
@@ -187,7 +193,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   }, [authLoading, isAuthenticated, userProfile?.id]);
 
   useEffect(() => {
-    if (!hydratedOwnerRef.current || recoveryRequestInProgressRef.current || job || !userProfile?.id) return;
+    if (!hydratedOwnerRef.current || recoveryRequestInProgressRef.current || submittedRecoveryRef.current || job || !userProfile?.id) return;
     writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'draft', form: recoveryForm(), updatedAt: Date.now() });
   }, [stage, title, genres, philosophies, description, suitableFor, artDirection, selectedArtStyleKey, visualReferences, artAvoid, baseSystemId, pastedMarkdown, sourceProjectId, references, referenceGames, job, userProfile?.id]);
 
@@ -293,6 +299,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     }
     try {
       const request = generationInput(artStyleResult.data);
+      submittedRecoveryRef.current = true;
       if (userProfile?.id) writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'submitted', form: recoveryForm(), request, idempotencyKey: submitKey.current, updatedAt: Date.now() });
       const fresh = await startGameDesignSystemGeneration(request, submitKey.current);
       setJob(fresh);
@@ -313,6 +320,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     setError(null);
     try {
       const key = retryKey.current;
+      submittedRecoveryRef.current = true;
       if (userProfile?.id) writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'submitted', form: recoveryForm(), jobId: job.id, retryKey: key, retryParentJobId: job.id, updatedAt: Date.now() });
       const fresh = await retryGameDesignSystemGeneration(job.id, key);
       setJob(fresh);
@@ -325,6 +333,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   function returnToSources() {
     setJob(null);
     setStage('sources');
+    submittedRecoveryRef.current = false;
     submitKey.current = newIdempotencyKey();
     retryKey.current = newIdempotencyKey();
   }
