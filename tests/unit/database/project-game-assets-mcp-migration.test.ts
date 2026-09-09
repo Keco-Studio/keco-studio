@@ -20,6 +20,7 @@ describe('MCP project game asset registration migration', () => {
     expect(sql).toMatch(/auth\.uid\(\)::text \|\| '\/' \|\| p_project_id::text \|\| '\/%'/i);
     expect(sql).toMatch(/collaborator\.role in \('admin', 'editor'\)/i);
     expect(sql).toMatch(/p_mime_type not in \('image\/png','image\/jpeg','image\/gif','image\/webp','image\/svg\+xml'\)/i);
+    expect(sql).toMatch(/p_sha256 is null or p_sha256 !~ '\^\[a-f0-9\]\{64\}\$'/i);
     expect(sql).toMatch(/PROJECT_WRITE_FORBIDDEN/i);
   });
 

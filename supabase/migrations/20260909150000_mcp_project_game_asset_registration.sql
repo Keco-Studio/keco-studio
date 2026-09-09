@@ -42,7 +42,7 @@ begin
      or char_length(btrim(p_name)) not between 1 and 255
      or p_category not in ('character','icon','ui','map','prop','vfx','spritesheet','media')
      or p_mime_type not in ('image/png','image/jpeg','image/gif','image/webp','image/svg+xml')
-     or p_sha256 !~ '^[a-f0-9]{64}$'
+     or p_sha256 is null or p_sha256 !~ '^[a-f0-9]{64}$'
      or p_file_size not between 1 and 5242880
      or (p_width is not null and p_width <= 0)
      or (p_height is not null and p_height <= 0) then
