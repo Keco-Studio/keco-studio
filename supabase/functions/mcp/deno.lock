@@ -6,6 +6,7 @@
     "jsr:@std/internal@^1.0.10": "1.0.14",
     "npm:@modelcontextprotocol/sdk@1.29.0": "1.29.0_zod@4.1.13",
     "npm:@supabase/supabase-js@2.87.1": "2.87.1",
+    "npm:fast-png@6.4.0": "6.4.0",
     "npm:zod@4.1.13": "4.1.13"
   },
   "jsr": {
@@ -106,6 +107,10 @@
         "undici-types"
       ],
       "tarball": "https://registry.npmmirror.com/@types/node/-/node-26.1.1.tgz"
+    },
+    "@types/pako@2.0.4": {
+      "integrity": "sha512-VWDCbrLeVXJM9fihYodcLiIv0ku+AlOa/TQ1SvYOaBuyrSKgEcro95LJyIsJ4vSo6BXIxOKxiJAat04CmST9Fw==",
+      "tarball": "https://registry.npmmirror.com/@types/pako/-/pako-2.0.4.tgz"
     },
     "@types/phoenix@1.6.7": {
       "integrity": "sha512-oN9ive//QSBkf19rfDv45M7eZPi0eEXylht2OLEXicu5b4KoQ1OzXIw+xDSGWxSxe1JmepRR/ZH283vsu518/Q==",
@@ -280,6 +285,15 @@
       ],
       "tarball": "https://registry.npmmirror.com/eventsource/-/eventsource-3.0.7.tgz"
     },
+    "fast-png@6.4.0": {
+      "integrity": "sha512-kAqZq1TlgBjZcLr5mcN6NP5Rv4V2f22z00c3g8vRrwkcqjerx7BEhPbOnWCPqaHUl2XWQBJQvOT/FQhdMT7X/Q==",
+      "dependencies": [
+        "@types/pako",
+        "iobuffer",
+        "pako"
+      ],
+      "tarball": "https://registry.npmmirror.com/fast-png/-/fast-png-6.4.0.tgz"
+    },
     "express-rate-limit@8.6.0_express@5.2.1": {
       "integrity": "sha512-XKJXDsASUOo0LLtFwW5hCcQGH0N4WQc/Rn8/Pvoia+TJFOkkFPvrtW9lZOeeNcxQJspvOIERMwiRLsVFlhHEkA==",
       "dependencies": [
@@ -440,6 +454,10 @@
       "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==",
       "tarball": "https://registry.npmmirror.com/isexe/-/isexe-2.0.0.tgz"
     },
+    "iobuffer@5.4.0": {
+      "integrity": "sha512-DRebOWuqDvxunfkNJAlc3IzWIPD5xVxwUNbHr7xKB8E6aLJxIPfNX3CoMJghcFjpv6RWQsrcJbghtEwSPoJqMA==",
+      "tarball": "https://registry.npmmirror.com/iobuffer/-/iobuffer-5.4.0.tgz"
+    },
     "jose@6.2.3": {
       "integrity": "sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==",
       "tarball": "https://registry.npmmirror.com/jose/-/jose-6.2.3.tgz"
@@ -504,6 +522,10 @@
         "wrappy"
       ],
       "tarball": "https://registry.npmmirror.com/once/-/once-1.4.0.tgz"
+    },
+    "pako@2.2.0": {
+      "integrity": "sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==",
+      "tarball": "https://registry.npmmirror.com/pako/-/pako-2.2.0.tgz"
     },
     "parseurl@1.3.3": {
       "integrity": "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==",
@@ -718,6 +740,7 @@
       "jsr:@std/assert@1.0.14",
       "npm:@modelcontextprotocol/sdk@1.29.0",
       "npm:@supabase/supabase-js@2.87.1",
+      "npm:fast-png@6.4.0",
       "npm:zod@4.1.13"
     ]
   }
