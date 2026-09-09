@@ -39,6 +39,14 @@ function scheduleWorker(): void {
   });
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value as Record<string, unknown>).sort().map((key) => JSON.stringify(key) + ':' + canonicalJson((value as Record<string, unknown>)[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
 export const POST = withAuth(async function POST(request, _context, { supabase, user }) {
   const key = idempotencyKey(request);
   if (!key) return NextResponse.json({ error: 'A valid Idempotency-Key header is required.' }, { status: 400 });
@@ -80,7 +88,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
         baseSystemId: existingInput.baseSystemId,
         pastedMarkdown: existingInput.pastedMarkdown,
       };
-      if (JSON.stringify(requestIdentity) !== JSON.stringify(existingIdentity)) throw new IdempotencyConflictError();
+      if (canonicalJson(requestIdentity) !== canonicalJson(existingIdentity)) throw new IdempotencyConflictError();
       return NextResponse.json({ job: publicGameDesignSystemGenerationJob(existing) }, { status: 202 });
     }
     const sourceSnapshots = await resolveGameDesignSourceSnapshots(supabase, body.references.map((reference) => ({
