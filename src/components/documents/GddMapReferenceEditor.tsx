@@ -33,7 +33,7 @@ export function GddMapReferenceEditor({ mdastNode }: JsxEditorProps) {
   if (!artifact.imageUrl) {
     return <span className={styles.gddMapState} aria-label={`${artifact.title}: ${artifact.status}`}><EnvironmentOutlined /><span>{artifact.title}</span></span>;
   }
-  const image = <img className={styles.gddMapImage} src={artifact.imageUrl} alt={artifact.title} width={artifact.width ?? undefined} height={artifact.height ?? undefined} loading="lazy" />;
+  const image = <img className={styles.gddMapImage} src={artifact.imageUrl} alt={artifact.title} width={artifact.width ?? undefined} height={artifact.height ?? undefined} />;
   if (display === 'compact') {
     return <figure className={styles.gddMapCompact}><figcaption><EnvironmentOutlined />{href ? <Link href={href}>{artifact.title}</Link> : <span>{artifact.title}</span>}</figcaption>{image}</figure>;
   }
