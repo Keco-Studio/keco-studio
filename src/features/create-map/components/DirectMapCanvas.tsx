@@ -46,7 +46,7 @@ export function DirectMapCanvas({
     ? `${exactImage.sourceRevisionId}:${exactImage.sha256}:${exactImage.signedUrl}`
     : '';
   const frameStyle = {
-    '--direct-map-aspect': `${plan.map.width} / ${plan.map.height}`,
+    aspectRatio: `${plan.map.width} / ${plan.map.height}`,
   } as CSSProperties;
   const orientation = plan.map.width === plan.map.height
     ? 'square'

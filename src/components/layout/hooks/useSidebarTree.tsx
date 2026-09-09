@@ -10,6 +10,12 @@ import { truncateText } from '@/lib/utils/truncateText';
 import paperIcon from '@/assets/images/paper.svg';
 import tableIcon from '@/assets/images/table.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
+import {
+  GAME_ASSET_NAV_CATEGORIES,
+  GAME_ASSETS_TREE_KEY,
+  gameAssetsCategoryTreeKey,
+  type GameAssetNavCategory,
+} from '@/lib/services/gameAssetsService';
 import { beginSidebarInlineRename } from '../sidebarScrollReset';
 import styles from '../Sidebar.module.css';
 
@@ -21,6 +27,8 @@ export type SidebarCurrentIds = {
   documentId: string | null;
   isLibraryPage: boolean;
   isPredefinePage: boolean;
+  isGameAssetsPage?: boolean;
+  gameAssetsCategory?: GameAssetNavCategory | null;
 };
 
 export type UseSidebarTreeContext = {
@@ -260,7 +268,48 @@ export function useSidebarTree(
       } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document' };
     };
 
-    const result: DataNode[] = [];
+    const assetsChildren: DataNode[] = GAME_ASSET_NAV_CATEGORIES.map((item) => ({
+      title: (
+        <div
+          className={`${styles.itemRow} ${styles.libraryRow}`}
+          data-game-assets-category={item.key}
+          data-testid={`sidebar-assets-category-${item.key}`}
+        >
+          <div className={styles.itemMain}>
+            <span className={styles.itemText} title={item.label}>
+              {truncateText(item.label, computeMaxChars(15))}
+            </span>
+          </div>
+        </div>
+      ),
+      key: gameAssetsCategoryTreeKey(item.key),
+      isLeaf: true,
+      children: undefined,
+      _titleStr: item.label,
+    })) as DataNode[];
+
+    // Fixed project Assets library — always first, ahead of Resources Folder.
+    const assetsRoot: DataNode = {
+      title: (
+        <div
+          className={`${styles.itemRow} ${styles.folderRow}`}
+          data-game-assets-row
+          data-testid="sidebar-assets-nav"
+        >
+          <div className={styles.itemMain}>
+            <span className={styles.itemText} style={{ fontWeight: 500 }} title="Assets">
+              Assets
+            </span>
+          </div>
+        </div>
+      ),
+      key: GAME_ASSETS_TREE_KEY,
+      isLeaf: false,
+      children: assetsChildren,
+      _titleStr: 'Assets',
+    } as DataNode;
+
+    const result: DataNode[] = [assetsRoot];
     const rootFolders = foldersByParent.get('') || [];
     rootFolders.forEach((folder) => {
       result.push(buildFolderNode(folder));
@@ -291,6 +340,11 @@ export function useSidebarTree(
 
   const selectedKeys = useMemo(() => {
     const keys: string[] = [];
+    if (currentIds.isGameAssetsPage) {
+      const category = currentIds.gameAssetsCategory ?? 'all';
+      keys.push(gameAssetsCategoryTreeKey(category));
+      return keys;
+    }
     if (currentIds.documentId) {
       keys.push(`document-${currentIds.documentId}`);
       return keys;
@@ -318,6 +372,8 @@ export function useSidebarTree(
     currentIds.documentId,
     currentIds.isLibraryPage,
     currentIds.isPredefinePage,
+    currentIds.isGameAssetsPage,
+    currentIds.gameAssetsCategory,
   ]);
 
   return { treeData, selectedKeys };

@@ -81,6 +81,16 @@ function resolveParentDropTarget(
     return { kind: 'folder', folderId: dropKey.slice('folder-'.length) };
   }
 
+  if (dropKey === 'game-assets' || dropKey.startsWith('game-assets-cat-')) {
+    if (!dropToGap) {
+      return { kind: 'invalid', reason: 'Cannot move into Assets' };
+    }
+    // Gap beside fixed Assets (or its categories) = project root sibling placement.
+    const parentKey = getParentKeyInTree(treeData, dropKey);
+    if (!parentKey || parentKey === 'game-assets') return { kind: 'root' };
+    return { kind: 'invalid', reason: 'Cannot move into this location yet' };
+  }
+
   if (!dropToGap) {
     if (dropKey.startsWith('document-') || dropKey.startsWith('library-')) {
       return { kind: 'invalid', reason: 'Documents and tables cannot contain items' };
