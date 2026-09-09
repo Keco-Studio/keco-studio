@@ -54,7 +54,7 @@ function ReferenceKindIcon({ kind }: { kind: string }) {
   );
 }
 
-function TableReferenceProjection({
+export function TableReferenceProjection({
   references,
   schema,
 }: {
@@ -124,19 +124,7 @@ function TableReferenceProjection({
                     role="cell"
                     key={field.id}
                   >
-                    {field.id === schema.fields[0]?.id && reference.href ? (
-                      <Link
-                        href={reference.href}
-                        aria-label={accessibleReferenceLabel(
-                          reference.label,
-                          reference.contextLabel
-                        )}
-                      >
-                        {cellDisplayString(row.values[field.id])}
-                      </Link>
-                    ) : (
-                      cellDisplayString(row.values[field.id])
-                    )}
+                    {cellDisplayString(row.values[field.id])}
                   </span>
                 ))}
               </span>

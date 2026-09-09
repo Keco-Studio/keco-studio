@@ -25,8 +25,6 @@ const TABLE_NAME = 'Reference smoke table';
 const ROW_NAME = 'Reference smoke row';
 const FIELD_NAME = 'Current label';
 const TABLE_LABEL = 'Compact table label';
-/** Whole-row chips expose `library / row: joined cell values` (no field name). */
-const TABLE_REFERENCE_NAME = `${TABLE_NAME} / ${ROW_NAME}: ${TABLE_LABEL}`;
 const SOURCE_DOCUMENT_NAME = 'Reference smoke source';
 const SOURCE_HEADING = 'Reference smoke heading';
 const SOURCE_PARAGRAPH = 'Reference smoke paragraph starts here';
@@ -292,16 +290,18 @@ test.describe.serial('Document references smoke', () => {
     const projectedTable = page.getByRole('table', { name: TABLE_NAME });
     await expect(projectedTable).toBeVisible();
     await expect(projectedTable).toContainText(TABLE_LABEL);
-    await expect(page.getByRole('link', { name: TABLE_REFERENCE_NAME }))
-      .toHaveText(TABLE_LABEL);
+    // Table projections link only the library title; row cells stay plain text.
+    const tableReference = page.getByRole('link', { name: TABLE_NAME, exact: true });
+    await expect(tableReference).toBeVisible();
+    await expect(projectedTable.getByText(TABLE_LABEL, { exact: true })).toBeVisible();
+    await expect(
+      projectedTable.getByRole('link', { name: TABLE_LABEL, exact: true })
+    ).toHaveCount(0);
 
     await editor.click();
     await editor.press('End');
     await insertDocumentReference(page);
 
-    const tableReference = page.getByRole('link', {
-      name: TABLE_REFERENCE_NAME,
-    });
     const documentReference = page.locator(
       `a[href$="#block-${sourceBlockId}"]`
     );
@@ -328,15 +328,14 @@ test.describe.serial('Document references smoke', () => {
     }).toEqual({ tableReference: true, documentReference: true });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(tableReference).toHaveText(TABLE_LABEL, { timeout: 30_000 });
+    await expect(tableReference).toHaveText(TABLE_NAME, { timeout: 30_000 });
+    await expect(projectedTable).toContainText(TABLE_LABEL);
     await expect(documentReference).toHaveText(RANGE_LABEL, { timeout: 30_000 });
 
     await tableReference.click();
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
       .toBe(`/${projectId}/${fixture.libraryId}`);
-    expect(new URL(page.url()).searchParams.get('asset')).toBe(fixture.assetId);
-    const targetRow = page.locator(`tr[data-row-id="${fixture.assetId}"]`);
-    await expect(targetRow).toHaveClass(/referencedRowHighlight/, { timeout: 30_000 });
+    expect(new URL(page.url()).searchParams.get('asset')).toBeNull();
 
     await page.goto(`/${projectId}/doc/${fixture.sourceDocumentId}`, {
       waitUntil: 'domcontentloaded',

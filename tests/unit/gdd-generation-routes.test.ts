@@ -252,6 +252,31 @@ describe('project GDD generation routes', () => {
     );
   });
 
+  it('uses a Chinese system title when no creative brief overrides the output language', async () => {
+    getGameDesignSystemDetail.mockResolvedValueOnce({
+      id: SYSTEM_ID,
+      title: '\u62fc\u56fe\u6e38\u620f',
+      migration_status: 'ready',
+      versions: [{
+        id: VERSION_ID,
+        version_number: 1,
+        conflicts: [],
+        source_snapshots: [],
+        document: { designIntent: 'a', playerFantasy: 'b', coreLoop: 'c', decisionStructure: 'd', systemBoundaries: 'e', progressionEconomy: 'f', contentModel: 'g', difficultyBalance: 'h', experiencePresentation: 'i' },
+        rules: { schemaVersion: 1, genres: [], philosophies: [], suitableFor: 'games', rules: [{ id: 'rule-1', kind: 'principle', title: 'Rule', statement: 'Do it', appliesWhen: 'Always', severity: 'required' }], tableGuidance: [] },
+      }],
+    });
+    await POST(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'request-key-cn-title' },
+      body: JSON.stringify({ designSystemId: SYSTEM_ID, versionId: VERSION_ID }),
+    }), { params: Promise.resolve({ projectId: PROJECT_ID }) });
+
+    expect(createGddGenerationJob).toHaveBeenCalledWith(
+      { service: true },
+      expect.objectContaining({ input: expect.objectContaining({ language: 'zh-CN' }) }),
+    );
+  });
+
   it('returns the existing bounded job when another project generation is active', async () => {
     createGddGenerationJob.mockRejectedValue(new GddActiveJobConflictError({
       ...internalJob,

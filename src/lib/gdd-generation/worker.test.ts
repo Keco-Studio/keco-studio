@@ -372,7 +372,7 @@ describe('GDD generation worker', () => {
         runtime?.signal?.addEventListener('abort', () => reject(runtime.signal?.reason), { once: true });
       });
     });
-    const persistV2 = jest.fn(async () => persistedGdd('document-1', 'GDD'));
+    const persistV2 = jest.fn(async (..._args: unknown[]) => persistedGdd('document-1', 'GDD'));
     const retry = jest.fn(async (
       _client: unknown,
       _jobId: string,
@@ -471,7 +471,7 @@ describe('GDD generation worker', () => {
 
   it('reviews and saves professional checkpoints in separate invocations', async () => {
     const checkpoint = jest.fn(async (..._args: unknown[]) => true);
-    const persistV2 = jest.fn(async () => persistedGdd('document-1', 'GDD'));
+    const persistV2 = jest.fn(async (..._args: unknown[]) => persistedGdd('document-1', 'GDD'));
     const report = { version: 2, summary: 'pass', status: 'pass', issues: [], repairRound: 0 };
     const professionalBase = {
       ...job,
@@ -490,11 +490,56 @@ describe('GDD generation worker', () => {
 
     await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'reviewing' } as GddGenerationJob }, deps)).resolves.toBe('queued');
     expect(reviewV2).toHaveBeenCalled();
-    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'saving', reviewReport: expect.objectContaining({ markdown: '# GDD\n\n## Core\nLoop.' }) }));
+    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'saving', reviewReport: expect.objectContaining({ markdown: '# GDD\n\n## \u4e00、Core\nLoop.' }) }));
     expect(persistV2).not.toHaveBeenCalled();
 
     await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'saving', review_report: { review: report, markdown: '# GDD\n\n## Core\nLoop.', tablePlans: [], dialoguePlans: [] } } as GddGenerationJob }, deps)).resolves.toBe('completed');
-    expect(persistV2).toHaveBeenCalled();
+    expect(persistV2).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      'worker-1',
+      '# GDD\n\n## \u4e00、Core\nLoop.',
+      report,
+      [],
+      [],
+    );
+  });
+
+  it('numbers professional top-level chapters after review while preserving adaptive titles and H3 subsections', async () => {
+    const checkpoint = jest.fn(async (..._args: unknown[]) => true);
+    const persistV2 = jest.fn(async () => persistedGdd('document-1', 'GDD'));
+    const report = { version: 2, summary: 'pass', status: 'pass', issues: [], repairRound: 0 };
+    const professionalBase = {
+      ...job,
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN' },
+      blueprint: { version: 1, title: 'GDD', sections: [
+        { id: 'overview', title: '\u96fe\u6e2f\u6982\u89c8', stage: 'core', instructions: ['Overview'] },
+        { id: 'loop', title: '\u6838\u5fc3\u5faa\u73af', stage: 'core', instructions: ['Loop'] },
+      ], invariants: [] },
+      section_drafts: [
+        { sectionId: 'overview', stage: 'core', markdown: '## \u96fe\u6e2f\u6982\u89c8\n\nBackground.\n\n### \u8bbe\u8ba1\u610f\u56fe\n\nIntent.' },
+        { sectionId: 'loop', stage: 'core', markdown: '## \u6838\u5fc3\u5faa\u73af\n\nLoop.' },
+      ],
+      repair_round: 0,
+    } as GddGenerationJob;
+    const reviewV2 = jest.fn(async () => ({ markdown: '# GDD\n\n## \u96fe\u6e2f\u6982\u89c8\n\nBackground.\n\n### \u8bbe\u8ba1\u610f\u56fe\n\nIntent.\n\n## \u6838\u5fc3\u5faa\u73af\n\nLoop.', review: report, tablePlans: [], tablePlanWarning: null, dialoguePlans: [], dialoguePlanWarning: null }));
+    const deps = {
+      heartbeat: jest.fn(async () => undefined), revalidateContext: jest.fn(async () => undefined),
+      generate: jest.fn(async () => generated), generateProfessionalStage: jest.fn() as never, reviewV2: reviewV2 as never,
+      persist: jest.fn(async () => persistedGdd('unused', 'unused')), persistV2, checkpoint,
+      retry: jest.fn(async () => 'queued' as const), fail: jest.fn(async () => undefined),
+    };
+
+    await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'reviewing' } as GddGenerationJob }, deps)).resolves.toBe('queued');
+
+    expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      nextPhase: 'saving',
+      reviewReport: expect.objectContaining({ markdown: expect.stringContaining('## \u4e00、\u96fe\u6e2f\u6982\u89c8') }),
+    }));
+    const savedReview = (checkpoint.mock.calls[0]?.[1] as { reviewReport?: { markdown?: string } }).reviewReport?.markdown ?? '';
+    expect(savedReview).toContain('## \u4e8c、\u6838\u5fc3\u5faa\u73af');
+    expect(savedReview).toContain('### \u8bbe\u8ba1\u610f\u56fe');
+    expect(savedReview).not.toContain('## \u4e00、\u4e00、\u96fe\u6e2f\u6982\u89c8');
   });
 
   it('aborts a hanging professional stage at the 240-second bounded deadline', async () => {

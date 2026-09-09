@@ -78,6 +78,7 @@ const blueprintSchema = z.object({
 }).strict();
 
 const BLUEPRINT_TOOL_NAME = 'submit_professional_gdd_blueprint';
+const PROFESSIONAL_STAGE_COMPLETION_TOKENS = 14_000;
 const blueprintTool: OpenAITool = {
   type: 'function',
   function: {
@@ -267,6 +268,7 @@ function stageMessages(
         'Produce a production-sized plan with 9-12 sections distributed across core, systems, and content.',
         'Include at least 2 core sections, 3 systems sections, and 3 content sections.',
         'Make every section instruction concrete enough to produce executable design details.',
+        'Include an early adaptive section that introduces the game/project background or premise, design intent or philosophy, player fantasy/core experience, and what makes this game distinctive. Choose a title appropriate to this game; do not use a fixed template heading.',
         ...(title ? [`The document title is fixed to exactly: ${title}. Do not translate, rename, or replace it.`] : []),
       ].join('\n'),
     }, {
@@ -305,7 +307,7 @@ function stageMessages(
   }];
 }
 
-function stageRepairMessages(input: GddGenerationRequestV2, sectionTitles: string[], raw: string): ChatMessage[] {
+function stageRepairMessages(input: GddGenerationRequestV2, sectionTitles: string[], raw: string, issue?: string): ChatMessage[] {
   return [{
     role: 'system',
     content: [
@@ -314,7 +316,8 @@ function stageRepairMessages(input: GddGenerationRequestV2, sectionTitles: strin
       'Return Markdown only. Do not add commentary or code fences.',
       'Use one exact H2 heading per requested section, H3 subsections, short paragraphs, bold key points, and numbered or bulleted lists.',
       /^zh(?:[-_]|$)/i.test(input.language.trim()) ? 'Chinese-only output: do not write English prose or English headings; preserve only official proper nouns and stable IDs.' : '',
-      `Requested section titles: ${sectionTitles.join(', ')}`,
+      `Requested section titles (each must appear exactly once as an H2): ${sectionTitles.join(', ')}`,
+      ...(issue ? [`Structural validation error to fix: ${issue}`] : []),
     ].filter(Boolean).join('\n'),
   }, {
     role: 'user',
@@ -374,14 +377,16 @@ function splitDrafts(
     }
   }
   if (drafts.length === 0) {
-    drafts.push({
-      sectionId: sections[0]!.id,
-      stage: kind,
-      markdown: `## ${sections[0]!.title}\n\n${markdown}`,
-    });
+    throw new GddV2GenerationValidationError(`Professional GDD ${kind} stage contains no recognizable H2 sections.`);
   }
   const deduped = new Map(drafts.map((draft) => [draft.sectionId, draft]));
-  return sections.filter((section) => deduped.has(section.id)).map((section) => deduped.get(section.id)!);
+  const missing = sections.filter((section) => !deduped.has(section.id));
+  if (missing.length > 0) {
+    throw new GddV2GenerationValidationError(
+      `Professional GDD ${kind} stage is missing required sections: ${missing.map((section) => section.title).join(', ')}`,
+    );
+  }
+  return sections.map((section) => deduped.get(section.id)!);
 }
 
 export async function generateProfessionalStage(
@@ -429,16 +434,30 @@ export async function generateProfessionalStage(
   const previous = previousDrafts(checkpoint);
   const kind = stageKind(stage)!;
   let raw = await raceWithAbort(complete(stageMessages(input, stage, savedBlueprint, previous), {
-    ...gddV2LlmOptions(8_000), signal,
+    ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal,
   }), signal);
+  let repairAttempted = false;
   if (isEnglishDominant(raw, input)) {
     raw = await raceWithAbort(complete(stageRepairMessages(
       input,
       savedBlueprint.sections.filter((section) => section.stage === kind).map((section) => section.title),
       raw,
-    ), { ...gddV2LlmOptions(8_000), signal }), signal);
+    ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal }), signal);
+    repairAttempted = true;
   }
-  const generated = splitDrafts(raw, savedBlueprint, kind);
+  let generated: ProfessionalSectionDraft[];
+  try {
+    generated = splitDrafts(raw, savedBlueprint, kind);
+  } catch (error) {
+    if (repairAttempted) throw error;
+    const repairedRaw = await raceWithAbort(complete(stageRepairMessages(
+      input,
+      savedBlueprint.sections.filter((section) => section.stage === kind).map((section) => section.title),
+      raw,
+      error instanceof Error ? error.message : String(error),
+    ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal }), signal);
+    generated = splitDrafts(repairedRaw, savedBlueprint, kind);
+  }
   const replaced = new Map(previous.filter((draft) => draft.stage !== kind).map((draft) => [draft.sectionId, draft]));
   generated.forEach((draft) => replaced.set(draft.sectionId, draft));
   return {

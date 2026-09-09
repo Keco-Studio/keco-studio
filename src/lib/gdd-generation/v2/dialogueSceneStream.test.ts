@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   DialogueSceneStreamParser,
   GddDialogueSceneValidationError,
+  extractDialogueSceneEvents,
 } from './dialogueSceneStream';
 
 const arrivalEvent = {
@@ -18,6 +19,10 @@ function marker(event: typeof arrivalEvent): string {
 }
 
 describe('DialogueSceneStreamParser', () => {
+  it('extracts scene events from completed professional-stage Markdown', () => {
+    expect(extractDialogueSceneEvents(`## Arrival\n\n${marker(arrivalEvent)}\n\n## Systems`)).toEqual([arrivalEvent]);
+  });
+
   it('extracts a scene event split across chunks and keeps only visible Markdown', () => {
     const parser = new DialogueSceneStreamParser();
 

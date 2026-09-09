@@ -105,7 +105,15 @@ jobs:
             if [ "$attempt" -lt "$max_attempts" ]; then
               echo "Recovering Supabase stack (stop/start) before retry..."
               supabase stop --no-backup || true
-              sleep 2
+              # Stale containers / host port binds can survive stop and block
+              # the next start with "address already in use".
+              docker ps -aq --filter "name=supabase_" | xargs -r docker rm -f || true
+              for port in 54320 54321 54322 54323 54324 54329; do
+                if command -v fuser >/dev/null 2>&1; then
+                  fuser -k "${port}/tcp" 2>/dev/null || true
+                fi
+              done
+              sleep 3
               supabase start --ignore-health-check
               for i in {1..90}; do
                 if curl -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then

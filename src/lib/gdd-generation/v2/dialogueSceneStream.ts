@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const MARKER_START = '<!-- KECO_DIALOGUE_SCENE ';
 const MARKER_END = '-->';
+const MARKER_PATTERN = /<!--\s*KECO_DIALOGUE_SCENE\s+([\s\S]*?)\s*-->/gi;
 const MAX_OPEN_MARKER_LENGTH = 20_000;
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 
@@ -30,6 +31,31 @@ export class GddDialogueSceneValidationError extends Error {
     super(message);
     this.name = 'GddDialogueSceneValidationError';
   }
+}
+
+export function extractDialogueSceneEvents(markdown: string): DialogueSceneEvent[] {
+  const events: DialogueSceneEvent[] = [];
+  const chapterKeys = new Set<string>();
+  for (const match of markdown.matchAll(MARKER_PATTERN)) {
+    let event: DialogueSceneEvent;
+    try {
+      event = dialogueSceneEventSchema.parse(JSON.parse(match[1]!.trim()));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'invalid event';
+      throw new GddDialogueSceneValidationError(`Invalid KECO dialogue scene marker: ${message}`);
+    }
+    const key = event.chapterKey.toLocaleLowerCase();
+    if (chapterKeys.has(key)) {
+      throw new GddDialogueSceneValidationError(`Duplicate dialogue scene chapter key: ${event.chapterKey}`);
+    }
+    chapterKeys.add(key);
+    events.push(event);
+  }
+  return events;
+}
+
+export function stripDialogueSceneMarkers(markdown: string): string {
+  return markdown.replace(MARKER_PATTERN, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function possibleMarkerPrefixLength(value: string): number {
