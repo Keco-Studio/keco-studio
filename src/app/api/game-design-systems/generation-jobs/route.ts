@@ -5,7 +5,7 @@ import { resolveGameDesignSourceSnapshots, SourceSnapshotInputError } from '@/li
 import { gameDesignGenerationRequestSchema } from '@/lib/game-design-system/generationRequest';
 import { compileGameArtStyle, GameArtStyleCompilationError } from '@/lib/game-art-style/compiler';
 import { hashResolvedGenerationInput, type ResolvedGameDesignGenerationInput } from '@/lib/gameDesignSystemGeneration';
-import { getGameDesignSystemDetail, createGameDesignSystemGenerationJob, IdempotencyConflictError, publicGameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
+import { getGameDesignSystemDetail, createGameDesignSystemGenerationJob, findGameDesignSystemGenerationJobByIdempotencyKey, IdempotencyConflictError, publicGameDesignSystemGenerationJob } from '@/lib/services/gameDesignSystemService';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker';
 
@@ -39,6 +39,14 @@ function scheduleWorker(): void {
   });
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value as Record<string, unknown>).sort().map((key) => JSON.stringify(key) + ':' + canonicalJson((value as Record<string, unknown>)[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
 export const POST = withAuth(async function POST(request, _context, { supabase, user }) {
   const key = idempotencyKey(request);
   if (!key) return NextResponse.json({ error: 'A valid Idempotency-Key header is required.' }, { status: 400 });
@@ -49,6 +57,40 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
     return NextResponse.json({ error: 'Add a genre, philosophy, description, source, or base system.' }, { status: 400 });
   }
   try {
+    const compiledArtStyle = compileGameArtStyle(body.artStyle);
+    const existing = typeof findGameDesignSystemGenerationJobByIdempotencyKey === 'function'
+      ? await findGameDesignSystemGenerationJobByIdempotencyKey(getSupabaseServiceRoleClient(), user.id, key)
+      : null;
+    if (existing) {
+      const existingInput = existing.input as ResolvedGameDesignGenerationInput;
+      if (!existingInput || !Array.isArray(existingInput.sourceSnapshots)) throw new IdempotencyConflictError();
+      const requestIdentity = {
+        title: body.title,
+        genres: body.genres,
+        philosophies: body.philosophies,
+        description: body.description,
+        suitableFor: body.suitableFor,
+        references: body.references.map((reference) => ({ kind: reference.kind, projectId: reference.projectId, resourceId: reference.resourceId })),
+        referenceGames: body.referenceGames,
+        artStyle: compiledArtStyle,
+        baseSystemId: body.baseSystemId,
+        pastedMarkdown: body.pastedMarkdown,
+      };
+      const existingIdentity = {
+        title: existingInput.title,
+        genres: existingInput.genres,
+        philosophies: existingInput.philosophies,
+        description: existingInput.description,
+        suitableFor: existingInput.suitableFor,
+        references: existingInput.sourceSnapshots.map((source) => ({ kind: source.kind, projectId: source.projectId, resourceId: source.resourceId })),
+        referenceGames: existingInput.referenceGames,
+        artStyle: existingInput.artStyle,
+        baseSystemId: existingInput.baseSystemId,
+        pastedMarkdown: existingInput.pastedMarkdown,
+      };
+      if (canonicalJson(requestIdentity) !== canonicalJson(existingIdentity)) throw new IdempotencyConflictError();
+      return NextResponse.json({ job: publicGameDesignSystemGenerationJob(existing) }, { status: 202 });
+    }
     const sourceSnapshots = await resolveGameDesignSourceSnapshots(supabase, body.references.map((reference) => ({
       kind: reference.kind!,
       projectId: reference.projectId!,
@@ -76,7 +118,7 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
       suitableFor: body.suitableFor,
       sourceSnapshots,
       referenceGames: body.referenceGames.map((game) => ({ name: game.name!, reference: game.reference!, avoid: game.avoid! })),
-      artStyle: compileGameArtStyle(body.artStyle),
+      artStyle: compiledArtStyle,
       baseSystemId: base?.id,
       baseVersionId: base?.current_version?.id,
       baseDocument: base?.current_version?.document,

@@ -487,6 +487,7 @@ export default function MdxDocumentEditor({
     <div
       ref={editorFrameRef}
       className={styles.editorFrame}
+      translate="no"
       onDoubleClick={handleLinkDoubleClick}
     >
       <ResourceReferenceProvider key={documentId} projectId={projectId}>

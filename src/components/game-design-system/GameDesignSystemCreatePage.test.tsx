@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PIXEL_ART_V2_PRESET } from '@/lib/game-art-style/presets';
+import { GDS_GENERATION_RECOVERY_KEY } from '@/lib/game-design-system/generationRecovery';
 import { GameDesignSystemCreatePage } from './GameDesignSystemCreatePage';
 
 const push = jest.fn();
@@ -11,6 +12,7 @@ const start = jest.fn();
 const fetchOptions = jest.fn();
 const fetchSystems = jest.fn();
 const retry = jest.fn();
+const fetchJob = jest.fn();
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 jest.mock('@/lib/contexts/AuthContext', () => ({
@@ -23,7 +25,7 @@ jest.mock('./GameDesignSystemsPage.module.css', () => ({
 jest.mock('@/lib/services/gameDesignSystemClient', () => ({
   fetchGameDesignSystems: (...args: unknown[]) => fetchSystems(...args),
   fetchGameDesignReferenceOptions: (...args: unknown[]) => fetchOptions(...args),
-  fetchGameDesignSystemGenerationJob: jest.fn(),
+  fetchGameDesignSystemGenerationJob: (...args: unknown[]) => fetchJob(...args),
   retryGameDesignSystemGeneration: (...args: unknown[]) => retry(...args),
   startGameDesignSystemGeneration: (...args: unknown[]) => start(...args),
 }));
@@ -52,6 +54,7 @@ async function continueToReview(user: ReturnType<typeof userEvent.setup>, { fill
 describe('GameDesignSystemCreatePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.sessionStorage.clear();
     global.fetch = jest.fn(async () => ({
       ok: true,
       json: async () => [{ id: '11111111-1111-4111-8111-111111111111', name: 'Project A' }],
@@ -62,6 +65,7 @@ describe('GameDesignSystemCreatePage', () => {
     ]);
     fetchSystems.mockResolvedValue([]);
     start.mockResolvedValue({ id: 'job-1', status: 'queued', phase: 'collecting', attempt_count: 0, max_attempts: 3 });
+    fetchJob.mockResolvedValue({ id: 'job-1', status: 'queued', phase: 'collecting', attempt_count: 0, max_attempts: 3 });
     retry.mockResolvedValue({ id: 'job-1', status: 'queued', phase: 'collecting', attempt_count: 1, max_attempts: 3, available_at: new Date().toISOString() });
   });
 
@@ -313,5 +317,29 @@ describe('GameDesignSystemCreatePage', () => {
 
     await waitFor(() => expect(completed).toHaveBeenCalledWith('system-generated'));
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('restores raw draft fields and the selected stage after refresh', async () => {
+    window.sessionStorage.setItem(GDS_GENERATION_RECOVERY_KEY, JSON.stringify({
+      version: 1, ownerId: 'viewer-1', phase: 'draft', updatedAt: Date.now(),
+      form: { stage: 'art-style', title: 'Recovered rules', genres: ['RPG'], philosophies: [], description: 'Saved draft', suitableFor: '', artDirection: 'Warm light', selectedArtStyleKey: 'pixel-art-v2', visualReferences: [{ name: 'Eastward', borrow: '' }], artAvoid: '', baseSystemId: '', pastedMarkdown: '', sourceProjectId: '', references: [], referenceGames: [] },
+    }));
+    renderPage();
+    expect(await screen.findByDisplayValue('Warm light')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Art Style' }).getAttribute('aria-selected')).toBe('true');
+    expect((screen.getByLabelText('Visual reference game 1') as HTMLInputElement).value).toBe('Eastward');
+  });
+
+  it('resumes a submitted job by id without creating another request', async () => {
+    window.sessionStorage.setItem(GDS_GENERATION_RECOVERY_KEY, JSON.stringify({
+      version: 1, ownerId: 'viewer-1', phase: 'submitted', updatedAt: Date.now(), jobId: 'job-existing', idempotencyKey: 'submit-key',
+      form: { stage: 'review', title: 'Recovered rules', genres: ['RPG'], philosophies: [], description: '', suitableFor: '', artDirection: '', selectedArtStyleKey: 'pixel-art-v2', visualReferences: [], artAvoid: '', baseSystemId: '', pastedMarkdown: '', sourceProjectId: '', references: [], referenceGames: [] },
+      request: { title: 'Recovered rules', genres: ['RPG'], philosophies: [], references: [], referenceGames: [], artStyle: { presetId: 'pixel-art', presetVersion: 2, customization: { direction: '', referenceGames: [], avoid: '' } } },
+    }));
+    fetchJob.mockResolvedValueOnce({ id: 'job-existing', status: 'failed', phase: 'failed', attempt_count: 1, max_attempts: 3, error: { message: 'Try again' } });
+    renderPage();
+    expect(await screen.findByRole('button', { name: /Retry job/ })).toBeTruthy();
+    expect(fetchJob).toHaveBeenCalledWith('job-existing');
+    expect(start).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,12 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { GameDesignSourceReference } from '@/lib/game-design-system/sourceSnapshots';
+import {
+  clearGdsGenerationRecovery,
+  readGdsGenerationRecovery,
+  writeGdsGenerationRecovery,
+  type GdsGenerationRecoveryForm,
+} from '@/lib/game-design-system/generationRecovery';
 import { DEFAULT_GAME_ART_STYLE_KEY, GAME_ART_STYLE_CATALOG, GAME_ART_STYLE_PRESETS_BY_KEY } from '@/lib/game-art-style/presets';
 import { gameArtStyleInputSchema, type NormalizedGameArtStyleInput } from '@/lib/game-art-style/schema';
 import {
@@ -75,7 +81,10 @@ type Props = {
 export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompleted }: Props = {}) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { userProfile } = useAuth();
+  const auth = useAuth();
+  const userProfile = auth.userProfile;
+  const isAuthenticated = auth.isAuthenticated ?? Boolean(userProfile);
+  const authLoading = auth.isLoading ?? false;
   const systemsQuery = useQuery({ queryKey: queryKeys.gameDesignSystems(), queryFn: fetchGameDesignSystems });
   const projectsQuery = useQuery({ queryKey: queryKeys.projects(), queryFn: fetchProjects });
   const [stage, setStage] = useState<Stage>('foundation');
@@ -99,6 +108,10 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   const [error, setError] = useState<string | null>(null);
   const submitKey = useRef<string>(newIdempotencyKey());
   const retryKey = useRef<string>(newIdempotencyKey());
+  const hydratedOwnerRef = useRef<string | null>(null);
+  const hydrationInProgressRef = useRef(false);
+  const recoveryRequestInProgressRef = useRef(false);
+  const submittedRecoveryRef = useRef(false);
   const stageTabRefs = useRef<Partial<Record<Stage, HTMLButtonElement | null>>>({});
   const invalidVisualReferenceRef = useRef<HTMLInputElement | null>(null);
   const visualReferenceErrorRef = useRef<HTMLDivElement | null>(null);
@@ -134,6 +147,59 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         avoid: artAvoid.trim(),
       };
 
+  function recoveryForm(): GdsGenerationRecoveryForm {
+    return { stage, title, genres, philosophies, description, suitableFor, artDirection, selectedArtStyleKey, visualReferences, artAvoid, baseSystemId, pastedMarkdown, sourceProjectId, references, referenceGames };
+  }
+
+  useEffect(() => {
+    const ownerId = userProfile?.id;
+    if (authLoading || !isAuthenticated || !ownerId || hydratedOwnerRef.current === ownerId || hydrationInProgressRef.current) return;
+    hydrationInProgressRef.current = true;
+    const record = readGdsGenerationRecovery(ownerId);
+    if (record) {
+      const form = record.form;
+      setStage(form.stage); setTitle(form.title); setGenres(form.genres); setPhilosophies(form.philosophies); setDescription(form.description); setSuitableFor(form.suitableFor); setArtDirection(form.artDirection); setSelectedArtStyleKey(form.selectedArtStyleKey); setVisualReferences(form.visualReferences); setArtAvoid(form.artAvoid); setBaseSystemId(form.baseSystemId); setPastedMarkdown(form.pastedMarkdown); setSourceProjectId(form.sourceProjectId); setReferences(form.references); setReferenceGames(form.referenceGames);
+      if (record.idempotencyKey) submitKey.current = record.idempotencyKey;
+      if (record.retryKey) retryKey.current = record.retryKey;
+      recoveryRequestInProgressRef.current = record.phase === 'submitted';
+      submittedRecoveryRef.current = record.phase === 'submitted';
+      if (record.phase === 'submitted' && record.retryKey && record.retryParentJobId) {
+        void retryGameDesignSystemGeneration(record.retryParentJobId, record.retryKey).then((fresh) => {
+          setJob(fresh);
+          recoveryRequestInProgressRef.current = false;
+          writeGdsGenerationRecovery({ ...record, jobId: fresh.id, retryKey: undefined, retryParentJobId: undefined, updatedAt: Date.now() });
+        }).catch((recoveryError) => { recoveryRequestInProgressRef.current = false; setError(recoveryError instanceof Error ? recoveryError.message : 'Failed to recover retry.'); });
+      } else if (record.phase === 'submitted' && record.jobId) {
+        void fetchGameDesignSystemGenerationJob(record.jobId).then((fresh) => {
+          setJob(fresh);
+          recoveryRequestInProgressRef.current = false;
+          if (fresh.status === 'completed' && fresh.design_system_id) {
+            clearGdsGenerationRecovery();
+            if (onCompleted) onCompleted(fresh.design_system_id);
+            else router.push('/game-design-systems?systemId=' + encodeURIComponent(fresh.design_system_id));
+          }
+        }).catch((recoveryError) => {
+          recoveryRequestInProgressRef.current = false;
+          const status = (recoveryError as Error & { status?: number }).status;
+          if (status === 403 || status === 404) {
+            clearGdsGenerationRecovery();
+            submittedRecoveryRef.current = false;
+          }
+          setError(recoveryError instanceof Error ? recoveryError.message : 'Failed to recover generation.');
+        });
+      } else if (record.phase === 'submitted' && record.request && record.idempotencyKey) {
+        void startGameDesignSystemGeneration(record.request, record.idempotencyKey).then((fresh) => { recoveryRequestInProgressRef.current = false; setJob(fresh); writeGdsGenerationRecovery({ ...record, jobId: fresh.id, updatedAt: Date.now() }); }).catch((recoveryError) => { recoveryRequestInProgressRef.current = false; setError(recoveryError instanceof Error ? recoveryError.message : 'Failed to recover generation.'); });
+      }
+    }
+    hydratedOwnerRef.current = ownerId;
+    hydrationInProgressRef.current = false;
+  }, [authLoading, isAuthenticated, userProfile?.id]);
+
+  useEffect(() => {
+    if (!hydratedOwnerRef.current || recoveryRequestInProgressRef.current || submittedRecoveryRef.current || job || !userProfile?.id) return;
+    writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'draft', form: recoveryForm(), updatedAt: Date.now() });
+  }, [stage, title, genres, philosophies, description, suitableFor, artDirection, selectedArtStyleKey, visualReferences, artAvoid, baseSystemId, pastedMarkdown, sourceProjectId, references, referenceGames, job, userProfile?.id]);
+
   useEffect(() => {
     if (stage !== 'art-style' || !visualReferenceError) return;
     (invalidVisualReferenceRef.current ?? visualReferenceErrorRef.current)?.focus();
@@ -147,6 +213,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         setJob(fresh);
         if (fresh.status === 'completed' && fresh.design_system_id) {
           window.clearInterval(timer);
+          clearGdsGenerationRecovery();
           await queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystems() });
           if (onCompleted) onCompleted(fresh.design_system_id);
           else router.push('/game-design-systems?systemId=' + encodeURIComponent(fresh.design_system_id));
@@ -159,6 +226,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   }, [job, onCompleted, queryClient, router, submitting]);
 
   function leave() {
+    clearGdsGenerationRecovery();
     if (onCancel) onCancel();
     else router.push('/game-design-systems');
   }
@@ -233,9 +301,14 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
       return;
     }
     try {
-      const fresh = await startGameDesignSystemGeneration(generationInput(artStyleResult.data), submitKey.current);
+      const request = generationInput(artStyleResult.data);
+      submittedRecoveryRef.current = true;
+      if (userProfile?.id) writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'submitted', form: recoveryForm(), request, idempotencyKey: submitKey.current, updatedAt: Date.now() });
+      const fresh = await startGameDesignSystemGeneration(request, submitKey.current);
       setJob(fresh);
+      if (userProfile?.id) writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'submitted', form: recoveryForm(), request, idempotencyKey: submitKey.current, jobId: fresh.id, updatedAt: Date.now() });
       if (fresh.status === 'completed' && fresh.design_system_id) {
+        clearGdsGenerationRecovery();
         await queryClient.invalidateQueries({ queryKey: queryKeys.gameDesignSystems() });
         if (onCompleted) onCompleted(fresh.design_system_id);
         else router.push('/game-design-systems?systemId=' + encodeURIComponent(fresh.design_system_id));
@@ -249,7 +322,12 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
     if (!job) return;
     setError(null);
     try {
-      setJob(await retryGameDesignSystemGeneration(job.id, retryKey.current));
+      const key = retryKey.current;
+      submittedRecoveryRef.current = true;
+      if (userProfile?.id) writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'submitted', form: recoveryForm(), jobId: job.id, retryKey: key, retryParentJobId: job.id, updatedAt: Date.now() });
+      const fresh = await retryGameDesignSystemGeneration(job.id, key);
+      setJob(fresh);
+      if (userProfile?.id) writeGdsGenerationRecovery({ version: 1, ownerId: userProfile.id, phase: 'submitted', form: recoveryForm(), jobId: fresh.id, idempotencyKey: submitKey.current, updatedAt: Date.now() });
     } catch (retryError) {
       setError(retryError instanceof Error ? retryError.message : 'Failed to start retry.');
     }
@@ -258,6 +336,7 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
   function returnToSources() {
     setJob(null);
     setStage('sources');
+    submittedRecoveryRef.current = false;
     submitKey.current = newIdempotencyKey();
     retryKey.current = newIdempotencyKey();
   }
