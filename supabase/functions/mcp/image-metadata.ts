@@ -54,6 +54,9 @@ export async function inspectVerifiedImage(
 function inspectPng(bytes: Uint8Array): ImageDimensions {
   const header = readPngHeader(bytes);
   if (!header) return EMPTY_DIMENSIONS;
+  if (!hasValidPngChunkStructure(bytes, header.colorType)) {
+    return EMPTY_DIMENSIONS;
+  }
   if (
     decodedPngBytesExceedLimit(
       header.width,
@@ -383,7 +386,13 @@ function matchesAscii(
 
 function readPngHeader(
   bytes: Uint8Array,
-): { width: number; height: number; channels: number; depth: number } | null {
+): {
+  width: number;
+  height: number;
+  channels: number;
+  depth: number;
+  colorType: number;
+} | null {
   if (
     bytes.length < 33 ||
     !matchesBytes(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) ||
@@ -406,7 +415,64 @@ function readPngHeader(
     bytes[27] !== 0 ||
     (bytes[28] !== 0 && bytes[28] !== 1)
   ) return null;
-  return { width, height, channels, depth };
+  return { width, height, channels, depth, colorType };
+}
+
+function hasValidPngChunkStructure(
+  bytes: Uint8Array,
+  colorType: number,
+): boolean {
+  let offset = 8;
+  let sawIhdr = false;
+  let sawPlte = false;
+  let sawIdat = false;
+  let endedIdat = false;
+  let idatDataBytes = 0;
+
+  while (offset < bytes.length) {
+    if (bytes.length - offset < 12) return false;
+    const length = readUint32BE(bytes, offset);
+    const typeOffset = offset + 4;
+    const dataOffset = offset + 8;
+    if (length > bytes.length - dataOffset - 4) return false;
+    if (!isValidPngChunkType(bytes, typeOffset)) return false;
+    const crcOffset = dataOffset + length;
+    if (
+      readUint32BE(bytes, crcOffset) !== crc32(bytes, typeOffset, length + 4)
+    ) {
+      return false;
+    }
+
+    if (!sawIhdr) {
+      if (length !== 13 || !matchesAscii(bytes, typeOffset, "IHDR")) {
+        return false;
+      }
+      sawIhdr = true;
+    } else if (matchesAscii(bytes, typeOffset, "IHDR")) {
+      return false;
+    } else if (matchesAscii(bytes, typeOffset, "PLTE")) {
+      if (
+        sawPlte || sawIdat || length === 0 || length % 3 !== 0 || length > 768
+      ) {
+        return false;
+      }
+      if (colorType === 0 || colorType === 4) return false;
+      sawPlte = true;
+    } else if (matchesAscii(bytes, typeOffset, "IDAT")) {
+      if (endedIdat) return false;
+      sawIdat = true;
+      idatDataBytes += length;
+    } else if (matchesAscii(bytes, typeOffset, "IEND")) {
+      return length === 0 && sawIdat && idatDataBytes > 0 &&
+        (colorType !== 3 || sawPlte) && crcOffset + 4 === bytes.length;
+    } else {
+      if (sawIdat) endedIdat = true;
+      if (isPngCriticalChunk(bytes[typeOffset])) return false;
+    }
+
+    offset = crcOffset + 4;
+  }
+  return false;
 }
 
 function decodedPngBytesExceedLimit(
@@ -463,6 +529,22 @@ function crc32(bytes: Uint8Array, offset: number, length: number): number {
     }
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+function isPngCriticalChunk(firstTypeByte: number): boolean {
+  return firstTypeByte >= 0x41 && firstTypeByte <= 0x5a;
+}
+
+function isValidPngChunkType(bytes: Uint8Array, offset: number): boolean {
+  for (let index = 0; index < 4; index++) {
+    const value = bytes[offset + index];
+    if (
+      !((value >= 0x41 && value <= 0x5a) || (value >= 0x61 && value <= 0x7a))
+    ) {
+      return false;
+    }
+  }
+  return bytes[offset + 2] >= 0x41 && bytes[offset + 2] <= 0x5a;
 }
 
 function skipWhitespace(value: string, offset: number): number {

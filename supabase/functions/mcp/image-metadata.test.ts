@@ -99,10 +99,57 @@ function writeUint32LE(bytes: Uint8Array, offset: number, value: number) {
   bytes[offset + 3] = (value >>> 24) & 0xff;
 }
 
+function writeUint32BE(bytes: Uint8Array, offset: number, value: number) {
+  bytes[offset] = (value >>> 24) & 0xff;
+  bytes[offset + 1] = (value >>> 16) & 0xff;
+  bytes[offset + 2] = (value >>> 8) & 0xff;
+  bytes[offset + 3] = value & 0xff;
+}
+
 function writeAscii(bytes: Uint8Array, offset: number, value: string) {
   for (let index = 0; index < value.length; index++) {
     bytes[offset + index] = value.charCodeAt(index);
   }
+}
+
+function crc32(bytes: Uint8Array, offset: number, length: number) {
+  let crc = 0xffffffff;
+  for (let index = offset; index < offset + length; index++) {
+    crc ^= bytes[index];
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array) {
+  const chunk = new Uint8Array(data.length + 12);
+  writeUint32BE(chunk, 0, data.length);
+  writeAscii(chunk, 4, type);
+  chunk.set(data, 8);
+  writeUint32BE(chunk, data.length + 8, crc32(chunk, 4, data.length + 4));
+  return chunk;
+}
+
+function pngFile(chunks: Uint8Array[]) {
+  const length = 8 + chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const png = new Uint8Array(length);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  let offset = 8;
+  for (const chunk of chunks) {
+    png.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return png;
+}
+
+function oversizedIhdr() {
+  const ihdr = new Uint8Array(13);
+  writeUint32BE(ihdr, 0, 32769);
+  writeUint32BE(ihdr, 4, 1024);
+  ihdr.set([0x08, 0x00, 0x00, 0x00, 0x00], 8);
+  return pngChunk("IHDR", ihdr);
 }
 
 function webpChunk(type: "VP8X" | "VP8 " | "VP8L", payload: number[]) {
@@ -174,6 +221,32 @@ Deno.test("preserves proven oversized PNG dimensions without decoding pixels", a
     height,
     hasTransparency: null,
   });
+});
+
+Deno.test("rejects an oversized PNG with only a valid IHDR chunk", async () => {
+  const bytes = pngFile([oversizedIhdr()]);
+
+  assertEquals(bytes.length, 33);
+  await assertNullMetadata("image/png", bytes);
+});
+
+Deno.test("rejects malformed oversized PNG chunk ordering and CRCs", async () => {
+  const idat = pngChunk("IDAT", new Uint8Array([0x78]));
+  const iend = pngChunk("IEND", new Uint8Array());
+  const duplicateIhdr = pngFile([oversizedIhdr(), idat, oversizedIhdr(), iend]);
+  const corruptedIdat = idat.slice();
+  corruptedIdat[corruptedIdat.length - 1] ^= 0x01;
+  const badCrc = pngFile([oversizedIhdr(), corruptedIdat, iend]);
+  const invalidChunkType = pngFile([
+    oversizedIhdr(),
+    idat,
+    pngChunk("a123", new Uint8Array()),
+    iend,
+  ]);
+
+  await assertNullMetadata("image/png", duplicateIhdr);
+  await assertNullMetadata("image/png", badCrc);
+  await assertNullMetadata("image/png", invalidChunkType);
 });
 
 Deno.test("reports opaque PNG data as non-transparent", async () => {
