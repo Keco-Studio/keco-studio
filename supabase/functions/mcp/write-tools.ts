@@ -13,7 +13,10 @@ import { asPublicMcpError, McpDomainError } from "./errors.ts";
 import { MAX_DOCUMENT_MARKDOWN_BYTES, utf8ByteLength } from "./limits.ts";
 import { scheduleMcpReindex } from "./reindex.ts";
 import { measureMcpPhase } from "./telemetry.ts";
-import { inspectVerifiedImage } from "./image-metadata.ts";
+import {
+  inspectVerifiedImage,
+  type VerifiedImageMetadata,
+} from "./image-metadata.ts";
 
 const uuid = z.string().uuid();
 const IMAGE_BUCKET = "library-media-files";
@@ -46,7 +49,7 @@ const gameAssetCategory = z.enum([
 const UUID_PATH_SEGMENT =
   "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const ENCODED_IMAGE_FILE_NAME =
-  "(?:[A-Za-z0-9_][A-Za-z0-9._-]*|~h(?:[0-9a-f]{2})+|~(?:%[0-9a-f]{2}|[A-Za-z0-9._~-])+)";
+  "(?:[A-Za-z0-9_-][A-Za-z0-9._-]*|~h(?:[0-9a-f]{2})+|~(?:%[0-9a-f]{2}|[A-Za-z0-9._~-])+)";
 const preparedImagePathPattern = new RegExp(
   `^${UUID_PATH_SEGMENT}/${UUID_PATH_SEGMENT}/${UUID_PATH_SEGMENT}-${ENCODED_IMAGE_FILE_NAME}$`,
   "i",
@@ -378,6 +381,37 @@ type ProjectGameAssetResult = {
   createdAt: string;
   updatedAt: string;
 };
+type RegisteredAssetExpectation = {
+  projectId: string;
+  createdBy: string;
+  image: VerifiedImage;
+  metadata: VerifiedImageMetadata;
+  category: GameAssetCategory;
+};
+
+const registeredAssetDimension = z.number().int().min(1).max(2_147_483_647)
+  .nullable();
+const registeredAssetTimestamp = z.string().datetime({ offset: true }).refine(
+  (value) => Number.isFinite(Date.parse(value)),
+);
+const registeredAssetRowSchema = z.object({
+  id: uuid,
+  project_id: uuid,
+  created_by: uuid,
+  name: z.string(),
+  category: gameAssetCategory,
+  status: z.literal("ready"),
+  mime_type: imageFileType,
+  storage_path: z.string(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  width: registeredAssetDimension,
+  height: registeredAssetDimension,
+  has_transparency: z.boolean().nullable(),
+  file_size: z.number().int().min(1).max(MAX_IMAGE_BYTES),
+  created_at: registeredAssetTimestamp,
+  updated_at: registeredAssetTimestamp,
+  reused: z.boolean(),
+});
 
 async function prepareImageUpload(
   context: ProjectMcpRequestContext,
@@ -549,47 +583,46 @@ async function completeImageUpload(
 
 function normalizeRegisteredAsset(
   row: Record<string, unknown> | null,
+  expected: RegisteredAssetExpectation,
 ): { reused: boolean; asset: ProjectGameAssetResult } {
-  const category = gameAssetCategory.safeParse(row?.category);
-  const mimeType = imageFileType.safeParse(row?.mime_type);
-  const width = row?.width === null ? null : Number(row?.width);
-  const height = row?.height === null ? null : Number(row?.height);
-  const fileSize = Number(row?.file_size);
+  const parsed = registeredAssetRowSchema.safeParse(row);
   if (
-    !row || typeof row.id !== "string" ||
-    typeof row.project_id !== "string" || typeof row.name !== "string" ||
-    row.status !== "ready" || typeof row.storage_path !== "string" ||
-    typeof row.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(row.sha256) ||
-    !category.success || !mimeType.success ||
-    !(width === null || Number.isInteger(width) && width > 0) ||
-    !(height === null || Number.isInteger(height) && height > 0) ||
-    !(row.has_transparency === null ||
-      typeof row.has_transparency === "boolean") ||
-    !Number.isInteger(fileSize) || fileSize < 1 ||
-    typeof row.created_at !== "string" || typeof row.updated_at !== "string"
+    !parsed.success ||
+    parsed.data.project_id !== expected.projectId ||
+    parsed.data.created_by !== expected.createdBy ||
+    parsed.data.name !== expected.image.fileName ||
+    parsed.data.category !== expected.category ||
+    parsed.data.mime_type !== expected.image.fileType ||
+    parsed.data.storage_path !== expected.image.path ||
+    parsed.data.sha256 !== expected.metadata.sha256 ||
+    parsed.data.width !== expected.metadata.width ||
+    parsed.data.height !== expected.metadata.height ||
+    parsed.data.has_transparency !== expected.metadata.hasTransparency ||
+    parsed.data.file_size !== expected.image.fileSize
   ) {
     throw new McpDomainError(
       "INTERNAL_ERROR",
       "The project asset could not be registered.",
     );
   }
+  const normalized = parsed.data;
   return {
-    reused: row.reused === true,
+    reused: normalized.reused,
     asset: {
-      id: row.id,
-      projectId: row.project_id,
-      name: row.name,
-      category: category.data,
+      id: normalized.id,
+      projectId: normalized.project_id,
+      name: normalized.name,
+      category: normalized.category,
       status: "ready",
-      storagePath: row.storage_path,
-      sha256: row.sha256,
-      width,
-      height,
-      hasTransparency: row.has_transparency,
-      fileSize,
-      mimeType: mimeType.data,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      storagePath: normalized.storage_path,
+      sha256: normalized.sha256,
+      width: normalized.width,
+      height: normalized.height,
+      hasTransparency: normalized.has_transparency,
+      fileSize: normalized.file_size,
+      mimeType: normalized.mime_type,
+      createdAt: normalized.created_at,
+      updatedAt: normalized.updated_at,
     },
   };
 }
@@ -636,7 +669,13 @@ async function registerProjectGameAsset(
       "The project asset could not be registered.",
     );
   }
-  return normalizeRegisteredAsset(firstRow(data));
+  return normalizeRegisteredAsset(firstRow(data), {
+    projectId: context.projectId,
+    createdBy: context.userId,
+    image,
+    metadata,
+    category,
+  });
 }
 
 async function createFolder(

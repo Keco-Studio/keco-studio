@@ -32,6 +32,7 @@ function imageContext(
     missingPaths?: string[];
     registrationErrorCode?: string;
     reused?: boolean;
+    mutateRegistrationRow?: (row: Record<string, unknown>) => void;
   } = {},
 ): ProjectMcpRequestContext {
   const bucket = {
@@ -119,25 +120,27 @@ function imageContext(
             };
           }
           const input = arguments_[0] as Record<string, unknown>;
+          const row: Record<string, unknown> = {
+            id: "33333333-3333-4333-8333-333333333333",
+            project_id: PROJECT_ID,
+            created_by: USER_ID,
+            name: input.p_name,
+            category: input.p_category,
+            status: "ready",
+            mime_type: input.p_mime_type,
+            storage_path: input.p_storage_path,
+            sha256: input.p_sha256,
+            width: input.p_width,
+            height: input.p_height,
+            has_transparency: input.p_has_transparency,
+            file_size: input.p_file_size,
+            created_at: "2026-09-09T00:00:00.000Z",
+            updated_at: "2026-09-09T00:00:00.000Z",
+            reused: options.reused ?? false,
+          };
+          options.mutateRegistrationRow?.(row);
           return {
-            data: [{
-              id: "33333333-3333-4333-8333-333333333333",
-              project_id: PROJECT_ID,
-              created_by: USER_ID,
-              name: input.p_name,
-              category: input.p_category,
-              status: "ready",
-              mime_type: input.p_mime_type,
-              storage_path: input.p_storage_path,
-              sha256: input.p_sha256,
-              width: input.p_width,
-              height: input.p_height,
-              has_transparency: input.p_has_transparency,
-              file_size: input.p_file_size,
-              created_at: "2026-09-09T00:00:00.000Z",
-              updated_at: "2026-09-09T00:00:00.000Z",
-              reused: options.reused ?? false,
-            }],
+            data: [row],
             error: null,
           };
         }
@@ -860,6 +863,127 @@ Deno.test("complete_project_game_asset_uploads propagates exact retry reuse", as
   );
 });
 
+const RAW_REGISTRATION_SENTINEL = "RAW_REGISTRATION_SENTINEL";
+const malformedRegistrationRows: Array<{
+  name: string;
+  mutate: (row: Record<string, unknown>) => void;
+}> = [
+  { name: "string width", mutate: (row) => row.width = "1" },
+  { name: "fractional height", mutate: (row) => row.height = 1.5 },
+  { name: "zero width", mutate: (row) => row.width = 0 },
+  {
+    name: "out-of-range width",
+    mutate: (row) => row.width = 2_147_483_648,
+  },
+  { name: "string file size", mutate: (row) => row.file_size = "68" },
+  { name: "fractional file size", mutate: (row) => row.file_size = 67.5 },
+  { name: "zero file size", mutate: (row) => row.file_size = 0 },
+  {
+    name: "oversized file size",
+    mutate: (row) => row.file_size = 5 * 1024 * 1024 + 1,
+  },
+  {
+    name: "invalid asset UUID",
+    mutate: (row) => row.id = RAW_REGISTRATION_SENTINEL,
+  },
+  {
+    name: "invalid project UUID",
+    mutate: (row) => row.project_id = RAW_REGISTRATION_SENTINEL,
+  },
+  {
+    name: "invalid creator UUID",
+    mutate: (row) => row.created_by = RAW_REGISTRATION_SENTINEL,
+  },
+  {
+    name: "mismatched project UUID",
+    mutate: (row) => row.project_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  },
+  {
+    name: "mismatched creator UUID",
+    mutate: (row) => row.created_by = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  },
+  {
+    name: "invalid created timestamp",
+    mutate: (row) => row.created_at = RAW_REGISTRATION_SENTINEL,
+  },
+  {
+    name: "invalid updated timestamp",
+    mutate: (row) => row.updated_at = RAW_REGISTRATION_SENTINEL,
+  },
+  {
+    name: "missing reused flag",
+    mutate: (row) => delete row.reused,
+  },
+  { name: "string reused flag", mutate: (row) => row.reused = "false" },
+  {
+    name: "mismatched name",
+    mutate: (row) => row.name = RAW_REGISTRATION_SENTINEL,
+  },
+  { name: "mismatched category", mutate: (row) => row.category = "icon" },
+  {
+    name: "mismatched MIME type",
+    mutate: (row) => row.mime_type = "image/jpeg",
+  },
+  {
+    name: "mismatched storage path",
+    mutate: (row) =>
+      row.storage_path = UPLOAD_PATH.replace("hero.png", "other.png"),
+  },
+  {
+    name: "mismatched SHA-256",
+    mutate: (row) => row.sha256 = "0".repeat(64),
+  },
+  { name: "mismatched status", mutate: (row) => row.status = "processing" },
+  { name: "mismatched width", mutate: (row) => row.width = 2 },
+  { name: "mismatched height", mutate: (row) => row.height = 2 },
+  {
+    name: "mismatched transparency",
+    mutate: (row) => row.has_transparency = true,
+  },
+  { name: "mismatched file size", mutate: (row) => row.file_size = 67 },
+];
+
+for (const testCase of malformedRegistrationRows) {
+  Deno.test(
+    `complete_project_game_asset_uploads rejects malformed registration row: ${testCase.name}`,
+    async () => {
+      const calls: StorageCall[] = [];
+      const message = await callTool(
+        imageContext(calls, undefined, pngBytes(), {
+          mutateRegistrationRow(row) {
+            row.provider_detail = RAW_REGISTRATION_SENTINEL;
+            testCase.mutate(row);
+          },
+        }),
+        "complete_project_game_asset_uploads",
+        { items: [{ path: UPLOAD_PATH, category: "map" }] },
+      );
+
+      assertEquals(message.result?.isError, undefined);
+      const result = message.result?.structuredContent as {
+        completedCount: number;
+        failedCount: number;
+        items: Array<Record<string, unknown>>;
+      };
+      assertEquals(result.completedCount, 0);
+      assertEquals(result.failedCount, 1);
+      assertEquals(result.items[0], {
+        index: 0,
+        ok: false,
+        path: UPLOAD_PATH,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "The project asset could not be registered.",
+        },
+      });
+      assertEquals(
+        JSON.stringify(message.result).includes(RAW_REGISTRATION_SENTINEL),
+        false,
+      );
+    },
+  );
+}
+
 Deno.test("complete_project_game_asset_uploads preserves Unicode file names", async () => {
   const calls: StorageCall[] = [];
   const fileName = "\u82f9\u679c.png";
@@ -883,6 +1007,36 @@ Deno.test("complete_project_game_asset_uploads preserves Unicode file names", as
   }).items[0];
   assertEquals(item.image.fileName, fileName);
   assertEquals(item.asset.name, fileName);
+});
+
+Deno.test("complete_project_game_asset_uploads accepts prepared leading-hyphen names", async () => {
+  const calls: StorageCall[] = [];
+  const fileName = "-hero.png";
+  const prepared = await callTool(
+    imageContext(calls),
+    "create_image_upload",
+    { fileName, fileType: "image/png", fileSize: 68 },
+  );
+  const path = (prepared.result?.structuredContent as {
+    image: { path: string };
+  }).image.path;
+  assertMatch(path, /--hero\.png$/);
+
+  const completed = await callTool(
+    imageContext(calls),
+    "complete_project_game_asset_uploads",
+    { items: [{ path }] },
+  );
+
+  assertEquals(completed.result?.isError, undefined);
+  const result = completed.result?.structuredContent as {
+    completedCount: number;
+    failedCount: number;
+    items: Array<{ asset: { name: string } }>;
+  };
+  assertEquals(result.completedCount, 1);
+  assertEquals(result.failedCount, 0);
+  assertEquals(result.items[0].asset.name, fileName);
 });
 
 Deno.test("complete_project_game_asset_uploads omits upload credentials and bytes", async () => {
