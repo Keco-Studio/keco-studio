@@ -45,6 +45,7 @@ function plannerMessages(input: { event: DialogueSceneEvent; gddContext: string 
       'Use the scene event and preceding GDD text as the only design evidence.',
       'Write full spoken lines and actionable player choices. Keep branch outcomes consistent with the established scene.',
       'When the scene event has choices, preserve every choice label verbatim and write a complete explicit branch for each choice.',
+      'Before the first option row, write at least one visible scene, narration, or spoken dialogue line that owns and presents the choices. Never start content with O1 or another option.',
       'Use this importable branch syntax inside content: O1: <choice text> (Jump O1), then O1 branch [O1 | <short place or event title>], optional longer \u573a\u666f： setting line, branch dialogue, (Jump Oend), and finally Oend merge [Oend | <short merge title>]. Use O2, O3, and so on for later choices.',
       'The text after each | must be a concise chapter title (about 4–12 Chinese characters when possible), never a full scene-setting paragraph.',
       'Never represent a player choice only as a Markdown bullet or prose. Every event choice must appear on its own exact O-numbered option row with a Jump target.',
@@ -183,6 +184,7 @@ function isChoiceDeclarationLine(content: string, offset: number): boolean {
 
 function validateChoices(plan: DialoguePlan, event: DialogueSceneEvent): void {
   const expectedHasChoices = event.choices.length > 0;
+  const segmented = segmentStorySource(plan.content, `dialogue:${event.chapterKey}`);
   const detectedChoices = choiceSegmentsBeforeBranches(plan.content, event.chapterKey)
     .map((segment) => normalizeChoiceText(segment.text));
   if (plan.hasChoices !== expectedHasChoices) {
@@ -201,6 +203,18 @@ function validateChoices(plan: DialoguePlan, event: DialogueSceneEvent): void {
   if (plan.branchSummary.length !== event.choices.length) {
     throw new GddDialoguePlanningValidationError(
       `Dialogue plan must contain exactly ${event.choices.length} branch summaries.`,
+    );
+  }
+  const firstChoiceStart = segmented.segments
+    .filter((segment) => segment.kind === 'choice_text')
+    .reduce((first, segment) => Math.min(first, segment.start), Number.POSITIVE_INFINITY);
+  const hasVisiblePrompt = segmented.segments.some((segment) => (
+    segment.start < firstChoiceStart
+    && ['dialogue', 'narration', 'stage_direction', 'scene_heading'].includes(segment.kind)
+  ));
+  if (!hasVisiblePrompt) {
+    throw new GddDialoguePlanningValidationError(
+      'Dialogue content with choices must include a visible scene, narration, or dialogue prompt before the first option row.',
     );
   }
   const normalizedExpectedChoices = event.choices.map(normalizeChoiceText);

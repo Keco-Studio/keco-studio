@@ -16,6 +16,8 @@ import {
   DialogueSceneStreamParser,
   dialogueSceneEventSchema,
   dialogueSceneShapeExample,
+  extractDialogueSceneEvents,
+  stripDialogueSceneMarkers,
   type DialogueSceneEvent,
 } from './dialogueSceneStream';
 import { planDialogueScene } from './dialoguePlanner';
@@ -108,7 +110,21 @@ export async function reviewGddMarkdownV2(
 
   let dialoguePlans = runtime.dialoguePlans ?? [];
   let dialoguePlanWarning: string | null = null;
-  if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
+  const explicitSceneEvents = extractDialogueSceneEvents(normalized.markdown);
+  if (explicitSceneEvents.length > 0) {
+    if (dialoguePlans.length === 0) {
+      dialoguePlans = await planDialogueSceneEvents(
+        explicitSceneEvents,
+        normalized.markdown,
+        dependencies,
+        runtime.signal,
+      );
+    }
+    normalized = {
+      ...normalized,
+      markdown: stripDialogueSceneMarkers(normalized.markdown),
+    };
+  } else if (dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
     repairRound = Math.max(repairRound, 1);
     const recovered = await recoverMissingDialoguePlans(
       normalized.markdown,
@@ -600,17 +616,26 @@ async function recoverMissingDialoguePlans(
       warning: 'Narrative GDD produced no dialogue scene resources after one recovery pass.',
     };
   }
+  return {
+    plans: await planDialogueSceneEvents(events, markdown, dependencies, signal),
+    warning: null,
+  };
+}
+
+async function planDialogueSceneEvents(
+  events: DialogueSceneEvent[],
+  markdown: string,
+  dependencies: Required<GddV2GeneratorDependencies>,
+  signal?: AbortSignal,
+): Promise<DialoguePlan[]> {
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
   try {
-    return {
-      plans: await Promise.all(events.map((event) => runWithSlot(() => dependencies.planScene(
+    return await Promise.all(events.map((event) => runWithSlot(async () => dependencies.planScene(
       { event, gddContext: plannerContext(markdown) },
       { complete: dependencies.complete },
       { signal: controller.signal },
-      )))),
-      warning: null,
-    };
+    ))));
   } finally {
     unlink();
   }

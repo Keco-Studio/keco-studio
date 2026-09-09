@@ -478,7 +478,8 @@ export function useSidebarContextMenuActions({
         } else if (contextMenu.type === 'folder') {
           requestDeleteConfirm({
             title: 'Confirm deletion',
-            content: 'Delete this folder? All libraries and subfolders under it will be removed.',
+            content:
+              'Delete this folder? Documents, tables, and subfolders under it will also be deleted.',
             onConfirm: async () => {
               const folderId = contextMenu.id;
               const librariesInFolder = libraries.filter((lib) => lib.folder_id === folderId);
@@ -493,6 +494,11 @@ export function useSidebarContextMenuActions({
                 ) {
                   router.push(`/${currentIds.projectId}`);
                 }
+                if (currentIds.projectId) {
+                  void queryClient.invalidateQueries({
+                    queryKey: queryKeys.documents(currentIds.projectId),
+                  });
+                }
                 void invalidateFolderData(queryClient, {
                   projectId: currentIds.projectId,
                   folderId,
@@ -501,7 +507,9 @@ export function useSidebarContextMenuActions({
                   console.error('Failed to refresh sidebar after folder delete', err);
                 });
               } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                const msg = err instanceof Error ? err.message : 'Failed to delete folder';
+                setError(msg);
+                showErrorToast(msg, 8000);
               }
             },
           });

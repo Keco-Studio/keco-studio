@@ -81,6 +81,23 @@ describe('planDialogueScene', () => {
     expect(JSON.stringify(repairMessages)).toMatch(/choice|branch/i);
   });
 
+  it('repairs a branch script that starts with options before a visible prompt', async () => {
+    const optionFirst = {
+      ...validPlan,
+      content: validPlan.content.split('\n').slice(1).join('\n'),
+    };
+    const complete = jest.fn(async () => complete.mock.calls.length === 1
+      ? JSON.stringify(optionFirst)
+      : JSON.stringify(validPlan));
+
+    await expect(planDialogueScene({ event, gddContext: '# GDD\nScene.' }, { complete }))
+      .resolves.toEqual(validPlan);
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    const repairMessages = (complete.mock.calls[1] as unknown as [ChatMessage[]])[0];
+    expect(JSON.stringify(repairMessages)).toMatch(/visible.*(?:prompt|scene|dialogue)|before.*option/i);
+  });
+
   it('repairs legacy aliases and coerced types instead of accepting them as strict planner JSON', async () => {
     const legacyResponse = {
       chapter_key: validPlan.chapterKey,

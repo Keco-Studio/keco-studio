@@ -164,6 +164,21 @@ describe('professional GDD stages', () => {
     expect(systemPrompt).toMatch(/bullet|numbered list/i);
   });
 
+  it('gives content stages enough completion budget to finish every planned section', async () => {
+    const contentBlueprint: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        { id: 'world', title: 'World', stage: 'content', instructions: ['Define the world.'] },
+        { id: 'characters', title: 'Characters', stage: 'content', instructions: ['Define characters.'] },
+        { id: 'testing', title: 'Testing & Balance', stage: 'content', instructions: ['Define validation.'] },
+      ],
+    };
+    const complete = jest.fn(async () => '## World\n\nWorld.\n\n## Characters\n\nCharacters.\n\n## Testing & Balance\n\nTesting.');
+    await generateProfessionalStage(input, 'generating_content', checkpoint({ blueprint: contentBlueprint }), { complete });
+    const options = (complete.mock.calls as unknown as Array<unknown[]>)[0]?.[1] as { maxCompletionTokens?: number } | undefined;
+    expect(options?.maxCompletionTokens).toBeGreaterThanOrEqual(12_000);
+  });
+
   it('uses the explicit Chinese game title from the creative brief instead of a model title', async () => {
     const complete = jest.fn(async () => JSON.stringify({
       ...blueprint,
@@ -276,6 +291,58 @@ describe('professional GDD stages', () => {
     expect(prompt).toMatch(/9.?12|at least 9|nine/i);
     expect(prompt).toMatch(/core.*systems.*content/i);
     expect(prompt).toMatch(/concrete|executable/i);
+  });
+
+  it('asks planning for adaptive project background coverage without forcing a fixed heading', async () => {
+    const complete = jest.fn(async () => JSON.stringify(blueprint));
+    await generateProfessionalStage(input, 'planning', checkpoint(), { complete });
+    const planningCalls = complete.mock.calls as unknown as Array<unknown[]>;
+    const messages = planningCalls[0]?.[0] as Array<{ content?: unknown }> | undefined;
+    const prompt = String(messages?.[0]?.content);
+    expect(prompt).toMatch(/background|premise|design intent|design philosophy|player experience|player fantasy/i);
+    expect(prompt).toMatch(/adaptive|appropriate to the game|choose a title/i);
+    expect(prompt).toMatch(/do not use a fixed|without a fixed|not.*fixed template/i);
+    expect(prompt).not.toContain('一、项目概述与设计理念');
+  });
+
+  it('repairs a stage when the model demotes planned sections to subsections', async () => {
+    const twoCoreSections: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        { id: 'overview', title: 'Overview', stage: 'core', instructions: ['Introduce the game.'] },
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        ...blueprint.sections.slice(1),
+      ],
+    };
+    const incomplete = '## Overview\n\nBackground.\n\n### Core Loop\n\nThe loop.';
+    const repaired = '## Overview\n\nBackground.\n\n## Core Loop\n\nThe loop.';
+    const complete = jest.fn(async () => repaired).mockResolvedValueOnce(incomplete);
+
+    const result = await generateProfessionalStage(input, 'generating_core', checkpoint({ blueprint: twoCoreSections }), { complete });
+
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.sectionDrafts.map((draft) => draft.sectionId)).toEqual(['overview', 'core-loop']);
+    const repairMessages = (complete.mock.calls as unknown as Array<unknown[]>)[1]?.[0] as Array<{ content?: unknown }> | undefined;
+    expect(String(repairMessages?.[0]?.content)).toMatch(/every|one exact H2|requested section/i);
+    expect(String(repairMessages?.[0]?.content)).toContain('Overview');
+    expect(String(repairMessages?.[0]?.content)).toContain('Core Loop');
+  });
+
+  it('rejects a stage when repair still omits a planned section', async () => {
+    const twoCoreSections: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        { id: 'overview', title: 'Overview', stage: 'core', instructions: ['Introduce the game.'] },
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        ...blueprint.sections.slice(1),
+      ],
+    };
+    const incomplete = '## Overview\n\nBackground.';
+    const complete = jest.fn(async () => incomplete);
+
+    await expect(generateProfessionalStage(input, 'generating_core', checkpoint({ blueprint: twoCoreSections }), { complete }))
+      .rejects.toThrow(/section|complete|missing/i);
+    expect(complete).toHaveBeenCalledTimes(2);
   });
 
   it('gives planning enough completion budget for the full blueprint', async () => {

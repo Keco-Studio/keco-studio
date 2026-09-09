@@ -662,7 +662,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const handleFolderDelete = useCallback(async (folderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const confirmed = await confirmDeletion('Delete this folder? All libraries and subfolders under it will be removed.');
+    const confirmed = await confirmDeletion(
+      'Delete this folder? Documents, tables, and subfolders under it will also be deleted.'
+    );
     if (!confirmed) return;
     try {
       // Check if any libraries under this folder are being viewed
@@ -670,6 +672,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
 
       await deleteFolder(supabase, folderId);
+      if (currentIds.projectId) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.documents(currentIds.projectId),
+        });
+      }
       await invalidateFolderData(queryClient, {
         projectId: currentIds.projectId,
         folderId,
@@ -683,7 +690,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         }
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to delete folder');
+      const msg = err?.message || 'Failed to delete folder';
+      setError(msg);
+      showErrorToast(msg, 8000);
     }
   }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, queryClient, router, confirmDeletion]);
 
@@ -1838,7 +1847,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 setDeleteConfirmState({
                   open: true,
                   title: 'Confirm deletion',
-                  content: 'Delete this folder? All libraries and subfolders under it will be removed.',
+                  content:
+                    'Delete this folder? Documents, tables, and subfolders under it will also be deleted.',
                   loading: false,
                   onConfirm: async () => {
                     const librariesInFolder = libraries.filter((lib) => lib.folder_id === id);
@@ -1853,6 +1863,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       ) {
                         router.push(`/${currentIds.projectId}`);
                       }
+                      if (currentIds.projectId) {
+                        void queryClient.invalidateQueries({
+                          queryKey: queryKeys.documents(currentIds.projectId),
+                        });
+                      }
                       void invalidateFolderData(queryClient, {
                         projectId: currentIds.projectId,
                         folderId: id,
@@ -1861,7 +1876,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         console.error('Failed to refresh sidebar after folder delete', err);
                       });
                     } catch (err: unknown) {
-                      setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                      const msg = err instanceof Error ? err.message : 'Failed to delete folder';
+                      setError(msg);
+                      showErrorToast(msg, 8000);
                     }
                   },
                 });

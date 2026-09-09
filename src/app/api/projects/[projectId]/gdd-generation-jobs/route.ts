@@ -39,6 +39,10 @@ function idempotencyKey(request: Request): string | null {
   return value && /^[A-Za-z0-9._:-]{8,128}$/.test(value) ? value : null;
 }
 
+function hasChineseIdentity(value: string): boolean {
+  return (value.match(/[\u3400-\u9fff]/g) ?? []).length >= 2;
+}
+
 function scheduleWorker(): void {
   after(async () => {
     try {
@@ -127,12 +131,14 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
         // The user's brief is authoritative, even when it is short. Pinned
         // rules and design-system metadata may use a different language.
         ? inferGddOutputLanguage([parsed.data.creativeBrief])
-        : inferGddOutputLanguage([
-          project.data.name,
-          detail.title,
-          JSON.stringify(version.document),
-          JSON.stringify(version.rules),
-        ]),
+        : hasChineseIdentity(detail.title) || hasChineseIdentity(project.data.name)
+          ? 'zh-CN'
+          : inferGddOutputLanguage([
+            project.data.name,
+            detail.title,
+            JSON.stringify(version.document),
+            JSON.stringify(version.rules),
+          ]),
       projectId,
       projectName: project.data.name,
       designSystemId: detail.id,

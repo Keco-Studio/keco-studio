@@ -291,12 +291,19 @@ export default function ProjectPage() {
         setShowEditFolderModal(true);
         break;
       case 'delete':
-        if (await confirmDeletion('Delete this folder? All libraries under it will be removed.')) {
+        if (
+          await confirmDeletion(
+            'Delete this folder? Documents, tables, and subfolders under it will also be deleted.'
+          )
+        ) {
           try {
             await deleteFolder(supabase, folderId);
             if (pathname.includes(`/folder/${folderId}`)) {
               router.push(`/${projectId}`);
             }
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.documents(projectId),
+            });
             void invalidateFolderData(queryClient, {
               projectId,
               folderId,
@@ -306,7 +313,8 @@ export default function ProjectPage() {
             });
           } catch (err: any) {
             console.error('Failed to delete folder:', err);
-            alert(err?.message || 'Failed to delete folder');
+            const msg = err?.message || 'Failed to delete folder';
+            alert(msg);
           }
         }
         break;

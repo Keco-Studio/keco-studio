@@ -362,24 +362,45 @@ export async function deleteFolder(
     await deleteFolder(supabase, child.id);
   }
 
-  // First, delete all libraries associated with this folder (cascade delete)
-  // Query libraries first to get their IDs, then delete them individually
-  // This avoids potential issues with invalid folder_id values in the database
+  // Documents use ON DELETE SET NULL on folder_id. If we only delete the folder,
+  // they resurface at project root after refresh.
+  const { data: documentsToDelete, error: documentsQueryError } = await supabase
+    .from('documents')
+    .select('id')
+    .eq('folder_id', folderId);
+
+  if (documentsQueryError) {
+    throw new Error(`Failed to list documents in folder: ${documentsQueryError.message}`);
+  }
+  if (documentsToDelete && documentsToDelete.length > 0) {
+    const documentIds = documentsToDelete.map((doc) => doc.id);
+    const { error: deleteDocumentsError } = await supabase
+      .from('documents')
+      .delete()
+      .in('id', documentIds);
+
+    if (deleteDocumentsError) {
+      const detail = deleteDocumentsError.message || '';
+      if (/map_revisions|foreign key|23503/i.test(detail)) {
+        throw new Error(
+          'Failed to delete documents in folder because they are still referenced by Create Map data. Apply the latest database migration (documents_delete_clear_map_projects), then try again.'
+        );
+      }
+      throw new Error(`Failed to delete documents in folder: ${detail}`);
+    }
+  }
+
+  // Delete remaining libraries in this folder (derived libraries already cascade from documents).
   const { data: librariesToDelete, error: queryError } = await supabase
     .from('libraries')
     .select('id')
     .eq('folder_id', folderId);
 
   if (queryError) {
-    // If query fails, it might be due to invalid data in the database
-    // Log the error but continue with folder deletion
-    // The database constraint (on delete set null) will handle any remaining libraries
-    console.warn('Error querying libraries for folder deletion:', queryError.message);
-    // Continue to delete the folder - any libraries with valid folder_id will be set to null
-    // by the database constraint
-  } else if (librariesToDelete && librariesToDelete.length > 0) {
-    // Delete libraries by their IDs
-    const libraryIds = librariesToDelete.map(lib => lib.id);
+    throw new Error(`Failed to list libraries in folder: ${queryError.message}`);
+  }
+  if (librariesToDelete && librariesToDelete.length > 0) {
+    const libraryIds = librariesToDelete.map((lib) => lib.id);
     const { error: deleteError } = await supabase
       .from('libraries')
       .delete()
@@ -390,8 +411,8 @@ export async function deleteFolder(
     }
   }
 
-  // Get folder info before deletion to invalidate proper caches
-  const folder = await getFolder(supabase, folderId);
+  // Verify folder still exists / is readable before delete (permission + race guard).
+  await getFolder(supabase, folderId);
 
   // Then delete the folder
   const { error } = await supabase
@@ -400,6 +421,12 @@ export async function deleteFolder(
     .eq('id', folderId);
 
   if (error) {
+    const detail = error.message || '';
+    if (/keco_slice_runs|planning_root|23503|foreign key/i.test(detail)) {
+      throw new Error(
+        'Failed to delete folder because it is still referenced by a slice run or planning root. Remove those references first.'
+      );
+    }
     throw error;
   }
 

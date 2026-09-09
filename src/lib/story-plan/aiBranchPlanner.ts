@@ -1547,8 +1547,33 @@ export function materializeAiBranchStructure(
   rewrittenSegments.sort((left, right) => left.start - right.start || left.end - right.end);
   const rewrittenSource = { ...workingSource, segments: rewrittenSegments };
   const inventory = buildHierarchicalStoryPlanInventory(rewrittenSource);
-  const positioned = positionInventory(inventory);
   const unitIndexById = new Map(workingSource.units.map((unit, index) => [unit.id, index]));
+  const knownNodeIds = new Set(inventory.nodes.map((node) => node.id));
+  for (const decision of decisions) {
+    const ownerIndex = unitIndexById.get(decision.ownerUnitId);
+    if (ownerIndex === undefined) continue;
+    const hasVisibleOwner = inventory.nodes.some((node) => (
+      (unitIndexById.get(node.unitId) ?? Number.MAX_SAFE_INTEGER) <= ownerIndex
+    ));
+    if (hasVisibleOwner) continue;
+    let suffix = 1;
+    while (knownNodeIds.has(`ChoiceMenu${suffix}`)) suffix += 1;
+    const id = `ChoiceMenu${suffix}`;
+    knownNodeIds.add(id);
+    inventory.nodes.push({
+      id,
+      unitId: decision.ownerUnitId,
+      type: 'system',
+      speakerSegmentId: '',
+      contentSegmentIds: [],
+      commandIds: [],
+    });
+  }
+  inventory.nodes.sort((left, right) => (
+    (unitIndexById.get(left.unitId) ?? Number.MAX_SAFE_INTEGER)
+      - (unitIndexById.get(right.unitId) ?? Number.MAX_SAFE_INTEGER)
+  ));
+  const positioned = positionInventory(inventory);
   const positionedNodes = inventory.nodes.map((node) => ({
     node,
     unitIndex: unitIndexById.get(node.unitId) ?? Number.MAX_SAFE_INTEGER,

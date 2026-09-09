@@ -104,6 +104,26 @@ export function branchPlannerTimeoutMs(sourceChars: number, unitCount: number): 
   );
 }
 
+/**
+ * Branch planning is useful for prose with real alternatives, but a linear
+ * scene can contain many units without having any choices. Requiring branch
+ * evidence prevents the planner from hallucinating options for epilogues and
+ * other straight-line dialogue.
+ */
+export function shouldTryBranchPlanner(source: SegmentedStorySource): boolean {
+  if (source.segments.some((segment) => (
+    segment.kind === 'choice_text'
+    || segment.kind === 'branch_marker'
+    || segment.kind === 'jump_hint'
+  ))) return true;
+  const cueCount = source.units.reduce((count, unit) => count + (
+    /\b(?:choose|choice(?:s)?|branch(?:es|ed|ing)?|option(?:s)?|decision(?:s)?|either|if you choose)\b|选择|分支|选项|决定|如果你选择|两条路/i.test(unit.text)
+      ? 1
+      : 0
+  ), 0);
+  return cueCount >= 2;
+}
+
 export type StoryPlanLlmStage =
   | 'Branch Planner'
   | 'Extractor'
@@ -313,12 +333,13 @@ export async function resolveStoryPlanForImport(
   // Even prose without a standard scene heading can contain mutually
   // exclusive branches. Use the compact structure-only model before the
   // heavier Extractor/Graph pair unless the source must be chunked.
-  const shouldTryBranchPlanner = source.units.length >= 5
+  const shouldTryBranchPlannerForSource = source.units.length >= 5
+    && shouldTryBranchPlanner(source)
     && (
       source.content.length <= CONTENT_CHUNK_THRESHOLD_CHARS
       || source.units.length >= BRANCH_PLANNER_LONG_MIN_UNITS
   );
-  if (shouldTryBranchPlanner) {
+  if (shouldTryBranchPlannerForSource) {
     let branchIssues: StoryExtractionRetryIssue[] = [];
     let previousStructureCandidate: ReturnType<typeof parseAiBranchStructureForSource> | undefined;
     let previousSemanticCandidate: ReturnType<typeof parseSemanticLineageForSource> | undefined;

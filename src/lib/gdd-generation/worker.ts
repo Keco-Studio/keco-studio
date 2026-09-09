@@ -520,6 +520,32 @@ function professionalCheckpoint(job: GddGenerationJob): ProfessionalCheckpoint {
   };
 }
 
+const chineseChapterNumerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+function chineseChapterNumber(value: number): string {
+  if (value <= 10) return value === 10 ? '十' : chineseChapterNumerals[value]!;
+  if (value < 20) return `十${chineseChapterNumerals[value - 10]}`;
+  const tens = Math.floor(value / 10);
+  const ones = value % 10;
+  return `${chineseChapterNumerals[tens]}十${ones ? chineseChapterNumerals[ones] : ''}`;
+}
+
+function numberProfessionalMajorHeadings(markdown: string, language: string): string {
+  const isChinese = /^zh(?:[-_]|$)/i.test(language.trim());
+  let chapter = 0;
+  return markdown.split(/\r?\n/).map((line) => {
+    const match = /^##(?!#)[ \t]+(.+?)[ \t]*$/.exec(line);
+    if (!match) return line;
+    const title = match[1]!.replace(/[ \t]+#+[ \t]*$/, '').trim()
+      .replace(/^(?:[一二三四五六七八九十百千万零〇两]+、|\d+[.)、．][ \t]*)/, '')
+      .trim();
+    if (!title) return line;
+    chapter += 1;
+    const prefix = isChinese ? `${chineseChapterNumber(chapter)}、` : `${chapter}. `;
+    return `## ${prefix}${title}`;
+  }).join('\n');
+}
+
 function assembledProfessionalMarkdown(checkpoint: ProfessionalCheckpoint): string {
   const blueprint = checkpoint.blueprint as { title?: unknown } | null;
   const title = typeof blueprint?.title === 'string' && blueprint.title.trim()
@@ -586,6 +612,7 @@ async function processProfessionalGddPhase(
   if (job.phase === 'saving') {
     if (!dependencies.persistV2) throw new Error('Professional GDD persistence dependency is not configured.');
     const report = readProfessionalReviewReport(current.review_report);
+    const markdown = numberProfessionalMajorHeadings(report.markdown, job.input.language);
     const persisted = await runWithLeaseHeartbeat(
       input,
       dependencies.heartbeat,
@@ -594,7 +621,7 @@ async function processProfessionalGddPhase(
         serviceClient,
         job,
         workerId,
-        report.markdown,
+        markdown,
         report.review,
         report.tablePlans,
         report.dialoguePlans,
@@ -624,7 +651,7 @@ async function processProfessionalGddPhase(
       ...current,
       review_report: {
         review: reviewed.review,
-        markdown: reviewed.markdown,
+        markdown: numberProfessionalMajorHeadings(reviewed.markdown, job.input.language),
         tablePlans: reviewed.tablePlans,
         tablePlanWarning: reviewed.tablePlanWarning,
         dialoguePlans: reviewed.dialoguePlans,
