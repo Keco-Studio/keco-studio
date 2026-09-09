@@ -93,12 +93,19 @@ describe('document-derived sidebar tree', () => {
     }
     renderToStaticMarkup(React.createElement(Harness));
     expect(treeData.map((node) => node.key)).toEqual(expect.arrayContaining([
+      'game-assets',
       `document-${documentId}`,
       'document-55555555-5555-4555-8555-555555555555',
       `library-${older}`,
       `library-${newer}`,
     ]));
-    expect(treeData.every((node) => node.isLeaf && node.children === undefined)).toBe(true);
+    const assetsRoot = treeData.find((node) => node.key === 'game-assets');
+    expect(assetsRoot?.isLeaf).toBe(false);
+    expect(Array.isArray(assetsRoot?.children)).toBe(true);
+    const documentAndLibraryNodes = treeData.filter((node) =>
+      String(node.key).startsWith('document-') || String(node.key).startsWith('library-')
+    );
+    expect(documentAndLibraryNodes.every((node) => node.isLeaf && node.children === undefined)).toBe(true);
     expect(
       treeData.every((node) => !renderToStaticMarkup(node.title).includes('data-library-under-document'))
     ).toBe(true);
@@ -113,8 +120,9 @@ describe('document-derived sidebar tree', () => {
       return null;
     }
     renderToStaticMarkup(React.createElement(EmptyHarness));
-    expect(emptyTree[0].isLeaf).toBe(true);
-    expect(emptyTree[0].children).toBeUndefined();
+    const emptyDocument = emptyTree.find((node) => node.key === `document-${documentId}`);
+    expect(emptyDocument?.isLeaf).toBe(true);
+    expect(emptyDocument?.children).toBeUndefined();
   });
 
   it('refreshes and expands the matching folder on a typed creation event', async () => {
