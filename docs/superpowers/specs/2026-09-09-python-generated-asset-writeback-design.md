@@ -103,7 +103,7 @@ complete_project_game_asset_uploads({
   projectId: string;
   items: Array<{
     path: string;
-    category?: "character" | "animation" | "map" | "ui" | "effect" | "other";
+    category?: "character" | "icon" | "ui" | "map" | "prop" | "vfx" | "spritesheet" | "media";
   }>;
 })
 ```
@@ -111,7 +111,7 @@ complete_project_game_asset_uploads({
 - `items` contains 1-20 entries and paths must be unique.
 - Every path must be an `image.path` returned by a Keco image preparation tool
   for the same authenticated user and project.
-- `category` defaults to `other`.
+- `category` defaults to `media`, matching the current Assets taxonomy.
 - The display name is the verified original file name. The caller cannot
   provide an alternate name during registration.
 - The tool is a non-destructive MCP write operation and is available only on a
