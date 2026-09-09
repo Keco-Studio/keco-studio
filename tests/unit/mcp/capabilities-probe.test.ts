@@ -7,7 +7,7 @@ const accountEndpoint = 'https://example.supabase.co/functions/v1/mcp';
 const legacyEndpoint = 'https://example.supabase.co/functions/v1/mcp/11111111-1111-4111-8111-111111111111';
 const readTools = ['list_documents', 'list_project_structure', 'query_table_rows', 'read_document',
   'read_story_graph', 'semantic_search'];
-const writeTools = ['add_table_field', 'complete_image_upload', 'complete_image_uploads', 'create_document',
+const writeTools = ['add_table_field', 'complete_image_upload', 'complete_image_uploads', 'complete_project_game_asset_uploads', 'create_document',
   'create_folder', 'create_image_upload', 'create_table', 'create_table_row', 'prepare_image_uploads',
   'update_document', 'update_table_row', 'edit_table_field',
   'delete_table_field', 'delete_table_row', 'update_table', 'reorder_table_fields', 'delete_table',
@@ -102,7 +102,7 @@ it('checks viewer denial and both cross-resource replay directions without recor
   const evidence = await runCapabilitiesProbe({ mcpUrl: accountEndpoint, accessToken: accountToken,
     viewerAccessToken: accountToken, viewerProjectId: '11111111-1111-4111-8111-111111111111',
     legacyMcpUrl: legacyEndpoint, legacyAccessToken: legacyToken, fetchImpl: fetchMock as typeof fetch });
-  expect(evidence.capabilities.tools).toBe(55);
+  expect(evidence.capabilities.tools).toBe(56);
   expect(evidence.roleEnforcement.viewerWriteDenial).toBe('succeeded');
   expect(evidence.crossResourceReplay).toBe('succeeded');
   expect(JSON.stringify(evidence)).not.toContain(accountToken);
@@ -151,7 +151,7 @@ it('preserves the exact legacy capability surface', async () => {
   expect(evidence).toEqual(expect.objectContaining({
     mode: 'legacy',
     storyGraphRead: 'succeeded',
-    capabilities: expect.objectContaining({ tools: 54, resources: 3, resourceTemplates: 4, prompts: 3 }),
+    capabilities: expect.objectContaining({ tools: 55, resources: 3, resourceTemplates: 4, prompts: 3 }),
   }));
   expect(JSON.stringify(evidence)).not.toContain('PrivateEntry');
   expect(JSON.stringify(evidence)).not.toContain('Private story content');
