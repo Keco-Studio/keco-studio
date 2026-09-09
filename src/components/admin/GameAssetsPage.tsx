@@ -26,10 +26,6 @@ function statusLabel(status: GameAssetStatus): string {
   return status === 'generating' ? 'Generating' : status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-/** Temporary UI demo: landscape map preview for 边疆地带世界地图 placement. */
-const BORDERLANDS_DEMO_PREVIEW = '/game-assets-demo/borderlands-map-preview.png';
-const BORDERLANDS_DEMO_NAME = '边疆地带世界地图';
-const BORDERLANDS_DEMO_SIZE = { width: 640, height: 320 };
 const FALLBACK_ASPECT = 4 / 3;
 const TARGET_ROW_HEIGHT = 168;
 const COL_GAP = 14;
@@ -46,13 +42,11 @@ type JustifiedItem = SizedAsset & {
 };
 
 function resolveSizedAsset(asset: ProjectGameAsset, measuredAspects: Record<string, number>): SizedAsset {
-  const isBorderlandsDemo = asset.name.includes(BORDERLANDS_DEMO_NAME);
-  const width = asset.width ?? (isBorderlandsDemo ? BORDERLANDS_DEMO_SIZE.width : null);
-  const height = asset.height ?? (isBorderlandsDemo ? BORDERLANDS_DEMO_SIZE.height : null);
+  const width = asset.width;
+  const height = asset.height;
   const metaAspect = width && height && width > 0 && height > 0 ? width / height : null;
   const aspect = measuredAspects[asset.id] ?? metaAspect ?? FALLBACK_ASPECT;
-  const previewSrc = asset.previewUrl ?? (isBorderlandsDemo ? BORDERLANDS_DEMO_PREVIEW : null);
-  return { asset, previewSrc, aspect };
+  return { asset, previewSrc: asset.previewUrl, aspect };
 }
 
 /** Pack items into rows like a desktop photo gallery (justified, no tall empty gaps). */
