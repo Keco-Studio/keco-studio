@@ -64,7 +64,7 @@ export const gddDevelopmentContextSchema = z.object({
     epoch: z.number().int().nonnegative(),
     revision: z.number().int().nonnegative(),
     contentHash: sha256,
-    updatedAt: z.string().datetime(),
+    updatedAt: z.string().datetime({ offset: true }),
   }).strict(),
   origin: z.object({
     generationJobId: uuid,
