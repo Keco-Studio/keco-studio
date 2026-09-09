@@ -45,7 +45,7 @@ describe('GDD development context service', () => {
     });
     const context = await readGddDevelopmentContext(fake.value, { projectId: ids.project, documentId: ids.document }, {
       now: () => 0,
-      readState: async () => ({ documentId: ids.document, projectId: ids.project, mode: 'legacy', yjsStateBase64: null, updateTail: [], token: { epoch: 2, revision: 4 }, epochReason: 'initialize', updatedAt: '2026-09-08T00:00:00.000Z', markdown: `<GddMapReference artifactId="${ids.artifact}" display="full" fallbackTitle="Map" />` }),
+      readState: async () => ({ documentId: ids.document, projectId: ids.project, mode: 'legacy', yjsStateBase64: null, updateTail: [], token: { epoch: 2, revision: 4 }, epochReason: 'initialize', updatedAt: '2026-09-08T00:00:00.000000+00:00', markdown: `<GddMapReference artifactId="${ids.artifact}" display="full" fallbackTitle="Map" />` }),
       resolveMaps: async () => new Map([[ids.artifact, { artifactId: ids.artifact, title: 'Map', status: 'ready', mapProjectId: ids.map, mapRevisionId: ids.revision, mapAssetId: ids.asset, asset: { id: ids.asset, mapRevisionId: ids.revision, status: 'ready', storagePath: `${ids.project}/${ids.map}/${ids.revision}/map-image/${'b'.repeat(64)}.png`, sha256: 'b'.repeat(64), width: 512, height: 512, hasTransparency: false } }]]),
     });
     expect(context.origin).toMatchObject({ generationJobId: ids.job, versionId: ids.version, versionNumber: 3 });
