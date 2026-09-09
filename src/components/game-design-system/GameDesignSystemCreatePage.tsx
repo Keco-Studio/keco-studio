@@ -181,7 +181,10 @@ export function GameDesignSystemCreatePage({ embedded = false, onCancel, onCompl
         }).catch((recoveryError) => {
           recoveryRequestInProgressRef.current = false;
           const status = (recoveryError as Error & { status?: number }).status;
-          if (status === 403 || status === 404) clearGdsGenerationRecovery();
+          if (status === 403 || status === 404) {
+            clearGdsGenerationRecovery();
+            submittedRecoveryRef.current = false;
+          }
           setError(recoveryError instanceof Error ? recoveryError.message : 'Failed to recover generation.');
         });
       } else if (record.phase === 'submitted' && record.request && record.idempotencyKey) {

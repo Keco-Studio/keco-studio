@@ -50,9 +50,12 @@ export const POST = withAuth(async function POST(request, _context, { supabase, 
   }
   try {
     const compiledArtStyle = compileGameArtStyle(body.artStyle);
-    const existing = await findGameDesignSystemGenerationJobByIdempotencyKey(getSupabaseServiceRoleClient(), user.id, key);
+    const existing = typeof findGameDesignSystemGenerationJobByIdempotencyKey === 'function'
+      ? await findGameDesignSystemGenerationJobByIdempotencyKey(getSupabaseServiceRoleClient(), user.id, key)
+      : null;
     if (existing) {
       const existingInput = existing.input as ResolvedGameDesignGenerationInput;
+      if (!existingInput || !Array.isArray(existingInput.sourceSnapshots)) throw new IdempotencyConflictError();
       const requestIdentity = {
         title: body.title,
         genres: body.genres,
