@@ -314,7 +314,8 @@ export async function aggregateProjectGameAssets(
       const revisionById = new Map(revisionRows.map((row) => [String(row.id), row]));
       for (const row of (mapAssets.data ?? []) as Record<string, unknown>[]) {
         const revision = revisionById.get(String(row.map_revision_id));
-        const map = revision ? projectByMap.get(String(revision.map_project_id)) : undefined;
+        if (!revision) continue;
+        const map = projectByMap.get(String(revision.map_project_id));
         if (!map) continue;
         const artifact = gddByAsset.get(String(row.id));
         await add(normalizeMapAsset({
