@@ -476,6 +476,56 @@ describe('GDD v2 direct Markdown generator', () => {
     }]);
   });
 
+  it('projects model-only repair fields onto the required guided table schema', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: {
+        ...input.rules,
+        tableGuidance: [{
+          table: 'Relationships',
+          purpose: 'Defines relationship stages and route requirements.',
+          fields: ['characterId', 'minValue', 'maxValue', 'stage'],
+        }],
+      },
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1
+        ? '# GDD\n\n## Relationships\nTrust unlocks personal routes.'
+        : `<!-- KECO_TABLE_PLAN ${JSON.stringify([{
+          table: 'Relationships',
+          purpose: 'Relationship data with an extra explanatory field.',
+          fields: ['characterId', 'minValue', 'maxValue', 'stage', 'notes'],
+          rows: [{
+            name: 'pei-yan-trust',
+            values: {
+              characterId: 'pei-yan',
+              minValue: 20,
+              maxValue: 49,
+              stage: 'trust',
+              notes: 'Model-only explanation that is not part of the GDS contract.',
+            },
+          }],
+        }])} -->`
+    ));
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([{
+      table: 'Relationships',
+      purpose: 'Defines relationship stages and route requirements.',
+      fields: ['characterId', 'minValue', 'maxValue', 'stage'],
+      rows: [{
+        name: 'pei-yan-trust',
+        values: {
+          characterId: 'pei-yan',
+          minValue: 20,
+          maxValue: 49,
+          stage: 'trust',
+        },
+      }],
+    }]);
+  });
+
   it('rejects a guided GDD when the missing table repair produces no usable plan', async () => {
     const guidedInput: GddGenerationRequestV2 = {
       ...input,

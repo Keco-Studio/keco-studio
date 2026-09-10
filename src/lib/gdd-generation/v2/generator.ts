@@ -433,16 +433,18 @@ async function repairMissingTablePlans(
       const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
         ? raw
         : `<!-- KECO_TABLE_PLAN ${raw} -->`);
-      const exact = extracted.tablePlans.find((plan) => (
+      const exactSource = extracted.tablePlans.find((plan) => (
         sameGuidedTableName(plan.table, requiredTable.table)
-        && (!requiredTable.fields || sameFieldShape(plan.fields, requiredTable.fields))
       ));
+      const exact = exactSource
+        ? projectRepairPlanToGuidance(exactSource, requiredTable)
+        : null;
+      const compatibleCandidates = extracted.tablePlans
+        .map((plan) => projectRepairPlanToGuidance(plan, requiredTable))
+        .filter((plan): plan is GeneratedTablePlan => Boolean(plan));
       // A targeted repair asks for exactly one table. If the model changes only
       // the table name while preserving the guided field contract, canonicalize
       // it instead of discarding an otherwise usable plan.
-      const compatibleCandidates = extracted.tablePlans.filter((plan) => (
-        !requiredTable.fields || sameFieldShape(plan.fields, requiredTable.fields)
-      ));
       const compatibleSingle = !exact && compatibleCandidates.length === 1
         ? compatibleCandidates[0]
         : undefined;
@@ -485,6 +487,36 @@ function sameGuidedTableName(left: string, right: string): boolean {
 }
 
 type RequiredTableGuidance = { table: string; purpose: string; fields: string[] };
+
+function projectRepairPlanToGuidance(
+  plan: GeneratedTablePlan,
+  guidance: { table: string; purpose?: string; fields?: string[] },
+): GeneratedTablePlan | null {
+  if (!guidance.fields) {
+    return {
+      ...plan,
+      table: guidance.table,
+      ...(guidance.purpose ? { purpose: guidance.purpose } : {}),
+    };
+  }
+  const guidedFieldKeys = new Set(guidance.fields.map(normalizeGuidedFieldKey));
+  const planFieldKeys = new Set(plan.fields.map(normalizeGuidedFieldKey));
+  if (!guidance.fields.every((field) => planFieldKeys.has(normalizeGuidedFieldKey(field)))) {
+    return null;
+  }
+  return {
+    ...plan,
+    table: guidance.table,
+    ...(guidance.purpose ? { purpose: guidance.purpose } : {}),
+    fields: [...guidance.fields],
+    rows: plan.rows.map((row) => ({
+      ...row,
+      values: Object.fromEntries(Object.entries(row.values).filter(([field]) => (
+        guidedFieldKeys.has(normalizeGuidedFieldKey(field))
+      ))),
+    })),
+  };
+}
 
 function requiredTableGuidance(input: GddGenerationRequestV2): RequiredTableGuidance[] {
   return input.rules.tableGuidance.map((guidance) => {
