@@ -422,8 +422,8 @@ describe('Keco Codex plugin contract', () => {
       'plugins/keco-codex/.codex-plugin/plugin.json',
     );
 
-    expect(evaluations.cases).toHaveLength(7);
-    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-import-local-assets')).toHaveLength(2);
+    expect(evaluations.cases).toHaveLength(8);
+    expect(evaluations.cases.filter((item) => item.expectedSkill === 'keco-import-local-assets')).toHaveLength(3);
     expect(evaluations.cases.find((item) => item.id === 'apple-and-pear-directory')).toMatchObject({
       kind: 'positive',
       expectedSkill: 'keco-import-local-assets',
@@ -450,6 +450,16 @@ describe('Keco Codex plugin contract', () => {
       'read-back',
       'report',
     ]);
+    expect(evaluations.cases.find((item) => item.id === 'python-generated-project-asset')).toMatchObject({
+      kind: 'positive',
+      expectedSkill: 'keco-import-local-assets',
+      requiredBehaviors: [
+        'inventory-generated-output',
+        'preview-and-confirm',
+        'batch-prepare-put-register',
+        'project-assets-read-back',
+      ],
+    });
     expect(evaluations.prohibitedBindings).toEqual(expect.arrayContaining([
       'raw-bytes-in-mcp',
       'local-path-to-completion',
@@ -459,17 +469,21 @@ describe('Keco Codex plugin contract', () => {
     ]));
 
     expect(skill).toMatch(/^---\nname: keco-import-local-assets\n/);
-    expect(skill).toMatch(/^description: Use when[^\n]*local images[^\n]*local image directory[^\n]*not for generated assets[^\n]*Godot[^\n]*Keco documents[^\n]*non-image attachments[^\n]*analysis-only/m);
-    expect(skill).toMatch(/Inventory the requested files[\s\S]*Resolve exactly one Keco project[\s\S]*Preview the complete plan[\s\S]*explicit confirmation[\s\S]*Create only a confirmed missing folder[\s\S]*Prepare metadata-only batches[\s\S]*Send the exact local bytes[\s\S]*Complete only successful PUT items[\s\S]*Upsert rows[\s\S]*Paginate authoritative reads[\s\S]*Report each item/i);
-    expect(skill).toMatch(/live schemas[\s\S]{0,160}prepare_image_uploads[\s\S]{0,160}complete_image_uploads/i);
+    expect(skill).toMatch(/^description: Use when[^\n]*local images[^\n]*host-generated images[^\n]*PixelLab[^\n]*Godot[^\n]*Keco documents[^\n]*non-image attachments[^\n]*analysis-only/m);
+    expect(skill).toMatch(/host-side deterministic generator[\s\S]*Resolve exactly one Keco project[\s\S]*Select the target before mutation[\s\S]*Preview the complete plan[\s\S]*explicit confirmation[\s\S]*Prepare metadata-only batches[\s\S]*Send the exact local bytes[\s\S]*Complete only successful PUT items[\s\S]*Project Assets target[\s\S]*project asset aggregation[\s\S]*Ordinary Keco table target[\s\S]*upsert rows[\s\S]*Paginate table read-back[\s\S]*Report each item/i);
+    expect(skill).toMatch(/live schemas[\s\S]{0,200}prepare_image_uploads[\s\S]{0,200}complete_project_game_asset_uploads[\s\S]{0,200}complete_image_uploads/i);
+    expect(skill).toMatch(/Project Assets target: call `complete_project_game_asset_uploads`[\s\S]*project asset aggregation[\s\S]*path, name, hash, and status/i);
+    expect(skill).toMatch(/Ordinary Keco table target: call `complete_image_uploads`[\s\S]*upsert rows[\s\S]*Paginate table read-back/i);
     expect(skill).toMatch(/prepare_image_uploads\.items\[\]\.image\.path[\s\S]{0,200}Never pass a local path[\s\S]{0,120}signed upload URL/i);
     expect(skill).toMatch(/complete verified `image` object[\s\S]{0,160}never reduce it to a path or URL/i);
     expect(skill).toMatch(/Row write failed[\s\S]{0,160}do not upload again/i);
     expect(skill).toMatch(/Never persist or print signed URLs[\s\S]{0,160}authorization headers/i);
     expect(metadata).toMatch(/default_prompt: "Use \$keco-import-local-assets/);
+    expect(metadata).toMatch(/local or host-generated images[\s\S]*project Assets/i);
     expect(metadata).toMatch(/allow_implicit_invocation: true/);
     expect(manifest.interface.defaultPrompt).toEqual(expect.arrayContaining([
       expect.stringMatching(/local image directory[\s\S]*Keco asset table/i),
+      expect.stringMatching(/host-generated image[\s\S]*project Assets/i),
     ]));
   });
 

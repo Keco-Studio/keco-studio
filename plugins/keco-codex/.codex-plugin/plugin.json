@@ -1,6 +1,6 @@
 {
   "name": "keco",
-  "version": "0.4.0+codex.20260908092902",
+  "version": "0.4.0+codex.20260909190938",
   "description": "Manage Keco game design systems, evaluate GDDs, create maps, build project data, import images, and develop Godot gameplay slices.",
   "author": {
     "name": "Keco Studio"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Keco",
     "shortDescription": "Manage Keco design systems, GDDs, maps, data, and Godot slices.",
-    "longDescription": "Connect Codex to Keco and use guided workflows to manage Game Design Systems, score generated GDDs, create complete V3 maps, build verified project tables, import local image assets, or implement and evaluate Godot gameplay slices.",
+    "longDescription": "Connect Codex to Keco and use guided workflows to manage Game Design Systems, score generated GDDs, create complete V3 maps, build verified project tables, import local or host-generated image assets, or implement and evaluate Godot gameplay slices.",
     "developerName": "Keco Studio",
     "category": "Productivity",
     "capabilities": [
@@ -21,6 +21,7 @@
       "Turn my combat specification into related Keco tables.",
       "Preview a Keco table plan from an existing project document.",
       "Import my local image directory into a verified Keco asset table.",
+      "Run my Python image generator and return every host-generated image to project Assets.",
       "Implement the next Godot gameplay slice from my Keco project and evaluate it.",
       "Read a Keco project document, plan its development ideas as ordered Godot slices, and execute them.",
       "Run an EDD evaluation on a generated Keco GDD and return a single 100-point score report.",

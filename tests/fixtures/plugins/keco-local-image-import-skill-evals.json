@@ -29,6 +29,18 @@
       ]
     },
     {
+      "id": "python-generated-project-asset",
+      "kind": "positive",
+      "prompt": "Run my Python image generator and return every output to this project's Assets library.",
+      "expectedSkill": "keco-import-local-assets",
+      "requiredBehaviors": [
+        "inventory-generated-output",
+        "preview-and-confirm",
+        "batch-prepare-put-register",
+        "project-assets-read-back"
+      ]
+    },
+    {
       "id": "pixellab-generation",
       "kind": "negative",
       "prompt": "Generate matching top-down village props with PixelLab and register them in Keco.",

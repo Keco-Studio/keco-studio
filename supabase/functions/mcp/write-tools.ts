@@ -13,6 +13,10 @@ import { asPublicMcpError, McpDomainError } from "./errors.ts";
 import { MAX_DOCUMENT_MARKDOWN_BYTES, utf8ByteLength } from "./limits.ts";
 import { scheduleMcpReindex } from "./reindex.ts";
 import { measureMcpPhase } from "./telemetry.ts";
+import {
+  inspectVerifiedImage,
+  type VerifiedImageMetadata,
+} from "./image-metadata.ts";
 
 const uuid = z.string().uuid();
 const IMAGE_BUCKET = "library-media-files";
@@ -32,10 +36,33 @@ const imageFileType = z.enum([
   "image/webp",
   "image/svg+xml",
 ]);
+const gameAssetCategory = z.enum([
+  "character",
+  "icon",
+  "ui",
+  "map",
+  "prop",
+  "vfx",
+  "spritesheet",
+  "media",
+]);
+const UUID_PATH_SEGMENT =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const ENCODED_IMAGE_FILE_NAME =
+  "(?:[A-Za-z0-9_-][A-Za-z0-9._-]*|~h(?:[0-9a-f]{2})+|~(?:%[0-9a-f]{2}|[A-Za-z0-9._~-])+)";
+const preparedImagePathPattern = new RegExp(
+  `^${UUID_PATH_SEGMENT}/${UUID_PATH_SEGMENT}/${UUID_PATH_SEGMENT}-${ENCODED_IMAGE_FILE_NAME}$`,
+  "i",
+);
+const preparedImagePathSchema = z.string().min(1).max(MAX_IMAGE_PATH_CHARS)
+  .regex(
+    preparedImagePathPattern,
+    "path must be a prepared Keco image.path, not a local path, file: URI, public URL, or signed URL.",
+  );
 const imageFileShape = {
-  fileName: z.string().trim().min(1).max(200).refine(
-    (value) => !/[\\/\u0000-\u001f]/.test(value),
-    "fileName must be a plain file name.",
+  fileName: z.string().min(1).max(200).refine(
+    isPrintableAsciiImageFileName,
+    "fileName must contain only printable ASCII and no path separators.",
   ).describe("A plain local file name, without a directory path."),
   fileType: imageFileType.describe(
     "The supported media type matching fileName.",
@@ -210,6 +237,10 @@ function imageTypeMatchesName(
   );
 }
 
+function isPrintableAsciiImageFileName(fileName: string): boolean {
+  return /^[\x20-\x7e]+$/.test(fileName) && !/[\\/]/.test(fileName);
+}
+
 function sanitizeImageFileName(fileName: string): string {
   const extension = imageExtension(fileName);
   const safe = fileName
@@ -224,37 +255,42 @@ function sanitizeImageFileName(fileName: string): string {
 }
 
 function imagePathFileName(fileName: string): string {
-  // ASCII paths remain backward compatible. The marker is unambiguous because
-  // sanitizeImageFileName replaces a literal tilde in an ASCII source name.
-  return /^[\x20-\x7e]+$/.test(fileName)
-    ? sanitizeImageFileName(fileName)
-    : `~h${Array.from(new TextEncoder().encode(fileName), (byte) =>
-      byte.toString(16).padStart(2, "0")).join("")}`;
+  const sanitized = sanitizeImageFileName(fileName);
+  return sanitized === fileName ? fileName : `~h${
+    Array.from(
+      new TextEncoder().encode(fileName),
+      (byte) => byte.toString(16).padStart(2, "0"),
+    ).join("")
+  }`;
 }
 
 function uploadedImageFileName(path: string): string | null {
   const leaf = path.slice(path.lastIndexOf("/") + 1);
-  const stored = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-(.+)$/i
-    .exec(leaf)?.[1];
+  const stored =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-(.+)$/i
+      .exec(leaf)?.[1];
   if (!stored) return null;
   if (!stored.startsWith("~")) return stored;
+  let decoded: string;
   if (stored.startsWith("~h")) {
     const hex = stored.slice(2);
     if (!/^(?:[0-9a-f]{2})+$/i.test(hex)) return null;
     try {
-      return new TextDecoder().decode(
+      decoded = new TextDecoder("utf-8", { fatal: true }).decode(
         Uint8Array.from(hex.match(/../g)!, (pair) => parseInt(pair, 16)),
       );
     } catch {
       return null;
     }
+  } else {
+    try {
+      // Accept paths created before the hex marker was introduced.
+      decoded = decodeURIComponent(stored.slice(1));
+    } catch {
+      return null;
+    }
   }
-  try {
-    // Accept paths created before the hex marker was introduced.
-    return decodeURIComponent(stored.slice(1));
-  } catch {
-    return null;
-  }
+  return isPrintableAsciiImageFileName(decoded) ? decoded : null;
 }
 
 function imageSignatureMatches(
@@ -331,6 +367,55 @@ type UploadDescriptor = {
 };
 type ProvisionalImage = ImageFileInput & { url: string; path: string };
 type VerifiedImage = ProvisionalImage & { uploadedAt: string };
+type VerifiedUpload = { image: VerifiedImage; bytes: Uint8Array };
+type GameAssetCategory = z.infer<typeof gameAssetCategory>;
+type ProjectGameAssetResult = {
+  id: string;
+  projectId: string;
+  name: string;
+  category: GameAssetCategory;
+  status: "ready";
+  storagePath: string;
+  sha256: string;
+  width: number | null;
+  height: number | null;
+  hasTransparency: boolean | null;
+  fileSize: number;
+  mimeType: ImageFileInput["fileType"];
+  createdAt: string;
+  updatedAt: string;
+};
+type RegisteredAssetExpectation = {
+  projectId: string;
+  createdBy: string;
+  image: VerifiedImage;
+  metadata: VerifiedImageMetadata;
+  category: GameAssetCategory;
+};
+
+const registeredAssetDimension = z.number().int().min(1).max(2_147_483_647)
+  .nullable();
+const registeredAssetTimestamp = z.string().datetime({ offset: true }).refine(
+  (value) => Number.isFinite(Date.parse(value)),
+);
+const registeredAssetRowSchema = z.object({
+  id: uuid,
+  project_id: uuid,
+  created_by: uuid,
+  name: z.string(),
+  category: gameAssetCategory,
+  status: z.literal("ready"),
+  mime_type: imageFileType,
+  storage_path: z.string(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  width: registeredAssetDimension,
+  height: registeredAssetDimension,
+  has_transparency: z.boolean().nullable(),
+  file_size: z.number().int().min(1).max(MAX_IMAGE_BYTES),
+  created_at: registeredAssetTimestamp,
+  updated_at: registeredAssetTimestamp,
+  reused: z.boolean(),
+});
 
 async function prepareImageUpload(
   context: ProjectMcpRequestContext,
@@ -380,10 +465,10 @@ async function prepareImageUpload(
   };
 }
 
-async function completeImageUpload(
+async function verifyImageUpload(
   context: ProjectMcpRequestContext,
   path: string,
-): Promise<VerifiedImage> {
+): Promise<VerifiedUpload> {
   const expectedPrefix = `${context.userId}/${context.projectId}/`;
   const fileName = uploadedImageFileName(path);
   const relativePath = path.startsWith(expectedPrefix)
@@ -481,13 +566,132 @@ async function completeImageUpload(
     );
   }
   return {
-    url: publicUrl,
-    path,
-    fileName,
-    fileSize,
-    fileType: rawFileType as ImageFileInput["fileType"],
-    uploadedAt,
+    image: {
+      url: publicUrl,
+      path,
+      fileName,
+      fileSize,
+      fileType: rawFileType as ImageFileInput["fileType"],
+      uploadedAt,
+    },
+    bytes: imageBytes,
   };
+}
+
+async function completeImageUpload(
+  context: ProjectMcpRequestContext,
+  path: string,
+): Promise<VerifiedImage> {
+  return (await verifyImageUpload(context, path)).image;
+}
+
+function normalizeRegisteredAsset(
+  row: Record<string, unknown> | null,
+  expected: RegisteredAssetExpectation,
+): { reused: boolean; asset: ProjectGameAssetResult } {
+  const parsed = registeredAssetRowSchema.safeParse(row);
+  if (
+    !parsed.success ||
+    parsed.data.project_id !== expected.projectId ||
+    parsed.data.created_by !== expected.createdBy ||
+    parsed.data.name !== expected.image.fileName ||
+    parsed.data.category !== expected.category ||
+    parsed.data.mime_type !== expected.image.fileType ||
+    parsed.data.storage_path !== expected.image.path ||
+    parsed.data.sha256 !== expected.metadata.sha256 ||
+    parsed.data.width !== expected.metadata.width ||
+    parsed.data.height !== expected.metadata.height ||
+    parsed.data.has_transparency !== expected.metadata.hasTransparency ||
+    parsed.data.file_size !== expected.image.fileSize
+  ) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The project asset could not be registered.",
+    );
+  }
+  const normalized = parsed.data;
+  return {
+    reused: normalized.reused,
+    asset: {
+      id: normalized.id,
+      projectId: normalized.project_id,
+      name: normalized.name,
+      category: normalized.category,
+      status: "ready",
+      storagePath: normalized.storage_path,
+      sha256: normalized.sha256,
+      width: normalized.width,
+      height: normalized.height,
+      hasTransparency: normalized.has_transparency,
+      fileSize: normalized.file_size,
+      mimeType: normalized.mime_type,
+      createdAt: normalized.created_at,
+      updatedAt: normalized.updated_at,
+    },
+  };
+}
+
+async function registerProjectGameAsset(
+  context: ProjectMcpRequestContext,
+  image: VerifiedImage,
+  bytes: Uint8Array,
+  category: GameAssetCategory,
+): Promise<{ reused: boolean; asset: ProjectGameAssetResult }> {
+  const inspected = await inspectVerifiedImage(image.fileType, bytes);
+  const metadata: VerifiedImageMetadata = {
+    ...inspected,
+    width: registrationDimension(inspected.width),
+    height: registrationDimension(inspected.height),
+  };
+  const { data, error } = await measureMcpPhase(
+    context,
+    "database",
+    async () =>
+      await context.supabase.rpc("mcp_register_project_game_asset", {
+        p_project_id: context.projectId,
+        p_name: image.fileName,
+        p_category: category,
+        p_mime_type: image.fileType,
+        p_storage_path: image.path,
+        p_sha256: metadata.sha256,
+        p_width: metadata.width,
+        p_height: metadata.height,
+        p_has_transparency: metadata.hasTransparency,
+        p_file_size: image.fileSize,
+      }),
+  );
+  if (error?.code === "KA401" || error?.code === "42501") {
+    throw new McpDomainError(
+      "PROJECT_WRITE_FORBIDDEN",
+      "Write access is not available for this project.",
+    );
+  }
+  if (error?.code === "KA409" || error?.code === "23505") {
+    throw new McpDomainError(
+      "ASSET_REGISTRATION_CONFLICT",
+      "The uploaded object is already registered with different metadata.",
+    );
+  }
+  if (error) {
+    throw new McpDomainError(
+      "INTERNAL_ERROR",
+      "The project asset could not be registered.",
+    );
+  }
+  return normalizeRegisteredAsset(firstRow(data), {
+    projectId: context.projectId,
+    createdBy: context.userId,
+    image,
+    metadata,
+    category,
+  });
+}
+
+function registrationDimension(value: number | null): number | null {
+  return value !== null && Number.isInteger(value) && value > 0 &&
+      value <= 2_147_483_647
+    ? value
+    : null;
 }
 
 async function createFolder(
@@ -1355,9 +1559,9 @@ function registerWriteToolSet(
     ...projectShape,
     paths: z.array(z.string().trim().min(1).max(MAX_IMAGE_PATH_CHARS)).min(1)
       .max(20).refine(
-      (paths) => new Set(paths).size === paths.length,
-      "paths must be unique.",
-    ),
+        (paths) => new Set(paths).size === paths.length,
+        "paths must be unique.",
+      ),
   }).strict();
   server.registerTool(
     "complete_image_uploads",
@@ -1395,6 +1599,71 @@ function registerWriteToolSet(
         }
         const failedCount = items.filter((item) => !item.ok).length;
         return toolSuccess("Image uploads completed.", {
+          ok: true,
+          completedCount: items.length - failedCount,
+          failedCount,
+          items,
+        });
+      }),
+  );
+
+  const completeProjectGameAssetUploadsSchema = z.object({
+    ...projectShape,
+    items: z.array(
+      z.object({
+        path: preparedImagePathSchema,
+        category: gameAssetCategory.default("media"),
+      }).strict(),
+    ).min(1).max(20).refine(
+      (items) => new Set(items.map((item) => item.path)).size === items.length,
+      "item paths must be unique.",
+    ),
+  }).strict();
+  server.registerTool(
+    "complete_project_game_asset_uploads",
+    {
+      description:
+        "Verify and register 1-20 prepared images in project Assets after their exact bytes were PUT, preserving order. Every path must be an image.path returned by a Keco preparation tool for this user and project. Category defaults to media. Runtime failures are item-scoped; failedCount signals partial failure. Exact retries return the existing asset with reused: true. Signed upload URLs, headers, and bytes are never returned.",
+      inputSchema: completeProjectGameAssetUploadsSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof completeProjectGameAssetUploadsSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        const items = [];
+        for (const [index, item] of input.items.entries()) {
+          try {
+            const verified = await verifyImageUpload(context, item.path);
+            const registered = await registerProjectGameAsset(
+              context,
+              verified.image,
+              verified.bytes,
+              item.category,
+            );
+            items.push({
+              index,
+              ok: true as const,
+              path: item.path,
+              reused: registered.reused,
+              image: verified.image,
+              asset: registered.asset,
+            });
+          } catch (error) {
+            const safe = asPublicMcpError(error);
+            items.push({
+              index,
+              ok: false as const,
+              path: item.path,
+              error: {
+                code: safe.code === "PAYLOAD_TOO_LARGE"
+                  ? "FIELD_VALIDATION_FAILED"
+                  : safe.code,
+                message: safe.message,
+              },
+            });
+          }
+        }
+        const failedCount = items.filter((item) => !item.ok).length;
+        return toolSuccess("Project game asset uploads completed.", {
           ok: true,
           completedCount: items.length - failedCount,
           failedCount,

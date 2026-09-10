@@ -141,6 +141,70 @@ PNG, JPEG, GIF, WebP, and safe static SVG files up to 5 MiB are supported.
 Include `projectId` from `list_projects` on the account endpoint and omit it on
 a legacy project endpoint.
 
+### Generated Project Assets
+
+For images created by a Python or other local generator that belong in the
+project Assets registry, use this exact sequence:
+
+```text
+Python/local generator -> prepare_image_uploads -> exact signed PUT
+-> complete_project_game_asset_uploads -> Assets read-back
+```
+
+Call `complete_project_game_asset_uploads` with batches of 1-20 unique
+`image.path` values from successful preparation responses. Its item categories
+are `character`, `icon`, `ui`, `map`, `prop`, `vfx`, `spritesheet`, and `media`;
+omitting a category defaults it to `media`. The completion verifies the exact
+stored bytes and registers each valid result in project Assets. An exact retry
+reuses the existing asset and returns `reused: true`. Runtime failures are
+item-scoped, so inspect every item and `failedCount` for partial failure before
+the Assets read-back.
+
+MCP never receives Python source, local paths, raw bytes, or Base64. Completion
+accepts only the Keco `image.path`; local paths, public URLs, and signed upload
+URLs are invalid. Keep signed upload URLs and headers only for the exact PUT,
+and never log or persist them.
+
+Use `complete_image_uploads` instead when the result is an ordinary Keco table
+image field: it returns the verified image object for that table field and does
+not register a project Asset. Provider-managed map, character, and animation
+assets use their own managed workflows and stay outside this completion path.
+
+#### Python Asset Live Acceptance
+
+Run the Python-generated asset acceptance only after the project asset
+registration migration and current MCP Edge Function have been deployed to an
+explicitly approved environment. Select a disposable writable project in that
+environment; never point the acceptance script at a shared endpoint or project
+implicitly.
+
+The invocation requires `KECO_ACCEPTANCE_MCP_URL` and
+`KECO_ACCEPTANCE_PROJECT_ID` to select the deployment and project,
+`MCP_ACCESS_TOKEN` for MCP requests, and `NEXT_PUBLIC_SUPABASE_URL` plus
+`SUPABASE_SERVICE_ROLE_KEY` for acceptance-only authoritative read-back and
+cleanup:
+
+```bash
+node --env-file=.env.local --import tsx scripts/accept-python-generated-asset-writeback.ts \
+  --mcp-url "$KECO_ACCEPTANCE_MCP_URL" \
+  --project-id "$KECO_ACCEPTANCE_PROJECT_ID" \
+  --output /tmp/keco-python-asset-writeback-evidence.json
+```
+
+The evidence file is sanitized and contains only acceptance status, project and
+asset IDs, the Keco object path, SHA-256, dimensions, counts, timestamps, and
+cleanup outcomes. It never contains credentials, signed URLs, upload headers,
+Python source, raw bytes, Base64, public URLs, or local temporary paths. The MCP
+token is used only for MCP requests, and the service-role credential is used
+only for the database read-back, Assets aggregation, and cleanup. The script
+removes only the registry row and storage object created by that run, plus its
+own temporary directory; any cleanup failure makes the acceptance fail.
+
+If registration has an unknown outcome after the PUT, retry
+`complete_project_game_asset_uploads` with the same verified `image.path` and
+identical category before preparing a new target or uploading new bytes. A
+successful exact retry returns the original asset ID with `reused: true`.
+
 ### Single Image
 
 1. Ensure the target table has an `image` field, either in

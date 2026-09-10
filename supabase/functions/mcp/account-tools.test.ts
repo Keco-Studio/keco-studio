@@ -25,6 +25,7 @@ const ACCOUNT_WRITE_TOOL_NAMES = [
   "complete_image_upload",
   "prepare_image_uploads",
   "complete_image_uploads",
+  "complete_project_game_asset_uploads",
   "create_folder",
 ];
 const GDS_TOOL_NAMES = [
@@ -66,6 +67,7 @@ function accountContext(
   calls: RpcCall[],
   options: {
     writable?: boolean;
+    userId?: string;
     resolvedRole?: "admin" | "editor" | "viewer";
     failWritableDiscovery?: boolean;
     delayProjectReadMs?: number;
@@ -124,7 +126,7 @@ function accountContext(
   return {
     mode: "account",
     requestId: "00000000-0000-4000-8000-000000000001",
-    userId: "account-user",
+    userId: options.userId ?? "account-user",
     clientId: "account-client",
     sessionId: "00000000-0000-4000-8000-000000000002",
     bearerToken: "account-token",
@@ -616,6 +618,53 @@ Deno.test("account image upload phases resolve live write access independently",
     calls.filter((call) => call.name === "mcp_resolve_project_role").length,
     2,
   );
+  assertEquals(storageCalls.map((call) => call.name), [
+    "from",
+    "createSignedUploadUrl",
+    "getPublicUrl",
+  ]);
+});
+
+Deno.test("account project asset completion resolves live write access", async () => {
+  const calls: RpcCall[] = [];
+  const storageCalls: StorageCall[] = [];
+  const context = accountContext(
+    calls,
+    {
+      userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      resolvedRoles: ["editor", "viewer"],
+    },
+    storageCalls,
+  );
+  const prepared = await rpc(context, "tools/call", {
+    name: "create_image_upload",
+    arguments: {
+      projectId: WRITABLE_PROJECT_ID,
+      fileName: "hero.png",
+      fileType: "image/png",
+      fileSize: 68,
+    },
+  });
+  const path = (prepared.result?.structuredContent as {
+    image: { path: string };
+  }).image.path;
+
+  const completed = await rpc(context, "tools/call", {
+    name: "complete_project_game_asset_uploads",
+    arguments: { projectId: WRITABLE_PROJECT_ID, items: [{ path }] },
+  });
+
+  assertEquals(completed.result?.isError, true);
+  assertMatch(JSON.stringify(completed.result), /PROJECT_WRITE_FORBIDDEN/);
+  assertEquals(
+    calls.filter((call) => call.name === "mcp_resolve_project_role").length,
+    2,
+  );
+  const admission = calls.find((call) =>
+    call.name === "mcp_begin_account_operation" &&
+    call.parameters.p_operation === "complete_project_game_asset_uploads"
+  )!;
+  assertEquals(admission.parameters.p_operation_class, "write");
   assertEquals(storageCalls.map((call) => call.name), [
     "from",
     "createSignedUploadUrl",
