@@ -9,6 +9,7 @@ const sql = readFileSync(join(
 describe('MCP project game asset registration migration', () => {
   it('registers or exactly reuses one verified storage path', () => {
     expect(sql).toMatch(/function public\.mcp_register_project_game_asset/i);
+    expect(sql).toMatch(/#variable_conflict use_column/i);
     expect(sql).toMatch(/insert into public\.project_game_assets/i);
     expect(sql).toMatch(/on conflict \(storage_path\) do nothing/i);
     expect(sql).toMatch(/ASSET_REGISTRATION_CONFLICT/i);

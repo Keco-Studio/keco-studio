@@ -1,3 +1,5 @@
+-- RETURNS TABLE exposes storage_path as a PL/pgSQL variable, which made
+-- ON CONFLICT (storage_path) ambiguous against the table column.
 create or replace function public.mcp_register_project_game_asset(
   p_project_id uuid,
   p_name text,
@@ -87,64 +89,3 @@ begin
     v_row.created_at, v_row.updated_at, not v_inserted;
 end;
 $$;
-
-drop policy if exists project_game_assets_insert on public.project_game_assets;
-create policy project_game_assets_insert on public.project_game_assets for insert with check (
-  created_by = (select auth.uid())
-  and (
-    exists (
-      select 1 from public.projects project
-      where project.id = project_game_assets.project_id
-        and project.owner_id = (select auth.uid())
-    )
-    or exists (
-      select 1 from public.project_collaborators collaborator
-      where collaborator.project_id = project_game_assets.project_id
-        and collaborator.user_id = (select auth.uid())
-        and collaborator.accepted_at is not null
-        and collaborator.role in ('admin', 'editor')
-    )
-  )
-);
-
-drop policy if exists project_game_assets_update on public.project_game_assets;
-create policy project_game_assets_update on public.project_game_assets for update using (
-  created_by = (select auth.uid())
-  and (
-    exists (
-      select 1 from public.projects project
-      where project.id = project_game_assets.project_id
-        and project.owner_id = (select auth.uid())
-    )
-    or exists (
-      select 1 from public.project_collaborators collaborator
-      where collaborator.project_id = project_game_assets.project_id
-        and collaborator.user_id = (select auth.uid())
-        and collaborator.accepted_at is not null
-        and collaborator.role in ('admin', 'editor')
-    )
-  )
-) with check (
-  created_by = (select auth.uid())
-  and (
-    exists (
-      select 1 from public.projects project
-      where project.id = project_game_assets.project_id
-        and project.owner_id = (select auth.uid())
-    )
-    or exists (
-      select 1 from public.project_collaborators collaborator
-      where collaborator.project_id = project_game_assets.project_id
-        and collaborator.user_id = (select auth.uid())
-        and collaborator.accepted_at is not null
-        and collaborator.role in ('admin', 'editor')
-    )
-  )
-);
-
-revoke all on function public.mcp_register_project_game_asset(
-  uuid, text, text, text, text, text, integer, integer, boolean, bigint
-) from public, anon, service_role;
-grant execute on function public.mcp_register_project_game_asset(
-  uuid, text, text, text, text, text, integer, integer, boolean, bigint
-) to authenticated;
