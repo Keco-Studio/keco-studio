@@ -29,7 +29,7 @@ describe('Slice V2 modular architecture', () => {
 
   it('keeps the artifact schema chain explicit', () => {
     const manifest = JSON.parse(readFileSync(path.join(root, 'contracts/keco-slice-v2/contract-manifest.json'), 'utf8')) as { artifactSchemaVersions: Record<string, number> };
-    expect(manifest.artifactSchemaVersions).toMatchObject({ sourceProfile: 1, slicePlan: 2, evalSpec: 2, taskResult: 2, taskReview: 2, mirrorManifest: 2, mirrorVerification: 2 });
+    expect(manifest.artifactSchemaVersions).toMatchObject({ sourceProfile: 1, slicePlan: 2, evalSpec: 2, taskResult: 2, taskReview: 2, mirrorManifest: 2, mirrorVerification: 2, projectAssetBinding: 1 });
     const taskValidator = path.join(codexSkills, 'keco-godot-slice-implementation/scripts/validate_task_evidence.py');
     expect(spawnSync('python3', [taskValidator, '--help'], { encoding: 'utf8' }).status).toBe(0);
   });

@@ -20,4 +20,6 @@ Own dependency-ordered tasks, immutable allowedFiles, RED/GREEN commands, TaskRe
 - validate_task_evidence.py
 - validate_interaction_checkpoint.py
 
+When a TaskResult changes supported project images, pass the checkpoint artifact array to `validate_task_evidence.py --artifacts`; the asset module defines the required `project_asset_binding` shape.
+
 Use contractVersion 2 and the canonical manifest/corpus. Preserve Keco authority, immutable plan bindings, and the interaction contract. Do not route new work to a legacy workflow.

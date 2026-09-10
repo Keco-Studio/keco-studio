@@ -583,6 +583,39 @@ const changedFileSchema = z.object({
   beforeHash: sha256.nullable(),
   afterHash: sha256.nullable(),
 }).strict();
+const projectImagePath = (value: string) =>
+  /\.(?:png|jpe?g|gif|webp|svg)$/i.test(value);
+const projectAssetBindingPayloadSchema = z.object({
+  schemaVersion: z.literal(1),
+  projectAssetId: uuid,
+  repositoryPath: relativePath,
+  storagePath: z.string().trim().min(1).max(1000),
+  name: z.string().trim().min(1).max(255),
+  category: z.enum([
+    "character",
+    "icon",
+    "ui",
+    "map",
+    "prop",
+    "vfx",
+    "spritesheet",
+    "media",
+  ]),
+  sha256,
+  status: z.literal("ready"),
+  authoritativeDownloadSha256: sha256,
+  materializedPath: relativePath,
+  materializedSha256: sha256,
+}).strict();
+const projectAssetRowSchema = z.object({
+  id: uuid,
+  project_id: uuid,
+  name: z.string(),
+  category: z.string(),
+  status: z.string(),
+  storage_path: z.string(),
+  sha256: z.string().nullable(),
+}).strict();
 const taskResultPayloadSchema = z.object({
   schemaVersion: z.literal(1),
   runId: uuid,
@@ -1124,6 +1157,86 @@ function validateEventBindings(
   }
 }
 
+async function verifyProjectAssetBindings(
+  context: ProjectMcpRequestContext,
+  projectId: string,
+  events: z.infer<typeof eventSchema>[],
+  artifacts: z.infer<typeof artifactSchema>[],
+): Promise<void> {
+  const bindingArtifacts = events.flatMap((event) => {
+    if (event.eventType !== "task_result") return [];
+    const writesImages = event.payload.phase !== "red" &&
+      event.payload.status === "completed" &&
+      event.payload.changedFiles.some((file) =>
+        file.afterHash !== null && projectImagePath(file.path)
+      );
+    if (!writesImages) return [];
+    const referencedIds = new Set(event.payload.artifactIds);
+    return artifacts.filter((artifact) =>
+      referencedIds.has(artifact.artifactId) &&
+      artifact.eventId === event.eventId &&
+      artifact.artifactType === "project_asset_binding"
+    );
+  });
+  if (bindingArtifacts.length === 0) return;
+
+  const bindings = bindingArtifacts.map((artifact) => {
+    const parsed = projectAssetBindingPayloadSchema.safeParse(artifact.payload);
+    if (!parsed.success) {
+      throw new McpDomainError(
+        "SLICE_CONTRACT_INVALID",
+        "Project Asset binding payload is invalid.",
+      );
+    }
+    return { artifact, payload: parsed.data };
+  });
+  for (const binding of bindings) {
+    if (binding.artifact.contentHash !== await sha256Canonical(binding.payload)) {
+      throw new McpDomainError(
+        "SLICE_CONTRACT_INVALID",
+        "Project Asset binding content hash does not match its payload.",
+      );
+    }
+  }
+
+  const ids = bindings.map((binding) => binding.payload.projectAssetId);
+  const { data, error } = await context.supabase
+    .from("project_game_assets")
+    .select("id, project_id, name, category, status, storage_path, sha256")
+    .eq("project_id", projectId)
+    .in("id", ids);
+  if (error) {
+    throw new McpDomainError(
+      "SLICE_CONTRACT_INVALID",
+      "Project Assets could not be read back for Slice verification.",
+    );
+  }
+  const parsedRows = z.array(projectAssetRowSchema).safeParse(data);
+  if (!parsedRows.success) {
+    throw new McpDomainError(
+      "SLICE_CONTRACT_INVALID",
+      "Project Assets returned an invalid read-back shape.",
+    );
+  }
+  const rows = new Map(parsedRows.data.map((row) => [row.id, row]));
+  const mismatch = bindings.some(({ payload }) => {
+    const row = rows.get(payload.projectAssetId);
+    return !row || row.project_id !== projectId || row.name !== payload.name ||
+      row.category !== payload.category || row.status !== "ready" ||
+      row.storage_path !== payload.storagePath ||
+      row.sha256 !== payload.sha256.slice("sha256:".length) ||
+      payload.authoritativeDownloadSha256 !== payload.sha256 ||
+      payload.materializedPath !== payload.repositoryPath ||
+      payload.materializedSha256 !== payload.sha256;
+  });
+  if (mismatch || rows.size !== bindings.length) {
+    throw new McpDomainError(
+      "SLICE_CONTRACT_INVALID",
+      "Project Asset binding does not match authoritative ready asset metadata.",
+    );
+  }
+}
+
 function serverComparableEvaluation(
   evaluation: ReturnType<typeof evaluateObservation>,
 ): Record<string, unknown> {
@@ -1289,7 +1402,7 @@ function registerSliceToolSet(
     });
   }
 
-  const checkpointSchema = z.object({
+const checkpointSchema = z.object({
     ...shape,
     contractVersion: z.literal(2),
     runId: uuid,
@@ -1308,7 +1421,61 @@ function registerSliceToolSet(
         message: "Event IDs must be unique.",
       });
     }
+    if (
+      new Set(value.artifacts.map((item) => item.artifactId)).size !==
+        value.artifacts.length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Artifact IDs must be unique.",
+      });
+    }
     for (const event of value.events) {
+      if (event.eventType === "task_result") {
+        const expectedImages = event.payload.changedFiles.filter((file) =>
+          event.payload.phase !== "red" && event.payload.status === "completed" &&
+          file.afterHash !== null && projectImagePath(file.path)
+        );
+        if (expectedImages.length === 0) continue;
+        const referencedIds = new Set(event.payload.artifactIds);
+        const bindings = value.artifacts.filter((artifact) =>
+          referencedIds.has(artifact.artifactId) &&
+          artifact.eventId === event.eventId &&
+          artifact.artifactType === "project_asset_binding" &&
+          artifact.schemaVersion === 1
+        );
+        const parsed = bindings.map((artifact) => ({
+          artifact,
+          payload: projectAssetBindingPayloadSchema.safeParse(artifact.payload),
+        }));
+        const validPayloads = parsed.flatMap((item) =>
+          item.payload.success ? [item.payload.data] : []
+        );
+        const expectedByPath = new Map(expectedImages.map((file) => [
+          file.path,
+          file.afterHash,
+        ]));
+        if (
+          new Set(event.payload.artifactIds).size !== event.payload.artifactIds.length ||
+          bindings.length !== event.payload.artifactIds.length ||
+          validPayloads.length !== expectedImages.length ||
+          new Set(validPayloads.map((item) => item.repositoryPath)).size !== expectedImages.length ||
+          new Set(validPayloads.map((item) => item.projectAssetId)).size !== expectedImages.length ||
+          validPayloads.some((item) =>
+            expectedByPath.get(item.repositoryPath) !== item.sha256 ||
+            item.authoritativeDownloadSha256 !== item.sha256 ||
+            item.materializedPath !== item.repositoryPath ||
+            item.materializedSha256 !== item.sha256
+          )
+        ) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              "Each changed project image must bind one ready project_asset_binding artifact.",
+          });
+        }
+        continue;
+      }
       if (event.eventType !== "mirror_verification") continue;
       const artifact = value.artifacts.find((candidate) =>
         candidate.eventId === event.eventId &&
@@ -1352,6 +1519,12 @@ function registerSliceToolSet(
         });
         const run = parseTrusted(v2ReadRunSchema, rawRun);
         validateEventBindings(run, input.events);
+        await verifyProjectAssetBindings(
+          context,
+          projectId,
+          input.events,
+          input.artifacts,
+        );
         const requestedDocumentProgress = input.documentProgress ?? [];
         const computedEvaluations = input.events
           .filter((event) => event.eventType === "runtime_observation")

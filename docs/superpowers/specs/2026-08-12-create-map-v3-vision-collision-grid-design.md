@@ -60,7 +60,7 @@ CREATE_MAP_VISION_API_KEY
 CREATE_MAP_VISION_MODEL
 ```
 
-Each `CREATE_MAP_VISION_*` value is an optional override of `LLM_API_URL`, `LLM_API_KEY`, or `LLM_MODEL`. This keeps Agent and vision on one supplier and credential while allowing a dedicated multimodal model from that supplier. The selected model must support OpenAI-compatible `image_url` content; the currently configured `deepseek-v4-flash` rejects image content. Missing effective configuration produces `vision_not_configured`; invalid model output produces `collision_grid_invalid_response`.
+Each `CREATE_MAP_VISION_*` value is an optional override of `LLM_API_URL`, `LLM_API_KEY`, or `LLM_MODEL`. This keeps Agent and vision on one supplier and credential while allowing a dedicated multimodal model from that supplier. The selected model must support OpenAI-compatible `image_url` content; the default `deepseek-flash` supports vision. Missing effective configuration produces `vision_not_configured`; invalid model output produces `collision_grid_invalid_response`.
 
 ## UI
 

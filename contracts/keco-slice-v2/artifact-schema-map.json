@@ -11,7 +11,8 @@
     "MirrorManifest": 2,
     "MirrorVerification": 2,
     "KecoSnapshot": 1,
-    "InteractionCheckpoint": 1
+    "InteractionCheckpoint": 1,
+    "ProjectAssetBinding": 1
   },
   "authority": "contracts/keco-slice-v2/contract-manifest.json"
 }

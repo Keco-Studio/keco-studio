@@ -1198,6 +1198,23 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
     expect(missingPrefix.error?.message).toContain('SLICE_RUNTIME_EVIDENCE_INVALID');
   });
 
+  it('rejects direct V2 checkpoint calls that complete an image without project Asset evidence', async () => {
+    const bundle = await createV2Bundle();
+    const imageResult = taskResultV2(bundle, 'task-1');
+    imageResult.payload.changedFiles = [{
+      path: 'assets/generated/courtyard.png',
+      beforeHash: null,
+      afterHash: hash('a'),
+    }];
+    imageResult.payload.artifactIds = [];
+    const rejected = await checkpointV2(
+      bundle.runId,
+      String(bundle.result.stateToken),
+      [imageResult],
+    );
+    expect(rejected.error?.message).toContain('SLICE_PROJECT_ASSET_BINDING_INVALID');
+  });
+
   it.each(['inventory', 'requirements'] as const)(
     'rejects a GDD %s mismatch between the plan and EvalSpec',
     async mismatch => {

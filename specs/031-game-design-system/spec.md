@@ -110,7 +110,7 @@ content so that I can evolve a project-specific design language.
   references are context only and do not automatically create Keco tables.
 - **FR-007**: Generation MUST use the existing OpenAI-compatible LLM client with
   DeepSeek as the explicit model (`DEEPSEEK_MODEL` fallback to `LLM_MODEL`, then
-  `deepseek-v4-flash`).
+  `deepseek-flash`).
 - **FR-008**: Generation MUST be represented by a durable job with status,
   phase, error, and output system id, and MUST be queryable for polling.
 - **FR-009**: A project MUST have at most one active Game Design System binding;

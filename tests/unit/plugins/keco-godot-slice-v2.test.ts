@@ -1212,6 +1212,171 @@ describe('Keco Godot Slice V2 skill contract', () => {
     }
   });
 
+  it('requires Keco artifact bindings when a completed task writes project images', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'keco-v2-image-evidence-'));
+    try {
+      const fixture = JSON.parse(readFileSync(
+        path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-slice-v2-end-to-end.json'),
+        'utf8',
+      ));
+      const imagePaths = ['assets/generated/courtyard.png', 'assets/generated/portrait.svg'];
+      fixture.runContext.allowedFiles = imagePaths;
+      fixture.slicePlan.allowedFiles = imagePaths;
+      fixture.slicePlan.tasks[0].files = imagePaths;
+      fixture.taskResult.payload.changedFiles = imagePaths.map((imagePath, index) => ({
+        path: imagePath,
+        beforeHash: null,
+        afterHash: `sha256:${(index ? 'f' : 'e').repeat(64)}`,
+      }));
+      fixture.taskResult.payload.artifactIds = [];
+      fixture.taskReview.payload.reviewedFiles = imagePaths.map((imagePath, index) => ({
+        path: imagePath,
+        hash: `sha256:${(index ? 'f' : 'e').repeat(64)}`,
+      }));
+
+      const paths = {
+        runContext: path.join(tempRoot, 'run-context.json'),
+        plan: path.join(tempRoot, 'plan.json'),
+        taskResult: path.join(tempRoot, 'task-result.json'),
+        taskReview: path.join(tempRoot, 'task-review.json'),
+        artifacts: path.join(tempRoot, 'artifacts.json'),
+      };
+      writeFileSync(paths.runContext, JSON.stringify(fixture.runContext));
+      writeFileSync(paths.plan, JSON.stringify(fixture.slicePlan));
+      writeFileSync(paths.taskResult, JSON.stringify(fixture.taskResult));
+      writeFileSync(paths.taskReview, JSON.stringify(fixture.taskReview));
+      writeFileSync(paths.artifacts, JSON.stringify([]));
+
+      const validator = moduleFile('scripts/validate_task_evidence.py');
+      const missingBinding = spawnSync('python3', [
+        validator,
+        '--run-context', paths.runContext,
+        '--plan', paths.plan,
+        '--task-result', paths.taskResult,
+        '--task-review', paths.taskReview,
+        '--artifacts', paths.artifacts,
+      ], { encoding: 'utf8' });
+      expect(missingBinding.status).toBe(1);
+      expect(missingBinding.stderr).toMatch(/project image[\s\S]*artifact/i);
+
+      fixture.taskResult.payload.artifactIds = [
+        '77777777-7777-4777-8777-777777777777',
+        '88888888-8888-4888-8888-888888888888',
+      ];
+      writeFileSync(paths.taskResult, JSON.stringify(fixture.taskResult));
+      const unrelatedIds = spawnSync('python3', [
+        validator,
+        '--run-context', paths.runContext,
+        '--plan', paths.plan,
+        '--task-result', paths.taskResult,
+        '--task-review', paths.taskReview,
+        '--artifacts', paths.artifacts,
+      ], { encoding: 'utf8' });
+      expect(unrelatedIds.status).toBe(1);
+      expect(unrelatedIds.stderr).toMatch(/each project image[\s\S]*artifact/i);
+
+      const artifactFor = (index: number, artifactId: string) => {
+        const payload = {
+          schemaVersion: 1,
+          projectAssetId: `${index + 7}5555555-5555-4555-8555-555555555555`,
+          repositoryPath: imagePaths[index],
+          storagePath: `user/project/generated/${path.basename(imagePaths[index])}`,
+          name: path.basename(imagePaths[index]),
+          category: index ? 'icon' : 'map',
+          sha256: `sha256:${(index ? 'f' : 'e').repeat(64)}`,
+          status: 'ready',
+          authoritativeDownloadSha256: `sha256:${(index ? 'f' : 'e').repeat(64)}`,
+          materializedPath: imagePaths[index],
+          materializedSha256: `sha256:${(index ? 'f' : 'e').repeat(64)}`,
+        };
+        return {
+          artifactId,
+          eventId: fixture.taskResult.eventId,
+          artifactType: 'project_asset_binding',
+          schemaVersion: 1,
+          contentHash: `sha256:${createHash('sha256').update(canonicalJson(payload)).digest('hex')}`,
+          payload,
+        };
+      };
+      const firstArtifact = artifactFor(0, '55555555-5555-4555-8555-555555555555');
+      fixture.taskResult.payload.artifactIds = [
+        firstArtifact.artifactId,
+        '77777777-7777-4777-8777-777777777777',
+      ];
+      writeFileSync(paths.taskResult, JSON.stringify(fixture.taskResult));
+      writeFileSync(paths.artifacts, JSON.stringify([firstArtifact]));
+      const validPlusUnrelatedId = spawnSync('python3', [
+        validator,
+        '--run-context', paths.runContext,
+        '--plan', paths.plan,
+        '--task-result', paths.taskResult,
+        '--task-review', paths.taskReview,
+        '--artifacts', paths.artifacts,
+      ], { encoding: 'utf8' });
+      expect(validPlusUnrelatedId.status).toBe(1);
+      expect(validPlusUnrelatedId.stderr).toMatch(/each project image[\s\S]*artifact/i);
+
+      fixture.taskResult.payload.artifactIds = [firstArtifact.artifactId, firstArtifact.artifactId];
+      writeFileSync(paths.taskResult, JSON.stringify(fixture.taskResult));
+      writeFileSync(paths.artifacts, JSON.stringify([firstArtifact]));
+      const duplicatedId = spawnSync('python3', [
+        validator,
+        '--run-context', paths.runContext,
+        '--plan', paths.plan,
+        '--task-result', paths.taskResult,
+        '--task-review', paths.taskReview,
+        '--artifacts', paths.artifacts,
+      ], { encoding: 'utf8' });
+      expect(duplicatedId.status).toBe(1);
+      expect(duplicatedId.stderr).toMatch(/artifact IDs must be unique/i);
+
+      fixture.taskResult.payload.artifactIds = [firstArtifact.artifactId];
+      writeFileSync(paths.taskResult, JSON.stringify(fixture.taskResult));
+      writeFileSync(paths.artifacts, JSON.stringify([firstArtifact]));
+      const partiallyBound = spawnSync('python3', [
+        validator,
+        '--run-context', paths.runContext,
+        '--plan', paths.plan,
+        '--task-result', paths.taskResult,
+        '--task-review', paths.taskReview,
+        '--artifacts', paths.artifacts,
+      ], { encoding: 'utf8' });
+      expect(partiallyBound.status).toBe(1);
+      expect(partiallyBound.stderr).toMatch(/each project image[\s\S]*artifact/i);
+
+      const secondArtifact = artifactFor(1, '66666666-6666-4666-8666-666666666666');
+      fixture.taskResult.payload.artifactIds.push(secondArtifact.artifactId);
+      writeFileSync(paths.taskResult, JSON.stringify(fixture.taskResult));
+      writeFileSync(paths.artifacts, JSON.stringify([firstArtifact, secondArtifact]));
+      const bound = spawnSync('python3', [
+        validator,
+        '--run-context', paths.runContext,
+        '--plan', paths.plan,
+        '--task-result', paths.taskResult,
+        '--task-review', paths.taskReview,
+        '--artifacts', paths.artifacts,
+      ], { encoding: 'utf8' });
+      expect({ status: bound.status, stderr: bound.stderr }).toEqual({ status: 0, stderr: '' });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requires host-generated Slice images to pass through project Assets before Godot materialization', () => {
+    const roots = [
+      path.join(repositoryRoot, 'plugins', 'keco-codex', 'skills', 'keco-godot-slice-assets'),
+      path.join(repositoryRoot, 'plugins', 'keco-claude', 'skills', 'keco-godot-slice-assets'),
+    ];
+    for (const root of roots) {
+      const skill = readFileSync(path.join(root, 'SKILL.md'), 'utf8');
+      const generated = readFileSync(path.join(root, 'references', 'generated-asset-contract.md'), 'utf8');
+      expect(skill).toMatch(/host-generated[\s\S]*project Assets[\s\S]*before[\s\S]*Godot/i);
+      expect(generated).toMatch(/prepare_image_uploads[\s\S]*exact signed PUT[\s\S]*complete_project_game_asset_uploads[\s\S]*project Assets read-back/i);
+      expect(generated).toMatch(/projectAssetId[\s\S]*repositoryPath[\s\S]*storagePath[\s\S]*name[\s\S]*category[\s\S]*sha256[\s\S]*status[^\n]*ready[\s\S]*authoritativeDownloadSha256[\s\S]*materializedPath[\s\S]*materializedSha256/i);
+      expect(generated).toMatch(/artifactIds[\s\S]*binding artifact ID[\s\S]*(?:missing|partial)[\s\S]*(?:block|reject)/i);
+    }
+  });
+
   it('plans executable pressure evaluations without treating fixture counts as evidence', () => {
     const harness = path.join(repositoryRoot, 'scripts', 'evaluate-keco-slice-v2-skill.mjs');
     const definitionPath = path.join(repositoryRoot, 'tests', 'fixtures', 'plugins', 'keco-godot-skill-v2-evals.json');
@@ -1236,7 +1401,7 @@ describe('Keco Godot Slice V2 skill contract', () => {
       'simple_non_gdd', 'gdd_coverage', 'multi_slice_resume', 'ambiguous_decomposition',
       'capability_unavailable', 'out_of_scope_file', 'missing_runtime_observation',
       'legacy_self_report', 'forged_review_level', 'stale_state', 'fourth_repair',
-      'mirror_partial_failure',
+      'mirror_partial_failure', 'host_generated_asset_writeback',
     ]));
     expect(fixture.cases.every(item => item.assertions.length > 0)).toBe(true);
     expect(fixture.variants).toEqual(expect.arrayContaining([

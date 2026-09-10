@@ -53,7 +53,7 @@ describe('Create Map V2 planner', () => {
     expect(messages[1].content).toContain('"document":null');
   });
 
-  it('pins planner requests to the dedicated DeepSeek V4 Flash configuration', async () => {
+  it('pins planner requests to the dedicated DeepSeek Flash configuration', async () => {
     completeLlmNonStreaming.mockResolvedValue(JSON.stringify(makeValidMapPlanV2()));
 
     await createMapPlanV2('A compact market');
@@ -63,7 +63,7 @@ describe('Create Map V2 planner', () => {
       Record<string, unknown>,
     ];
     expect(options).toEqual(expect.objectContaining({
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
       baseUrl: 'https://api.deepseek.com',
     }));
     expect(JSON.stringify(options)).not.toContain('sk-');

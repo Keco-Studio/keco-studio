@@ -23,7 +23,7 @@ const MAX_ATTEMPTS = 3;
 const DIRECT_MAP_TOOL_NAME = 'submit_direct_map_plan_v3';
 export const DIRECT_MAP_MAX_ATTEMPTS = 2;
 
-const CREATE_MAP_LLM_MODEL = 'deepseek-v4-flash';
+const CREATE_MAP_LLM_MODEL = 'deepseek-flash';
 const CREATE_MAP_LLM_BASE_URL = 'https://api.deepseek.com';
 const DIRECT_MAP_PROFILE_WIDTHS = [...new Set(DIRECT_MAP_PROFILES.map(({ width }) => width))];
 const DIRECT_MAP_PROFILE_HEIGHTS = [...new Set(DIRECT_MAP_PROFILES.map(({ height }) => height))];

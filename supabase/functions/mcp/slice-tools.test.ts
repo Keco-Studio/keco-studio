@@ -6,6 +6,7 @@ import {
   registerAccountSliceWriteTools,
   registerSliceTools,
 } from "./slice-tools.ts";
+import { sha256Canonical } from "./slice-contracts.ts";
 
 type ToolResult = {
   isError?: boolean;
@@ -28,6 +29,8 @@ const IDS = {
   state: "44444444-4444-4444-8444-444444444444",
   nextState: "55555555-5555-4555-8555-555555555555",
   event: "66666666-6666-4666-8666-666666666666",
+  artifact: "66666666-6666-4666-8666-666666666667",
+  projectAsset: "66666666-6666-4666-8666-666666666668",
   documents: [
     "77777777-7777-4777-8777-777777777771",
     "77777777-7777-4777-8777-777777777772",
@@ -178,6 +181,7 @@ function projectContext(
   calls: RpcCall[],
   responses: Record<string, unknown>,
   role: "editor" | "viewer" = "editor",
+  tableResponses: Record<string, unknown[]> = {},
 ): ProjectMcpRequestContext {
   return {
     mode: "project",
@@ -206,6 +210,25 @@ function projectContext(
           };
         }
         return { data: response, error: null };
+      },
+      from(table: string) {
+        return {
+          select(columns: string) {
+            return {
+              eq(field: string, value: unknown) {
+                return {
+                  async in(inField: string, values: unknown[]) {
+                    calls.push({
+                      name: `${table}.select`,
+                      parameters: { columns, field, value, inField, values },
+                    });
+                    return { data: tableResponses[table] ?? [], error: null };
+                  },
+                };
+              },
+            };
+          },
+        };
       },
     },
   } as unknown as ProjectMcpRequestContext;
@@ -254,6 +277,70 @@ function checkpointInput() {
     }],
     artifacts: [],
     idempotencyKey: "checkpoint:slice-1",
+  };
+}
+
+async function projectAssetCheckpointInput() {
+  const repositoryPath = "assets/generated/courtyard.png";
+  const payload = {
+    schemaVersion: 1,
+    projectAssetId: IDS.projectAsset,
+    repositoryPath,
+    storagePath: `user-1/${IDS.project}/generated/courtyard.png`,
+    name: "courtyard.png",
+    category: "map",
+    sha256: hash("a"),
+    status: "ready",
+    authoritativeDownloadSha256: hash("a"),
+    materializedPath: repositoryPath,
+    materializedSha256: hash("a"),
+  };
+  return {
+    input: {
+      contractVersion: 2,
+      runId: IDS.run,
+      stateToken: IDS.state,
+      events: [{
+        eventId: IDS.event,
+        eventType: "task_result",
+        payload: {
+          schemaVersion: 1,
+          runId: IDS.run,
+          sliceId: "slice-1",
+          taskId: "task-1",
+          planRevision: v2Seed.plan.planRevision,
+          attemptId: crypto.randomUUID(),
+          phase: "implementation",
+          operation: { kind: "mcp", tools: ["complete_project_game_asset_uploads"] },
+          startedAt: "2026-09-10T00:00:00Z",
+          endedAt: "2026-09-10T00:00:01Z",
+          exitCode: null,
+          timedOut: false,
+          cancelled: false,
+          stdoutSummary: "Project Asset registered and read back.",
+          stdoutHash: hash("b"),
+          stderrSummary: "",
+          stderrHash: hash("c"),
+          changedFiles: [{ path: repositoryPath, beforeHash: null, afterHash: hash("a") }],
+          expectedOutcome: "completed",
+          observedOutcome: "completed",
+          status: "completed",
+          concerns: [],
+          artifactIds: [IDS.artifact],
+        },
+      }],
+      artifacts: [{
+        artifactId: IDS.artifact,
+        eventId: IDS.event,
+        artifactType: "project_asset_binding",
+        schemaVersion: 1,
+        contentHash: await sha256Canonical(payload),
+        payload,
+      }],
+      idempotencyKey: "checkpoint:project-assets",
+    },
+    payload,
+    repositoryPath,
   };
 }
 
@@ -567,6 +654,133 @@ Deno.test("checkpoint_slice computes locked assertions and never sends assertion
     }],
     reasonCodes: ["ACTUAL_PATH_MISSING"],
   }]);
+});
+
+Deno.test("checkpoint_slice requires authoritative project Asset bindings for changed images", async () => {
+  const registered = recordingServer();
+  registerSliceTools(registered.server, projectContext([], {}));
+  const checkpoint = registered.tools.find((tool) =>
+    tool.name === "checkpoint_slice"
+  )!;
+  const fixture = await projectAssetCheckpointInput();
+  assertEquals(checkpoint.config.inputSchema.safeParse(fixture.input).success, true);
+
+  const missing = structuredClone(fixture.input);
+  missing.artifacts = [];
+  assertEquals(checkpoint.config.inputSchema.safeParse(missing).success, false);
+
+  const unrelatedAssetId = structuredClone(fixture.input);
+  unrelatedAssetId.events[0].payload.artifactIds = [
+    IDS.artifact,
+    IDS.projectAsset,
+  ];
+  assertEquals(
+    checkpoint.config.inputSchema.safeParse(unrelatedAssetId).success,
+    false,
+  );
+
+  const duplicateBindingId = structuredClone(fixture.input);
+  duplicateBindingId.events[0].payload.artifactIds = [
+    IDS.artifact,
+    IDS.artifact,
+  ];
+  assertEquals(
+    checkpoint.config.inputSchema.safeParse(duplicateBindingId).success,
+    false,
+  );
+
+  const duplicateSubmittedArtifact = structuredClone(fixture.input);
+  duplicateSubmittedArtifact.artifacts.push(
+    structuredClone(duplicateSubmittedArtifact.artifacts[0]),
+  );
+  assertEquals(
+    checkpoint.config.inputSchema.safeParse(duplicateSubmittedArtifact).success,
+    false,
+  );
+
+  const missingMaterialization = structuredClone(fixture.input);
+  const incompletePayload = {
+    ...missingMaterialization.artifacts[0].payload,
+  } as Record<string, unknown>;
+  delete incompletePayload.materializedSha256;
+  missingMaterialization.artifacts[0].payload = incompletePayload as unknown as
+    typeof missingMaterialization.artifacts[0]["payload"];
+  assertEquals(
+    checkpoint.config.inputSchema.safeParse(missingMaterialization).success,
+    false,
+  );
+
+  const imageRun = structuredClone(runResult);
+  imageRun.plan.allowedFiles = [fixture.repositoryPath];
+  imageRun.plan.tasks[0].files = [fixture.repositoryPath];
+  const response = {
+    ok: true,
+    outcome: "created",
+    contractVersion: 2,
+    runId: IDS.run,
+    stateToken: IDS.nextState,
+    currentSequence: 3,
+    repairCount: 0,
+    computedEvaluations: [],
+    projection,
+    documents: v2Documents,
+  };
+
+  const mismatchCalls: RpcCall[] = [];
+  const mismatch = recordingServer();
+  registerSliceTools(
+    mismatch.server,
+    projectContext(
+      mismatchCalls,
+      { mcp_read_slice_run: imageRun, mcp_checkpoint_slice_v2: response },
+      "editor",
+      { project_game_assets: [{
+        id: IDS.projectAsset,
+        project_id: IDS.project,
+        name: fixture.payload.name,
+        category: fixture.payload.category,
+        status: "ready",
+        storage_path: fixture.payload.storagePath,
+        sha256: "f".repeat(64),
+      }] },
+    ),
+  );
+  const mismatched = await mismatch.tools.find((tool) =>
+    tool.name === "checkpoint_slice"
+  )!.handler(fixture.input);
+  assertEquals(mismatched.isError, true);
+  assertMatch(JSON.stringify(mismatched.structuredContent), /SLICE_CONTRACT_INVALID/);
+  assertEquals(mismatchCalls.some((call) => call.name === "mcp_checkpoint_slice_v2"), false);
+
+  const validCalls: RpcCall[] = [];
+  const valid = recordingServer();
+  registerSliceTools(
+    valid.server,
+    projectContext(
+      validCalls,
+      { mcp_read_slice_run: imageRun, mcp_checkpoint_slice_v2: response },
+      "editor",
+      { project_game_assets: [{
+        id: IDS.projectAsset,
+        project_id: IDS.project,
+        name: fixture.payload.name,
+        category: fixture.payload.category,
+        status: "ready",
+        storage_path: fixture.payload.storagePath,
+        sha256: "a".repeat(64),
+      }] },
+    ),
+  );
+  const accepted = await valid.tools.find((tool) =>
+    tool.name === "checkpoint_slice"
+  )!.handler(fixture.input);
+  assertEquals(accepted.isError, undefined, JSON.stringify(accepted.structuredContent));
+  assertEquals(validCalls.map((call) => call.name), [
+    "mcp_read_slice_run_contract_version",
+    "mcp_read_slice_run",
+    "project_game_assets.select",
+    "mcp_checkpoint_slice_v2",
+  ]);
 });
 
 Deno.test("checkpoint stale replay reaches the atomic RPC", async () => {

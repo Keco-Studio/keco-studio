@@ -1,7 +1,7 @@
 /**
  * LLM streaming client (OpenAI-compatible Chat Completions API).
  *
- * Configured for DeepSeek (default deepseek-v4-flash). Image parts in user
+ * Configured for DeepSeek (default deepseek-flash). Image parts in user
  * messages are forwarded as OpenAI-compatible `image_url` content parts when
  * the upstream model supports them.
  * Parses the upstream SSE stream and re-yields normalized StreamChunk values.
@@ -15,7 +15,7 @@ import { outboundFetch } from './outbound-http';
 
 const LLM_BASE = (process.env.LLM_API_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
 const LLM_API_KEY = process.env.LLM_API_KEY || '';
-const LLM_MODEL = process.env.LLM_MODEL || 'deepseek-v4-flash';
+const LLM_MODEL = process.env.LLM_MODEL || 'deepseek-flash';
 
 export class LlmError extends Error {
   constructor(message: string) {
