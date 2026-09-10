@@ -1,3 +1,27 @@
+/**
+ * Whether the clipboard contains meaningful text in addition to image files.
+ * Image-only HTML (the common browser representation of a copied image) must
+ * not count as text, otherwise the native paste path would insert a broken
+ * remote/blob image instead of the uploaded image node.
+ */
+export function hasClipboardTextPayload(
+  clipboardData: Pick<DataTransfer, 'getData'> | null,
+): boolean {
+  if (!clipboardData) return false;
+  const html = clipboardData.getData('text/html');
+  if (html) {
+    // Browsers commonly expose an image's alt text as text/plain. When the
+    // HTML contains only an image, that fallback is not meaningful document
+    // text and should not switch the paste into the mixed-content path.
+    return html
+      .replace(/<img\b[^>]*>/gi, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .trim().length > 0;
+  }
+  return clipboardData.getData('text/plain').trim().length > 0;
+}
+
 export function extractClipboardImageFiles(
   clipboardData: Pick<DataTransfer, 'items'> | null,
 ): File[] {

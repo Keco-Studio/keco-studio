@@ -28,11 +28,15 @@ import {
   type LexicalEditor,
   type RangeSelection,
 } from 'lexical';
+import { $insertDataTransferForRichText } from '@lexical/clipboard';
 import { isTabularClipboardPayload } from '@/lib/documents/documentTableClipboard';
 import {
   extractClipboardImageFiles,
+  hasClipboardTextPayload,
   uploadClipboardImages,
 } from './documentClipboardImages';
+
+export { hasClipboardTextPayload } from './documentClipboardImages';
 
 type ImageUploadHandler = (file: File) => Promise<string>;
 
@@ -102,6 +106,22 @@ function insertImagesAtPasteSelection(
   }, { discrete: true, tag: SKIP_DOM_SELECTION_TAG });
 }
 
+function textOnlyClipboardData(
+  clipboardData: DataTransfer,
+): Pick<DataTransfer, 'getData'> {
+  return {
+    getData(format: string) {
+      // Force the HTML/plain-text path so serialized Lexical nodes cannot
+      // reintroduce the clipboard's original (often temporary) image URL.
+      if (format === 'application/x-lexical-editor') return '';
+      if (format !== 'text/html') return clipboardData.getData(format);
+      return clipboardData
+        .getData(format)
+        .replace(/<img\b[^>]*>/gi, '');
+    },
+  };
+}
+
 function DocumentClipboardImagePaste() {
   const [editor] = useLexicalComposerContext();
   const imageUploadHandler = useCellValue(clipboardImageUploadHandler$);
@@ -117,10 +137,25 @@ function DocumentClipboardImagePaste() {
         if (clipboardData && isTabularClipboardPayload(clipboardData)) return false;
         const imageFiles = extractClipboardImageFiles(clipboardData);
         if (imageFiles.length === 0) return false;
+        const hasTextPayload = hasClipboardTextPayload(clipboardData);
         const pasteSelection = capturePasteSelection();
         if (!pasteSelection) return false;
 
         event.preventDefault();
+        if (hasTextPayload && clipboardData) {
+          // Preserve rich text while removing the browser's original image
+          // element. The uploaded image is inserted after its URL is ready.
+          editor.update(() => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) {
+              $insertDataTransferForRichText(
+                textOnlyClipboardData(clipboardData) as DataTransfer,
+                selection,
+                editor,
+              );
+            }
+          }, { tag: 'paste' });
+        }
         void uploadClipboardImages(imageFiles, imageUploadHandler).then((images) => {
           if (!active || images.length === 0) return;
           const rootElement = editor.getRootElement();
@@ -130,6 +165,14 @@ function DocumentClipboardImagePaste() {
           const currentSelection = editor.getEditorState().read(
             () => $getSelection()?.clone() ?? null
           );
+
+          if (hasTextPayload && rootHadFocus && currentSelection) {
+            images.forEach((image) => {
+              insertImage({ src: image.url, altText: image.file.name });
+            });
+            return;
+          }
+
           const selectionMoved = !pasteSelection.is(currentSelection);
 
           if (rootHadFocus && !selectionMoved) {
