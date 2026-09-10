@@ -34,6 +34,156 @@ export function extractClipboardImageFiles(
   });
 }
 
+type RtfImagePayload = {
+  mimeType: 'image/jpeg' | 'image/png';
+  hex: string;
+  compatibilityDestination: 'nonshppict' | 'shppict' | null;
+};
+
+type RtfPictGroup = {
+  content: string;
+  compatibilityDestination: RtfImagePayload['compatibilityDestination'];
+};
+
+function isEscapedRtfCharacter(rtf: string, index: number): boolean {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && rtf[cursor] === '\\'; cursor -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+}
+
+function findRtfCompatibilityDestination(
+  rtf: string,
+  pictStart: number,
+): RtfImagePayload['compatibilityDestination'] {
+  const groupStarts: number[] = [];
+  for (let cursor = 0; cursor < pictStart; cursor += 1) {
+    if (isEscapedRtfCharacter(rtf, cursor)) continue;
+    if (rtf[cursor] === '{') groupStarts.push(cursor);
+    if (rtf[cursor] === '}') groupStarts.pop();
+  }
+
+  for (let index = groupStarts.length - 1; index >= 0; index -= 1) {
+    const prefix = rtf.slice(groupStarts[index], pictStart);
+    const destination = /^\{(?:\\\*)?\\(shppict|nonshppict)\b/i.exec(prefix);
+    if (destination?.[1]) {
+      return destination[1].toLowerCase() as 'nonshppict' | 'shppict';
+    }
+  }
+  return null;
+}
+
+function extractBalancedRtfPictGroups(rtf: string): RtfPictGroup[] {
+  const groups: RtfPictGroup[] = [];
+  const pictStart = /\{\\pict\b/gi;
+
+  for (const match of rtf.matchAll(pictStart)) {
+    const start = match.index;
+    if (start === undefined || isEscapedRtfCharacter(rtf, start)) continue;
+
+    let depth = 0;
+    for (let cursor = start; cursor < rtf.length; cursor += 1) {
+      const character = rtf[cursor];
+      if (isEscapedRtfCharacter(rtf, cursor)) continue;
+      if (character === '{') depth += 1;
+      if (character !== '}') continue;
+      depth -= 1;
+      if (depth !== 0) continue;
+      groups.push({
+        content: rtf.slice(start, cursor + 1),
+        compatibilityDestination: findRtfCompatibilityDestination(rtf, start),
+      });
+      break;
+    }
+  }
+
+  return groups;
+}
+
+function topLevelRtfGroupContent(group: string): string {
+  let depth = 1;
+  let content = '';
+
+  for (let cursor = 1; cursor < group.length - 1; cursor += 1) {
+    const character = group[cursor] ?? '';
+    if (!isEscapedRtfCharacter(group, cursor) && character === '{') {
+      depth += 1;
+      continue;
+    }
+    if (!isEscapedRtfCharacter(group, cursor) && character === '}') {
+      depth -= 1;
+      continue;
+    }
+    if (depth === 1) content += character;
+  }
+
+  return content;
+}
+
+function rtfPictGroupToImage(group: RtfPictGroup): RtfImagePayload | null {
+  const content = topLevelRtfGroupContent(group.content);
+  const format = /\\(pngblip|jpegblip)\b/i.exec(content);
+  if (!format || format.index === undefined) return null;
+
+  const mimeType = format[1]?.toLowerCase() === 'pngblip'
+    ? 'image/png'
+    : 'image/jpeg';
+  const payload = content
+    .slice(format.index + format[0].length)
+    .replace(/\\[a-z]+-?\d* ?/gi, '')
+    .replace(/\s/g, '')
+    .toLowerCase();
+  if (!payload || payload.length % 2 !== 0 || !/^[0-9a-f]+$/.test(payload)) {
+    return null;
+  }
+  if (mimeType === 'image/png' && !payload.startsWith('89504e47')) return null;
+  if (mimeType === 'image/jpeg' && !payload.startsWith('ffd8')) return null;
+
+  return {
+    mimeType,
+    hex: payload,
+    compatibilityDestination: group.compatibilityDestination,
+  };
+}
+
+function extractRtfPictPayloads(rtf: string): RtfImagePayload[] {
+  return extractBalancedRtfPictGroups(rtf)
+    .map(rtfPictGroupToImage)
+    .filter((image): image is RtfImagePayload => image !== null)
+    .filter((image, index, images) => {
+      const previous = images[index - 1];
+      const isCompatibilityPair = previous?.compatibilityDestination
+        && image.compatibilityDestination
+        && previous.compatibilityDestination !== image.compatibilityDestination;
+      return !isCompatibilityPair
+        || previous.mimeType !== image.mimeType
+        || previous.hex !== image.hex;
+    });
+}
+
+function hexToArrayBuffer(hex: string): ArrayBuffer {
+  const buffer = new ArrayBuffer(hex.length / 2);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return buffer;
+}
+
+export function extractClipboardRtfImageFiles(
+  clipboardData: Pick<DataTransfer, 'getData'> | null,
+): File[] {
+  if (!clipboardData) return [];
+
+  return extractRtfPictPayloads(clipboardData.getData('text/rtf'))
+    .map(({ mimeType, hex }, index) => new File(
+      [hexToArrayBuffer(hex)],
+      fileNameForClipboardImage(mimeType, index),
+      { type: mimeType },
+    ));
+}
+
 type ClipboardImageData = Pick<DataTransfer, 'getData' | 'items'>;
 
 export function hasClipboardImagePayload(
@@ -48,6 +198,7 @@ export type PreparedClipboardRichImagePaste = {
   html: string;
   plainText: string;
   images: PreparedClipboardImage[];
+  wpsImageFallbackCount: number;
 };
 
 export type PreparedClipboardImage = {
@@ -118,6 +269,28 @@ function isSanctionedExistingImageSource(source: string): boolean {
   }
 }
 
+const WPS_IMAGE_FALLBACK_TEXT =
+  '[WPS image was not included in the clipboard. Paste this image separately.]';
+
+function isWpsTemporaryImageSource(source: string): boolean {
+  if (!source.toLowerCase().startsWith('file:')) return false;
+
+  let pathname = source;
+  try {
+    pathname = new URL(source).pathname;
+  } catch {
+    // Preserve the raw source for conservative pattern matching below.
+  }
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    return false;
+  }
+
+  const normalizedPath = pathname.replace(/\\/g, '/');
+  return /\/ksohtml\/(?:[^/]+\/)*wps_clip_image[-_]/i.test(normalizedPath);
+}
+
 export function prepareClipboardRichImagePaste(
   clipboardData: ClipboardImageData,
 ): PreparedClipboardRichImagePaste | null {
@@ -127,14 +300,25 @@ export function prepareClipboardRichImagePaste(
   const document = new DOMParser().parseFromString(html, 'text/html');
   const imageElements = Array.from(document.body.querySelectorAll('img'));
   const clipboardFiles = extractClipboardImageFiles(clipboardData);
+  const rtfFiles = extractClipboardRtfImageFiles(clipboardData);
   const images: PreparedClipboardImage[] = [];
+  let wpsImageFallbackCount = 0;
 
   imageElements.forEach((image, index) => {
     const source = image.getAttribute('src') ?? '';
     const clipboardFile = clipboardFiles[index];
-    const file = clipboardFile ?? dataImageUrlToFile(source, index);
+    const file = clipboardFile
+      ?? rtfFiles[index]
+      ?? dataImageUrlToFile(source, index);
     if (!file) {
-      if (!isSanctionedExistingImageSource(source)) image.remove();
+      if (isWpsTemporaryImageSource(source)) {
+        const fallback = document.createElement('p');
+        fallback.textContent = WPS_IMAGE_FALLBACK_TEXT;
+        image.replaceWith(fallback);
+        wpsImageFallbackCount += 1;
+      } else if (!isSanctionedExistingImageSource(source)) {
+        image.remove();
+      }
       return;
     }
 
@@ -158,6 +342,7 @@ export function prepareClipboardRichImagePaste(
     html: document.body.innerHTML,
     plainText: clipboardData.getData('text/plain'),
     images,
+    wpsImageFallbackCount,
   };
 }
 

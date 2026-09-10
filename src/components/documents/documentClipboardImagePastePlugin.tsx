@@ -32,6 +32,7 @@ import {
   type RangeSelection,
 } from 'lexical';
 import { $insertDataTransferForRichText } from '@lexical/clipboard';
+import { showWarningToast } from '@/lib/utils/toast';
 import {
   extractClipboardImageFiles,
   hasClipboardImagePayload,
@@ -179,6 +180,9 @@ function DocumentClipboardImagePaste() {
           const payload = prepareClipboardRichImagePaste(clipboardData);
           if (!payload || !$getSelection()) return false;
           event.preventDefault();
+          if (payload.wpsImageFallbackCount > 0) {
+            showWarningToast('WPS did not include one or more images. Paste missing images separately.');
+          }
           insertRichPasteWithPlaceholders(
             editor,
             payload,

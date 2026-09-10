@@ -66,6 +66,16 @@ describe('document editor media and link controls', () => {
     expect(clipboardPluginSource).not.toContain('textOnlyClipboardData');
   });
 
+  it('warns once when WPS mixed paste contains image fallbacks', () => {
+    expect(clipboardPluginSource).toContain(
+      "import { showWarningToast } from '@/lib/utils/toast'"
+    );
+    expect(clipboardPluginSource).toContain('payload.wpsImageFallbackCount > 0');
+    expect(clipboardPluginSource).toContain(
+      "showWarningToast('WPS did not include one or more images. Paste missing images separately.')"
+    );
+  });
+
   it('keeps oversized images inside the editable document width', () => {
     expect(editorStyles).toContain("[data-editor-block-type='image']");
     expect(editorStyles).toContain('max-width: 100%');

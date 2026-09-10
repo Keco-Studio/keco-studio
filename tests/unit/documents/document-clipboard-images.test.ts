@@ -3,6 +3,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
   extractClipboardImageFiles,
+  extractClipboardRtfImageFiles,
   hasClipboardImagePayload,
   prepareClipboardRichImagePaste,
   uploadPreparedClipboardImages,
@@ -19,6 +20,54 @@ function item(
 }
 
 describe('document clipboard images', () => {
+  it('extracts PNG and JPEG files from WPS RTF pict groups in order', () => {
+    const clipboard = {
+      getData: (format: string) => format === 'text/rtf'
+        ? String.raw`{\rtf1{\pict\pngblip 89504e470d0a1a0a}{\pict\jpegblip ffd8ffe000104a464946ffd9}}`
+        : '',
+    };
+
+    const files = extractClipboardRtfImageFiles(clipboard);
+
+    expect(files.map(({ name, type, size }) => ({ name, type, size }))).toEqual([
+      { name: 'clipboard-image-1.png', type: 'image/png', size: 8 },
+      { name: 'clipboard-image-2.jpg', type: 'image/jpeg', size: 12 },
+    ]);
+  });
+
+  it('deduplicates consecutive WPS compatibility pict copies', () => {
+    const clipboard = {
+      getData: (format: string) => format === 'text/rtf'
+        ? String.raw`{\rtf1{\*\shppict{\pict\pngblip 89504e47}}{\nonshppict{\pict\pngblip 89504e47}}}`
+        : '',
+    };
+
+    expect(extractClipboardRtfImageFiles(clipboard)).toHaveLength(1);
+  });
+
+  it('preserves consecutive identical images outside compatibility wrappers', () => {
+    const clipboard = {
+      getData: (format: string) => format === 'text/rtf'
+        ? String.raw`{\rtf1{\pict\pngblip 89504e47}{\pict\pngblip 89504e47}}`
+        : '',
+    };
+
+    expect(extractClipboardRtfImageFiles(clipboard)).toHaveLength(2);
+  });
+
+  it.each([
+    String.raw`{\rtf1{\pict\emfblip 0102}}`,
+    String.raw`{\rtf1{\pict\pngblip 123}}`,
+    String.raw`{\rtf1{\pict\jpegblip zz}}`,
+    String.raw`{\rtf1{\pict\pngblip 89504e47`,
+  ])('ignores unsupported or malformed RTF image data', (rtf) => {
+    const clipboard = {
+      getData: (format: string) => format === 'text/rtf' ? rtf : '',
+    };
+
+    expect(extractClipboardRtfImageFiles(clipboard)).toEqual([]);
+  });
+
   it('extracts image files from a mixed clipboard payload', () => {
     const image = new File(['png'], 'pasted.png', { type: 'image/png' });
     const clipboard = {
@@ -139,6 +188,69 @@ describe('document clipboard images', () => {
     expect(prepared?.images[0]?.file).toBe(image);
     expect(prepared?.html).toContain('alt="pasted.png"');
     expect(prepared?.html).not.toContain('blob:temporary');
+  });
+
+  it('maps RTF images to WPS HTML image positions in order', () => {
+    const clipboard = {
+      items: [
+        item('string', 'text/html', null),
+        item('string', 'text/rtf', null),
+      ],
+      getData: (format: string) => ({
+        'text/html': '<p>Before</p><img src="file:///C:/Users/Test/AppData/Local/Temp/ksohtml/wps_clip_image-1.png"><p>Middle</p><img src="file:///C:/Users/Test/AppData/Local/Temp/ksohtml/wps_clip_image-2.jpg"><p>After</p>',
+        'text/rtf': String.raw`{\rtf1{\pict\pngblip 89504e47}{\pict\jpegblip ffd8ffd9}}`,
+        'text/plain': 'Before\nMiddle\nAfter',
+      }[format] ?? ''),
+    } as unknown as DataTransfer;
+
+    const prepared = prepareClipboardRichImagePaste(clipboard)!;
+
+    expect(prepared.images.map((image) => image.file.type)).toEqual([
+      'image/png',
+      'image/jpeg',
+    ]);
+    expect(prepared.wpsImageFallbackCount).toBe(0);
+    expect(prepared.html).toMatch(
+      /Before.*clipboard-image\.invalid.*Middle.*clipboard-image\.invalid.*After/,
+    );
+  });
+
+  it('uses files before RTF and RTF before HTML data images', () => {
+    const file = new File(['file'], 'from-file.png', { type: 'image/png' });
+    const clipboard = {
+      items: [item('file', 'image/png', file)],
+      getData: (format: string) => ({
+        'text/html': '<img src="data:image/gif;base64,R0lG"><img src="data:image/gif;base64,R0lG"><img src="data:image/gif;base64,R0lG">',
+        'text/rtf': String.raw`{\rtf1{\pict\jpegblip ffd8ffd9}{\pict\pngblip 89504e47}}`,
+        'text/plain': '',
+      }[format] ?? ''),
+    } as unknown as DataTransfer;
+
+    const prepared = prepareClipboardRichImagePaste(clipboard)!;
+
+    expect(prepared.images[0]?.file).toBe(file);
+    expect(prepared.images[1]?.file.type).toBe('image/png');
+    expect(prepared.images[2]?.file.type).toBe('image/gif');
+  });
+
+  it('replaces a missing WPS image in place and reports the fallback', () => {
+    const clipboard = {
+      items: [item('string', 'text/html', null)],
+      getData: (format: string) => format === 'text/html'
+        ? '<p>Before</p><img src="file:///C:/Users/Test/AppData/Local/Temp/ksohtml/wps_clip_image-1.png"><p>After</p>'
+        : 'Before\nAfter',
+    } as unknown as DataTransfer;
+
+    const prepared = prepareClipboardRichImagePaste(clipboard)!;
+
+    expect(prepared.images).toEqual([]);
+    expect(prepared.wpsImageFallbackCount).toBe(1);
+    expect(prepared.html).toBe(
+      '<p>Before</p><p>[WPS image was not included in the clipboard. Paste this image separately.]</p><p>After</p>',
+    );
+    expect(() => validateSanctionedMdx(
+      'Before\n\n[WPS image was not included in the clipboard. Paste this image separately.]\n\nAfter',
+    )).not.toThrow();
   });
 
   it('never fetches an arbitrary image URL from pasted HTML', () => {
