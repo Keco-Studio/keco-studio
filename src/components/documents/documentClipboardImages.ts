@@ -125,12 +125,13 @@ function extractRtfPictPayloads(rtf: string): RtfImagePayload[] {
     });
 }
 
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
+function hexToArrayBuffer(hex: string): ArrayBuffer {
+  const buffer = new ArrayBuffer(hex.length / 2);
+  const bytes = new Uint8Array(buffer);
   for (let index = 0; index < bytes.length; index += 1) {
     bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
   }
-  return bytes;
+  return buffer;
 }
 
 export function extractClipboardRtfImageFiles(
@@ -140,7 +141,7 @@ export function extractClipboardRtfImageFiles(
 
   return extractRtfPictPayloads(clipboardData.getData('text/rtf'))
     .map(({ mimeType, hex }, index) => new File(
-      [hexToBytes(hex)],
+      [hexToArrayBuffer(hex)],
       fileNameForClipboardImage(mimeType, index),
       { type: mimeType },
     ));
