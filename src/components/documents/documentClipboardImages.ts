@@ -37,6 +37,12 @@ export function extractClipboardImageFiles(
 type RtfImagePayload = {
   mimeType: 'image/jpeg' | 'image/png';
   hex: string;
+  compatibilityDestination: 'nonshppict' | 'shppict' | null;
+};
+
+type RtfPictGroup = {
+  content: string;
+  compatibilityDestination: RtfImagePayload['compatibilityDestination'];
 };
 
 function isEscapedRtfCharacter(rtf: string, index: number): boolean {
@@ -47,8 +53,29 @@ function isEscapedRtfCharacter(rtf: string, index: number): boolean {
   return slashCount % 2 === 1;
 }
 
-function extractBalancedRtfPictGroups(rtf: string): string[] {
-  const groups: string[] = [];
+function findRtfCompatibilityDestination(
+  rtf: string,
+  pictStart: number,
+): RtfImagePayload['compatibilityDestination'] {
+  const groupStarts: number[] = [];
+  for (let cursor = 0; cursor < pictStart; cursor += 1) {
+    if (isEscapedRtfCharacter(rtf, cursor)) continue;
+    if (rtf[cursor] === '{') groupStarts.push(cursor);
+    if (rtf[cursor] === '}') groupStarts.pop();
+  }
+
+  for (let index = groupStarts.length - 1; index >= 0; index -= 1) {
+    const prefix = rtf.slice(groupStarts[index], pictStart);
+    const destination = /^\{(?:\\\*)?\\(shppict|nonshppict)\b/i.exec(prefix);
+    if (destination?.[1]) {
+      return destination[1].toLowerCase() as 'nonshppict' | 'shppict';
+    }
+  }
+  return null;
+}
+
+function extractBalancedRtfPictGroups(rtf: string): RtfPictGroup[] {
+  const groups: RtfPictGroup[] = [];
   const pictStart = /\{\\pict\b/gi;
 
   for (const match of rtf.matchAll(pictStart)) {
@@ -63,7 +90,10 @@ function extractBalancedRtfPictGroups(rtf: string): string[] {
       if (character !== '}') continue;
       depth -= 1;
       if (depth !== 0) continue;
-      groups.push(rtf.slice(start, cursor + 1));
+      groups.push({
+        content: rtf.slice(start, cursor + 1),
+        compatibilityDestination: findRtfCompatibilityDestination(rtf, start),
+      });
       break;
     }
   }
@@ -91,8 +121,8 @@ function topLevelRtfGroupContent(group: string): string {
   return content;
 }
 
-function rtfPictGroupToImage(group: string): RtfImagePayload | null {
-  const content = topLevelRtfGroupContent(group);
+function rtfPictGroupToImage(group: RtfPictGroup): RtfImagePayload | null {
+  const content = topLevelRtfGroupContent(group.content);
   const format = /\\(pngblip|jpegblip)\b/i.exec(content);
   if (!format || format.index === undefined) return null;
 
@@ -110,7 +140,11 @@ function rtfPictGroupToImage(group: string): RtfImagePayload | null {
   if (mimeType === 'image/png' && !payload.startsWith('89504e47')) return null;
   if (mimeType === 'image/jpeg' && !payload.startsWith('ffd8')) return null;
 
-  return { mimeType, hex: payload };
+  return {
+    mimeType,
+    hex: payload,
+    compatibilityDestination: group.compatibilityDestination,
+  };
 }
 
 function extractRtfPictPayloads(rtf: string): RtfImagePayload[] {
@@ -119,7 +153,10 @@ function extractRtfPictPayloads(rtf: string): RtfImagePayload[] {
     .filter((image): image is RtfImagePayload => image !== null)
     .filter((image, index, images) => {
       const previous = images[index - 1];
-      return !previous
+      const isCompatibilityPair = previous?.compatibilityDestination
+        && image.compatibilityDestination
+        && previous.compatibilityDestination !== image.compatibilityDestination;
+      return !isCompatibilityPair
         || previous.mimeType !== image.mimeType
         || previous.hex !== image.hex;
     });

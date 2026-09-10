@@ -45,6 +45,16 @@ describe('document clipboard images', () => {
     expect(extractClipboardRtfImageFiles(clipboard)).toHaveLength(1);
   });
 
+  it('preserves consecutive identical images outside compatibility wrappers', () => {
+    const clipboard = {
+      getData: (format: string) => format === 'text/rtf'
+        ? String.raw`{\rtf1{\pict\pngblip 89504e47}{\pict\pngblip 89504e47}}`
+        : '',
+    };
+
+    expect(extractClipboardRtfImageFiles(clipboard)).toHaveLength(2);
+  });
+
   it.each([
     String.raw`{\rtf1{\pict\emfblip 0102}}`,
     String.raw`{\rtf1{\pict\pngblip 123}}`,
