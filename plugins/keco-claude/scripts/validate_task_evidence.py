@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import re
 import sys
@@ -15,6 +16,8 @@ HASH_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 SECRET_RE = re.compile(r"(?:authorization\s*:|bearer\s+[a-z0-9._-]+|api[_-]?key|password\s*[:=]|secret\s*[:=])", re.I)
 IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$")
+PROJECT_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+PROJECT_ASSET_CATEGORIES = {"character", "icon", "ui", "map", "prop", "vfx", "spritesheet", "media"}
 
 
 def fail(message: str) -> None:
@@ -99,7 +102,7 @@ def validate_plan(value: Any) -> tuple[str, dict[str, dict[str, Any]], set[str]]
     return value["planRevision"], indexed, set(allowed)
 
 
-def validate_result(payload: dict[str, Any], *, run_id: str, slice_id: str, plan_revision: str, tasks: dict[str, dict[str, Any]], allowed: set[str]) -> None:
+def validate_result(payload: dict[str, Any], *, run_id: str, slice_id: str, plan_revision: str, tasks: dict[str, dict[str, Any]], allowed: set[str]) -> dict[str, str]:
     required = {
         "schemaVersion", "runId", "sliceId", "taskId", "planRevision", "attemptId", "phase", "operation", "startedAt", "endedAt",
         "exitCode", "timedOut", "cancelled", "stdoutSummary", "stdoutHash", "stderrSummary", "stderrHash", "changedFiles",
@@ -135,6 +138,8 @@ def validate_result(payload: dict[str, Any], *, run_id: str, slice_id: str, plan
         fail("TaskResult concerns are invalid or contain secrets")
     if not isinstance(payload.get("artifactIds"), list) or len(payload["artifactIds"]) > 50 or any(not valid_uuid(item) for item in payload["artifactIds"]):
         fail("TaskResult artifact IDs are invalid")
+    if len(payload["artifactIds"]) != len(set(payload["artifactIds"])):
+        fail("TaskResult artifact IDs must be unique")
     changed = payload.get("changedFiles")
     if not isinstance(changed, list) or len(changed) > 500:
         fail("TaskResult changedFiles are invalid")
@@ -148,6 +153,12 @@ def validate_result(payload: dict[str, Any], *, run_id: str, slice_id: str, plan
     status = payload.get("status")
     if expected not in {"fails", "passes", "completed"} or observed not in {"failed", "passed", "completed", "blocked"} or status not in {"completed", "failed", "blocked"}:
         fail("TaskResult outcome is invalid")
+    project_images = {
+        item["path"]: item["afterHash"]
+        for item in changed
+        if phase != "red" and status == "completed" and item["afterHash"] is not None
+        and Path(item["path"]).suffix.lower() in PROJECT_IMAGE_SUFFIXES
+    }
     phase_expected = {"red": "fails", "green": "passes", "implementation": "completed", "verification": "completed"}[phase]
     if expected != phase_expected:
         fail("TaskResult expected outcome disagrees with its phase")
@@ -162,6 +173,73 @@ def validate_result(payload: dict[str, Any], *, run_id: str, slice_id: str, plan
             fail("GREEN TaskResult must record the approved passing outcome")
     elif observed == "completed" and status != "completed":
         fail("completed TaskResult outcome must have completed status")
+    return project_images
+
+
+def validate_project_asset_bindings(
+    artifacts: Any,
+    *,
+    event_id: str,
+    artifact_ids: list[str],
+    project_images: dict[str, str],
+) -> None:
+    if not project_images:
+        return
+    if not isinstance(artifacts, list):
+        fail("completed project image tasks require an artifacts array")
+    artifact_identity = [
+        artifact.get("artifactId")
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+    ]
+    if len(artifact_identity) != len(artifacts) or len(artifact_identity) != len(set(artifact_identity)):
+        fail("artifact IDs must be unique")
+    referenced = set(artifact_ids)
+    binding_ids: set[str] = set()
+    bindings: list[dict[str, Any]] = []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or artifact.get("artifactId") not in referenced:
+            continue
+        if artifact.get("eventId") != event_id or artifact.get("artifactType") != "project_asset_binding" or artifact.get("schemaVersion") != 1:
+            continue
+        payload = artifact.get("payload")
+        required = {
+            "schemaVersion", "projectAssetId", "repositoryPath", "storagePath",
+            "name", "category", "sha256", "status",
+            "authoritativeDownloadSha256", "materializedPath", "materializedSha256",
+        }
+        if not isinstance(payload, dict) or set(payload) != required:
+            fail("project Asset binding payload is invalid")
+        if (
+            payload.get("schemaVersion") != 1
+            or not valid_uuid(payload.get("projectAssetId"))
+            or not valid_path(payload.get("repositoryPath"))
+            or not isinstance(payload.get("storagePath"), str) or not payload["storagePath"].strip()
+            or not isinstance(payload.get("name"), str) or not payload["name"].strip()
+            or payload.get("category") not in PROJECT_ASSET_CATEGORIES
+            or not valid_hash(payload.get("sha256"))
+            or payload.get("status") != "ready"
+            or payload.get("authoritativeDownloadSha256") != payload.get("sha256")
+            or payload.get("materializedPath") != payload.get("repositoryPath")
+            or payload.get("materializedSha256") != payload.get("sha256")
+        ):
+            fail("project Asset binding payload is invalid")
+        expected_hash = "sha256:" + hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if artifact.get("contentHash") != expected_hash:
+            fail("project Asset binding content hash does not match its payload")
+        bindings.append(payload)
+        binding_ids.add(artifact["artifactId"])
+    if (
+        referenced != binding_ids
+        or len(referenced) != len(bindings)
+        or len(bindings) != len(project_images)
+        or len({item["repositoryPath"] for item in bindings}) != len(bindings)
+        or len({item["projectAssetId"] for item in bindings}) != len(bindings)
+        or any(project_images.get(item["repositoryPath"]) != item["sha256"] for item in bindings)
+    ):
+        fail("each project image requires one matching project_asset_binding artifact")
 
 
 def validate_review(payload: dict[str, Any], *, result_id: str, result: dict[str, Any], run_id: str, slice_id: str, plan_revision: str) -> None:
@@ -198,13 +276,21 @@ def main() -> int:
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--task-result", type=Path, required=True)
     parser.add_argument("--task-review", type=Path, required=True)
+    parser.add_argument("--artifacts", type=Path)
     args = parser.parse_args()
     try:
         run_id, slice_id = validate_run_context(read_json(args.run_context))
         plan_revision, tasks, allowed = validate_plan(read_json(args.plan))
         result_id, result = unwrap(read_json(args.task_result), "task_result")
         _, review = unwrap(read_json(args.task_review), "task_review")
-        validate_result(result, run_id=run_id, slice_id=slice_id, plan_revision=plan_revision, tasks=tasks, allowed=allowed)
+        project_images = validate_result(result, run_id=run_id, slice_id=slice_id, plan_revision=plan_revision, tasks=tasks, allowed=allowed)
+        artifacts = read_json(args.artifacts) if args.artifacts is not None else None
+        validate_project_asset_bindings(
+            artifacts,
+            event_id=result_id,
+            artifact_ids=result["artifactIds"],
+            project_images=project_images,
+        )
         validate_review(review, result_id=result_id, result=result, run_id=run_id, slice_id=slice_id, plan_revision=plan_revision)
         print(json.dumps({"ok": True, "taskId": result["taskId"], "taskResultId": result_id, "reviewVerdict": review["verdict"]}, sort_keys=True))
         return 0

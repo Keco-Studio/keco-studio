@@ -31,7 +31,7 @@ export type ResolvedGameDesignGenerationInput = {
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 
-const model = () => process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || 'deepseek-v4-flash';
+const model = () => process.env.DEEPSEEK_MODEL || process.env.LLM_MODEL || 'deepseek-flash';
 const gameDesignSystemLlmOptions = (): StreamLlmOptions => ({
   model: process.env.GAME_DESIGN_SYSTEM_LLM_MODEL || model(),
   ...(process.env.GAME_DESIGN_SYSTEM_LLM_API_URL

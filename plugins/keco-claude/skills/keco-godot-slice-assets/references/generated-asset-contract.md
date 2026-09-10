@@ -31,7 +31,20 @@ must not appear in persisted AssetPlan, SlicePlan, or hashes.
 
 ## Upload and import boundary
 
-When the source is a local path, inspect it without printing bytes, upload/import it through the configured MCP bridge, verify the returned asset ID, and only then call animation, edit, reference, or tileset operations. Never pass a local path as if it were a provider asset ID. Never persist upload URLs, upload tokens, API keys, or authorization headers.
+Host-generated game images use project Assets as their Keco authority. Generate into a temporary location, validate each supported image, then keep this exact order before Godot consumes it:
+
+```text
+prepare_image_uploads -> exact signed PUT -> complete_project_game_asset_uploads
+-> project Assets read-back -> authoritative Keco download -> Godot materialization
+```
+
+Pass only the prepared `image.path` to completion and assign the category that matches the runtime role. The authoritative read-back for every output must match project Asset ID, storage path, name, category, SHA-256, and `status: ready`.
+
+For each output, checkpoint one `project_asset_binding` artifact whose schema-version-1 payload contains `projectAssetId`, `repositoryPath`, `storagePath`, `name`, `category`, `sha256`, `status: ready`, `authoritativeDownloadSha256`, `materializedPath`, and `materializedSha256`. Both download/materialization hashes must equal `sha256`, and `materializedPath` must equal `repositoryPath`; record the artifact only after downloading the Keco authority and atomically materializing those bytes. Its `eventId` binds the image-producing TaskResult, its `contentHash` hashes the canonical payload, and the TaskResult's `artifactIds` must equal the binding artifact IDs exactly. Do not put a project Asset ID or unrelated artifact ID in `artifactIds`. The checkpoint service and database RPC both authoritatively read `project_game_assets` and reject missing, duplicate, forged, cross-project, non-ready, or metadata-mismatched bindings.
+
+Missing bindings, a partial batch, or any read-back mismatch blocks the image-producing task and all dependent Godot work. Run `validate_task_evidence.py` with `--artifacts` before checkpointing. A green geometry test or a file already under `res://` never substitutes for registration and read-back.
+
+When a pre-existing local image is used only as a provider input, inspect it without printing bytes, import it through the provider's configured MCP bridge, verify the returned provider asset ID, and only then call animation, edit, reference, or tileset operations. Never pass a local path as if it were a provider asset ID. Never persist upload URLs, upload tokens, API keys, or authorization headers.
 
 ## Credits and jobs
 
@@ -39,11 +52,11 @@ Before a batch, read the current credit balance and model/capability cost. Recor
 
 ## Parent/child files
 
-Multi-file outputs use a parent row in the selected asset registry and, when needed, one compatible child-file registry row per output. The display names `Generated Assets` and `Generated Asset Files` are examples, not required table names. Each child stores `fileKey`, source file, target `res://` path, file hash, dimensions, sequence/frame/direction/tile coordinates, and the typed animation or tileset metadata. The parent is `ready` only after every child is uploaded, read back, hash-checked, and materializable.
+Provider-managed multi-file outputs use a parent row in the selected asset registry and, when needed, one compatible child-file registry row per output. The display names `Generated Assets` and `Generated Asset Files` are examples, not required table names. Each child stores `fileKey`, source file, target `res://` path, file hash, dimensions, sequence/frame/direction/tile coordinates, and the typed animation or tileset metadata. Host-generated multi-file outputs instead register every supported image in project Assets. In both paths the parent or task is `ready` only after every file is uploaded, read back, hash-checked, and materializable.
 
 ## Persistence and recovery
 
-Keep the order `planned row -> provider operation -> temporary validation -> Keco upload -> Keco read-back -> snapshot export -> authoritative download -> Godot materialization`. A partial upload is retained and rebound by ID; it is never deleted or duplicated automatically. A temporary provider download is never copied directly into Godot.
+For provider-managed outputs, keep the order `planned row -> provider operation -> temporary validation -> Keco upload -> Keco read-back -> snapshot export -> authoritative download -> Godot materialization`. For host-generated outputs, use the project Assets sequence above and export the fresh Keco snapshot only after Assets read-back succeeds. A partial upload is retained and rebound by ID; it is never deleted or duplicated automatically. Temporary generator or provider bytes are never copied directly into Godot.
 
 After authoritative download, run
 `tsx scripts/game-art-style/inspectOutput.ts <local-png>` and persist its JSON

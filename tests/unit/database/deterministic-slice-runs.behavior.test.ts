@@ -117,6 +117,7 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
     manualRequired?: boolean;
     taskIds?: string[];
     evaluationIds?: string[];
+    assertions?: Array<Record<string, unknown>>;
     duplicateName?: boolean;
   } = {}): Promise<SliceBundle> {
     const runId = crypto.randomUUID();
@@ -157,7 +158,7 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
         evalId,
         buildHash: hash('a'),
         snapshotHash: hash('b'),
-        assertions: [{
+        assertions: options.assertions ?? [{
           assertionId: 'guardian',
           kind: 'equals',
           path: '/guardianRoundtrip',
@@ -388,6 +389,112 @@ describeDb('deterministic Slice ledger real Postgres behavior', () => {
       manualRequired: true,
       reasonCodes: ['BUILD_HASH_MISMATCH'],
     });
+  });
+
+  it('atomically persists the first runtime observation and its assertion result', async () => {
+    const bundle = await createBundle();
+    const runtime = event('runtime_observation', {
+      observation: observation(bundle.runId, String(bundle.args.p_slice_id), true),
+    });
+
+    const checkpointed = await checkpoint(
+      bundle,
+      String(bundle.result.stateToken),
+      [runtime],
+    );
+
+    expect(checkpointed.error).toBeNull();
+    expect(row(checkpointed.data).computedEvaluations).toEqual([
+      {
+        evalId: 'eval-1',
+        status: 'passed',
+        manualRequired: false,
+        assertions: [{
+          assertionId: 'guardian',
+          status: 'passed',
+          reasonCode: 'OK',
+          actual: true,
+        }],
+        reasonCodes: [],
+      },
+    ]);
+
+    const events = await fx.svc.from('keco_slice_run_events')
+      .select('sequence,event_type,payload')
+      .eq('run_id', bundle.runId)
+      .order('sequence');
+    expect(events.error).toBeNull();
+    expect(events.data?.map(item => item.event_type)).toEqual([
+      'bundle_created',
+      'runtime_observation',
+      'assertion_result',
+    ]);
+    expect(events.data?.[2]).toMatchObject({
+      sequence: 3,
+      payload: {
+        sourceEventId: runtime.eventId,
+        result: { evalId: 'eval-1', status: 'passed' },
+      },
+    });
+  });
+
+  it('atomically persists a first runtime observation with a subset assertion', async () => {
+    const bundle = await createBundle({
+      assertions: [{
+        assertionId: 'inventory',
+        kind: 'subset',
+        path: '/inventory',
+        expected: ['wood'],
+      }],
+    });
+    const runtime = event('runtime_observation', {
+      observation: {
+        schemaVersion: 1,
+        runId: bundle.runId,
+        sliceId: String(bundle.args.p_slice_id),
+        evalId: 'eval-1',
+        buildHash: hash('a'),
+        snapshotHash: hash('b'),
+        actual: { inventory: ['wood', 'stone'] },
+        errors: [],
+      },
+    });
+    const computedEvaluation = {
+      evalId: 'eval-1',
+      status: 'passed',
+      manualRequired: false,
+      assertions: [{
+        assertionId: 'inventory',
+        status: 'passed',
+        reasonCode: 'OK',
+        actual: ['wood', 'stone'],
+      }],
+      reasonCodes: [],
+    };
+
+    const checkpointed = await fx.editor.client.rpc('mcp_checkpoint_slice', {
+      p_project_id: fx.projectId,
+      p_run_id: bundle.runId,
+      p_expected_state_token: bundle.result.stateToken,
+      p_events: [runtime],
+      p_artifacts: [],
+      p_idempotency_key: `checkpoint:${crypto.randomUUID()}`,
+      p_input_hash: hash('8'),
+      p_computed_evaluations: [computedEvaluation],
+    });
+
+    expect(checkpointed.error).toBeNull();
+    expect(row(checkpointed.data).computedEvaluations).toEqual([computedEvaluation]);
+    const events = await fx.svc.from('keco_slice_run_events')
+      .select('event_type')
+      .eq('run_id', bundle.runId)
+      .order('sequence');
+    expect(events.error).toBeNull();
+    expect(events.data?.map(item => item.event_type)).toEqual([
+      'bundle_created',
+      'runtime_observation',
+      'assertion_result',
+    ]);
   });
 
   it('rejects task evidence without the accepted lease, approved command, latest result, or reviewer actor', async () => {
@@ -1089,6 +1196,23 @@ describeDb('Slice contract version 2 real Postgres behavior', () => {
       } }),
     ]);
     expect(missingPrefix.error?.message).toContain('SLICE_RUNTIME_EVIDENCE_INVALID');
+  });
+
+  it('rejects direct V2 checkpoint calls that complete an image without project Asset evidence', async () => {
+    const bundle = await createV2Bundle();
+    const imageResult = taskResultV2(bundle, 'task-1');
+    imageResult.payload.changedFiles = [{
+      path: 'assets/generated/courtyard.png',
+      beforeHash: null,
+      afterHash: hash('a'),
+    }];
+    imageResult.payload.artifactIds = [];
+    const rejected = await checkpointV2(
+      bundle.runId,
+      String(bundle.result.stateToken),
+      [imageResult],
+    );
+    expect(rejected.error?.message).toContain('SLICE_PROJECT_ASSET_BINDING_INVALID');
   });
 
   it.each(['inventory', 'requirements'] as const)(

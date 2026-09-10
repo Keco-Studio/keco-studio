@@ -38,7 +38,8 @@ Run these existing phases in order, loading one module at a time:
 1. Preflight: source identity, planning-root/folder bindings, GDD/non-GDD coverage,
    decomposition, SlicePlan/EvalSpec, repository identity, lease, snapshot.
 2. Assets: PixelLab capability, historical Art Style, provenance, resource
-   evolution, typed packages, and separate visual-output verification.
+   evolution, typed packages, host-generated project Assets registration and read-back,
+   and separate visual-output verification. No image-producing task completes from local files alone.
 3. Implementation: dependency-ordered RED/GREEN tasks, immutable `allowedFiles`,
    TaskResult/TaskReview, review levels, checkpoints, pause/resume, successors.
 4. Verification: fresh runtime observations, locked EvalSpec, EvalReport, repair

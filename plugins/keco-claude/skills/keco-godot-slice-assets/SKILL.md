@@ -9,7 +9,9 @@ Read the [shared interaction contract](../../references/interaction-contract.md)
 
 Before expensive or mutating work, summarize Goal, Source, Scope, Success, and Next in the user's language. Keep progress to Completed, Current, Next, and Blocker; keep IDs, hashes, write tokens, raw MCP arguments, and evidence in machine artifacts.
 
-Own PixelLab capability resolution, provider provenance, file hashes, target paths, typed package validation, resource evolution, character/animation/SpriteFrames output, tileset/TileMap assets, and frame/tile/PNG geometry validation.
+Own PixelLab capability resolution, host-generated image writeback, provider provenance, file hashes, target paths, typed package validation, resource evolution, character/animation/SpriteFrames output, tileset/TileMap assets, and frame/tile/PNG geometry validation. Every supported host-generated game image must be registered in project Assets and authoritatively read back before Godot materialization; a local file alone is not a completed asset.
+
+Before accepting an image-producing task, match every created or changed PNG, JPEG, GIF, WebP, or safe static SVG to one `project_asset_binding` artifact for a ready project Asset. Put the binding artifact IDs, not the project Asset IDs, in `TaskResult.artifactIds`. Missing bindings block task completion and all dependent implementation. Non-image files are reported separately and do not satisfy this gate.
 
 ## References
 

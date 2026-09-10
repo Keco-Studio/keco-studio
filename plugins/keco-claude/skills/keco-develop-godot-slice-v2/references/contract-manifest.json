@@ -10,7 +10,8 @@
     "mirrorVerification": 2,
     "evalReport": 2,
     "kecoSnapshot": 1,
-    "interactionCheckpoint": 1
+    "interactionCheckpoint": 1,
+    "projectAssetBinding": 1
   },
   "sourceProfileKinds": [
     "gdd",

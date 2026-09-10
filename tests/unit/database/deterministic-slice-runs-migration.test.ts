@@ -5,6 +5,10 @@ import { describe, expect, it } from '@jest/globals';
 const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20260827090000_deterministic_slice_runs.sql'), 'utf8');
 const v2Path = path.join(process.cwd(), 'supabase/migrations/20260903120000_slice_v2_contract_convergence.sql');
 const v2Sql = fs.readFileSync(v2Path, 'utf8');
+const observationJoinFixPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260910210000_fix_slice_runtime_observation_eval_join.sql',
+);
 
 describe('deterministic Slice run migration', () => {
   it('creates project-owned runs, append-only events, artifacts, and private replay requests', () => {
@@ -61,6 +65,30 @@ describe('deterministic Slice run migration', () => {
     expect(sql).toMatch(/Client evaluator disagrees with trusted Slice evaluator/i);
     expect(sql).toMatch(/coalesce\(changed_file->>'afterHash', changed_file->>'beforeHash'\)/i);
     expect(sql).toMatch(/count\(distinct reviewed_file->>'path'\)/i);
+  });
+
+  it('removes operator-precedence ambiguity from runtime evaluation joins', () => {
+    expect(fs.existsSync(observationJoinFixPath)).toBe(true);
+    const fixSql = fs.readFileSync(observationJoinFixPath, 'utf8');
+    expect(fixSql).toMatch(/create or replace function public\.keco_evaluate_slice_observation\(/i);
+    expect(fixSql).toMatch(/v_pass := v_actual @> \(v_assertion->'expected'\)/i);
+    expect(fixSql).not.toMatch(/v_pass := v_actual @> v_assertion->'expected'/i);
+    expect(fixSql).toMatch(/create or replace function public\.mcp_checkpoint_slice\(/i);
+    expect(fixSql).toMatch(
+      /where \(item->>'evalId'\) = \(v_event->'payload'->'observation'->>'evalId'\)/i,
+    );
+    expect(fixSql).toMatch(
+      /where \(value->>'evalId'\) = \(v_evaluation->>'evalId'\)/i,
+    );
+    expect(fixSql).not.toMatch(
+      /where (?:item|value)->>'evalId' = (?:v_event->'payload'->'observation'|v_evaluation)->>'evalId'/i,
+    );
+    expect(fixSql).toMatch(
+      /revoke all on function public\.mcp_checkpoint_slice\(uuid,uuid,uuid,jsonb,jsonb,text,text,jsonb\) from public, anon/i,
+    );
+    expect(fixSql).toMatch(
+      /grant execute on function public\.mcp_checkpoint_slice\(uuid,uuid,uuid,jsonb,jsonb,text,text,jsonb\) to authenticated/i,
+    );
   });
 
   it('creates document bundles atomically and exports canonical digests', () => {
