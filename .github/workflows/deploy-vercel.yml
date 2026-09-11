@@ -320,19 +320,32 @@ jobs:
             echo "✅ Deploying to Preview environment"
           fi
 
-      - name: Sync production DeepSeek model IDs
+      - name: Sync production DeepSeek model IDs and endpoint
         if: steps.env.outputs.is_prod == 'true'
         env:
+          DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          if [ -z "$DEEPSEEK_API_URL" ] || [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "::error::DEEPSEEK_API_URL and DEEPSEEK_API_KEY are required"
+            exit 1
+          fi
+
           MODEL_ID="deepseek-flash"
-          sync_production_model() {
+          sync_production_config() {
             local name="$1"
             local value="$2"
             printf '%s' "$value" | \
               vercel env add "$name" production --force --yes --no-sensitive --token="$VERCEL_TOKEN"
+          }
+          sync_production_secret() {
+            local name="$1"
+            local value="$2"
+            printf '%s' "$value" | \
+              vercel env add "$name" production --force --yes --sensitive --token="$VERCEL_TOKEN"
           }
 
           for name in \
@@ -343,7 +356,27 @@ jobs:
             CREATE_MAP_LLM_MODEL \
             CREATE_MAP_VISION_MODEL
           do
-            sync_production_model "$name" "$MODEL_ID"
+            sync_production_config "$name" "$MODEL_ID"
+          done
+
+          for name in \
+            LLM_API_URL \
+            GAME_DESIGN_SYSTEM_LLM_API_URL \
+            GDD_GENERATION_LLM_API_URL \
+            CREATE_MAP_LLM_API_URL \
+            CREATE_MAP_VISION_API_URL
+          do
+            sync_production_config "$name" "$DEEPSEEK_API_URL"
+          done
+
+          for name in \
+            LLM_API_KEY \
+            GAME_DESIGN_SYSTEM_LLM_API_KEY \
+            GDD_GENERATION_LLM_API_KEY \
+            CREATE_MAP_LLM_API_KEY \
+            CREATE_MAP_VISION_API_KEY
+          do
+            sync_production_secret "$name" "$DEEPSEEK_API_KEY"
           done
 
       - name: Sync MCP connection signing secret
