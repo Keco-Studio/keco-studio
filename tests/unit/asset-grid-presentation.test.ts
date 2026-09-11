@@ -4,6 +4,7 @@ import {
   ASSET_GRID_SIZES,
   getAssetGridMetadata,
   getAssetGridPreviewUrl,
+  getVisibleAssetIndexRange,
   getVisibleAssetFocusIndex,
   nextAssetGridSize,
 } from '@/components/libraries/utils/assetGridPresentation';
@@ -37,6 +38,23 @@ describe('asset grid presentation', () => {
     expect(getVisibleAssetFocusIndex(3, 12, 23)).toBe(12);
     expect(getVisibleAssetFocusIndex(18, 12, 23)).toBe(18);
     expect(getVisibleAssetFocusIndex(30, 12, 23)).toBe(12);
+  });
+
+  it('excludes overscan rows from the visible asset range', () => {
+    expect(getVisibleAssetIndexRange({
+      virtualRows: [
+        { index: 2, start: 400, end: 600 },
+        { index: 3, start: 600, end: 800 },
+        { index: 4, start: 800, end: 1000 },
+        { index: 5, start: 1000, end: 1200 },
+        { index: 6, start: 1200, end: 1400 },
+      ],
+      scrollOffset: 990,
+      viewportHeight: 400,
+      contentPadding: 16,
+      columnCount: 4,
+      assetCount: 28,
+    })).toEqual({ firstIndex: 16, lastIndex: 27 });
   });
 
   it('uses an image field URL from object or persisted JSON values', () => {

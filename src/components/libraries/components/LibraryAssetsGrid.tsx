@@ -9,6 +9,7 @@ import {
   ASSET_GRID_SIZES,
   getAssetGridMetadata,
   getAssetGridPreviewUrl,
+  getVisibleAssetIndexRange,
   getVisibleAssetFocusIndex,
   nextAssetGridSize,
   type AssetGridSizeIndex,
@@ -100,12 +101,15 @@ export function LibraryAssetsGrid({
   }, [onSizeIndexChange, sizeIndex]);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
-  const firstVirtualRow = virtualRows[0];
-  const lastVirtualRow = virtualRows[virtualRows.length - 1];
-  const firstVisibleAssetIndex = firstVirtualRow ? firstVirtualRow.index * columnCount : 0;
-  const lastVisibleAssetIndex = lastVirtualRow
-    ? Math.min(rows.length - 1, (lastVirtualRow.index + 1) * columnCount - 1)
-    : -1;
+  const { firstIndex: firstVisibleAssetIndex, lastIndex: lastVisibleAssetIndex } =
+    getVisibleAssetIndexRange({
+      virtualRows,
+      scrollOffset: rowVirtualizer.scrollOffset ?? scrollRef.current?.scrollTop ?? 0,
+      viewportHeight: scrollRef.current?.clientHeight ?? 0,
+      contentPadding: GRID_PADDING,
+      columnCount,
+      assetCount: rows.length,
+    });
   const visibleFocusedIndex = getVisibleAssetFocusIndex(
     focusedIndex,
     firstVisibleAssetIndex,

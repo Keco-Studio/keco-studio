@@ -11,6 +11,42 @@ export const ASSET_GRID_SIZES = [
 
 export type AssetGridSizeIndex = number;
 
+type VirtualAssetRow = {
+  index: number;
+  start: number;
+  end: number;
+};
+
+export function getVisibleAssetIndexRange({
+  virtualRows,
+  scrollOffset,
+  viewportHeight,
+  contentPadding,
+  columnCount,
+  assetCount,
+}: {
+  virtualRows: VirtualAssetRow[];
+  scrollOffset: number;
+  viewportHeight: number;
+  contentPadding: number;
+  columnCount: number;
+  assetCount: number;
+}): { firstIndex: number; lastIndex: number } {
+  const viewportEnd = scrollOffset + viewportHeight;
+  const visibleRows = virtualRows.filter((row) => (
+    row.end + contentPadding > scrollOffset && row.start + contentPadding < viewportEnd
+  ));
+  const firstVisibleRow = visibleRows[0] ?? virtualRows[0];
+  const lastVisibleRow = visibleRows[visibleRows.length - 1] ?? virtualRows[virtualRows.length - 1];
+
+  return {
+    firstIndex: firstVisibleRow ? firstVisibleRow.index * columnCount : 0,
+    lastIndex: lastVisibleRow
+      ? Math.min(assetCount - 1, (lastVisibleRow.index + 1) * columnCount - 1)
+      : -1,
+  };
+}
+
 export function nextAssetGridSize(
   currentIndex: AssetGridSizeIndex,
   deltaY: number,
