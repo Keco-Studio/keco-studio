@@ -24,6 +24,7 @@ type RegistrationOverrides = Partial<{
 
 describeDb('MCP project game asset registration real Postgres behavior', () => {
   let fx: ProjectFixture;
+  const uploadedPaths = new Set<string>();
 
   beforeAll(async () => {
     fx = await buildProjectFixture();
@@ -31,12 +32,24 @@ describeDb('MCP project game asset registration real Postgres behavior', () => {
 
   afterAll(async () => {
     if (fx) {
+      if (uploadedPaths.size > 0) {
+        await fx.svc.storage.from('project-assets').remove([...uploadedPaths]);
+      }
       await fx.svc.from('project_game_assets').delete().like('name', `%${fx.suffix}%`);
       await teardownProjectFixture(fx);
     }
   }, 60_000);
 
-  function register(actor: RlsUser, storagePath: string, overrides: RegistrationOverrides = {}) {
+  async function register(actor: RlsUser, storagePath: string, overrides: RegistrationOverrides = {}) {
+    if (!uploadedPaths.has(storagePath)) {
+      const { error } = await fx.svc.storage.from('project-assets').upload(
+        storagePath,
+        new Uint8Array([0]),
+        { contentType: 'image/png', upsert: false },
+      );
+      if (error) throw new Error(`upload fixture object failed: ${error.message}`);
+      uploadedPaths.add(storagePath);
+    }
     return actor.client.rpc('mcp_register_project_game_asset', {
       p_project_id: fx.projectId,
       p_name: overrides.name ?? `asset-${fx.suffix}`,
@@ -62,6 +75,17 @@ describeDb('MCP project game asset registration real Postgres behavior', () => {
       storage_path: path,
       reused: false,
     })]);
+  });
+
+  it('allows an owner to upload the user/project/file storage path shape', async () => {
+    const path = `${fx.owner.id}/${fx.projectId}/policy-${fx.suffix}.png`;
+    const { error } = await fx.owner.client.storage.from('project-assets').upload(
+      path,
+      new Uint8Array([0]),
+      { contentType: 'image/png', upsert: false },
+    );
+    expect(error).toBeNull();
+    uploadedPaths.add(path);
   });
 
   it.each(['viewer', 'outsider'] as const)('rejects %s without a row', async role => {

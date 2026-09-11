@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { App, Button, Spin } from 'antd';
-import { FileImageOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FileImageOutlined, FileOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
 import {
@@ -11,6 +11,7 @@ import {
   type GameAssetStatus,
   type ProjectGameAsset,
 } from '@/lib/services/gameAssetsService';
+import { projectAssetMimeFromName } from '@/lib/services/projectAssetUploadContract';
 import styles from './GameAssetsPage.module.css';
 
 type ApiResponse = { assets: ProjectGameAsset[]; warnings: Array<{ source: string; message: string }> };
@@ -24,6 +25,18 @@ function formatBytes(value: number | null): string {
 
 function statusLabel(status: GameAssetStatus): string {
   return status === 'generating' ? 'Generating' : status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function isImage(asset: ProjectGameAsset): boolean {
+  return asset.mimeType?.startsWith('image/') === true && asset.mimeType !== 'image/vnd.adobe.photoshop';
+}
+
+function isVideo(asset: ProjectGameAsset): boolean {
+  return asset.mimeType === 'video/mp4';
+}
+
+function isAudio(asset: ProjectGameAsset): boolean {
+  return asset.mimeType?.startsWith('audio/') === true;
 }
 
 const FALLBACK_ASPECT = 4 / 3;
@@ -101,6 +114,8 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   const [measuredAspects, setMeasuredAspects] = useState<Record<string, number>>({});
   const gridRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   const assetsQuery = useQuery<ApiResponse>({
     queryKey: ['project-game-assets', projectId],
@@ -111,7 +126,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     },
     staleTime: 10_000,
   });
-  const assets = assetsQuery.data?.assets ?? [];
+  const assets = useMemo(() => assetsQuery.data?.assets ?? [], [assetsQuery.data?.assets]);
   const filtered = useMemo(() => {
     return assets.filter((asset) => category === 'all' || asset.category === category);
   }, [assets, category]);
@@ -158,10 +173,96 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
     return resolveSizedAsset(selected, measuredAspects).previewSrc;
   }, [selected, measuredAspects]);
 
+  const uploadAssets = async (files: FileList | null) => {
+    if (!files?.length) return;
+    if (files.length > 20) {
+      message.error('At most 20 assets can be uploaded at once');
+      return;
+    }
+    setUploading(true);
+    try {
+      const selectedFiles = Array.from(files);
+      const metadata = selectedFiles.map((file) => ({
+        fileName: file.name,
+        fileType: file.type || projectAssetMimeFromName(file.name) || 'application/octet-stream',
+        fileSize: file.size,
+      }));
+      const prepareResponse = await fetch(`/api/projects/${projectId}/game-assets`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'prepare', files: metadata }),
+      });
+      const prepared = await prepareResponse.json() as {
+        error?: string;
+        failedCount?: number;
+        items?: Array<{
+          index: number;
+          ok: boolean;
+          path?: string;
+          file?: typeof metadata[number];
+          upload?: { url: string; method: 'PUT'; headers: Record<string, string> };
+        }>;
+      };
+      if (!prepareResponse.ok || !prepared.items) throw new Error(prepared.error ?? 'Upload preparation failed');
+
+      let failedCount = prepared.failedCount ?? 0;
+      const completionItems = [];
+      for (const item of prepared.items) {
+        if (!item.ok || !item.path || !item.file || !item.upload) continue;
+        try {
+          const uploadResponse = await fetch(item.upload.url, {
+            method: item.upload.method,
+            headers: item.upload.headers,
+            body: selectedFiles[item.index],
+          });
+          if (!uploadResponse.ok) {
+            failedCount += 1;
+            continue;
+          }
+          completionItems.push({ ...item.file, path: item.path });
+        } catch {
+          failedCount += 1;
+        }
+      }
+
+      let completedCount = 0;
+      if (completionItems.length > 0) {
+        const completeResponse = await fetch(`/api/projects/${projectId}/game-assets`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'complete', items: completionItems }),
+        });
+        const completed = await completeResponse.json() as { completedCount?: number; failedCount?: number; error?: string };
+        if (!completeResponse.ok) throw new Error(completed.error ?? 'Upload completion failed');
+        completedCount = completed.completedCount ?? 0;
+        failedCount += completed.failedCount ?? 0;
+      }
+      if (failedCount > 0) message.error(`${failedCount} asset(s) failed to upload`);
+      else message.success(`${completedCount} asset(s) uploaded`);
+      if (completedCount > 0) await assetsQuery.refetch();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className={styles.page} data-testid="game-assets-page">
       <div className={styles.workspace}>
         <section className={styles.fileArea} aria-label="Game asset files">
+          <div className={styles.toolbar}>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              multiple
+              hidden
+              accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.mp4,.mp3,.m4a,.wav,.ogg,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.json,.psd"
+              onChange={(event) => void uploadAssets(event.target.files)}
+            />
+            <Button loading={uploading} onClick={() => uploadInputRef.current?.click()}>Upload assets</Button>
+          </div>
           {assetsQuery.isLoading ? <div className={styles.state}><Spin /><span>Loading project assets…</span></div> : null}
           {assetsQuery.isError ? (
             <div className={styles.state}>
@@ -225,7 +326,9 @@ function AssetCard({
       aria-pressed={selected}
     >
       <div className={styles.thumbnail} style={{ width: item.width, height: item.height }}>
-        {item.previewSrc ? (
+        {item.previewSrc && isImage(item.asset) ? (
+          // User-uploaded object URLs are not covered by a trusted Next Image remote pattern.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={item.previewSrc}
             alt=""
@@ -237,7 +340,7 @@ function AssetCard({
             }}
           />
         ) : (
-          <FileImageOutlined className={styles.thumbnailFallback} />
+          <FileOutlined className={styles.thumbnailFallback} />
         )}
       </div>
       <div className={styles.cardBody}>
@@ -277,15 +380,25 @@ function AssetDetail({
             <label className={styles.detailDrawerLabel}>Preview</label>
           </div>
           <div className={styles.detailPreview}>
-            {previewSrc ? (
+            {previewSrc && isImage(asset) ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={previewSrc} alt={asset.name} />
+            ) : previewSrc && isVideo(asset) ? (
+              <video src={previewSrc} controls preload="metadata" />
+            ) : previewSrc && isAudio(asset) ? (
+              <audio src={previewSrc} controls preload="metadata" />
             ) : (
               <>
-                <FileImageOutlined />
-                <span>Preview unavailable</span>
+                <FileOutlined />
+                <span>{previewSrc ? 'Download to open this asset' : 'Preview unavailable'}</span>
               </>
             )}
           </div>
+          {previewSrc && !isImage(asset) ? (
+            <a href={previewSrc} download={asset.name} target="_blank" rel="noreferrer">
+              <DownloadOutlined /> Download
+            </a>
+          ) : null}
         </div>
         {fields.map((field) => (
           <div key={field.label} className={styles.detailDrawerField}>

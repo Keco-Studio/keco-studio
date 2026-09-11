@@ -17,25 +17,30 @@ import {
   inspectVerifiedImage,
   type VerifiedImageMetadata,
 } from "./image-metadata.ts";
+import {
+  PROJECT_ASSET_EXTENSIONS,
+  PROJECT_ASSET_MIME_TYPES,
+  canonicalProjectAssetMimeType,
+  projectAssetExtensionMatches,
+  projectAssetMaxBytes,
+} from "../../../shared/project-asset-upload-contract.ts";
+import { projectAssetContentMatches } from "../../../shared/project-asset-content.ts";
 
 const uuid = z.string().uuid();
 const IMAGE_BUCKET = "library-media-files";
+const PROJECT_ASSET_BUCKET = "project-assets";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PROJECT_ASSET_BYTES = 100 * 1024 * 1024;
 const MAX_IMAGE_PATH_CHARS = 2048;
-const IMAGE_EXTENSIONS = {
-  "image/png": ["png"],
-  "image/jpeg": ["jpg", "jpeg"],
-  "image/gif": ["gif"],
-  "image/webp": ["webp"],
-  "image/svg+xml": ["svg"],
-} as const;
-const imageFileType = z.enum([
+const IMAGE_EXTENSIONS = PROJECT_ASSET_EXTENSIONS;
+const LEGACY_IMAGE_MIME_TYPES = [
   "image/png",
   "image/jpeg",
   "image/gif",
   "image/webp",
   "image/svg+xml",
-]);
+] as const;
+const imageFileType = z.enum(LEGACY_IMAGE_MIME_TYPES);
 const gameAssetCategory = z.enum([
   "character",
   "icon",
@@ -59,20 +64,40 @@ const preparedImagePathSchema = z.string().min(1).max(MAX_IMAGE_PATH_CHARS)
     preparedImagePathPattern,
     "path must be a prepared Keco image.path, not a local path, file: URI, public URL, or signed URL.",
   );
-const imageFileShape = {
+const projectAssetFileShape = {
   fileName: z.string().min(1).max(200).refine(
     isPrintableAsciiImageFileName,
     "fileName must contain only printable ASCII and no path separators.",
   ).describe("A plain local file name, without a directory path."),
+  fileType: z.enum([
+    ...PROJECT_ASSET_MIME_TYPES,
+    "image/jpg",
+    "audio/x-m4a",
+  ] as const).transform((value) => canonicalProjectAssetMimeType(value)!)
+    .describe(
+      "The supported media type matching fileName. image/jpg and audio/x-m4a are normalized.",
+    ),
+  fileSize: z.number().int().min(1).max(MAX_PROJECT_ASSET_BYTES).describe(
+    "The local file size in bytes; raw bytes and Base64 are not accepted.",
+  ),
+};
+const projectAssetFileSchema = z.object(projectAssetFileShape).strict().refine(
+  (value) =>
+    projectAssetExtensionMatches(value.fileName, value.fileType) &&
+    value.fileSize <= projectAssetMaxBytes(value.fileType),
+  "fileName extension must match fileType and fileSize must satisfy its type-specific limit.",
+);
+const imageFileShape = {
+  ...projectAssetFileShape,
   fileType: imageFileType.describe(
-    "The supported media type matching fileName.",
+    "The supported image media type matching fileName.",
   ),
   fileSize: z.number().int().min(1).max(MAX_IMAGE_BYTES).describe(
     "The local file size in bytes; raw bytes and Base64 are not accepted.",
   ),
 };
 const imageFileSchema = z.object(imageFileShape).strict().refine(
-  (value) => imageTypeMatchesName(value.fileName, value.fileType),
+  (value) => projectAssetExtensionMatches(value.fileName, value.fileType),
   "fileName extension must match fileType.",
 );
 const writeAnnotations = {
@@ -293,81 +318,37 @@ function uploadedImageFileName(path: string): string | null {
   return isPrintableAsciiImageFileName(decoded) ? decoded : null;
 }
 
-function imageSignatureMatches(
-  fileType: keyof typeof IMAGE_EXTENSIONS,
-  bytes: Uint8Array,
-): boolean {
-  const startsWith = (signature: readonly number[], offset = 0) =>
-    signature.every((byte, index) => bytes[offset + index] === byte);
-  if (fileType === "image/png") {
-    return startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  }
-  if (fileType === "image/jpeg") {
-    return startsWith([0xff, 0xd8, 0xff]);
-  }
-  if (fileType === "image/gif") {
-    return startsWith([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) ||
-      startsWith([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
-  }
-  if (fileType === "image/svg+xml") {
-    const text = new TextDecoder().decode(bytes.slice(0, 4096)).trimStart();
-    return /^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/.test(
-      text,
-    );
-  }
-  return startsWith([0x52, 0x49, 0x46, 0x46]) &&
-    startsWith([0x57, 0x45, 0x42, 0x50], 8);
-}
-
-function svgContentIsSafe(bytes: Uint8Array): boolean {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).trimStart();
-  } catch {
-    return false;
-  }
-  if (
-    !/^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/i.test(
-      text,
-    ) || !/<\/svg\s*>\s*$/i.test(text)
-  ) {
-    return false;
-  }
-  return !(
-    /<!doctype\b|<!entity\b|<\?xml-stylesheet\b/i.test(text) ||
-    /<(?:script|foreignobject|iframe|object|embed|use)\b/i.test(text) ||
-    /<style\b|\bstyle\s*=/i.test(text) ||
-    /(?:^|\s)on[a-z][\w:-]*\s*=/i.test(text) ||
-    /(?:\b(?:href|xlink:href|src)\s*=|url\s*\(|@import\b)/i.test(text)
-  );
-}
-
 async function removeInvalidImage(
   context: ProjectMcpRequestContext,
   path: string,
+  bucketName: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET = IMAGE_BUCKET,
 ): Promise<void> {
   try {
     await measureMcpPhase(
       context,
       "database",
       async () =>
-        await context.supabase.storage.from(IMAGE_BUCKET).remove([path]),
+        await context.supabase.storage.from(bucketName).remove([path]),
     );
   } catch {
     // Completion still returns the validation failure if best-effort cleanup fails.
   }
 }
 
-type ImageFileInput = z.infer<typeof imageFileSchema>;
+type ImageFileInput = z.infer<typeof projectAssetFileSchema>;
 type UploadDescriptor = {
   url: string;
   method: "PUT";
   headers: Record<string, string>;
   expiresInSeconds: number;
 };
-type ProvisionalImage = ImageFileInput & { url: string; path: string };
+type ProvisionalImage = ImageFileInput & { url?: string; path: string };
 type VerifiedImage = ProvisionalImage & { uploadedAt: string };
-type VerifiedUpload = { image: VerifiedImage; bytes: Uint8Array };
+type VerifiedUpload = {
+  image: VerifiedImage;
+  bytes: Uint8Array;
+  bucket: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET;
+};
 type GameAssetCategory = z.infer<typeof gameAssetCategory>;
 type ProjectGameAssetResult = {
   id: string;
@@ -382,6 +363,7 @@ type ProjectGameAssetResult = {
   hasTransparency: boolean | null;
   fileSize: number;
   mimeType: ImageFileInput["fileType"];
+  storageBucket: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET;
   createdAt: string;
   updatedAt: string;
 };
@@ -391,6 +373,7 @@ type RegisteredAssetExpectation = {
   image: VerifiedImage;
   metadata: VerifiedImageMetadata;
   category: GameAssetCategory;
+  storageBucket: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET;
 };
 
 const registeredAssetDimension = z.number().int().min(1).max(2_147_483_647)
@@ -405,13 +388,13 @@ const registeredAssetRowSchema = z.object({
   name: z.string(),
   category: gameAssetCategory,
   status: z.literal("ready"),
-  mime_type: imageFileType,
+  mime_type: z.enum(PROJECT_ASSET_MIME_TYPES),
   storage_path: z.string(),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   width: registeredAssetDimension,
   height: registeredAssetDimension,
   has_transparency: z.boolean().nullable(),
-  file_size: z.number().int().min(1).max(MAX_IMAGE_BYTES),
+  file_size: z.number().int().min(1).max(MAX_PROJECT_ASSET_BYTES),
   created_at: registeredAssetTimestamp,
   updated_at: registeredAssetTimestamp,
   reused: z.boolean(),
@@ -420,12 +403,13 @@ const registeredAssetRowSchema = z.object({
 async function prepareImageUpload(
   context: ProjectMcpRequestContext,
   input: ImageFileInput,
+  bucketName: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET = IMAGE_BUCKET,
 ): Promise<{ upload: UploadDescriptor; image: ProvisionalImage }> {
   const fileName = input.fileName;
   const pathFileName = imagePathFileName(fileName);
   const path =
     `${context.userId}/${context.projectId}/${crypto.randomUUID()}-${pathFileName}`;
-  const bucket = context.supabase.storage.from(IMAGE_BUCKET);
+  const bucket = context.supabase.storage.from(bucketName);
   const { data, error } = await measureMcpPhase(
     context,
     "database",
@@ -437,13 +421,9 @@ async function prepareImageUpload(
       "The image upload target could not be prepared; retry preparation for this file.",
     );
   }
-  const publicUrl = bucket.getPublicUrl(path).data.publicUrl;
-  if (!publicUrl) {
-    throw new McpDomainError(
-      "IMAGE_UPLOAD_PREPARATION_FAILED",
-      "The image upload target could not be prepared; retry preparation for this file.",
-    );
-  }
+  const publicUrl = bucketName === IMAGE_BUCKET
+    ? bucket.getPublicUrl(path).data.publicUrl
+    : undefined;
   return {
     upload: {
       url: data.signedUrl,
@@ -456,11 +436,11 @@ async function prepareImageUpload(
       expiresInSeconds: 7200,
     },
     image: {
-      url: publicUrl,
       path,
       fileName,
       fileSize: input.fileSize,
       fileType: input.fileType,
+      ...(publicUrl ? { url: publicUrl } : {}),
     },
   };
 }
@@ -468,6 +448,10 @@ async function prepareImageUpload(
 async function verifyImageUpload(
   context: ProjectMcpRequestContext,
   path: string,
+  options: {
+    projectAsset?: boolean;
+    bucket?: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET;
+  } = {},
 ): Promise<VerifiedUpload> {
   const expectedPrefix = `${context.userId}/${context.projectId}/`;
   const fileName = uploadedImageFileName(path);
@@ -481,7 +465,8 @@ async function verifyImageUpload(
     );
   }
 
-  const bucket = context.supabase.storage.from(IMAGE_BUCKET);
+  const bucketName = options.bucket ?? IMAGE_BUCKET;
+  const bucket = context.supabase.storage.from(bucketName);
   const { data, error } = await measureMcpPhase(
     context,
     "database",
@@ -502,30 +487,45 @@ async function verifyImageUpload(
     info.contentType ?? metadata.mimetype ?? "",
   ).split(";", 1)[0].trim().toLowerCase();
   if (!Number.isInteger(fileSize) || fileSize < 1) {
-    await removeInvalidImage(context, path);
+    await removeInvalidImage(context, path, bucketName);
     throw new McpDomainError(
       "FIELD_VALIDATION_FAILED",
       "The uploaded image had invalid size metadata and was removed; prepare and PUT it again.",
     );
   }
-  if (fileSize > MAX_IMAGE_BYTES) {
-    await removeInvalidImage(context, path);
+  const canonicalType = canonicalProjectAssetMimeType(rawFileType) ??
+    rawFileType;
+  const maxBytes = options.projectAsset
+    ? projectAssetMaxBytes(canonicalType)
+    : MAX_IMAGE_BYTES;
+  if (
+    !(canonicalType in IMAGE_EXTENSIONS) ||
+    (!options.projectAsset &&
+      !(LEGACY_IMAGE_MIME_TYPES as readonly string[]).includes(canonicalType))
+  ) {
+    await removeInvalidImage(context, path, bucketName);
+    throw new McpDomainError(
+      "FIELD_VALIDATION_FAILED",
+      "The uploaded object was not a supported asset and was removed; prepare and PUT it again.",
+    );
+  }
+  if (fileSize > maxBytes) {
+    await removeInvalidImage(context, path, bucketName);
     throw new McpDomainError(
       "PAYLOAD_TOO_LARGE",
-      "The uploaded image exceeded 5 MiB and was removed; prepare and PUT it again.",
+      "The uploaded asset exceeded its type-specific size limit and was removed; prepare and PUT it again.",
     );
   }
   if (
-    !(rawFileType in IMAGE_EXTENSIONS) ||
     !imageTypeMatchesName(
       fileName,
-      rawFileType as keyof typeof IMAGE_EXTENSIONS,
+      canonicalType as keyof typeof IMAGE_EXTENSIONS,
     )
   ) {
-    await removeInvalidImage(context, path);
+    await removeInvalidImage(context, path, bucketName);
     throw new McpDomainError(
       "FIELD_VALIDATION_FAILED",
-      "The uploaded object was not a supported image matching its extension and was removed; prepare and PUT it again.",
+      "The uploaded object was not a supported asset matching its extension and was removed; prepare and PUT it again.",
     );
   }
   const { data: imageBlob, error: downloadError } = await measureMcpPhase(
@@ -542,40 +542,53 @@ async function verifyImageUpload(
   const imageBytes = new Uint8Array(await imageBlob.arrayBuffer());
   if (
     imageBytes.byteLength !== fileSize ||
-    !imageSignatureMatches(
-      rawFileType as keyof typeof IMAGE_EXTENSIONS,
-      imageBytes,
-    ) ||
-    (rawFileType === "image/svg+xml" && !svgContentIsSafe(imageBytes))
+    !projectAssetContentMatches(canonicalType, imageBytes)
   ) {
-    await removeInvalidImage(context, path);
+    await removeInvalidImage(context, path, bucketName);
     throw new McpDomainError(
       "FIELD_VALIDATION_FAILED",
-      "The uploaded object content failed image validation and was removed; prepare and PUT it again.",
+      "The uploaded object content failed asset validation and was removed; prepare and PUT it again.",
     );
   }
   const uploadedAt = typeof info.createdAt === "string" &&
       Number.isFinite(Date.parse(info.createdAt))
     ? info.createdAt
     : new Date().toISOString();
-  const publicUrl = bucket.getPublicUrl(path).data.publicUrl;
-  if (!publicUrl) {
-    throw new McpDomainError(
-      "INTERNAL_ERROR",
-      "The verified image metadata could not be constructed. The object was not removed; retry completion only if the prior result is unknown or failed.",
-    );
-  }
+  const publicUrl = bucketName === IMAGE_BUCKET
+    ? bucket.getPublicUrl(path).data.publicUrl
+    : undefined;
   return {
     image: {
-      url: publicUrl,
       path,
       fileName,
       fileSize,
-      fileType: rawFileType as ImageFileInput["fileType"],
+      fileType: canonicalType as ImageFileInput["fileType"],
       uploadedAt,
+      ...(publicUrl ? { url: publicUrl } : {}),
     },
     bytes: imageBytes,
+    bucket: bucketName,
   };
+}
+
+async function verifyProjectAssetUpload(
+  context: ProjectMcpRequestContext,
+  path: string,
+): Promise<VerifiedUpload> {
+  try {
+    return await verifyImageUpload(context, path, {
+      projectAsset: true,
+      bucket: PROJECT_ASSET_BUCKET,
+    });
+  } catch (error) {
+    if (!(error instanceof McpDomainError) || error.code !== "IMAGE_UPLOAD_NOT_FOUND") {
+      throw error;
+    }
+  }
+  return await verifyImageUpload(context, path, {
+    projectAsset: true,
+    bucket: IMAGE_BUCKET,
+  });
 }
 
 async function completeImageUpload(
@@ -625,6 +638,7 @@ function normalizeRegisteredAsset(
       hasTransparency: normalized.has_transparency,
       fileSize: normalized.file_size,
       mimeType: normalized.mime_type,
+      storageBucket: expected.storageBucket,
       createdAt: normalized.created_at,
       updatedAt: normalized.updated_at,
     },
@@ -635,9 +649,31 @@ async function registerProjectGameAsset(
   context: ProjectMcpRequestContext,
   image: VerifiedImage,
   bytes: Uint8Array,
+  storageBucket: typeof IMAGE_BUCKET | typeof PROJECT_ASSET_BUCKET,
   category: GameAssetCategory,
 ): Promise<{ reused: boolean; asset: ProjectGameAssetResult }> {
-  const inspected = await inspectVerifiedImage(image.fileType, bytes);
+  const inspected = image.fileType.startsWith("image/") &&
+      image.fileType !== "image/vnd.adobe.photoshop"
+    ? await inspectVerifiedImage(
+      image.fileType as
+        | "image/png"
+        | "image/jpeg"
+        | "image/gif"
+        | "image/webp"
+        | "image/svg+xml",
+      bytes,
+    )
+    : {
+      sha256: Array.from(
+        new Uint8Array(
+          await crypto.subtle.digest("SHA-256", bytes.slice().buffer),
+        ),
+        (byte) => byte.toString(16).padStart(2, "0"),
+      ).join(""),
+      width: null,
+      height: null,
+      hasTransparency: null,
+    };
   const metadata: VerifiedImageMetadata = {
     ...inspected,
     width: registrationDimension(inspected.width),
@@ -684,6 +720,7 @@ async function registerProjectGameAsset(
     image,
     metadata,
     category,
+    storageBucket,
   });
 }
 
@@ -1607,6 +1644,49 @@ function registerWriteToolSet(
       }),
   );
 
+  const prepareProjectAssetUploadsSchema = z.object({
+    ...projectShape,
+    files: z.array(projectAssetFileSchema).min(1).max(20),
+  }).strict();
+  server.registerTool(
+    "prepare_project_asset_uploads",
+    {
+      description:
+        "Prepare 1-20 project Asset uploads from metadata only. Supports the complete project Asset media contract (images, MP4, audio, documents, ZIP, JSON, and PSD) with type-specific size limits. PUT exact bytes to each signed target, then call complete_project_game_asset_uploads.",
+      inputSchema: prepareProjectAssetUploadsSchema,
+      annotations: writeAnnotations,
+    },
+    async (input: z.infer<typeof prepareProjectAssetUploadsSchema>) =>
+      withProjectContext(input, contextFor, async (context) => {
+        const items = [];
+        for (const [index, file] of input.files.entries()) {
+          try {
+            items.push({
+              index,
+              ok: true as const,
+              file,
+              ...await prepareImageUpload(context, file, PROJECT_ASSET_BUCKET),
+            });
+          } catch (error) {
+            const safe = asPublicMcpError(error);
+            items.push({
+              index,
+              ok: false as const,
+              file,
+              error: { code: safe.code, message: safe.message },
+            });
+          }
+        }
+        const failedCount = items.filter((item) => !item.ok).length;
+        return toolSuccess("Project Asset upload targets prepared.", {
+          ok: true,
+          preparedCount: items.length - failedCount,
+          failedCount,
+          items,
+        });
+      }),
+  );
+
   const completeProjectGameAssetUploadsSchema = z.object({
     ...projectShape,
     items: z.array(
@@ -1623,7 +1703,7 @@ function registerWriteToolSet(
     "complete_project_game_asset_uploads",
     {
       description:
-        "Verify and register 1-20 prepared images in project Assets after their exact bytes were PUT, preserving order. Every path must be an image.path returned by a Keco preparation tool for this user and project. Category defaults to media. Runtime failures are item-scoped; failedCount signals partial failure. Exact retries return the existing asset with reused: true. Signed upload URLs, headers, and bytes are never returned.",
+        "Verify and register 1-20 prepared project Assets after their exact bytes were PUT, preserving order. Every path must be returned by prepare_project_asset_uploads or a compatible preparation tool. Category defaults to media. Runtime failures are item-scoped; failedCount signals partial failure. Exact retries return the existing asset with reused: true. Signed upload URLs, headers, and bytes are never returned.",
       inputSchema: completeProjectGameAssetUploadsSchema,
       annotations: writeAnnotations,
     },
@@ -1632,11 +1712,12 @@ function registerWriteToolSet(
         const items = [];
         for (const [index, item] of input.items.entries()) {
           try {
-            const verified = await verifyImageUpload(context, item.path);
+            const verified = await verifyProjectAssetUpload(context, item.path);
             const registered = await registerProjectGameAsset(
               context,
               verified.image,
               verified.bytes,
+              verified.bucket,
               item.category,
             );
             items.push({

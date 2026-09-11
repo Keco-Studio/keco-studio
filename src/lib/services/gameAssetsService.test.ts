@@ -29,6 +29,7 @@ describe('game asset normalization', () => {
       projectId,
       category: 'media',
       source: 'manual',
+      storageBucket: 'library-media-files',
       storagePath: `${projectId}/hero.png`,
       sha256: 'a'.repeat(64),
       previewUrl: null,
