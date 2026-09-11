@@ -18,6 +18,32 @@ type FetchResult = {
   json: () => Promise<unknown>;
 };
 
+const sampleUsers = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    email: 'alice@example.com',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastSignInAt: '2026-09-01T00:00:00.000Z',
+    status: 'active' as const,
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222222',
+    email: 'bob@example.com',
+    createdAt: '2026-02-01T00:00:00.000Z',
+    lastSignInAt: null,
+    status: 'suspended' as const,
+  },
+];
+
+function overviewBody(overrides: Record<string, unknown> = {}) {
+  return {
+    totalUsers: 9,
+    refreshedAt: '2026-09-11T10:00:00.000Z',
+    users: sampleUsers,
+    ...overrides,
+  };
+}
+
 function response(status: number, body: unknown): FetchResult {
   return {
     ok: status >= 200 && status < 300,
@@ -46,11 +72,8 @@ describe('Keco Admin dashboard', () => {
     cleanup();
   });
 
-  it('renders the real total and complete unavailable resource UI', async () => {
-    global.fetch = jest.fn(async () => response(200, {
-      totalUsers: 9,
-      refreshedAt: '2026-09-11T10:00:00.000Z',
-    })) as never;
+  it('renders the real total and Auth user rows', async () => {
+    global.fetch = jest.fn(async () => response(200, overviewBody())) as never;
 
     renderDashboard();
 
@@ -61,8 +84,27 @@ describe('Keco Admin dashboard', () => {
     expect(
       screen.getByRole('table', { name: 'User resource details' }),
     ).toBeTruthy();
-    expect(screen.getByText('User detail data is not connected')).toBeTruthy();
-    expect(screen.queryByText('2779398949@qq.com')).toBeNull();
+    expect(screen.getByText('alice@example.com')).toBeTruthy();
+    expect(screen.getByText('bob@example.com')).toBeTruthy();
+    expect(screen.getByText('Active')).toBeTruthy();
+    expect(screen.getByText('Suspended')).toBeTruthy();
+    expect(screen.getByText('Showing 2 of 9 users')).toBeTruthy();
+    expect(screen.queryByText('User detail data is not connected')).toBeNull();
+  });
+
+  it('filters users by email search', async () => {
+    global.fetch = jest.fn(async () => response(200, overviewBody())) as never;
+
+    renderDashboard();
+    await screen.findByText('alice@example.com');
+
+    fireEvent.change(screen.getByLabelText('Search users'), {
+      target: { value: 'bob@' },
+    });
+
+    expect(screen.queryByText('alice@example.com')).toBeNull();
+    expect(screen.getByText('bob@example.com')).toBeTruthy();
+    expect(screen.getByText('Showing 1 of 9 users')).toBeTruthy();
   });
 
   it('shows stable loading UI without a false total', () => {
@@ -78,10 +120,7 @@ describe('Keco Admin dashboard', () => {
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(response(503, { error: 'Unavailable' }))
-      .mockResolvedValueOnce(response(200, {
-        totalUsers: 9,
-        refreshedAt: '2026-09-11T10:00:00.000Z',
-      })) as never;
+      .mockResolvedValueOnce(response(200, overviewBody())) as never;
 
     renderDashboard();
 
@@ -95,10 +134,7 @@ describe('Keco Admin dashboard', () => {
   it('keeps the last count visible when a manual refresh fails', async () => {
     global.fetch = jest
       .fn()
-      .mockResolvedValueOnce(response(200, {
-        totalUsers: 9,
-        refreshedAt: '2026-09-11T10:00:00.000Z',
-      }))
+      .mockResolvedValueOnce(response(200, overviewBody()))
       .mockResolvedValueOnce(response(503, { error: 'Unavailable' })) as never;
 
     renderDashboard();

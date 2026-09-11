@@ -45,6 +45,15 @@ test.describe('Keco Admin workspace', () => {
       body: JSON.stringify({
         totalUsers: 9,
         refreshedAt: '2026-09-11T10:00:00.000Z',
+        users: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'alice@example.com',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            lastSignInAt: '2026-09-01T00:00:00.000Z',
+            status: 'active',
+          },
+        ],
       }),
     }));
     await login(page);
@@ -62,6 +71,8 @@ test.describe('Keco Admin workspace', () => {
       page.getByRole('heading', { name: 'Keco Admin', exact: true }),
     ).toBeVisible();
     await expect(page.getByTestId('keco-admin-total-users')).toHaveText('9');
+    await expect(page.getByText('alice@example.com')).toBeVisible();
+    await expect(page.getByText('Active')).toBeVisible();
     await expect(
       page
         .getByRole('region', { name: 'Resource overview' })
@@ -74,7 +85,7 @@ test.describe('Keco Admin workspace', () => {
       page
         .getByRole('navigation', { name: 'Product' })
         .getByRole('button', { name: 'Keco Admin', exact: true }),
-    ).toHaveAttribute('aria-current', 'page');
+    ).toHaveCount(0);
   });
 
   test('keeps the dashboard contained at narrow width', async ({ page }) => {
@@ -89,6 +100,15 @@ test.describe('Keco Admin workspace', () => {
       body: JSON.stringify({
         totalUsers: 9,
         refreshedAt: '2026-09-11T10:00:00.000Z',
+        users: [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'alice@example.com',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            lastSignInAt: null,
+            status: 'active',
+          },
+        ],
       }),
     }));
     await page.setViewportSize({ width: 390, height: 844 });

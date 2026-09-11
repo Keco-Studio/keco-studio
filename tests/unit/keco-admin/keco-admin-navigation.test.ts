@@ -53,14 +53,12 @@ describe('Keco Admin navigation', () => {
     expect(topBar).toContain("router.push('/keco-admin')");
   });
 
-  it('keeps the protected product entry immediately below System', () => {
+  it('keeps Admin out of LeftNav and only in the avatar menu', () => {
     const leftNav = read('src/components/layout/LeftNav.tsx');
-    const systemIndex = leftNav.indexOf('aria-label="System"');
-    const adminIndex = leftNav.indexOf('aria-label="Keco Admin"');
 
-    expect(leftNav).toContain('useKecoAdminAccess(userId)');
-    expect(adminIndex).toBeGreaterThan(systemIndex);
-    expect(leftNav).toMatch(/isKecoAdmin[\s\S]+aria-label="Keco Admin"/);
+    expect(leftNav).not.toContain('Keco Admin');
+    expect(leftNav).not.toContain('useKecoAdminAccess');
+    expect(leftNav).not.toContain('kecoAdmin');
   });
 
   it('uses one fail-closed cached capability query', () => {

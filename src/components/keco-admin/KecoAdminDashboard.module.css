@@ -244,10 +244,18 @@
   padding: 0;
   border: 0;
   outline: 0;
-  color: #94a3b8;
+  color: #0f172a;
   background: transparent;
   font: inherit;
   font-size: 13px;
+}
+
+.searchField input:disabled {
+  color: #94a3b8;
+}
+
+.searchField input::placeholder {
+  color: #94a3b8;
 }
 
 .tableTools {
@@ -323,8 +331,96 @@
 }
 
 .tableScroller td {
-  height: 184px;
-  padding: 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  font-size: 13px;
+  color: #334155;
+}
+
+.tableScroller tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.userCell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.userAvatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: #096dd9;
+  background: #e6f4ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.userMeta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.userName {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userEmail,
+.userJoined {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unavailableCell {
+  color: #94a3b8;
+}
+
+.statusCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.statusCell > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.statusActive {
+  color: #0f766e;
+}
+
+.statusActive > span {
+  background: #10b981;
+}
+
+.statusSuspended {
+  color: #b45309;
+}
+
+.statusSuspended > span {
+  background: #f59e0b;
 }
 
 .tableEmpty {
@@ -334,6 +430,7 @@
   min-height: 140px;
   flex-direction: column;
   gap: 7px;
+  padding: 24px 0;
   color: #94a3b8;
   text-align: center;
 }

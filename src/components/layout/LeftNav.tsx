@@ -23,14 +23,12 @@ import {
   readCreateMapProjectPreference,
   writeCreateMapProjectPreference,
 } from '@/lib/create-map/projectPreference';
-import alignCenterIcon from '@/assets/images/simulator/align-center.svg';
-import alignCenterActiveIcon from '@/assets/images/simulator/align-center-active.svg';
 import archiveIcon from '@/assets/images/simulator/archive.svg';
 import archiveActiveIcon from '@/assets/images/simulator/archive-active.svg';
 import lightningIcon from '@/assets/images/simulator/ilightning.svg';
 import lightningActiveIcon from '@/assets/images/simulator/lightning-active.svg';
-import { SafetyCertificateOutlined } from '@ant-design/icons';
-import { useKecoAdminAccess } from '@/lib/hooks/useKecoAdminAccess';
+import mapPlanIcon from '@/assets/images/simulator/map-plan.svg';
+import mapPlanActiveIcon from '@/assets/images/simulator/map-plan-active.svg';
 import styles from './LeftNav.module.css';
 
 function IconGrid({ active }: { active: boolean }) {
@@ -57,10 +55,10 @@ function IconBolt({ active }: { active: boolean }) {
   );
 }
 
-function IconAlign({ active }: { active: boolean }) {
+function IconMap({ active }: { active: boolean }) {
   return (
     <Image
-      src={active ? alignCenterActiveIcon : alignCenterIcon}
+      src={active ? mapPlanActiveIcon : mapPlanIcon}
       alt=""
       width={20}
       height={20}
@@ -139,7 +137,6 @@ export function LeftNav({ userId }: { userId?: string }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
-  const { data: isKecoAdmin = false } = useKecoAdminAccess(userId);
   const navigationState = getProductNavigationState(pathname);
   const {
     studio: onStudio,
@@ -148,11 +145,10 @@ export function LeftNav({ userId }: { userId?: string }) {
     createMap: onCreateMap,
     gameDesignSystem: onGameDesignSystem,
     keco101: onKeco101,
-    kecoAdmin: onKecoAdmin,
   } = navigationState;
 
   const navigate = (
-    item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem' | 'keco101' | 'kecoAdmin',
+    item: 'studio' | 'simulation' | 'script' | 'createMap' | 'gameDesignSystem' | 'keco101',
   ) => {
     const studioPreference = readStudioNavigationPreference(userId);
     const scriptPreference = readScriptProjectPreference();
@@ -293,7 +289,7 @@ export function LeftNav({ userId }: { userId?: string }) {
           onClick={() => navigate('createMap')}
         >
           <span className={styles.iconWrap}>
-            <IconAlign active={onCreateMap} />
+            <IconMap active={onCreateMap} />
           </span>
           <span className={styles.label}>Map</span>
         </button>
@@ -309,20 +305,6 @@ export function LeftNav({ userId }: { userId?: string }) {
           </span>
           <span className={styles.label}>System</span>
         </button>
-        {isKecoAdmin ? (
-          <button
-            type="button"
-            className={`${styles.item} ${onKecoAdmin ? styles.itemActive : ''}`}
-            aria-label="Keco Admin"
-            aria-current={onKecoAdmin ? 'page' : undefined}
-            onClick={() => navigate('kecoAdmin')}
-          >
-            <span className={styles.iconWrap}>
-              <SafetyCertificateOutlined aria-hidden />
-            </span>
-            <span className={styles.label}>Keco Admin</span>
-          </button>
-        ) : null}
       </div>
       <div className={styles.footer}>
         <button

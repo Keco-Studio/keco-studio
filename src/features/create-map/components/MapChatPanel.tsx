@@ -2,12 +2,15 @@
 
 import {
   ArrowLeftOutlined,
+  CloseOutlined,
   FilterOutlined,
   PlusOutlined,
   SearchOutlined,
   SendOutlined,
 } from '@ant-design/icons';
+import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import paperIcon from '@/assets/images/paper.svg';
 import {
   containsUnsafeDescriptionContent,
   DIRECT_MAP_UNSAFE_DESCRIPTION_MESSAGE,
@@ -18,6 +21,11 @@ export type MapChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+};
+
+export type MapChatAttachedDocument = {
+  id: string;
+  name: string;
 };
 
 type MapChatPanelProps = {
@@ -33,7 +41,26 @@ type MapChatPanelProps = {
   busy?: boolean;
   readOnly?: boolean;
   error?: string | null;
+  attachedDocument?: MapChatAttachedDocument | null;
+  onClearAttachedDocument?: () => void;
+  onAttachFile?: (file: File) => void;
+  onAttachKecoDocument?: () => void;
+  fileAccept?: string;
 };
+
+function FileClipIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden className={styles.chatAttachMenuIconSvg}>
+      <path
+        d="M10.5 4.5 5.75 9.25a2.121 2.121 0 1 0 3 3L13 8a3.536 3.536 0 0 0-5-5L4.25 6.75"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export function MapChatPanel({
   mapTitle,
@@ -48,17 +75,26 @@ export function MapChatPanel({
   busy = false,
   readOnly = false,
   error = null,
+  attachedDocument = null,
+  onClearAttachedDocument,
+  onAttachFile,
+  onAttachKecoDocument,
+  fileAccept = '.txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 }: MapChatPanelProps) {
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const attachWrapRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const draftInvalid = containsUnsafeDescriptionContent(draft);
   const canSend = canAsk
-    && Boolean(draft.trim())
+    && (Boolean(draft.trim()) || Boolean(attachedDocument))
     && !draftInvalid
     && !busy
     && !readOnly;
+  const canAttach = Boolean(onAttachFile || onAttachKecoDocument) && !busy && !readOnly;
 
   const visibleMessages = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -71,6 +107,24 @@ export function MapChatPanel({
     if (!node) return;
     node.scrollTop = node.scrollHeight;
   }, [visibleMessages, showGenerate, filterOpen]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!attachWrapRef.current?.contains(event.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAttachMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [attachMenuOpen]);
 
   const submit = () => {
     if (!canSend) return;
@@ -152,10 +206,91 @@ export function MapChatPanel({
       </div>
 
       <div className={styles.chatComposer}>
+        {attachedDocument ? (
+          <div className={styles.chatAttachmentRow}>
+            <span className={styles.chatAttachmentChip} title={attachedDocument.name}>
+              <Image src={paperIcon} alt="" width={14} height={14} aria-hidden="true" />
+              <span className={styles.chatAttachmentName}>{attachedDocument.name}</span>
+              {onClearAttachedDocument && !readOnly ? (
+                <button
+                  type="button"
+                  className={styles.chatAttachmentRemove}
+                  aria-label="Remove attached document"
+                  disabled={busy}
+                  onClick={onClearAttachedDocument}
+                >
+                  <CloseOutlined />
+                </button>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
         <div className={styles.chatInputBar}>
-          <button type="button" className={styles.chatAttachButton} disabled aria-label="Attach" title="Attach">
-            <PlusOutlined />
-          </button>
+          <div className={styles.chatAttachWrap} ref={attachWrapRef}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={fileAccept}
+              className={styles.chatFileInputHidden}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file || !onAttachFile) return;
+                onAttachFile(file);
+              }}
+            />
+            <button
+              type="button"
+              className={styles.chatAttachButton}
+              disabled={!canAttach}
+              aria-label="Attach"
+              aria-haspopup="menu"
+              aria-expanded={attachMenuOpen}
+              title="Attach"
+              onClick={() => setAttachMenuOpen((open) => !open)}
+            >
+              <PlusOutlined />
+            </button>
+            {attachMenuOpen ? (
+              <div className={styles.chatAttachMenu} role="menu" aria-label="Attach options">
+                {onAttachFile ? (
+                  <button
+                    type="button"
+                    className={styles.chatAttachMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <FileClipIcon />
+                    <span>File</span>
+                  </button>
+                ) : null}
+                {onAttachKecoDocument ? (
+                  <button
+                    type="button"
+                    className={styles.chatAttachMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      onAttachKecoDocument();
+                    }}
+                  >
+                    <Image
+                      src={paperIcon}
+                      alt=""
+                      width={16}
+                      height={16}
+                      className={styles.chatAttachMenuIcon}
+                      aria-hidden="true"
+                    />
+                    <span>Keco Document</span>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <textarea
             className={styles.chatInput}
             rows={1}

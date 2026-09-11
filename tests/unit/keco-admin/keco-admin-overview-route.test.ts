@@ -43,6 +43,7 @@ describe('Keco Admin overview API', () => {
     readKecoAdminOverview.mockResolvedValue({
       totalUsers: 9,
       refreshedAt: '2026-09-11T10:00:00.000Z',
+      users: [],
     });
   });
 
@@ -77,7 +78,21 @@ describe('Keco Admin overview API', () => {
     expect(readKecoAdminOverview).not.toHaveBeenCalled();
   });
 
-  it('returns only the administrator overview contract', async () => {
+  it('returns the administrator overview contract with users', async () => {
+    readKecoAdminOverview.mockResolvedValue({
+      totalUsers: 9,
+      refreshedAt: '2026-09-11T10:00:00.000Z',
+      users: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastSignInAt: null,
+          status: 'active',
+        },
+      ],
+    });
+
     const response = await GET(request(), undefined);
 
     expect(response.status).toBe(200);
@@ -85,6 +100,15 @@ describe('Keco Admin overview API', () => {
     await expect(response.json()).resolves.toEqual({
       totalUsers: 9,
       refreshedAt: '2026-09-11T10:00:00.000Z',
+      users: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          lastSignInAt: null,
+          status: 'active',
+        },
+      ],
     });
     expect(readKecoAdminOverview).toHaveBeenCalledWith({ service: true });
   });
