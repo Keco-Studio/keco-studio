@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { App } from 'antd';
+import { AppstoreOutlined, TableOutlined } from '@ant-design/icons';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
@@ -50,6 +51,7 @@ import { StickyHorizontalScrollbar } from './components/StickyHorizontalScrollba
 import { buildTableIndexes } from './utils/tableIndexes';
 import { editorContentOverflows, selectionIncludesExpandedRow } from './utils/textCellExpand';
 import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
+import { LibraryAssetsGrid } from './components/LibraryAssetsGrid';
 import { LibraryAssetDetailDrawerWiring } from './components/LibraryAssetDetailDrawerWiring';
 import styles from './LibraryAssetsTable.module.css';
 import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization';
@@ -129,6 +131,8 @@ export function LibraryAssetsTable({
   const { allRowsSource } = useRowSync(rows, rowStore);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [assetViewMode, setAssetViewMode] = useState<'grid' | 'table'>('grid');
+  const [assetGridSizeIndex, setAssetGridSizeIndex] = useState(2);
 
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);
@@ -703,6 +707,7 @@ export function LibraryAssetsTable({
   const { handleRowContextMenu, handleCellContextMenu } = useContextMenu({
     selectedRowIds,
     selectedCells,
+    setSelectedRowIds,
     setSelectedCells,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
@@ -713,6 +718,28 @@ export function LibraryAssetsTable({
     adjustMenuPosition,
     batchEditMenuOriginalPositionRef,
   });
+
+  const handleGridAssetContextMenu = useCallback((event: React.MouseEvent, row: AssetRow) => {
+    handleRowContextMenu(event, row, { preferTargetRow: true });
+  }, [handleRowContextMenu]);
+
+  const handleAssetViewModeChange = useCallback((mode: 'grid' | 'table') => {
+    if (mode === assetViewMode) return;
+    if (currentFocusedCell) handleCellBlur();
+    setSelectedCells(new Set());
+    setSelectedRowIds(new Set());
+    setContextMenuRowId(null);
+    setContextMenuPosition(null);
+    setBatchEditMenuVisible(false);
+    setBatchEditMenuPosition(null);
+    setAssetViewMode(mode);
+  }, [
+    assetViewMode,
+    currentFocusedCell,
+    handleCellBlur,
+    setSelectedCells,
+    setSelectedRowIds,
+  ]);
 
   // Use media file update hook
   const { handleMediaFileChange: handleEditMediaFileChange } = useMediaFileUpdate({
@@ -942,6 +969,32 @@ export function LibraryAssetsTable({
           scriptViewMode === 'script' && hasScriptColumns ? ` ${styles.tableShellScript}` : ''
         }`}
       >
+        {scriptViewMode !== 'script' ? (
+          <div className={styles.assetViewToolbar}>
+            <div className={styles.assetViewToggle}>
+              <button
+                type="button"
+                className={`${styles.assetViewButton} ${assetViewMode === 'grid' ? styles.assetViewButtonActive : ''}`}
+                aria-label="Grid view"
+                title="Grid view"
+                aria-pressed={assetViewMode === 'grid'}
+                onClick={() => handleAssetViewModeChange('grid')}
+              >
+                <AppstoreOutlined aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={`${styles.assetViewButton} ${assetViewMode === 'table' ? styles.assetViewButtonActive : ''}`}
+                aria-label="Table view"
+                title="Table view"
+                aria-pressed={assetViewMode === 'table'}
+                onClick={() => handleAssetViewModeChange('table')}
+              >
+                <TableOutlined aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div
           className={`${styles.tableContainer} ${isResizingColumn || isResizingRow ? styles.tableResizing : ''}`}
           ref={tableContainerRef}
@@ -956,6 +1009,17 @@ export function LibraryAssetsTable({
                 <div className={styles.emptyState}>Loading conversation…</div>
               </div>
             )
+          ) : assetViewMode === 'grid' ? (
+            <LibraryAssetsGrid
+              rows={displayRows}
+              properties={activeProperties}
+              sizeIndex={assetGridSizeIndex}
+              onSizeIndexChange={setAssetGridSizeIndex}
+              selectedRowIds={selectedRowIds}
+              onSelectionChange={setSelectedRowIds}
+              onOpenAsset={(row) => setDetailDrawerRowId(row.id)}
+              onAssetContextMenu={handleGridAssetContextMenu}
+            />
           ) : (
             <table
               className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : columnWidthClass}`}
@@ -1068,7 +1132,7 @@ export function LibraryAssetsTable({
             </table>
           )}
         </div>
-        {scriptViewMode !== 'script' && (
+        {scriptViewMode !== 'script' && assetViewMode === 'table' && (
           <StickyHorizontalScrollbar scrollContainerRef={tableContainerRef} />
         )}
       </div>

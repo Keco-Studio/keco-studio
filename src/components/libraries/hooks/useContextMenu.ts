@@ -5,6 +5,7 @@ import { CellKey } from './useCellSelection';
 export interface UseContextMenuParams {
   selectedRowIds: Set<string>;
   selectedCells: Set<CellKey>;
+  setSelectedRowIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setSelectedCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
   setBatchEditMenuVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setBatchEditMenuPosition: React.Dispatch<React.SetStateAction<{ x: number; y: number } | null>>;
@@ -23,6 +24,7 @@ export interface UseContextMenuParams {
 export function useContextMenu({
   selectedRowIds,
   selectedCells,
+  setSelectedRowIds,
   setSelectedCells,
   setBatchEditMenuVisible,
   setBatchEditMenuPosition,
@@ -37,7 +39,11 @@ export function useContextMenu({
   /**
    * Handle right-click on row
    */
-  const handleRowContextMenu = useCallback((e: React.MouseEvent, row: AssetRow) => {
+  const handleRowContextMenu = useCallback((
+    e: React.MouseEvent,
+    row: AssetRow,
+    options?: { preferTargetRow?: boolean },
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -50,6 +56,21 @@ export function useContextMenu({
       y: e.clientY,
       scrollY: scrollY,
     };
+
+    if (options?.preferTargetRow) {
+      setSelectedCells(new Set());
+      if (selectedRowIds.has(row.id) && selectedRowIds.size > 1) {
+        setBatchEditMenuVisible(true);
+        setBatchEditMenuPosition(menuPos);
+        return;
+      }
+
+      setSelectedRowIds(new Set([row.id]));
+      setContextMenuRowId(row.id);
+      contextMenuRowIdRef.current = row.id;
+      setContextMenuPosition({ x: e.clientX, y: e.clientY });
+      return;
+    }
     
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
@@ -75,6 +96,7 @@ export function useContextMenu({
   }, [
     selectedRowIds,
     selectedCells,
+    setSelectedRowIds,
     setSelectedCells,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
@@ -149,4 +171,3 @@ export function useContextMenu({
     handleCellContextMenu,
   };
 }
-
