@@ -103,9 +103,12 @@ export async function reviewGddMarkdownV2(
 
   const unresolvedGuidance = missingGuidedTables(input, normalized.tablePlans);
   if (unresolvedGuidance.length > 0) {
-    throw new GddV2ResourceRecoveryError(
-      `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`,
-    );
+    const message = `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`;
+    if (input.resourceMode !== 'async') throw new GddV2ResourceRecoveryError(message);
+    normalized = {
+      ...normalized,
+      tablePlanWarning: message,
+    };
   }
 
   let dialoguePlans = runtime.dialoguePlans ?? [];
