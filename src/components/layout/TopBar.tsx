@@ -1976,6 +1976,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                   type="button"
                   className={styles.userMenuItem}
                   onClick={handleKecoAdminNavigation}
+                  data-testid="user-menu-keco-admin"
                 >
                   Keco Admin
                 </button>
