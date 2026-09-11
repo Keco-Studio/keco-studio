@@ -61,7 +61,7 @@ describe('Keco Admin authorization', () => {
 
 - [ ] **Step 2: Run the helper test and verify RED**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-authorization.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-authorization.test.ts`
 
 Expected: FAIL because `kecoAdminAuthorization.ts` does not exist.
 
@@ -82,7 +82,7 @@ export function isKecoAdminUser(
 
 - [ ] **Step 4: Run the helper test and verify GREEN**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-authorization.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-authorization.test.ts`
 
 Expected: PASS.
 
@@ -101,7 +101,7 @@ Set `process.env.KECO_ADMIN_USER_ID` in `beforeEach`, restore the original value
 
 - [ ] **Step 6: Run the route test and verify RED**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-access-route.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-access-route.test.ts`
 
 Expected: FAIL because the access route does not exist.
 
@@ -143,7 +143,7 @@ Expected: `.env.local`.
 
 - [ ] **Step 8: Run Task 1 tests and commit**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-authorization.test.ts tests/unit/keco-admin/keco-admin-access-route.test.ts tests/unit/auth/api-auth-static.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-authorization.test.ts tests/unit/keco-admin/keco-admin-access-route.test.ts tests/unit/auth/api-auth-static.test.ts`
 
 Expected: PASS.
 
@@ -179,7 +179,7 @@ Add separate cases for an Auth Admin error and for an invalid negative/fractiona
 
 - [ ] **Step 2: Run the service test and verify RED**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-overview.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-overview.test.ts`
 
 Expected: FAIL because `kecoAdminOverview.ts` does not exist.
 
@@ -203,7 +203,7 @@ export async function readKecoAdminOverview(
 
 - [ ] **Step 4: Run the service test and verify GREEN**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-overview.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-overview.test.ts`
 
 Expected: PASS.
 
@@ -226,7 +226,7 @@ the thrown private error text.
 
 - [ ] **Step 6: Run the route test and verify RED**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-overview-route.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-overview-route.test.ts`
 
 Expected: FAIL because the overview route does not exist.
 
@@ -259,7 +259,7 @@ Do not import route state or return provider errors.
 
 - [ ] **Step 8: Run Task 2 tests and commit**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-overview.test.ts tests/unit/keco-admin/keco-admin-overview-route.test.ts tests/unit/auth/api-auth-static.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-overview.test.ts tests/unit/keco-admin/keco-admin-overview-route.test.ts tests/unit/auth/api-auth-static.test.ts`
 
 Expected: PASS.
 
@@ -313,7 +313,7 @@ requiring a QueryClient provider.
 
 - [ ] **Step 3: Run the navigation tests and verify RED**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-navigation.test.ts tests/unit/layout/leftnav-wiring.test.ts tests/unit/keco-101/keco-101-wiring.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-navigation.test.ts tests/unit/layout/leftnav-wiring.test.ts tests/unit/keco-101/keco-101-wiring.test.ts`
 
 Expected: FAIL because the admin product state, hook, and controls are absent.
 
@@ -353,7 +353,7 @@ directly below System, with `aria-current="page"` on the admin route.
 
 - [ ] **Step 6: Run Task 3 tests and commit**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-navigation.test.ts tests/unit/layout/leftnav-wiring.test.ts tests/unit/keco-101/keco-101-wiring.test.ts tests/unit/mcp/mcp-account-page.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-navigation.test.ts tests/unit/layout/leftnav-wiring.test.ts tests/unit/keco-101/keco-101-wiring.test.ts tests/unit/mcp/mcp-account-page.test.ts`
 
 Expected: PASS.
 
@@ -406,7 +406,7 @@ font sizing.
 
 - [ ] **Step 3: Run dashboard tests and verify RED**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-dashboard.test.tsx tests/unit/keco-admin/keco-admin-wiring.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-dashboard.test.tsx tests/unit/keco-admin/keco-admin-wiring.test.ts`
 
 Expected: FAIL because the route and dashboard do not exist.
 
@@ -446,7 +446,7 @@ transitions under reduced motion.
 
 - [ ] **Step 7: Run Task 4 tests and commit**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin/keco-admin-dashboard.test.tsx tests/unit/keco-admin/keco-admin-wiring.test.ts tests/unit/auth/dashboard-layout-auth-gate.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin/keco-admin-dashboard.test.tsx tests/unit/keco-admin/keco-admin-wiring.test.ts tests/unit/auth/dashboard-layout-auth-gate.test.ts`
 
 Expected: PASS.
 
@@ -485,7 +485,7 @@ Supabase/configuration reason when required credentials are unavailable.
 
 - [ ] **Step 2: Run focused unit and API tests**
 
-Run: `npm test -- --runInBand tests/unit/keco-admin tests/unit/layout/leftnav-wiring.test.ts tests/unit/keco-101/keco-101-wiring.test.ts tests/unit/mcp/mcp-account-page.test.ts tests/unit/auth/api-auth-static.test.ts tests/unit/auth/dashboard-layout-auth-gate.test.ts`
+Run: `npm run test:unit -- --runInBand tests/unit/keco-admin tests/unit/layout/leftnav-wiring.test.ts tests/unit/keco-101/keco-101-wiring.test.ts tests/unit/mcp/mcp-account-page.test.ts tests/unit/auth/api-auth-static.test.ts tests/unit/auth/dashboard-layout-auth-gate.test.ts`
 
 Expected: PASS with no warnings.
 
