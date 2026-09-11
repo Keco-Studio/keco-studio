@@ -14,7 +14,7 @@ import {
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import type { KecoAdminOverview } from '@/lib/server/kecoAdminOverview';
+import type { KecoAdminOverview } from '@/lib/types/kecoAdmin';
 import styles from './KecoAdminDashboard.module.css';
 
 class KecoAdminRequestError extends Error {

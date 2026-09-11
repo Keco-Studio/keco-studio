@@ -1,10 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-
-export type KecoAdminOverview = {
-  totalUsers: number;
-  refreshedAt: string;
-};
+import type { KecoAdminOverview } from '@/lib/types/kecoAdmin';
 
 export async function readKecoAdminOverview(
   client: SupabaseClient,
