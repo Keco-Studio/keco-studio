@@ -51,4 +51,3 @@ Parent generation errors retain current retry and lease semantics. Resource work
 3. Resource jobs can be retried independently.
 4. Service restarts do not lose queued resource work.
 5. Existing inline jobs, map artifact records, and public job DTOs remain compatible.
-

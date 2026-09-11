@@ -81,4 +81,3 @@
 - [ ] Verify GDD read-back succeeds while resources are pending.
 - [ ] Verify resource failure does not change parent status.
 - [ ] Run focused unit/database tests, then the affected E2E suite.
-
