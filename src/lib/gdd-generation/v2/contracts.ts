@@ -24,6 +24,7 @@ export type GddGenerationMode = z.infer<typeof gddGenerationModeSchema>;
 export type GddGenerationRequestV2 = {
   contractVersion: 2;
   mode: GddGenerationMode;
+  resourceMode?: 'async' | 'inline';
   creativeBrief?: string;
   language: string;
   projectId: string;

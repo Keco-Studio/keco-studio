@@ -226,6 +226,7 @@ describe('project GDD generation routes', () => {
       expect.objectContaining({
         input: expect.objectContaining({
           creativeBrief: 'Generate a new GDD with a map description',
+          resourceMode: 'async',
           projectSources: [],
         }),
       }),
