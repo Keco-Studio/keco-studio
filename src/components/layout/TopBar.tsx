@@ -55,6 +55,7 @@ import {
   DOCUMENT_PRESENCE_UPDATE_EVENT,
   type DocumentPresenceUpdateDetail,
 } from '@/components/documents/documentPresenceEvents';
+import { useKecoAdminAccess } from '@/lib/hooks/useKecoAdminAccess';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -142,6 +143,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
   const { userProfile, signOut } = useAuth();
   const userId = userProfile?.id;
+  const { data: isKecoAdmin = false } = useKecoAdminAccess(userId);
   const supabase = useSupabase();
   const { data: projectRole } = useProjectRoleQuery(currentProjectId, userId);
   const userRole = projectRole?.role ?? null;
@@ -901,6 +903,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const handleMcpNavigation = () => {
     setShowUserMenu(false);
     router.push('/mcp');
+  };
+
+  const handleKecoAdminNavigation = () => {
+    setShowUserMenu(false);
+    router.push('/keco-admin');
   };
 
   const handleBillingNavigation = () => {
@@ -1964,6 +1971,15 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               >
                 MCP
               </button>
+              {isKecoAdmin ? (
+                <button
+                  type="button"
+                  className={styles.userMenuItem}
+                  onClick={handleKecoAdminNavigation}
+                >
+                  Keco Admin
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.userMenuItem}

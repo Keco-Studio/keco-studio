@@ -35,6 +35,7 @@ describe('Keco 101 product navigation', () => {
       createMap: false,
       gameDesignSystem: false,
       keco101: true,
+      kecoAdmin: false,
     });
   });
 

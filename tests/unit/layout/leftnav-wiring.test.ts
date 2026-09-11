@@ -27,6 +27,10 @@ jest.mock('@/assets/images/simulator/archive-active.svg', () => 'archive-active'
 jest.mock('@/assets/images/simulator/ilightning.svg', () => 'lightning');
 jest.mock('@/assets/images/simulator/lightning-active.svg', () => 'lightning-active');
 
+jest.mock('@/lib/hooks/useKecoAdminAccess', () => ({
+  useKecoAdminAccess: () => ({ data: false }),
+}));
+
 jest.mock('@/components/layout/LeftNav.module.css', () => ({
   __esModule: true,
   default: new Proxy({}, { get: (_target, property) => String(property) }),
@@ -75,6 +79,7 @@ describe('LeftNav wiring', () => {
       createMap: true,
       gameDesignSystem: false,
       keco101: false,
+      kecoAdmin: false,
     });
   });
 

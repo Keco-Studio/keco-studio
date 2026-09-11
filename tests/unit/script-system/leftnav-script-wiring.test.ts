@@ -38,6 +38,7 @@ describe('Keco Script LeftNav wiring', () => {
       createMap: false,
       gameDesignSystem: false,
       keco101: false,
+      kecoAdmin: false,
     });
   });
 
