@@ -86,6 +86,15 @@ function versionHasConflicts(version: GameDesignSystemVersion | null): boolean {
   return Boolean(version && version.conflicts.length > 0);
 }
 
+function gddHasPendingWork(job: PublicGddGenerationJob | undefined): boolean {
+  if (!job) return false;
+  if (job.status === 'queued' || job.status === 'running' || job.status === 'waiting_for_maps') return true;
+  return job.resource_mode === 'async' && (
+    job.resources?.some((resource) => resource.status === 'queued' || resource.status === 'running')
+    || job.maps?.some((map) => map.status === 'queued' || map.status === 'running')
+  );
+}
+
 function formatDate(value: string): string {
   if (!value) return 'Unknown';
   const date = new Date(value);
@@ -414,9 +423,7 @@ function ProjectsView(props: {
   }, [gddJobsKey]);
 
   useEffect(() => {
-    const active = Object.entries(gddJobs).filter(([, job]) => (
-      job.status === 'queued' || job.status === 'running' || job.status === 'waiting_for_maps'
-    ));
+    const active = Object.entries(gddJobs).filter(([, job]) => gddHasPendingWork(job));
     if (active.length === 0) return undefined;
     const timer = window.setInterval(async () => {
       const updates = await Promise.all(active.map(async ([targetProjectId, job]) => {
@@ -530,7 +537,7 @@ function ProjectsView(props: {
           const binding = bindingQuery.data ?? null;
           const selectedVersionIsBound = binding?.id === props.detail.id && binding.current_version?.id === props.version?.id;
           const gddJob = gddJobs[project.id];
-          const generating = gddJob?.status === 'queued' || gddJob?.status === 'running' || gddJob?.status === 'waiting_for_maps';
+          const generating = gddHasPendingWork(gddJob);
           const projectDialogueJobs = dialogueJobs[project.id] ?? [];
           const mapCount = gddJob?.maps?.length ?? 0;
           return (

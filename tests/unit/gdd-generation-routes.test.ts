@@ -8,6 +8,8 @@ const cancelGddGenerationJob = jest.fn();
 const getGameDesignSystemDetail = jest.fn();
 const getSupabaseServiceRoleClient = jest.fn();
 const processNextGddJob = jest.fn();
+const processNextGddMapArtifact = jest.fn();
+const processNextGddResourceJob = jest.fn();
 const shouldWakeGddGenerationJob = jest.fn((job: { status: string; available_at: string; lease_expires_at?: string | null }) => {
   if (job.status === 'queued') return Date.parse(job.available_at) <= Date.now();
   return job.status === 'running' && Boolean(job.lease_expires_at) && Date.parse(job.lease_expires_at!) <= Date.now();
@@ -48,6 +50,12 @@ jest.mock('@/lib/server/supabaseServiceRole', () => ({
 jest.mock('@/lib/gdd-generation/worker', () => ({
   processNextGddJob: (...args: unknown[]) => processNextGddJob(...args),
   shouldWakeGddGenerationJob: (...args: unknown[]) => shouldWakeGddGenerationJob(...args as Parameters<typeof shouldWakeGddGenerationJob>),
+}));
+jest.mock('@/lib/gdd-generation/maps/worker', () => ({
+  processNextGddMapArtifact: (...args: unknown[]) => processNextGddMapArtifact(...args),
+}));
+jest.mock('@/lib/gdd-generation/resources/worker', () => ({
+  processNextGddResourceJob: (...args: unknown[]) => processNextGddResourceJob(...args),
 }));
 
 import { maxDuration as createJobMaxDuration, POST } from '@/app/api/projects/[projectId]/gdd-generation-jobs/route';
@@ -93,6 +101,8 @@ describe('project GDD generation routes', () => {
     cancelGddGenerationJob.mockResolvedValue({ ...publicJob, status: 'failed', phase: 'failed', error: 'Generation cancelled by user.' });
     getSupabaseServiceRoleClient.mockReturnValue({ service: true });
     processNextGddJob.mockResolvedValue({ claimed: true, jobId: JOB_ID, status: 'completed' });
+    processNextGddMapArtifact.mockResolvedValue({ claimed: false });
+    processNextGddResourceJob.mockResolvedValue({ claimed: false });
     supabase = {
       from: (table: string) => {
         if (table === 'project_game_design_systems') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { design_system_id: SYSTEM_ID, version_id: VERSION_ID }, error: null }) }) }) };
@@ -170,6 +180,31 @@ describe('project GDD generation routes', () => {
     expect(body.job).not.toHaveProperty('lease_expires_at');
     expect(processNextGddJob).toHaveBeenCalledWith(expect.objectContaining({
       workerId: expect.stringMatching(/^gdd-poll-/),
+    }));
+  });
+
+  it('wakes both async resource slots before completed-job polling stops', async () => {
+    getGddGenerationJob.mockResolvedValue({
+      ...internalJob,
+      resource_mode: 'async',
+      resources: [
+        { id: 'tables-job', kind: 'tables', status: 'queued' },
+        { id: 'maps-job', kind: 'maps', status: 'queued' },
+      ],
+    });
+
+    const response = await GET(new NextRequest(`https://example.test/api/projects/${PROJECT_ID}/gdd-generation-jobs/${JOB_ID}`), params);
+    await Promise.resolve();
+
+    expect(response.status).toBe(200);
+    expect(processNextGddResourceJob).toHaveBeenCalledTimes(2);
+    expect(processNextGddResourceJob).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      serviceClient: { service: true },
+      workerId: expect.stringMatching(/^gdd-resource-poll-/),
+    }));
+    expect(processNextGddResourceJob).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      serviceClient: { service: true },
+      workerId: expect.stringMatching(/^gdd-resource-poll-/),
     }));
   });
 

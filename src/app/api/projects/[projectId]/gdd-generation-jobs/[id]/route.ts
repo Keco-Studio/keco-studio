@@ -60,10 +60,11 @@ function scheduleResourceJob(jobId: string): void {
   scheduledResourceJobs.add(jobId);
   after(async () => {
     try {
-      await processNextGddResourceJob({
-        serviceClient: getSupabaseServiceRoleClient(),
+      const serviceClient = getSupabaseServiceRoleClient();
+      await Promise.all(Array.from({ length: 2 }, () => processNextGddResourceJob({
+        serviceClient,
         workerId: `gdd-resource-poll-${randomUUID()}`,
-      });
+      })));
     } catch (error) {
       console.error('[GDD resource polling worker]', safeGddRouteErrorIdentity(error));
     } finally {

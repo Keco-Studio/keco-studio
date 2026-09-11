@@ -5,6 +5,7 @@ import { processNextGameDesignSystemJob } from '@/lib/game-design-system/worker'
 import { processNextGddJob } from '@/lib/gdd-generation/worker';
 import { processNextDialogueJob } from '@/lib/gdd-generation/dialogueWorker';
 import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
+import { processNextGddResourceJob } from '@/lib/gdd-generation/resources/worker';
 
 export const maxDuration = 300;
 
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
     { type: 'system', run: processNextGameDesignSystemJob },
     { type: 'gdd', run: processNextGddJob },
     { type: 'dialogue', run: processNextDialogueJob },
+    { type: 'gdd-resource', run: processNextGddResourceJob },
     { type: 'gdd-map', run: processNextGddMapArtifact },
   ] as const;
   let gddStageProcessed = false;
