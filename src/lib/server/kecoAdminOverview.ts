@@ -19,12 +19,13 @@ export async function readKecoAdminOverview(
     throw new Error('Unable to read the account total');
   }
 
-  if (!Number.isInteger(data.total) || data.total < 0) {
+  const total = 'total' in data ? data.total : undefined;
+  if (!Number.isInteger(total) || Number(total) < 0) {
     throw new Error('Supabase returned an invalid account total');
   }
 
   return {
-    totalUsers: data.total,
+    totalUsers: total as number,
     refreshedAt: now().toISOString(),
   };
 }
