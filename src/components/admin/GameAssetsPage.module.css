@@ -19,6 +19,12 @@
   padding: 28px 32px 40px;
 }
 
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 /* Justified gallery: rows fill the width; tile size follows each image’s aspect ratio */
 .grid {
   display: flex;
@@ -200,6 +206,12 @@
   max-width: 100%;
   max-height: 240px;
   object-fit: contain;
+}
+
+.detailPreview video,
+.detailPreview audio {
+  width: 100%;
+  max-width: 100%;
 }
 
 .mono {

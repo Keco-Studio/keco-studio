@@ -273,6 +273,41 @@ Deno.test("create_image_upload accepts SVG images", async () => {
   );
 });
 
+Deno.test("prepare_project_asset_uploads normalizes supported MIME aliases", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls),
+    "prepare_project_asset_uploads",
+    {
+      files: [
+        { fileName: "photo.jpg", fileType: "image/jpg", fileSize: 68 },
+        { fileName: "audio.m4a", fileType: "audio/x-m4a", fileSize: 68 },
+      ],
+    },
+  );
+
+  assertEquals(message.result?.isError, undefined);
+  const items = (message.result?.structuredContent as {
+    items: Array<{
+      file: { fileType: string };
+      upload: { headers: Record<string, string> };
+    }>;
+  }).items;
+  assertEquals(items.map((item) => item.file.fileType), [
+    "image/jpeg",
+    "audio/mp4",
+  ]);
+  assertEquals(
+    items.map((item) => item.upload.headers["content-type"]),
+    ["image/jpeg", "audio/mp4"],
+  );
+  assertEquals(
+    calls.filter((call) => call.name === "from").map((call) => call.arguments[0]),
+    ["project-assets", "project-assets"],
+  );
+  assertEquals(calls.some((call) => call.name === "getPublicUrl"), false);
+});
+
 Deno.test("complete_image_upload rejects active SVG content and removes it", async () => {
   const calls: StorageCall[] = [];
   const content = new TextEncoder().encode(
@@ -381,6 +416,29 @@ Deno.test("complete_image_upload removes content that is not really an image", a
     "from",
     "remove",
   ]);
+});
+
+Deno.test("complete_image_upload stays limited to legacy image MIME types", async () => {
+  const calls: StorageCall[] = [];
+  const content = new TextEncoder().encode("8BPSdata");
+  const message = await callTool(
+    imageContext(
+      calls,
+      {
+        size: content.byteLength,
+        contentType: "image/vnd.adobe.photoshop",
+        createdAt: "2026-07-30T08:00:00.000Z",
+      },
+      content,
+    ),
+    "complete_image_upload",
+    { path: UPLOAD_PATH.replace(/\.png$/, ".psd") },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(JSON.stringify(message.result), /FIELD_VALIDATION_FAILED/);
+  assertEquals(calls.some((call) => call.name === "download"), false);
+  assertEquals(calls.some((call) => call.name === "remove"), true);
 });
 
 Deno.test("prepare_image_uploads preserves order and scopes runtime failures to items", async () => {
@@ -626,6 +684,7 @@ Deno.test("complete_project_game_asset_uploads verifies and registers ordered it
     hasTransparency: false,
     fileSize: 68,
     mimeType: "image/png",
+    storageBucket: "project-assets",
     createdAt: "2026-09-09T00:00:00.000Z",
     updatedAt: "2026-09-09T00:00:00.000Z",
   });

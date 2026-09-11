@@ -58,6 +58,7 @@ export type ProjectGameAsset = {
   mimeType: string | null;
   status: GameAssetStatus;
   source: GameAssetSource;
+  storageBucket: string | null;
   storagePath: string | null;
   sha256: string | null;
   width: number | null;
@@ -158,6 +159,7 @@ function baseAsset(input: Partial<ProjectGameAsset> & Pick<ProjectGameAsset, 'id
     mimeType: input.mimeType ?? null,
     status: input.status ?? 'planned',
     source: input.source,
+    storageBucket: input.storageBucket ?? null,
     storagePath: input.storagePath ?? null,
     sha256: input.sha256 && SHA256.test(input.sha256) ? input.sha256.toLowerCase() : null,
     width: input.width ?? null,
@@ -173,7 +175,7 @@ function baseAsset(input: Partial<ProjectGameAsset> & Pick<ProjectGameAsset, 'id
 }
 
 export function normalizeManualImage(row: Record<string, unknown>): ProjectGameAsset {
-  const name = String(row.name ?? row.file_name ?? 'Untitled image');
+  const name = String(row.name ?? row.file_name ?? 'Untitled asset');
   return baseAsset({
     id: `manual:${String(row.id)}`,
     projectId: String(row.project_id),
@@ -181,6 +183,7 @@ export function normalizeManualImage(row: Record<string, unknown>): ProjectGameA
     category: normalizeCategory(row.category),
     source: 'manual',
     sourceRef: { kind: 'project_game_assets', id: String(row.id) },
+    storageBucket: typeof row.storage_bucket === 'string' ? row.storage_bucket : 'library-media-files',
     format: extension(name, typeof row.mime_type === 'string' ? row.mime_type : null),
     mimeType: typeof row.mime_type === 'string' ? row.mime_type : null,
     status: status(row.status ?? 'ready'),
@@ -294,7 +297,10 @@ export async function aggregateProjectGameAssets(
 
   const manual = await supabase.from('project_game_assets').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
   if (manual.error) warnings.push({ source: 'manual', message: 'Manual uploads are temporarily unavailable.' });
-  for (const row of (manual.data ?? []) as Record<string, unknown>[]) await add(normalizeManualImage(row), 'library-media-files');
+  for (const row of (manual.data ?? []) as Record<string, unknown>[]) {
+    const asset = normalizeManualImage(row);
+    await add(asset, asset.storageBucket ?? 'library-media-files');
+  }
 
   const maps = await supabase.from('map_projects').select('id,name,project_id').eq('project_id', projectId);
   if (maps.error) warnings.push({ source: 'maps', message: 'Map generation assets are temporarily unavailable.' });

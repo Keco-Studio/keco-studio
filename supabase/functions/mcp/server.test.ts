@@ -31,6 +31,7 @@ const PROJECT_WRITE_TOOL_NAMES = [
   "complete_image_upload",
   "prepare_image_uploads",
   "complete_image_uploads",
+  "prepare_project_asset_uploads",
   "complete_project_game_asset_uploads",
   "create_folder",
 ];
@@ -271,6 +272,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
     const name of [
       "prepare_image_uploads",
       "complete_image_uploads",
+      "prepare_project_asset_uploads",
       "complete_project_game_asset_uploads",
       "create_folder",
     ]
@@ -288,7 +290,7 @@ Deno.test("tools/list exposes the editor probe, reads, and writes", async () => 
   )!;
   for (const detail of [
     /project Assets/i,
-    /image\.path/i,
+    /prepare_project_asset_uploads/i,
     /PUT/i,
     /reused/i,
     /partial failure/i,
