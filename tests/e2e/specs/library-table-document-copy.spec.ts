@@ -11,6 +11,7 @@ import {
   type TemporaryUser,
 } from '../utils/supabase-admin';
 import { expectDocumentLive } from '../utils/document-assertions';
+import { ensureLibraryTableView } from '../utils/library-view';
 
 type ClipboardFixture = {
   libraryId: string;
@@ -262,6 +263,7 @@ test.describe('Library table copy into document', () => {
 
       await test.step('copy two source rows with rich clipboard data', async () => {
         await page.goto(`/${projectId}/${fixture.libraryId}`);
+        await ensureLibraryTableView(page);
         await expect(sourceCell(page, fixture.assetIds[0], fixture.fieldIds[0]))
           .toBeVisible({ timeout: 30000 });
 
@@ -389,6 +391,7 @@ test.describe('Library table copy into document', () => {
         expect(sourceValue?.value_json).toBe('Alice');
 
         await page.goto(`/${projectId}/${fixture.libraryId}`);
+        await ensureLibraryTableView(page);
         await expect(sourceCell(page, fixture.assetIds[1], fixture.fieldIds[0]))
           .toContainText('Alice', { timeout: 30000 });
         await expect(sourceCell(page, fixture.assetIds[1], fixture.fieldIds[0]))
