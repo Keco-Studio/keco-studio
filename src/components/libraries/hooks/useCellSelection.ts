@@ -140,6 +140,9 @@ export function useCellSelection({
       if (isFillingCellsRef.current) {
         return;
       }
+      if (document.activeElement instanceof HTMLButtonElement) {
+        document.activeElement.blur();
+      }
       const currentCellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
       const referenceBackground = target.closest('[data-reference-background="true"]');
       if (selectedCells.has(currentCellKey) && referenceBackground) {
