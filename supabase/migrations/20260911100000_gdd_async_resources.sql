@@ -5,7 +5,6 @@ alter table public.gdd_generation_jobs
   add column if not exists resource_mode text not null default 'inline'
   check (resource_mode in ('async', 'inline'));
 grant select (resource_mode) on public.gdd_generation_jobs to authenticated;
-
 create or replace function public.set_gdd_resource_mode_from_input()
 returns trigger language plpgsql as $$
 begin
@@ -19,10 +18,8 @@ drop trigger if exists gdd_generation_jobs_resource_mode on public.gdd_generatio
 create trigger gdd_generation_jobs_resource_mode
   before insert on public.gdd_generation_jobs
   for each row execute function public.set_gdd_resource_mode_from_input();
-
 create index if not exists gdd_generation_jobs_resource_mode_idx
   on public.gdd_generation_jobs(project_id, resource_mode, created_at desc);
-
 create table if not exists public.gdd_resource_jobs (
   id uuid primary key default gen_random_uuid(),
   gdd_generation_job_id uuid not null references public.gdd_generation_jobs(id) on delete cascade,
@@ -53,7 +50,6 @@ revoke all on public.gdd_resource_jobs from public, anon, authenticated;
 grant select (id, gdd_generation_job_id, project_id, document_id, kind, status, attempt_count, max_attempts, available_at, error, completed_at)
   on public.gdd_resource_jobs to authenticated;
 grant select, insert, update, delete on public.gdd_resource_jobs to service_role;
-
 create or replace function public.claim_gdd_resource_job(p_worker_id text, p_lease_seconds integer default 300)
 returns setof public.gdd_resource_jobs language plpgsql security definer set search_path = '' as $$
 declare v_id uuid;
@@ -66,7 +62,6 @@ begin
     lease_owner = p_worker_id, lease_expires_at = now() + make_interval(secs => p_lease_seconds), error = null
     where id = v_id returning *;
 end; $$;
-
 create or replace function public.retry_gdd_resource_job(p_job_id uuid, p_worker_id text, p_error text, p_delay_seconds integer)
 returns text language plpgsql security definer set search_path = '' as $$
 declare v_status text;
@@ -78,7 +73,6 @@ begin
   where id = p_job_id and status = 'running' and lease_owner = p_worker_id returning status into v_status;
   return v_status;
 end; $$;
-
 create or replace function public.finish_gdd_resource_job(p_job_id uuid, p_worker_id text, p_status text, p_error text default null)
 returns text language plpgsql security definer set search_path = '' as $$
 declare v_status text;
@@ -89,7 +83,6 @@ begin
   where id = p_job_id and status = 'running' and lease_owner = p_worker_id returning status into v_status;
   return v_status;
 end; $$;
-
 -- Resource workers reuse the canonical resource-evolution RPC. The short
 -- lease handoff is internal and immediately returns the parent to completed.
 create or replace function public.materialize_gdd_resource_payload(
@@ -117,7 +110,6 @@ begin
     coalesce(p_table_resources, '[]'::jsonb), coalesce(p_dialogue_resources, '[]'::jsonb)
   );
 end; $$;
-
 create or replace function public.enqueue_gdd_map_artifacts(
   p_job_id uuid,
   p_map_artifacts jsonb
@@ -176,7 +168,6 @@ begin
   return v_count;
 end;
 $$;
-
 revoke all on function public.enqueue_gdd_map_artifacts(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.enqueue_gdd_map_artifacts(uuid, jsonb) to service_role;
 revoke all on function public.claim_gdd_resource_job(text, integer) from public, anon, authenticated;
@@ -187,5 +178,4 @@ grant execute on function public.retry_gdd_resource_job(uuid, text, text, intege
 grant execute on function public.finish_gdd_resource_job(uuid, text, text, text) to service_role;
 revoke all on function public.materialize_gdd_resource_payload(uuid, text, text, text, jsonb, jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.materialize_gdd_resource_payload(uuid, text, text, text, jsonb, jsonb, jsonb) to service_role;
-
 notify pgrst, 'reload schema';

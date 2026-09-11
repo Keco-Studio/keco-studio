@@ -5,6 +5,7 @@ import { LibraryPage } from '../pages/library.page';
 import { users } from '../fixures/users';
 import { generateProjectData } from '../fixures/projects';
 import { generateLibraryData } from '../fixures/libraries';
+import { ensureLibraryTableView } from '../utils/library-view';
 
 async function login(page: Page): Promise<void> {
   const loginPage = new LoginPage(page);
@@ -35,6 +36,7 @@ async function createLibraryForDatatypeTests(page: Page): Promise<void> {
 }
 
 async function addColumn(page: Page, name: string, dataTypeLabel: string): Promise<void> {
+  await ensureLibraryTableView(page);
   const addColumnButton = page.getByRole('button', { name: /add new column/i }).first();
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
 

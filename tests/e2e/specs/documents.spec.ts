@@ -34,6 +34,14 @@ test.describe('Document authoring', () => {
     const linkText = 'world-building';
     const linkUrl = 'example.com';
     const openedLinkUrl = 'https://example.com/';
+    const mixedPasteBefore = 'Mixed paste before image.';
+    const mixedPasteAfter = 'Mixed paste after image.';
+    const wpsPasteBefore = 'WPS paste before missing image.';
+    const wpsPasteAfter = 'WPS paste after missing image.';
+    const wpsFallbackMarker =
+      '[WPS image was not included in the clipboard. Paste this image separately.]';
+    const wpsWarning =
+      'WPS did not include one or more images. Paste missing images separately.';
 
     await test.step('Create a project', async () => {
       await projectPage.createProject(project);
@@ -139,6 +147,146 @@ test.describe('Document authoring', () => {
       await expectDocumentLive(page);
     });
 
+    await test.step('Paste rich text with an HTML-only image', async () => {
+      const editor = page.locator('[contenteditable="true"]').first();
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+        origin: new URL(page.url()).origin,
+      });
+      await editor.evaluate((element) => {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+      await page.evaluate(
+        async ({ before, after }) => {
+          const image =
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': new Blob([`${before}\nimage\n${after}`], {
+                type: 'text/plain',
+              }),
+              'text/html': new Blob(
+                [`<p><strong>${before}</strong></p><img src="${image}" alt="mixed paste"><p>${after}</p>`],
+                { type: 'text/html' },
+              ),
+            }),
+          ]);
+        },
+        { before: mixedPasteBefore, after: mixedPasteAfter },
+      );
+
+      const durableAppend = page.waitForResponse(
+        (response) =>
+          response.url().includes('/rpc/append_document_yjs_updates') &&
+          response.ok()
+      );
+      await page.keyboard.press('Control+V');
+
+      await expect(editor).toContainText(mixedPasteBefore);
+      await expect(editor).toContainText(mixedPasteAfter);
+      await expect(editor.locator('strong').filter({ hasText: mixedPasteBefore })).toBeVisible();
+      await expect(editor.locator('img')).toHaveCount(2, { timeout: 20000 });
+      const pastedImage = editor.locator('img').last();
+      await expect(pastedImage).toHaveAttribute(
+        'src',
+        /\/storage\/v1\/object\/public\/library-media-files\//,
+      );
+      await expect.poll(() => pastedImage.evaluate((image) => (
+        image instanceof HTMLImageElement && image.complete ? image.naturalWidth : 0
+      ))).toBeGreaterThan(0);
+      const contentOrder = await editor.evaluate(
+        (element, values) => {
+          const html = element.innerHTML;
+          return [
+            html.indexOf(values.before),
+            html.indexOf('alt="mixed paste"'),
+            html.indexOf(values.after),
+          ];
+        },
+        { before: mixedPasteBefore, after: mixedPasteAfter },
+      );
+      expect(contentOrder[0]).toBeGreaterThanOrEqual(0);
+      expect(contentOrder[1]).toBeGreaterThan(contentOrder[0]!);
+      expect(contentOrder[2]).toBeGreaterThan(contentOrder[1]!);
+      await durableAppend;
+      await expectDocumentLive(page);
+    });
+
+    await test.step('Preserve WPS mixed text when local image bytes are unavailable', async () => {
+      const editor = page.locator('[contenteditable="true"]').first();
+      await editor.evaluate((element) => {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+      await page.evaluate(
+        async ({ before, after }) => {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/plain': new Blob([`${before}\nimage\n${after}`], {
+                type: 'text/plain',
+              }),
+              'text/html': new Blob(
+                [
+                  `<p><strong>${before}</strong></p>`
+                    + '<img src="file:///C:/Users/Test/AppData/Local/Temp/ksohtml/wps_clip_image-3.png">'
+                    + `<p>${after}</p>`,
+                ],
+                { type: 'text/html' },
+              ),
+            }),
+          ]);
+        },
+        { before: wpsPasteBefore, after: wpsPasteAfter },
+      );
+
+      const durableAppend = page.waitForResponse(
+        (response) =>
+          response.url().includes('/rpc/append_document_yjs_updates') &&
+          response.ok()
+      );
+      await page.keyboard.press('Control+V');
+
+      await expect(editor).toContainText(wpsPasteBefore);
+      await expect(editor).toContainText(wpsFallbackMarker);
+      await expect(editor).toContainText(wpsPasteAfter);
+      await expect(
+        editor.locator('strong').filter({ hasText: wpsPasteBefore })
+      ).toBeVisible();
+      await expect(
+        page.getByRole('status').filter({ hasText: wpsWarning })
+      ).toHaveCount(1);
+      const fallbackOrder = await editor.evaluate(
+        (element, values) => {
+          const text = element.textContent ?? '';
+          return [
+            text.indexOf(values.before),
+            text.indexOf(values.marker),
+            text.indexOf(values.after),
+          ];
+        },
+        {
+          before: wpsPasteBefore,
+          marker: wpsFallbackMarker,
+          after: wpsPasteAfter,
+        },
+      );
+      expect(fallbackOrder[0]).toBeGreaterThanOrEqual(0);
+      expect(fallbackOrder[1]).toBeGreaterThan(fallbackOrder[0]!);
+      expect(fallbackOrder[2]).toBeGreaterThan(fallbackOrder[1]!);
+      await durableAppend;
+      await expectDocumentLive(page);
+    });
+
     await test.step('Reload and confirm content persisted', async () => {
       await page.reload({ waitUntil: 'domcontentloaded' });
       const editor = page.locator('[contenteditable="true"]').first();
@@ -148,7 +296,52 @@ test.describe('Document authoring', () => {
         'href',
         openedLinkUrl
       );
-      await expect(editor.locator('img')).toBeVisible({ timeout: 20000 });
+      await expect(editor.locator('img')).toHaveCount(2, { timeout: 20000 });
+      await expect(editor).toContainText(mixedPasteBefore);
+      await expect(editor).toContainText(mixedPasteAfter);
+      await expect(editor.locator('strong').filter({ hasText: mixedPasteBefore })).toBeVisible();
+      await expect(editor.locator('img').last()).toHaveAttribute(
+        'src',
+        /\/storage\/v1\/object\/public\/library-media-files\//,
+      );
+      const reloadedContentOrder = await editor.evaluate(
+        (element, values) => {
+          const html = element.innerHTML;
+          return [
+            html.indexOf(values.before),
+            html.indexOf('alt="mixed paste"'),
+            html.indexOf(values.after),
+          ];
+        },
+        { before: mixedPasteBefore, after: mixedPasteAfter },
+      );
+      expect(reloadedContentOrder[0]).toBeGreaterThanOrEqual(0);
+      expect(reloadedContentOrder[1]).toBeGreaterThan(reloadedContentOrder[0]!);
+      expect(reloadedContentOrder[2]).toBeGreaterThan(reloadedContentOrder[1]!);
+      await expect(editor).toContainText(wpsPasteBefore);
+      await expect(editor).toContainText(wpsFallbackMarker);
+      await expect(editor).toContainText(wpsPasteAfter);
+      await expect(
+        editor.locator('strong').filter({ hasText: wpsPasteBefore })
+      ).toBeVisible();
+      const reloadedFallbackOrder = await editor.evaluate(
+        (element, values) => {
+          const text = element.textContent ?? '';
+          return [
+            text.indexOf(values.before),
+            text.indexOf(values.marker),
+            text.indexOf(values.after),
+          ];
+        },
+        {
+          before: wpsPasteBefore,
+          marker: wpsFallbackMarker,
+          after: wpsPasteAfter,
+        },
+      );
+      expect(reloadedFallbackOrder[0]).toBeGreaterThanOrEqual(0);
+      expect(reloadedFallbackOrder[1]).toBeGreaterThan(reloadedFallbackOrder[0]!);
+      expect(reloadedFallbackOrder[2]).toBeGreaterThan(reloadedFallbackOrder[1]!);
     });
 
     await test.step('Render the same document read-only for a viewer role', async () => {

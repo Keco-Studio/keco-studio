@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Cell } from '@mdxeditor/gurx';
 import {
   $createImageNode,
+  $isImageNode,
+  ImageNode,
   addComposerChild$,
   insertImage$,
   realmPlugin,
@@ -20,6 +22,7 @@ import {
   $isRangeSelection,
   $isRootOrShadowRoot,
   $isTextNode,
+  $nodesOfType,
   $setSelection,
   COMMAND_PRIORITY_HIGH,
   PASTE_COMMAND,
@@ -28,11 +31,19 @@ import {
   type LexicalEditor,
   type RangeSelection,
 } from 'lexical';
-import { isTabularClipboardPayload } from '@/lib/documents/documentTableClipboard';
+import { $insertDataTransferForRichText } from '@lexical/clipboard';
+import { showWarningToast } from '@/lib/utils/toast';
 import {
   extractClipboardImageFiles,
+  hasClipboardImagePayload,
+  hasClipboardTextPayload,
+  prepareClipboardRichImagePaste,
+  type PreparedClipboardRichImagePaste,
+  uploadPreparedClipboardImages,
   uploadClipboardImages,
 } from './documentClipboardImages';
+
+export { hasClipboardTextPayload } from './documentClipboardImages';
 
 type ImageUploadHandler = (file: File) => Promise<string>;
 
@@ -102,6 +113,54 @@ function insertImagesAtPasteSelection(
   }, { discrete: true, tag: SKIP_DOM_SELECTION_TAG });
 }
 
+function richClipboardData(
+  payload: Pick<PreparedClipboardRichImagePaste, 'html' | 'plainText'>,
+): Pick<DataTransfer, 'getData'> {
+  return {
+    getData(format: string) {
+      if (format === 'application/x-lexical-editor') return '';
+      if (format === 'text/html') return payload.html;
+      if (format === 'text/plain') return payload.plainText;
+      return '';
+    },
+  };
+}
+
+function insertRichPasteWithPlaceholders(
+  editor: LexicalEditor,
+  payload: PreparedClipboardRichImagePaste,
+  imageUploadHandler: ImageUploadHandler,
+  isActive: () => boolean,
+): void {
+  const selection = $getSelection();
+  if (!selection) return;
+  const previousImageKeys = new Set($nodesOfType(ImageNode).map((node) => node.getKey()));
+  $insertDataTransferForRichText(
+    richClipboardData(payload) as DataTransfer,
+    selection,
+    editor,
+  );
+  const insertedImageKeys = new Map(
+    $nodesOfType(ImageNode)
+      .filter((node) => !previousImageKeys.has(node.getKey()))
+      .map((node) => [node.getSrc(), node.getKey()]),
+  );
+
+  void uploadPreparedClipboardImages(payload.images, imageUploadHandler).then((results) => {
+    if (!isActive()) return;
+    editor.update(() => {
+      results.forEach((result) => {
+        const nodeKey = insertedImageKeys.get(result.placeholderSrc);
+        if (!nodeKey) return;
+        const node = $getNodeByKey(nodeKey);
+        if (!$isImageNode(node)) return;
+        if (result.url) node.setSrc(result.url);
+        else node.remove();
+      });
+    }, { discrete: true, tag: SKIP_DOM_SELECTION_TAG });
+  });
+}
+
 function DocumentClipboardImagePaste() {
   const [editor] = useLexicalComposerContext();
   const imageUploadHandler = useCellValue(clipboardImageUploadHandler$);
@@ -114,13 +173,44 @@ function DocumentClipboardImagePaste() {
       (event) => {
         if (!editor.isEditable() || !imageUploadHandler) return false;
         const clipboardData = 'clipboardData' in event ? event.clipboardData : null;
-        if (clipboardData && isTabularClipboardPayload(clipboardData)) return false;
+        if (!clipboardData || !hasClipboardImagePayload(clipboardData)) return false;
         const imageFiles = extractClipboardImageFiles(clipboardData);
-        if (imageFiles.length === 0) return false;
+        const hasTextPayload = hasClipboardTextPayload(clipboardData);
+        if (/<img\b/i.test(clipboardData.getData('text/html'))) {
+          const payload = prepareClipboardRichImagePaste(clipboardData);
+          if (!payload || !$getSelection()) return false;
+          event.preventDefault();
+          if (payload.wpsImageFallbackCount > 0) {
+            showWarningToast('WPS did not include one or more images. Paste missing images separately.');
+          }
+          insertRichPasteWithPlaceholders(
+            editor,
+            payload,
+            imageUploadHandler,
+            () => active,
+          );
+          return true;
+        }
+
         const pasteSelection = capturePasteSelection();
         if (!pasteSelection) return false;
-
         event.preventDefault();
+
+        if (hasTextPayload && clipboardData) {
+          editor.update(() => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) {
+              $insertDataTransferForRichText(
+                richClipboardData({
+                  html: clipboardData.getData('text/html'),
+                  plainText: clipboardData.getData('text/plain'),
+                }) as DataTransfer,
+                selection,
+                editor,
+              );
+            }
+          }, { tag: 'paste' });
+        }
         void uploadClipboardImages(imageFiles, imageUploadHandler).then((images) => {
           if (!active || images.length === 0) return;
           const rootElement = editor.getRootElement();
@@ -130,6 +220,14 @@ function DocumentClipboardImagePaste() {
           const currentSelection = editor.getEditorState().read(
             () => $getSelection()?.clone() ?? null
           );
+
+          if (hasTextPayload && rootHadFocus && currentSelection) {
+            images.forEach((image) => {
+              insertImage({ src: image.url, altText: image.file.name });
+            });
+            return;
+          }
+
           const selectionMoved = !pasteSelection.is(currentSelection);
 
           if (rootHadFocus && !selectionMoved) {

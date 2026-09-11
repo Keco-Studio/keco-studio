@@ -147,6 +147,54 @@ describe('CI workflow gates', () => {
     expect(deployJob).toContain('vercel env add "$name" preview "" --force --yes');
   });
 
+  it('synchronizes current DeepSeek model IDs to the production deployment', () => {
+    expect(deployJob).toContain('Sync production DeepSeek model IDs');
+    expect(deployJob).toContain('MODEL_ID="deepseek-flash"');
+    for (const name of [
+      'LLM_MODEL',
+      'DEEPSEEK_MODEL',
+      'GAME_DESIGN_SYSTEM_LLM_MODEL',
+      'GDD_GENERATION_LLM_MODEL',
+      'CREATE_MAP_LLM_MODEL',
+      'CREATE_MAP_VISION_MODEL',
+    ]) {
+      expect(deployJob).toContain(name);
+    }
+    expect(deployJob).toContain('--no-sensitive');
+    expect(deployJob).not.toContain('MODEL_ENV_FILE');
+    expect(deployJob).not.toContain('vercel env pull');
+
+    const syncModels = deployJob.indexOf('Sync production DeepSeek model IDs');
+    const pullEnvironment = deployJob.indexOf('Pull Vercel Environment Information');
+    expect(syncModels).toBeGreaterThan(-1);
+    expect(syncModels).toBeLessThan(pullEnvironment);
+  });
+
+  it('synchronizes the verified DeepSeek endpoint and credential to every production AI override', () => {
+    expect(deployJob).toContain(
+      'DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}'
+    );
+    expect(deployJob).toContain(
+      'DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}'
+    );
+    expect(deployJob).toContain('--sensitive');
+
+    for (const name of [
+      'LLM_API_URL',
+      'GAME_DESIGN_SYSTEM_LLM_API_URL',
+      'GDD_GENERATION_LLM_API_URL',
+      'CREATE_MAP_LLM_API_URL',
+      'CREATE_MAP_VISION_API_URL',
+      'LLM_API_KEY',
+      'GAME_DESIGN_SYSTEM_LLM_API_KEY',
+      'GDD_GENERATION_LLM_API_KEY',
+      'CREATE_MAP_LLM_API_KEY',
+      'CREATE_MAP_VISION_API_KEY',
+    ]) {
+      expect(deployJob).toContain(name);
+    }
+  });
+
   it('isolates Supabase ports for every Playwright shard', () => {
     expect(playwrightWorkflow).toContain('supabaseApiPort:');
     expect(playwrightWorkflow).toContain('supabaseDbPort:');

@@ -4,6 +4,7 @@ import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { users } from '../fixures/users';
 import { DEFAULT_RESOURCE_FOLDER } from '../fixures/folders';
+import { ensureLibraryTableView } from '../utils/library-view';
 import path from 'path';
 import { promises as fs } from 'fs';
 
@@ -87,6 +88,7 @@ async function cleanupTempDir(): Promise<void> {
 }
 
 async function addColumn(page: import('@playwright/test').Page, name: string, dataTypeLabel: string): Promise<void> {
+  await ensureLibraryTableView(page);
   const addColumnButton = page.getByRole('button', { name: /add new column/i });
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
   const addModal = page.getByRole('dialog', { name: /add column/i }).first();

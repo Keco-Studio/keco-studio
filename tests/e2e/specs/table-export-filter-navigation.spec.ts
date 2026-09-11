@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { expect, test, type Download, type Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LoginPage } from '../pages/login.page';
+import { ensureLibraryTableView } from '../utils/library-view';
 import {
   createProjectFixture,
   createTemporaryUser,
@@ -118,6 +119,7 @@ test.describe.serial('Table export, filter, and navigation PR regression', () =>
     await login.login(owner);
     await login.expectLoginSuccess();
     await page.goto(`/${projectId}/${fixture.libraryId}`, { waitUntil: 'domcontentloaded' });
+    await ensureLibraryTableView(page);
     await expect(page.locator(`tr[data-row-id="${fixture.rowIds.castle}"]`)).toBeVisible({
       timeout: 30_000,
     });

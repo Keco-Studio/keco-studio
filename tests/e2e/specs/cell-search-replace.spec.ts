@@ -4,6 +4,7 @@ import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { AssetPage } from '../pages/asset.page';
 import { users } from '../fixures/users';
+import { ensureLibraryTableView } from '../utils/library-view';
 
 async function loginAsSeedEmpty(page: Page): Promise<void> {
   const loginPage = new LoginPage(page);
@@ -86,7 +87,7 @@ async function confirmReplaceModal(page: Page): Promise<void> {
 }
 
 async function waitForTableReady(page: Page): Promise<void> {
-  await expect(page.locator('table')).toBeVisible({ timeout: 30000 });
+  await ensureLibraryTableView(page);
   const dataRowCount = await page.locator('tbody tr[data-row-id]').count();
   if (dataRowCount === 0) {
     await expect(page.getByRole('button', { name: /add new asset/i }).first()).toBeVisible({

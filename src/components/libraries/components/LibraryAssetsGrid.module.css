@@ -1,0 +1,208 @@
+.shell {
+  position: relative;
+  min-width: 0;
+  height: calc(100vh - 112px);
+  min-height: 400px;
+  background: #ffffff;
+}
+
+.scroller {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+.virtualCanvas {
+  position: relative;
+  width: 100%;
+  min-width: max-content;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  width: max-content;
+}
+
+.card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin: 0;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #161616;
+  font: inherit;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: default;
+}
+
+.card:hover {
+  border-color: #c6e6fa;
+  background: #edf7fd;
+}
+
+.card:focus-visible,
+.cardSelected {
+  border-color: #79c6f2;
+  background: #dff1fc;
+  outline: none;
+}
+
+.preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  background: #f7f8fa;
+}
+
+.previewImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.fallbackIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.name {
+  display: block;
+  width: 100%;
+  min-height: 20px;
+  overflow: hidden;
+  color: #161616;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+.metadataRow {
+  display: grid;
+  grid-template-columns: minmax(42px, 0.7fr) minmax(0, 1.3fr);
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+
+.metadataLabel,
+.metadataValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metadataLabel {
+  color: #6b7280;
+}
+
+.metadataValue {
+  color: #374151;
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  color: #6b7280;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.zoomControls {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+}
+
+.zoomButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #374151;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zoomButton:hover:not(:disabled) {
+  background: #edf7fd;
+}
+
+.zoomButton:disabled {
+  color: #c7cbd1;
+  cursor: default;
+}
+
+.zoomValue {
+  min-width: 44px;
+  color: #4b5563;
+  font-size: 11px;
+  line-height: 30px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    height: calc(100vh - 104px);
+    min-height: 320px;
+  }
+
+  .virtualRow {
+    left: 10px;
+  }
+
+  .zoomControls {
+    right: 10px;
+    bottom: 10px;
+  }
+}

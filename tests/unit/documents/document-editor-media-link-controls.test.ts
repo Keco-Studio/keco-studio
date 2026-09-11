@@ -36,7 +36,7 @@ describe('document editor media and link controls', () => {
     expect(clipboardPluginSource).toContain('currentSelection');
     expect(clipboardPluginSource).toContain('rootHadFocus');
     expect(clipboardPluginSource).toContain('editor.isEditable()');
-    expect(clipboardPluginSource).toContain('isTabularClipboardPayload');
+    expect(clipboardPluginSource).not.toContain('isTabularClipboardPayload');
     expect(clipboardPluginSource).toContain('COMMAND_PRIORITY_HIGH');
     expect(clipboardPluginSource).toContain('event.preventDefault()');
     expect(clipboardPluginSource).toContain(
@@ -52,6 +52,28 @@ describe('document editor media and link controls', () => {
     expect(source).not.toContain('insertMarkdown(markdown)');
     expect(source).not.toContain('clipboardImagesToMarkdown');
     expect(source).toContain('inert={readOnly}');
+  });
+
+  it('uploads HTML-only clipboard images before inserting the rich text payload', () => {
+    expect(clipboardPluginSource).toContain('hasClipboardImagePayload(clipboardData)');
+    expect(clipboardPluginSource).toContain(
+      'prepareClipboardRichImagePaste(clipboardData)'
+    );
+    expect(clipboardPluginSource).toContain('$nodesOfType(ImageNode)');
+    expect(clipboardPluginSource).toContain('node.setSrc(result.url)');
+    expect(clipboardPluginSource).toContain('if (!isActive()) return;');
+    expect(clipboardPluginSource).toContain('$insertDataTransferForRichText');
+    expect(clipboardPluginSource).not.toContain('textOnlyClipboardData');
+  });
+
+  it('warns once when WPS mixed paste contains image fallbacks', () => {
+    expect(clipboardPluginSource).toContain(
+      "import { showWarningToast } from '@/lib/utils/toast'"
+    );
+    expect(clipboardPluginSource).toContain('payload.wpsImageFallbackCount > 0');
+    expect(clipboardPluginSource).toContain(
+      "showWarningToast('WPS did not include one or more images. Paste missing images separately.')"
+    );
   });
 
   it('keeps oversized images inside the editable document width', () => {

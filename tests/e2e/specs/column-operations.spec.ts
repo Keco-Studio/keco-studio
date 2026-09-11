@@ -6,6 +6,7 @@ import { users } from '../fixures/users';
 import { generateProjectData } from '../fixures/projects';
 import { generateLibraryData } from '../fixures/libraries';
 import { generateFolderData } from '../fixures/folders';
+import { ensureLibraryTableView } from '../utils/library-view';
 
 async function openFirstColumnEditModal(page: Page): Promise<Locator> {
   await ensureEditableColumnExists(page);
@@ -154,6 +155,7 @@ async function createAndOpenLibrary(page: Page): Promise<{
   await expect(sidebarLibraryItem).toBeVisible({ timeout: 15000 });
   await sidebarLibraryItem.click();
   await libraryPage.waitForPageLoad();
+  await ensureLibraryTableView(page);
 
   return { projectName: project.name, libraryName: library.name };
 }
@@ -345,4 +347,3 @@ test.describe('Column operations and double-click rename', () => {
     });
   });
 });
-

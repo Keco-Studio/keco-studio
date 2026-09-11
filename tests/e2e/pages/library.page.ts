@@ -1,6 +1,7 @@
 import { expect, type Page, type Locator } from '@playwright/test';
 import type { LibraryData } from '../fixures/libraries';
 import type { FolderData } from '../fixures/folders';
+import { ensureLibraryTableView } from '../utils/library-view';
 
 /**
  * LibraryPage - Page Object Model for Library management
@@ -429,6 +430,7 @@ export class LibraryPage {
   async clickPredefineButton(libraryName: string): Promise<void> {
     await this.openLibrary(libraryName);
     await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
+    await ensureLibraryTableView(this.page);
 
     const addColumnButton = this.page.getByRole('button', { name: /add new column/i });
     await expect(addColumnButton).toBeVisible({ timeout: 15000 });
