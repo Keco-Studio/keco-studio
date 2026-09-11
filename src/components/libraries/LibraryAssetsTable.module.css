@@ -53,6 +53,52 @@
   scrollbar-width: none;
 }
 
+.assetViewToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 38px;
+  padding: 4px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.assetViewToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #f7f8fa;
+}
+
+.assetViewButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #5f6670;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.assetViewButton:hover {
+  color: #111827;
+  background: #e9edf1;
+}
+
+.assetViewButtonActive {
+  color: #0b76b7;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+}
+
 .addColumnButton {
   display: inline-flex;
   align-items: center;

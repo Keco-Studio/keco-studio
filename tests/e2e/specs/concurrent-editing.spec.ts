@@ -2,6 +2,7 @@ import { expect, test, type Browser, type BrowserContext, type Locator, type Pag
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LoginPage } from '../pages/login.page';
 import { captureRealtimeErrors } from '../utils/realtime-errors';
+import { ensureLibraryTableView } from '../utils/library-view';
 import {
   addProjectCollaborator,
   createProjectFixture,
@@ -66,6 +67,7 @@ async function openLibrary(
   await loginPage.login(user);
   await loginPage.expectLoginSuccess();
   await page.goto(`/${projectId}/${libraryId}`);
+  await ensureLibraryTableView(page);
   await expect(page.locator('tbody tr[data-row-id]').first()).toBeVisible({ timeout: 30000 });
   return { context, page, realtimeErrors };
 }
