@@ -11,12 +11,19 @@ import {
   type GddResourceJob,
 } from '@/lib/services/gddGenerationService';
 import { hashGddGenerationInput } from '@/lib/gddGeneration';
+import { gameArtStyleSnapshotSchema, type GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 import { randomUUID } from 'node:crypto';
 import { reviewGddMarkdownV2 } from '../v2/generator';
 import type { GddGenerationRequestV2 } from '../v2/contracts';
 import { loadSeriesTableLibraryIds } from '../seriesTableIds';
 import { materializeTableResources, sanitizeTableResourcesForPersistence } from '../tableResources';
 import { materializeDialogueResources } from '../dialogueResources';
+
+function resolveArtStyle(value: unknown): GameArtStyleSnapshot | null {
+  if (value == null) return null;
+  const parsed = gameArtStyleSnapshotSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 type Dependencies = {
   claim: typeof claimGddResourceJob;
@@ -42,7 +49,10 @@ export async function processClaimedGddResourceJob(
     if (job.kind === 'maps') {
       const payload = job.payload as { markdown?: unknown; artStyle?: unknown };
       if (typeof payload.markdown !== 'string') throw new Error('Map resource payload is missing Markdown.');
-      const briefs = await dependencies.compile({ markdown: payload.markdown, artStyle: payload.artStyle ?? null });
+      const briefs = await dependencies.compile({
+        markdown: payload.markdown,
+        artStyle: resolveArtStyle(payload.artStyle),
+      });
       const artifacts = briefs.map((brief) => ({
         id: randomUUID(),
         mapBriefId: brief.id,
