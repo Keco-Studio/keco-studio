@@ -437,6 +437,32 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.tablePlans.map((plan) => plan.table)).toEqual(guidedTables);
   });
 
+  it('defers unresolved guided tables instead of failing an async-resource GDD', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      resourceMode: 'async',
+      rules: {
+        ...input.rules,
+        tableGuidance: ['MapPuzzles', 'DialogueNodes', 'Clues'].map((table) => ({
+          table,
+          purpose: `Defines ${table}.`,
+          fields: ['id', 'name'],
+        })),
+      },
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1 ? '# GDD\n\n## Core Loop\nBody.' : 'not a table plan'
+    ));
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([]);
+    expect(result.tablePlanWarning).toContain('MapPuzzles');
+    expect(result.tablePlanWarning).toContain('DialogueNodes');
+    expect(result.tablePlanWarning).toContain('Clues');
+    expect(result.review.status).toBe('pass');
+  });
+
   it('accepts a guided table repair with normalized name and reordered fields', async () => {
     const guidedInput: GddGenerationRequestV2 = {
       ...input,

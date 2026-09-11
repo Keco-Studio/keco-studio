@@ -403,8 +403,8 @@ export async function persistGeneratedGddV2Document(
         projectId: job.project_id,
         documentId: persisted.id,
         resources: [
-          ...(tableResources.length > 0 || dialogueResources.length > 0
-            ? [{ kind: 'tables' as const, payload: { resources: tableResources, dialogueResources, markdown: documentMarkdown } }]
+          ...(input.rules.tableGuidance.length > 0 || tableResources.length > 0 || dialogueResources.length > 0
+            ? [{ kind: 'tables' as const, payload: { input, resources: tableResources, dialogueResources, markdown: documentMarkdown } }]
             : []),
           { kind: 'maps' as const, payload: { markdown: documentMarkdown, artStyle: input.artStyle ?? null } },
         ],
