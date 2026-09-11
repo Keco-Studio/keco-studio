@@ -580,12 +580,12 @@ function mergeRepairedTablePlans(
   ];
 }
 
-const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship|叙事|剧情|故事|对白|对话|视觉小说|角色关系)/i;
-const NARRATIVE_EXCLUSION = /(?:(?:no|without|exclude|avoid)[^.!?;\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship)|(?:无|没有|不要|不含|排除|避免)[^。！？；\n]{0,20}(?:叙事|剧情|故事|对白|对话|视觉小说|角色关系))/i;
+const NARRATIVE_INTENT = /(?:narrative|story|dialogue|visual novel|character relationship)/i;
+const NARRATIVE_EXCLUSION = /(?:no|without|exclude|avoid)[^.!?;\n]{0,40}(?:narrative|story|dialogue|visual novel|character relationship)/i;
 
 function hasPositiveNarrativeSignal(value: string): boolean {
   return value
-    .split(/[.!?;。！？；\n]+/)
+    .split(/[.!?;\n]+/)
     .some((segment) => NARRATIVE_INTENT.test(segment) && !NARRATIVE_EXCLUSION.test(segment));
 }
 

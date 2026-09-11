@@ -681,24 +681,24 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });
 
-  it('recovers dialogue plans when narrative intent is expressed in Chinese', async () => {
+  it('recovers dialogue plans when narrative intent comes from character relationship signals', async () => {
     const narrativeInput: GddGenerationRequestV2 = {
       ...input,
-      creativeBrief: '古风帝王养成，强调互动叙事、剧情选择和角色关系。',
-      rules: { ...input.rules, genres: ['互动叙事'], philosophies: ['角色关系'] },
+      creativeBrief: 'An imperial court drama that emphasizes interactive narrative, story choices, and character relationships.',
+      rules: { ...input.rules, genres: ['Interactive narrative'], philosophies: ['Character relationships'] },
     };
     const recoveredEvent: DialogueSceneEvent = {
       chapterKey: 'court-choice',
-      title: '朝堂抉择',
-      scene: '皇帝在朝堂上听取两位大臣的相反建议。',
-      participants: ['皇帝', '大臣'],
-      choices: ['支持新政', '维持旧制'],
-      consequences: '选择改变朝局与角色信任。',
+      title: 'Court Choice',
+      scene: 'The emperor hears two ministers give opposite advice in court.',
+      participants: ['Emperor', 'Minister'],
+      choices: ['Support the reform', 'Keep the old system'],
+      consequences: 'The choice shifts court politics and character trust.',
     };
     const complete = jest.fn(async () => JSON.stringify([recoveredEvent]));
     const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
     async function* stream() {
-      yield { type: 'text_delta' as const, content: '# GDD\n\n## 朝堂抉择\n皇帝召集大臣讨论新政。' };
+      yield { type: 'text_delta' as const, content: '# GDD\n\n## Court Choice\nThe emperor summons ministers to debate the reform.' };
       yield { type: 'finish' as const, reason: 'stop' };
     }
 

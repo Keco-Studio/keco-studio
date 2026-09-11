@@ -594,13 +594,13 @@ describe('GameDesignSystemsPage', () => {
         id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
         resource_mode: 'async', output_document_id: 'document-1',
         resources: [{ id: 'resource-1', kind: 'maps', status: 'completed' }],
-        maps: [{ id: 'map-1', title: '皇城地图', status: 'queued', phase: 'planning' }],
+        maps: [{ id: 'map-1', title: 'Imperial City Map', status: 'queued', phase: 'planning' }],
       })
       .mockResolvedValueOnce({
         id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
         resource_mode: 'async', output_document_id: 'document-1',
         resources: [{ id: 'resource-1', kind: 'maps', status: 'completed' }],
-        maps: [{ id: 'map-1', title: '皇城地图', status: 'ready', phase: 'ready' }],
+        maps: [{ id: 'map-1', title: 'Imperial City Map', status: 'ready', phase: 'ready' }],
       });
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
