@@ -186,6 +186,9 @@ class CreateMapV3MockBackend {
       role: 'admin',
       isOwner: true,
     }));
+    await page.route('**/api/keco-admin/access', (route) => json(route, {
+      isAdmin: false,
+    }));
     await page.route('**/api/create-map/references**', (route) => this.handleReferences(route));
     await page.route('**/api/create-map/plan', (route) => this.handlePlan(route));
     await page.route('**/api/create-map/collision-grid', (route) => this.handleCollisionGrid(route));

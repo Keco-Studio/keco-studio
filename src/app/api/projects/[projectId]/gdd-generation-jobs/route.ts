@@ -26,6 +26,7 @@ const requestSchema = z.object({
   designSystemId: z.string().uuid(),
   versionId: z.string().uuid(),
   mode: z.enum(['quick', 'professional']).default('quick'),
+  resourceMode: z.enum(['async', 'inline']).default('async'),
   creativeBrief: z.string().trim().max(4_000).optional(),
 }).strict();
 
@@ -126,6 +127,7 @@ export const POST = withAuth(async function POST(request, { params }: Params, { 
     const input: GddGenerationRequestV2 = {
       contractVersion: 2,
       mode: parsed.data.mode,
+      resourceMode: parsed.data.resourceMode,
       ...(parsed.data.creativeBrief ? { creativeBrief: parsed.data.creativeBrief } : {}),
       language: parsed.data.creativeBrief?.trim()
         // The user's brief is authoritative, even when it is short. Pinned

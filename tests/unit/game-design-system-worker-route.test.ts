@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 const processSystem = jest.fn();
 const processGdd = jest.fn();
 const processDialogue = jest.fn();
+const processResource = jest.fn();
 const serviceClient = { service: true };
 
 jest.mock('server-only', () => ({}));
@@ -10,6 +11,7 @@ jest.mock('@/lib/server/supabaseServiceRole', () => ({ getSupabaseServiceRoleCli
 jest.mock('@/lib/game-design-system/worker', () => ({ processNextGameDesignSystemJob: (...args: unknown[]) => processSystem(...args) }));
 jest.mock('@/lib/gdd-generation/worker', () => ({ processNextGddJob: (...args: unknown[]) => processGdd(...args) }));
 jest.mock('@/lib/gdd-generation/dialogueWorker', () => ({ processNextDialogueJob: (...args: unknown[]) => processDialogue(...args) }));
+jest.mock('@/lib/gdd-generation/resources/worker', () => ({ processNextGddResourceJob: (...args: unknown[]) => processResource(...args) }));
 
 import { GET, maxDuration } from '@/app/api/internal/game-design-system-worker/route';
 
@@ -39,6 +41,9 @@ describe('internal Game Design System worker route dispatch', () => {
     processDialogue
       .mockResolvedValueOnce({ claimed: true, jobId: 'dialogue-job', status: 'completed' })
       .mockResolvedValue({ claimed: false });
+    processResource
+      .mockResolvedValueOnce({ claimed: true, jobId: 'resource-job', status: 'completed' })
+      .mockResolvedValue({ claimed: false });
 
     const response = await GET(new NextRequest('https://example.test/api/internal/game-design-system-worker', {
       headers: { authorization: 'Bearer worker-secret' },
@@ -50,10 +55,12 @@ describe('internal Game Design System worker route dispatch', () => {
       expect.objectContaining({ type: 'system', jobId: 'system-job' }),
       expect.objectContaining({ type: 'gdd', jobId: 'gdd-job' }),
       expect.objectContaining({ type: 'dialogue', jobId: 'dialogue-job' }),
+      expect.objectContaining({ type: 'gdd-resource', jobId: 'resource-job' }),
     ]));
     expect(processSystem).toHaveBeenCalled();
     expect(processGdd).toHaveBeenCalled();
     expect(processDialogue).toHaveBeenCalled();
+    expect(processResource).toHaveBeenCalled();
   });
 
   it('does not dispatch either worker for an unauthorized invocation', async () => {
@@ -65,5 +72,6 @@ describe('internal Game Design System worker route dispatch', () => {
     expect(processSystem).not.toHaveBeenCalled();
     expect(processGdd).not.toHaveBeenCalled();
     expect(processDialogue).not.toHaveBeenCalled();
+    expect(processResource).not.toHaveBeenCalled();
   });
 });

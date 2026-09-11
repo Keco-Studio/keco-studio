@@ -47,6 +47,7 @@ import {
   type GddGenerationJob,
   type GddJobPhase,
   type GddJobStatus,
+  enqueueGddResourceJobs,
 } from '@/lib/services/gddGenerationService';
 
 type WorkerDependencies = {
@@ -309,20 +310,26 @@ export async function persistGeneratedGddV2Document(
     materializeTableResources(tableSeriesSeed(job), tablePlans, existingLibraryIds),
   );
   const dialogueResources = materializeDialogueResources(job.id, dialoguePlans);
-  const withTableRefs = applyInlineTableResourceReferences(markdown, tableResources);
-  const withDialogue = dialogueResources.length > 0
-    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, dialogueResources)}\n`
+  const asyncResources = job.resource_mode === 'async' || (input as { resourceMode?: string }).resourceMode === 'async';
+  const persistedTableResources = asyncResources ? [] : tableResources;
+  const persistedDialogueResources = asyncResources ? [] : dialogueResources;
+  const withTableRefs = applyInlineTableResourceReferences(markdown, persistedTableResources);
+  const withDialogue = persistedDialogueResources.length > 0
+    ? `${withTableRefs.trim()}\n\n## Dialogue Resources\n\n${renderDialogueReferences(job.project_id, persistedDialogueResources)}\n`
     : withTableRefs;
+  const documentMarkdown = withDialogue;
 
   let mapCompilationFailed = false;
   let mapCompilationError: string | null = null;
   let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
-  try {
-    briefs = await compileGddMapBriefs({ markdown: withDialogue, artStyle: input.artStyle ?? null });
-  } catch (error) {
-    mapCompilationFailed = true;
-    mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
-    console.error('[GDD map brief compiler]', mapCompilationError);
+  if (!asyncResources) {
+    try {
+      briefs = await compileGddMapBriefs({ markdown: withDialogue, artStyle: input.artStyle ?? null });
+    } catch (error) {
+      mapCompilationFailed = true;
+      mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
+      console.error('[GDD map brief compiler]', mapCompilationError);
+    }
   }
   const mapArtifacts = briefs.map((brief) => ({
     id: randomUUID(),
@@ -332,7 +339,7 @@ export async function persistGeneratedGddV2Document(
     styleContract: brief.styleContract,
     inputHash: hashGddGenerationInput({ brief, styleContract: brief.styleContract }),
   }));
-  const decoratedMarkdown = decorateGddWithMapReferences(withDialogue, briefs.map((brief, index) => ({
+  const decoratedMarkdown = decorateGddWithMapReferences(documentMarkdown, briefs.map((brief, index) => ({
     artifactId: mapArtifacts[index]!.id,
     sourceHeading: brief.sourceHeading,
     fallbackTitle: brief.title,
@@ -352,8 +359,9 @@ export async function persistGeneratedGddV2Document(
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
     review,
-    tableResources,
-    dialogueResources,
+    tableResources: persistedTableResources,
+    dialogueResources: persistedDialogueResources,
+    ...(asyncResources ? { deferredTableResources: tableResources, deferredDialogueResources: dialogueResources } : {}),
     mapCount: briefs.length,
     mapCompilationFailed,
     ...(mapCompilationError ? { mapCompilationError } : {}),
@@ -374,8 +382,8 @@ export async function persistGeneratedGddV2Document(
     metadata,
     appliedRuleIds: job.applied_rule_ids,
     omittedRuleIds: job.omitted_rule_ids,
-    tableResources,
-    dialogueResources,
+    tableResources: persistedTableResources,
+    dialogueResources: persistedDialogueResources,
   });
 
   // Series evolution historically omitted documents.gdd_generation_job_id.
@@ -386,6 +394,25 @@ export async function persistGeneratedGddV2Document(
       .update({ gdd_generation_job_id: job.id })
       .eq('id', persisted.id);
     if (bindError) console.error('[GDD document job binding]', bindError);
+  }
+
+  if (asyncResources) {
+    try {
+      await enqueueGddResourceJobs(serviceClient, {
+        jobId: job.id,
+        projectId: job.project_id,
+        documentId: persisted.id,
+        resources: [
+          ...(input.rules.tableGuidance.length > 0 || tableResources.length > 0 || dialogueResources.length > 0
+            ? [{ kind: 'tables' as const, payload: { input, resources: tableResources, dialogueResources, markdown: documentMarkdown } }]
+            : []),
+          { kind: 'maps' as const, payload: { markdown: documentMarkdown, artStyle: input.artStyle ?? null } },
+        ],
+      });
+    } catch (error) {
+      console.error('[GDD async resource enqueue]', describeGddGenerationError(error));
+    }
+    return { ...persisted, status: 'completed' };
   }
 
   let status: GddJobStatus = 'completed';

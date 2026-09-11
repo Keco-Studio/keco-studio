@@ -114,8 +114,18 @@ describe('Create Map V3 direct workbench', () => {
     expect(direct).toContain('generation.installRestore(prepared)');
     expect(direct).toContain('<DirectMapCanvas');
     expect(direct).toContain('<MapChatPanel');
+    expect(direct).toContain('onAttachFile=');
+    expect(direct).toContain('onAttachKecoDocument=');
+    expect(direct).toContain('<SelectDocumentModal');
     expect(direct).not.toContain('onOpenLegacyMap');
     expect(direct).not.toContain('map.schemaVersion === 2');
+
+    const css = readFileSync(
+      path.join(process.cwd(), 'src/features/create-map/CreateMapWorkbench.module.css'),
+      'utf8'
+    );
+    expect(css).toContain('grid-template-columns: 300px minmax(480px, 1fr)');
+    expect(css).toContain('.chatAttachMenu');
   });
 
   it('requires every draft consumer to provide an explicit versioned adapter', () => {
@@ -144,6 +154,8 @@ describe('Create Map V3 direct workbench', () => {
 
     expect(helper.indexOf('observeBrowserFailures(page)')).toBeLessThan(helper.indexOf('page.goto(APP_ORIGIN)'));
     expect(source).toContain("errorText === 'net::ERR_ABORTED'");
+    expect(source).toContain("**/api/keco-admin/access");
+    expect(source).toContain('isAdmin: false');
   });
 
   it('invalidates persisted V3 identity when the selected Project changes', () => {

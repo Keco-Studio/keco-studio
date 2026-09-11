@@ -23,12 +23,12 @@ import {
   readCreateMapProjectPreference,
   writeCreateMapProjectPreference,
 } from '@/lib/create-map/projectPreference';
-import alignCenterIcon from '@/assets/images/simulator/align-center.svg';
-import alignCenterActiveIcon from '@/assets/images/simulator/align-center-active.svg';
 import archiveIcon from '@/assets/images/simulator/archive.svg';
 import archiveActiveIcon from '@/assets/images/simulator/archive-active.svg';
 import lightningIcon from '@/assets/images/simulator/ilightning.svg';
 import lightningActiveIcon from '@/assets/images/simulator/lightning-active.svg';
+import mapPlanIcon from '@/assets/images/simulator/map-plan.svg';
+import mapPlanActiveIcon from '@/assets/images/simulator/map-plan-active.svg';
 import styles from './LeftNav.module.css';
 
 function IconGrid({ active }: { active: boolean }) {
@@ -55,10 +55,10 @@ function IconBolt({ active }: { active: boolean }) {
   );
 }
 
-function IconAlign({ active }: { active: boolean }) {
+function IconMap({ active }: { active: boolean }) {
   return (
     <Image
-      src={active ? alignCenterActiveIcon : alignCenterIcon}
+      src={active ? mapPlanActiveIcon : mapPlanIcon}
       alt=""
       width={20}
       height={20}
@@ -289,7 +289,7 @@ export function LeftNav({ userId }: { userId?: string }) {
           onClick={() => navigate('createMap')}
         >
           <span className={styles.iconWrap}>
-            <IconAlign active={onCreateMap} />
+            <IconMap active={onCreateMap} />
           </span>
           <span className={styles.label}>Map</span>
         </button>

@@ -9,7 +9,8 @@ export type ProductNavigationItem =
   | 'script'
   | 'createMap'
   | 'gameDesignSystem'
-  | 'keco101';
+  | 'keco101'
+  | 'kecoAdmin';
 
 export type ProductNavigationState = Record<ProductNavigationItem, boolean>;
 
@@ -31,20 +32,32 @@ function isGameDesignSystemPath(pathname: string | null): boolean {
   return (pathname ?? '').startsWith('/game-design-systems');
 }
 
+function isKecoAdminPath(pathname: string | null): boolean {
+  return pathname === '/keco-admin' || (pathname ?? '').startsWith('/keco-admin/');
+}
+
 export function getProductNavigationState(pathname: string | null): ProductNavigationState {
   const simulation = isSimulationPath(pathname);
   const script = isScriptSystemPath(pathname);
   const createMap = isCreateMapPath(pathname);
   const gameDesignSystem = isGameDesignSystemPath(pathname);
   const keco101 = isKeco101Path(pathname);
+  const kecoAdmin = isKecoAdminPath(pathname);
 
   return {
-    studio: !simulation && !script && !createMap && !gameDesignSystem && !keco101,
+    studio:
+      !simulation &&
+      !script &&
+      !createMap &&
+      !gameDesignSystem &&
+      !keco101 &&
+      !kecoAdmin,
     simulation,
     script,
     createMap,
     gameDesignSystem,
     keco101,
+    kecoAdmin,
   };
 }
 
@@ -113,5 +126,6 @@ export function getProductNavigationDestination(
   }
   if (item === 'gameDesignSystem') return '/game-design-systems';
   if (item === 'keco101') return '/keco-101';
+  if (item === 'kecoAdmin') return '/keco-admin';
   return '/create-map';
 }

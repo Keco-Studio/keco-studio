@@ -103,9 +103,12 @@ export async function reviewGddMarkdownV2(
 
   const unresolvedGuidance = missingGuidedTables(input, normalized.tablePlans);
   if (unresolvedGuidance.length > 0) {
-    throw new GddV2ResourceRecoveryError(
-      `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`,
-    );
+    const message = `GDD is missing required guided tables after one repair pass: ${unresolvedGuidance.map(({ table }) => table).join(', ')}.`;
+    if (input.resourceMode !== 'async') throw new GddV2ResourceRecoveryError(message);
+    normalized = {
+      ...normalized,
+      tablePlanWarning: message,
+    };
   }
 
   let dialoguePlans = runtime.dialoguePlans ?? [];
@@ -237,6 +240,7 @@ function directMarkdownMessages(input: GddGenerationRequestV2): ChatMessage[] {
       'First establish one internally consistent set of rules and numbers, then use those same values in every formula, table, threshold, probability, cost, and example.',
       'Silently calculate every worked example before writing it. Never print arithmetic that disagrees with the stated formula or values.',
       'Close every gameplay loop and define important prerequisites, costs, outcomes, limits, reset conditions, failure states, and exceptional cases.',
+      'When the pinned Game Design System or creative brief requires maps, write one explicit map section per required map. Give each section a map-specific heading and define its spatial layout, regions, routes, landmarks, and gameplay requirements so the asynchronous map worker can extract it without inference.',
       'Treat project sources as factual evidence and the pinned Game Design System as design guidance. You may propose creative gameplay details when evidence is incomplete.',
       'Never present an unconfirmed platform, budget, schedule, research result, technical commitment, or production promise as fact. Put necessary unresolved production facts only in a final section titled "Open Questions".',
       'Do not add a development milestone section unless the source context explicitly requests a production plan.',

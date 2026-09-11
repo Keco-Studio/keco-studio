@@ -24,6 +24,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'keco-101',
   'design-upload',
   'mcp',
+  'keco-admin',
 ] as const;
 
 export type RouteParamsResult = {

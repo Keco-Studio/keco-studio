@@ -3,6 +3,8 @@
 import { CloseOutlined, MenuFoldOutlined, SettingOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SelectDocumentModal } from '@/components/script-system/SelectDocumentModal';
+import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { DirectMapCanvas, type DirectMapCanvasImage } from './components/DirectMapCanvas';
 import { DirectMapGenerationPanel } from './components/DirectMapGenerationPanel';
@@ -68,6 +70,8 @@ export function DirectMapWorkbench() {
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
   const [documentId, setDocumentId] = useState('');
+  const [documentName, setDocumentName] = useState('');
+  const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
   const [references, setReferences] = useState<MapReferenceRecord[]>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [referenceBusy, setReferenceBusy] = useState(false);
@@ -154,6 +158,7 @@ export function DirectMapWorkbench() {
     openRequestEpoch.current += 1;
     setProjectId(nextProjectId);
     setDocumentId('');
+    setDocumentName('');
     setPlan((current) => ({ ...current, references: [], styleReference: null }));
     draft.reset();
     generation.reset();
@@ -163,6 +168,11 @@ export function DirectMapWorkbench() {
     setViewMode('browse');
   };
 
+  const clearAttachedDocument = useCallback(() => {
+    setDocumentId('');
+    setDocumentName('');
+  }, []);
+
   const enterCreateDetail = useCallback(() => {
     if (readOnly) return;
     draft.reset();
@@ -170,12 +180,13 @@ export function DirectMapWorkbench() {
     setPlan(INITIAL_DIRECT_PLAN);
     setScene(createEmptyMapSceneV3(INITIAL_DIRECT_PLAN));
     setDescription('');
+    clearAttachedDocument();
     setChatMessages([]);
     setError(null);
     setViewMode('detail');
     setPlanDetailsOpen(true);
     setRightOpen(true);
-  }, [draft, generation, readOnly]);
+  }, [clearAttachedDocument, draft, generation, readOnly]);
 
   useEffect(() => {
     const onToolbarCreate = () => {
@@ -233,6 +244,28 @@ export function DirectMapWorkbench() {
     }
   };
 
+  const attachDesignFile = async (file: File) => {
+    if (readOnly || busy) return;
+    const validation = validateDesignFile(file);
+    if (!validation.ok) {
+      setError(validation.error ?? 'Unsupported file.');
+      return;
+    }
+    setError(null);
+    try {
+      const parsed = await parseDocument(file);
+      const text = parsed.text.trim();
+      if (!text) {
+        setError('No text could be extracted from this file.');
+        return;
+      }
+      clearAttachedDocument();
+      await createPlan(text);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Failed to parse the file.');
+    }
+  };
+
   const openSavedMap = useCallback(async (map: SavedMapSummary) => {
     if (map.id === draft.identity?.mapId || savedMapSwitchBlocked(draft)) return;
     const requestEpoch = ++openRequestEpoch.current;
@@ -245,6 +278,7 @@ export function DirectMapWorkbench() {
       if (!savedMapOpenIsCurrent(openRequestEpoch.current, requestEpoch)) return;
       setProjectId(loaded.projectId);
       setDocumentId(loaded.sourceDocumentId ?? '');
+      setDocumentName('');
       setPlan(prepared.plan);
       setScene(prepared.scene);
       draft.install(loaded);
@@ -397,9 +431,30 @@ export function DirectMapWorkbench() {
             busy={busy}
             readOnly={readOnly}
             error={actionError}
+            attachedDocument={documentId ? { id: documentId, name: documentName || 'Keco Document' } : null}
+            onClearAttachedDocument={clearAttachedDocument}
+            onAttachFile={(file) => void attachDesignFile(file)}
+            onAttachKecoDocument={() => {
+              if (!projectId || readOnly || busy) return;
+              setDocumentPickerOpen(true);
+            }}
           />
         )}
       </aside>
+
+      {documentPickerOpen ? (
+        <SelectDocumentModal
+          open={documentPickerOpen}
+          projectId={projectId}
+          selectedDocumentId={documentId || null}
+          onClose={() => setDocumentPickerOpen(false)}
+          onSelect={(document) => {
+            setDocumentId(document.id);
+            setDocumentName(document.name);
+            setError(null);
+          }}
+        />
+      ) : null}
 
       <section className={styles.directCanvasPanel} aria-label="Map canvas">
         <header className={styles.canvasHeader}>

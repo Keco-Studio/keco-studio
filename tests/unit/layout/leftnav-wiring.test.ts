@@ -20,12 +20,16 @@ jest.mock('next/image', () => ({
   default: (props: Record<string, unknown>) => React.createElement('img', props),
 }));
 
-jest.mock('@/assets/images/simulator/align-center.svg', () => 'align-center');
-jest.mock('@/assets/images/simulator/align-center-active.svg', () => 'align-center-active');
+jest.mock('@/assets/images/simulator/map-plan.svg', () => 'map-plan');
+jest.mock('@/assets/images/simulator/map-plan-active.svg', () => 'map-plan-active');
 jest.mock('@/assets/images/simulator/archive.svg', () => 'archive');
 jest.mock('@/assets/images/simulator/archive-active.svg', () => 'archive-active');
 jest.mock('@/assets/images/simulator/ilightning.svg', () => 'lightning');
 jest.mock('@/assets/images/simulator/lightning-active.svg', () => 'lightning-active');
+
+jest.mock('@/lib/hooks/useKecoAdminAccess', () => ({
+  useKecoAdminAccess: () => ({ data: false }),
+}));
 
 jest.mock('@/components/layout/LeftNav.module.css', () => ({
   __esModule: true,
@@ -75,6 +79,7 @@ describe('LeftNav wiring', () => {
       createMap: true,
       gameDesignSystem: false,
       keco101: false,
+      kecoAdmin: false,
     });
   });
 
@@ -134,6 +139,13 @@ describe('LeftNav wiring', () => {
       'System',
     ]);
     expect(markup).toContain('aria-label="Map" aria-current="page"');
+  });
+
+  it('uses the in-repo map-plan icon for the Map entry', () => {
+    const source = read('src/components/layout/LeftNav.tsx');
+    expect(source).toContain("@/assets/images/simulator/map-plan.svg");
+    expect(source).toContain("@/assets/images/simulator/map-plan-active.svg");
+    expect(source).not.toContain('align-center.svg');
   });
 
   it('keeps simulation navigation and collapse behavior', () => {

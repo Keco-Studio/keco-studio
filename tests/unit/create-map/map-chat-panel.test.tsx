@@ -8,6 +8,13 @@ jest.mock('@/features/create-map/CreateMapWorkbench.module.css', () => ({
   default: new Proxy({}, { get: (_target, property) => String(property) }),
 }));
 
+jest.mock('next/image', () => ({
+  __esModule: true,
+  default: (props: Record<string, unknown>) => React.createElement('img', props),
+}));
+
+jest.mock('@/assets/images/paper.svg', () => 'paper');
+
 describe('MapChatPanel', () => {
   const baseProps = {
     mapTitle: 'Village map',
@@ -34,5 +41,18 @@ describe('MapChatPanel', () => {
     expect(markup).toContain('Make a village map');
     expect(markup).toContain('Generate map');
     expect(markup).toContain('Ask AI to help...');
+  });
+
+  it('wires the attach control for File and Keco Document actions', () => {
+    const markup = renderToStaticMarkup(React.createElement(MapChatPanel, {
+      ...baseProps,
+      onAttachFile: jest.fn(),
+      onAttachKecoDocument: jest.fn(),
+    }));
+
+    expect(markup).toContain('aria-label="Attach"');
+    expect(markup).toContain('aria-haspopup="menu"');
+    expect(markup).toMatch(/aria-label="Attach"[^>]*aria-haspopup="menu"/);
+    expect(markup).not.toMatch(/aria-label="Attach"[^>]*disabled/);
   });
 });

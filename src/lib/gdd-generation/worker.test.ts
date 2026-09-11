@@ -295,6 +295,39 @@ describe('GDD generation worker', () => {
     consoleError.mockRestore();
   });
 
+  it('completes the parent GDD before async map compilation', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockCompileGddMapBriefs.mockRejectedValueOnce(new Error('Map compiler timed out.'));
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const v2Job = {
+      ...job,
+      resource_mode: 'async',
+      applied_rule_ids: ['readable-state'],
+      omitted_rule_ids: [],
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN', artStyle: null, resourceMode: 'async' },
+    } as GddGenerationJob;
+    const serviceClient = { rpc };
+
+    await expect(persistGeneratedGddV2Document(
+      serviceClient as never,
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## Core Loop\nBody text.',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+    )).resolves.toEqual({
+      id: 'document-1',
+      name: 'Harbor Tactics gdd',
+      status: 'completed',
+      generationRevision: 1,
+      resourceChangeSummary: { created: [], updated: [], reused: [], preserved: [] },
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
+  });
+
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => persistedGdd('document-1', 'Harbor Tactics gdd'));

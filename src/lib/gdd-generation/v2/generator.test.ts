@@ -437,6 +437,32 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.tablePlans.map((plan) => plan.table)).toEqual(guidedTables);
   });
 
+  it('defers unresolved guided tables instead of failing an async-resource GDD', async () => {
+    const guidedInput: GddGenerationRequestV2 = {
+      ...input,
+      resourceMode: 'async',
+      rules: {
+        ...input.rules,
+        tableGuidance: ['MapPuzzles', 'DialogueNodes', 'Clues'].map((table) => ({
+          table,
+          purpose: `Defines ${table}.`,
+          fields: ['id', 'name'],
+        })),
+      },
+    };
+    const complete = jest.fn(async () => (
+      complete.mock.calls.length === 1 ? '# GDD\n\n## Core Loop\nBody.' : 'not a table plan'
+    ));
+
+    const result = await generateGddMarkdownV2(guidedInput, complete);
+
+    expect(result.tablePlans).toEqual([]);
+    expect(result.tablePlanWarning).toContain('MapPuzzles');
+    expect(result.tablePlanWarning).toContain('DialogueNodes');
+    expect(result.tablePlanWarning).toContain('Clues');
+    expect(result.review.status).toBe('pass');
+  });
+
   it('accepts a guided table repair with normalized name and reordered fields', async () => {
     const guidedInput: GddGenerationRequestV2 = {
       ...input,
@@ -578,6 +604,16 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(messages[0].content).toMatch(/abstract/i);
   });
 
+  it('instructs the model to write extractable map sections when the design requires maps', async () => {
+    const complete = jest.fn(async () => '# GDD\n\n## Core Loop\nBody.');
+
+    await generateGddMarkdownV2(input, complete);
+
+    const messages = (complete.mock.calls[0] as unknown as [ChatMessage[]])[0];
+    expect(messages[0].content).toMatch(/explicit map section/i);
+    expect(messages[0].content).toMatch(/spatial layout.*routes.*landmarks/i);
+  });
+
   it('does not plan dialogue for an abstract NPC interaction feature statement', async () => {
     const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
     async function* stream() {
@@ -642,6 +678,33 @@ describe('GDD v2 direct Markdown generator', () => {
 
     const result = await generateGddMarkdownV2(narrativeInput, { stream, complete, planScene });
 
+    expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
+  });
+
+  it('recovers dialogue plans when narrative intent comes from character relationship signals', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'An imperial court drama that emphasizes interactive narrative, story choices, and character relationships.',
+      rules: { ...input.rules, genres: ['Interactive narrative'], philosophies: ['Character relationships'] },
+    };
+    const recoveredEvent: DialogueSceneEvent = {
+      chapterKey: 'court-choice',
+      title: 'Court Choice',
+      scene: 'The emperor hears two ministers give opposite advice in court.',
+      participants: ['Emperor', 'Minister'],
+      choices: ['Support the reform', 'Keep the old system'],
+      consequences: 'The choice shifts court politics and character trust.',
+    };
+    const complete = jest.fn(async () => JSON.stringify([recoveredEvent]));
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: '# GDD\n\n## Court Choice\nThe emperor summons ministers to debate the reform.' };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(narrativeInput, { stream, complete, planScene });
+
+    expect(complete).toHaveBeenCalledTimes(1);
     expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });
 

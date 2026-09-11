@@ -33,20 +33,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const createMapChrome = getCreateMapDashboardChrome(pathname);
   const hideSidebarForCreateMap = !createMapChrome.showStudioSidebar;
   const onKeco101 = isKeco101Path(pathname);
-  // Simulation, Game Design Systems, Create Map, and Keco 101 hide Studio resource chrome.
+  const isKecoAdminPage = pathname === '/keco-admin';
+  const showLeftNav = createMapChrome.showLeftNav || isKecoAdminPage;
+  // Dedicated product workspaces hide Studio resource chrome.
   // Script mounts ScriptSidebar as a left sibling of TopBar/main.
   const showStudioSidebar =
     !hideSidebarForSimulation &&
     !hideSidebarForGameDesignSystems &&
     !onScriptSystem &&
     !hideSidebarForCreateMap &&
-    !onKeco101;
+    !onKeco101 &&
+    !isKecoAdminPage;
   const showScriptSidebar = onScriptSystem && Boolean(currentProjectId);
   const hideChatPanel =
     hideSidebarForSimulation ||
     hideSidebarForGameDesignSystems ||
     !createMapChrome.showChatPanel ||
-    onKeco101;
+    onKeco101 ||
+    isKecoAdminPage;
   const isMcpAccountPage = pathname === '/mcp';
 
   useEffect(() => {
@@ -95,7 +99,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className={styles.dashboard}>
-      {createMapChrome.showLeftNav ? <LeftNav userId={userProfile?.id} /> : null}
+      {showLeftNav ? <LeftNav userId={userProfile?.id} /> : null}
       {showStudioSidebar ? (
         <div className={isMcpAccountPage ? styles.mcpSidebarSlot : styles.sidebarSlot}>
           <Sidebar userProfile={userProfile} onAuthRequest={signOut} />

@@ -12,12 +12,14 @@ import {
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 import { processNextGddJob, shouldWakeGddGenerationJob } from '@/lib/gdd-generation/worker';
 import { processNextGddMapArtifact } from '@/lib/gdd-generation/maps/worker';
+import { processNextGddResourceJob } from '@/lib/gdd-generation/resources/worker';
 
 export const maxDuration = 300;
 
 type Params = { params: Promise<{ projectId: string; id: string }> };
 const scheduledQueuedJobs = new Set<string>();
 const scheduledMapJobs = new Set<string>();
+const scheduledResourceJobs = new Set<string>();
 
 function scheduleQueuedJob(jobId: string): void {
   if (scheduledQueuedJobs.has(jobId)) return;
@@ -53,6 +55,24 @@ function scheduleMapJob(jobId: string): void {
   });
 }
 
+function scheduleResourceJob(jobId: string): void {
+  if (scheduledResourceJobs.has(jobId)) return;
+  scheduledResourceJobs.add(jobId);
+  after(async () => {
+    try {
+      const serviceClient = getSupabaseServiceRoleClient();
+      await Promise.all(Array.from({ length: 2 }, () => processNextGddResourceJob({
+        serviceClient,
+        workerId: `gdd-resource-poll-${randomUUID()}`,
+      })));
+    } catch (error) {
+      console.error('[GDD resource polling worker]', safeGddRouteErrorIdentity(error));
+    } finally {
+      scheduledResourceJobs.delete(jobId);
+    }
+  });
+}
+
 export const GET = withAuth(async function GET(_request, { params }: Params, { supabase, user }) {
   const { projectId, id } = await params;
   try {
@@ -67,7 +87,10 @@ export const GET = withAuth(async function GET(_request, { params }: Params, { s
     const job = await getGddGenerationJob(getSupabaseServiceRoleClient(), id);
     if (!job || job.project_id !== projectId) return NextResponse.json({ error: 'GDD generation job not found.' }, { status: 404 });
     if (shouldWakeGddGenerationJob(job)) scheduleQueuedJob(job.id);
-    if (job.status === 'waiting_for_maps') scheduleMapJob(job.id);
+    if (job.status === 'waiting_for_maps' || (job.maps ?? []).some((map) => map.status === 'queued' || map.status === 'running')) {
+      scheduleMapJob(job.id);
+    }
+    if (job.resource_mode === 'async') scheduleResourceJob(job.id);
     return NextResponse.json({ job: toPublicGddGenerationJob(job) });
   } catch (error) {
     if (isGddSchemaUnavailable(error)) {
