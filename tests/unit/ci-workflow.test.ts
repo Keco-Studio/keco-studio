@@ -156,16 +156,13 @@ describe('CI workflow gates', () => {
       'GAME_DESIGN_SYSTEM_LLM_MODEL',
       'GDD_GENERATION_LLM_MODEL',
       'CREATE_MAP_LLM_MODEL',
+      'CREATE_MAP_VISION_MODEL',
     ]) {
       expect(deployJob).toContain(name);
     }
-    const retiredModelId = ['deepseek', 'v4', 'flash'].join('-');
-    expect(deployJob).toContain(
-      `CREATE_MAP_VISION_MODEL='${retiredModelId}'`
-    );
-    expect(deployJob).toContain(
-      'sync_production_model CREATE_MAP_VISION_MODEL "$MODEL_ID"'
-    );
+    expect(deployJob).toContain('--no-sensitive');
+    expect(deployJob).not.toContain('MODEL_ENV_FILE');
+    expect(deployJob).not.toContain('vercel env pull');
 
     const syncModels = deployJob.indexOf('Sync production DeepSeek model IDs');
     const pullEnvironment = deployJob.indexOf('Pull Vercel Environment Information');

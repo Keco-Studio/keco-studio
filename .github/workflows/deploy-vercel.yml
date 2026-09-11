@@ -332,7 +332,7 @@ jobs:
             local name="$1"
             local value="$2"
             printf '%s' "$value" | \
-              vercel env add "$name" production --force --yes --token="$VERCEL_TOKEN"
+              vercel env add "$name" production --force --yes --no-sensitive --token="$VERCEL_TOKEN"
           }
 
           for name in \
@@ -340,26 +340,11 @@ jobs:
             DEEPSEEK_MODEL \
             GAME_DESIGN_SYSTEM_LLM_MODEL \
             GDD_GENERATION_LLM_MODEL \
-            CREATE_MAP_LLM_MODEL
+            CREATE_MAP_LLM_MODEL \
+            CREATE_MAP_VISION_MODEL
           do
             sync_production_model "$name" "$MODEL_ID"
           done
-
-          MODEL_ENV_DIR="$(mktemp -d)"
-          MODEL_ENV_FILE="$MODEL_ENV_DIR/production.env"
-          trap 'rm -rf "$MODEL_ENV_DIR"' EXIT
-          vercel env pull "$MODEL_ENV_FILE" \
-            --environment=production --yes --token="$VERCEL_TOKEN" >/dev/null
-
-          DEPRECATED_CREATE_MAP_VISION_MODEL='deepseek-v4-flash'
-          CURRENT_CREATE_MAP_VISION_MODEL="$(
-            sed -n 's/^CREATE_MAP_VISION_MODEL=//p' "$MODEL_ENV_FILE" | tail -n 1
-          )"
-          CURRENT_CREATE_MAP_VISION_MODEL="${CURRENT_CREATE_MAP_VISION_MODEL%\"}"
-          CURRENT_CREATE_MAP_VISION_MODEL="${CURRENT_CREATE_MAP_VISION_MODEL#\"}"
-          if [ "$CURRENT_CREATE_MAP_VISION_MODEL" = "$DEPRECATED_CREATE_MAP_VISION_MODEL" ]; then
-            sync_production_model CREATE_MAP_VISION_MODEL "$MODEL_ID"
-          fi
 
       - name: Sync MCP connection signing secret
         env:
