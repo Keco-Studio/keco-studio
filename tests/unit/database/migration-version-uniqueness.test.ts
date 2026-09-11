@@ -34,6 +34,7 @@ describe('Supabase migration history', () => {
       ['20260819140000_gdd_table_row_compatibility.sql', '094a58d01aa73f12dcec6367d17d21ded31a498f649395960d7e8e9b4b40f0b2'],
       ['20260819150000_backfill_gdd_name_cells.sql', '779fb3008da6f5603c9cef2afbe25d3a7c5f15fad3811b7b43997489e9f23b1e'],
       ['20260819160000_gdd_dialogue_generation_jobs.sql', '4b1c48f46d6e38dd956335c8f67393775cb3d3fb8a0d056e55a09f9ee95f0b63'],
+      ['20260911100000_gdd_async_resources.sql', '84b2e5630f239d1333ab268cab7956e0b204155041fc21a4a824c51091fe1509'],
     ]);
 
     const actualHistory = new Map([...productionHistory.keys()].map((fileName) => [
