@@ -154,6 +154,8 @@ describe('Create Map V3 direct workbench', () => {
 
     expect(helper.indexOf('observeBrowserFailures(page)')).toBeLessThan(helper.indexOf('page.goto(APP_ORIGIN)'));
     expect(source).toContain("errorText === 'net::ERR_ABORTED'");
+    expect(source).toContain("**/api/keco-admin/access");
+    expect(source).toContain('isAdmin: false');
   });
 
   it('invalidates persisted V3 identity when the selected Project changes', () => {
