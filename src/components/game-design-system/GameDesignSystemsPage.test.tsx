@@ -580,6 +580,46 @@ describe('GameDesignSystemsPage', () => {
     jest.useRealTimers();
   });
 
+  it('keeps polling a completed async GDD until resources and maps are terminal', async () => {
+    jest.useFakeTimers();
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
+    fetchBinding.mockResolvedValue({ ...system, current_version: version, versions: [version] });
+    startGdd.mockResolvedValue({
+      id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+      resource_mode: 'async', output_document_id: 'document-1', output_document_name: 'GDD',
+      resources: [{ id: 'resource-1', kind: 'maps', status: 'queued' }], maps: [],
+    });
+    fetchGddJob
+      .mockResolvedValueOnce({
+        id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+        resource_mode: 'async', output_document_id: 'document-1',
+        resources: [{ id: 'resource-1', kind: 'maps', status: 'completed' }],
+        maps: [{ id: 'map-1', title: '皇城地图', status: 'queued', phase: 'planning' }],
+      })
+      .mockResolvedValueOnce({
+        id: 'gdd-job-1', project_id: 'project-1', status: 'completed', phase: 'completed',
+        resource_mode: 'async', output_document_id: 'document-1',
+        resources: [{ id: 'resource-1', kind: 'maps', status: 'completed' }],
+        maps: [{ id: 'map-1', title: '皇城地图', status: 'ready', phase: 'ready' }],
+      });
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GameDesignSystemsPage /></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: 'Design document' });
+    await user.click(screen.getByRole('tab', { name: 'Projects' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate GDD + maps' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Generate GDD + maps' }));
+
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+    expect(fetchGddJob).toHaveBeenCalledTimes(1);
+    await act(async () => { jest.advanceTimersByTime(900); await Promise.resolve(); });
+    expect(fetchGddJob).toHaveBeenCalledTimes(2);
+    const callsAfterCompletion = fetchGddJob.mock.calls.length;
+    await act(async () => { jest.advanceTimersByTime(1_800); await Promise.resolve(); });
+    expect(fetchGddJob).toHaveBeenCalledTimes(callsAfterCompletion);
+    jest.useRealTimers();
+  });
+
   it('stops polling and exposes retry after a failed job', async () => {
     jest.useFakeTimers();
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => [{ id: 'project-1', name: 'Project A' }] })) as jest.Mock;
