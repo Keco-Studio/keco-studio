@@ -29,7 +29,7 @@ describe('gddGenerationService', () => {
     const rpc = jest.fn(async (_name?: string, _args?: unknown) => ({ data: [existing], error: null }));
     const from = jest.fn(() => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [], error: null }) }) }) }));
     const job = await createGddGenerationJob({ rpc, from } as never, createInput);
-    expect(job).toEqual({ ...existing, maps: [] });
+    expect(job).toEqual({ ...existing, maps: [], resources: [] });
     expect(rpc).toHaveBeenCalledWith('create_gdd_generation_job_guarded', expect.objectContaining({
       p_project_id: 'project-1',
       p_input_hash: 'a'.repeat(64),

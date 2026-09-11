@@ -16,6 +16,24 @@ export type GddJobPhase = 'collecting' | 'planning' | 'generating_core' | 'gener
 
 export type GddMapArtifactStatus = 'queued' | 'running' | 'ready' | 'failed' | 'blocked';
 export type GddMapArtifactPhase = 'planning' | 'submitting' | 'polling' | 'validating' | 'ready' | 'failed' | 'blocked';
+export type GddResourceJobKind = 'tables' | 'dialogue' | 'maps';
+export type GddResourceJobStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type GddResourceJob = {
+  id: string;
+  gdd_generation_job_id: string;
+  project_id: string;
+  document_id: string;
+  kind: GddResourceJobKind;
+  payload: Record<string, unknown>;
+  status: GddResourceJobStatus;
+  attempt_count: number;
+  max_attempts: number;
+  available_at: string;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  error: string | null;
+  completed_at: string | null;
+};
 
 export type GddMapArtifact = {
   id: string;
@@ -73,12 +91,14 @@ export type GddGenerationJob = {
   status: GddJobStatus;
   phase: GddJobPhase;
   mode: 'quick' | 'professional';
+  resource_mode: 'async' | 'inline';
   contract_version: number;
   input: GddGenerationInput | GddGenerationRequestV2;
   source_snapshots: unknown[];
   applied_rule_ids: string[];
   omitted_rule_ids: string[];
   maps: GddMapArtifact[];
+  resources?: GddResourceJob[];
   output_document_id: string | null;
   output_document_name: string | null;
   output_folder_id: string | null;
@@ -109,11 +129,12 @@ export type GddGenerationJob = {
 export type PublicGddGenerationJob = Pick<GddGenerationJob,
   | 'id' | 'project_id' | 'design_system_id' | 'version_id' | 'status' | 'phase'
   | 'mode' | 'contract_version'
+  | 'resource_mode'
   | 'attempt_count' | 'max_attempts' | 'available_at' | 'completed_at'
   | 'output_document_id' | 'output_document_name' | 'applied_rule_ids' | 'omitted_rule_ids'
   | 'output_folder_id' | 'output_table_ids' | 'output_table_names'
   | 'generation_series_id' | 'generation_revision' | 'resource_change_summary'
-> & { error: string | null; maps: PublicGddMapArtifact[] };
+> & { error: string | null; maps: PublicGddMapArtifact[]; resources: Array<Pick<GddResourceJob, 'id' | 'kind' | 'status' | 'attempt_count' | 'max_attempts' | 'available_at' | 'error' | 'completed_at'>> };
 
 export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenerationJob {
   return {
@@ -124,6 +145,7 @@ export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenera
     status: job.status,
     phase: job.phase,
     mode: job.mode,
+    resource_mode: job.resource_mode ?? 'inline',
     contract_version: job.contract_version,
     attempt_count: job.attempt_count,
     max_attempts: job.max_attempts,
@@ -141,13 +163,24 @@ export function toPublicGddGenerationJob(job: GddGenerationJob): PublicGddGenera
     generation_revision: job.generation_revision ?? null,
     resource_change_summary: job.resource_change_summary ?? { created: [], updated: [], reused: [], preserved: [] },
     maps: (job.maps ?? []).map(toPublicGddMapArtifact),
+    resources: (job.resources ?? []).map((resource) => ({
+      id: resource.id,
+      kind: resource.kind,
+      status: resource.status,
+      attempt_count: resource.attempt_count,
+      max_attempts: resource.max_attempts,
+      available_at: resource.available_at,
+      error: resource.error,
+      completed_at: resource.completed_at,
+    })),
   };
 }
 
-const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at,generation_series_id,generation_revision,resource_change_summary,blueprint,section_drafts,review_report,repair_round';
-const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,applied_rule_ids,omitted_rule_ids,error,generation_series_id,generation_revision,resource_change_summary';
+const JOB_COLUMNS = 'id,owner_id,project_id,design_system_id,version_id,status,phase,mode,contract_version,resource_mode,input,source_snapshots,applied_rule_ids,omitted_rule_ids,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,error,idempotency_key,input_hash,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,heartbeat_at,started_at,completed_at,created_at,updated_at,generation_series_id,generation_revision,resource_change_summary,blueprint,section_drafts,review_report,repair_round';
+const PUBLIC_JOB_COLUMNS = 'id,project_id,design_system_id,version_id,status,phase,mode,contract_version,resource_mode,attempt_count,max_attempts,available_at,completed_at,output_document_id,output_document_name,output_folder_id,output_table_ids,output_table_names,applied_rule_ids,omitted_rule_ids,error,generation_series_id,generation_revision,resource_change_summary';
 const LATEST_PUBLIC_JOB_COLUMNS = `${PUBLIC_JOB_COLUMNS},created_at`;
 const MAP_ARTIFACT_COLUMNS = 'id,gdd_generation_job_id,gdd_document_id,project_id,map_brief_id,title,status,phase,map_project_id,map_revision_id,map_asset_id,error,completed_at,created_at,updated_at';
+const RESOURCE_JOB_COLUMNS = 'id,gdd_generation_job_id,project_id,document_id,kind,payload,status,attempt_count,max_attempts,available_at,lease_owner,lease_expires_at,error,completed_at,created_at,updated_at';
 
 async function listGddMapArtifacts(supabase: SupabaseClient, jobId: string): Promise<GddMapArtifact[]> {
   const query = supabase.from('gdd_map_artifacts').select(MAP_ARTIFACT_COLUMNS).eq('gdd_generation_job_id', jobId) as unknown as {
@@ -166,7 +199,16 @@ async function listGddMapArtifacts(supabase: SupabaseClient, jobId: string): Pro
 }
 
 async function withMapArtifacts(supabase: SupabaseClient, job: GddGenerationJob): Promise<GddGenerationJob> {
-  return { ...job, maps: await listGddMapArtifacts(supabase, job.id) };
+  if (typeof (supabase as { from?: unknown }).from !== 'function') {
+    return { ...job, maps: job.maps ?? [], resources: job.resources ?? [] };
+  }
+  const resourcesQuery = supabase.from('gdd_resource_jobs').select(RESOURCE_JOB_COLUMNS).eq('gdd_generation_job_id', job.id);
+  const [{ data, error }, maps] = await Promise.all([
+    resourcesQuery as unknown as Promise<{ data: GddResourceJob[] | null; error: Error | null }>,
+    listGddMapArtifacts(supabase, job.id),
+  ]);
+  if (error && (error as { code?: string }).code !== 'PGRST205') throw error;
+  return { ...job, maps, resources: data ?? [] };
 }
 
 export class GddIdempotencyConflictError extends Error {
@@ -252,6 +294,114 @@ export async function getGddGenerationJob(supabase: SupabaseClient, id: string):
   const { data, error } = await supabase.from('gdd_generation_jobs').select(JOB_COLUMNS).eq('id', id).maybeSingle();
   if (error) throw error;
   return data ? withMapArtifacts(supabase, data as GddGenerationJob) : null;
+}
+
+export async function setGddGenerationResourceMode(
+  supabase: SupabaseClient,
+  jobId: string,
+  resourceMode: 'async' | 'inline',
+): Promise<void> {
+  const { error } = await supabase.from('gdd_generation_jobs')
+    .update({ resource_mode: resourceMode })
+    .eq('id', jobId);
+  if (error) throw error;
+}
+
+export async function enqueueGddMapArtifacts(
+  serviceClient: SupabaseClient,
+  jobId: string,
+  mapArtifacts: Array<{
+    id: string;
+    mapBriefId: string;
+    title: string;
+    mapBrief: unknown;
+    styleContract: unknown;
+    inputHash: string;
+  }>,
+): Promise<number> {
+  const { data, error } = await serviceClient.rpc('enqueue_gdd_map_artifacts', {
+    p_job_id: jobId,
+    p_map_artifacts: mapArtifacts,
+  });
+  if (error) throw error;
+  return typeof data === 'number' ? data : Number(data ?? 0);
+}
+
+export async function enqueueGddResourceJobs(
+  serviceClient: SupabaseClient,
+  input: {
+    jobId: string;
+    projectId: string;
+    documentId: string;
+    resources: Array<{ kind: 'tables' | 'dialogue' | 'maps'; payload: Record<string, unknown> }>;
+  },
+): Promise<void> {
+  if (input.resources.length === 0 || typeof (serviceClient as { from?: unknown }).from !== 'function') return;
+  const rows = input.resources.map((resource) => ({
+    gdd_generation_job_id: input.jobId,
+    project_id: input.projectId,
+    document_id: input.documentId,
+    kind: resource.kind,
+    payload: resource.payload,
+  }));
+  const { error } = await serviceClient.from('gdd_resource_jobs').upsert(rows, {
+    onConflict: 'gdd_generation_job_id,kind',
+    ignoreDuplicates: true,
+  });
+  if (error) throw error;
+}
+
+export async function claimGddResourceJob(serviceClient: SupabaseClient, workerId: string): Promise<GddResourceJob | null> {
+  const { data, error } = await serviceClient.rpc('claim_gdd_resource_job', { p_worker_id: workerId, p_lease_seconds: 300 });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row as GddResourceJob | undefined) ?? null;
+}
+
+export async function finishGddResourceJob(
+  serviceClient: SupabaseClient,
+  input: { jobId: string; workerId: string; status: 'completed' | 'failed'; error?: string | null },
+): Promise<GddResourceJobStatus | null> {
+  const { data, error } = await serviceClient.rpc('finish_gdd_resource_job', {
+    p_job_id: input.jobId, p_worker_id: input.workerId, p_status: input.status, p_error: input.error ?? null,
+  });
+  if (error) throw error;
+  return typeof data === 'string' ? data as GddResourceJobStatus : null;
+}
+
+export async function retryGddResourceJob(
+  serviceClient: SupabaseClient,
+  input: { jobId: string; workerId: string; error: string; delaySeconds: number },
+): Promise<GddResourceJobStatus | null> {
+  const { data, error } = await serviceClient.rpc('retry_gdd_resource_job', {
+    p_job_id: input.jobId, p_worker_id: input.workerId, p_error: input.error.slice(0, 1000), p_delay_seconds: input.delaySeconds,
+  });
+  if (error) throw error;
+  return typeof data === 'string' ? data as GddResourceJobStatus : null;
+}
+
+export async function materializeGddResourcePayload(
+  serviceClient: SupabaseClient,
+  input: { jobId: string; documentId: string; workerId: string; metadata: Record<string, unknown>; tableResources: unknown[]; dialogueResources: unknown[] },
+): Promise<void> {
+  const { data: document, error: documentError } = await serviceClient.from('documents')
+    .select('content,yjs_state')
+    .eq('id', input.documentId)
+    .maybeSingle();
+  if (documentError) throw documentError;
+  if (!document || typeof document.content !== 'string' || typeof document.yjs_state !== 'string') {
+    throw new Error('GDD output document is missing its persisted snapshot.');
+  }
+  const { error } = await serviceClient.rpc('materialize_gdd_resource_payload', {
+    p_job_id: input.jobId,
+    p_worker_id: input.workerId,
+    p_markdown: document.content,
+    p_yjs_state: document.yjs_state,
+    p_metadata: input.metadata,
+    p_table_resources: input.tableResources,
+    p_dialogue_resources: input.dialogueResources,
+  });
+  if (error) throw error;
 }
 
 export async function getPublicGddGenerationJob(
