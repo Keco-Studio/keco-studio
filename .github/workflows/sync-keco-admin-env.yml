@@ -1,0 +1,50 @@
+name: Sync Keco Admin Env
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-keco-admin-env
+  cancel-in-progress: false
+
+jobs:
+  sync-and-redeploy:
+    if: github.repository == 'Keco-Studio/keco-studio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      KECO_ADMIN_USER_ID: ${{ secrets.KECO_ADMIN_USER_ID }}
+
+    steps:
+      - name: Install Vercel CLI
+        run: npm install --global vercel@59.10.0
+
+      - name: Sync KECO_ADMIN_USER_ID to production
+        run: |
+          if [ -z "$KECO_ADMIN_USER_ID" ]; then
+            echo "::error::KECO_ADMIN_USER_ID GitHub secret is required"
+            exit 1
+          fi
+          printf '%s' "$KECO_ADMIN_USER_ID" | \
+            vercel env add KECO_ADMIN_USER_ID production --force --yes --token="$VERCEL_TOKEN"
+
+      - name: Redeploy production so the new env is live
+        run: |
+          DEPLOYMENT_URL=$(vercel ls keco-studio-main --prod --token="$VERCEL_TOKEN" 2>/dev/null | awk 'NR==2 {print $2; exit}')
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            DEPLOYMENT_URL=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v6/deployments?projectId=${VERCEL_PROJECT_ID}&target=production&limit=1" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('deployments') or [{}])[0].get('url',''))")
+          fi
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            echo "::error::Unable to resolve the current production deployment"
+            exit 1
+          fi
+          echo "Redeploying https://${DEPLOYMENT_URL#https://}"
+          vercel redeploy "${DEPLOYMENT_URL#https://}" --target production --token="$VERCEL_TOKEN" --yes
