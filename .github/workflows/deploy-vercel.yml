@@ -476,6 +476,26 @@ jobs:
             echo "::warning::NEXT_PUBLIC_SITE_URL is unset; Stripe success/cancel redirects may use the request origin"
           fi
 
+      - name: Sync Keco Admin user id
+        env:
+          KECO_ADMIN_USER_ID: ${{ secrets.KECO_ADMIN_USER_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          TARGET_ENV="${{ steps.env.outputs.environment }}"
+          if [ -z "$KECO_ADMIN_USER_ID" ]; then
+            echo "::warning::KECO_ADMIN_USER_ID GitHub secret is unset; Keco Admin stays hidden"
+            exit 0
+          fi
+          if [ "$TARGET_ENV" = "preview" ]; then
+            printf '%s' "$KECO_ADMIN_USER_ID" | \
+              vercel env add KECO_ADMIN_USER_ID preview "" --force --yes --token="$VERCEL_TOKEN"
+          else
+            printf '%s' "$KECO_ADMIN_USER_ID" | \
+              vercel env add KECO_ADMIN_USER_ID "$TARGET_ENV" --force --yes --token="$VERCEL_TOKEN"
+          fi
+
       # Pull Vercel environment variables based on deployment environment
       # This will automatically use the correct Supabase config (Production or Preview)
       # from Vercel Dashboard based on the environment determined above
