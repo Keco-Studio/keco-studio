@@ -47,4 +47,4 @@ jobs:
             exit 1
           fi
           echo "Redeploying https://${DEPLOYMENT_URL#https://}"
-          vercel redeploy "${DEPLOYMENT_URL#https://}" --target production --token="$VERCEL_TOKEN" --yes
+          vercel redeploy "${DEPLOYMENT_URL#https://}" --target production --token="$VERCEL_TOKEN"
