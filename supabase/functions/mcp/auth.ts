@@ -6,6 +6,7 @@ export type ProjectAuthContext = {
   projectId: string;
   role: ProjectRole;
   clientId: string | null;
+  sessionId?: string | null;
   bearerToken: string;
 };
 export type AccountAuthContext = {
@@ -207,6 +208,7 @@ export async function authorizeProjectWithGateway(
     const user = await gateway.getUser(token);
     if (!user) return { status: "unauthenticated" };
     const clientId = user.clientId ?? null;
+    const sessionId = user.sessionId ?? null;
     if (!clientId) return { status: "forbidden" };
     const resource = canonicalProjectResource(
       request.url,
@@ -233,6 +235,7 @@ export async function authorizeProjectWithGateway(
           projectId,
           role,
           clientId,
+          ...(sessionId ? { sessionId } : {}),
           bearerToken: token,
         },
       }
@@ -259,7 +262,10 @@ export async function authorizeAccountWithGateway(
     const clientId = claims.clientId;
     const sessionId = claims.sessionId;
     if (!clientId || !sessionId) return { status: "forbidden" };
-    const resource = canonicalAccountResource(request.url, claims.resourceOrigin);
+    const resource = canonicalAccountResource(
+      request.url,
+      claims.resourceOrigin,
+    );
     if (!resource) return { status: "forbidden" };
     if (!gateway.hasOAuthServiceGrant) {
       return { status: "operational_error" };

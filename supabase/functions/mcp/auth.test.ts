@@ -17,11 +17,14 @@ const absentProjectAccess = {
 };
 
 function oauthToken(claims: Record<string, unknown>): string {
-  const base64Url = (value: string) => btoa(value)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
-  return `${base64Url(JSON.stringify({ alg: "none" }))}.${base64Url(JSON.stringify(claims))}.signature`;
+  const base64Url = (value: string) =>
+    btoa(value)
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+  return `${base64Url(JSON.stringify({ alg: "none" }))}.${
+    base64Url(JSON.stringify(claims))
+  }.signature`;
 }
 
 const accountSessionId = "22222222-2222-4222-8222-222222222222";
@@ -152,14 +155,18 @@ Deno.test("authorization returns current role for a valid project member", async
   });
 });
 
-Deno.test("authorization retains a verified OAuth client identifier", async () => {
+Deno.test("authorization retains verified OAuth client and session identifiers", async () => {
   const result = await authorizeProjectWithGateway(
     new Request(canonicalProjectResource, {
       headers: { authorization: "Bearer token" },
     }),
     projectId,
     {
-      getUser: async () => ({ id: "user-1", clientId: "oauth-client" }),
+      getUser: async () => ({
+        id: "user-1",
+        clientId: "oauth-client",
+        sessionId: accountSessionId,
+      }),
       ...allowGrant,
       getProjectOwner: async () => "user-1",
       getCollaboratorRole: async () => null,
@@ -167,6 +174,7 @@ Deno.test("authorization retains a verified OAuth client identifier", async () =
   );
   if (result.status !== "authorized") throw new Error("expected authorization");
   assertEquals(result.context.clientId, "oauth-client");
+  assertEquals(result.context.sessionId, accountSessionId);
 });
 
 Deno.test("authorization reports identity backend failures as operational errors", async () => {
@@ -399,12 +407,14 @@ Deno.test("canonical account resource accepts only exact public and gateway root
     canonicalAccountResource("https://x/mcp", "https://project.supabase.co"),
     accountResource,
   );
-  for (const url of [
-    "https://x/functions/v1/mcp/extra",
-    "https://x/functions/v1/mcp?replay=1",
-    "https://user:password@x/mcp",
-    "https://x/mcp#fragment",
-  ]) {
+  for (
+    const url of [
+      "https://x/functions/v1/mcp/extra",
+      "https://x/functions/v1/mcp?replay=1",
+      "https://user:password@x/mcp",
+      "https://x/mcp#fragment",
+    ]
+  ) {
     assertEquals(canonicalAccountResource(url), null);
   }
 });
@@ -424,7 +434,10 @@ Deno.test("canonical resources reject serialized empty query and fragment delimi
       null,
     );
     assertEquals(
-      canonicalProjectMcpResource(`https://x/mcp/${projectId}${suffix}`, projectId),
+      canonicalProjectMcpResource(
+        `https://x/mcp/${projectId}${suffix}`,
+        projectId,
+      ),
       null,
     );
   }
@@ -437,7 +450,8 @@ Deno.test("account authorization requires a verified OAuth client, session, and 
       headers: { authorization: `Bearer ${accountToken}` },
     }),
     {
-      getUser: async (token) => token === accountToken ? { id: "user-1" } : null,
+      getUser: async (token) =>
+        token === accountToken ? { id: "user-1" } : null,
       hasOAuthServiceGrant: async (clientId, resource, token) => {
         checked.push([clientId, resource, token]);
         return true;
@@ -463,11 +477,13 @@ Deno.test("account authorization fails closed before the grant lookup for missin
     client_id: "oauth-client",
     iss: "https://project.supabase.co/auth/v1",
   });
-  for (const [url, token] of [
-    ["https://x/mcp", missingSession],
-    [`${accountResource}?replay=1`, accountToken],
-    ["https://project.supabase.co/functions/v1/mcp/extra", accountToken],
-  ]) {
+  for (
+    const [url, token] of [
+      ["https://x/mcp", missingSession],
+      [`${accountResource}?replay=1`, accountToken],
+      ["https://project.supabase.co/functions/v1/mcp/extra", accountToken],
+    ]
+  ) {
     let grantLookups = 0;
     const result = await authorizeAccountWithGateway(
       new Request(url, { headers: { authorization: `Bearer ${token}` } }),

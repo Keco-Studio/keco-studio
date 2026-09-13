@@ -22,6 +22,7 @@ export type ProjectMcpRequestContext = Readonly<{
   projectId: string;
   role: ProjectRole;
   clientId: string | null;
+  sessionId?: string | null;
   bearerToken: string;
   supabase: SupabaseClient;
 }>;
@@ -66,6 +67,7 @@ export function createMcpRequestContext(
       projectId: authContext.projectId,
       role: authContext.role,
       clientId: authContext.clientId,
+      sessionId: authContext.sessionId ?? null,
     }
     : {
       mode: "account",
