@@ -8,7 +8,9 @@ import { useQuery } from '@tanstack/react-query';
 import { PanelHeader } from '@/components/shared/PanelHeader';
 import {
   ASSET_GRID_SIZES,
+  DEFAULT_ASSET_GRID_SIZE_INDEX,
   getAdminAssetTargetRowHeight,
+  isAssetGridListMode,
   nextAssetGridSize,
   type AssetGridSizeIndex,
 } from '@/components/libraries/utils/assetGridPresentation';
@@ -47,8 +49,8 @@ function isAudio(asset: ProjectGameAsset): boolean {
 
 const FALLBACK_ASPECT = 4 / 3;
 const COL_GAP = 14;
-const DEFAULT_ASSET_GRID_SIZE_INDEX = 2;
 const ZOOM_GESTURE_INTERVAL_MS = 120;
+const COMPACT_THUMBNAIL_SIZE = 56;
 
 type SizedAsset = {
   asset: ProjectGameAsset;
@@ -75,8 +77,17 @@ function buildJustifiedRows(
   containerWidth: number,
   targetRowHeight = getAdminAssetTargetRowHeight(DEFAULT_ASSET_GRID_SIZE_INDEX),
   gap = COL_GAP,
+  listMode = false,
 ): JustifiedItem[][] {
   if (containerWidth <= 0 || items.length === 0) return [];
+
+  if (listMode) {
+    return items.map((item) => [{
+      ...item,
+      width: containerWidth,
+      height: COMPACT_THUMBNAIL_SIZE,
+    }]);
+  }
 
   const rows: JustifiedItem[][] = [];
   let current: SizedAsset[] = [];
@@ -127,6 +138,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   );
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const listMode = isAssetGridListMode(assetSizeIndex);
   const targetRowHeight = getAdminAssetTargetRowHeight(assetSizeIndex);
 
   const assetsQuery = useQuery<ApiResponse>({
@@ -159,8 +171,8 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
   }, []);
 
   const rows = useMemo(
-    () => buildJustifiedRows(sized, containerWidth, targetRowHeight),
-    [sized, containerWidth, targetRowHeight],
+    () => buildJustifiedRows(sized, containerWidth, targetRowHeight, COL_GAP, listMode),
+    [sized, containerWidth, listMode, targetRowHeight],
   );
 
   useEffect(() => {
@@ -307,9 +319,14 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
               <span>Generated materials will appear here as soon as they are available.</span>
             </div>
           ) : null}
-          <div className={styles.grid} ref={gridRef} data-testid="game-assets-grid">
+          <div
+            className={`${styles.grid} ${listMode ? styles.gridList : ''}`}
+            ref={gridRef}
+            data-testid="game-assets-grid"
+            data-asset-layout={listMode ? 'list' : 'grid'}
+          >
             {rows.map((row, rowIndex) => (
-              <div className={styles.row} key={`row-${rowIndex}`}>
+              <div className={styles.row} key={`row-${rowIndex}`} data-asset-row>
                 {row.map((item) => (
                   <AssetCard
                     key={item.asset.id}
@@ -317,6 +334,7 @@ export function GameAssetsPage({ projectId }: { projectId: string }) {
                     selected={selected?.id === item.asset.id}
                     onSelect={() => setSelected(item.asset)}
                     onMeasuredAspect={handleMeasuredAspect}
+                    listMode={listMode}
                   />
                 ))}
               </div>
@@ -368,21 +386,29 @@ function AssetCard({
   selected,
   onSelect,
   onMeasuredAspect,
+  listMode,
 }: {
   item: JustifiedItem;
   selected: boolean;
   onSelect: () => void;
   onMeasuredAspect: (assetId: string, aspect: number) => void;
+  listMode: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`${styles.card} ${selected ? styles.cardSelected : ''}`}
+      className={`${styles.card} ${listMode ? styles.listCard : ''} ${selected ? styles.cardSelected : ''}`}
       onClick={onSelect}
       style={{ width: item.width, flex: `0 0 ${item.width}px` }}
       aria-pressed={selected}
+      data-asset-card
     >
-      <div className={styles.thumbnail} style={{ width: item.width, height: item.height }}>
+      <div
+        className={styles.thumbnail}
+        style={listMode
+          ? { width: COMPACT_THUMBNAIL_SIZE, height: COMPACT_THUMBNAIL_SIZE }
+          : { width: item.width, height: item.height }}
+      >
         {item.previewSrc && isImage(item.asset) ? (
           // User-uploaded object URLs are not covered by a trusted Next Image remote pattern.
           // eslint-disable-next-line @next/next/no-img-element
