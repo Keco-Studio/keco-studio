@@ -92,6 +92,10 @@
   min-width: 0;
 }
 
+.gridList .row {
+  gap: 8px;
+}
+
 .card {
   border: 0;
   background: transparent;
@@ -101,6 +105,21 @@
   overflow: visible;
   padding: 0;
   transition: opacity 0.15s;
+}
+
+.listCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 68px;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.listCard:hover {
+  background: #f8fafc;
 }
 
 .card:hover {
@@ -130,6 +149,10 @@
   object-fit: cover;
 }
 
+.listCard .thumbnail img {
+  object-fit: contain;
+}
+
 .thumbnailFallback {
   font-size: 28px;
 }
@@ -137,6 +160,11 @@
 .cardBody {
   min-width: 0;
   padding: 8px 2px 0;
+}
+
+.listCard .cardBody {
+  flex: 1;
+  padding: 0;
 }
 
 .cardTitle {

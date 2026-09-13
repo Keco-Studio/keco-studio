@@ -10,6 +10,10 @@ const source = readFileSync(
 describe('admin assets gallery zoom wiring', () => {
   it('intercepts modified wheel events and exposes bounded size controls', () => {
     expect(source).toContain('nextAssetGridSize');
+    expect(source).toContain('DEFAULT_ASSET_GRID_SIZE_INDEX');
+    expect(source).toContain('isAssetGridListMode');
+    expect(source).toContain('data-asset-layout={listMode ? \'list\' : \'grid\'}');
+    expect(source).toContain('listMode={listMode}');
     expect(source).toContain("element.addEventListener('wheel', handleWheel, { passive: false })");
     expect(source).toContain('event.preventDefault()');
     expect(source).toContain('data-testid="game-assets-grid"');

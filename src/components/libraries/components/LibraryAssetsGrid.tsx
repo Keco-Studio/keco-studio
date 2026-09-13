@@ -7,10 +7,12 @@ import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import {
   ASSET_GRID_SIZES,
+  DEFAULT_ASSET_GRID_SIZE_INDEX,
   getAssetGridMetadata,
   getAssetGridPreviewUrl,
   getVisibleAssetIndexRange,
   getVisibleAssetFocusIndex,
+  isAssetGridListMode,
   nextAssetGridSize,
   type AssetGridSizeIndex,
 } from '@/components/libraries/utils/assetGridPresentation';
@@ -52,12 +54,16 @@ export function LibraryAssetsGrid({
   const [containerWidth, setContainerWidth] = useState(0);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [failedPreviewKeys, setFailedPreviewKeys] = useState<Set<string>>(new Set());
-  const size = ASSET_GRID_SIZES[sizeIndex] ?? ASSET_GRID_SIZES[2];
-  const cardHeight = size.tileWidth + 48 + size.metadataLimit * 20;
-  const columnCount = Math.max(
-    1,
-    Math.floor((containerWidth - GRID_PADDING * 2 + GRID_GAP) / (size.tileWidth + GRID_GAP)),
-  );
+  const size = ASSET_GRID_SIZES[sizeIndex] ?? ASSET_GRID_SIZES[DEFAULT_ASSET_GRID_SIZE_INDEX];
+  const listMode = isAssetGridListMode(sizeIndex);
+  const cardHeight = listMode ? 68 : size.tileWidth + 48 + size.metadataLimit * 20;
+  const columnCount = listMode
+    ? 1
+    : Math.max(
+      1,
+      Math.floor((containerWidth - GRID_PADDING * 2 + GRID_GAP) / (size.tileWidth + GRID_GAP)),
+    );
+  const rowWidth = Math.max(containerWidth - GRID_PADDING * 2, size.tileWidth);
   const rowCount = Math.ceil(rows.length / columnCount);
 
   useEffect(() => {
@@ -165,6 +171,7 @@ export function LibraryAssetsGrid({
         ref={scrollRef}
         className={styles.scroller}
         data-testid="library-assets-grid"
+        data-asset-layout={listMode ? 'list' : 'grid'}
         role="grid"
         aria-label="Assets"
         aria-rowcount={rowCount}
@@ -193,7 +200,10 @@ export function LibraryAssetsGrid({
                   aria-rowindex={virtualRow.index + 1}
                   className={styles.virtualRow}
                   style={{
-                    gridTemplateColumns: `repeat(${columnCount}, ${size.tileWidth}px)`,
+                    gridTemplateColumns: listMode
+                      ? `${rowWidth}px`
+                      : `repeat(${columnCount}, ${size.tileWidth}px)`,
+                    width: listMode ? rowWidth : undefined,
                     minHeight: cardHeight,
                     transform: `translateY(${virtualRow.start + GRID_PADDING}px)`,
                   }}
@@ -222,8 +232,8 @@ export function LibraryAssetsGrid({
                         aria-rowindex={virtualRow.index + 1}
                         aria-colindex={columnIndex + 1}
                         tabIndex={assetIndex === visibleFocusedIndex ? 0 : -1}
-                        className={`${styles.card} ${selected ? styles.cardSelected : ''}`}
-                        style={{ width: size.tileWidth, minHeight: cardHeight }}
+                        className={`${styles.card} ${listMode ? styles.listCard : ''} ${selected ? styles.cardSelected : ''}`}
+                        style={{ width: listMode ? rowWidth : size.tileWidth, minHeight: cardHeight }}
                         onClick={(event) => {
                           setFocusedIndex(assetIndex);
                           selectAsset(row.id, event);

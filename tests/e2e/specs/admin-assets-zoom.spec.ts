@@ -71,6 +71,19 @@ test.describe('Admin assets gallery zoom', () => {
     await page.getByRole('button', { name: 'Decrease asset size' }).click();
     await expect(page.getByText('125%', { exact: true })).toBeVisible();
 
+    for (let step = 0; step < 6; step += 1) {
+      await page.getByRole('button', { name: 'Decrease asset size' }).click();
+    }
+    await expect(page.getByText('10%', { exact: true })).toBeVisible();
+    await expect(grid).toHaveAttribute('data-asset-layout', 'list');
+    const compactRows = grid.locator('[data-asset-layout="list"] [data-asset-row]');
+    await expect(compactRows).toHaveCount(8);
+    await expect(compactRows.first().locator('[data-asset-card]')).toHaveCount(1);
+    await expect(grid.locator('[data-asset-card]').first().locator(':scope > div').first()).toHaveCSS(
+      'width',
+      '56px',
+    );
+
     await page.getByRole('button', { name: 'Gallery asset 1' }).click();
     await expect(page.getByRole('dialog', { name: 'Asset detail' })).toBeVisible();
   });

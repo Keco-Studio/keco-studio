@@ -2,11 +2,13 @@ import { describe, expect, it } from '@jest/globals';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import {
   ASSET_GRID_SIZES,
+  DEFAULT_ASSET_GRID_SIZE_INDEX,
   getAssetGridMetadata,
   getAssetGridPreviewUrl,
   getAdminAssetTargetRowHeight,
   getVisibleAssetIndexRange,
   getVisibleAssetFocusIndex,
+  isAssetGridListMode,
   nextAssetGridSize,
 } from '@/components/libraries/utils/assetGridPresentation';
 
@@ -22,15 +24,31 @@ function makeRow(propertyValues: Record<string, unknown>): AssetRow {
 }
 
 describe('asset grid presentation', () => {
+  it('keeps 100% as the default and exposes a 10% compact lower bound', () => {
+    expect(ASSET_GRID_SIZES[DEFAULT_ASSET_GRID_SIZE_INDEX]?.label).toBe('100%');
+    expect(ASSET_GRID_SIZES[0]?.label).toBe('10%');
+    expect(isAssetGridListMode(0)).toBe(true);
+    expect(isAssetGridListMode(DEFAULT_ASSET_GRID_SIZE_INDEX)).toBe(false);
+    expect(nextAssetGridSize(0, 100)).toBe(0);
+  });
+
   it('maps shared size levels to admin gallery row heights', () => {
-    expect(getAdminAssetTargetRowHeight(0)).toBeLessThan(getAdminAssetTargetRowHeight(2));
-    expect(getAdminAssetTargetRowHeight(2)).toBe(168);
-    expect(getAdminAssetTargetRowHeight(4)).toBeGreaterThan(getAdminAssetTargetRowHeight(2));
+    expect(getAdminAssetTargetRowHeight(1)).toBeLessThan(
+      getAdminAssetTargetRowHeight(DEFAULT_ASSET_GRID_SIZE_INDEX),
+    );
+    expect(getAdminAssetTargetRowHeight(DEFAULT_ASSET_GRID_SIZE_INDEX)).toBe(168);
+    expect(getAdminAssetTargetRowHeight(ASSET_GRID_SIZES.length - 1)).toBeGreaterThan(
+      getAdminAssetTargetRowHeight(DEFAULT_ASSET_GRID_SIZE_INDEX),
+    );
   });
 
   it('enlarges and shrinks tiles within fixed bounds', () => {
-    expect(nextAssetGridSize(2, -100)).toBe(3);
-    expect(nextAssetGridSize(2, 100)).toBe(1);
+    expect(nextAssetGridSize(DEFAULT_ASSET_GRID_SIZE_INDEX, -100)).toBe(
+      DEFAULT_ASSET_GRID_SIZE_INDEX + 1,
+    );
+    expect(nextAssetGridSize(DEFAULT_ASSET_GRID_SIZE_INDEX, 100)).toBe(
+      DEFAULT_ASSET_GRID_SIZE_INDEX - 1,
+    );
     expect(nextAssetGridSize(ASSET_GRID_SIZES.length - 1, -100)).toBe(
       ASSET_GRID_SIZES.length - 1,
     );
@@ -38,7 +56,9 @@ describe('asset grid presentation', () => {
   });
 
   it('ignores wheel events without a vertical direction', () => {
-    expect(nextAssetGridSize(2, 0)).toBe(2);
+    expect(nextAssetGridSize(DEFAULT_ASSET_GRID_SIZE_INDEX, 0)).toBe(
+      DEFAULT_ASSET_GRID_SIZE_INDEX,
+    );
   });
 
   it('moves a virtualized focus target into the visible asset range', () => {

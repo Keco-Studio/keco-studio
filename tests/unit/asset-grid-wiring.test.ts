@@ -10,6 +10,10 @@ describe('asset explorer grid wiring', () => {
 
     expect(source).toContain('useVirtualizer');
     expect(source).toContain('nextAssetGridSize');
+    expect(source).toContain('DEFAULT_ASSET_GRID_SIZE_INDEX');
+    expect(source).toContain('isAssetGridListMode');
+    expect(source).toContain("data-asset-layout={listMode ? 'list' : 'grid'}");
+    expect(source).toContain('styles.listCard');
     expect(source).toContain("@/assets/images/AssetTableIcon.svg");
     expect(source).toContain('data-testid="library-assets-grid"');
     expect(source).not.toContain('rows.map((row');
