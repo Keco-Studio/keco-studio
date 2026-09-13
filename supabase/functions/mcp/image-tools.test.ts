@@ -5,6 +5,8 @@ import { handleProtocolRequest } from "./server.ts";
 
 const USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+const CLIENT_ID = "55555555-5555-4555-8555-555555555555";
+const SESSION_ID = "66666666-6666-4666-8666-666666666666";
 const UPLOAD_PATH =
   `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-hero.png`;
 
@@ -33,9 +35,14 @@ function imageContext(
     registrationErrorCode?: string;
     reused?: boolean | ((registrationCount: number) => boolean);
     mutateRegistrationRow?: (row: Record<string, unknown>) => void;
+    assetUploadAutoExecute?: boolean | null;
+    withoutOAuthSession?: boolean;
   } = {},
 ): ProjectMcpRequestContext {
   let registrationCount = 0;
+  let assetUploadAutoExecute = options.assetUploadAutoExecute === undefined
+    ? true
+    : options.assetUploadAutoExecute;
   const bucket = {
     async createSignedUploadUrl(...args: unknown[]) {
       storageCalls.push({ name: "createSignedUploadUrl", arguments: args });
@@ -86,7 +93,8 @@ function imageContext(
     userId: USER_ID,
     projectId: PROJECT_ID,
     role: "editor",
-    clientId: null,
+    clientId: options.withoutOAuthSession ? null : CLIENT_ID,
+    ...(options.withoutOAuthSession ? {} : { sessionId: SESSION_ID }),
     bearerToken: "test-token",
     supabase: {
       storage: {
@@ -96,6 +104,14 @@ function imageContext(
         },
       },
       async rpc(name: string, ...arguments_: unknown[]) {
+        if (name === "mcp_get_asset_upload_auto_execute") {
+          return { data: assetUploadAutoExecute, error: null };
+        }
+        if (name === "mcp_set_asset_upload_auto_execute") {
+          const parameters = arguments_[0] as Record<string, unknown>;
+          assetUploadAutoExecute = parameters.p_enabled as boolean;
+          return { data: true, error: null };
+        }
         if (name === "mcp_begin_operation") {
           return {
             data: [{
@@ -302,10 +318,134 @@ Deno.test("prepare_project_asset_uploads normalizes supported MIME aliases", asy
     ["image/jpeg", "audio/mp4"],
   );
   assertEquals(
-    calls.filter((call) => call.name === "from").map((call) => call.arguments[0]),
+    calls.filter((call) => call.name === "from").map((call) =>
+      call.arguments[0]
+    ),
     ["project-assets", "project-assets"],
   );
   assertEquals(calls.some((call) => call.name === "getPublicUrl"), false);
+});
+
+Deno.test("prepare_project_asset_uploads asks before the first session upload", async () => {
+  const calls: StorageCall[] = [];
+  const message = await callTool(
+    imageContext(calls, undefined, pngBytes(), {
+      assetUploadAutoExecute: null,
+    }),
+    "prepare_project_asset_uploads",
+    { files: [{ fileName: "hero.png", fileType: "image/png", fileSize: 68 }] },
+  );
+
+  assertEquals(message.result?.isError, true);
+  assertMatch(
+    JSON.stringify(message.result),
+    /ASSET_UPLOAD_CONFIRMATION_REQUIRED/,
+  );
+  assertEquals(
+    calls.some((call) => call.name === "createSignedUploadUrl"),
+    false,
+  );
+});
+
+Deno.test("assetUploadAutoExecute true is session-scoped and skips later completion confirmation", async () => {
+  const calls: StorageCall[] = [];
+  const context = imageContext(calls, undefined, pngBytes(), {
+    assetUploadAutoExecute: null,
+  });
+  const prepared = await callTool(context, "prepare_project_asset_uploads", {
+    assetUploadAutoExecute: true,
+    files: [{ fileName: "hero.png", fileType: "image/png", fileSize: 68 }],
+  });
+  assertEquals(prepared.result?.isError, undefined);
+  const path = (prepared.result?.structuredContent as {
+    items: Array<{ image: { path: string } }>;
+  }).items[0].image.path;
+
+  const completed = await callTool(
+    context,
+    "complete_project_game_asset_uploads",
+    {
+      items: [{ path }],
+    },
+  );
+  assertEquals(completed.result?.isError, undefined);
+  assertEquals(
+    (completed.result?.structuredContent as { completedCount: number })
+      .completedCount,
+    1,
+  );
+});
+
+Deno.test("disabled or unavailable authorization requires one-batch confirmation", async () => {
+  const calls: StorageCall[] = [];
+  const context = imageContext(calls, undefined, pngBytes(), {
+    assetUploadAutoExecute: null,
+  });
+  const prepared = await callTool(context, "prepare_project_asset_uploads", {
+    assetUploadAutoExecute: false,
+    files: [{ fileName: "hero.png", fileType: "image/png", fileSize: 68 }],
+  });
+  const path = (prepared.result?.structuredContent as {
+    items: Array<{ image: { path: string } }>;
+  }).items[0].image.path;
+
+  const blocked = await callTool(
+    context,
+    "complete_project_game_asset_uploads",
+    {
+      items: [{ path }],
+    },
+  );
+  assertEquals(blocked.result?.isError, true);
+  assertMatch(
+    JSON.stringify(blocked.result),
+    /ASSET_UPLOAD_CONFIRMATION_REQUIRED/,
+  );
+
+  const completed = await callTool(
+    context,
+    "complete_project_game_asset_uploads",
+    {
+      confirmUpload: true,
+      items: [{ path }],
+    },
+  );
+  assertEquals(completed.result?.isError, undefined);
+
+  const blockedAgain = await callTool(
+    context,
+    "complete_project_game_asset_uploads",
+    { items: [{ path }] },
+  );
+  assertEquals(blockedAgain.result?.isError, true);
+  assertMatch(JSON.stringify(blockedAgain.result), /confirmUpload set to true/);
+});
+
+Deno.test("contexts without an OAuth session cannot enable automatic asset uploads", async () => {
+  const calls: StorageCall[] = [];
+  const context = imageContext(calls, undefined, pngBytes(), {
+    withoutOAuthSession: true,
+  });
+  const prepared = await callTool(context, "prepare_project_asset_uploads", {
+    assetUploadAutoExecute: true,
+    files: [{ fileName: "hero.png", fileType: "image/png", fileSize: 68 }],
+  });
+  assertEquals(prepared.result?.isError, undefined);
+  const structured = prepared.result?.structuredContent as {
+    assetUploadAutoExecute: boolean;
+    completionConfirmationRequired: boolean;
+    items: Array<{ image: { path: string } }>;
+  };
+  assertEquals(structured.assetUploadAutoExecute, false);
+  assertEquals(structured.completionConfirmationRequired, true);
+
+  const completed = await callTool(
+    context,
+    "complete_project_game_asset_uploads",
+    { items: [{ path: structured.items[0].image.path }] },
+  );
+  assertEquals(completed.result?.isError, true);
+  assertMatch(JSON.stringify(completed.result), /confirmUpload set to true/);
 });
 
 Deno.test("complete_image_upload rejects active SVG content and removes it", async () => {
@@ -585,7 +725,7 @@ Deno.test("completion path errors explain image.path provenance", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("image preparation rejects non-printable-ASCII file names", async () => {
+Deno.test("legacy image preparation preserves Unicode file names", async () => {
   for (
     const [tool, arguments_] of [
       ["create_image_upload", {
@@ -605,12 +745,16 @@ Deno.test("image preparation rejects non-printable-ASCII file names", async () =
     const calls: StorageCall[] = [];
     const message = await callTool(imageContext(calls), tool, arguments_);
 
-    assertEquals(message.result?.isError, true);
-    assertEquals(calls.length, 0);
+    assertEquals(message.result?.isError, undefined);
+    assertMatch(JSON.stringify(message.result), /~h[0-9a-f]+/i);
+    assertEquals(
+      calls.some((call) => call.name === "createSignedUploadUrl"),
+      true,
+    );
   }
 });
 
-Deno.test("completion rejects a prepared path that decodes to a Unicode file name", async () => {
+Deno.test("project asset completion accepts a legacy Unicode image path", async () => {
   const calls: StorageCall[] = [];
   const encodedName = Array.from(
     new TextEncoder().encode("\u82f9\u679c.png"),
@@ -624,8 +768,11 @@ Deno.test("completion rejects a prepared path that decodes to a Unicode file nam
   );
 
   assertEquals(message.result?.isError, undefined);
-  assertMatch(JSON.stringify(message.result), /FIELD_VALIDATION_FAILED/);
-  assertEquals(calls.length, 0);
+  const item = (message.result?.structuredContent as {
+    items: Array<{ image: { fileName: string }; asset: { name: string } }>;
+  }).items[0];
+  assertEquals(item.image.fileName, "\u82f9\u679c.png");
+  assertEquals(item.asset.name, "\u82f9\u679c.png");
 });
 
 Deno.test("complete_project_game_asset_uploads verifies and registers ordered items", async () => {

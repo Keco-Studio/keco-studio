@@ -32,8 +32,10 @@ function makeContext(
   rpc: (name: string, parameters: Record<string, unknown>) => Promise<unknown>,
   userId = "user-1",
 ) {
-  const client = { rpc: async (name: string, parameters: Record<string, unknown>) =>
-    await rpc(name, parameters) };
+  const client = {
+    rpc: async (name: string, parameters: Record<string, unknown>) =>
+      await rpc(name, parameters),
+  };
   const context = {
     mode: "account",
     requestId: "request-1",
@@ -106,11 +108,17 @@ Deno.test("project listing replays its project ID cursor without a timestamp sel
         error: null,
       };
     }
-    return { data: [projectRow(PROJECT_C, "viewer", "2026-07-21T03:00:00.000Z")], error: null };
+    return {
+      data: [projectRow(PROJECT_C, "viewer", "2026-07-21T03:00:00.000Z")],
+      error: null,
+    };
   });
 
   const first = await listAccessibleProjects(context, { limit: 1 });
-  const second = await listAccessibleProjects(context, { limit: 1, cursor: first.nextCursor ?? "" });
+  const second = await listAccessibleProjects(context, {
+    limit: 1,
+    cursor: first.nextCursor ?? "",
+  });
 
   assertEquals(second.items.map((item) => item.projectId), [PROJECT_C]);
   assertEquals(calls[1], {
@@ -140,14 +148,25 @@ Deno.test("account project authorization resolves each current role and derives 
   assertEquals(authorized.mode, "project");
   assertEquals(authorized.role, "editor");
   assertEquals(authorized.projectId, PROJECT_A);
+  assertEquals(authorized.clientId, context.clientId);
+  assertEquals(authorized.sessionId, context.sessionId);
   assertStrictEquals(authorized.supabase, client);
-  assertEquals(JSON.stringify(authorized).includes("account-bearer-token"), false);
+  assertEquals(
+    JSON.stringify(authorized).includes("account-bearer-token"),
+    false,
+  );
   assertEquals(Object.isFrozen(authorized), true);
   assertEquals(context.mode, "account");
   assertEquals(denied.code, "PROJECT_WRITE_FORBIDDEN");
   assertEquals(calls, [
-    { name: "mcp_resolve_project_role", parameters: { p_project_id: PROJECT_A } },
-    { name: "mcp_resolve_project_role", parameters: { p_project_id: PROJECT_A } },
+    {
+      name: "mcp_resolve_project_role",
+      parameters: { p_project_id: PROJECT_A },
+    },
+    {
+      name: "mcp_resolve_project_role",
+      parameters: { p_project_id: PROJECT_A },
+    },
   ]);
 });
 
@@ -181,11 +200,13 @@ Deno.test("writable project discovery returns false only for an explicit boolean
 });
 
 Deno.test("writable project discovery fails closed for RPC errors and malformed data", async () => {
-  for (const response of [
-    { data: null, error: null },
-    { data: "true", error: null },
-    { data: null, error: { message: "database failed" } },
-  ]) {
+  for (
+    const response of [
+      { data: null, error: null },
+      { data: "true", error: null },
+      { data: null, error: { message: "database failed" } },
+    ]
+  ) {
     const { context } = makeContext(async () => response);
     const error = await assertRejects(
       () => accountHasWritableProject(context),
