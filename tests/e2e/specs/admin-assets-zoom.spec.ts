@@ -76,7 +76,7 @@ test.describe('Admin assets gallery zoom', () => {
     }
     await expect(page.getByText('10%', { exact: true })).toBeVisible();
     await expect(grid).toHaveAttribute('data-asset-layout', 'list');
-    const compactRows = grid.locator('[data-asset-layout="list"] [data-asset-row]');
+    const compactRows = grid.locator('[data-asset-row]');
     await expect(compactRows).toHaveCount(8);
     await expect(compactRows.first().locator('[data-asset-card]')).toHaveCount(1);
     await expect(grid.locator('[data-asset-card]').first().locator(':scope > div').first()).toHaveCSS(
