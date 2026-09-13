@@ -11,6 +11,11 @@ export const ASSET_GRID_SIZES = [
 
 export type AssetGridSizeIndex = number;
 
+export function getAdminAssetTargetRowHeight(sizeIndex: AssetGridSizeIndex): number {
+  const boundedIndex = Math.min(ASSET_GRID_SIZES.length - 1, Math.max(0, sizeIndex));
+  return 120 + boundedIndex * 24;
+}
+
 type VirtualAssetRow = {
   index: number;
   start: number;

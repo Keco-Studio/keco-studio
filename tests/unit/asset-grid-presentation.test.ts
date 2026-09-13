@@ -4,6 +4,7 @@ import {
   ASSET_GRID_SIZES,
   getAssetGridMetadata,
   getAssetGridPreviewUrl,
+  getAdminAssetTargetRowHeight,
   getVisibleAssetIndexRange,
   getVisibleAssetFocusIndex,
   nextAssetGridSize,
@@ -21,6 +22,12 @@ function makeRow(propertyValues: Record<string, unknown>): AssetRow {
 }
 
 describe('asset grid presentation', () => {
+  it('maps shared size levels to admin gallery row heights', () => {
+    expect(getAdminAssetTargetRowHeight(0)).toBeLessThan(getAdminAssetTargetRowHeight(2));
+    expect(getAdminAssetTargetRowHeight(2)).toBe(168);
+    expect(getAdminAssetTargetRowHeight(4)).toBeGreaterThan(getAdminAssetTargetRowHeight(2));
+  });
+
   it('enlarges and shrinks tiles within fixed bounds', () => {
     expect(nextAssetGridSize(2, -100)).toBe(3);
     expect(nextAssetGridSize(2, 100)).toBe(1);
