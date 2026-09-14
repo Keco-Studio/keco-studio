@@ -681,6 +681,52 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });
 
+  it('recognizes narrative table guidance without language-specific keywords', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'A court chronicle with consequential interpersonal choices.',
+      rules: {
+        ...input.rules,
+        genres: ['Court chronicle'],
+        philosophies: ['Interpersonal agency'],
+        tableGuidance: [
+          { table: 'Events', purpose: 'Court encounters.', fields: ['event_id', 'participants', 'choice_ids'] },
+          { table: 'EventChoices', purpose: 'Consequential options.', fields: ['choice_id', 'text', 'flags_set'] },
+        ],
+      },
+    };
+    const complete = jest.fn(async () => JSON.stringify([{
+      chapterKey: 'court-choice',
+      title: 'Court Choice',
+      scene: 'The ruler hears two opposing proposals.',
+      participants: ['Ruler', 'Minister'],
+      choices: ['Support reform', 'Keep the old system'],
+      consequences: 'The choice changes court alignment and trust.',
+    }]));
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+    async function* stream() {
+      yield { type: 'text_delta' as const, content: [
+        '# GDD',
+        '## Court Choice',
+        'The ruler summons the ministers.',
+        '<!-- KECO_TABLE_REF Events -->',
+        '<!-- KECO_TABLE_REF EventChoices -->',
+        '<!-- KECO_TABLE_PLAN [{"table":"Events","purpose":"Court encounters.","fields":["event_id","participants","choice_ids"],"rows":[{"name":"Court Choice","values":{"event_id":"event-1","participants":"Ruler, Minister","choice_ids":"choice-1"}}]},{"table":"EventChoices","purpose":"Consequential options.","fields":["choice_id","text","flags_set"],"rows":[{"name":"Support reform","values":{"choice_id":"choice-1","text":"Support reform","flags_set":"reform"}}]}] -->',
+      ].join('\n\n') };
+      yield { type: 'finish' as const, reason: 'stop' };
+    }
+
+    const result = await generateGddMarkdownV2(narrativeInput, { stream, complete, planScene });
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(result.dialoguePlans).toEqual([scenePlan({
+      chapterKey: 'court-choice', title: 'Court Choice',
+      scene: 'The ruler hears two opposing proposals.', participants: ['Ruler', 'Minister'],
+      choices: ['Support reform', 'Keep the old system'],
+      consequences: 'The choice changes court alignment and trust.',
+    })]);
+  });
+
   it('recovers dialogue plans when narrative intent comes from character relationship signals', async () => {
     const narrativeInput: GddGenerationRequestV2 = {
       ...input,

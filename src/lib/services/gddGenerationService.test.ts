@@ -10,7 +10,10 @@ import {
   getLatestPublicGddGenerationJob,
   GddActiveJobConflictError,
   GddIdempotencyConflictError,
+  materializeGddMapArtifacts,
+  materializeGddResourcePayload,
   persistCompletedGddGenerationJob,
+  readGddResourceDocument,
   toPublicGddGenerationJob,
 } from './gddGenerationService';
 
@@ -111,6 +114,62 @@ describe('gddGenerationService', () => {
       p_artifact_id: 'artifact-1', p_worker_id: 'worker-1', p_phase: 'validating', p_lease_seconds: 300,
     }]);
     expect((rpc.mock.calls as unknown[][])[1]).toEqual(['reconcile_gdd_map_artifact', { p_artifact_id: 'artifact-1' }]);
+  });
+
+  it('reads the latest GDD snapshot for asynchronous resource writeback', async () => {
+    const maybeSingle = jest.fn(async () => ({
+      data: { content: '# GDD', yjs_state: 'encoded' }, error: null,
+    }));
+    const eq = jest.fn((_column: string, _value: string) => ({ maybeSingle }));
+    const select = jest.fn(() => ({ eq }));
+
+    await expect(readGddResourceDocument({ from: () => ({ select }) } as never, 'document-1'))
+      .resolves.toEqual({ markdown: '# GDD', yjsState: 'encoded' });
+    expect(eq).toHaveBeenCalledWith('id', 'document-1');
+  });
+
+  it('atomically materializes map artifacts and their GDD snapshot references', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: 1, error: null }));
+    const mapArtifacts = [{
+      id: 'artifact-1', mapBriefId: 'brief-1', title: 'Palace Map', mapBrief: { title: 'Palace Map' },
+      styleContract: null, inputHash: 'a'.repeat(64),
+    }];
+
+    await materializeGddMapArtifacts({ rpc } as never, {
+      jobId: 'job-1', documentId: 'document-1', expectedMarkdown: '# GDD',
+      markdown: '# GDD\n\n<GddMapReference />', yjsState: 'encoded', mapArtifacts,
+    });
+
+    expect(rpc).toHaveBeenCalledWith('materialize_gdd_map_artifacts', {
+      p_job_id: 'job-1',
+      p_document_id: 'document-1',
+      p_expected_markdown: '# GDD',
+      p_markdown: '# GDD\n\n<GddMapReference />',
+      p_yjs_state: 'encoded',
+      p_map_artifacts: mapArtifacts,
+    });
+  });
+
+  it('sends the expected snapshot for atomic table or dialogue writeback', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({ data: null, error: null }));
+
+    await materializeGddResourcePayload({ rpc } as never, {
+      jobId: 'job-1', documentId: 'document-1', workerId: 'worker-1',
+      expectedMarkdown: '# GDD', markdown: '# GDD\n\n## Dialogue Resources', yjsState: 'encoded',
+      metadata: { source: 'resource-worker' }, tableResources: [], dialogueResources: [{ title: 'Intro' }],
+    });
+
+    expect(rpc).toHaveBeenCalledWith('materialize_gdd_resource_payload', {
+      p_job_id: 'job-1',
+      p_document_id: 'document-1',
+      p_worker_id: 'worker-1',
+      p_expected_markdown: '# GDD',
+      p_markdown: '# GDD\n\n## Dialogue Resources',
+      p_yjs_state: 'encoded',
+      p_metadata: { source: 'resource-worker' },
+      p_table_resources: [],
+      p_dialogue_resources: [{ title: 'Intro' }],
+    });
   });
 
   it('cancels an active job and releases its lease', async () => {

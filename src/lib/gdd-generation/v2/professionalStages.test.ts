@@ -179,6 +179,21 @@ describe('professional GDD stages', () => {
     expect(options?.maxCompletionTokens).toBeGreaterThanOrEqual(12_000);
   });
 
+  it('requires separate extractable map sections in the professional content stage', async () => {
+    const mapInput: GddGenerationRequestV2 = {
+      ...input,
+      rules: { ...input.rules, genres: ['Region exploration'], philosophies: ['Spatial storytelling'] },
+      designDocument: { ...input.designDocument, contentModel: 'The first release has two navigable spaces.' },
+    };
+    const complete = jest.fn(async () => '## Content\n\nMap content.');
+
+    await generateProfessionalStage(mapInput, 'generating_content', checkpoint({ blueprint }), { complete });
+
+    const messages = (complete.mock.calls[0] as unknown as [Array<{ content: string }>])[0];
+    expect(messages[0]!.content).toMatch(/one explicit map section per required map/i);
+    expect(messages[0]!.content).toMatch(/spatial layout.*routes.*landmarks/i);
+  });
+
   it('uses the explicit Chinese game title from the creative brief instead of a model title', async () => {
     const complete = jest.fn(async () => JSON.stringify({
       ...blueprint,

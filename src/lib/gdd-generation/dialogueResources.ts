@@ -205,3 +205,15 @@ export function renderDialogueReferences(
     return lines.join('\n');
   }).join('\n');
 }
+
+export function applyDialogueResourceReferences(
+  markdown: string,
+  projectId: string,
+  resources: DialogueResource[],
+): string {
+  if (resources.length === 0) return markdown;
+  const section = `## Dialogue Resources\n\n${renderDialogueReferences(projectId, resources)}`;
+  const pattern = /^## Dialogue Resources[ \t]*$[\s\S]*?(?=^##(?!#)[ \t]+|\s*$)/m;
+  if (pattern.test(markdown)) return markdown.replace(pattern, `${section}\n\n`).trimEnd();
+  return `${markdown.trimEnd()}\n\n${section}\n`;
+}

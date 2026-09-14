@@ -328,6 +328,42 @@ describe('GDD generation worker', () => {
     consoleError.mockRestore();
   });
 
+  it('enqueues dialogue independently when no table resources exist', async () => {
+    const rpc = jest.fn(async (_name: string, _args: unknown) => ({
+      data: [{ document_id: 'document-1', document_name: 'Harbor Tactics gdd', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const updateEq = jest.fn(async (_column: string, _value: string) => ({ data: null, error: null }));
+    const upsert = jest.fn(async (_rows: unknown[], _options: unknown) => ({ data: null, error: null }));
+    const from = jest.fn((table: string) => table === 'documents'
+      ? { update: () => ({ eq: updateEq }) }
+      : { upsert });
+    const dialoguePlans = [{
+      chapterKey: 'arrival', title: 'Arrival', content: 'Guide: Welcome.', hasChoices: false, branchSummary: [],
+    }];
+    const v2Job = {
+      ...job,
+      resource_mode: 'async',
+      applied_rule_ids: ['readable-state'],
+      omitted_rule_ids: [],
+      input: { ...generationInput, contractVersion: 2, mode: 'professional', language: 'zh-CN', resourceMode: 'async' },
+    } as GddGenerationJob;
+
+    await persistGeneratedGddV2Document(
+      { rpc, from } as never,
+      v2Job,
+      'worker-1',
+      '# GDD\n\n## Arrival\nScene.',
+      { version: 2, summary: 'pass', status: 'pass', issues: [] },
+      [],
+      dialoguePlans,
+    );
+
+    const rows = upsert.mock.calls[0]![0] as Array<{ kind: string; payload: Record<string, unknown> }>;
+    expect(rows.map((row) => row.kind)).toEqual(['dialogue', 'maps']);
+    expect(rows[0]!.payload).toEqual({ dialoguePlans });
+  });
+
   it('generates and atomically persists a completed leased job with server evidence metadata', async () => {
     const heartbeat = jest.fn(async (_client: unknown, _jobId: string, _workerId: string, _phase: string) => undefined);
     const persist = jest.fn(async (_client: unknown, _job: unknown, _workerId: string, _gdd: unknown, _markdown: string) => persistedGdd('document-1', 'Harbor Tactics gdd'));
