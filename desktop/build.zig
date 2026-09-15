@@ -136,6 +136,9 @@ pub fn build(b: *std.Build) void {
     if (target.result.os.tag == .windows and optimize != .Debug) {
         exe.subsystem = .windows;
     }
+    if (target.result.os.tag == .windows) {
+        exe.win32_manifest = nativeSdkPath(b, native_sdk_path, "assets/native-sdk.manifest");
+    }
     linkPlatform(b, target, app_mod, exe, selected_platform, web_engine, web_layer, native_sdk_path, cef_dir, cef_auto_install);
     b.installArtifact(exe);
 
@@ -175,6 +178,9 @@ pub fn build(b: *std.Build) void {
         // exe's own mode: release-shaped Windows exes are GUI-subsystem.
         if (target.result.os.tag == .windows and package_optimize != .Debug) {
             built.subsystem = .windows;
+        }
+        if (target.result.os.tag == .windows) {
+            built.win32_manifest = nativeSdkPath(b, native_sdk_path, "assets/native-sdk.manifest");
         }
         linkPlatform(b, target, package_app_mod, built, selected_platform, web_engine, web_layer, native_sdk_path, cef_dir, cef_auto_install);
         break :pkg built;
