@@ -1176,6 +1176,16 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
   };
 
+  const handleTopbarCreateAsset = () => {
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-create-asset', {
+          detail: { projectId: currentProjectId },
+        })
+      );
+    }
+  };
+
   const handleTopbarUploadAssets = useCallback(async (files: FileList) => {
     if (!currentProjectId || !files.length) return;
     const form = new FormData();
@@ -1511,6 +1521,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           onCreateFolder={handleTopbarCreateFolder}
           onCreateLibrary={handleTopbarCreateLibrary}
           onCreateDocument={handleTopbarCreateDocument}
+          onCreateAsset={handleTopbarCreateAsset}
           onImportTable={handleTopbarImportTable}
           onImportDocument={handleTopbarImportDocument}
           viewMode={libraryViewMode}
@@ -1565,6 +1576,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           onCreateFolder={handleTopbarCreateFolder}
           onCreateLibrary={handleTopbarCreateLibrary}
           onCreateDocument={handleTopbarCreateDocument}
+          onCreateAsset={isFolderPage ? undefined : handleTopbarCreateAsset}
           onImportTable={handleTopbarImportTable}
           onImportDocument={handleTopbarImportDocument}
           viewMode={libraryViewMode}

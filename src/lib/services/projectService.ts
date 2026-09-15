@@ -14,6 +14,7 @@ export type Project = {
   created_at: string;
   updated_at: string;
   default_library_id?: string;
+  assets_workspace_enabled?: boolean;
 };
 
 type CreateProjectInput = {

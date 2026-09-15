@@ -1,5 +1,10 @@
+/**
+ * @jest-environment jsdom
+ */
+
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 
 jest.mock('next/image', () => ({
@@ -58,5 +63,29 @@ describe('AddLibraryMenu', () => {
     expect(html).toContain('Rename');
     expect(html).toContain('Duplicate');
     expect(html).not.toContain('Create new folder');
+  });
+
+  it('renders Create Asset only with its callback and invokes it once', () => {
+    const withoutCreateAsset = renderToStaticMarkup(
+      React.createElement(AddLibraryMenu, {
+        open: true,
+        anchorElement: null,
+        onClose: () => {},
+      })
+    );
+    expect(withoutCreateAsset).not.toContain('Create Asset');
+
+    const onCreateAsset = jest.fn();
+    render(
+      React.createElement(AddLibraryMenu, {
+        open: true,
+        anchorElement: null,
+        onClose: () => {},
+        onCreateAsset,
+      })
+    );
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create Asset' }));
+    expect(onCreateAsset).toHaveBeenCalledTimes(1);
   });
 });

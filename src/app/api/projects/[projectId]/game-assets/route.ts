@@ -40,6 +40,7 @@ const completeUploadSchema = z.object({
   action: z.literal('complete'),
   items: z.array(fileMetadataSchema.extend({ path: z.string().min(1).max(2048) })).min(1).max(MAX_BATCH_SIZE),
 }).strict();
+const activateWorkspaceSchema = z.object({ action: z.literal('activate-workspace') }).strict();
 
 function validatedMetadata(input: z.infer<typeof fileMetadataSchema>) {
   const mimeType = canonicalProjectAssetMimeType(input.fileType) ?? mimeFromName(input.fileName);
@@ -80,6 +81,15 @@ export const POST = withAuth<RouteContext>(async (request, context, { supabase, 
     const role = (await getUserProjectRole(supabase, projectId, user.id)).role;
     if (role === 'viewer') return json({ error: 'Editor or admin access is required' }, 403);
     const body = await request.json().catch(() => null);
+    const activateWorkspace = activateWorkspaceSchema.safeParse(body);
+    if (activateWorkspace.success) {
+      const { error } = await supabase
+        .from('projects')
+        .update({ assets_workspace_enabled: true })
+        .eq('id', projectId);
+      if (error) throw new Error('Assets workspace activation failed');
+      return json({ assetsWorkspaceEnabled: true });
+    }
     const prepared = prepareUploadSchema.safeParse(body);
     if (prepared.success) {
       const items = [];

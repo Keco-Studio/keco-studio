@@ -115,6 +115,25 @@ describe('project game asset upload route', () => {
     expect(response.status).toBe(403);
   });
 
+  it.each(['editor', 'admin'] as const)('activates the Assets workspace idempotently for a %s', async (role) => {
+    getUserProjectRole.mockResolvedValue({ role });
+    const eq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn(() => ({ eq }));
+    const from = jest.fn(() => ({ update }));
+    supabase = { from };
+
+    const first = await post({ action: 'activate-workspace' });
+    const second = await post({ action: 'activate-workspace' });
+
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ assetsWorkspaceEnabled: true });
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ assetsWorkspaceEnabled: true });
+    expect(from).toHaveBeenCalledWith('projects');
+    expect(update).toHaveBeenCalledWith({ assets_workspace_enabled: true });
+    expect(eq).toHaveBeenCalledWith('id', PROJECT_ID);
+  });
+
   it('removes content-invalid objects before registration', async () => {
     const bytes = new TextEncoder().encode('not a pdf');
     const path = `${USER_ID}/${PROJECT_ID}/22222222-2222-4222-8222-222222222222-guide.pdf`;
