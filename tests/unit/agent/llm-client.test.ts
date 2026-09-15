@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import type { AiUsageBinding, AiUsageRecorder } from '@/lib/ai-usage/types';
 
 jest.mock('undici', () => ({
   Agent: class TestAgent {},
@@ -18,6 +19,25 @@ describe('streamLlm request options', () => {
     } else {
       process.env[key] = value;
     }
+  }
+
+  async function drain<T>(stream: AsyncIterable<T>): Promise<T[]> {
+    const chunks: T[] = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return chunks;
+  }
+
+  function binding(recorder: AiUsageRecorder): AiUsageBinding {
+    return {
+      context: {
+        actorUserId: '00000000-0000-4000-8000-000000000002',
+        feature: 'agent',
+        operation: 'chat',
+        correlationId: 'correlation-1',
+      },
+      recorder,
+      metadata: { source: 'worker' },
+    };
   }
 
   afterEach(() => {
@@ -67,6 +87,56 @@ describe('streamLlm request options', () => {
       model: 'test-model',
       max_tokens: 1234,
       thinking: { type: 'disabled' },
+    });
+  });
+
+  it('captures a final usage-only SSE chunk', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    global.fetch = jest.fn(async () => new Response([
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',
+      '',
+      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":11,"total_tokens":21}}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n'), { status: 200 })) as typeof fetch;
+    const recorder = jest.fn(async () => undefined);
+    const { streamLlm } = await import('../../../src/lib/agent/llm-client');
+
+    await drain(streamLlm([{ role: 'user', content: 'hello' }], {
+      provider: 'deepseek', usageBinding: binding(recorder),
+    }));
+
+    expect(recorder).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'deepseek', usage: { inputTokens: 10, outputTokens: 11, totalTokens: 21 },
+      outcome: 'succeeded',
+    }));
+    expect(recorder).toHaveBeenCalledTimes(1);
+  });
+
+  it('captures non-streaming reported usage and preserves its finish callback', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    const recorder = jest.fn(async () => undefined);
+    const onFinish = jest.fn();
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({
+      choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+      usage: { prompt_tokens: 3, completion_tokens: 6, total_tokens: 9 },
+    }), { status: 200 })) as typeof fetch;
+    const { completeLlmNonStreaming } = await import('../../../src/lib/agent/llm-client');
+
+    await expect(completeLlmNonStreaming([{ role: 'user', content: 'hello' }], {
+      provider: 'deepseek', usageBinding: binding(recorder), onFinish,
+    })).resolves.toBe('ok');
+
+    expect(recorder).toHaveBeenCalledWith(expect.objectContaining({
+      usage: { inputTokens: 3, outputTokens: 6, totalTokens: 9 }, outcome: 'succeeded',
+    }));
+    expect(onFinish).toHaveBeenCalledWith('stop', {
+      prompt_tokens: 3, completion_tokens: 6, total_tokens: 9,
     });
   });
 

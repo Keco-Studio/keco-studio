@@ -9,6 +9,9 @@
  * network / 5xx / 429 errors before the first chunk is read.
  */
 
+import { randomUUID } from 'node:crypto';
+import { normalizeTokenUsage } from '@/lib/ai-usage/normalize';
+import type { AiProvider, AiUsageAttempt, AiUsageBinding, AiUsageOutcome } from '@/lib/ai-usage/types';
 import type { ChatMessage, OpenAITool, StreamChunk, TokenUsage } from './types';
 import { ThinkTagParser } from './think-tag-parser';
 import { outboundFetch } from './outbound-http';
@@ -37,6 +40,8 @@ export interface LlmResponseMetadata {
  * without mutating global environment state or affecting other requests.
  */
 export interface StreamLlmOptions {
+  provider?: AiProvider;
+  usageBinding?: AiUsageBinding;
   model?: string;
   baseUrl?: string;
   apiKey?: string;
@@ -65,6 +70,56 @@ function resolveLlmConfig(options: StreamLlmOptions): ResolvedLlmConfig {
     apiKey: options.apiKey ?? LLM_API_KEY,
     model: options.model ?? LLM_MODEL,
   };
+}
+
+function resolveProvider(options: StreamLlmOptions): AiProvider {
+  const candidate = options.provider ?? process.env.LLM_PROVIDER;
+  return candidate === 'deepseek' || candidate === 'minimax' || candidate === 'openai'
+    || candidate === 'pixellab' || candidate === 'unknown'
+    ? candidate
+    : 'unknown';
+}
+
+type UsageAttemptCapture = {
+  eventKey: string;
+  startedAt: string;
+  attempt: number;
+  providerRequestId?: string;
+};
+
+function beginUsageAttempt(attempt: number): UsageAttemptCapture {
+  return { eventKey: randomUUID(), startedAt: new Date().toISOString(), attempt };
+}
+
+async function recordUsageAttempt(
+  options: StreamLlmOptions,
+  config: ResolvedLlmConfig,
+  provider: AiProvider,
+  capture: UsageAttemptCapture,
+  outcome: AiUsageOutcome,
+  usage: unknown,
+): Promise<void> {
+  const binding = options.usageBinding;
+  if (!binding) return;
+  const attempt: AiUsageAttempt = {
+    eventKey: capture.eventKey,
+    context: binding.context,
+    requestKind: 'chat_completion',
+    provider,
+    model: config.model,
+    attempt: capture.attempt,
+    ...(capture.providerRequestId ? { providerRequestId: capture.providerRequestId } : {}),
+    outcome,
+    usage: normalizeTokenUsage(usage),
+    startedAt: capture.startedAt,
+    finishedAt: new Date().toISOString(),
+    metadata: { ...binding.metadata, retryAttempt: capture.attempt - 1 },
+  };
+  try {
+    await binding.recorder(attempt);
+  } catch {
+    // Usage accounting must not alter the provider request's observable result.
+  }
 }
 
 export function isRetriableStatus(status: number): boolean {
@@ -140,12 +195,25 @@ export async function* streamLlm(
 ): AsyncGenerator<StreamChunk> {
   let response: Response | null = null;
   let lastError: unknown = null;
+  let completedAttempt: UsageAttemptCapture | null = null;
+  const config = resolveLlmConfig(options);
+  const provider = resolveProvider(options);
+  if (!config.apiKey) throw new LlmError('LLM_API_KEY is not configured.');
 
   // Retry twice on transient errors before any chunk is consumed.
   for (let attempt = 0; attempt < 3; attempt++) {
+    const capture = beginUsageAttempt(attempt + 1);
+    let outcome: AiUsageOutcome = 'transport_error';
+    let keepForStream = false;
     try {
       response = await requestStream(messages, options);
+      capture.providerRequestId = response.headers.get('x-request-id')
+        ?? response.headers.get('request-id')
+        ?? response.headers.get('x-minimax-request-id')
+        ?? undefined;
       if (response.ok && response.body) break;
+
+      outcome = 'provider_error';
 
       const retriable = isRetriableStatus(response.status);
       if (!retriable || attempt === 2) {
@@ -155,6 +223,7 @@ export async function* streamLlm(
       lastError = new LlmError(`LLM transient error (${response.status})`);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
+        outcome = 'aborted';
         throw err;
       }
       if (err instanceof LlmError && !`${err.message}`.includes('transient')) {
@@ -163,7 +232,14 @@ export async function* streamLlm(
       }
       lastError = err;
       if (attempt === 2) throw err;
+    } finally {
+      if (response?.ok && response.body) {
+        keepForStream = true;
+        completedAttempt = capture;
+      }
+      if (!keepForStream) await recordUsageAttempt(options, config, provider, capture, outcome, null);
     }
+    if (keepForStream) break;
     await sleep(500 * (attempt + 1));
   }
 
@@ -175,6 +251,8 @@ export async function* streamLlm(
   const decoder = new TextDecoder();
   let buffer = '';
   const thinkParser = new ThinkTagParser();
+  let reportedUsage: TokenUsage | undefined;
+  let streamOutcome: AiUsageOutcome = 'provider_error';
 
   try {
     while (true) {
@@ -190,7 +268,10 @@ export async function* streamLlm(
         if (!rawLine.startsWith('data:')) continue;
 
         const payload = rawLine.slice('data:'.length).trim();
-        if (payload === '[DONE]') return;
+        if (payload === '[DONE]') {
+          streamOutcome = 'succeeded';
+          return;
+        }
 
         let parsed: LlmChunk;
         try {
@@ -198,6 +279,8 @@ export async function* streamLlm(
         } catch {
           continue;
         }
+
+        if (parsed.usage) reportedUsage = parsed.usage;
 
         const choice = parsed.choices?.[0];
         if (!choice) continue;
@@ -234,13 +317,22 @@ export async function* streamLlm(
           yield {
             type: 'finish',
             reason: choice.finish_reason,
-            usage: parsed.usage,
+            usage: parsed.usage ?? reportedUsage,
           };
         }
       }
     }
+    streamOutcome = 'succeeded';
+  } catch (error) {
+    streamOutcome = error instanceof DOMException && error.name === 'AbortError'
+      ? 'aborted'
+      : 'transport_error';
+    throw error;
   } finally {
     reader.releaseLock();
+    if (completedAttempt) {
+      await recordUsageAttempt(options, config, provider, completedAttempt, streamOutcome, reportedUsage);
+    }
   }
 }
 
@@ -283,65 +375,104 @@ export async function completeLlmNonStreaming(
   options: StreamLlmOptions = {},
 ): Promise<string> {
   const config = resolveLlmConfig(options);
+  const provider = resolveProvider(options);
   if (!config.apiKey) throw new LlmError('LLM_API_KEY is not configured.');
 
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    let response: Awaited<ReturnType<typeof outboundFetch>>;
+    const capture = beginUsageAttempt(attempt + 1);
+    let outcome: AiUsageOutcome = 'transport_error';
+    let usage: unknown = null;
+    let retry = false;
     try {
-      response = await outboundFetch(`${config.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify(buildRequestBody(messages, options, false, config)),
-        signal: options.signal,
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      lastError = error;
-      if (attempt === 2) throw error;
-      await sleep(200 * (2 ** attempt));
-      continue;
-    }
+      let response: Awaited<ReturnType<typeof outboundFetch>> | null = null;
+      try {
+        response = await outboundFetch(`${config.baseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(buildRequestBody(messages, options, false, config)),
+          signal: options.signal,
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          outcome = 'aborted';
+          throw error;
+        }
+        lastError = error;
+        if (attempt === 2) throw error;
+        retry = true;
+      }
 
-    reportResponseMetadata(response as unknown as Response, options);
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      const error = new LlmError(`LLM request failed (${response.status}): ${text.slice(0, 500)}`);
-      if (!isRetriableStatus(response.status) || attempt === 2) throw error;
-      lastError = error;
-      await sleep(200 * (2 ** attempt));
-      continue;
-    }
+      if (!retry && response) {
+        reportResponseMetadata(response as unknown as Response, options);
+        capture.providerRequestId = response.headers.get('x-request-id')
+          ?? response.headers.get('request-id')
+          ?? response.headers.get('x-minimax-request-id')
+          ?? undefined;
+        if (!response.ok) {
+          outcome = 'provider_error';
+          const text = await response.text().catch(() => '');
+          const error = new LlmError(`LLM request failed (${response.status}): ${text.slice(0, 500)}`);
+          if (!isRetriableStatus(response.status) || attempt === 2) throw error;
+          lastError = error;
+          retry = true;
+        }
 
-    let parsed: LlmCompletion;
-    try {
-      parsed = await response.json() as LlmCompletion;
-    } catch (error) {
-      lastError = error;
-      if (attempt === 2) throw new LlmError('LLM response was not valid JSON.');
-      await sleep(200 * (2 ** attempt));
-      continue;
-    }
+        if (!retry) {
+          let parsed: LlmCompletion;
+          try {
+            parsed = await response.json() as LlmCompletion;
+          } catch (error) {
+            outcome = 'provider_error';
+            lastError = error;
+            if (attempt === 2) throw new LlmError('LLM response was not valid JSON.');
+            retry = true;
+            parsed = {};
+          }
 
-    const choice = parsed.choices?.[0];
-    if (!choice?.message) throw new LlmError('LLM response did not contain a completion.');
-    if (choice.finish_reason === 'abort') {
-      throw new LlmError('LLM aborted before completing the response.');
+          if (!retry) {
+            const choice = parsed.choices?.[0];
+            usage = parsed.usage;
+            if (!choice?.message) {
+              outcome = 'provider_error';
+              throw new LlmError('LLM response did not contain a completion.');
+            }
+            if (choice.finish_reason === 'abort') {
+              outcome = 'aborted';
+              throw new LlmError('LLM aborted before completing the response.');
+            }
+            options.onFinish?.(choice.finish_reason ?? 'stop', parsed.usage);
+            const content = typeof choice.message.content === 'string' ? choice.message.content.trim() : '';
+            if (options.toolName) {
+              const toolCall = choice.message.tool_calls?.find(
+                (call) => call.function?.name === options.toolName,
+              );
+              const args = toolCall?.function?.arguments;
+              if (typeof args === 'string' && args.trim()) {
+                outcome = 'succeeded';
+                return args;
+              }
+              if (isPlainJsonObject(content)) {
+                outcome = 'succeeded';
+                return content;
+              }
+              outcome = 'provider_error';
+              throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+            }
+            outcome = 'succeeded';
+            return content;
+          }
+        }
+      }
+    } finally {
+      await recordUsageAttempt(options, config, provider, capture, outcome, usage);
     }
-    const content = typeof choice.message.content === 'string' ? choice.message.content.trim() : '';
-    if (options.toolName) {
-      const toolCall = choice.message.tool_calls?.find(
-        (call) => call.function?.name === options.toolName,
-      );
-      const args = toolCall?.function?.arguments;
-      if (typeof args === 'string' && args.trim()) return args;
-      if (isPlainJsonObject(content)) return content;
-      throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    if (retry) {
+      await sleep(200 * (2 ** attempt));
     }
-    return content;
   }
 
   throw lastError instanceof Error ? lastError : new LlmError('LLM request failed.');
@@ -383,4 +514,5 @@ interface LlmCompletion {
       }>;
     };
   }>;
+  usage?: TokenUsage;
 }
