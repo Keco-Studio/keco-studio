@@ -14,6 +14,12 @@ function safeUsageOperation(operation: string): string {
     : "unknown";
 }
 
+function trustedProviderJobId(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)
+    ? value
+    : undefined;
+}
+
 async function handle(request: Request): Promise<Response> {
   const body = await readJsonBody(request);
   const operation = String(body.operation ?? "");
@@ -53,6 +59,7 @@ async function handle(request: Request): Promise<Response> {
       operation: safeUsageOperation(operation),
       correlationId: state.generationId,
       artifactId: state.assetId,
+      jobId: trustedProviderJobId(state.providerJobId),
     },
     recorder: (attempt) => recordEdgeAiUsage(authorized.serviceClient, attempt),
   });

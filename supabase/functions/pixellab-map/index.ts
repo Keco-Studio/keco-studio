@@ -26,6 +26,12 @@ function safeUsageOperation(operation: string): string {
     : "unknown";
 }
 
+function trustedProviderJobId(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)
+    ? value
+    : undefined;
+}
+
 function usageOptions(
   authorized: Awaited<ReturnType<typeof authorizeAsset>>,
   operation: string,
@@ -39,6 +45,7 @@ function usageOptions(
       operation,
       correlationId: authorized.generationId ?? assetId,
       artifactId: assetId,
+      jobId: trustedProviderJobId(authorized.asset.provider_job_id),
     },
     recorder: (attempt: Parameters<typeof recordEdgeAiUsage>[1]) => recordEdgeAiUsage(authorized.serviceClient, attempt),
   };

@@ -80,3 +80,67 @@ No real PixelLab calls were made; tests use injected transports.
 ## Concerns
 
 None.
+
+## Fix Round 1
+
+### Root cause
+
+The original client recorders only inspected top-level MCP result fields and
+recorded success when `mcp()` returned, before `listTools`, map submit/poll, or
+character calls applied their own structural checks. REST fallback operation
+names inherited hyphens from provider paths, which the safe metadata allowlist
+correctly rejected. Entry-point usage contexts did not carry durable stored job
+IDs for later poll/validate calls.
+
+### RED
+
+Added realistic nested `structuredContent` and labelled `content[].text`
+fixtures, a REST fallback persistence assertion, and malformed list/create/poll
+fixtures. Before production changes, ran:
+
+```text
+npx deno test --config supabase/functions/pixellab-map/deno.json --allow-env --allow-net supabase/functions/pixellab-map/ai-usage.test.ts
+# 3 passed, 4 failed: nested IDs/credits undefined; rest_create-tileset retained a hyphen; malformed results were recorded successful.
+npx deno test --config supabase/functions/pixellab-character/deno.json --allow-env --allow-net supabase/functions/pixellab-character/ai-usage.test.ts
+# 1 passed, 2 failed: nested character ID undefined; malformed calls were recorded successful.
+```
+
+### Implementation
+
+- Both clients now inspect only direct result fields, `structuredContent`, and
+  labelled `content[].text` values for allowlisted identifiers and finite,
+  non-negative native credits.
+- Map REST operation names are normalized to stable underscore identifiers, for
+  example `rest_create_tileset`.
+- `mcp()` accepts a structural validator executed within the tracked callback.
+  List responses require a tools array, map create requires a provider job ID,
+  map poll requires an object result, and character calls require an object
+  result plus a creation identity for `create_character`.
+- Map and character entry points now include only sanitized durable provider job
+  IDs from authorized asset/attempt state in the event context.
+
+### GREEN
+
+```text
+npx deno test --config supabase/functions/pixellab-map/deno.json --allow-env --allow-net supabase/functions/pixellab-map
+# 110 passed, 0 failed
+npx deno test --config supabase/functions/pixellab-character/deno.json --allow-env --allow-net supabase/functions/pixellab-character
+# 56 passed, 0 failed
+npx deno check --config supabase/functions/pixellab-map/deno.json supabase/functions/pixellab-map/index.ts
+# pass
+npx deno check --config supabase/functions/pixellab-character/deno.json supabase/functions/pixellab-character/index.ts
+# pass
+```
+
+### Self-review
+
+- Nested extraction cannot persist raw `content` text, prompts, URLs, image
+  bytes, response bodies, or secrets; it returns only regex-bounded IDs and
+  finite numeric credits.
+- Poll/validate correlation uses provider job IDs loaded by existing
+  authorization, never a client assertion.
+- Every malformed MCP fixture raises the existing stable invalid-response path
+  before successful event recording, and records `provider_error` with null
+  usage.
+- The changes do not invoke PixelLab in tests and do not affect paid-operation
+  authorization or lifecycle state transitions.

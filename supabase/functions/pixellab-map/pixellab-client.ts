@@ -5,7 +5,7 @@ import {
   type SemanticCapability,
 } from "./types.ts";
 import type { EdgeAiUsageAttempt, EdgeAiUsageContext, EdgeAiUsageRecorder } from "../_shared/ai-usage.ts";
-import { providerImageReference, providerTextBlocks } from "./provider-response.ts";
+import { providerImageReference, providerJobId, providerTextBlocks } from "./provider-response.ts";
 import { MAX_PNG_BYTES } from "./png.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
@@ -22,22 +22,76 @@ function safeProviderIdentifier(value: unknown): string | undefined {
     : undefined;
 }
 
-function nativeCredits(value: Record<string, unknown>): number | undefined {
-  for (const key of ["provider_credits", "credits_used", "credits", "credit_cost"]) {
-    const candidate = value[key];
-    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) {
-      return candidate;
-    }
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
+  return [value, record(value.structuredContent)].filter((entry): entry is Record<string, unknown> => Boolean(entry));
+}
+
+function mcpText(value: Record<string, unknown>): string[] {
+  const content = value.content;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((entry) => {
+    const block = record(entry);
+    return typeof block?.text === "string" ? [block.text] : [];
+  });
+}
+
+function textIdentifier(value: Record<string, unknown>, labels: string[]): string | undefined {
+  const pattern = new RegExp(`(?:${labels.join("|")})\\s*[:=]\\s*["']?([A-Za-z0-9][A-Za-z0-9._:-]{0,255})`, "i");
+  for (const text of mcpText(value)) {
+    const identifier = text.match(pattern)?.[1];
+    if (identifier) return safeProviderIdentifier(identifier);
   }
   return undefined;
 }
 
+function textCredits(value: Record<string, unknown>): number | undefined {
+  const pattern = /(?:provider[_\s-]?credits?|credits?[_\s-]?(?:used|cost)?|credit[_\s-]?cost)\s*[:=]\s*(-?\d+(?:\.\d+)?)/i;
+  for (const text of mcpText(value)) {
+    const candidate = Number(text.match(pattern)?.[1]);
+    if (Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) return candidate;
+  }
+  return undefined;
+}
+
+function nativeCredits(value: Record<string, unknown>): number | undefined {
+  for (const source of mcpRecords(value)) {
+    for (const key of ["provider_credits", "credits_used", "credits", "credit_cost"]) {
+      const candidate = source[key];
+      if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) {
+        return candidate;
+      }
+    }
+  }
+  return textCredits(value);
+}
+
 function providerRequestId(value: Record<string, unknown>): string | undefined {
-  return safeProviderIdentifier(value.request_id)
-    ?? safeProviderIdentifier(value.requestId)
-    ?? safeProviderIdentifier(value.job_id)
-    ?? safeProviderIdentifier(value.jobId)
-    ?? safeProviderIdentifier(value.id);
+  for (const source of mcpRecords(value)) {
+    const requestId = safeProviderIdentifier(source.request_id) ?? safeProviderIdentifier(source.requestId);
+    if (requestId) return requestId;
+  }
+  const textRequestId = textIdentifier(value, ["request[_\\s-]?id"]);
+  if (textRequestId) return textRequestId;
+  for (const source of mcpRecords(value)) {
+    const jobId = safeProviderIdentifier(source.job_id)
+      ?? safeProviderIdentifier(source.jobId)
+      ?? safeProviderIdentifier(source.object_id)
+      ?? safeProviderIdentifier(source.tileset_id)
+      ?? safeProviderIdentifier(source.id);
+    if (jobId) return jobId;
+  }
+  return textIdentifier(value, ["job[_\\s-]?id", "object[_\\s-]?id", "tileset[_\\s-]?id"]);
+}
+
+function restOperation(operation: string): string {
+  const normalized = operation.replace(/^\/+/, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase();
+  return `rest_${normalized || "unknown"}`;
 }
 
 const CAPABILITIES: Record<SemanticCapability, {
@@ -365,7 +419,11 @@ export class PixelLabClient {
     }
   }
 
-  private async mcp(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async mcp(
+    method: string,
+    params: Record<string, unknown>,
+    validate?: (payload: Record<string, unknown>) => void,
+  ): Promise<Record<string, unknown>> {
     const operation = method === "tools/call" ? String(params.name ?? "tools_call") : "tools_list";
     return this.tracked(operation, async () => {
       let response: Response;
@@ -390,6 +448,7 @@ export class PixelLabClient {
         const resultError = mcpResultError(result as Record<string, unknown>);
         if (resultError) throw resultError;
       }
+      validate?.(payload);
       return payload;
     }, (payload) => payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)
       ? payload.result as Record<string, unknown>
@@ -397,7 +456,10 @@ export class PixelLabClient {
   }
 
   async listTools(): Promise<PixelLabTool[]> {
-    const payload = await this.mcp("tools/list", {});
+    const payload = await this.mcp("tools/list", {}, (candidate) => {
+      const tools = (candidate.result as { tools?: unknown } | undefined)?.tools;
+      if (!Array.isArray(tools)) throw new PixelLabMapError("pixellab_invalid_response");
+    });
     const result = payload.result as { tools?: unknown } | undefined;
     if (!Array.isArray(result?.tools)) throw new PixelLabMapError("pixellab_invalid_response");
     return result.tools.filter((tool): tool is PixelLabTool =>
@@ -461,12 +523,15 @@ export class PixelLabClient {
       const payload = await this.mcp("tools/call", {
         name: capability.operation,
         arguments: arguments_,
+      }, (candidate) => {
+        const result = record(candidate.result);
+        if (!result || !providerJobId(result)) throw new PixelLabMapError("pixellab_invalid_response");
       });
       const result = payload.result;
       if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return result as Record<string, unknown>;
     }
-    return this.tracked(`rest${capability.operation.replaceAll("/", "_")}`, async () => {
+    return this.tracked(restOperation(capability.operation), async () => {
       const response = await this.fetcher(`${REST_URL}${capability.operation}`, {
         method: "POST",
         headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
@@ -495,11 +560,13 @@ export class PixelLabClient {
         : capability.semantic === "map_object"
           ? capability.operation === "create_image_pro" ? "job_id" : "object_id"
           : "job_id";
-      const payload = await this.mcp("tools/call", { name: operation, arguments: { [key]: jobId } });
+      const payload = await this.mcp("tools/call", { name: operation, arguments: { [key]: jobId } }, (candidate) => {
+        if (!record(candidate.result)) throw new PixelLabMapError("pixellab_invalid_response");
+      });
       if (!payload.result || typeof payload.result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return payload.result as Record<string, unknown>;
     }
-    return this.tracked(`rest${capability.operation.replaceAll("/", "_")}_poll`, async () => {
+    return this.tracked(`${restOperation(capability.operation)}_poll`, async () => {
       const response = await this.fetcher(`${REST_URL}${capability.operation}/${encodeURIComponent(jobId)}`, {
         headers: { authorization: `Bearer ${this.token}` },
       });

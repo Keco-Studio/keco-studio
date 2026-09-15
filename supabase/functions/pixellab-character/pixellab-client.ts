@@ -19,20 +19,67 @@ function safeProviderIdentifier(value: unknown): string | undefined {
     : undefined;
 }
 
-function nativeCredits(value: Record<string, unknown>): number | undefined {
-  for (const key of ["provider_credits", "credits_used", "credits", "credit_cost"]) {
-    const candidate = value[key];
-    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) return candidate;
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
+  return [value, record(value.structuredContent)].filter((entry): entry is Record<string, unknown> => Boolean(entry));
+}
+
+function mcpText(value: Record<string, unknown>): string[] {
+  const content = value.content;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((entry) => {
+    const block = record(entry);
+    return typeof block?.text === "string" ? [block.text] : [];
+  });
+}
+
+function textIdentifier(value: Record<string, unknown>, labels: string[]): string | undefined {
+  const pattern = new RegExp(`(?:${labels.join("|")})\\s*[:=]\\s*["']?([A-Za-z0-9][A-Za-z0-9._:-]{0,255})`, "i");
+  for (const text of mcpText(value)) {
+    const identifier = text.match(pattern)?.[1];
+    if (identifier) return safeProviderIdentifier(identifier);
   }
   return undefined;
 }
 
+function textCredits(value: Record<string, unknown>): number | undefined {
+  const pattern = /(?:provider[_\s-]?credits?|credits?[_\s-]?(?:used|cost)?|credit[_\s-]?cost)\s*[:=]\s*(-?\d+(?:\.\d+)?)/i;
+  for (const text of mcpText(value)) {
+    const candidate = Number(text.match(pattern)?.[1]);
+    if (Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) return candidate;
+  }
+  return undefined;
+}
+
+function nativeCredits(value: Record<string, unknown>): number | undefined {
+  for (const source of mcpRecords(value)) {
+    for (const key of ["provider_credits", "credits_used", "credits", "credit_cost"]) {
+      const candidate = source[key];
+      if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) return candidate;
+    }
+  }
+  return textCredits(value);
+}
+
 function providerRequestId(value: Record<string, unknown>): string | undefined {
-  return safeProviderIdentifier(value.request_id)
-    ?? safeProviderIdentifier(value.requestId)
-    ?? safeProviderIdentifier(value.character_id)
-    ?? safeProviderIdentifier(value.job_id)
-    ?? safeProviderIdentifier(value.id);
+  for (const source of mcpRecords(value)) {
+    const requestId = safeProviderIdentifier(source.request_id) ?? safeProviderIdentifier(source.requestId);
+    if (requestId) return requestId;
+  }
+  const textRequestId = textIdentifier(value, ["request[_\\s-]?id"]);
+  if (textRequestId) return textRequestId;
+  for (const source of mcpRecords(value)) {
+    const providerId = safeProviderIdentifier(source.character_id)
+      ?? safeProviderIdentifier(source.job_id)
+      ?? safeProviderIdentifier(source.id);
+    if (providerId) return providerId;
+  }
+  return textIdentifier(value, ["character[_\\s-]?id", "job[_\\s-]?id"]);
 }
 
 function stableJson(value: unknown): string {
@@ -119,7 +166,11 @@ export class PixelLabCharacterClient {
     }
   }
 
-  private async mcp(name: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async mcp(
+    name: string,
+    params: Record<string, unknown>,
+    validate?: (payload: Record<string, unknown>) => void,
+  ): Promise<Record<string, unknown>> {
     const operation = name === "tools/list" ? "tools_list" : name;
     return this.tracked(operation, async () => {
       let response: Response;
@@ -138,6 +189,7 @@ export class PixelLabCharacterClient {
         if (/rate.?limit|too many|capacity|temporar/i.test(errorText)) throw new PixelLabCharacterError("pixellab_rate_limited");
         throw new PixelLabCharacterError("pixellab_upstream");
       }
+      validate?.(payload);
       return payload;
     }, (payload) => payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)
       ? payload.result as Record<string, unknown>
@@ -147,7 +199,10 @@ export class PixelLabCharacterClient {
     let payload: Record<string, unknown> | undefined;
     for (let attempt = 0; attempt < CAPABILITY_DISCOVERY_ATTEMPTS; attempt += 1) {
       try {
-        payload = await this.mcp("tools/list", {});
+        payload = await this.mcp("tools/list", {}, (candidate) => {
+          const tools = (candidate.result as Record<string, unknown> | undefined)?.tools;
+          if (!Array.isArray(tools)) throw new PixelLabCharacterError("pixellab_invalid_response");
+        });
         break;
       } catch (error) {
         const retryable = error instanceof PixelLabCharacterError
@@ -176,7 +231,15 @@ export class PixelLabCharacterClient {
     // documented animate_character + get_character contract.
     return { semantic, operation, pollOperation: "get_character", schemaFingerprint: await fingerprint(inputSchema), pollSchemaFingerprint: await fingerprint(pollInputSchema), inputSchema, pollInputSchema };
   }
-  async callTool(name: string, arguments_: Record<string, unknown>): Promise<Record<string, unknown>> { return (await this.mcp(name, arguments_)).result as Record<string, unknown>; }
+  async callTool(name: string, arguments_: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const payload = await this.mcp(name, arguments_, (candidate) => {
+      const result = record(candidate.result);
+      if (!result || (name === "create_character" && !providerRequestId(result))) {
+        throw new PixelLabCharacterError("pixellab_invalid_response");
+      }
+    });
+    return payload.result as Record<string, unknown>;
+  }
   async getBackgroundJob(jobId: string): Promise<Record<string, unknown>> {
     for (let attempt = 0; attempt < BACKGROUND_JOB_ATTEMPTS; attempt += 1) {
       try {

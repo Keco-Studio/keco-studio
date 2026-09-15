@@ -1,4 +1,4 @@
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import type { EdgeAiUsageAttempt, EdgeAiUsageRecorder } from "../_shared/ai-usage.ts";
 import { PixelLabCharacterClient } from "./pixellab-client.ts";
 
@@ -47,4 +47,55 @@ Deno.test("records non-billable character and animation provider attempts withou
   assertEquals(events[1].providerCredits, 2);
   assertNotEquals(events[0].eventKey, events[1].eventKey);
   assertEquals(JSON.stringify(events).includes(RAW_RESPONSE_MARKER), false);
+});
+
+Deno.test("extracts allowlisted nested and text MCP values for character calls", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const client = new PixelLabCharacterClient("test-token", async () => mcpResponse({
+    structuredContent: { character_id: "nested-character", credits: 3 },
+    content: [{ type: "text", text: "job_id: text-character-job" }],
+  }), undefined, {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_character", operation: "poll",
+      correlationId: "character-generation-1", artifactId: "character-asset-1", jobId: "stored-character-job",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+
+  await client.callTool("get_character", { character_id: "stored-character-job" });
+
+  const textClient = new PixelLabCharacterClient("test-token", async () => mcpResponse({
+    content: [{ type: "text", text: "request_id: text-character-request\ncredit_cost: 4" }],
+  }), undefined, {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_character", operation: "poll",
+      correlationId: "character-generation-1", artifactId: "character-asset-1",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+  await textClient.callTool("get_character", { character_id: "stored-character-job" });
+
+  assertEquals(events[0].providerRequestId, "nested-character");
+  assertEquals(events[0].providerCredits, 3);
+  assertEquals(events[0].context.jobId, "stored-character-job");
+  assertEquals(events[1].providerRequestId, "text-character-request");
+  assertEquals(events[1].providerCredits, 4);
+});
+
+Deno.test("marks malformed character MCP list, create, and poll results as provider errors", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const recorder: EdgeAiUsageRecorder = async (event) => { events.push(event); };
+  const options = {
+    context: { actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_character", operation: "poll", correlationId: "character-generation-1" },
+    recorder,
+  };
+  const malformedList = new PixelLabCharacterClient("test-token", async () => mcpResponse({}), undefined, options);
+  const malformedCreate = new PixelLabCharacterClient("test-token", async () => mcpResponse({}), undefined, options);
+  const malformedPoll = new PixelLabCharacterClient("test-token", async () => mcpResponse(null as unknown as Record<string, unknown>), undefined, options);
+
+  await assertRejects(() => malformedList.listTools());
+  await assertRejects(() => malformedCreate.callTool("create_character", {}));
+  await assertRejects(() => malformedPoll.callTool("get_character", {}));
+
+  assertEquals(events.map((event) => event.outcome), ["provider_error", "provider_error", "provider_error"]);
 });

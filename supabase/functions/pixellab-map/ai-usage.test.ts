@@ -102,3 +102,97 @@ Deno.test("records an outbound MCP failure as a transport error", async () => {
   assertEquals(events[0].outcome, "transport_error");
   assertEquals(events[0].usage, null);
 });
+
+Deno.test("extracts allowlisted nested MCP identifiers and native credits", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const client = new PixelLabClient("test-token", async () => mcpResponse({
+    structuredContent: { request_id: "nested-map-request", job_id: "nested-map-job", credits_used: 2.5 },
+    content: [{ type: "text", text: "job_id: text-map-job\ncredits_used: 3.5" }],
+  }), {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "submit",
+      correlationId: "map-generation-1", artifactId: "map-asset-1", jobId: "stored-map-job",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+  const capability = {
+    semantic: "map_object" as const, transport: "mcp" as const, operation: "create_image_pro",
+    schemaFingerprint: "a".repeat(64), inputSchema: {},
+  };
+
+  await client.submitAsset(capability, {});
+
+  assertEquals(events[0].providerRequestId, "nested-map-request");
+  assertEquals(events[0].providerCredits, 2.5);
+  assertEquals(events[0].context.jobId, "stored-map-job");
+});
+
+Deno.test("extracts labelled MCP text identifiers when structured content is absent", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const client = new PixelLabClient("test-token", async () => mcpResponse({
+    content: [{ type: "text", text: "job_id: text-map-job\ncredit_cost: 4" }],
+  }), {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "poll",
+      correlationId: "map-generation-1", artifactId: "map-asset-1",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+  const capability = {
+    semantic: "map_object" as const, transport: "mcp" as const, operation: "create_image_pro",
+    schemaFingerprint: "a".repeat(64), inputSchema: {},
+  };
+
+  await client.pollJob(capability, "stored-map-job");
+
+  assertEquals(events[0].providerRequestId, "text-map-job");
+  assertEquals(events[0].providerCredits, 4);
+});
+
+Deno.test("normalizes REST fallback operations before the ledger persists them", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  let row: Record<string, unknown> | undefined;
+  const client = new PixelLabClient("test-token", async () =>
+    new Response(JSON.stringify({ job_id: "rest-map-job" })), {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "submit",
+      correlationId: "map-generation-1", artifactId: "map-asset-1",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+
+  await client.submitAsset({
+    semantic: "topdown_tileset", transport: "rest", operation: "/create-tileset",
+    schemaFingerprint: "a".repeat(64), inputSchema: {},
+  }, {});
+  await recordEdgeAiUsage({
+    from: () => ({ upsert: async (candidate: Record<string, unknown>) => {
+      row = candidate;
+      return { error: null };
+    } }),
+  }, events[0]);
+
+  assertEquals(events[0].metadata?.providerOperation, "rest_create_tileset");
+  assertEquals(row?.metadata, { providerOperation: "rest_create_tileset" });
+});
+
+Deno.test("marks malformed MCP list, create, and poll results as provider errors", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const recorder: EdgeAiUsageRecorder = async (event) => { events.push(event); };
+  const malformedList = new PixelLabClient("test-token", async () => mcpResponse({}), {
+    context: { actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "capabilities", correlationId: PROJECT_ID }, recorder,
+  });
+  const malformedCreate = new PixelLabClient("test-token", async () => mcpResponse({}), {
+    context: { actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "submit", correlationId: "map-generation-1" }, recorder,
+  });
+  const malformedPoll = new PixelLabClient("test-token", async () => new Response(`data: ${JSON.stringify({ jsonrpc: "2.0", id: "fixture", result: null })}\n\n`), {
+    context: { actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "poll", correlationId: "map-generation-1" }, recorder,
+  });
+  const capability = { semantic: "map_object" as const, transport: "mcp" as const, operation: "create_image_pro", schemaFingerprint: "a".repeat(64), inputSchema: {} };
+
+  await assertRejects(() => malformedList.listTools());
+  await assertRejects(() => malformedCreate.submitAsset(capability, {}));
+  await assertRejects(() => malformedPoll.pollJob(capability, "stored-map-job"));
+
+  assertEquals(events.map((event) => event.outcome), ["provider_error", "provider_error", "provider_error"]);
+});
