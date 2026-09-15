@@ -1,12 +1,13 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
+import { gddLlmProvider } from '@/lib/gdd-generation/usage';
 import { generateGdd } from '@/lib/gddGeneration';
 import { generateGddMarkdownV2, reviewGddMarkdownV2 } from '@/lib/gdd-generation/v2/generator';
 import { generateProfessionalStage } from '@/lib/gdd-generation/v2/professionalStages';
 import { planDialogueScene } from '@/lib/gdd-generation/v2/dialoguePlanner';
 import { compileGddMapBriefs } from '@/lib/gdd-generation/maps/compiler';
-import { processClaimedGddResourceJob } from '@/lib/gdd-generation/resources/worker';
-import { processClaimedDialogueJob } from '@/lib/gdd-generation/dialogueWorker';
+import { createGddResourceUsageBinding, processClaimedGddResourceJob } from '@/lib/gdd-generation/resources/worker';
+import { processClaimedDialogueJob, resolveGddDialogueParentIdentity } from '@/lib/gdd-generation/dialogueWorker';
 
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/documents/documentContentCodec', () => ({
@@ -42,6 +43,17 @@ const legacyInput = {
 };
 
 describe('GDD usage attribution', () => {
+  it('uses only a validated GDD provider, defaulting to deepseek', () => {
+    const previous = process.env.GDD_GENERATION_LLM_PROVIDER;
+    delete process.env.GDD_GENERATION_LLM_PROVIDER;
+    expect(gddLlmProvider()).toBe('deepseek');
+    process.env.GDD_GENERATION_LLM_PROVIDER = 'openai';
+    expect(gddLlmProvider()).toBe('openai');
+    process.env.GDD_GENERATION_LLM_PROVIDER = 'not-a-provider';
+    expect(gddLlmProvider()).toBe('unknown');
+    if (previous === undefined) delete process.env.GDD_GENERATION_LLM_PROVIDER;
+    else process.env.GDD_GENERATION_LLM_PROVIDER = previous;
+  });
   it('labels quick generation and its JSON repair', async () => {
     const complete = jest.fn(async () => 'not-json');
     await expect(generateGdd(legacyInput as never, { complete, usageBinding: binding() } as never)).rejects.toThrow();
@@ -67,14 +79,20 @@ describe('GDD usage attribution', () => {
       ...v2Input,
       rules: { ...v2Input.rules, tableGuidance: [{ table: 'Skills', purpose: 'Actions', fields: ['name'] }] },
     } as never, '# GDD\n\n<!-- KECO_TABLE_REF Skills -->', { complete: tableComplete, usageBinding: binding() } as never);
-    expect((tableComplete.mock.calls[0]![1] as any).usageBinding.context.operation).toBe('repair_missing_table');
+    expect((tableComplete.mock.calls[0]![1] as any).usageBinding.context).toMatchObject({
+      feature: 'gdd_table', operation: 'repair_missing_table', actorUserId: 'owner-1', projectId: 'project-1', jobId: 'gdd-job-1', correlationId: 'gdd-job-1',
+    });
+    expect((tableComplete.mock.calls[0]![1] as any).provider).toBe('deepseek');
 
     const dialogueComplete = jest.fn(async () => '[]');
     await reviewGddMarkdownV2({
       ...v2Input,
       rules: { ...v2Input.rules, genres: ['Narrative'] },
     } as never, '# GDD\n\nA complete story.', { complete: dialogueComplete, usageBinding: binding() } as never);
-    expect((dialogueComplete.mock.calls[0]![1] as any).usageBinding.context.operation).toBe('recover_scenes');
+    expect((dialogueComplete.mock.calls[0]![1] as any).usageBinding.context).toMatchObject({
+      feature: 'gdd_dialogue', operation: 'recover_scenes', actorUserId: 'owner-1', projectId: 'project-1', jobId: 'gdd-job-1', correlationId: 'gdd-job-1',
+    });
+    expect((dialogueComplete.mock.calls[0]![1] as any).provider).toBe('deepseek');
   });
 
   it('labels every professional primary and repair completion at its call site', async () => {
@@ -85,6 +103,7 @@ describe('GDD usage attribution', () => {
     expect(complete.mock.calls.map(([, options]) => (options as any).usageBinding.context.operation)).toEqual([
       'professional_planning', 'professional_planning_repair',
     ]);
+    expect(complete.mock.calls.every(([, options]) => (options as any).provider === 'deepseek')).toBe(true);
   });
 
   it.each([
@@ -100,6 +119,20 @@ describe('GDD usage attribution', () => {
       section_drafts: [], review_report: null, repair_round: 0,
     } as never, { complete, usageBinding: binding() } as never);
     expect((complete.mock.calls[0]![1] as any).usageBinding.context.operation).toBe(operation);
+    expect((complete.mock.calls[0]![1] as any).provider).toBe('deepseek');
+  });
+
+  it('labels professional stage repair with full identity and provider', async () => {
+    const complete = jest.fn(async () => complete.mock.calls.length === 1 ? 'Missing heading.' : '## Core\n\nBody.');
+    await generateProfessionalStage(v2Input as never, 'generating_core', {
+      blueprint: { version: 1, title: 'Test', sections: [{ id: 'core', title: 'Core', stage: 'core', instructions: ['Write the section.'] }], invariants: [] },
+      section_drafts: [], review_report: null, repair_round: 0,
+    } as never, { complete, usageBinding: binding() } as never);
+    const repair = complete.mock.calls[1]![1] as any;
+    expect(repair.usageBinding.context).toMatchObject({
+      feature: 'gdd', operation: 'professional_stage_repair', actorUserId: 'owner-1', projectId: 'project-1', jobId: 'gdd-job-1', correlationId: 'gdd-job-1',
+    });
+    expect(repair.provider).toBe('deepseek');
   });
 
   it('labels dialogue planning repairs and keeps scene metadata bounded', async () => {
@@ -110,6 +143,8 @@ describe('GDD usage attribution', () => {
     }, { complete, usageBinding: binding() } as never, { sceneIndex: 4 } as never)).rejects.toThrow();
     const usage = complete.mock.calls.map(([, options]) => (options as any).usageBinding);
     expect(usage.map((value) => value.context.operation)).toEqual(['plan_scene', 'repair_scene']);
+    expect(usage.every((value) => value.context.feature === 'gdd_dialogue')).toBe(true);
+    expect(complete.mock.calls.every(([, options]) => (options as any).provider === 'deepseek')).toBe(true);
     expect(usage.every((value) => value.metadata.sceneIndex === 4)).toBe(true);
     expect(JSON.stringify(usage)).not.toContain('A gate meeting.');
   });
@@ -119,12 +154,14 @@ describe('GDD usage attribution', () => {
     await expect(compileGddMapBriefs({ markdown: '# Map\nPrivate route.', artStyle: null, complete, usageBinding: binding() } as never)).rejects.toThrow();
     const usage = complete.mock.calls.map(([, options]) => (options as any).usageBinding);
     expect(usage.map((value) => value.context.operation)).toEqual(['compile_briefs', 'repair_briefs']);
+    expect(usage.every((value) => value.context.feature === 'gdd_map')).toBe(true);
+    expect(complete.mock.calls.every(([, options]) => (options as any).provider === 'deepseek')).toBe(true);
     expect(JSON.stringify(usage)).not.toContain('Private route.');
   });
 
   it('builds a service binding for asynchronous map resource jobs from the parent owner', async () => {
     const compile = jest.fn(async () => []);
-    const query: any = { maybeSingle: jest.fn(async () => ({ data: { owner_id: 'owner-1' }, error: null })) };
+    const query: any = { maybeSingle: jest.fn(async () => ({ data: { owner_id: 'owner-1', project_id: 'parent-project-1' }, error: null })) };
     query.select = jest.fn(() => query);
     query.eq = jest.fn(() => query);
     const serviceClient = { from: jest.fn(() => query) };
@@ -137,15 +174,27 @@ describe('GDD usage attribution', () => {
         ...binding(),
         context: {
           ...binding().context,
-          feature: 'gdd_map', operation: 'resource', artifactId: 'resource-1',
+          feature: 'gdd_map', operation: 'resource', artifactId: 'resource-1', projectId: 'parent-project-1',
         },
       })),
     } as never);
     expect(compile).toHaveBeenCalledWith(expect.objectContaining({
       usageBinding: expect.objectContaining({ context: expect.objectContaining({
-        actorUserId: 'owner-1', projectId: 'project-1', jobId: 'gdd-job-1', artifactId: 'resource-1', correlationId: 'gdd-job-1',
+        actorUserId: 'owner-1', projectId: 'parent-project-1', jobId: 'gdd-job-1', artifactId: 'resource-1', correlationId: 'gdd-job-1',
       }) }),
     }));
+  });
+
+  it('loads the asynchronous resource identity from the parent GDD row', async () => {
+    const query: any = { maybeSingle: jest.fn(async () => ({ data: { owner_id: 'owner-parent', project_id: 'project-parent' }, error: null })) };
+    query.select = jest.fn(() => query);
+    query.eq = jest.fn(() => query);
+    const serviceClient = { from: jest.fn(() => query) };
+    const usage = await createGddResourceUsageBinding(serviceClient as never, {
+      id: 'resource-1', project_id: 'project-child', gdd_generation_job_id: 'gdd-job-1',
+    } as never, 'gdd_map');
+    expect(query.select).toHaveBeenCalledWith('owner_id,project_id');
+    expect(usage.context).toMatchObject({ actorUserId: 'owner-parent', projectId: 'project-parent', jobId: 'gdd-job-1', artifactId: 'resource-1' });
   });
 
   it('passes the parent GDD service binding into Script AI conversion without a second recorder', async () => {
@@ -164,5 +213,16 @@ describe('GDD usage attribution', () => {
         actorUserId: 'owner-1', projectId: 'project-1', jobId: 'gdd-job-1', artifactId: 'dialogue-1', correlationId: 'gdd-job-1',
       }) }),
     }));
+  });
+
+  it('loads the dialogue worker identity from the parent GDD row', async () => {
+    const query: any = { maybeSingle: jest.fn(async () => ({ data: { owner_id: 'owner-parent', project_id: 'project-parent' }, error: null })) };
+    query.select = jest.fn(() => query);
+    query.eq = jest.fn(() => query);
+    const identity = await resolveGddDialogueParentIdentity({ from: jest.fn(() => query) } as never, {
+      gdd_generation_job_id: 'gdd-job-1', project_id: 'project-child',
+    } as never);
+    expect(query.select).toHaveBeenCalledWith('owner_id,project_id');
+    expect(identity).toEqual({ ownerId: 'owner-parent', projectId: 'project-parent' });
   });
 });

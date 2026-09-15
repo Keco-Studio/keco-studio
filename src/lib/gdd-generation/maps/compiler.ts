@@ -4,7 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { z } from 'zod';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
-import { gddUsage } from '../usage';
+import { gddFeatureUsage, gddLlmProvider } from '../usage';
 import type { ChatMessage } from '@/lib/agent/types';
 import type { GameArtStyleSnapshot } from '@/lib/game-art-style/schema';
 import {
@@ -93,6 +93,7 @@ function parseJson(raw: string): unknown {
 
 function compilerOptions(): StreamLlmOptions {
   return {
+    provider: gddLlmProvider(),
     model: process.env.GDD_GENERATION_LLM_MODEL || process.env.LLM_MODEL || 'deepseek-flash',
     ...(process.env.GDD_GENERATION_LLM_API_URL ? { baseUrl: process.env.GDD_GENERATION_LLM_API_URL } : {}),
     ...(process.env.GDD_GENERATION_LLM_API_KEY ? { apiKey: process.env.GDD_GENERATION_LLM_API_KEY } : {}),
@@ -183,7 +184,7 @@ export async function compileGddMapBriefs(input: {
     const operation = attempt === 0 ? 'compile_briefs' : 'repair_briefs';
     raw = await complete(attempt === 0 ? messages : repairMessages(messages, raw, lastError), {
       ...compilerOptions(),
-      ...(gddUsage(input.usageBinding, operation, attempt > 0 ? { repairAttempt: attempt } : {}) ? { usageBinding: gddUsage(input.usageBinding, operation, attempt > 0 ? { repairAttempt: attempt } : {}) } : {}),
+      ...(gddFeatureUsage(input.usageBinding, 'gdd_map', operation, attempt > 0 ? { repairAttempt: attempt } : {}) ? { usageBinding: gddFeatureUsage(input.usageBinding, 'gdd_map', operation, attempt > 0 ? { repairAttempt: attempt } : {}) } : {}),
     });
     try {
       parsed = rawGddMapBriefArraySchema.parse(rejectDangerousMapKeys(parseJson(raw)));

@@ -22,7 +22,7 @@ import {
   type DialogueSceneEvent,
 } from './dialogueSceneStream';
 import { planDialogueScene } from './dialoguePlanner';
-import { gddUsage } from '../usage';
+import { gddFeatureUsage, gddLlmProvider, gddUsage } from '../usage';
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 type TextStream = (messages: ChatMessage[], options?: StreamLlmOptions) => AsyncIterable<StreamChunk>;
@@ -169,6 +169,7 @@ export async function reviewGddMarkdownV2(
 
 export function gddV2LlmOptions(maxCompletionTokens: number): StreamLlmOptions {
   return {
+    provider: gddLlmProvider(),
     model: process.env.GDD_GENERATION_LLM_MODEL || process.env.LLM_MODEL || 'deepseek-flash',
     ...(process.env.GDD_GENERATION_LLM_API_URL ? { baseUrl: process.env.GDD_GENERATION_LLM_API_URL } : {}),
     ...(process.env.GDD_GENERATION_LLM_API_KEY ? { apiKey: process.env.GDD_GENERATION_LLM_API_KEY } : {}),
@@ -447,7 +448,7 @@ async function repairMissingTablePlans(
       const raw = await complete(messages, {
         ...gddV2LlmOptions(6_000),
         signal: controller.signal,
-        ...(gddUsage(usageBinding, 'repair_missing_table') ? { usageBinding: gddUsage(usageBinding, 'repair_missing_table') } : {}),
+        ...(gddFeatureUsage(usageBinding, 'gdd_table', 'repair_missing_table') ? { usageBinding: gddFeatureUsage(usageBinding, 'gdd_table', 'repair_missing_table') } : {}),
       });
       const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
         ? raw
@@ -676,7 +677,7 @@ async function recoverMissingDialoguePlans(
   }], {
     ...gddV2LlmOptions(6_000),
     ...(signal ? { signal } : {}),
-    ...(gddUsage(dependencies.usageBinding, 'recover_scenes') ? { usageBinding: gddUsage(dependencies.usageBinding, 'recover_scenes') } : {}),
+    ...(gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'recover_scenes') ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'recover_scenes') } : {}),
   });
   const events = parseDialogueRecoveryEvents(raw);
   if (events.length === 0) {
@@ -704,7 +705,7 @@ async function planDialogueSceneEvents(
       { event, gddContext: plannerContext(markdown) },
       {
         complete: dependencies.complete,
-        ...(dependencies.usageBinding ? { usageBinding: gddUsage(dependencies.usageBinding, dependencies.usageBinding.context.operation, { sceneIndex }) } : {}),
+        ...(dependencies.usageBinding ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', dependencies.usageBinding.context.operation, { sceneIndex }) } : {}),
       },
       { signal: controller.signal },
     ))));
@@ -855,7 +856,7 @@ async function consumeGddStream(
         { event, gddContext },
         {
           complete: dependencies.complete,
-          ...(dependencies.usageBinding ? { usageBinding: gddUsage(dependencies.usageBinding, dependencies.usageBinding.context.operation, { sceneIndex: index }) } : {}),
+          ...(dependencies.usageBinding ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', dependencies.usageBinding.context.operation, { sceneIndex: index }) } : {}),
         },
         { signal: controller.signal },
       ),

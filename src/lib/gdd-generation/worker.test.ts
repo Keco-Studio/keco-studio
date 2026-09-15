@@ -295,6 +295,23 @@ describe('GDD generation worker', () => {
     consoleError.mockRestore();
   });
 
+  it('passes a full gdd_map usage binding to inline map compilation', async () => {
+    const rpc = jest.fn(async () => ({
+      data: [{ document_id: 'document-1', document_name: 'GDD', generation_revision: 1, resource_change_summary: { created: [], updated: [], reused: [], preserved: [] } }],
+      error: null,
+    }));
+    const v2Job = { ...job, applied_rule_ids: [], omitted_rule_ids: [], input: { ...generationInput, contractVersion: 2, mode: 'quick', language: 'en', artStyle: null } } as GddGenerationJob;
+    await persistGeneratedGddV2Document({ rpc, from: jest.fn(() => ({ update: jest.fn(() => ({ eq: jest.fn(async () => ({ error: null })) })) })) } as never, v2Job, 'worker-1', '# GDD\n\nBody.', { version: 2, summary: 'pass', status: 'pass', issues: [] }, [], [], {
+      context: { actorUserId: 'user-1', projectId: generationInput.projectId, feature: 'gdd', operation: 'generate', correlationId: 'job-1', jobId: 'job-1' },
+      recorder: jest.fn(async () => undefined),
+    });
+    expect(mockCompileGddMapBriefs).toHaveBeenCalledWith(expect.objectContaining({
+      usageBinding: expect.objectContaining({ context: expect.objectContaining({
+        feature: 'gdd_map', actorUserId: 'user-1', projectId: generationInput.projectId, jobId: 'job-1', correlationId: 'job-1',
+      }) }),
+    }));
+  });
+
   it('completes the parent GDD before async map compilation', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockCompileGddMapBriefs.mockRejectedValueOnce(new Error('Map compiler timed out.'));
@@ -420,6 +437,7 @@ describe('GDD generation worker', () => {
       expect.objectContaining({ status: 'pass' }),
       undefined,
       [],
+      expect.objectContaining({ context: expect.objectContaining({ feature: 'gdd', jobId: 'job-1' }) }),
     );
     jest.useRealTimers();
   });
@@ -781,6 +799,7 @@ describe('GDD generation worker', () => {
       expect.objectContaining({ version: 2 }),
       [],
       dialoguePlans,
+      expect.objectContaining({ context: expect.objectContaining({ feature: 'gdd', jobId: 'job-1' }) }),
     );
   });
 

@@ -5,7 +5,7 @@ import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
 import { z } from 'zod';
 import type { DialoguePlan } from '../dialogueResources';
 import type { DialogueSceneEvent } from './dialogueSceneStream';
-import { gddUsage } from '../usage';
+import { gddFeatureUsage, gddLlmProvider } from '../usage';
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 const plannerText = (max: number) => z.string().trim().min(1).max(max);
@@ -26,6 +26,7 @@ export class GddDialoguePlanningValidationError extends Error {
 
 function plannerOptions(signal?: AbortSignal): StreamLlmOptions {
   return {
+    provider: gddLlmProvider(),
     model: process.env.GDD_GENERATION_LLM_MODEL || process.env.LLM_MODEL || 'deepseek-flash',
     ...(process.env.GDD_GENERATION_LLM_API_URL ? { baseUrl: process.env.GDD_GENERATION_LLM_API_URL } : {}),
     ...(process.env.GDD_GENERATION_LLM_API_KEY ? { apiKey: process.env.GDD_GENERATION_LLM_API_KEY } : {}),
@@ -257,7 +258,7 @@ export async function planDialogueScene(
   const metadata = runtime.sceneIndex === undefined ? {} : { sceneIndex: runtime.sceneIndex };
   const first = await complete(messages, {
     ...plannerOptions(runtime.signal),
-    ...(gddUsage(dependencies.usageBinding, 'plan_scene', metadata) ? { usageBinding: gddUsage(dependencies.usageBinding, 'plan_scene', metadata) } : {}),
+    ...(gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'plan_scene', metadata) ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'plan_scene', metadata) } : {}),
   });
   try {
     return parsePlan(first, input.event);
@@ -276,7 +277,7 @@ export async function planDialogueScene(
     }];
     const repaired = await complete(repairMessages, {
       ...plannerOptions(runtime.signal),
-      ...(gddUsage(dependencies.usageBinding, 'repair_scene', { ...metadata, repairAttempt: 1 }) ? { usageBinding: gddUsage(dependencies.usageBinding, 'repair_scene', { ...metadata, repairAttempt: 1 }) } : {}),
+      ...(gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'repair_scene', { ...metadata, repairAttempt: 1 }) ? { usageBinding: gddFeatureUsage(dependencies.usageBinding, 'gdd_dialogue', 'repair_scene', { ...metadata, repairAttempt: 1 }) } : {}),
     });
     try {
       return parsePlan(repaired, input.event);

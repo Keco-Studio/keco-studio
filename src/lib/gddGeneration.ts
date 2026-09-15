@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ChatMessage } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
 import type { AiUsageBinding } from '@/lib/ai-usage/types';
-import { gddUsage } from '@/lib/gdd-generation/usage';
+import { gddLlmProvider, gddUsage } from '@/lib/gdd-generation/usage';
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import {
   gameDesignDocumentSchema,
@@ -96,6 +96,7 @@ export class GddGenerationValidationError extends Error {
 }
 
 const llmOptions = (): StreamLlmOptions => ({
+  provider: gddLlmProvider(),
   model: process.env.GDD_GENERATION_LLM_MODEL || process.env.LLM_MODEL || 'deepseek-flash',
   ...(process.env.GDD_GENERATION_LLM_API_URL ? { baseUrl: process.env.GDD_GENERATION_LLM_API_URL } : {}),
   ...(process.env.GDD_GENERATION_LLM_API_KEY ? { apiKey: process.env.GDD_GENERATION_LLM_API_KEY } : {}),

@@ -26,7 +26,7 @@ import {
   hashGddGenerationInput,
 } from '@/lib/gddGeneration';
 import { compileGddMapBriefs } from './maps/compiler';
-import { gddUsage } from './usage';
+import { gddFeatureUsage, gddUsage } from './usage';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
 import type { ResourceChangeSummary } from './resourceEvolution';
 import {
@@ -302,6 +302,7 @@ export async function persistGeneratedGddV2Document(
   review: unknown,
   tablePlans: Parameters<typeof materializeTableResources>[1] = [],
   dialoguePlans: DialoguePlan[] = [],
+  usageBinding?: AiUsageBinding,
 ): Promise<PersistedGddGeneration> {
   const input = job.input as GddGenerationRequestV2;
   const existingLibraryIds = await loadSeriesTableLibraryIds(
@@ -327,7 +328,11 @@ export async function persistGeneratedGddV2Document(
   let briefs: Awaited<ReturnType<typeof compileGddMapBriefs>> = [];
   if (!asyncResources) {
     try {
-      briefs = await compileGddMapBriefs({ markdown: withDialogue, artStyle: input.artStyle ?? null });
+      briefs = await compileGddMapBriefs({
+        markdown: withDialogue,
+        artStyle: input.artStyle ?? null,
+        ...(usageBinding ? { usageBinding: gddFeatureUsage(usageBinding, 'gdd_map', 'inline_map') } : {}),
+      });
     } catch (error) {
       mapCompilationFailed = true;
       mapCompilationError = (error instanceof Error ? error.message : 'Map brief compilation failed.').slice(0, 1000);
@@ -770,6 +775,7 @@ export async function processClaimedGddJob(
         generatedV2.review,
         generatedV2.tablePlans,
         generatedV2.dialoguePlans ?? [],
+        usageBinding,
       );
       return persisted.status ?? 'completed';
     }

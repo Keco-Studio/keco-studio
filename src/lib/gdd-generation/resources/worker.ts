@@ -43,22 +43,22 @@ type Dependencies = {
   usageBindingForJob?: (serviceClient: SupabaseClient, job: GddResourceJob, feature: 'gdd_map' | 'gdd_table') => Promise<AiUsageBinding>;
 };
 
-async function usageBindingForJob(
+export async function createGddResourceUsageBinding(
   serviceClient: SupabaseClient,
   job: GddResourceJob,
   feature: 'gdd_map' | 'gdd_table',
 ): Promise<AiUsageBinding> {
   const { data, error } = await serviceClient.from('gdd_generation_jobs')
-    .select('owner_id')
+    .select('owner_id,project_id')
     .eq('id', job.gdd_generation_job_id)
     .eq('project_id', job.project_id)
     .maybeSingle();
   if (error) throw error;
-  if (!data?.owner_id) throw new Error('GDD resource parent owner is not available.');
+  if (!data?.owner_id || !data.project_id) throw new Error('GDD resource parent identity is not available.');
   return {
     context: {
       actorUserId: data.owner_id,
-      projectId: job.project_id,
+      projectId: data.project_id,
       feature,
       operation: 'resource',
       correlationId: job.gdd_generation_job_id,
@@ -78,7 +78,7 @@ const defaults: Dependencies = {
   materializeMaps: materializeGddMapArtifacts,
   readDocument: readGddResourceDocument,
   review: reviewGddMarkdownV2,
-  usageBindingForJob,
+  usageBindingForJob: createGddResourceUsageBinding,
 };
 
 function message(error: unknown): string {
