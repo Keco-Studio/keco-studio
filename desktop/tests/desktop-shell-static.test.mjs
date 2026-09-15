@@ -35,3 +35,7 @@ test('desktop dependencies and popup patch are pinned to Native SDK 0.10.1', () 
   assert.match(patch, /ICoreWebView2NewWindowRequestedEventArgs/);
   assert.match(patch, /put_Handled\(TRUE\)/);
 });
+
+test('desktop build package fingerprint matches the Native SDK template for keco_studio', () => {
+  assert.match(read('build.zig.zon'), /\.fingerprint = 0x6ded5f995a707070,/);
+});
