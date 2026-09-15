@@ -17,8 +17,7 @@ AS $$
           AND item.value #>> '{}' ~ '^[a-z][a-z0-9_]{0,63}$'
         WHEN item.key = 'source' THEN
           pg_catalog.jsonb_typeof(item.value) = 'string'
-          AND item.value #>> '{}' ~ '^[a-z][a-z0-9_]*$'
-          AND pg_catalog.char_length(item.value #>> '{}') <= 4096
+          AND item.value #>> '{}' ~ '^[a-z][a-z0-9_]{0,63}$'
         WHEN item.key = 'embeddingType' THEN
           pg_catalog.jsonb_typeof(item.value) = 'string'
           AND item.value #>> '{}' IN ('index_batch', 'query')

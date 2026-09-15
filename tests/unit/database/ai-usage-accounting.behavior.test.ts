@@ -197,6 +197,14 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     },
   );
 
+  it('rejects an identifier-shaped multi-KiB source through the recorder RPC', async () => {
+    const payload = event({ metadata: { source: 'a'.repeat(3000) } });
+    expect((await record(payload)).error).not.toBeNull();
+    expect(queryJson(
+      `select json_build_object('count', count(*)) from public.ai_usage_events where event_key = '${payload.eventKey}'`,
+    )).toEqual({ count: 0 });
+  });
+
   it('rounds aggregate DeepSeek tokens once and excludes non-billable events', async () => {
     const billable = [
       event({ usage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 } }),
@@ -240,7 +248,6 @@ describeDb('AI usage accounting real Postgres behavior', () => {
   });
 
   it.each([
-    ['metadata over 4 KiB', { metadata: { source: 'a'.repeat(4090) } }],
     ['fractional token usage', { usage: { inputTokens: 1.5, outputTokens: 2, totalTokens: 4 } }],
     ['invalid outcome', { outcome: 'pending' }],
     ['total smaller than token components', { usage: { inputTokens: 10, outputTokens: 11, totalTokens: 20 } }],
@@ -271,6 +278,7 @@ describeDb('AI usage accounting real Postgres behavior', () => {
 
     for (const metadata of [
       { source: 'Summarize the customer conversation verbatim.' },
+      { source: 'a'.repeat(3000) },
       { providerOperation: 'data:text/plain;base64,cHJvbXB0' },
       { embeddingType: 'raw request body' },
       { retryAttempt: 1.5 },
