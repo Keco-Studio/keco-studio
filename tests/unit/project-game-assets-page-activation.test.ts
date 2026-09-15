@@ -10,5 +10,6 @@ describe('Assets page activation', () => {
   it('activates a directly opened workspace and refreshes project navigation', () => {
     expect(source).toContain("action: 'activate-workspace'");
     expect(source).toContain("queryClient.invalidateQueries({ queryKey: ['projects'] })");
+    expect(source).toContain('} catch {');
   });
 });

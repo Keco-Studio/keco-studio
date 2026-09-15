@@ -21,13 +21,17 @@ export default function ProjectGameAssetsRoutePage() {
   useEffect(() => {
     if (!isValid) return;
     void (async () => {
-      const response = await fetch(`/api/projects/${projectId}/game-assets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'activate-workspace' }),
-      });
-      if (response.ok) {
-        await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/game-assets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'activate-workspace' }),
+        });
+        if (response.ok) {
+          await queryClient.invalidateQueries({ queryKey: ['projects'] });
+        }
+      } catch {
+        // The Assets page remains usable even if workspace activation is offline.
       }
     })();
   }, [isValid, projectId, queryClient]);
