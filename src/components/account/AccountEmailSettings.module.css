@@ -1,0 +1,180 @@
+.page {
+  width: 100%;
+  min-height: 100%;
+  padding: 32px 32px 48px;
+  overflow-x: hidden;
+  color: #21272a;
+}
+
+.content {
+  width: min(100%, 760px);
+  margin: 0 auto;
+}
+
+.pageHeader {
+  margin-bottom: 32px;
+}
+
+.pageHeader h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-nunito), sans-serif;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.pageHeader p,
+.sectionHeading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.section {
+  padding: 24px 0 32px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sectionHeading h2 {
+  margin: 0 0 3px;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 7px;
+  color: #096dd9;
+  background: #e6f4ff;
+  font-size: 17px;
+}
+
+.currentEmail {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: baseline;
+  margin: 0 0 24px;
+  padding: 14px 0;
+  border-top: 1px solid #edf0f2;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.currentEmail dt {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.currentEmail dd {
+  min-width: 0;
+  margin: 0;
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: grid;
+  gap: 8px;
+}
+
+.form label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.formRow input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 7px;
+  color: #21272a;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+}
+
+.formRow button {
+  min-width: 112px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid #1677ff;
+  border-radius: 7px;
+  color: #fff;
+  background: #1677ff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.formRow input:focus-visible,
+.formRow button:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.formRow input:disabled,
+.formRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.error,
+.success {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.error {
+  color: #b42318;
+}
+
+.success {
+  color: #067647;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 24px 18px 40px;
+  }
+
+  .currentEmail {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+  }
+
+  .formRow button {
+    width: 100%;
+  }
+}
