@@ -13,10 +13,7 @@ import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import loginQuestionIcon from "@/assets/images/loginQuestionIcon.svg";
 import loginServiceIcon from "@/assets/images/loginServiceIcon.svg";
 import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
-import {
-  getNewPasswordValidationError,
-  MINIMUM_PASSWORD_LENGTH,
-} from '@/lib/auth/passwordPolicy';
+import { getNewPasswordValidationError } from '@/lib/auth/passwordPolicy';
 
 export default function ResetPasswordPage() {
   const supabase = useSupabase();
@@ -262,7 +259,6 @@ export default function ResetPasswordPage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  minLength={MINIMUM_PASSWORD_LENGTH}
                 />
               </label>
               
@@ -275,7 +271,6 @@ export default function ResetPasswordPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  minLength={MINIMUM_PASSWORD_LENGTH}
                 />
               </label>
 

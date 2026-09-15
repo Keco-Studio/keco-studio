@@ -24,6 +24,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'keco-101',
   'design-upload',
   'mcp',
+  'account',
   'keco-admin',
 ] as const;
 

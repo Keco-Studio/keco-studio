@@ -27,11 +27,17 @@ test.describe('Account email settings', () => {
     await expect(page).toHaveURL(/\/projects/, { timeout: 15000 });
     await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 15000 });
 
-    await page.goto('/account');
+    await page.getByTestId('user-menu').click();
+    await page.getByRole('button', { name: 'Account', exact: true }).click();
+    await expect(page).toHaveURL(/\/account$/);
     await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
     await expect(page.getByText(user.email, { exact: true })).toBeVisible();
     await expect(page.getByLabel('New email')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Change email' })).toBeVisible();
+
+    await page.waitForTimeout(2000);
+    await expect(page).toHaveURL(/\/account$/);
+    await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();

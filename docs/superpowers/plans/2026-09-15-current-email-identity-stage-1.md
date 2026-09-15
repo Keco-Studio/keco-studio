@@ -272,11 +272,12 @@ git commit -m "fix: bind collaboration invitations to user UUIDs"
 **Interfaces:**
 - Consumes: `normalizeEmail(value: string): string`
 - Consumes: Supabase `resetPasswordForEmail` and recovery-session `updateUser`
-- Password minimum: 12 characters, matching `supabase/config.toml`
+- Client validation: password is required and must match its confirmation
+- Auth minimum: 6 characters, matching the Supabase platform minimum in `supabase/config.toml`
 
 - [ ] **Step 1: Write failing UI-contract tests**
 
-Assert that the request form label and placeholder are email-only, the success copy is non-enumerating (`If an account exists for this email, you will receive a password reset link.`), reset validation requires 12 characters, and the login link says `Forgot your password?`.
+Assert that the request form label and placeholder are email-only, the success copy is non-enumerating (`If an account exists for this email, you will receive a password reset link.`), reset validation requires a matching non-empty password without a client-side length rule, and the login link says `Forgot your password?`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -290,11 +291,13 @@ Normalize the email with the shared helper. On a successful provider response,
 always show the same success copy whether or not the address exists. For a
 provider failure, show a generic unavailable/rate-limit message that does not
 reveal account existence; do not falsely claim delivery. Change the reset
-minimum to 12 and preserve invalid/expired recovery-link handling.
+Auth minimum to 6, remove the client-side length rule, and preserve
+invalid/expired recovery-link handling.
 
 - [ ] **Step 4: Update end-to-end expectations**
 
-Change selectors and expected copy, add a password shorter than 12 case, then keep the successful `NewPassword123!` recovery assertion.
+Change selectors and expected copy, reject mismatched confirmation, then use a
+six-character password for the successful recovery assertion.
 
 - [ ] **Step 5: Verify GREEN**
 

@@ -57,17 +57,12 @@ test.describe('Password reset', () => {
     const submit = page.getByRole('button', { name: 'Confirm' });
     await expect(password).toBeVisible({ timeout: 15000 });
 
-    await password.fill('Short123!');
-    await confirmation.fill('Short123!');
-    await submit.click();
-    await expect(page.getByText('Password must be at least 12 characters')).toBeVisible();
-
-    await password.fill('NewPassword123!');
-    await confirmation.fill('DifferentPassword123!');
+    await password.fill('Abc123');
+    await confirmation.fill('Xyz789');
     await submit.click();
     await expect(page.getByText('Passwords do not match')).toBeVisible();
 
-    await confirmation.fill('NewPassword123!');
+    await confirmation.fill('Abc123');
     await submit.click();
     await expect(page.getByText(/Password reset successfully!/)).toBeVisible({ timeout: 30000 });
     await expect(page).toHaveURL(/\/(projects)?(?:\?|$)/, { timeout: 10000 });
