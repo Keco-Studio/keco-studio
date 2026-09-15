@@ -1,6 +1,8 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { coerceGeneratedSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import { decorateGddWithMapReferences } from '@/lib/documents/gddMapMarkdown';
@@ -38,7 +40,34 @@ type Dependencies = {
   materializeMaps?: typeof materializeGddMapArtifacts;
   readDocument?: typeof readGddResourceDocument;
   review: typeof reviewGddMarkdownV2;
+  usageBindingForJob?: (serviceClient: SupabaseClient, job: GddResourceJob, feature: 'gdd_map' | 'gdd_table') => Promise<AiUsageBinding>;
 };
+
+async function usageBindingForJob(
+  serviceClient: SupabaseClient,
+  job: GddResourceJob,
+  feature: 'gdd_map' | 'gdd_table',
+): Promise<AiUsageBinding> {
+  const { data, error } = await serviceClient.from('gdd_generation_jobs')
+    .select('owner_id')
+    .eq('id', job.gdd_generation_job_id)
+    .eq('project_id', job.project_id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.owner_id) throw new Error('GDD resource parent owner is not available.');
+  return {
+    context: {
+      actorUserId: data.owner_id,
+      projectId: job.project_id,
+      feature,
+      operation: 'resource',
+      correlationId: job.gdd_generation_job_id,
+      jobId: job.gdd_generation_job_id,
+      artifactId: job.id,
+    },
+    recorder: createServiceAiUsageRecorder(serviceClient as never),
+  };
+}
 
 const defaults: Dependencies = {
   claim: claimGddResourceJob,
@@ -49,6 +78,7 @@ const defaults: Dependencies = {
   materializeMaps: materializeGddMapArtifacts,
   readDocument: readGddResourceDocument,
   review: reviewGddMarkdownV2,
+  usageBindingForJob,
 };
 
 function message(error: unknown): string {
@@ -62,13 +92,18 @@ export async function processClaimedGddResourceJob(
   const { serviceClient, workerId, job } = input;
   const readDocument = dependencies.readDocument ?? defaults.readDocument!;
   const materializeMaps = dependencies.materializeMaps ?? defaults.materializeMaps!;
+  const getUsageBinding = dependencies.usageBindingForJob ?? defaults.usageBindingForJob!;
   try {
     if (job.kind === 'maps') {
       const payload = job.payload as { markdown?: unknown; artStyle?: unknown };
       if (typeof payload.markdown !== 'string') throw new Error('Map resource payload is missing Markdown.');
+      const usageBinding = getUsageBinding
+        ? await getUsageBinding(serviceClient, job, 'gdd_map')
+        : undefined;
       const briefs = await dependencies.compile({
         markdown: payload.markdown,
         artStyle: resolveArtStyle(payload.artStyle),
+        ...(usageBinding ? { usageBinding } : {}),
       });
       const artifacts = briefs.map((brief) => ({
         id: randomUUID(),
@@ -105,10 +140,13 @@ export async function processClaimedGddResourceJob(
         throw new Error('Resource payload is missing its GDD context.');
       }
       const gddInput = payload.input as GddGenerationRequestV2;
+      const usageBinding = getUsageBinding
+        ? await getUsageBinding(serviceClient, job, 'gdd_table')
+        : undefined;
       const reviewed = await dependencies.review(
         { ...gddInput, resourceMode: 'inline' },
         payload.markdown,
-        {},
+        usageBinding ? { usageBinding } : {},
         { recoverDialogue: false },
       );
       const expectedTables = gddInput.rules.tableGuidance.map((guidance) => guidance.table.toLocaleLowerCase());

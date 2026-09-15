@@ -1,6 +1,8 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { randomUUID } from 'node:crypto';
 import { documentContentCodec } from '@/lib/documents/documentContentCodec';
 import { coerceGeneratedSanctionedMdx, validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
@@ -24,6 +26,7 @@ import {
   hashGddGenerationInput,
 } from '@/lib/gddGeneration';
 import { compileGddMapBriefs } from './maps/compiler';
+import { gddUsage } from './usage';
 import { isGddGenerationRequestV2, type GddGenerationRequestV2 } from './v2/contracts';
 import type { ResourceChangeSummary } from './resourceEvolution';
 import {
@@ -620,6 +623,7 @@ function readProfessionalReviewReport(value: unknown): ProfessionalReviewReport 
 async function processProfessionalGddPhase(
   input: { serviceClient: SupabaseClient; workerId: string; job: GddGenerationJob & { input: GddGenerationRequestV2 } },
   dependencies: WorkerDependencies,
+  usageBinding: AiUsageBinding,
 ): Promise<GddJobStatus> {
   const { serviceClient, workerId, job } = input;
   const checkpoint = dependencies.checkpoint ?? checkpointGddGenerationJob;
@@ -671,7 +675,9 @@ async function processProfessionalGddPhase(
       input,
       dependencies.heartbeat,
       professionalStageDeadlineMs(job),
-      (signal) => dependencies.reviewV2!(job.input, markdown, {}, { signal }),
+      (signal) => dependencies.reviewV2!(job.input, markdown, {
+        usageBinding: gddUsage(usageBinding, 'review'),
+      }, { signal }),
       {
         heartbeatPhase: 'reviewing',
         deadlineMessage: `Professional GDD stage reviewing exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
@@ -697,7 +703,7 @@ async function processProfessionalGddPhase(
     input,
     dependencies.heartbeat,
     professionalStageDeadlineMs(job),
-    (signal) => dependencies.generateProfessionalStage!(job.input, stage, current, {}, signal),
+    (signal) => dependencies.generateProfessionalStage!(job.input, stage, current, { usageBinding }, signal),
     {
       heartbeatPhase: job.phase,
       deadlineMessage: `Professional GDD stage ${job.phase} exceeded its ${Math.round(professionalStageDeadlineMs(job) / 1000)}-second deadline.`,
@@ -721,6 +727,17 @@ export async function processClaimedGddJob(
   dependencies: WorkerDependencies = defaultDependencies,
 ): Promise<GddJobStatus> {
   const { serviceClient, workerId, job } = input;
+  const usageBinding: AiUsageBinding = {
+    context: {
+      actorUserId: job.owner_id,
+      projectId: job.project_id,
+      feature: 'gdd',
+      operation: 'generate',
+      correlationId: job.id,
+      jobId: job.id,
+    },
+    recorder: createServiceAiUsageRecorder(serviceClient as never),
+  };
   try {
     await dependencies.heartbeat(
       serviceClient,
@@ -734,12 +751,12 @@ export async function processClaimedGddJob(
         serviceClient,
         workerId,
         job,
-      }, dependencies);
+      }, dependencies, usageBinding);
     }
     if (isGddGenerationRequestV2(job.input)) {
       if (!dependencies.generateV2 || !dependencies.persistV2) throw new Error('GDD v2 worker dependencies are not configured.');
       const generatedV2 = await runWithLeaseHeartbeat(input, dependencies.heartbeat, gddGenerationDeadlineMs(job), (signal) => (
-        dependencies.generateV2!(job.input as GddGenerationRequestV2, undefined, { signal })
+        dependencies.generateV2!(job.input as GddGenerationRequestV2, { usageBinding }, { signal })
       ));
       await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
       const normalizedV2Markdown = coerceGeneratedSanctionedMdx(generatedV2.markdown);
@@ -760,7 +777,7 @@ export async function processClaimedGddJob(
       input,
       dependencies.heartbeat,
       gddGenerationDeadlineMs(job),
-      () => dependencies.generate(job.input),
+      () => dependencies.generate(job.input, { usageBinding }),
     );
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'validating');
     const tableResources = materializeTableResources(tableSeriesSeed(job), generated.productionTables);

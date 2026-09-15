@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceAiUsageRecorder } from '@/lib/ai-usage/recorder';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { DocumentAccessError } from '@/lib/documents/documentStateTypes';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
@@ -190,6 +192,21 @@ export function shouldWakeDialogueGenerationJob(
     && Date.parse(job.lease_expires_at as string) <= now;
 }
 
+function dialogueUsageBinding(serviceClient: SupabaseClient, job: DialogueGenerationJob, ownerId: string): AiUsageBinding {
+  return {
+    context: {
+      actorUserId: ownerId,
+      projectId: job.project_id,
+      feature: 'gdd_dialogue',
+      operation: 'convert_script',
+      correlationId: job.gdd_generation_job_id,
+      jobId: job.gdd_generation_job_id,
+      artifactId: job.id,
+    },
+    recorder: createServiceAiUsageRecorder(serviceClient as never),
+  };
+}
+
 async function runWithLeaseHeartbeat<T>(
   input: { serviceClient: SupabaseClient; workerId: string; job: DialogueGenerationJob },
   heartbeat: DialogueWorkerDependencies['heartbeat'],
@@ -228,6 +245,8 @@ export async function processClaimedDialogueJob(
       revision: source.token?.revision ?? 0,
       updateIds: (source.updateTail ?? []).map((update) => update.id).sort(),
     };
+    const ownerId = await dependencies.resolveOwner(serviceClient, job);
+    const usageBinding = dialogueUsageBinding(serviceClient, job, ownerId);
     const existingScriptId = await dependencies.findExistingScript(serviceClient, job, sourceState);
     if (existingScriptId) {
       const completion = await dependencies.complete(serviceClient, job.id, workerId, existingScriptId);
@@ -244,6 +263,7 @@ export async function processClaimedDialogueJob(
           sourceId: job.document_id,
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: true,
+          usageBinding,
         });
         await dependencies.updateSnapshot(serviceClient, job, resolved, existingScriptId);
       } catch (error) {
@@ -264,8 +284,8 @@ export async function processClaimedDialogueJob(
           sourceId: job.document_id,
           skipSemanticAuditAfterValidation: true,
           enableAiPlotPlanning: true,
+          usageBinding,
         });
-        const ownerId = await dependencies.resolveOwner(serviceClient, job);
         const result = await dependencies.importStory(serviceClient, {
           userId: ownerId,
           projectId: job.project_id,

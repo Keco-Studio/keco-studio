@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { gddV2LlmOptions, gddV2SourceContext, GddV2GenerationValidationError } from './generator';
 import type { GddGenerationRequestV2 } from './contracts';
 import { tablePlanShapeExample } from '../tableResources';
+import { gddUsage } from '../usage';
 
 export type ProfessionalStage = 'planning' | 'generating_core' | 'generating_systems' | 'generating_content';
 type ProfessionalSectionKind = 'core' | 'systems' | 'content';
@@ -39,7 +41,7 @@ export type ProfessionalStageResult = {
 };
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
-type StageDependencies = { complete?: Completion };
+type StageDependencies = { complete?: Completion; usageBinding?: AiUsageBinding };
 
 function outputLanguage(input: GddGenerationRequestV2): string {
   const locale = input.language.trim();
@@ -423,6 +425,13 @@ export async function generateProfessionalStage(
 ): Promise<ProfessionalStageResult> {
   if (signal?.aborted) throw abortReason(signal);
   const complete = dependencyInput.complete ?? completeLlm;
+  const primaryOperation = stage === 'planning'
+    ? 'professional_planning'
+    : stage === 'generating_core'
+      ? 'professional_core'
+      : stage === 'generating_systems'
+        ? 'professional_systems'
+        : 'professional_content';
   if (stage === 'planning') {
     const raw = await raceWithAbort(complete(stageMessages(input, stage, {
       version: 1,
@@ -434,6 +443,7 @@ export async function generateProfessionalStage(
       tools: [blueprintTool],
       toolName: BLUEPRINT_TOOL_NAME,
       signal,
+      ...(gddUsage(dependencyInput.usageBinding, primaryOperation) ? { usageBinding: gddUsage(dependencyInput.usageBinding, primaryOperation) } : {}),
     }), signal);
     try {
       const parsed = parseBlueprint(raw);
@@ -446,6 +456,7 @@ export async function generateProfessionalStage(
           tools: [blueprintTool],
           toolName: BLUEPRINT_TOOL_NAME,
           signal,
+          ...(gddUsage(dependencyInput.usageBinding, 'professional_planning_repair', { repairAttempt: 1 }) ? { usageBinding: gddUsage(dependencyInput.usageBinding, 'professional_planning_repair', { repairAttempt: 1 }) } : {}),
         }), signal);
         const repaired = parseBlueprint(repairedRaw);
         const title = requestedGameTitle(input);
@@ -460,6 +471,7 @@ export async function generateProfessionalStage(
   const kind = stageKind(stage)!;
   let raw = await raceWithAbort(complete(stageMessages(input, stage, savedBlueprint, previous), {
     ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal,
+    ...(gddUsage(dependencyInput.usageBinding, primaryOperation) ? { usageBinding: gddUsage(dependencyInput.usageBinding, primaryOperation) } : {}),
   }), signal);
   let repairAttempted = false;
   if (isEnglishDominant(raw, input)) {
@@ -467,7 +479,7 @@ export async function generateProfessionalStage(
       input,
       savedBlueprint.sections.filter((section) => section.stage === kind).map((section) => section.title),
       raw,
-    ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal }), signal);
+    ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal, ...(gddUsage(dependencyInput.usageBinding, 'professional_stage_repair', { repairAttempt: 1 }) ? { usageBinding: gddUsage(dependencyInput.usageBinding, 'professional_stage_repair', { repairAttempt: 1 }) } : {}) }), signal);
     repairAttempted = true;
   }
   let generated: ProfessionalSectionDraft[];
@@ -500,7 +512,7 @@ export async function generateProfessionalStage(
       raw,
       error instanceof Error ? error.message : String(error),
       allSectionTitles,
-    ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal }), signal);
+    ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal, ...(gddUsage(dependencyInput.usageBinding, 'professional_stage_repair', { repairAttempt: 1 }) ? { usageBinding: gddUsage(dependencyInput.usageBinding, 'professional_stage_repair', { repairAttempt: 1 }) } : {}) }), signal);
     const repairedDrafts = splitDrafts(repairedRaw, savedBlueprint, kind, { requireAll: false });
     const merged = new Map(initialDrafts.map((draft) => [draft.sectionId, draft]));
     repairedDrafts.forEach((draft) => merged.set(draft.sectionId, draft));

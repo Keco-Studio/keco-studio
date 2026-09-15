@@ -88,6 +88,7 @@ describe('dialogue generation worker', () => {
     await expect(processClaimedDialogueJob({ serviceClient: {} as never, workerId: 'worker-1', job }, {
       heartbeat: jest.fn(async () => undefined),
       findExistingScript: jest.fn(async () => 'library-existing'),
+      resolveOwner: jest.fn(async () => 'user-1'),
       complete,
       updateReference,
       updateSnapshot,

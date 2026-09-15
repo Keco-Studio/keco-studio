@@ -1,5 +1,6 @@
 import type { ChatMessage, StreamChunk } from '@/lib/agent/types';
 import { completeLlm, streamLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import { buildGddArtStyleContext } from '@/lib/game-art-style/development';
 import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
@@ -21,6 +22,7 @@ import {
   type DialogueSceneEvent,
 } from './dialogueSceneStream';
 import { planDialogueScene } from './dialoguePlanner';
+import { gddUsage } from '../usage';
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 type TextStream = (messages: ChatMessage[], options?: StreamLlmOptions) => AsyncIterable<StreamChunk>;
@@ -29,6 +31,7 @@ export type GddV2GeneratorDependencies = {
   stream?: TextStream;
   complete?: Completion;
   planScene?: typeof planDialogueScene;
+  usageBinding?: AiUsageBinding;
 };
 
 export type GeneratedGddV2 = {
@@ -81,6 +84,7 @@ export async function reviewGddMarkdownV2(
       requiredTableRepairs,
       dependencies.complete,
       runtime.signal,
+      dependencies.usageBinding,
     );
     if (repaired.tablePlans.length > 0) {
       normalized = {
@@ -415,6 +419,7 @@ async function repairMissingTablePlans(
   requiredTables: Array<{ table: string; purpose?: string; fields?: string[] }>,
   complete: Completion,
   signal?: AbortSignal,
+  usageBinding?: AiUsageBinding,
 ): Promise<{ tablePlans: GeneratedTablePlan[]; warning: string | null }> {
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
@@ -442,6 +447,7 @@ async function repairMissingTablePlans(
       const raw = await complete(messages, {
         ...gddV2LlmOptions(6_000),
         signal: controller.signal,
+        ...(gddUsage(usageBinding, 'repair_missing_table') ? { usageBinding: gddUsage(usageBinding, 'repair_missing_table') } : {}),
       });
       const extracted = extractTablePlanMarker(raw.includes('KECO_TABLE_PLAN')
         ? raw
@@ -670,6 +676,7 @@ async function recoverMissingDialoguePlans(
   }], {
     ...gddV2LlmOptions(6_000),
     ...(signal ? { signal } : {}),
+    ...(gddUsage(dependencies.usageBinding, 'recover_scenes') ? { usageBinding: gddUsage(dependencies.usageBinding, 'recover_scenes') } : {}),
   });
   const events = parseDialogueRecoveryEvents(raw);
   if (events.length === 0) {
@@ -693,9 +700,12 @@ async function planDialogueSceneEvents(
   const { controller, unlink } = linkedAbortController(signal);
   const runWithSlot = createSlotRunner(3, controller.signal);
   try {
-    return await Promise.all(events.map((event) => runWithSlot(async () => dependencies.planScene(
+    return await Promise.all(events.map((event, sceneIndex) => runWithSlot(async () => dependencies.planScene(
       { event, gddContext: plannerContext(markdown) },
-      { complete: dependencies.complete },
+      {
+        complete: dependencies.complete,
+        ...(dependencies.usageBinding ? { usageBinding: gddUsage(dependencies.usageBinding, dependencies.usageBinding.context.operation, { sceneIndex }) } : {}),
+      },
       { signal: controller.signal },
     ))));
   } finally {
@@ -715,6 +725,7 @@ export async function generateGddMarkdownV2(
     maxCompletionTokens,
     dependencies,
     runtime.signal,
+    'quick_generate',
   );
   if (generated.finishReason === 'length') {
     generated = await consumeGddStream(
@@ -722,6 +733,7 @@ export async function generateGddMarkdownV2(
       input.mode === 'professional' ? 24_000 : 12_000,
       dependencies,
       runtime.signal,
+      'truncation_recovery',
     );
     if (generated.finishReason === 'length') {
       throw new GddV2GenerationValidationError('Model reached the output limit before completing the GDD.');
@@ -753,13 +765,14 @@ function completionAsStream(complete: Completion): TextStream {
 
 function resolveDependencies(input: Completion | GddV2GeneratorDependencies): Required<GddV2GeneratorDependencies> {
   if (typeof input === 'function') {
-    return { complete: input, stream: completionAsStream(input), planScene: planDialogueScene };
+    return { complete: input, stream: completionAsStream(input), planScene: planDialogueScene, usageBinding: undefined };
   }
   const complete = input.complete ?? completeLlm;
   return {
     complete,
     stream: input.stream ?? (input.complete ? completionAsStream(complete) : streamLlm),
     planScene: input.planScene ?? planDialogueScene,
+    usageBinding: input.usageBinding,
   };
 }
 
@@ -823,6 +836,7 @@ async function consumeGddStream(
   maxCompletionTokens: number,
   dependencies: Required<GddV2GeneratorDependencies>,
   parentSignal?: AbortSignal,
+  operation = 'quick_generate',
 ): Promise<{ raw: string; dialoguePlans: DialoguePlan[]; finishReason?: string }> {
   const { controller, unlink } = linkedAbortController(parentSignal);
   const parser = new DialogueSceneStreamParser();
@@ -839,7 +853,10 @@ async function consumeGddStream(
       index,
       plan: await dependencies.planScene(
         { event, gddContext },
-        { complete: dependencies.complete },
+        {
+          complete: dependencies.complete,
+          ...(dependencies.usageBinding ? { usageBinding: gddUsage(dependencies.usageBinding, dependencies.usageBinding.context.operation, { sceneIndex: index }) } : {}),
+        },
         { signal: controller.signal },
       ),
     })).catch((error) => {
@@ -856,6 +873,7 @@ async function consumeGddStream(
     for await (const chunk of dependencies.stream(messages, {
       ...gddV2LlmOptions(maxCompletionTokens),
       signal: controller.signal,
+      ...(gddUsage(dependencies.usageBinding, operation) ? { usageBinding: gddUsage(dependencies.usageBinding, operation) } : {}),
     })) {
       if (chunk.type === 'text_delta') {
         const parsed = parser.push(chunk.content);

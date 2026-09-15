@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { ChatMessage } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
+import { gddUsage } from '@/lib/gdd-generation/usage';
 import { buildAgentRulePolicy, sanitizeAgentPolicyText } from '@/lib/game-design-system/agentPolicy';
 import {
   gameDesignDocumentSchema,
@@ -81,6 +83,10 @@ export type GddGenerationInput = {
 };
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
+export type GddGenerationDependencies = {
+  complete?: Completion;
+  usageBinding?: AiUsageBinding;
+};
 
 export class GddGenerationValidationError extends Error {
   constructor(message: string) {
@@ -209,14 +215,20 @@ function parseResponse(raw: string, rules: GameDesignRuleSet): GeneratedGdd {
 
 export async function generateGdd(
   input: GddGenerationInput,
-  complete: Completion = completeLlm,
+  dependencyInput: Completion | GddGenerationDependencies = {},
 ): Promise<GeneratedGdd> {
+  const dependencies = typeof dependencyInput === 'function'
+    ? { complete: dependencyInput, usageBinding: undefined }
+    : { complete: dependencyInput.complete ?? completeLlm, usageBinding: dependencyInput.usageBinding };
   const messages = buildGddGenerationMessages(input);
-  const first = await complete(messages, llmOptions());
+  const first = await dependencies.complete(messages, {
+    ...llmOptions(),
+    ...(gddUsage(dependencies.usageBinding, 'quick_generate') ? { usageBinding: gddUsage(dependencies.usageBinding, 'quick_generate') } : {}),
+  });
   try {
     return parseResponse(first, input.rules);
   } catch (firstError) {
-    const repair = await complete([
+    const repair = await dependencies.complete([
       messages[0],
       {
         role: 'user',
@@ -231,7 +243,10 @@ export async function generateGdd(
           `Invalid response:\n${first.slice(0, 20_000)}`,
         ].join('\n\n'),
       },
-    ], llmOptions());
+    ], {
+      ...llmOptions(),
+      ...(gddUsage(dependencies.usageBinding, 'quick_repair', { repairAttempt: 1 }) ? { usageBinding: gddUsage(dependencies.usageBinding, 'quick_repair', { repairAttempt: 1 }) } : {}),
+    });
     try {
       return parseResponse(repair, input.rules);
     } catch (repairError) {

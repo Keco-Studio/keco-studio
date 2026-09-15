@@ -24,6 +24,14 @@ function serviceClientWithoutSeries() {
   return { from: jest.fn(() => query) };
 }
 
+const usageBindingForJob = jest.fn(async (_client: unknown, job: { id: string; project_id: string; gdd_generation_job_id: string }, feature: string) => ({
+  context: {
+    actorUserId: 'user-1', projectId: job.project_id, feature, operation: 'resource',
+    correlationId: job.gdd_generation_job_id, jobId: job.gdd_generation_job_id, artifactId: job.id,
+  },
+  recorder: jest.fn(async () => undefined),
+}));
+
 describe('GDD resource worker', () => {
   it('compiles queued map resources without changing the parent GDD status', async () => {
     const claim = jest.fn(async () => resourceJob('maps', { markdown: '# GDD', artStyle: null }));
@@ -37,9 +45,9 @@ describe('GDD resource worker', () => {
     const review = jest.fn(async (..._args: unknown[]) => ({ tablePlans: [], dialoguePlans: [] })) as never;
 
     await expect(processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
-      claim, finish, retry, compile, materialize, review,
+      claim, finish, retry, compile, materialize, review, usageBindingForJob,
     })).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'completed' });
-    expect(compile).toHaveBeenCalledWith({ markdown: '# GDD', artStyle: null });
+    expect(compile).toHaveBeenCalledWith(expect.objectContaining({ markdown: '# GDD', artStyle: null, usageBinding: expect.any(Object) }));
     expect(finish).toHaveBeenCalledWith(expect.anything(), {
       jobId: 'resource-1', workerId: 'worker-1', status: 'completed',
     });
@@ -69,6 +77,7 @@ describe('GDD resource worker', () => {
         markdown: '# GDD\n\n## Palace Map\nRoutes and landmarks.', yjsState: 'old-yjs',
       })),
       review: jest.fn(async () => ({ tablePlans: [], dialoguePlans: [] })) as never,
+      usageBindingForJob,
     });
 
     expect(materializeMaps).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
@@ -105,12 +114,12 @@ describe('GDD resource worker', () => {
     await expect(processNextGddResourceJob({
       serviceClient: serviceClientWithoutSeries() as never,
       workerId: 'worker-1',
-    }, { claim, finish, retry, compile, materialize, readDocument, review })).resolves.toEqual({
+    }, { claim, finish, retry, compile, materialize, readDocument, review, usageBindingForJob })).resolves.toEqual({
       claimed: true, jobId: 'resource-1', status: 'completed',
     });
 
     expect(reviewMock).toHaveBeenCalledWith(
-      { ...gddInput, resourceMode: 'inline' }, '# GDD', {}, { recoverDialogue: false },
+      { ...gddInput, resourceMode: 'inline' }, '# GDD', expect.objectContaining({ usageBinding: expect.any(Object) }), { recoverDialogue: false },
     );
     expect(materialize).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       jobId: 'job-1',
@@ -141,7 +150,7 @@ describe('GDD resource worker', () => {
     const review = reviewMock as never;
 
     await processNextGddResourceJob({ serviceClient: serviceClientWithoutSeries() as never, workerId: 'worker-1' }, {
-      claim, finish, retry, compile: jest.fn(async () => []), materialize, readDocument, review,
+      claim, finish, retry, compile: jest.fn(async () => []), materialize, readDocument, review, usageBindingForJob,
     });
 
     expect(materialize).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
@@ -153,7 +162,7 @@ describe('GDD resource worker', () => {
     expect(reviewMock).toHaveBeenCalledWith(
       { ...gddInput, resourceMode: 'inline' },
       '# GDD\n\n<!-- KECO_TABLE_REF Skills -->',
-      {},
+      expect.objectContaining({ usageBinding: expect.any(Object) }),
       { recoverDialogue: false },
     );
   });
@@ -209,11 +218,11 @@ describe('GDD resource worker', () => {
     const review = reviewMock as never;
 
     await expect(processNextGddResourceJob({ serviceClient: {} as never, workerId: 'worker-1' }, {
-      claim, finish, retry, compile, materialize, review,
+      claim, finish, retry, compile, materialize, review, usageBindingForJob,
     })).resolves.toEqual({ claimed: true, jobId: 'resource-1', status: 'queued' });
 
     expect(reviewMock).toHaveBeenCalledWith(
-      { ...gddInput, resourceMode: 'inline' }, '# GDD', {}, { recoverDialogue: false },
+      { ...gddInput, resourceMode: 'inline' }, '# GDD', expect.objectContaining({ usageBinding: expect.any(Object) }), { recoverDialogue: false },
     );
     expect(materialize).not.toHaveBeenCalled();
     expect(finish).not.toHaveBeenCalled();

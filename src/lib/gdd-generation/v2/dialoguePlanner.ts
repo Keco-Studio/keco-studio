@@ -1,9 +1,11 @@
 import type { ChatMessage } from '@/lib/agent/types';
 import { completeLlm, type StreamLlmOptions } from '@/lib/agent/llm-client';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
 import { z } from 'zod';
 import type { DialoguePlan } from '../dialogueResources';
 import type { DialogueSceneEvent } from './dialogueSceneStream';
+import { gddUsage } from '../usage';
 
 type Completion = (messages: ChatMessage[], options?: StreamLlmOptions) => Promise<string>;
 const plannerText = (max: number) => z.string().trim().min(1).max(max);
@@ -247,12 +249,16 @@ function validateChoices(plan: DialoguePlan, event: DialogueSceneEvent): void {
 
 export async function planDialogueScene(
   input: { event: DialogueSceneEvent; gddContext: string },
-  dependencies: { complete?: Completion } = {},
-  runtime: { signal?: AbortSignal } = {},
+  dependencies: { complete?: Completion; usageBinding?: AiUsageBinding } = {},
+  runtime: { signal?: AbortSignal; sceneIndex?: number } = {},
 ): Promise<DialoguePlan> {
   const complete = dependencies.complete ?? completeLlm;
   const messages = plannerMessages(input);
-  const first = await complete(messages, plannerOptions(runtime.signal));
+  const metadata = runtime.sceneIndex === undefined ? {} : { sceneIndex: runtime.sceneIndex };
+  const first = await complete(messages, {
+    ...plannerOptions(runtime.signal),
+    ...(gddUsage(dependencies.usageBinding, 'plan_scene', metadata) ? { usageBinding: gddUsage(dependencies.usageBinding, 'plan_scene', metadata) } : {}),
+  });
   try {
     return parsePlan(first, input.event);
   } catch (error) {
@@ -268,7 +274,10 @@ export async function planDialogueScene(
         `Invalid response:\n${first.slice(0, 16_000)}`,
       ].join('\n\n'),
     }];
-    const repaired = await complete(repairMessages, plannerOptions(runtime.signal));
+    const repaired = await complete(repairMessages, {
+      ...plannerOptions(runtime.signal),
+      ...(gddUsage(dependencies.usageBinding, 'repair_scene', { ...metadata, repairAttempt: 1 }) ? { usageBinding: gddUsage(dependencies.usageBinding, 'repair_scene', { ...metadata, repairAttempt: 1 }) } : {}),
+    });
     try {
       return parsePlan(repaired, input.event);
     } catch (repairError) {

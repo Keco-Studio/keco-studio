@@ -534,7 +534,7 @@ describe('GDD generation worker', () => {
       checkpoint, retry: jest.fn(async () => 'queued' as const), fail: jest.fn(async () => undefined),
     })).resolves.toBe('queued');
 
-    expect(generateProfessionalStage).toHaveBeenCalledWith(expect.objectContaining({ mode: 'professional' }), 'generating_core', expect.objectContaining({ blueprint }), {}, expect.any(AbortSignal));
+    expect(generateProfessionalStage).toHaveBeenCalledWith(expect.objectContaining({ mode: 'professional' }), 'generating_core', expect.objectContaining({ blueprint }), expect.objectContaining({ usageBinding: expect.any(Object) }), expect.any(AbortSignal));
     expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'generating_systems', sectionDrafts: [draft] }));
   });
 
@@ -558,7 +558,12 @@ describe('GDD generation worker', () => {
     };
 
     await expect(processClaimedGddJob({ serviceClient: {} as never, workerId: 'worker-1', job: { ...professionalBase, phase: 'reviewing' } as GddGenerationJob }, deps)).resolves.toBe('queued');
-    expect(reviewV2).toHaveBeenCalled();
+    expect(reviewV2 as jest.Mock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ usageBinding: expect.objectContaining({ context: expect.objectContaining({ operation: 'review' }) }) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(checkpoint).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ nextPhase: 'saving', reviewReport: expect.objectContaining({ markdown: '# GDD\n\n## \u4e00、Core\nLoop.' }) }));
     expect(persistV2).not.toHaveBeenCalled();
 
