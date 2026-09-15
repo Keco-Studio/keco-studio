@@ -14,7 +14,7 @@ describe('desktop release workflow', () => {
     const workflow = read('.github/workflows/release-desktop.yml');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('windows-2022');
-    expect(workflow).toContain('macos-13');
+    expect(workflow).toContain('macos-15-intel');
     expect(workflow).toContain('macos-14');
     expect(workflow).toContain('actions/upload-artifact@v4');
     expect(workflow).toContain('actions/download-artifact@v4');
