@@ -144,3 +144,50 @@ npx deno check --config supabase/functions/pixellab-character/deno.json supabase
   usage.
 - The changes do not invoke PixelLab in tests and do not affect paid-operation
   authorization or lifecycle state transitions.
+
+## Fix Round 2
+
+### Root cause
+
+The first telemetry hardening pass read labelled text and structured result
+objects, but did not decode JSON objects delivered in MCP `content[].text`.
+Separately, character creation validation used the telemetry-specific
+identifier extractor instead of the canonical provider response parser, so a
+valid human-readable `id: <uuid>` response was rejected.
+
+### RED
+
+Added fixture responses with JSON-encoded text identifiers and credits for map
+and character calls, plus a character creation response with `id: <uuid>`.
+Before production changes, the first two fixtures recorded no provider ID and
+the character creation fixture threw `pixellab_invalid_response`.
+
+### Implementation
+
+- Both MCP telemetry extractors now parse JSON objects from recognized
+  `content[].text` blocks, alongside direct and structured result objects.
+- Character creation validation uses `providerCharacterId`, the canonical
+  parser already used for provider responses.
+- Text fallbacks reconstruct only recognized text blocks for canonical parsing,
+  then apply the existing bounded identifier filter before event persistence.
+
+### GREEN
+
+```text
+npx deno test --config supabase/functions/pixellab-map/deno.json --allow-env --allow-net supabase/functions/pixellab-map
+# 111 passed, 0 failed
+npx deno test --config supabase/functions/pixellab-character/deno.json --allow-env --allow-net supabase/functions/pixellab-character
+# 58 passed, 0 failed
+npx deno check --config supabase/functions/pixellab-map/deno.json supabase/functions/pixellab-map/index.ts
+# pass
+npx deno check --config supabase/functions/pixellab-character/deno.json supabase/functions/pixellab-character/index.ts
+# pass
+```
+
+### Self-review
+
+- JSON parsing is constrained to recognized MCP text blocks and accepts only
+  top-level objects; non-JSON text stays on the existing labelled-text path.
+- Parsed response values are never stored. The ledger receives only bounded
+  identifiers, finite non-negative credits, and allowlisted metadata.
+- Tests use injected transports and make no PixelLab calls.

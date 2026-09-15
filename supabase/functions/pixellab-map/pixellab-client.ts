@@ -28,10 +28,6 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
-  return [value, record(value.structuredContent)].filter((entry): entry is Record<string, unknown> => Boolean(entry));
-}
-
 function mcpText(value: Record<string, unknown>): string[] {
   const content = value.content;
   if (!Array.isArray(content)) return [];
@@ -39,6 +35,19 @@ function mcpText(value: Record<string, unknown>): string[] {
     const block = record(entry);
     return typeof block?.text === "string" ? [block.text] : [];
   });
+}
+
+function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
+  const jsonText = mcpText(value).flatMap((text) => {
+    try {
+      const parsed = record(JSON.parse(text));
+      return parsed ? [parsed] : [];
+    } catch {
+      return [];
+    }
+  });
+  return [value, record(value.structuredContent), ...jsonText]
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
 }
 
 function textIdentifier(value: Record<string, unknown>, labels: string[]): string | undefined {
@@ -86,7 +95,8 @@ function providerRequestId(value: Record<string, unknown>): string | undefined {
       ?? safeProviderIdentifier(source.id);
     if (jobId) return jobId;
   }
-  return textIdentifier(value, ["job[_\\s-]?id", "object[_\\s-]?id", "tileset[_\\s-]?id"]);
+  return textIdentifier(value, ["job[_\\s-]?id", "object[_\\s-]?id", "tileset[_\\s-]?id"])
+    ?? safeProviderIdentifier(providerJobId({ content: mcpText(value).map((text) => ({ text })) }) ?? undefined);
 }
 
 function restOperation(operation: string): string {

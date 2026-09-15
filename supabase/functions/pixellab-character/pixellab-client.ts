@@ -1,5 +1,5 @@
 import { PixelLabCharacterError, type CharacterCapability, type CharacterAssetPlan, type ReferenceCompatibility, type ResolvedCharacterReference } from "./types.ts";
-import { providerErrorText } from "./provider-response.ts";
+import { providerCharacterId, providerErrorText } from "./provider-response.ts";
 import type { EdgeAiUsageAttempt, EdgeAiUsageContext, EdgeAiUsageRecorder } from "../_shared/ai-usage.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
@@ -25,10 +25,6 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
-  return [value, record(value.structuredContent)].filter((entry): entry is Record<string, unknown> => Boolean(entry));
-}
-
 function mcpText(value: Record<string, unknown>): string[] {
   const content = value.content;
   if (!Array.isArray(content)) return [];
@@ -36,6 +32,19 @@ function mcpText(value: Record<string, unknown>): string[] {
     const block = record(entry);
     return typeof block?.text === "string" ? [block.text] : [];
   });
+}
+
+function mcpRecords(value: Record<string, unknown>): Record<string, unknown>[] {
+  const jsonText = mcpText(value).flatMap((text) => {
+    try {
+      const parsed = record(JSON.parse(text));
+      return parsed ? [parsed] : [];
+    } catch {
+      return [];
+    }
+  });
+  return [value, record(value.structuredContent), ...jsonText]
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry));
 }
 
 function textIdentifier(value: Record<string, unknown>, labels: string[]): string | undefined {
@@ -79,7 +88,8 @@ function providerRequestId(value: Record<string, unknown>): string | undefined {
       ?? safeProviderIdentifier(source.id);
     if (providerId) return providerId;
   }
-  return textIdentifier(value, ["character[_\\s-]?id", "job[_\\s-]?id"]);
+  return textIdentifier(value, ["character[_\\s-]?id", "job[_\\s-]?id"])
+    ?? safeProviderIdentifier(providerCharacterId({ content: mcpText(value).map((text) => ({ text })) }) ?? undefined);
 }
 
 function stableJson(value: unknown): string {
@@ -234,7 +244,7 @@ export class PixelLabCharacterClient {
   async callTool(name: string, arguments_: Record<string, unknown>): Promise<Record<string, unknown>> {
     const payload = await this.mcp(name, arguments_, (candidate) => {
       const result = record(candidate.result);
-      if (!result || (name === "create_character" && !providerRequestId(result))) {
+      if (!result || (name === "create_character" && !providerCharacterId(result))) {
         throw new PixelLabCharacterError("pixellab_invalid_response");
       }
     });

@@ -82,6 +82,24 @@ Deno.test("extracts allowlisted nested and text MCP values for character calls",
   assertEquals(events[1].providerCredits, 4);
 });
 
+Deno.test("extracts a bounded character identifier from JSON encoded MCP text", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const client = new PixelLabCharacterClient("test-token", async () => mcpResponse({
+    content: [{ type: "text", text: '{"character_id":"2ba78163-4be1-4e3f-8433-b2df9dddbb44","credits_used":5}' }],
+  }), undefined, {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_character", operation: "poll",
+      correlationId: "character-generation-1", artifactId: "character-asset-1",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+
+  await client.callTool("get_character", { character_id: "stored-character-job" });
+
+  assertEquals(events[0].providerRequestId, "2ba78163-4be1-4e3f-8433-b2df9dddbb44");
+  assertEquals(events[0].providerCredits, 5);
+});
+
 Deno.test("marks malformed character MCP list, create, and poll results as provider errors", async () => {
   const events: EdgeAiUsageAttempt[] = [];
   const recorder: EdgeAiUsageRecorder = async (event) => { events.push(event); };

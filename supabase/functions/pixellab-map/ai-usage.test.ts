@@ -149,6 +149,28 @@ Deno.test("extracts labelled MCP text identifiers when structured content is abs
   assertEquals(events[0].providerCredits, 4);
 });
 
+Deno.test("extracts bounded identifiers and credits from JSON encoded MCP text", async () => {
+  const events: EdgeAiUsageAttempt[] = [];
+  const client = new PixelLabClient("test-token", async () => mcpResponse({
+    content: [{ type: "text", text: '{"request_id":"json-map-request","credits_used":5}' }],
+  }), {
+    context: {
+      actorUserId: USER_ID, projectId: PROJECT_ID, feature: "pixellab_map", operation: "poll",
+      correlationId: "map-generation-1", artifactId: "map-asset-1",
+    },
+    recorder: async (event) => { events.push(event); },
+  });
+  const capability = {
+    semantic: "map_object" as const, transport: "mcp" as const, operation: "create_image_pro",
+    schemaFingerprint: "a".repeat(64), inputSchema: {},
+  };
+
+  await client.pollJob(capability, "stored-map-job");
+
+  assertEquals(events[0].providerRequestId, "json-map-request");
+  assertEquals(events[0].providerCredits, 5);
+});
+
 Deno.test("normalizes REST fallback operations before the ledger persists them", async () => {
   const events: EdgeAiUsageAttempt[] = [];
   let row: Record<string, unknown> | undefined;
