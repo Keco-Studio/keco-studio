@@ -754,6 +754,51 @@ describe('GDD v2 direct Markdown generator', () => {
     expect(result.dialoguePlans).toEqual([scenePlan(recoveredEvent)]);
   });
 
+  it('recovers more than twenty concrete dialogue scenes without rejecting the batch', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'A narrative adventure with many chapter conversations.',
+      rules: { ...input.rules, genres: ['Narrative adventure'] },
+    };
+    const recoveredEvents = Array.from({ length: 21 }, (_, index) => ({
+      ...sceneEvent,
+      chapterKey: `chapter-${index + 1}`,
+      title: `Chapter ${index + 1}`,
+    }));
+    const complete = jest.fn(async () => JSON.stringify(recoveredEvents));
+    const planScene = jest.fn(async ({ event }: { event: DialogueSceneEvent }) => scenePlan(event));
+
+    const result = await reviewGddMarkdownV2(
+      narrativeInput,
+      '# GDD\n\n## Story\nTwenty-one concrete conversations.',
+      { complete, planScene },
+    );
+
+    expect(result.dialoguePlans).toHaveLength(21);
+    expect(result.dialoguePlans.map((plan) => plan.chapterKey)).toEqual(
+      recoveredEvents.map((event) => event.chapterKey),
+    );
+  });
+
+  it('keeps the GDD when a narrative dialogue recovery response fails validation', async () => {
+    const narrativeInput: GddGenerationRequestV2 = {
+      ...input,
+      creativeBrief: 'A narrative adventure with chapter conversations.',
+      rules: { ...input.rules, genres: ['Narrative adventure'] },
+    };
+    const complete = jest.fn(async () => JSON.stringify([{ bad: 'scene' }]));
+
+    const result = await reviewGddMarkdownV2(
+      narrativeInput,
+      '# GDD\n\n## Story\nA concrete conversation.',
+      { complete },
+    );
+
+    expect(result.markdown).toContain('## Story');
+    expect(result.dialoguePlans).toEqual([]);
+    expect(result.dialoguePlanWarning).toMatch(/dialogue scene recovery failed validation/i);
+  });
+
   it('completes a narrative GDD when recovery finds no concrete dialogue scenes', async () => {
     const narrativeInput: GddGenerationRequestV2 = {
       ...input,

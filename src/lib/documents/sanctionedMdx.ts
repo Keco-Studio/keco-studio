@@ -310,9 +310,102 @@ export function coerceSanctionedMdxExpressions(markdown: string): string {
   }).join('');
 }
 
+const GENERATED_MDX_AUTOLINK_PATTERN = /^<(https?:\/\/[^<>\s]+)>/i;
+const GENERATED_MDX_ALLOWED_TAG_NAMES = new Set<string>([
+  ...SANCTIONED_COMPONENT_NAMES,
+  'img',
+  'u',
+]);
+
+function generatedMdxTagAt(line: string, index: number): { name: string; source: string } | null {
+  const rest = line.slice(index);
+  const prefix = /^<\/?([A-Za-z_$][A-Za-z0-9_$.-]*)/.exec(rest);
+  if (!prefix) return null;
+
+  let quote: '"' | "'" | null = null;
+  for (let offset = prefix[0].length; offset < rest.length; offset += 1) {
+    const character = rest[offset]!;
+    if (quote) {
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '>') {
+      return { name: prefix[1]!, source: rest.slice(0, offset + 1) };
+    }
+  }
+  return null;
+}
+
+function escapeUnsupportedGeneratedMdxTags(line: string): string {
+  let inlineTicks = 0;
+  let output = '';
+  for (let index = 0; index < line.length;) {
+    if (line[index] === '`') {
+      let end = index + 1;
+      while (line[end] === '`') end += 1;
+      const runLength = end - index;
+      inlineTicks = inlineTicks === 0 ? runLength : inlineTicks === runLength ? 0 : inlineTicks;
+      output += line.slice(index, end);
+      index = end;
+      continue;
+    }
+
+    const autolink = inlineTicks === 0
+      ? GENERATED_MDX_AUTOLINK_PATTERN.exec(line.slice(index))
+      : null;
+    if (autolink) {
+      const destination = autolink[1]!;
+      output += `[${destination}](${destination})`;
+      index += autolink[0].length;
+      continue;
+    }
+
+    const tag = inlineTicks === 0
+      ? generatedMdxTagAt(line, index)
+      : null;
+    if (tag) {
+      output += GENERATED_MDX_ALLOWED_TAG_NAMES.has(tag.name)
+        ? tag.source
+        : tag.source.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      index += tag.source.length;
+      continue;
+    }
+
+    output += line[index];
+    index += 1;
+  }
+  return output;
+}
+
+/** Render unsupported tag-like tokens from generated prose as literal text. */
+export function coerceGeneratedSanctionedMdxTags(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  let fence: { marker: '`' | '~'; length: number } | null = null;
+  return lines.map((line) => {
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (fenceMatch && fenceMatch[1]![0] === fence.marker && fenceMatch[1]!.length >= fence.length) {
+        fence = null;
+      }
+      return line;
+    }
+    if (fenceMatch) {
+      fence = { marker: fenceMatch[1]![0] as '`' | '~', length: fenceMatch[1]!.length };
+      return line;
+    }
+    return escapeUnsupportedGeneratedMdxTags(line);
+  }).join('\n');
+}
+
 /** Normalize generated Markdown before it enters the strict sanctioned parser. */
 export function coerceGeneratedSanctionedMdx(markdown: string): string {
-  return coerceSanctionedMdxExpressions(coerceSanctionedMdx(markdown));
+  return coerceSanctionedMdxExpressions(
+    coerceSanctionedMdx(coerceGeneratedSanctionedMdxTags(markdown))
+  );
 }
 
 /**

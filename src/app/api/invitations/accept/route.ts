@@ -17,7 +17,7 @@ import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 export const POST = withAuth(async function POST(
   request: NextRequest,
   _context,
-  { supabase: userSupabase, user }
+  { user }
 ) {
   try {
     // Get invitation token from request body
@@ -46,19 +46,7 @@ export const POST = withAuth(async function POST(
       );
     }
 
-    // 7. Verify email matches
-    const userEmail = user.email?.toLowerCase();
-    if (userEmail !== tokenPayload.email.toLowerCase()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `This invitation was sent to ${tokenPayload.email}, but you are logged in as ${userEmail}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // 8. Create service role client for database operations
+    // 7. Create service role client for database operations
     let supabase;
     try {
       supabase = getSupabaseServiceRoleClient();
@@ -73,7 +61,7 @@ export const POST = withAuth(async function POST(
       );
     }
 
-    // 9. Get invitation details
+    // 8. Get invitation details
     const { data: invitation, error: invitationError } = await supabase
       .from('collaboration_invitations')
       .select('*, projects:project_id(name)')
@@ -88,9 +76,21 @@ export const POST = withAuth(async function POST(
         { status: 404 }
       );
     }
+
+    // Email is only a delivery snapshot. The UUID remains stable if the
+    // recipient changes email and prevents a reused address inheriting access.
+    if (!invitation.recipient_user_id || invitation.recipient_user_id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'This invitation belongs to a different account',
+        },
+        { status: 400 }
+      );
+    }
     
 
-    // 10. Validate invitation status
+    // 9. Validate invitation status
     if (invitation.accepted_at) {
       return NextResponse.json(
         {
@@ -101,7 +101,7 @@ export const POST = withAuth(async function POST(
       );
     }
 
-    // 11. Check expiration
+    // 10. Check expiration
     const now = new Date();
     const expiresAt = new Date(invitation.expires_at);
     if (now > expiresAt) {
@@ -114,7 +114,7 @@ export const POST = withAuth(async function POST(
       );
     }
 
-    // 12. Check if user already collaborator
+    // 11. Check if user already collaborator
     const { data: existingCollab } = await supabase
       .from('project_collaborators')
       .select('id')
@@ -139,7 +139,7 @@ export const POST = withAuth(async function POST(
       });
     }
 
-    // 13. Add user as collaborator
+    // 12. Add user as collaborator
     const { error: collaboratorError } = await supabase
       .from('project_collaborators')
       .insert({
@@ -165,7 +165,7 @@ export const POST = withAuth(async function POST(
     // A concurrent acceptance request may create the same membership after the
     // pre-insert check. The unique constraint confirms the membership exists.
 
-    // 14. Mark invitation as accepted
+    // 13. Mark invitation as accepted
     const { error: updateError } = await supabase
       .from('collaboration_invitations')
       .update({

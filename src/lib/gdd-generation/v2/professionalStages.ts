@@ -78,7 +78,9 @@ const blueprintSchema = z.object({
 }).strict();
 
 const BLUEPRINT_TOOL_NAME = 'submit_professional_gdd_blueprint';
-const PROFESSIONAL_STAGE_COMPLETION_TOKENS = 14_000;
+// Keep enough headroom for Chinese sections with concrete event lists while
+// remaining below the 24k compact-recovery budget used by the direct path.
+const PROFESSIONAL_STAGE_COMPLETION_TOKENS = 20_000;
 const blueprintTool: OpenAITool = {
   type: 'function',
   function: {
@@ -307,7 +309,13 @@ function stageMessages(
   }];
 }
 
-function stageRepairMessages(input: GddGenerationRequestV2, sectionTitles: string[], raw: string, issue?: string): ChatMessage[] {
+function stageRepairMessages(
+  input: GddGenerationRequestV2,
+  sectionTitles: string[],
+  raw: string,
+  issue?: string,
+  allSectionTitles: string[] = sectionTitles,
+): ChatMessage[] {
   return [{
     role: 'system',
     content: [
@@ -317,6 +325,8 @@ function stageRepairMessages(input: GddGenerationRequestV2, sectionTitles: strin
       'Use one exact H2 heading per requested section, H3 subsections, short paragraphs, bold key points, and numbered or bulleted lists.',
       /^zh(?:[-_]|$)/i.test(input.language.trim()) ? 'Chinese-only output: do not write English prose or English headings; preserve only official proper nouns and stable IDs.' : '',
       `Requested section titles (each must appear exactly once as an H2): ${sectionTitles.join(', ')}`,
+      `All stage section titles for context: ${allSectionTitles.join(', ')}`,
+      'Return every requested section even if it was absent from the previous response. Sections that were already complete may be omitted from this targeted repair.',
       ...(issue ? [`Structural validation error to fix: ${issue}`] : []),
     ].filter(Boolean).join('\n'),
   }, {
@@ -341,10 +351,22 @@ function blueprintRepairMessages(input: GddGenerationRequestV2, raw: string): Ch
   }];
 }
 
+function normalizeHeadingTitle(value: string): string {
+  return value
+    .trim()
+    // Accept common Chinese/Arabic outline prefixes while retaining the
+    // blueprint title as the canonical persisted heading.
+    .replace(/^(?:\u7b2c\s*)?(?:[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\u96f6\u3007\u4e24]+|\d+)(?:\s*\u7ae0\s*|\s*[\u3001.)\uff1a:]\s*|\s+-\s+)/u, '')
+    .replace(/[\uff1a:\u3001\u3002.!\uff01?\uff1f]+$/u, '')
+    .trim()
+    .toLocaleLowerCase();
+}
+
 function splitDrafts(
   raw: string,
   blueprint: ProfessionalBlueprint,
   kind: ProfessionalSectionKind,
+  options: { requireAll?: boolean } = {},
 ): ProfessionalSectionDraft[] {
   const markdown = raw.trim();
   if (!markdown) throw new GddV2GenerationValidationError(`Professional GDD ${kind} stage returned empty Markdown.`);
@@ -362,7 +384,8 @@ function splitDrafts(
   for (let index = 0; index < headingMatches.length; index += 1) {
     const match = headingMatches[index]!;
     const title = match[1]!.trim();
-    const section = sections.find((candidate) => candidate.title.toLocaleLowerCase() === title.toLocaleLowerCase())
+    const normalizedTitle = normalizeHeadingTitle(title);
+    const section = sections.find((candidate) => normalizeHeadingTitle(candidate.title) === normalizedTitle)
       ?? sections[index];
     if (!section) continue;
     const start = match.index ?? 0;
@@ -381,12 +404,14 @@ function splitDrafts(
   }
   const deduped = new Map(drafts.map((draft) => [draft.sectionId, draft]));
   const missing = sections.filter((section) => !deduped.has(section.id));
-  if (missing.length > 0) {
+  if (missing.length > 0 && options.requireAll !== false) {
     throw new GddV2GenerationValidationError(
       `Professional GDD ${kind} stage is missing required sections: ${missing.map((section) => section.title).join(', ')}`,
     );
   }
-  return sections.map((section) => deduped.get(section.id)!);
+  return sections
+    .map((section) => deduped.get(section.id))
+    .filter((draft): draft is ProfessionalSectionDraft => Boolean(draft));
 }
 
 export async function generateProfessionalStage(
@@ -450,13 +475,43 @@ export async function generateProfessionalStage(
     generated = splitDrafts(raw, savedBlueprint, kind);
   } catch (error) {
     if (repairAttempted) throw error;
+    // Keep sections that were valid in the first response. A repair response
+    // is intentionally asked for only the missing sections, so requiring it
+    // to repeat the entire stage would recreate the same truncation failure.
+    let initialDrafts: ProfessionalSectionDraft[] = [];
+    try {
+      initialDrafts = splitDrafts(raw, savedBlueprint, kind, { requireAll: false });
+    } catch {
+      // The repair prompt below can still recover a response with no usable
+      // H2 headings, preserving the original validation error if it cannot.
+    }
+    const sectionTitles = savedBlueprint.sections
+      .filter((section) => section.stage === kind)
+      .filter((section) => !initialDrafts.some((draft) => draft.sectionId === section.id))
+      .map((section) => section.title);
+    const allSectionTitles = savedBlueprint.sections
+      .filter((section) => section.stage === kind)
+      .map((section) => section.title);
     const repairedRaw = await raceWithAbort(complete(stageRepairMessages(
       input,
-      savedBlueprint.sections.filter((section) => section.stage === kind).map((section) => section.title),
+      sectionTitles.length > 0
+        ? sectionTitles
+        : savedBlueprint.sections.filter((section) => section.stage === kind).map((section) => section.title),
       raw,
       error instanceof Error ? error.message : String(error),
+      allSectionTitles,
     ), { ...gddV2LlmOptions(PROFESSIONAL_STAGE_COMPLETION_TOKENS), signal }), signal);
-    generated = splitDrafts(repairedRaw, savedBlueprint, kind);
+    const repairedDrafts = splitDrafts(repairedRaw, savedBlueprint, kind, { requireAll: false });
+    const merged = new Map(initialDrafts.map((draft) => [draft.sectionId, draft]));
+    repairedDrafts.forEach((draft) => merged.set(draft.sectionId, draft));
+    const requiredSections = savedBlueprint.sections.filter((section) => section.stage === kind);
+    const missing = requiredSections.filter((section) => !merged.has(section.id));
+    if (missing.length > 0) {
+      throw new GddV2GenerationValidationError(
+        `Professional GDD ${kind} stage is missing required sections: ${missing.map((section) => section.title).join(', ')}`,
+      );
+    }
+    generated = requiredSections.map((section) => merged.get(section.id)!);
   }
   const replaced = new Map(previous.filter((draft) => draft.stage !== kind).map((draft) => [draft.sectionId, draft]));
   generated.forEach((draft) => replaced.set(draft.sectionId, draft));

@@ -14,6 +14,7 @@ import {
 import { generateInvitationToken } from '@/lib/utils/invitationToken';
 import { sendInvitationEmail, isEmailConfigured } from '@/lib/services/emailService';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
+import { normalizeEmail } from '@/lib/auth/emailIdentity';
 
 /**
  * POST /api/invitations
@@ -27,7 +28,11 @@ export const POST = withAuth(async function POST(
   try {
     // Parse request body
     const body = await request.json();
-    const { projectId, recipientEmail, role } = body;
+    const { projectId, recipientEmail: recipientEmailInput, role } = body;
+    const recipientEmail =
+      typeof recipientEmailInput === 'string'
+        ? normalizeEmail(recipientEmailInput)
+        : '';
 
     // Validate input
     if (!projectId || !recipientEmail || !role) {
@@ -87,7 +92,7 @@ export const POST = withAuth(async function POST(
       .single();
 
     // Check if user is trying to invite themselves
-    if (profile?.email && profile.email.toLowerCase() === recipientEmail.toLowerCase()) {
+    if (profile?.email && normalizeEmail(profile.email) === recipientEmail) {
       return NextResponse.json({
         success: false,
         error: 'Cannot invite yourself',
@@ -108,7 +113,7 @@ export const POST = withAuth(async function POST(
     const { data: recipientProfile } = await supabase
       .from('profiles')
       .select('id, email, username, full_name')
-      .eq('email', recipientEmail.toLowerCase())
+      .eq('email', recipientEmail)
       .maybeSingle();
 
     // ❌ User does not exist - cannot invite unregistered users
@@ -176,7 +181,7 @@ export const POST = withAuth(async function POST(
       .from('collaboration_invitations')
       .select('id, accepted_at')
       .eq('project_id', projectId)
-      .eq('recipient_email', recipientEmail.toLowerCase())
+      .eq('recipient_user_id', recipientProfile.id)
       .is('accepted_at', null)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -196,7 +201,7 @@ export const POST = withAuth(async function POST(
       token = await generateInvitationToken({
         invitationId,
         projectId,
-        email: recipientEmail.toLowerCase(),
+        email: recipientEmail,
         role,
       });
     } catch (tokenError) {
@@ -213,7 +218,8 @@ export const POST = withAuth(async function POST(
       .insert({
         id: invitationId,
         project_id: projectId,
-        recipient_email: recipientEmail.toLowerCase(),
+        recipient_user_id: recipientProfile.id,
+        recipient_email: recipientEmail,
         role,
         invited_by: user.id,
         invitation_token: token,

@@ -51,7 +51,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     !createMapChrome.showChatPanel ||
     onKeco101 ||
     isKecoAdminPage;
-  const isMcpAccountPage = pathname === '/mcp';
+  const isMcpAccountPage = pathname === '/mcp' || pathname === '/account';
 
   useEffect(() => {
     if (isLoading) return;

@@ -7,7 +7,7 @@ import type { Collaborator } from '@/lib/types/collaboration';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { queryKeys } from '@/lib/utils/queryKeys';
 
-async function fetchProjectCollaborators(
+export async function fetchProjectCollaborators(
   supabase: SupabaseClient,
   projectId: string
 ): Promise<Collaborator[]> {
@@ -39,6 +39,7 @@ async function fetchProjectCollaborators(
       .from('collaboration_invitations')
       .select(`
         id,
+        recipient_user_id,
         recipient_email,
         role,
         invited_by,
@@ -55,19 +56,19 @@ async function fetchProjectCollaborators(
   if (invitationsResult.error) throw invitationsResult.error;
 
   const invitationRows = invitationsResult.data ?? [];
-  const pendingEmails = invitationRows.map((invite) =>
-    invite.recipient_email.toLowerCase()
-  );
-  const profilesResult = pendingEmails.length > 0
+  const pendingUserIds = invitationRows
+    .map((invite) => invite.recipient_user_id)
+    .filter((userId): userId is string => typeof userId === 'string' && userId.length > 0);
+  const profilesResult = pendingUserIds.length > 0
     ? await supabase
         .from('profiles')
         .select('id, email, username, full_name, avatar_color, avatar_url')
-        .in('email', pendingEmails)
+        .in('id', pendingUserIds)
     : { data: [], error: null };
 
   if (profilesResult.error) throw profilesResult.error;
-  const profilesByEmail = new Map(
-    (profilesResult.data ?? []).map((profile) => [profile.email.toLowerCase(), profile])
+  const profilesById = new Map(
+    (profilesResult.data ?? []).map((profile) => [profile.id, profile])
   );
 
   const accepted = (collaboratorsResult.data ?? []).map((row: any): Collaborator => {
@@ -90,8 +91,8 @@ async function fetchProjectCollaborators(
 
   const pending = invitationRows.map((row: any): Collaborator => {
     const email = row.recipient_email.toLowerCase();
-    const profile = profilesByEmail.get(email);
-    const userId = profile?.id ?? '';
+    const profile = profilesById.get(row.recipient_user_id);
+    const userId = row.recipient_user_id ?? '';
     return {
       id: `invite-${row.id}`,
       userId,

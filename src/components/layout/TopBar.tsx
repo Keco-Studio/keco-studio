@@ -905,6 +905,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     router.push('/mcp');
   };
 
+  const handleAccountNavigation = () => {
+    setShowUserMenu(false);
+    router.push('/account');
+  };
+
   const handleKecoAdminNavigation = () => {
     setShowUserMenu(false);
     router.push('/keco-admin');
@@ -1956,6 +1961,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </button>
           {showUserMenu && (
             <div className={styles.userMenu}>
+              <button
+                type="button"
+                className={styles.userMenuItem}
+                onClick={handleAccountNavigation}
+              >
+                Account
+              </button>
               <button
                 type="button"
                 className={styles.userMenuItem}

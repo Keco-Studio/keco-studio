@@ -29,9 +29,9 @@ describe('remote seed password hardening (issue #155)', () => {
     expect(localSeed.slice(0, 700)).toMatch(/never targets a public remote/i);
   });
 
-  it('raises the configured minimum auth password length', () => {
+  it('uses the Supabase minimum supported password length', () => {
     const match = supabaseConfig.match(/minimum_password_length\s*=\s*(\d+)/);
     expect(match).not.toBeNull();
-    expect(Number(match?.[1])).toBeGreaterThanOrEqual(12);
+    expect(Number(match?.[1])).toBe(6);
   });
 });

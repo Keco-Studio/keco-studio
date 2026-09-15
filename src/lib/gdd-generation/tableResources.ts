@@ -210,6 +210,34 @@ export function renderTableResourceReferences(resources: GeneratedTableResource[
 }
 
 const TABLE_REF_MARKER = /<!--\s*KECO_TABLE_REF\s+([^>]+?)\s*-->/gi;
+const RESOURCE_REFERENCE_TAG = /<ResourceReference\b[^>]*\/>/gi;
+const RESOURCE_REFERENCE_ATTRIBUTE = /\b(kind|libraryId|assetId|displayFieldId)="([^"]*)"/gi;
+
+function tableRowReferenceKey(libraryId: string, assetId: string, displayFieldId: string): string {
+  return `${libraryId}\u0000${assetId}\u0000${displayFieldId}`;
+}
+
+function existingTableRowReferenceKeys(markdown: string): Set<string> {
+  const keys = new Set<string>();
+  for (const match of markdown.matchAll(RESOURCE_REFERENCE_TAG)) {
+    const attributes = Object.fromEntries(
+      [...match[0].matchAll(RESOURCE_REFERENCE_ATTRIBUTE)].map((attribute) => [attribute[1], attribute[2]]),
+    );
+    if (
+      attributes.kind === 'table-row'
+      && attributes.libraryId
+      && attributes.assetId
+      && attributes.displayFieldId
+    ) {
+      keys.add(tableRowReferenceKey(
+        attributes.libraryId,
+        attributes.assetId,
+        attributes.displayFieldId,
+      ));
+    }
+  }
+  return keys;
+}
 
 function normalizeTableRefName(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
@@ -461,7 +489,21 @@ function replaceInlineTableResourceReferences(
   const byName = new Map(
     visibleResources.map((resource) => [normalizeTableRefName(resource.table), resource] as const),
   );
-  const seen = new Set<string>();
+  const existingReferenceKeys = existingTableRowReferenceKeys(prepared);
+  const seen = new Set(
+    visibleResources
+      .filter((resource) => {
+        const displayFieldId = resource.fieldIds[0];
+        return Boolean(displayFieldId) && resource.rows.every((row) => (
+          Boolean(row.id) && existingReferenceKeys.has(tableRowReferenceKey(
+            resource.id,
+            row.id!,
+            displayFieldId!,
+          ))
+        ));
+      })
+      .map((resource) => normalizeTableRefName(resource.table)),
+  );
   let replaced = prepared.replace(TABLE_REF_MARKER, (_match, rawName: string) => {
     const key = normalizeTableRefName(rawName);
     if (!key) return '';

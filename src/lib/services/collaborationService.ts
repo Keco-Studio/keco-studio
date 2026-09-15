@@ -18,9 +18,11 @@ import type {
 } from '@/lib/types/collaboration';
 import { generateInvitationToken } from '@/lib/utils/invitationToken';
 import { sendInvitationEmail } from '@/lib/services/emailService';
+import { normalizeEmail } from '@/lib/auth/emailIdentity';
 
 export type CollaborationServiceErrorCode =
   | 'SELF_INVITATION'
+  | 'RECIPIENT_NOT_FOUND'
   | 'ALREADY_COLLABORATOR'
   | 'INVITATION_PENDING'
   | 'TOKEN_GENERATION_FAILED'
@@ -62,7 +64,8 @@ export async function sendInvitation(
   inviterName: string,
   projectName: string
 ): Promise<string> {
-  const { projectId, recipientEmail, role } = input;
+  const { projectId, role } = input;
+  const recipientEmail = normalizeEmail(input.recipientEmail);
   
   try {
     // 0. Get inviter's email to check for self-invitation
@@ -75,7 +78,7 @@ export async function sendInvitation(
     const inviterEmail = inviterProfileData?.email || '';
     
     // Check if user is trying to invite themselves
-    if (inviterEmail && inviterEmail.toLowerCase() === recipientEmail.toLowerCase()) {
+    if (inviterEmail && normalizeEmail(inviterEmail) === recipientEmail) {
       throw new CollaborationServiceError('SELF_INVITATION', 'Cannot invite yourself');
     }
     
@@ -84,22 +87,27 @@ export async function sendInvitation(
     const { data: recipientProfile } = await supabase
       .from('profiles')
       .select('id')
-      .eq('email', recipientEmail.toLowerCase())
+      .eq('email', recipientEmail)
       .maybeSingle();
-    
-    if (recipientProfile) {
-      // User exists, check if already a collaborator
-      const { data: existingCollaborator } = await supabase
-        .from('project_collaborators')
-        .select('id')
-        .eq('project_id', projectId)
-        .eq('user_id', recipientProfile.id)
-        .not('accepted_at', 'is', null)
-        .maybeSingle();
-      
-      if (existingCollaborator) {
-        throw new CollaborationServiceError('ALREADY_COLLABORATOR', 'User already exists');
-      }
+
+    if (!recipientProfile) {
+      throw new CollaborationServiceError(
+        'RECIPIENT_NOT_FOUND',
+        'The email address is not registered'
+      );
+    }
+
+    // User exists, check if already a collaborator
+    const { data: existingCollaborator } = await supabase
+      .from('project_collaborators')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', recipientProfile.id)
+      .not('accepted_at', 'is', null)
+      .maybeSingle();
+
+    if (existingCollaborator) {
+      throw new CollaborationServiceError('ALREADY_COLLABORATOR', 'User already exists');
     }
     
     // 2. Check for pending invitation to same email+project
@@ -107,7 +115,7 @@ export async function sendInvitation(
       .from('collaboration_invitations')
       .select('id, accepted_at')
       .eq('project_id', projectId)
-      .eq('recipient_email', recipientEmail.toLowerCase())
+      .eq('recipient_user_id', recipientProfile.id)
       .is('accepted_at', null)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -128,7 +136,7 @@ export async function sendInvitation(
       token = await generateInvitationToken({
         invitationId: tempInvitationId,
         projectId,
-        email: recipientEmail.toLowerCase(),
+        email: recipientEmail,
         role,
       });
     } catch (tokenError) {
@@ -145,7 +153,8 @@ export async function sendInvitation(
       .insert({
         id: tempInvitationId,
         project_id: projectId,
-        recipient_email: recipientEmail.toLowerCase(),
+        recipient_user_id: recipientProfile.id,
+        recipient_email: recipientEmail,
         role,
         invited_by: inviterId,
         invitation_token: token,

@@ -8,6 +8,7 @@ import { useSupabase } from "@/lib/SupabaseContext";
 import styles from "./AuthForm.module.css";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
+import { isDuplicateEmailError, normalizeEmail } from "@/lib/auth/emailIdentity";
 import { DESKTOP_MODE_STORAGE_KEY, isDesktopModeSearch, isDesktopModeSession } from "@/lib/desktopMode";
 
 type Mode = "login" | "register";
@@ -88,7 +89,8 @@ function AuthFormContent() {
     setMessage(null);
     setErrorMsg(null);
 
-    const { email, username, password, confirmPassword } = regForm;
+    const { username, password, confirmPassword } = regForm;
+    const email = normalizeEmail(regForm.email);
     if (!email || !username || !password) {
       setErrorMsg("Email, username and password cannot be empty");
       return;
@@ -108,7 +110,11 @@ function AuthFormContent() {
       if (error) throw error;
       setMessage("Sign-up succeeded");
     } catch (err: any) {
-      setErrorMsg(err?.message || "Sign-up failed");
+      setErrorMsg(
+        isDuplicateEmailError(err)
+          ? "An account with this email already exists."
+          : err?.message || "Sign-up failed"
+      );
     } finally {
       setLoading(false);
     }
@@ -120,7 +126,8 @@ function AuthFormContent() {
     setErrorMsg(null);
     setPasswordError(false);
 
-    const { email, password } = loginForm;
+    const { password } = loginForm;
+    const email = normalizeEmail(loginForm.email);
     if (!email || !password) {
       setErrorMsg("Email and password cannot be empty");
       return;
@@ -365,7 +372,7 @@ function AuthFormContent() {
                       window.location.href = '/forgot-password';
                     }}
                   >
-                    Forget you password?
+                    Forgot your password?
                   </button>
                   <button type="submit" className={`${styles.submit} ${styles.submitLogin}`} disabled={loading}>
                     {loading ? "Logging in..." : "Login"}
