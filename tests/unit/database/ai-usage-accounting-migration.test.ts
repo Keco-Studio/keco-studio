@@ -10,11 +10,12 @@ const sql = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : ''
 describe('AI usage accounting migration contract', () => {
   it('defines an idempotent private ledger and authenticated recorder', () => {
     expect(sql).toMatch(/create table public\.ai_usage_events/i);
-    expect(sql).toMatch(/unique[\s\S]+event_key/i);
+    expect(sql).toMatch(/event_key\s+uuid\s+not null\s+unique/i);
     expect(sql).toMatch(/on delete set null/i);
     expect(sql).toMatch(/create (or replace )?function public\.record_ai_usage_event\(p_event jsonb\)/i);
     expect(sql).toMatch(/auth\.uid\(\)/i);
     expect(sql).toMatch(/revoke all on table public\.ai_usage_events from public, anon, authenticated/i);
+    expect(sql).toMatch(/jsonb_each\(v_metadata\)/i);
   });
 
   it('defines the aggregate with aggregate-first Credit rounding', () => {

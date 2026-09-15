@@ -37,7 +37,9 @@ CREATE TABLE public.ai_usage_events (
   CHECK (
     (usage_status = 'unknown' AND input_tokens IS NULL AND output_tokens IS NULL AND total_tokens IS NULL)
     OR
-    (usage_status = 'reported' AND input_tokens >= 0 AND output_tokens >= 0
+    (usage_status = 'reported'
+      AND input_tokens IS NOT NULL AND output_tokens IS NOT NULL AND total_tokens IS NOT NULL
+      AND input_tokens >= 0 AND output_tokens >= 0
       AND total_tokens >= input_tokens + output_tokens)
   ),
   CHECK (
@@ -63,7 +65,7 @@ VALUES (TRUE, pg_catalog.clock_timestamp());
 ALTER TABLE public.ai_usage_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_usage_tracking_epochs ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON TABLE public.ai_usage_events FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.ai_usage_events FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public.ai_usage_tracking_epochs FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT, INSERT ON TABLE public.ai_usage_events TO service_role;
 
@@ -110,6 +112,20 @@ BEGIN
   v_provider := p_event->>'provider';
   v_request_kind := p_event->>'requestKind';
   v_metadata := COALESCE(p_event->'metadata', '{}'::jsonb);
+
+  IF jsonb_typeof(v_metadata) <> 'object' OR EXISTS (
+    SELECT 1
+    FROM pg_catalog.jsonb_each(v_metadata) AS item(key, value)
+    WHERE item.key <> ALL (ARRAY[
+      'fixture', 'source', 'iteration', 'repairAttempt', 'retryAttempt',
+      'batchSize', 'inputCharacters', 'embeddingType',
+      'regionColumn', 'regionRow', 'regionColumns', 'regionRows',
+      'sceneIndex', 'providerOperation'
+    ]::TEXT[])
+      OR pg_catalog.jsonb_typeof(item.value) NOT IN ('string', 'number', 'boolean', 'null')
+  ) THEN
+    RAISE EXCEPTION 'Invalid AI usage metadata' USING ERRCODE = '22023';
+  END IF;
 
   IF p_event->'usage' IS NULL OR p_event->'usage' = 'null'::jsonb THEN
     v_usage_status := 'unknown';

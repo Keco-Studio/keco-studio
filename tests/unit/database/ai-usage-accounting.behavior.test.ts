@@ -142,6 +142,31 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     )).toEqual({ input: null, output: null, total: null, status: 'unknown' });
   });
 
+  it.each([
+    ['empty usage', {}],
+    ['missing input tokens', { outputTokens: 2, totalTokens: 2 }],
+    ['missing output tokens', { inputTokens: 2, totalTokens: 2 }],
+    ['missing total tokens', { inputTokens: 1, outputTokens: 2 }],
+  ])('rejects reported %s instead of storing nullable token fields', async (_name, usage) => {
+    const payload = event();
+    const malformed = { ...payload, usage };
+    expect((await record(malformed)).error).not.toBeNull();
+    expect(queryJson(
+      `select json_build_object('count', count(*)) from public.ai_usage_events where event_key = '${payload.eventKey}'`,
+    )).toEqual({ count: 0 });
+  });
+
+  it.each(['prompt', 'completion', 'apiKey', 'imageBytes', 'rawProviderBody'])(
+    'rejects sensitive metadata key %s before persistence',
+    async key => {
+      const payload = event({ metadata: { [key]: 'sensitive' } });
+      expect((await record(payload)).error).not.toBeNull();
+      expect(queryJson(
+        `select json_build_object('count', count(*)) from public.ai_usage_events where event_key = '${payload.eventKey}'`,
+      )).toEqual({ count: 0 });
+    },
+  );
+
   it('rounds aggregate DeepSeek tokens once and excludes non-billable events', async () => {
     const billable = [
       event({ usage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 } }),
@@ -154,7 +179,11 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     ];
     for (const payload of [...billable, ...excluded]) expect((await record(payload)).error).toBeNull();
 
-    await expect(summary()).resolves.toEqual(expect.objectContaining({
+    const aggregate = await summary();
+    expect(Object.keys(aggregate).sort()).toEqual([
+      'credits', 'deepseekTokens', 'trackedFrom', 'unknownEventCount', 'users',
+    ]);
+    expect(aggregate).toEqual(expect.objectContaining({
       deepseekTokens: 21,
       credits: 7,
       unknownEventCount: 0,
@@ -237,6 +266,8 @@ describeDb('AI usage accounting real Postgres behavior', () => {
         'authenticatedSelect', has_table_privilege('authenticated', 'public.ai_usage_events', 'select'),
         'serviceInsert', has_table_privilege('service_role', 'public.ai_usage_events', 'insert'),
         'serviceSelect', has_table_privilege('service_role', 'public.ai_usage_events', 'select'),
+        'serviceUpdate', has_table_privilege('service_role', 'public.ai_usage_events', 'update'),
+        'serviceDelete', has_table_privilege('service_role', 'public.ai_usage_events', 'delete'),
         'authenticatedRecorder', has_function_privilege('authenticated', 'public.record_ai_usage_event(jsonb)', 'execute'),
         'authenticatedSummary', has_function_privilege('authenticated', 'public.keco_admin_ai_usage_summary()', 'execute'),
         'serviceSummary', has_function_privilege('service_role', 'public.keco_admin_ai_usage_summary()', 'execute')
@@ -246,6 +277,8 @@ describeDb('AI usage accounting real Postgres behavior', () => {
       authenticatedSelect: false,
       serviceInsert: true,
       serviceSelect: true,
+      serviceUpdate: false,
+      serviceDelete: false,
       authenticatedRecorder: true,
       authenticatedSummary: false,
       serviceSummary: true,
