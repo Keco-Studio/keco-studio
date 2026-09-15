@@ -14,7 +14,7 @@ OutputBaseFilename=Keco-Studio-Setup-{#AppVersion}-windows-x64
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 Source: "{#SourceDir}\WebView2Bootstrapper.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 [Icons]
-Name: "{autoprograms}\Keco Studio"; Filename: "{app}\KecoStudio.exe"
+Name: "{autoprograms}\Keco Studio"; Filename: "{app}\bin\keco-studio.exe"
 [Run]
 Filename: "{tmp}\WebView2Bootstrapper.exe"; Parameters: "/silent /install"; Check: not WebView2RuntimeInstalled; Flags: waituntilterminated
 [UninstallDelete]
