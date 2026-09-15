@@ -8,7 +8,8 @@ provider, and data source. The desktop application opens the production site at
 `https://keco-studio-main.vercel.app`.
 
 This work must not migrate, duplicate, statically export, or otherwise alter
-the existing Next.js application.
+the existing Next.js application, except for the narrowly scoped desktop-mode
+marker and Google-login presentation described below.
 
 ## Supported Release Targets
 
@@ -35,11 +36,11 @@ application manifest, window lifecycle, navigation security policy, icons,
 packaging metadata, and platform-specific build integration. The root Next.js
 project remains the web product and has no desktop-only runtime dependency.
 
-At launch, the shell opens one main window with the production URL and the
-`desktop=1` query marker. It uses the system web engine on each operating
-system: WebView2 on Windows and WKWebView on macOS. It does not bundle a second
-browser engine, a Next.js server, frontend assets, Supabase configuration, or
-application APIs.
+At launch, the shell opens
+`https://keco-studio-main.vercel.app/projects?desktop=1`. It uses the system
+web engine on each operating system: WebView2 on Windows and WKWebView on
+macOS. It does not bundle a second browser engine, a Next.js server, frontend
+assets, Supabase configuration, or application APIs.
 
 The window should use the Keco Studio application name and persist its size and
 position. The initial release has no native bridge commands, filesystem access,
@@ -55,11 +56,12 @@ in the desktop WebView: Google may reject embedded user agents, and sending the
 login to the system browser would not return the WebView's PKCE session without
 a dedicated native callback design. Google login remains available in the
 ordinary web application and is deferred for desktop until that callback flow
-is designed and tested. The existing Next.js login page records the
-`desktop=1` marker in session storage and hides the Google login control with a
-short desktop-specific explanation. This is the sole required web-product
-change; it does not duplicate the UI or alter any server route, API, or auth
-provider configuration.
+is designed and tested. A minimal client component mounted by the root Next.js
+layout records the `desktop=1` query marker in session storage before a page
+redirect can discard it. The existing login page reads that session marker and
+hides the Google login control with a short desktop-specific explanation. This
+is the sole required web-product change; it does not duplicate the UI or alter
+any server route, API, or auth provider configuration.
 
 All other top-level navigation is denied. The first release also denies
 `target=\"_blank\"`, `window.open`, and custom-protocol navigation rather than
@@ -122,7 +124,8 @@ with the relevant command output.
 - Confirm the WebView loads the production URL in development mode.
 - Verify email/password login, logout, and a restored authenticated session
   after restart. Confirm Google OAuth is blocked in the desktop app with a
-  clear website-provided error or disabled control.
+  clear website-provided error or disabled control. Cover both a fresh session
+  and an already-authenticated launch followed by logout.
 - Verify navigation policy for same-origin links, redirects, a normal external
   URL, `target=\"_blank\"`, `window.open`, and a custom protocol. No external
   origin may leave the Keco origin inside the main WebView; all other cases must
