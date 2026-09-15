@@ -4,12 +4,41 @@ import {
   PixelLabMapError,
   type SemanticCapability,
 } from "./types.ts";
+import type { EdgeAiUsageAttempt, EdgeAiUsageContext, EdgeAiUsageRecorder } from "../_shared/ai-usage.ts";
 import { providerImageReference, providerTextBlocks } from "./provider-response.ts";
 import { MAX_PNG_BYTES } from "./png.ts";
 
 const MCP_URL = "https://api.pixellab.ai/mcp";
 const REST_URL = "https://api.pixellab.ai/v1";
 const MAX_BASE64_LENGTH = Math.ceil(MAX_PNG_BYTES / 3) * 4 + 4;
+
+type UsageOptions = { context: EdgeAiUsageContext; recorder: EdgeAiUsageRecorder };
+
+class PixelLabMapTransportError extends Error {}
+
+function safeProviderIdentifier(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)
+    ? value
+    : undefined;
+}
+
+function nativeCredits(value: Record<string, unknown>): number | undefined {
+  for (const key of ["provider_credits", "credits_used", "credits", "credit_cost"]) {
+    const candidate = value[key];
+    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 && candidate <= 1_000_000_000) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function providerRequestId(value: Record<string, unknown>): string | undefined {
+  return safeProviderIdentifier(value.request_id)
+    ?? safeProviderIdentifier(value.requestId)
+    ?? safeProviderIdentifier(value.job_id)
+    ?? safeProviderIdentifier(value.jobId)
+    ?? safeProviderIdentifier(value.id);
+}
 
 const CAPABILITIES: Record<SemanticCapability, {
   preferred: string;
@@ -272,37 +301,99 @@ export function providerArgumentsFor(
 }
 
 export class PixelLabClient {
+  private usageAttempt = 0;
+
   constructor(
     private readonly token: string,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly usage?: UsageOptions,
   ) {
     if (!token) throw new PixelLabMapError("pixellab_not_configured", undefined, 503);
   }
 
-  private async mcp(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    let response: Response;
+  private async tracked<T>(
+    operation: string,
+    request: () => Promise<T>,
+    resultForEvent: (result: T) => Record<string, unknown> | undefined,
+  ): Promise<T> {
+    const eventKey = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+    const attempt = ++this.usageAttempt;
     try {
-      response = await this.fetcher(MCP_URL, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.token}`,
-          accept: "application/json, text/event-stream",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
+      const result = await request();
+      const response = resultForEvent(result) ?? {};
+      await this.recordAttempt({
+        eventKey, attempt, operation, startedAt, outcome: "succeeded", response,
+      });
+      return result;
+    } catch (error) {
+      await this.recordAttempt({
+        eventKey, attempt, operation, startedAt,
+        outcome: error instanceof TypeError || error instanceof PixelLabMapTransportError
+          ? "transport_error"
+          : "provider_error",
+        response: {},
+      });
+      if (error instanceof PixelLabMapTransportError) throw new PixelLabMapError("pixellab_upstream");
+      throw error;
+    }
+  }
+
+  private async recordAttempt(input: {
+    eventKey: string; attempt: number; operation: string; startedAt: string;
+    outcome: EdgeAiUsageAttempt["outcome"]; response: Record<string, unknown>;
+  }): Promise<void> {
+    if (!this.usage) return;
+    try {
+      await this.usage.recorder({
+        eventKey: input.eventKey,
+        context: { ...this.usage.context },
+        requestKind: "provider_generation",
+        provider: "pixellab",
+        model: null,
+        attempt: input.attempt,
+        providerRequestId: providerRequestId(input.response),
+        outcome: input.outcome,
+        usage: null,
+        providerCredits: nativeCredits(input.response),
+        startedAt: input.startedAt,
+        finishedAt: new Date().toISOString(),
+        metadata: { providerOperation: input.operation },
       });
     } catch {
-      throw new PixelLabMapError("pixellab_upstream");
+      // Telemetry must never change the provider request outcome.
     }
-    if (!response.ok) throw responseError(response.status);
-    const payload = parseMcpPayload(await response.text());
-    if (payload.error) throw new PixelLabMapError("pixellab_upstream");
-    const result = payload.result;
-    if (result && typeof result === "object" && !Array.isArray(result)) {
-      const resultError = mcpResultError(result as Record<string, unknown>);
-      if (resultError) throw resultError;
-    }
-    return payload;
+  }
+
+  private async mcp(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const operation = method === "tools/call" ? String(params.name ?? "tools_call") : "tools_list";
+    return this.tracked(operation, async () => {
+      let response: Response;
+      try {
+        response = await this.fetcher(MCP_URL, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${this.token}`,
+            accept: "application/json, text/event-stream",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),
+        });
+      } catch {
+        throw new PixelLabMapTransportError();
+      }
+      if (!response.ok) throw responseError(response.status);
+      const payload = parseMcpPayload(await response.text());
+      if (payload.error) throw new PixelLabMapError("pixellab_upstream");
+      const result = payload.result;
+      if (result && typeof result === "object" && !Array.isArray(result)) {
+        const resultError = mcpResultError(result as Record<string, unknown>);
+        if (resultError) throw resultError;
+      }
+      return payload;
+    }, (payload) => payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)
+      ? payload.result as Record<string, unknown>
+      : undefined);
   }
 
   async listTools(): Promise<PixelLabTool[]> {
@@ -375,15 +466,17 @@ export class PixelLabClient {
       if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return result as Record<string, unknown>;
     }
-    const response = await this.fetcher(`${REST_URL}${capability.operation}`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
-      body: JSON.stringify(arguments_),
-    });
-    if (!response.ok) throw responseError(response.status);
-    const result = await response.json().catch(() => null);
-    if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
-    return result as Record<string, unknown>;
+    return this.tracked(`rest${capability.operation.replaceAll("/", "_")}`, async () => {
+      const response = await this.fetcher(`${REST_URL}${capability.operation}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
+        body: JSON.stringify(arguments_),
+      });
+      if (!response.ok) throw responseError(response.status);
+      const result = await response.json().catch(() => null);
+      if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
+      return result as Record<string, unknown>;
+    }, (result) => result);
   }
 
   async pollJob(capability: DiscoveredCapability, jobId: string): Promise<Record<string, unknown>> {
@@ -406,13 +499,15 @@ export class PixelLabClient {
       if (!payload.result || typeof payload.result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
       return payload.result as Record<string, unknown>;
     }
-    const response = await this.fetcher(`${REST_URL}${capability.operation}/${encodeURIComponent(jobId)}`, {
-      headers: { authorization: `Bearer ${this.token}` },
-    });
-    if (!response.ok) throw responseError(response.status);
-    const result = await response.json().catch(() => null);
-    if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
-    return result as Record<string, unknown>;
+    return this.tracked(`rest${capability.operation.replaceAll("/", "_")}_poll`, async () => {
+      const response = await this.fetcher(`${REST_URL}${capability.operation}/${encodeURIComponent(jobId)}`, {
+        headers: { authorization: `Bearer ${this.token}` },
+      });
+      if (!response.ok) throw responseError(response.status);
+      const result = await response.json().catch(() => null);
+      if (!result || typeof result !== "object") throw new PixelLabMapError("pixellab_invalid_response");
+      return result as Record<string, unknown>;
+    }, (result) => result);
   }
 
   async downloadResult(result: Record<string, unknown>): Promise<Uint8Array> {

@@ -16,8 +16,33 @@ import { pngExpectationForAsset, validatePng } from "./png.ts";
 import { providerContentQualityIssue, providerJobId, providerStatus } from "./provider-response.ts";
 import { mapAssetTransitionStatus, persistValidatedAsset } from "./storage.ts";
 import { PixelLabMapError, type SemanticCapability } from "./types.ts";
+import { recordEdgeAiUsage } from "../_shared/ai-usage.ts";
 
 type EdgeAssetKind = Parameters<typeof pngExpectationForAsset>[0];
+
+function safeUsageOperation(operation: string): string {
+  return ["capabilities", "submit", "retry", "poll", "validate", "resolve_unknown", "inpaint"].includes(operation)
+    ? operation
+    : "unknown";
+}
+
+function usageOptions(
+  authorized: Awaited<ReturnType<typeof authorizeAsset>>,
+  operation: string,
+) {
+  const assetId = String(authorized.asset.id);
+  return {
+    context: {
+      actorUserId: authorized.userId,
+      projectId: authorized.projectId,
+      feature: "pixellab_map",
+      operation,
+      correlationId: authorized.generationId ?? assetId,
+      artifactId: assetId,
+    },
+    recorder: (attempt: Parameters<typeof recordEdgeAiUsage>[1]) => recordEdgeAiUsage(authorized.serviceClient, attempt),
+  };
+}
 
 function edgeAssetKind(value: unknown): EdgeAssetKind {
   if (["terrain", "road", "object", "inpaint", "path", "obstacle", "background", "map_image"].includes(String(value))) {
@@ -92,8 +117,17 @@ async function handle(request: Request): Promise<Response> {
   const operation = body.operation;
   if (!projectId || typeof operation !== "string") throw new PixelLabMapError("pixellab_invalid_response", "Invalid operation", 400);
   if (operation === "capabilities") {
-    await authorizeProject(token, projectId);
-    const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
+    const authorizedProject = await authorizeProject(token, projectId);
+    const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "", fetch, {
+      context: {
+        actorUserId: authorizedProject.userId,
+        projectId,
+        feature: "pixellab_map",
+        operation: "capabilities",
+        correlationId: projectId,
+      },
+      recorder: (attempt) => recordEdgeAiUsage(authorizedProject.serviceClient, attempt),
+    });
     const capabilities = await Promise.all(([
       "topdown_tileset", "path_tiles", "map_object", "inpaint", "direct_map_image",
     ] as SemanticCapability[]).map(async (semantic) => {
@@ -139,7 +173,7 @@ async function handle(request: Request): Promise<Response> {
       operation as "submit" | "retry" | "poll" | "validate" | "resolve_unknown",
       { serviceRoleRequest, gddWorkerRequest, expectedAttemptCount },
     );
-    const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
+    const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "", fetch, usageOptions(authorized, safeUsageOperation(operation)));
     return jsonResponse(await runDirectMapLifecycle({
       operation: operation as "submit" | "retry" | "poll" | "validate" | "resolve_unknown",
       authorized,
@@ -181,7 +215,7 @@ async function handle(request: Request): Promise<Response> {
       throw new PixelLabMapError("pixellab_invalid_response", "Inpaint source mismatch", 403);
     }
   }
-  const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "");
+  const client = new PixelLabClient(Deno.env.get("PIXELLAB_API_TOKEN") ?? "", fetch, usageOptions(authorized, safeUsageOperation(operation)));
   const semantic = capabilityFor(kind);
   const capability = await client.discover(semantic);
   if (operation === "submit" || operation === "retry" || operation === "inpaint") {

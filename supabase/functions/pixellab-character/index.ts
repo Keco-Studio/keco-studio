@@ -6,15 +6,32 @@ import { persistValidatedCharacterAsset } from "./storage.ts";
 import { animationResult, characterResult } from "./provider-response.ts";
 import { downloadProviderOutput } from "./provider-output.ts";
 import { PixelLabCharacterError, type CharacterAssetPlan } from "./types.ts";
+import { recordEdgeAiUsage } from "../_shared/ai-usage.ts";
+
+function safeUsageOperation(operation: string): string {
+  return ["capabilities", "submit", "retry", "poll", "validate", "resolve_unknown"].includes(operation)
+    ? operation
+    : "unknown";
+}
 
 async function handle(request: Request): Promise<Response> {
   const body = await readJsonBody(request);
   const operation = String(body.operation ?? "");
   if (operation === "capabilities") {
     const projectId = String(body.projectId ?? "");
-    const serviceClient = await authorizeProject(bearerToken(request), projectId, String(body.actorUserId ?? ""));
+    const actorUserId = String(body.actorUserId ?? "");
+    const serviceClient = await authorizeProject(bearerToken(request), projectId, actorUserId);
     const token = Deno.env.get("PIXELLAB_API_TOKEN") ?? "";
-    const client = new PixelLabCharacterClient(token);
+    const client = new PixelLabCharacterClient(token, fetch, undefined, {
+      context: {
+        actorUserId,
+        projectId,
+        feature: "pixellab_character",
+        operation: "capabilities",
+        correlationId: projectId,
+      },
+      recorder: (attempt) => recordEdgeAiUsage(serviceClient, attempt),
+    });
     const semantic = body.kind === "animation" ? "animation" : "character";
     const capability = await client.discover(semantic);
     const plan = body.plan as CharacterAssetPlan | undefined;
@@ -27,8 +44,18 @@ async function handle(request: Request): Promise<Response> {
   }
   const authorized = await authorizeServiceRequest(request, body);
   const token = Deno.env.get("PIXELLAB_API_TOKEN") ?? "";
-  const client = new PixelLabCharacterClient(token);
   const state = authorized.state as unknown as import("./types.ts").AuthorizedCharacterAttempt;
+  const client = new PixelLabCharacterClient(token, fetch, undefined, {
+    context: {
+      actorUserId: authorized.actorUserId,
+      projectId: state.projectId,
+      feature: "pixellab_character",
+      operation: safeUsageOperation(operation),
+      correlationId: state.generationId,
+      artifactId: state.assetId,
+    },
+    recorder: (attempt) => recordEdgeAiUsage(authorized.serviceClient, attempt),
+  });
   const deps = createLifecycleDependencies(client, {
     transition: async (from, to, details = {}) => {
       const { error } = await authorized.serviceClient.rpc("transition_character_generation", {
