@@ -1,12 +1,23 @@
 # Current Email Identity and Verification Design
 
-## Goal
+## Goal And Delivery Order
 
 Make the currently bound email unique across accounts, verify ownership of
 emails used for signup and email changes using a six-digit code delivered to
 the real mailbox, and keep all account and permission ownership tied to the
 Supabase Auth user UUID. Preserve the existing password-recovery email-link
 flow.
+
+Deliver in two stages. Stage 1 implements current-email uniqueness,
+normalization, profile synchronization, safe UUID-bound invitations, an
+email-change flow using Supabase's existing email confirmation links, and
+repairs to the existing password-recovery pages. It does not introduce a
+six-digit code UI, enable mandatory signup confirmation, or claim that signup
+email ownership has been verified. Stage 2 enables confirmed signup, adds
+six-digit signup/new-email code entry and resend, and validates delivery to
+real mailboxes through the hosted Auth SMTP and templates. Password recovery
+keeps its one-time email link in both stages. Stage 1 is deployable for identity
+consistency but does not provide the anti-impersonation guarantee of Stage 2.
 
 ## Product Rules
 
@@ -16,21 +27,25 @@ flow.
 - An email can be bound to at most one existing Auth account at a time,
   including accounts created through OAuth. A concurrent registration or email
   change must not bypass this rule.
-- Signup is incomplete until the user verifies the email with a six-digit code
-  received at that mailbox. An unverified signup must not grant access to
-  protected application data. Repeated signup attempts for a pending account
-  use the Auth provider's resend/expiry behavior, not a second user record.
+- In Stage 1, signup continues using the existing Auth email confirmation
+  setting. In Stage 2, signup is incomplete until the user verifies the email
+  with a six-digit code received at that mailbox. An unverified signup must
+  not grant access to protected application data. Repeated signup attempts
+  for a pending account use the Auth provider's resend/expiry behavior, not a
+  second user record.
 - An authenticated user may request a different email. The new email must be
-  unoccupied and verified before it becomes the current login/recovery email.
-  Keep Supabase's old-and-new email confirmation requirement for changes;
-  the browser may guide the user through both required confirmations.
+  unoccupied and confirmed before it becomes the current login/recovery email.
+  Stage 1 uses Supabase's existing email confirmation links. Stage 2 uses code
+  entry for the new email. Keep Supabase's old-and-new email confirmation
+  requirement for changes; the browser guides the user through both required
+  confirmations.
 - Once a change finishes, the old email is available to another account. No
   historical email ownership or reservation table is kept. The old account
   cannot switch back while a different account holds that email.
 - Deleting an account releases its current email. A later signup using that
   email creates a different Auth UUID and inherits no account-level admin
   permission, project ownership, collaborator membership, or pending invite.
-- Password recovery uses only the current verified email and Supabase's
+- Password recovery uses only the current bound email and Supabase's
   one-time recovery link. It does not create an independent OTP system.
 
 ## Identity and Data Boundaries
@@ -55,10 +70,11 @@ or permit clients to write the profile email as if it were authoritative.
 
 ## Email Verification and Delivery
 
-Use Supabase Auth's signup and email-change OTP generation/verification rather
-than storing application-generated codes. The interface sends/resends a code,
-accepts six digits, handles incorrect/expired codes, and respects Auth rate
-limits. The Auth email templates must show the OTP token, not only a link;
+In Stage 2, use Supabase Auth's signup and email-change OTP
+generation/verification rather than storing application-generated codes. The
+interface sends/resends a code, accepts six digits, handles incorrect/expired
+codes, and respects Auth rate limits. The Auth email templates must show the
+OTP token, not only a link;
 new-email verification must follow the provider's old/new confirmation flow.
 The existing local configuration has email confirmation disabled, a six-digit
 OTP length, and Mailpit for local delivery. Enable confirmation in the actual
@@ -67,10 +83,10 @@ domain and approved redirect URLs. The existing Resend API integration sends
 collaboration invitations and is not automatically connected to Auth SMTP.
 
 Neither local Mailpit success nor a configured invitation API key proves that
-production Auth mail reaches real inboxes. Production delivery, suppression,
-rate limits, and templates are a deployment acceptance gate; without a working
-Auth SMTP configuration the verified signup/change flow must not be declared
-available in production.
+production Auth mail reaches real inboxes. Stage 1's email-change confirmation
+and password-recovery links still depend on working Auth mail delivery; they
+cannot be declared usable in production without it. Production delivery,
+suppression, rate limits, and OTP templates are a Stage 2 acceptance gate.
 
 ## Invitations and Email Reuse
 
@@ -99,17 +115,20 @@ with a reused email is not the deleted account.
 
 ## Verification and Rollout
 
-- Unit-test normalization, duplicate/race handling, Auth-to-profile sync,
-  invite UUID validation, email-change state, and password rules.
-- Integration-test signup OTP delivery to local Mailpit, wrong/expired and
-  resend cases, old/new confirmation, and password-recovery links.
-- End-to-end test case-insensitive duplicates, release of old email after a
+- Stage 1: unit-test normalization, duplicate/race handling, Auth-to-profile
+  sync, invite UUID validation, email-change state, and password rules.
+- Stage 1: integration-test old/new confirmation links and recovery links;
+  end-to-end test case-insensitive duplicates, release of old email after a
   confirmed change, deleting/re-registering with a new UUID, and a pending
   invite not moving to a new owner of its former email.
+- Stage 2: integration-test signup/code delivery to local Mailpit, wrong or
+  expired codes, resend cases, and old/new email-change code confirmation.
 - Before migration, inspect all Auth accounts for duplicate normalized email
   groups and document a manual resolution path if any exist; do not silently
   merge users. Apply the migration before exposing the new UI. Verify hosted
-  SMTP/templates and confirmation settings separately from local tests.
+  SMTP/templates and confirmation settings separately from local tests. Do
+  not turn on mandatory signup confirmation until Stage 2's mail delivery and
+  code UI are ready.
 
 Out of scope: a permanent email history, custom OTP storage, username-based
 password recovery, automatic merging of OAuth identities, moving old project
