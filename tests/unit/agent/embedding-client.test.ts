@@ -108,6 +108,37 @@ describe('embedTexts', () => {
     expect(calls).toBe(2);
   });
 
+  it('records a distinct bound usage event for each retry attempt', async () => {
+    const attempts: AiUsageAttempt[] = [];
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: 'user-1',
+        projectId: 'project-1',
+        feature: 'agent_chat',
+        operation: 'index_batch',
+        correlationId: 'agent_turn:turn-1',
+      },
+      recorder: async (attempt) => {
+        attempts.push(attempt);
+      },
+    };
+    let calls = 0;
+    global.fetch = jest.fn(async () => {
+      calls += 1;
+      if (calls === 1) return new Response('server error', { status: 500 });
+      return new Response(
+        JSON.stringify({ data: [{ embedding: [1, 0, 0], index: 0 }] }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    await expect(embedTexts(['retry me'], usageBinding)).resolves.toEqual([[1, 0, 0]]);
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts.map((attempt) => attempt.attempt)).toEqual([1, 2]);
+    expect(new Set(attempts.map((attempt) => attempt.eventKey)).size).toBe(2);
+  });
+
   it('throws EmbeddingError when API key missing', async () => {
     process.env.EMBEDDING_API_KEY = '';
     process.env.LLM_API_KEY = '';

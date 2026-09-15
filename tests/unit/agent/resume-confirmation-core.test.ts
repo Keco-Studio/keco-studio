@@ -519,6 +519,46 @@ describe('Agent usage attribution', () => {
       'Never persist this as usage metadata.'
     );
   });
+
+  it('retains the usage binding when persisting an assistant message for deferred indexing', async () => {
+    jest.clearAllMocks();
+    getConversation.mockResolvedValue({ meta: {} });
+    getToolsForLlmAsync.mockResolvedValue([]);
+    loadConversationHistory.mockResolvedValue([]);
+    saveMessage.mockResolvedValue({ id: 'message-1' });
+    streamLlm.mockImplementation(async function* () {
+      yield { type: 'text_delta', content: 'Assistant reply' };
+      yield { type: 'finish', reason: 'stop' };
+    });
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: '33333333-3333-4333-8333-333333333333',
+        projectId: PROJECT_ID,
+        feature: 'agent_chat',
+        operation: 'react_iteration',
+        correlationId: 'agent_turn:turn-2',
+      },
+      recorder: async () => undefined,
+    };
+
+    for await (const _event of runAgentTurn({
+      conversationId: '44444444-4444-4444-8444-444444444444',
+      userMessage: 'Hello',
+      toolContext: toolContext('editor'),
+      conversationMeta: {},
+      usageBinding,
+      turnId: 'turn-2',
+    })) {
+      // Drain the generator.
+    }
+
+    expect(saveMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ role: 'assistant', content: 'Assistant reply' }),
+      expect.objectContaining({ usageBinding }),
+    );
+  });
 });
 
 describe('pre-execute confirmation target binding', () => {

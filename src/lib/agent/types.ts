@@ -57,6 +57,8 @@ export interface ToolContext {
     messageId: string;
     content: string;
   };
+  /** Usage binding retained by Agent-originated tools and deferred indexing. */
+  usageBinding?: AiUsageBinding;
 }
 
 export type AgentInvalidation =

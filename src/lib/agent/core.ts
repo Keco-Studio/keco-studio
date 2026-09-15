@@ -329,7 +329,7 @@ async function persistMessage(
 ): Promise<void> {
   const indexing =
     message.role === 'user' || message.role === 'assistant'
-      ? indexingContext(ctx)
+      ? indexingContext(ctx, ctx.usageBinding)
       : undefined;
   await saveMessage(ctx.supabase, conversationId, message, indexing);
 }
@@ -878,6 +878,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     }
     const turnContext: ToolContext = {
       ...toolContext,
+      usageBinding: input.usageBinding,
       accessCache: createAccessVerificationCache(),
       authoritativeUserSource: {
         messageId: savedUserMessage.id,
@@ -909,6 +910,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
   const deadlineMs = createTurnDeadline();
   const turnContext: ToolContext = {
     ...toolContext,
+    usageBinding: input.usageBinding,
     accessCache: createAccessVerificationCache(),
   };
   const pending = await loadPendingAction(turnContext.supabase, input.actionId, turnContext.userId);
