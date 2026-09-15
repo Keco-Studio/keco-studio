@@ -16,12 +16,17 @@ describe('desktop mode', () => {
   it('mounts the marker in the root layout and suppresses Google OAuth in the auth form', () => {
     expect(read('src/app/layout.tsx')).toContain('<DesktopModeMarker />');
     expect(read('src/components/authform/AuthForm.tsx')).toContain(DESKTOP_MODE_STORAGE_KEY);
-    expect(read('src/components/authform/AuthForm.tsx')).toMatch(/!isDesktopMode[\s\S]*Log in using Google/);
+    expect(read('src/components/authform/AuthForm.tsx')).toMatch(/isDesktopMode === false[\s\S]*Log in using Google/);
   });
 
   it('derives the auth guard from the current URL before relying on the persisted marker', () => {
-    expect(read('src/components/authform/AuthForm.tsx')).toMatch(
+    const source = read('src/components/authform/AuthForm.tsx');
+    expect(source).toMatch(
       /isDesktopModeSearch\(window\.location\.search\)[\s\S]{0,160}isDesktopModeSession\(window\.sessionStorage\)/
     );
+    expect(source).toContain("const [isDesktopMode, setIsDesktopMode] = useState<boolean | null>(null);");
+    expect(source).toContain("window.sessionStorage.setItem(DESKTOP_MODE_STORAGE_KEY, '1')");
+    expect(source).toContain('isDesktopMode === false ?');
+    expect(source).toContain('isDesktopMode ? (');
   });
 });
