@@ -118,6 +118,31 @@ describe('leased Game Design System worker', () => {
     expect(complete).toHaveBeenCalledWith(expect.anything(), job, 'worker-1', { systemId: 'system-1', versionId: 'version-1' });
   });
 
+  it('does not attribute a project from untrusted generation input', async () => {
+    const generate = jest.fn(async (..._args: unknown[]) => generated);
+    const jobWithUntrustedProject = {
+      ...job,
+      input: { ...job.input, projectId: '22222222-2222-4222-8222-222222222222' },
+    };
+
+    await processClaimedGameDesignSystemJob({
+      serviceClient: {} as never,
+      workerId: 'worker-1',
+      job: jobWithUntrustedProject,
+    }, {
+      findGenerationOutput: jest.fn(async () => null),
+      heartbeat: jest.fn(async () => undefined),
+      generate,
+      createSystem: jest.fn(async () => ({ id: 'system-1', current_version_id: 'version-1' } as never)),
+      complete: jest.fn(async () => undefined),
+      retry: jest.fn(async () => 'queued' as const),
+      fail: jest.fn(async () => undefined),
+    } as never);
+
+    const binding = generate.mock.calls[0][2] as { context: { projectId?: string } };
+    expect(binding.context.projectId).toBeUndefined();
+  });
+
   it('completes an existing generation output before any model or persistence call', async () => {
     const replayJob = { ...job, output_version_id: 'version-original' };
     const output = { systemId: 'system-original', versionId: 'version-original' };

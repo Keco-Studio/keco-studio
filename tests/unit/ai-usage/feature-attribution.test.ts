@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import sharp from 'sharp';
 
 import { makeValidMapPlanV2, makeValidMapPlanV3 } from '../create-map/fixtures';
@@ -17,6 +19,7 @@ import { createMapPlanV2, createMapPlanV3 } from '@/lib/server/createMapPlanner'
 import { analyzeCreateMapCollisionGrid } from '@/lib/server/createMapCollisionAnalyzer';
 import { suggestSimulationFieldMappings } from '@/lib/server/simulationFieldMappingService';
 import { retitleStoryPlotPlanWithAi } from '@/lib/story-plot/titleSummarizer';
+import { resolveStoryPlanForImport } from '@/lib/story-plan/conversion';
 import { generateGameDesignSystemOutput } from '@/lib/gameDesignSystemGeneration';
 
 const usageBinding = (feature: string, correlationId: string): AiUsageBinding => ({
@@ -135,6 +138,87 @@ describe('AI usage feature attribution', () => {
       expect.objectContaining({ context: expect.objectContaining({ feature: 'script_import', operation: 'title', correlationId: 'import-1' }) }),
     ]);
     expect(completeLlm.mock.calls[0][1]).toEqual(expect.objectContaining({ provider: 'deepseek' }));
+  });
+
+  it('attributes every script-import model stage with one import correlation ID', async () => {
+    const binding = usageBinding('script_import', 'import-stage-matrix');
+    completeLlm
+      .mockResolvedValueOnce(JSON.stringify({
+        version: 3,
+        structuralUnitIds: [],
+        nodes: [
+          { id: 'Start', type: 'scene', presentationType: 4, speaker: '', content: 'Opening', sourceUnitIds: ['canonical:0'] },
+          { id: 'line', type: 'dialogue', presentationType: 1, speaker: 'Guide', content: 'Begin.', sourceUnitIds: ['canonical:1'] },
+        ],
+        choices: [],
+      }))
+      .mockResolvedValueOnce(JSON.stringify({
+        version: 3,
+        entryNodeId: 'Start',
+        nodeLinks: ['Start->line', 'line->'],
+        choiceLinks: [],
+        commandLinks: [],
+      }))
+      .mockResolvedValueOnce(JSON.stringify({ verdict: 'pass', issues: [] }));
+
+    await resolveStoryPlanForImport('【Start｜Opening】\n（Type1・Guide）Begin.', {
+      sourceId: 'canonical',
+      usageBinding: binding,
+    });
+
+    completeLlm.mockRejectedValue(new Error('branch provider unavailable'));
+    await expect(resolveStoryPlanForImport([
+      'Narrator: A fork appears.',
+      'Choose one path.',
+      'Option one: Cross the bridge.',
+      'Option two: Follow the river.',
+      'Narrator: The journey continues.',
+    ].join('\n'), {
+      sourceId: 'branch',
+      usageBinding: binding,
+    })).rejects.toThrow('branch planning failed');
+
+    completeLlm.mockImplementation(async (messages: unknown[], options: { toolName?: string }) => {
+      if (options.toolName === 'submit_story_plot_grouping') {
+        const payload = JSON.parse((messages[1] as { content: string }).content) as {
+          nodes: Array<{ id: string }>;
+        };
+        return JSON.stringify({
+          nodes: payload.nodes.map((node, index) => ({
+            title: `Plot ${index + 1}`,
+            storyNodeIds: [node.id],
+          })),
+        });
+      }
+      if (options.toolName === 'submit_plot_titles') {
+        const payload = JSON.parse((messages[1] as { content: string }).content) as {
+          chapters: Array<{ id: string }>;
+        };
+        return JSON.stringify({
+          nodes: payload.chapters.map((chapter, index) => ({ id: chapter.id, title: `Turning Point ${index + 1}` })),
+        });
+      }
+      throw new Error(`Unexpected tool ${options.toolName}`);
+    });
+
+    await resolveStoryPlanForImport(readFileSync(resolve(
+      process.cwd(), 'tests/fixtures/import-script/nested-trust-story.txt',
+    ), 'utf8'), {
+      sourceId: 'plot-title',
+      skipSemanticAuditAfterValidation: true,
+      enableAiPlotPlanning: true,
+      usageBinding: binding,
+    });
+
+    const stageBindings = optionBindings(completeLlm.mock.calls);
+    expect(new Set(stageBindings.map((item) => item.context.operation))).toEqual(new Set([
+      'extractor', 'graph', 'auditor', 'branch', 'plot', 'title',
+    ]));
+    expect(stageBindings.length).toBeGreaterThanOrEqual(7);
+    expect(stageBindings.every((item) => (
+      item.context.feature === 'script_import'
+      && item.context.correlationId === 'import-stage-matrix'
+    ))).toBe(true);
   });
 
   it('attributes Game Design System generation and schema repair', async () => {

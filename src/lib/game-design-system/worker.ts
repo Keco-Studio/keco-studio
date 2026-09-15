@@ -136,12 +136,9 @@ export async function processClaimedGameDesignSystemJob(
     }
     await dependencies.heartbeat(serviceClient, job.id, workerId, 'generating');
     const generationInput = job.input as unknown as ResolvedGameDesignGenerationInput;
-    const jobProjectId = (job as { project_id?: unknown }).project_id
-      ?? (generationInput as { projectId?: unknown }).projectId;
     const usageBinding: AiUsageBinding = {
       context: {
         actorUserId: job.owner_id,
-        ...(typeof jobProjectId === 'string' ? { projectId: jobProjectId } : {}),
         feature: 'game_design_system',
         operation: 'generate',
         correlationId: job.id,
