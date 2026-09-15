@@ -38,6 +38,17 @@ describe('desktop release workflow', () => {
     expect(workflow).toContain('arm64');
   });
 
+  it('retries transient macOS DMG packaging failures with a clean output directory', () => {
+    const workflow = read('.github/workflows/release-desktop.yml');
+    const retryCleanupBlocks = workflow.match(/if \[ "\$attempt" -gt 1 \]; then[\s\S]*?rm -rf release/g) ?? [];
+
+    expect(workflow.match(/for attempt in 1 2 3; do/g) ?? []).toHaveLength(2);
+    expect(workflow.match(/rm -rf release/g) ?? []).toHaveLength(2);
+    expect(retryCleanupBlocks).toHaveLength(2);
+    expect(retryCleanupBlocks.every((block) => block.includes('hdiutil detach -quiet -force "$mount_point"'))).toBe(true);
+    expect(workflow.match(/if \[ "\$attempt" -eq 3 \]; then\n\s+exit 1/g) ?? []).toHaveLength(2);
+  });
+
   it('uses a per-user x64 Inno Setup installation with WebView2 detection', () => {
     const installer = read('desktop/installer/KecoStudio.iss');
     expect(installer).toContain('PrivilegesRequired=lowest');
