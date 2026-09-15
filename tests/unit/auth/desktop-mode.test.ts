@@ -29,4 +29,11 @@ describe('desktop mode', () => {
     expect(source).toContain('isDesktopMode === false ?');
     expect(source).toContain('isDesktopMode ? (');
   });
+
+  it('persists desktop mode when client-side navigation changes the search parameters', () => {
+    const source = read('src/components/desktop/DesktopModeMarker.tsx');
+    expect(source).toContain("import { useSearchParams } from 'next/navigation'");
+    expect(source).toContain('const searchParams = useSearchParams();');
+    expect(source).toContain('[searchParams]');
+  });
 });

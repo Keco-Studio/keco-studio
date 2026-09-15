@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { SupabaseProvider } from '@/lib/SupabaseContext';
 import { AuthProvider } from '@/lib/contexts/AuthContext';
 import { NavigationProvider } from '@/lib/contexts/NavigationContext';
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // changes (Next.js route announcer / React 19 commit deletion).
     <html lang="en" translate="no">
       <body suppressHydrationWarning>
-        <DesktopModeMarker />
+        <Suspense fallback={null}>
+          <DesktopModeMarker />
+        </Suspense>
         <QueryProvider>
           <SupabaseProvider>
             <AuthProvider>
