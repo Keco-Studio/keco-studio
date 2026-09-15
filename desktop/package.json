@@ -1,0 +1,13 @@
+{
+  "name": "keco-studio-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/apply-native-sdk-patches.mjs && node scripts/resolve-native-sdk-path.mjs check && node --test tests/desktop-shell-static.test.mjs",
+    "test:static": "node --test tests/desktop-shell-static.test.mjs"
+  },
+  "devDependencies": {
+    "@native-sdk/cli": "0.10.1"
+  }
+}
