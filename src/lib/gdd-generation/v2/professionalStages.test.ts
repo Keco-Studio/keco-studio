@@ -343,6 +343,28 @@ describe('professional GDD stages', () => {
     expect(String(repairMessages?.[0]?.content)).toContain('Core Loop');
   });
 
+  it('merges sections recovered in a targeted repair with sections from the first response', async () => {
+    const threeCoreSections: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        { id: 'overview', title: 'Overview', stage: 'core', instructions: ['Introduce the game.'] },
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        { id: 'player-actions', title: 'Player Actions', stage: 'core', instructions: ['Define actions.'] },
+        ...blueprint.sections.slice(1),
+      ],
+    };
+    const first = '## Overview\n\nBackground.';
+    const repaired = '## Core Loop\n\nThe loop.\n\n## Player Actions\n\nActions.';
+    const complete = jest.fn(async () => repaired).mockResolvedValueOnce(first);
+
+    const result = await generateProfessionalStage(input, 'generating_core', checkpoint({ blueprint: threeCoreSections }), { complete });
+
+    expect(result.sectionDrafts.map((draft) => draft.sectionId)).toEqual([
+      'overview', 'core-loop', 'player-actions',
+    ]);
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects a stage when repair still omits a planned section', async () => {
     const twoCoreSections: ProfessionalBlueprint = {
       ...blueprint,

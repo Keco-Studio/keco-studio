@@ -129,13 +129,22 @@ export async function reviewGddMarkdownV2(
     };
   } else if (runtime.recoverDialogue !== false && dialoguePlans.length === 0 && hasNarrativeIntent(input)) {
     repairRound = Math.max(repairRound, 1);
-    const recovered = await recoverMissingDialoguePlans(
-      normalized.markdown,
-      dependencies,
-      runtime.signal,
-    );
-    dialoguePlans = recovered.plans;
-    dialoguePlanWarning = recovered.warning;
+    try {
+      const recovered = await recoverMissingDialoguePlans(
+        normalized.markdown,
+        dependencies,
+        runtime.signal,
+      );
+      dialoguePlans = recovered.plans;
+      dialoguePlanWarning = recovered.warning;
+    } catch (error) {
+      // Dialogue recovery is an enrichment pass. A malformed recovery batch
+      // must not discard an otherwise valid GDD or prevent table/map jobs from
+      // being persisted; retain the bounded diagnostic for the resource UI.
+      if (!(error instanceof GddV2ResourceRecoveryError)) throw error;
+      dialoguePlans = [];
+      dialoguePlanWarning = error.message.slice(0, 1_000);
+    }
   }
 
   return {
@@ -628,7 +637,11 @@ function parseDialogueRecoveryEvents(raw: string): DialogueSceneEvent[] {
       `Dialogue scene recovery is not JSON: ${error instanceof Error ? error.message : 'parse failed'}`,
     );
   }
-  const parsed = dialogueSceneEventSchema.array().max(20).safeParse(value);
+  // A professional GDD can intentionally contain dozens of concrete story
+  // scenes. The planner already limits concurrent work, so recovery should
+  // bound pathological model output without imposing an artificial 20-scene
+  // ceiling that rejects otherwise valid documents.
+  const parsed = dialogueSceneEventSchema.array().max(100).safeParse(value);
   if (!parsed.success) {
     throw new GddV2ResourceRecoveryError(`Dialogue scene recovery failed validation: ${parsed.error.message}`);
   }
@@ -649,6 +662,7 @@ async function recoverMissingDialoguePlans(
       'Extract only concrete chapters, tasks, meetings, confrontations, or choice scenes that require spoken interaction.',
       'Do not extract abstract dialogue-system descriptions or illustrative examples.',
       'Preserve scene order and return an empty array only when the GDD contains no concrete spoken scene.',
+      'You may return up to 100 concrete scenes; do not stop at an arbitrary 20-scene limit.',
     ].join('\n'),
   }, {
     role: 'user',
