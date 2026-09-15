@@ -594,6 +594,7 @@ describe('GDD generation worker', () => {
       report,
       [],
       [],
+      expect.objectContaining({ context: expect.objectContaining({ feature: 'gdd', actorUserId: 'user-1', projectId: generationInput.projectId, jobId: 'job-1', correlationId: 'job-1' }) }),
     );
   });
 

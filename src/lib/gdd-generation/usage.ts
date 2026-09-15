@@ -1,7 +1,7 @@
 import { deriveAiUsageBinding, type AiProvider, type AiUsageBinding, type AiUsageMetadata } from '@/lib/ai-usage/types';
 
 export function gddLlmProvider(): AiProvider {
-  const provider = process.env.GDD_GENERATION_LLM_PROVIDER ?? 'deepseek';
+  const provider = process.env.GDD_GENERATION_LLM_PROVIDER ?? process.env.LLM_PROVIDER ?? 'deepseek';
   return provider === 'deepseek' || provider === 'minimax' || provider === 'openai'
     || provider === 'pixellab' || provider === 'unknown'
     ? provider

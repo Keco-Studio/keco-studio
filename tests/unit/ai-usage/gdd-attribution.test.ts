@@ -43,16 +43,24 @@ const legacyInput = {
 };
 
 describe('GDD usage attribution', () => {
-  it('uses only a validated GDD provider, defaulting to deepseek', () => {
+  it('resolves GDD provider from the scoped setting, then global setting, then default', () => {
     const previous = process.env.GDD_GENERATION_LLM_PROVIDER;
+    const globalPrevious = process.env.LLM_PROVIDER;
     delete process.env.GDD_GENERATION_LLM_PROVIDER;
+    delete process.env.LLM_PROVIDER;
     expect(gddLlmProvider()).toBe('deepseek');
+    process.env.LLM_PROVIDER = 'minimax';
+    expect(gddLlmProvider()).toBe('minimax');
+    process.env.LLM_PROVIDER = 'not-a-provider';
+    expect(gddLlmProvider()).toBe('unknown');
     process.env.GDD_GENERATION_LLM_PROVIDER = 'openai';
     expect(gddLlmProvider()).toBe('openai');
     process.env.GDD_GENERATION_LLM_PROVIDER = 'not-a-provider';
     expect(gddLlmProvider()).toBe('unknown');
     if (previous === undefined) delete process.env.GDD_GENERATION_LLM_PROVIDER;
     else process.env.GDD_GENERATION_LLM_PROVIDER = previous;
+    if (globalPrevious === undefined) delete process.env.LLM_PROVIDER;
+    else process.env.LLM_PROVIDER = globalPrevious;
   });
   it('labels quick generation and its JSON repair', async () => {
     const complete = jest.fn(async () => 'not-json');
@@ -60,6 +68,11 @@ describe('GDD usage attribution', () => {
     expect(complete.mock.calls.map(([, options]) => (options as any).usageBinding.context.operation)).toEqual([
       'quick_generate', 'quick_repair',
     ]);
+    expect(complete.mock.calls.every(([, options]) => (options as any).provider === 'deepseek')).toBe(true);
+    expect(complete.mock.calls.every(([, options]) => (options as any).usageBinding.context.actorUserId === 'owner-1'
+      && (options as any).usageBinding.context.projectId === 'project-1'
+      && (options as any).usageBinding.context.jobId === 'gdd-job-1'
+      && (options as any).usageBinding.context.correlationId === 'gdd-job-1')).toBe(true);
   });
 
   it('labels a truncated v2 stream recovery with the same correlation', async () => {
@@ -70,7 +83,11 @@ describe('GDD usage attribution', () => {
     await generateGddMarkdownV2(v2Input as never, { stream, complete: jest.fn(async () => '[]'), usageBinding: binding() } as never);
     const bindings = stream.mock.calls.map(([, options]) => (options as any).usageBinding);
     expect(bindings.map((value) => value.context.operation)).toEqual(['quick_generate', 'truncation_recovery']);
-    expect(bindings.every((value) => value.context.correlationId === 'gdd-job-1')).toBe(true);
+    expect(stream.mock.calls.every(([, options]) => (options as any).provider === 'deepseek')).toBe(true);
+    expect(bindings.every((value) => value.context.actorUserId === 'owner-1'
+      && value.context.projectId === 'project-1'
+      && value.context.jobId === 'gdd-job-1'
+      && value.context.correlationId === 'gdd-job-1')).toBe(true);
   });
 
   it('labels table repair and dialogue-scene recovery calls', async () => {

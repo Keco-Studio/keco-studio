@@ -92,3 +92,27 @@ git diff --check
 ```
 
 Result: 10 suites passed, 164 tests passed. The matrix covers validated provider behavior, full identity for table/dialogue/map, `professional_stage_repair`, inline map wiring, and direct async resource/dialogue parent identity lookups.
+
+## Fix Round 2
+
+### RED Evidence
+
+Added provider-precedence, quick full-identity, truncation full-identity, and professional save-path persistence assertions. Ran:
+
+```bash
+npx jest --runInBand tests/unit/ai-usage/gdd-attribution.test.ts src/lib/gdd-generation/worker.test.ts
+```
+
+Observed RED: with scoped provider unset and `LLM_PROVIDER=minimax`, `gddLlmProvider()` returned `deepseek`; professional saving invoked `persistV2` without the required usage binding.
+
+### GREEN Evidence
+
+Ran:
+
+```bash
+npx jest --runInBand tests/unit/ai-usage/gdd-attribution.test.ts tests/unit/gdd-generation tests/unit/gdd-generation-routes.test.ts tests/unit/gdd-generation-v2-scope.test.ts src/lib/gdd-generation/worker.test.ts src/lib/gdd-generation/resources/worker.test.ts src/lib/gdd-generation/dialogueWorker.test.ts src/lib/gdd-generation/maps/compiler.test.ts src/lib/gdd-generation/v2/generator.test.ts src/lib/gdd-generation/v2/professionalStages.test.ts src/lib/gdd-generation/v2/dialoguePlanner.test.ts
+npm run typecheck
+git diff --check
+```
+
+Result: 10 suites passed, 165 tests passed. Provider resolution is scoped GDD provider, then validated global provider, then `deepseek`; invalid configured values remain `unknown`. Both quick and professional inline persistence now carry the full binding to map compilation.

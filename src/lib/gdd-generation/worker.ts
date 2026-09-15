@@ -664,6 +664,7 @@ async function processProfessionalGddPhase(
         report.review,
         report.tablePlans,
         report.dialoguePlans,
+        usageBinding,
       ),
       {
         heartbeatPhase: 'saving',
