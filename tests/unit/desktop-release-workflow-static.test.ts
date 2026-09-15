@@ -41,7 +41,7 @@ describe('desktop release workflow', () => {
   it('builds the Windows release for a portable x64 CPU baseline', () => {
     const workflow = read('.github/workflows/release-desktop.yml');
 
-    expect(workflow).toContain('zig build -Dtarget=x86_64-windows-msvc -Dplatform=windows -Doptimize=ReleaseFast');
+    expect(workflow).toContain('zig build -Dtarget=x86_64-windows-gnu -Dplatform=windows -Doptimize=ReleaseFast');
   });
 
   it('builds each macOS release for its portable CPU baseline', () => {
