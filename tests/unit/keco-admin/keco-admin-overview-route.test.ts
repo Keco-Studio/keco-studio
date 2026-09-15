@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 
 const getSupabaseServiceRoleClient = jest.fn();
 const readKecoAdminOverview = jest.fn();
+const hasKecoAdminAccess = jest.fn();
 let authenticatedUserId: string | null = null;
 
 jest.mock('server-only', () => ({}));
@@ -19,6 +20,9 @@ jest.mock('@/lib/auth/route-auth', () => ({
 jest.mock('@/lib/server/supabaseServiceRole', () => ({
   getSupabaseServiceRoleClient: (...args: unknown[]) =>
     getSupabaseServiceRoleClient(...args),
+}));
+jest.mock('@/lib/server/kecoAdminAuthorization', () => ({
+  hasKecoAdminAccess: (...args: unknown[]) => hasKecoAdminAccess(...args),
 }));
 jest.mock('@/lib/server/kecoAdminOverview', () => ({
   readKecoAdminOverview: (...args: unknown[]) => readKecoAdminOverview(...args),
@@ -45,6 +49,9 @@ describe('Keco Admin overview API', () => {
       refreshedAt: '2026-09-11T10:00:00.000Z',
       users: [],
     });
+    hasKecoAdminAccess.mockImplementation((userId: string) =>
+      Promise.resolve(userId === ADMIN_ID),
+    );
   });
 
   afterAll(() => {

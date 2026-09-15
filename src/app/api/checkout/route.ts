@@ -6,10 +6,7 @@ import {
   validateCheckoutInput,
 } from '@/lib/payment-domain';
 import { getStripe } from '@/lib/stripe';
-import {
-  applyCheckoutAmountOverride,
-  getStudioPlanById,
-} from '@/lib/studio-plans';
+import { getStudioPlanById } from '@/lib/studio-plans';
 import {
   attachStripeSession,
   createPaymentOrder,
@@ -41,7 +38,7 @@ const checkoutHandler = async (
     if (!catalogPlan || !catalogPlan.checkoutEnabled || catalogPlan.amountCents <= 0) {
       return NextResponse.json({ error: 'Plan not found' }, { status: 400 });
     }
-    const plan = applyCheckoutAmountOverride(catalogPlan);
+    const plan = catalogPlan;
     const currency = normalizeCurrency(plan.currency);
     const paymentId = `pay_${randomUUID()}`;
     const reference = `KECO-${new Date().getUTCFullYear()}-${paymentId.slice(-8).toUpperCase()}`;

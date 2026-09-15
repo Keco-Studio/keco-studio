@@ -53,7 +53,7 @@ export const STUDIO_PLANS: readonly StudioPlan[] = [
     currency: 'usd',
     kind: 'subscription',
     priceLabel: '$10/month',
-    creditsLabel: '50 agent credits included',
+    creditsLabel: '10,000 agent credits included',
     features: [
       { label: 'AI agent access', included: true },
       { label: 'Script conversion pipeline', included: true },
@@ -72,7 +72,7 @@ export const STUDIO_PLANS: readonly StudioPlan[] = [
     currency: 'usd',
     kind: 'subscription',
     priceLabel: '$50/month',
-    creditsLabel: '170 agent credits included',
+    creditsLabel: '50,000 agent credits included',
     features: [
       { label: 'Priority processing', included: true },
       { label: 'Team collaboration', included: true },
@@ -99,34 +99,6 @@ export const STUDIO_PLANS: readonly StudioPlan[] = [
     ],
     ctaLabel: 'Contact sales',
     checkoutEnabled: false,
-  },
-  {
-    id: 'credits-1000',
-    label: '1,000 credits',
-    description: 'One-time top-up of 1,000 agent credits',
-    amountCents: 5999,
-    currency: 'usd',
-    kind: 'credits',
-    priceLabel: '$59.99',
-    creditsLabel: '1,000 agent credits',
-    features: [],
-    ctaLabel: 'Purchase 1,000 credits',
-    checkoutEnabled: true,
-    creditAmount: 1000,
-  },
-  {
-    id: 'credits-5000',
-    label: '5,000 credits',
-    description: 'One-time top-up of 5,000 agent credits',
-    amountCents: 27499,
-    currency: 'usd',
-    kind: 'credits',
-    priceLabel: '$274.99',
-    creditsLabel: '5,000 agent credits',
-    features: [],
-    ctaLabel: 'Purchase 5,000 credits',
-    checkoutEnabled: true,
-    creditAmount: 5000,
   },
 ] as const;
 
@@ -161,13 +133,4 @@ export function formatPlanPrice(plan: StudioPlan): string {
     style: 'currency',
     currency: plan.currency.toUpperCase(),
   }).format(plan.amountCents / 100);
-}
-
-/** Optional test override applied only on the server checkout path. */
-export function applyCheckoutAmountOverride(plan: StudioPlan): StudioPlan {
-  const raw = process.env.STRIPE_CHECKOUT_AMOUNT_CENTS?.trim();
-  if (!raw || plan.id !== 'credits-1000') return plan;
-  const amount = Number(raw);
-  if (!Number.isSafeInteger(amount) || amount <= 0) return plan;
-  return { ...plan, amountCents: amount };
 }
