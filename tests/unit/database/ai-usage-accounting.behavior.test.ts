@@ -102,6 +102,36 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     return fx.owner.client.rpc('record_ai_usage_event', { p_event: payload });
   }
 
+  async function serviceRecord(metadata: Record<string, unknown>) {
+    const eventKey = randomUUID();
+    eventKeys.add(eventKey);
+    return fx.svc.from('ai_usage_events').insert({
+      event_key: eventKey,
+      user_id: fx.owner.id,
+      project_id: fx.projectId,
+      feature: 'ledger_test',
+      operation: 'service_worker',
+      request_kind: 'provider_generation',
+      provider: 'pixellab',
+      model: null,
+      correlation_id: `ledger-${eventKey}`,
+      job_id: null,
+      artifact_id: null,
+      attempt: 1,
+      provider_request_id: null,
+      outcome: 'succeeded',
+      usage_status: 'unknown',
+      input_tokens: null,
+      output_tokens: null,
+      total_tokens: null,
+      provider_credits: null,
+      pricing_rule_version: null,
+      started_at: '2026-09-15T00:00:00.000Z',
+      finished_at: '2026-09-15T00:00:01.000Z',
+      metadata,
+    });
+  }
+
   async function summary() {
     const result = await fx.svc.rpc('keco_admin_ai_usage_summary');
     if (result.error || !result.data || typeof result.data !== 'object') {
@@ -210,7 +240,7 @@ describeDb('AI usage accounting real Postgres behavior', () => {
   });
 
   it.each([
-    ['metadata over 4 KiB', { metadata: { payload: 'x'.repeat(4097) } }],
+    ['metadata over 4 KiB', { metadata: { source: 'a'.repeat(4090) } }],
     ['fractional token usage', { usage: { inputTokens: 1.5, outputTokens: 2, totalTokens: 4 } }],
     ['invalid outcome', { outcome: 'pending' }],
     ['total smaller than token components', { usage: { inputTokens: 10, outputTokens: 11, totalTokens: 20 } }],
@@ -227,36 +257,28 @@ describeDb('AI usage accounting real Postgres behavior', () => {
     expect(browserInsert.error).not.toBeNull();
     expect((await fx.owner.client.rpc('keco_admin_ai_usage_summary')).error).not.toBeNull();
 
-    const serviceEventKey = randomUUID();
-    eventKeys.add(serviceEventKey);
-    const serviceInsert = await fx.svc.from('ai_usage_events').insert({
-      event_key: serviceEventKey,
-      user_id: fx.owner.id,
-      project_id: fx.projectId,
-      feature: 'ledger_test',
-      operation: 'service_worker',
-      request_kind: 'provider_generation',
-      provider: 'pixellab',
-      model: null,
-      correlation_id: `ledger-${serviceEventKey}`,
-      job_id: null,
-      artifact_id: null,
-      attempt: 1,
-      provider_request_id: null,
-      outcome: 'succeeded',
-      usage_status: 'unknown',
-      input_tokens: null,
-      output_tokens: null,
-      total_tokens: null,
-      provider_credits: null,
-      pricing_rule_version: null,
-      started_at: '2026-09-15T00:00:00.000Z',
-      finished_at: '2026-09-15T00:00:01.000Z',
-      metadata: {},
-    });
+    const serviceInsert = await serviceRecord({});
     expect(serviceInsert.error).toBeNull();
-    expect((await fx.svc.from('ai_usage_events').select('event_key').eq('event_key', serviceEventKey)).data)
-      .toEqual([{ event_key: serviceEventKey }]);
+  });
+
+  it('rejects unsafe direct service-role metadata while preserving bounded diagnostics', async () => {
+    expect((await serviceRecord({
+      source: 'gdd_async_resource_worker',
+      retryAttempt: 1,
+      embeddingType: 'index_batch',
+      providerOperation: 'create_image_pro',
+    })).error).toBeNull();
+
+    for (const metadata of [
+      { source: 'Summarize the customer conversation verbatim.' },
+      { providerOperation: 'data:text/plain;base64,cHJvbXB0' },
+      { embeddingType: 'raw request body' },
+      { retryAttempt: 1.5 },
+      { batchSize: 10001 },
+      { regionRows: 65536 },
+    ]) {
+      expect((await serviceRecord(metadata)).error).not.toBeNull();
+    }
   });
 
   it('publishes the intended table and RPC privileges in the database catalog', () => {

@@ -1,5 +1,55 @@
 -- Private, append-only accounting for outbound AI provider attempts.
 
+CREATE OR REPLACE FUNCTION public.ai_usage_metadata_is_safe(p_metadata JSONB)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT p_metadata IS NOT NULL
+    AND pg_catalog.jsonb_typeof(p_metadata) = 'object'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM pg_catalog.jsonb_each(p_metadata) AS item(key, value)
+      WHERE NOT CASE
+        WHEN item.key = 'fixture' THEN
+          pg_catalog.jsonb_typeof(item.value) = 'string'
+          AND item.value #>> '{}' ~ '^[a-z][a-z0-9_]{0,63}$'
+        WHEN item.key = 'source' THEN
+          pg_catalog.jsonb_typeof(item.value) = 'string'
+          AND item.value #>> '{}' ~ '^[a-z][a-z0-9_]*$'
+          AND pg_catalog.char_length(item.value #>> '{}') <= 4096
+        WHEN item.key = 'embeddingType' THEN
+          pg_catalog.jsonb_typeof(item.value) = 'string'
+          AND item.value #>> '{}' IN ('index_batch', 'query')
+        WHEN item.key = 'providerOperation' THEN
+          pg_catalog.jsonb_typeof(item.value) = 'string'
+          AND item.value #>> '{}' ~ '^[a-z][a-z0-9_]{0,63}$'
+        WHEN item.key IN ('iteration', 'repairAttempt', 'retryAttempt') THEN
+          pg_catalog.jsonb_typeof(item.value) = 'number'
+          AND item.value #>> '{}' ~ '^(0|[1-9][0-9]*)$'
+          AND pg_catalog.char_length(item.value #>> '{}') <= 4
+          AND (item.value #>> '{}')::BIGINT BETWEEN 0 AND 1000
+        WHEN item.key = 'batchSize' THEN
+          pg_catalog.jsonb_typeof(item.value) = 'number'
+          AND item.value #>> '{}' ~ '^(0|[1-9][0-9]*)$'
+          AND pg_catalog.char_length(item.value #>> '{}') <= 5
+          AND (item.value #>> '{}')::BIGINT BETWEEN 0 AND 10000
+        WHEN item.key = 'inputCharacters' THEN
+          pg_catalog.jsonb_typeof(item.value) = 'number'
+          AND item.value #>> '{}' ~ '^(0|[1-9][0-9]*)$'
+          AND pg_catalog.char_length(item.value #>> '{}') <= 8
+          AND (item.value #>> '{}')::BIGINT BETWEEN 0 AND 10000000
+        WHEN item.key IN ('regionColumn', 'regionRow', 'regionColumns', 'regionRows', 'sceneIndex') THEN
+          pg_catalog.jsonb_typeof(item.value) = 'number'
+          AND item.value #>> '{}' ~ '^(0|[1-9][0-9]*)$'
+          AND pg_catalog.char_length(item.value #>> '{}') <= 5
+          AND (item.value #>> '{}')::BIGINT BETWEEN 0 AND 65535
+        ELSE FALSE
+      END
+    );
+$$;
+
 CREATE TABLE public.ai_usage_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_key UUID NOT NULL UNIQUE,
@@ -32,7 +82,7 @@ CREATE TABLE public.ai_usage_events (
   pricing_rule_version SMALLINT,
   started_at TIMESTAMPTZ NOT NULL,
   finished_at TIMESTAMPTZ NOT NULL CHECK (finished_at >= started_at),
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT pg_catalog.clock_timestamp(),
   CHECK (
     (usage_status = 'unknown' AND input_tokens IS NULL AND output_tokens IS NULL AND total_tokens IS NULL)
@@ -47,7 +97,10 @@ CREATE TABLE public.ai_usage_events (
     OR (pricing_rule_version = 1 AND provider = 'deepseek'
       AND request_kind = 'chat_completion' AND usage_status = 'reported')
   ),
-  CHECK (pg_catalog.octet_length(metadata::text) <= 4096)
+  CONSTRAINT ai_usage_events_metadata_safe_check
+    CHECK (public.ai_usage_metadata_is_safe(metadata)),
+  CONSTRAINT ai_usage_events_metadata_size_check
+    CHECK (pg_catalog.octet_length(metadata::text) <= 4096)
 );
 
 CREATE INDEX ai_usage_events_pricing_user_idx
@@ -68,6 +121,8 @@ ALTER TABLE public.ai_usage_tracking_epochs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.ai_usage_events FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public.ai_usage_tracking_epochs FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT, INSERT ON TABLE public.ai_usage_events TO service_role;
+REVOKE ALL ON FUNCTION public.ai_usage_metadata_is_safe(JSONB) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.ai_usage_metadata_is_safe(JSONB) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.record_ai_usage_event(p_event JSONB)
 RETURNS VOID
@@ -112,20 +167,6 @@ BEGIN
   v_provider := p_event->>'provider';
   v_request_kind := p_event->>'requestKind';
   v_metadata := COALESCE(p_event->'metadata', '{}'::jsonb);
-
-  IF jsonb_typeof(v_metadata) <> 'object' OR EXISTS (
-    SELECT 1
-    FROM pg_catalog.jsonb_each(v_metadata) AS item(key, value)
-    WHERE item.key <> ALL (ARRAY[
-      'fixture', 'source', 'iteration', 'repairAttempt', 'retryAttempt',
-      'batchSize', 'inputCharacters', 'embeddingType',
-      'regionColumn', 'regionRow', 'regionColumns', 'regionRows',
-      'sceneIndex', 'providerOperation'
-    ]::TEXT[])
-      OR pg_catalog.jsonb_typeof(item.value) NOT IN ('string', 'number', 'boolean', 'null')
-  ) THEN
-    RAISE EXCEPTION 'Invalid AI usage metadata' USING ERRCODE = '22023';
-  END IF;
 
   IF p_event->'usage' IS NULL OR p_event->'usage' = 'null'::jsonb THEN
     v_usage_status := 'unknown';

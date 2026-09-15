@@ -15,7 +15,8 @@ describe('AI usage accounting migration contract', () => {
     expect(sql).toMatch(/create (or replace )?function public\.record_ai_usage_event\(p_event jsonb\)/i);
     expect(sql).toMatch(/auth\.uid\(\)/i);
     expect(sql).toMatch(/revoke all on table public\.ai_usage_events from public, anon, authenticated/i);
-    expect(sql).toMatch(/jsonb_each\(v_metadata\)/i);
+    expect(sql).toMatch(/create (or replace )?function public\.ai_usage_metadata_is_safe\(p_metadata jsonb\)/i);
+    expect(sql).toMatch(/ai_usage_events_metadata_safe_check/i);
   });
 
   it('defines the aggregate with aggregate-first Credit rounding', () => {
