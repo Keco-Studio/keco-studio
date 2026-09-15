@@ -354,10 +354,10 @@ function blueprintRepairMessages(input: GddGenerationRequestV2, raw: string): Ch
 function normalizeHeadingTitle(value: string): string {
   return value
     .trim()
-    // Accept common Chinese/Arabic outline prefixes while retaining the
+    // Accept English chapter labels and numeric outline prefixes while retaining the
     // blueprint title as the canonical persisted heading.
-    .replace(/^(?:第\s*)?(?:[一二三四五六七八九十百千万零〇两]+|\d+)(?:\s*章\s*|\s*[、.)：:]\s*|\s+-\s+)/u, '')
-    .replace(/[：:、。.!！?？]+$/u, '')
+    .replace(/^(?:chapter\s*)?\d+(?:\s*[:.)]\s*|\s+-\s+)/i, '')
+    .replace(/[:,.!?]+$/, '')
     .trim()
     .toLocaleLowerCase();
 }

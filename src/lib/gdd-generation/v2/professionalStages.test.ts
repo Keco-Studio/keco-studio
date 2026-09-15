@@ -266,6 +266,33 @@ describe('professional GDD stages', () => {
     expect(result.sectionDrafts[0]?.markdown).not.toMatch(/^## A different heading/m);
   });
 
+  it('matches out-of-order sections with English chapter prefixes', async () => {
+    const twoCoreSections: ProfessionalBlueprint = {
+      ...blueprint,
+      sections: [
+        { id: 'overview', title: 'Overview', stage: 'core', instructions: ['Introduce the game.'] },
+        { id: 'core-loop', title: 'Core Loop', stage: 'core', instructions: ['Define the loop.'] },
+        ...blueprint.sections.slice(1),
+      ],
+    };
+    const complete = jest.fn(async () => [
+      '## Chapter 2: Core Loop',
+      '',
+      'Loop details.',
+      '',
+      '## Chapter 1: Overview',
+      '',
+      'Overview details.',
+    ].join('\n'));
+
+    const result = await generateProfessionalStage(input, 'generating_core', checkpoint({ blueprint: twoCoreSections }), { complete });
+
+    expect(result.sectionDrafts).toEqual([
+      expect.objectContaining({ sectionId: 'overview', markdown: expect.stringContaining('Overview details.') }),
+      expect.objectContaining({ sectionId: 'core-loop', markdown: expect.stringContaining('Loop details.') }),
+    ]);
+  });
+
   it('keeps subsection headings inside their parent section', async () => {
     const twoCoreSections: ProfessionalBlueprint = {
       ...blueprint,
