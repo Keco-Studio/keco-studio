@@ -1,7 +1,7 @@
 import type { AiUsageAttempt, AiUsageMetadata, AiUsageRecorder } from './types';
 
 type AuthenticatedUsageClient = {
-  rpc: (name: string, args: { p_event: Record<string, unknown> }) => Promise<{ error: unknown }>;
+  rpc: (name: string, args: { p_event: Record<string, unknown> }) => PromiseLike<{ error: unknown }>;
 };
 
 type ServiceUsageClient = {

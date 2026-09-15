@@ -19,6 +19,7 @@ import {
   TokenUsage,
 } from './types';
 import { streamLlm } from './llm-client';
+import { deriveAiUsageBinding, type AiUsageBinding } from '@/lib/ai-usage/types';
 import { buildSystemPrompt } from './prompts';
 import { buildGddArtStyleContext } from '@/lib/game-art-style/development';
 import { gameArtStyleSnapshotSchema } from '@/lib/game-art-style/schema';
@@ -272,13 +273,19 @@ export async function buildAgentSystemMessage(
 async function loadRetrievedContextBlock(
   ctx: ToolContext,
   conversationId: string,
-  userMessage: string
+  userMessage: string,
+  usageBinding?: AiUsageBinding,
 ): Promise<string | undefined> {
   if (!AGENT_RETRIEVAL_ENABLED) return undefined;
   try {
     const queryText = stripContextAugmentation(userMessage);
     if (!queryText.trim()) return undefined;
-    const queryEmbedding = await embedQuery(queryText);
+    const queryEmbedding = await embedQuery(
+      queryText,
+      usageBinding
+        ? deriveAiUsageBinding(usageBinding, { operation: 'retrieval_query' })
+        : undefined,
+    );
     const chunks = await retrieveRelevantChunks({
       supabase: ctx.supabase,
       queryEmbedding,
@@ -303,8 +310,11 @@ async function loadRetrievedContextBlock(
   }
 }
 
-function indexingContext(ctx: ToolContext): SaveMessageIndexingContext {
-  return { projectId: ctx.projectId, userId: ctx.userId };
+function indexingContext(
+  ctx: ToolContext,
+  usageBinding?: AiUsageBinding,
+): SaveMessageIndexingContext {
+  return { projectId: ctx.projectId, userId: ctx.userId, usageBinding };
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -396,6 +406,7 @@ async function* continueLoop(
   signal?: AbortSignal,
   trace?: TurnTraceCollector,
   gameDesignPolicy?: GameDesignPolicyContext,
+  usageBinding?: AiUsageBinding,
 ): AsyncGenerator<SSEEvent> {
   let iterations = startIterations;
   let usedTokenTotal = startTokenUsageTotal;
@@ -429,11 +440,16 @@ async function* continueLoop(
 
     const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
     const llmTools = await getToolsForLlmAsync(ctx);
+    const iterationUsageBinding = usageBinding
+      ? deriveAiUsageBinding(usageBinding, { metadata: { iteration: iterations } })
+      : undefined;
     throwIfAborted(signal);
     for await (const chunk of streamLlm(llmMessages, {
+      provider: 'deepseek',
       tools: llmTools,
       maxTokens: AGENT_LLM_MAX_TOKENS,
       signal,
+      usageBinding: iterationUsageBinding,
     })) {
       if (chunk.type === 'text_delta') {
         assistantContent += chunk.content;
@@ -820,7 +836,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
   const { toolContext, conversationId, conversationMeta } = input;
   const deadlineMs = createTurnDeadline();
   const trace = new TurnTraceCollector({
-    turnId: crypto.randomUUID(),
+    turnId: input.turnId ?? crypto.randomUUID(),
     userMessage: input.userMessage,
   });
 
@@ -828,7 +844,8 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const retrievedContextBlock = await loadRetrievedContextBlock(
       toolContext,
       conversationId,
-      input.userMessage
+      input.userMessage,
+      input.usageBinding,
     );
     const systemContext = await buildAgentSystemContext(toolContext, retrievedContextBlock);
     const systemMessage = systemContext.message;
@@ -850,7 +867,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       toolContext.supabase,
       conversationId,
       { role: 'user', content: userContentForDb },
-      indexingContext(toolContext)
+      indexingContext(toolContext, input.usageBinding)
     );
     if (!savedUserMessage) throw new Error('Failed to bind the current user message');
     const conversationForTitle = await getConversation(toolContext.supabase, conversationId);
@@ -879,6 +896,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       input.signal,
       trace,
       systemContext.gameDesignPolicy,
+      input.usageBinding,
     );
   } finally {
     await flushTrace(trace, toolContext, conversationId);
@@ -1067,6 +1085,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       input.signal,
       trace ?? undefined,
       systemContext.gameDesignPolicy,
+      input.usageBinding,
     );
   } finally {
     await flushTrace(trace ?? undefined, turnContext, conversationId);

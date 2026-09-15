@@ -8,6 +8,7 @@ import { loadPendingAction } from '@/lib/agent/confirmation';
 import { sseResponse } from '@/lib/agent/sse';
 import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
 import { verifyDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
+import { createAuthenticatedAiUsageRecorder } from '@/lib/ai-usage/recorder';
 import type { AgentWorkspace, ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
@@ -97,12 +98,27 @@ export const POST = withAuth(async function POST(
     };
 
     const abortController = new AbortController();
+    const turnId = pending.suspendedState?.turnId;
     const generator = resumeAgentTurn({
       actionId,
       decision,
       signal: abortController.signal,
       toolContext,
       conversationMeta: boundMeta,
+      ...(turnId
+        ? {
+            usageBinding: {
+              context: {
+                actorUserId: user.id,
+                projectId: conversation.project_id,
+                feature: 'agent_chat',
+                operation: 'confirmation_resume',
+                correlationId: `agent_turn:${turnId}`,
+              },
+              recorder: createAuthenticatedAiUsageRecorder(supabase),
+            },
+          }
+        : {}),
       ...(body.clientCompletedResult !== undefined
         ? { clientCompletedResult: body.clientCompletedResult }
         : {}),

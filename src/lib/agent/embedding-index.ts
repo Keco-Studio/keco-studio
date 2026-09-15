@@ -34,6 +34,7 @@ import {
 import { buildLibrarySchemaData } from './library-schema-builder';
 import { findPrimaryLabelField } from './property-value-validation';
 import { isEmbeddingInCooldown } from './embedding-throttle';
+import { deriveAiUsageBinding, type AiUsageBinding } from '@/lib/ai-usage/types';
 
 const MIN_CHAT_CHUNK_CHARS = 20;
 const LIBRARY_REINDEX_DEBOUNCE_MS = 2000;
@@ -56,6 +57,12 @@ const pendingLibraryRowReindex = new Map<string, ReturnType<typeof setTimeout>>(
 const pendingLibrarySchemaReindex = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingChatReindex = new Map<string, ReturnType<typeof setTimeout>>();
 const inFlightChatReindex = new Set<string>();
+
+function indexUsageBinding(usageBinding?: AiUsageBinding): AiUsageBinding | undefined {
+  return usageBinding
+    ? deriveAiUsageBinding(usageBinding, { operation: 'index_batch' })
+    : undefined;
+}
 
 function logIndex(event: string, detail: Record<string, unknown>): void {
   console.info(`embedding.index.${event}`, detail);
@@ -137,6 +144,7 @@ async function indexChatTurnGroup(
     userId: string;
     conversationId: string;
     group: ChatTurnGroup;
+    usageBinding?: AiUsageBinding;
   },
   embedding?: number[]
 ): Promise<void> {
@@ -162,7 +170,7 @@ async function indexChatTurnGroup(
     .eq('source_id', sourceId)
     .eq('chunk_index', params.group.chunkIndex);
 
-  const vector = embedding ?? (await embedTexts([content]))[0];
+  const vector = embedding ?? (await embedTexts([content], indexUsageBinding(params.usageBinding)))[0];
   await upsertChunks(supabase, [
     {
       project_id: params.projectId,
@@ -187,7 +195,7 @@ async function indexChatTurnGroup(
 
 export async function reindexConversationTail(
   supabase: SupabaseClient,
-  params: { conversationId: string; projectId: string; userId: string }
+  params: { conversationId: string; projectId: string; userId: string; usageBinding?: AiUsageBinding }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED) return;
   if (isEmbeddingInCooldown()) {
@@ -231,7 +239,10 @@ export async function reindexConversationTail(
     }
 
     if (pending.length > 0) {
-      const embeddings = await embedTexts(pending.map((item) => item.content));
+      const embeddings = await embedTexts(
+        pending.map((item) => item.content),
+        indexUsageBinding(params.usageBinding),
+      );
       for (let i = 0; i < pending.length; i++) {
         await indexChatTurnGroup(supabase, { ...params, group: pending[i].group }, embeddings[i]);
       }
@@ -261,7 +272,7 @@ export async function reindexConversationTail(
 
 export function scheduleConversationTailReindex(
   supabase: SupabaseClient,
-  params: { conversationId: string; projectId: string; userId: string }
+  params: { conversationId: string; projectId: string; userId: string; usageBinding?: AiUsageBinding }
 ): void {
   if (!AGENT_INDEXING_ENABLED) return;
   const key = params.conversationId;
@@ -285,6 +296,7 @@ export async function indexDesignDocumentFromMessage(
     messageId: string;
     messageText: string;
     messageCreatedAt: string;
+    usageBinding?: AiUsageBinding;
   }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED || !isDesignDocumentMessage(params.messageText)) return;
@@ -294,7 +306,7 @@ export async function indexDesignDocumentFromMessage(
     if (docChunks.length === 0) return;
 
     const texts = docChunks.map((c) => c.content);
-    const embeddings = await embedTexts(texts);
+    const embeddings = await embedTexts(texts, indexUsageBinding(params.usageBinding));
     const rows: ChunkUpsertRow[] = docChunks.map((chunk, i) => ({
       project_id: params.projectId,
       user_id: params.userId,
@@ -343,6 +355,7 @@ export async function indexLibraryCell(
     projectId: string;
     assetId: string;
     fieldId: string;
+    usageBinding?: AiUsageBinding;
   }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED) return;
@@ -434,7 +447,7 @@ export async function indexLibraryCell(
       .eq('source_id', sourceId)
       .eq('chunk_index', 0);
 
-    const [embedding] = await embedTexts([content]);
+    const [embedding] = await embedTexts([content], indexUsageBinding(params.usageBinding));
     const uiRowIndex = await resolveUiRowIndexForAsset(supabase, asset.library_id as string, asset.id as string);
     await upsertChunks(supabase, [
       {
@@ -489,7 +502,7 @@ async function resolveUiRowIndexForAsset(
 
 export async function indexLibraryRow(
   supabase: SupabaseClient,
-  params: { projectId: string; assetId: string }
+  params: { projectId: string; assetId: string; usageBinding?: AiUsageBinding }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_ROW_INDEX_ENABLED) return;
   const start = Date.now();
@@ -576,7 +589,7 @@ export async function indexLibraryRow(
       .eq('source_id', sourceId)
       .eq('chunk_index', 0);
 
-    const [embedding] = await embedTexts([content]);
+    const [embedding] = await embedTexts([content], indexUsageBinding(params.usageBinding));
     await upsertChunks(supabase, [
       {
         project_id: params.projectId,
@@ -620,7 +633,7 @@ export async function indexLibraryRow(
 
 export async function indexLibrarySchema(
   supabase: SupabaseClient,
-  params: { projectId: string; libraryId: string }
+  params: { projectId: string; libraryId: string; usageBinding?: AiUsageBinding }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED) return;
   const start = Date.now();
@@ -665,7 +678,7 @@ export async function indexLibrarySchema(
       .eq('source_id', sourceId)
       .eq('chunk_index', 0);
 
-    const [embedding] = await embedTexts([content]);
+    const [embedding] = await embedTexts([content], indexUsageBinding(params.usageBinding));
     await upsertChunks(supabase, [
       {
         project_id: params.projectId,
@@ -702,7 +715,7 @@ export async function indexLibrarySchema(
 
 export function scheduleLibraryCellReindex(
   supabase: SupabaseClient,
-  params: { projectId: string; assetId: string; fieldId: string }
+  params: { projectId: string; assetId: string; fieldId: string; usageBinding?: AiUsageBinding }
 ): void {
   if (!AGENT_INDEXING_ENABLED) return;
   const key = `${params.projectId}:${params.assetId}:${params.fieldId}`;
@@ -721,7 +734,7 @@ export function scheduleLibraryCellReindex(
 
 export function scheduleLibraryRowReindex(
   supabase: SupabaseClient,
-  params: { projectId: string; assetId: string }
+  params: { projectId: string; assetId: string; usageBinding?: AiUsageBinding }
 ): void {
   if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_ROW_INDEX_ENABLED) return;
   const key = `${params.projectId}:${params.assetId}:row`;
@@ -740,7 +753,7 @@ export function scheduleLibraryRowReindex(
 
 export function scheduleLibrarySchemaReindex(
   supabase: SupabaseClient,
-  params: { projectId: string; libraryId: string }
+  params: { projectId: string; libraryId: string; usageBinding?: AiUsageBinding }
 ): void {
   if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED) return;
   const key = `${params.projectId}:${params.libraryId}:schema`;
@@ -918,6 +931,7 @@ export function triggerConversationIndexing(
     messageText?: string;
     messageId?: string;
     messageCreatedAt?: string;
+    usageBinding?: AiUsageBinding;
   }
 ): void {
   if (!AGENT_INDEXING_ENABLED) return;
@@ -926,6 +940,7 @@ export function triggerConversationIndexing(
       conversationId: params.conversationId,
       projectId: params.projectId,
       userId: params.userId,
+      usageBinding: params.usageBinding,
     });
   }
   if (
@@ -942,6 +957,7 @@ export function triggerConversationIndexing(
       messageId: params.messageId,
       messageText: params.messageText,
       messageCreatedAt: params.messageCreatedAt,
+      usageBinding: params.usageBinding,
     });
   }
 }

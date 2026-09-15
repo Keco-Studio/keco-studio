@@ -7,12 +7,14 @@ import { AGENT_INDEXING_ENABLED } from '@/lib/agent/embedding-config';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { fetchAllPaged } from '@/lib/services/pagination';
 import { isUuid } from '@/lib/utils/uuid';
+import { deriveAiUsageBinding, type AiUsageBinding } from '@/lib/ai-usage/types';
 import { getSupabaseServiceRoleClient } from './supabaseServiceRole';
 
 type DocumentIndexScope = {
   actorUserId: string;
   projectId: string;
   documentId: string;
+  usageBinding?: AiUsageBinding;
 };
 
 type DocumentReindexResult = {
@@ -121,7 +123,12 @@ async function reindexWithVerifiedActor(
     const folderName = await folderNameFor(admin, input.projectId, metadata.folder_id);
     const chunks = chunkProjectDocument(state.markdown);
     const embeddings = chunks.length > 0
-      ? await embedTexts(chunks.map((chunk) => chunk.content))
+      ? await embedTexts(
+          chunks.map((chunk) => chunk.content),
+          input.usageBinding
+            ? deriveAiUsageBinding(input.usageBinding, { operation: 'index_batch' })
+            : undefined,
+        )
       : [];
     if (embeddings.length !== chunks.length) {
       throw new Error('Embedding response did not match project document chunks');
@@ -183,6 +190,7 @@ export async function removeProjectDocumentIndex(input: DocumentIndexScope): Pro
 export async function reindexProjectDocumentsAsActor(input: {
   actorUserId: string;
   projectId: string;
+  usageBinding?: AiUsageBinding;
 }): Promise<ProjectDocumentsReindexResult> {
   if (!isUuid(input.actorUserId) || !isUuid(input.projectId)) {
     throw new Error('Invalid project document indexing scope');

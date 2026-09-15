@@ -6,6 +6,7 @@ import type {
   ToolContext,
   ToolResult,
 } from '@/lib/agent/types';
+import type { AiUsageBinding } from '@/lib/ai-usage/types';
 
 const loadPendingAction = jest.fn();
 const consumePendingAction = jest.fn();
@@ -467,6 +468,56 @@ describe('post-preview confirmation data boundary', () => {
       '33333333-3333-4333-8333-333333333333'
     );
     expect(JSON.stringify(saveMessage.mock.calls)).not.toContain(approvalSignature);
+  });
+});
+
+describe('Agent usage attribution', () => {
+  it('passes iteration metadata to the DeepSeek stream without storing the user message', async () => {
+    jest.clearAllMocks();
+    getConversation.mockResolvedValue({ meta: {} });
+    getToolsForLlmAsync.mockResolvedValue([]);
+    loadConversationHistory.mockResolvedValue([]);
+    saveMessage.mockResolvedValue({ id: 'message-1' });
+    streamLlm.mockImplementation(async function* () {
+      yield { type: 'finish', reason: 'stop' };
+    });
+    const usageBinding: AiUsageBinding = {
+      context: {
+        actorUserId: '33333333-3333-4333-8333-333333333333',
+        projectId: PROJECT_ID,
+        feature: 'agent_chat',
+        operation: 'react_iteration',
+        correlationId: 'agent_turn:turn-1',
+      },
+      recorder: async () => undefined,
+    };
+
+    for await (const _event of runAgentTurn({
+      conversationId: '44444444-4444-4444-844444444444',
+      userMessage: 'Never persist this as usage metadata.',
+      toolContext: toolContext('editor'),
+      conversationMeta: {},
+      usageBinding,
+      turnId: 'turn-1',
+    } as Parameters<typeof runAgentTurn>[0])) {
+      // Drain the generator.
+    }
+
+    expect(streamLlm).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({
+      provider: 'deepseek',
+      usageBinding: expect.objectContaining({
+        context: expect.objectContaining({
+          actorUserId: '33333333-3333-4333-8333-333333333333',
+          projectId: PROJECT_ID,
+          feature: 'agent_chat',
+          operation: 'react_iteration',
+        }),
+        metadata: { iteration: 1 },
+      }),
+    }));
+    expect(JSON.stringify(streamLlm.mock.calls.at(-1)?.[1]?.usageBinding)).not.toContain(
+      'Never persist this as usage metadata.'
+    );
   });
 });
 
